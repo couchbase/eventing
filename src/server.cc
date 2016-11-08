@@ -49,8 +49,10 @@ void on_new_connection(uv_stream_t *server, int status) {
     req->buf = uv_buf_init(buffer, sizeof(buffer));
     req->buf.len = len;
     req->buf.base = message;
-    uv_write((uv_write_t *)req, (uv_stream_t *)client, &req->buf, 1,
-             on_write_end);
+    for (int i = 0; i < 20; i++) {
+      uv_write((uv_write_t *)req, (uv_stream_t *)client, &req->buf, 1,
+               on_write_end);
+    }
   } else {
     uv_close((uv_handle_t *)client, NULL);
   }
