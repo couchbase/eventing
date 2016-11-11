@@ -19,6 +19,8 @@ public:
   void WriteMessage(Message *msg);
 
   std::vector<char>* GetReadBuffer();
+  int GetIndexRead();
+  void SetIndexRead(int index);
 
 private:
   AppWorker();
@@ -34,8 +36,9 @@ private:
   bool sending_name; // WTP
   std::string app_name;
 
-  std::string next_message; // WTP
+  std::string next_message;
 
-  std::vector<char> read_buffer; // WTP
+  int index_read;
+  std::vector<char> read_buffer;
   MessagePool outgoing_queue;
 };

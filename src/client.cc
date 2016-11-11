@@ -1,14 +1,105 @@
 #include "../inc/client.h"
 
 #include <iostream>
+#include <string>
 #include <uv.h>
 #include <vector>
+
+#include <rapidjson/document.h>
 
 #define LISTEN_PORT 9091
 
 const size_t MAX_BUF_SIZE = 4096;
 
-// uv_loop_t *loop;
+typedef struct message_s {
+  std::string header;
+  std::string payload;
+} message_t;
+
+static void RouteMessage(message_t *parsed_message) {
+    std::string command, metadata, message;
+    rapidjson::Document header, payload;
+    if (header.Parse(parsed_message->header.c_str()).HasParseError()) {
+      std::cerr << "Failed to parse header" << '\n';
+      return;
+    }
+
+    assert(header.IsObject());
+    {
+      rapidjson::Value &cmd = header["command"];
+      rapidjson::Value &meta = header["metadata"];
+
+      command.assign(cmd.GetString());
+      metadata.assign(meta.GetString());
+    }
+
+    if (payload.Parse(parsed_message->payload.c_str()).HasParseError()) {
+      std::cerr << "Failed to parse payload" << '\n';
+      return;
+    }
+
+    assert(payload.IsObject());
+    {
+      rapidjson::Value &msg = payload["message"];
+      message.assign(msg.GetString());
+    }
+
+    std::cout << "command:" << command << " metadata:" << metadata << " message:" << message << '\n';
+}
+
+std::vector<std::string> split(const std::string &message,
+                               const std::string &delimiter) {
+  std::vector<std::string> result;
+  int start_index = 0, next_index;
+
+  std::size_t index = message.find(delimiter);
+  while (index != std::string::npos) {
+
+    std::string entry = message.substr(start_index, index - start_index);
+    result.push_back(entry);
+
+    start_index = index + delimiter.length();
+    index = message.find(delimiter, index + 1);
+  }
+  result.push_back(message.substr(start_index, message.length() - index));
+  return result;
+}
+
+static message_t *ParseServerMessage(const std::string &message) {
+  int header_size, payload_size;
+  std::string delimiter = "\r\n";
+
+  std::vector<std::string> tokens = split(message, delimiter);
+
+  if (tokens.size() != 3) {
+    return nullptr;
+  } else {
+    message_t *parsed_message = new (message_t);
+    header_size = atoi(tokens[0].c_str());
+    payload_size = atoi(tokens[1].c_str());
+    std::string payload_header_chunk = tokens[2];
+
+    parsed_message->header = payload_header_chunk.substr(0, header_size);
+    parsed_message->payload =
+        payload_header_chunk.substr(header_size, header_size + payload_size);
+  return parsed_message;
+  }
+}
+
+static void HandleChunks(const std::string &message) {
+  std::string message_chunk;
+  std::string chunk_delimiter ="~@@@";
+
+  std::vector<std::string> tokens = split(message, chunk_delimiter);
+  for (auto &token : tokens) {
+    message_t *parsed_message = ParseServerMessage(token);
+    if (parsed_message != nullptr) {
+      RouteMessage(parsed_message);
+      free(parsed_message);
+    }
+  }
+}
+
 
 static void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
   std::vector<char>* read_buffer = AppWorker::GetAppWorker()->GetReadBuffer();
@@ -31,6 +122,8 @@ void AppWorker::Init(const std::string &appname, const std::string &addr,
   this->app_name = appname;
   std::cout << "Starting worker for appname:" << appname << " port:" << port
             << '\n';
+
+  AppWorker::GetAppWorker()->SetIndexRead(0);
 
   uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
                  [](uv_connect_t *conn, int status) {
@@ -65,18 +158,24 @@ void AppWorker::OnConnect(uv_connect_t *conn, int status) {
 
 void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
                        const uv_buf_t *buf) {
-  if (nread == UV_EOF) {
-    uv_read_stop(stream);
-  } else if (nread > 0) {
-    std::cout << "Got from server:" << buf->base << '\n';
+  std::cout << "OnRead callback triggered, nread: " << nread << '\n';
+  if (nread > 0) {
     next_message.append(buf->base);
+    HandleChunks(next_message);
+    next_message.clear();
   } else if (nread == 0) {
     next_message.clear();
   } else {
-    std::cerr << "Error reading data" << '\n';
+    if (nread != UV_EOF)
+        std::cerr << "Read error" << uv_err_name(nread) << '\n';
+    next_message.clear();
     uv_read_stop(stream);
   }
 }
+
+int AppWorker::GetIndexRead() { return index_read; }
+
+void AppWorker::SetIndexRead(int index) { index_read = index; }
 
 void AppWorker::WriteMessage(Message *msg) {
   uv_write(outgoing_queue.write_bufs.GetNewWriteBuf(), conn_handle,
@@ -103,51 +202,11 @@ void AppWorker::OnWrite(uv_write_t *req, int status) {
 std::vector<char> *AppWorker::GetReadBuffer() { return &read_buffer; }
 
 AppWorker *AppWorker::GetAppWorker() {
-    static AppWorker worker;
-    return &worker;
+  static AppWorker worker;
+  return &worker;
 }
 
 int main() {
    AppWorker *worker = AppWorker::GetAppWorker();
    worker->Init("credit_score", "127.0.0.1", 9091);
 }
-
-/*
-void on_read(uv_stream_t *server, ssize_t nread, const uv_buf_t *buf) {
-  if (nread > 0) {
-      std::cout << "from server: "<<  buf->base << '\n';
-  }
-  if (nread < 0) {
-    if (nread != UV_EOF) {
-        std::cerr << "read error" << '\n';
-    }
-    uv_close((uv_handle_t *)server, NULL);
-  }
-}
-
-void on_connect(uv_connect_t *req, int status) {
-  if (status == 0) {
-      std::cout << "Connected to server" << '\n';
-    uv_read_start(req->handle, alloc_buffer, on_read);
-  } else {
-      std::cerr << "error on connect" << '\n';
-  }
-}
-
-int main(int argc, char **argv) {
-  loop = uv_default_loop();
-
-  uv_tcp_t client;
-  uv_tcp_init(loop, &client);
-
-  struct sockaddr_in req_addr;
-  uv_ip4_addr("0.0.0.0", LISTEN_PORT, &req_addr);
-
-  uv_connect_t connect_req;
-  uv_tcp_connect(&connect_req, &client, (const struct sockaddr *)&req_addr,
-                 on_connect);
-  uv_run(loop, UV_RUN_DEFAULT);
-
-  return 0;
-}
-*/
