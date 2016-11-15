@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
@@ -8,17 +9,17 @@ import (
 	"log"
 	"net"
 	"os/exec"
-	// "runtime"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
+	// "github.com/abhi-bit/Go2C/suture"
 )
 
 var workerWG sync.WaitGroup
 var serverWG sync.WaitGroup
 
 var delimiter = "\r\n"
-var messageDelimiter = "~@@@"
 
 type Header struct {
 	Command  string `json:"command"`
@@ -36,7 +37,22 @@ func checkErr(err error, context string) {
 	}
 }
 
+func catchPanic(err *error, functionName string) {
+	if r := recover(); r != nil {
+		buf := make([]byte, 10000)
+		runtime.Stack(buf, false)
+
+		fmt.Printf(functionName, "Panic deferred [%v] : Stacktrace : %v", r, string(buf))
+
+		if err != nil {
+			*err = fmt.Errorf("%v", r)
+		}
+	}
+}
+
 func sendMessage(conn net.Conn, header *Header, payload *Payload) {
+	defer catchPanic(nil, "sendMessage")
+
 	encHeader, errh := json.Marshal(header)
 	encPayload, errp := json.Marshal(payload)
 
@@ -63,14 +79,26 @@ func sendMessage(conn net.Conn, header *Header, payload *Payload) {
 		buffer.Write(encHeader)
 		buffer.Write(encPayload)
 
-		buffer.Write([]byte(messageDelimiter))
+		fmt.Printf("headerSize: %d delimiter: %d payloadSize: %d encHeader: %d encPayload: %d\n",
+			binary.Size([]byte(headerSize)), binary.Size([]byte(delimiter)), binary.Size([]byte(payloadSize)),
+			binary.Size(encHeader), binary.Size(encPayload))
 
 		err := binary.Write(conn, binary.LittleEndian, buffer.Bytes())
 		checkErr(err, "socket write failed")
 	}
 }
 
+func readMessage(conn net.Conn) (msg []byte, err error) {
+	defer catchPanic(nil, "readMessage")
+
+	msg, err = bufio.NewReader(conn).ReadSlice('\n')
+	fmt.Printf("msg: %s\n", string(msg))
+	return
+}
+
 func handleWorker(conn net.Conn) {
+	defer catchPanic(nil, "handleWorker")
+
 	defer workerWG.Done()
 	fmt.Printf("Post accept call:: remote addr: %s local addr: %s\n",
 		conn.RemoteAddr(), conn.LocalAddr())
@@ -85,19 +113,29 @@ func handleWorker(conn net.Conn) {
 	}
 
 	payload1 := &Payload{
-		Message: "hello from the other side one",
+		Message: "hello from the other side once again",
 	}
 
 	payload2 := &Payload{
-		Message: "hello from the other side two",
+		Message: "hello from the other side once again 2",
+	}
+
+	payload3 := &Payload{
+		Message: "hello from the other side again and again",
 	}
 
 	sendMessage(conn, header, payload)
-	time.Sleep(2 * time.Second)
+	readMessage(conn)
 	sendMessage(conn, header, payload1)
+	readMessage(conn)
 	sendMessage(conn, header, payload2)
-
-	conn.Close()
+	readMessage(conn)
+	sendMessage(conn, header, payload3)
+	readMessage(conn)
+	time.Sleep(5 * time.Second)
+	sendMessage(conn, header, payload3)
+	readMessage(conn)
+	// conn.Close()
 }
 
 func startServer() {

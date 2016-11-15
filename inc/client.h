@@ -18,9 +18,9 @@ public:
 
   void WriteMessage(Message *msg);
 
-  std::vector<char>* GetReadBuffer();
-  int GetIndexRead();
-  void SetIndexRead(int index);
+  void ParseValidChunk(int nread, const char *buf);
+
+  std::vector<char> *GetReadBuffer();
 
 private:
   AppWorker();
@@ -38,7 +38,6 @@ private:
 
   std::string next_message;
 
-  int index_read;
   std::vector<char> read_buffer;
   MessagePool outgoing_queue;
 };

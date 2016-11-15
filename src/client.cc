@@ -10,6 +10,7 @@
 #define LISTEN_PORT 9091
 
 const size_t MAX_BUF_SIZE = 4096;
+const int PAYLOAD_HEADER_SIZE_FRAGMENT = 8;
 
 typedef struct message_s {
   std::string header;
@@ -123,8 +124,6 @@ void AppWorker::Init(const std::string &appname, const std::string &addr,
   std::cout << "Starting worker for appname:" << appname << " port:" << port
             << '\n';
 
-  AppWorker::GetAppWorker()->SetIndexRead(0);
-
   uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
                  [](uv_connect_t *conn, int status) {
                    AppWorker::GetAppWorker()->OnConnect(conn, status);
@@ -156,26 +155,59 @@ void AppWorker::OnConnect(uv_connect_t *conn, int status) {
   }
 }
 
+void AppWorker::ParseValidChunk(int nread, const char *buf) {
+  if (nread > PAYLOAD_HEADER_SIZE_FRAGMENT) {
+
+    std::string buf_base(buf);
+    std::string substr = buf_base.substr(0, PAYLOAD_HEADER_SIZE_FRAGMENT);
+
+    std::vector<std::string> tokens = split(substr, "\r\n");
+    int header_size = atoi(tokens[0].c_str());
+    int payload_size = atoi(tokens[1].c_str());
+
+    int message_size =
+        header_size + payload_size + PAYLOAD_HEADER_SIZE_FRAGMENT;
+
+    if (nread >= message_size) {
+      std::string chunk_to_parse = buf_base.substr(0, message_size);
+      message_t *parsed_message = ParseServerMessage(chunk_to_parse);
+
+      if (parsed_message != nullptr) {
+        buf_base.erase(0, message_size);
+        RouteMessage(parsed_message);
+
+        if (nread - message_size > 0) {
+          AppWorker::GetAppWorker()->ParseValidChunk(nread - message_size,
+                                                     buf_base.c_str());
+        }
+      }
+
+      free(parsed_message);
+
+    } else {
+      next_message.append(buf);
+    }
+  } else {
+    next_message.append(buf);
+  }
+}
+
 void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
                        const uv_buf_t *buf) {
   std::cout << "OnRead callback triggered, nread: " << nread << '\n';
   if (nread > 0) {
-    next_message.append(buf->base);
-    HandleChunks(next_message);
-    next_message.clear();
+    AppWorker::GetAppWorker()->ParseValidChunk(nread, buf->base);
   } else if (nread == 0) {
     next_message.clear();
   } else {
     if (nread != UV_EOF)
-        std::cerr << "Read error" << uv_err_name(nread) << '\n';
+      std::cerr << "Read error, err code: " << uv_err_name(nread) << '\n';
+    AppWorker::GetAppWorker()->ParseValidChunk(next_message.length(),
+                                               next_message.c_str());
     next_message.clear();
     uv_read_stop(stream);
   }
 }
-
-int AppWorker::GetIndexRead() { return index_read; }
-
-void AppWorker::SetIndexRead(int index) { index_read = index; }
 
 void AppWorker::WriteMessage(Message *msg) {
   uv_write(outgoing_queue.write_bufs.GetNewWriteBuf(), conn_handle,
@@ -189,7 +221,7 @@ void AppWorker::OnWrite(uv_write_t *req, int status) {
   outgoing_queue.write_bufs.Release();
 
   if (status == 0) {
-    std::string client_msg("Hello from the client side");
+    std::string client_msg("Hello from the client side\n");
     std::shared_ptr<Message> msg =
         std::make_shared<Message>(Message(client_msg));
     outgoing_queue.messages.push(msg);
