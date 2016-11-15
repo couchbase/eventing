@@ -84,7 +84,10 @@ func sendMessage(conn net.Conn, header *Header, payload *Payload) {
 			binary.Size(encHeader), binary.Size(encPayload))
 
 		err := binary.Write(conn, binary.LittleEndian, buffer.Bytes())
-		checkErr(err, "socket write failed")
+		if err != nil {
+			fmt.Printf("Write to downstream socket failed, err: %s\n", err.Error())
+			conn.Close()
+		}
 	}
 }
 
@@ -92,8 +95,14 @@ func readMessage(conn net.Conn) (msg []byte, err error) {
 	defer catchPanic(nil, "readMessage")
 
 	msg, err = bufio.NewReader(conn).ReadSlice('\n')
-	fmt.Printf("msg: %s\n", string(msg))
-	return
+	if err != nil {
+		fmt.Printf("Read from client socket failed, err: %s\n", err.Error())
+		conn.Close()
+		return
+	} else {
+		fmt.Printf("msg: %s\n", string(msg))
+		return
+	}
 }
 
 func handleWorker(conn net.Conn) {
