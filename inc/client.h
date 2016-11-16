@@ -6,6 +6,10 @@
 #include <uv.h>
 #include <vector>
 
+typedef struct {
+  uv_write_t req;
+  uv_buf_t buf;
+} write_req_t;
 
 class AppWorker {
 public:
@@ -18,7 +22,7 @@ public:
 
   void WriteMessage(Message *msg);
 
-  void ParseValidChunk(int nread, const char *buf);
+  void ParseValidChunk(uv_stream_t *stream, int nread, const char *buf);
 
   std::vector<char> *GetReadBuffer();
 

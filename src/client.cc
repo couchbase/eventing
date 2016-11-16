@@ -17,12 +17,12 @@ typedef struct message_s {
   std::string payload;
 } message_t;
 
-static void RouteMessage(message_t *parsed_message) {
-    std::string command, metadata, message;
+static std::string RouteMessage(message_t *parsed_message) {
+    std::string command, metadata, message, result;
     rapidjson::Document header, payload;
     if (header.Parse(parsed_message->header.c_str()).HasParseError()) {
       std::cerr << "Failed to parse header" << '\n';
-      return;
+      return result;
     }
 
     assert(header.IsObject());
@@ -36,7 +36,7 @@ static void RouteMessage(message_t *parsed_message) {
 
     if (payload.Parse(parsed_message->payload.c_str()).HasParseError()) {
       std::cerr << "Failed to parse payload" << '\n';
-      return;
+      return result;
     }
 
     assert(payload.IsObject());
@@ -46,6 +46,9 @@ static void RouteMessage(message_t *parsed_message) {
     }
 
     std::cout << "command:" << command << " metadata:" << metadata << " message:" << message << '\n';
+
+    result.assign("Hello from the client side\n");
+    return result;
 }
 
 std::vector<std::string> split(const std::string &message,
@@ -86,21 +89,6 @@ static message_t *ParseServerMessage(const std::string &message) {
   return parsed_message;
   }
 }
-
-static void HandleChunks(const std::string &message) {
-  std::string message_chunk;
-  std::string chunk_delimiter ="~@@@";
-
-  std::vector<std::string> tokens = split(message, chunk_delimiter);
-  for (auto &token : tokens) {
-    message_t *parsed_message = ParseServerMessage(token);
-    if (parsed_message != nullptr) {
-      RouteMessage(parsed_message);
-      free(parsed_message);
-    }
-  }
-}
-
 
 static void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
   std::vector<char>* read_buffer = AppWorker::GetAppWorker()->GetReadBuffer();
@@ -146,16 +134,16 @@ void AppWorker::OnConnect(uv_connect_t *conn, int status) {
 
     conn_handle = conn->handle;
 
-    std::shared_ptr<Message> msg = std::make_shared<Message>(Message(app_name));
+    /* std::shared_ptr<Message> msg = std::make_shared<Message>(Message(app_name));
     outgoing_queue.messages.push(msg);
     AppWorker::GetAppWorker()->WriteMessage(
-        outgoing_queue.messages.back().get());
+        outgoing_queue.messages.back().get()); */
   } else {
     std::cerr << "Connection failed with error:" << uv_strerror(status) << '\n';
   }
 }
 
-void AppWorker::ParseValidChunk(int nread, const char *buf) {
+void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread, const char *buf) {
   if (nread > PAYLOAD_HEADER_SIZE_FRAGMENT) {
 
     std::string buf_base(buf);
@@ -174,10 +162,19 @@ void AppWorker::ParseValidChunk(int nread, const char *buf) {
 
       if (parsed_message != nullptr) {
         buf_base.erase(0, message_size);
-        RouteMessage(parsed_message);
+        std::string result = RouteMessage(parsed_message);
 
-        if (nread - message_size > 0) {
-          AppWorker::GetAppWorker()->ParseValidChunk(nread - message_size,
+        if (!result.empty()) {
+            write_req_t *req = (write_req_t *) malloc(sizeof(write_req_t));
+            std::string buf_base("Hello from the client side\n");
+            req->buf = uv_buf_init((char *)buf_base.c_str(), buf_base.length());
+            uv_write((uv_write_t *)req, stream, &req->buf, 1,
+                     [](uv_write_t *req, int status) {
+                       AppWorker::GetAppWorker()->OnWrite(req, status);
+                     });
+        }
+          if (nread - message_size > 0) {
+          AppWorker::GetAppWorker()->ParseValidChunk(stream, nread - message_size,
                                                      buf_base.c_str());
         }
       }
@@ -196,13 +193,13 @@ void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
                        const uv_buf_t *buf) {
   std::cout << "OnRead callback triggered, nread: " << nread << '\n';
   if (nread > 0) {
-    AppWorker::GetAppWorker()->ParseValidChunk(nread, buf->base);
+    AppWorker::GetAppWorker()->ParseValidChunk(stream, nread, buf->base);
   } else if (nread == 0) {
     next_message.clear();
   } else {
     if (nread != UV_EOF)
       std::cerr << "Read error, err code: " << uv_err_name(nread) << '\n';
-    AppWorker::GetAppWorker()->ParseValidChunk(next_message.length(),
+    AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message.length(),
                                                next_message.c_str());
     next_message.clear();
     uv_read_stop(stream);
@@ -217,7 +214,7 @@ void AppWorker::WriteMessage(Message *msg) {
 }
 
 void AppWorker::OnWrite(uv_write_t *req, int status) {
-  outgoing_queue.messages.pop();
+  /* outgoing_queue.messages.pop();
   outgoing_queue.write_bufs.Release();
 
   if (status == 0) {
@@ -228,7 +225,15 @@ void AppWorker::OnWrite(uv_write_t *req, int status) {
 
     AppWorker::GetAppWorker()->WriteMessage(
         outgoing_queue.messages.back().get());
+  } */
+
+
+  if (status) {
+      std::cerr << "Write error, err: " << uv_strerror(status) << '\n';
   }
+
+  write_req_t *wr = (write_req_t *) req;
+  free(wr);
 }
 
 std::vector<char> *AppWorker::GetReadBuffer() { return &read_buffer; }
