@@ -13,13 +13,26 @@ import (
 	"strconv"
 	"sync"
 	"time"
-	// "github.com/abhi-bit/Go2C/suture"
+
+	"github.com/abhi-bit/Go2C/suptree"
 )
+
+type workerID uint32
+
+// Globals
+var currentWorkerID workerID
+var freeAppWorkerChanMap map[string]chan *Client
+var newAppWorkerChanMap map[string]chan *Worker
 
 var workerWG sync.WaitGroup
 var serverWG sync.WaitGroup
 
+var workerCountIDL sync.Mutex
+
+var supervisor *suptree.Supervisor
+
 var delimiter = "\r\n"
+var appName = "credit_score"
 
 type Header struct {
 	Command  string `json:"command"`
@@ -28,6 +41,183 @@ type Header struct {
 
 type Payload struct {
 	Message string `json:"message"`
+}
+
+type Response struct {
+	response string
+	err      error
+}
+
+type Message struct {
+	header  Header
+	payload Payload
+	resChan chan *Response
+}
+
+type Client struct {
+	id           workerID
+	messageQueue chan Message
+	conn         net.Conn
+
+	stop     chan bool
+	shutdown chan bool
+}
+
+type Worker struct {
+	id            workerID
+	workerPidChan chan int
+	stopChan      chan bool
+}
+
+type Connection struct {
+	conn net.Conn
+	err  error
+}
+
+type Server struct {
+	activeWorkerCount uint32
+	runningWorkers    map[*Client]workerID
+	connAcceptQueue   chan Connection
+
+	workerShutdownChanMap map[workerID]chan bool
+
+	stopAcceptChan chan bool
+	stopServerChan chan bool
+}
+
+func (w *Worker) Serve() {
+	cmd := exec.Command("./client")
+
+	go func(w *Worker, cmd *exec.Cmd) {
+		err := cmd.Start()
+		if err != nil {
+			log.Fatal("Cmd")
+		}
+		w.workerPidChan <- cmd.Process.Pid
+	}(w, cmd)
+
+	pid := <-w.workerPidChan
+	log.Printf("Process pid: %d\n", pid)
+
+	if _, ok := newAppWorkerChanMap[appName]; !ok {
+		newAppWorkerChanMap[appName] = make(chan *Worker, 1)
+	}
+
+	newAppWorkerChanMap[appName] <- w
+
+	select {
+	case <-w.stopChan:
+		return
+	}
+}
+
+func (w *Worker) Stop() {
+	log.Printf("Doing nothing inside stop routine of worker routine\n")
+}
+
+func (s *Server) HandleWorker(client *Client, worker *Worker) {
+	for {
+		select {
+		case msg := <-client.messageQueue:
+			sendMessage(client.conn, &msg)
+			response := readMessage(client.conn)
+			msg.resChan <- response
+			freeAppWorkerChanMap[appName] <- client
+		case <-client.stop:
+			worker.stopChan <- true
+			return
+		}
+	}
+}
+
+func (s *Server) HandleAccept(ln net.Listener) {
+	defer ln.Close()
+	for {
+		select {
+		case <-s.stopAcceptChan:
+			return
+		default:
+			log.Printf("Continuing as there is no message on stopAcceptChan\n")
+		}
+
+		conn, err := ln.Accept()
+		connection := Connection{
+			conn: conn,
+			err:  err,
+		}
+		log.Printf("Going to put connection request to Go channel\n")
+		s.connAcceptQueue <- connection
+		log.Printf("Put connection request to Go channel\n")
+	}
+}
+
+func (s *Server) Serve() {
+	ln, err := net.Listen("tcp", "localhost:9091")
+	if err != nil {
+		fmt.Printf("Failed to listen, exiting!\n")
+		return
+	}
+
+	go s.HandleAccept(ln)
+
+	for {
+		workerCountIDL.Lock()
+		select {
+		case connection := <-s.connAcceptQueue:
+			err := connection.err
+			if err != nil {
+				fmt.Printf("Closing the connection because an error was encountered\n")
+				connection.conn.Close()
+				continue
+			}
+
+			conn := connection.conn
+			log.Printf("Got a client connection request, remote: %v local: %v\n",
+				conn.RemoteAddr(), conn.LocalAddr())
+
+			currentWorkerID++
+
+			client := &Client{
+				id:           currentWorkerID,
+				messageQueue: make(chan Message, 1),
+				conn:         conn,
+				stop:         make(chan bool, 1),
+				shutdown:     make(chan bool),
+			}
+
+			if _, ok := s.runningWorkers[client]; !ok {
+				s.runningWorkers[client] = client.id
+			} else {
+				fmt.Printf("Client entry already exists in runningWorkers map\n")
+			}
+
+			if _, ok := freeAppWorkerChanMap[appName]; !ok {
+				freeAppWorkerChanMap[appName] = make(chan *Client, 1)
+			}
+			freeAppWorkerChanMap[appName] <- client
+
+			if _, ok := s.workerShutdownChanMap[client.id]; !ok {
+				s.workerShutdownChanMap[client.id] = make(chan bool, 1)
+			} else {
+				fmt.Printf("Client entry already exists in workerShutdownChanMap map\n")
+			}
+
+			worker := <-newAppWorkerChanMap[appName]
+			go s.HandleWorker(client, worker)
+
+		case <-s.stopServerChan:
+			for client, _ := range s.runningWorkers {
+				client.stop <- true
+			}
+			s.stopAcceptChan <- true
+			return
+		}
+		workerCountIDL.Unlock()
+	}
+}
+
+func (s *Server) Stop() {
+	s.stopServerChan <- true
 }
 
 func checkErr(err error, context string) {
@@ -50,9 +240,11 @@ func catchPanic(err *error, functionName string) {
 	}
 }
 
-func sendMessage(conn net.Conn, header *Header, payload *Payload) {
+func sendMessage(conn net.Conn, msg *Message) {
 	defer catchPanic(nil, "sendMessage")
 
+	header := msg.header
+	payload := msg.payload
 	encHeader, errh := json.Marshal(header)
 	encPayload, errp := json.Marshal(payload)
 
@@ -79,111 +271,99 @@ func sendMessage(conn net.Conn, header *Header, payload *Payload) {
 		buffer.Write(encHeader)
 		buffer.Write(encPayload)
 
-		fmt.Printf("headerSize: %d delimiter: %d payloadSize: %d encHeader: %d encPayload: %d\n",
-			binary.Size([]byte(headerSize)), binary.Size([]byte(delimiter)), binary.Size([]byte(payloadSize)),
-			binary.Size(encHeader), binary.Size(encPayload))
+		/* log.Printf("headerSize: %d delimiter: %d payloadSize: %d encHeader: %d encPayload: %d\n",
+		binary.Size([]byte(headerSize)), binary.Size([]byte(delimiter)), binary.Size([]byte(payloadSize)),
+		binary.Size(encHeader), binary.Size(encPayload)) */
+
+		log.Printf("Request from server: %#v\n", msg)
 
 		err := binary.Write(conn, binary.LittleEndian, buffer.Bytes())
 		if err != nil {
-			fmt.Printf("Write to downstream socket failed, err: %s\n", err.Error())
+			log.Printf("Write to downstream socket failed, err: %s\n", err.Error())
 			conn.Close()
 		}
 	}
 }
 
-func readMessage(conn net.Conn) (msg []byte, err error) {
+func readMessage(conn net.Conn) *Response {
 	defer catchPanic(nil, "readMessage")
 
-	msg, err = bufio.NewReader(conn).ReadSlice('\n')
+	msg, err := bufio.NewReader(conn).ReadSlice('\n')
 	if err != nil {
-		fmt.Printf("Read from client socket failed, err: %s\n", err.Error())
+		log.Printf("Read from client socket failed, err: %s\n", err.Error())
 		conn.Close()
-		return
+		result := &Response{
+			response: "",
+			err:      err,
+		}
+		return result
 	} else {
-		fmt.Printf("msg: %s\n", string(msg))
-		return
+		log.Printf("Response from client: %s", string(msg))
+		result := &Response{
+			response: string(msg),
+			err:      err,
+		}
+		return result
 	}
 }
 
-func handleWorker(conn net.Conn) {
-	defer catchPanic(nil, "handleWorker")
+func populateWorker() {
+	defer catchPanic(nil, "populateWorker")
 
-	defer workerWG.Done()
-	fmt.Printf("Post accept call:: remote addr: %s local addr: %s\n",
-		conn.RemoteAddr(), conn.LocalAddr())
-
-	header := &Header{
+	header := Header{
 		Command:  "sample_command",
 		Metadata: "nothing_extra in metadata",
 	}
 
-	payload := &Payload{
+	payload := Payload{
 		Message: "hello from the other side",
 	}
 
-	payload1 := &Payload{
-		Message: "hello from the other side once again",
-	}
+	for i := 0; i < 10; i++ {
+		select {
+		case client := <-freeAppWorkerChanMap[appName]:
+			msg := Message{header, payload, make(chan *Response, 1)}
+			client.messageQueue <- msg
+			<-msg.resChan
 
-	payload2 := &Payload{
-		Message: "hello from the other side once again 2",
-	}
-
-	payload3 := &Payload{
-		Message: "hello from the other side again and again",
-	}
-
-	sendMessage(conn, header, payload)
-	readMessage(conn)
-	sendMessage(conn, header, payload1)
-	readMessage(conn)
-	sendMessage(conn, header, payload2)
-	readMessage(conn)
-	sendMessage(conn, header, payload3)
-	readMessage(conn)
-	time.Sleep(5 * time.Second)
-	sendMessage(conn, header, payload3)
-	readMessage(conn)
-	// conn.Close()
-}
-
-func startServer() {
-	defer serverWG.Done()
-	ln, err := net.Listen("tcp", "127.0.0.1:9091")
-	if err != nil {
-		log.Fatal(err)
-		ln.Close()
-	}
-	fmt.Println("Listening on port 9091")
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			log.Fatal(err)
-			continue
+			// Adding a sleep between consecutive messages
+			time.Sleep(100 * time.Millisecond)
 		}
-		workerWG.Add(1)
-		go handleWorker(conn)
 	}
-	workerWG.Wait()
-	ln.Close()
 }
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	freeAppWorkerChanMap = make(map[string]chan *Client)
+	newAppWorkerChanMap = make(map[string]chan *Worker)
+
+	supervisor := suptree.NewSimple(appName)
+
+	server := &Server{
+		activeWorkerCount:     0,
+		runningWorkers:        make(map[*Client]workerID),
+		connAcceptQueue:       make(chan Connection, 1),
+		workerShutdownChanMap: make(map[workerID]chan bool),
+		stopAcceptChan:        make(chan bool, 1),
+		stopServerChan:        make(chan bool, 1),
+	}
+
+	supervisor.Add(server)
+
+	worker := &Worker{
+		id:            0,
+		workerPidChan: make(chan int, 1),
+		stopChan:      make(chan bool, 1),
+	}
 
 	serverWG.Add(1)
-	go startServer()
+	go supervisor.ServeBackground()
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(1 * time.Second)
+	supervisor.Add(worker)
 
-	go func() {
-		cmd := exec.Command("./client")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Fatal("Cmd")
-		}
-		log.Printf("out: %s\n", out)
-	}()
-
+	time.Sleep(1 * time.Second)
+	go populateWorker()
 	serverWG.Wait()
 }
