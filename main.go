@@ -23,6 +23,7 @@ type workerID uint32
 var currentWorkerID workerID
 var freeAppWorkerChanMap map[string]chan *Client
 var newAppWorkerChanMap map[string]chan *Worker
+var clientWorkerMap map[*Client]*Worker
 
 var workerWG sync.WaitGroup
 var serverWG sync.WaitGroup
@@ -119,8 +120,8 @@ func (s *Server) HandleWorker(client *Client, worker *Worker) {
 	for {
 		select {
 		case msg := <-client.messageQueue:
-			sendMessage(client.conn, &msg)
-			response := readMessage(client.conn)
+			sendMessage(client, &msg)
+			response := readMessage(client)
 			msg.resChan <- response
 			freeAppWorkerChanMap[appName] <- client
 		case <-client.stop:
@@ -161,7 +162,6 @@ func (s *Server) Serve() {
 	go s.HandleAccept(ln)
 
 	for {
-		workerCountIDL.Lock()
 		select {
 		case connection := <-s.connAcceptQueue:
 			err := connection.err
@@ -175,6 +175,7 @@ func (s *Server) Serve() {
 			log.Printf("Got a client connection request, remote: %v local: %v\n",
 				conn.RemoteAddr(), conn.LocalAddr())
 
+			workerCountIDL.Lock()
 			currentWorkerID++
 
 			client := &Client{
@@ -188,7 +189,7 @@ func (s *Server) Serve() {
 			if _, ok := s.runningWorkers[client]; !ok {
 				s.runningWorkers[client] = client.id
 			} else {
-				fmt.Printf("Client entry already exists in runningWorkers map\n")
+				log.Printf("Client entry already exists in runningWorkers map\n")
 			}
 
 			if _, ok := freeAppWorkerChanMap[appName]; !ok {
@@ -199,11 +200,19 @@ func (s *Server) Serve() {
 			if _, ok := s.workerShutdownChanMap[client.id]; !ok {
 				s.workerShutdownChanMap[client.id] = make(chan bool, 1)
 			} else {
-				fmt.Printf("Client entry already exists in workerShutdownChanMap map\n")
+				log.Printf("Client entry already exists in workerShutdownChanMap map\n")
 			}
 
 			worker := <-newAppWorkerChanMap[appName]
+
+			if _, ok := clientWorkerMap[client]; ok {
+				log.Printf("Client to worker process mapping already exists\n")
+				continue
+			}
+			clientWorkerMap[client] = worker
+
 			go s.HandleWorker(client, worker)
+			workerCountIDL.Unlock()
 
 		case <-s.stopServerChan:
 			for client, _ := range s.runningWorkers {
@@ -212,7 +221,6 @@ func (s *Server) Serve() {
 			s.stopAcceptChan <- true
 			return
 		}
-		workerCountIDL.Unlock()
 	}
 }
 
@@ -240,7 +248,7 @@ func catchPanic(err *error, functionName string) {
 	}
 }
 
-func sendMessage(conn net.Conn, msg *Message) {
+func sendMessage(client *Client, msg *Message) {
 	defer catchPanic(nil, "sendMessage")
 
 	header := msg.header
@@ -275,23 +283,45 @@ func sendMessage(conn net.Conn, msg *Message) {
 		binary.Size([]byte(headerSize)), binary.Size([]byte(delimiter)), binary.Size([]byte(payloadSize)),
 		binary.Size(encHeader), binary.Size(encPayload)) */
 
-		log.Printf("Request from server: %#v\n", msg)
+		log.Printf("Request from server: %#v client obj: %#v\n", msg, client)
 
-		err := binary.Write(conn, binary.LittleEndian, buffer.Bytes())
+		err := binary.Write(client.conn, binary.LittleEndian, buffer.Bytes())
 		if err != nil {
 			log.Printf("Write to downstream socket failed, err: %s\n", err.Error())
-			conn.Close()
+
+			workerCountIDL.Lock()
+			if worker, ok := clientWorkerMap[client]; !ok {
+				log.Printf("Dead socket is missing from clientWorkerMap, might be leaking reesources\n")
+			} else {
+				log.Printf("Found dead socket while writing to conn: %#v, closing worker: %#v\n",
+					client.conn, worker)
+				worker.stopChan <- true
+			}
+			workerCountIDL.Unlock()
+
+			client.conn.Close()
 		}
 	}
 }
 
-func readMessage(conn net.Conn) *Response {
+func readMessage(client *Client) *Response {
 	defer catchPanic(nil, "readMessage")
 
-	msg, err := bufio.NewReader(conn).ReadSlice('\n')
+	msg, err := bufio.NewReader(client.conn).ReadSlice('\n')
 	if err != nil {
 		log.Printf("Read from client socket failed, err: %s\n", err.Error())
-		conn.Close()
+
+		workerCountIDL.Lock()
+		if worker, ok := clientWorkerMap[client]; !ok {
+			log.Printf("Dead socket is missing from clientWorkerMap, might be leaking reesources\n")
+		} else {
+			log.Printf("Found dead socket while reading from conn: %#v, closing worker: %#v\n",
+				client.conn, worker)
+			worker.stopChan <- true
+		}
+		workerCountIDL.Unlock()
+
+		client.conn.Close()
 		result := &Response{
 			response: "",
 			err:      err,
@@ -319,7 +349,7 @@ func populateWorker() {
 		Message: "hello from the other side",
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 4; i++ {
 		select {
 		case client := <-freeAppWorkerChanMap[appName]:
 			msg := Message{header, payload, make(chan *Response, 1)}
@@ -327,7 +357,7 @@ func populateWorker() {
 			<-msg.resChan
 
 			// Adding a sleep between consecutive messages
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(2000 * time.Millisecond)
 		}
 	}
 }
@@ -337,6 +367,7 @@ func main() {
 
 	freeAppWorkerChanMap = make(map[string]chan *Client)
 	newAppWorkerChanMap = make(map[string]chan *Worker)
+	clientWorkerMap = make(map[*Client]*Worker)
 
 	supervisor := suptree.NewSimple(appName)
 
@@ -361,6 +392,7 @@ func main() {
 	go supervisor.ServeBackground()
 
 	time.Sleep(1 * time.Second)
+	supervisor.Add(worker)
 	supervisor.Add(worker)
 
 	time.Sleep(1 * time.Second)
