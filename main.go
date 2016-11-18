@@ -23,7 +23,6 @@ type workerID uint32
 var currentWorkerID workerID
 var freeAppWorkerChanMap map[string]chan *Client
 var newAppWorkerChanMap map[string]chan *Worker
-var clientWorkerMap map[*Client]*Worker
 
 var workerWG sync.WaitGroup
 var serverWG sync.WaitGroup
@@ -60,14 +59,14 @@ type Client struct {
 	messageQueue chan Message
 	conn         net.Conn
 
-	stop     chan bool
-	shutdown chan bool
+	stop chan bool
 }
 
 type Worker struct {
-	id            workerID
-	workerPidChan chan int
-	stopChan      chan bool
+	id workerID
+
+	cmdWaitChan chan bool
+	stopChan    chan bool
 }
 
 type Connection struct {
@@ -89,16 +88,23 @@ type Server struct {
 func (w *Worker) Serve() {
 	cmd := exec.Command("./client")
 
-	go func(w *Worker, cmd *exec.Cmd) {
-		err := cmd.Start()
-		if err != nil {
-			log.Fatal("Cmd")
-		}
-		w.workerPidChan <- cmd.Process.Pid
-	}(w, cmd)
+	err := cmd.Start()
+	if err != nil {
+		log.Fatal("Cmd")
+	}
 
-	pid := <-w.workerPidChan
-	log.Printf("Process pid: %d\n", pid)
+	// Note: Observed cmd.Wait() on zombie process
+	// to get hung for long period - looks to be OS
+	// related. Starting a goroutine immediately after
+	// spawning the process
+	go func() {
+		cmd.Wait()
+		select {
+		case <-w.stopChan:
+			log.Printf("Process pid: %d going to die\n", cmd.Process.Pid)
+			w.cmdWaitChan <- true
+		}
+	}()
 
 	if _, ok := newAppWorkerChanMap[appName]; !ok {
 		newAppWorkerChanMap[appName] = make(chan *Worker, 1)
@@ -107,7 +113,7 @@ func (w *Worker) Serve() {
 	newAppWorkerChanMap[appName] <- w
 
 	select {
-	case <-w.stopChan:
+	case <-w.cmdWaitChan:
 		return
 	}
 }
@@ -123,8 +129,12 @@ func (s *Server) HandleWorker(client *Client, worker *Worker) {
 			sendMessage(client, &msg)
 			response := readMessage(client)
 			msg.resChan <- response
-			freeAppWorkerChanMap[appName] <- client
+
+			if response.err == nil {
+				freeAppWorkerChanMap[appName] <- client
+			}
 		case <-client.stop:
+			log.Println("Got message to stop client, stopping worker as well")
 			worker.stopChan <- true
 			return
 		}
@@ -183,7 +193,6 @@ func (s *Server) Serve() {
 				messageQueue: make(chan Message, 1),
 				conn:         conn,
 				stop:         make(chan bool, 1),
-				shutdown:     make(chan bool),
 			}
 
 			if _, ok := s.runningWorkers[client]; !ok {
@@ -204,12 +213,6 @@ func (s *Server) Serve() {
 			}
 
 			worker := <-newAppWorkerChanMap[appName]
-
-			if _, ok := clientWorkerMap[client]; ok {
-				log.Printf("Client to worker process mapping already exists\n")
-				continue
-			}
-			clientWorkerMap[client] = worker
 
 			go s.HandleWorker(client, worker)
 			workerCountIDL.Unlock()
@@ -283,22 +286,14 @@ func sendMessage(client *Client, msg *Message) {
 		binary.Size([]byte(headerSize)), binary.Size([]byte(delimiter)), binary.Size([]byte(payloadSize)),
 		binary.Size(encHeader), binary.Size(encPayload)) */
 
-		log.Printf("Request from server: %#v client obj: %#v\n", msg, client)
+		// log.Printf("Request from server: %#v client obj: %#v\n", msg, client)
+		log.Printf("SERVER REQUEST")
 
 		err := binary.Write(client.conn, binary.LittleEndian, buffer.Bytes())
 		if err != nil {
 			log.Printf("Write to downstream socket failed, err: %s\n", err.Error())
 
-			workerCountIDL.Lock()
-			if worker, ok := clientWorkerMap[client]; !ok {
-				log.Printf("Dead socket is missing from clientWorkerMap, might be leaking reesources\n")
-			} else {
-				log.Printf("Found dead socket while writing to conn: %#v, closing worker: %#v\n",
-					client.conn, worker)
-				worker.stopChan <- true
-			}
-			workerCountIDL.Unlock()
-
+			client.stop <- true
 			client.conn.Close()
 		}
 	}
@@ -311,24 +306,18 @@ func readMessage(client *Client) *Response {
 	if err != nil {
 		log.Printf("Read from client socket failed, err: %s\n", err.Error())
 
-		workerCountIDL.Lock()
-		if worker, ok := clientWorkerMap[client]; !ok {
-			log.Printf("Dead socket is missing from clientWorkerMap, might be leaking reesources\n")
-		} else {
-			log.Printf("Found dead socket while reading from conn: %#v, closing worker: %#v\n",
-				client.conn, worker)
-			worker.stopChan <- true
-		}
-		workerCountIDL.Unlock()
-
+		client.stop <- true
 		client.conn.Close()
+
 		result := &Response{
 			response: "",
 			err:      err,
 		}
+
 		return result
 	} else {
-		log.Printf("Response from client: %s", string(msg))
+		log.Println("CLIENT RESPONSE")
+		// log.Printf("Response from client: %s", string(msg))
 		result := &Response{
 			response: string(msg),
 			err:      err,
@@ -349,7 +338,7 @@ func populateWorker() {
 		Message: "hello from the other side",
 	}
 
-	for i := 0; i < 4; i++ {
+	for {
 		select {
 		case client := <-freeAppWorkerChanMap[appName]:
 			msg := Message{header, payload, make(chan *Response, 1)}
@@ -357,7 +346,7 @@ func populateWorker() {
 			<-msg.resChan
 
 			// Adding a sleep between consecutive messages
-			time.Sleep(2000 * time.Millisecond)
+			time.Sleep(1000 * time.Millisecond)
 		}
 	}
 }
@@ -367,7 +356,6 @@ func main() {
 
 	freeAppWorkerChanMap = make(map[string]chan *Client)
 	newAppWorkerChanMap = make(map[string]chan *Worker)
-	clientWorkerMap = make(map[*Client]*Worker)
 
 	supervisor := suptree.NewSimple(appName)
 
@@ -383,17 +371,19 @@ func main() {
 	supervisor.Add(server)
 
 	worker := &Worker{
-		id:            0,
-		workerPidChan: make(chan int, 1),
-		stopChan:      make(chan bool, 1),
+		id:          0,
+		cmdWaitChan: make(chan bool, 1),
+		stopChan:    make(chan bool, 1),
 	}
 
 	serverWG.Add(1)
 	go supervisor.ServeBackground()
 
 	time.Sleep(1 * time.Second)
-	supervisor.Add(worker)
-	supervisor.Add(worker)
+
+	for i := 0; i < runtime.NumCPU(); i++ {
+		supervisor.Add(worker)
+	}
 
 	time.Sleep(1 * time.Second)
 	go populateWorker()
