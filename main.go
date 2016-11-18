@@ -86,7 +86,7 @@ type Server struct {
 }
 
 func (w *Worker) Serve() {
-	cmd := exec.Command("./client")
+	cmd := exec.Command("./client", "9091")
 
 	err := cmd.Start()
 	if err != nil {

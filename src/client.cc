@@ -243,7 +243,8 @@ AppWorker *AppWorker::GetAppWorker() {
   return &worker;
 }
 
-int main() {
+int main(int argc, char**argv) {
    AppWorker *worker = AppWorker::GetAppWorker();
-   worker->Init("credit_score", "127.0.0.1", 9091);
+   int port = atoi(argv[1]);
+   worker->Init("credit_score", "127.0.0.1", port);
 }
