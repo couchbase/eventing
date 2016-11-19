@@ -8,10 +8,13 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/abhi-bit/Go2C/suptree"
@@ -106,9 +109,11 @@ func (w *Worker) Serve() {
 		}
 	}()
 
+	workerCountIDL.Lock()
 	if _, ok := newAppWorkerChanMap[appName]; !ok {
 		newAppWorkerChanMap[appName] = make(chan *Worker, 1)
 	}
+	workerCountIDL.Unlock()
 
 	newAppWorkerChanMap[appName] <- w
 
@@ -287,7 +292,7 @@ func sendMessage(client *Client, msg *Message) {
 		binary.Size(encHeader), binary.Size(encPayload)) */
 
 		// log.Printf("Request from server: %#v client obj: %#v\n", msg, client)
-		log.Printf("SERVER REQUEST")
+		// log.Printf("SERVER REQUEST")
 
 		err := binary.Write(client.conn, binary.LittleEndian, buffer.Bytes())
 		if err != nil {
@@ -316,7 +321,7 @@ func readMessage(client *Client) *Response {
 
 		return result
 	} else {
-		log.Println("CLIENT RESPONSE")
+		// log.Println("CLIENT RESPONSE")
 		// log.Printf("Response from client: %s", string(msg))
 		result := &Response{
 			response: string(msg),
@@ -338,15 +343,22 @@ func populateWorker() {
 		Message: "hello from the other side",
 	}
 
+	var ops uint64
+	timerTicker := time.NewTicker(time.Second)
+
 	for {
 		select {
 		case client := <-freeAppWorkerChanMap[appName]:
 			msg := Message{header, payload, make(chan *Response, 1)}
 			client.messageQueue <- msg
 			<-msg.resChan
+			atomic.AddUint64(&ops, 1)
 
 			// Adding a sleep between consecutive messages
-			time.Sleep(1000 * time.Millisecond)
+			// time.Sleep(1000 * time.Millisecond)
+
+		case <-timerTicker.C:
+			log.Printf("messages processed: %d\n", atomic.LoadUint64(&ops))
 		}
 	}
 }
@@ -387,5 +399,10 @@ func main() {
 
 	time.Sleep(1 * time.Second)
 	go populateWorker()
+
+	go func() {
+		http.ListenAndServe(":6060", http.DefaultServeMux)
+	}()
+
 	serverWG.Wait()
 }
