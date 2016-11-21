@@ -1,5 +1,6 @@
 #include "../inc/client.h"
 
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <uv.h>
@@ -12,43 +13,47 @@
 const size_t MAX_BUF_SIZE = 4096;
 const int PAYLOAD_HEADER_SIZE_FRAGMENT = 8;
 
+std::ofstream cinfo_out;
+std::ofstream cerror_out;
+
 typedef struct message_s {
   std::string header;
   std::string payload;
 } message_t;
 
 static std::string RouteMessage(message_t *parsed_message) {
-    std::string command, metadata, message, result;
-    rapidjson::Document header, payload;
-    if (header.Parse(parsed_message->header.c_str()).HasParseError()) {
-      std::cerr << "Failed to parse header" << '\n';
-      return result;
-    }
-
-    assert(header.IsObject());
-    {
-      rapidjson::Value &cmd = header["command"];
-      rapidjson::Value &meta = header["metadata"];
-
-      command.assign(cmd.GetString());
-      metadata.assign(meta.GetString());
-    }
-
-    if (payload.Parse(parsed_message->payload.c_str()).HasParseError()) {
-      std::cerr << "Failed to parse payload" << '\n';
-      return result;
-    }
-
-    assert(payload.IsObject());
-    {
-      rapidjson::Value &msg = payload["message"];
-      message.assign(msg.GetString());
-    }
-
-    std::cout << "command:" << command << " metadata:" << metadata << " message:" << message << '\n';
-
-    result.assign("Hello from the client side\n");
+  std::string command, metadata, message, result;
+  rapidjson::Document header, payload;
+  if (header.Parse(parsed_message->header.c_str()).HasParseError()) {
+    cerror_out << "Failed to parse header" << std::endl;
     return result;
+  }
+
+  assert(header.IsObject());
+  {
+    rapidjson::Value &cmd = header["command"];
+    rapidjson::Value &meta = header["metadata"];
+
+    command.assign(cmd.GetString());
+    metadata.assign(meta.GetString());
+  }
+
+  if (payload.Parse(parsed_message->payload.c_str()).HasParseError()) {
+    cerror_out << "Failed to parse payload" << std::endl;
+    return result;
+  }
+
+  assert(payload.IsObject());
+  {
+    rapidjson::Value &msg = payload["message"];
+    message.assign(msg.GetString());
+  }
+
+  /* cinfo_out << "command:" << command << " metadata:" << metadata
+            << " message:" << message << std::endl; */
+
+  result.assign("Hello from the client side\n");
+  return result;
 }
 
 std::vector<std::string> split(const std::string &message,
@@ -69,7 +74,8 @@ std::vector<std::string> split(const std::string &message,
   return result;
 }
 
-static message_t *ParseServerMessage(const std::string &message) {
+static std::unique_ptr<message_t>
+ParseServerMessage(const std::string &message) {
   int header_size, payload_size;
   std::string delimiter = "\r\n";
 
@@ -78,7 +84,7 @@ static message_t *ParseServerMessage(const std::string &message) {
   if (tokens.size() != 3) {
     return nullptr;
   } else {
-    message_t *parsed_message = new (message_t);
+    std::unique_ptr<message_t> parsed_message(new message_t);
     header_size = atoi(tokens[0].c_str());
     payload_size = atoi(tokens[1].c_str());
     std::string payload_header_chunk = tokens[2];
@@ -109,8 +115,8 @@ void AppWorker::Init(const std::string &appname, const std::string &addr,
   uv_ip4_addr(addr.c_str(), port, &server_sock);
 
   this->app_name = appname;
-  std::cout << "Starting worker for appname:" << appname << " port:" << port
-            << '\n';
+  cinfo_out << "Starting worker for appname:" << appname << " port:" << port
+            << std::endl;
 
   uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
                  [](uv_connect_t *conn, int status) {
@@ -125,7 +131,7 @@ void AppWorker::Init(const std::string &appname, const std::string &addr,
 
 void AppWorker::OnConnect(uv_connect_t *conn, int status) {
   if (status == 0) {
-    std::cout << "Client connected" << '\n';
+    cinfo_out << "Client connected" << std::endl;
 
     uv_read_start(conn->handle, alloc_buffer,
                   [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
@@ -139,7 +145,7 @@ void AppWorker::OnConnect(uv_connect_t *conn, int status) {
     AppWorker::GetAppWorker()->WriteMessage(
         outgoing_queue.messages.back().get()); */
   } else {
-    std::cerr << "Connection failed with error:" << uv_strerror(status) << '\n';
+    cerror_out << "Connection failed with error:" << uv_strerror(status) << std::endl;
   }
 }
 
@@ -158,14 +164,15 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread, const char *buf)
 
     if (nread >= message_size) {
       std::string chunk_to_parse = buf_base.substr(0, message_size);
-      message_t *parsed_message = ParseServerMessage(chunk_to_parse);
+      std::unique_ptr<message_t> parsed_message =
+          ParseServerMessage(chunk_to_parse);
 
       if (parsed_message != nullptr) {
         buf_base.erase(0, message_size);
-        std::string result = RouteMessage(parsed_message);
+        std::string result = RouteMessage(parsed_message.get());
 
         if (!result.empty()) {
-            write_req_t *req = (write_req_t *) malloc(sizeof(write_req_t));
+            write_req_t *req = new(write_req_t);
             std::string buf_base("Hello from the client side\n");
             req->buf = uv_buf_init((char *)buf_base.c_str(), buf_base.length());
             uv_write((uv_write_t *)req, stream, &req->buf, 1,
@@ -173,14 +180,11 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread, const char *buf)
                        AppWorker::GetAppWorker()->OnWrite(req, status);
                      });
         }
-          if (nread - message_size > 0) {
-          AppWorker::GetAppWorker()->ParseValidChunk(stream, nread - message_size,
-                                                     buf_base.c_str());
+        if (nread - message_size > 0) {
+          AppWorker::GetAppWorker()->ParseValidChunk(
+              stream, nread - message_size, buf_base.c_str());
         }
       }
-
-      free(parsed_message);
-
     } else {
       next_message.append(buf);
     }
@@ -191,14 +195,14 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread, const char *buf)
 
 void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
                        const uv_buf_t *buf) {
-  std::cout << "OnRead callback triggered, nread: " << nread << '\n';
+  // cinfo_out << "OnRead callback triggered, nread: " << nread << std::endl;
   if (nread > 0) {
     AppWorker::GetAppWorker()->ParseValidChunk(stream, nread, buf->base);
   } else if (nread == 0) {
     next_message.clear();
   } else {
     if (nread != UV_EOF)
-      std::cerr << "Read error, err code: " << uv_err_name(nread) << '\n';
+      cerror_out << "Read error, err code: " << uv_err_name(nread) << std::endl;
     AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message.length(),
                                                next_message.c_str());
     next_message.clear();
@@ -229,11 +233,11 @@ void AppWorker::OnWrite(uv_write_t *req, int status) {
 
 
   if (status) {
-      std::cerr << "Write error, err: " << uv_strerror(status) << '\n';
+      cerror_out << "Write error, err: " << uv_strerror(status) << std::endl;
   }
 
   write_req_t *wr = (write_req_t *) req;
-  free(wr);
+  delete wr;
 }
 
 std::vector<char> *AppWorker::GetReadBuffer() { return &read_buffer; }
@@ -244,7 +248,16 @@ AppWorker *AppWorker::GetAppWorker() {
 }
 
 int main(int argc, char**argv) {
+  std::string info_log_file = "client.info.log";
+  std::string error_log_file = "client.error.log";
+
+  cinfo_out.open(info_log_file.c_str());
+  cerror_out.open(error_log_file.c_str());
+
    AppWorker *worker = AppWorker::GetAppWorker();
    int port = atoi(argv[1]);
    worker->Init("credit_score", "127.0.0.1", port);
+
+   cinfo_out.close();
+   cerror_out.close();
 }

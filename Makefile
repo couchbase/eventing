@@ -1,9 +1,11 @@
-CC=gcc
-SOURCE=src/client.c
-OUT=client
+CXX=g++
+CXFLAGS=-std=c++11 -O3
+LFLAGS=-luv -ljemalloc
+SOURCE=src/client.cc src/message.cc
+OUT=client.bin
 
 all:
-	$(CC) -luv $(SOURCE) -o $(OUT)
+	$(CXX) $(CXFLAGS) $(LFLAGS) $(SOURCE) -o $(OUT)
 	go run main.go
 
 clean:

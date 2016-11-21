@@ -58,9 +58,10 @@ type Message struct {
 }
 
 type Client struct {
-	id           workerID
-	messageQueue chan Message
-	conn         net.Conn
+	id                workerID
+	messageQueue      chan Message
+	conn              net.Conn
+	messagesProcessed uint64
 
 	stop chan bool
 }
@@ -78,6 +79,7 @@ type Connection struct {
 }
 
 type Server struct {
+	appName           string
 	activeWorkerCount uint32
 	runningWorkers    map[*Client]workerID
 	connAcceptQueue   chan Connection
@@ -194,10 +196,11 @@ func (s *Server) Serve() {
 			currentWorkerID++
 
 			client := &Client{
-				id:           currentWorkerID,
-				messageQueue: make(chan Message, 1),
-				conn:         conn,
-				stop:         make(chan bool, 1),
+				id:                currentWorkerID,
+				messageQueue:      make(chan Message, 1),
+				conn:              conn,
+				messagesProcessed: 0,
+				stop:              make(chan bool, 1),
 			}
 
 			if _, ok := s.runningWorkers[client]; !ok {
@@ -331,7 +334,7 @@ func readMessage(client *Client) *Response {
 	}
 }
 
-func populateWorker() {
+func populateWorker(server *Server) {
 	defer catchPanic(nil, "populateWorker")
 
 	header := Header{
@@ -346,19 +349,30 @@ func populateWorker() {
 	var ops uint64
 	timerTicker := time.NewTicker(time.Second)
 
+	for i := 0; i < runtime.NumCPU(); i++ {
+		go func() {
+			for {
+				select {
+				case client := <-freeAppWorkerChanMap[appName]:
+					msg := Message{header, payload, make(chan *Response, 1)}
+					client.messageQueue <- msg
+					<-msg.resChan
+					atomic.AddUint64(&ops, 1)
+					atomic.AddUint64(&client.messagesProcessed, 1)
+				}
+			}
+		}()
+	}
+
 	for {
 		select {
-		case client := <-freeAppWorkerChanMap[appName]:
-			msg := Message{header, payload, make(chan *Response, 1)}
-			client.messageQueue <- msg
-			<-msg.resChan
-			atomic.AddUint64(&ops, 1)
-
-			// Adding a sleep between consecutive messages
-			// time.Sleep(1000 * time.Millisecond)
-
 		case <-timerTicker.C:
-			log.Printf("messages processed: %d\n", atomic.LoadUint64(&ops))
+			log.Printf("For appname: %s messages processed: %d, breakdown on individual worker level:\n",
+				server.appName, ops)
+			for client, _ := range server.runningWorkers {
+				fmt.Printf("workerID: %d messages processed: %d messages\n",
+					client.id, client.messagesProcessed)
+			}
 		}
 	}
 }
@@ -372,6 +386,7 @@ func main() {
 	supervisor := suptree.NewSimple(appName)
 
 	server := &Server{
+		appName:               appName,
 		activeWorkerCount:     0,
 		runningWorkers:        make(map[*Client]workerID),
 		connAcceptQueue:       make(chan Connection, 1),
@@ -398,7 +413,7 @@ func main() {
 	}
 
 	time.Sleep(1 * time.Second)
-	go populateWorker()
+	go populateWorker(server)
 
 	go func() {
 		http.ListenAndServe(":6060", http.DefaultServeMux)
