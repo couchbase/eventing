@@ -37,7 +37,6 @@ private:
   struct sockaddr_in server_sock;
 
   bool main_loop_running;
-  bool sending_name; // WTP
   std::string app_name;
 
   std::string next_message;

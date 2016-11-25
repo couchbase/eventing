@@ -1,8 +1,14 @@
 #include "../inc/client.h"
+#include "../inc/commands.h"
+// #include "../inc/binding.h"
 
+#include <chrono>
+#include <ctime>
 #include <fstream>
 #include <iostream>
+#include <math.h>
 #include <string>
+#include <typeinfo>
 #include <uv.h>
 #include <vector>
 
@@ -10,8 +16,10 @@
 
 #define LISTEN_PORT 9091
 
-const size_t MAX_BUF_SIZE = 4096;
-const int PAYLOAD_HEADER_SIZE_FRAGMENT = 8;
+const size_t MAX_BUF_SIZE = 65536;
+
+const int HEADER_FRAGMENT_SIZE = 4; // uint32
+const int PAYLOAD_FRAGMENT_SIZE = 4; // uint32
 
 std::ofstream cinfo_out;
 std::ofstream cerror_out;
@@ -21,12 +29,28 @@ typedef struct message_s {
   std::string payload;
 } message_t;
 
-static std::string RouteMessage(message_t *parsed_message) {
-  std::string command, metadata, message, result;
-  rapidjson::Document header, payload;
+typedef struct header_s {
+    std::string command;
+    std::string metadata;
+} header_t;
+
+int messages_processed(0);
+
+char *getTime() {
+  using std::chrono::system_clock;
+
+  system_clock::time_point today = system_clock::now();
+  std::time_t tt;
+  tt = system_clock::to_time_t(today);
+  return ctime(&tt);
+}
+
+static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
+  std::string command, metadata;
+  rapidjson::Document header;
   if (header.Parse(parsed_message->header.c_str()).HasParseError()) {
-    cerror_out << "Failed to parse header" << std::endl;
-    return result;
+    cerror_out << getTime() << "Failed to parse header" << std::endl;
+    return std::unique_ptr<header_t>(nullptr);
   }
 
   assert(header.IsObject());
@@ -38,8 +62,53 @@ static std::string RouteMessage(message_t *parsed_message) {
     metadata.assign(meta.GetString());
   }
 
+  std::unique_ptr<header_t> parsed_header(new header_t);
+  parsed_header->command = command;
+  parsed_header->metadata = metadata;
+
+  return parsed_header;
+}
+
+static void RouteMessageWithoutResponse(header_t *parsed_header,
+                                        message_t *parsed_message) {
+  std::string message;
+  rapidjson::Document payload;
+
   if (payload.Parse(parsed_message->payload.c_str()).HasParseError()) {
-    cerror_out << "Failed to parse payload" << std::endl;
+    cerror_out << getTime() << "Failed to parse payload" << std::endl;
+    return;
+  }
+
+  assert(payload.IsObject());
+  {
+    rapidjson::Value &msg = payload["message"];
+    message.assign(msg.GetString());
+  }
+
+  switch (getCommandType(parsed_header->command)) {
+  case cDCP:
+    switch (getDCPCommandType(parsed_header->metadata)) {
+    case mDelete:
+    case mMutation:
+    case mDCP_Cmd_Unknown:
+      cerror_out << getTime() << "dcp_cmd_unknown encountered" << std::endl;
+      break;
+    }
+    break;
+  default:
+    cerror_out << getTime() << "command:" << parsed_header->command
+               << " sent to RouteMessageWithoutResponse and it isn't desirable"
+               << std::endl;
+  }
+}
+
+static std::string RouteMessageWithResponse(header_t *parsed_header,
+                                            message_t *parsed_message) {
+  std::string message, result;
+  rapidjson::Document payload;
+
+  if (payload.Parse(parsed_message->payload.c_str()).HasParseError()) {
+    cerror_out << getTime() << "Failed to parse payload" << std::endl;
     return result;
   }
 
@@ -49,60 +118,89 @@ static std::string RouteMessage(message_t *parsed_message) {
     message.assign(msg.GetString());
   }
 
-  /* cinfo_out << "command:" << command << " metadata:" << metadata
-            << " message:" << message << std::endl; */
+  switch (getCommandType(parsed_header->command)) {
+  case cV8_Worker:
+    switch (getV8WorkerCommandType(parsed_header->metadata)) {
+    case mDispose:
+    case mInit:
+        // v8_init();
+    case mLoad:
+    case mNew:
+    case mTerminate:
+    case mVersion:
+    case mV8_Worker_Cmd_Unknown:
+        cerror_out << getTime() << "worker_cmd_unknown encountered" << std::endl;
+        break;
+    }
+    break;
+  case cDCP:
+    switch (getDCPCommandType(parsed_header->metadata)) {
+    case mDelete:
+    case mMutation:
+    case mDCP_Cmd_Unknown:
+        cerror_out << getTime() << "dcp_cmd_unknown encountered" << std::endl;
+        break;
+    }
+    break;
+  case cHTTP:
+    switch (getHTTPCommandType(parsed_header->metadata)) {
+    case mGet:
+    case mPost:
+    case mHTTP_Cmd_Unknown:
+        cerror_out << getTime() << "http_cmd_unknown encountered" << std::endl;
+        break;
+    }
+    break;
+  case cV8_Debug:
+    switch (getV8DebugCommandType(parsed_header->metadata)) {
+    case mBacktrace:
+    case mClear_Breakpoint:
+    case mContinue:
+    case mEvaluate:
+    case mFrame:
+    case mList_Breakpoints:
+    case mLookup:
+    case mSet_Breakpoint:
+    case mSource:
+    case mStart_Debugger:
+    case mStop_Debugger:
+    case mV8_Debug_Cmd_Unknown:
+        cerror_out << getTime() << "v8_debug_cmd_unknown encountered" << std::endl;
+        break;
+    }
+    break;
+  case cUnknown:
+    cinfo_out << "Unknown command" << std::endl;
+    break;
+  }
 
   result.assign("Hello from the client side\n");
   return result;
 }
 
-std::vector<std::string> split(const std::string &message,
-                               const std::string &delimiter) {
-  std::vector<std::string> result;
-  int start_index = 0, next_index;
-
-  std::size_t index = message.find(delimiter);
-  while (index != std::string::npos) {
-
-    std::string entry = message.substr(start_index, index - start_index);
-    result.push_back(entry);
-
-    start_index = index + delimiter.length();
-    index = message.find(delimiter, index + 1);
-  }
-  result.push_back(message.substr(start_index, message.length() - index));
-  return result;
-}
-
 static std::unique_ptr<message_t>
-ParseServerMessage(const std::string &message) {
-  int header_size, payload_size;
-  std::string delimiter = "\r\n";
+ParseServerMessage(int encoded_header_size, int encoded_payload_size,
+                   const std::string &message) {
+  std::unique_ptr<message_t> parsed_message(new message_t);
+  parsed_message->header = message.substr(
+      HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE, encoded_header_size);
+  parsed_message->payload = message.substr(
+      HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE + encoded_header_size,
+      encoded_payload_size);
 
-  std::vector<std::string> tokens = split(message, delimiter);
+  messages_processed++;
 
-  if (tokens.size() != 3) {
-    return nullptr;
-  } else {
-    std::unique_ptr<message_t> parsed_message(new message_t);
-    header_size = atoi(tokens[0].c_str());
-    payload_size = atoi(tokens[1].c_str());
-    std::string payload_header_chunk = tokens[2];
-
-    parsed_message->header = payload_header_chunk.substr(0, header_size);
-    parsed_message->payload =
-        payload_header_chunk.substr(header_size, header_size + payload_size);
   return parsed_message;
-  }
 }
 
-static void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
+static void alloc_buffer(uv_handle_t *handle, size_t suggested_size,
+                         uv_buf_t *buf) {
   std::vector<char>* read_buffer = AppWorker::GetAppWorker()->GetReadBuffer();
   *buf = uv_buf_init(read_buffer->data(), read_buffer->capacity());
 }
 
 AppWorker::AppWorker()
-    : main_loop_running(false), conn_handle(nullptr), sending_name(true) {
+    : main_loop_running(false), conn_handle(nullptr) {
   uv_loop_init(&main_loop);
   read_buffer.resize(MAX_BUF_SIZE);
 }
@@ -115,8 +213,8 @@ void AppWorker::Init(const std::string &appname, const std::string &addr,
   uv_ip4_addr(addr.c_str(), port, &server_sock);
 
   this->app_name = appname;
-  cinfo_out << "Starting worker for appname:" << appname << " port:" << port
-            << std::endl;
+  cerror_out << "Starting worker for appname:" << appname << " port:" << port
+             << std::endl;
 
   uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
                  [](uv_connect_t *conn, int status) {
@@ -131,7 +229,7 @@ void AppWorker::Init(const std::string &appname, const std::string &addr,
 
 void AppWorker::OnConnect(uv_connect_t *conn, int status) {
   if (status == 0) {
-    cinfo_out << "Client connected" << std::endl;
+    cerror_out << "Client connected" << std::endl;
 
     uv_read_start(conn->handle, alloc_buffer,
                   [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
@@ -139,70 +237,115 @@ void AppWorker::OnConnect(uv_connect_t *conn, int status) {
                   });
 
     conn_handle = conn->handle;
-
-    /* std::shared_ptr<Message> msg = std::make_shared<Message>(Message(app_name));
-    outgoing_queue.messages.push(msg);
-    AppWorker::GetAppWorker()->WriteMessage(
-        outgoing_queue.messages.back().get()); */
   } else {
-    cerror_out << "Connection failed with error:" << uv_strerror(status) << std::endl;
+    cerror_out << getTime() << "Connection failed with error:" << uv_strerror(status) << std::endl;
   }
 }
 
-void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread, const char *buf) {
-  if (nread > PAYLOAD_HEADER_SIZE_FRAGMENT) {
+int combineAsciiToInt(std::vector<int> *input) {
+  int result = 0;
+  for (int i = 0; i < input->size(); i++) {
+    if ((*input)[i] < 0) {
+      result = result + pow(256, i) * (256 + (*input)[i]);
+    } else {
+      result = result + pow(256, i) * (*input)[i];
+    }
+  }
+  return result;
+}
 
-    std::string buf_base(buf);
-    std::string substr = buf_base.substr(0, PAYLOAD_HEADER_SIZE_FRAGMENT);
+void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
+                                const char *buf) {
+  std::string buf_base;
+  for (int i = 0; i < nread; i++) {
+    buf_base += buf[i];
+  }
+  if (next_message.length() > 0) {
+    buf_base = next_message + buf_base;
+    next_message.clear();
+  }
 
-    std::vector<std::string> tokens = split(substr, "\r\n");
-    int header_size = atoi(tokens[0].c_str());
-    int payload_size = atoi(tokens[1].c_str());
+  if (buf_base.length() < HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE) {
+    next_message.assign(buf_base);
+    return;
+  } else {
+    std::vector<int> header_entries, payload_entries;
+    int encoded_header_size, encoded_payload_size;
 
-    int message_size =
-        header_size + payload_size + PAYLOAD_HEADER_SIZE_FRAGMENT;
+    for (int i = 0; i < HEADER_FRAGMENT_SIZE; i++) {
+      header_entries.push_back(int(buf_base[i]));
+    }
+    encoded_header_size = combineAsciiToInt(&header_entries);
 
-    if (nread >= message_size) {
+    for (int i = HEADER_FRAGMENT_SIZE;
+         i < HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE; i++) {
+      payload_entries.push_back(int(buf_base[i]));
+    }
+    encoded_payload_size = combineAsciiToInt(&payload_entries);
+
+    int message_size = HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE +
+                       encoded_header_size + encoded_payload_size;
+
+    if (buf_base.length() < message_size) {
+      next_message.assign(buf_base);
+      return;
+    } else {
       std::string chunk_to_parse = buf_base.substr(0, message_size);
-      std::unique_ptr<message_t> parsed_message =
-          ParseServerMessage(chunk_to_parse);
 
-      if (parsed_message != nullptr) {
-        buf_base.erase(0, message_size);
-        std::string result = RouteMessage(parsed_message.get());
+      std::unique_ptr<message_t> parsed_message = ParseServerMessage(
+          encoded_header_size, encoded_payload_size, chunk_to_parse);
+      cerror_out << "header_size:" << encoded_header_size << " payload_size "
+                 << encoded_payload_size
+                 << " messages processed: " << messages_processed << std::endl;
 
-        if (!result.empty()) {
-            write_req_t *req = new(write_req_t);
-            std::string buf_base("Hello from the client side\n");
-            req->buf = uv_buf_init((char *)buf_base.c_str(), buf_base.length());
-            uv_write((uv_write_t *)req, stream, &req->buf, 1,
-                     [](uv_write_t *req, int status) {
-                       AppWorker::GetAppWorker()->OnWrite(req, status);
-                     });
-        }
-        if (nread - message_size > 0) {
-          AppWorker::GetAppWorker()->ParseValidChunk(
-              stream, nread - message_size, buf_base.c_str());
+      if (parsed_message) {
+        std::unique_ptr<header_t> parsed_header =
+            ParseHeader(parsed_message.get());
+
+        if (parsed_header) {
+          header_t *pheader = parsed_header.get();
+          switch (getCommandType(pheader->command)) {
+          case cDCP:
+            RouteMessageWithoutResponse(parsed_header.get(),
+                                        parsed_message.get());
+            break;
+          default:
+            std::string result = RouteMessageWithResponse(parsed_header.get(),
+                                                          parsed_message.get());
+
+            if (!result.empty()) {
+              // TODO: replace it with unique_ptr
+              write_req_t *req = new (write_req_t);
+              std::string response_buf("hello from the client side\n");
+              req->buf = uv_buf_init((char *)response_buf.c_str(),
+                                     response_buf.length());
+              uv_write((uv_write_t *)req, stream, &req->buf, 1,
+                       [](uv_write_t *req, int status) {
+                         AppWorker::GetAppWorker()->OnWrite(req, status);
+                       });
+            }
+          }
         }
       }
-    } else {
-      next_message.append(buf);
+      if (buf_base.length() - message_size > 0) {
+        buf_base.erase(0, message_size);
+        AppWorker::GetAppWorker()->ParseValidChunk(stream, buf_base.length(),
+                                                   buf_base.c_str());
+      }
     }
-  } else {
-    next_message.append(buf);
   }
 }
 
 void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
                        const uv_buf_t *buf) {
-  // cinfo_out << "OnRead callback triggered, nread: " << nread << std::endl;
+  cerror_out << "OnRead callback triggered, nread: " << nread << std::endl;
   if (nread > 0) {
     AppWorker::GetAppWorker()->ParseValidChunk(stream, nread, buf->base);
   } else if (nread == 0) {
     next_message.clear();
   } else {
     if (nread != UV_EOF)
-      cerror_out << "Read error, err code: " << uv_err_name(nread) << std::endl;
+      cerror_out << getTime() << "Read error, err code: " << uv_err_name(nread) << std::endl;
     AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message.length(),
                                                next_message.c_str());
     next_message.clear();
@@ -218,22 +361,9 @@ void AppWorker::WriteMessage(Message *msg) {
 }
 
 void AppWorker::OnWrite(uv_write_t *req, int status) {
-  /* outgoing_queue.messages.pop();
-  outgoing_queue.write_bufs.Release();
-
-  if (status == 0) {
-    std::string client_msg("Hello from the client side\n");
-    std::shared_ptr<Message> msg =
-        std::make_shared<Message>(Message(client_msg));
-    outgoing_queue.messages.push(msg);
-
-    AppWorker::GetAppWorker()->WriteMessage(
-        outgoing_queue.messages.back().get());
-  } */
-
-
   if (status) {
-      cerror_out << "Write error, err: " << uv_strerror(status) << std::endl;
+    cerror_out << getTime() << "Write error, err: " << uv_strerror(status)
+               << std::endl;
   }
 
   write_req_t *wr = (write_req_t *) req;
@@ -254,10 +384,10 @@ int main(int argc, char**argv) {
   cinfo_out.open(info_log_file.c_str());
   cerror_out.open(error_log_file.c_str());
 
-   AppWorker *worker = AppWorker::GetAppWorker();
-   int port = atoi(argv[1]);
-   worker->Init("credit_score", "127.0.0.1", port);
+  AppWorker *worker = AppWorker::GetAppWorker();
+  int port = atoi(argv[1]);
+  worker->Init("credit_score", "127.0.0.1", port);
 
-   cinfo_out.close();
-   cerror_out.close();
+  cinfo_out.close();
+  cerror_out.close();
 }

@@ -2,17 +2,16 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os/exec"
 	"runtime"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,8 +33,17 @@ var workerCountIDL sync.Mutex
 
 var supervisor *suptree.Supervisor
 
-var delimiter = "\r\n"
 var appName = "credit_score"
+
+var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func randSeq(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
+}
 
 type Header struct {
 	Command  string `json:"command"`
@@ -134,12 +142,13 @@ func (s *Server) HandleWorker(client *Client, worker *Worker) {
 		select {
 		case msg := <-client.messageQueue:
 			sendMessage(client, &msg)
-			response := readMessage(client)
+			/* response := readMessage(client)
 			msg.resChan <- response
 
 			if response.err == nil {
 				freeAppWorkerChanMap[appName] <- client
-			}
+			} */
+			freeAppWorkerChanMap[appName] <- client
 		case <-client.stop:
 			log.Println("Got message to stop client, stopping worker as well")
 			worker.stopChan <- true
@@ -259,6 +268,16 @@ func catchPanic(err *error, functionName string) {
 	}
 }
 
+func catchDeadConnection(client *Client, context string, err error) {
+	if err != nil {
+		log.Printf("Write to downstream socket failed while %s, err: %s\n",
+			context, err.Error())
+
+		client.stop <- true
+		client.conn.Close()
+	}
+}
+
 func sendMessage(client *Client, msg *Message) {
 	defer catchPanic(nil, "sendMessage")
 
@@ -272,38 +291,25 @@ func sendMessage(client *Client, msg *Message) {
 			errh.Error(), errp.Error())
 
 	} else {
-		var buffer bytes.Buffer
-
-		headerSize := strconv.Itoa(binary.Size(encHeader))
-		payloadSize := strconv.Itoa(binary.Size(encPayload))
 
 		// Protocol encoding format
 		// headerSize <CRLF> payloadSize <CRLF> Header Payload
 
-		// TODO: more error checking
-		buffer.Write([]byte(headerSize))
-		buffer.Write([]byte(delimiter))
+		err := binary.Write(client.conn, binary.LittleEndian, uint32(len(encHeader)))
+		catchDeadConnection(client, "writing headerSize", err)
 
-		buffer.Write([]byte(payloadSize))
-		buffer.Write([]byte(delimiter))
+		err = binary.Write(client.conn, binary.LittleEndian, uint32(len(encPayload)))
+		catchDeadConnection(client, "writing payloadSize", err)
 
-		buffer.Write(encHeader)
-		buffer.Write(encPayload)
+		err = binary.Write(client.conn, binary.LittleEndian, encHeader)
+		catchDeadConnection(client, "writing encoded header", err)
 
-		/* log.Printf("headerSize: %d delimiter: %d payloadSize: %d encHeader: %d encPayload: %d\n",
-		binary.Size([]byte(headerSize)), binary.Size([]byte(delimiter)), binary.Size([]byte(payloadSize)),
+		err = binary.Write(client.conn, binary.LittleEndian, encPayload)
+		catchDeadConnection(client, "writing encoded payload", err)
+
+		/* log.Printf("headerSize: %d payloadSize: %d encHeader: %d encPayload: %d\n",
+		uint32(len(encHeader)), uint32(len(encPayload)),
 		binary.Size(encHeader), binary.Size(encPayload)) */
-
-		// log.Printf("Request from server: %#v client obj: %#v\n", msg, client)
-		// log.Printf("SERVER REQUEST")
-
-		err := binary.Write(client.conn, binary.LittleEndian, buffer.Bytes())
-		if err != nil {
-			log.Printf("Write to downstream socket failed, err: %s\n", err.Error())
-
-			client.stop <- true
-			client.conn.Close()
-		}
 	}
 }
 
@@ -337,14 +343,13 @@ func readMessage(client *Client) *Response {
 func populateWorker(server *Server) {
 	defer catchPanic(nil, "populateWorker")
 
+	log.Println("populateWorker run")
 	header := Header{
-		Command:  "sample_command",
+		Command:  "dcp",
 		Metadata: "nothing_extra in metadata",
 	}
 
-	payload := Payload{
-		Message: "hello from the other side",
-	}
+	msg := randSeq(1000)
 
 	var ops uint64
 	timerTicker := time.NewTicker(time.Second)
@@ -354,11 +359,15 @@ func populateWorker(server *Server) {
 			for {
 				select {
 				case client := <-freeAppWorkerChanMap[appName]:
-					msg := Message{header, payload, make(chan *Response, 1)}
+
+					msg := Message{header,
+						Payload{msg},
+						make(chan *Response, 1)}
 					client.messageQueue <- msg
-					<-msg.resChan
+					// <-msg.resChan
 					atomic.AddUint64(&ops, 1)
 					atomic.AddUint64(&client.messagesProcessed, 1)
+					// time.Sleep(1 * time.Second)
 				}
 			}
 		}()
@@ -368,11 +377,13 @@ func populateWorker(server *Server) {
 		select {
 		case <-timerTicker.C:
 			log.Printf("For appname: %s messages processed: %d, breakdown on individual worker level:\n",
-				server.appName, ops)
+				server.appName, atomic.LoadUint64(&ops))
+			workerCountIDL.Lock()
 			for client, _ := range server.runningWorkers {
 				fmt.Printf("workerID: %d messages processed: %d messages\n",
-					client.id, client.messagesProcessed)
+					client.id, atomic.LoadUint64(&client.messagesProcessed))
 			}
+			workerCountIDL.Unlock()
 		}
 	}
 }
@@ -408,7 +419,7 @@ func main() {
 
 	time.Sleep(1 * time.Second)
 
-	for i := 0; i < runtime.NumCPU(); i++ {
+	for i := 0; i < runtime.NumCPU()/8; i++ {
 		supervisor.Add(worker)
 	}
 
