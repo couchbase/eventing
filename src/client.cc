@@ -50,7 +50,7 @@ static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
   std::string command, subcommand, metadata;
   rapidjson::Document header;
   if (header.Parse(parsed_message->header.c_str()).HasParseError()) {
-    cerror_out << getTime() << "Failed to parse header" << std::endl;
+    cerror_out << getTime() << "Failed to parse header" << '\n';
     return std::unique_ptr<header_t>(nullptr);
   }
 
@@ -79,7 +79,7 @@ static void RouteMessageWithoutResponse(header_t *parsed_header,
   rapidjson::Document payload;
 
   if (payload.Parse(parsed_message->payload.c_str()).HasParseError()) {
-    cerror_out << getTime() << "Failed to parse payload" << std::endl;
+    cerror_out << getTime() << "Failed to parse payload" << '\n';
     return;
   }
 
@@ -96,17 +96,17 @@ static void RouteMessageWithoutResponse(header_t *parsed_header,
       break;
     case mMutation:
       // cerror_out << "header:" << parsed_message->header
-      //           << " payload:" << parsed_message->payload << std::endl;
+      //           << " payload:" << parsed_message->payload << '\n';
       break;
     case mDCP_Cmd_Unknown:
-      cerror_out << getTime() << "dcp_cmd_unknown encountered" << std::endl;
+      cerror_out << getTime() << "dcp_cmd_unknown encountered" << '\n';
       break;
     }
     break;
   default:
     cerror_out << getTime() << "command:" << parsed_header->command
                << " sent to RouteMessageWithoutResponse and it isn't desirable"
-               << std::endl;
+               << '\n';
   }
 }
 
@@ -116,7 +116,7 @@ static std::string RouteMessageWithResponse(header_t *parsed_header,
   rapidjson::Document payload;
 
   if (payload.Parse(parsed_message->payload.c_str()).HasParseError()) {
-    cerror_out << getTime() << "Failed to parse payload" << std::endl;
+    cerror_out << getTime() << "Failed to parse payload" << '\n';
     return result;
   }
 
@@ -137,7 +137,7 @@ static std::string RouteMessageWithResponse(header_t *parsed_header,
     case mTerminate:
     case mVersion:
     case mV8_Worker_Cmd_Unknown:
-      cerror_out << getTime() << "worker_cmd_unknown encountered" << std::endl;
+      cerror_out << getTime() << "worker_cmd_unknown encountered" << '\n';
       break;
     }
     break;
@@ -146,7 +146,7 @@ static std::string RouteMessageWithResponse(header_t *parsed_header,
     case mDelete:
     case mMutation:
     case mDCP_Cmd_Unknown:
-      cerror_out << getTime() << "dcp_cmd_unknown encountered" << std::endl;
+      cerror_out << getTime() << "dcp_cmd_unknown encountered" << '\n';
       break;
     }
     break;
@@ -155,7 +155,7 @@ static std::string RouteMessageWithResponse(header_t *parsed_header,
     case mGet:
     case mPost:
     case mHTTP_Cmd_Unknown:
-      cerror_out << getTime() << "http_cmd_unknown encountered" << std::endl;
+      cerror_out << getTime() << "http_cmd_unknown encountered" << '\n';
       break;
     }
     break;
@@ -174,12 +174,12 @@ static std::string RouteMessageWithResponse(header_t *parsed_header,
     case mStop_Debugger:
     case mV8_Debug_Cmd_Unknown:
       cerror_out << getTime() << "v8_debug_cmd_unknown encountered"
-                 << std::endl;
+                 << '\n';
       break;
     }
     break;
   case cUnknown:
-    cinfo_out << "Unknown command" << std::endl;
+    cinfo_out << "Unknown command" << '\n';
     break;
   }
 
@@ -223,7 +223,7 @@ void AppWorker::Init(const std::string &appname, const std::string &addr,
 
   this->app_name = appname;
   cerror_out << "Starting worker for appname:" << appname << " port:" << port
-             << std::endl;
+             << '\n';
 
   uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
                  [](uv_connect_t *conn, int status) {
@@ -238,7 +238,7 @@ void AppWorker::Init(const std::string &appname, const std::string &addr,
 
 void AppWorker::OnConnect(uv_connect_t *conn, int status) {
   if (status == 0) {
-    cerror_out << "Client connected" << std::endl;
+    cerror_out << "Client connected" << '\n';
 
     uv_read_start(conn->handle, alloc_buffer,
                   [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
@@ -249,7 +249,7 @@ void AppWorker::OnConnect(uv_connect_t *conn, int status) {
   } else {
     cerror_out << getTime()
                << "Connection failed with error:" << uv_strerror(status)
-               << std::endl;
+               << '\n';
   }
 }
 
@@ -272,7 +272,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
     buf_base += buf[i];
   }
   // cerror_out << __FUNCTION__ << __LINE__ << " buf_base dump: " << buf_base
-  //           << " next_message: " << next_message << std::endl;
+  //           << " next_message: " << next_message << '\n';
 
   if (next_message.length() > 0) {
     buf_base = next_message + buf_base;
@@ -307,7 +307,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
           encoded_header_size, encoded_payload_size, chunk_to_parse);
       cerror_out << "header_size:" << encoded_header_size << " payload_size "
                  << encoded_payload_size
-                 << " messages processed: " << messages_processed << std::endl;
+                 << " messages processed: " << messages_processed << '\n';
 
       if (parsed_message) {
         std::unique_ptr<header_t> parsed_header =
@@ -349,7 +349,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
 void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
                        const uv_buf_t *buf) {
-  cerror_out << "OnRead callback triggered, nread: " << nread << std::endl;
+  cerror_out << "OnRead callback triggered, nread: " << nread << '\n';
   if (nread > 0) {
     AppWorker::GetAppWorker()->ParseValidChunk(stream, nread, buf->base);
   } else if (nread == 0) {
@@ -357,7 +357,7 @@ void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
   } else {
     if (nread != UV_EOF)
       cerror_out << getTime() << "Read error, err code: " << uv_err_name(nread)
-                 << std::endl;
+                 << '\n';
     AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message.length(),
                                                next_message.c_str());
     next_message.clear();
@@ -375,7 +375,7 @@ void AppWorker::WriteMessage(Message *msg) {
 void AppWorker::OnWrite(uv_write_t *req, int status) {
   if (status) {
     cerror_out << getTime() << "Write error, err: " << uv_strerror(status)
-               << std::endl;
+               << '\n';
   }
 
   write_req_t *wr = (write_req_t *) req;
