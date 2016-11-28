@@ -30,8 +30,9 @@ typedef struct message_s {
 } message_t;
 
 typedef struct header_s {
-    std::string command;
-    std::string metadata;
+  std::string command;
+  std::string subcommand;
+  std::string metadata;
 } header_t;
 
 int messages_processed(0);
@@ -46,7 +47,7 @@ char *getTime() {
 }
 
 static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
-  std::string command, metadata;
+  std::string command, subcommand, metadata;
   rapidjson::Document header;
   if (header.Parse(parsed_message->header.c_str()).HasParseError()) {
     cerror_out << getTime() << "Failed to parse header" << std::endl;
@@ -56,14 +57,17 @@ static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
   assert(header.IsObject());
   {
     rapidjson::Value &cmd = header["command"];
+    rapidjson::Value &subcmd = header["subcommand"];
     rapidjson::Value &meta = header["metadata"];
 
     command.assign(cmd.GetString());
+    subcommand.assign(subcmd.GetString());
     metadata.assign(meta.GetString());
   }
 
   std::unique_ptr<header_t> parsed_header(new header_t);
   parsed_header->command = command;
+  parsed_header->subcommand = subcommand;
   parsed_header->metadata = metadata;
 
   return parsed_header;
@@ -87,9 +91,13 @@ static void RouteMessageWithoutResponse(header_t *parsed_header,
 
   switch (getCommandType(parsed_header->command)) {
   case cDCP:
-    switch (getDCPCommandType(parsed_header->metadata)) {
+    switch (getDCPCommandType(parsed_header->subcommand)) {
     case mDelete:
+      break;
     case mMutation:
+      // cerror_out << "header:" << parsed_message->header
+      //           << " payload:" << parsed_message->payload << std::endl;
+      break;
     case mDCP_Cmd_Unknown:
       cerror_out << getTime() << "dcp_cmd_unknown encountered" << std::endl;
       break;
@@ -129,8 +137,8 @@ static std::string RouteMessageWithResponse(header_t *parsed_header,
     case mTerminate:
     case mVersion:
     case mV8_Worker_Cmd_Unknown:
-        cerror_out << getTime() << "worker_cmd_unknown encountered" << std::endl;
-        break;
+      cerror_out << getTime() << "worker_cmd_unknown encountered" << std::endl;
+      break;
     }
     break;
   case cDCP:
@@ -138,8 +146,8 @@ static std::string RouteMessageWithResponse(header_t *parsed_header,
     case mDelete:
     case mMutation:
     case mDCP_Cmd_Unknown:
-        cerror_out << getTime() << "dcp_cmd_unknown encountered" << std::endl;
-        break;
+      cerror_out << getTime() << "dcp_cmd_unknown encountered" << std::endl;
+      break;
     }
     break;
   case cHTTP:
@@ -147,8 +155,8 @@ static std::string RouteMessageWithResponse(header_t *parsed_header,
     case mGet:
     case mPost:
     case mHTTP_Cmd_Unknown:
-        cerror_out << getTime() << "http_cmd_unknown encountered" << std::endl;
-        break;
+      cerror_out << getTime() << "http_cmd_unknown encountered" << std::endl;
+      break;
     }
     break;
   case cV8_Debug:
@@ -165,8 +173,9 @@ static std::string RouteMessageWithResponse(header_t *parsed_header,
     case mStart_Debugger:
     case mStop_Debugger:
     case mV8_Debug_Cmd_Unknown:
-        cerror_out << getTime() << "v8_debug_cmd_unknown encountered" << std::endl;
-        break;
+      cerror_out << getTime() << "v8_debug_cmd_unknown encountered"
+                 << std::endl;
+      break;
     }
     break;
   case cUnknown:
@@ -238,7 +247,9 @@ void AppWorker::OnConnect(uv_connect_t *conn, int status) {
 
     conn_handle = conn->handle;
   } else {
-    cerror_out << getTime() << "Connection failed with error:" << uv_strerror(status) << std::endl;
+    cerror_out << getTime()
+               << "Connection failed with error:" << uv_strerror(status)
+               << std::endl;
   }
 }
 
@@ -260,15 +271,15 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
   for (int i = 0; i < nread; i++) {
     buf_base += buf[i];
   }
+  // cerror_out << __FUNCTION__ << __LINE__ << " buf_base dump: " << buf_base
+  //           << " next_message: " << next_message << std::endl;
+
   if (next_message.length() > 0) {
     buf_base = next_message + buf_base;
     next_message.clear();
   }
 
-  if (buf_base.length() < HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE) {
-    next_message.assign(buf_base);
-    return;
-  } else {
+  for (; buf_base.length() > HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE;) {
     std::vector<int> header_entries, payload_entries;
     int encoded_header_size, encoded_payload_size;
 
@@ -327,12 +338,12 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
           }
         }
       }
-      if (buf_base.length() - message_size > 0) {
-        buf_base.erase(0, message_size);
-        AppWorker::GetAppWorker()->ParseValidChunk(stream, buf_base.length(),
-                                                   buf_base.c_str());
-      }
     }
+    buf_base.erase(0, message_size);
+  }
+
+  if (buf_base.length() > 0) {
+      next_message.assign(buf_base);
   }
 }
 
@@ -345,7 +356,8 @@ void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
     next_message.clear();
   } else {
     if (nread != UV_EOF)
-      cerror_out << getTime() << "Read error, err code: " << uv_err_name(nread) << std::endl;
+      cerror_out << getTime() << "Read error, err code: " << uv_err_name(nread)
+                 << std::endl;
     AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message.length(),
                                                next_message.c_str());
     next_message.clear();
