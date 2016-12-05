@@ -8,13 +8,12 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/indexing/secondary/common"
-	"github.com/couchbase/indexing/secondary/dcp"
-	"github.com/couchbase/indexing/secondary/dcp/transport"
+	"github.com/couchbase/eventing/cluster"
 )
 
 type Connection struct {
@@ -31,7 +30,7 @@ type Server struct {
 	// Keeps track of different stats of individual client workers
 	// i.e. state of each worker("pending", "active"), start vbucket.
 	// end vbucket etc
-	WorkerStateMap map[int]map[string]interface{}
+	WorkerStateMap map[int]map[string]string
 
 	WorkerShutdownChanMap map[int]chan bool
 
@@ -77,30 +76,30 @@ func (s *Server) handleWorker(client *Client, worker *Worker) {
 
 	for {
 		select {
-		case m, ok := <-client.Feed.C:
-			if ok == false {
-				log.Println("DCP stream closing")
-			} else {
-				switch m.Opcode {
-				case transport.DCP_MUTATION:
-					msg := createMessage("dcp", "mutation", "", string(m.Value))
-					s.sendMessage(client, msg)
-					atomic.AddUint64(&ops, 1)
-					atomic.AddUint64(&client.messagesProcessed, 1)
-				case transport.DCP_DELETION:
-					createMessage("dcp", "deletion", "", string(m.Key))
-				}
-				// log.Printf("DCP event: %#v\n", m)
-				// s.sendMessage(client, &msg)
-				/* response := s.readMessage(client)
-				msg.resChan <- response
-
-				if response.err == nil {
-					freeAppWorkerChanMap[server.AppName] <- client
-				} */
-				// FreeAppWorkerChanMap[s.AppName] <- client
-
+		/* case m, ok := <-client.Feed.C:
+		if ok == false {
+			log.Println("DCP stream closing")
+		} else {
+			switch m.Opcode {
+			case transport.DCP_MUTATION:
+				msg := createMessage("dcp", "mutation", "", string(m.Value))
+				s.sendMessage(client, msg)
+				atomic.AddUint64(&ops, 1)
+				atomic.AddUint64(&client.messagesProcessed, 1)
+			case transport.DCP_DELETION:
+				createMessage("dcp", "deletion", "", string(m.Key))
 			}
+			// log.Printf("DCP event: %#v\n", m)
+			// s.sendMessage(client, &msg)
+			response := s.readMessage(client)
+			msg.resChan <- response
+
+			if response.err == nil {
+				freeAppWorkerChanMap[server.AppName] <- client
+			}
+			// FreeAppWorkerChanMap[s.AppName] <- client
+
+		} */
 		case <-client.stop:
 			log.Println("Got message to stop client, stopping worker as well")
 			worker.StopChan <- true
@@ -130,99 +129,31 @@ func (s *Server) handleAccept(ln net.Listener) {
 	}
 }
 
-// Setup initialises some bookeeping needed to track client workers
-// associated with a specific upstream server
-func (s *Server) Setup(workerCount int) {
-	vbucketPerWorker := NUM_VBUCKETS / workerCount
-	var startVB int
+func (s *Server) Setup(workerCount int,
+	nsServerHostPort, username, password string) {
 
-	for i := 1; i < workerCount; i++ {
-		s.WorkerStateMap[i] = make(map[string]interface{})
+	for i := 0; i < workerCount; i++ {
+		s.WorkerStateMap[i] = make(map[string]string)
+		s.WorkerStateMap[i]["bindHttp"] = "172.16.1.198:" + strconv.Itoa(8095+i)
+		s.WorkerStateMap[i]["dataDir"] = "worker-" + strconv.Itoa(i)
+
+		// Tracking status to verify the state of worker routines
 		s.WorkerStateMap[i]["state"] = "pending"
-		s.WorkerStateMap[i]["start_vb"] = startVB
-		s.WorkerStateMap[i]["end_vb"] = startVB + vbucketPerWorker
-		startVB += vbucketPerWorker + 1
 	}
 
-	s.WorkerStateMap[workerCount] = make(map[string]interface{})
-	s.WorkerStateMap[workerCount]["state"] = "pending"
-	s.WorkerStateMap[workerCount]["start_vb"] = startVB
-	s.WorkerStateMap[workerCount]["end_vb"] = NUM_VBUCKETS - 1
-
-	log.Printf("workerStateMap dump: %#v\n", s.WorkerStateMap)
-
-	if _, err := cbauth.InternalRetryDefaultInit(ns_server_host, "Administrator", "asdasd"); err != nil {
+	if _, err := cbauth.InternalRetryDefaultInit(nsServerHostPort,
+		username, password); err != nil {
 		log.Fatalf("Failed to initialise cbauth: %s\n", err.Error())
 	}
 }
 
 func (s *Server) getNextPendingWorker() (workerId int) {
-	for index, _ := range s.WorkerStateMap {
+	for index := range s.WorkerStateMap {
 		if s.WorkerStateMap[index]["state"] == "pending" {
 			return index
 		}
 	}
 	return -1
-}
-
-func listOfVbnos(startVB int, endVB int) []uint16 {
-	vbnos := make([]uint16, 0, endVB-startVB)
-	for i := startVB; i <= endVB; i++ {
-		vbnos = append(vbnos, uint16(i))
-	}
-	return vbnos
-}
-
-func (s *Server) startDCPFeed(bucketName string, pendingWorkerID int) *couchbase.DcpFeed {
-	var sleep time.Duration
-	sleep = 1
-
-	b, err := common.ConnectBucket(ns_server_host, "default", "default")
-	for err != nil {
-		log.Printf("bucket: default unavailable, retrying after %d seconds\n",
-			sleep)
-		time.Sleep(sleep * time.Second)
-		b, err = common.ConnectBucket(ns_server_host, "default", "default")
-		if sleep < 8 {
-			sleep = sleep * 2
-		}
-	}
-
-	log.Println("Connected with default bucket")
-	sleep = 1
-
-	vbnos := listOfVbnos(s.WorkerStateMap[pendingWorkerID]["start_vb"].(int),
-		s.WorkerStateMap[pendingWorkerID]["end_vb"].(int))
-
-	flogs, err := b.GetFailoverLogs(0xABCD, vbnos, dcpConfig)
-	for err != nil {
-		log.Printf("Unable to get failover logs, retrying after %d seconds\n", sleep)
-		time.Sleep(sleep * time.Second)
-
-		b.Refresh()
-		flogs, err = b.GetFailoverLogs(0xABCD, vbnos, dcpConfig)
-		if sleep < 8 {
-			sleep = sleep * 2
-		}
-	}
-
-	log.Println("Starting up DCP feed from bucket")
-	dcpFeed, err := b.StartDcpFeedOver(couchbase.NewDcpFeedName("eventing"),
-		uint32(0), []string{kv_host}, 0xABCD, dcpConfig)
-	for err != nil {
-		log.Printf("Unable to get failover logs, retrying after %d seconds\n", sleep)
-		time.Sleep(sleep * time.Second)
-
-		dcpFeed, err = b.StartDcpFeedOver(couchbase.NewDcpFeedName("rawupr"),
-			uint32(0), []string{kv_host}, 0xABCD, dcpConfig)
-		if sleep < 8 {
-			sleep = sleep * 2
-		}
-	}
-
-	go startDcp(dcpFeed, flogs)
-
-	return dcpFeed
 }
 
 func (s *Server) Serve() {
@@ -266,24 +197,25 @@ func (s *Server) Serve() {
 
 			s.WorkerStateMap[pendingWorkerID]["state"] = "active"
 
-			client.Feed = s.startDCPFeed("default", pendingWorkerID)
-
 			if _, ok := s.RunningWorkers[client]; !ok {
 				s.RunningWorkers[client] = client.id
 			} else {
 				log.Printf("Client entry already exists in runningWorkers map\n")
 			}
 
-			/* if _, ok := FreeAppWorkerChanMap[s.AppName]; !ok {
-				FreeAppWorkerChanMap[s.AppName] = make(chan *Client, 1)
-			}
-			FreeAppWorkerChanMap[s.AppName] <- client */
-
 			if _, ok := s.WorkerShutdownChanMap[client.id]; !ok {
 				s.WorkerShutdownChanMap[client.id] = make(chan bool, 1)
 			} else {
 				log.Printf("Client entry already exists in workerShutdownChanMap map\n")
 			}
+
+			// TODO: Need supervisor to call init function with an arbitrary
+			// set of parameters. For now hard coding few entries, but this
+			// will go away soon
+			cluster.SetupCBGTNode(s.WorkerStateMap[pendingWorkerID]["bindHttp"],
+				"couchbase:http://cfg-bucket@172.16.12.49:8091", "",
+				s.WorkerStateMap[pendingWorkerID]["dataDir"], "wanted",
+				"http://172.16.12.49:8091", "", 1)
 
 			worker := <-NewAppWorkerChanMap[s.AppName]
 

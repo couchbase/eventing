@@ -1,4 +1,4 @@
-#include "../inc/message.h"
+#include "../include/message.h"
 
 Message::Message(const std::string &msg) : buffer(msg.begin(), msg.end()) {
   buffer.push_back(0);

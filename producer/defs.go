@@ -10,7 +10,6 @@ type WorkerID int
 var currentWorkerID WorkerID
 var FreeAppWorkerChanMap map[string]chan *Client
 var NewAppWorkerChanMap map[string]chan *Worker
-
 var dcpConfig map[string]interface{}
 
 var workerWG sync.WaitGroup
@@ -28,9 +27,4 @@ const (
 func init() {
 	FreeAppWorkerChanMap = make(map[string]chan *Client)
 	NewAppWorkerChanMap = make(map[string]chan *Worker)
-
-	dcpConfig = make(map[string]interface{})
-	dcpConfig["genChanSize"] = 10000
-	dcpConfig["dataChanSize"] = 10000
-	dcpConfig["numConnections"] = 4
 }

@@ -1,5 +1,5 @@
-#include "../inc/client.h"
-#include "../inc/commands.h"
+#include "../include/client.h"
+#include "../include/commands.h"
 // #include "../inc/binding.h"
 
 #include <chrono>
@@ -13,8 +13,6 @@
 #include <vector>
 
 #include <rapidjson/document.h>
-
-#define LISTEN_PORT 9091
 
 const size_t MAX_BUF_SIZE = 65536;
 

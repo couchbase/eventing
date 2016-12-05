@@ -1,4 +1,4 @@
-#include "../inc/commands.h"
+#include "../include/commands.h"
 
 command_type getCommandType(std::string const &command) {
   if (command == "v8_worker")

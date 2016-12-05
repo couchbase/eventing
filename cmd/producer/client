@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# valgrind --leak-check=full --show-leak-kinds=all --log-file="leak_dump.log" ./client.bin 9092
+./client.bin 9092
