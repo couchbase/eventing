@@ -1,26 +1,18 @@
-Go2C
-====
+Eventing
+========
+This is the Couchbase Eventing engine. It is intended to allow associating user code with any event that occurs
+inside Couchbase Server. An event is a change in state of any element of the server. Initial focus is on data
+state changes, but future versions will bring ability to handle non-data event.
 
-Instead of using traditional CGO way to have Golang and C/C++ interact with each other, project is trying to have the communication
-over local tcp port. There are advantages of this approach over CGO(though initial code complexity will be bit more, but it will
-pay in long run):
+Eventing is a MDS enabled service, and will run user supplied code on nodes designated with Eventing role. The
+role supports linear scalability and online rebalance. The consistency model is same as the GSI model, which is
+ability to do unbounded consistency, and at-or-after consistency.
 
-* If CGO binding crashes, then it will take down all other OS processes spawned by Golang runtime. Main motivation for me to go
-  down this path instead of CGO was because of a project where I was embedding Google V8 JS Runtime. Intention was to run each
-  V8::Isolate under different OS process and if during executing some arbitrary user supplied JS code, if one V8::Isolate
-  crashes - it shouldn’t take down other innocent OS processes running under their own V8::Isolate. Processing pipeline looked
-  like:
+We use [Google V8](https://developers.google.com/v8/) to run user supplied Javascript code. we do not support
+full Javascript syntax, because the programming model we offer needs to automatically parallelize on multiple
+nodes to handle the volume of events. For example, no global variables are accessible in event handlers.
 
-  Golang(sends messages from some source) => C/C++ V8 binding(executes user supplied JS code against each of those messages)
+We add a number of extensions to Javascript to make it easy to work with Couchbase. For example, Couchbase
+Buckets appear as javascript maps, N1QL results can be iterated over using javascript iterators and a number
+of added functions allow event handlers to send messages, raise more events etc.
 
-* Debugging the C/C++ binding gets easier, as now one could hook in gdb, valgrind, asan, tsan etc easily. This isn’t trivial to
-  do with traditional CGO way.
-
-
-Run the project:
-===============
-
-Prerequisites - libuv, rapidjson, jemalloc(could use just system malloc as well)
-
-$ go get -u github.com/abhi-bit/Go2C
-$ make

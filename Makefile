@@ -1,7 +1,7 @@
 CXX=g++
 CXFLAGS=-std=c++11 #-O3 -Wall
 
-PHOSPHOR_INCLUDE=/var/tmp/repos/phosphor/include/
+PHOSPHOR_INCLUDE=../phosphor/include/
 CBDEPS_DIR=/Users/$(USER)/.cbdepscache/
 DYLD_LIBRARY_PATH=/Users/$(USER)/.cbdepscache/lib
 CMD_DIR=cmd/producer/
@@ -16,14 +16,14 @@ OUT=$(CMD_DIR)client.bin
 
 build:
 	$(CXX) -std=c++11 $(SOURCES) -luv -o $(OUT)
-	cd $(CMD_DIR); go build; ./producer -cfg couchbase:http://cfg-bucket@127.0.0.1:8091 -server http://127.0.0.1:8091
+	cd $(CMD_DIR); go build
 
-allopt:
+allopt: build
 	$(CXX) $(CXFLAGS) src/client.cc src/commands.cc src/message.cc -luv -O3 -o $(OUT)
 	go run main.go
 
-run:
-	cd $(CMD_DIR); go build; ./producer -cfg couchbase:http://cfg-bucket@127.0.0.1:8091 -server http://127.0.0.1:8091
+run: build
+	$(CMD_DIR)/producer -cfg couchbase:http://cfg-bucket@127.0.0.1:8091 -server http://127.0.0.1:8091
 
 clean:
 	rm -rf $(OUT)
