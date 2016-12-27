@@ -1,4 +1,5 @@
-#pragma once
+#ifndef MESSAGE_H
+#define MESSAGE_H
 
 #include <queue>
 #include <string>
@@ -38,3 +39,5 @@ public:
   std::queue<std::shared_ptr<Message> > messages;
   WriteBufPool write_bufs;
 };
+
+#endif

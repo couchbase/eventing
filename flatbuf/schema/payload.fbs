@@ -1,0 +1,8 @@
+namespace fbuf.payload;
+
+table Payload {
+  key:string;
+  value:string;
+}
+
+root_type Payload;

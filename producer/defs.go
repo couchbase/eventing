@@ -1,30 +1,66 @@
-package eventing
+package producer
 
 import (
-	"sync"
+	"net"
+
+	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/indexing/secondary/dcp"
 )
-
-type WorkerID int
-
-// Globals
-var currentWorkerID WorkerID
-var FreeAppWorkerChanMap map[string]chan *Client
-var NewAppWorkerChanMap map[string]chan *Worker
-var dcpConfig map[string]interface{}
-
-var workerWG sync.WaitGroup
-var serverWG sync.WaitGroup
-
-var workerCountIDL sync.Mutex
 
 const (
-	NUM_VBUCKETS   int    = 1024
-	port           string = "9092"
-	ns_server_host string = "172.16.12.49:8091"
-	kv_host        string = "172.16.12.49:11210"
+	NUM_VBUCKETS = 1024
 )
 
-func init() {
-	FreeAppWorkerChanMap = make(map[string]chan *Client)
-	NewAppWorkerChanMap = make(map[string]chan *Worker)
+type Consumer struct {
+	app      *AppConfig
+	conn     net.Conn
+	dcpFeed  *couchbase.DcpFeed
+	producer *Producer
+
+	// Populated when C++ v8 worker is spawned
+	// correctly and downstream tcp socket is available
+	// for sending messages. Unbuffered channel.
+	signalConnectedCh chan bool
+
+	// Populated when Cmd.Wait() call returns.
+	// Could mean process is dead. Unbuffered channel
+	signalCmdWaitExitCh chan bool
+
+	// Populated when downstream tcp socket mapping to
+	// C++ v8 worker is down. Buffered channel to avoid deadlock
+	stopConsumerCh chan bool
+	tcpPort        string
+}
+
+type Producer struct {
+	App              *AppConfig
+	Auth             string
+	Bucket           string
+	KVHostPort       []string
+	NSServerHostPort string
+	tcpPort          string
+	StopProducerCh   chan bool
+	WorkerCount      int
+
+	// Map keeping track of start and end vbucket
+	// for each worker
+	workerVbucketMap map[int]map[string]interface{}
+
+	// Supervisor of workers responsible for
+	// pipelining messages to V8
+	workerSupervisor *suptree.Supervisor
+}
+
+type DcpEventMetadata struct {
+	Cas       uint64 `json:"cas"`
+	Expiry    uint32 `json:"expiry"`
+	Flag      uint32 `json:"flag"`
+	Partition string `json:"partition"`
+	Seq       uint64 `json:"seq"`
+}
+
+type AppConfig struct {
+	AppName    string
+	AppCode    string
+	BucketName string
 }

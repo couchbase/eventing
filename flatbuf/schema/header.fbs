@@ -1,0 +1,9 @@
+namespace fbuf.header;
+
+table Header {
+  event:byte;
+  opcode:byte;
+  metadata:string;
+}
+
+root_type Header;

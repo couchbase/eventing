@@ -1,65 +1,67 @@
 #include "../include/commands.h"
 
-command_type getCommandType(std::string const &command) {
-  if (command == "v8_worker")
-    return cV8_Worker;
-  if (command == "dcp")
-    return cDCP;
-  if (command == "http")
-    return cHTTP;
-  if (command == "v8_debug")
-    return cV8_Debug;
-  return cUnknown;
+event_type getEvent(int8_t event) {
+  if (event == 1)
+    return eDCP;
+  if (event == 2)
+    return eHTTP;
+  if (event == 3)
+    return eV8_Debug;
+  if (event == 4)
+    return eV8_Worker;
+  return Event_Unknown;
 }
 
-cv8_worker_cmd getV8WorkerCommandType(std::string const &command) {
-  if (command == "dispose")
-    return mDispose;
-  if (command == "init")
-    return mInit;
-  if (command == "load")
-    return mLoad;
-  if (command == "terminate")
-    return mTerminate;
-  return mV8_Worker_Cmd_Unknown;
+v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
+  if (opcode == 1)
+    return oDispose;
+  if (opcode == 2)
+    return oInit;
+  if (opcode == 3)
+    return oLoad;
+  if (opcode == 4)
+    return oTerminate;
+  return V8_Worker_Opcode_Unknown;
 }
 
-cdcp_cmd getDCPCommandType(std::string const &command) {
-  if (command == "delete")
-    return mDelete;
-  if (command == "mutation")
-    return mMutation;
-  return mDCP_Cmd_Unknown;
+dcp_opcode getDCPOpcode(int8_t opcode) {
+  if (opcode == 1)
+    return oDelete;
+  if (opcode == 2)
+    return oMutation;
+  return DCP_Opcode_Unknown;
 }
 
-chttp_cmd getHTTPCommandType(std::string const &command) {
-    if (command == "get") return mGet;
-    if (command == "post") return mPost;
-    return mHTTP_Cmd_Unknown;
+http_opcode getHTTPOpcode(int8_t opcode) {
+  if (opcode == 1)
+    return oGet;
+  if (opcode == 2)
+    return oPost;
+  return HTTP_Opcode_Unknown;
 }
 
-cv8_debug_cmd getV8DebugCommandType(std::string const &command) {
-  if (command == "backtrace")
-    return mBacktrace;
-  if (command == "clear_breakpoint")
-    return mClear_Breakpoint;
-  if (command == "continue")
-    return mContinue;
-  if (command == "evalute")
-    return mEvaluate;
-  if (command == "frame")
-    return mFrame;
-  if (command == "list_breakpoints")
-    return mList_Breakpoints;
-  if (command == "lookup")
-    return mLookup;
-  if (command == "set_breakpoint")
-    return mSet_Breakpoint;
-  if (command == "source")
-    return mSource;
-  if (command == "start_debugger")
-    return mStart_Debugger;
-  if (command == "stop_debugger")
-    return mStop_Debugger;
-  return mV8_Debug_Cmd_Unknown;
+v8_debug_opcode getV8DebugOpcode(int8_t opcode) {
+  if (opcode == 1)
+    return oBacktrace;
+  if (opcode == 2)
+    return oClear_Breakpoint;
+  if (opcode == 3)
+    return oContinue;
+  if (opcode == 4)
+    return oEvaluate;
+  if (opcode == 5)
+    return oFrame;
+  if (opcode == 6)
+    return oList_Breakpoints;
+  if (opcode == 7)
+    return oLookup;
+  if (opcode == 8)
+    return oSet_Breakpoint;
+  if (opcode == 9)
+    return oSource;
+  if (opcode == 10)
+    return oStart_Debugger;
+  if (opcode == 11)
+    return oStop_Debugger;
+  return V8_Debug_Opcode_Unknown;
 }

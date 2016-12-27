@@ -1,54 +1,56 @@
-#pragma once
+#ifndef COMMANDS_H
+#define COMMANDS_H
 
 #include <iostream>
 
-enum command_type {
-    cV8_Worker,
-    cDCP,
-    cHTTP,
-    cV8_Debug,
-    cUnknown
+enum event_type {
+    eDCP,
+    eHTTP,
+    eV8_Debug,
+    eV8_Worker,
+    Event_Unknown
 };
 
-enum cv8_worker_cmd {
-    mDispose,
-    mInit,
-    mLoad,
-    mNew,
-    mTerminate,
-    mVersion,
-    mV8_Worker_Cmd_Unknown
+enum v8_worker_opcode {
+    oDispose,
+    oInit,
+    oLoad,
+    oTerminate,
+    oVersion,
+    V8_Worker_Opcode_Unknown
 };
 
-enum cdcp_cmd {
-    mDelete,
-    mMutation,
-    mDCP_Cmd_Unknown
+enum dcp_opcode {
+    oDelete,
+    oMutation,
+    DCP_Opcode_Unknown
 };
 
-enum chttp_cmd {
-    mGet,
-    mPost,
-    mHTTP_Cmd_Unknown
+enum http_opcode {
+    oGet,
+    oPost,
+    HTTP_Opcode_Unknown
 };
 
-enum cv8_debug_cmd {
-    mBacktrace,
-    mClear_Breakpoint,
-    mContinue,
-    mEvaluate,
-    mFrame,
-    mList_Breakpoints,
-    mLookup,
-    mSet_Breakpoint,
-    mSource,
-    mStart_Debugger,
-    mStop_Debugger,
-    mV8_Debug_Cmd_Unknown
+enum v8_debug_opcode {
+    oBacktrace,
+    oClear_Breakpoint,
+    oContinue,
+    oEvaluate,
+    oFrame,
+    oList_Breakpoints,
+    oLookup,
+    oSet_Breakpoint,
+    oSource,
+    oStart_Debugger,
+    oStop_Debugger,
+    V8_Debug_Opcode_Unknown
 };
 
-command_type getCommandType(std::string const& command);
-cv8_worker_cmd getV8WorkerCommandType(std::string const &command);
-cdcp_cmd getDCPCommandType(std::string const &command);
-chttp_cmd getHTTPCommandType(std::string const &command);
-cv8_debug_cmd getV8DebugCommandType(std::string const &command);
+event_type getEvent(int8_t event);
+v8_worker_opcode getV8WorkerOpcode(int8_t opcode);
+dcp_opcode getDCPOpcode(int8_t opcode);
+http_opcode getHTTPOpcode(int8_t opcode);
+v8_debug_opcode getV8DebugOpcode(int8_t opcode);
+
+#endif

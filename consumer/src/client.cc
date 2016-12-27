@@ -1,37 +1,12 @@
 #include "../include/client.h"
-#include "../include/commands.h"
-// #include "../inc/binding.h"
 
 #include <chrono>
 #include <ctime>
-#include <fstream>
 #include <iostream>
 #include <math.h>
+#include <sstream>
 #include <string>
 #include <typeinfo>
-#include <uv.h>
-#include <vector>
-
-#include <rapidjson/document.h>
-
-const size_t MAX_BUF_SIZE = 65536;
-
-const int HEADER_FRAGMENT_SIZE = 4; // uint32
-const int PAYLOAD_FRAGMENT_SIZE = 4; // uint32
-
-std::ofstream cinfo_out;
-std::ofstream cerror_out;
-
-typedef struct message_s {
-  std::string header;
-  std::string payload;
-} message_t;
-
-typedef struct header_s {
-  std::string command;
-  std::string subcommand;
-  std::string metadata;
-} header_t;
 
 int messages_processed(0);
 
@@ -45,143 +20,123 @@ char *getTime() {
 }
 
 static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
-  std::string command, subcommand, metadata;
-  rapidjson::Document header;
-  if (header.Parse(parsed_message->header.c_str()).HasParseError()) {
-    cerror_out << getTime() << "Failed to parse header" << '\n';
-    return std::unique_ptr<header_t>(nullptr);
-  }
-
-  assert(header.IsObject());
-  {
-    rapidjson::Value &cmd = header["command"];
-    rapidjson::Value &subcmd = header["subcommand"];
-    rapidjson::Value &meta = header["metadata"];
-
-    command.assign(cmd.GetString());
-    subcommand.assign(subcmd.GetString());
-    metadata.assign(meta.GetString());
-  }
+  auto header =
+      fbuf::header::GetHeader(parsed_message->header.c_str());
 
   std::unique_ptr<header_t> parsed_header(new header_t);
-  parsed_header->command = command;
-  parsed_header->subcommand = subcommand;
-  parsed_header->metadata = metadata;
+  parsed_header->event = header->event();
+  parsed_header->opcode = header->opcode();
+
+  // if (header->metadata() != nullptr) {
+    parsed_header->metadata = header->metadata()->str();
+  // }
 
   return parsed_header;
 }
 
-static void RouteMessageWithoutResponse(header_t *parsed_header,
-                                        message_t *parsed_message) {
-  std::string message;
-  rapidjson::Document payload;
+void AppWorker::RouteMessageWithoutResponse(header_t *parsed_header,
+                                            message_t *parsed_message) {
+  std::string key, val;
 
-  if (payload.Parse(parsed_message->payload.c_str()).HasParseError()) {
-    cerror_out << getTime() << "Failed to parse payload" << '\n';
-    return;
-  }
+  auto payload =
+      fbuf::payload::GetPayload((const void *)parsed_message->payload.c_str());
+  key.assign(payload->key()->str());
+  val.assign(payload->value()->str());
 
-  assert(payload.IsObject());
-  {
-    rapidjson::Value &msg = payload["message"];
-    message.assign(msg.GetString());
-  }
-
-  switch (getCommandType(parsed_header->command)) {
-  case cDCP:
-    switch (getDCPCommandType(parsed_header->subcommand)) {
-    case mDelete:
+  // cerror_out << "key: " << key << " val: " << val << '\n';
+  switch (getEvent(parsed_header->event)) {
+  case eDCP:
+    switch (getDCPOpcode(parsed_header->opcode)) {
+    case oDelete:
       break;
-    case mMutation:
+    case oMutation:
       // cerror_out << "header:" << parsed_message->header
-      //           << " payload:" << parsed_message->payload << '\n';
+      //            << " payload:" << parsed_message->payload
+      //            << " val:" << val << '\n';
+      this->v8worker->SendUpdate(val, parsed_header->metadata, "json");
       break;
-    case mDCP_Cmd_Unknown:
-      cerror_out << getTime() << "dcp_cmd_unknown encountered" << '\n';
+    case DCP_Opcode_Unknown:
+      cerror_out << getTime() << "dcp_opcode_unknown encountered" << '\n';
       break;
     }
     break;
   default:
-    cerror_out << getTime() << "command:" << parsed_header->command
+    cerror_out << getTime() << "command:" << parsed_header->event
                << " sent to RouteMessageWithoutResponse and it isn't desirable"
                << '\n';
   }
 }
 
-static std::string RouteMessageWithResponse(header_t *parsed_header,
-                                            message_t *parsed_message) {
-  std::string message, result;
-  rapidjson::Document payload;
+std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
+                                                message_t *parsed_message) {
+  std::string result;
 
-  if (payload.Parse(parsed_message->payload.c_str()).HasParseError()) {
-    cerror_out << getTime() << "Failed to parse payload" << '\n';
-    return result;
-  }
-
-  assert(payload.IsObject());
-  {
-    rapidjson::Value &msg = payload["message"];
-    message.assign(msg.GetString());
-  }
-
-  switch (getCommandType(parsed_header->command)) {
-  case cV8_Worker:
-    switch (getV8WorkerCommandType(parsed_header->metadata)) {
-    case mDispose:
-    case mInit:
-        // v8_init();
-    case mLoad:
-    case mNew:
-    case mTerminate:
-    case mVersion:
-    case mV8_Worker_Cmd_Unknown:
-      cerror_out << getTime() << "worker_cmd_unknown encountered" << '\n';
+  switch (getEvent(parsed_header->event)) {
+  case eV8_Worker:
+    switch (getV8WorkerOpcode(parsed_header->opcode)) {
+    case oDispose:
+    case oInit:
+      cerror_out << "Loading app:" << parsed_header->metadata << '\n';
+      this->v8worker = new V8Worker(parsed_header->metadata);
+      result.assign("Loaded requested app\n");
+      return result;
       break;
-    }
-    break;
-  case cDCP:
-    switch (getDCPCommandType(parsed_header->metadata)) {
-    case mDelete:
-    case mMutation:
-    case mDCP_Cmd_Unknown:
-      cerror_out << getTime() << "dcp_cmd_unknown encountered" << '\n';
+    case oLoad:
+      cerror_out << "Loading app code:" << parsed_header->metadata << '\n';
+      this->v8worker->V8WorkerLoad(parsed_header->metadata);
+      result.assign("Loaded app code\n");
+      return result;
       break;
-    }
-    break;
-  case cHTTP:
-    switch (getHTTPCommandType(parsed_header->metadata)) {
-    case mGet:
-    case mPost:
-    case mHTTP_Cmd_Unknown:
-      cerror_out << getTime() << "http_cmd_unknown encountered" << '\n';
-      break;
-    }
-    break;
-  case cV8_Debug:
-    switch (getV8DebugCommandType(parsed_header->metadata)) {
-    case mBacktrace:
-    case mClear_Breakpoint:
-    case mContinue:
-    case mEvaluate:
-    case mFrame:
-    case mList_Breakpoints:
-    case mLookup:
-    case mSet_Breakpoint:
-    case mSource:
-    case mStart_Debugger:
-    case mStop_Debugger:
-    case mV8_Debug_Cmd_Unknown:
-      cerror_out << getTime() << "v8_debug_cmd_unknown encountered"
+    case oTerminate:
+    case oVersion:
+    case V8_Worker_Opcode_Unknown:
+      cerror_out << getTime() << "worker_opcode_unknown encountered"
                  << '\n';
       break;
     }
     break;
-  case cUnknown:
+  case eDCP:
+    switch (getDCPOpcode(parsed_header->opcode)) {
+    case oDelete:
+    case oMutation:
+    case DCP_Opcode_Unknown:
+      cerror_out << getTime() << "dcp_opcode_unknown encountered" << '\n';
+      break;
+    }
+    break;
+  case eHTTP:
+    switch (getHTTPOpcode(parsed_header->opcode)) {
+    case oGet:
+    case oPost:
+    case HTTP_Opcode_Unknown:
+      cerror_out << getTime() << "http_opcode_unknown encountered" << '\n';
+      break;
+    }
+    break;
+  case eV8_Debug:
+    switch (getV8DebugOpcode(parsed_header->opcode)) {
+    case oBacktrace:
+    case oClear_Breakpoint:
+    case oContinue:
+    case oEvaluate:
+    case oFrame:
+    case oList_Breakpoints:
+    case oLookup:
+    case oSet_Breakpoint:
+    case oSource:
+    case oStart_Debugger:
+    case oStop_Debugger:
+    case V8_Debug_Opcode_Unknown:
+      cerror_out << getTime() << "v8_debug_opcode_unknown encountered"
+                 << '\n';
+      break;
+    }
+    break;
+  case Event_Unknown:
     cinfo_out << "Unknown command" << '\n';
     break;
   }
 
-  result.assign("Hello from the client side\n");
   return result;
 }
 
@@ -269,8 +224,6 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
   for (int i = 0; i < nread; i++) {
     buf_base += buf[i];
   }
-  // cerror_out << __FUNCTION__ << __LINE__ << " buf_base dump: " << buf_base
-  //           << " next_message: " << next_message << '\n';
 
   if (next_message.length() > 0) {
     buf_base = next_message + buf_base;
@@ -313,8 +266,8 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
         if (parsed_header) {
           header_t *pheader = parsed_header.get();
-          switch (getCommandType(pheader->command)) {
-          case cDCP:
+          switch (getEvent(pheader->event)) {
+          case eDCP:
             RouteMessageWithoutResponse(parsed_header.get(),
                                         parsed_message.get());
             break;
@@ -325,7 +278,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             if (!result.empty()) {
               // TODO: replace it with unique_ptr
               write_req_t *req = new (write_req_t);
-              std::string response_buf("hello from the client side\n");
+              std::string response_buf(result);
               req->buf = uv_buf_init((char *)response_buf.c_str(),
                                      response_buf.length());
               uv_write((uv_write_t *)req, stream, &req->buf, 1,
@@ -353,9 +306,10 @@ void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
   } else if (nread == 0) {
     next_message.clear();
   } else {
-    if (nread != UV_EOF)
+    if (nread != UV_EOF) {
       cerror_out << getTime() << "Read error, err code: " << uv_err_name(nread)
                  << '\n';
+    }
     AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message.length(),
                                                next_message.c_str());
     next_message.clear();
@@ -387,17 +341,17 @@ AppWorker *AppWorker::GetAppWorker() {
   return &worker;
 }
 
-int main(int argc, char**argv) {
-  std::string info_log_file = "client.info.log";
-  std::string error_log_file = "client.error.log";
+int main(int argc, char **argv) {
+  std::string appname(argv[1]);
+  std::string timestamp(argv[3]);
+  std::string error_log_file =
+      std::string("client.error_") + appname + timestamp + std::string(".log");
 
-  cinfo_out.open(info_log_file.c_str());
   cerror_out.open(error_log_file.c_str());
 
   AppWorker *worker = AppWorker::GetAppWorker();
-  int port = atoi(argv[1]);
+  int port = atoi(argv[2]);
   worker->Init("credit_score", "127.0.0.1", port);
 
-  cinfo_out.close();
   cerror_out.close();
 }

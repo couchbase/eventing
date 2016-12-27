@@ -1,313 +1,147 @@
-package eventing
+package producer
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
-	"strconv"
-	"sync/atomic"
-	"time"
+	"strings"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/eventing/cluster"
+	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/indexing/secondary/common"
+	"github.com/couchbase/indexing/secondary/dcp"
 )
 
-type Connection struct {
-	conn net.Conn
-	err  error
-}
-
-type Server struct {
-	AppName           string
-	ActiveWorkerCount uint32
-	RunningWorkers    map[*Client]int
-	ConnAcceptQueue   chan Connection
-
-	// Keeps track of different stats of individual client workers
-	// i.e. state of each worker("pending", "active"), start vbucket.
-	// end vbucket etc
-	WorkerStateMap map[int]map[string]string
-
-	WorkerShutdownChanMap map[int]chan bool
-
-	StopAcceptChan chan bool
-	StopServerChan chan bool
-}
-
-func createMessage(command, subcommand, metadata, pMessage string) *Message {
-	header := Header{
-		Command:    command,
-		Subcommand: subcommand,
-		Metadata:   metadata,
+func (p *Producer) Serve() {
+	if p.Auth != "" {
+		up := strings.Split(p.Auth, ":")
+		if _, err := cbauth.InternalRetryDefaultInit(p.NSServerHostPort,
+			up[0], up[1]); err != nil {
+			log.Fatalf("Failed to initialise cbauth: %s\n", err.Error())
+		}
 	}
 
-	payload := Payload{
-		Message: pMessage,
+	p.workerSupervisor = suptree.NewSimple(p.App.AppName)
+	go p.workerSupervisor.ServeBackground()
+	p.startBucket()
+
+	<-p.StopProducerCh
+}
+
+func (p *Producer) Stop() {
+	p.StopProducerCh <- true
+}
+
+func (p *Producer) startBucket() {
+
+	log.Printf("Connecting with %q\n", p.Bucket)
+	b, err := common.ConnectBucket(p.NSServerHostPort,
+		"default", p.Bucket)
+	mf(err, "bucket")
+
+	dcpConfig := map[string]interface{}{
+		"genChanSize":    10000,
+		"dataChanSize":   10000,
+		"numConnections": 4,
 	}
 
-	return &Message{
-		header, payload, make(chan *Response, 1),
+	p.initWorkerVbMap()
+
+	for i := 0; i < p.WorkerCount; i++ {
+		dcpFeed, err := b.StartDcpFeedOver(couchbase.NewDcpFeedName("rawupr"),
+			uint32(0), p.KVHostPort, 0xABCD, dcpConfig)
+		mf(err, "- upr")
+
+		vbnos := listOfVbnos(p.workerVbucketMap[i]["start_vb"].(int),
+			p.workerVbucketMap[i]["end_vb"].(int))
+
+		flogs, err := b.GetFailoverLogs(0xABCD, vbnos, dcpConfig)
+		_, err = b.GetFailoverLogs(0xABCD, vbnos, dcpConfig)
+		mf(err, "- dcp failoverlogs")
+
+		p.startDcp(dcpFeed, flogs)
+		p.handleV8Consumer(dcpFeed)
 	}
 }
 
-func (s *Server) handleWorker(client *Client, worker *Worker) {
-	var ops uint64
-	timerTicker := time.NewTicker(1 * time.Second)
+func (p *Producer) initWorkerVbMap() {
+	p.workerVbucketMap = make(map[int]map[string]interface{})
+	vbucketPerWorker := NUM_VBUCKETS / p.WorkerCount
+	var startVB int
+
+	for i := 0; i < p.WorkerCount-1; i++ {
+		p.workerVbucketMap[i] = make(map[string]interface{})
+		p.workerVbucketMap[i]["state"] = "pending"
+		p.workerVbucketMap[i]["start_vb"] = startVB
+		p.workerVbucketMap[i]["end_vb"] = startVB + vbucketPerWorker
+		startVB += vbucketPerWorker + 1
+	}
+
+	p.workerVbucketMap[p.WorkerCount-1] = make(map[string]interface{})
+	p.workerVbucketMap[p.WorkerCount-1]["state"] = "pending"
+	p.workerVbucketMap[p.WorkerCount-1]["start_vb"] = startVB
+	p.workerVbucketMap[p.WorkerCount-1]["end_vb"] = NUM_VBUCKETS - 1
+
+	log.Printf("workerVbucketMap dump => %#v\n", p.workerVbucketMap)
+}
+
+func (p *Producer) startDcp(dcpFeed *couchbase.DcpFeed,
+	flogs couchbase.FailoverLog) {
+	start, end := uint64(0), uint64(0xFFFFFFFFFFFFFFFF)
+	snapStart, snapEnd := uint64(0), uint64(0)
+	for vbno, flog := range flogs {
+		x := flog[len(flog)-1] // map[uint16][][2]uint64
+		opaque, flags, vbuuid := uint16(vbno), uint32(0), x[0]
+		err := dcpFeed.DcpRequestStream(
+			vbno, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
+		mf(err, fmt.Sprintf("stream-req for %v failed", vbno))
+	}
+}
+
+func (p *Producer) handleV8Consumer(dcpFeed *couchbase.DcpFeed) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		log.Printf("Failed to listen on tcp port, err: %s\n", err.Error())
+	}
+
+	p.tcpPort = strings.Split(listener.Addr().String(), ":")[1]
+	log.Printf("Started server on port: %s\n", p.tcpPort)
+
+	consumer := &Consumer{
+		app:                 p.App,
+		dcpFeed:             dcpFeed,
+		producer:            p,
+		signalConnectedCh:   make(chan bool),
+		signalCmdWaitExitCh: make(chan bool),
+		stopConsumerCh:      make(chan bool, 1),
+		tcpPort:             p.tcpPort,
+	}
+
+	p.workerSupervisor.Add(consumer)
 
 	go func() {
 		for {
-			select {
-			case <-timerTicker.C:
-				log.Printf("For appname: %s messages processed: %d, breakdown on individual worker level:\n",
-					s.AppName, atomic.LoadUint64(&ops))
-				workerCountIDL.Lock()
-				for client, _ := range s.RunningWorkers {
-					fmt.Printf("WorkerID: %d messages processed: %d messages\n",
-						client.id, atomic.LoadUint64(&client.messagesProcessed))
-				}
-				workerCountIDL.Unlock()
+			conn, err := listener.Accept()
+			if err != nil {
+				log.Printf("producer: error on accept for app: %s err: %s\n",
+					p.App.AppName, err.Error())
 			}
+			consumer.conn = conn
+			consumer.signalConnectedCh <- true
 		}
 	}()
-
-	for {
-		select {
-		/* case m, ok := <-client.Feed.C:
-		if ok == false {
-			log.Println("DCP stream closing")
-		} else {
-			switch m.Opcode {
-			case transport.DCP_MUTATION:
-				msg := createMessage("dcp", "mutation", "", string(m.Value))
-				s.sendMessage(client, msg)
-				atomic.AddUint64(&ops, 1)
-				atomic.AddUint64(&client.messagesProcessed, 1)
-			case transport.DCP_DELETION:
-				createMessage("dcp", "deletion", "", string(m.Key))
-			}
-			// log.Printf("DCP event: %#v\n", m)
-			// s.sendMessage(client, &msg)
-			response := s.readMessage(client)
-			msg.resChan <- response
-
-			if response.err == nil {
-				freeAppWorkerChanMap[server.AppName] <- client
-			}
-			// FreeAppWorkerChanMap[s.AppName] <- client
-
-		} */
-		case <-client.stop:
-			log.Println("Got message to stop client, stopping worker as well")
-			worker.StopChan <- true
-			return
-		}
-	}
 }
 
-func (s *Server) handleAccept(ln net.Listener) {
-	defer ln.Close()
-	for {
-		select {
-		case <-s.StopAcceptChan:
-			return
-		default:
-			log.Printf("Continuing as there is no message on stopAcceptChan\n")
-		}
-
-		conn, err := ln.Accept()
-		connection := Connection{
-			conn: conn,
-			err:  err,
-		}
-		log.Printf("Going to put connection request to Go channel\n")
-		s.ConnAcceptQueue <- connection
-		log.Printf("Put connection request to Go channel\n")
+func listOfVbnos(startVB int, endVB int) []uint16 {
+	vbnos := make([]uint16, 0, endVB-startVB)
+	for i := startVB; i <= endVB; i++ {
+		vbnos = append(vbnos, uint16(i))
 	}
+	return vbnos
 }
 
-func (s *Server) Setup(workerCount int,
-	nsServerHostPort, username, password string) {
-
-	for i := 0; i < workerCount; i++ {
-		s.WorkerStateMap[i] = make(map[string]string)
-		s.WorkerStateMap[i]["bindHttp"] = "172.16.1.198:" + strconv.Itoa(8095+i)
-		s.WorkerStateMap[i]["dataDir"] = "worker-" + strconv.Itoa(i)
-
-		// Tracking status to verify the state of worker routines
-		s.WorkerStateMap[i]["state"] = "pending"
-	}
-
-	if _, err := cbauth.InternalRetryDefaultInit(nsServerHostPort,
-		username, password); err != nil {
-		log.Fatalf("Failed to initialise cbauth: %s\n", err.Error())
-	}
-}
-
-func (s *Server) getNextPendingWorker() (workerId int) {
-	for index := range s.WorkerStateMap {
-		if s.WorkerStateMap[index]["state"] == "pending" {
-			return index
-		}
-	}
-	return -1
-}
-
-func (s *Server) Serve() {
-	ln, err := net.Listen("tcp", "localhost:"+port)
+func mf(err error, msg string) {
 	if err != nil {
-		log.Printf("Failed to listen, exiting with error: %s\n", err.Error())
-		return
-	}
-
-	go s.handleAccept(ln)
-
-	for {
-		select {
-		case connection := <-s.ConnAcceptQueue:
-			err := connection.err
-			if err != nil {
-				fmt.Printf("Closing the connection because an error was encountered\n")
-				connection.conn.Close()
-				continue
-			}
-
-			conn := connection.conn
-			log.Printf("Got a client connection request, remote: %v local: %v\n",
-				conn.RemoteAddr(), conn.LocalAddr())
-
-			workerCountIDL.Lock()
-			pendingWorkerID := s.getNextPendingWorker()
-
-			// TODO: More error handling, right now presuming
-			// socket requests made to server would be consistent
-			// with what server believes to the desired workerCount
-			// which basically means following code path will be
-			// be triggered only when getNextPendingWorker return
-			// a sane workerId
-			client := &Client{
-				id:                pendingWorkerID,
-				conn:              conn,
-				messagesProcessed: 0,
-				stop:              make(chan bool, 1),
-			}
-
-			s.WorkerStateMap[pendingWorkerID]["state"] = "active"
-
-			if _, ok := s.RunningWorkers[client]; !ok {
-				s.RunningWorkers[client] = client.id
-			} else {
-				log.Printf("Client entry already exists in runningWorkers map\n")
-			}
-
-			if _, ok := s.WorkerShutdownChanMap[client.id]; !ok {
-				s.WorkerShutdownChanMap[client.id] = make(chan bool, 1)
-			} else {
-				log.Printf("Client entry already exists in workerShutdownChanMap map\n")
-			}
-
-			// TODO: Need supervisor to call init function with an arbitrary
-			// set of parameters. For now hard coding few entries, but this
-			// will go away soon
-			cluster.SetupCBGTNode(s.WorkerStateMap[pendingWorkerID]["bindHttp"],
-				"couchbase:http://cfg-bucket@172.16.12.49:8091", "",
-				s.WorkerStateMap[pendingWorkerID]["dataDir"], "wanted",
-				"http://172.16.12.49:8091", "", 1)
-
-			worker := <-NewAppWorkerChanMap[s.AppName]
-
-			go s.handleWorker(client, worker)
-			workerCountIDL.Unlock()
-
-		case <-s.StopServerChan:
-			for client, _ := range s.RunningWorkers {
-				client.stop <- true
-			}
-			s.StopAcceptChan <- true
-			return
-		}
-	}
-}
-
-func (s *Server) Stop() {
-	s.StopServerChan <- true
-}
-
-func (s *Server) sendMessage(client *Client, msg *Message) {
-	defer catchPanic(nil, "sendMessage")
-
-	encHeader, errh := json.Marshal(msg.Header)
-	encPayload, errp := json.Marshal(msg.Payload)
-
-	if errh != nil || errp != nil {
-		log.Fatalf("Error during encoding either header or payload %s %\n",
-			errh.Error(), errp.Error())
-
-	} else {
-		var buffer bytes.Buffer
-		// Protocol encoding format
-		// headerSize <CRLF> payloadSize <CRLF> Header Payload
-
-		err := binary.Write(&buffer, binary.LittleEndian, uint32(len(encHeader)))
-		catchErr("writing headerSize", err)
-
-		err = binary.Write(&buffer, binary.LittleEndian, uint32(len(encPayload)))
-		catchErr("writing payloadSize", err)
-
-		err = binary.Write(&buffer, binary.LittleEndian, encHeader)
-		catchErr("writing encoded header", err)
-
-		err = binary.Write(&buffer, binary.LittleEndian, encPayload)
-		catchErr("writing encoded payload", err)
-
-		err = binary.Write(client.conn, binary.LittleEndian, buffer.Bytes())
-		catchDeadConnection(client, "Write to worker socket", err)
-	}
-}
-
-func (s *Server) readMessage(client *Client) *Response {
-	defer catchPanic(nil, "readMessage")
-
-	msg, err := bufio.NewReader(client.conn).ReadSlice('\n')
-	if err != nil {
-		log.Printf("Read from client socket failed, err: %s\n", err.Error())
-
-		client.stop <- true
-		client.conn.Close()
-
-		result := &Response{
-			response: "",
-			err:      err,
-		}
-
-		return result
-	} else {
-		// log.Println("CLIENT RESPONSE")
-		// log.Printf("Response from client: %s", string(msg))
-		result := &Response{
-			response: string(msg),
-			err:      err,
-		}
-		return result
-	}
-}
-
-func catchErr(context string, err error) {
-	if err != nil {
-		log.Printf("Failure writing to the byte buffer while %s, err: %s\n",
-			context, err.Error())
-	}
-}
-
-func catchDeadConnection(client *Client, context string, err error) {
-	if err != nil {
-		log.Printf("Write to downstream socket failed while %s, err: %s\n",
-			context, err.Error())
-
-		client.stop <- true
-		client.conn.Close()
+		log.Fatalf("%v: %v", msg, err)
 	}
 }

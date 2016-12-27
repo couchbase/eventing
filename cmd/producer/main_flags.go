@@ -11,19 +11,10 @@ import (
 
 type Flags struct {
 	AppName          string
-	AppTCPPort       int
-	BindHTTP         string
-	CfgConnect       string
-	Container        string
-	DataDir          string
-	KVHost           string
+	Auth             string
+	Bucket           string
+	KVHostPort       string
 	NSServerHostPort string
-	Password         string
-	Register         string
-	Server           string
-	Tags             string
-	Username         string
-	Weight           int
 	WorkerCount      int
 	Help             bool
 }
@@ -67,98 +58,29 @@ func initFlags(flags *Flags) map[string][]string {
 	}
 
 	s(&flags.AppName,
-		[]string{"appname", "app", "a"}, "APPNAME", "credit_score",
+		[]string{"appname", "app", "a"}, "APPNAME", "c_s",
 		"application name to be deployed against eventing service"+
-			"\n default being credit_score")
+			"\n default being c_s i.e credit_score")
 
-	i(&flags.AppTCPPort,
-		[]string{"tcport", "port"}, "INTEGER", 8092,
-		"tcp port that producer will use to communicate with"+
-			"\n  c++ workers; default is 9092")
+	s(&flags.Auth,
+		[]string{"auth"}, "AUTH", "Administrator:asdasd",
+		"admin auth credentials for the cluster"+
+			"\n default being Administrator:asdasd")
 
-	s(&flags.BindHTTP,
-		[]string{"bindHttp", "bindhttp", "bh"}, "ADDR:PORT", "127.0.0.1:8096",
-		"local address:port where this node will listen and"+
-			"\n serve HTTP?REST API requests anf the web-base"+
-			"\n  admin UI, default is '127.0.0.1:8096'")
+	s(&flags.Bucket,
+		[]string{"bucket", "b"}, "BUCKET", "default",
+		"couchbase bucket from which to start dcp streams"+
+			"\n default is \"default\" bucket")
 
-	s(&flags.CfgConnect,
-		[]string{"cfgConnect", "cfg"}, "STRING",
-		"couchbase:http://cfg-bucket@127.0.0.1:8091",
-		"connection string needed for clustering"+
-			"\n  multiple running cbgt instances"+
-			"\n ex: couchbase:http://cfg-bucket@127.0.0.1:8091")
-
-	s(&flags.Container,
-		[]string{"container"}, "PATH", "",
-		"optional slash separated path of logical parent containers"+
-			"\nfor this node, for shelf/rack/row/zone awareness.")
-
-	s(&flags.DataDir,
-		[]string{"dataDir", "datadir", "dd"}, "STRING", "data",
-		"directory path where local index data and"+
-			"\n local config will be stored for this node;"+
-			"\n default is 'data'")
-
-	s(&flags.KVHost,
-		[]string{"kv_host", "kv", "k"}, "ADDR:PORT", "127.0.0.1:11210",
-		"address:port combination of where memcached is running"+
-			"\n default is 127.0.0.1:11210")
+	s(&flags.KVHostPort,
+		[]string{"kvaddr", "kv"}, "KVADDR", "127.0.0.1:12000,127.0.0.1:12001",
+		"kv host port combination for source cluster"+
+			"\n default 127.0.0.1:12000,127.0.0.1:12001")
 
 	s(&flags.NSServerHostPort,
-		[]string{"ns_server", "ns", "n"}, "ADDR:PORT", "172.16.12.49:8091",
-		"address:port combination of running couchbase server"+
-			"\n default is 127.0.0.1:8091")
-
-	s(&flags.Password,
-		[]string{"password", "p"}, "PASSWORD", "asdasd",
-		"password to authenticate with couchbase cluster"+
-			"\n default being asdasd")
-
-	s(&flags.Register,
-		[]string{"register"}, "STATE", "wanted",
-		"optional flag to register this node in the cluster as:"+
-			"\n* wanted      - make node wanted in the cluster,"+
-			"\n                if not already, so that it will participate"+
-			"\n                fully in data operations;"+
-			"\n* wantedForce - same as wanted, but forces a cfg update;"+
-			"\n* known       - make node known to the cluster,"+
-			"\n                if not already, so it will be admin'able"+
-			"\n                but won't yet participate in data operations;"+
-			"\n                this is useful for staging several nodes into"+
-			"\n                the cluster before making them fully wanted;"+
-			"\n* knownForce  - same as known, but forces a cfg update;"+
-			"\n* unwanted    - make node unwanted, but still known to the cluster;"+
-			"\n* unknown     - make node unwanted and unknown to the cluster;"+
-			"\n* unchanged   - don't change the node's registration state;"+
-			"\ndefault is 'wanted'.")
-
-	s(&flags.Server,
-		[]string{"server", "s"}, "URL", "",
-		"URL to datasource server; example when using couchbase 3.x as"+
-			"\nyour datasource server: 'http://localhost:8091';"+
-			"\nuse '.' when there is no datasource server.")
-
-	s(&flags.Tags,
-		[]string{"tags"}, "TAGS", "",
-		"optional comma-separated list of tags or enabled roles"+
-			"\nfor this node, such as:"+
-			"\n* feed    - node can connect feeds to datasources;"+
-			"\n* janitor - node can run a local janitor;"+
-			"\n* pindex  - node can maintain local index partitions;"+
-			"\n* planner - node can replan cluster-wide resource allocations;"+
-			"\n* queryer - node can execute queries;"+
-			"\ndefault is (\"\") which means all roles are enabled.")
-
-	s(&flags.Username,
-		[]string{"username", "user", "u"}, "USERNAME", "Administrator",
-		"username to authenticate against couchbase cluster"+
-			"\n default being Administrator")
-
-	i(&flags.Weight,
-		[]string{"weight"}, "INTEGER", 1,
-		"optional weight of this node, where a more capable"+
-			"\nnode should have higher weight; default is 1.")
+		[]string{"ns_server", "ns", "n"}, "NS_SERVER", "127.0.0.1:9000",
+		"ns_server endpoint of source cluster"+
+			"\n default 127.0.0.1:9000")
 
 	i(&flags.WorkerCount,
 		[]string{"workercount", "wc", "w"}, "INTEGER", 1,

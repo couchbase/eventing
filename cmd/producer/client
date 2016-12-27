@@ -1,4 +1,9 @@
 #!/bin/bash
 
-# valgrind --leak-check=full --show-leak-kinds=all --log-file="leak_dump.log" ./client.bin 9092
-./client.bin 9092
+APPNAME=$1
+PORT=$2
+TIMESTAMP=$3
+
+# valgrind --leak-check=full --show-leak-kinds=all --log-file="leak_dump.log" ./client.bin $APPNAME $PORT $TIMESTAMP
+
+./client.bin $APPNAME $PORT $TIMESTAMP &> log
