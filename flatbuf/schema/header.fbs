@@ -1,6 +1,11 @@
-namespace fbuf.header;
+namespace flatbuf.header;
+
+enum Version:byte {
+  Spock = 0
+}
 
 table Header {
+  version:Version;
   event:byte;
   opcode:byte;
   metadata:string;

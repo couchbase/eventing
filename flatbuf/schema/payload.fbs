@@ -1,6 +1,11 @@
-namespace fbuf.payload;
+namespace flatbuf.payload;
+
+enum Version:byte {
+  Spock = 0
+}
 
 table Payload {
+  version:Version;
   key:string;
   value:string;
 }

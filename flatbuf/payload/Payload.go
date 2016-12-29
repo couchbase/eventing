@@ -22,15 +22,19 @@ func (rcv *Payload) Init(buf []byte, i flatbuffers.UOffsetT) {
 	rcv._tab.Pos = i
 }
 
-func (rcv *Payload) Key() []byte {
+func (rcv *Payload) Version() int8 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
 	if o != 0 {
-		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+		return rcv._tab.GetInt8(o + rcv._tab.Pos)
 	}
-	return nil
+	return 0
 }
 
-func (rcv *Payload) Value() []byte {
+func (rcv *Payload) MutateVersion(n int8) bool {
+	return rcv._tab.MutateInt8Slot(4, n)
+}
+
+func (rcv *Payload) Key() []byte {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
 		return rcv._tab.ByteVector(o + rcv._tab.Pos)
@@ -38,14 +42,25 @@ func (rcv *Payload) Value() []byte {
 	return nil
 }
 
+func (rcv *Payload) Value() []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
+	if o != 0 {
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+	}
+	return nil
+}
+
 func PayloadStart(builder *flatbuffers.Builder) {
-	builder.StartObject(2)
+	builder.StartObject(3)
+}
+func PayloadAddVersion(builder *flatbuffers.Builder, version int8) {
+	builder.PrependInt8Slot(0, version, 0)
 }
 func PayloadAddKey(builder *flatbuffers.Builder, key flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(key), 0)
+	builder.PrependUOffsetTSlot(1, flatbuffers.UOffsetT(key), 0)
 }
 func PayloadAddValue(builder *flatbuffers.Builder, value flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(1, flatbuffers.UOffsetT(value), 0)
+	builder.PrependUOffsetTSlot(2, flatbuffers.UOffsetT(value), 0)
 }
 func PayloadEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

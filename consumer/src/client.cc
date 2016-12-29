@@ -21,7 +21,7 @@ char *getTime() {
 
 static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
   auto header =
-      fbuf::header::GetHeader(parsed_message->header.c_str());
+      flatbuf::header::GetHeader(parsed_message->header.c_str());
 
   std::unique_ptr<header_t> parsed_header(new header_t);
   parsed_header->event = header->event();
@@ -39,7 +39,7 @@ void AppWorker::RouteMessageWithoutResponse(header_t *parsed_header,
   std::string key, val;
 
   auto payload =
-      fbuf::payload::GetPayload((const void *)parsed_message->payload.c_str());
+      flatbuf::payload::GetPayload((const void *)parsed_message->payload.c_str());
   key.assign(payload->key()->str());
   val.assign(payload->value()->str());
 

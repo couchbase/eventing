@@ -22,7 +22,7 @@ func (rcv *Header) Init(buf []byte, i flatbuffers.UOffsetT) {
 	rcv._tab.Pos = i
 }
 
-func (rcv *Header) Event() int8 {
+func (rcv *Header) Version() int8 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
 	if o != 0 {
 		return rcv._tab.GetInt8(o + rcv._tab.Pos)
@@ -30,11 +30,11 @@ func (rcv *Header) Event() int8 {
 	return 0
 }
 
-func (rcv *Header) MutateEvent(n int8) bool {
+func (rcv *Header) MutateVersion(n int8) bool {
 	return rcv._tab.MutateInt8Slot(4, n)
 }
 
-func (rcv *Header) Opcode() int8 {
+func (rcv *Header) Event() int8 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
 		return rcv._tab.GetInt8(o + rcv._tab.Pos)
@@ -42,12 +42,24 @@ func (rcv *Header) Opcode() int8 {
 	return 0
 }
 
-func (rcv *Header) MutateOpcode(n int8) bool {
+func (rcv *Header) MutateEvent(n int8) bool {
 	return rcv._tab.MutateInt8Slot(6, n)
 }
 
-func (rcv *Header) Metadata() []byte {
+func (rcv *Header) Opcode() int8 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
+	if o != 0 {
+		return rcv._tab.GetInt8(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *Header) MutateOpcode(n int8) bool {
+	return rcv._tab.MutateInt8Slot(8, n)
+}
+
+func (rcv *Header) Metadata() []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(10))
 	if o != 0 {
 		return rcv._tab.ByteVector(o + rcv._tab.Pos)
 	}
@@ -55,16 +67,19 @@ func (rcv *Header) Metadata() []byte {
 }
 
 func HeaderStart(builder *flatbuffers.Builder) {
-	builder.StartObject(3)
+	builder.StartObject(4)
+}
+func HeaderAddVersion(builder *flatbuffers.Builder, version int8) {
+	builder.PrependInt8Slot(0, version, 0)
 }
 func HeaderAddEvent(builder *flatbuffers.Builder, event int8) {
-	builder.PrependInt8Slot(0, event, 0)
+	builder.PrependInt8Slot(1, event, 0)
 }
 func HeaderAddOpcode(builder *flatbuffers.Builder, opcode int8) {
-	builder.PrependInt8Slot(1, opcode, 0)
+	builder.PrependInt8Slot(2, opcode, 0)
 }
 func HeaderAddMetadata(builder *flatbuffers.Builder, metadata flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(2, flatbuffers.UOffsetT(metadata), 0)
+	builder.PrependUOffsetTSlot(3, flatbuffers.UOffsetT(metadata), 0)
 }
 func HeaderEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
