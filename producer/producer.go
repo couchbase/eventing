@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/suptree"
@@ -30,6 +31,13 @@ func (p *Producer) Serve() {
 
 func (p *Producer) Stop() {
 	p.StopProducerCh <- true
+}
+
+// Implement fmt.Stringer interface for better debugging in case
+// producer routine crashes and supervisor has to respawn it
+func (p *Producer) String() string {
+	return fmt.Sprintf("Producer => app: %s tcpPort: %s workermap dump: %s",
+		p.App.AppName, p.tcpPort, sprintWorkerState(p.workerVbucketMap))
 }
 
 func (p *Producer) startBucket() {
@@ -108,13 +116,12 @@ func (p *Producer) handleV8Consumer(dcpFeed *couchbase.DcpFeed) {
 	log.Printf("Started server on port: %s\n", p.tcpPort)
 
 	consumer := &Consumer{
-		app:                 p.App,
-		dcpFeed:             dcpFeed,
-		producer:            p,
-		signalConnectedCh:   make(chan bool),
-		signalCmdWaitExitCh: make(chan bool),
-		stopConsumerCh:      make(chan bool, 1),
-		tcpPort:             p.tcpPort,
+		app:               p.App,
+		dcpFeed:           dcpFeed,
+		producer:          p,
+		signalConnectedCh: make(chan bool),
+		tcpPort:           p.tcpPort,
+		statsTicker:       time.NewTicker(p.StatsTickDuration * time.Millisecond),
 	}
 
 	p.workerSupervisor.Add(consumer)
@@ -144,4 +151,13 @@ func mf(err error, msg string) {
 	if err != nil {
 		log.Fatalf("%v: %v", msg, err)
 	}
+}
+
+func sprintWorkerState(state map[int]map[string]interface{}) string {
+	line := ""
+	for workerid, _ := range state {
+		line += fmt.Sprintf("workerID: %d startVB: %d endVB: %d ",
+			workerid, state[workerid]["start_vb"].(int), state[workerid]["end_vb"].(int))
+	}
+	return strings.TrimRight(line, " ")
 }

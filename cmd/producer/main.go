@@ -8,6 +8,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/couchbase/eventing/producer"
 	"github.com/couchbase/eventing/suptree"
@@ -39,13 +40,14 @@ func main() {
 	}
 
 	p := &producer.Producer{
-		App:              app,
-		Auth:             flags.Auth,
-		Bucket:           flags.Bucket,
-		KVHostPort:       strings.Split(flags.KVHostPort, ","),
-		NSServerHostPort: flags.NSServerHostPort,
-		StopProducerCh:   make(chan bool),
-		WorkerCount:      flags.WorkerCount,
+		App:               app,
+		Auth:              flags.Auth,
+		Bucket:            flags.Bucket,
+		KVHostPort:        strings.Split(flags.KVHostPort, ","),
+		NSServerHostPort:  flags.NSServerHostPort,
+		StopProducerCh:    make(chan bool),
+		StatsTickDuration: time.Duration(flags.StatsTickDuration),
+		WorkerCount:       flags.WorkerCount,
 	}
 
 	superSup.Add(p)

@@ -7,17 +7,10 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"strings"
 	"time"
 
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
-)
-
-var (
-	// Tracks CB Bucket => DCP Opcode => Count
-	dcpMessagesProcessed map[string]map[mcd.CommandCode]int
-
-	// Tracks Appname => V8 Opcode => Count
-	v8WorkerMessagesProcessed map[string]map[string]int
 )
 
 func init() {
@@ -33,6 +26,11 @@ func createConsumer(p *Producer, app *AppConfig) *Consumer {
 }
 
 func (c *Consumer) Serve() {
+	c.stopConsumerCh = make(chan bool, 1)
+
+	c.dcpMessagesProcessed = make(map[mcd.CommandCode]int)
+	c.v8WorkerMessagesProcessed = make(map[string]int)
+
 	log.Printf("Spawning worker corresponding to producer running"+
 		" on port %s\n", c.tcpPort)
 	cmd := exec.Command("client", c.app.AppName, c.tcpPort,
@@ -42,11 +40,13 @@ func (c *Consumer) Serve() {
 	if err != nil {
 		log.Fatal("Failed while trying to spawn worker for app:%s"+
 			" with err: %s", c.app.AppName, err.Error())
+	} else {
+		c.osPid = cmd.Process.Pid
+		log.Printf("pid of process launched: %d\n", c.osPid)
 	}
 
 	go func(c *Consumer) {
 		cmd.Wait()
-		c.signalCmdWaitExitCh <- true
 	}(c)
 
 	// Wait for net.Conn to be initialised
@@ -68,13 +68,9 @@ func (c *Consumer) Serve() {
 				return
 			}
 			if e.Opcode == mcd.DCP_MUTATION {
-				// TODO: Change flatbuffer encode/decode to have uint16
-				// representation for vbucket
-				partId := int(e.VBucket)
-
 				metadata := fmt.Sprintf("{\"cas\": %d, \"flag\": %d,"+
 					" \"partition\": %d, \"seq\": %d, \"ttl\": %d}",
-					e.Cas, e.Flags, partId, e.Seqno, e.Expiry)
+					e.Cas, e.Flags, e.VBucket, e.Seqno, e.Expiry)
 
 				dcpHeader := MakeDcpMutationHeader(metadata)
 
@@ -84,11 +80,23 @@ func (c *Consumer) Serve() {
 					Payload: dcpPayload,
 				}
 
-				c.sendMessage(msg)
+				if _, ok := c.dcpMessagesProcessed[e.Opcode]; !ok {
+					c.dcpMessagesProcessed[e.Opcode] = 0
+				}
+				c.dcpMessagesProcessed[e.Opcode]++
+
+				if err := c.sendMessage(msg); err != nil {
+					return
+				}
+				if resp := c.readMessage(); resp.err != nil {
+					return
+				}
 			}
-		case <-c.signalCmdWaitExitCh:
-			log.Printf("V8 Consumer process no more alive\n")
-			return
+		case <-c.statsTicker.C:
+			log.Printf("DCP opcode processing couter: %s\n",
+				sprintDCPCounts(c.dcpMessagesProcessed))
+			log.Printf("V8 opcode processing counter: %s\n",
+				sprintV8Counts(c.v8WorkerMessagesProcessed))
 		case <-c.stopConsumerCh:
 			log.Printf("Socket belonging to V8 consumer died\n")
 			return
@@ -97,6 +105,15 @@ func (c *Consumer) Serve() {
 }
 
 func (c *Consumer) Stop() {
+}
+
+// Implement fmt.Stringer interface to allow better debugging
+// if C++ V8 worker crashes
+func (c *Consumer) String() string {
+	return fmt.Sprintf("consumer => app: %s tcpPort: %s ospid: %d"+
+		" dcpEventProcessed: %s v8EventProcessed: %s", c.app.AppName, c.tcpPort,
+		c.osPid, sprintDCPCounts(c.dcpMessagesProcessed),
+		sprintV8Counts(c.v8WorkerMessagesProcessed))
 }
 
 func (c *Consumer) sendInitV8Worker(appName string) {
@@ -108,6 +125,11 @@ func (c *Consumer) sendInitV8Worker(appName string) {
 		Header:  header,
 		Payload: payload,
 	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["V8_INIT"]; !ok {
+		c.v8WorkerMessagesProcessed["V8_INIT"] = 0
+	}
+	c.v8WorkerMessagesProcessed["V8_INIT"]++
 
 	c.sendMessage(msg)
 }
@@ -122,16 +144,19 @@ func (c *Consumer) sendLoadV8Worker(appCode string) {
 		Payload: payload,
 	}
 
+	if _, ok := c.v8WorkerMessagesProcessed["V8_LOAD"]; !ok {
+		c.v8WorkerMessagesProcessed["V8_LOAD"] = 0
+	}
+	c.v8WorkerMessagesProcessed["V8_LOAD"]++
+
 	c.sendMessage(msg)
 }
 
-func (c *Consumer) sendMessage(msg *Message) {
+func (c *Consumer) sendMessage(msg *Message) error {
 
 	// Protocol encoding format:
 	//<headerSize><payloadSize><Header><Payload>
 	var buffer bytes.Buffer
-	log.Printf("encoded header len: %d encoded payload len: %d\n",
-		len(msg.Header), len(msg.Payload))
 
 	event := ReadHeader(msg.Header)
 	if event == int8(DcpEvent) {
@@ -151,6 +176,8 @@ func (c *Consumer) sendMessage(msg *Message) {
 
 	err = binary.Write(c.conn, binary.LittleEndian, buffer.Bytes())
 	c.catchDeadConnection("Write to consumer socket", err)
+
+	return err
 }
 
 func (c *Consumer) readMessage() *Response {
@@ -159,6 +186,7 @@ func (c *Consumer) readMessage() *Response {
 	if err != nil {
 		log.Printf("Read from client socket failed, err: %s\n", err.Error())
 
+		c.stopConsumerCh <- true
 		c.conn.Close()
 
 		result = &Response{
@@ -166,7 +194,6 @@ func (c *Consumer) readMessage() *Response {
 			err:      err,
 		}
 	} else {
-		log.Printf("Response from client => %s", string(msg))
 		result = &Response{
 			response: string(msg),
 			err:      err,
@@ -190,4 +217,23 @@ func (c *Consumer) catchDeadConnection(context string, err error) {
 		c.stopConsumerCh <- true
 		c.conn.Close()
 	}
+}
+
+func sprintDCPCounts(counts map[mcd.CommandCode]int) string {
+	line := ""
+	for i := 0; i < 256; i++ {
+		opcode := mcd.CommandCode(i)
+		if n, ok := counts[opcode]; ok {
+			line += fmt.Sprintf("%s:%v ", mcd.CommandNames[opcode], n)
+		}
+	}
+	return strings.TrimRight(line, " ")
+}
+
+func sprintV8Counts(counts map[string]int) string {
+	line := ""
+	for k, v := range counts {
+		line += fmt.Sprintf("%s:%v ", k, v)
+	}
+	return strings.TrimRight(line, " ")
 }

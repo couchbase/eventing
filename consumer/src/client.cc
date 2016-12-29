@@ -34,42 +34,10 @@ static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
   return parsed_header;
 }
 
-void AppWorker::RouteMessageWithoutResponse(header_t *parsed_header,
-                                            message_t *parsed_message) {
-  std::string key, val;
-
-  auto payload =
-      flatbuf::payload::GetPayload((const void *)parsed_message->payload.c_str());
-  key.assign(payload->key()->str());
-  val.assign(payload->value()->str());
-
-  // cerror_out << "key: " << key << " val: " << val << '\n';
-  switch (getEvent(parsed_header->event)) {
-  case eDCP:
-    switch (getDCPOpcode(parsed_header->opcode)) {
-    case oDelete:
-      break;
-    case oMutation:
-      // cerror_out << "header:" << parsed_message->header
-      //            << " payload:" << parsed_message->payload
-      //            << " val:" << val << '\n';
-      this->v8worker->SendUpdate(val, parsed_header->metadata, "json");
-      break;
-    case DCP_Opcode_Unknown:
-      cerror_out << getTime() << "dcp_opcode_unknown encountered" << '\n';
-      break;
-    }
-    break;
-  default:
-    cerror_out << getTime() << "command:" << parsed_header->event
-               << " sent to RouteMessageWithoutResponse and it isn't desirable"
-               << '\n';
-  }
-}
-
 std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                                 message_t *parsed_message) {
-  std::string result;
+  std::string key, val, result;
+  const flatbuf::payload::Payload *payload;
 
   switch (getEvent(parsed_header->event)) {
   case eV8_Worker:
@@ -96,9 +64,18 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     }
     break;
   case eDCP:
+    payload = flatbuf::payload::GetPayload(
+        (const void *)parsed_message->payload.c_str());
+    key.assign(payload->key()->str());
+    val.assign(payload->value()->str());
+
     switch (getDCPOpcode(parsed_header->opcode)) {
     case oDelete:
+        break;
     case oMutation:
+      this->v8worker->SendUpdate(val, parsed_header->metadata, "json");
+      result.assign("mutation processed\n");
+      break;
     case DCP_Opcode_Unknown:
       cerror_out << getTime() << "dcp_opcode_unknown encountered" << '\n';
       break;
@@ -266,26 +243,19 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
         if (parsed_header) {
           header_t *pheader = parsed_header.get();
-          switch (getEvent(pheader->event)) {
-          case eDCP:
-            RouteMessageWithoutResponse(parsed_header.get(),
-                                        parsed_message.get());
-            break;
-          default:
-            std::string result = RouteMessageWithResponse(parsed_header.get(),
-                                                          parsed_message.get());
+          std::string result = RouteMessageWithResponse(parsed_header.get(),
+                                                        parsed_message.get());
 
-            if (!result.empty()) {
-              // TODO: replace it with unique_ptr
-              write_req_t *req = new (write_req_t);
-              std::string response_buf(result);
-              req->buf = uv_buf_init((char *)response_buf.c_str(),
-                                     response_buf.length());
-              uv_write((uv_write_t *)req, stream, &req->buf, 1,
-                       [](uv_write_t *req, int status) {
-                         AppWorker::GetAppWorker()->OnWrite(req, status);
-                       });
-            }
+          if (!result.empty()) {
+            // TODO: replace it with unique_ptr
+            write_req_t *req = new (write_req_t);
+            std::string response_buf(result);
+            req->buf = uv_buf_init((char *)response_buf.c_str(),
+                                   response_buf.length());
+            uv_write((uv_write_t *)req, stream, &req->buf, 1,
+                     [](uv_write_t *req, int status) {
+                       AppWorker::GetAppWorker()->OnWrite(req, status);
+                     });
           }
         }
       }

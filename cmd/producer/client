@@ -3,7 +3,8 @@
 APPNAME=$1
 PORT=$2
 TIMESTAMP=$3
+LOG_FILE="bin_"$(date +%s).log
 
 # valgrind --leak-check=full --show-leak-kinds=all --log-file="leak_dump.log" ./client.bin $APPNAME $PORT $TIMESTAMP
 
-./client.bin $APPNAME $PORT $TIMESTAMP &> log
+./client.bin $APPNAME $PORT $TIMESTAMP &> $LOG_FILE

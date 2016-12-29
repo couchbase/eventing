@@ -10,13 +10,14 @@ import (
 )
 
 type Flags struct {
-	AppName          string
-	Auth             string
-	Bucket           string
-	KVHostPort       string
-	NSServerHostPort string
-	WorkerCount      int
-	Help             bool
+	AppName           string
+	Auth              string
+	Bucket            string
+	KVHostPort        string
+	NSServerHostPort  string
+	StatsTickDuration int
+	WorkerCount       int
+	Help              bool
 }
 
 var flags Flags
@@ -81,6 +82,11 @@ func initFlags(flags *Flags) map[string][]string {
 		[]string{"ns_server", "ns", "n"}, "NS_SERVER", "127.0.0.1:9000",
 		"ns_server endpoint of source cluster"+
 			"\n default 127.0.0.1:9000")
+
+	i(&flags.StatsTickDuration,
+		[]string{"stats"}, "INTEGER", 1000,
+		"Period after which consumer stats will be printed"+
+			"\n default is 1000ms")
 
 	i(&flags.WorkerCount,
 		[]string{"workercount", "wc", "w"}, "INTEGER", 1,

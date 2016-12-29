@@ -2,9 +2,11 @@ package producer
 
 import (
 	"net"
+	"time"
 
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/indexing/secondary/dcp"
+	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 )
 
 const (
@@ -17,19 +19,26 @@ type Consumer struct {
 	dcpFeed  *couchbase.DcpFeed
 	producer *Producer
 
+	// OS pid of c++ v8 worker
+	osPid int
+
 	// Populated when C++ v8 worker is spawned
 	// correctly and downstream tcp socket is available
 	// for sending messages. Unbuffered channel.
 	signalConnectedCh chan bool
 
-	// Populated when Cmd.Wait() call returns.
-	// Could mean process is dead. Unbuffered channel
-	signalCmdWaitExitCh chan bool
-
 	// Populated when downstream tcp socket mapping to
 	// C++ v8 worker is down. Buffered channel to avoid deadlock
 	stopConsumerCh chan bool
 	tcpPort        string
+
+	// Tracks DCP Opcodes processed per consumer
+	dcpMessagesProcessed map[mcd.CommandCode]int
+
+	// Tracks V8 Opcodes processed per consumer
+	v8WorkerMessagesProcessed map[string]int
+
+	statsTicker *time.Ticker
 }
 
 type Producer struct {
@@ -41,6 +50,9 @@ type Producer struct {
 	tcpPort          string
 	StopProducerCh   chan bool
 	WorkerCount      int
+
+	// time.Ticker duration for dumping consumer stats
+	StatsTickDuration time.Duration
 
 	// Map keeping track of start and end vbucket
 	// for each worker
