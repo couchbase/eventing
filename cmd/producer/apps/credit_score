@@ -1,0 +1,1 @@
+{"appname": "credit_score", "appcode": "function OnUpdate(doc, meta) {\n log(meta.cas);\n}", "id": 1, "depcfg": {"source_bucket": "default", "metadata_bucket": "eventing", "source_node": "172.16.12.49", "auth": "Administrator:asdasd", "worker_count": 2, "tick_duration": 1000}}

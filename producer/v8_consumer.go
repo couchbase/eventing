@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
-	"strings"
+	"strconv"
 	"time"
 
+	cbbucket "github.com/couchbase/go-couchbase"
+	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 )
 
@@ -17,7 +19,7 @@ func init() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 }
 
-func createConsumer(p *Producer, app *AppConfig) *Consumer {
+func createConsumer(p *Producer, app *appConfig) *Consumer {
 	consumer := &Consumer{
 		producer: p,
 		app:      app,
@@ -27,16 +29,33 @@ func createConsumer(p *Producer, app *AppConfig) *Consumer {
 
 func (c *Consumer) Serve() {
 	c.stopConsumerCh = make(chan bool, 1)
+	c.stopCheckpointingCh = make(chan bool)
 
 	c.dcpMessagesProcessed = make(map[mcd.CommandCode]int)
 	c.v8WorkerMessagesProcessed = make(map[string]int)
+
+	c.initCBBucketConnHandle()
+
+	dcpConfig := map[string]interface{}{
+		"genChanSize":    DCP_GEN_CHAN_SIZE,
+		"dataChanSize":   DCP_DATA_CHAN_SIZE,
+		"numConnections": DCP_NUM_CONNECTIONS,
+	}
+
+	var err error
+	c.dcpFeed, err = c.cbBucket.StartDcpFeedOver(
+		couchbase.NewDcpFeedName("eventing_"+c.workerName),
+		uint32(0), c.producer.kvHostPort, 0xABCD, dcpConfig)
+	catchErr("Failed to start dcp feed", err)
+
+	go c.startDcp(dcpConfig)
 
 	log.Printf("Spawning worker corresponding to producer running"+
 		" on port %s\n", c.tcpPort)
 	cmd := exec.Command("client", c.app.AppName, c.tcpPort,
 		time.Now().UTC().Format("2006-01-02T15:04:05-0700"))
 
-	err := cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		log.Fatal("Failed while trying to spawn worker for app:%s"+
 			" with err: %s", c.app.AppName, err.Error())
@@ -60,11 +79,14 @@ func (c *Consumer) Serve() {
 	res = c.readMessage()
 	log.Printf("Response from worker for app load call: %s\n", res.response)
 
+	go c.doLastSeqNoCheckpoint()
+
 	for {
 		select {
 		case e, ok := <-c.dcpFeed.C:
 			if ok == false {
-				log.Printf("Closing for bucket %q\n", c.app.BucketName)
+				log.Printf("Closing DCP feed for bucket %q\n", c.producer.bucket)
+				c.stopCheckpointingCh <- true
 				return
 			}
 			if e.Opcode == mcd.DCP_MUTATION {
@@ -85,10 +107,21 @@ func (c *Consumer) Serve() {
 				}
 				c.dcpMessagesProcessed[e.Opcode]++
 
+				if _, ok := c.vbProcessingStats[e.VBucket]; !ok {
+					c.vbProcessingStats[e.VBucket] = make(map[string]uint64)
+					c.vbProcessingStats[e.VBucket]["last_processed_seq_no"] = 0
+				}
+
+				c.Lock()
+				c.vbProcessingStats[e.VBucket]["last_processed_seq_no"] = e.Seqno
+				c.Unlock()
+
 				if err := c.sendMessage(msg); err != nil {
+					c.stopCheckpointingCh <- true
 					return
 				}
 				if resp := c.readMessage(); resp.err != nil {
+					c.stopCheckpointingCh <- true
 					return
 				}
 			}
@@ -99,6 +132,7 @@ func (c *Consumer) Serve() {
 				sprintV8Counts(c.v8WorkerMessagesProcessed))
 		case <-c.stopConsumerCh:
 			log.Printf("Socket belonging to V8 consumer died\n")
+			c.stopCheckpointingCh <- true
 			return
 		}
 	}
@@ -114,6 +148,129 @@ func (c *Consumer) String() string {
 		" dcpEventProcessed: %s v8EventProcessed: %s", c.app.AppName, c.tcpPort,
 		c.osPid, sprintDCPCounts(c.dcpMessagesProcessed),
 		sprintV8Counts(c.v8WorkerMessagesProcessed))
+}
+
+func (c *Consumer) startDcp(dcpConfig map[string]interface{}) {
+	flogs, err := c.cbBucket.GetFailoverLogs(0xABCD, c.vbnos, dcpConfig)
+	_, err = c.cbBucket.GetFailoverLogs(0xABCD, c.vbnos, dcpConfig)
+	catchErr("Failed to get dcp failover logs", err)
+
+	end := uint64(0xFFFFFFFFFFFFFFFF)
+	for vbno, flog := range flogs {
+		x := flog[len(flog)-1] // map[uint16][][2]uint64
+		opaque, flags, vbuuid := uint16(vbno), uint32(0), x[0]
+
+		vbKey := "vb_" + strconv.Itoa(int(vbno))
+		var vbBlob vbucketKVBlob
+
+		// TODO: More error handling
+		err := c.metadataBucketHandle.Get(vbKey, &vbBlob)
+		start, snapStart, snapEnd := uint64(0), uint64(0), uint64(0)
+		if err != nil {
+			catchErr(
+				fmt.Sprintf("Bucket fetch failed for key: %s, "+
+					"creating stream from start seq #0", vbKey), err)
+			start, snapStart, snapEnd := uint64(0), uint64(0), uint64(0)
+			fErr := c.dcpFeed.DcpRequestStream(
+				vbno, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
+			if fErr != nil {
+				catchErr(fmt.Sprintf("stream-req for %v failed", vbno), fErr)
+			} else {
+				log.Printf("dcp stream created for vb: %d\n", vbno)
+			}
+		} else {
+			start, snapStart, snapEnd := vbBlob.LastSeqNoProcessed,
+				vbBlob.LastSeqNoProcessed, vbBlob.LastSeqNoProcessed
+			log.Printf("VB: %d Starting DCP stream from seq #: %d\n", vbno, start)
+			fErr := c.dcpFeed.DcpRequestStream(
+				vbno, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
+			catchErr(fmt.Sprintf("stream-req for %v failed", vbno), fErr)
+		}
+		err = c.dcpFeed.DcpRequestStream(
+			vbno, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
+		catchErr(fmt.Sprintf("stream-req for %v failed", vbno), err)
+	}
+}
+
+func (c *Consumer) initCBBucketConnHandle() {
+	config := c.app.Depcfg.(map[string]interface{})
+	metadataBucket := config["metadata_bucket"].(string)
+	connStr := fmt.Sprintf("http://" + c.producer.nsServerHostPort)
+
+	conn, cErr := cbbucket.Connect(connStr)
+	catchErr("Failed to bootstrap conn to source cluster", cErr)
+
+	pool, pErr := conn.GetPool("default")
+	catchErr("Failed to get pool info", pErr)
+
+	var gbErr error
+	c.metadataBucketHandle, gbErr = pool.GetBucket(metadataBucket)
+
+	sleepDuration := time.Duration(1)
+	for gbErr != nil {
+		catchErr(
+			fmt.Sprintf("Bucket: %s missing, retrying after %v seconds, err",
+				metadataBucket, sleepDuration), gbErr)
+		time.Sleep(sleepDuration * time.Second)
+
+		conn, cErr = cbbucket.Connect(connStr)
+		catchErr("Failed to bootstrap conn to source cluster", cErr)
+
+		pool, pErr = conn.GetPool("default")
+		catchErr("Failed to get pool info", pErr)
+
+		c.metadataBucketHandle, gbErr = pool.GetBucket(metadataBucket)
+
+		if sleepDuration < BACKOFF_THRESHOLD {
+			sleepDuration = sleepDuration * 2
+		}
+	}
+}
+
+func (c *Consumer) doLastSeqNoCheckpoint() {
+	c.checkpointTicker = time.NewTicker(CHECKPOINT_INTERVAL * time.Second)
+
+	// NOTE: This logic will go away when integration with ns_server finishes,
+	// as we would depend on ns_server to provide the active interface
+	ipAddr, err := ExternalIP()
+	if err != nil {
+		catchErr("Failed to grab routable network interface", err)
+		return
+	}
+	for {
+		select {
+		case <-c.checkpointTicker.C:
+			var vbBlob vbucketKVBlob
+			c.Lock()
+			for k, v := range c.vbProcessingStats {
+				vbKey := "vb_" + strconv.Itoa(int(k))
+				err := c.metadataBucketHandle.Get(vbKey, &vbBlob)
+				if err != nil {
+					catchErr(fmt.Sprintf("Bucket fetch failed for key: %s", vbKey), err)
+					vbBlob.CurrentVBOwner = ipAddr
+					vbBlob.LastSeqNoProcessed = v["last_processed_seq_no"]
+					err := c.metadataBucketHandle.Set(vbKey, 0, &vbBlob)
+					catchErr(
+						fmt.Sprintf("Bucket set operation failed for key: %s", vbKey), err)
+					continue
+				}
+
+				if (ipAddr == vbBlob.CurrentVBOwner || vbBlob.CurrentVBOwner == "") &&
+					vbBlob.NewVBOwner == "" {
+					if vbBlob.CurrentVBOwner == "" {
+						vbBlob.CurrentVBOwner = ipAddr
+					}
+					vbBlob.LastSeqNoProcessed = v["last_processed_seq_no"]
+					err := c.metadataBucketHandle.Set(vbKey, 0, &vbBlob)
+					catchErr(
+						fmt.Sprintf("Bucket set operation failed for key: %s", vbKey), err)
+				}
+			}
+			c.Unlock()
+		case <-c.stopCheckpointingCh:
+			return
+		}
+	}
 }
 
 func (c *Consumer) sendInitV8Worker(appName string) {
@@ -163,16 +320,16 @@ func (c *Consumer) sendMessage(msg *Message) error {
 		ReadPayload(msg.Payload)
 	}
 	err := binary.Write(&buffer, binary.LittleEndian, uint32(len(msg.Header)))
-	catchErr("writing header size", err)
+	catchErr("Failure hile writing header size", err)
 
 	err = binary.Write(&buffer, binary.LittleEndian, uint32(len(msg.Payload)))
-	catchErr("writing payload size", err)
+	catchErr("Failure while writing payload size", err)
 
 	err = binary.Write(&buffer, binary.LittleEndian, msg.Header)
-	catchErr("writing encoded header", err)
+	catchErr("Failure while writing encoded header", err)
 
 	err = binary.Write(&buffer, binary.LittleEndian, msg.Payload)
-	catchErr("writing encoded payload", err)
+	catchErr("Failure while writing encoded payload", err)
 
 	err = binary.Write(c.conn, binary.LittleEndian, buffer.Bytes())
 	c.catchDeadConnection("Write to consumer socket", err)
@@ -202,13 +359,6 @@ func (c *Consumer) readMessage() *Response {
 	return result
 }
 
-func catchErr(context string, err error) {
-	if err != nil {
-		log.Printf("Failure writing to the byte buffer while %s, err: %s\n",
-			context, err.Error())
-	}
-}
-
 func (c *Consumer) catchDeadConnection(context string, err error) {
 	if err != nil {
 		log.Printf("Write to downstream socket failed while %s, err: %s\n",
@@ -217,23 +367,4 @@ func (c *Consumer) catchDeadConnection(context string, err error) {
 		c.stopConsumerCh <- true
 		c.conn.Close()
 	}
-}
-
-func sprintDCPCounts(counts map[mcd.CommandCode]int) string {
-	line := ""
-	for i := 0; i < 256; i++ {
-		opcode := mcd.CommandCode(i)
-		if n, ok := counts[opcode]; ok {
-			line += fmt.Sprintf("%s:%v ", mcd.CommandNames[opcode], n)
-		}
-	}
-	return strings.TrimRight(line, " ")
-}
-
-func sprintV8Counts(counts map[string]int) string {
-	line := ""
-	for k, v := range counts {
-		line += fmt.Sprintf("%s:%v ", k, v)
-	}
-	return strings.TrimRight(line, " ")
 }

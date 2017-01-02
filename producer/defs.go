@@ -2,22 +2,49 @@ package producer
 
 import (
 	"net"
+	"sync"
 	"time"
 
 	"github.com/couchbase/eventing/suptree"
+	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 )
 
 const (
+	// Folder containing all eventing app definition and configs
+	APPS_FOLDER = "./apps/"
+
+	KV_PORT        = "11210"
+	NS_SERVER_PORT = "8091"
+
 	NUM_VBUCKETS = 1024
+
+	// Threshold for exponential backoff for various
+	// KV bucket related operations via go-couchbase
+	BACKOFF_THRESHOLD = time.Duration(8)
+
+	// DCP consumer related configs
+	DCP_GEN_CHAN_SIZE   = 10000
+	DCP_DATA_CHAN_SIZE  = 10000
+	DCP_NUM_CONNECTIONS = 4
+
+	// Last processed seq # checkpoint interval, in seconds
+	CHECKPOINT_INTERVAL = 5
 )
 
 type Consumer struct {
-	app      *AppConfig
-	conn     net.Conn
+	app  *appConfig
+	conn net.Conn
+
 	dcpFeed  *couchbase.DcpFeed
-	producer *Producer
+	cbBucket *couchbase.Bucket
+	vbnos    []uint16
+
+	workerName string
+	producer   *Producer
+
+	metadataBucketHandle *cbbucket.Bucket
 
 	// OS pid of c++ v8 worker
 	osPid int
@@ -30,7 +57,12 @@ type Consumer struct {
 	// Populated when downstream tcp socket mapping to
 	// C++ v8 worker is down. Buffered channel to avoid deadlock
 	stopConsumerCh chan bool
-	tcpPort        string
+
+	// Chan to stop background checkpoint routine, keeping track
+	// of last seq # processed
+	stopCheckpointingCh chan bool
+
+	tcpPort string
 
 	// Tracks DCP Opcodes processed per consumer
 	dcpMessagesProcessed map[mcd.CommandCode]int
@@ -38,21 +70,28 @@ type Consumer struct {
 	// Tracks V8 Opcodes processed per consumer
 	v8WorkerMessagesProcessed map[string]int
 
-	statsTicker *time.Ticker
+	sync.Mutex
+	// Maps vbucketid => (SeqNo, SnapshotStartSeqNo, SnapshotEndSeqNo) => counter
+	vbProcessingStats map[uint16]map[string]uint64
+
+	statsTicker      *time.Ticker
+	checkpointTicker *time.Ticker
 }
 
 type Producer struct {
-	App              *AppConfig
-	Auth             string
-	Bucket           string
-	KVHostPort       []string
-	NSServerHostPort string
+	AppName string
+
+	app              *appConfig
+	auth             string
+	bucket           string
+	kvHostPort       []string
+	nsServerHostPort string
 	tcpPort          string
-	StopProducerCh   chan bool
-	WorkerCount      int
+	stopProducerCh   chan bool
+	workerCount      int
 
 	// time.Ticker duration for dumping consumer stats
-	StatsTickDuration time.Duration
+	statsTickDuration time.Duration
 
 	// Map keeping track of start and end vbucket
 	// for each worker
@@ -63,16 +102,17 @@ type Producer struct {
 	workerSupervisor *suptree.Supervisor
 }
 
-type DcpEventMetadata struct {
-	Cas       uint64 `json:"cas"`
-	Expiry    uint32 `json:"expiry"`
-	Flag      uint32 `json:"flag"`
-	Partition string `json:"partition"`
-	Seq       uint64 `json:"seq"`
+type appConfig struct {
+	AppName string      `json:"appname"`
+	AppCode string      `json:"appcode"`
+	Depcfg  interface{} `json:"depcfg"`
+	ID      int         `json:"id"`
 }
 
-type AppConfig struct {
-	AppName    string
-	AppCode    string
-	BucketName string
+type vbucketKVBlob struct {
+	CurrentVBOwner     string `json:"current_vb_owner"`
+	LastSeqNoProcessed uint64 `json:"last_processed_seq_no"`
+	SnapshotStartSeqNo uint64 `json:"snapshot_start_seq_no"`
+	SnapshotEndSeqNo   uint64 `json:"snapshot_end_seq_no"`
+	NewVBOwner         string `json:"new_vb_owner"`
 }

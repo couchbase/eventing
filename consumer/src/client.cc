@@ -315,7 +315,7 @@ int main(int argc, char **argv) {
   std::string appname(argv[1]);
   std::string timestamp(argv[3]);
   std::string error_log_file =
-      std::string("client.error_") + appname + timestamp + std::string(".log");
+      std::string("client_error_") + appname + timestamp + std::string(".log");
 
   cerror_out.open(error_log_file.c_str());
 

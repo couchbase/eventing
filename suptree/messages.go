@@ -1,8 +1,5 @@
 package suptree
 
-// sum type pattern for type-safe message passing; see
-// http://www.jerf.org/iri/post/2917
-
 type supervisorMessage interface {
 	isSupervisorMessage()
 }

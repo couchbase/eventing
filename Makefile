@@ -16,15 +16,15 @@ OUT=$(CMD_DIR)client.bin
 
 build:
 	$(CXX) $(CXFLAGS) $(SOURCES) $(INCLUDE_DIRS) $(LDFLAGS) -o $(OUT)
-	cd $(CMD_DIR); go build
+	cd $(CMD_DIR); go build; bash fix_rpath.sh
 
 allopt:
 	$(CXX) $(CXFLAGS) $(SOURCES) $(INCLUDE_DIRS) $(LDFLAGS) -O3 -o $(OUT)
-	cd $(CMD_DIR); go build
-	cd $(CMD_DIR); ./producer -kv 127.0.0.1:11210 -n 127.0.0.1:8091
+	cd $(CMD_DIR); go build; bash fix_rpath.sh
+	cd $(CMD_DIR); ./producer
 
 run: build
-	cd $(CMD_DIR); ./producer -kv 127.0.0.1:11210 -n 127.0.0.1:8091
+	cd $(CMD_DIR); ./producer
 
 clean:
 	rm -rf $(OUT)
