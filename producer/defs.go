@@ -15,6 +15,8 @@ const (
 	// Folder containing all eventing app definition and configs
 	APPS_FOLDER = "./apps/"
 
+	EVENTING_ADMIN_SERVICE = "eventingAdminPort"
+
 	KV_PORT        = "11210"
 	NS_SERVER_PORT = "8091"
 
@@ -70,7 +72,7 @@ type Consumer struct {
 	// Tracks V8 Opcodes processed per consumer
 	v8WorkerMessagesProcessed map[string]int
 
-	sync.Mutex
+	sync.RWMutex
 	// Maps vbucketid => (SeqNo, SnapshotStartSeqNo, SnapshotEndSeqNo) => counter
 	vbProcessingStats map[uint16]map[string]uint64
 

@@ -47,7 +47,19 @@ func (p *Producer) startBucket() {
 
 	log.Printf("Connecting with %q\n", p.bucket)
 	b, err := common.ConnectBucket(p.nsServerHostPort, "default", p.bucket)
-	catchErr("Failed to connect to bucket", err)
+	sleepDuration := time.Duration(1)
+
+	for err != nil {
+		catchErr(fmt.Sprintf("Connect to bucket: %s failed, retrying after %d sec,"+
+			" error encountered", int(sleepDuration), p.bucket), err)
+		time.Sleep(sleepDuration * time.Second)
+
+		b, err = common.ConnectBucket(p.nsServerHostPort, "default", p.bucket)
+
+		if sleepDuration < BACKOFF_THRESHOLD {
+			sleepDuration = sleepDuration * 2
+		}
+	}
 
 	p.initWorkerVbMap()
 
@@ -68,8 +80,8 @@ func (p *Producer) initWorkerVbMap() {
 		p.workerVbucketMap[i] = make(map[string]interface{})
 		p.workerVbucketMap[i]["state"] = "pending"
 		p.workerVbucketMap[i]["start_vb"] = startVB
-		p.workerVbucketMap[i]["end_vb"] = startVB + vbucketPerWorker
-		startVB += vbucketPerWorker + 1
+		p.workerVbucketMap[i]["end_vb"] = startVB + vbucketPerWorker - 1
+		startVB += vbucketPerWorker
 	}
 
 	p.workerVbucketMap[p.workerCount-1] = make(map[string]interface{})

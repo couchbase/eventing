@@ -1,12 +1,11 @@
 package producer
 
 import (
-	"errors"
 	"fmt"
 	"log"
-	"net"
 	"strings"
 
+	"github.com/couchbase/indexing/secondary/common"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 )
 
@@ -52,48 +51,48 @@ func catchErr(context string, err error) {
 	}
 }
 
-func ExternalIP() (string, error) {
-	ifaces, err := net.Interfaces()
+func getEventingNodesAddresses(auth, hostaddress string) ([]string, error) {
+	cinfo, err := getClusterInfoCache(auth, hostaddress)
+	if err != nil {
+		return nil, err
+	}
+
+	eventingAddrs := cinfo.GetNodesByServiceType(EVENTING_ADMIN_SERVICE)
+
+	eventingNodes := []string{}
+	for _, eventingAddr := range eventingAddrs {
+		addr, _ := cinfo.GetServiceAddress(eventingAddr, EVENTING_ADMIN_SERVICE)
+		eventingNodes = append(eventingNodes, addr)
+	}
+
+	return eventingNodes, nil
+}
+
+func getLocalEventingServiceHost(auth, hostaddress string) (string, error) {
+	cinfo, err := getClusterInfoCache(auth, hostaddress)
 	if err != nil {
 		return "", err
 	}
 
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 {
-			// interface down
-			continue
-		}
-
-		if iface.Flags&net.FlagLoopback != 0 {
-			// Loopback interface
-			continue
-		}
-
-		addrs, err := iface.Addrs()
-		if err != nil {
-			return "", nil
-		}
-
-		for _, addr := range addrs {
-			var ip net.IP
-			switch v := addr.(type) {
-			case *net.IPNet:
-				ip = v.IP
-			case *net.IPAddr:
-				ip = v.IP
-			}
-
-			if ip == nil || ip.IsLoopback() {
-				continue
-			}
-
-			ip = ip.To4()
-			if ip == nil {
-				// not an IPV4 address
-				continue
-			}
-			return ip.String(), nil
-		}
+	srvAddr, err := cinfo.GetLocalServiceHost(EVENTING_ADMIN_SERVICE)
+	if err != nil {
+		return "", err
 	}
-	return "", errors.New("offline from network")
+
+	return srvAddr, nil
+}
+
+func getClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, error) {
+	clusterURL := fmt.Sprintf("http://%s@%s", auth, hostaddress)
+
+	cinfo, err := common.NewClusterInfoCache(clusterURL, "default")
+	if err != nil {
+		return nil, err
+	}
+
+	if err := cinfo.Fetch(); err != nil {
+		return nil, err
+	}
+
+	return cinfo, nil
 }

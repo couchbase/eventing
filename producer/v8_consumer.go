@@ -42,13 +42,27 @@ func (c *Consumer) Serve() {
 		"numConnections": DCP_NUM_CONNECTIONS,
 	}
 
+	go c.startDcp(dcpConfig)
+
 	var err error
 	c.dcpFeed, err = c.cbBucket.StartDcpFeedOver(
 		couchbase.NewDcpFeedName("eventing_"+c.workerName),
 		uint32(0), c.producer.kvHostPort, 0xABCD, dcpConfig)
-	catchErr("Failed to start dcp feed", err)
+	sleepDuration := time.Duration(1)
+	for err != nil {
+		catchErr(fmt.Sprintf("Failed to start dcp feed, retrying after %d secs",
+			int(sleepDuration)), err)
 
-	go c.startDcp(dcpConfig)
+		time.Sleep(sleepDuration * time.Second)
+
+		c.dcpFeed, err = c.cbBucket.StartDcpFeedOver(
+			couchbase.NewDcpFeedName("eventing_"+c.workerName),
+			uint32(0), c.producer.kvHostPort, 0xABCD, dcpConfig)
+
+		if sleepDuration < BACKOFF_THRESHOLD {
+			sleepDuration = sleepDuration * 2
+		}
+	}
 
 	log.Printf("Spawning worker corresponding to producer running"+
 		" on port %s\n", c.tcpPort)
@@ -105,7 +119,6 @@ func (c *Consumer) Serve() {
 				if _, ok := c.dcpMessagesProcessed[e.Opcode]; !ok {
 					c.dcpMessagesProcessed[e.Opcode] = 0
 				}
-				c.dcpMessagesProcessed[e.Opcode]++
 
 				if _, ok := c.vbProcessingStats[e.VBucket]; !ok {
 					c.vbProcessingStats[e.VBucket] = make(map[string]uint64)
@@ -113,6 +126,7 @@ func (c *Consumer) Serve() {
 				}
 
 				c.Lock()
+				c.dcpMessagesProcessed[e.Opcode]++
 				c.vbProcessingStats[e.VBucket]["last_processed_seq_no"] = e.Seqno
 				c.Unlock()
 
@@ -126,10 +140,12 @@ func (c *Consumer) Serve() {
 				}
 			}
 		case <-c.statsTicker.C:
-			log.Printf("DCP opcode processing couter: %s\n",
-				sprintDCPCounts(c.dcpMessagesProcessed))
-			log.Printf("V8 opcode processing counter: %s\n",
-				sprintV8Counts(c.v8WorkerMessagesProcessed))
+			c.RLock()
+			log.Printf("Consumer: %s DCP opcode processing counter: %s\n",
+				c.workerName, sprintDCPCounts(c.dcpMessagesProcessed))
+			log.Printf("Consumer: %s V8 opcode processing counter: %s\n",
+				c.workerName, sprintV8Counts(c.v8WorkerMessagesProcessed))
+			c.RUnlock()
 		case <-c.stopConsumerCh:
 			log.Printf("Socket belonging to V8 consumer died\n")
 			c.stopCheckpointingCh <- true
@@ -152,8 +168,19 @@ func (c *Consumer) String() string {
 
 func (c *Consumer) startDcp(dcpConfig map[string]interface{}) {
 	flogs, err := c.cbBucket.GetFailoverLogs(0xABCD, c.vbnos, dcpConfig)
-	_, err = c.cbBucket.GetFailoverLogs(0xABCD, c.vbnos, dcpConfig)
-	catchErr("Failed to get dcp failover logs", err)
+	sleepDuration := time.Duration(1)
+	for err != nil {
+		catchErr(
+			fmt.Sprintf("Failed to get dcp failover logs, retrying after %d secs",
+				int(sleepDuration)), err)
+
+		time.Sleep(sleepDuration * time.Second)
+		flogs, err = c.cbBucket.GetFailoverLogs(0xABCD, c.vbnos, dcpConfig)
+
+		if sleepDuration < BACKOFF_THRESHOLD {
+			sleepDuration = sleepDuration * 2
+		}
+	}
 
 	end := uint64(0xFFFFFFFFFFFFFFFF)
 	for vbno, flog := range flogs {
@@ -165,7 +192,6 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}) {
 
 		// TODO: More error handling
 		err := c.metadataBucketHandle.Get(vbKey, &vbBlob)
-		start, snapStart, snapEnd := uint64(0), uint64(0), uint64(0)
 		if err != nil {
 			catchErr(
 				fmt.Sprintf("Bucket fetch failed for key: %s, "+
@@ -176,19 +202,19 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}) {
 			if fErr != nil {
 				catchErr(fmt.Sprintf("stream-req for %v failed", vbno), fErr)
 			} else {
-				log.Printf("dcp stream created for vb: %d\n", vbno)
+				log.Printf("Consumer: %s vb: %d dcp stream created\n",
+					c.workerName, vbno)
 			}
 		} else {
 			start, snapStart, snapEnd := vbBlob.LastSeqNoProcessed,
 				vbBlob.LastSeqNoProcessed, vbBlob.LastSeqNoProcessed
-			log.Printf("VB: %d Starting DCP stream from seq #: %d\n", vbno, start)
+			log.Printf("Consumer: %s vb: %d starting DCP stream from seq #: %d\n",
+				c.workerName, vbno, start)
+
 			fErr := c.dcpFeed.DcpRequestStream(
 				vbno, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
 			catchErr(fmt.Sprintf("stream-req for %v failed", vbno), fErr)
 		}
-		err = c.dcpFeed.DcpRequestStream(
-			vbno, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
-		catchErr(fmt.Sprintf("stream-req for %v failed", vbno), err)
 	}
 }
 
@@ -209,8 +235,8 @@ func (c *Consumer) initCBBucketConnHandle() {
 	sleepDuration := time.Duration(1)
 	for gbErr != nil {
 		catchErr(
-			fmt.Sprintf("Bucket: %s missing, retrying after %v seconds, err",
-				metadataBucket, sleepDuration), gbErr)
+			fmt.Sprintf("Bucket: %s missing, retrying after %d seconds, err",
+				metadataBucket, int(sleepDuration)), gbErr)
 		time.Sleep(sleepDuration * time.Second)
 
 		conn, cErr = cbbucket.Connect(connStr)
@@ -230,9 +256,8 @@ func (c *Consumer) initCBBucketConnHandle() {
 func (c *Consumer) doLastSeqNoCheckpoint() {
 	c.checkpointTicker = time.NewTicker(CHECKPOINT_INTERVAL * time.Second)
 
-	// NOTE: This logic will go away when integration with ns_server finishes,
-	// as we would depend on ns_server to provide the active interface
-	ipAddr, err := ExternalIP()
+	// Leveraging ClusterInfoCache from secondary indexes
+	ipAddr, err := getLocalEventingServiceHost(c.producer.auth, c.producer.nsServerHostPort)
 	if err != nil {
 		catchErr("Failed to grab routable network interface", err)
 		return
@@ -241,7 +266,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 		select {
 		case <-c.checkpointTicker.C:
 			var vbBlob vbucketKVBlob
-			c.Lock()
+			c.RLock()
 			for k, v := range c.vbProcessingStats {
 				vbKey := "vb_" + strconv.Itoa(int(k))
 				err := c.metadataBucketHandle.Get(vbKey, &vbBlob)
@@ -266,7 +291,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 						fmt.Sprintf("Bucket set operation failed for key: %s", vbKey), err)
 				}
 			}
-			c.Unlock()
+			c.RUnlock()
 		case <-c.stopCheckpointingCh:
 			return
 		}
