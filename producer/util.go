@@ -2,11 +2,12 @@ package producer
 
 import (
 	"fmt"
-	"log"
 	"strings"
+	"time"
 
 	"github.com/couchbase/indexing/secondary/common"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
+	"github.com/couchbase/indexing/secondary/logging"
 )
 
 func listOfVbnos(startVB int, endVB int) []uint16 {
@@ -45,10 +46,21 @@ func sprintV8Counts(counts map[string]int) string {
 	return strings.TrimRight(line, " ")
 }
 
-func catchErr(context string, err error) {
+func getKVNodesAddresses(auth, hostaddress string) ([]string, error) {
+	cinfo, err := getClusterInfoCache(auth, hostaddress)
 	if err != nil {
-		log.Printf("%s : %s", context, err.Error())
+		return nil, err
 	}
+
+	kvAddrs := cinfo.GetNodesByServiceType(DATA_SERVICE)
+
+	kvNodes := []string{}
+	for _, kvAddr := range kvAddrs {
+		addr, _ := cinfo.GetServiceAddress(kvAddr, DATA_SERVICE)
+		kvNodes = append(kvNodes, addr)
+	}
+
+	return kvNodes, nil
 }
 
 func getEventingNodesAddresses(auth, hostaddress string) ([]string, error) {
@@ -61,11 +73,31 @@ func getEventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 
 	eventingNodes := []string{}
 	for _, eventingAddr := range eventingAddrs {
-		addr, _ := cinfo.GetServiceAddress(eventingAddr, EVENTING_ADMIN_SERVICE)
+		addr, err := cinfo.GetServiceAddress(eventingAddr, EVENTING_ADMIN_SERVICE)
+		if err != nil {
+			logging.Errorf("UTIL Failed to get eventing node address, err: %v", err)
+			continue
+		}
 		eventingNodes = append(eventingNodes, addr)
 	}
 
 	return eventingNodes, nil
+}
+
+func getCurrentEventingNodeAddress(auth, hostaddress string) (string, error) {
+	cinfo, err := getClusterInfoCache(auth, hostaddress)
+	if err != nil {
+		return "", err
+	}
+
+	cNodeId := cinfo.GetCurrentNode()
+	eventingNode, err := cinfo.GetServiceAddress(cNodeId, EVENTING_ADMIN_SERVICE)
+	if err != nil {
+		logging.Errorf("UTIL Failed to get current eventing node address, err: %v", err)
+		return "", err
+	} else {
+		return eventingNode, nil
+	}
 }
 
 func getLocalEventingServiceHost(auth, hostaddress string) (string, error) {

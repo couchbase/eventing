@@ -4,20 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
-	"strings"
 	"time"
+
+	"github.com/couchbase/indexing/secondary/logging"
 )
 
 func (p *Producer) parseDepcfg() {
-	log.Println("Opening up application file for app:", p.AppName)
+	logging.Infof("DCFG[%s] Opening up application file", p.AppName)
 
 	depcfgData, err := ioutil.ReadFile(APPS_FOLDER + p.AppName)
 	if err == nil {
 		err := json.Unmarshal(depcfgData, &p.app)
 		if err != nil {
-			log.Println("Failed to parse depcfg for app", p.AppName,
-				"with err:", err.Error())
+			logging.Errorf("DCFG[%s] Failed to parse depcfg, err: %v", p.AppName, err)
 			return
 		}
 
@@ -25,15 +24,26 @@ func (p *Producer) parseDepcfg() {
 
 		p.auth = config["auth"].(string)
 		p.bucket = config["source_bucket"].(string)
-		p.kvHostPort = strings.Split(config["source_node"].(string)+":"+KV_PORT, ",")
-		p.nsServerHostPort = fmt.Sprintf("%s:%s", config["source_node"].(string),
-			NS_SERVER_PORT)
+
+		hostaddr := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
+
+		localAddress, err := getLocalEventingServiceHost(p.auth, hostaddr)
+		if err != nil {
+			logging.Errorf("DCFG[%s] Failed to get address for local eventing node, err :%v", p.AppName, err)
+		}
+
+		p.kvHostPort, err = getKVNodesAddresses(p.auth, hostaddr)
+		if err != nil {
+			logging.Errorf("DCFG[%s] Failed to get list of kv nodes in the cluster, err: %v", p.AppName, err)
+		}
+
+		p.nsServerHostPort = fmt.Sprintf("%s:%s", localAddress, p.NsServerPort)
+
 		p.statsTickDuration = time.Duration(config["tick_duration"].(float64))
 		p.workerCount = int(config["worker_count"].(float64))
 
 		return
 	} else {
-		log.Printf("Encountered err:", err.Error(),
-			"while trying to parse depcfg for app:", p.AppName)
+		logging.Errorf("DCFG[%s] Failed to read depcfg, err: %v", p.AppName, err)
 	}
 }
