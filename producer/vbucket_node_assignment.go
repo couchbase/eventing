@@ -1,30 +1,19 @@
 package producer
 
 import (
-	"fmt"
-	"sort"
+	"time"
 
+	"github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
 // Generates the vbucket to eventing node assignment, ideally generated map should
 // be consistent across all nodes
 func (p *Producer) vbEventingNodeAssign() {
-	var err error
 
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
+	Retry(NewFixedBackoff(time.Second), getKVNodesAddressesOpCallback, p)
 
-	p.kvNodeAddrs, err = getKVNodesAddresses(p.auth, hostAddress)
-	if err != nil {
-		logging.Errorf("VBNA[%s:%d] Failed to get all KV nodes, err: %v", p.AppName, len(p.runningConsumers), err)
-	}
-
-	p.eventingNodeAddrs, err = getEventingNodesAddresses(p.auth, hostAddress)
-	if err != nil {
-		logging.Errorf("VBNA[%s:%d] Failed to get all eventing nodes, err: %v", p.AppName, len(p.runningConsumers), err)
-	}
-
-	sort.Strings(p.eventingNodeAddrs)
+	Retry(NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, p)
 
 	vbucketPerNode := NUM_VBUCKETS / len(p.eventingNodeAddrs)
 	var startVb uint16
@@ -40,12 +29,10 @@ func (p *Producer) vbEventingNodeAssign() {
 }
 
 func (p *Producer) getKvVbMap() {
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
-	cinfo, err := getClusterInfoCache(p.auth, hostAddress)
-	if err != nil {
-		logging.Errorf("VBNA[%s:%d] Failed to get CIC handle while trying to get kv vbmap, err: %v", p.AppName, len(p.runningConsumers), err)
-		return
-	}
+
+	var cinfo *common.ClusterInfoCache
+
+	Retry(NewFixedBackoff(time.Second), getClusterInfoCacheOpCallback, p, &cinfo)
 
 	kvAddrs := cinfo.GetNodesByServiceType(DATA_SERVICE)
 

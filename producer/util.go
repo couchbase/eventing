@@ -2,9 +2,10 @@ package producer
 
 import (
 	"fmt"
+	"sort"
 	"strings"
-	"time"
 
+	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/indexing/secondary/common"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	"github.com/couchbase/indexing/secondary/logging"
@@ -60,6 +61,8 @@ func getKVNodesAddresses(auth, hostaddress string) ([]string, error) {
 		kvNodes = append(kvNodes, addr)
 	}
 
+	sort.Strings(kvNodes)
+
 	return kvNodes, nil
 }
 
@@ -80,6 +83,8 @@ func getEventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 		}
 		eventingNodes = append(eventingNodes, addr)
 	}
+
+	sort.Strings(eventingNodes)
 
 	return eventingNodes, nil
 }
@@ -127,4 +132,35 @@ func getClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, er
 	}
 
 	return cinfo, nil
+}
+
+func memcachedErrCode(err error) gomemcached.Status {
+	status := gomemcached.Status(0xffff)
+	if res, ok := err.(*gomemcached.MCResponse); ok {
+		status = res.Status
+	}
+	return status
+}
+
+func compareSlices(s1, s2 []string) bool {
+
+	if s1 == nil || s2 == nil {
+		return true
+	}
+
+	if s1 == nil || s2 == nil {
+		return false
+	}
+
+	if len(s1) != len(s2) {
+		return true
+	}
+
+	for i := range s1 {
+		if s1[i] != s2[i] {
+			return false
+		}
+	}
+
+	return true
 }

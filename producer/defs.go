@@ -9,6 +9,7 @@ import (
 	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
+	cb "github.com/couchbase/indexing/secondary/dcp/transport/client"
 )
 
 const (
@@ -20,24 +21,33 @@ const (
 
 	NUM_VBUCKETS = 1024
 
-	// Threshold for exponential backoff for various
-	// KV bucket related operations via go-couchbase
-	BACKOFF_THRESHOLD = time.Duration(8)
-
 	// DCP consumer related configs
 	DCP_GEN_CHAN_SIZE   = 10000
 	DCP_DATA_CHAN_SIZE  = 10000
 	DCP_NUM_CONNECTIONS = 4
 
 	// Last processed seq # checkpoint interval, in seconds
-	CHECKPOINT_INTERVAL = 5
+	CHECKPOINT_INTERVAL = 1
 
 	// Interval for retrying failed bucket operations using go-couchbase, in milliseconds
 	BUCKET_OP_RETRY_INTERVAL = 100
 
-	// Interval for spawning another routine to keep an eye on cluster state change
+	// Interval for spawning another routine to keep an eye on cluster state change, in seconds
 	WATCH_CLUSTER_CHANGE_INTERVAL = 1
 )
+
+const (
+	DCP_STREAM_RUNNING = "running"
+	DCP_STREAM_STOPPED = "stopped"
+)
+
+type vbFlogEntry struct {
+	seqNo          uint64
+	streamReqRetry bool
+	statusCode     mcd.Status
+	vb             uint16
+	flog           *cb.FailoverLog
+}
 
 type Consumer struct {
 	app  *appConfig
@@ -46,6 +56,9 @@ type Consumer struct {
 	dcpFeed  *couchbase.DcpFeed
 	cbBucket *couchbase.Bucket
 	vbnos    []uint16
+
+	// Map that needed to short circuits failover log to dcp stream request routine
+	vbFlogChan chan *vbFlogEntry
 
 	// host:port handle for current eventing node
 	hostPortAddr string

@@ -9,7 +9,6 @@ import (
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/dcp"
 	"github.com/couchbase/indexing/secondary/logging"
 )
@@ -41,18 +40,38 @@ func (p *Producer) Serve() {
 	for {
 		select {
 		case <-p.clusterStateChange:
-			// Gracefully tear down everything
-			for _, consumer := range p.runningConsumers {
-				p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[consumer])
-				delete(p.consumerSupervisorTokenMap, consumer)
+
+			hostAddress := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
+			kvNodeAddrs, err := getKVNodesAddresses(p.auth, hostAddress)
+			if err != nil {
+				logging.Errorf("PRDR[%s:%d] Failed to get all KV nodes, err: %v", p.AppName, len(p.runningConsumers), err)
 			}
-			p.runningConsumers = p.runningConsumers[:0]
 
-			p.parseDepcfg()
-			p.vbEventingNodeAssign()
-			p.getKvVbMap()
+			eventingNodeAddrs, err := getEventingNodesAddresses(p.auth, hostAddress)
+			if err != nil {
+				logging.Errorf("PRDR[%s:%d] Failed to get all eventing nodes, err: %v", p.AppName, len(p.runningConsumers), err)
+			}
 
-			p.startBucket()
+			cmpKvNodes := compareSlices(kvNodeAddrs, p.kvNodeAddrs)
+			cmpEventingNodes := compareSlices(eventingNodeAddrs, p.eventingNodeAddrs)
+
+			if cmpEventingNodes && cmpKvNodes {
+				logging.Infof("PRDR[%s:%d] Continuing as state of KV and eventing nodes hasn't changed. KV: %v Eventing: %v",
+					p.AppName, len(p.runningConsumers), kvNodeAddrs, eventingNodeAddrs)
+			} else {
+				// Gracefully tear down everything
+				for _, consumer := range p.runningConsumers {
+					p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[consumer])
+					delete(p.consumerSupervisorTokenMap, consumer)
+				}
+				p.runningConsumers = p.runningConsumers[:0]
+
+				p.parseDepcfg()
+				p.vbEventingNodeAssign()
+				p.getKvVbMap()
+
+				p.startBucket()
+			}
 		case <-p.stopProducerCh:
 			logging.Infof("PRDR[%s:%d] Explicitly asked to shutdown producer routine", p.AppName, len(p.runningConsumers))
 			return
@@ -74,21 +93,9 @@ func (p *Producer) startBucket() {
 
 	logging.Infof("PRDR[%s:%d] Connecting with bucket: %q", p.AppName, len(p.runningConsumers), p.bucket)
 
-	hostPortAddr := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
-	b, err := common.ConnectBucket(hostPortAddr, "default", p.bucket)
-	sleepDuration := time.Duration(1)
+	var b *couchbase.Bucket
 
-	for err != nil {
-		logging.Errorf("PRDR[%s:%d] Connect to bucket: %s failed, retrying after %d sec, err: %v",
-			p.AppName, len(p.runningConsumers), int(sleepDuration), p.bucket, err)
-		time.Sleep(sleepDuration * time.Second)
-
-		b, err = common.ConnectBucket(p.nsServerHostPort, "default", p.bucket)
-
-		if sleepDuration < BACKOFF_THRESHOLD {
-			sleepDuration = sleepDuration * 2
-		}
-	}
+	Retry(NewFixedBackoff(time.Second), commonConnectBucketOpCallback, p, &b)
 
 	p.initWorkerVbMap()
 
@@ -158,6 +165,7 @@ func (p *Producer) handleV8Consumer(vbnos []uint16,
 		tcpPort:              p.tcpPort,
 		statsTicker:          time.NewTicker(p.statsTickDuration * time.Millisecond),
 		vbProcessingStats:    make(map[uint16]map[string]interface{}),
+		vbFlogChan:           make(chan *vbFlogEntry),
 		workerName:           fmt.Sprintf("worker_%s_%d", p.app.AppName, index),
 	}
 
