@@ -53,11 +53,11 @@ func getNsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
 		return nil, err
 	}
 
-	nsServerAddrs := cinfo.GetNodesByServiceType(MGMT_SERVICE)
+	nsServerAddrs := cinfo.GetNodesByServiceType(MgmtService)
 
 	nsServerNodes := []string{}
 	for _, nsServerAddr := range nsServerAddrs {
-		addr, _ := cinfo.GetServiceAddress(nsServerAddr, MGMT_SERVICE)
+		addr, _ := cinfo.GetServiceAddress(nsServerAddr, MgmtService)
 		nsServerNodes = append(nsServerNodes, addr)
 	}
 
@@ -72,11 +72,11 @@ func getKVNodesAddresses(auth, hostaddress string) ([]string, error) {
 		return nil, err
 	}
 
-	kvAddrs := cinfo.GetNodesByServiceType(DATA_SERVICE)
+	kvAddrs := cinfo.GetNodesByServiceType(DataService)
 
 	kvNodes := []string{}
 	for _, kvAddr := range kvAddrs {
-		addr, _ := cinfo.GetServiceAddress(kvAddr, DATA_SERVICE)
+		addr, _ := cinfo.GetServiceAddress(kvAddr, DataService)
 		kvNodes = append(kvNodes, addr)
 	}
 
@@ -91,11 +91,11 @@ func getEventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 		return nil, err
 	}
 
-	eventingAddrs := cinfo.GetNodesByServiceType(EVENTING_ADMIN_SERVICE)
+	eventingAddrs := cinfo.GetNodesByServiceType(EventingAdminService)
 
 	eventingNodes := []string{}
 	for _, eventingAddr := range eventingAddrs {
-		addr, err := cinfo.GetServiceAddress(eventingAddr, EVENTING_ADMIN_SERVICE)
+		addr, err := cinfo.GetServiceAddress(eventingAddr, EventingAdminService)
 		if err != nil {
 			logging.Errorf("UTIL Failed to get eventing node address, err: %v", err)
 			continue
@@ -115,7 +115,7 @@ func getCurrentEventingNodeAddress(auth, hostaddress string) (string, error) {
 	}
 
 	cNodeId := cinfo.GetCurrentNode()
-	eventingNode, err := cinfo.GetServiceAddress(cNodeId, EVENTING_ADMIN_SERVICE)
+	eventingNode, err := cinfo.GetServiceAddress(cNodeId, EventingAdminService)
 	if err != nil {
 		logging.Errorf("UTIL Failed to get current eventing node address, err: %v", err)
 		return "", err
@@ -130,7 +130,7 @@ func getLocalEventingServiceHost(auth, hostaddress string) (string, error) {
 		return "", err
 	}
 
-	srvAddr, err := cinfo.GetLocalServiceHost(EVENTING_ADMIN_SERVICE)
+	srvAddr, err := cinfo.GetLocalServiceHost(EventingAdminService)
 	if err != nil {
 		return "", err
 	}

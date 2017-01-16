@@ -17,14 +17,14 @@ func (p *Producer) vbEventingNodeAssign() {
 
 	Retry(NewFixedBackoff(time.Second), getNsServerNodesAddressesOpCallback, p)
 
-	vbucketPerNode := NUM_VBUCKETS / len(p.eventingNodeAddrs)
+	vbucketPerNode := NumVbuckets / len(p.eventingNodeAddrs)
 	var startVb uint16
 
 	p.Lock()
 	p.vbEventingNodeAssignMap = make(map[uint16]string)
 
 	for i := 0; i < len(p.eventingNodeAddrs); i++ {
-		for j := 0; j < vbucketPerNode && startVb < NUM_VBUCKETS; j++ {
+		for j := 0; j < vbucketPerNode && startVb < NumVbuckets; j++ {
 			p.vbEventingNodeAssignMap[startVb] = p.eventingNodeAddrs[i]
 			startVb++
 		}
@@ -38,12 +38,12 @@ func (p *Producer) getKvVbMap() {
 
 	Retry(NewFixedBackoff(time.Second), getClusterInfoCacheOpCallback, p, &cinfo)
 
-	kvAddrs := cinfo.GetNodesByServiceType(DATA_SERVICE)
+	kvAddrs := cinfo.GetNodesByServiceType(DataService)
 
 	p.kvVbMap = make(map[uint16]string)
 
 	for _, kvaddr := range kvAddrs {
-		addr, err := cinfo.GetServiceAddress(kvaddr, DATA_SERVICE)
+		addr, err := cinfo.GetServiceAddress(kvaddr, DataService)
 		if err != nil {
 			logging.Errorf("VBNA[%s:%d] Failed to get address of KV host, err: %v", p.AppName, len(p.runningConsumers), err)
 			continue

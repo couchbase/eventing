@@ -35,13 +35,16 @@ func (c *Consumer) Serve() {
 	c.initCBBucketConnHandle()
 
 	dcpConfig := map[string]interface{}{
-		"genChanSize":    DCP_GEN_CHAN_SIZE,
-		"dataChanSize":   DCP_DATA_CHAN_SIZE,
-		"numConnections": DCP_NUM_CONNECTIONS,
+		"genChanSize":    DcpGenChanSize,
+		"dataChanSize":   DcpDataChanSize,
+		"numConnections": DcpNumConnections,
 	}
 
 	var flogs couchbase.FailoverLog
-	Retry(NewFixedBackoff(time.Second), getFailoverLogOpCallback, c, &flogs, dcpConfig)
+	Retry(NewFixedBackoff(BucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs, dcpConfig)
+
+	logging.Infof("V8CR[%s:%s:%s:%d] vbnos len: %d vbnos dump: %#v",
+		c.producer.AppName, c.workerName, c.tcpPort, c.osPid, len(c.vbnos), c.vbnos)
 
 	logging.Infof("V8CR[%s:%s:%s:%d] Spawning worker corresponding to producer",
 		c.producer.AppName, c.workerName, c.tcpPort, c.osPid)
@@ -61,7 +64,7 @@ func (c *Consumer) Serve() {
 
 	rand.Seed(time.Now().UnixNano())
 	feedName := couchbase.DcpFeedName("eventing:" + c.workerName + "_" + strconv.Itoa(rand.Int()))
-	Retry(NewFixedBackoff(time.Second), startDCPFeedOpCallback, c, feedName, dcpConfig)
+	Retry(NewFixedBackoff(BucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, dcpConfig)
 
 	go c.startDcp(dcpConfig, flogs)
 
@@ -85,6 +88,10 @@ func (c *Consumer) Serve() {
 	go c.doLastSeqNoCheckpoint()
 	go c.doVbucketTakeover()
 
+	c.doDCPEventProcess()
+}
+
+func (c *Consumer) doDCPEventProcess() {
 	for {
 		select {
 		case e, ok := <-c.dcpFeed.C:
@@ -136,8 +143,9 @@ func (c *Consumer) Serve() {
 				if e.Status == mcd.SUCCESS {
 
 					c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", c.getHostPortAddr())
-					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", DCP_STREAM_RUNNING)
+					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", DcpStreamRunning)
 					c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", uint64(0))
+					c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", c.workerName)
 
 					vbFlog := &vbFlogEntry{streamReqRetry: false, statusCode: e.Status}
 
@@ -146,12 +154,12 @@ func (c *Consumer) Serve() {
 
 					vbKey := fmt.Sprintf("%s_vb_%s", c.producer.AppName, strconv.Itoa(int(e.VBucket)))
 
-					Retry(NewFixedBackoff(time.Second), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+					Retry(NewFixedBackoff(BucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 					vbuuid, seqNo, err := e.FailoverLog.Latest()
 					if err != nil {
 						logging.Errorf("V8CR[%s:%s:%s:%d] Failure to get latest failover log vb: %d err: %v, not updating metadata",
-							c.producer.AppName, c.workerName, c.tcpPort, c.osPid, e.VBucket, e.VBucket, err)
+							c.producer.AppName, c.workerName, c.tcpPort, c.osPid, e.VBucket, err)
 						c.vbFlogChan <- vbFlog
 						continue
 					}
@@ -159,7 +167,9 @@ func (c *Consumer) Serve() {
 					// Update metadata with latest vbuuid and rolback seq no.
 					vbBlob.LastSeqNoProcessed = seqNo
 					vbBlob.VBuuid = vbuuid
-					Retry(NewFixedBackoff(time.Second), casOpCallback, c, vbKey, &vbBlob, &cas)
+					vbBlob.AssignedWorker = c.workerName
+
+					Retry(NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
 
 					c.vbFlogChan <- vbFlog
 					continue
@@ -191,17 +201,17 @@ func (c *Consumer) Serve() {
 				var vbBlob vbucketKVBlob
 				var cas uint64
 
-				Retry(NewFixedBackoff(time.Second), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+				Retry(NewFixedBackoff(BucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 				vbBlob.CurrentVBOwner = ""
-				vbBlob.DCPStreamStatus = DCP_STREAM_STOPPED
+				vbBlob.DCPStreamStatus = DcpStreamStopped
 
 				vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64)
 
 				c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", vbBlob.CurrentVBOwner)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", vbBlob.DCPStreamStatus)
 
-				Retry(NewFixedBackoff(time.Second), casOpCallback, c, vbKey, &vbBlob, &cas)
+				Retry(NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
 			default:
 			}
 
@@ -252,7 +262,7 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{},
 	logging.Infof("V8CR[%s:%s:%s:%d] no. of vbs owned: %d vbnos owned: %#v",
 		c.producer.AppName, c.workerName, c.tcpPort, c.osPid, len(c.vbnos), c.vbnos)
 
-	Retry(NewFixedBackoff(time.Second), getEventingNodeAddrOpCallback, c)
+	Retry(NewFixedBackoff(ClusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
 	for vbno, flog := range flogs {
 		vbuuid, _, _ := flog.Latest()
@@ -262,14 +272,18 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{},
 		var cas, start uint64
 		var isNoEnt bool
 
-		Retry(NewFixedBackoff(time.Second), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
+		Retry(NewFixedBackoff(BucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
 		if isNoEnt {
 
 			// Storing vbuuid in metadata bucket, will be required for start
 			// stream later on
 			vbBlob.VBuuid = vbuuid
 			vbBlob.VBId = vbno
-			Retry(NewFixedBackoff(time.Second), setOpCallback, c, vbKey, &vbBlob)
+			vbBlob.AssignedWorker = c.workerName
+
+			c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", c.workerName)
+
+			Retry(NewFixedBackoff(BucketOpRetryInterval), setOpCallback, c, vbKey, &vbBlob)
 
 			start = uint64(0)
 			c.dcpRequestStreamHandle(vbno, &vbBlob, start)
@@ -282,7 +296,6 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{},
 				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
 			}
 		}
-
 	}
 }
 
@@ -330,21 +343,21 @@ func (c *Consumer) initCBBucketConnHandle() {
 	var conn cbbucket.Client
 	var pool cbbucket.Pool
 
-	Retry(NewFixedBackoff(time.Second), connectBucketOpCallback, c, &conn, connStr)
+	Retry(NewFixedBackoff(BucketOpRetryInterval), connectBucketOpCallback, c, &conn, connStr)
 
-	Retry(NewFixedBackoff(time.Second), poolGetBucketOpCallback, c, &conn, &pool, "default")
+	Retry(NewFixedBackoff(BucketOpRetryInterval), poolGetBucketOpCallback, c, &conn, &pool, "default")
 
-	Retry(NewFixedBackoff(time.Second), cbGetBucketOpCallback, c, &pool, metadataBucket)
+	Retry(NewFixedBackoff(BucketOpRetryInterval), cbGetBucketOpCallback, c, &pool, metadataBucket)
 }
 
 func (c *Consumer) doLastSeqNoCheckpoint() {
-	c.checkpointTicker = time.NewTicker(CHECKPOINT_INTERVAL * time.Second)
+	c.checkpointTicker = time.NewTicker(CheckPointInterval * time.Second)
 
 	for {
 		select {
 		case <-c.checkpointTicker.C:
 
-			Retry(NewFixedBackoff(time.Second), getEventingNodeAddrOpCallback, c)
+			Retry(NewFixedBackoff(ClusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
 			var vbBlob vbucketKVBlob
 
@@ -358,7 +371,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					var isNoEnt bool
 
 					// Case 1: Metadata blob doesn't exist probably the app is deployed for the first time.
-					Retry(NewFixedBackoff(time.Second), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
+					Retry(NewFixedBackoff(BucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
 					if isNoEnt {
 
 						vbBlob.CurrentVBOwner = c.getHostPortAddr()
@@ -372,7 +385,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 						logging.Infof("V8CR[%s:%s:%s:%d] vb: %d Creating the initial metadata blob entry",
 							c.producer.AppName, c.workerName, c.tcpPort, c.osPid, vbno)
 
-						Retry(NewFixedBackoff(time.Second), casOpCallback, c, vbKey, &vbBlob, &cas)
+						Retry(NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
 						continue
 					}
 
@@ -388,7 +401,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 						vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
 						vbBlob.DCPStreamStatus = c.vbProcessingStats.getVbStat(vbno, "dcp_stream_status").(string)
 
-						Retry(NewFixedBackoff(time.Second), casOpCallback, c, vbKey, &vbBlob, &cas)
+						Retry(NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
 						continue
 					}
 
@@ -396,14 +409,15 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					// closes dcp stream for it after updating last processed seq no
 					if c.getHostPortAddr() == vbBlob.CurrentVBOwner && vbBlob.NewVBOwner != "" {
 
-						vbBlob.DCPStreamStatus = DCP_STREAM_STOPPED
+						vbBlob.DCPStreamStatus = DcpStreamStopped
 						vbBlob.CurrentVBOwner = ""
 						vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 
 						c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
+
 						vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
 
-						Retry(NewFixedBackoff(time.Second), casOpCallback, c, vbKey, &vbBlob, &cas)
+						Retry(NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
 
 						logging.Infof("V8CR[%s:%s:%s:%d] vb: %d Closing dcp stream from node: %s as node: %s is requesting it's ownership. Node as per producer: %s",
 							c.producer.AppName, c.workerName, c.tcpPort, c.osPid, vbno, c.getHostPortAddr(), vbBlob.NewVBOwner, c.producer.vbEventingNodeAssignMap[vbno])
@@ -414,7 +428,6 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 						c.dcpFeed.DcpCloseStream(vbno, vbno)
 						continue
 					}
-
 				}
 			}
 
@@ -532,4 +545,10 @@ func (c *Consumer) getHostPortAddr() string {
 	c.RLock()
 	defer c.RUnlock()
 	return c.hostPortAddr
+}
+
+func (c *Consumer) getWorkerName() string {
+	c.RLock()
+	defer c.RUnlock()
+	return c.workerName
 }

@@ -35,6 +35,7 @@ func (p *Producer) Serve() {
 	p.workerSupervisor = suptree.NewSimple(p.AppName)
 	go p.workerSupervisor.ServeBackground()
 	go p.watchClusterChanges()
+	p.initWorkerVbMap()
 	p.startBucket()
 
 	for {
@@ -64,8 +65,13 @@ func (p *Producer) Serve() {
 
 					logging.Infof("PRDR[%s:%d] Eventing nodes have changed, previously = %#v new set: => %#v",
 						p.AppName, len(p.runningConsumers), p.eventingNodeAddrs, eventingNodeAddrs)
+
 					p.vbEventingNodeAssign()
 					p.getKvVbMap()
+					p.initWorkerVbMap()
+
+					logging.Infof("PRDR[%s:%d] WorkerMap dump: %#v post eventing rebalance",
+						p.AppName, len(p.runningConsumers), p.workerVbucketMap)
 
 				} else {
 					logging.Infof("PRDR[%s:%d] Gracefully tearing down producer", p.AppName, len(p.runningConsumers))
@@ -80,7 +86,11 @@ func (p *Producer) Serve() {
 					p.vbEventingNodeAssign()
 					p.getKvVbMap()
 
+					p.initWorkerVbMap()
 					p.startBucket()
+
+					logging.Infof("PRDR[%s:%d] WorkerMap dump: %#v post kv + eventing rebalance",
+						p.AppName, len(p.runningConsumers), p.workerVbucketMap)
 				}
 			}
 		case <-p.stopProducerCh:
@@ -104,19 +114,13 @@ func (p *Producer) startBucket() {
 
 	logging.Infof("PRDR[%s:%d] Connecting with bucket: %q", p.AppName, len(p.runningConsumers), p.bucket)
 
-	var b *couchbase.Bucket
-
-	Retry(NewFixedBackoff(time.Second), commonConnectBucketOpCallback, p, &b)
-
-	p.initWorkerVbMap()
-
 	for i := 0; i < p.workerCount; i++ {
-		p.handleV8Consumer(p.workerVbucketMap[i], b, i)
+		workerName := fmt.Sprintf("worker_%s_%d", p.app.AppName, i)
+		p.handleV8Consumer(p.workerVbucketMap[workerName], i)
 	}
 }
 
 func (p *Producer) initWorkerVbMap() {
-	p.workerVbucketMap = make(map[int][]uint16)
 
 	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
 
@@ -141,23 +145,36 @@ func (p *Producer) initWorkerVbMap() {
 
 	logging.Infof("PRDR[%s:%d] eventingAddr: %v vbucketsToHandle: %v", p.AppName, len(p.runningConsumers), eventingNodeAddr, vbucketsToHandle)
 
+	var workerName string
+
+	p.Lock()
+	defer p.Unlock()
+
+	p.workerVbucketMap = make(map[string][]uint16)
+
 	for i := 0; i < p.workerCount-1; i++ {
+		workerName = fmt.Sprintf("worker_%s_%d", p.app.AppName, i)
+
 		for j := 0; j < vbucketPerWorker; j++ {
-			p.workerVbucketMap[i] = append(
-				p.workerVbucketMap[i], uint16(vbucketsToHandle[startVbIndex]))
+			p.workerVbucketMap[workerName] = append(
+				p.workerVbucketMap[workerName], uint16(vbucketsToHandle[startVbIndex]))
 			startVbIndex++
 		}
 	}
 
+	workerName = fmt.Sprintf("worker_%s_%d", p.app.AppName, p.workerCount-1)
 	for j := 0; j < vbucketPerWorker && startVbIndex < len(vbucketsToHandle); j++ {
-		p.workerVbucketMap[p.workerCount-1] = append(
-			p.workerVbucketMap[p.workerCount-1], uint16(vbucketsToHandle[startVbIndex]))
+		p.workerVbucketMap[workerName] = append(
+			p.workerVbucketMap[workerName], uint16(vbucketsToHandle[startVbIndex]))
 		startVbIndex++
 	}
 }
 
-func (p *Producer) handleV8Consumer(vbnos []uint16,
-	b *couchbase.Bucket, index int) {
+func (p *Producer) handleV8Consumer(vbnos []uint16, index int) {
+
+	var b *couchbase.Bucket
+	Retry(NewFixedBackoff(time.Second), commonConnectBucketOpCallback, p, &b)
+
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		logging.Errorf("PRDR[%s:%d] Failed to listen on tcp port, err: %v", p.AppName, len(p.runningConsumers), err)
@@ -180,20 +197,28 @@ func (p *Producer) handleV8Consumer(vbnos []uint16,
 		workerName:           fmt.Sprintf("worker_%s_%d", p.app.AppName, index),
 	}
 
+	p.Lock()
 	serviceToken := p.workerSupervisor.Add(consumer)
 	p.runningConsumers = append(p.runningConsumers, consumer)
 	p.consumerSupervisorTokenMap[consumer] = serviceToken
+	p.Unlock()
 
 	go func() {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.AppName, len(p.runningConsumers), err)
+				logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.AppName, p.lenRunningConsumers(), err)
 			}
 			consumer.conn = conn
 			consumer.signalConnectedCh <- true
 		}
 	}()
+}
+
+func (p *Producer) lenRunningConsumers() int {
+	p.RLock()
+	defer p.RUnlock()
+	return len(p.runningConsumers)
 }
 
 func (p *Producer) cleanupDeadConsumer(c *Consumer) {

@@ -1,13 +1,15 @@
 package producer
 
 func newVbProcessingStats() vbStats {
-	vbsts := make(vbStats, NUM_VBUCKETS)
-	for i := uint16(0); i < NUM_VBUCKETS; i++ {
+	vbsts := make(vbStats, NumVbuckets)
+	for i := uint16(0); i < NumVbuckets; i++ {
 		vbsts[i] = &vbStat{
 			stats: make(map[string]interface{}),
 		}
 		vbsts[i].stats["last_processed_seq_no"] = uint64(0)
-		vbsts[i].stats["dcp_stream_status"] = DCP_STREAM_STOPPED
+		vbsts[i].stats["dcp_stream_status"] = DcpStreamStopped
+		vbsts[i].stats["assigned_worker"] = ""
+		vbsts[i].stats["requesting_worker"] = ""
 	}
 	return vbsts
 }

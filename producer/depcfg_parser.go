@@ -12,7 +12,7 @@ import (
 func (p *Producer) parseDepcfg() {
 	logging.Infof("DCFG[%s] Opening up application file", p.AppName)
 
-	depcfgData, err := ioutil.ReadFile(APPS_FOLDER + p.AppName)
+	depcfgData, err := ioutil.ReadFile(AppsFolder + p.AppName)
 	if err == nil {
 		err := json.Unmarshal(depcfgData, &p.app)
 		if err != nil {
@@ -42,7 +42,6 @@ func (p *Producer) parseDepcfg() {
 		p.statsTickDuration = time.Duration(config["tick_duration"].(float64))
 		p.workerCount = int(config["worker_count"].(float64))
 
-		return
 	} else {
 		logging.Errorf("DCFG[%s] Failed to read depcfg, err: %v", p.AppName, err)
 	}

@@ -116,7 +116,7 @@ var cbGetBucketOpCallback = func(args ...interface{}) error {
 	var err error
 	c.metadataBucketHandle, err = pool.GetBucket(metadataBucket)
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket: %s missing, retrying after %d secs, err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket: %s missing, err: %v",
 			c.producer.AppName, c.workerName, c.tcpPort, c.osPid, metadataBucket, err)
 	}
 	return err

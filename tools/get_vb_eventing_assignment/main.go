@@ -33,7 +33,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	vbucketEventingNodeMap := make(map[string][]int)
+	vbucketEventingNodeMap := make(map[string]map[string][]int)
 	vbucketRequestingNodesMap := make(map[string][]int)
 
 	rows, ok := data["rows"].([]interface{})
@@ -42,20 +42,22 @@ func main() {
 			row := rows[i].(map[string]interface{})
 
 			vbucket, _ := strconv.Atoi(strings.Split(row["id"].(string), "_")[3])
-			currentOwner := row["key"].(string)
+			viewKey := row["key"].([]interface{})
+			currentOwner, workerId := viewKey[0].(string), viewKey[1].(string)
 			newOwner := row["value"].(string)
 
 			if _, ok := vbucketEventingNodeMap[currentOwner]; !ok && currentOwner != "" {
-				vbucketEventingNodeMap[currentOwner] = make([]int, 0)
+				vbucketEventingNodeMap[currentOwner] = make(map[string][]int)
+				vbucketEventingNodeMap[currentOwner][workerId] = make([]int, 0)
 			}
 
 			if _, ok := vbucketRequestingNodesMap[newOwner]; !ok && newOwner != "" {
 				vbucketRequestingNodesMap[newOwner] = make([]int, 0)
 			}
 
-			if currentOwner != "" {
-				vbucketEventingNodeMap[currentOwner] = append(
-					vbucketEventingNodeMap[currentOwner], vbucket)
+			if currentOwner != "" && workerId != "" {
+				vbucketEventingNodeMap[currentOwner][workerId] = append(
+					vbucketEventingNodeMap[currentOwner][workerId], vbucket)
 			}
 
 			if newOwner != "" {
@@ -65,10 +67,13 @@ func main() {
 		}
 
 		fmt.Printf("\nvbucket curr owner:\n")
-		for k, _ := range vbucketEventingNodeMap {
-			sort.Ints(vbucketEventingNodeMap[k])
-			fmt.Printf("k: %s len: %d v: %v\n", k, len(vbucketEventingNodeMap[k]),
-				vbucketEventingNodeMap[k])
+		for k1, _ := range vbucketEventingNodeMap {
+			fmt.Printf("Producer node: %s\n", k1)
+			for k2, _ := range vbucketEventingNodeMap[k1] {
+				sort.Ints(vbucketEventingNodeMap[k1][k2])
+				fmt.Printf("\tworkerId: %s\n\tlen: %d\n\tv: %v\n", k2, len(vbucketEventingNodeMap[k1][k2]),
+					vbucketEventingNodeMap[k1][k2])
+			}
 		}
 
 		fmt.Printf("\nvbucket requesting owner:\n")

@@ -15,35 +15,38 @@ import (
 
 const (
 	// Folder containing all eventing app definition and configs
-	APPS_FOLDER = "./apps/"
+	AppsFolder = "./apps/"
 
-	EVENTING_ADMIN_SERVICE = "eventingAdminPort"
-	DATA_SERVICE           = "kv"
-	MGMT_SERVICE           = "mgmt"
+	EventingAdminService = "eventingAdminPort"
+	DataService          = "kv"
+	MgmtService          = "mgmt"
 
-	NUM_VBUCKETS = 1024
+	NumVbuckets = 1024
 
 	// DCP consumer related configs
-	DCP_GEN_CHAN_SIZE   = 10000
-	DCP_DATA_CHAN_SIZE  = 10000
-	DCP_NUM_CONNECTIONS = 4
+	DcpGenChanSize    = 10000
+	DcpDataChanSize   = 10000
+	DcpNumConnections = 4
 
 	// Last processed seq # checkpoint interval, in seconds
-	CHECKPOINT_INTERVAL = 1
+	CheckPointInterval = 2
 
 	// Interval for retrying failed bucket operations using go-couchbase, in milliseconds
-	BUCKET_OP_RETRY_INTERVAL = 100
+	BucketOpRetryInterval = time.Duration(1000) * time.Millisecond
+
+	// Interval for retrying failed cluster related operations, in milliseconds
+	ClusterOpRetryInterval = time.Duration(1000) * time.Millisecond
 
 	// Interval for spawning another routine to keep an eye on cluster state change, in milliseconds
-	WATCH_CLUSTER_CHANGE_INTERVAL = 100
+	WatchClusterChangeInterval = 100
 
 	// Interval for polling in order to take ownership of desired vbucket, in seconds
-	VB_TAKEOVER_POLL_INTERVAL = 1
+	VbTakeOverPollInterval = 1
 )
 
 const (
-	DCP_STREAM_RUNNING = "running"
-	DCP_STREAM_STOPPED = "stopped"
+	DcpStreamRunning = "running"
+	DcpStreamStopped = "stopped"
 )
 
 type vbFlogEntry struct {
@@ -156,9 +159,8 @@ type Producer struct {
 	// time.Ticker duration for dumping consumer stats
 	statsTickDuration time.Duration
 
-	// Map keeping track of start and end vbucket
-	// for each worker
-	workerVbucketMap map[int][]uint16
+	// Map keeping track of vbuckets assigned to each worker(consumer)
+	workerVbucketMap map[string][]uint16
 
 	// Supervisor of workers responsible for
 	// pipelining messages to V8
@@ -175,6 +177,8 @@ type appConfig struct {
 }
 
 type vbucketKVBlob struct {
+	AssignedWorker     string `json:"assigned_worker"`
+	RequestingWorker   string `json:"requesting_worker"`
 	CurrentVBOwner     string `json:"current_vb_owner"`
 	DCPStreamStatus    string `json:"dcp_stream_status"`
 	LastCheckpointTime string `json:"last_checkpoint_time"`
