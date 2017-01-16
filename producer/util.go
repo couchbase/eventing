@@ -47,6 +47,25 @@ func sprintV8Counts(counts map[string]int) string {
 	return strings.TrimRight(line, " ")
 }
 
+func getNsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
+	cinfo, err := getClusterInfoCache(auth, hostaddress)
+	if err != nil {
+		return nil, err
+	}
+
+	nsServerAddrs := cinfo.GetNodesByServiceType(MGMT_SERVICE)
+
+	nsServerNodes := []string{}
+	for _, nsServerAddr := range nsServerAddrs {
+		addr, _ := cinfo.GetServiceAddress(nsServerAddr, MGMT_SERVICE)
+		nsServerNodes = append(nsServerNodes, addr)
+	}
+
+	sort.Strings(nsServerNodes)
+
+	return nsServerNodes, nil
+}
+
 func getKVNodesAddresses(auth, hostaddress string) ([]string, error) {
 	cinfo, err := getClusterInfoCache(auth, hostaddress)
 	if err != nil {
@@ -144,7 +163,7 @@ func memcachedErrCode(err error) gomemcached.Status {
 
 func compareSlices(s1, s2 []string) bool {
 
-	if s1 == nil || s2 == nil {
+	if s1 == nil && s2 == nil {
 		return true
 	}
 
@@ -153,7 +172,7 @@ func compareSlices(s1, s2 []string) bool {
 	}
 
 	if len(s1) != len(s2) {
-		return true
+		return false
 	}
 
 	for i := range s1 {

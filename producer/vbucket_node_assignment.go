@@ -15,9 +15,12 @@ func (p *Producer) vbEventingNodeAssign() {
 
 	Retry(NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, p)
 
+	Retry(NewFixedBackoff(time.Second), getNsServerNodesAddressesOpCallback, p)
+
 	vbucketPerNode := NUM_VBUCKETS / len(p.eventingNodeAddrs)
 	var startVb uint16
 
+	p.Lock()
 	p.vbEventingNodeAssignMap = make(map[uint16]string)
 
 	for i := 0; i < len(p.eventingNodeAddrs); i++ {
@@ -26,6 +29,7 @@ func (p *Producer) vbEventingNodeAssign() {
 			startVb++
 		}
 	}
+	p.Unlock()
 }
 
 func (p *Producer) getKvVbMap() {

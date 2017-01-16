@@ -27,6 +27,7 @@ func createConsumer(p *Producer, app *appConfig) *Consumer {
 func (c *Consumer) Serve() {
 	c.stopConsumerCh = make(chan bool, 1)
 	c.stopCheckpointingCh = make(chan bool)
+	c.stopVbTakeoverCh = make(chan bool)
 
 	c.dcpMessagesProcessed = make(map[mcd.CommandCode]int)
 	c.v8WorkerMessagesProcessed = make(map[string]int)
@@ -42,30 +43,30 @@ func (c *Consumer) Serve() {
 	var flogs couchbase.FailoverLog
 	Retry(NewFixedBackoff(time.Second), getFailoverLogOpCallback, c, &flogs, dcpConfig)
 
+	logging.Infof("V8CR[%s:%s:%s:%d] Spawning worker corresponding to producer",
+		c.producer.AppName, c.workerName, c.tcpPort, c.osPid)
+
+	c.cmd = exec.Command("client", c.app.AppName, c.tcpPort,
+		time.Now().UTC().Format("2006-01-02T15:04:05.000000000-0700"))
+
+	err := c.cmd.Start()
+	if err != nil {
+		logging.Errorf("V8CR[%s:%s:%s:%d] Failed to spawn worker, err: %v",
+			c.producer.AppName, c.workerName, c.tcpPort, c.osPid, err)
+	} else {
+		c.osPid = c.cmd.Process.Pid
+		logging.Infof("V8CR[%s:%s:%s:%d] c++ worker launched",
+			c.producer.AppName, c.workerName, c.tcpPort, c.osPid)
+	}
+
 	rand.Seed(time.Now().UnixNano())
 	feedName := couchbase.DcpFeedName("eventing:" + c.workerName + "_" + strconv.Itoa(rand.Int()))
 	Retry(NewFixedBackoff(time.Second), startDCPFeedOpCallback, c, feedName, dcpConfig)
 
 	go c.startDcp(dcpConfig, flogs)
 
-	logging.Infof("V8CR[%s:%s:%s:%d] Spawning worker corresponding to producer",
-		c.producer.AppName, c.workerName, c.tcpPort, c.osPid)
-
-	cmd := exec.Command("client", c.app.AppName, c.tcpPort,
-		time.Now().UTC().Format("2006-01-02T15:04:05-0700"))
-
-	err := cmd.Start()
-	if err != nil {
-		logging.Errorf("V8CR[%s:%s:%s:%d] Failed to spawn worker, err: %v",
-			c.producer.AppName, c.workerName, c.tcpPort, c.osPid, err)
-	} else {
-		c.osPid = cmd.Process.Pid
-		logging.Infof("V8CR[%s:%s:%s:%d] c++ worker launched",
-			c.producer.AppName, c.workerName, c.tcpPort, c.osPid)
-	}
-
 	go func(c *Consumer) {
-		cmd.Wait()
+		c.cmd.Wait()
 	}(c)
 
 	// Wait for net.Conn to be initialised
@@ -82,6 +83,7 @@ func (c *Consumer) Serve() {
 		c.producer.AppName, c.workerName, c.tcpPort, c.osPid, res.response)
 
 	go c.doLastSeqNoCheckpoint()
+	go c.doVbucketTakeover()
 
 	for {
 		select {
@@ -89,7 +91,9 @@ func (c *Consumer) Serve() {
 			if ok == false {
 				logging.Infof("V8CR[%s:%s:%s:%d] Closing DCP feed for bucket %q",
 					c.producer.AppName, c.workerName, c.tcpPort, c.osPid, c.producer.bucket)
+
 				c.stopCheckpointingCh <- true
+				c.stopVbTakeoverCh <- true
 				c.producer.cleanupDeadConsumer(c)
 				return
 			}
@@ -113,27 +117,28 @@ func (c *Consumer) Serve() {
 					Payload: dcpPayload,
 				}
 
-				if _, ok := c.vbProcessingStats[e.VBucket]; !ok {
-					c.vbProcessingStats[e.VBucket] = make(map[string]interface{})
-					c.vbProcessingStats[e.VBucket]["last_processed_seq_no"] = 0
-					c.vbProcessingStats[e.VBucket]["dcp_stream_status"] = "running"
-				}
-
-				c.vbProcessingStats[e.VBucket]["last_processed_seq_no"] = e.Seqno
+				c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", e.Seqno)
 
 				if err := c.sendMessage(msg); err != nil {
 					c.stopCheckpointingCh <- true
+					c.stopVbTakeoverCh <- true
 					c.producer.cleanupDeadConsumer(c)
 					return
 				}
 				if resp := c.readMessage(); resp.err != nil {
 					c.stopCheckpointingCh <- true
+					c.stopVbTakeoverCh <- true
 					c.producer.cleanupDeadConsumer(c)
 					return
 				}
 			case mcd.DCP_STREAMREQ:
 
 				if e.Status == mcd.SUCCESS {
+
+					c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", c.getHostPortAddr())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", DCP_STREAM_RUNNING)
+					c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", uint64(0))
+
 					vbFlog := &vbFlogEntry{streamReqRetry: false, statusCode: e.Status}
 
 					var vbBlob vbucketKVBlob
@@ -176,12 +181,27 @@ func (c *Consumer) Serve() {
 					}
 					c.vbFlogChan <- vbFlog
 				}
-			case mcd.DCP_SNAPSHOT:
-				if _, ok := c.vbProcessingStats[e.VBucket]; !ok {
-					c.vbProcessingStats[e.VBucket] = make(map[string]interface{})
-					c.vbProcessingStats[e.VBucket]["dcp_stream_status"] = "running"
-				}
+			case mcd.DCP_STREAMEND:
+				// Cleanup entry for vb for which stream_end has been received from vbPorcessingStats
+				// which will allow vbTakeOver background routine to start up new stream from
+				// new KV node, where the vbucket has been migrated
 
+				//Store the latest state of vbucket processing stats in the metadata bucket
+				vbKey := fmt.Sprintf("%s_vb_%s", c.producer.AppName, strconv.Itoa(int(e.VBucket)))
+				var vbBlob vbucketKVBlob
+				var cas uint64
+
+				Retry(NewFixedBackoff(time.Second), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+
+				vbBlob.CurrentVBOwner = ""
+				vbBlob.DCPStreamStatus = DCP_STREAM_STOPPED
+
+				vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64)
+
+				c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", vbBlob.CurrentVBOwner)
+				c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", vbBlob.DCPStreamStatus)
+
+				Retry(NewFixedBackoff(time.Second), casOpCallback, c, vbKey, &vbBlob, &cas)
 			default:
 			}
 
@@ -194,6 +214,7 @@ func (c *Consumer) Serve() {
 			logging.Errorf("V8CR[%s:%s:%s:%d] Socket belonging to V8 consumer died",
 				c.producer.AppName, c.workerName, c.tcpPort, c.osPid)
 			c.stopCheckpointingCh <- true
+			c.stopVbTakeoverCh <- true
 			c.producer.cleanupDeadConsumer(c)
 			return
 		case <-c.gracefulShutdownChan:
@@ -208,8 +229,11 @@ func (c *Consumer) Stop() {
 
 	c.producer.cleanupDeadConsumer(c)
 
+	c.cmd.Process.Kill()
+
 	c.statsTicker.Stop()
 	c.stopCheckpointingCh <- true
+	c.stopVbTakeoverCh <- true
 	c.gracefulShutdownChan <- true
 	c.dcpFeed.Close()
 }
@@ -228,14 +252,14 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{},
 	logging.Infof("V8CR[%s:%s:%s:%d] no. of vbs owned: %d vbnos owned: %#v",
 		c.producer.AppName, c.workerName, c.tcpPort, c.osPid, len(c.vbnos), c.vbnos)
 
-	end := uint64(0xFFFFFFFFFFFFFFFF)
+	Retry(NewFixedBackoff(time.Second), getEventingNodeAddrOpCallback, c)
+
 	for vbno, flog := range flogs {
 		vbuuid, _, _ := flog.Latest()
-		opaque, flags := uint16(vbno), uint32(0)
 
 		vbKey := fmt.Sprintf("%s_vb_%s", c.producer.AppName, strconv.Itoa(int(vbno)))
 		var vbBlob vbucketKVBlob
-		var cas, start, snapStart, snapEnd uint64
+		var cas, start uint64
 		var isNoEnt bool
 
 		Retry(NewFixedBackoff(time.Second), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
@@ -247,36 +271,54 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{},
 			vbBlob.VBId = vbno
 			Retry(NewFixedBackoff(time.Second), setOpCallback, c, vbKey, &vbBlob)
 
-			start, snapStart, snapEnd = uint64(0), uint64(0), uint64(0)
+			start = uint64(0)
+			c.dcpRequestStreamHandle(vbno, &vbBlob, start)
 		} else {
-			start, snapStart, snapEnd = vbBlob.LastSeqNoProcessed,
-				vbBlob.LastSeqNoProcessed, vbBlob.LastSeqNoProcessed
-		}
+			// vbucket might be owned by another eventing node
 
-		logging.Infof("V8CR[%s:%s:%s:%d] DCP stream start vb: %d vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
-			c.producer.AppName, c.workerName, c.tcpPort, c.osPid, vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
+			if vbBlob.CurrentVBOwner == c.getHostPortAddr() {
+				start = vbBlob.LastSeqNoProcessed
 
-		c.dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
-
-	loop:
-		vbFlog := <-c.vbFlogChan
-
-		if vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
-			logging.Infof("V8CR[%s:%s:%s:%d] vb : %d DCP Stream created", c.producer.AppName, c.workerName, c.tcpPort, c.osPid, vbno)
-			continue
-		}
-
-		if vbFlog.streamReqRetry && vbFlog.vb == vbno {
-
-			if vbFlog.statusCode == mcd.ROLLBACK {
-				start, snapStart, snapEnd = vbFlog.seqNo, vbFlog.seqNo, vbFlog.seqNo
+				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
 			}
-
-			logging.Infof("V8CR[%s:%s:%s:%d] Retrying DCP stream start vb: %d vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
-				c.producer.AppName, c.workerName, c.tcpPort, c.osPid, vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
-			c.dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
-			goto loop
 		}
+
+	}
+}
+
+func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) {
+
+	opaque, flags := uint16(vbno), uint32(0)
+	end := uint64(0xFFFFFFFFFFFFFFFF)
+
+	snapStart, snapEnd := start, start
+
+	logging.Infof("V8CR[%s:%s:%s:%d] vb: %d DCP stream start vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+		c.producer.AppName, c.workerName, c.tcpPort, c.osPid, vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
+
+	c.dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
+
+loop:
+	vbFlog := <-c.vbFlogChan
+
+	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
+		logging.Infof("V8CR[%s:%s:%s:%d] vb: %d DCP Stream created", c.producer.AppName, c.workerName, c.tcpPort, c.osPid, vbno)
+
+		return
+	}
+
+	if vbFlog.streamReqRetry && vbFlog.vb == vbno {
+
+		if vbFlog.statusCode == mcd.ROLLBACK {
+			logging.Infof("V8CR[%s:%s:%s:%d] vb: %d vbuuid: %d Rollback requested by DCP, previous startseq: %d rollback startseq: %d",
+				c.producer.AppName, c.workerName, c.tcpPort, c.osPid, vbno, vbBlob.VBuuid, start, vbFlog.seqNo)
+			start, snapStart, snapEnd = vbFlog.seqNo, vbFlog.seqNo, vbFlog.seqNo
+		}
+
+		logging.Infof("V8CR[%s:%s:%s:%d] Retrying DCP stream start vb: %d vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+			c.producer.AppName, c.workerName, c.tcpPort, c.osPid, vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
+		c.dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
+		goto loop
 	}
 }
 
@@ -298,49 +340,84 @@ func (c *Consumer) initCBBucketConnHandle() {
 func (c *Consumer) doLastSeqNoCheckpoint() {
 	c.checkpointTicker = time.NewTicker(CHECKPOINT_INTERVAL * time.Second)
 
-	Retry(NewFixedBackoff(time.Second), getEventingNodeAddrOpCallback, c)
-
 	for {
 		select {
 		case <-c.checkpointTicker.C:
+
+			Retry(NewFixedBackoff(time.Second), getEventingNodeAddrOpCallback, c)
+
 			var vbBlob vbucketKVBlob
-			c.RLock()
-			for vbno, v := range c.vbProcessingStats {
-				vbKey := fmt.Sprintf("%s_vb_%s", c.producer.AppName, strconv.Itoa(int(vbno)))
 
-				var cas uint64
-				var isNoEnt bool
+			for vbno, _ := range c.vbProcessingStats {
 
-				// Case 1: Metadata blob doesn't exist probably the app is deployed for the first time.
-				Retry(NewFixedBackoff(time.Second), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
-				if isNoEnt {
+				// only checkpoint stats for vbuckets that the consumer instance owns
+				if c.getHostPortAddr() == c.vbProcessingStats.getVbStat(vbno, "current_vb_owner") {
+					vbKey := fmt.Sprintf("%s_vb_%s", c.producer.AppName, strconv.Itoa(int(vbno)))
 
-					vbBlob.CurrentVBOwner = c.hostPortAddr
-					vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
-					vbBlob.VBId = vbno
+					var cas uint64
+					var isNoEnt bool
 
-					vbBlob.LastSeqNoProcessed = v["last_processed_seq_no"].(uint64)
-					vbBlob.DCPStreamStatus = v["dcp_stream_status"].(string)
+					// Case 1: Metadata blob doesn't exist probably the app is deployed for the first time.
+					Retry(NewFixedBackoff(time.Second), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
+					if isNoEnt {
 
-					Retry(NewFixedBackoff(time.Second), casOpCallback, c, vbKey, &vbBlob, cas)
-					continue
-				}
+						vbBlob.CurrentVBOwner = c.getHostPortAddr()
+						vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
+						vbBlob.VBId = vbno
 
-				// Case 2: Metadata blob exists and mentioned vb stream owner is the current owner, this would
-				// be the case during steady state eventing cluster
-				if (c.hostPortAddr == vbBlob.CurrentVBOwner || vbBlob.CurrentVBOwner == "") && vbBlob.NewVBOwner == "" {
+						c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
+						vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
+						vbBlob.DCPStreamStatus = c.vbProcessingStats.getVbStat(vbno, "dcp_stream_status").(string)
 
-					vbBlob.CurrentVBOwner = c.hostPortAddr
-					vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
-					vbBlob.VBId = vbno
+						logging.Infof("V8CR[%s:%s:%s:%d] vb: %d Creating the initial metadata blob entry",
+							c.producer.AppName, c.workerName, c.tcpPort, c.osPid, vbno)
 
-					vbBlob.LastSeqNoProcessed, _ = v["last_processed_seq_no"].(uint64)
-					vbBlob.DCPStreamStatus = v["dcp_stream_status"].(string)
+						Retry(NewFixedBackoff(time.Second), casOpCallback, c, vbKey, &vbBlob, &cas)
+						continue
+					}
 
-					Retry(NewFixedBackoff(time.Second), casOpCallback, c, vbKey, &vbBlob, &cas)
+					// Case 2: Metadata blob exists and mentioned vb stream owner is the current owner, this would
+					// be the case during steady state eventing cluster
+					if (c.getHostPortAddr() == vbBlob.CurrentVBOwner || vbBlob.CurrentVBOwner == "") && vbBlob.NewVBOwner == "" {
+
+						vbBlob.CurrentVBOwner = c.getHostPortAddr()
+						vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
+						vbBlob.VBId = vbno
+
+						c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
+						vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
+						vbBlob.DCPStreamStatus = c.vbProcessingStats.getVbStat(vbno, "dcp_stream_status").(string)
+
+						Retry(NewFixedBackoff(time.Second), casOpCallback, c, vbKey, &vbBlob, &cas)
+						continue
+					}
+
+					// Case 3: current vb owner notices, a new node is requesting ownership of the vbucket
+					// closes dcp stream for it after updating last processed seq no
+					if c.getHostPortAddr() == vbBlob.CurrentVBOwner && vbBlob.NewVBOwner != "" {
+
+						vbBlob.DCPStreamStatus = DCP_STREAM_STOPPED
+						vbBlob.CurrentVBOwner = ""
+						vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
+
+						c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
+						vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
+
+						Retry(NewFixedBackoff(time.Second), casOpCallback, c, vbKey, &vbBlob, &cas)
+
+						logging.Infof("V8CR[%s:%s:%s:%d] vb: %d Closing dcp stream from node: %s as node: %s is requesting it's ownership. Node as per producer: %s",
+							c.producer.AppName, c.workerName, c.tcpPort, c.osPid, vbno, c.getHostPortAddr(), vbBlob.NewVBOwner, c.producer.vbEventingNodeAssignMap[vbno])
+
+						// TODO: Retry loop for dcp close stream as it could fail
+						// Additional check needed to verify if vbBlob.NewOwner is the expected owner
+						// as per the vbEventingNodesAssignMap
+						c.dcpFeed.DcpCloseStream(vbno, vbno)
+						continue
+					}
+
 				}
 			}
-			c.RUnlock()
+
 		case <-c.stopCheckpointingCh:
 			return
 		}
@@ -449,4 +526,10 @@ func (c *Consumer) readMessage() *Response {
 		}
 	}
 	return result
+}
+
+func (c *Consumer) getHostPortAddr() string {
+	c.RLock()
+	defer c.RUnlock()
+	return c.hostPortAddr
 }

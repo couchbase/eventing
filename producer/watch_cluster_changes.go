@@ -11,7 +11,7 @@ import (
 func (p *Producer) watchClusterChanges() {
 	selfRestart := func() {
 		logging.Infof("PWCC[%s:%d] Observed change in cluster state", p.AppName, len(p.runningConsumers))
-		time.Sleep(WATCH_CLUSTER_CHANGE_INTERVAL * time.Second)
+		time.Sleep(WATCH_CLUSTER_CHANGE_INTERVAL * time.Millisecond)
 		go p.watchClusterChanges()
 	}
 

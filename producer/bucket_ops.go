@@ -2,6 +2,7 @@ package producer
 
 import (
 	"fmt"
+	"time"
 
 	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gomemcached"
@@ -73,7 +74,7 @@ var casOpCallback = func(args ...interface{}) error {
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket cas failed for key: %s, err: %v",
 			c.producer.AppName, c.workerName, c.tcpPort, c.osPid, vbKey, err)
-		Retry(NewExponentialBackoff(), getOpCallback, c, vbKey, vbBlob, cas, false)
+		Retry(NewFixedBackoff(time.Second), getOpCallback, c, vbKey, vbBlob, cas, false)
 	}
 	return err
 }

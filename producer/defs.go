@@ -2,6 +2,7 @@ package producer
 
 import (
 	"net"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ const (
 
 	EVENTING_ADMIN_SERVICE = "eventingAdminPort"
 	DATA_SERVICE           = "kv"
+	MGMT_SERVICE           = "mgmt"
 
 	NUM_VBUCKETS = 1024
 
@@ -32,8 +34,11 @@ const (
 	// Interval for retrying failed bucket operations using go-couchbase, in milliseconds
 	BUCKET_OP_RETRY_INTERVAL = 100
 
-	// Interval for spawning another routine to keep an eye on cluster state change, in seconds
-	WATCH_CLUSTER_CHANGE_INTERVAL = 1
+	// Interval for spawning another routine to keep an eye on cluster state change, in milliseconds
+	WATCH_CLUSTER_CHANGE_INTERVAL = 100
+
+	// Interval for polling in order to take ownership of desired vbucket, in seconds
+	VB_TAKEOVER_POLL_INTERVAL = 1
 )
 
 const (
@@ -71,6 +76,9 @@ type Consumer struct {
 	// OS pid of c++ v8 worker
 	osPid int
 
+	// C++ v8 worker cmd handle, would be required to killing worker that are no more needed
+	cmd *exec.Cmd
+
 	// Populated when C++ v8 worker is spawned
 	// correctly and downstream tcp socket is available
 	// for sending messages. Unbuffered channel.
@@ -84,6 +92,9 @@ type Consumer struct {
 	// of last seq # processed
 	stopCheckpointingCh chan bool
 
+	// Chan to stop background vb takeover polling routine
+	stopVbTakeoverCh chan bool
+
 	gracefulShutdownChan chan bool
 
 	tcpPort string
@@ -95,10 +106,18 @@ type Consumer struct {
 	v8WorkerMessagesProcessed map[string]int
 
 	sync.RWMutex
-	vbProcessingStats map[uint16]map[string]interface{}
+	vbProcessingStats vbStats
 
 	statsTicker      *time.Ticker
 	checkpointTicker *time.Ticker
+	vbTakeoverTicker *time.Ticker
+}
+
+type vbStats map[uint16]*vbStat
+
+type vbStat struct {
+	stats map[string]interface{}
+	sync.RWMutex
 }
 
 type Producer struct {
@@ -119,6 +138,7 @@ type Producer struct {
 	localAddress      string
 	eventingNodeAddrs []string
 	kvNodeAddrs       []string
+	nsServerNodeAddrs []string
 
 	// Feedback channel to notify change in cluster state
 	clusterStateChange chan bool
@@ -144,7 +164,7 @@ type Producer struct {
 	// pipelining messages to V8
 	workerSupervisor *suptree.Supervisor
 
-	sync.Mutex
+	sync.RWMutex
 }
 
 type appConfig struct {

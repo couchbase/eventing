@@ -28,11 +28,32 @@ var getEventingNodeAddrOpCallback = func(args ...interface{}) error {
 
 	hostAddress := fmt.Sprintf("127.0.0.1:%s", c.producer.NsServerPort)
 
-	var err error
-	c.hostPortAddr, err = getCurrentEventingNodeAddress(c.producer.auth, hostAddress)
+	hostPortAddr, err := getCurrentEventingNodeAddress(c.producer.auth, hostAddress)
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to grab routable interface, err: %v",
+		logging.Errorf("CRCO[%s:%s:%s:%d] Failed to grab routable interface, err: %v",
 			c.producer.AppName, c.workerName, c.tcpPort, c.osPid, err)
+	} else {
+		c.Lock()
+		c.hostPortAddr = hostPortAddr
+		c.Unlock()
+	}
+
+	return err
+}
+
+var getNsServerNodesAddressesOpCallback = func(args ...interface{}) error {
+	p := args[0].(*Producer)
+
+	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
+
+	nsServerNodeAddrs, err := getNsServerNodesAddresses(p.auth, hostAddress)
+	if err != nil {
+		logging.Errorf("PRCO[%s:%d] Failed to get all NS Server nodes, err: %v", p.AppName, len(p.runningConsumers), err)
+	} else {
+		p.Lock()
+		p.nsServerNodeAddrs = nsServerNodeAddrs
+		p.Unlock()
+		logging.Infof("PRCO[%s:%d] Got NS Server nodes: %#v", p.AppName, len(p.runningConsumers), p.nsServerNodeAddrs)
 	}
 
 	return err
@@ -43,12 +64,14 @@ var getKVNodesAddressesOpCallback = func(args ...interface{}) error {
 
 	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
 
-	var err error
-	p.kvNodeAddrs, err = getKVNodesAddresses(p.auth, hostAddress)
+	kvNodeAddrs, err := getKVNodesAddresses(p.auth, hostAddress)
 	if err != nil {
-		logging.Errorf("PRBO[%s:%d] Failed to get all KV nodes, err: %v", p.AppName, len(p.runningConsumers), err)
+		logging.Errorf("PRCO[%s:%d] Failed to get all KV nodes, err: %v", p.AppName, len(p.runningConsumers), err)
 	} else {
-		logging.Infof("PRBO[%s:%d] Got KV nodes: %#v", p.AppName, len(p.runningConsumers), p.kvNodeAddrs)
+		p.Lock()
+		p.kvNodeAddrs = kvNodeAddrs
+		p.Unlock()
+		logging.Infof("PRCO[%s:%d] Got KV nodes: %#v", p.AppName, len(p.runningConsumers), p.kvNodeAddrs)
 	}
 
 	return err
@@ -59,12 +82,14 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 
 	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
 
-	var err error
-	p.eventingNodeAddrs, err = getEventingNodesAddresses(p.auth, hostAddress)
+	eventingNodeAddrs, err := getEventingNodesAddresses(p.auth, hostAddress)
 	if err != nil {
-		logging.Errorf("PRBO[%s:%d] Failed to get all eventing nodes, err: %v", p.AppName, len(p.runningConsumers), err)
+		logging.Errorf("PRCO[%s:%d] Failed to get all eventing nodes, err: %v", p.AppName, len(p.runningConsumers), err)
 	} else {
-		logging.Infof("PRBO[%s:%d] Got eventing nodes: %#v", p.AppName, len(p.runningConsumers), p.eventingNodeAddrs)
+		p.Lock()
+		p.eventingNodeAddrs = eventingNodeAddrs
+		p.Unlock()
+		logging.Infof("PRCO[%s:%d] Got eventing nodes: %#v", p.AppName, len(p.runningConsumers), p.eventingNodeAddrs)
 	}
 
 	return err

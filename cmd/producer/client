@@ -3,7 +3,7 @@
 APPNAME=$1
 PORT=$2
 TIMESTAMP=$3
-LOG_FILE="bin_"$(date +%s).log
+LOG_FILE="bin_"$(gdate +%s%N).log
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 

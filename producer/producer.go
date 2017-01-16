@@ -59,18 +59,29 @@ func (p *Producer) Serve() {
 				logging.Infof("PRDR[%s:%d] Continuing as state of KV and eventing nodes hasn't changed. KV: %v Eventing: %v",
 					p.AppName, len(p.runningConsumers), kvNodeAddrs, eventingNodeAddrs)
 			} else {
-				// Gracefully tear down everything
-				for _, consumer := range p.runningConsumers {
-					p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[consumer])
-					delete(p.consumerSupervisorTokenMap, consumer)
+
+				if !cmpEventingNodes {
+
+					logging.Infof("PRDR[%s:%d] Eventing nodes have changed, previously = %#v new set: => %#v",
+						p.AppName, len(p.runningConsumers), p.eventingNodeAddrs, eventingNodeAddrs)
+					p.vbEventingNodeAssign()
+					p.getKvVbMap()
+
+				} else {
+					logging.Infof("PRDR[%s:%d] Gracefully tearing down producer", p.AppName, len(p.runningConsumers))
+
+					for _, consumer := range p.runningConsumers {
+						p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[consumer])
+						delete(p.consumerSupervisorTokenMap, consumer)
+					}
+					p.runningConsumers = p.runningConsumers[:0]
+
+					p.parseDepcfg()
+					p.vbEventingNodeAssign()
+					p.getKvVbMap()
+
+					p.startBucket()
 				}
-				p.runningConsumers = p.runningConsumers[:0]
-
-				p.parseDepcfg()
-				p.vbEventingNodeAssign()
-				p.getKvVbMap()
-
-				p.startBucket()
 			}
 		case <-p.stopProducerCh:
 			logging.Infof("PRDR[%s:%d] Explicitly asked to shutdown producer routine", p.AppName, len(p.runningConsumers))
@@ -149,7 +160,7 @@ func (p *Producer) handleV8Consumer(vbnos []uint16,
 	b *couchbase.Bucket, index int) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to listen on tcp port, err: %v", p.AppName, len(p.runningConsumers), err.Error())
+		logging.Errorf("PRDR[%s:%d] Failed to listen on tcp port, err: %v", p.AppName, len(p.runningConsumers), err)
 	}
 
 	p.tcpPort = strings.Split(listener.Addr().String(), ":")[1]
@@ -164,7 +175,7 @@ func (p *Producer) handleV8Consumer(vbnos []uint16,
 		gracefulShutdownChan: make(chan bool, 1),
 		tcpPort:              p.tcpPort,
 		statsTicker:          time.NewTicker(p.statsTickDuration * time.Millisecond),
-		vbProcessingStats:    make(map[uint16]map[string]interface{}),
+		vbProcessingStats:    newVbProcessingStats(),
 		vbFlogChan:           make(chan *vbFlogEntry),
 		workerName:           fmt.Sprintf("worker_%s_%d", p.app.AppName, index),
 	}
@@ -201,4 +212,21 @@ func (p *Producer) cleanupDeadConsumer(c *Consumer) {
 	} else {
 		p.runningConsumers = p.runningConsumers[:0]
 	}
+}
+
+func (p *Producer) isEventingNodeAlive(eventingHostPortAddr string) bool {
+	p.RLock()
+	defer p.RUnlock()
+	for i := range p.eventingNodeAddrs {
+		if p.eventingNodeAddrs[i] == eventingHostPortAddr {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Producer) getNsServerNodeCount() int {
+	p.RLock()
+	defer p.RUnlock()
+	return len(p.nsServerNodeAddrs)
 }
