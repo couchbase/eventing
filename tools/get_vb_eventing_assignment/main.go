@@ -35,6 +35,7 @@ func main() {
 
 	vbucketEventingNodeMap := make(map[string]map[string][]int)
 	vbucketRequestingNodesMap := make(map[string][]int)
+	dcpStreamStatusMap := make(map[string][]int)
 
 	rows, ok := data["rows"].([]interface{})
 	if ok {
@@ -43,8 +44,10 @@ func main() {
 
 			vbucket, _ := strconv.Atoi(strings.Split(row["id"].(string), "_")[3])
 			viewKey := row["key"].([]interface{})
-			currentOwner, workerId := viewKey[0].(string), viewKey[1].(string)
-			newOwner := row["value"].(string)
+			currentOwner, workerId, newOwner := viewKey[0].(string),
+				viewKey[1].(string), viewKey[2].(string)
+
+			dcpStreamStatus := row["value"].(string)
 
 			if _, ok := vbucketEventingNodeMap[currentOwner]; !ok && currentOwner != "" {
 				vbucketEventingNodeMap[currentOwner] = make(map[string][]int)
@@ -55,6 +58,13 @@ func main() {
 				vbucketRequestingNodesMap[newOwner] = make([]int, 0)
 			}
 
+			if _, ok := dcpStreamStatusMap[dcpStreamStatus]; !ok && dcpStreamStatus != "" {
+				dcpStreamStatusMap[dcpStreamStatus] = make([]int, 0)
+			}
+
+			dcpStreamStatusMap[dcpStreamStatus] = append(
+				dcpStreamStatusMap[dcpStreamStatus], vbucket)
+
 			if currentOwner != "" && workerId != "" {
 				vbucketEventingNodeMap[currentOwner][workerId] = append(
 					vbucketEventingNodeMap[currentOwner][workerId], vbucket)
@@ -64,6 +74,12 @@ func main() {
 				vbucketRequestingNodesMap[newOwner] = append(
 					vbucketRequestingNodesMap[newOwner], vbucket)
 			}
+		}
+
+		fmt.Printf("\nDCP Stream statuses:\n")
+		for k, _ := range dcpStreamStatusMap {
+			sort.Ints(dcpStreamStatusMap[k])
+			fmt.Printf("\tstream status: %s\n\tlen: %d\n\tvb list dump: %#v\n", k, len(dcpStreamStatusMap[k]), dcpStreamStatusMap[k])
 		}
 
 		fmt.Printf("\nvbucket curr owner:\n")
@@ -83,5 +99,4 @@ func main() {
 				vbucketRequestingNodesMap[k])
 		}
 	}
-
 }

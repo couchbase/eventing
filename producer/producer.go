@@ -1,11 +1,15 @@
 package producer
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/suptree"
@@ -35,6 +39,7 @@ func (p *Producer) Serve() {
 	p.workerSupervisor = suptree.NewSimple(p.AppName)
 	go p.workerSupervisor.ServeBackground()
 	go p.watchClusterChanges()
+
 	p.initWorkerVbMap()
 	p.startBucket()
 
@@ -53,8 +58,8 @@ func (p *Producer) Serve() {
 				logging.Errorf("PRDR[%s:%d] Failed to get all eventing nodes, err: %v", p.AppName, len(p.runningConsumers), err)
 			}
 
-			cmpKvNodes := compareSlices(kvNodeAddrs, p.kvNodeAddrs)
-			cmpEventingNodes := compareSlices(eventingNodeAddrs, p.eventingNodeAddrs)
+			cmpKvNodes := compareSlices(kvNodeAddrs, p.getKvNodeAddrs())
+			cmpEventingNodes := compareSlices(eventingNodeAddrs, p.getEventingNodeAddrs())
 
 			if cmpEventingNodes && cmpKvNodes {
 				logging.Infof("PRDR[%s:%d] Continuing as state of KV and eventing nodes hasn't changed. KV: %v Eventing: %v",
@@ -64,7 +69,7 @@ func (p *Producer) Serve() {
 				if !cmpEventingNodes {
 
 					logging.Infof("PRDR[%s:%d] Eventing nodes have changed, previously = %#v new set: => %#v",
-						p.AppName, len(p.runningConsumers), p.eventingNodeAddrs, eventingNodeAddrs)
+						p.AppName, len(p.runningConsumers), p.getEventingNodeAddrs(), eventingNodeAddrs)
 
 					p.vbEventingNodeAssign()
 					p.getKvVbMap()
@@ -240,18 +245,77 @@ func (p *Producer) cleanupDeadConsumer(c *Consumer) {
 }
 
 func (p *Producer) isEventingNodeAlive(eventingHostPortAddr string) bool {
-	p.RLock()
-	defer p.RUnlock()
-	for i := range p.eventingNodeAddrs {
-		if p.eventingNodeAddrs[i] == eventingHostPortAddr {
-			return true
+	eventingNodeAddrs := (*[]string)(atomic.LoadPointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs))))
+	if eventingNodeAddrs != nil {
+		for _, v := range *eventingNodeAddrs {
+			if v == eventingHostPortAddr {
+				return true
+			}
 		}
 	}
 	return false
 }
 
+func (p *Producer) getEventingNodeAddrs() []string {
+	eventingNodeAddrs := (*[]string)(atomic.LoadPointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs))))
+	if eventingNodeAddrs != nil {
+		return *eventingNodeAddrs
+	}
+	return nil
+}
+
+func (p *Producer) getKvNodeAddrs() []string {
+	kvNodeAddrs := (*[]string)(atomic.LoadPointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&p.kvNodeAddrs))))
+	if kvNodeAddrs != nil {
+		return *kvNodeAddrs
+	}
+	return nil
+}
+
 func (p *Producer) getNsServerNodeCount() int {
+	nsServerNodeAddrs := (*[]string)(atomic.LoadPointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&p.nsServerNodeAddrs))))
+	if nsServerNodeAddrs != nil {
+		return len(*nsServerNodeAddrs)
+	}
+	return 0
+}
+
+func (p *Producer) getEventingNodeAssignedVbuckets(eventingNode string) []uint16 {
+	vbnos := make([]uint16, 0)
 	p.RLock()
 	defer p.RUnlock()
-	return len(p.nsServerNodeAddrs)
+	for vbno, node := range p.vbEventingNodeAssignMap {
+		if node == eventingNode {
+			vbnos = append(vbnos, vbno)
+		}
+	}
+	return vbnos
+}
+
+func (p *Producer) getConsumerAssignedVbuckets(workerName string) []uint16 {
+	p.RLock()
+	defer p.RUnlock()
+	return p.workerVbucketMap[workerName]
+}
+
+func (p *Producer) GetWorkerMap(w http.ResponseWriter, r *http.Request) {
+	encodedWorkerMap, err := json.Marshal(p.workerVbucketMap)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to encode worker vbucket map\n")
+	} else {
+		fmt.Fprintf(w, "%s", string(encodedWorkerMap))
+	}
+}
+
+func (p *Producer) GetNodeMap(w http.ResponseWriter, r *http.Request) {
+	encodedEventingMap, err := json.Marshal(p.vbEventingNodeAssignMap)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to encode worker vbucket map\n")
+	} else {
+		fmt.Fprintf(w, "%s", string(encodedEventingMap))
+	}
 }

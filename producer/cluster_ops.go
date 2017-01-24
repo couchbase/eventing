@@ -2,6 +2,8 @@ package producer
 
 import (
 	"fmt"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/logging"
@@ -33,9 +35,8 @@ var getEventingNodeAddrOpCallback = func(args ...interface{}) error {
 		logging.Errorf("CRCO[%s:%s:%s:%d] Failed to grab routable interface, err: %v",
 			c.producer.AppName, c.workerName, c.tcpPort, c.osPid, err)
 	} else {
-		c.Lock()
-		c.hostPortAddr = hostPortAddr
-		c.Unlock()
+		atomic.StorePointer(
+			(*unsafe.Pointer)(unsafe.Pointer(&c.hostPortAddr)), unsafe.Pointer(&hostPortAddr))
 	}
 
 	return err
@@ -50,10 +51,9 @@ var getNsServerNodesAddressesOpCallback = func(args ...interface{}) error {
 	if err != nil {
 		logging.Errorf("PRCO[%s:%d] Failed to get all NS Server nodes, err: %v", p.AppName, len(p.runningConsumers), err)
 	} else {
-		p.Lock()
-		p.nsServerNodeAddrs = nsServerNodeAddrs
-		p.Unlock()
-		logging.Infof("PRCO[%s:%d] Got NS Server nodes: %#v", p.AppName, len(p.runningConsumers), p.nsServerNodeAddrs)
+		atomic.StorePointer(
+			(*unsafe.Pointer)(unsafe.Pointer(&p.nsServerNodeAddrs)), unsafe.Pointer(&nsServerNodeAddrs))
+		logging.Infof("PRCO[%s:%d] Got NS Server nodes: %#v", p.AppName, len(p.runningConsumers), nsServerNodeAddrs)
 	}
 
 	return err
@@ -68,10 +68,9 @@ var getKVNodesAddressesOpCallback = func(args ...interface{}) error {
 	if err != nil {
 		logging.Errorf("PRCO[%s:%d] Failed to get all KV nodes, err: %v", p.AppName, len(p.runningConsumers), err)
 	} else {
-		p.Lock()
-		p.kvNodeAddrs = kvNodeAddrs
-		p.Unlock()
-		logging.Infof("PRCO[%s:%d] Got KV nodes: %#v", p.AppName, len(p.runningConsumers), p.kvNodeAddrs)
+		atomic.StorePointer(
+			(*unsafe.Pointer)(unsafe.Pointer(&p.kvNodeAddrs)), unsafe.Pointer(&kvNodeAddrs))
+		logging.Infof("PRCO[%s:%d] Got KV nodes: %#v", p.AppName, len(p.runningConsumers), kvNodeAddrs)
 	}
 
 	return err
@@ -86,10 +85,9 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 	if err != nil {
 		logging.Errorf("PRCO[%s:%d] Failed to get all eventing nodes, err: %v", p.AppName, len(p.runningConsumers), err)
 	} else {
-		p.Lock()
-		p.eventingNodeAddrs = eventingNodeAddrs
-		p.Unlock()
-		logging.Infof("PRCO[%s:%d] Got eventing nodes: %#v", p.AppName, len(p.runningConsumers), p.eventingNodeAddrs)
+		atomic.StorePointer(
+			(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs)), unsafe.Pointer(&eventingNodeAddrs))
+		logging.Infof("PRCO[%s:%d] Got eventing nodes: %#v", p.AppName, len(p.runningConsumers), eventingNodeAddrs)
 	}
 
 	return err

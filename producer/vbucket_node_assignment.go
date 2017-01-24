@@ -1,6 +1,7 @@
 package producer
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/couchbase/indexing/secondary/common"
@@ -17,17 +18,19 @@ func (p *Producer) vbEventingNodeAssign() {
 
 	Retry(NewFixedBackoff(time.Second), getNsServerNodesAddressesOpCallback, p)
 
-	vbucketPerNode := NumVbuckets / len(p.eventingNodeAddrs)
+	eventingNodeAddrs := p.getEventingNodeAddrs()
+	vbucketPerNode := NumVbuckets / len(eventingNodeAddrs)
 	var startVb uint16
 
 	p.Lock()
 	p.vbEventingNodeAssignMap = make(map[uint16]string)
 
-	for i := 0; i < len(p.eventingNodeAddrs); i++ {
+	for i := 0; i < len(eventingNodeAddrs); i++ {
 		for j := 0; j < vbucketPerNode && startVb < NumVbuckets; j++ {
-			p.vbEventingNodeAssignMap[startVb] = p.eventingNodeAddrs[i]
+			p.vbEventingNodeAssignMap[startVb] = eventingNodeAddrs[i]
 			startVb++
 		}
+		fmt.Printf("eventing node index: %d startVb: %d\n", i, startVb)
 	}
 	p.Unlock()
 }
