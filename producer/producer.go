@@ -8,12 +8,13 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
-	"time"
 	"unsafe"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/indexing/secondary/dcp"
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
@@ -26,13 +27,13 @@ func (p *Producer) Serve() {
 
 	p.stopProducerCh = make(chan bool)
 	p.clusterStateChange = make(chan bool)
-	p.consumerSupervisorTokenMap = make(map[*Consumer]suptree.ServiceToken)
+	p.consumerSupervisorTokenMap = make(map[common.EventingConsumer]suptree.ServiceToken)
 
 	if p.auth != "" {
 		up := strings.Split(p.auth, ":")
 		if _, err := cbauth.InternalRetryDefaultInit(p.nsServerHostPort,
 			up[0], up[1]); err != nil {
-			logging.Fatalf("PRDR[%s:%d] Failed to initialise cbauth, err: %v", p.AppName, len(p.runningConsumers), err)
+			logging.Fatalf("PRDR[%s:%d] Failed to initialise cbauth, err: %v", p.AppName, p.LenRunningConsumers(), err)
 		}
 	}
 
@@ -48,38 +49,38 @@ func (p *Producer) Serve() {
 		case <-p.clusterStateChange:
 
 			hostAddress := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
-			kvNodeAddrs, err := getKVNodesAddresses(p.auth, hostAddress)
+			kvNodeAddrs, err := util.KVNodesAddresses(p.auth, hostAddress)
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Failed to get all KV nodes, err: %v", p.AppName, len(p.runningConsumers), err)
+				logging.Errorf("PRDR[%s:%d] Failed to get all KV nodes, err: %v", p.AppName, p.LenRunningConsumers(), err)
 			}
 
-			eventingNodeAddrs, err := getEventingNodesAddresses(p.auth, hostAddress)
+			eventingNodeAddrs, err := util.EventingNodesAddresses(p.auth, hostAddress)
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Failed to get all eventing nodes, err: %v", p.AppName, len(p.runningConsumers), err)
+				logging.Errorf("PRDR[%s:%d] Failed to get all eventing nodes, err: %v", p.AppName, p.LenRunningConsumers(), err)
 			}
 
-			cmpKvNodes := compareSlices(kvNodeAddrs, p.getKvNodeAddrs())
-			cmpEventingNodes := compareSlices(eventingNodeAddrs, p.getEventingNodeAddrs())
+			cmpKvNodes := util.CompareSlices(kvNodeAddrs, p.getKvNodeAddrs())
+			cmpEventingNodes := util.CompareSlices(eventingNodeAddrs, p.getEventingNodeAddrs())
 
 			if cmpEventingNodes && cmpKvNodes {
 				logging.Infof("PRDR[%s:%d] Continuing as state of KV and eventing nodes hasn't changed. KV: %v Eventing: %v",
-					p.AppName, len(p.runningConsumers), kvNodeAddrs, eventingNodeAddrs)
+					p.AppName, p.LenRunningConsumers(), kvNodeAddrs, eventingNodeAddrs)
 			} else {
 
 				if !cmpEventingNodes {
 
 					logging.Infof("PRDR[%s:%d] Eventing nodes have changed, previously = %#v new set: => %#v",
-						p.AppName, len(p.runningConsumers), p.getEventingNodeAddrs(), eventingNodeAddrs)
+						p.AppName, p.LenRunningConsumers(), p.getEventingNodeAddrs(), eventingNodeAddrs)
 
 					p.vbEventingNodeAssign()
 					p.getKvVbMap()
 					p.initWorkerVbMap()
 
 					logging.Infof("PRDR[%s:%d] WorkerMap dump: %#v post eventing rebalance",
-						p.AppName, len(p.runningConsumers), p.workerVbucketMap)
+						p.AppName, p.LenRunningConsumers(), p.workerVbucketMap)
 
 				} else {
-					logging.Infof("PRDR[%s:%d] Gracefully tearing down producer", p.AppName, len(p.runningConsumers))
+					logging.Infof("PRDR[%s:%d] Gracefully tearing down producer", p.AppName, p.LenRunningConsumers())
 
 					for _, consumer := range p.runningConsumers {
 						p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[consumer])
@@ -95,11 +96,11 @@ func (p *Producer) Serve() {
 					p.startBucket()
 
 					logging.Infof("PRDR[%s:%d] WorkerMap dump: %#v post kv + eventing rebalance",
-						p.AppName, len(p.runningConsumers), p.workerVbucketMap)
+						p.AppName, p.LenRunningConsumers(), p.workerVbucketMap)
 				}
 			}
 		case <-p.stopProducerCh:
-			logging.Infof("PRDR[%s:%d] Explicitly asked to shutdown producer routine", p.AppName, len(p.runningConsumers))
+			logging.Infof("PRDR[%s:%d] Explicitly asked to shutdown producer routine", p.AppName, p.LenRunningConsumers())
 			return
 		}
 	}
@@ -117,7 +118,7 @@ func (p *Producer) String() string {
 
 func (p *Producer) startBucket() {
 
-	logging.Infof("PRDR[%s:%d] Connecting with bucket: %q", p.AppName, len(p.runningConsumers), p.bucket)
+	logging.Infof("PRDR[%s:%d] Connecting with bucket: %q", p.AppName, p.LenRunningConsumers(), p.bucket)
 
 	for i := 0; i < p.workerCount; i++ {
 		workerName := fmt.Sprintf("worker_%s_%d", p.app.AppName, i)
@@ -129,9 +130,9 @@ func (p *Producer) initWorkerVbMap() {
 
 	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
 
-	eventingNodeAddr, err := getCurrentEventingNodeAddress(p.auth, hostAddress)
+	eventingNodeAddr, err := util.CurrentEventingNodeAddress(p.auth, hostAddress)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to get address for current eventing node, err: %v", p.AppName, len(p.runningConsumers), err)
+		logging.Errorf("PRDR[%s:%d] Failed to get address for current eventing node, err: %v", p.AppName, p.LenRunningConsumers(), err)
 	}
 
 	// vbuckets the current eventing node is responsible to handle
@@ -148,7 +149,7 @@ func (p *Producer) initWorkerVbMap() {
 	vbucketPerWorker := len(vbucketsToHandle) / p.workerCount
 	var startVbIndex int
 
-	logging.Infof("PRDR[%s:%d] eventingAddr: %v vbucketsToHandle: %v", p.AppName, len(p.runningConsumers), eventingNodeAddr, vbucketsToHandle)
+	logging.Infof("PRDR[%s:%d] eventingAddr: %v vbucketsToHandle: %v", p.AppName, p.LenRunningConsumers(), eventingNodeAddr, vbucketsToHandle)
 
 	var workerName string
 
@@ -177,56 +178,41 @@ func (p *Producer) initWorkerVbMap() {
 
 func (p *Producer) handleV8Consumer(vbnos []uint16, index int) {
 
-	var b *couchbase.Bucket
-	Retry(NewFixedBackoff(time.Second), commonConnectBucketOpCallback, p, &b)
-
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to listen on tcp port, err: %v", p.AppName, len(p.runningConsumers), err)
+		logging.Errorf("PRDR[%s:%d] Failed to listen on tcp port, err: %v", p.AppName, p.LenRunningConsumers(), err)
 	}
 
 	p.tcpPort = strings.Split(listener.Addr().String(), ":")[1]
-	logging.Infof("PRDR[%s:%d] Started server on port: %s", p.AppName, len(p.runningConsumers), p.tcpPort)
+	logging.Infof("PRDR[%s:%d] Started server on port: %s", p.AppName, p.LenRunningConsumers(), p.tcpPort)
 
-	consumer := &Consumer{
-		app:                  p.app,
-		cbBucket:             b,
-		vbnos:                vbnos,
-		producer:             p,
-		signalConnectedCh:    make(chan bool),
-		gracefulShutdownChan: make(chan bool, 1),
-		tcpPort:              p.tcpPort,
-		statsTicker:          time.NewTicker(p.statsTickDuration * time.Millisecond),
-		vbProcessingStats:    newVbProcessingStats(),
-		vbFlogChan:           make(chan *vbFlogEntry),
-		workerName:           fmt.Sprintf("worker_%s_%d", p.app.AppName, index),
-	}
+	c := consumer.New(p, p.app, vbnos, p.bucket, p.tcpPort, index)
 
 	p.Lock()
-	serviceToken := p.workerSupervisor.Add(consumer)
-	p.runningConsumers = append(p.runningConsumers, consumer)
-	p.consumerSupervisorTokenMap[consumer] = serviceToken
+	serviceToken := p.workerSupervisor.Add(c)
+	p.runningConsumers = append(p.runningConsumers, c)
+	p.consumerSupervisorTokenMap[c] = serviceToken
 	p.Unlock()
 
 	go func() {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.AppName, p.lenRunningConsumers(), err)
+				logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.AppName, p.LenRunningConsumers(), err)
 			}
-			consumer.conn = conn
-			consumer.signalConnectedCh <- true
+			c.SetConnHandle(conn)
+			c.SignalConnected()
 		}
 	}()
 }
 
-func (p *Producer) lenRunningConsumers() int {
+func (p *Producer) LenRunningConsumers() int {
 	p.RLock()
 	defer p.RUnlock()
 	return len(p.runningConsumers)
 }
 
-func (p *Producer) cleanupDeadConsumer(c *Consumer) {
+func (p *Producer) CleanupDeadConsumer(c common.EventingConsumer) {
 	p.Lock()
 	defer p.Unlock()
 	var indexToPurge int
@@ -236,7 +222,7 @@ func (p *Producer) cleanupDeadConsumer(c *Consumer) {
 		}
 	}
 
-	if len(p.runningConsumers) > 1 {
+	if p.LenRunningConsumers() > 1 {
 		p.runningConsumers = append(p.runningConsumers[:indexToPurge],
 			p.runningConsumers[indexToPurge+1:]...)
 	} else {
@@ -244,7 +230,13 @@ func (p *Producer) cleanupDeadConsumer(c *Consumer) {
 	}
 }
 
-func (p *Producer) isEventingNodeAlive(eventingHostPortAddr string) bool {
+func (p *Producer) VbEventingNodeAssignMap() map[uint16]string {
+	p.RLock()
+	defer p.RUnlock()
+	return p.vbEventingNodeAssignMap
+}
+
+func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr string) bool {
 	eventingNodeAddrs := (*[]string)(atomic.LoadPointer(
 		(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs))))
 	if eventingNodeAddrs != nil {
@@ -255,6 +247,30 @@ func (p *Producer) isEventingNodeAlive(eventingHostPortAddr string) bool {
 		}
 	}
 	return false
+}
+
+func (p *Producer) WorkerVbMap() map[string][]uint16 {
+	p.RLock()
+	defer p.RUnlock()
+	return p.workerVbucketMap
+}
+
+func (p *Producer) GetNsServerPort() string {
+	p.RLock()
+	defer p.RUnlock()
+	return p.NsServerPort
+}
+
+func (p *Producer) KvHostPort() []string {
+	p.RLock()
+	defer p.RUnlock()
+	return p.kvHostPort
+}
+
+func (p *Producer) Auth() string {
+	p.RLock()
+	defer p.RUnlock()
+	return p.auth
 }
 
 func (p *Producer) getEventingNodeAddrs() []string {
@@ -275,7 +291,7 @@ func (p *Producer) getKvNodeAddrs() []string {
 	return nil
 }
 
-func (p *Producer) getNsServerNodeCount() int {
+func (p *Producer) NsServerNodeCount() int {
 	nsServerNodeAddrs := (*[]string)(atomic.LoadPointer(
 		(*unsafe.Pointer)(unsafe.Pointer(&p.nsServerNodeAddrs))))
 	if nsServerNodeAddrs != nil {

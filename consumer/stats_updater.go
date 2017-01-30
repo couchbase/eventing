@@ -1,4 +1,4 @@
-package producer
+package consumer
 
 func newVbProcessingStats() vbStats {
 	vbsts := make(vbStats, NumVbuckets)

@@ -1,4 +1,4 @@
-package producer
+package util
 
 import (
 	"fmt"
@@ -9,6 +9,12 @@ import (
 	"github.com/couchbase/indexing/secondary/common"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	"github.com/couchbase/indexing/secondary/logging"
+)
+
+const (
+	EventingAdminService = "eventingAdminPort"
+	DataService          = "kv"
+	MgmtService          = "mgmt"
 )
 
 func listOfVbnos(startVB int, endVB int) []uint16 {
@@ -28,7 +34,7 @@ func sprintWorkerState(state map[int]map[string]interface{}) string {
 	return strings.TrimRight(line, " ")
 }
 
-func sprintDCPCounts(counts map[mcd.CommandCode]int) string {
+func SprintDCPCounts(counts map[mcd.CommandCode]int) string {
 	line := ""
 	for i := 0; i < 256; i++ {
 		opcode := mcd.CommandCode(i)
@@ -39,7 +45,7 @@ func sprintDCPCounts(counts map[mcd.CommandCode]int) string {
 	return strings.TrimRight(line, " ")
 }
 
-func sprintV8Counts(counts map[string]int) string {
+func SprintV8Counts(counts map[string]int) string {
 	line := ""
 	for k, v := range counts {
 		line += fmt.Sprintf("%s:%v ", k, v)
@@ -47,8 +53,8 @@ func sprintV8Counts(counts map[string]int) string {
 	return strings.TrimRight(line, " ")
 }
 
-func getNsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
-	cinfo, err := getClusterInfoCache(auth, hostaddress)
+func NsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
+	cinfo, err := ClusterInfoCache(auth, hostaddress)
 	if err != nil {
 		return nil, err
 	}
@@ -66,8 +72,8 @@ func getNsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
 	return nsServerNodes, nil
 }
 
-func getKVNodesAddresses(auth, hostaddress string) ([]string, error) {
-	cinfo, err := getClusterInfoCache(auth, hostaddress)
+func KVNodesAddresses(auth, hostaddress string) ([]string, error) {
+	cinfo, err := ClusterInfoCache(auth, hostaddress)
 	if err != nil {
 		return nil, err
 	}
@@ -85,8 +91,8 @@ func getKVNodesAddresses(auth, hostaddress string) ([]string, error) {
 	return kvNodes, nil
 }
 
-func getEventingNodesAddresses(auth, hostaddress string) ([]string, error) {
-	cinfo, err := getClusterInfoCache(auth, hostaddress)
+func EventingNodesAddresses(auth, hostaddress string) ([]string, error) {
+	cinfo, err := ClusterInfoCache(auth, hostaddress)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +114,8 @@ func getEventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 	return eventingNodes, nil
 }
 
-func getCurrentEventingNodeAddress(auth, hostaddress string) (string, error) {
-	cinfo, err := getClusterInfoCache(auth, hostaddress)
+func CurrentEventingNodeAddress(auth, hostaddress string) (string, error) {
+	cinfo, err := ClusterInfoCache(auth, hostaddress)
 	if err != nil {
 		return "", err
 	}
@@ -124,8 +130,8 @@ func getCurrentEventingNodeAddress(auth, hostaddress string) (string, error) {
 	}
 }
 
-func getLocalEventingServiceHost(auth, hostaddress string) (string, error) {
-	cinfo, err := getClusterInfoCache(auth, hostaddress)
+func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
+	cinfo, err := ClusterInfoCache(auth, hostaddress)
 	if err != nil {
 		return "", err
 	}
@@ -138,7 +144,7 @@ func getLocalEventingServiceHost(auth, hostaddress string) (string, error) {
 	return srvAddr, nil
 }
 
-func getClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, error) {
+func ClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, error) {
 	clusterURL := fmt.Sprintf("http://%s@%s", auth, hostaddress)
 
 	cinfo, err := common.NewClusterInfoCache(clusterURL, "default")
@@ -153,7 +159,7 @@ func getClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, er
 	return cinfo, nil
 }
 
-func memcachedErrCode(err error) gomemcached.Status {
+func MemcachedErrCode(err error) gomemcached.Status {
 	status := gomemcached.Status(0xffff)
 	if res, ok := err.(*gomemcached.MCResponse); ok {
 		status = res.Status
@@ -161,7 +167,7 @@ func memcachedErrCode(err error) gomemcached.Status {
 	return status
 }
 
-func compareSlices(s1, s2 []string) bool {
+func CompareSlices(s1, s2 []string) bool {
 
 	if s1 == nil && s2 == nil {
 		return true

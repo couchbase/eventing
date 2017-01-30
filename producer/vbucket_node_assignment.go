@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/logging"
 )
@@ -12,11 +13,11 @@ import (
 // be consistent across all nodes
 func (p *Producer) vbEventingNodeAssign() {
 
-	Retry(NewFixedBackoff(time.Second), getKVNodesAddressesOpCallback, p)
+	util.Retry(util.NewFixedBackoff(time.Second), getKVNodesAddressesOpCallback, p)
 
-	Retry(NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, p)
+	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, p)
 
-	Retry(NewFixedBackoff(time.Second), getNsServerNodesAddressesOpCallback, p)
+	util.Retry(util.NewFixedBackoff(time.Second), getNsServerNodesAddressesOpCallback, p)
 
 	eventingNodeAddrs := p.getEventingNodeAddrs()
 	vbucketPerNode := NumVbuckets / len(eventingNodeAddrs)
@@ -39,7 +40,7 @@ func (p *Producer) getKvVbMap() {
 
 	var cinfo *common.ClusterInfoCache
 
-	Retry(NewFixedBackoff(time.Second), getClusterInfoCacheOpCallback, p, &cinfo)
+	util.Retry(util.NewFixedBackoff(time.Second), getClusterInfoCacheOpCallback, p, &cinfo)
 
 	kvAddrs := cinfo.GetNodesByServiceType(DataService)
 
@@ -48,13 +49,13 @@ func (p *Producer) getKvVbMap() {
 	for _, kvaddr := range kvAddrs {
 		addr, err := cinfo.GetServiceAddress(kvaddr, DataService)
 		if err != nil {
-			logging.Errorf("VBNA[%s:%d] Failed to get address of KV host, err: %v", p.AppName, len(p.runningConsumers), err)
+			logging.Errorf("VBNA[%s:%d] Failed to get address of KV host, err: %v", p.AppName, p.LenRunningConsumers(), err)
 			continue
 		}
 
 		vbs, err := cinfo.GetVBuckets(kvaddr, "default")
 		if err != nil {
-			logging.Errorf("VBNA[%s:%d] Failed to get vbuckets for given kv common.NodeId, err: %v", p.AppName, len(p.runningConsumers), err)
+			logging.Errorf("VBNA[%s:%d] Failed to get vbuckets for given kv common.NodeId, err: %v", p.AppName, p.LenRunningConsumers(), err)
 			continue
 		}
 

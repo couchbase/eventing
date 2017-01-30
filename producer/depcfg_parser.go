@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"time"
 
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
@@ -27,12 +28,12 @@ func (p *Producer) parseDepcfg() {
 
 		hostaddr := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
 
-		localAddress, err := getLocalEventingServiceHost(p.auth, hostaddr)
+		localAddress, err := util.LocalEventingServiceHost(p.auth, hostaddr)
 		if err != nil {
 			logging.Errorf("DCFG[%s] Failed to get address for local eventing node, err :%v", p.AppName, err)
 		}
 
-		p.kvHostPort, err = getKVNodesAddresses(p.auth, hostaddr)
+		p.kvHostPort, err = util.KVNodesAddresses(p.auth, hostaddr)
 		if err != nil {
 			logging.Errorf("DCFG[%s] Failed to get list of kv nodes in the cluster, err: %v", p.AppName, err)
 		}

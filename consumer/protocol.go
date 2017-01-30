@@ -1,4 +1,4 @@
-package producer
+package consumer
 
 import (
 	"log"
@@ -77,8 +77,6 @@ func makeHeader(event int8, opcode int8, meta string) (encodedHeader []byte) {
 	header.HeaderAddOpcode(builder, opcode)
 	header.HeaderAddMetadata(builder, metadata)
 
-	// log.Printf("makeHeader => event type: %d opcode: %d\n", event, opcode)
-
 	headerPos := header.HeaderEnd(builder)
 	builder.Finish(headerPos)
 	encodedHeader = builder.Bytes[builder.Head():]
@@ -120,5 +118,4 @@ func ReadPayload(buf []byte) {
 	val := string(payloadPos.Value())
 
 	log.Printf("ReadPayload => key: %s val: %s\n", key, val)
-
 }

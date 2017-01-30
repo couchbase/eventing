@@ -1,4 +1,4 @@
-package producer
+package util
 
 import (
 	"math/rand"
