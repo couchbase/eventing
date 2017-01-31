@@ -2,6 +2,7 @@ package producer
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/couchbase/eventing/util"
@@ -20,20 +21,91 @@ func (p *Producer) vbEventingNodeAssign() {
 	util.Retry(util.NewFixedBackoff(time.Second), getNsServerNodesAddressesOpCallback, p)
 
 	eventingNodeAddrs := p.getEventingNodeAddrs()
-	vbucketPerNode := NumVbuckets / len(eventingNodeAddrs)
+	vbucketsPerNode := NumVbuckets / len(eventingNodeAddrs)
+	var vbNo int
 	var startVb uint16
 
 	p.Lock()
+	defer p.Unlock()
 	p.vbEventingNodeAssignMap = make(map[uint16]string)
 
+	vbCountPerNode := make([]int, len(eventingNodeAddrs))
 	for i := 0; i < len(eventingNodeAddrs); i++ {
-		for j := 0; j < vbucketPerNode && startVb < NumVbuckets; j++ {
+		vbCountPerNode[i] = vbucketsPerNode
+		vbNo += vbucketsPerNode
+	}
+
+	remainingVbs := NumVbuckets - vbNo
+	if remainingVbs > 0 {
+		for i := 0; i < remainingVbs; i++ {
+			vbCountPerNode[i] = vbCountPerNode[i] + 1
+		}
+	}
+
+	for i, v := range vbCountPerNode {
+		for j := 0; j < v; j++ {
 			p.vbEventingNodeAssignMap[startVb] = eventingNodeAddrs[i]
 			startVb++
 		}
-		fmt.Printf("eventing node index: %d startVb: %d\n", i, startVb)
+		fmt.Printf("eventing node index: %d\tstartVb: %d\n", i, startVb)
 	}
-	p.Unlock()
+}
+
+func (p *Producer) initWorkerVbMap() {
+
+	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
+
+	eventingNodeAddr, err := util.CurrentEventingNodeAddress(p.auth, hostAddress)
+	if err != nil {
+		logging.Errorf("PRDR[%s:%d] Failed to get address for current eventing node, err: %v", p.AppName, p.LenRunningConsumers(), err)
+	}
+
+	// vbuckets the current eventing node is responsible to handle
+	var vbucketsToHandle []int
+
+	for k, v := range p.vbEventingNodeAssignMap {
+		if v == eventingNodeAddr {
+			vbucketsToHandle = append(vbucketsToHandle, int(k))
+		}
+	}
+
+	sort.Ints(vbucketsToHandle)
+
+	logging.Infof("PRDR[%s:%d] eventingAddr: %v vbucketsToHandle: %v", p.AppName, p.LenRunningConsumers(), eventingNodeAddr, vbucketsToHandle)
+
+	vbucketPerWorker := len(vbucketsToHandle) / p.workerCount
+	var startVbIndex int
+
+	vbCountPerWorker := make([]int, p.workerCount)
+	for i := 0; i < p.workerCount; i++ {
+		vbCountPerWorker[i] = vbucketPerWorker
+		startVbIndex += vbucketPerWorker
+	}
+
+	remainingVbs := len(vbucketsToHandle) - startVbIndex
+	if remainingVbs > 0 {
+		for i := 0; i < remainingVbs; i++ {
+			vbCountPerWorker[i] = vbCountPerWorker[i] + 1
+		}
+	}
+
+	p.Lock()
+	defer p.Unlock()
+
+	var workerName string
+	p.workerVbucketMap = make(map[string][]uint16)
+
+	startVbIndex = 0
+
+	for i := 0; i < p.workerCount; i++ {
+		workerName = fmt.Sprintf("worker_%s_%d", p.app.AppName, i)
+
+		for j := 0; j < vbCountPerWorker[i]; j++ {
+			p.workerVbucketMap[workerName] = append(p.workerVbucketMap[workerName], uint16(vbucketsToHandle[startVbIndex]))
+			startVbIndex++
+		}
+	}
+
 }
 
 func (p *Producer) getKvVbMap() {

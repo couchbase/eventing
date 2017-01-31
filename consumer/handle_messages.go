@@ -58,31 +58,31 @@ func (c *Consumer) sendMessage(msg *Message) error {
 
 	err := binary.Write(&buffer, binary.LittleEndian, uint32(len(msg.Header)))
 	if err != nil {
-		logging.Errorf("V8CR[%s:%s:%s:%d] Failure while writing header size, err : %v",
+		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing header size, err : %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
 	}
 
 	err = binary.Write(&buffer, binary.LittleEndian, uint32(len(msg.Payload)))
 	if err != nil {
-		logging.Errorf("V8CR[%s:%s:%s:%d] Failure while writing payload size, err: %v",
+		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing payload size, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
 	}
 
 	err = binary.Write(&buffer, binary.LittleEndian, msg.Header)
 	if err != nil {
-		logging.Errorf("V8CR[%s:%s:%s:%d] Failure while writing encoded header, err: %v",
+		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing encoded header, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
 	}
 
 	err = binary.Write(&buffer, binary.LittleEndian, msg.Payload)
 	if err != nil {
-		logging.Errorf("V8CR[%s:%s:%s:%d] Failure while writing encoded payload, err: %v",
+		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing encoded payload, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
 	}
 
 	err = binary.Write(c.conn, binary.LittleEndian, buffer.Bytes())
 	if err != nil {
-		logging.Errorf("V8CR[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
+		logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
 		c.stopConsumerCh <- true
 		c.conn.Close()
@@ -95,7 +95,7 @@ func (c *Consumer) readMessage() *Response {
 	var result *Response
 	msg, err := bufio.NewReader(c.conn).ReadSlice('\n')
 	if err != nil {
-		logging.Errorf("V8CR[%s:%s:%s:%d] Read from client socket failed, err: %v",
+		logging.Errorf("CRHM[%s:%s:%s:%d] Read from client socket failed, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
 
 		c.stopConsumerCh <- true

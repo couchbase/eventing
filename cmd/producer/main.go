@@ -48,6 +48,7 @@ func main() {
 
 			http.HandleFunc("/getWorkerMap", p.GetWorkerMap)
 			http.HandleFunc("/getNodeMap", p.GetNodeMap)
+			http.HandleFunc("/getVbStats", p.GetConsumerVbProcessingStats)
 
 			http.Serve(listener, http.DefaultServeMux)
 		}(p, &wg)

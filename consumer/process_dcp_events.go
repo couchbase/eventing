@@ -16,11 +16,10 @@ func (c *Consumer) doDCPEventProcess() {
 		select {
 		case e, ok := <-c.dcpFeed.C:
 			if ok == false {
-				logging.Infof("V8CR[%s:%s:%s:%d] Closing DCP feed for bucket %q",
+				logging.Infof("CRDP[%s:%s:%s:%d] Closing DCP feed for bucket %q",
 					c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.bucket)
 
 				c.stopCheckpointingCh <- true
-				c.stopVbTakeoverCh <- true
 				c.producer.CleanupDeadConsumer(c)
 				return
 			}
@@ -48,13 +47,11 @@ func (c *Consumer) doDCPEventProcess() {
 
 				if err := c.sendMessage(msg); err != nil {
 					c.stopCheckpointingCh <- true
-					c.stopVbTakeoverCh <- true
 					c.producer.CleanupDeadConsumer(c)
 					return
 				}
 				if resp := c.readMessage(); resp.err != nil {
 					c.stopCheckpointingCh <- true
-					c.stopVbTakeoverCh <- true
 					c.producer.CleanupDeadConsumer(c)
 					return
 				}
@@ -78,7 +75,7 @@ func (c *Consumer) doDCPEventProcess() {
 
 					vbuuid, seqNo, err := e.FailoverLog.Latest()
 					if err != nil {
-						logging.Errorf("V8CR[%s:%s:%s:%d] Failure to get latest failover log vb: %d err: %v, not updating metadata",
+						logging.Errorf("CRDP[%s:%s:%s:%d] Failure to get latest failover log vb: %d err: %v, not updating metadata",
 							c.app.AppName, c.workerName, c.tcpPort, c.osPid, e.VBucket, err)
 						c.vbFlogChan <- vbFlog
 						continue
@@ -127,30 +124,33 @@ func (c *Consumer) doDCPEventProcess() {
 				util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 				vbBlob.CurrentVBOwner = ""
+				vbBlob.AssignedWorker = ""
 				vbBlob.DCPStreamStatus = DcpStreamStopped
 
 				vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64)
-
-				c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", vbBlob.CurrentVBOwner)
-				c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", vbBlob.DCPStreamStatus)
 
 				util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
 			default:
 			}
 
 		case <-c.statsTicker.C:
+
+			util.Retry(util.NewFixedBackoff(ClusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 			c.RLock()
-			logging.Infof("V8CR[%s:%s:%s:%d] DCP events processed: %s V8 events processed: %s",
+			logging.Infof("CRDP[%s:%s:%s:%d] DCP events processed: %s V8 events processed: %s, vbs owned len: %d dump: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.osPid,
-				util.SprintDCPCounts(c.dcpMessagesProcessed), util.SprintV8Counts(c.v8WorkerMessagesProcessed))
+				util.SprintDCPCounts(c.dcpMessagesProcessed), util.SprintV8Counts(c.v8WorkerMessagesProcessed),
+				len(c.getCurrentlyOwnedVbs()), c.getCurrentlyOwnedVbs())
 			c.RUnlock()
+
 		case <-c.stopConsumerCh:
-			logging.Errorf("V8CR[%s:%s:%s:%d] Socket belonging to V8 consumer died",
+
+			logging.Errorf("CRDP[%s:%s:%s:%d] Socket belonging to V8 consumer died",
 				c.app.AppName, c.workerName, c.tcpPort, c.osPid)
 			c.stopCheckpointingCh <- true
-			c.stopVbTakeoverCh <- true
 			c.producer.CleanupDeadConsumer(c)
 			return
+
 		case <-c.gracefulShutdownChan:
 			return
 		}
@@ -159,7 +159,7 @@ func (c *Consumer) doDCPEventProcess() {
 
 func (c *Consumer) startDcp(dcpConfig map[string]interface{},
 	flogs couchbase.FailoverLog) {
-	logging.Infof("V8CR[%s:%s:%s:%d] no. of vbs owned: %d vbnos owned: %#v",
+	logging.Infof("CRDP[%s:%s:%s:%d] no. of vbs owned: %d vbnos owned: %#v",
 		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(c.vbnos), c.vbnos)
 
 	util.Retry(util.NewFixedBackoff(ClusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
@@ -181,9 +181,6 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{},
 			vbBlob.VBId = vbno
 			vbBlob.AssignedWorker = c.ConsumerName()
 			vbBlob.CurrentVBOwner = c.HostPortAddr()
-
-			c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
-			c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
 
 			util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), setOpCallback, c, vbKey, &vbBlob)
 
@@ -208,7 +205,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 
 	snapStart, snapEnd := start, start
 
-	logging.Infof("V8CR[%s:%s:%s:%d] vb: %d DCP stream start vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+	logging.Infof("CRDP[%s:%s:%s:%d] vb: %d DCP stream start vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
 		c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
 
 	c.dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
@@ -217,7 +214,7 @@ loop:
 	vbFlog := <-c.vbFlogChan
 
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
-		logging.Infof("V8CR[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno)
+		logging.Infof("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno)
 
 		return
 	}
@@ -225,14 +222,26 @@ loop:
 	if vbFlog.streamReqRetry && vbFlog.vb == vbno {
 
 		if vbFlog.statusCode == mcd.ROLLBACK {
-			logging.Infof("V8CR[%s:%s:%s:%d] vb: %d vbuuid: %d Rollback requested by DCP, previous startseq: %d rollback startseq: %d",
+			logging.Infof("CRDP[%s:%s:%s:%d] vb: %d vbuuid: %d Rollback requested by DCP, previous startseq: %d rollback startseq: %d",
 				c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno, vbBlob.VBuuid, start, vbFlog.seqNo)
 			start, snapStart, snapEnd = vbFlog.seqNo, vbFlog.seqNo, vbFlog.seqNo
 		}
 
-		logging.Infof("V8CR[%s:%s:%s:%d] Retrying DCP stream start vb: %d vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+		logging.Infof("CRDP[%s:%s:%s:%d] Retrying DCP stream start vb: %d vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
 			c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
 		c.dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 		goto loop
 	}
+}
+
+func (c *Consumer) getCurrentlyOwnedVbs() []int {
+	vbsOwned := make([]int, 0)
+
+	for vbNo := 0; vbNo < NumVbuckets; vbNo++ {
+		if c.vbProcessingStats.getVbStat(uint16(vbNo), "current_vb_owner") == c.HostPortAddr() &&
+			c.vbProcessingStats.getVbStat(uint16(vbNo), "assigned_worker") == c.ConsumerName() {
+			vbsOwned = append(vbsOwned, vbNo)
+		}
+	}
+	return vbsOwned
 }

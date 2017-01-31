@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"sort"
 	"strings"
 	"sync/atomic"
 	"unsafe"
@@ -76,6 +75,11 @@ func (p *Producer) Serve() {
 					p.getKvVbMap()
 					p.initWorkerVbMap()
 
+					for _, consumer := range p.runningConsumers {
+						logging.Infof("Consumer: %s sent cluster change message from producer", consumer.ConsumerName())
+						consumer.NotifyClusterChange()
+					}
+
 					logging.Infof("PRDR[%s:%d] WorkerMap dump: %#v post eventing rebalance",
 						p.AppName, p.LenRunningConsumers(), p.workerVbucketMap)
 
@@ -123,56 +127,6 @@ func (p *Producer) startBucket() {
 	for i := 0; i < p.workerCount; i++ {
 		workerName := fmt.Sprintf("worker_%s_%d", p.app.AppName, i)
 		p.handleV8Consumer(p.workerVbucketMap[workerName], i)
-	}
-}
-
-func (p *Producer) initWorkerVbMap() {
-
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
-
-	eventingNodeAddr, err := util.CurrentEventingNodeAddress(p.auth, hostAddress)
-	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to get address for current eventing node, err: %v", p.AppName, p.LenRunningConsumers(), err)
-	}
-
-	// vbuckets the current eventing node is responsible to handle
-	var vbucketsToHandle []int
-
-	for k, v := range p.vbEventingNodeAssignMap {
-		if v == eventingNodeAddr {
-			vbucketsToHandle = append(vbucketsToHandle, int(k))
-		}
-	}
-
-	sort.Ints(vbucketsToHandle)
-
-	vbucketPerWorker := len(vbucketsToHandle) / p.workerCount
-	var startVbIndex int
-
-	logging.Infof("PRDR[%s:%d] eventingAddr: %v vbucketsToHandle: %v", p.AppName, p.LenRunningConsumers(), eventingNodeAddr, vbucketsToHandle)
-
-	var workerName string
-
-	p.Lock()
-	defer p.Unlock()
-
-	p.workerVbucketMap = make(map[string][]uint16)
-
-	for i := 0; i < p.workerCount-1; i++ {
-		workerName = fmt.Sprintf("worker_%s_%d", p.app.AppName, i)
-
-		for j := 0; j < vbucketPerWorker; j++ {
-			p.workerVbucketMap[workerName] = append(
-				p.workerVbucketMap[workerName], uint16(vbucketsToHandle[startVbIndex]))
-			startVbIndex++
-		}
-	}
-
-	workerName = fmt.Sprintf("worker_%s_%d", p.app.AppName, p.workerCount-1)
-	for j := 0; j < vbucketPerWorker && startVbIndex < len(vbucketsToHandle); j++ {
-		p.workerVbucketMap[workerName] = append(
-			p.workerVbucketMap[workerName], uint16(vbucketsToHandle[startVbIndex]))
-		startVbIndex++
 	}
 }
 
@@ -333,5 +287,22 @@ func (p *Producer) GetNodeMap(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Failed to encode worker vbucket map\n")
 	} else {
 		fmt.Fprintf(w, "%s", string(encodedEventingMap))
+	}
+}
+
+func (p *Producer) GetConsumerVbProcessingStats(w http.ResponseWriter, r *http.Request) {
+	vbStats := make(map[string]map[uint16]map[string]interface{}, 0)
+
+	for _, consumer := range p.runningConsumers {
+		consumerName := consumer.ConsumerName()
+		stats := consumer.VbProcessingStats()
+		vbStats[consumerName] = stats
+	}
+
+	encodedVbStats, err := json.Marshal(vbStats)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to encode consumer vbstats\n")
+	} else {
+		fmt.Fprintf(w, "%s", string(encodedVbStats))
 	}
 }

@@ -22,17 +22,20 @@ const (
 	DcpDataChanSize   = 10000
 	DcpNumConnections = 4
 
-	// Last processed seq # checkpoint interval, in seconds
-	CheckPointInterval = 2
+	ClusterChangeNotifChBufSize = 10
 
 	// Interval for retrying failed bucket operations using go-couchbase
 	BucketOpRetryInterval = time.Duration(1000) * time.Millisecond
 
+	// Last processed seq # checkpoint interval
+	CheckPointInterval = time.Duration(2000) * time.Millisecond
+
 	// Interval for retrying failed cluster related operations
 	ClusterOpRetryInterval = time.Duration(1000) * time.Millisecond
 
-	// Interval for polling in order to take ownership of desired vbucket
-	VbTakeOverPollInterval = time.Duration(1000) * time.Millisecond
+	StatsTickInterval = time.Duration(5000) * time.Millisecond
+
+	ControlRoutineTickInterval = time.Duration(3000) * time.Millisecond
 )
 
 const (
@@ -87,10 +90,9 @@ type Consumer struct {
 	// of last seq # processed
 	stopCheckpointingCh chan bool
 
-	// Chan to stop background vb takeover polling routine
-	stopVbTakeoverCh chan bool
-
 	gracefulShutdownChan chan bool
+
+	clusterStateChangeNotifCh chan bool
 
 	tcpPort string
 
@@ -103,9 +105,9 @@ type Consumer struct {
 	sync.RWMutex
 	vbProcessingStats vbStats
 
-	statsTicker      *time.Ticker
-	checkpointTicker *time.Ticker
-	vbTakeoverTicker *time.Ticker
+	statsTicker          *time.Ticker
+	checkpointTicker     *time.Ticker
+	controlRoutineTicker *time.Ticker
 }
 
 type vbStats map[uint16]*vbStat
@@ -117,12 +119,10 @@ type vbStat struct {
 
 type vbucketKVBlob struct {
 	AssignedWorker     string `json:"assigned_worker"`
-	RequestingWorker   string `json:"requesting_worker"`
 	CurrentVBOwner     string `json:"current_vb_owner"`
 	DCPStreamStatus    string `json:"dcp_stream_status"`
 	LastCheckpointTime string `json:"last_checkpoint_time"`
 	LastSeqNoProcessed uint64 `json:"last_processed_seq_no"`
-	NewVBOwner         string `json:"new_vb_owner"`
 	VBId               uint16 `json:"vb_id"`
 	VBuuid             uint64 `json:"vb_uuid"`
 }

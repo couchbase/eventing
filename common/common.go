@@ -25,8 +25,10 @@ type EventingConsumer interface {
 	String() string
 	ConsumerName() string
 	HostPortAddr() string
+	NotifyClusterChange()
 	SetConnHandle(net.Conn)
 	SignalConnected()
+	VbProcessingStats() map[uint16]map[string]interface{}
 }
 
 type AppConfig struct {
