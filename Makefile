@@ -5,12 +5,12 @@ CBDEPS_DIR=/Users/$(USER)/.cbdepscache/
 DYLD_LIBRARY_PATH=/Users/$(USER)/.cbdepscache/lib
 CMD_DIR=cmd/producer/
 
-LDFLAGS=-luv -ljemalloc -L$(CBDEPS_DIR)lib/debug/ -lv8
+LDFLAGS=-luv -L$(CBDEPS_DIR)/lib/ -ljemalloc -L$(CBDEPS_DIR)lib/debug/ -lv8
 
-SOURCES=consumer/src/client.cc consumer/src/commands.cc \
-				consumer/src/message.cc consumer/src/v8worker.cc
+SOURCES=v8_consumer/src/client.cc v8_consumer/src/commands.cc \
+				v8_consumer/src/message.cc v8_consumer/src/v8worker.cc
 
-INCLUDE_DIRS=-I$(CBDEPS_DIR) -I/usr/local/include/hiredis -I consumer/include/
+INCLUDE_DIRS=-I$(CBDEPS_DIR) -I$(CBDEPS_DIR)/include -Iv8_consumer/include/
 
 OUT=$(CMD_DIR)client.bin
 
