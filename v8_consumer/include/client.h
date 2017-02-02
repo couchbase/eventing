@@ -1,6 +1,8 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
+extern void assert(int);
+
 #include "commands.h"
 #include "message.h"
 #include "v8worker.h"

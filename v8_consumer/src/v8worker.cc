@@ -1,4 +1,3 @@
-#include <cassert>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -12,6 +11,8 @@
 #include <typeinfo>
 
 #include "../include/v8worker.h"
+
+extern void assert(int);
 
 enum RETURN_CODE
 {
