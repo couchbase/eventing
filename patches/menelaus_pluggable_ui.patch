@@ -1,0 +1,16 @@
+diff --git a/src/menelaus_pluggable_ui.erl b/src/menelaus_pluggable_ui.erl
+index 47fcf71..d7ecbe0 100644
+--- a/src/menelaus_pluggable_ui.erl
++++ b/src/menelaus_pluggable_ui.erl
+@@ -230,7 +230,10 @@ port_for(n1ql, Node) ->
+     lookup_port(query_port, Node);
+ 
+ port_for(views, Node) ->
+-    lookup_port(capi_port, Node).
++    lookup_port(capi_port, Node);
++
++port_for(ciad, _Node) ->
++    6061.
+ 
+ lookup_port(Name, Node) ->
+     {value, Port} = ns_config:search(ns_config:latest(),

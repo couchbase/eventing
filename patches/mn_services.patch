@@ -1,0 +1,31 @@
+diff --git a/priv/public/ui/app/components/directives/mn_services/mn_services.html b/priv/public/ui/app/components/directives/mn_services/mn_services.html
+index 5501c7d..f600088 100644
+--- a/priv/public/ui/app/components/directives/mn_services/mn_services.html
++++ b/priv/public/ui/app/components/directives/mn_services/mn_services.html
+@@ -30,6 +30,14 @@
+    ng-model="config.services.model.fts"
+    ng-disabled="config.services.disabled.fts">
+ <label for="fts_service">Full Text</label>
++<input
++    type="checkbox"
++    value="ciad"
++    id="ciad_service"
++    ng-change="onChange(config.services.model.ciad, 'ciad')"
++    ng-model="config.services.model.ciad"
++    ng-disabled="config.services.disabled.ciad" />
++<label for="ciad_service">CIAD</label>
+ 
+ <a
+    href=""
+diff --git a/priv/public/ui/app/components/mn_filters.js b/priv/public/ui/app/components/mn_filters.js
+index 38f2f82..1b59622 100644
+--- a/priv/public/ui/app/components/mn_filters.js
++++ b/priv/public/ui/app/components/mn_filters.js
+@@ -491,6 +491,7 @@
+         case 'n1ql': return 'Query';
+         case 'index': return 'Index';
+         case 'fts': return 'Full Text';
++        case 'ciad': return 'CIAD';
+       }
+     }
+   }

@@ -1,0 +1,13 @@
+diff --git a/src/bucket_info_cache.erl b/src/bucket_info_cache.erl
+index 66ba126..4ec589a 100644
+--- a/src/bucket_info_cache.erl
++++ b/src/bucket_info_cache.erl
+@@ -172,6 +172,8 @@ build_services(Node, Config, EnabledServices) ->
+                          Port ->
+                              [{ftsSSL, Port}]
+                      end;
++             ciad ->
++                 [{eventingAdminPort, ns_config:search(Config, {node, Node, eventing_admin_port}, undefined)}];
+              example ->
+                  []
+          end || S <- EnabledServices],

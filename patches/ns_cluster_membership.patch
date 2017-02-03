@@ -1,0 +1,23 @@
+diff --git a/src/ns_cluster_membership.erl b/src/ns_cluster_membership.erl
+index 97e4747..584be3d 100644
+--- a/src/ns_cluster_membership.erl
++++ b/src/ns_cluster_membership.erl
+@@ -214,7 +214,7 @@ supported_services() ->
+ 
+ supported_services_for_version(CompatVersion) ->
+     Services0 = [kv],
+-    case cluster_compat_mode:is_version_40(CompatVersion) of
++    Services = case cluster_compat_mode:is_version_40(CompatVersion) of
+         true ->
+             Services1 = [n1ql, index] ++ Services0,
+             case cluster_compat_mode:is_version_45(CompatVersion) of
+@@ -225,7 +225,8 @@ supported_services_for_version(CompatVersion) ->
+             end;
+         false ->
+             Services0
+-    end.
++    end,
++    Services ++ [ciad].
+ 
+ -ifdef(EUNIT).
+ supported_services_for_version_test() ->
