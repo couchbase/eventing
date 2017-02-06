@@ -1,0 +1,19 @@
+<div class="event_main">
+    <div ng-show="!perAppCtrl.currentApp.deploy">
+        <br><br><br><br>
+        <button class="btn_1" align="left" ng-click="perAppCtrl.deployApplication()">Deploy Application</button>
+    </div>
+    <div ng-show="perAppCtrl.currentApp.deploy">
+        <br><br><br><br>
+        <button class="btn_1" align="left" ng-click="perAppCtrl.undeployApplication()">Undeploy Application</button>
+    </div>
+    <br><br><br><br>
+    <button class="btn_1" align="left">Save to disk</button>
+    <br><br><br><br>
+    <div ng-show="!perAppCtrl.currentApp.debug">
+        <button class="btn_1" align="left" ng-click="perAppCtrl.startDbg()">Start Debug</button>
+    </div>
+    <div ng-show="perAppCtrl.currentApp.debug">
+        <button class="btn_1" align="left" ng-click="perAppCtrl.stopDbg()">Stop Debug</button>
+    </div>
+</div>

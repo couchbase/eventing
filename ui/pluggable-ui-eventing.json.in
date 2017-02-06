@@ -1,0 +1,6 @@
+{
+  "service": "ciad",
+  "proxy-strategy": "local",
+  "rest-api-prefix": "event",
+  "doc-root": "@BIN_PREFIX@eventing-ui"
+}

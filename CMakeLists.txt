@@ -15,6 +15,7 @@ INCLUDE (FindCouchbaseEventingDep)
 ADD_SUBDIRECTORY(patches)
 ADD_SUBDIRECTORY(flatbuf/schema)
 ADD_SUBDIRECTORY(v8_consumer)
+ADD_SUBDIRECTORY(ui)
 
 SET (_eventing_ldflags "${_ldflags}")
 IF (WIN32)
