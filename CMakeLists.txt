@@ -17,24 +17,20 @@ ADD_SUBDIRECTORY(flatbuf/schema)
 ADD_SUBDIRECTORY(v8_consumer)
 ADD_SUBDIRECTORY(ui)
 
-SET (_eventing_ldflags "${_ldflags}")
-IF (WIN32)
-  INCLUDE (PlatformIntrospection)
-  _DETERMINE_ARCH (_arch)
-  IF (NOT _arch STREQUAL x86)
-    SET (_eventing_ldflags "${_eventing_ldflags} -linkmode internal")
-  ENDIF ()
-ENDIF ()
+# For compatibility with MacOS Sierra
+SET (GOVERSION 1.7.3)
 
-GoInstall (TARGET go_eventing PACKAGE github.com/couchbase/eventing/cmd/producer/
-  GOPATH "${PROJECT_SOURCE_DIR}/../../../.." "${GODEPSDIR}"
-  LDFLAGS "${_eventing_ldflags}"
-  INSTALL_PATH bin OUTPUT go_eventing
-  GOVERSION 1.6)
 IF (APPLE)
-    SET_TARGET_PROPERTIES(go_eventing
-                          PROPERTIES
-                          INSTALL_RPATH "@rpath")
-ENDIF (APPLE)
+  IF (${GOVERSION} VERSION_LESS ${GO_MAC_MINIMUM_VERSION})
+    SET (GOVERSION ${GO_MAC_MINIMUM_VERSION})
+  ENDIF ()
+ENDIF()
 
 
+GoInstall (TARGET go_eventing PACKAGE github.com/couchbase/eventing/cmd/producer
+  GOPATH "${PROJECT_SOURCE_DIR}/../../../.." "${GODEPSDIR}"
+  INSTALL_PATH bin OUTPUT go_eventing
+  GOVERSION ${GOVERSEION})
+                
+
+FILE(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cmd/producer/client DESTINATION ${CMAKE_INSTALL_PREFIX}/bin/)

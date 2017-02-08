@@ -14,6 +14,6 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/eventing-ui
 
 # rewrite the config file for running locally (using cluster-run)
 SET (BIN_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/")
-configure_file (pluggable-ui-eventing.json.in ${_instdir}/../../../../../../cluster_run_ui_plugins/pluggable-ui-eventing.cluster_run.json)
+configure_file (pluggable-ui-eventing.json.in ${_instdir}/../../../../../cluster_run_ui_plugins/pluggable-ui-eventing.cluster_run.json)
 
 
