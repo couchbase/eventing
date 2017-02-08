@@ -49,39 +49,8 @@ func (c *Consumer) doVbTakeover(vbno uint16) {
 
 	case DcpStreamStopped:
 
-		if vbBlob.CurrentVBOwner == c.HostPortAddr() && c.checkIfCurrentConsumerShouldOwnVb(vbno) {
-
-			vbBlob.AssignedWorker = c.ConsumerName()
-			vbBlob.DCPStreamStatus = DcpStreamRunning
-			vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
-
-			logging.Infof("CRVT[%s:%s:%s:%d] Worker: %v vbno: %v started dcp stream",
-				c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.ConsumerName(), vbno)
-
-			util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
-			c.dcpRequestStreamHandle(vbno, &vbBlob, vbBlob.LastSeqNoProcessed)
-			break
-		}
-
-		if vbBlob.CurrentVBOwner == "" && c.checkIfCurrentNodeShouldOwnVb(vbno) && c.checkIfCurrentConsumerShouldOwnVb(vbno) {
-
-			logging.Infof("CRVT[%s:%s:%s:%d] Node: %v taking ownership of vb: %d, new vb owner field was blank",
-				c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.HostPortAddr(), vbno)
-
-			c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
-			break
-		}
-
-		if vbBlob.CurrentVBOwner != c.HostPortAddr() && !c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner) &&
-			c.checkIfCurrentNodeShouldOwnVb(vbno) && c.checkIfCurrentConsumerShouldOwnVb(vbno) {
-
-			logging.Infof("CRVT[%s:%s:%s:%d] Node: %v taking ownership of vb: %d. Current vb owner isn't alive any more",
-				c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.HostPortAddr(), vbno)
-
-			c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
-			break
-		}
-
+		logging.Infof("CRVT[%s:%s:%s:%d] Worker: %v vbno: %v started dcp stream", c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.ConsumerName(), vbno)
+		c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
 	}
 }
 

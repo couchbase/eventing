@@ -84,7 +84,8 @@ func (p *Producer) Serve() {
 						p.AppName, p.LenRunningConsumers(), p.workerVbucketMap)
 
 				} else {
-					logging.Infof("PRDR[%s:%d] Gracefully tearing down producer", p.AppName, p.LenRunningConsumers())
+					logging.Infof("PRDR[%s:%d] Gracefully tearing down producer, eventing nodes prev: %#v new: %#v; kv nodes prev: %#v new: %#v",
+						p.AppName, p.LenRunningConsumers(), p.getEventingNodeAddrs(), eventingNodeAddrs, p.getKvNodeAddrs(), kvNodeAddrs)
 
 					for _, consumer := range p.runningConsumers {
 						p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[consumer])
@@ -161,8 +162,6 @@ func (p *Producer) handleV8Consumer(vbnos []uint16, index int) {
 }
 
 func (p *Producer) LenRunningConsumers() int {
-	p.RLock()
-	defer p.RUnlock()
 	return len(p.runningConsumers)
 }
 
@@ -270,6 +269,14 @@ func (p *Producer) getConsumerAssignedVbuckets(workerName string) []uint16 {
 	p.RLock()
 	defer p.RUnlock()
 	return p.workerVbucketMap[workerName]
+}
+
+func (p *Producer) CfgData() string {
+	return p.cfgData
+}
+
+func (p *Producer) MetadataBucket() string {
+	return p.metadatabucket
 }
 
 func (p *Producer) GetWorkerMap(w http.ResponseWriter, r *http.Request) {

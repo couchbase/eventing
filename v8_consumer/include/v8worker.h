@@ -8,12 +8,32 @@
 #include <include/v8-debug.h>
 #include <include/v8.h>
 
+#include <libcouchbase/api3.h>
+#include <libcouchbase/couchbase.h>
+
+#include "../../flatbuf/include/v8_init_generated.h"
+
+class Bucket;
+class N1QL;
 class V8Worker;
+
+struct Result {
+  std::string value;
+  lcb_CAS cas;
+  lcb_U32 itmflags;
+  lcb_error_t status;
+
+  Result() : cas(0), itmflags(0), status(LCB_SUCCESS) {}
+};
 
 v8::Local<v8::String> createUtf8String(v8::Isolate *isolate, const char *str);
 std::string ObjectToString(v8::Local<v8::Value> value);
 std::string ToString(v8::Isolate *isolate, v8::Handle<v8::Value> object);
+
+lcb_t* UnwrapLcbInstance(v8::Local<v8::Object> obj);
+lcb_t* UnwrapV8WorkerLcbInstance(v8::Local<v8::Object> obj);
 V8Worker *UnwrapV8WorkerInstance(v8::Local<v8::Object> obj);
+
 std::map<std::string, std::string> *UnwrapMap(v8::Local<v8::Object> obj);
 
 class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
@@ -44,17 +64,29 @@ public:
   v8::Persistent<v8::Context> context_;
 
   v8::Persistent<v8::Function> on_update_;
+  v8::Persistent<v8::Function> on_delete_;
 
   v8::Global<v8::ObjectTemplate> worker_template;
 
+  lcb_t cb_instance;
+
   std::string script_to_execute_;
   std::string app_name_;
+
+  std::string cb_kv_endpoint;
+  std::string cb_source_bucket;
 
 private:
   bool ExecuteScript(v8::Local<v8::String> script);
 
   ArrayBufferAllocator allocator;
   v8::Isolate *isolate_;
+
+  Bucket *bucket_handle;
+  N1QL *n1ql_handle;
+
+  std::map<std::string, std::string> bucket;
+  std::map<std::string, std::string> n1ql;
 
   std::string last_exception;
 };

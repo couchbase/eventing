@@ -91,7 +91,8 @@ func (c *Consumer) Serve() {
 	// Wait for net.Conn to be initialised
 	<-c.signalConnectedCh
 
-	c.sendInitV8Worker(c.app.AppName)
+	initMeta := MakeV8InitMetadata(c.app.AppName, c.producer.KvHostPort()[0], c.producer.CfgData())
+	c.sendInitV8Worker(string(initMeta))
 	res := c.readMessage()
 	logging.Infof("V8CR[%s:%s:%s:%d] Response from worker for init call: %s",
 		c.app.AppName, c.workerName, c.tcpPort, c.osPid, res.response)
@@ -109,7 +110,7 @@ func (c *Consumer) Serve() {
 }
 
 func (c *Consumer) Stop() {
-	logging.Infof("V8CR[%s:%s:%s:%d] Gracefully shutting down consumer routine\n",
+	logging.Infof("V8CR[%s:%s:%s:%d] Gracefully shutting down consumer routine",
 		c.app.AppName, c.workerName, c.tcpPort, c.osPid)
 
 	c.producer.CleanupDeadConsumer(c)
@@ -158,8 +159,7 @@ func (c *Consumer) NotifyClusterChange() {
 }
 
 func (c *Consumer) initCBBucketConnHandle() {
-	config := c.app.Depcfg.(map[string]interface{})
-	metadataBucket := config["metadata_bucket"].(string)
+	metadataBucket := c.producer.MetadataBucket()
 	connStr := fmt.Sprintf("http://127.0.0.1:" + c.producer.GetNsServerPort())
 
 	var conn cblib.Client

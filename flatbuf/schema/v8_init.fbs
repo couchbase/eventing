@@ -1,0 +1,9 @@
+namespace flatbuf.v8init;
+
+table Init {
+  appname:string;
+  kvhostport:string;
+  depcfg:string;
+}
+
+root_type Init;

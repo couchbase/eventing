@@ -1,11 +1,12 @@
 package producer
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"time"
 
+	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/flatbuf/cfg"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
 )
@@ -13,18 +14,27 @@ import (
 func (p *Producer) parseDepcfg() {
 	logging.Infof("DCFG[%s] Opening up application file", p.AppName)
 
-	depcfgData, err := ioutil.ReadFile(AppsFolder + p.AppName)
+	cfgData, err := ioutil.ReadFile(AppsFolder + p.AppName)
 	if err == nil {
-		err := json.Unmarshal(depcfgData, &p.app)
-		if err != nil {
-			logging.Errorf("DCFG[%s] Failed to parse depcfg, err: %v", p.AppName, err)
-			return
-		}
+		config := cfg.GetRootAsConfig(cfgData, 0)
 
-		config := p.app.Depcfg.(map[string]interface{})
+		p.app = new(common.AppConfig)
+		p.app.AppCode = string(config.AppCode())
+		p.app.AppName = string(config.AppName())
+		p.app.ID = int(config.Id())
 
-		p.auth = config["auth"].(string)
-		p.bucket = config["source_bucket"].(string)
+		d := new(cfg.DepCfg)
+		depcfg := config.DepCfg(d)
+
+		p.auth = string(depcfg.Auth())
+		p.bucket = string(depcfg.SourceBucket())
+		p.cfgData = string(cfgData)
+		p.metadatabucket = string(depcfg.MetadataBucket())
+		p.statsTickDuration = time.Duration(depcfg.TickDuration())
+		p.workerCount = int(depcfg.WorkerCount())
+
+		fmt.Println("wc: ", p.workerCount, " auth: ", p.auth,
+			" bucket: ", p.bucket, " statsTickD: ", p.statsTickDuration)
 
 		hostaddr := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
 
@@ -39,9 +49,6 @@ func (p *Producer) parseDepcfg() {
 		}
 
 		p.nsServerHostPort = fmt.Sprintf("%s:%s", localAddress, p.NsServerPort)
-
-		p.statsTickDuration = time.Duration(config["tick_duration"].(float64))
-		p.workerCount = int(config["worker_count"].(float64))
 
 	} else {
 		logging.Errorf("DCFG[%s] Failed to read depcfg, err: %v", p.AppName, err)

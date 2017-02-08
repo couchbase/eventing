@@ -5,6 +5,7 @@ import (
 
 	"github.com/couchbase/eventing/flatbuf/header"
 	"github.com/couchbase/eventing/flatbuf/payload"
+	"github.com/couchbase/eventing/flatbuf/v8init"
 	"github.com/google/flatbuffers/go"
 )
 
@@ -96,6 +97,25 @@ func MakeDcpMutationPayload(key, value []byte) []byte {
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
+	return builder.Bytes[builder.Head():]
+}
+
+func MakeV8InitMetadata(appName, kvHostPort, depCfg string) []byte {
+	builder := flatbuffers.NewBuilder(0)
+	builder.Reset()
+
+	app := builder.CreateString(appName)
+	khp := builder.CreateString(kvHostPort)
+	dcfg := builder.CreateString(depCfg)
+
+	v8init.InitStart(builder)
+
+	v8init.InitAddAppname(builder, app)
+	v8init.InitAddKvhostport(builder, khp)
+	v8init.InitAddDepcfg(builder, dcfg)
+
+	msgPos := v8init.InitEnd(builder)
+	builder.Finish(msgPos)
 	return builder.Bytes[builder.Head():]
 }
 

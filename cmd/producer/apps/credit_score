@@ -1,1 +1,1 @@
-{"appname": "credit_score", "appcode": "function OnUpdate(doc, meta) {\n log(meta.cas);\n}", "id": 1, "depcfg": {"source_bucket": "default", "metadata_bucket": "eventing", "auth": "Administrator:asdasd", "worker_count": 1, "tick_duration": 5000}}
+{"appname": "credit_score", "appcode": "function OnUpdate(doc, meta) {\n log(meta.cas);\n}", "id": 1, "depcfg": {"source_bucket": "default", "metadata_bucket": "eventing", "auth": "Administrator:asdasd", "worker_count": 3, "tick_duration": 5000, "buckets":[{"alias":"credit_bucket","bucket_name":"default"}]}}

@@ -71,7 +71,7 @@ func (p *Producer) initWorkerVbMap() {
 
 	sort.Ints(vbucketsToHandle)
 
-	logging.Infof("PRDR[%s:%d] eventingAddr: %v vbucketsToHandle: %v", p.AppName, p.LenRunningConsumers(), eventingNodeAddr, vbucketsToHandle)
+	logging.Infof("PRDR[%s:%d] eventingAddr: %v vbucketsToHandle, len: %d dump: %v", p.AppName, p.LenRunningConsumers(), eventingNodeAddr, len(vbucketsToHandle), vbucketsToHandle)
 
 	vbucketPerWorker := len(vbucketsToHandle) / p.workerCount
 	var startVbIndex int

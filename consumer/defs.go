@@ -51,6 +51,20 @@ type vbFlogEntry struct {
 	flog           *cb.FailoverLog
 }
 
+type v8InitMeta struct {
+	AppName    string `json:"app_name"`
+	KvHostPort string `json:"kv_host_port"`
+}
+
+type dcpMetadata struct {
+	Cas     uint64 `json:"cas"`
+	DocId   string `json:"docid"`
+	Expiry  uint32 `json:"expiry"`
+	Flag    uint32 `json:"flag"`
+	Vbucket uint16 `json:"vb"`
+	SeqNo   uint64 `json:"seq"`
+}
+
 type Consumer struct {
 	app    *common.AppConfig
 	bucket string

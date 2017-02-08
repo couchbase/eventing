@@ -54,5 +54,14 @@ func main() {
 		}(p, &wg)
 	}
 
+	go func() {
+		fs := http.FileServer(http.Dir("../../ui"))
+		http.Handle("/", fs)
+		http.HandleFunc("/get_application/", fetchAppSetup)
+		http.HandleFunc("/set_application/", storeAppSetup)
+
+		log.Fatal(http.ListenAndServe("localhost:"+flags.EventingAdminPort, nil))
+	}()
+
 	wg.Wait()
 }

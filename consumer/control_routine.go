@@ -15,7 +15,6 @@ func (c *Consumer) controlRoutine() {
 			logging.Infof("CRCO[%s:%s:%s:%d] Got notif that cluster state has changed",
 				c.app.AppName, c.workerName, c.tcpPort, c.osPid)
 
-			// TODO: stop channel for vb takeover/give up
 			c.vbsStateUpdate()
 
 		case <-c.controlRoutineTicker.C:

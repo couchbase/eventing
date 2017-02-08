@@ -1,0 +1,24 @@
+namespace flatbuf.cfg;
+
+table Config {
+  id:uint;
+  appCode:string;
+  appName:string;
+  depCfg:DepCfg;
+}
+
+table DepCfg {
+  buckets:[Bucket];
+  tickDuration:uint;
+  workerCount:uint;
+  auth:string;
+  metadataBucket:string;
+  sourceBucket:string;
+}
+
+table Bucket {
+  bucketName:string;
+  alias:string;
+}
+
+root_type Config;

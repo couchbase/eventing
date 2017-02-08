@@ -22,9 +22,11 @@ const (
 
 type Producer struct {
 	AppName          string
+	cfgData          string
 	app              *common.AppConfig
 	auth             string
 	bucket           string
+	metadatabucket   string
 	KvPort           string
 	kvHostPort       []string
 	NsServerPort     string

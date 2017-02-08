@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -31,11 +32,23 @@ func (c *Consumer) doDCPEventProcess() {
 
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
-				metadata := fmt.Sprintf("{\"cas\": %d, \"flag\": %d,"+
-					" \"partition\": %d, \"seq\": %d, \"ttl\": %d}",
-					e.Cas, e.Flags, e.VBucket, e.Seqno, e.Expiry)
+				m := dcpMetadata{
+					Cas:     e.Cas,
+					DocId:   string(e.Key),
+					Expiry:  e.Expiry,
+					Flag:    e.Flags,
+					Vbucket: e.VBucket,
+					SeqNo:   e.Seqno,
+				}
 
-				dcpHeader := MakeDcpMutationHeader(metadata)
+				metadata, err := json.Marshal(&m)
+				if err != nil {
+					logging.Infof("CRDP[%s:%s:%s:%d] key: %v failed to marshal metadata",
+						c.app.AppName, c.workerName, c.tcpPort, c.osPid, string(e.Key))
+					continue
+				}
+
+				dcpHeader := MakeDcpMutationHeader(string(metadata))
 
 				dcpPayload := MakeDcpMutationPayload(e.Key, e.Value)
 				msg := &Message{
@@ -136,12 +149,15 @@ func (c *Consumer) doDCPEventProcess() {
 		case <-c.statsTicker.C:
 
 			util.Retry(util.NewFixedBackoff(ClusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
-			c.RLock()
-			logging.Infof("CRDP[%s:%s:%s:%d] DCP events processed: %s V8 events processed: %s, vbs owned len: %d dump: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.osPid,
-				util.SprintDCPCounts(c.dcpMessagesProcessed), util.SprintV8Counts(c.v8WorkerMessagesProcessed),
-				len(c.getCurrentlyOwnedVbs()), c.getCurrentlyOwnedVbs())
-			c.RUnlock()
+			vbsOwned := c.getCurrentlyOwnedVbs()
+			if len(vbsOwned) > 0 {
+				c.RLock()
+				logging.Infof("CRDP[%s:%s:%s:%d] DCP events processed: %s V8 events processed: %s, vbs owned len: %d vbs owned:[%d..%d]",
+					c.app.AppName, c.workerName, c.tcpPort, c.osPid,
+					util.SprintDCPCounts(c.dcpMessagesProcessed), util.SprintV8Counts(c.v8WorkerMessagesProcessed),
+					len(c.getCurrentlyOwnedVbs()), vbsOwned[0], vbsOwned[len(vbsOwned)-1])
+				c.RUnlock()
+			}
 
 		case <-c.stopConsumerCh:
 

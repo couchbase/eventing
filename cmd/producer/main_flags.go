@@ -10,9 +10,10 @@ import (
 )
 
 type Flags struct {
-	KVPort   string
-	RestPort string
-	Help     bool
+	EventingAdminPort string
+	KVPort            string
+	RestPort          string
+	Help              bool
 }
 
 var flags Flags
@@ -43,6 +44,10 @@ func initFlags(flags *Flags) map[string][]string {
 		flagAliases[names[0]] = names
 		flagKinds[names[0]] = kind
 	}
+
+	s(&flags.EventingAdminPort,
+		[]string{"adminport", "event"}, "EVENTING_PORT", "25000",
+		"Port eventing admin service is running on, default being 25000")
 
 	s(&flags.KVPort,
 		[]string{"kvport", "kv"}, "KV_PORT", "11210",

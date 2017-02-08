@@ -2,38 +2,42 @@ package common
 
 import (
 	"net"
+
+	"github.com/couchbase/eventing/flatbuf/cfg"
 )
 
 type EventingProducer interface {
+	Auth() string
+	CfgData() string
+	CleanupDeadConsumer(consumer EventingConsumer)
+	GetNsServerPort() string
+	IsEventingNodeAlive(eventingHostPortAddr string) bool
+	KvHostPort() []string
+	LenRunningConsumers() int
+	MetadataBucket() string
+	NsServerNodeCount() int
 	Serve()
 	Stop()
 	String() string
-	Auth() string
-	LenRunningConsumers() int
-	CleanupDeadConsumer(consumer EventingConsumer)
 	VbEventingNodeAssignMap() map[uint16]string
-	IsEventingNodeAlive(eventingHostPortAddr string) bool
-	GetNsServerPort() string
-	KvHostPort() []string
-	NsServerNodeCount() int
 	WorkerVbMap() map[string][]uint16
 }
 
 type EventingConsumer interface {
-	Serve()
-	Stop()
-	String() string
 	ConsumerName() string
 	HostPortAddr() string
 	NotifyClusterChange()
+	Serve()
 	SetConnHandle(net.Conn)
 	SignalConnected()
+	Stop()
+	String() string
 	VbProcessingStats() map[uint16]map[string]interface{}
 }
 
 type AppConfig struct {
-	AppName string      `json:"appname"`
-	AppCode string      `json:"appcode"`
-	Depcfg  interface{} `json:"depcfg"`
-	ID      int         `json:"id"`
+	AppName string
+	AppCode string
+	Depcfg  *cfg.DepCfg
+	ID      int
 }
