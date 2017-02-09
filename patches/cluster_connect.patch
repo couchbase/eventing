@@ -1,0 +1,47 @@
+diff --git a/cluster_connect b/cluster_connect
+index 29d3381..a42c459 100755
+--- a/cluster_connect
++++ b/cluster_connect
+@@ -4,7 +4,7 @@ import os, sys, getopt, urllib2, urllib, json
+ from urllib2 import HTTPError
+ 
+ valid_bucket_types = ["membase", "memcached"]
+-valid_service_types = {"kv", "n1ql", "index", "fts", "example"}
++valid_service_types = {"kv", "n1ql", "index", "fts", "example", "ciad"}
+ 
+ def usage():
+     print "usage: \n\
+@@ -36,12 +36,12 @@ def main():
+         sys.exit()
+     nodes = 0
+     buckettype = "membase"
+-    memsize = 256
++    memsize = 512
+     indexmemsize = 256
+-    replicas = 1
+-    replica_index = True
++    replicas = 0
++    replica_index = False
+     start_index = 0
+-    deploy = ['kv']
++    deploy = ['ciad', 'index', 'n1ql']
+     do_rebalance = True
+ 
+     data_base_path = os.getcwd() + "/data"
+@@ -110,7 +110,15 @@ def main():
+            "&authType=sasl" +
+            "&saslPassword=" +
+            "&bucketType=" + buckettype +
+-           "&ramQuotaMB=" + str(memsize) +
++           "&ramQuotaMB=" + str(memsize/2) +
++           "&replicaNumber=" + str(replicas) +
++           "&replicaIndex=" + bool_request_value(replica_index)).read()
++    o.open("http://127.0.0.1:{0}/pools/default/buckets".format(base_port),
++           "name=eventing" +
++           "&authType=sasl" +
++           "&saslPassword=" +
++           "&bucketType=" + buckettype +
++           "&ramQuotaMB=" + str(memsize/2) +
+            "&replicaNumber=" + str(replicas) +
+            "&replicaIndex=" + bool_request_value(replica_index)).read()
+     o.open("http://127.0.0.1:{0}/settings/web".format(base_port),

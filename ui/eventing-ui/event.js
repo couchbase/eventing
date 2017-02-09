@@ -4,8 +4,7 @@
     var appLoaded = false;
     var resources = [
         {id:0, name:'Deployment Plan'},
-        {id:1, name:'Static Resources'},
-        {id:2, name:'Handlers'},
+        {id:1, name:'Handlers'},
     ];
 
     ev.config(['$stateProvider', '$urlRouterProvider', 'mnPluggableUiRegistryProvider', function($stateProvider, $urlRouterProvider, mnPluggableUiRegistryProvider) {
@@ -79,12 +78,12 @@ mnPluggableUiRegistryProvider.registerConfig({
         this.showCreation = true;
         this.applications = applications;
         this.createApplication = function(application) {
-            if (application.name.length > 0) {
+            if (application.appname.length > 0) {
                 application.id = this.applications.length;
                 application.deploy = false;
                 application.expand = false;
                 application.depcfg = '{"_comment": "Enter deployment configuration"}';
-                application.handlers = "/* Enter handlers code here */";
+                application.appcode = "/* Enter handlers code here */";
                 application.assets = [];
                 application.debug = false;
                 this.applications.push(application);
@@ -102,7 +101,7 @@ mnPluggableUiRegistryProvider.registerConfig({
             this.currentApp = application;
         }
         this.isCurrentApp = function(application) {
-            var flag = this.currentApp !== null && application.name === this.currentApp.name;
+            var flag = this.currentApp !== null && application.appname === this.currentApp.appname;
             if (!flag) application.expand = false;
             return flag;
         }
@@ -112,7 +111,7 @@ mnPluggableUiRegistryProvider.registerConfig({
         this.currentApp = null;
         var appName = $location.path().slice(7);
         for(var i = 0; i < applications.length; i++) {
-            if(applications[i].name === appName) {
+            if(applications[i].appname === appName) {
                 this.currentApp = applications[i];
                 break;
             }
@@ -122,7 +121,7 @@ mnPluggableUiRegistryProvider.registerConfig({
             this.currentApp.deploy = true;
             var x = angular.copy(this.currentApp);
             x.depcfg = JSON.parse(x.depcfg);
-            var uri = '/_p/event/set_application/?name=' + this.currentApp.name;
+            var uri = '/_p/event/set_application/?name=' + this.currentApp.appname;
             var res = $http({url: uri,
                 method: "POST",
                 mnHttp: {
@@ -145,7 +144,7 @@ mnPluggableUiRegistryProvider.registerConfig({
 
         this.startDbg = function() {
             this.currentApp.debug = true;
-            var uri = '/_p/event/start_dbg/?name=' + this.currentApp.name;
+            var uri = '/_p/event/start_dbg/?name=' + this.currentApp.appname;
             var res = $http.post(uri, null);
             res.success(function(data, status, headers, config) {
                 this.set_application = data;
@@ -156,7 +155,7 @@ mnPluggableUiRegistryProvider.registerConfig({
         }
         this.stopDbg = function() {
             this.currentApp.debug = false;
-            var uri = '/_p/event/stop_dbg/?name=' + this.currentApp.name;
+            var uri = '/_p/event/stop_dbg/?name=' + this.currentApp.appname;
             var res = $http.post(uri, null);
             res.success(function(data, status, headers, config) {
                 this.set_application = data;
@@ -173,7 +172,7 @@ mnPluggableUiRegistryProvider.registerConfig({
         var values = $location.path().split('/');
         appName = values[2];
         for(var i = 0; i < applications.length; i++) {
-            if(applications[i].name === appName) {
+            if(applications[i].appname === appName) {
                 this.currentApp = applications[i];
                 break;
             }
@@ -199,7 +198,7 @@ mnPluggableUiRegistryProvider.registerConfig({
             this.showLoading = false;
         }
         this.saveAsset = function(asset, content) {
-            this.currentApp.assets.push({name:asset.name, content:content, operation:"add", id:this.currentApp.assets.length});
+            this.currentApp.assets.push({name:asset.appname, content:content, operation:"add", id:this.currentApp.assets.length});
         }
         this.deleteAsset = function(asset) {
             asset.operation = "delete";
@@ -237,7 +236,6 @@ mnPluggableUiRegistryProvider.registerConfig({
             parent.editor = editor;
             editor.on("click", function(e){
                 parent.lineNum = e.getDocumentPosition().row;
-                    console.log("Set/clear breakpoint at :", parent.lineNum);
             });
         }
         this.setBreakpoint = function() {
@@ -255,7 +253,7 @@ mnPluggableUiRegistryProvider.registerConfig({
                                             'target' : 'OnUpdate',
                                           }
                 };
-                var uri ='/_p/event/debug?appname=' + this.currentApp.name + '&command=setbreakpoint';
+                var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=setbreakpoint';
                 sendPostCommand(uri, command);
                 parent.editor.session.setBreakpoint(parent.lineNum, 'setMarker');
                 parent.breakpoints.push(parent.lineNum);
@@ -272,7 +270,7 @@ mnPluggableUiRegistryProvider.registerConfig({
                                             'breakpoint' : parent.breakpoints.length,
                                           }
                 };
-                var uri ='/_p/event/debug?appname=' + this.currentApp.name + '&command=clearbreakpoint';
+                var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=clearbreakpoint';
                 sendPostCommand(uri, command);
                 for (var i = 0; i < parent.breakpoints.length; i++) {
                     parent.editor.session.clearBreakpoint(parent.breakpoints[i]);
@@ -285,11 +283,11 @@ mnPluggableUiRegistryProvider.registerConfig({
                 'type' : "request",
                 'command' : "listbreakpoints"
             };
-            var uri ='/_p/event/debug?appname=' + this.currentApp.name + '&command=listbreakpoints';
+            var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=listbreakpoints';
             sendPostCommand(uri, command);
         }
         this.setMutation =  function() {
-            $http.get('/_p/event/store_blob/?appname=' + this.currentApp.name);
+            $http.get('/_p/event/store_blob/?appname=' + this.currentApp.appname);
         }
         this.continue = function() {
             var command = {
@@ -297,7 +295,7 @@ mnPluggableUiRegistryProvider.registerConfig({
                 'type' : "request",
                 'command' : "continue"
             };
-            var uri ='/_p/event/debug?appname=' + this.currentApp.name + '&command=continue';
+            var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=continue';
             sendPostCommand(uri, command);
         }
         this.singleStep = function() {
@@ -308,7 +306,7 @@ mnPluggableUiRegistryProvider.registerConfig({
                 'arguments' : {"stepaction" : "next",
                                 "stepcount": 1}
             };
-            var uri ='/_p/event/debug?appname=' + this.currentApp.name + '&command=continue';
+            var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=continue';
             sendPostCommand(uri, command);
         }
 	    this.stepInto = function() {
@@ -319,7 +317,7 @@ mnPluggableUiRegistryProvider.registerConfig({
                 'arguments' : {"stepaction" : "in",
                                 "stepcount": 1}
             };
-            var uri ='/_p/event/debug?appname=' + this.currentApp.name + '&command=continue';
+            var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=continue';
             sendPostCommand(uri, command);
         }
 	    this.stepOut = function() {
@@ -330,7 +328,7 @@ mnPluggableUiRegistryProvider.registerConfig({
                 'arguments' : {"stepaction" : "out",
                                 "stepcount": 1}
             };
-            var uri ='/_p/event/debug?appname=' + this.currentApp.name + '&command=continue';
+            var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=continue';
             sendPostCommand(uri, command);
         }
         this.evalExpr = function() {
@@ -346,7 +344,7 @@ mnPluggableUiRegistryProvider.registerConfig({
                                     'global': false,
 				    'disable_break' : true}
                 };
-                var uri ='/_p/event/debug?appname=' + this.currentApp.name + '&command=evaluate';
+                var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=evaluate';
                 sendPostCommand(uri, command);
             }
             parent.watchVar = null;

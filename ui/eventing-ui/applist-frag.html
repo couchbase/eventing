@@ -2,16 +2,16 @@
     <ul>
         <li>
         <a ui-sref="app.admin.event.applications">
-            <h2 class="event_app">Applications</h2>
+            <h2 class="event_app">Eventing muServices</h2>
         </a>
         <ul ng-repeat="application in appListCtrl.applications">
             <li>
-            <a ui-sref="app.admin.event.appName({appName:application.name})" ng-click="appListCtrl.setCurrentApp(application)">
-                <h3 class="event_appname">{{application.name}}</h3>
+            <a ui-sref="app.admin.event.appName({appName:application.appname})" ng-click="appListCtrl.setCurrentApp(application)">
+                <h3 class="event_appname">{{application.appname}}</h3>
             </a>
             <ul ng-repeat="resource in appListCtrl.resources">
                 <li>
-                <a ui-sref="app.admin.event.resName({appName:application.name,resName:resource.name})" ng-show="appListCtrl.isCurrentApp(application) && application.expand"> 
+                <a ui-sref="app.admin.event.resName({appName:application.appname,resName:resource.name})" ng-show="appListCtrl.isCurrentApp(application) && application.expand"> 
                     <h4 class="event_resname">{{resource.name}}</h4>
                 </a>
                 </li>
