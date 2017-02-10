@@ -6,7 +6,7 @@ index 66ba126..4ec589a 100644
                           Port ->
                               [{ftsSSL, Port}]
                       end;
-+             ciad ->
++             eventing ->
 +                 [{eventingAdminPort, ns_config:search(Config, {node, Node, eventing_admin_port}, undefined)}];
               example ->
                   []

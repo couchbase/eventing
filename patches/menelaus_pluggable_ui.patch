@@ -9,8 +9,8 @@ index 47fcf71..d7ecbe0 100644
 -    lookup_port(capi_port, Node).
 +    lookup_port(capi_port, Node);
 +
-+port_for(ciad, _Node) ->
-+    6061.
++port_for(eventing, Node) ->
++    lookup_port(eventing_admin_port, Node).
  
  lookup_port(Name, Node) ->
      {value, Port} = ns_config:search(ns_config:latest(),

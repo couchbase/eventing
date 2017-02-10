@@ -1,16 +1,29 @@
 diff --git a/cluster_connect b/cluster_connect
-index 29d3381..a42c459 100755
+index d98bbea..626e33f 100755
 --- a/cluster_connect
 +++ b/cluster_connect
-@@ -4,7 +4,7 @@ import os, sys, getopt, urllib2, urllib, json
+@@ -3,8 +3,8 @@ import os, sys, getopt, urllib2, urllib, json
+ 
  from urllib2 import HTTPError
  
- valid_bucket_types = ["membase", "memcached"]
+-valid_bucket_types = ["ephemeral", "membase", "memcached"]
 -valid_service_types = {"kv", "n1ql", "index", "fts", "example"}
-+valid_service_types = {"kv", "n1ql", "index", "fts", "example", "ciad"}
++valid_bucket_types = ["membase", "memcached"]
++valid_service_types = {"kv", "n1ql", "index", "fts", "example", "eventing"}
  
  def usage():
      print "usage: \n\
+@@ -12,8 +12,8 @@ def usage():
+             -T <services to run. kv if unspecified> (eg: n0:kv,n1:index+n1ql+fts)\n\
+             -s <memory size (min 256) default: 256\n\
+             -I <index memory size> default: 256\n\
+-            -t <bucket type> (ephemeral, membase, memcached) default: membase\n\
+-            -r <num replicas> (max 3) default: 1 (Only for ephemeral or membase buckets!)\n\
++            -t <bucket type> (membase, memcached) default: membase\n\
++            -r <num replicas> (max 3) default: 1 (Only for membase buckets!)\n\
+             -i (don't index replicas) default: replica index enabled\n\
+             -S <start index> default: 0"
+ 
 @@ -36,12 +36,12 @@ def main():
          sys.exit()
      nodes = 0
@@ -24,7 +37,7 @@ index 29d3381..a42c459 100755
 +    replica_index = False
      start_index = 0
 -    deploy = ['kv']
-+    deploy = ['ciad', 'index', 'n1ql']
++    deploy = ['eventing', 'index', 'n1ql']
      do_rebalance = True
  
      data_base_path = os.getcwd() + "/data"

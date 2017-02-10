@@ -17,7 +17,7 @@ index 97e4747..584be3d 100644
              Services0
 -    end.
 +    end,
-+    Services ++ [ciad].
++    Services ++ [eventing].
  
  -ifdef(EUNIT).
  supported_services_for_version_test() ->

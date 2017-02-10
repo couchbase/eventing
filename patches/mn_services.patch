@@ -8,12 +8,12 @@ index 5501c7d..f600088 100644
  <label for="fts_service">Full Text</label>
 +<input
 +    type="checkbox"
-+    value="ciad"
-+    id="ciad_service"
-+    ng-change="onChange(config.services.model.ciad, 'ciad')"
-+    ng-model="config.services.model.ciad"
-+    ng-disabled="config.services.disabled.ciad" />
-+<label for="ciad_service">CIAD</label>
++    value="eventing"
++    id="eventing_service"
++    ng-change="onChange(config.services.model.eventing, 'eventing')"
++    ng-model="config.services.model.eventing"
++    ng-disabled="config.services.disabled.eventing" />
++<label for="eventing_service">Eventing</label>
  
  <a
     href=""
@@ -25,7 +25,7 @@ index 38f2f82..1b59622 100644
          case 'n1ql': return 'Query';
          case 'index': return 'Index';
          case 'fts': return 'Full Text';
-+        case 'ciad': return 'CIAD';
++        case 'eventing': return 'Eventing';
        }
      }
    }

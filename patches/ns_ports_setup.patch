@@ -15,19 +15,19 @@ index 6e69684..2a68895 100644
      end.
  
 +eventing_node_spec(Config) ->
-+    case ns_cluster_membership:should_run_service(Config, ciad, node()) of
++    case ns_cluster_membership:should_run_service(Config, eventing, node()) of
 +        false ->
 +            [];
 +        _ ->
-+            Command = path_config:component_path(bin, "go_eventing"),
++            Command = path_config:component_path(bin, "eventing"),
 +            LocalMemcachedPort = ns_config:search_node_prop(node(), Config, memcached, port),
 +            RestPort = misc:node_rest_port(Config, node()),
 +            KVAddrArg = "-kvport=" ++ integer_to_list(LocalMemcachedPort),
 +            RestArg = "-restport=" ++ integer_to_list(RestPort),
-+            Spec = {'ciad', Command,
++            Spec = {'eventing', Command,
 +                    [KVAddrArg, RestArg],
 +                    [use_stdio, exit_status, stderr_to_stdout, stream,
-+                     {env, build_go_env_vars(Config, 'go_eventing')},
++                     {env, build_go_env_vars(Config, 'eventing')},
 +                     {log, "eventing.log"}]},
 +            [Spec]
 +    end.

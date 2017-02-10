@@ -6,8 +6,8 @@ index 70d6295..d945a52 100644
            <input type="checkbox" class="inp" name="services" value="fts" id="add_servers_fts_checkbox" />
            <label class="label" for="add_servers_fts_checkbox" style="text-align: left; width: 45px;">Full Text</label>
  
-+          <input type="checkbox" class="inp" name="services" value="ciad" id="add_servers_ciad_checkbox" />
-+          <label class="label" for="add_servers_ciad_checkbox" style="text-align: left; width: 45px;">CIAD</label>
++          <input type="checkbox" class="inp" name="services" value="eventing" id="add_servers_eventing_checkbox" />
++          <label class="label" for="add_servers_eventing_checkbox" style="text-align: left; width: 45px;">Eventing</label>
 +
            <a class="tooltip text_11"><span>What's this?</span>
              <span class="tooltip_msg" style="width:350px;"><span>
@@ -20,7 +20,7 @@ index 5968dfa..1187122 100644
          case 'moxi': return 'Moxi';
          case 'index': return 'Index';
          case 'fts': return 'Full Text';
-+        case 'ciad': return 'CIAD';
++        case 'eventing': return 'Eventing';
        }
      }).sort();
    },
@@ -45,8 +45,8 @@ index c44ecc2..4d849eb 100644
    <label class="label" for="n1ql_service">Query</label>
    <input type="checkbox" class="js_service_flag" name="services" value="fts" id="fts_service" ng-change="onChange(config.services.model.fts, 'fts')" ng-model="config.services.model.fts" ng-disabled="config.services.disabled.fts" />
    <label class="label" for="fts_service">Full Text</label>
-+  <input type="checkbox" class="js_service_flag" name="services" value="ciad" id="ciad_service" ng-change="onChange(config.services.model.ciad, 'ciad')" ng-model="config.services.model.ciad" ng-disabled="config.services.disabled.ciad" />
-+  <label class="label" for="ciad_service">CIAD</label>
++  <input type="checkbox" class="js_service_flag" name="services" value="eventing" id="eventing_service" ng-change="onChange(config.services.model.eventing, 'eventing')" ng-model="config.services.model.eventing" ng-disabled="config.services.disabled.eventing" />
++  <label class="label" for="eventing_service">Eventing</label>
  </div>
  <a class="tooltip text_11"><span>What&#39;s this?</span>
    <span class="tooltip_msg" style="width:350px;"><span>
@@ -58,7 +58,7 @@ index de8ff7e..c956410 100644
          case 'n1ql': return 'Query';
          case 'index': return 'Index';
          case 'fts': return 'Full Text';
-+        case 'ciad': return 'CIAD';
++        case 'eventing': return 'Eventing';
        }
      }
    }
