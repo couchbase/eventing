@@ -1,5 +1,4 @@
 #include <atomic>
-#include <cassert>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>

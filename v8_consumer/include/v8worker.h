@@ -11,6 +11,12 @@
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 
+#ifndef STANDALONE_BUILD
+extern void assert(int);
+#else
+#include <cassert>
+#endif
+
 #include "../../flatbuf/include/v8_init_generated.h"
 
 class Bucket;

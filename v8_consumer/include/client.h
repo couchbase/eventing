@@ -1,7 +1,11 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
+#ifndef STANDALONE_BUILD
 extern void assert(int);
+#else
+#include <cassert>
+#endif
 
 #include "commands.h"
 #include "message.h"

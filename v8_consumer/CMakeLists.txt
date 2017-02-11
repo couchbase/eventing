@@ -10,7 +10,8 @@ INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
                            ${CMAKE_INSTALL_PREFIX}/include)
 
 SET(EVENTING_SOURCES src/client.cc src/commands.cc
-    src/message.cc src/v8worker.cc src/assert.cc)
+    src/message.cc src/v8worker.cc src/assert.cc
+    src/bucket.cc src/n1ql.cc src/parse_deployment.cc)
 
 SET(EVENTING_LIBRARIES ${V8_LIBRARIES} ${ICU_LIBRARIES} ${JEMALLOC_LIBRARIES} ${CURL_LIBRARIES} ${LIBCOUCHBASE_LIBRARIES} ${LIBUV_LIBRARIES} platform)
 ADD_EXECUTABLE(client ${EVENTING_SOURCES})

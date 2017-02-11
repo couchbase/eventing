@@ -4,6 +4,12 @@
 #include <string>
 #include <vector>
 
+#ifndef STANDALONE_BUILD
+extern void assert(int);
+#else
+#include <cassert>
+#endif
+
 #include "../../flatbuf/include/cfg_schema_generated.h"
 
 typedef struct deployment_config_s {
