@@ -296,7 +296,7 @@ V8Worker::V8Worker(std::string app_init_meta) {
 
   auto cfg = flatbuf::v8init::GetInit((const void *)app_init_meta.c_str());
   app_name_ = cfg->appname()->str();
-  cb_kv_endpoint = cfg->appname()->str();
+  cb_kv_endpoint = cfg->kvhostport()->str();
 
   deployment_config *config = ParseDeployment(cfg->depcfg()->str().c_str());
 

@@ -1,5 +1,5 @@
 CXX=g++
-CXFLAGS= -DSTANDALONE_BUILD=1 -std=c++11 -g #-O3 -Wall
+CXFLAGS= -DSTANDALONE_BUILD=1 -std=c++11 # -g -O3 -Wall
 
 CBDEPS_DIR=/Users/$(USER)/.cbdepscache/
 DYLD_LIBRARY_PATH=/Users/$(USER)/.cbdepscache/lib
