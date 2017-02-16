@@ -2,7 +2,6 @@ package producer
 
 import (
 	"fmt"
-	"io/ioutil"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -14,7 +13,8 @@ import (
 func (p *Producer) parseDepcfg() {
 	logging.Infof("DCFG[%s] Opening up application file", p.AppName)
 
-	cfgData, err := ioutil.ReadFile(AppsFolder + p.AppName)
+	path := MetaKvAppsPath + p.AppName
+	cfgData, err := util.MetakvGet(path)
 	if err == nil {
 		config := cfg.GetRootAsConfig(cfgData, 0)
 

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/indexing/secondary/common"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
@@ -157,6 +158,34 @@ func ClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, error
 	}
 
 	return cinfo, nil
+}
+
+func GetAppList(path string) []string {
+	appEntries, err := metakv.ListAllChildren(path)
+	if err != nil {
+		logging.Errorf("UTIL Failed to fetch deployed app list from metakv, err: %v", err)
+		return nil
+	}
+
+	apps := make([]string, 0)
+	for _, appEntry := range appEntries {
+		appName := strings.Split(appEntry.Path, "/")[3]
+		apps = append(apps, appName)
+	}
+
+	return apps
+}
+
+func MetakvGet(path string) ([]byte, error) {
+	data, _, err := metakv.Get(path)
+	if err != nil {
+		return nil, err
+	}
+	return data, err
+}
+
+func MetakvSet(path string, value []byte, rev interface{}) error {
+	return metakv.Set(path, value, rev)
 }
 
 func MemcachedErrCode(err error) gomemcached.Status {

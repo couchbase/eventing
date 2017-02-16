@@ -1,8 +1,20 @@
 package main
 
-const (
-	AppsFolder = "./apps/"
+import (
+	"github.com/couchbase/eventing/suptree"
 )
+
+const (
+	MetaKvEventingPath = "/eventing/"
+	MetaKvAppsPath     = MetaKvEventingPath + "apps/"
+)
+
+type SuperSupervisor struct {
+	cancelCh chan struct{}
+	kvPort   string
+	restPort string
+	superSup *suptree.Supervisor
+}
 
 type application struct {
 	Name             string `json:"appname"`

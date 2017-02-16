@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	// Folder containing all eventing app definition and configs
-	AppsFolder = "./apps/"
+	MetaKvEventingPath = "/eventing/"
+	MetaKvAppsPath     = MetaKvEventingPath + "apps/"
 
 	DataService = "kv"
 

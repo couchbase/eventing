@@ -7,16 +7,18 @@ import (
 	"net/http"
 
 	"github.com/couchbase/eventing/flatbuf/cfg"
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
 func fetchAppSetup(w http.ResponseWriter, r *http.Request) {
-	files, _ := ioutil.ReadDir("./apps/")
-	respData := make([]application, len(files))
-	for index, file := range files {
+	appList := util.GetAppList(MetaKvAppsPath)
+	respData := make([]application, len(appList))
+	for index, appName := range appList {
 
-		data, err := ioutil.ReadFile(AppsFolder + file.Name())
+		path := MetaKvAppsPath + appName
+		data, err := util.MetakvGet(path)
 		if err == nil {
 
 			config := cfg.GetRootAsConfig(data, 0)
@@ -129,7 +131,12 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 
 	appContent := builder.FinishedBytes()
 
-	ioutil.WriteFile("./apps/"+appName, appContent, 0644)
+	path := MetaKvAppsPath + appName
+	err = util.MetakvSet(path, appContent, nil)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to write app config to metakv, err: %v", err)
+		return
+	}
 
-	fmt.Fprintf(w, "Stored application config to disk")
+	fmt.Fprintf(w, "Stored application config in metakv")
 }
