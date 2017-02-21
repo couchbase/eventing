@@ -1,5 +1,5 @@
 diff --git a/cluster_connect b/cluster_connect
-index d98bbea..626e33f 100755
+index d98bbea..bad2588 100755
 --- a/cluster_connect
 +++ b/cluster_connect
 @@ -3,8 +3,8 @@ import os, sys, getopt, urllib2, urllib, json
@@ -41,12 +41,12 @@ index d98bbea..626e33f 100755
      do_rebalance = True
  
      data_base_path = os.getcwd() + "/data"
-@@ -110,7 +110,15 @@ def main():
+@@ -110,7 +110,23 @@ def main():
             "&authType=sasl" +
             "&saslPassword=" +
             "&bucketType=" + buckettype +
 -           "&ramQuotaMB=" + str(memsize) +
-+           "&ramQuotaMB=" + str(memsize/2) +
++           "&ramQuotaMB=" + str(100) +
 +           "&replicaNumber=" + str(replicas) +
 +           "&replicaIndex=" + bool_request_value(replica_index)).read()
 +    o.open("http://127.0.0.1:{0}/pools/default/buckets".format(base_port),
@@ -54,7 +54,15 @@ index d98bbea..626e33f 100755
 +           "&authType=sasl" +
 +           "&saslPassword=" +
 +           "&bucketType=" + buckettype +
-+           "&ramQuotaMB=" + str(memsize/2) +
++           "&ramQuotaMB=" + str(100) +
++           "&replicaNumber=" + str(replicas) +
++           "&replicaIndex=" + bool_request_value(replica_index)).read()
++    o.open("http://127.0.0.1:{0}/pools/default/buckets".format(base_port),
++           "name=credit_score" +
++           "&authType=sasl" +
++           "&saslPassword=" +
++           "&bucketType=" + buckettype +
++           "&ramQuotaMB=" + str(100) +
             "&replicaNumber=" + str(replicas) +
             "&replicaIndex=" + bool_request_value(replica_index)).read()
      o.open("http://127.0.0.1:{0}/settings/web".format(base_port),
