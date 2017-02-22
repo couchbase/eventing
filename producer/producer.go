@@ -1,15 +1,14 @@
 package producer
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
 	"strings"
 	"sync/atomic"
 	"unsafe"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/suptree"
@@ -18,9 +17,27 @@ import (
 )
 
 func (p *Producer) Serve() {
-	p.parseDepcfg()
+	err := p.parseDepcfg()
+	if err != nil {
+		logging.Fatalf("PRDR[%s:%d] Failure parsing depcfg, err: %v", p.AppName, p.LenRunningConsumers(), err)
+		return
+	}
 
-	p.vbEventingNodeAssign()
+	err = p.vbEventingNodeAssign()
+	if err != nil {
+		logging.Fatalf("PRDR[%s:%d] Failure while assigning vbuckets to workers, err: %v", p.AppName, p.LenRunningConsumers(), err)
+		return
+	}
+
+	go func() {
+		logging.Infof("PRDR[%s:%d] Registering against cbauth_service ", p.AppName, p.LenRunningConsumers())
+
+		err := service.RegisterManager(p, nil)
+		if err != nil {
+			logging.Errorf("PRDR[%s:%d] Failed to register against cbauth_service, err: %v", p.AppName, p.LenRunningConsumers(), err)
+			return
+		}
+	}()
 
 	p.getKvVbMap()
 
@@ -42,6 +59,8 @@ func (p *Producer) Serve() {
 
 	p.initWorkerVbMap()
 	p.startBucket()
+
+	p.NotifyInitCh <- true
 
 	for {
 		select {
@@ -106,6 +125,19 @@ func (p *Producer) Serve() {
 			}
 		case <-p.stopProducerCh:
 			logging.Infof("PRDR[%s:%d] Explicitly asked to shutdown producer routine", p.AppName, p.LenRunningConsumers())
+
+			for _, consumer := range p.runningConsumers {
+				p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[consumer])
+				delete(p.consumerSupervisorTokenMap, consumer)
+			}
+			p.runningConsumers = p.runningConsumers[:0]
+
+			for _, listener := range p.consumerListeners {
+				listener.Close()
+			}
+			p.consumerListeners = p.consumerListeners[:0]
+
+			p.NotifySupervisorCh <- true
 			return
 		}
 	}
@@ -113,6 +145,7 @@ func (p *Producer) Serve() {
 
 func (p *Producer) Stop() {
 	p.stopProducerCh <- true
+	p.ProducerListener.Close()
 }
 
 // Implement fmt.Stringer interface for better debugging in case
@@ -126,7 +159,7 @@ func (p *Producer) startBucket() {
 	logging.Infof("PRDR[%s:%d] Connecting with bucket: %q", p.AppName, p.LenRunningConsumers(), p.bucket)
 
 	for i := 0; i < p.workerCount; i++ {
-		workerName := fmt.Sprintf("worker_%s_%d", p.app.AppName, i)
+		workerName := fmt.Sprintf("worker_%s_%d", p.AppName, i)
 		p.handleV8Consumer(p.workerVbucketMap[workerName], i)
 	}
 }
@@ -144,21 +177,18 @@ func (p *Producer) handleV8Consumer(vbnos []uint16, index int) {
 	c := consumer.New(p, p.app, vbnos, p.bucket, p.tcpPort, index)
 
 	p.Lock()
+	p.consumerListeners = append(p.consumerListeners, listener)
 	serviceToken := p.workerSupervisor.Add(c)
 	p.runningConsumers = append(p.runningConsumers, c)
 	p.consumerSupervisorTokenMap[c] = serviceToken
 	p.Unlock()
 
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.AppName, p.LenRunningConsumers(), err)
-			}
-			c.SetConnHandle(conn)
-			c.SignalConnected()
-		}
-	}()
+	conn, err := listener.Accept()
+	if err != nil {
+		logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.AppName, p.LenRunningConsumers(), err)
+	}
+	c.SetConnHandle(conn)
+	c.SignalConnected()
 }
 
 func (p *Producer) LenRunningConsumers() int {
@@ -277,39 +307,4 @@ func (p *Producer) CfgData() string {
 
 func (p *Producer) MetadataBucket() string {
 	return p.metadatabucket
-}
-
-func (p *Producer) GetWorkerMap(w http.ResponseWriter, r *http.Request) {
-	encodedWorkerMap, err := json.Marshal(p.workerVbucketMap)
-	if err != nil {
-		fmt.Fprintf(w, "Failed to encode worker vbucket map\n")
-	} else {
-		fmt.Fprintf(w, "%s", string(encodedWorkerMap))
-	}
-}
-
-func (p *Producer) GetNodeMap(w http.ResponseWriter, r *http.Request) {
-	encodedEventingMap, err := json.Marshal(p.vbEventingNodeAssignMap)
-	if err != nil {
-		fmt.Fprintf(w, "Failed to encode worker vbucket map\n")
-	} else {
-		fmt.Fprintf(w, "%s", string(encodedEventingMap))
-	}
-}
-
-func (p *Producer) GetConsumerVbProcessingStats(w http.ResponseWriter, r *http.Request) {
-	vbStats := make(map[string]map[uint16]map[string]interface{}, 0)
-
-	for _, consumer := range p.runningConsumers {
-		consumerName := consumer.ConsumerName()
-		stats := consumer.VbProcessingStats()
-		vbStats[consumerName] = stats
-	}
-
-	encodedVbStats, err := json.Marshal(vbStats)
-	if err != nil {
-		fmt.Fprintf(w, "Failed to encode consumer vbstats\n")
-	} else {
-		fmt.Fprintf(w, "%s", string(encodedVbStats))
-	}
 }

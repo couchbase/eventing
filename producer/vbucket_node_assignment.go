@@ -12,7 +12,7 @@ import (
 
 // Generates the vbucket to eventing node assignment, ideally generated map should
 // be consistent across all nodes
-func (p *Producer) vbEventingNodeAssign() {
+func (p *Producer) vbEventingNodeAssign() error {
 
 	util.Retry(util.NewFixedBackoff(time.Second), getKVNodesAddressesOpCallback, p)
 
@@ -21,6 +21,10 @@ func (p *Producer) vbEventingNodeAssign() {
 	util.Retry(util.NewFixedBackoff(time.Second), getNsServerNodesAddressesOpCallback, p)
 
 	eventingNodeAddrs := p.getEventingNodeAddrs()
+	if len(eventingNodeAddrs) <= 0 {
+		return fmt.Errorf("%v", ErrorUnexpectedEventingNodeCount)
+	}
+
 	vbucketsPerNode := NumVbuckets / len(eventingNodeAddrs)
 	var vbNo int
 	var startVb uint16
@@ -49,6 +53,7 @@ func (p *Producer) vbEventingNodeAssign() {
 		}
 		fmt.Printf("eventing node index: %d\tstartVb: %d\n", i, startVb)
 	}
+	return nil
 }
 
 func (p *Producer) initWorkerVbMap() {
@@ -98,7 +103,7 @@ func (p *Producer) initWorkerVbMap() {
 	startVbIndex = 0
 
 	for i := 0; i < p.workerCount; i++ {
-		workerName = fmt.Sprintf("worker_%s_%d", p.app.AppName, i)
+		workerName = fmt.Sprintf("worker_%s_%d", p.AppName, i)
 
 		for j := 0; j < vbCountPerWorker[i]; j++ {
 			p.workerVbucketMap[workerName] = append(p.workerVbucketMap[workerName], uint16(vbucketsToHandle[startVbIndex]))

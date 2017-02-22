@@ -1,23 +1,33 @@
 package producer
 
 import (
+	"net"
 	"sync"
 	"time"
 
+	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
 )
 
 const (
-	MetaKvEventingPath = "/eventing/"
-	MetaKvAppsPath     = MetaKvEventingPath + "apps/"
+	MetaKvEventingPath    = "/eventing/"
+	MetaKvAppsPath        = MetaKvEventingPath + "apps/"
+	MetaKvAppSettingsPath = MetaKvEventingPath + "settings/"
 
 	DataService = "kv"
 
 	NumVbuckets = 1024
 
-	// Interval for spawning another routine to keep an eye on cluster state change
+	// WatchClusterChangeInterval - Interval for spawning another routine to keep an eye on cluster state change
 	WatchClusterChangeInterval = time.Duration(100) * time.Millisecond
+)
+
+type appStatus uint16
+
+const (
+	AppUndeployed appStatus = iota
+	AppDeployed
 )
 
 type Producer struct {
@@ -40,6 +50,18 @@ type Producer struct {
 	eventingNodeAddrs []string
 	kvNodeAddrs       []string
 	nsServerNodeAddrs []string
+
+	// service.Manager related fields
+	nodeInfo *service.NodeInfo
+
+	consumerListeners []net.Listener
+	ProducerListener  net.Listener
+
+	// Chan to notify super_supervisor about clean producer shutdown
+	NotifySupervisorCh chan bool
+
+	// Chan to notify supervisor about producer initialisation
+	NotifyInitCh chan bool
 
 	// Feedback channel to notify change in cluster state
 	clusterStateChange chan bool

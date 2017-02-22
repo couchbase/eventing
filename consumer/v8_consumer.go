@@ -30,6 +30,7 @@ func New(p common.EventingProducer, app *common.AppConfig, vbnos []uint16, bucke
 		producer:                  p,
 		signalConnectedCh:         make(chan bool),
 		statsTicker:               time.NewTicker(StatsTickInterval),
+		stopControlRoutineCh:      make(chan bool),
 		tcpPort:                   tcpPort,
 		vbFlogChan:                make(chan *vbFlogEntry),
 		vbnos:                     vbnos,
@@ -115,9 +116,12 @@ func (c *Consumer) Stop() {
 
 	c.producer.CleanupDeadConsumer(c)
 
-	c.cmd.Process.Kill()
+	if c.osPid != 0 {
+		c.cmd.Process.Kill()
+	}
 
 	c.statsTicker.Stop()
+	c.stopControlRoutineCh <- true
 	c.stopCheckpointingCh <- true
 	c.gracefulShutdownChan <- true
 	c.dcpFeed.Close()

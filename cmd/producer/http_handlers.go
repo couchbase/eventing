@@ -35,10 +35,8 @@ func fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 			depcfg.Auth = string(dcfg.Auth())
 			depcfg.MetadataBucket = string(dcfg.MetadataBucket())
 			depcfg.SourceBucket = string(dcfg.SourceBucket())
-			depcfg.TickDuration = int(dcfg.TickDuration())
-			depcfg.WorkerCount = int(dcfg.WorkerCount())
 
-			buckets := make([]bucket, 0)
+			var buckets []bucket
 			b := new(cfg.Bucket)
 			for i := 0; i < dcfg.BucketsLength(); i++ {
 
@@ -84,7 +82,7 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 
 	builder := flatbuffers.NewBuilder(0)
 
-	bNames := make([]flatbuffers.UOffsetT, 0)
+	var bNames []flatbuffers.UOffsetT
 
 	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
 		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
@@ -111,8 +109,6 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	cfg.DepCfgStart(builder)
 	cfg.DepCfgAddBuckets(builder, buckets)
 	cfg.DepCfgAddAuth(builder, auth)
-	cfg.DepCfgAddTickDuration(builder, uint32(app.DeploymentConfig.TickDuration))
-	cfg.DepCfgAddWorkerCount(builder, uint32(app.DeploymentConfig.WorkerCount))
 	cfg.DepCfgAddMetadataBucket(builder, metaBucket)
 	cfg.DepCfgAddSourceBucket(builder, sourceBucket)
 	depcfg := cfg.DepCfgEnd(builder)
@@ -136,6 +132,31 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Fprintf(w, "Failed to write app config to metakv, err: %v", err)
 		return
+	}
+
+	settingsPath := MetaKvAppSettingsPath + appName
+	sData, err := util.MetakvGet(settingsPath)
+	if err != nil {
+		fmt.Fprintf(w, "App: %s Failed to fetch settings from metakv, err: %v", appName, err)
+		return
+	}
+
+	if sData == nil {
+		settings := make(map[string]interface{})
+		settings["tick_duration"] = DefaultStatsTickDuration
+		settings["worker_count"] = DefaultWorkerCount
+
+		mData, mErr := json.Marshal(&settings)
+		if mErr != nil {
+			fmt.Fprintf(w, "App: %s Failed to marshal settings, err: %v", appName, mErr)
+			return
+		}
+
+		mkvErr := util.MetakvSet(settingsPath, mData, nil)
+		if mkvErr != nil {
+			fmt.Fprintf(w, "App: %s Failed to store updated settings in metakv, err: %v", appName, mkvErr)
+			return
+		}
 	}
 
 	fmt.Fprintf(w, "Stored application config in metakv")

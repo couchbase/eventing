@@ -3,7 +3,7 @@
 deployment_config *ParseDeployment(const char *app_code) {
   deployment_config *config = new deployment_config();
 
-  auto app_cfg = cfg::GetConfig((const void *)app_code);
+  auto app_cfg = flatbuf::cfg::GetConfig((const void *)app_code);
 
   auto dep_cfg = app_cfg->depCfg();
   config->metadata_bucket = dep_cfg->metadataBucket()->str();

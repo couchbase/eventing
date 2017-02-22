@@ -1,6 +1,7 @@
 package producer
 
 import (
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"unsafe"
@@ -68,11 +69,15 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 	eventingNodeAddrs, err := util.EventingNodesAddresses(p.auth, hostAddress)
 	if err != nil {
 		logging.Errorf("PRCO[%s:%d] Failed to get all eventing nodes, err: %v", p.AppName, p.LenRunningConsumers(), err)
+		return err
+	} else if len(eventingNodeAddrs) == 0 {
+		logging.Errorf("PRCO[%s:%d] Count of eventing nodes reported is 0, unexpected", p.AppName, p.LenRunningConsumers())
+		return errors.New("eventing node count reported as 0")
 	} else {
 		atomic.StorePointer(
 			(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs)), unsafe.Pointer(&eventingNodeAddrs))
 		logging.Infof("PRCO[%s:%d] Got eventing nodes: %#v", p.AppName, p.LenRunningConsumers(), eventingNodeAddrs)
+		return nil
 	}
 
-	return err
 }

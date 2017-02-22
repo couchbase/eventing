@@ -1,6 +1,7 @@
 package util
 
 import (
+	"crypto/md5"
 	"fmt"
 	"sort"
 	"strings"
@@ -186,6 +187,12 @@ func MetakvGet(path string) ([]byte, error) {
 
 func MetakvSet(path string, value []byte, rev interface{}) error {
 	return metakv.Set(path, value, rev)
+}
+
+func MD5hash(appCode string) string {
+	hash := md5.New()
+	hash.Write([]byte(appCode))
+	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
 func MemcachedErrCode(err error) gomemcached.Status {

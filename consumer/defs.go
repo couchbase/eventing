@@ -20,7 +20,7 @@ const (
 	// DCP consumer related configs
 	DcpGenChanSize    = 10000
 	DcpDataChanSize   = 10000
-	DcpNumConnections = 4
+	DcpNumConnections = 1
 
 	ClusterChangeNotifChBufSize = 10
 
@@ -95,6 +95,8 @@ type Consumer struct {
 	// correctly and downstream tcp socket is available
 	// for sending messages. Unbuffered channel.
 	signalConnectedCh chan bool
+
+	stopControlRoutineCh chan bool
 
 	// Populated when downstream tcp socket mapping to
 	// C++ v8 worker is down. Buffered channel to avoid deadlock

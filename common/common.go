@@ -2,10 +2,9 @@ package common
 
 import (
 	"net"
-
-	"github.com/couchbase/eventing/flatbuf/cfg"
 )
 
+// EventingProducer interface to export functions from eventing_producer
 type EventingProducer interface {
 	Auth() string
 	CfgData() string
@@ -23,6 +22,7 @@ type EventingProducer interface {
 	WorkerVbMap() map[string][]uint16
 }
 
+// EventingConsumer interface to export functions from eventing_consumer
 type EventingConsumer interface {
 	ConsumerName() string
 	HostPortAddr() string
@@ -35,9 +35,14 @@ type EventingConsumer interface {
 	VbProcessingStats() map[uint16]map[string]interface{}
 }
 
+// AppConfig Application/Event handler configuration
 type AppConfig struct {
-	AppName string
-	AppCode string
-	Depcfg  *cfg.DepCfg
-	ID      int
+	AppName        string
+	AppCode        string
+	AppDeployState string
+	AppState       string
+	AppVersion     string
+	LastDeploy     string
+	ID             int
+	Settings       map[string]interface{}
 }

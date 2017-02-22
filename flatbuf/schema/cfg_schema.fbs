@@ -9,8 +9,6 @@ table Config {
 
 table DepCfg {
   buckets:[Bucket];
-  tickDuration:uint;
-  workerCount:uint;
   auth:string;
   metadataBucket:string;
   sourceBucket:string;

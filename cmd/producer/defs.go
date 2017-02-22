@@ -1,19 +1,35 @@
 package main
 
 import (
+	"github.com/couchbase/eventing/producer"
 	"github.com/couchbase/eventing/suptree"
 )
 
 const (
-	MetaKvEventingPath = "/eventing/"
-	MetaKvAppsPath     = MetaKvEventingPath + "apps/"
+	MetaKvEventingPath    = "/eventing/"
+	MetaKvAppsPath        = MetaKvEventingPath + "apps/"
+	MetaKvAppSettingsPath = MetaKvEventingPath + "settings/"
 )
 
-type SuperSupervisor struct {
+const (
+	DefaultWorkerCount       = 3
+	DefaultStatsTickDuration = 5000
+)
+
+type supCmdMsg struct {
+	cmd string
+	ctx string
+}
+
+type superSupervisor struct {
 	cancelCh chan struct{}
 	kvPort   string
 	restPort string
 	superSup *suptree.Supervisor
+	supCmdCh chan supCmdMsg
+
+	runningProducers           map[string]*producer.Producer
+	producerSupervisorTokenMap map[*producer.Producer]suptree.ServiceToken
 }
 
 type application struct {
@@ -28,8 +44,6 @@ type depCfg struct {
 	Buckets        []bucket `json:"buckets"`
 	MetadataBucket string   `json:"metadata_bucket"`
 	SourceBucket   string   `json:"source_bucket"`
-	TickDuration   int      `json:"tick_duration"`
-	WorkerCount    int      `json:"worker_count"`
 }
 
 type bucket struct {

@@ -25,6 +25,8 @@ func (c *Consumer) controlRoutine() {
 				c.app.AppName, c.workerName, c.tcpPort, c.osPid)
 
 			c.vbsStateUpdate()
+		case <-c.stopControlRoutineCh:
+			return
 		}
 	}
 }
