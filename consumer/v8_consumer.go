@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"os/exec"
 	"strconv"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
 	cblib "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/indexing/secondary/dcp"
@@ -48,6 +48,9 @@ func (c *Consumer) Serve() {
 	c.dcpMessagesProcessed = make(map[mcd.CommandCode]int)
 	c.v8WorkerMessagesProcessed = make(map[string]int)
 
+	c.consumerSup = suptree.NewSimple(c.workerName)
+	go c.consumerSup.ServeBackground()
+
 	c.initCBBucketConnHandle()
 
 	dcpConfig := map[string]interface{}{
@@ -67,28 +70,14 @@ func (c *Consumer) Serve() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Spawning worker corresponding to producer",
 		c.app.AppName, c.workerName, c.tcpPort, c.osPid)
 
-	c.cmd = exec.Command("client", c.app.AppName, c.tcpPort,
-		time.Now().UTC().Format("2006-01-02T15:04:05.000000000-0700"))
-
-	err := c.cmd.Start()
-	if err != nil {
-		logging.Errorf("V8CR[%s:%s:%s:%d] Failed to spawn worker, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
-	} else {
-		c.osPid = c.cmd.Process.Pid
-		logging.Infof("V8CR[%s:%s:%s:%d] c++ worker launched",
-			c.app.AppName, c.workerName, c.tcpPort, c.osPid)
-	}
-
 	rand.Seed(time.Now().UnixNano())
 	feedName := couchbase.DcpFeedName("eventing:" + c.workerName + "_" + strconv.Itoa(rand.Int()))
 	util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, dcpConfig)
 
 	go c.startDcp(dcpConfig, flogs)
 
-	go func(c *Consumer) {
-		c.cmd.Wait()
-	}(c)
+	c.client = newClient(c.app.AppName, c.tcpPort, c.workerName)
+	c.clientSupToken = c.consumerSup.Add(c.client)
 
 	// Wait for net.Conn to be initialised
 	<-c.signalConnectedCh
@@ -117,9 +106,8 @@ func (c *Consumer) Stop() {
 
 	c.producer.CleanupDeadConsumer(c)
 
-	if c.osPid != 0 {
-		c.cmd.Process.Kill()
-	}
+	c.consumerSup.Remove(c.clientSupToken)
+	c.consumerSup.Stop()
 
 	c.statsTicker.Stop()
 	c.stopControlRoutineCh <- true

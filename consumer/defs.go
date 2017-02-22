@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	// "github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/suptree"
 	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
@@ -98,7 +98,9 @@ type Consumer struct {
 	osPid int
 
 	// C++ v8 worker cmd handle, would be required to killing worker that are no more needed
-	cmd *exec.Cmd
+	client         *client
+	consumerSup    *suptree.Supervisor
+	clientSupToken suptree.ServiceToken
 
 	// Populated when C++ v8 worker is spawned
 	// correctly and downstream tcp socket is available
@@ -133,6 +135,14 @@ type Consumer struct {
 	statsTicker          *time.Ticker
 	checkpointTicker     *time.Ticker
 	controlRoutineTicker *time.Ticker
+}
+
+type client struct {
+	appName    string
+	cmd        *exec.Cmd
+	osPid      int
+	tcpPort    string
+	workerName string
 }
 
 type vbStats map[uint16]*vbStat
