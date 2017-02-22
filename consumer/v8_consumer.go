@@ -18,7 +18,7 @@ import (
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
-func New(p common.EventingProducer, app *common.AppConfig, vbnos []uint16, bucket, tcpPort string, workerId int) *Consumer {
+func New(p common.EventingProducer, app *common.AppConfig, vbnos []uint16, bucket, tcpPort, uuid string, workerID int) *Consumer {
 	var b *couchbase.Bucket
 	consumer := &Consumer{
 		app:                       app,
@@ -32,10 +32,11 @@ func New(p common.EventingProducer, app *common.AppConfig, vbnos []uint16, bucke
 		statsTicker:               time.NewTicker(StatsTickInterval),
 		stopControlRoutineCh:      make(chan bool),
 		tcpPort:                   tcpPort,
+		uuid:                      uuid,
 		vbFlogChan:                make(chan *vbFlogEntry),
 		vbnos:                     vbnos,
 		vbProcessingStats:         newVbProcessingStats(),
-		workerName:                fmt.Sprintf("worker_%s_%d", app.AppName, workerId),
+		workerName:                fmt.Sprintf("worker_%s_%d", app.AppName, workerID),
 	}
 	return consumer
 }
@@ -148,13 +149,16 @@ func (c *Consumer) HostPortAddr() string {
 	hostPortAddr := (*string)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.hostPortAddr))))
 	if hostPortAddr != nil {
 		return *hostPortAddr
-	} else {
-		return ""
 	}
+	return ""
 }
 
 func (c *Consumer) ConsumerName() string {
 	return c.workerName
+}
+
+func (c *Consumer) NodeUUID() string {
+	return c.uuid
 }
 
 func (c *Consumer) NotifyClusterChange() {
@@ -178,19 +182,21 @@ func (c *Consumer) initCBBucketConnHandle() {
 
 func (c *Consumer) VbProcessingStats() map[uint16]map[string]interface{} {
 	vbstats := make(map[uint16]map[string]interface{})
-	for vbno, _ := range c.vbProcessingStats {
+	for vbno := range c.vbProcessingStats {
 		if _, ok := vbstats[vbno]; !ok {
 			vbstats[vbno] = make(map[string]interface{})
 		}
+		assignedWorker := c.vbProcessingStats.getVbStat(vbno, "assigned_worker")
 		owner := c.vbProcessingStats.getVbStat(vbno, "current_vb_owner")
 		streamStatus := c.vbProcessingStats.getVbStat(vbno, "dcp_stream_status")
 		seqNo := c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no")
-		assignedWorker := c.vbProcessingStats.getVbStat(vbno, "assigned_worker")
+		uuid := c.vbProcessingStats.getVbStat(vbno, "node_uuid")
 
-		vbstats[vbno]["current_owner"] = owner
+		vbstats[vbno]["assigned_worker"] = assignedWorker
+		vbstats[vbno]["current_vb_owner"] = owner
+		vbstats[vbno]["node_uuid"] = uuid
 		vbstats[vbno]["stream_status"] = streamStatus
 		vbstats[vbno]["seq_no"] = seqNo
-		vbstats[vbno]["assigned_worker"] = assignedWorker
 	}
 
 	return vbstats

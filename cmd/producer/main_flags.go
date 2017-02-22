@@ -14,6 +14,7 @@ type Flags struct {
 	KVPort            string
 	RestPort          string
 	Help              bool
+	UUID              string
 }
 
 var flags Flags
@@ -56,6 +57,9 @@ func initFlags(flags *Flags) map[string][]string {
 	s(&flags.RestPort,
 		[]string{"restport", "rest"}, "NS_SERVER_PORT", "8091",
 		"ns_server's rest port, default being 8091")
+
+	s(&flags.UUID,
+		[]string{"uuid"}, "UUID", "", "uuid supplied by ns_server")
 
 	b(&flags.Help,
 		[]string{"help", "H", "h"}, "", false,

@@ -34,6 +34,7 @@ func main() {
 	}
 
 	vbucketEventingNodeMap := make(map[string]map[string][]int)
+	nodeUUIDMap := make(map[string]string)
 	dcpStreamStatusMap := make(map[string][]int)
 
 	rows, ok := data["rows"].([]interface{})
@@ -43,13 +44,15 @@ func main() {
 
 			vbucket, _ := strconv.Atoi(strings.Split(row["id"].(string), "_")[3])
 			viewKey := row["key"].([]interface{})
-			currentOwner, workerId := viewKey[0].(string), viewKey[1].(string)
+			currentOwner, workerID, ownerUUID := viewKey[0].(string), viewKey[1].(string), viewKey[2].(string)
+
+			nodeUUIDMap[currentOwner] = ownerUUID
 
 			dcpStreamStatus := row["value"].(string)
 
 			if _, ok := vbucketEventingNodeMap[currentOwner]; !ok && currentOwner != "" {
 				vbucketEventingNodeMap[currentOwner] = make(map[string][]int)
-				vbucketEventingNodeMap[currentOwner][workerId] = make([]int, 0)
+				vbucketEventingNodeMap[currentOwner][workerID] = make([]int, 0)
 			}
 
 			if _, ok := dcpStreamStatusMap[dcpStreamStatus]; !ok && dcpStreamStatus != "" {
@@ -59,25 +62,26 @@ func main() {
 			dcpStreamStatusMap[dcpStreamStatus] = append(
 				dcpStreamStatusMap[dcpStreamStatus], vbucket)
 
-			if currentOwner != "" && workerId != "" {
-				vbucketEventingNodeMap[currentOwner][workerId] = append(
-					vbucketEventingNodeMap[currentOwner][workerId], vbucket)
+			if currentOwner != "" && workerID != "" {
+				vbucketEventingNodeMap[currentOwner][workerID] = append(
+					vbucketEventingNodeMap[currentOwner][workerID], vbucket)
 			}
 
 		}
 
 		fmt.Printf("\nDCP Stream statuses:\n")
-		for k, _ := range dcpStreamStatusMap {
+		for k := range dcpStreamStatusMap {
 			sort.Ints(dcpStreamStatusMap[k])
 			fmt.Printf("\tstream status: %s\n\tlen: %d\n\tvb list dump: %#v\n", k, len(dcpStreamStatusMap[k]), dcpStreamStatusMap[k])
 		}
 
 		fmt.Printf("\nvbucket curr owner:\n")
-		for k1, _ := range vbucketEventingNodeMap {
-			fmt.Printf("Producer node: %s\n", k1)
-			for k2, _ := range vbucketEventingNodeMap[k1] {
+		for k1 := range vbucketEventingNodeMap {
+			fmt.Printf("Producer node: %s", k1)
+			fmt.Printf("\tNode UUID: %s\n", nodeUUIDMap[k1])
+			for k2 := range vbucketEventingNodeMap[k1] {
 				sort.Ints(vbucketEventingNodeMap[k1][k2])
-				fmt.Printf("\tworkerId: %s\n\tlen: %d\n\tv: %v\n", k2, len(vbucketEventingNodeMap[k1][k2]),
+				fmt.Printf("\tworkerID: %s\n\tlen: %d\n\tv: %v\n", k2, len(vbucketEventingNodeMap[k1][k2]),
 					vbucketEventingNodeMap[k1][k2])
 			}
 		}

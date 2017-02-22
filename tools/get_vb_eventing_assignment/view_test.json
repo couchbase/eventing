@@ -1,7 +1,7 @@
 {
    "views" : {
         "view1": {
-          "map" : "function(doc, meta){emit([doc.current_vb_owner, doc.assigned_worker], doc.dcp_stream_status);}"
+          "map" : "function(doc, meta){emit([doc.current_vb_owner, doc.assigned_worker, doc.node_uuid], doc.dcp_stream_status);}"
         }
    }
 }

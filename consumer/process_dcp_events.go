@@ -34,7 +34,7 @@ func (c *Consumer) doDCPEventProcess() {
 			case mcd.DCP_MUTATION:
 				m := dcpMetadata{
 					Cas:     e.Cas,
-					DocId:   string(e.Key),
+					DocID:   string(e.Key),
 					Expiry:  e.Expiry,
 					Flag:    e.Flags,
 					Vbucket: e.VBucket,
@@ -72,10 +72,11 @@ func (c *Consumer) doDCPEventProcess() {
 
 				if e.Status == mcd.SUCCESS {
 
+					c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", c.ConsumerName())
 					c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", c.HostPortAddr())
 					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", DcpStreamRunning)
 					c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", uint64(0))
-					c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", c.ConsumerName())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
 
 					vbFlog := &vbFlogEntry{streamReqRetry: false, statusCode: e.Status}
 
@@ -251,11 +252,13 @@ loop:
 }
 
 func (c *Consumer) getCurrentlyOwnedVbs() []int {
-	vbsOwned := make([]int, 0)
+	var vbsOwned []int
 
 	for vbNo := 0; vbNo < NumVbuckets; vbNo++ {
 		if c.vbProcessingStats.getVbStat(uint16(vbNo), "current_vb_owner") == c.HostPortAddr() &&
-			c.vbProcessingStats.getVbStat(uint16(vbNo), "assigned_worker") == c.ConsumerName() {
+			c.vbProcessingStats.getVbStat(uint16(vbNo), "assigned_worker") == c.ConsumerName() &&
+			c.vbProcessingStats.getVbStat(uint16(vbNo), "node_uuid") == c.NodeUUID() {
+
 			vbsOwned = append(vbsOwned, vbNo)
 		}
 	}

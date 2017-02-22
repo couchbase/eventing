@@ -23,6 +23,7 @@ func (s *superSupervisor) spawnApp(app string) {
 		NotifyInitCh:       make(chan bool, 1),
 		NotifySupervisorCh: make(chan bool),
 		NsServerPort:       s.restPort,
+		UUID:               s.uuid,
 	}
 	token := s.superSup.Add(p)
 	s.runningProducers[app] = p
@@ -102,6 +103,7 @@ func main() {
 		runningProducers:           make(map[string]*producer.Producer),
 		supCmdCh:                   make(chan supCmdMsg, 10),
 		superSup:                   suptree.NewSimple("super_supervisor"),
+		uuid:                       flags.UUID,
 	}
 
 	go s.superSup.ServeBackground()

@@ -20,11 +20,12 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 
 			var vbBlob vbucketKVBlob
 
-			for vbno, _ := range c.vbProcessingStats {
+			for vbno := range c.vbProcessingStats {
 
 				// only checkpoint stats for vbuckets that the consumer instance owns
 				if c.HostPortAddr() == c.vbProcessingStats.getVbStat(vbno, "current_vb_owner") &&
-					c.ConsumerName() == c.vbProcessingStats.getVbStat(vbno, "assigned_worker") {
+					c.ConsumerName() == c.vbProcessingStats.getVbStat(vbno, "assigned_worker") &&
+					c.NodeUUID() == c.vbProcessingStats.getVbStat(vbno, "node_uuid") {
 
 					vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
 
@@ -70,10 +71,11 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbuck
 
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
-	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
-	vbBlob.VBId = vbno
-	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
 	vbBlob.DCPStreamStatus = c.vbProcessingStats.getVbStat(vbno, "dcp_stream_status").(string)
+	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
+	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
+	vbBlob.NodeUUID = c.NodeUUID()
+	vbBlob.VBId = vbno
 
 	util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 }

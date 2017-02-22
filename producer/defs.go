@@ -43,6 +43,7 @@ type Producer struct {
 	nsServerHostPort string
 	tcpPort          string
 	stopProducerCh   chan bool
+	UUID             string
 	workerCount      int
 
 	// stats gathered from ClusterInfo

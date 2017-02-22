@@ -44,7 +44,11 @@ func (c *Consumer) doVbTakeover(vbno uint16) {
 			logging.Infof("CRVT[%s:%s:%s:%d] Node: %v taking ownership of vb: %d old node: %s isn't alive any more as per ns_server",
 				c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.HostPortAddr(), vbno, vbBlob.CurrentVBOwner)
 
-			c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, c.producer.NsServerNodeCount() > 1)
+			if vbBlob.NodeUUID == c.NodeUUID() {
+				c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, false)
+			} else {
+				c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
+			}
 		}
 
 	case DcpStreamStopped:
@@ -79,6 +83,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbB
 	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vbno, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
+	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
 
 	util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 
@@ -91,13 +96,15 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 
 	vbBlob.AssignedWorker = ""
 	vbBlob.CurrentVBOwner = ""
+	vbBlob.DCPStreamStatus = DcpStreamStopped
 	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
-	vbBlob.DCPStreamStatus = DcpStreamStopped
+	vbBlob.NodeUUID = ""
 
 	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
 	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
+	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
 
 	util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 
@@ -151,7 +158,7 @@ func (c *Consumer) getVbRemainingToOwn() []uint16 {
 func (c *Consumer) getVbRemainingToGiveup() []uint16 {
 	var vbsRemainingToGiveUp []uint16
 
-	for vbno, _ := range c.vbProcessingStats {
+	for vbno := range c.vbProcessingStats {
 		if c.ConsumerName() == c.vbProcessingStats.getVbStat(vbno, "assigned_worker") &&
 			!c.checkIfCurrentConsumerShouldOwnVb(vbno) {
 			vbsRemainingToGiveUp = append(vbsRemainingToGiveUp, vbno)

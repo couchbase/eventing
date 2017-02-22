@@ -27,6 +27,7 @@ type superSupervisor struct {
 	restPort string
 	superSup *suptree.Supervisor
 	supCmdCh chan supCmdMsg
+	uuid     string
 
 	runningProducers           map[string]*producer.Producer
 	producerSupervisorTokenMap map[*producer.Producer]suptree.ServiceToken

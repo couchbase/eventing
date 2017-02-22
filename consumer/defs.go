@@ -58,7 +58,7 @@ type v8InitMeta struct {
 
 type dcpMetadata struct {
 	Cas     uint64 `json:"cas"`
-	DocId   string `json:"docid"`
+	DocID   string `json:"docid"`
 	Expiry  uint32 `json:"expiry"`
 	Flag    uint32 `json:"flag"`
 	Vbucket uint16 `json:"vb"`
@@ -69,6 +69,7 @@ type Consumer struct {
 	app    *common.AppConfig
 	bucket string
 	conn   net.Conn
+	uuid   string
 
 	dcpFeed  *couchbase.DcpFeed
 	cbBucket *couchbase.Bucket
@@ -139,6 +140,7 @@ type vbucketKVBlob struct {
 	DCPStreamStatus    string `json:"dcp_stream_status"`
 	LastCheckpointTime string `json:"last_checkpoint_time"`
 	LastSeqNoProcessed uint64 `json:"last_processed_seq_no"`
+	NodeUUID           string `json:"node_uuid"`
 	VBId               uint16 `json:"vb_id"`
 	VBuuid             uint64 `json:"vb_uuid"`
 }
