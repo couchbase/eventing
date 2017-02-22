@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"time"
 
 	"github.com/couchbase/indexing/secondary/logging"
 )
@@ -80,6 +81,7 @@ func (c *Consumer) sendMessage(msg *Message) error {
 			c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
 	}
 
+	c.conn.SetWriteDeadline(time.Now().Add(WriteDeadline))
 	err = binary.Write(c.conn, binary.LittleEndian, buffer.Bytes())
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
@@ -93,6 +95,7 @@ func (c *Consumer) sendMessage(msg *Message) error {
 
 func (c *Consumer) readMessage() *Response {
 	var result *Response
+	c.conn.SetReadDeadline(time.Now().Add(ReadDeadline))
 	msg, err := bufio.NewReader(c.conn).ReadSlice('\n')
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Read from client socket failed, err: %v",

@@ -39,6 +39,14 @@ const (
 )
 
 const (
+	// ReadDeadline for net.Conn
+	ReadDeadline = time.Duration(1000) * time.Millisecond
+
+	// WriteDeadline for net.Conn
+	WriteDeadline = time.Duration(1000) * time.Millisecond
+)
+
+const (
 	DcpStreamRunning = "running"
 	DcpStreamStopped = "stopped"
 )
