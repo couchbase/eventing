@@ -59,6 +59,7 @@ func (s *superSupervisor) spawnApp(app string) {
 		h.HandleFunc("/getAggRebalanceStatus", p.AggregateTaskProgress)
 		h.HandleFunc("/getNodeMap", p.GetNodeMap)
 		h.HandleFunc("/getRebalanceStatus", p.RebalanceStatus)
+		h.HandleFunc("/getRemainingEvents", p.DcpEventsRemainingToProcess)
 		h.HandleFunc("/getSettings", p.GetSettings)
 		h.HandleFunc("/getVbStats", p.GetConsumerVbProcessingStats)
 		h.HandleFunc("/getWorkerMap", p.GetWorkerMap)

@@ -1,5 +1,10 @@
 package consumer
 
+import (
+	"github.com/couchbase/indexing/secondary/common"
+	"github.com/couchbase/indexing/secondary/logging"
+)
+
 // RebalanceTaskProgress reports progress to producer
 func (c *Consumer) RebalanceTaskProgress() float64 {
 	var progress float64
@@ -12,6 +17,25 @@ func (c *Consumer) RebalanceTaskProgress() float64 {
 	}
 
 	return progress
+}
+
+// DcpEventsRemainingToProcess reports dcp events remaining to producer
+func (c *Consumer) DcpEventsRemainingToProcess() uint64 {
+	vbsTohandle := c.vbsToHandle()
+
+	seqNos, err := common.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+	if err != nil {
+		logging.Errorf("CRVT[%s:%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
+		return 0
+	}
+
+	var eventsProcessed, totalEvents uint64
+	for _, vbno := range vbsTohandle {
+		eventsProcessed += c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
+		totalEvents += seqNos[int(vbno)]
+	}
+
+	return totalEvents - eventsProcessed
 }
 
 // VbProcessingStats exposes consumer vb metadata to producer

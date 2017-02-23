@@ -187,3 +187,8 @@ func (c *Consumer) verifyVbsCurrentlyOwned(vbsToMigrate []uint16) []uint16 {
 
 	return vbsCurrentlyOwned
 }
+
+func (c *Consumer) vbsToHandle() []uint16 {
+	workerVbMap := c.producer.WorkerVbMap()
+	return workerVbMap[c.ConsumerName()]
+}
