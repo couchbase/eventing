@@ -21,7 +21,7 @@ func (p *Producer) AggregateTaskProgress(w http.ResponseWriter, r *http.Request)
 	wg := &sync.WaitGroup{}
 
 	netClient := &http.Client{
-		Timeout: HttpRequestTimeout,
+		Timeout: HTTPRequestTimeout,
 	}
 
 	wg.Add(len(producerHostPorts))

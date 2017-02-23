@@ -143,6 +143,7 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 
 	if sData == nil {
 		settings := make(map[string]interface{})
+		settings["dcp_stream_boundary"] = "everything"
 		settings["tick_duration"] = DefaultStatsTickDuration
 		settings["worker_count"] = DefaultWorkerCount
 

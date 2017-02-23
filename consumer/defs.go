@@ -85,6 +85,8 @@ type Consumer struct {
 	vbsRemainingToOwn    []uint16
 	vbsRemainingToGiveUp []uint16
 
+	dcpStreamBoundary common.DcpStreamBoundary
+
 	// Map that needed to short circuits failover log to dcp stream request routine
 	vbFlogChan chan *vbFlogEntry
 

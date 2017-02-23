@@ -23,7 +23,7 @@ const (
 	WatchClusterChangeInterval = time.Duration(100) * time.Millisecond
 
 	// HttpRequestTimeout for querying task statuses
-	HttpRequestTimeout = time.Duration(1000) * time.Millisecond
+	HTTPRequestTimeout = time.Duration(1000) * time.Millisecond
 )
 
 type appStatus uint16
@@ -49,6 +49,12 @@ type Producer struct {
 	stopProducerCh         chan bool
 	UUID                   string
 	workerCount            int
+
+	// Controls start seq no for vb dcp stream
+	// currently supports:
+	// everything - start from beginning and listen forever
+	// from_now - start from current vb seq no and listen forever
+	dcpStreamBoundary common.DcpStreamBoundary
 
 	// stats gathered from ClusterInfo
 	localAddress      string

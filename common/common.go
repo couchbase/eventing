@@ -4,6 +4,13 @@ import (
 	"net"
 )
 
+type DcpStreamBoundary string
+
+const (
+	DcpEverything = DcpStreamBoundary("everything")
+	DcpFromNow    = DcpStreamBoundary("from_now")
+)
+
 // EventingProducer interface to export functions from eventing_producer
 type EventingProducer interface {
 	Auth() string
@@ -14,6 +21,7 @@ type EventingProducer interface {
 	KvHostPort() []string
 	LenRunningConsumers() int
 	MetadataBucket() string
+	NsServerHostPort() string
 	NsServerNodeCount() int
 	Serve()
 	Stop()

@@ -37,6 +37,7 @@ func main() {
 	}
 
 	settings := make(map[string]interface{})
+	settings["dcp_stream_boundary"] = "everything"
 	settings["worker_count"] = 3
 	settings["tick_duration"] = 5000
 

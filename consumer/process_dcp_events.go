@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
+	sc "github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	"github.com/couchbase/indexing/secondary/logging"
@@ -174,12 +176,21 @@ func (c *Consumer) doDCPEventProcess() {
 	}
 }
 
-func (c *Consumer) startDcp(dcpConfig map[string]interface{},
-	flogs couchbase.FailoverLog) {
+func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.FailoverLog) {
+
 	logging.Infof("CRDP[%s:%s:%s:%d] no. of vbs owned: %d vbnos owned: %#v",
 		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(c.vbnos), c.vbnos)
 
 	util.Retry(util.NewFixedBackoff(ClusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
+
+	vbSeqnos, err := sc.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+	if err != nil && c.dcpStreamBoundary != common.DcpEverything {
+		logging.Errorf("CRDP[%s:%s:%s:%d] Failed to fetch vb seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
+		return
+	}
+
+	logging.Infof("CRDP[%s:%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
+		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(vbSeqnos), vbSeqnos)
 
 	for vbno, flog := range flogs {
 		vbuuid, _, _ := flog.Latest()
@@ -201,8 +212,14 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{},
 
 			util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), setOpCallback, c, vbKey, &vbBlob)
 
-			start = uint64(0)
-			c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+			switch c.dcpStreamBoundary {
+			case common.DcpEverything:
+				start = uint64(0)
+				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+			case common.DcpFromNow:
+				start = uint64(vbSeqnos[int(vbno)])
+				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+			}
 		} else {
 			// vbucket might be owned by another eventing node
 

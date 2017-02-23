@@ -50,6 +50,7 @@ func (p *Producer) parseDepcfg() error {
 			return uErr
 		}
 
+		p.dcpStreamBoundary = common.DcpStreamBoundary(settings["dcp_stream_boundary"].(string))
 		p.statsTickDuration = time.Duration(settings["tick_duration"].(float64))
 		p.workerCount = int(settings["worker_count"].(float64))
 		p.app.Settings = settings

@@ -19,7 +19,8 @@ import (
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
-func NewConsumer(p common.EventingProducer, app *common.AppConfig, vbnos []uint16, bucket, tcpPort, uuid string, workerID int) *Consumer {
+func NewConsumer(streamBoundary common.DcpStreamBoundary, p common.EventingProducer, app *common.AppConfig,
+	vbnos []uint16, bucket, tcpPort, uuid string, workerID int) *Consumer {
 	var b *couchbase.Bucket
 	consumer := &Consumer{
 		app:                       app,
@@ -27,6 +28,7 @@ func NewConsumer(p common.EventingProducer, app *common.AppConfig, vbnos []uint1
 		cbBucket:                  b,
 		controlRoutineTicker:      time.NewTicker(ControlRoutineTickInterval),
 		clusterStateChangeNotifCh: make(chan bool, ClusterChangeNotifChBufSize),
+		dcpStreamBoundary:         streamBoundary,
 		gracefulShutdownChan:      make(chan bool, 1),
 		producer:                  p,
 		signalConnectedCh:         make(chan bool),

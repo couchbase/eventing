@@ -22,8 +22,9 @@ func (c *Consumer) vbsStateUpdate() {
 		c.stopDcpStreamAndUpdateCheckpoint(vbKey, vbno, &vbBlob, &cas)
 	}
 
-	for i := range c.vbsRemainingToOwn {
-		vbno := c.vbsRemainingToOwn[i]
+	vbsRemainingToOwn := c.vbsRemainingToOwn
+	for i := range vbsRemainingToOwn {
+		vbno := vbsRemainingToOwn[i]
 		c.doVbTakeover(vbno)
 	}
 }

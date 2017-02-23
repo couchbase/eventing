@@ -3,6 +3,7 @@ package consumer
 import (
 	"fmt"
 	"os/exec"
+	"syscall"
 	"time"
 
 	"github.com/couchbase/indexing/secondary/logging"
@@ -19,6 +20,9 @@ func newClient(appName, tcpPort, workerName string) *client {
 func (c *client) Serve() {
 	c.cmd = exec.Command("client", c.appName, c.tcpPort,
 		time.Now().UTC().Format("2006-01-02T15:04:05.000000000-0700"))
+	c.cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
 
 	err := c.cmd.Start()
 	if err != nil {
@@ -35,7 +39,7 @@ func (c *client) Serve() {
 
 func (c *client) Stop() {
 	if c.osPid != 0 {
-		c.cmd.Process.Kill()
+		syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL)
 	}
 }
 
