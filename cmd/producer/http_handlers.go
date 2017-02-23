@@ -13,7 +13,7 @@ import (
 )
 
 func fetchAppSetup(w http.ResponseWriter, r *http.Request) {
-	appList := util.GetAppList(MetaKvAppsPath)
+	appList := util.ListChildren(MetaKvAppsPath)
 	respData := make([]application, len(appList))
 	for index, appName := range appList {
 

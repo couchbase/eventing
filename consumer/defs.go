@@ -79,9 +79,11 @@ type Consumer struct {
 	conn   net.Conn
 	uuid   string
 
-	dcpFeed  *couchbase.DcpFeed
-	cbBucket *couchbase.Bucket
-	vbnos    []uint16
+	dcpFeed              *couchbase.DcpFeed
+	cbBucket             *couchbase.Bucket
+	vbnos                []uint16
+	vbsRemainingToOwn    []uint16
+	vbsRemainingToGiveUp []uint16
 
 	// Map that needed to short circuits failover log to dcp stream request routine
 	vbFlogChan chan *vbFlogEntry

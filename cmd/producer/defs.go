@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	MetaKvEventingPath    = "/eventing/"
-	MetaKvAppsPath        = MetaKvEventingPath + "apps/"
-	MetaKvAppSettingsPath = MetaKvEventingPath + "settings/"
+	MetaKvEventingPath          = "/eventing/"
+	MetaKvAppsPath              = MetaKvEventingPath + "apps/"
+	MetaKvAppSettingsPath       = MetaKvEventingPath + "settings/"
+	MetaKvProducerHostPortsPath = MetaKvEventingPath + "hostports/"
 )
 
 const (

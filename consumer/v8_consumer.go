@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"sort"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -18,7 +19,7 @@ import (
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
-func New(p common.EventingProducer, app *common.AppConfig, vbnos []uint16, bucket, tcpPort, uuid string, workerID int) *Consumer {
+func NewConsumer(p common.EventingProducer, app *common.AppConfig, vbnos []uint16, bucket, tcpPort, uuid string, workerID int) *Consumer {
 	var b *couchbase.Bucket
 	consumer := &Consumer{
 		app:                       app,
@@ -36,6 +37,8 @@ func New(p common.EventingProducer, app *common.AppConfig, vbnos []uint16, bucke
 		vbFlogChan:                make(chan *vbFlogEntry),
 		vbnos:                     vbnos,
 		vbProcessingStats:         newVbProcessingStats(),
+		vbsRemainingToGiveUp:      make([]uint16, 0),
+		vbsRemainingToOwn:         make([]uint16, 0),
 		workerName:                fmt.Sprintf("worker_%s_%d", app.AppName, workerID),
 	}
 	return consumer
@@ -64,6 +67,7 @@ func (c *Consumer) Serve() {
 	var flogs couchbase.FailoverLog
 	util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs, dcpConfig)
 
+	sort.Sort(util.Uint16Slice(c.vbnos))
 	logging.Infof("V8CR[%s:%s:%s:%d] vbnos len: %d vbnos dump: %#v",
 		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(c.vbnos), c.vbnos)
 
@@ -166,26 +170,4 @@ func (c *Consumer) initCBBucketConnHandle() {
 	util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), poolGetBucketOpCallback, c, &conn, &pool, "default")
 
 	util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), cbGetBucketOpCallback, c, &pool, metadataBucket)
-}
-
-func (c *Consumer) VbProcessingStats() map[uint16]map[string]interface{} {
-	vbstats := make(map[uint16]map[string]interface{})
-	for vbno := range c.vbProcessingStats {
-		if _, ok := vbstats[vbno]; !ok {
-			vbstats[vbno] = make(map[string]interface{})
-		}
-		assignedWorker := c.vbProcessingStats.getVbStat(vbno, "assigned_worker")
-		owner := c.vbProcessingStats.getVbStat(vbno, "current_vb_owner")
-		streamStatus := c.vbProcessingStats.getVbStat(vbno, "dcp_stream_status")
-		seqNo := c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no")
-		uuid := c.vbProcessingStats.getVbStat(vbno, "node_uuid")
-
-		vbstats[vbno]["assigned_worker"] = assignedWorker
-		vbstats[vbno]["current_vb_owner"] = owner
-		vbstats[vbno]["node_uuid"] = uuid
-		vbstats[vbno]["stream_status"] = streamStatus
-		vbstats[vbno]["seq_no"] = seqNo
-	}
-
-	return vbstats
 }

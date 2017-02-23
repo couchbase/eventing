@@ -32,6 +32,7 @@ type EventingConsumer interface {
 	SignalConnected()
 	Stop()
 	String() string
+	RebalanceTaskProgress() float64
 	VbProcessingStats() map[uint16]map[string]interface{}
 }
 

@@ -19,6 +19,12 @@ const (
 	MgmtService          = "mgmt"
 )
 
+type Uint16Slice []uint16
+
+func (s Uint16Slice) Len() int           { return len(s) }
+func (s Uint16Slice) Less(i, j int) bool { return s[i] < s[j] }
+func (s Uint16Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
 func listOfVbnos(startVB int, endVB int) []uint16 {
 	vbnos := make([]uint16, 0, endVB-startVB)
 	for i := startVB; i <= endVB; i++ {
@@ -29,7 +35,7 @@ func listOfVbnos(startVB int, endVB int) []uint16 {
 
 func sprintWorkerState(state map[int]map[string]interface{}) string {
 	line := ""
-	for workerid, _ := range state {
+	for workerid := range state {
 		line += fmt.Sprintf("workerID: %d startVB: %d endVB: %d ",
 			workerid, state[workerid]["start_vb"].(int), state[workerid]["end_vb"].(int))
 	}
@@ -122,14 +128,13 @@ func CurrentEventingNodeAddress(auth, hostaddress string) (string, error) {
 		return "", err
 	}
 
-	cNodeId := cinfo.GetCurrentNode()
-	eventingNode, err := cinfo.GetServiceAddress(cNodeId, EventingAdminService)
+	cNodeID := cinfo.GetCurrentNode()
+	eventingNode, err := cinfo.GetServiceAddress(cNodeID, EventingAdminService)
 	if err != nil {
 		logging.Errorf("UTIL Failed to get current eventing node address, err: %v", err)
 		return "", err
-	} else {
-		return eventingNode, nil
 	}
+	return eventingNode, nil
 }
 
 func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
@@ -161,20 +166,21 @@ func ClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, error
 	return cinfo, nil
 }
 
-func GetAppList(path string) []string {
-	appEntries, err := metakv.ListAllChildren(path)
+func ListChildren(path string) []string {
+	entries, err := metakv.ListAllChildren(path)
 	if err != nil {
 		logging.Errorf("UTIL Failed to fetch deployed app list from metakv, err: %v", err)
 		return nil
 	}
 
-	apps := make([]string, 0)
-	for _, appEntry := range appEntries {
-		appName := strings.Split(appEntry.Path, "/")[3]
-		apps = append(apps, appName)
+	var children []string
+	for _, entry := range entries {
+		splitRes := strings.Split(entry.Path, "/")
+		child := splitRes[len(splitRes)-1]
+		children = append(children, child)
 	}
 
-	return apps
+	return children
 }
 
 func MetakvGet(path string) ([]byte, error) {
@@ -187,6 +193,14 @@ func MetakvGet(path string) ([]byte, error) {
 
 func MetakvSet(path string, value []byte, rev interface{}) error {
 	return metakv.Set(path, value, rev)
+}
+
+func MetaKvDelete(path string, rev interface{}) error {
+	return metakv.Delete(path, rev)
+}
+
+func RecursiveDelete(dirpath string) error {
+	return metakv.RecursiveDelete(dirpath)
 }
 
 func MD5hash(appCode string) string {

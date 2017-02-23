@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -10,19 +11,19 @@ import (
 )
 
 func (c *Consumer) vbsStateUpdate() {
-	vbsRemainingToOwn := c.getVbRemainingToOwn()
-	vbRemainingToGiveUp := c.getVbRemainingToGiveup()
+	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
+	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
 
 	var vbBlob vbucketKVBlob
 	var cas uint64
-	for _, vbno := range vbRemainingToGiveUp {
+	for _, vbno := range c.vbsRemainingToGiveUp {
 		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
 		util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 		c.stopDcpStreamAndUpdateCheckpoint(vbKey, vbno, &vbBlob, &cas)
 	}
 
-	for i := range vbsRemainingToOwn {
-		vbno := vbsRemainingToOwn[i]
+	for i := range c.vbsRemainingToOwn {
+		vbno := c.vbsRemainingToOwn[i]
 		c.doVbTakeover(vbno)
 	}
 }
@@ -149,13 +150,14 @@ func (c *Consumer) getVbRemainingToOwn() []uint16 {
 		}
 	}
 
+	sort.Sort(util.Uint16Slice(vbsRemainingToOwn))
 	logging.Infof("CRVT[%s:%s:%s:%d] vbs remaining to own len: %d dump: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(vbsRemainingToOwn), vbsRemainingToOwn)
 
 	return vbsRemainingToOwn
 }
 
-func (c *Consumer) getVbRemainingToGiveup() []uint16 {
+func (c *Consumer) getVbRemainingToGiveUp() []uint16 {
 	var vbsRemainingToGiveUp []uint16
 
 	for vbno := range c.vbProcessingStats {
@@ -165,8 +167,22 @@ func (c *Consumer) getVbRemainingToGiveup() []uint16 {
 		}
 	}
 
+	sort.Sort(util.Uint16Slice(vbsRemainingToGiveUp))
 	logging.Infof("CRVT[%s:%s:%s:%d] vbs remaining to give up len: %d dump: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(vbsRemainingToGiveUp), vbsRemainingToGiveUp)
 
 	return vbsRemainingToGiveUp
+}
+
+func (c *Consumer) verifyVbsCurrentlyOwned(vbsToMigrate []uint16) []uint16 {
+	var vbsCurrentlyOwned []uint16
+
+	for _, vbno := range vbsToMigrate {
+		if c.HostPortAddr() == c.vbProcessingStats.getVbStat(vbno, "current_vb_owner") &&
+			c.ConsumerName() == c.vbProcessingStats.getVbStat(vbno, "assigned_worker") {
+			vbsCurrentlyOwned = append(vbsCurrentlyOwned, vbno)
+		}
+	}
+
+	return vbsCurrentlyOwned
 }

@@ -21,6 +21,9 @@ const (
 
 	// WatchClusterChangeInterval - Interval for spawning another routine to keep an eye on cluster state change
 	WatchClusterChangeInterval = time.Duration(100) * time.Millisecond
+
+	// HttpRequestTimeout for querying task statuses
+	HttpRequestTimeout = time.Duration(1000) * time.Millisecond
 )
 
 type appStatus uint16
@@ -31,20 +34,21 @@ const (
 )
 
 type Producer struct {
-	AppName          string
-	cfgData          string
-	app              *common.AppConfig
-	auth             string
-	bucket           string
-	metadatabucket   string
-	KvPort           string
-	kvHostPort       []string
-	NsServerPort     string
-	nsServerHostPort string
-	tcpPort          string
-	stopProducerCh   chan bool
-	UUID             string
-	workerCount      int
+	AppName                string
+	app                    *common.AppConfig
+	auth                   string
+	bucket                 string
+	cfgData                string
+	KvPort                 string
+	kvHostPort             []string
+	metadatabucket         string
+	MetaKvAppHostPortsPath string
+	NsServerPort           string
+	nsServerHostPort       string
+	tcpPort                string
+	stopProducerCh         chan bool
+	UUID                   string
+	workerCount            int
 
 	// stats gathered from ClusterInfo
 	localAddress      string

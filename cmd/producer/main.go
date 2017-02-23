@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -11,6 +12,7 @@ import (
 	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/eventing/producer"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
@@ -18,33 +20,49 @@ var s superSupervisor
 
 func (s *superSupervisor) spawnApp(app string) {
 	p := &producer.Producer{
-		AppName:            app,
-		KvPort:             s.kvPort,
-		NotifyInitCh:       make(chan bool, 1),
-		NotifySupervisorCh: make(chan bool),
-		NsServerPort:       s.restPort,
-		UUID:               s.uuid,
+		AppName:                app,
+		KvPort:                 s.kvPort,
+		MetaKvAppHostPortsPath: fmt.Sprintf("%s%s/", MetaKvProducerHostPortsPath, app),
+		NotifyInitCh:           make(chan bool, 1),
+		NotifySupervisorCh:     make(chan bool),
+		NsServerPort:           s.restPort,
+		UUID:                   s.uuid,
 	}
 	token := s.superSup.Add(p)
 	s.runningProducers[app] = p
 	s.producerSupervisorTokenMap[p] = token
 
+	err := util.RecursiveDelete(p.MetaKvAppHostPortsPath)
+	if err != nil {
+		logging.Fatalf("SSUP[%d] Failed to cleanup previous hostport addrs from metakv, err: %v", len(s.runningProducers), err)
+		return
+	}
+
 	go func(p *producer.Producer) {
 		var err error
 		p.ProducerListener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
-			logging.Fatalf("SSUP[%d] Listen failed with error: %v", len(s.runningProducers), err.Error())
+			logging.Fatalf("SSUP[%d] Listen failed with error: %v", len(s.runningProducers), err)
+			return
 		}
 
-		logging.Infof("SSUP[%d] Listening on host string %s app: %s", len(s.runningProducers), p.ProducerListener.Addr().String(), p.AppName)
+		addr := p.ProducerListener.Addr().String()
+		logging.Infof("SSUP[%d] Listening on host string %s app: %s", len(s.runningProducers), addr, p.AppName)
+		err = util.MetakvSet(p.MetaKvAppHostPortsPath+addr, []byte(addr), nil)
+		if err != nil {
+			logging.Fatalf("SSUP[%d] Failed to store hostport for app: %s into metakv, err: %v", len(s.runningProducers), app, err)
+			return
+		}
 
 		h := http.NewServeMux()
 
+		h.HandleFunc("/getAggRebalanceStatus", p.AggregateTaskProgress)
 		h.HandleFunc("/getNodeMap", p.GetNodeMap)
+		h.HandleFunc("/getRebalanceStatus", p.RebalanceStatus)
 		h.HandleFunc("/getSettings", p.GetSettings)
-		h.HandleFunc("/updateSettings", p.UpdateSettings)
 		h.HandleFunc("/getVbStats", p.GetConsumerVbProcessingStats)
 		h.HandleFunc("/getWorkerMap", p.GetWorkerMap)
+		h.HandleFunc("/updateSettings", p.UpdateSettings)
 
 		http.Serve(p.ProducerListener, h)
 	}(p)
@@ -75,9 +93,10 @@ func (s *superSupervisor) handleSupCmdMsg() {
 	}
 }
 
-func (s *superSupervisor) metaKvCallback(path string, value []byte, rev interface{}) error {
+func (s *superSupervisor) appLoadCallback(path string, value []byte, rev interface{}) error {
 	if value != nil {
-		appName := strings.Split(path, "/")[3]
+		splitRes := strings.Split(path, "/")
+		appName := splitRes[len(splitRes)-1]
 		msg := supCmdMsg{
 			ctx: appName,
 			cmd: "load",
@@ -115,8 +134,8 @@ func main() {
 		logging.Fatalf("SSUP[%d] http.ListenAndServe err: %v", len(s.runningProducers), http.ListenAndServe("localhost:"+flags.EventingAdminPort, nil))
 	}()
 
-	go metakv.RunObserveChildren(MetaKvAppsPath, s.metaKvCallback, s.cancelCh)
-	go metakv.RunObserveChildren(MetaKvAppSettingsPath, s.metaKvCallback, s.cancelCh)
+	go metakv.RunObserveChildren(MetaKvAppsPath, s.appLoadCallback, s.cancelCh)
+	go metakv.RunObserveChildren(MetaKvAppSettingsPath, s.appLoadCallback, s.cancelCh)
 
 	s.handleSupCmdMsg()
 }
