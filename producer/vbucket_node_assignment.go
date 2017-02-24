@@ -58,11 +58,11 @@ func (p *Producer) vbEventingNodeAssign() error {
 
 func (p *Producer) initWorkerVbMap() {
 
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
+	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
 
 	eventingNodeAddr, err := util.CurrentEventingNodeAddress(p.auth, hostAddress)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to get address for current eventing node, err: %v", p.AppName, p.LenRunningConsumers(), err)
+		logging.Errorf("PRDR[%s:%d] Failed to get address for current eventing node, err: %v", p.appName, p.LenRunningConsumers(), err)
 	}
 
 	// vbuckets the current eventing node is responsible to handle
@@ -76,7 +76,7 @@ func (p *Producer) initWorkerVbMap() {
 
 	sort.Ints(vbucketsToHandle)
 
-	logging.Infof("PRDR[%s:%d] eventingAddr: %v vbucketsToHandle, len: %d dump: %v", p.AppName, p.LenRunningConsumers(), eventingNodeAddr, len(vbucketsToHandle), vbucketsToHandle)
+	logging.Infof("PRDR[%s:%d] eventingAddr: %v vbucketsToHandle, len: %d dump: %v", p.appName, p.LenRunningConsumers(), eventingNodeAddr, len(vbucketsToHandle), vbucketsToHandle)
 
 	vbucketPerWorker := len(vbucketsToHandle) / p.workerCount
 	var startVbIndex int
@@ -103,7 +103,7 @@ func (p *Producer) initWorkerVbMap() {
 	startVbIndex = 0
 
 	for i := 0; i < p.workerCount; i++ {
-		workerName = fmt.Sprintf("worker_%s_%d", p.AppName, i)
+		workerName = fmt.Sprintf("worker_%s_%d", p.appName, i)
 
 		for j := 0; j < vbCountPerWorker[i]; j++ {
 			p.workerVbucketMap[workerName] = append(p.workerVbucketMap[workerName], uint16(vbucketsToHandle[startVbIndex]))
@@ -126,13 +126,13 @@ func (p *Producer) getKvVbMap() {
 	for _, kvaddr := range kvAddrs {
 		addr, err := cinfo.GetServiceAddress(kvaddr, DataService)
 		if err != nil {
-			logging.Errorf("VBNA[%s:%d] Failed to get address of KV host, err: %v", p.AppName, p.LenRunningConsumers(), err)
+			logging.Errorf("VBNA[%s:%d] Failed to get address of KV host, err: %v", p.appName, p.LenRunningConsumers(), err)
 			continue
 		}
 
 		vbs, err := cinfo.GetVBuckets(kvaddr, "default")
 		if err != nil {
-			logging.Errorf("VBNA[%s:%d] Failed to get vbuckets for given kv common.NodeId, err: %v", p.AppName, p.LenRunningConsumers(), err)
+			logging.Errorf("VBNA[%s:%d] Failed to get vbuckets for given kv common.NodeId, err: %v", p.appName, p.LenRunningConsumers(), err)
 			continue
 		}
 

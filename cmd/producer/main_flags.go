@@ -10,11 +10,11 @@ import (
 )
 
 type Flags struct {
-	EventingAdminPort string
-	KVPort            string
-	RestPort          string
-	Help              bool
-	UUID              string
+	eventingAdminPort string
+	kvPort            string
+	restPort          string
+	help              bool
+	uuid              string
 }
 
 var flags Flags
@@ -46,27 +46,27 @@ func initFlags(flags *Flags) map[string][]string {
 		flagKinds[names[0]] = kind
 	}
 
-	s(&flags.EventingAdminPort,
+	s(&flags.eventingAdminPort,
 		[]string{"adminport", "event"}, "EVENTING_PORT", "25000",
 		"Port eventing admin service is running on, default being 25000")
 
-	s(&flags.KVPort,
+	s(&flags.kvPort,
 		[]string{"kvport", "kv"}, "KV_PORT", "11210",
 		"Port memcached is running on, default being 11210")
 
-	s(&flags.RestPort,
+	s(&flags.restPort,
 		[]string{"restport", "rest"}, "NS_SERVER_PORT", "8091",
 		"ns_server's rest port, default being 8091")
 
-	s(&flags.UUID,
+	s(&flags.uuid,
 		[]string{"uuid"}, "UUID", "", "uuid supplied by ns_server")
 
-	b(&flags.Help,
+	b(&flags.help,
 		[]string{"help", "H", "h"}, "", false,
 		"print usage message and exit")
 
 	flag.Usage = func() {
-		if !flags.Help {
+		if !flags.help {
 			return
 		}
 

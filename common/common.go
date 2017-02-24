@@ -21,6 +21,8 @@ type EventingProducer interface {
 	KvHostPort() []string
 	LenRunningConsumers() int
 	MetadataBucket() string
+	NotifyInit()
+	NotifySupervisor()
 	NsServerHostPort() string
 	NsServerNodeCount() int
 	Serve()

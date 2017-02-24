@@ -14,8 +14,8 @@ import (
 
 // AggregateTaskProgress reports back collated progress from all producers
 func (p *Producer) AggregateTaskProgress(w http.ResponseWriter, r *http.Request) {
-	producerHostPorts := util.ListChildren(p.MetaKvAppHostPortsPath)
-	logging.Infof("PRDR[%s:%d] Registered eventing nodes: %v", p.AppName, p.LenRunningConsumers(), producerHostPorts)
+	producerHostPorts := util.ListChildren(p.metakvAppHostPortsPath)
+	logging.Infof("PRDR[%s:%d] Registered eventing nodes: %v", p.appName, p.LenRunningConsumers(), producerHostPorts)
 
 	var appAggProgress float64
 	wg := &sync.WaitGroup{}
@@ -33,20 +33,20 @@ func (p *Producer) AggregateTaskProgress(w http.ResponseWriter, r *http.Request)
 
 			res, err := netClient.Get(url)
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Failed to gather task status from url: %s, err: %v", p.AppName, p.LenRunningConsumers(), url, err)
+				logging.Errorf("PRDR[%s:%d] Failed to gather task status from url: %s, err: %v", p.appName, p.LenRunningConsumers(), url, err)
 				return
 			}
 			defer res.Body.Close()
 
 			buf, err := ioutil.ReadAll(res.Body)
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Failed to read response body from url: %s, err: %v", p.AppName, p.LenRunningConsumers(), url, err)
+				logging.Errorf("PRDR[%s:%d] Failed to read response body from url: %s, err: %v", p.appName, p.LenRunningConsumers(), url, err)
 				return
 			}
 
 			progress, err := strconv.ParseFloat(string(buf), 64)
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Failed to parse progress from url: %s, err: %v", p.AppName, p.LenRunningConsumers(), url, err)
+				logging.Errorf("PRDR[%s:%d] Failed to parse progress from url: %s, err: %v", p.appName, p.LenRunningConsumers(), url, err)
 				return
 			}
 
@@ -106,13 +106,13 @@ func (p *Producer) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = util.MetakvSet(MetaKvAppSettingsPath+p.AppName, reqBody, nil)
+	err = util.MetakvSet(MetaKvAppSettingsPath+p.appName, reqBody, nil)
 	if err != nil {
 		fmt.Fprintf(w, "Failed to store new handler setting in metakv")
 		return
 	}
 
-	fmt.Fprintf(w, "Successfully written new settings, app: %s will be reloaded with new config", p.AppName)
+	fmt.Fprintf(w, "Successfully written new settings, app: %s will be reloaded with new config", p.appName)
 }
 
 // GetWorkerMap dumps the vbucket distribution across V8 workers

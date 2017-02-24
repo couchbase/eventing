@@ -1,4 +1,4 @@
-package main
+package supervisor
 
 import (
 	"encoding/json"
@@ -12,12 +12,13 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-func fetchAppSetup(w http.ResponseWriter, r *http.Request) {
-	appList := util.ListChildren(MetaKvAppsPath)
+// FetchAppSetup provides the list of deployed event handlers
+func (s *SuperSupervisor) FetchAppSetup(w http.ResponseWriter, r *http.Request) {
+	appList := util.ListChildren(MetakvAppsPath)
 	respData := make([]application, len(appList))
 	for index, appName := range appList {
 
-		path := MetaKvAppsPath + appName
+		path := MetakvAppsPath + appName
 		data, err := util.MetakvGet(path)
 		if err == nil {
 
@@ -55,11 +56,16 @@ func fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data, _ := json.Marshal(respData)
+	data, err := json.Marshal(respData)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to marshal response for get_application, err: %v", err)
+		return
+	}
 	fmt.Fprintf(w, "%s\n", data)
 }
 
-func storeAppSetup(w http.ResponseWriter, r *http.Request) {
+// StoreAppSetup stores updates copy of event handler definition
+func (s *SuperSupervisor) StoreAppSetup(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -127,14 +133,14 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 
 	appContent := builder.FinishedBytes()
 
-	path := MetaKvAppsPath + appName
+	path := MetakvAppsPath + appName
 	err = util.MetakvSet(path, appContent, nil)
 	if err != nil {
 		fmt.Fprintf(w, "Failed to write app config to metakv, err: %v", err)
 		return
 	}
 
-	settingsPath := MetaKvAppSettingsPath + appName
+	settingsPath := MetakvAppSettingsPath + appName
 	sData, err := util.MetakvGet(settingsPath)
 	if err != nil {
 		fmt.Fprintf(w, "App: %s Failed to fetch settings from metakv, err: %v", appName, err)

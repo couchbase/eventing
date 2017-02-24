@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
 )
@@ -34,20 +33,20 @@ const (
 )
 
 type Producer struct {
-	AppName                string
+	appName                string
 	app                    *common.AppConfig
 	auth                   string
 	bucket                 string
 	cfgData                string
-	KvPort                 string
+	kvPort                 string
 	kvHostPort             []string
 	metadatabucket         string
-	MetaKvAppHostPortsPath string
-	NsServerPort           string
+	metakvAppHostPortsPath string
+	nsServerPort           string
 	nsServerHostPort       string
 	tcpPort                string
 	stopProducerCh         chan bool
-	UUID                   string
+	uuid                   string
 	workerCount            int
 
 	// Controls start seq no for vb dcp stream
@@ -62,17 +61,14 @@ type Producer struct {
 	kvNodeAddrs       []string
 	nsServerNodeAddrs []string
 
-	// service.Manager related fields
-	nodeInfo *service.NodeInfo
-
 	consumerListeners []net.Listener
 	ProducerListener  net.Listener
 
 	// Chan to notify super_supervisor about clean producer shutdown
-	NotifySupervisorCh chan bool
+	notifySupervisorCh chan bool
 
 	// Chan to notify supervisor about producer initialisation
-	NotifyInitCh chan bool
+	notifyInitCh chan bool
 
 	// Feedback channel to notify change in cluster state
 	clusterStateChange chan bool

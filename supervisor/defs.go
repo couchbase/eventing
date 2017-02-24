@@ -1,15 +1,16 @@
-package main
+package supervisor
 
 import (
-	"github.com/couchbase/eventing/producer"
+	"github.com/couchbase/cbauth/service"
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
 )
 
 const (
-	MetaKvEventingPath          = "/eventing/"
-	MetaKvAppsPath              = MetaKvEventingPath + "apps/"
-	MetaKvAppSettingsPath       = MetaKvEventingPath + "settings/"
-	MetaKvProducerHostPortsPath = MetaKvEventingPath + "hostports/"
+	MetakvEventingPath          = "/eventing/"
+	MetakvAppsPath              = MetakvEventingPath + "apps/"
+	MetakvAppSettingsPath       = MetakvEventingPath + "settings/"
+	MetakvProducerHostPortsPath = MetakvEventingPath + "hostports/"
 )
 
 const (
@@ -22,16 +23,19 @@ type supCmdMsg struct {
 	ctx string
 }
 
-type superSupervisor struct {
-	cancelCh chan struct{}
+type SuperSupervisor struct {
+	CancelCh chan struct{}
 	kvPort   string
 	restPort string
 	superSup *suptree.Supervisor
 	supCmdCh chan supCmdMsg
 	uuid     string
 
-	runningProducers           map[string]*producer.Producer
-	producerSupervisorTokenMap map[*producer.Producer]suptree.ServiceToken
+	runningProducers           map[string]common.EventingProducer
+	producerSupervisorTokenMap map[common.EventingProducer]suptree.ServiceToken
+
+	// service.Manager related fields
+	nodeInfo *service.NodeInfo
 }
 
 type application struct {

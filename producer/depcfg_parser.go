@@ -12,9 +12,9 @@ import (
 )
 
 func (p *Producer) parseDepcfg() error {
-	logging.Infof("DCFG[%s] Opening up application file", p.AppName)
+	logging.Infof("DCFG[%s] Opening up application file", p.appName)
 
-	path := MetaKvAppsPath + p.AppName
+	path := MetaKvAppsPath + p.appName
 	cfgData, err := util.MetakvGet(path)
 	if err == nil {
 		config := cfg.GetRootAsConfig(cfgData, 0)
@@ -36,17 +36,17 @@ func (p *Producer) parseDepcfg() error {
 		p.cfgData = string(cfgData)
 		p.metadatabucket = string(depcfg.MetadataBucket())
 
-		settingsPath := MetaKvAppSettingsPath + p.AppName
+		settingsPath := MetaKvAppSettingsPath + p.appName
 		sData, sErr := util.MetakvGet(settingsPath)
 		if sErr != nil {
-			logging.Errorf("DCFG[%s] Failed to fetch settings from metakv, err: %v", p.AppName, sErr)
+			logging.Errorf("DCFG[%s] Failed to fetch settings from metakv, err: %v", p.appName, sErr)
 			return sErr
 		}
 
 		settings := make(map[string]interface{})
 		uErr := json.Unmarshal(sData, &settings)
 		if uErr != nil {
-			logging.Errorf("DCFG[%s] Failed to unmarshal settings received from metakv, err: %v", p.AppName, uErr)
+			logging.Errorf("DCFG[%s] Failed to unmarshal settings received from metakv, err: %v", p.appName, uErr)
 			return uErr
 		}
 
@@ -56,30 +56,30 @@ func (p *Producer) parseDepcfg() error {
 		p.app.Settings = settings
 
 		logging.Infof("DCFG[%s] Loaded app => wc: %v auth: %v bucket: %v statsTickD: %v",
-			p.AppName, p.workerCount, p.auth, p.bucket, p.statsTickDuration)
+			p.appName, p.workerCount, p.auth, p.bucket, p.statsTickDuration)
 
 		if p.workerCount <= 0 {
 			return fmt.Errorf("%v", ErrorUnexpectedWorkerCount)
 		}
 
-		hostaddr := fmt.Sprintf("127.0.0.1:%s", p.NsServerPort)
+		hostaddr := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
 
 		localAddress, err := util.LocalEventingServiceHost(p.auth, hostaddr)
 		if err != nil {
-			logging.Errorf("DCFG[%s] Failed to get address for local eventing node, err :%v", p.AppName, err)
+			logging.Errorf("DCFG[%s] Failed to get address for local eventing node, err :%v", p.appName, err)
 			return err
 		}
 
 		p.kvHostPort, err = util.KVNodesAddresses(p.auth, hostaddr)
 		if err != nil {
-			logging.Errorf("DCFG[%s] Failed to get list of kv nodes in the cluster, err: %v", p.AppName, err)
+			logging.Errorf("DCFG[%s] Failed to get list of kv nodes in the cluster, err: %v", p.appName, err)
 			return err
 		}
 
-		p.nsServerHostPort = fmt.Sprintf("%s:%s", localAddress, p.NsServerPort)
+		p.nsServerHostPort = fmt.Sprintf("%s:%s", localAddress, p.nsServerPort)
 
 	} else {
-		logging.Errorf("DCFG[%s] Failed to read depcfg, err: %v", p.AppName, err)
+		logging.Errorf("DCFG[%s] Failed to read depcfg, err: %v", p.appName, err)
 		return err
 	}
 	return nil
