@@ -1,5 +1,5 @@
 diff --git a/priv/public/classic-index.html b/priv/public/classic-index.html
-index 70d6295..d945a52 100644
+index 70d6295..b26b95d 100644
 --- a/priv/public/classic-index.html
 +++ b/priv/public/classic-index.html
 @@ -2847,6 +2847,9 @@
@@ -12,18 +12,6 @@ index 70d6295..d945a52 100644
            <a class="tooltip text_11"><span>What's this?</span>
              <span class="tooltip_msg" style="width:350px;"><span>
                Each service represents a unique workload. Please check the service you want to enable on this node.
-diff --git a/priv/public/js/app-misc.js b/priv/public/js/app-misc.js
-index 5968dfa..1187122 100644
---- a/priv/public/js/app-misc.js
-+++ b/priv/public/js/app-misc.js
-@@ -441,6 +441,7 @@ _.extend(ViewHelpers, {
-         case 'moxi': return 'Moxi';
-         case 'index': return 'Index';
-         case 'fts': return 'Full Text';
-+        case 'eventing': return 'Eventing';
-       }
-     }).sort();
-   },
 diff --git a/priv/public/ui/app-classic/app.css b/priv/public/ui/app-classic/app.css
 index 1025a1c..c000022 100644
 --- a/priv/public/ui/app-classic/app.css
@@ -38,7 +26,7 @@ index 1025a1c..c000022 100644
  #headerNav li.currentNav {background:url('/images/active_bg.png') no-repeat center;}
  /* to position the badges in the navigation correctly */
 diff --git a/priv/public/ui/app-classic/components/directives/mn_services/mn_services.html b/priv/public/ui/app-classic/components/directives/mn_services/mn_services.html
-index c44ecc2..4d849eb 100644
+index c44ecc2..9b9729f 100644
 --- a/priv/public/ui/app-classic/components/directives/mn_services/mn_services.html
 +++ b/priv/public/ui/app-classic/components/directives/mn_services/mn_services.html
 @@ -8,6 +8,8 @@
@@ -51,7 +39,7 @@ index c44ecc2..4d849eb 100644
  <a class="tooltip text_11"><span>What&#39;s this?</span>
    <span class="tooltip_msg" style="width:350px;"><span>
 diff --git a/priv/public/ui/app-classic/components/mn_filters.js b/priv/public/ui/app-classic/components/mn_filters.js
-index de8ff7e..c956410 100644
+index de8ff7e..0cdbef1 100644
 --- a/priv/public/ui/app-classic/components/mn_filters.js
 +++ b/priv/public/ui/app-classic/components/mn_filters.js
 @@ -486,6 +486,7 @@

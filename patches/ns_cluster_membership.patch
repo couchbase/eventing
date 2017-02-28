@@ -1,8 +1,8 @@
 diff --git a/src/ns_cluster_membership.erl b/src/ns_cluster_membership.erl
-index 97e4747..584be3d 100644
+index 702e857..96eb470 100644
 --- a/src/ns_cluster_membership.erl
 +++ b/src/ns_cluster_membership.erl
-@@ -214,7 +214,7 @@ supported_services() ->
+@@ -215,7 +215,7 @@ supported_services() ->
  
  supported_services_for_version(CompatVersion) ->
      Services0 = [kv],
@@ -11,7 +11,7 @@ index 97e4747..584be3d 100644
          true ->
              Services1 = [n1ql, index] ++ Services0,
              case cluster_compat_mode:is_version_45(CompatVersion) of
-@@ -225,7 +225,8 @@ supported_services_for_version(CompatVersion) ->
+@@ -226,7 +226,8 @@ supported_services_for_version(CompatVersion) ->
              end;
          false ->
              Services0
@@ -21,3 +21,13 @@ index 97e4747..584be3d 100644
  
  -ifdef(EUNIT).
  supported_services_for_version_test() ->
+@@ -252,7 +253,8 @@ topology_aware_services_for_version(Version) ->
+             Services = [fts | maybe_example_service()],
+             case cluster_compat_mode:is_version_spock(Version) of
+                 true ->
+-                    [index | Services];
++                    [eventing] ++ [index | Services];
++                    %% [index | Services];
+                 false ->
+                     Services
+             end;

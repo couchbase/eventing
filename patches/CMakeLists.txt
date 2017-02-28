@@ -9,8 +9,8 @@ apply_patch(bucket_info_cache ns_server)
 apply_patch(ns_config_default ns_server)
 apply_patch(ns_ports_setup ns_server)
 apply_patch(menelaus_pluggable_ui ns_server)
-apply_patch(mn_services ns_server)
 apply_patch(ns_cluster_membership ns_server)
 apply_patch(classic_ui ns_server)
+apply_patch(current_ui ns_server)
 
 
