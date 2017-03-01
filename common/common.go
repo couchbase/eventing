@@ -11,6 +11,17 @@ const (
 	DcpFromNow    = DcpStreamBoundary("from_now")
 )
 
+type ChangeType string
+
+const (
+	StartRebalanceCType = ChangeType("start-rebalance")
+	StopRebalanceCType  = ChangeType("stop-rebalance")
+)
+
+type TopologyChangeMsg struct {
+	CType ChangeType
+}
+
 // EventingProducer interface to export functions from eventing_producer
 type EventingProducer interface {
 	Auth() string
@@ -22,6 +33,8 @@ type EventingProducer interface {
 	LenRunningConsumers() int
 	MetadataBucket() string
 	NotifyInit()
+	NotifyPrepareTopologyChange(keepNodes []string)
+	NotifyStartTopologyChange(msg *TopologyChangeMsg)
 	NotifySupervisor()
 	NsServerHostPort() string
 	NsServerNodeCount() int
@@ -45,6 +58,15 @@ type EventingConsumer interface {
 	String() string
 	RebalanceTaskProgress() float64
 	VbProcessingStats() map[uint16]map[string]interface{}
+}
+
+type EventingSuperSup interface {
+	NotifyPrepareTopologyChange(keepNodes []string)
+	ProducerHostPortAddrs() []string
+	RestPort() string
+}
+
+type EventingServiceMgr interface {
 }
 
 // AppConfig Application/Event handler configuration

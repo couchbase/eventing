@@ -3,8 +3,14 @@ package util
 import (
 	"crypto/md5"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"sort"
+	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
+	"unsafe"
 
 	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/gomemcached"
@@ -17,6 +23,7 @@ const (
 	EventingAdminService = "eventingAdminPort"
 	DataService          = "kv"
 	MgmtService          = "mgmt"
+	HTTPRequestTimeout   = time.Duration(1000) * time.Millisecond
 )
 
 type Uint16Slice []uint16
@@ -24,6 +31,43 @@ type Uint16Slice []uint16
 func (s Uint16Slice) Len() int           { return len(s) }
 func (s Uint16Slice) Less(i, j int) bool { return s[i] < s[j] }
 func (s Uint16Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+type Config map[string]interface{}
+
+type ConfigHolder struct {
+	ptr unsafe.Pointer
+}
+
+func (h *ConfigHolder) Store(conf Config) {
+	atomic.StorePointer(&h.ptr, unsafe.Pointer(&conf))
+}
+
+func (h *ConfigHolder) Load() Config {
+	confPtr := atomic.LoadPointer(&h.ptr)
+	return *(*Config)(confPtr)
+}
+
+func NewConfig(data interface{}) (Config, error) {
+	config := make(Config)
+	err := config.Update(data)
+	return config, err
+}
+
+func (config Config) Update(data interface{}) error {
+	switch v := data.(type) {
+	case Config:
+		for key, value := range v {
+			config.Set(key, value)
+		}
+	default:
+	}
+	return nil
+}
+
+func (config Config) Set(key string, value interface{}) Config {
+	config[key] = value
+	return config
+}
 
 func listOfVbnos(startVB int, endVB int) []uint16 {
 	vbnos := make([]uint16, 0, endVB-startVB)
@@ -166,6 +210,41 @@ func ClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, error
 	return cinfo, nil
 }
 
+func GetProgress(urlSuffix string, nodeAddrs []string) float64 {
+	aggProgress := 1.0
+
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
+
+	for _, nodeAddr := range nodeAddrs {
+		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(url)
+		if err != nil {
+			logging.Errorf("UTIL Failed to gather task status from url: %s, err: %v", url, err)
+			continue
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("SRMR Failed to read response body from url: %s, err: %v", url, err)
+			continue
+		}
+
+		progress, err := strconv.ParseFloat(string(buf), 64)
+		if err != nil {
+			logging.Errorf("SRMR Failed to parse progress from url: %s, err: %v", url, err)
+			continue
+		}
+
+		aggProgress *= progress
+	}
+
+	return aggProgress
+}
+
 func ListChildren(path string) []string {
 	entries, err := metakv.ListAllChildren(path)
 	if err != nil {
@@ -203,10 +282,10 @@ func RecursiveDelete(dirpath string) error {
 	return metakv.RecursiveDelete(dirpath)
 }
 
-func MD5hash(appCode string) string {
+func GetHash(appCode string) string {
 	hash := md5.New()
 	hash.Write([]byte(appCode))
-	return fmt.Sprintf("%x", hash.Sum(nil))
+	return fmt.Sprintf("%d-%x", len(appCode), hash.Sum(nil))
 }
 
 func MemcachedErrCode(err error) gomemcached.Status {

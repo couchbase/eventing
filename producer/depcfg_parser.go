@@ -14,7 +14,7 @@ import (
 func (p *Producer) parseDepcfg() error {
 	logging.Infof("DCFG[%s] Opening up application file", p.appName)
 
-	path := MetaKvAppsPath + p.appName
+	path := MetakvAppsPath + p.appName
 	cfgData, err := util.MetakvGet(path)
 	if err == nil {
 		config := cfg.GetRootAsConfig(cfgData, 0)
@@ -23,7 +23,7 @@ func (p *Producer) parseDepcfg() error {
 		p.app.AppCode = string(config.AppCode())
 		p.app.AppName = string(config.AppName())
 		p.app.AppState = fmt.Sprintf("%v", AppUndeployed)
-		p.app.AppVersion = util.MD5hash(p.app.AppCode)
+		p.app.AppVersion = util.GetHash(p.app.AppCode)
 		p.app.LastDeploy = time.Now().UTC().Format("2006-01-02T15:04:05.000000000-0700")
 		p.app.ID = int(config.Id())
 		p.app.Settings = make(map[string]interface{})
@@ -36,7 +36,7 @@ func (p *Producer) parseDepcfg() error {
 		p.cfgData = string(cfgData)
 		p.metadatabucket = string(depcfg.MetadataBucket())
 
-		settingsPath := MetaKvAppSettingsPath + p.appName
+		settingsPath := MetakvAppSettingsPath + p.appName
 		sData, sErr := util.MetakvGet(settingsPath)
 		if sErr != nil {
 			logging.Errorf("DCFG[%s] Failed to fetch settings from metakv, err: %v", p.appName, sErr)

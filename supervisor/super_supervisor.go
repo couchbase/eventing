@@ -6,38 +6,35 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/producer"
+	"github.com/couchbase/eventing/service_manager"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
 // NewSuperSupervisor creates the super_supervisor handle
-func NewSuperSupervisor(kvPort, restPort, uuid string) *SuperSupervisor {
+func NewSuperSupervisor(eventingAdminPort, kvPort, restPort, uuid string) *SuperSupervisor {
 	s := &SuperSupervisor{
-		CancelCh: make(chan struct{}, 1),
-		kvPort:   kvPort,
-		producerSupervisorTokenMap: make(map[common.EventingProducer]suptree.ServiceToken),
-		restPort:                   restPort,
-		runningProducers:           make(map[string]common.EventingProducer),
-		supCmdCh:                   make(chan supCmdMsg, 10),
-		superSup:                   suptree.NewSimple("super_supervisor"),
-		uuid:                       uuid,
+		CancelCh:          make(chan struct{}, 1),
+		eventingAdminPort: eventingAdminPort,
+		kvPort:            kvPort,
+		producerSupervisorTokenMap:   make(map[common.EventingProducer]suptree.ServiceToken),
+		restPort:                     restPort,
+		runningProducers:             make(map[string]common.EventingProducer),
+		runningProducersHostPortAddr: make(map[string]string),
+		supCmdCh:                     make(chan supCmdMsg, 10),
+		superSup:                     suptree.NewSimple("super_supervisor"),
+		uuid:                         uuid,
 	}
 	go s.superSup.ServeBackground()
 
-	go func(s *SuperSupervisor) {
-		logging.Infof("SSUP: Registering against cbauth_service ")
+	config, _ := util.NewConfig(nil)
+	config.Set("uuid", s.uuid)
+	config.Set("eventing_admin_port", s.eventingAdminPort)
 
-		err := service.RegisterManager(s, nil)
-		if err != nil {
-			logging.Errorf("SSUP: Failed to register against cbauth_service, err: %v", err)
-			return
-		}
-	}(s)
-
+	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s)
 	return s
 }
 
@@ -54,6 +51,22 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 	}
 	return nil
 }
+
+func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte, rev interface{}) error {
+	logging.Infof("SSUP[%d] TopologyChangeNotifCallback: path => %s value => %s\n", len(s.runningProducers), path, string(value))
+	topologyChangeMsg := &common.TopologyChangeMsg{}
+	if value != nil {
+		topologyChangeMsg.CType = common.StartRebalanceCType
+		for _, producer := range s.runningProducers {
+			producer.NotifyStartTopologyChange(topologyChangeMsg)
+		}
+	} else {
+		topologyChangeMsg.CType = common.StopRebalanceCType
+	}
+
+	return nil
+}
+
 func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", MetakvProducerHostPortsPath, appName)
 	p := producer.NewProducer(appName, s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid)
@@ -62,13 +75,7 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 	s.runningProducers[appName] = p
 	s.producerSupervisorTokenMap[p] = token
 
-	err := util.RecursiveDelete(metakvAppHostPortsPath)
-	if err != nil {
-		logging.Fatalf("SSUP[%d] Failed to cleanup previous hostport addrs from metakv, err: %v", len(s.runningProducers), err)
-		return
-	}
-
-	go func(p *producer.Producer, appName, metakvAppHostPortsPath string) {
+	go func(p *producer.Producer, s *SuperSupervisor, appName, metakvAppHostPortsPath string) {
 		var err error
 		p.ProducerListener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -78,15 +85,10 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 
 		addr := p.ProducerListener.Addr().String()
 		logging.Infof("SSUP[%d] Listening on host string %s app: %s", len(s.runningProducers), addr, appName)
-		err = util.MetakvSet(metakvAppHostPortsPath+addr, []byte(addr), nil)
-		if err != nil {
-			logging.Fatalf("SSUP[%d] Failed to store hostport for app: %s into metakv, err: %v", len(s.runningProducers), appName, err)
-			return
-		}
+		s.runningProducersHostPortAddr[appName] = addr
 
 		h := http.NewServeMux()
 
-		h.HandleFunc("/getAggRebalanceStatus", p.AggregateTaskProgress)
 		h.HandleFunc("/getNodeMap", p.GetNodeMap)
 		h.HandleFunc("/getRebalanceStatus", p.RebalanceStatus)
 		h.HandleFunc("/getRemainingEvents", p.DcpEventsRemainingToProcess)
@@ -96,7 +98,7 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 		h.HandleFunc("/updateSettings", p.UpdateSettings)
 
 		http.Serve(p.ProducerListener, h)
-	}(p, appName, metakvAppHostPortsPath)
+	}(p, s, appName, metakvAppHostPortsPath)
 }
 
 // HandleSupCmdMsg handles control commands like app (re)deploy, settings update
@@ -123,4 +125,25 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 			s.spawnApp(appName)
 		}
 	}
+}
+
+func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
+	for _, producer := range s.runningProducers {
+		logging.Infof("SSUP[%d] NotifyPrepareTopologyChange to producer %p, keepNodes => %v", len(s.runningProducers), producer, keepNodes)
+		producer.NotifyPrepareTopologyChange(keepNodes)
+	}
+}
+
+func (s *SuperSupervisor) ProducerHostPortAddrs() []string {
+	var hostPortAddrs []string
+
+	for _, hostPortAddr := range s.runningProducersHostPortAddr {
+		hostPortAddrs = append(hostPortAddrs, hostPortAddr)
+	}
+
+	return hostPortAddrs
+}
+
+func (s *SuperSupervisor) RestPort() string {
+	return s.restPort
 }

@@ -11,22 +11,28 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
+// NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, kvPort, metakvAppHostPortsPath, nsServerPort, uuid string) *Producer {
-	return &Producer{
+	p := &Producer{
 		appName:                appName,
+		eventingNodeUUIDs:      make([]string, 0),
 		kvPort:                 kvPort,
 		metakvAppHostPortsPath: metakvAppHostPortsPath,
 		notifyInitCh:           make(chan bool, 1),
 		notifySupervisorCh:     make(chan bool),
 		nsServerPort:           nsServerPort,
-		uuid:                   uuid,
+		startTopologyChangeCh:  make(chan *common.TopologyChangeMsg, 10),
+		uuid: uuid,
 	}
+
+	p.eventingNodeUUIDs = append(p.eventingNodeUUIDs, uuid)
+	return p
 }
 
+// Serve implements suptree.Service interface
 func (p *Producer) Serve() {
 	err := p.parseDepcfg()
 	if err != nil {
@@ -56,7 +62,6 @@ func (p *Producer) Serve() {
 
 	p.workerSupervisor = suptree.NewSimple(p.appName)
 	go p.workerSupervisor.ServeBackground()
-	go p.watchClusterChanges()
 
 	p.initWorkerVbMap()
 	p.startBucket()
@@ -65,65 +70,18 @@ func (p *Producer) Serve() {
 
 	for {
 		select {
-		case <-p.clusterStateChange:
+		// TODO: Implement different flows for rebalance start and rebalance stop of eventing nodes
+		case <-p.startTopologyChangeCh:
 
-			hostAddress := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
-			kvNodeAddrs, err := util.KVNodesAddresses(p.auth, hostAddress)
-			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Failed to get all KV nodes, err: %v", p.appName, p.LenRunningConsumers(), err)
+			p.vbEventingNodeAssign()
+			p.getKvVbMap()
+			p.initWorkerVbMap()
+
+			for _, consumer := range p.runningConsumers {
+				logging.Infof("Consumer: %s sent cluster change message from producer", consumer.ConsumerName())
+				consumer.NotifyClusterChange()
 			}
 
-			eventingNodeAddrs, err := util.EventingNodesAddresses(p.auth, hostAddress)
-			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Failed to get all eventing nodes, err: %v", p.appName, p.LenRunningConsumers(), err)
-			}
-
-			cmpKvNodes := util.CompareSlices(kvNodeAddrs, p.getKvNodeAddrs())
-			cmpEventingNodes := util.CompareSlices(eventingNodeAddrs, p.getEventingNodeAddrs())
-
-			if cmpEventingNodes && cmpKvNodes {
-				logging.Infof("PRDR[%s:%d] Continuing as state of KV and eventing nodes hasn't changed. KV: %v Eventing: %v",
-					p.appName, p.LenRunningConsumers(), kvNodeAddrs, eventingNodeAddrs)
-			} else {
-
-				if !cmpEventingNodes {
-
-					logging.Infof("PRDR[%s:%d] Eventing nodes have changed, previously = %#v new set: => %#v",
-						p.appName, p.LenRunningConsumers(), p.getEventingNodeAddrs(), eventingNodeAddrs)
-
-					p.vbEventingNodeAssign()
-					p.getKvVbMap()
-					p.initWorkerVbMap()
-
-					for _, consumer := range p.runningConsumers {
-						logging.Infof("Consumer: %s sent cluster change message from producer", consumer.ConsumerName())
-						consumer.NotifyClusterChange()
-					}
-
-					logging.Infof("PRDR[%s:%d] WorkerMap dump: %#v post eventing rebalance",
-						p.appName, p.LenRunningConsumers(), p.workerVbucketMap)
-
-				} else {
-					logging.Infof("PRDR[%s:%d] Gracefully tearing down producer, eventing nodes prev: %#v new: %#v; kv nodes prev: %#v new: %#v",
-						p.appName, p.LenRunningConsumers(), p.getEventingNodeAddrs(), eventingNodeAddrs, p.getKvNodeAddrs(), kvNodeAddrs)
-
-					for _, consumer := range p.runningConsumers {
-						p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[consumer])
-						delete(p.consumerSupervisorTokenMap, consumer)
-					}
-					p.runningConsumers = p.runningConsumers[:0]
-
-					p.parseDepcfg()
-					p.vbEventingNodeAssign()
-					p.getKvVbMap()
-
-					p.initWorkerVbMap()
-					p.startBucket()
-
-					logging.Infof("PRDR[%s:%d] WorkerMap dump: %#v post kv + eventing rebalance",
-						p.appName, p.LenRunningConsumers(), p.workerVbucketMap)
-				}
-			}
 		case <-p.stopProducerCh:
 			logging.Infof("PRDR[%s:%d] Explicitly asked to shutdown producer routine", p.appName, p.LenRunningConsumers())
 
@@ -144,6 +102,7 @@ func (p *Producer) Serve() {
 	}
 }
 
+// Stop implements suptree.Service interface
 func (p *Producer) Stop() {
 	p.stopProducerCh <- true
 	p.ProducerListener.Close()
@@ -192,10 +151,12 @@ func (p *Producer) handleV8Consumer(vbnos []uint16, index int) {
 	c.SignalConnected()
 }
 
+// LenRunningConsumers returns the number of actively running consumers for a given app's producer
 func (p *Producer) LenRunningConsumers() int {
 	return len(p.runningConsumers)
 }
 
+// CleanupDeadConsumer cleans up a dead consumer handle from list of active running consumers
 func (p *Producer) CleanupDeadConsumer(c common.EventingConsumer) {
 	p.Lock()
 	defer p.Unlock()
@@ -214,12 +175,14 @@ func (p *Producer) CleanupDeadConsumer(c common.EventingConsumer) {
 	}
 }
 
+// VbEventingNodeAssignMap returns the vbucket to evening node mapping
 func (p *Producer) VbEventingNodeAssignMap() map[uint16]string {
 	p.RLock()
 	defer p.RUnlock()
 	return p.vbEventingNodeAssignMap
 }
 
+// IsEventingNodeAlive verifies if a hostPortAddr combination is an active eventing node
 func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr string) bool {
 	eventingNodeAddrs := (*[]string)(atomic.LoadPointer(
 		(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs))))
@@ -233,30 +196,35 @@ func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr string) bool {
 	return false
 }
 
+// WorkerVbMap returns mapping of active consumers to vbuckets they should handle as per static planner
 func (p *Producer) WorkerVbMap() map[string][]uint16 {
 	p.RLock()
 	defer p.RUnlock()
 	return p.workerVbucketMap
 }
 
+// GetNsServerPort return rest port for ns_server
 func (p *Producer) GetNsServerPort() string {
 	p.RLock()
 	defer p.RUnlock()
 	return p.nsServerPort
 }
 
+// NsServerHostPort returns host:port combination for ns_server instance
 func (p *Producer) NsServerHostPort() string {
 	p.RLock()
 	defer p.RUnlock()
 	return p.nsServerHostPort
 }
 
+// KvHostPort returns host:port combination for kv service
 func (p *Producer) KvHostPort() []string {
 	p.RLock()
 	defer p.RUnlock()
 	return p.kvHostPort
 }
 
+// Auth returns username:password combination for the cluster
 func (p *Producer) Auth() string {
 	p.RLock()
 	defer p.RUnlock()
@@ -281,6 +249,7 @@ func (p *Producer) getKvNodeAddrs() []string {
 	return nil
 }
 
+// NsServerNodeCount returns count of currently active ns_server nodes in the cluster
 func (p *Producer) NsServerNodeCount() int {
 	nsServerNodeAddrs := (*[]string)(atomic.LoadPointer(
 		(*unsafe.Pointer)(unsafe.Pointer(&p.nsServerNodeAddrs))))
@@ -308,18 +277,32 @@ func (p *Producer) getConsumerAssignedVbuckets(workerName string) []uint16 {
 	return p.workerVbucketMap[workerName]
 }
 
+// CfgData returns deployment descriptor content
 func (p *Producer) CfgData() string {
 	return p.cfgData
 }
 
+// MetadataBucket return metadata bucket for event handler
 func (p *Producer) MetadataBucket() string {
 	return p.metadatabucket
 }
 
+// NotifyInit notifies the supervisor about producer initialisation
 func (p *Producer) NotifyInit() {
 	<-p.notifyInitCh
 }
 
+// NotifySupervisor notifies the supervisor about clean shutdown of producer
 func (p *Producer) NotifySupervisor() {
 	<-p.notifySupervisorCh
+}
+
+// NotifyStartTopologyChange is used by super_supervisor to notify producer about topology change
+func (p *Producer) NotifyStartTopologyChange(msg *common.TopologyChangeMsg) {
+	p.startTopologyChangeCh <- msg
+}
+
+// NotifyPrepareTopologyChange captures keepNodes supplied as part of topology change message
+func (p *Producer) NotifyPrepareTopologyChange(keepNodes []string) {
+	p.eventingNodeUUIDs = keepNodes
 }

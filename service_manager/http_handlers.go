@@ -1,4 +1,4 @@
-package supervisor
+package servicemanager
 
 import (
 	"encoding/json"
@@ -12,8 +12,16 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// FetchAppSetup provides the list of deployed event handlers
-func (s *SuperSupervisor) FetchAppSetup(w http.ResponseWriter, r *http.Request) {
+// Reports progress across all producers on current node
+func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request) {
+	producerHostPortAddrs := m.superSup.ProducerHostPortAddrs()
+
+	aggProgress := util.GetProgress("/getRebalanceStatus", producerHostPortAddrs)
+
+	fmt.Fprintf(w, "%v", aggProgress)
+}
+
+func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 	appList := util.ListChildren(MetakvAppsPath)
 	respData := make([]application, len(appList))
 	for index, appName := range appList {
@@ -64,8 +72,7 @@ func (s *SuperSupervisor) FetchAppSetup(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprintf(w, "%s\n", data)
 }
 
-// StoreAppSetup stores updates copy of event handler definition
-func (s *SuperSupervisor) StoreAppSetup(w http.ResponseWriter, r *http.Request) {
+func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 

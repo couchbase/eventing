@@ -10,19 +10,18 @@ import (
 )
 
 const (
-	MetaKvEventingPath    = "/eventing/"
-	MetaKvAppsPath        = MetaKvEventingPath + "apps/"
-	MetaKvAppSettingsPath = MetaKvEventingPath + "settings/"
+	MetakvEventingPath    = "/eventing/"
+	MetakvAppsPath        = MetakvEventingPath + "apps/"
+	MetakvAppSettingsPath = MetakvEventingPath + "settings/"
+)
 
+const (
 	DataService = "kv"
 
 	NumVbuckets = 1024
 
 	// WatchClusterChangeInterval - Interval for spawning another routine to keep an eye on cluster state change
 	WatchClusterChangeInterval = time.Duration(100) * time.Millisecond
-
-	// HttpRequestTimeout for querying task statuses
-	HTTPRequestTimeout = time.Duration(1000) * time.Millisecond
 )
 
 type appStatus uint16
@@ -32,6 +31,7 @@ const (
 	AppDeployed
 )
 
+// Producer handle - one instance per app per eventing node
 type Producer struct {
 	appName                string
 	app                    *common.AppConfig
@@ -60,6 +60,7 @@ type Producer struct {
 	eventingNodeAddrs []string
 	kvNodeAddrs       []string
 	nsServerNodeAddrs []string
+	eventingNodeUUIDs []string
 
 	consumerListeners []net.Listener
 	ProducerListener  net.Listener
@@ -82,6 +83,10 @@ type Producer struct {
 
 	// copy of KV vbmap, needed while opening up dcp feed
 	kvVbMap map[uint16]string
+
+	// startTopologyChangeCh used by super_supervisor to notify producer
+	// about topology change
+	startTopologyChangeCh chan *common.TopologyChangeMsg
 
 	// time.Ticker duration for dumping consumer stats
 	statsTickDuration time.Duration
