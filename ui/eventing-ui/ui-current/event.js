@@ -43,7 +43,7 @@ mnPluggableUiRegistryProvider.registerConfig({
     }]);
 
     ev.run(['$http', '$window', function($http, $window) {
-        $http.get('/_p/event/get_application/')
+        $http.get('/_p/event/getApplication/')
         .then(function(response) {
             for(var i = 0; i < response.data.length; i++) {
                 response.data[i].depcfg = JSON.stringify(response.data[i].depcfg, null, ' ');
@@ -65,7 +65,7 @@ mnPluggableUiRegistryProvider.registerConfig({
 
     ev.controller('CreateController',['$http', function($http) {
     if(!appLoaded) {
-    $http.get('/_p/event/get_application/')
+    $http.get('/_p/event/getApplication/')
         .then(function(response) {
             for(var i = 0; i < response.data.length; i++) {
                 response.data[i].depcfg = JSON.stringify(response.data[i].depcfg, null, ' ');
@@ -121,7 +121,7 @@ mnPluggableUiRegistryProvider.registerConfig({
             this.currentApp.deploy = true;
             var x = angular.copy(this.currentApp);
             x.depcfg = JSON.parse(x.depcfg);
-            var uri = '/_p/event/set_application/?name=' + this.currentApp.appname;
+            var uri = '/_p/event/setApplication/?name=' + this.currentApp.appname;
             var res = $http({url: uri,
                 method: "POST",
                 mnHttp: {
@@ -131,7 +131,7 @@ mnPluggableUiRegistryProvider.registerConfig({
                 data: x
             });
             res.success(function(data, status, headers, config) {
-                this.set_application = data;
+                this.setApplication = data;
             });
             res.error(function(data, status, headers, config) {
                 alert( "failure message: " + JSON.stringify({data: data}));
@@ -147,7 +147,7 @@ mnPluggableUiRegistryProvider.registerConfig({
             var uri = '/_p/event/start_dbg/?name=' + this.currentApp.appname;
             var res = $http.post(uri, null);
             res.success(function(data, status, headers, config) {
-                this.set_application = data;
+                this.setApplication = data;
             });
             res.error(function(data, status, headers, config) {
                 alert( "failure message: " + JSON.stringify({data: data}));
@@ -158,7 +158,7 @@ mnPluggableUiRegistryProvider.registerConfig({
             var uri = '/_p/event/stop_dbg/?name=' + this.currentApp.appname;
             var res = $http.post(uri, null);
             res.success(function(data, status, headers, config) {
-                this.set_application = data;
+                this.setApplication = data;
             });
             res.error(function(data, status, headers, config) {
                 alert( "failure message: " + JSON.stringify({data: data}));
