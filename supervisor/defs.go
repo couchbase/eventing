@@ -1,6 +1,8 @@
 package supervisor
 
 import (
+	"sync"
+
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
 )
@@ -34,6 +36,7 @@ type SuperSupervisor struct {
 	producerSupervisorTokenMap   map[common.EventingProducer]suptree.ServiceToken
 	runningProducers             map[string]common.EventingProducer
 	runningProducersHostPortAddr map[string]string
+	mu                           *sync.RWMutex
 
 	serviceMgr common.EventingServiceMgr
 }

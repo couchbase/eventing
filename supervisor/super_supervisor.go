@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/producer"
@@ -28,6 +29,7 @@ func NewSuperSupervisor(eventingAdminPort, kvPort, restPort, uuid string) *Super
 		superSup:                     suptree.NewSimple("super_supervisor"),
 		uuid:                         uuid,
 	}
+	s.mu = &sync.RWMutex{}
 	go s.superSup.ServeBackground()
 
 	config, _ := util.NewConfig(nil)
@@ -55,6 +57,8 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte, rev interface{}) error {
 	logging.Infof("SSUP[%d] TopologyChangeNotifCallback: path => %s value => %s\n", len(s.runningProducers), path, string(value))
 	topologyChangeMsg := &common.TopologyChangeMsg{}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if value != nil {
 		topologyChangeMsg.CType = common.StartRebalanceCType
 		for _, producer := range s.runningProducers {
@@ -72,6 +76,8 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 	p := producer.NewProducer(appName, s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid)
 
 	token := s.superSup.Add(p)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.runningProducers[appName] = p
 	s.producerSupervisorTokenMap[p] = token
 

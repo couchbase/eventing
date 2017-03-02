@@ -11,21 +11,34 @@ import (
 )
 
 func (c *Consumer) vbsStateUpdate() {
-	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
+retryStreamUpdate:
 	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
+	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 
 	var vbBlob vbucketKVBlob
 	var cas uint64
 	for _, vbno := range c.vbsRemainingToGiveUp {
 		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
-		util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 		c.stopDcpStreamAndUpdateCheckpoint(vbKey, vbno, &vbBlob, &cas)
 	}
 
-	vbsRemainingToOwn := c.vbsRemainingToOwn
-	for i := range vbsRemainingToOwn {
-		vbno := vbsRemainingToOwn[i]
+	for i := range c.vbsRemainingToOwn {
+		vbno := c.vbsRemainingToOwn[i]
 		c.doVbTakeover(vbno)
+	}
+
+	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
+	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
+
+	logging.Infof("CRVT[%s:%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
+		c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.vbsRemainingToOwn, c.vbsRemainingToGiveUp)
+
+	// Retry logic in-case previous attempt to own/start dcp stream didn't succeed
+	// because some other node has already opened(or hasn't closed) the vb dcp stream
+	if len(c.vbsRemainingToOwn) > 0 || len(c.vbsRemainingToGiveUp) > 0 {
+		time.Sleep(dcpStreamRequestRetryInterval)
+		goto retryStreamUpdate
 	}
 }
 
@@ -35,10 +48,10 @@ func (c *Consumer) doVbTakeover(vbno uint16) {
 
 	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
 
-	util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 	switch vbBlob.DCPStreamStatus {
-	case DcpStreamRunning:
+	case dcpStreamRunning:
 
 		if c.HostPortAddr() != vbBlob.CurrentVBOwner &&
 			!c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner) && c.checkIfCurrentNodeShouldOwnVb(vbno) {
@@ -46,6 +59,9 @@ func (c *Consumer) doVbTakeover(vbno uint16) {
 			logging.Infof("CRVT[%s:%s:%s:%d] Node: %v taking ownership of vb: %d old node: %s isn't alive any more as per ns_server",
 				c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.HostPortAddr(), vbno, vbBlob.CurrentVBOwner)
 
+			// Below checks help in differentiating between a hostname update vs failover from 2 -> 1
+			// eventing node. In former case, it isn't required to spawn a new dcp stream but in later
+			// it's needed.
 			if vbBlob.NodeUUID == c.NodeUUID() {
 				c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, false)
 			} else {
@@ -53,9 +69,9 @@ func (c *Consumer) doVbTakeover(vbno uint16) {
 			}
 		}
 
-	case DcpStreamStopped:
+	case dcpStreamStopped:
 
-		logging.Infof("CRVT[%s:%s:%s:%d] Worker: %v vbno: %v started dcp stream", c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.ConsumerName(), vbno)
+		logging.Infof("CRVT[%s:%s:%s:%d] vbno: %v starting dcp stream", c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno)
 		c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
 	}
 }
@@ -79,7 +95,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbB
 
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
-	vbBlob.DCPStreamStatus = DcpStreamRunning
+	vbBlob.DCPStreamStatus = dcpStreamRunning
 
 	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
 	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
@@ -87,7 +103,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbB
 	c.vbProcessingStats.updateVbStat(vbno, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
 
-	util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 
 	if shouldStartStream {
 		c.dcpRequestStreamHandle(vbno, vbBlob, vbBlob.LastSeqNoProcessed)
@@ -98,7 +114,7 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 
 	vbBlob.AssignedWorker = ""
 	vbBlob.CurrentVBOwner = ""
-	vbBlob.DCPStreamStatus = DcpStreamStopped
+	vbBlob.DCPStreamStatus = dcpStreamStopped
 	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
 	vbBlob.NodeUUID = ""
@@ -108,12 +124,12 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
 
-	util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 
 	// TODO: Retry loop for dcp close stream as it could fail and addtional verification checks
 	// Additional check needed to verify if vbBlob.NewOwner is the expected owner
 	// as per the vbEventingNodesAssignMap
-	c.dcpFeed.DcpCloseStream(vbno, vbno)
+	c.vbDcpFeedMap[vbno].DcpCloseStream(vbno, vbno)
 }
 
 func (c *Consumer) checkIfConsumerShouldOwnVb(vbno uint16, workerName string) bool {

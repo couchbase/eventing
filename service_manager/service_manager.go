@@ -76,6 +76,15 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 
 	logging.Infof("SSRB ServiceMgr::StartTopologyChange change: %#v", change)
 
+	switch change.Type {
+	case service.TopologyChangeTypeFailover:
+		return nil
+	case service.TopologyChangeTypeRebalance:
+		break
+	default:
+		return service.ErrNotSupported
+	}
+
 	// Garbage collect old Rebalance Tokens
 	err := util.RecursiveDelete(MetakvRebalanceTokenPath)
 	if err != nil {

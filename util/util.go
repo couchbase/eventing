@@ -195,6 +195,37 @@ func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
 	return srvAddr, nil
 }
 
+func KVVbMap(auth, bucket, hostaddress string) (map[uint16]string, error) {
+	cinfo, err := ClusterInfoCache(auth, hostaddress)
+	if err != nil {
+		return nil, err
+	}
+
+	kvAddrs := cinfo.GetNodesByServiceType(DataService)
+
+	kvVbMap := make(map[uint16]string)
+
+	for _, kvAddr := range kvAddrs {
+		addr, err := cinfo.GetServiceAddress(kvAddr, DataService)
+		if err != nil {
+			logging.Errorf("UTIL Failed to get address of KV host: %v, err: %v", kvAddr, err)
+			return nil, err
+		}
+
+		vbs, err := cinfo.GetVBuckets(kvAddr, bucket)
+		if err != nil {
+			logging.Errorf("UTIL Failed to get vbuckets for given kv common.NodeId, err: %v", err)
+			return nil, err
+		}
+
+		for i := 0; i < len(vbs); i++ {
+			kvVbMap[uint16(vbs[i])] = addr
+		}
+	}
+
+	return kvVbMap, nil
+}
+
 func ClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, error) {
 	clusterURL := fmt.Sprintf("http://%s@%s", auth, hostaddress)
 
@@ -317,4 +348,30 @@ func CompareSlices(s1, s2 []string) bool {
 	}
 
 	return true
+}
+
+func VbsSliceDiff(vbs1, vbs2 []uint16) []uint16 {
+	var diff []uint16
+
+	for i := 0; i < 2; i++ {
+		for _, s1 := range vbs1 {
+			found := false
+			for _, s2 := range vbs2 {
+				if s1 == s2 {
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				diff = append(diff, s1)
+			}
+		}
+
+		if i == 0 {
+			vbs1, vbs2 = vbs2, vbs1
+		}
+	}
+
+	return diff
 }

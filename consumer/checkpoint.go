@@ -10,13 +10,13 @@ import (
 )
 
 func (c *Consumer) doLastSeqNoCheckpoint() {
-	c.checkpointTicker = time.NewTicker(CheckPointInterval)
+	c.checkpointTicker = time.NewTicker(checkPointInterval)
 
 	for {
 		select {
 		case <-c.checkpointTicker.C:
 
-			util.Retry(util.NewFixedBackoff(ClusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
+			util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
 			var vbBlob vbucketKVBlob
 
@@ -33,7 +33,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					var isNoEnt bool
 
 					//Metadata blob doesn't exist probably the app is deployed for the first time.
-					util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
 					if isNoEnt {
 
 						logging.Infof("CRCH[%s:%s:%s:%d] vb: %d Creating the initial metadata blob entry",
@@ -52,7 +52,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 
 					// Needed to handle race between previous owner(another eventing node) and new owner(current node).
 					if vbBlob.CurrentVBOwner == "" && c.checkIfCurrentNodeShouldOwnVb(vbno) &&
-						c.checkIfCurrentConsumerShouldOwnVb(vbno) && vbBlob.DCPStreamStatus == DcpStreamStopped {
+						c.checkIfCurrentConsumerShouldOwnVb(vbno) && vbBlob.DCPStreamStatus == dcpStreamStopped {
 
 						c.updateCheckpointInfo(vbKey, vbno, &vbBlob, &cas)
 						continue
@@ -77,5 +77,5 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbuck
 	vbBlob.NodeUUID = c.NodeUUID()
 	vbBlob.VBId = vbno
 
-	util.Retry(util.NewFixedBackoff(BucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 }

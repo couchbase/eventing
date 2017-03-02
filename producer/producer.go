@@ -74,7 +74,6 @@ func (p *Producer) Serve() {
 		case <-p.startTopologyChangeCh:
 
 			p.vbEventingNodeAssign()
-			p.getKvVbMap()
 			p.initWorkerVbMap()
 
 			for _, consumer := range p.runningConsumers {
@@ -217,11 +216,11 @@ func (p *Producer) NsServerHostPort() string {
 	return p.nsServerHostPort
 }
 
-// KvHostPort returns host:port combination for kv service
-func (p *Producer) KvHostPort() []string {
+// KvHostPorts returns host:port combination for kv service
+func (p *Producer) KvHostPorts() []string {
 	p.RLock()
 	defer p.RUnlock()
-	return p.kvHostPort
+	return p.kvHostPorts
 }
 
 // Auth returns username:password combination for the cluster

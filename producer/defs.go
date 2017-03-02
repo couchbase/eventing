@@ -39,7 +39,7 @@ type Producer struct {
 	bucket                 string
 	cfgData                string
 	kvPort                 string
-	kvHostPort             []string
+	kvHostPorts            []string
 	metadatabucket         string
 	metakvAppHostPortsPath string
 	nsServerPort           string

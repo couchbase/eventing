@@ -162,15 +162,42 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	feedName := args[1].(couchbase.DcpFeedName)
 	dcpConfig := args[2].(map[string]interface{})
+	kvHostPort := args[3].(string)
 
-	var err error
-	c.dcpFeed, err = c.cbBucket.StartDcpFeedOver(
-		feedName, uint32(0), c.producer.KvHostPort(), 0xABCD, dcpConfig)
+	dcpFeed, err := c.cbBucket.StartDcpFeedOver(
+		feedName, uint32(0), []string{kvHostPort}, 0xABCD, dcpConfig)
 
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.osPid, err)
+		return err
+	}
+	c.kvHostDcpFeedMap[kvHostPort] = dcpFeed
+
+	return nil
+}
+
+var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+
+	for _, dcpFeed := range c.kvHostDcpFeedMap {
+		if _, ok := c.dcpFeedVbMap[dcpFeed]; !ok {
+			c.dcpFeedVbMap[dcpFeed] = make([]uint16, 0)
+		}
+
+		vbSeqNos, err := dcpFeed.DcpGetSeqnos()
+		if err != nil {
+			logging.Infof("CRDP[%s:%s:%s:%d] Failed to get vb seqnos from dcp handle: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.osPid, dcpFeed)
+			return err
+		}
+
+		var vbNos []uint16
+		for vbNo := range vbSeqNos {
+			vbNos = append(vbNos, vbNo)
+		}
+		c.dcpFeedVbMap[dcpFeed] = vbNos
 	}
 
-	return err
+	return nil
 }

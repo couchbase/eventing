@@ -70,7 +70,7 @@ func (p *Producer) parseDepcfg() error {
 			return err
 		}
 
-		p.kvHostPort, err = util.KVNodesAddresses(p.auth, hostaddr)
+		p.kvHostPorts, err = util.KVNodesAddresses(p.auth, hostaddr)
 		if err != nil {
 			logging.Errorf("DCFG[%s] Failed to get list of kv nodes in the cluster, err: %v", p.appName, err)
 			return err

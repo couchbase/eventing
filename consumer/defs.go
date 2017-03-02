@@ -15,27 +15,33 @@ import (
 )
 
 const (
-	NumVbuckets = 1024
+	numVbuckets = 1024
 
 	// DCP consumer related configs
-	DcpGenChanSize    = 10000
-	DcpDataChanSize   = 10000
-	DcpNumConnections = 1
+	dcpGenChanSize    = 10000
+	dcpDataChanSize   = 10000
+	dcpNumConnections = 1
 
+	// ClusterChangeNotifChBufSize limits buffer size for cluster change notif from producer
 	ClusterChangeNotifChBufSize = 10
 
 	// Interval for retrying failed bucket operations using go-couchbase
-	BucketOpRetryInterval = time.Duration(1000) * time.Millisecond
+	bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
+
+	// Interval for retrying vb dcp stream
+	dcpStreamRequestRetryInterval = time.Duration(1000) * time.Millisecond
 
 	// Last processed seq # checkpoint interval
-	CheckPointInterval = time.Duration(2000) * time.Millisecond
+	checkPointInterval = time.Duration(2000) * time.Millisecond
 
 	// Interval for retrying failed cluster related operations
-	ClusterOpRetryInterval = time.Duration(1000) * time.Millisecond
+	clusterOpRetryInterval = time.Duration(1000) * time.Millisecond
 
-	StatsTickInterval = time.Duration(5000) * time.Millisecond
+	statsTickInterval = time.Duration(5000) * time.Millisecond
 
-	ControlRoutineTickInterval = time.Duration(3000) * time.Millisecond
+	restartVbDcpStreamTickInterval = time.Duration(3000) * time.Millisecond
+
+	retryVbsStateUpdateInterval = time.Duration(5000) * time.Millisecond
 )
 
 const (
@@ -47,9 +53,15 @@ const (
 )
 
 const (
-	DcpStreamRunning = "running"
-	DcpStreamStopped = "stopped"
+	dcpStreamRunning = "running"
+	dcpStreamStopped = "stopped"
 )
+
+var dcpConfig = map[string]interface{}{
+	"genChanSize":    dcpGenChanSize,
+	"dataChanSize":   dcpDataChanSize,
+	"numConnections": dcpNumConnections,
+}
 
 type vbFlogEntry struct {
 	seqNo          uint64
@@ -73,17 +85,24 @@ type dcpMetadata struct {
 	SeqNo   uint64 `json:"seq"`
 }
 
+// Consumer is responsible interacting with c++ v8 worker over local tcp port
 type Consumer struct {
 	app    *common.AppConfig
 	bucket string
 	conn   net.Conn
 	uuid   string
 
-	dcpFeed              *couchbase.DcpFeed
-	cbBucket             *couchbase.Bucket
-	vbnos                []uint16
-	vbsRemainingToOwn    []uint16
-	vbsRemainingToGiveUp []uint16
+	aggDCPFeed             chan *cb.DcpEvent
+	cbBucket               *couchbase.Bucket
+	dcpFeedCancelChs       []chan bool
+	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16
+	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed
+	kvVbMap                map[uint16]string
+	vbDcpFeedMap           map[uint16]*couchbase.DcpFeed
+	vbnos                  []uint16
+	vbsRemainingToOwn      []uint16
+	vbsRemainingToGiveUp   []uint16
+	vbsRemainingToRestream []uint16
 
 	dcpStreamBoundary common.DcpStreamBoundary
 
@@ -136,9 +155,9 @@ type Consumer struct {
 	sync.RWMutex
 	vbProcessingStats vbStats
 
-	statsTicker          *time.Ticker
-	checkpointTicker     *time.Ticker
-	controlRoutineTicker *time.Ticker
+	checkpointTicker         *time.Ticker
+	restartVbDcpStreamTicker *time.Ticker
+	statsTicker              *time.Ticker
 }
 
 type client struct {
@@ -157,12 +176,21 @@ type vbStat struct {
 }
 
 type vbucketKVBlob struct {
-	AssignedWorker     string `json:"assigned_worker"`
-	CurrentVBOwner     string `json:"current_vb_owner"`
-	DCPStreamStatus    string `json:"dcp_stream_status"`
-	LastCheckpointTime string `json:"last_checkpoint_time"`
-	LastSeqNoProcessed uint64 `json:"last_processed_seq_no"`
-	NodeUUID           string `json:"node_uuid"`
-	VBId               uint16 `json:"vb_id"`
-	VBuuid             uint64 `json:"vb_uuid"`
+	AssignedWorker     string           `json:"assigned_worker"`
+	CurrentVBOwner     string           `json:"current_vb_owner"`
+	DCPStreamStatus    string           `json:"dcp_stream_status"`
+	LastCheckpointTime string           `json:"last_checkpoint_time"`
+	LastSeqNoProcessed uint64           `json:"last_processed_seq_no"`
+	NodeUUID           string           `json:"node_uuid"`
+	OwnershipHistory   []OwnershipEntry `json:"ownership_history"`
+	VBId               uint16           `json:"vb_id"`
+	VBuuid             uint64           `json:"vb_uuid"`
+}
+
+// OwnershipEntry captures the state of vbucket within the metadata blob
+type OwnershipEntry struct {
+	AssignedWorker string `json:"assigned_worker"`
+	CurrentVBOwner string `json:"current_vb_owner"`
+	Operation      string `json:"operation"`
+	Timestamp      string `json:"timestamp"`
 }

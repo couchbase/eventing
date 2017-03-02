@@ -130,7 +130,7 @@ func (p *Producer) getKvVbMap() {
 			continue
 		}
 
-		vbs, err := cinfo.GetVBuckets(kvaddr, "default")
+		vbs, err := cinfo.GetVBuckets(kvaddr, p.bucket)
 		if err != nil {
 			logging.Errorf("VBNA[%s:%d] Failed to get vbuckets for given kv common.NodeId, err: %v", p.appName, p.LenRunningConsumers(), err)
 			continue

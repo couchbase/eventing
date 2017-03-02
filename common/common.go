@@ -29,7 +29,7 @@ type EventingProducer interface {
 	CleanupDeadConsumer(consumer EventingConsumer)
 	GetNsServerPort() string
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
-	KvHostPort() []string
+	KvHostPorts() []string
 	LenRunningConsumers() int
 	MetadataBucket() string
 	NotifyInit()
