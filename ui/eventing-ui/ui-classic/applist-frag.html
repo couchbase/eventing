@@ -1,0 +1,30 @@
+<div class="event_left">
+    <ul style="list-style-type:none">
+        <li>
+            <a ui-sref="app.admin.event.applications">
+                <h2 class="event_app">Eventing &mu;Services</h2>
+            </a>
+            <ul style="list-style-type:none" ng-repeat="application in appListCtrl.applications">
+                <li>
+                    <a ui-sref="app.admin.event.appName({appName:application.appname})" ng-click="appListCtrl.setCurrentApp(application)">
+                        <div ng-if="application.expand">
+                        <span class = "expander open"> </span>
+                        </div>
+                        <div ng-if="!application.expand">
+                        <span class = "expander closed">  </span>
+                        </div>
+                        <h2 class="event_appname">{{application.appname}}</h2>
+                    </a>
+                </li>
+                <ul style="list-style-type:none" ng-repeat="resource in appListCtrl.resources">
+                    <li>
+                        <a ui-sref="app.admin.event.resName({appName:application.appname,resName:resource.name})" ng-show="appListCtrl.isCurrentApp(application) && application.expand"> 
+                            <h4 class="event_resname">{{resource.name}}</h4>
+                        </a>
+                    </li>
+                </ul>
+            </ul>
+        </li>
+    </ul>
+</div>
+

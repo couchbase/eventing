@@ -10,72 +10,90 @@
     ev.config(['$stateProvider', '$urlRouterProvider', 'mnPluggableUiRegistryProvider', function($stateProvider, $urlRouterProvider, mnPluggableUiRegistryProvider) {
         $urlRouterProvider.otherwise('/event');
         $stateProvider
-        .state('app.admin.event.applications', {
-            url: '/applications',
-            templateUrl: '/_p/ui/event/createApp-frag.html',
-            controller: 'CreateController',
-            controllerAs: 'createCtrl'
-        })
-        .state('app.admin.event.appName', {
-            url: '/:appName',
-            templateUrl: '/_p/ui/event/applications-frag.html',
-            controller: 'PerAppController',
-            controllerAs: 'perAppCtrl',
-        })
-        .state('app.admin.event.resName', {
-            url: '/:appName/:resName',
-            templateUrl: '/_p/ui/event/editor-frag.html',
-            controller: 'ResEditorController',
-            controllerAs: 'resEditCtrl',
-        })
-      .state('app.admin.event', {
-        url: '/event',
-        templateUrl: '/_p/ui/event/event.html'
-      })
+            .state('app.admin.event.applications', {
+                url: '/applications',
+                templateUrl: '/_p/ui/event/createApp-frag.html',
+                controller: 'CreateController',
+                controllerAs: 'createCtrl'
+            })
+            .state('app.admin.event.resName', {
+                url: '/:appName/:resName',
+                templateUrl: '/_p/ui/event/editor-frag.html',
+                controller: 'ResEditorController',
+                controllerAs: 'resEditCtrl',
+            })
 
-mnPluggableUiRegistryProvider.registerConfig({
-        name: 'Eventing',
-        state: 'app.admin.event.applications',
-        plugIn: 'adminTab',
-        after: 'indexes',
-      });
+            .state('app.admin.event.appName', {
+                url: '/:appName',
+                templateUrl: '/_p/ui/event/applications-frag.html',
+                controller: 'PerAppController',
+                controllerAs: 'perAppCtrl',
+            })
+            .state('app.admin.event', {
+                url: '/event',
+                controller: 'EventController',
+                controllerAs: 'eventCtrl',
+                templateUrl: '/_p/ui/event/event.html'
+            })
 
-    }]);
-
-    ev.run(['$http', '$window', function($http, $window) {
-        $http.get('/_p/event/getApplication/')
-        .then(function(response) {
-            for(var i = 0; i < response.data.length; i++) {
-                response.data[i].depcfg = JSON.stringify(response.data[i].depcfg, null, ' ');
-                applications.push(response.data[i]);
-            }
-            appLoaded = true;
+        mnPluggableUiRegistryProvider.registerConfig({
+            name: 'Eventing',
+            state: 'app.admin.event.applications',
+            plugIn: 'adminTab',
+            after: 'indexes',
         });
+
     }]);
 
     ev.directive('appListsLeftPanel', function(){
         return {
             restrict: 'E',
-            templateUrl: '/_p/ui/event/applist-frag.html',
+            templateUrl: '/_p/ui/event/ui-classic/applist-frag.html',
             controller: 'AppListController',
             controllerAs: 'appListCtrl',
         };
     });
 
+    ev.controller('EventController',['$http', 'mnPoolDefault', function($http, mnPoolDefault) {
+        this.eventingNodes = [];
+        this.showCreation = false;
+        this.errorMsg = '';
+        var parent = this;
+        if(!appLoaded) {
+            $http.get('/_p/event/getApplication/')
+                .success(function(data, status, headers, config) {
+                    for(var i = 0; i < data.length; i++) {
+                        data[i].depcfg = JSON.stringify(data[i].depcfg, null, ' ');
+                        applications.push(data[i]);
+                    }
+                    appLoaded = true;
+                    parent.showCreation = true;
+                })
+                .error(function(data, status, headers, config) {
+                    parent.showCreation = false;
+                    // if we got a 404, there is no eventing service on this node.
+                    // let's go through the list of nodes
+                    // and see which ones have a eventing service
+                    if (status == 404) {
+                        mnPoolDefault.get().then(function(value){
+                            parent.eventingNodes = mnPoolDefault.getUrlsRunningService(value.nodes, "eventing");
+                            if (parent.eventingNodes.length === 0) {
+                                parent.errorMsg = "No node in the cluster runs Eventing service"
+                            }
+                            else {
+                                parent.errorMsg = "The eventing interface is only available on Couchbase nodes running eventing service.<br>\
+                                                You may access the interface here:<br>"
+                            }
+                        });
+                    } else {
+                        parent.errorMsg = data;
+                    }
+                });
+        }
+    }]);
 
-    ev.controller('CreateController',['$http', function($http) {
-    if(!appLoaded) {
-    $http.get('/_p/event/getApplication/')
-        .then(function(response) {
-            for(var i = 0; i < response.data.length; i++) {
-                response.data[i].depcfg = JSON.stringify(response.data[i].depcfg, null, ' ');
-                applications.push(response.data[i]);
-            }
-        });
-     appLoaded = true;
-    }
 
-        this.showCreation = true;
+    ev.controller('CreateController',[function() {
         this.applications = applications;
         this.createApplication = function(application) {
             if (application.appname.length > 0) {
@@ -91,6 +109,7 @@ mnPluggableUiRegistryProvider.registerConfig({
             this.newApplication={};
         }
     }]);
+
 
     ev.controller('AppListController', [function() {
         this.resources = resources;
@@ -125,8 +144,8 @@ mnPluggableUiRegistryProvider.registerConfig({
             var res = $http({url: uri,
                 method: "POST",
                 mnHttp: {
-                        isNotForm: true
-                  },
+                    isNotForm: true
+                },
                 headers: {'Content-Type': 'application/json'},
                 data: x
             });
@@ -215,20 +234,20 @@ mnPluggableUiRegistryProvider.registerConfig({
 
         function sendPostCommand(uri, command) {
             var res = $http({url: uri,
-                    method: "POST",
-                    mnHttp: {
-                        isNotForm: true
-                    },
-                    headers: {'Content-Type': 'application/json'},
-                    data: command
-                });
-                res.success(function(data, status, headers, config) {
-                    parent.response = data;
-                    parent.dbgHistory.push({request:command, response:data});
-                });
-                res.error(function(data, status, headers, config) {
-                    alert( "failure message: " + JSON.stringify({data: data}));
-                });
+                method: "POST",
+                mnHttp: {
+                    isNotForm: true
+                },
+                headers: {'Content-Type': 'application/json'},
+                data: command
+            });
+            res.success(function(data, status, headers, config) {
+                parent.response = data;
+                parent.dbgHistory.push({request:command, response:data});
+            });
+            res.error(function(data, status, headers, config) {
+                alert( "failure message: " + JSON.stringify({data: data}));
+            });
         }
 
 
@@ -244,14 +263,14 @@ mnPluggableUiRegistryProvider.registerConfig({
             }
             else {
                 var command = {
-                            'seq' : 1,
-                            'type': "request",
-                            'command': "setbreakpoint",
-                            'arguments' : {
-                                            'type' : 'function',
-                                            'line' : parent.lineNum + 1,
-                                            'target' : 'OnUpdate',
-                                          }
+                    'seq' : 1,
+                    'type': "request",
+                    'command': "setbreakpoint",
+                    'arguments' : {
+                        'type' : 'function',
+                        'line' : parent.lineNum + 1,
+                        'target' : 'OnUpdate',
+                    }
                 };
                 var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=setbreakpoint';
                 sendPostCommand(uri, command);
@@ -261,21 +280,21 @@ mnPluggableUiRegistryProvider.registerConfig({
             }
         }
         this.clearBreakpoints = function() {
-                var command = {
-                            'seq' : 1,
-                            'type': "request",
-                            'command': "clearbreakpoint",
-                            'arguments' : {
-                                            'type' : 'script',
-                                            'breakpoint' : parent.breakpoints.length,
-                                          }
-                };
-                var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=clearbreakpoint';
-                sendPostCommand(uri, command);
-                for (var i = 0; i < parent.breakpoints.length; i++) {
-                    parent.editor.session.clearBreakpoint(parent.breakpoints[i]);
+            var command = {
+                'seq' : 1,
+                'type': "request",
+                'command': "clearbreakpoint",
+                'arguments' : {
+                    'type' : 'script',
+                    'breakpoint' : parent.breakpoints.length,
                 }
-                parent.breakpoints = [];
+            };
+            var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=clearbreakpoint';
+            sendPostCommand(uri, command);
+            for (var i = 0; i < parent.breakpoints.length; i++) {
+                parent.editor.session.clearBreakpoint(parent.breakpoints[i]);
+            }
+            parent.breakpoints = [];
         }
         this.listBreakpoints = function() {
             var command = {
@@ -304,29 +323,29 @@ mnPluggableUiRegistryProvider.registerConfig({
                 'type' : "request",
                 'command' : "continue",
                 'arguments' : {"stepaction" : "next",
-                                "stepcount": 1}
+                    "stepcount": 1}
             };
             var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=continue';
             sendPostCommand(uri, command);
         }
-	    this.stepInto = function() {
+        this.stepInto = function() {
             var command = {
                 'seq' : 1,
                 'type' : "request",
                 'command' : "continue",
                 'arguments' : {"stepaction" : "in",
-                                "stepcount": 1}
+                    "stepcount": 1}
             };
             var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=continue';
             sendPostCommand(uri, command);
         }
-	    this.stepOut = function() {
+        this.stepOut = function() {
             var command = {
                 'seq' : 1,
                 'type' : "request",
                 'command' : "continue",
                 'arguments' : {"stepaction" : "out",
-                                "stepcount": 1}
+                    "stepcount": 1}
             };
             var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=continue';
             sendPostCommand(uri, command);
@@ -341,8 +360,8 @@ mnPluggableUiRegistryProvider.registerConfig({
                     'type' : "request",
                     'command' : "evaluate",
                     'arguments' : {'expression' : parent.watchVar,
-                                    'global': false,
-				    'disable_break' : true}
+                        'global': false,
+                        'disable_break' : true}
                 };
                 var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=evaluate';
                 sendPostCommand(uri, command);

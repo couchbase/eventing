@@ -1,5 +1,18 @@
-<body>
+<div ng-show="!eventCtrl.showCreation">
+    <div ng-if="eventCtrl.eventingNodes.length == 0" class="cbui-error-message">
+        <p ng-bind-html = "eventCtrl.errorMsg"></p>
+    </div>
+    <div ng-if="eventCtrl.eventingNodes.length > 0" class ="cbui-error-message">
+        <p ng-bind-html = "eventCtrl.errorMsg"></p>
+        <ul>
+            <li class="cbui-nodelist" ng-repeat="url in eventCtrl.eventingNodes">
+                <a href="{{url}}">{{url}}</a>
+            </li>
+        </ul>
+    </div>
+</div>
+<div ng-show="eventCtrl.showCreation">
     <app-lists-left-panel> </app-lists-left-panel>
     <div ui-view></div>
-</body>
+</div>
 
