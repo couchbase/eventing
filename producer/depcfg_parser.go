@@ -31,7 +31,10 @@ func (p *Producer) parseDepcfg() error {
 		d := new(cfg.DepCfg)
 		depcfg := config.DepCfg(d)
 
-		p.auth = string(depcfg.Auth())
+		var user, password string
+		util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, p, &user, &password)
+		p.auth = fmt.Sprintf("%s:%s", user, password)
+
 		p.bucket = string(depcfg.SourceBucket())
 		p.cfgData = string(cfgData)
 		p.metadatabucket = string(depcfg.MetadataBucket())

@@ -105,15 +105,11 @@ inline flatbuffers::Offset<Config> CreateConfigDirect(
 struct DepCfg FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum {
     VT_BUCKETS = 4,
-    VT_AUTH = 6,
-    VT_METADATABUCKET = 8,
-    VT_SOURCEBUCKET = 10
+    VT_METADATABUCKET = 6,
+    VT_SOURCEBUCKET = 8
   };
   const flatbuffers::Vector<flatbuffers::Offset<Bucket>> *buckets() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<Bucket>> *>(VT_BUCKETS);
-  }
-  const flatbuffers::String *auth() const {
-    return GetPointer<const flatbuffers::String *>(VT_AUTH);
   }
   const flatbuffers::String *metadataBucket() const {
     return GetPointer<const flatbuffers::String *>(VT_METADATABUCKET);
@@ -126,8 +122,6 @@ struct DepCfg FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<flatbuffers::uoffset_t>(verifier, VT_BUCKETS) &&
            verifier.Verify(buckets()) &&
            verifier.VerifyVectorOfTables(buckets()) &&
-           VerifyField<flatbuffers::uoffset_t>(verifier, VT_AUTH) &&
-           verifier.Verify(auth()) &&
            VerifyField<flatbuffers::uoffset_t>(verifier, VT_METADATABUCKET) &&
            verifier.Verify(metadataBucket()) &&
            VerifyField<flatbuffers::uoffset_t>(verifier, VT_SOURCEBUCKET) &&
@@ -142,9 +136,6 @@ struct DepCfgBuilder {
   void add_buckets(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Bucket>>> buckets) {
     fbb_.AddOffset(DepCfg::VT_BUCKETS, buckets);
   }
-  void add_auth(flatbuffers::Offset<flatbuffers::String> auth) {
-    fbb_.AddOffset(DepCfg::VT_AUTH, auth);
-  }
   void add_metadataBucket(flatbuffers::Offset<flatbuffers::String> metadataBucket) {
     fbb_.AddOffset(DepCfg::VT_METADATABUCKET, metadataBucket);
   }
@@ -157,7 +148,7 @@ struct DepCfgBuilder {
   }
   DepCfgBuilder &operator=(const DepCfgBuilder &);
   flatbuffers::Offset<DepCfg> Finish() {
-    const auto end = fbb_.EndTable(start_, 4);
+    const auto end = fbb_.EndTable(start_, 3);
     auto o = flatbuffers::Offset<DepCfg>(end);
     return o;
   }
@@ -166,13 +157,11 @@ struct DepCfgBuilder {
 inline flatbuffers::Offset<DepCfg> CreateDepCfg(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Bucket>>> buckets = 0,
-    flatbuffers::Offset<flatbuffers::String> auth = 0,
     flatbuffers::Offset<flatbuffers::String> metadataBucket = 0,
     flatbuffers::Offset<flatbuffers::String> sourceBucket = 0) {
   DepCfgBuilder builder_(_fbb);
   builder_.add_sourceBucket(sourceBucket);
   builder_.add_metadataBucket(metadataBucket);
-  builder_.add_auth(auth);
   builder_.add_buckets(buckets);
   return builder_.Finish();
 }
@@ -180,13 +169,11 @@ inline flatbuffers::Offset<DepCfg> CreateDepCfg(
 inline flatbuffers::Offset<DepCfg> CreateDepCfgDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<flatbuffers::Offset<Bucket>> *buckets = nullptr,
-    const char *auth = nullptr,
     const char *metadataBucket = nullptr,
     const char *sourceBucket = nullptr) {
   return CreateDepCfg(
       _fbb,
       buckets ? _fbb.CreateVector<flatbuffers::Offset<Bucket>>(*buckets) : 0,
-      auth ? _fbb.CreateString(auth) : 0,
       metadataBucket ? _fbb.CreateString(metadataBucket) : 0,
       sourceBucket ? _fbb.CreateString(sourceBucket) : 0);
 }

@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/logging"
@@ -80,4 +81,18 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
+}
+
+var getHTTPServiceAuth = func(args ...interface{}) error {
+	p := args[0].(*Producer)
+	user := args[1].(*string)
+	password := args[2].(*string)
+
+	var err error
+	clusterURL := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
+	*user, *password, err = cbauth.GetHTTPServiceAuth(clusterURL)
+	if err != nil {
+		logging.Errorf("PRCO[%s:%d] Failed to get cluster auth details, err: %v", p.appName, p.LenRunningConsumers(), err)
+	}
+	return nil
 }

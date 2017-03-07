@@ -41,7 +41,6 @@ func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 			depcfg := new(depCfg)
 			dcfg := config.DepCfg(d)
 
-			depcfg.Auth = string(dcfg.Auth())
 			depcfg.MetadataBucket = string(dcfg.MetadataBucket())
 			depcfg.SourceBucket = string(dcfg.SourceBucket())
 
@@ -115,13 +114,11 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	buckets := builder.EndVector(len(bNames))
 
-	auth := builder.CreateString(app.DeploymentConfig.Auth)
 	metaBucket := builder.CreateString(app.DeploymentConfig.MetadataBucket)
 	sourceBucket := builder.CreateString(app.DeploymentConfig.SourceBucket)
 
 	cfg.DepCfgStart(builder)
 	cfg.DepCfgAddBuckets(builder, buckets)
-	cfg.DepCfgAddAuth(builder, auth)
 	cfg.DepCfgAddMetadataBucket(builder, metaBucket)
 	cfg.DepCfgAddSourceBucket(builder, sourceBucket)
 	depcfg := cfg.DepCfgEnd(builder)

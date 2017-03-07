@@ -63,7 +63,6 @@ type application struct {
 }
 
 type depCfg struct {
-	Auth           string   `json:"auth"`
 	Buckets        []bucket `json:"buckets"`
 	MetadataBucket string   `json:"metadata_bucket"`
 	SourceBucket   string   `json:"source_bucket"`

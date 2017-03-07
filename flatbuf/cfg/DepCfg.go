@@ -46,7 +46,7 @@ func (rcv *DepCfg) BucketsLength() int {
 	return 0
 }
 
-func (rcv *DepCfg) Auth() []byte {
+func (rcv *DepCfg) MetadataBucket() []byte {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
 		return rcv._tab.ByteVector(o + rcv._tab.Pos)
@@ -54,7 +54,7 @@ func (rcv *DepCfg) Auth() []byte {
 	return nil
 }
 
-func (rcv *DepCfg) MetadataBucket() []byte {
+func (rcv *DepCfg) SourceBucket() []byte {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
 	if o != 0 {
 		return rcv._tab.ByteVector(o + rcv._tab.Pos)
@@ -62,16 +62,8 @@ func (rcv *DepCfg) MetadataBucket() []byte {
 	return nil
 }
 
-func (rcv *DepCfg) SourceBucket() []byte {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(10))
-	if o != 0 {
-		return rcv._tab.ByteVector(o + rcv._tab.Pos)
-	}
-	return nil
-}
-
 func DepCfgStart(builder *flatbuffers.Builder) {
-	builder.StartObject(4)
+	builder.StartObject(3)
 }
 func DepCfgAddBuckets(builder *flatbuffers.Builder, buckets flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(buckets), 0)
@@ -79,14 +71,11 @@ func DepCfgAddBuckets(builder *flatbuffers.Builder, buckets flatbuffers.UOffsetT
 func DepCfgStartBucketsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(4, numElems, 4)
 }
-func DepCfgAddAuth(builder *flatbuffers.Builder, auth flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(1, flatbuffers.UOffsetT(auth), 0)
-}
 func DepCfgAddMetadataBucket(builder *flatbuffers.Builder, metadataBucket flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(2, flatbuffers.UOffsetT(metadataBucket), 0)
+	builder.PrependUOffsetTSlot(1, flatbuffers.UOffsetT(metadataBucket), 0)
 }
 func DepCfgAddSourceBucket(builder *flatbuffers.Builder, sourceBucket flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(3, flatbuffers.UOffsetT(sourceBucket), 0)
+	builder.PrependUOffsetTSlot(2, flatbuffers.UOffsetT(sourceBucket), 0)
 }
 func DepCfgEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

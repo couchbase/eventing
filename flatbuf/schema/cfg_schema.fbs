@@ -9,7 +9,6 @@ table Config {
 
 table DepCfg {
   buckets:[Bucket];
-  auth:string;
   metadataBucket:string;
   sourceBucket:string;
 }
