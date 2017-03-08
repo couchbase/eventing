@@ -71,7 +71,9 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
     switch (getDCPOpcode(parsed_header->opcode)) {
     case oDelete:
-        break;
+      this->v8worker->SendDelete(parsed_header->metadata);
+      result.assign("deletion processed\n");
+      break;
     case oMutation:
       this->v8worker->SendUpdate(val, parsed_header->metadata, "json");
       result.assign("mutation processed\n");

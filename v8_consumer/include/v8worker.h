@@ -62,6 +62,7 @@ public:
   const char *V8WorkerVersion();
 
   int SendUpdate(std::string value, std::string meta, std::string doc_type);
+  int SendDelete(std::string meta);
 
   void V8WorkerDispose();
   void V8WorkerTerminateExecution();

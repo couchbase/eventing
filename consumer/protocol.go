@@ -10,61 +10,61 @@ import (
 )
 
 const (
-	EventType int8 = iota
-	DcpEvent
-	HTTPEvent
-	V8DebugEvent
-	V8WorkerEvent
+	eventType int8 = iota
+	dcpEvent
+	httpEvent
+	v8DebugEvent
+	v8WorkerEvent
 )
 
 const (
-	V8WorkerOpcode int8 = iota
-	V8WorkerDispose
-	V8WorkerInit
-	V8WorkerLoad
-	V8WorkerTerminate
+	v8WorkerOpcode int8 = iota
+	v8WorkerDispose
+	v8WorkerInit
+	v8WorkerLoad
+	v8WorkerTerminate
 )
 
 const (
-	DcpOpcode int8 = iota
-	DcpDeletion
-	DcpMutation
+	dcpOpcode int8 = iota
+	dcpDeletion
+	dcpMutation
 )
 
-type Message struct {
+type message struct {
 	Header  []byte
 	Payload []byte
 
-	ResChan chan Response
+	ResChan chan response
 }
 
-type Response struct {
-	response string
-	err      error
+type response struct {
+	res string
+	err error
 }
 
-func MakeDcpMutationHeader(mutationMeta string) []byte {
-	return makeDcpHeader(DcpMutation, mutationMeta)
+func makeDcpMutationHeader(mutationMeta string) []byte {
+	return makeDcpHeader(dcpMutation, mutationMeta)
 }
 
-func MakeDcpDeletionHeader(deletionMeta string) []byte {
-	return makeDcpHeader(DcpDeletion, deletionMeta)
+func makeDcpDeletionHeader(deletionMeta string) []byte {
+	return makeDcpHeader(dcpDeletion, deletionMeta)
 }
 
 func makeDcpHeader(opcode int8, meta string) []byte {
-	return makeHeader(DcpEvent, opcode, meta)
+	return makeHeader(dcpEvent, opcode, meta)
 }
 
-func MakeV8InitOpcodeHeader(appName string) []byte {
-	return makeV8EventHeader(V8WorkerInit, appName)
+func makeV8InitOpcodeHeader(appName string) []byte {
+	return makeV8EventHeader(v8WorkerInit, appName)
 }
 
-func MakeV8LoadOpcodeHeader(appCode string) []byte {
-	return makeV8EventHeader(V8WorkerLoad, appCode)
+func makeV8LoadOpcodeHeader(appCode string) []byte {
+	return makeV8EventHeader(v8WorkerLoad, appCode)
 }
 
 func makeV8EventHeader(opcode int8, meta string) []byte {
-	return makeHeader(V8WorkerEvent, opcode, meta)
+	return makeHeader(v8WorkerEvent, opcode, meta)
 }
 
 func makeHeader(event int8, opcode int8, meta string) (encodedHeader []byte) {
@@ -84,7 +84,7 @@ func makeHeader(event int8, opcode int8, meta string) (encodedHeader []byte) {
 	return builder.Bytes[builder.Head():]
 }
 
-func MakeDcpMutationPayload(key, value []byte) []byte {
+func makeDcpPayload(key, value []byte) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
 	keyPos := builder.CreateByteString(key)
@@ -100,7 +100,7 @@ func MakeDcpMutationPayload(key, value []byte) []byte {
 	return builder.Bytes[builder.Head():]
 }
 
-func MakeV8InitMetadata(appName, kvHostPort, depCfg string) []byte {
+func makeV8InitMetadata(appName, kvHostPort, depCfg string) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
 
@@ -119,7 +119,7 @@ func MakeV8InitMetadata(appName, kvHostPort, depCfg string) []byte {
 	return builder.Bytes[builder.Head():]
 }
 
-func ReadHeader(buf []byte) int8 {
+func readHeader(buf []byte) int8 {
 	headerPos := header.GetRootAsHeader(buf, 0)
 
 	event := headerPos.Event()
@@ -131,7 +131,7 @@ func ReadHeader(buf []byte) int8 {
 	return event
 }
 
-func ReadPayload(buf []byte) {
+func readPayload(buf []byte) {
 	payloadPos := payload.GetRootAsPayload(buf, 0)
 
 	key := string(payloadPos.Key())

@@ -516,6 +516,37 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   return SUCCESS;
 }
 
+int V8Worker::SendDelete(std::string meta) {
+  v8::Locker locker(GetIsolate());
+  v8::Isolate::Scope isolate_scope(GetIsolate());
+  v8::HandleScope handle_scope(GetIsolate());
+
+  v8::Local<v8::Context> context =
+      v8::Local<v8::Context>::New(GetIsolate(), context_);
+  v8::Context::Scope context_scope(context);
+
+  // std::cout << " meta: " << meta << std::endl;
+  v8::TryCatch try_catch(GetIsolate());
+
+  v8::Local<v8::Value> args[1];
+  args[0] =
+      v8::JSON::Parse(v8::String::NewFromUtf8(GetIsolate(), meta.c_str()));
+
+  assert(!try_catch.HasCaught());
+
+  v8::Local<v8::Function> on_doc_delete =
+      v8::Local<v8::Function>::New(GetIsolate(), on_delete_);
+  on_doc_delete->Call(context->Global(), 1, args);
+
+  if (try_catch.HasCaught()) {
+    std::cout << "Exception message"
+              << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+    return ON_DELETE_CALL_FAIL;
+  }
+
+  return SUCCESS;
+}
+
 const char *V8Worker::V8WorkerLastException() { return last_exception.c_str(); }
 
 const char *V8Worker::V8WorkerVersion() { return v8::V8::GetVersion(); }

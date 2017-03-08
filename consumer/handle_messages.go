@@ -4,17 +4,20 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"time"
 
+	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
+	"github.com/couchbase/indexing/secondary/dcp/transport/client"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
 func (c *Consumer) sendInitV8Worker(appName string) {
 
-	header := MakeV8InitOpcodeHeader(appName)
+	header := makeV8InitOpcodeHeader(appName)
 	var payload []byte
 
-	msg := &Message{
+	msg := &message{
 		Header:  header,
 		Payload: payload,
 	}
@@ -29,10 +32,10 @@ func (c *Consumer) sendInitV8Worker(appName string) {
 
 func (c *Consumer) sendLoadV8Worker(appCode string) {
 
-	header := MakeV8LoadOpcodeHeader(appCode)
+	header := makeV8LoadOpcodeHeader(appCode)
 	var payload []byte
 
-	msg := &Message{
+	msg := &message{
 		Header:  header,
 		Payload: payload,
 	}
@@ -45,7 +48,54 @@ func (c *Consumer) sendLoadV8Worker(appCode string) {
 	c.sendMessage(msg)
 }
 
-func (c *Consumer) sendMessage(msg *Message) error {
+func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent) {
+	m := dcpMetadata{
+		Cas:     e.Cas,
+		DocID:   string(e.Key),
+		Expiry:  e.Expiry,
+		Flag:    e.Flags,
+		Vbucket: e.VBucket,
+		SeqNo:   e.Seqno,
+	}
+
+	metadata, err := json.Marshal(&m)
+	if err != nil {
+		logging.Errorf("CRHM[%s:%s:%s:%d] key: %v failed to marshal metadata",
+			c.app.AppName, c.workerName, c.tcpPort, c.osPid, string(e.Key))
+		return
+	}
+
+	var dcpHeader []byte
+	if e.Opcode == mcd.DCP_MUTATION {
+		dcpHeader = makeDcpMutationHeader(string(metadata))
+	}
+
+	if e.Opcode == mcd.DCP_DELETION {
+		dcpHeader = makeDcpDeletionHeader(string(metadata))
+	}
+
+	dcpPayload := makeDcpPayload(e.Key, e.Value)
+	msg := &message{
+		Header:  dcpHeader,
+		Payload: dcpPayload,
+	}
+
+	c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", e.Seqno)
+
+	if err := c.sendMessage(msg); err != nil {
+		c.stopCheckpointingCh <- true
+		c.producer.CleanupDeadConsumer(c)
+		return
+	}
+
+	if resp := c.readMessage(); resp.err != nil {
+		c.stopCheckpointingCh <- true
+		c.producer.CleanupDeadConsumer(c)
+		return
+	}
+}
+
+func (c *Consumer) sendMessage(msg *message) error {
 
 	// Protocol encoding format:
 	//<headerSize><payloadSize><Header><Payload>
@@ -93,8 +143,8 @@ func (c *Consumer) sendMessage(msg *Message) error {
 	return err
 }
 
-func (c *Consumer) readMessage() *Response {
-	var result *Response
+func (c *Consumer) readMessage() *response {
+	var result *response
 	c.conn.SetReadDeadline(time.Now().Add(ReadDeadline))
 	msg, err := bufio.NewReader(c.conn).ReadSlice('\n')
 	if err != nil {
@@ -104,14 +154,14 @@ func (c *Consumer) readMessage() *Response {
 		c.stopConsumerCh <- true
 		c.conn.Close()
 
-		result = &Response{
-			response: "",
-			err:      err,
+		result = &response{
+			res: "",
+			err: err,
 		}
 	} else {
-		result = &Response{
-			response: string(msg),
-			err:      err,
+		result = &response{
+			res: string(msg),
+			err: err,
 		}
 	}
 	return result

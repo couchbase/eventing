@@ -100,16 +100,16 @@ func (c *Consumer) Serve() {
 	// Wait for net.Conn to be initialised
 	<-c.signalConnectedCh
 
-	initMeta := MakeV8InitMetadata(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData())
+	initMeta := makeV8InitMetadata(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData())
 	c.sendInitV8Worker(string(initMeta))
-	res := c.readMessage()
+	resp := c.readMessage()
 	logging.Infof("V8CR[%s:%s:%s:%d] Response from worker for init call: %s",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, res.response)
+		c.app.AppName, c.workerName, c.tcpPort, c.osPid, resp.res)
 
 	c.sendLoadV8Worker(c.app.AppCode)
-	res = c.readMessage()
+	resp = c.readMessage()
 	logging.Infof("V8CR[%s:%s:%s:%d] Response from worker for app load call: %s",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, res.response)
+		c.app.AppName, c.workerName, c.tcpPort, c.osPid, resp.res)
 
 	go c.doLastSeqNoCheckpoint()
 	go c.controlRoutine()

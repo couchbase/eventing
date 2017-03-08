@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -34,42 +33,11 @@ func (c *Consumer) doDCPEventProcess() {
 
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
-				m := dcpMetadata{
-					Cas:     e.Cas,
-					DocID:   string(e.Key),
-					Expiry:  e.Expiry,
-					Flag:    e.Flags,
-					Vbucket: e.VBucket,
-					SeqNo:   e.Seqno,
-				}
+				c.sendDcpEvent(e)
 
-				metadata, err := json.Marshal(&m)
-				if err != nil {
-					logging.Infof("CRDP[%s:%s:%s:%d] key: %v failed to marshal metadata",
-						c.app.AppName, c.workerName, c.tcpPort, c.osPid, string(e.Key))
-					continue
-				}
+			case mcd.DCP_DELETION:
+				c.sendDcpEvent(e)
 
-				dcpHeader := MakeDcpMutationHeader(string(metadata))
-
-				dcpPayload := MakeDcpMutationPayload(e.Key, e.Value)
-				msg := &Message{
-					Header:  dcpHeader,
-					Payload: dcpPayload,
-				}
-
-				c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", e.Seqno)
-
-				if err := c.sendMessage(msg); err != nil {
-					c.stopCheckpointingCh <- true
-					c.producer.CleanupDeadConsumer(c)
-					return
-				}
-				if resp := c.readMessage(); resp.err != nil {
-					c.stopCheckpointingCh <- true
-					c.producer.CleanupDeadConsumer(c)
-					return
-				}
 			case mcd.DCP_STREAMREQ:
 
 				logging.Infof("CRDP[%s:%s:%s:%d] vb: %d status: %v",
