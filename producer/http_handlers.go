@@ -57,7 +57,7 @@ func (p *Producer) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = util.MetakvSet(MetakvAppSettingsPath+p.appName, reqBody, nil)
+	err = util.MetakvSet(metakvAppSettingsPath+p.appName, reqBody, nil)
 	if err != nil {
 		fmt.Fprintf(w, "Failed to store new handler setting in metakv")
 		return

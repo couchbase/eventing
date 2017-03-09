@@ -38,6 +38,7 @@ func main() {
 
 	settings := make(map[string]interface{})
 	settings["dcp_stream_boundary"] = "everything"
+	settings["log_level"] = "TRACE"
 	settings["worker_count"] = 3
 	settings["tick_duration"] = 5000
 

@@ -21,7 +21,7 @@ import (
 
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, p common.EventingProducer, app *common.AppConfig,
-	vbnos []uint16, bucket, tcpPort, uuid string, workerID int) *Consumer {
+	vbnos []uint16, bucket, logLevel, tcpPort, uuid string, workerID int) *Consumer {
 	var b *couchbase.Bucket
 	consumer := &Consumer{
 		app:                       app,
@@ -34,6 +34,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, p common.EventingProdu
 		dcpStreamBoundary:         streamBoundary,
 		gracefulShutdownChan:      make(chan bool, 1),
 		kvHostDcpFeedMap:          make(map[string]*couchbase.DcpFeed),
+		logLevel:                  logLevel,
 		producer:                  p,
 		restartVbDcpStreamTicker:  time.NewTicker(restartVbDcpStreamTickInterval),
 		signalConnectedCh:         make(chan bool),
@@ -99,6 +100,8 @@ func (c *Consumer) Serve() {
 
 	// Wait for net.Conn to be initialised
 	<-c.signalConnectedCh
+
+	c.sendLogLevel(c.logLevel)
 
 	initMeta := makeV8InitMetadata(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData())
 	c.sendInitV8Worker(string(initMeta))

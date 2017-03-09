@@ -5,21 +5,31 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"time"
 
+	"github.com/couchbase/eventing/flatbuf/worker_response"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	"github.com/couchbase/indexing/secondary/dcp/transport/client"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
-func (c *Consumer) sendInitV8Worker(appName string) {
-
-	header := makeV8InitOpcodeHeader(appName)
-	var payload []byte
+func (c *Consumer) sendLogLevel(logLevel string) error {
+	header := makeLogLevelHeader(logLevel)
 
 	msg := &message{
-		Header:  header,
-		Payload: payload,
+		Header: header,
+	}
+
+	return c.sendMessage(msg)
+}
+
+func (c *Consumer) sendInitV8Worker(appName string) error {
+
+	header := makeV8InitOpcodeHeader(appName)
+
+	msg := &message{
+		Header: header,
 	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["V8_INIT"]; !ok {
@@ -27,17 +37,15 @@ func (c *Consumer) sendInitV8Worker(appName string) {
 	}
 	c.v8WorkerMessagesProcessed["V8_INIT"]++
 
-	c.sendMessage(msg)
+	return c.sendMessage(msg)
 }
 
-func (c *Consumer) sendLoadV8Worker(appCode string) {
+func (c *Consumer) sendLoadV8Worker(appCode string) error {
 
 	header := makeV8LoadOpcodeHeader(appCode)
-	var payload []byte
 
 	msg := &message{
-		Header:  header,
-		Payload: payload,
+		Header: header,
 	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["V8_LOAD"]; !ok {
@@ -45,7 +53,7 @@ func (c *Consumer) sendLoadV8Worker(appCode string) {
 	}
 	c.v8WorkerMessagesProcessed["V8_LOAD"]++
 
-	c.sendMessage(msg)
+	return c.sendMessage(msg)
 }
 
 func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent) {
@@ -159,10 +167,14 @@ func (c *Consumer) readMessage() *response {
 			err: err,
 		}
 	} else {
+		decodedRes := worker_response.GetRootAsMessage(msg, 0)
+		logEntry := string(decodedRes.LogEntry())
+
 		result = &response{
-			res: string(msg),
-			err: err,
+			logEntry: logEntry,
+			err:      err,
 		}
+		fmt.Printf(result.logEntry)
 	}
 	return result
 }

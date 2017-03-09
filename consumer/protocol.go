@@ -15,6 +15,7 @@ const (
 	httpEvent
 	v8DebugEvent
 	v8WorkerEvent
+	appWorkerSetting
 )
 
 const (
@@ -31,6 +32,11 @@ const (
 	dcpMutation
 )
 
+const (
+	appWorkerSettingsOpcode int8 = iota
+	logLevel
+)
+
 type message struct {
 	Header  []byte
 	Payload []byte
@@ -39,8 +45,9 @@ type message struct {
 }
 
 type response struct {
-	res string
-	err error
+	res      string
+	logEntry string
+	err      error
 }
 
 func makeDcpMutationHeader(mutationMeta string) []byte {
@@ -65,6 +72,10 @@ func makeV8LoadOpcodeHeader(appCode string) []byte {
 
 func makeV8EventHeader(opcode int8, meta string) []byte {
 	return makeHeader(v8WorkerEvent, opcode, meta)
+}
+
+func makeLogLevelHeader(meta string) []byte {
+	return makeHeader(appWorkerSetting, logLevel, meta)
 }
 
 func makeHeader(event int8, opcode int8, meta string) (encodedHeader []byte) {

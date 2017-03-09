@@ -10,7 +10,8 @@ LDFLAGS=-luv -L$(CBDEPS_DIR)lib/ -ljemalloc -L$(CBDEPS_DIR)lib/debug/ -lv8 -lcou
 SOURCES=v8_consumer/src/client.cc v8_consumer/src/commands.cc \
 				v8_consumer/src/message.cc v8_consumer/src/v8worker.cc \
 				v8_consumer/src/n1ql.cc v8_consumer/src/bucket.cc \
-				v8_consumer/src/parse_deployment.cc
+				v8_consumer/src/parse_deployment.cc \
+				v8_consumer/src/log.cc
 
 INCLUDE_DIRS=-I$(CBDEPS_DIR) -I$(CBDEPS_DIR)include -I v8_consumer/include/
 

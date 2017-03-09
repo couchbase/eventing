@@ -11,6 +11,8 @@
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 
+#include "log.h"
+
 #ifndef STANDALONE_BUILD
 extern void assert(int);
 #else

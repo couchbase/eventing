@@ -25,7 +25,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 		return fmt.Errorf("%v", ErrorUnexpectedEventingNodeCount)
 	}
 
-	vbucketsPerNode := NumVbuckets / len(eventingNodeAddrs)
+	vbucketsPerNode := numVbuckets / len(eventingNodeAddrs)
 	var vbNo int
 	var startVb uint16
 
@@ -39,7 +39,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 		vbNo += vbucketsPerNode
 	}
 
-	remainingVbs := NumVbuckets - vbNo
+	remainingVbs := numVbuckets - vbNo
 	if remainingVbs > 0 {
 		for i := 0; i < remainingVbs; i++ {
 			vbCountPerNode[i] = vbCountPerNode[i] + 1
@@ -119,12 +119,12 @@ func (p *Producer) getKvVbMap() {
 
 	util.Retry(util.NewFixedBackoff(time.Second), getClusterInfoCacheOpCallback, p, &cinfo)
 
-	kvAddrs := cinfo.GetNodesByServiceType(DataService)
+	kvAddrs := cinfo.GetNodesByServiceType(dataService)
 
 	p.kvVbMap = make(map[uint16]string)
 
 	for _, kvaddr := range kvAddrs {
-		addr, err := cinfo.GetServiceAddress(kvaddr, DataService)
+		addr, err := cinfo.GetServiceAddress(kvaddr, dataService)
 		if err != nil {
 			logging.Errorf("VBNA[%s:%d] Failed to get address of KV host, err: %v", p.appName, p.LenRunningConsumers(), err)
 			continue

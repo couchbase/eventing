@@ -33,8 +33,9 @@ static void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   result->status = resp->rc;
   result->cas = resp->cas;
 
-  // std::cout << "LCB_STORE callback " << lcb_strerror(instance, result->status)
-  //           << " cas " << resp->cas << std::endl;
+  LOG(logTrace) << "LCB_STORE callback "
+                << lcb_strerror(instance, result->status) << " cas "
+                << resp->cas << '\n';
 }
 
 // convert Little endian unsigned int64 to Big endian notation
@@ -141,8 +142,8 @@ bool Bucket::InstallMaps(std::map<std::string, std::string> *bucket) {
 
   v8::Local<v8::Context> context = v8::Local<v8::Context>::New(GetIsolate(), context_);
 
-  std::cout << "Registering handler for bucket_alias: " << bucket_alias.c_str()
-            << std::endl;
+  LOG(logInfo) << "Registering handler for bucket_alias: "
+               << bucket_alias.c_str() << '\n';
   // Set the options object as a property on the global object.
   context->Global()
       ->Set(context, v8::String::NewFromUtf8(GetIsolate(), bucket_alias.c_str(),
@@ -172,7 +173,8 @@ void Bucket::BucketGet(v8::Local<v8::Name> name,
   lcb_sched_leave(*bucket_lcb_obj_ptr);
   lcb_wait(*bucket_lcb_obj_ptr);
 
-  // std::cout << "GET call result Key: " << key << " VALUE: " << result.value << std::endl;
+  LOG(logTrace) << "GET call result Key: " << key << " Value: " << result.value
+                << '\n';
 
   const std::string& value = result.value;
   info.GetReturnValue().Set(
@@ -191,7 +193,7 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
   std::string key = ObjectToString(v8::Local<v8::String>::Cast(name));
   std::string value = ToString(info.GetIsolate(), value_obj);
 
-  // std::cout << "Set call KEY: " << key << " VALUE: " << value << std::endl;
+  LOG(logTrace) << "Set call Key: " << key << " Value: " << value << '\n';
 
   lcb_t* bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
   lcb_t* cb_instance = UnwrapV8WorkerLcbInstance(info.Holder());
@@ -239,7 +241,7 @@ v8::Local<v8::ObjectTemplate> Bucket::MakeBucketMapTemplate(v8::Isolate *isolate
   v8::Local<v8::ObjectTemplate> result = v8::ObjectTemplate::New(isolate);
   result->SetInternalFieldCount(3);
   result->SetHandler(v8::NamedPropertyHandlerConfiguration(BucketGet, BucketSet,
-                                                       NULL, BucketDelete));
+                                                           NULL, BucketDelete));
 
   return handle_scope.Escape(result);
 }

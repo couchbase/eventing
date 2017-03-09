@@ -10,15 +10,15 @@ import (
 )
 
 const (
-	MetakvEventingPath    = "/eventing/"
-	MetakvAppsPath        = MetakvEventingPath + "apps/"
-	MetakvAppSettingsPath = MetakvEventingPath + "settings/"
+	metakvEventingPath    = "/eventing/"
+	metakvAppsPath        = metakvEventingPath + "apps/"
+	metakvAppSettingsPath = metakvEventingPath + "settings/"
 )
 
 const (
-	DataService = "kv"
+	dataService = "kv"
 
-	NumVbuckets = 1024
+	numVbuckets = 1024
 
 	// WatchClusterChangeInterval - Interval for spawning another routine to keep an eye on cluster state change
 	WatchClusterChangeInterval = time.Duration(100) * time.Millisecond
@@ -27,8 +27,8 @@ const (
 type appStatus uint16
 
 const (
-	AppUndeployed appStatus = iota
-	AppDeployed
+	appUndeployed appStatus = iota
+	appDeployed
 )
 
 // Producer handle - one instance per app per eventing node
@@ -40,6 +40,7 @@ type Producer struct {
 	cfgData                string
 	kvPort                 string
 	kvHostPorts            []string
+	logLevel               string
 	metadatabucket         string
 	metakvAppHostPortsPath string
 	nsServerPort           string

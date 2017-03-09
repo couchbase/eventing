@@ -115,9 +115,10 @@ bool N1QL::InstallMaps(std::map<std::string, std::string> *n1ql) {
 
   v8::Local<v8::Context> context = v8::Local<v8::Context>::New(GetIsolate(), context_);
 
-  std::cout << "Registering handler for n1ql_alias: " << n1ql_alias.c_str() << std::endl;
-  // Set the options object as a property on the global object.
+  LOG(logInfo) << "Registering handler for n1ql_alias: " << n1ql_alias.c_str()
+               << '\n';
 
+  // Set the options object as a property on the global object.
   context->Global()
       ->Set(context, v8::String::NewFromUtf8(GetIsolate(), n1ql_alias.c_str(),
                                              v8::NewStringType::kNormal)
@@ -143,7 +144,7 @@ void N1QL::N1QLEnumGetCall(v8::Local<v8::Name> name,
   lcb_CMDN1QL qcmd= { 0 };
   Rows rows;
 
-  std::cout << "n1ql query fired: " << query << std::endl;
+  LOG(logInfo) << "n1ql query fired: " << query << '\n';
   params = lcb_n1p_new();
   rc = lcb_n1p_setstmtz(params, query.c_str());
   qcmd.callback = query_callback;
@@ -158,8 +159,8 @@ void N1QL::N1QLEnumGetCall(v8::Local<v8::Name> name,
       v8::Array::New(info.GetIsolate(), distance(begin, end));
 
   if (rows.rc == LCB_SUCCESS) {
-    std::cout << "Query successful!, rows retrieved: " << distance(begin, end)
-              << std::endl;
+    LOG(logInfo) << "Query successful!, rows retrieved: "
+                 << distance(begin, end) << '\n';
     int index = 0;
     for (auto &row : rows.rows) {
       result->Set(
@@ -168,9 +169,9 @@ void N1QL::N1QLEnumGetCall(v8::Local<v8::Name> name,
       index++;
     }
   } else {
-      std::cerr << "Query failed!";
-      std::cerr << "(" << int(rows.rc) << "). ";
-      std::cerr << lcb_strerror(NULL, rows.rc) << std::endl;
+    LOG(logError) << "Query failed!";
+    LOG(logError) << "(" << int(rows.rc) << "). ";
+    LOG(logError) << lcb_strerror(NULL, rows.rc) << '\n';
   }
 
   info.GetReturnValue().Set(result);

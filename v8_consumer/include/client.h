@@ -13,6 +13,7 @@ extern void assert(int);
 
 #include "../../flatbuf/include/header_generated.h"
 #include "../../flatbuf/include/payload_generated.h"
+#include "../../flatbuf/include/v8_worker_response_generated.h"
 
 #include <fstream>
 #include <queue>

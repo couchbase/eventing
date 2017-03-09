@@ -1,0 +1,8 @@
+namespace flatbuf.worker_response;
+
+table Message {
+  msg:string;
+  logEntry:string;
+}
+
+root_type Message;

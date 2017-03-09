@@ -128,14 +128,12 @@ void Print(const v8::FunctionCallbackInfo<v8::Value> &args) {
     if (first) {
       first = false;
     } else {
-      printf(" ");
+      LOG(logInfo) << " ";
     }
     v8::String::Utf8Value str(args[i]);
     const char* cstr = ToJson(args.GetIsolate(), args[i]);
-    printf("%s", cstr);
+    LOG(logInfo) << cstr << '\n';
   }
-  printf("\n");
-  fflush(stdout);
 }
 
 std::string ConvertToISO8601(std::string timestamp) {
@@ -250,15 +248,15 @@ static void op_get_callback(lcb_t instance, int cbtype,
     result->value.assign(reinterpret_cast<const char *>(resp->value),
                          resp->nvalue);
   } else {
-    std::cout << "lcb get failed with error "
-              << lcb_strerror(instance, resp->rc) << std::endl;
+    LOG(logError) << "lcb get failed with error "
+                  << lcb_strerror(instance, resp->rc) << '\n';
   }
 }
 
 static void op_set_callback(lcb_t instance, int cbtype,
                             const lcb_RESPBASE *rb) {
-  std::cout << "lcb set response code: " << lcb_strerror(instance, rb->rc)
-            << std::endl;
+  LOG(logTrace) << "lcb set response code: " << lcb_strerror(instance, rb->rc)
+                << '\n';
 }
 
 static ArrayBufferAllocator array_buffer_allocator;
@@ -288,7 +286,7 @@ V8Worker::V8Worker(std::string app_init_meta) {
 
   if(try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
-    printf("ERROR Print exception: %s\n", last_exception.c_str());
+    LOG(logError) << "Last expection: " << last_exception << '\n';
   }
 
   v8::Local<v8::Context> context = v8::Context::New(GetIsolate(), NULL, global);
@@ -361,7 +359,7 @@ void LoadBuiltins(std::string *out) {
 }
 
 int V8Worker::V8WorkerLoad(std::string source_s) {
-  std::cout << "getcwd: " << GetWorkingPath() << std::endl;
+  LOG(logInfo) << "getcwd: " << GetWorkingPath() << '\n';
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
@@ -399,7 +397,7 @@ int V8Worker::V8WorkerLoad(std::string source_s) {
       v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());
 
   script_to_execute_ = script_to_execute;
-  // std::cout << "script to execute: " << script_to_execute << std::endl;
+  LOG(logTrace) << "script to execute: " << script_to_execute << '\n';
 
   if (!ExecuteScript(source))
     return FAILED_TO_COMPILE_JS;
@@ -432,13 +430,13 @@ int V8Worker::V8WorkerLoad(std::string source_s) {
 
   if (bucket_handle) {
     if (!bucket_handle->Initialize(this, &bucket)) {
-      std::cerr << "Error initializing bucket handle" << std::endl;
+      LOG(logError) << "Error initializing bucket handle" << '\n';
       return FAILED_INIT_BUCKET_HANDLE;
     }
   }
 
   if (!n1ql_handle->Initialize(this, &n1ql)) {
-    std::cerr << "Error initializing n1ql handle" << std::endl;
+    LOG(logError) << "Error initializing n1ql handle" << '\n';
   }
 
   return SUCCESS;
@@ -455,7 +453,7 @@ bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
   if (!v8::Script::Compile(context, script).ToLocal(&compiled_script)) {
     assert(try_catch.HasCaught());
     last_exception = ExceptionString(GetIsolate(), &try_catch);
-    std::cout << "Exception logged:" << last_exception << std::endl;
+    LOG(logError) << "Exception logged:" << last_exception << '\n';
     // The script failed to compile; bail out.
     return false;
   }
@@ -464,7 +462,7 @@ bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
   if (!compiled_script->Run(context).ToLocal(&result)) {
     assert(try_catch.HasCaught());
     last_exception = ExceptionString(GetIsolate(), &try_catch);
-    std::cout << "Exception logged:" << last_exception << std::endl;
+    LOG(logError) << "Exception logged:" << last_exception << '\n';
     // Running the script failed; bail out.
     return false;
   }
@@ -481,8 +479,8 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
       v8::Local<v8::Context>::New(GetIsolate(), context_);
   v8::Context::Scope context_scope(context);
 
-  // std::cout << "value: " << value << " meta: " << meta
-  //           << " doc_type: " << doc_type << std::endl;
+  LOG(logTrace) << "value: " << value << " meta: " << meta
+                << " doc_type: " << doc_type << '\n';
   v8::TryCatch try_catch(GetIsolate());
 
   v8::Handle<v8::Value> args[2];
@@ -499,8 +497,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
 
   if(try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
-    fprintf(stderr, "Logged: %s\n", last_exception.c_str());
-    fflush(stderr);
+    LOG(logError) << "Last exception: " << last_exception << '\n';
   }
 
   v8::Local<v8::Function> on_doc_update =
@@ -508,8 +505,8 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   on_doc_update->Call(context->Global(), 2, args);
 
   if (try_catch.HasCaught()) {
-    std::cout << "Exception message: "
-              << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+    LOG(logDebug) << "Exception message: "
+                  << ExceptionString(GetIsolate(), &try_catch) << '\n';
     return ON_UPDATE_CALL_FAIL;
   }
 
@@ -525,7 +522,7 @@ int V8Worker::SendDelete(std::string meta) {
       v8::Local<v8::Context>::New(GetIsolate(), context_);
   v8::Context::Scope context_scope(context);
 
-  // std::cout << " meta: " << meta << std::endl;
+  LOG(logTrace) << " meta: " << meta << '\n';
   v8::TryCatch try_catch(GetIsolate());
 
   v8::Local<v8::Value> args[1];
@@ -539,8 +536,8 @@ int V8Worker::SendDelete(std::string meta) {
   on_doc_delete->Call(context->Global(), 1, args);
 
   if (try_catch.HasCaught()) {
-    std::cout << "Exception message"
-              << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+    LOG(logError) << "Exception message"
+                  << ExceptionString(GetIsolate(), &try_catch) << '\n';
     return ON_DELETE_CALL_FAIL;
   }
 

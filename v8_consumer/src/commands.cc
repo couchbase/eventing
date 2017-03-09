@@ -9,6 +9,8 @@ event_type getEvent(int8_t event) {
     return eV8_Debug;
   if (event == 4)
     return eV8_Worker;
+  if (event == 5)
+    return eApp_Worker_Setting;
   return Event_Unknown;
 }
 
@@ -65,3 +67,11 @@ v8_debug_opcode getV8DebugOpcode(int8_t opcode) {
     return oStop_Debugger;
   return V8_Debug_Opcode_Unknown;
 }
+
+app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
+  if (opcode == 1)
+    return oLogLevel;
+  return App_Worker_Setting_Opcode_Unknown;
+}
+
+

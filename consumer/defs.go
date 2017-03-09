@@ -98,6 +98,7 @@ type Consumer struct {
 	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed
 	kvVbMap                map[uint16]string
+	logLevel               string
 	vbDcpFeedMap           map[uint16]*couchbase.DcpFeed
 	vbnos                  []uint16
 	vbsRemainingToOwn      []uint16

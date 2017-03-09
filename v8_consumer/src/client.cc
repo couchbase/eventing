@@ -10,15 +10,6 @@
 
 int messages_processed(0);
 
-char *getTime() {
-  using std::chrono::system_clock;
-
-  system_clock::time_point today = system_clock::now();
-  std::time_t tt;
-  tt = system_clock::to_time_t(today);
-  return ctime(&tt);
-}
-
 static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
   auto header =
       flatbuf::header::GetHeader(parsed_message->header.c_str());
@@ -44,13 +35,13 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     switch (getV8WorkerOpcode(parsed_header->opcode)) {
     case oDispose:
     case oInit:
-      cerror_out << "Loading app:" << parsed_header->metadata << '\n';
+      LOG(logInfo) << "Loading app:" << parsed_header->metadata << '\n';
       this->v8worker = new V8Worker(parsed_header->metadata);
       result.assign("Loaded requested app\n");
       return result;
       break;
     case oLoad:
-      cerror_out << "Loading app code:" << parsed_header->metadata << '\n';
+      LOG(logInfo) << "Loading app code:" << parsed_header->metadata << '\n';
       this->v8worker->V8WorkerLoad(parsed_header->metadata);
       result.assign("Loaded app code\n");
       return result;
@@ -58,8 +49,7 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oTerminate:
     case oVersion:
     case V8_Worker_Opcode_Unknown:
-      cerror_out << getTime() << "worker_opcode_unknown encountered"
-                 << '\n';
+      LOG(logError) << "worker_opcode_unknown encountered" << '\n';
       break;
     }
     break;
@@ -79,7 +69,7 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       result.assign("mutation processed\n");
       break;
     case DCP_Opcode_Unknown:
-      cerror_out << getTime() << "dcp_opcode_unknown encountered" << '\n';
+      LOG(logError) << "dcp_opcode_unknown encountered" << '\n';
       break;
     }
     break;
@@ -88,7 +78,7 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oGet:
     case oPost:
     case HTTP_Opcode_Unknown:
-      cerror_out << getTime() << "http_opcode_unknown encountered" << '\n';
+      LOG(logError) << "http_opcode_unknown encountered" << '\n';
       break;
     }
     break;
@@ -106,13 +96,23 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oStart_Debugger:
     case oStop_Debugger:
     case V8_Debug_Opcode_Unknown:
-      cerror_out << getTime() << "v8_debug_opcode_unknown encountered"
-                 << '\n';
+      LOG(logError) << "v8_debug_opcode_unknown encountered" << '\n';
       break;
     }
     break;
+  case eApp_Worker_Setting:
+    switch (getAppWorkerSettingOpcode(parsed_header->opcode)) {
+    case oLogLevel:
+      setLogLevel(LevelFromString(parsed_header->metadata));
+      LOG(logInfo) << "Configured log level: " << parsed_header->metadata
+                   << '\n';
+      break;
+    case App_Worker_Setting_Opcode_Unknown:
+        break;
+    }
+    break;
   case Event_Unknown:
-    cinfo_out << "Unknown command" << '\n';
+    LOG(logError) << "Unknown command" << '\n';
     break;
   }
 
@@ -154,8 +154,8 @@ void AppWorker::Init(const std::string &appname, const std::string &addr,
   uv_ip4_addr(addr.c_str(), port, &server_sock);
 
   this->app_name = appname;
-  cerror_out << "Starting worker for appname:" << appname << " port:" << port
-             << '\n';
+  LOG(logInfo) << "Starting worker for appname:" << appname << " port:" << port
+               << '\n';
 
   uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
                  [](uv_connect_t *conn, int status) {
@@ -170,7 +170,7 @@ void AppWorker::Init(const std::string &appname, const std::string &addr,
 
 void AppWorker::OnConnect(uv_connect_t *conn, int status) {
   if (status == 0) {
-    cerror_out << "Client connected" << '\n';
+    LOG(logInfo) << "Client connected" << '\n';
 
     uv_read_start(conn->handle, alloc_buffer,
                   [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
@@ -179,9 +179,8 @@ void AppWorker::OnConnect(uv_connect_t *conn, int status) {
 
     conn_handle = conn->handle;
   } else {
-    cerror_out << getTime()
-               << "Connection failed with error:" << uv_strerror(status)
-               << '\n';
+    LOG(logError) << "Connection failed with error:" << uv_strerror(status)
+                  << '\n';
   }
 }
 
@@ -235,9 +234,9 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
       std::unique_ptr<message_t> parsed_message = ParseServerMessage(
           encoded_header_size, encoded_payload_size, chunk_to_parse);
-      cerror_out << "header_size:" << encoded_header_size << " payload_size "
-                 << encoded_payload_size
-                 << " messages processed: " << messages_processed << '\n';
+      LOG(logDebug) << "header_size:" << encoded_header_size << " payload_size "
+                    << encoded_payload_size
+                    << " messages processed: " << messages_processed << '\n';
 
       if (parsed_message) {
         std::unique_ptr<header_t> parsed_header =
@@ -251,7 +250,22 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
           if (!result.empty()) {
             // TODO: replace it with unique_ptr
             write_req_t *req = new (write_req_t);
-            std::string response_buf(result);
+
+            flatbuffers::FlatBufferBuilder builder;
+            auto respMsg = builder.CreateString(result.c_str());
+            std::string logMsgs = FlushLog();
+            auto logEntry = builder.CreateString(logMsgs.c_str());
+
+            auto response = flatbuf::worker_response::CreateMessage(
+                builder, respMsg, logEntry);
+            builder.Finish(response);
+
+            auto bufferpointer =
+                reinterpret_cast<const char *>(builder.GetBufferPointer());
+            std::string response_buf;
+            response_buf.assign(bufferpointer,
+                                bufferpointer + builder.GetSize());
+
             req->buf = uv_buf_init((char *)response_buf.c_str(),
                                    response_buf.length());
             uv_write((uv_write_t *)req, stream, &req->buf, 1,
@@ -272,15 +286,14 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
 void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
                        const uv_buf_t *buf) {
-  cerror_out << "OnRead callback triggered, nread: " << nread << '\n';
+  LOG(logDebug) << "OnRead callback triggered, nread " << nread << '\n';
   if (nread > 0) {
     AppWorker::GetAppWorker()->ParseValidChunk(stream, nread, buf->base);
   } else if (nread == 0) {
     next_message.clear();
   } else {
     if (nread != UV_EOF) {
-      cerror_out << getTime() << "Read error, err code: " << uv_err_name(nread)
-                 << '\n';
+      LOG(logError) << "Read error, err code: " << uv_err_name(nread) << '\n';
     }
     AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message.length(),
                                                next_message.c_str());
@@ -298,8 +311,7 @@ void AppWorker::WriteMessage(Message *msg) {
 
 void AppWorker::OnWrite(uv_write_t *req, int status) {
   if (status) {
-    cerror_out << getTime() << "Write error, err: " << uv_strerror(status)
-               << '\n';
+    LOG(logError) << "Write error, err: " << uv_strerror(status) << '\n';
   }
 
   write_req_t *wr = (write_req_t *) req;
@@ -316,10 +328,6 @@ AppWorker *AppWorker::GetAppWorker() {
 int main(int argc, char **argv) {
   std::string appname(argv[1]);
   std::string timestamp(argv[3]);
-  std::string error_log_file =
-      std::string("client_error_") + appname + timestamp + std::string(".log");
-
-  cerror_out.open(error_log_file.c_str());
 
   AppWorker *worker = AppWorker::GetAppWorker();
   int port = atoi(argv[2]);
