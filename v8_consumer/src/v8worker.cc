@@ -128,11 +128,11 @@ void Print(const v8::FunctionCallbackInfo<v8::Value> &args) {
     if (first) {
       first = false;
     } else {
-      LOG(logInfo) << " ";
+      LOG(logDebug) << " ";
     }
     v8::String::Utf8Value str(args[i]);
     const char* cstr = ToJson(args.GetIsolate(), args[i]);
-    LOG(logInfo) << cstr << '\n';
+    LOG(logDebug) << cstr << '\n';
   }
 }
 

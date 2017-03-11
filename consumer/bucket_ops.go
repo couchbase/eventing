@@ -180,17 +180,31 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 
-	for _, dcpFeed := range c.kvHostDcpFeedMap {
+	for kvHost, dcpFeed := range c.kvHostDcpFeedMap {
 		if _, ok := c.dcpFeedVbMap[dcpFeed]; !ok {
 			c.dcpFeedVbMap[dcpFeed] = make([]uint16, 0)
 		}
 
-		vbSeqNos, err := dcpFeed.DcpGetSeqnos()
+		// Starting feed for sole purpose of fetching available vbuckets on
+		// a specific kv node(via GETSEQ opcode) and post that closing the feed.
+		// Can't do it on existing *couchbase.DcpFeed where STREAMREQ calls
+		// are made.
+		feedName := couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + kvHost + "_" + c.workerName + "_GetSeqNos")
+		feed, err := c.cbBucket.StartDcpFeedOver(
+			feedName, uint32(0), []string{kvHost}, 0xABCD, dcpConfig)
 		if err != nil {
-			logging.Infof("CRDP[%s:%s:%s:%d] Failed to get vb seqnos from dcp handle: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.osPid, dcpFeed)
+			logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed, err: %v",
+				c.app.AppName, c.ConsumerName(), c.tcpPort, c.osPid, err)
 			return err
 		}
+
+		vbSeqNos, err := feed.DcpGetSeqnos()
+		if err != nil {
+			logging.Infof("CRDP[%s:%s:%s:%d] Failed to get vb seqnos from dcp handle: %v, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.osPid, dcpFeed, err)
+			return err
+		}
+		feed.Close()
 
 		var vbNos []uint16
 		for vbNo := range vbSeqNos {
