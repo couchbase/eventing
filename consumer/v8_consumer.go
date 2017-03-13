@@ -72,8 +72,8 @@ func (c *Consumer) Serve() {
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs, dcpConfig)
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
-	logging.Infof("V8CR[%s:%s:%s:%d] vbnos len: %d vbnos dump: %#v",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(c.vbnos), c.vbnos)
+	logging.Infof("V8CR[%s:%s:%s:%d] vbnos len: %d",
+		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(c.vbnos))
 
 	logging.Infof("V8CR[%s:%s:%s:%d] Spawning worker corresponding to producer",
 		c.app.AppName, c.workerName, c.tcpPort, c.osPid)
@@ -103,8 +103,8 @@ func (c *Consumer) Serve() {
 
 	c.sendLogLevel(c.logLevel)
 
-	initMeta := makeV8InitMetadata(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData())
-	c.sendInitV8Worker(string(initMeta))
+	payload := makeV8InitPayload(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData())
+	c.sendInitV8Worker(payload)
 	resp := c.readMessage()
 	logging.Infof("V8CR[%s:%s:%s:%d] Response from worker for init call: %s",
 		c.app.AppName, c.workerName, c.tcpPort, c.osPid, resp.res)

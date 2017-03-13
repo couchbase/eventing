@@ -1,13 +1,11 @@
 namespace flatbuf.payload;
 
-enum Version:byte {
-  Spock = 0
-}
-
 table Payload {
-  version:Version;
-  key:string;
-  value:string;
+  app_name:string;
+  depcfg:string;
+  kv_host_port:string;
+  key:string; // dcp mutation key
+  value:string; // dcp mutation value
 }
 
 root_type Payload;

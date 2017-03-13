@@ -27,7 +27,7 @@ static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
 
 std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                                 message_t *parsed_message) {
-  std::string key, val, result;
+  std::string app_name, dep_cfg, kv_host_port, key, val, result;
   const flatbuf::payload::Payload *payload;
 
   switch (getEvent(parsed_header->event)) {
@@ -35,16 +35,21 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     switch (getV8WorkerOpcode(parsed_header->opcode)) {
     case oDispose:
     case oInit:
+      payload = flatbuf::payload::GetPayload(
+          (const void *)parsed_message->payload.c_str());
+
+      app_name.assign(payload->app_name()->str());
+      dep_cfg.assign(payload->depcfg()->str());
+      kv_host_port.assign(payload->kv_host_port()->str());
+
       LOG(logInfo) << "Loading app:" << parsed_header->metadata << '\n';
-      this->v8worker = new V8Worker(parsed_header->metadata);
+      this->v8worker = new V8Worker(app_name, dep_cfg, kv_host_port);
       result.assign("Loaded requested app\n");
-      return result;
       break;
     case oLoad:
       LOG(logInfo) << "Loading app code:" << parsed_header->metadata << '\n';
       this->v8worker->V8WorkerLoad(parsed_header->metadata);
       result.assign("Loaded app code\n");
-      return result;
       break;
     case oTerminate:
     case oVersion:

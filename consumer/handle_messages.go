@@ -24,12 +24,13 @@ func (c *Consumer) sendLogLevel(logLevel string) error {
 	return c.sendMessage(msg)
 }
 
-func (c *Consumer) sendInitV8Worker(appName string) error {
+func (c *Consumer) sendInitV8Worker(payload []byte) error {
 
-	header := makeV8InitOpcodeHeader(appName)
+	header := makeV8InitOpcodeHeader()
 
 	msg := &message{
-		Header: header,
+		Header:  header,
+		Payload: payload,
 	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["V8_INIT"]; !ok {

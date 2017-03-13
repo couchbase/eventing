@@ -261,7 +261,8 @@ static void op_set_callback(lcb_t instance, int cbtype,
 
 static ArrayBufferAllocator array_buffer_allocator;
 
-V8Worker::V8Worker(std::string app_init_meta) {
+V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
+                   std::string kv_host_port) {
   v8::V8::InitializeICU();
   v8::Platform *platform = v8::platform::CreateDefaultPlatform();
   v8::V8::InitializePlatform(platform);
@@ -292,11 +293,10 @@ V8Worker::V8Worker(std::string app_init_meta) {
   v8::Local<v8::Context> context = v8::Context::New(GetIsolate(), NULL, global);
   context_.Reset(GetIsolate(), context);
 
-  auto cfg = flatbuf::v8init::GetInit((const void *)app_init_meta.c_str());
-  app_name_ = cfg->appname()->str();
-  cb_kv_endpoint = cfg->kvhostport()->str();
+  app_name_ = app_name;
+  cb_kv_endpoint = kv_host_port;
 
-  deployment_config *config = ParseDeployment(cfg->depcfg()->str().c_str());
+  deployment_config *config = ParseDeployment(dep_cfg.c_str());
 
   cb_source_bucket.assign(config->source_bucket);
 

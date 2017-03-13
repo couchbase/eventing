@@ -19,7 +19,6 @@ extern void assert(int);
 #include <cassert>
 #endif
 
-#include "../../flatbuf/include/v8_init_generated.h"
 
 class Bucket;
 class N1QL;
@@ -56,7 +55,7 @@ public:
 
 class V8Worker {
 public:
-  V8Worker(std::string app_name);
+  V8Worker(std::string app_name, std::string dep_cfg, std::string kv_host_port);
   ~V8Worker();
 
   int V8WorkerLoad(std::string source_s);

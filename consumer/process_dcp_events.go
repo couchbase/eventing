@@ -180,8 +180,8 @@ func (c *Consumer) doDCPEventProcess() {
 
 func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.FailoverLog) {
 
-	logging.Infof("CRDP[%s:%s:%s:%d] no. of vbs owned: %d vbnos owned: %#v",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(c.vbnos), c.vbnos)
+	logging.Infof("CRDP[%s:%s:%s:%d] no. of vbs owned: %d",
+		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(c.vbnos))
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 

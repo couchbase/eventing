@@ -5,7 +5,6 @@ import (
 
 	"github.com/couchbase/eventing/flatbuf/header"
 	"github.com/couchbase/eventing/flatbuf/payload"
-	"github.com/couchbase/eventing/flatbuf/v8init"
 	"github.com/google/flatbuffers/go"
 )
 
@@ -62,8 +61,8 @@ func makeDcpHeader(opcode int8, meta string) []byte {
 	return makeHeader(dcpEvent, opcode, meta)
 }
 
-func makeV8InitOpcodeHeader(appName string) []byte {
-	return makeV8EventHeader(v8WorkerInit, appName)
+func makeV8InitOpcodeHeader() []byte {
+	return makeV8EventHeader(v8WorkerInit, "")
 }
 
 func makeV8LoadOpcodeHeader(appCode string) []byte {
@@ -111,21 +110,21 @@ func makeDcpPayload(key, value []byte) []byte {
 	return builder.Bytes[builder.Head():]
 }
 
-func makeV8InitMetadata(appName, kvHostPort, depCfg string) []byte {
+func makeV8InitPayload(appName, kvHostPort, depCfg string) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
 
 	app := builder.CreateString(appName)
-	khp := builder.CreateString(kvHostPort)
 	dcfg := builder.CreateString(depCfg)
+	khp := builder.CreateString(kvHostPort)
 
-	v8init.InitStart(builder)
+	payload.PayloadStart(builder)
 
-	v8init.InitAddAppname(builder, app)
-	v8init.InitAddKvhostport(builder, khp)
-	v8init.InitAddDepcfg(builder, dcfg)
+	payload.PayloadAddAppName(builder, app)
+	payload.PayloadAddDepcfg(builder, dcfg)
+	payload.PayloadAddKvHostPort(builder, khp)
 
-	msgPos := v8init.InitEnd(builder)
+	msgPos := payload.PayloadEnd(builder)
 	builder.Finish(msgPos)
 	return builder.Bytes[builder.Head():]
 }

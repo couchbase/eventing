@@ -16,3 +16,5 @@ endmacro(Flatbuffers)
 
 Flatbuffers(header)
 Flatbuffers(payload)
+Flatbuffers(cfg_schema)
+Flatbuffers(v8_worker_response)
