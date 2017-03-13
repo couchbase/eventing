@@ -93,13 +93,13 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent) {
 
 	if err := c.sendMessage(msg); err != nil {
 		c.stopCheckpointingCh <- true
-		c.producer.CleanupDeadConsumer(c)
+		c.gracefulShutdownChan <- true
 		return
 	}
 
 	if resp := c.readMessage(); resp.err != nil {
 		c.stopCheckpointingCh <- true
-		c.producer.CleanupDeadConsumer(c)
+		c.gracefulShutdownChan <- true
 		return
 	}
 }

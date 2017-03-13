@@ -17,7 +17,7 @@ func (c *Consumer) controlRoutine() {
 
 			util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-			logging.Infof("CRCO[%s:%s:%s:%d] Got notif that cluster state has changed",
+			logging.Infof("CRCR[%s:%s:%s:%d] Got notif that cluster state has changed",
 				c.app.AppName, c.workerName, c.tcpPort, c.osPid)
 
 			// Wait till vbs for which STREAMEND has been received because of KV rebalance

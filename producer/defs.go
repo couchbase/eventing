@@ -33,6 +33,7 @@ const (
 
 // Producer handle - one instance per app per eventing node
 type Producer struct {
+	listenerHandles        []*abatableListener
 	appName                string
 	app                    *common.AppConfig
 	auth                   string

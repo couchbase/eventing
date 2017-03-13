@@ -37,7 +37,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, p common.EventingProdu
 		logLevel:                  logLevel,
 		producer:                  p,
 		restartVbDcpStreamTicker:  time.NewTicker(restartVbDcpStreamTickInterval),
-		signalConnectedCh:         make(chan bool),
+		signalConnectedCh:         make(chan bool, 1),
 		statsTicker:               time.NewTicker(statsTickInterval),
 		stopControlRoutineCh:      make(chan bool),
 		tcpPort:                   tcpPort,
@@ -95,10 +95,13 @@ func (c *Consumer) Serve() {
 
 	go c.startDcp(dcpConfig, flogs)
 
-	c.client = newClient(c.app.AppName, c.tcpPort, c.workerName)
+	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
-	// Wait for net.Conn to be initialised
+	c.controlRoutine()
+}
+
+func (c *Consumer) HandleV8Worker() {
 	<-c.signalConnectedCh
 
 	c.sendLogLevel(c.logLevel)
@@ -115,9 +118,9 @@ func (c *Consumer) Serve() {
 		c.app.AppName, c.workerName, c.tcpPort, c.osPid, resp.res)
 
 	go c.doLastSeqNoCheckpoint()
-	go c.controlRoutine()
 
-	c.doDCPEventProcess()
+	go c.doDCPEventProcess()
+
 }
 
 func (c *Consumer) Stop() {
@@ -162,6 +165,8 @@ func (c *Consumer) SignalConnected() {
 }
 
 func (c *Consumer) SetConnHandle(conn net.Conn) {
+	c.Lock()
+	defer c.Unlock()
 	c.conn = conn
 }
 

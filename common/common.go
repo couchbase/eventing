@@ -49,6 +49,7 @@ type EventingProducer interface {
 type EventingConsumer interface {
 	ConsumerName() string
 	DcpEventsRemainingToProcess() uint64
+	HandleV8Worker()
 	HostPortAddr() string
 	NotifyClusterChange()
 	Serve()

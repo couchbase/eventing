@@ -162,11 +162,12 @@ type Consumer struct {
 }
 
 type client struct {
-	appName    string
-	cmd        *exec.Cmd
-	osPid      int
-	tcpPort    string
-	workerName string
+	appName        string
+	consumerHandle *Consumer
+	cmd            *exec.Cmd
+	osPid          int
+	tcpPort        string
+	workerName     string
 }
 
 type vbStats map[uint16]*vbStat

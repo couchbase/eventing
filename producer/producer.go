@@ -17,6 +17,7 @@ import (
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, kvPort, metakvAppHostPortsPath, nsServerPort, uuid string) *Producer {
 	p := &Producer{
+		listenerHandles:        make([]*abatableListener, 0),
 		appName:                appName,
 		eventingNodeUUIDs:      make([]string, 0),
 		kvPort:                 kvPort,
@@ -103,6 +104,11 @@ func (p *Producer) Serve() {
 
 // Stop implements suptree.Service interface
 func (p *Producer) Stop() {
+	// Cleanup all consumer listen handles
+	for _, lHandle := range p.listenerHandles {
+		lHandle.Stop()
+	}
+
 	p.stopProducerCh <- true
 	p.ProducerListener.Close()
 }
@@ -142,12 +148,26 @@ func (p *Producer) handleV8Consumer(vbnos []uint16, index int) {
 	p.consumerSupervisorTokenMap[c] = serviceToken
 	p.Unlock()
 
-	conn, err := listener.Accept()
+	al, err := newAbatableListener(listener)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.appName, p.LenRunningConsumers(), err)
+		logging.Errorf("PRDR[%s:%d] Failed to create instance of interruptible tcp server, err: %v", p.appName, p.LenRunningConsumers(), err)
+		return
 	}
-	c.SetConnHandle(conn)
-	c.SignalConnected()
+
+	p.listenerHandles = append(p.listenerHandles, al)
+
+	go func(al *abatableListener, c *consumer.Consumer) {
+		for {
+			conn, err := al.Accept()
+			if err != nil {
+				logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.appName, p.LenRunningConsumers(), err)
+				return
+			}
+			c.SetConnHandle(conn)
+			c.SignalConnected()
+			c.HandleV8Worker()
+		}
+	}(al, c)
 }
 
 // LenRunningConsumers returns the number of actively running consumers for a given app's producer

@@ -9,11 +9,12 @@ import (
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
-func newClient(appName, tcpPort, workerName string) *client {
+func newClient(consumer *Consumer, appName, tcpPort, workerName string) *client {
 	return &client{
-		appName:    appName,
-		tcpPort:    tcpPort,
-		workerName: workerName,
+		appName:        appName,
+		consumerHandle: consumer,
+		tcpPort:        tcpPort,
+		workerName:     workerName,
 	}
 }
 
@@ -33,11 +34,22 @@ func (c *client) Serve() {
 		logging.Infof("CRCL[%s:%s:%s:%d] c++ worker launched",
 			c.appName, c.workerName, c.tcpPort, c.osPid)
 	}
+	c.consumerHandle.osPid = c.osPid
 
 	c.cmd.Wait()
+
+	// Signal shutdown of consumer doDCPProcessEvents and checkpointing routine
+	c.consumerHandle.gracefulShutdownChan <- true
+	c.consumerHandle.stopCheckpointingCh <- true
+
+	// Allow additional time for doDCPProcessEvents and checkpointing routine to exit,
+	// else there could be race. Currently set twice the socket read deadline
+	time.Sleep(2 * ReadDeadline)
 }
 
 func (c *client) Stop() {
+	c.consumerHandle.gracefulShutdownChan <- true
+	c.consumerHandle.stopCheckpointingCh <- true
 	if c.osPid != 0 {
 		syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL)
 	}
