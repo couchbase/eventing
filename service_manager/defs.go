@@ -17,19 +17,26 @@ const (
 )
 
 const (
-	DefaultWorkerCount       = 3
-	DefaultStatsTickDuration = 10000
-	HTTPRequestTimeout       = time.Duration(1000) * time.Millisecond
+	DefaultWorkerCount                  = 3
+	DefaultStatsTickDuration            = 10000
+	HTTPRequestTimeout                  = time.Duration(1000) * time.Millisecond
+	rebalanceProgressUpdateTickInterval = time.Duration(3000) * time.Millisecond
 )
 
 // ServiceMgr implements cbauth_service interface
 type ServiceMgr struct {
-	config           util.ConfigHolder
-	mu               *sync.RWMutex
-	nodeInfo         *service.NodeInfo
-	rebalanceCtx     *rebalanceContext
-	rebalanceRunning bool
-	servers          []service.NodeID
+	auth              string
+	config            util.ConfigHolder
+	eventingNodeAddrs []string
+	eventingAdminPort string
+	failoverNotif     bool
+	mu                *sync.RWMutex
+	nodeInfo          *service.NodeInfo
+	rebalanceCtx      *rebalanceContext
+	rebUpdateTicker   *time.Ticker
+	rebalanceRunning  bool
+	restPort          string
+	servers           []service.NodeID
 	state
 	superSup common.EventingSuperSup
 	waiters  waiters

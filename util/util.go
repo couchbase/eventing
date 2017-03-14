@@ -260,13 +260,13 @@ func GetProgress(urlSuffix string, nodeAddrs []string) float64 {
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
-			logging.Errorf("SRMR Failed to read response body from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
 			continue
 		}
 
 		progress, err := strconv.ParseFloat(string(buf), 64)
 		if err != nil {
-			logging.Errorf("SRMR Failed to parse progress from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to parse progress from url: %s, err: %v", url, err)
 			continue
 		}
 

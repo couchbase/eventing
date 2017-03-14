@@ -6,15 +6,15 @@ import (
 	"net/http"
 	_ "net/http/pprof" // For debugging
 	"sync"
+	"time"
 
-	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
-//NewServiceMgr creates handle for ServiceMgr, which implements cbuth service.Manager
+//NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
 func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.EventingSuperSup) *ServiceMgr {
 
 	logging.Infof("ServiceMgr::newServiceMgr config: %#v rebalanceRunning: %v", config, rebalanceRunning)
@@ -48,16 +48,21 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 
 func (m *ServiceMgr) initService() {
 	cfg := m.config.Load()
-	eventingAdminPort := cfg["eventing_admin_port"].(string)
-	logging.Infof("ServiceMgr::initService eventingAdminPort: %s", eventingAdminPort)
+	m.eventingAdminPort = cfg["eventing_admin_port"].(string)
+	m.restPort = cfg["rest_port"].(string)
+
+	logging.Infof("ServiceMgr::initService eventingAdminPort: %s", m.eventingAdminPort)
+
+	util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, m)
 
 	go m.registerWithServer()
 
 	http.HandleFunc("/getApplication/", m.fetchAppSetup)
 	http.HandleFunc("/setApplication/", m.storeAppSetup)
 	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
+	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
 
-	logging.Fatalf("%v", http.ListenAndServe(":"+eventingAdminPort, nil))
+	logging.Fatalf("%v", http.ListenAndServe(":"+m.eventingAdminPort, nil))
 }
 
 func (m *ServiceMgr) registerWithServer() {
@@ -86,43 +91,69 @@ func (m *ServiceMgr) prepareRebalance(change service.TopologyChange) error {
 
 func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 
-	if isSingleNodeRebal(change) {
+	if isSingleNodeRebal(change) && !m.failoverNotif {
 		if change.KeepNodes[0].NodeInfo.NodeID == m.nodeInfo.NodeID {
 			logging.Infof("ServiceMgr::startRebalance - only node in the cluster")
 		} else {
 			return fmt.Errorf("node receiving start request isn't part of the cluster")
 		}
+		return nil
 	}
+
+	// Reset the failoverNotif flag, which got set to signify failover action on the cluster
+	if m.failoverNotif {
+		m.failoverNotif = false
+	}
+
+	m.rebalanceCtx = &rebalanceContext{
+		change: change,
+		rev:    0,
+	}
+
+	// Garbage collect old Rebalance Tokens
+	err := util.RecursiveDelete(MetakvRebalanceTokenPath)
+	if err != nil {
+		logging.Errorf("SMRB ServiceMgr::StartTopologyChange Failed to garbage collect old rebalance token(s) from metakv, err: %v", err)
+		return err
+	}
+
+	path := MetakvRebalanceTokenPath + change.ID
+	err = util.MetakvSet(path, []byte(change.ID), nil)
+	if err != nil {
+		logging.Errorf("SMRB ServiceMgr::StartTopologyChange Failed to store rebalance token in metakv, err: %v", err)
+		return err
+	}
+
+	// Start rebalance progress update ticker. Not starting it at
+	// start of ServiceManager instance is because of https://github.com/golang/go/issues/8001.
+	// Ticker is outside the scope of GC
+	m.rebUpdateTicker = time.NewTicker(rebalanceProgressUpdateTickInterval)
+	go m.gatherRebalanceProgress()
 
 	return nil
 }
 
-// Aggregates rebalance progress from all apps running across all eventing nodes
-func (m *ServiceMgr) rebalanceProgress() float64 {
-	clusterURL := fmt.Sprintf("127.0.0.1:%s", m.superSup.RestPort())
-	u, p, err := cbauth.GetHTTPServiceAuth(clusterURL)
-	if err != nil {
-		logging.Errorf("Failed to get cluster auth creds, err: %v", err)
-		return 0
+func (m *ServiceMgr) gatherRebalanceProgress() {
+	logging.Infof("SMRB Started up gatherRebalanceProgress routine")
+
+	for {
+		select {
+		case <-m.rebUpdateTicker.C:
+			progress := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + m.eventingAdminPort})
+			if progress == 1.0 {
+				m.updateRebalanceProgressLocked(progress)
+				m.rebUpdateTicker.Stop()
+				m.rebalanceTask = nil
+				return
+			}
+
+			m.updateRebalanceProgressLocked(progress)
+		}
 	}
-
-	auth := fmt.Sprintf("%s:%s", u, p)
-	logging.Infof("Cluster auth: %s", auth)
-
-	eventingNodeAddrs, err := util.EventingNodesAddresses(auth, clusterURL)
-	if err != nil {
-		logging.Errorf("Failed to get eventingNodeAddrs, err: %v", err)
-		return 0
-	}
-
-	aggProgress := util.GetProgress("/getRebalanceProgress", eventingNodeAddrs)
-
-	return aggProgress
 }
 
-func (m *ServiceMgr) updateRebalanceProgressLocked() {
+func (m *ServiceMgr) updateRebalanceProgressLocked(progress float64) {
 	changeID := m.rebalanceCtx.change.ID
-	progress := m.rebalanceProgress()
 	rev := m.rebalanceCtx.incRev()
 	task := &service.Task{
 		Rev:          encodeRev(rev),
@@ -130,7 +161,7 @@ func (m *ServiceMgr) updateRebalanceProgressLocked() {
 		Type:         service.TaskTypeRebalance,
 		Status:       service.TaskStatusRunning,
 		IsCancelable: true,
-		Progress:     progress,
+		Progress:     progress * 100,
 
 		Extra: map[string]interface{}{
 			"rebalanceID": changeID,

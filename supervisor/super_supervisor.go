@@ -35,6 +35,7 @@ func NewSuperSupervisor(eventingAdminPort, kvPort, restPort, uuid string) *Super
 	config, _ := util.NewConfig(nil)
 	config.Set("uuid", s.uuid)
 	config.Set("eventing_admin_port", s.eventingAdminPort)
+	config.Set("rest_port", s.restPort)
 
 	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s)
 	return s

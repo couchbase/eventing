@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/couchbase/eventing/flatbuf/cfg"
 	"github.com/couchbase/eventing/util"
@@ -16,9 +17,20 @@ import (
 func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 	producerHostPortAddrs := m.superSup.ProducerHostPortAddrs()
 
-	aggProgress := util.GetProgress("/getRebalanceStatus", producerHostPortAddrs)
+	progress := util.GetProgress("/getRebalanceStatus", producerHostPortAddrs)
+
+	fmt.Fprintf(w, "%v", progress)
+}
+
+// Reports aggregated rebalance progress from all producers
+func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Request) {
+
+	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+
+	aggProgress := util.GetProgress("/getRebalanceProgress", m.eventingNodeAddrs)
 
 	fmt.Fprintf(w, "%v", aggProgress)
+
 }
 
 func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {

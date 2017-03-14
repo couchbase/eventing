@@ -174,6 +174,19 @@ func (c *Consumer) getVbRemainingToOwn() []uint16 {
 	return vbsRemainingToOwn
 }
 
+// Returns the list of vbs that a given consumer should own as per the producer's plan
+func (c *Consumer) getVbsOwned() []uint16 {
+	var vbsOwned []uint16
+
+	for vbno, v := range c.producer.VbEventingNodeAssignMap() {
+		if v == c.HostPortAddr() && c.checkIfCurrentNodeShouldOwnVb(vbno) {
+			vbsOwned = append(vbsOwned, vbno)
+		}
+	}
+
+	return vbsOwned
+}
+
 func (c *Consumer) getVbRemainingToGiveUp() []uint16 {
 	var vbsRemainingToGiveUp []uint16
 

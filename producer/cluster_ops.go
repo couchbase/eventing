@@ -94,5 +94,5 @@ var getHTTPServiceAuth = func(args ...interface{}) error {
 	if err != nil {
 		logging.Errorf("PRCO[%s:%d] Failed to get cluster auth details, err: %v", p.appName, p.LenRunningConsumers(), err)
 	}
-	return nil
+	return err
 }

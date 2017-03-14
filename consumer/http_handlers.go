@@ -7,13 +7,16 @@ import (
 
 // RebalanceTaskProgress reports progress to producer
 func (c *Consumer) RebalanceTaskProgress() float64 {
-	var progress float64
+	progress := 1.0
 
-	if len(c.vbsRemainingToGiveUp) > 0 || len(c.vbsRemainingToOwn) > 0 {
-		vbsToHandle := append(c.vbsRemainingToGiveUp, c.vbsRemainingToOwn...)
-		vbsCurrentlyOwned := c.verifyVbsCurrentlyOwned(vbsToHandle)
+	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
+	vbsRemainingToOwn := c.getVbRemainingToOwn()
 
-		progress *= float64(len(vbsCurrentlyOwned)) / float64(len(vbsToHandle))
+	if len(vbsRemainingToGiveUp) > 0 || len(vbsRemainingToOwn) > 0 {
+		vbsOwnedPerPlan := c.getVbsOwned()
+		vbsCurrentlyOwned := c.verifyVbsCurrentlyOwned(vbsOwnedPerPlan)
+
+		progress *= float64(len(vbsCurrentlyOwned)) / float64(len(vbsOwnedPerPlan))
 	}
 
 	return progress
