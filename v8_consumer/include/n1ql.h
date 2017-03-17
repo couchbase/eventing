@@ -1,55 +1,67 @@
+// Copyright (c) 2017 Couchbase, Inc.
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//     http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an "AS IS"
+// BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 #ifndef N1QL_H
 #define N1QL_H
 
-#include <map>
-#include <string>
+#include <include/v8.h>
 #include <vector>
 
-#include <include/libplatform/libplatform.h>
-#include <include/v8.h>
+#include "libcouchbase/couchbase.h"
+#include "libcouchbase/n1ql.h"
 
-#include "v8worker.h"
-
-struct Rows {
-  std::vector<std::string> rows;
-  std::string metadata;
-  lcb_error_t rc;
-  short htcode;
-  Rows() : rc(LCB_ERROR), htcode(0) {}
+enum op_code {
+  OK,
+  KWD_ALTER,
+  KWD_BUILD,
+  KWD_CREATE,
+  KWD_DELETE,
+  KWD_DROP,
+  KWD_EXECUTE,
+  KWD_EXPLAIN,
+  KWD_GRANT,
+  KWD_INFER,
+  KWD_INSERT,
+  KWD_MERGE,
+  KWD_PREPARE,
+  KWD_RENAME,
+  KWD_REVOKE,
+  KWD_SELECT,
+  KWD_UPDATE,
+  KWD_UPSERT
 };
+
+enum builder_mode { EXEC_JS_FORMAT, EXEC_TRANSPILER };
+
+int Jsify(const char *, std::string *);
+std::string Transpile(std::string, std::string, int);
 
 class N1QL {
-public:
-  N1QL(V8Worker *w, const char *bname, const char *ep, const char *alias);
-  ~N1QL();
-
-  virtual bool Initialize(V8Worker *w,
-                          std::map<std::string, std::string> *n1ql);
-
-  v8::Isolate *GetIsolate() { return isolate_; }
-  std::string GetBucketName() { return bucket_name; }
-  std::string GetEndPoint() { return endpoint; }
-
-  v8::Global<v8::ObjectTemplate> n1ql_map_template_;
-
-  lcb_t n1ql_lcb_obj;
-
 private:
-  bool InstallMaps(std::map<std::string, std::string> *n1ql);
+  bool init_success = true;
+  lcb_t instance;
+  static void RowCallback(lcb_t, int, const lcb_RESPN1QL *);
+  static void Error(lcb_t, const char *, lcb_error_t);
 
-  v8::Local<v8::ObjectTemplate> MakeN1QLMapTemplate(v8::Isolate *isolate);
-
-  static void N1QLEnumGetCall(v8::Local<v8::Name> name,
-                              const v8::PropertyCallbackInfo<v8::Value> &info);
-
-  v8::Local<v8::Object> WrapN1QLMap(std::map<std::string, std::string> *bucket);
-
-  v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
-
-  std::string bucket_name;
-  std::string endpoint;
-  std::string n1ql_alias;
+public:
+  N1QL(std::string);
+  bool GetInitStatus() { return init_success; }
+  std::vector<std::string> ExecQuery(std::string);
+  void ExecQuery(std::string, v8::Local<v8::Function>);
+  virtual ~N1QL();
 };
+
+void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &);
+void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &);
+void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &);
+void N1qlQueryConstructor(const v8::FunctionCallbackInfo<v8::Value> &);
 
 #endif

@@ -17,12 +17,12 @@ extern void assert(int);
 #include <err.h>
 #include <errno.h>
 #include <execinfo.h>
+#include <queue>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <queue>
 #include <uv.h>
 #include <vector>
 

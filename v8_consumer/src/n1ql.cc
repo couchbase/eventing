@@ -1,181 +1,220 @@
-#include <cstdio>
-#include <cstring>
-#include <fstream>
-#include <iostream>
-#include <map>
-#include <string>
-#include <vector>
+// Copyright (c) 2017 Couchbase, Inc.
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//     http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an "AS IS"
+// BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied. See the License for the specific language governing
+// permissions and limitations under the License.
 
 #include <include/libplatform/libplatform.h>
 #include <include/v8.h>
-
+#include <iostream>
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 #include <libcouchbase/n1ql.h>
+#include <string>
+#include <vector>
 
+#include "../include/log.h"
 #include "../include/n1ql.h"
 
-static void query_callback(lcb_t, int, const lcb_RESPN1QL *resp) {
-  Rows *rows = reinterpret_cast<Rows *>(resp->cookie);
+// A flag to signal the stop of iteration.
+extern bool stop_signal;
+// Reference to the query engine instantiated by v8worker.
+extern N1QL *n1ql_handle;
 
-  if (resp->rflags & LCB_RESP_F_FINAL) {
-    rows->rc = resp->rc;
-    rows->metadata.assign(resp->row, resp->nrow);
-  } else {
-    rows->rows.push_back(std::string(resp->row, resp->nrow));
+std::vector<std::string> rows;
+v8::Local<v8::Function> callback;
+bool is_callback_set = false;
+bool stop_signal = false;
+
+N1QL::N1QL(std::string conn_str) {
+  lcb_create_st options;
+  lcb_error_t err;
+  memset(&options, 0, sizeof(options));
+  options.version = 3;
+  options.v.v3.connstr = conn_str.c_str();
+
+  err = lcb_create(&instance, &options);
+  if (err != LCB_SUCCESS) {
+    init_success = false;
+    Error(instance, "unable to create handle", err);
+  }
+
+  err = lcb_connect(instance);
+  if (err != LCB_SUCCESS) {
+    init_success = false;
+    Error(instance, "unable to connect to server", err);
+  }
+
+  lcb_wait(instance);
+
+  err = lcb_get_bootstrap_status(instance);
+  if (err != LCB_SUCCESS) {
+    init_success = false;
+    Error(instance, "unable to get bootstrap status", err);
   }
 }
 
-N1QL::N1QL(V8Worker *w, const char *bname, const char *ep, const char *alias) {
+N1QL::~N1QL() { lcb_destroy(instance); }
 
-  isolate_ = w->GetIsolate();
-  context_.Reset(isolate_, w->context_);
-
-  bucket_name.assign(bname);
-  endpoint.assign(ep);
-  n1ql_alias.assign(alias);
-
-  std::string connstr = "couchbase://" + GetEndPoint() + "/" + GetBucketName();
-
-  // LCB setup
-  lcb_create_st crst;
-  memset(&crst, 0, sizeof crst);
-
-  crst.version = 3;
-  crst.v.v3.connstr = connstr.c_str();
-
-  lcb_create(&n1ql_lcb_obj, &crst);
-  lcb_connect(n1ql_lcb_obj);
-  lcb_wait(n1ql_lcb_obj);
+void N1QL::Error(lcb_t instance, const char *msg, lcb_error_t err) {
+  LOG(logError) << "error: " << err << " " << lcb_strerror(instance, err)
+                << '\n';
 }
 
-N1QL::~N1QL() {
-  lcb_destroy(n1ql_lcb_obj);
-  context_.Reset();
+void N1QL::ExecQuery(std::string query, v8::Local<v8::Function> function) {
+  is_callback_set = true;
+  callback = function;
+  ExecQuery(query);
 }
 
-bool N1QL::Initialize(V8Worker *w, std::map<std::string, std::string> *n1ql) {
+// TODO: Pull out 'rows.clear' and 'return rows;' and turn that to a separate
+// function.
+std::vector<std::string> N1QL::ExecQuery(std::string query) {
+  rows.clear();
 
-  v8::HandleScope handle_scope(GetIsolate());
+  lcb_error_t err;
+  lcb_CMDN1QL cmd = {0};
+  lcb_N1QLPARAMS *n1ql_params = lcb_n1p_new();
+  err = lcb_n1p_setstmtz(n1ql_params, query.c_str());
+  if (err != LCB_SUCCESS)
+    Error(instance, "unable to build query string", err);
 
-  v8::Local<v8::Context> context =
-      v8::Local<v8::Context>::New(GetIsolate(), w->context_);
-  context_.Reset(GetIsolate(), context);
+  lcb_n1p_mkcmd(n1ql_params, &cmd);
 
-  v8::Context::Scope context_scope(context);
+  cmd.callback = RowCallback;
+  err = lcb_n1ql_query(instance, NULL, &cmd);
+  if (err != LCB_SUCCESS)
+    Error(instance, "unable to query", err);
 
-  if (!InstallMaps(n1ql))
-    return false;
+  lcb_n1p_free(n1ql_params);
+  lcb_wait(instance);
 
-  return true;
+  return rows;
 }
 
-v8::Local<v8::ObjectTemplate> N1QL::MakeN1QLMapTemplate(v8::Isolate *isolate) {
-
-  v8::EscapableHandleScope handle_scope(isolate);
-
-  v8::Local<v8::ObjectTemplate> result = v8::ObjectTemplate::New(isolate);
-  result->SetInternalFieldCount(2);
-  result->SetHandler(v8::NamedPropertyHandlerConfiguration(N1QLEnumGetCall));
-
-  return handle_scope.Escape(result);
-}
-
-v8::Local<v8::Object>
-N1QL::WrapN1QLMap(std::map<std::string, std::string> *obj) {
-
-  v8::EscapableHandleScope handle_scope(GetIsolate());
-
-  if (n1ql_map_template_.IsEmpty()) {
-    v8::Local<v8::ObjectTemplate> raw_template =
-        MakeN1QLMapTemplate(GetIsolate());
-    n1ql_map_template_.Reset(GetIsolate(), raw_template);
-  }
-
-  v8::Local<v8::ObjectTemplate> templ =
-      v8::Local<v8::ObjectTemplate>::New(GetIsolate(), n1ql_map_template_);
-
-  v8::Local<v8::Object> result =
-      templ->NewInstance(GetIsolate()->GetCurrentContext()).ToLocalChecked();
-
-  v8::Local<v8::External> map_ptr = v8::External::New(GetIsolate(), obj);
-  v8::Local<v8::External> n1ql_lcb_obj_ptr =
-      v8::External::New(GetIsolate(), &n1ql_lcb_obj);
-
-  result->SetInternalField(0, map_ptr);
-  result->SetInternalField(1, n1ql_lcb_obj_ptr);
-
-  return handle_scope.Escape(result);
-}
-
-bool N1QL::InstallMaps(std::map<std::string, std::string> *n1ql) {
-
-  v8::HandleScope handle_scope(GetIsolate());
-
-  v8::Local<v8::Object> n1ql_obj = WrapN1QLMap(n1ql);
-
-  v8::Local<v8::Context> context =
-      v8::Local<v8::Context>::New(GetIsolate(), context_);
-
-  LOG(logInfo) << "Registering handler for n1ql_alias: " << n1ql_alias.c_str()
-               << '\n';
-
-  // Set the options object as a property on the global object.
-  context->Global()
-      ->Set(context,
-            v8::String::NewFromUtf8(GetIsolate(), n1ql_alias.c_str(),
-                                    v8::NewStringType::kNormal)
-                .ToLocalChecked(),
-            n1ql_obj)
-      .FromJust();
-
-  return true;
-}
-
-void N1QL::N1QLEnumGetCall(v8::Local<v8::Name> name,
-                           const v8::PropertyCallbackInfo<v8::Value> &info) {
-
-  if (name->IsSymbol())
+// Callback to execute for each row.
+void N1QL::RowCallback(lcb_t instance, int callback_type,
+                       const lcb_RESPN1QL *resp) {
+  // If stop_signal is set, then just breakout.
+  if (stop_signal) {
+    lcb_breakout(instance);
     return;
-
-  std::string query = ObjectToString(v8::Local<v8::String>::Cast(name));
-
-  lcb_t *n1ql_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
-
-  lcb_error_t rc;
-  lcb_N1QLPARAMS *params;
-  lcb_CMDN1QL qcmd = {0};
-  Rows rows;
-
-  LOG(logInfo) << "n1ql query fired: " << query << '\n';
-  params = lcb_n1p_new();
-  rc = lcb_n1p_setstmtz(params, query.c_str());
-  qcmd.callback = query_callback;
-  rc = lcb_n1p_mkcmd(params, &qcmd);
-  rc = lcb_n1ql_query(*n1ql_lcb_obj_ptr, &rows, &qcmd);
-  lcb_wait(*n1ql_lcb_obj_ptr);
-
-  auto begin = rows.rows.begin();
-  auto end = rows.rows.end();
-
-  v8::Handle<v8::Array> result =
-      v8::Array::New(info.GetIsolate(), distance(begin, end));
-
-  if (rows.rc == LCB_SUCCESS) {
-    LOG(logInfo) << "Query successful!, rows retrieved: "
-                 << distance(begin, end) << '\n';
-    int index = 0;
-    for (auto &row : rows.rows) {
-      result->Set(
-          v8::Integer::New(info.GetIsolate(), index),
-          v8::JSON::Parse(createUtf8String(info.GetIsolate(), row.c_str())));
-      index++;
-    }
-  } else {
-    LOG(logError) << "Query failed!";
-    LOG(logError) << "(" << int(rows.rc) << "). ";
-    LOG(logError) << lcb_strerror(NULL, rows.rc) << '\n';
   }
 
-  info.GetReturnValue().Set(result);
+  if (!(resp->rflags & LCB_RESP_F_FINAL)) {
+    char *temp;
+    asprintf(&temp, "%.*s\n", (int)resp->nrow, resp->row);
+
+    // Execute the function callback passed in JavaScript, if iter() is
+    // called.
+    if (is_callback_set) {
+      v8::Isolate *isolate = v8::Isolate::GetCurrent();
+      v8::Local<v8::Object> json =
+          isolate->GetCurrentContext()
+              ->Global()
+              ->Get(v8::String::NewFromUtf8(isolate, "JSON"))
+              ->ToObject();
+      v8::Local<v8::Function> parse =
+          json->Get(v8::String::NewFromUtf8(isolate, "parse"))
+              .As<v8::Function>();
+
+      v8::Local<v8::Value> args[1];
+      args[0] = v8::String::NewFromUtf8(isolate, temp);
+      args[0] = parse->Call(json, 1, &args[0]);
+
+      callback->Call(callback, 1, args);
+    } else {
+      // If it is not a callback - execQuery() is called, append the
+      // result to the rows vector.
+      rows.push_back(std::string(temp));
+    }
+
+    free(temp);
+  } else {
+    LOG(logDebug) << "query metadata:" << resp->row << '\n';
+  }
+}
+
+// Iterator function for iterating over the results.
+void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::Isolate *isolate = v8::Isolate::GetCurrent();
+  v8::HandleScope handleScope(isolate);
+
+  v8::Local<v8::Name> query_name = v8::String::NewFromUtf8(isolate, "query");
+  v8::Local<v8::Value> query_value = args.This()->Get(query_name);
+  v8::String::Utf8Value query_string(query_value);
+
+  v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(args[0]);
+
+  // Pass the function to callback and execute the query.
+  n1ql_handle->ExecQuery(*query_string, func);
+}
+
+// Signals stop to the iterator.
+void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  stop_signal = true;
+}
+
+// Executes the query, blocking call.
+void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::Isolate *isolate = v8::Isolate::GetCurrent();
+  v8::HandleScope handleScope(isolate);
+
+  v8::Local<v8::Name> query_name = v8::String::NewFromUtf8(isolate, "query");
+  v8::Local<v8::Value> query_value = args.This()->Get(query_name);
+  v8::String::Utf8Value query_string(query_value);
+
+  std::vector<std::string> rows = n1ql_handle->ExecQuery(*query_string);
+
+  v8::Local<v8::Array> result_array =
+      v8::Array::New(isolate, static_cast<int>(rows.size()));
+
+  // Populate the result array with the rows of the result.
+  for (int i = 0; i < rows.size(); ++i) {
+    v8::Local<v8::Value> json_row =
+        v8::JSON::Parse(v8::String::NewFromUtf8(isolate, rows[i].c_str()));
+    result_array->Set(static_cast<uint32_t>(i), json_row);
+  }
+
+  args.GetReturnValue().Set(result_array);
+}
+
+// Constructor for N1qlQuery().
+// Accepts a string as N1QL query and returns an instance of N1qlQuery.
+void N1qlQueryConstructor(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::Isolate *isolate = v8::Isolate::GetCurrent();
+  v8::HandleScope handleScope(isolate);
+  v8::Local<v8::ObjectTemplate> obj = v8::ObjectTemplate::New();
+
+  v8::Local<v8::Name> query_name = v8::String::NewFromUtf8(isolate, "query");
+  v8::Local<v8::Value> empty_string = v8::String::NewFromUtf8(isolate, "");
+
+  obj->Set(query_name, empty_string);
+  v8::Local<v8::Name> is_inst_name =
+      v8::String::NewFromUtf8(isolate, "isInstance");
+  v8::Local<v8::Value> is_inst_value = v8::Boolean::New(isolate, true);
+  obj->Set(is_inst_name, is_inst_value);
+
+  v8::Local<v8::String> exec_query_name =
+      v8::String::NewFromUtf8(isolate, "execQuery");
+  obj->Set(exec_query_name,
+           v8::FunctionTemplate::New(isolate, ExecQueryFunction));
+
+  v8::Local<v8::String> iter_name = v8::String::NewFromUtf8(isolate, "iter");
+  obj->Set(iter_name, v8::FunctionTemplate::New(isolate, IterFunction));
+
+  v8::Local<v8::String> stop_iter_name =
+      v8::String::NewFromUtf8(isolate, "stopIter");
+  obj->Set(stop_iter_name,
+           v8::FunctionTemplate::New(isolate, StopIterFunction));
+
+  if (!args[0].IsEmpty() && args[0]->IsString())
+    obj->Set(query_name, args[0]);
+
+  args.GetReturnValue().Set(obj->NewInstance());
 }

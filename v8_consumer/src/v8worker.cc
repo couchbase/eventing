@@ -1,3 +1,14 @@
+// Copyright (c) 2017 Couchbase, Inc.
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//     http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an "AS IS"
+// BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -16,6 +27,10 @@
 #include "../include/parse_deployment.h"
 
 #define MAXPATHLEN 256
+#define TRANSPILER_JS_PATH "transpiler.js"
+#define ESTOOLS_PATH "estools.js"
+
+N1QL *n1ql_handle;
 
 enum RETURN_CODE {
   SUCCESS = 0,
@@ -38,6 +53,14 @@ int AsciiToUtf16(const char *input_buffer, uint16_t *output_buffer) {
   }
   output_buffer[i] = 0;
   return i;
+}
+
+// Reads a file from the given path and returns the content.
+std::string ReadFile(std::string file_path) {
+  std::ifstream file(file_path);
+  std::string source((std::istreambuf_iterator<char>(file)),
+                     std::istreambuf_iterator<char>());
+  return source;
 }
 
 v8::Local<v8::String> createUtf8String(v8::Isolate *isolate, const char *str) {
@@ -121,12 +144,12 @@ const char *ToJson(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
 }
 
 void Print(const v8::FunctionCallbackInfo<v8::Value> &args) {
-      std::string log_msg;
+  std::string log_msg;
   for (int i = 0; i < args.Length(); i++) {
-      log_msg += ToJson(args.GetIsolate(), args[i]);
-      log_msg += ' ';
-    }
-    LOG(logDebug) << log_msg << '\n';
+    log_msg += ToJson(args.GetIsolate(), args[i]);
+    log_msg += ' ';
+  }
+  LOG(logDebug) << log_msg << '\n';
 }
 
 std::string ConvertToISO8601(std::string timestamp) {
@@ -277,6 +300,8 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
 
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "log"),
               v8::FunctionTemplate::New(GetIsolate(), Print));
+  global->Set(v8::String::NewFromUtf8(GetIsolate(), "N1qlQuery"),
+              v8::FunctionTemplate::New(GetIsolate(), N1qlQueryConstructor));
 
   if (try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
@@ -312,10 +337,13 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
                        bucket_alias.c_str());
       }
     }
-
-    n1ql_handle = new N1QL(this, cb_source_bucket.c_str(),
-                           cb_kv_endpoint.c_str(), "_n1ql");
   }
+
+  LOG(logInfo) << "Initialised V8Worker handle, app_name: " << app_name
+               << " kv_host_port: " << kv_host_port << '\n';
+
+  n1ql_handle =
+      new N1QL("couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket);
 
   std::string connstr =
       "couchbase://" + cb_kv_endpoint + "/" + config->metadata_bucket.c_str();
@@ -350,15 +378,7 @@ std::string GetWorkingPath() {
   return (getcwd(temp, MAXPATHLEN) ? std::string(temp) : std::string(""));
 }
 
-void LoadBuiltins(std::string *out) {
-  std::ifstream ifs("builtin.js");
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                      (std::istreambuf_iterator<char>()));
-  out->assign(content);
-  return;
-}
-
-int V8Worker::V8WorkerLoad(std::string source_s) {
+int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   LOG(logInfo) << "getcwd: " << GetWorkingPath() << '\n';
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
@@ -370,28 +390,17 @@ int V8Worker::V8WorkerLoad(std::string source_s) {
 
   v8::TryCatch try_catch;
 
-  std::string builtin_functions, content, script_to_execute;
-
-  LoadBuiltins(&builtin_functions);
-
-  content.assign(source_s);
-
-  std::regex n1ql_ttl("(n1ql\\(\")(.*)(\"\\))");
-  std::smatch n1ql_m;
-
-  while (std::regex_search(content, n1ql_m, n1ql_ttl)) {
-    script_to_execute += n1ql_m.prefix();
-    std::regex re_prefix("n1ql\\(\"");
-    std::regex re_suffix("\"\\)");
-    script_to_execute +=
-        std::regex_replace(n1ql_m[1].str(), re_prefix, "n1ql`");
-    script_to_execute += n1ql_m[2].str();
-    script_to_execute += std::regex_replace(n1ql_m[3].str(), re_suffix, "`");
-    content = n1ql_m.suffix();
+  std::string plain_js;
+  int code = Jsify(script_to_execute.c_str(), &plain_js);
+  LOG(logTrace) << "jsified code: " << plain_js << '\n';
+  if (code != OK) {
+    LOG(logError) << "failed to jsify: " << code << '\n';
+    return code;
   }
 
-  script_to_execute += content;
-  script_to_execute.append(builtin_functions);
+  std::string transpiler_js_src = ReadFile(TRANSPILER_JS_PATH);
+  transpiler_js_src += ReadFile(ESTOOLS_PATH);
+  script_to_execute = Transpile(transpiler_js_src, plain_js, EXEC_TRANSPILER);
 
   v8::Local<v8::String> source =
       v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());
@@ -435,8 +444,10 @@ int V8Worker::V8WorkerLoad(std::string source_s) {
     }
   }
 
-  if (!n1ql_handle->Initialize(this, &n1ql)) {
-    LOG(logError) << "Error initializing n1ql handle" << '\n';
+  if (n1ql_handle) {
+    if (!n1ql_handle->GetInitStatus()) {
+      LOG(logError) << "Error initializing n1ql handle" << '\n';
+    }
   }
 
   return SUCCESS;
