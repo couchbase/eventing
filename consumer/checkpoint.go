@@ -37,7 +37,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					if isNoEnt {
 
 						logging.Infof("CRCH[%s:%s:%s:%d] vb: %d Creating the initial metadata blob entry",
-							c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno)
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
 						c.updateCheckpointInfo(vbKey, vbno, &vbBlob, &cas)
 						continue

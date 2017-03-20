@@ -32,7 +32,7 @@ retryStreamUpdate:
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 
 	logging.Infof("CRVT[%s:%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.vbsRemainingToOwn, c.vbsRemainingToGiveUp)
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.vbsRemainingToOwn, c.vbsRemainingToGiveUp)
 
 	// Retry logic in-case previous attempt to own/start dcp stream didn't succeed
 	// because some other node has already opened(or hasn't closed) the vb dcp stream
@@ -57,7 +57,7 @@ func (c *Consumer) doVbTakeover(vbno uint16) {
 			!c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner) && c.checkIfCurrentNodeShouldOwnVb(vbno) {
 
 			logging.Infof("CRVT[%s:%s:%s:%d] Node: %v taking ownership of vb: %d old node: %s isn't alive any more as per ns_server",
-				c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.HostPortAddr(), vbno, vbBlob.CurrentVBOwner)
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vbno, vbBlob.CurrentVBOwner)
 
 			// Below checks help in differentiating between a hostname update vs failover from 2 -> 1
 			// eventing node. In former case, it isn't required to spawn a new dcp stream but in later
@@ -71,7 +71,7 @@ func (c *Consumer) doVbTakeover(vbno uint16) {
 
 	case dcpStreamStopped:
 
-		logging.Infof("CRVT[%s:%s:%s:%d] vbno: %v starting dcp stream", c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno)
+		logging.Infof("CRVT[%s:%s:%s:%d] vb: %v starting dcp stream", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 		c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
 	}
 }
@@ -124,12 +124,16 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
-
 	// TODO: Retry loop for dcp close stream as it could fail and addtional verification checks
 	// Additional check needed to verify if vbBlob.NewOwner is the expected owner
 	// as per the vbEventingNodesAssignMap
-	c.vbDcpFeedMap[vbno].DcpCloseStream(vbno, vbno)
+	err := c.vbDcpFeedMap[vbno].DcpCloseStream(vbno, vbno)
+	if err != nil {
+		logging.Errorf("CRVT[%s:%s:%s:%d] vbno: %v Failed to close dcp stream, err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
+	}
+
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 }
 
 func (c *Consumer) checkIfConsumerShouldOwnVb(vbno uint16, workerName string) bool {
@@ -169,7 +173,7 @@ func (c *Consumer) getVbRemainingToOwn() []uint16 {
 
 	sort.Sort(util.Uint16Slice(vbsRemainingToOwn))
 	logging.Infof("CRVT[%s:%s:%s:%d] vbs remaining to own len: %d dump: %v",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(vbsRemainingToOwn), vbsRemainingToOwn)
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsRemainingToOwn), vbsRemainingToOwn)
 
 	return vbsRemainingToOwn
 }
@@ -199,7 +203,7 @@ func (c *Consumer) getVbRemainingToGiveUp() []uint16 {
 
 	sort.Sort(util.Uint16Slice(vbsRemainingToGiveUp))
 	logging.Infof("CRVT[%s:%s:%s:%d] vbs remaining to give up len: %d dump: %v",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(vbsRemainingToGiveUp), vbsRemainingToGiveUp)
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsRemainingToGiveUp), vbsRemainingToGiveUp)
 
 	return vbsRemainingToGiveUp
 }

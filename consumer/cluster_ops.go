@@ -17,7 +17,7 @@ var getEventingNodeAddrOpCallback = func(args ...interface{}) error {
 	hostPortAddr, err := util.CurrentEventingNodeAddress(c.producer.Auth(), hostAddress)
 	if err != nil {
 		logging.Errorf("CRCO[%s:%s:%s:%d] Failed to grab routable interface, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 	} else {
 		atomic.StorePointer(
 			(*unsafe.Pointer)(unsafe.Pointer(&c.hostPortAddr)), unsafe.Pointer(&hostPortAddr))
@@ -34,7 +34,7 @@ var getKvVbMap = func(args ...interface{}) error {
 	kvVbMap, err := util.KVVbMap(c.producer.Auth(), c.bucket, hostAddress)
 	if err != nil {
 		logging.Errorf("CRCO[%s:%s:%s:%d] Failed to grab vbMap for bucket: %v, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.bucket, err)
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.bucket, err)
 	} else {
 		c.kvVbMap = kvVbMap
 	}

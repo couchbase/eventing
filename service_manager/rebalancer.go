@@ -128,6 +128,8 @@ func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 	// start of ServiceManager instance is because of https://github.com/golang/go/issues/8001.
 	// Ticker is outside the scope of GC
 	m.rebUpdateTicker = time.NewTicker(rebalanceProgressUpdateTickInterval)
+	m.updateRebalanceProgressLocked(0.0)
+
 	go m.gatherRebalanceProgress()
 
 	return nil
@@ -155,13 +157,14 @@ func (m *ServiceMgr) gatherRebalanceProgress() {
 func (m *ServiceMgr) updateRebalanceProgressLocked(progress float64) {
 	changeID := m.rebalanceCtx.change.ID
 	rev := m.rebalanceCtx.incRev()
+
 	task := &service.Task{
 		Rev:          encodeRev(rev),
 		ID:           fmt.Sprintf("rebalance/%s", changeID),
 		Type:         service.TaskTypeRebalance,
 		Status:       service.TaskStatusRunning,
 		IsCancelable: true,
-		Progress:     progress * 100,
+		Progress:     progress,
 
 		Extra: map[string]interface{}{
 			"rebalanceID": changeID,

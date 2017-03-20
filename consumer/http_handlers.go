@@ -28,7 +28,7 @@ func (c *Consumer) DcpEventsRemainingToProcess() uint64 {
 
 	seqNos, err := common.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil {
-		logging.Errorf("CRVT[%s:%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
+		logging.Errorf("CRVT[%s:%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 		return 0
 	}
 

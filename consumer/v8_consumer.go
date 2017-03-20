@@ -73,10 +73,10 @@ func (c *Consumer) Serve() {
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
 	logging.Infof("V8CR[%s:%s:%s:%d] vbnos len: %d",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(c.vbnos))
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
 
 	logging.Infof("V8CR[%s:%s:%s:%d] Spawning worker corresponding to producer",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid)
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 	rand.Seed(time.Now().UnixNano())
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
@@ -93,10 +93,10 @@ func (c *Consumer) Serve() {
 		c.addToAggChan(c.kvHostDcpFeedMap[kvHostPort], cancelCh)
 	}
 
-	go c.startDcp(dcpConfig, flogs)
-
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
 	c.clientSupToken = c.consumerSup.Add(c.client)
+
+	c.startDcp(dcpConfig, flogs)
 
 	c.controlRoutine()
 }
@@ -110,12 +110,12 @@ func (c *Consumer) HandleV8Worker() {
 	c.sendInitV8Worker(payload)
 	resp := c.readMessage()
 	logging.Infof("V8CR[%s:%s:%s:%d] Response from worker for init call: %s",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, resp.res)
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), resp.res)
 
 	c.sendLoadV8Worker(c.app.AppCode)
 	resp = c.readMessage()
 	logging.Infof("V8CR[%s:%s:%s:%d] Response from worker for app load call: %s",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, resp.res)
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), resp.res)
 
 	go c.doLastSeqNoCheckpoint()
 
@@ -125,7 +125,7 @@ func (c *Consumer) HandleV8Worker() {
 
 func (c *Consumer) Stop() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Gracefully shutting down consumer routine",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid)
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 	c.producer.CleanupDeadConsumer(c)
 
@@ -156,7 +156,7 @@ func (c *Consumer) Stop() {
 func (c *Consumer) String() string {
 	return fmt.Sprintf("consumer => app: %s tcpPort: %s ospid: %d"+
 		" dcpEventProcessed: %s v8EventProcessed: %s", c.app.AppName, c.tcpPort,
-		c.osPid, util.SprintDCPCounts(c.dcpMessagesProcessed),
+		c.Pid(), util.SprintDCPCounts(c.dcpMessagesProcessed),
 		util.SprintV8Counts(c.v8WorkerMessagesProcessed))
 }
 
@@ -176,6 +176,14 @@ func (c *Consumer) HostPortAddr() string {
 		return *hostPortAddr
 	}
 	return ""
+}
+
+func (c *Consumer) Pid() int {
+	pid, ok := c.osPid.Load().(int)
+	if ok {
+		return pid
+	}
+	return 0
 }
 
 func (c *Consumer) ConsumerName() string {

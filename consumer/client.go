@@ -34,7 +34,7 @@ func (c *client) Serve() {
 		logging.Infof("CRCL[%s:%s:%s:%d] c++ worker launched",
 			c.appName, c.workerName, c.tcpPort, c.osPid)
 	}
-	c.consumerHandle.osPid = c.osPid
+	c.consumerHandle.osPid.Store(c.osPid)
 
 	c.cmd.Wait()
 

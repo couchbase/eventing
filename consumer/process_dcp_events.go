@@ -19,7 +19,7 @@ func (c *Consumer) doDCPEventProcess() {
 		case e, ok := <-c.aggDCPFeed:
 			if ok == false {
 				logging.Infof("CRDP[%s:%s:%s:%d] Closing DCP feed for bucket %q",
-					c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.bucket)
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.bucket)
 
 				c.stopCheckpointingCh <- true
 				c.producer.CleanupDeadConsumer(c)
@@ -41,7 +41,7 @@ func (c *Consumer) doDCPEventProcess() {
 			case mcd.DCP_STREAMREQ:
 
 				logging.Infof("CRDP[%s:%s:%s:%d] vb: %d status: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.osPid, e.VBucket, e.Status)
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
 
 				if e.Status == mcd.SUCCESS {
 
@@ -63,7 +63,7 @@ func (c *Consumer) doDCPEventProcess() {
 					vbuuid, seqNo, err := e.FailoverLog.Latest()
 					if err != nil {
 						logging.Errorf("CRDP[%s:%s:%s:%d] Failure to get latest failover log vb: %d err: %v, not updating metadata",
-							c.app.AppName, c.workerName, c.tcpPort, c.osPid, e.VBucket, err)
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket, err)
 						c.vbFlogChan <- vbFlog
 						continue
 					}
@@ -111,7 +111,7 @@ func (c *Consumer) doDCPEventProcess() {
 				// which will allow vbTakeOver background routine to start up new stream from
 				// new KV node, where the vbucket has been migrated
 
-				logging.Infof("CRVT[%s:%s:%s:%d] vbno: %v, got STREAMEND", c.app.AppName, c.workerName, c.tcpPort, c.osPid, e.VBucket)
+				logging.Infof("CRVT[%s:%s:%s:%d] vb: %v, got STREAMEND", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
 				//Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
@@ -142,7 +142,7 @@ func (c *Consumer) doDCPEventProcess() {
 
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 					logging.Infof("CRVT[%s:%s:%s:%d] vbno: %v, got STREAMEND(probably because of kv rebalance). Restarting dcp stream",
-						c.app.AppName, c.workerName, c.tcpPort, c.osPid, e.VBucket)
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 					c.Lock()
 					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, e.VBucket)
 					c.Unlock()
@@ -158,7 +158,7 @@ func (c *Consumer) doDCPEventProcess() {
 			if len(vbsOwned) > 0 {
 				c.RLock()
 				logging.Infof("CRDP[%s:%s:%s:%d] DCP events processed: %s V8 events processed: %s, vbs owned len: %d vbs owned:[%d..%d]",
-					c.app.AppName, c.workerName, c.tcpPort, c.osPid,
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(),
 					util.SprintDCPCounts(c.dcpMessagesProcessed), util.SprintV8Counts(c.v8WorkerMessagesProcessed),
 					len(c.getCurrentlyOwnedVbs()), vbsOwned[0], vbsOwned[len(vbsOwned)-1])
 				c.RUnlock()
@@ -167,7 +167,7 @@ func (c *Consumer) doDCPEventProcess() {
 		case <-c.stopConsumerCh:
 
 			logging.Errorf("CRDP[%s:%s:%s:%d] Socket belonging to V8 consumer died",
-				c.app.AppName, c.workerName, c.tcpPort, c.osPid)
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 			c.stopCheckpointingCh <- true
 			c.producer.CleanupDeadConsumer(c)
 			return
@@ -181,18 +181,18 @@ func (c *Consumer) doDCPEventProcess() {
 func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.FailoverLog) {
 
 	logging.Infof("CRDP[%s:%s:%s:%d] no. of vbs owned: %d",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(c.vbnos))
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
 	vbSeqnos, err := sc.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil && c.dcpStreamBoundary != common.DcpEverything {
-		logging.Errorf("CRDP[%s:%s:%s:%d] Failed to fetch vb seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.osPid, err)
+		logging.Errorf("CRDP[%s:%s:%s:%d] Failed to fetch vb seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 		return
 	}
 
 	logging.Infof("CRDP[%s:%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, len(vbSeqnos), vbSeqnos)
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
 
 	for vbno, flog := range flogs {
 		vbuuid, _, _ := flog.Latest()
@@ -238,7 +238,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan bool
 	go func(dcpFeed *couchbase.DcpFeed) {
 		defer func() {
 			if r := recover(); r != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] addToAggChan: panic and recover, %v", c.app.AppName, c.workerName, c.tcpPort, c.osPid, r)
+				logging.Errorf("CRDP[%s:%s:%s:%d] addToAggChan: panic and recover, %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r)
 			}
 		}()
 
@@ -253,16 +253,18 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan bool
 						}
 					}
 
-					logging.Infof("CRDP[%s:%s:%s:%d] Closing dcp feed for bucket: %s from kvhost: %s",
-						c.app.AppName, c.workerName, c.tcpPort, c.osPid, c.bucket, kvAddr)
+					logging.Infof("CRDP[%s:%s:%s:%d] Closing dcp feed: %v for bucket: %s",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), dcpFeed.Name, c.bucket)
+					c.Lock()
 					delete(c.kvHostDcpFeedMap, kvAddr)
+					c.Unlock()
 
 					return
 				}
 
 				if e.Opcode == mcd.DCP_STREAMEND || e.Opcode == mcd.DCP_STREAMREQ {
-					logging.Infof("CRDP[%s:%s:%s:%d] addToAggChan vb: %v Opcode: %v Status: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.osPid, e.VBucket, e.Opcode, e.Status)
+					logging.Infof("CRDP[%s:%s:%s:%d] addToAggChan dcpFeed name: %v vb: %v Opcode: %v Status: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), dcpFeed.Name, e.VBucket, e.Opcode, e.Status)
 				}
 
 				c.aggDCPFeed <- e
@@ -274,40 +276,86 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan bool
 	}(dcpFeed)
 }
 
+func (c *Consumer) cleanupStaleDcpFeedHandles() {
+	kvAddrsPerVbMap := make(map[string]struct{})
+	for _, kvAddr := range c.kvVbMap {
+		kvAddrsPerVbMap[kvAddr] = struct{}{}
+	}
+
+	var kvAddrListPerVbMap []string
+	for kvAddr := range kvAddrsPerVbMap {
+		kvAddrListPerVbMap = append(kvAddrListPerVbMap, kvAddr)
+	}
+
+	var kvHostDcpFeedMapEntries []string
+	c.RLock()
+	for kvAddr := range c.kvHostDcpFeedMap {
+		kvHostDcpFeedMapEntries = append(kvHostDcpFeedMapEntries, kvAddr)
+	}
+	c.RUnlock()
+
+	kvAddrDcpFeedsToClose := util.SliceDifferences(kvHostDcpFeedMapEntries, kvAddrListPerVbMap)
+
+	if len(kvAddrDcpFeedsToClose) > 0 {
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), populateDcpFeedVbEntriesCallback, c)
+	}
+
+	for _, kvAddr := range kvAddrDcpFeedsToClose {
+		c.kvHostDcpFeedMap[kvAddr].Close()
+
+		vbsMetadataToUpdate := c.dcpFeedVbMap[c.kvHostDcpFeedMap[kvAddr]]
+		delete(c.kvHostDcpFeedMap, kvAddr)
+
+		for _, vbno := range vbsMetadataToUpdate {
+			c.clearUpOnwershipInfoFromMeta(vbno)
+		}
+	}
+}
+
+func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
+	var vbBlob vbucketKVBlob
+	var cas uint64
+	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+
+	vbBlob.AssignedWorker = ""
+	vbBlob.CurrentVBOwner = ""
+	vbBlob.DCPStreamStatus = dcpStreamStopped
+	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
+	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
+	vbBlob.NodeUUID = ""
+
+	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
+	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
+	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
+	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
+
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
+
+}
+
 func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) {
 
 	c.cbBucket.Refresh()
+
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getKvVbMap, c)
 	vbKvAddr := c.kvVbMap[vbno]
+
+	// Closing feeds for KV hosts which are no more present in kv vb map
+	c.cleanupStaleDcpFeedHandles()
+
 	dcpFeed, ok := c.kvHostDcpFeedMap[vbKvAddr]
 	if !ok {
+		feedName := couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + vbKvAddr + "_" + c.workerName)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, dcpConfig, vbKvAddr)
+		dcpFeed = c.kvHostDcpFeedMap[vbKvAddr]
 
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), populateDcpFeedVbEntriesCallback, c)
+		cancelCh := make(chan bool, 1)
+		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
+		c.addToAggChan(dcpFeed, cancelCh)
 
-		shouldStartNewDcpFeed := true
-		for feed, vbNos := range c.dcpFeedVbMap {
-			for _, vb := range vbNos {
-				if vb == vbno {
-					shouldStartNewDcpFeed = false
-					dcpFeed = feed
-				}
-			}
-		}
-
-		if shouldStartNewDcpFeed {
-
-			feedName := couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + vbKvAddr + "_" + c.workerName)
-			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, dcpConfig, vbKvAddr)
-			dcpFeed = c.kvHostDcpFeedMap[vbKvAddr]
-
-			cancelCh := make(chan bool, 1)
-			c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
-			c.addToAggChan(dcpFeed, cancelCh)
-
-			logging.Infof("CRDP[%s:%s:%s:%d] vb: %d kvAddr: %v Started up new dcpFeed",
-				c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno, vbKvAddr)
-		}
-
+		logging.Infof("CRDP[%s:%s:%s:%d] vb: %d kvAddr: %v Started up new dcpFeed",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr)
 	}
 
 	c.vbDcpFeedMap[vbno] = dcpFeed
@@ -317,16 +365,28 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 
 	snapStart, snapEnd := start, start
 
-	logging.Infof("CRDP[%s:%s:%s:%d] vb: %d DCP stream start vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
-		c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
+	logging.Infof("CRDP[%s:%s:%s:%d] vb: %d DCP stream start vbKvAddr: %v vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd)
 
-	dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
+	err := dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
+	if err != nil {
+		logging.Errorf("CRDP[%s:%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, dcpFeed.Name, err)
+		if c.checkIfCurrentConsumerShouldOwnVb(vbno) {
+			c.Lock()
+			c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbno)
+			c.Unlock()
+
+			c.clearUpOnwershipInfoFromMeta(vbno)
+		}
+		return
+	}
 
 loop:
 	vbFlog := <-c.vbFlogChan
 
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
-		logging.Infof("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno)
+		logging.Infof("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
 		return
 	}
@@ -335,12 +395,12 @@ loop:
 
 		if vbFlog.statusCode == mcd.ROLLBACK {
 			logging.Infof("CRDP[%s:%s:%s:%d] vb: %d vbuuid: %d Rollback requested by DCP, previous startseq: %d rollback startseq: %d",
-				c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno, vbBlob.VBuuid, start, vbFlog.seqNo)
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, vbFlog.seqNo)
 			start, snapStart, snapEnd = vbFlog.seqNo, vbFlog.seqNo, vbFlog.seqNo
 		}
 
 		logging.Infof("CRDP[%s:%s:%s:%d] Retrying DCP stream start vb: %d vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
-			c.app.AppName, c.workerName, c.tcpPort, c.osPid, vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
 		dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 		goto loop
 	}

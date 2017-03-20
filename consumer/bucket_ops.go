@@ -39,7 +39,7 @@ var setOpCallback = func(args ...interface{}) error {
 	err := c.metadataBucketHandle.Set(vbKey, 0, vbBlob)
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s Bucket set failed, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.osPid, vbKey, err)
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
 	return err
 }
@@ -68,7 +68,7 @@ var getOpCallback = func(args ...interface{}) error {
 			return nil
 		} else if err != nil {
 			logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for key: %s, err: %v",
-				c.app.AppName, c.ConsumerName(), c.tcpPort, c.osPid, vbKey, err)
+				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 			return err
 		} else {
 			*isNoEnt = false
@@ -78,7 +78,7 @@ var getOpCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for key: %s, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.osPid, vbKey, err)
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
 
 	return err
@@ -93,7 +93,7 @@ var casOpCallback = func(args ...interface{}) error {
 	_, err := c.metadataBucketHandle.Cas(vbKey, 0, *cas, vbBlob)
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket cas failed for key: %s, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.osPid, vbKey, err)
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 		util.Retry(util.NewFixedBackoff(time.Second), getOpCallback, c, vbKey, vbBlob, cas, false)
 	}
 	return err
@@ -108,7 +108,7 @@ var connectBucketOpCallback = func(args ...interface{}) error {
 	*conn, err = cbbucket.Connect(connStr)
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to bootstrap conn to source cluster, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.osPid, err)
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
 	}
 	return err
 }
@@ -123,7 +123,7 @@ var poolGetBucketOpCallback = func(args ...interface{}) error {
 	*pool, err = conn.GetPool(poolName)
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to get pool info, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.osPid, err)
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
 	}
 	return err
 }
@@ -137,7 +137,7 @@ var cbGetBucketOpCallback = func(args ...interface{}) error {
 	c.metadataBucketHandle, err = pool.GetBucket(metadataBucket)
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket: %s missing, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.osPid, metadataBucket, err)
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), metadataBucket, err)
 	}
 	return err
 }
@@ -151,7 +151,7 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	*flogs, err = c.cbBucket.GetFailoverLogs(0xABCD, c.vbnos, dcpConfig)
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to get failover logs, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.osPid, err)
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
 	}
 
 	c.cbBucket.Refresh()
@@ -169,7 +169,7 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.osPid, err)
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
 		return err
 	}
 	c.kvHostDcpFeedMap[kvHostPort] = dcpFeed
@@ -194,14 +194,14 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 			feedName, uint32(0), []string{kvHost}, 0xABCD, dcpConfig)
 		if err != nil {
 			logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed, err: %v",
-				c.app.AppName, c.ConsumerName(), c.tcpPort, c.osPid, err)
+				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
 			return err
 		}
 
 		vbSeqNos, err := feed.DcpGetSeqnos()
 		if err != nil {
 			logging.Infof("CRDP[%s:%s:%s:%d] Failed to get vb seqnos from dcp handle: %v, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.osPid, dcpFeed, err)
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), dcpFeed, err)
 			return err
 		}
 		feed.Close()

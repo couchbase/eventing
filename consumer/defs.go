@@ -4,6 +4,7 @@ import (
 	"net"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -119,7 +120,7 @@ type Consumer struct {
 	metadataBucketHandle *cbbucket.Bucket
 
 	// OS pid of c++ v8 worker
-	osPid int
+	osPid atomic.Value
 
 	// C++ v8 worker cmd handle, would be required to killing worker that are no more needed
 	client         *client
