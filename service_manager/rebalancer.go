@@ -141,7 +141,15 @@ func (m *ServiceMgr) gatherRebalanceProgress() {
 	for {
 		select {
 		case <-m.rebUpdateTicker.C:
-			progress := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + m.eventingAdminPort})
+			p := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + m.eventingAdminPort})
+
+			var progress float64
+			if p.VbsOwnedPerPlan == 0 {
+				progress = 1.0
+			} else {
+				progress = float64(p.VbsCurrentlyOwned) / float64(p.VbsOwnedPerPlan)
+			}
+
 			if progress == 1.0 {
 				m.updateRebalanceProgressLocked(progress)
 				m.rebUpdateTicker.Stop()

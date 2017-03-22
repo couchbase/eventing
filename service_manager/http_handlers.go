@@ -19,7 +19,13 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 
 	progress := util.GetProgress("/getRebalanceStatus", producerHostPortAddrs)
 
-	fmt.Fprintf(w, "%v", progress)
+	buf, err := json.Marshal(progress)
+	if err != nil {
+		logging.Errorf("Failed to unmarshal rebalance progress across all producers on current node, err: %v", err)
+		return
+	}
+
+	w.Write(buf)
 }
 
 // Reports aggregated rebalance progress from all producers
@@ -29,8 +35,13 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 
 	aggProgress := util.GetProgress("/getRebalanceProgress", m.eventingNodeAddrs)
 
-	fmt.Fprintf(w, "%v", aggProgress)
+	buf, err := json.Marshal(aggProgress)
+	if err != nil {
+		logging.Errorf("Failed to unmarshal rebalance progress across all producers, err: %v", err)
+		return
+	}
 
+	w.Write(buf)
 }
 
 func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {

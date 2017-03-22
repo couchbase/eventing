@@ -1,13 +1,14 @@
 package consumer
 
 import (
+	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
 // RebalanceTaskProgress reports progress to producer
-func (c *Consumer) RebalanceTaskProgress() float64 {
-	progress := 1.0
+func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
+	progress := &cm.RebalanceProgress{}
 
 	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
 	vbsRemainingToOwn := c.getVbRemainingToOwn()
@@ -16,7 +17,8 @@ func (c *Consumer) RebalanceTaskProgress() float64 {
 		vbsOwnedPerPlan := c.getVbsOwned()
 		vbsCurrentlyOwned := c.verifyVbsCurrentlyOwned(vbsOwnedPerPlan)
 
-		progress *= float64(len(vbsCurrentlyOwned)) / float64(len(vbsOwnedPerPlan))
+		progress.VbsCurrentlyOwned = len(vbsCurrentlyOwned)
+		progress.VbsOwnedPerPlan = len(vbsOwnedPerPlan)
 	}
 
 	return progress

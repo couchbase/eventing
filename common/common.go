@@ -57,7 +57,7 @@ type EventingConsumer interface {
 	SignalConnected()
 	Stop()
 	String() string
-	RebalanceTaskProgress() float64
+	RebalanceTaskProgress() *RebalanceProgress
 	VbProcessingStats() map[uint16]map[string]interface{}
 }
 
@@ -80,4 +80,9 @@ type AppConfig struct {
 	LastDeploy     string
 	ID             int
 	Settings       map[string]interface{}
+}
+
+type RebalanceProgress struct {
+	VbsCurrentlyOwned int
+	VbsOwnedPerPlan   int
 }

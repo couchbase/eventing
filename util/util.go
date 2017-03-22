@@ -2,17 +2,18 @@ package util
 
 import (
 	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
 	"github.com/couchbase/cbauth/metakv"
+	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/indexing/secondary/common"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
@@ -241,8 +242,8 @@ func ClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, error
 	return cinfo, nil
 }
 
-func GetProgress(urlSuffix string, nodeAddrs []string) float64 {
-	aggProgress := 1.0
+func GetProgress(urlSuffix string, nodeAddrs []string) *cm.RebalanceProgress {
+	aggProgress := &cm.RebalanceProgress{}
 
 	netClient := &http.Client{
 		Timeout: HTTPRequestTimeout,
@@ -264,13 +265,15 @@ func GetProgress(urlSuffix string, nodeAddrs []string) float64 {
 			continue
 		}
 
-		progress, err := strconv.ParseFloat(string(buf), 64)
+		var progress cm.RebalanceProgress
+		err = json.Unmarshal(buf, &progress)
 		if err != nil {
-			logging.Errorf("UTIL Failed to parse progress from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to unmarshal progress from url: %s, err: %v", url, err)
 			continue
 		}
 
-		aggProgress *= progress
+		aggProgress.VbsCurrentlyOwned += progress.VbsCurrentlyOwned
+		aggProgress.VbsOwnedPerPlan += progress.VbsOwnedPerPlan
 	}
 
 	return aggProgress

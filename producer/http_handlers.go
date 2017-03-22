@@ -6,19 +6,29 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/indexing/secondary/logging"
 )
 
 // RebalanceStatus assists in reporting back progress to ns_server via cbauth_service
 func (p *Producer) RebalanceStatus(w http.ResponseWriter, r *http.Request) {
-	aggProgress := 1.0
+	producerLevelProgress := &cm.RebalanceProgress{}
 
 	for _, consumer := range p.runningConsumers {
 		consumerProgress := consumer.RebalanceTaskProgress()
-		aggProgress *= consumerProgress
+
+		producerLevelProgress.VbsCurrentlyOwned += consumerProgress.VbsCurrentlyOwned
+		producerLevelProgress.VbsOwnedPerPlan += consumerProgress.VbsOwnedPerPlan
 	}
 
-	fmt.Fprintf(w, "%v", aggProgress)
+	progress, err := json.Marshal(producerLevelProgress)
+	if err != nil {
+		logging.Errorf("DCFG[%s] Failed to encode producer level rebalance progress, err: %v", p.appName, err)
+		return
+	}
+
+	w.Write(progress)
 }
 
 // DcpEventsRemainingToProcess writes remaining dcp events to process
