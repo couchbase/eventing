@@ -5,7 +5,7 @@ CBDEPS_DIR=/Users/$(USER)/.cbdepscache/
 DYLD_LIBRARY_PATH=/Users/$(USER)/.cbdepscache/lib
 CMD_DIR=cmd/producer/
 
-LDFLAGS=-luv -L$(CBDEPS_DIR)lib/ -ljemalloc -L$(CBDEPS_DIR)lib/debug/ -lv8 -lcouchbase
+LDFLAGS=-luv -L$(CBDEPS_DIR)lib/ -ljemalloc -L$(CBDEPS_DIR)lib/ -lv8 -lcouchbase
 
 
 SOURCES=v8_consumer/src/client.cc v8_consumer/src/commands.cc \
@@ -19,10 +19,10 @@ INCLUDE_DIRS=-I$(CBDEPS_DIR) -I$(CBDEPS_DIR)include -I v8_consumer/include/
 OUT=$(CMD_DIR)client.bin
 
 build:
-	$(CBDEPS_DIR)/bin/flatc -o flatbuf/include/ -c flatbuf/schema/*.fbs
-	$(CBDEPS_DIR)/bin/flatc -g flatbuf/schema/*.fbs
+	$(CBDEPS_DIR)bin/flatc -o flatbuf/include/ -c flatbuf/schema/*.fbs
+	$(CBDEPS_DIR)bin/flatc -g flatbuf/schema/*.fbs
 	$(CXX) $(CXFLAGS) $(SOURCES) $(INCLUDE_DIRS) $(LDFLAGS) -o $(OUT)
-	cd $(CMD_DIR); go build -race; bash fix_rpath.sh; cp client.bin client $(GOPATH)/bin/
+	cd $(CMD_DIR); go build -race; bash fix_rpath.sh
 
 allopt:
 	$(CXX) $(CXFLAGS) $(SOURCES) $(INCLUDE_DIRS) $(LDFLAGS) -O3 -o $(OUT)

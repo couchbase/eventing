@@ -158,6 +158,15 @@ func (c *Consumer) getConsumerForGivenVbucket(vbno uint16) string {
 	return ""
 }
 
+func (c *Consumer) checkIfVbAlreadyOwnedByCurrConsumer(vbno uint16) bool {
+	if c.vbProcessingStats.getVbStat(vbno, "current_vb_owner") == c.HostPortAddr() &&
+		c.vbProcessingStats.getVbStat(vbno, "assigned_worker") == c.ConsumerName() {
+		return true
+	}
+
+	return false
+}
+
 func (c *Consumer) getVbRemainingToOwn() []uint16 {
 	var vbsRemainingToOwn []uint16
 

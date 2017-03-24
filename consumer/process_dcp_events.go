@@ -254,7 +254,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan bool
 					}
 
 					logging.Infof("CRDP[%s:%s:%s:%d] Closing dcp feed: %v for bucket: %s",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), dcpFeed.Name, c.bucket)
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), c.bucket)
 					c.Lock()
 					delete(c.kvHostDcpFeedMap, kvAddr)
 					c.Unlock()
@@ -264,7 +264,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan bool
 
 				if e.Opcode == mcd.DCP_STREAMEND || e.Opcode == mcd.DCP_STREAMREQ {
 					logging.Infof("CRDP[%s:%s:%s:%d] addToAggChan dcpFeed name: %v vb: %v Opcode: %v Status: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), dcpFeed.Name, e.VBucket, e.Opcode, e.Status)
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), e.VBucket, e.Opcode, e.Status)
 				}
 
 				c.aggDCPFeed <- e
@@ -303,8 +303,10 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() {
 	for _, kvAddr := range kvAddrDcpFeedsToClose {
 		c.kvHostDcpFeedMap[kvAddr].Close()
 
+		c.Lock()
 		vbsMetadataToUpdate := c.dcpFeedVbMap[c.kvHostDcpFeedMap[kvAddr]]
 		delete(c.kvHostDcpFeedMap, kvAddr)
+		c.Unlock()
 
 		for _, vbno := range vbsMetadataToUpdate {
 			c.clearUpOnwershipInfoFromMeta(vbno)
@@ -371,7 +373,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 	err := dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 	if err != nil {
 		logging.Errorf("CRDP[%s:%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, dcpFeed.Name, err)
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, dcpFeed.DcpFeedName(), err)
 		if c.checkIfCurrentConsumerShouldOwnVb(vbno) {
 			c.Lock()
 			c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbno)

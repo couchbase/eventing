@@ -53,6 +53,10 @@ func (c *Consumer) controlRoutine() {
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsToRestream), vbsToRestream)
 
 			for _, vbno := range vbsToRestream {
+				if c.checkIfVbAlreadyOwnedByCurrConsumer(vbno) {
+					continue
+				}
+
 				var vbBlob vbucketKVBlob
 				var cas uint64
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
