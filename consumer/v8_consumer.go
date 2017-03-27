@@ -54,6 +54,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, p common.EventingProdu
 	return consumer
 }
 
+// Serve acts as init routine for consumer handle
 func (c *Consumer) Serve() {
 	c.stopConsumerCh = make(chan bool, 1)
 	c.stopCheckpointingCh = make(chan bool)
@@ -101,6 +102,7 @@ func (c *Consumer) Serve() {
 	c.controlRoutine()
 }
 
+// HandleV8Worker sets up CPP V8 worker post it's bootstrap
 func (c *Consumer) HandleV8Worker() {
 	<-c.signalConnectedCh
 
@@ -123,6 +125,7 @@ func (c *Consumer) HandleV8Worker() {
 
 }
 
+// Stop acts terminate routine for consumer handle
 func (c *Consumer) Stop() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Gracefully shutting down consumer routine",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
@@ -154,22 +157,27 @@ func (c *Consumer) Stop() {
 // Implement fmt.Stringer interface to allow better debugging
 // if C++ V8 worker crashes
 func (c *Consumer) String() string {
-	return fmt.Sprintf("consumer => app: %s tcpPort: %s ospid: %d"+
-		" dcpEventProcessed: %s v8EventProcessed: %s", c.app.AppName, c.tcpPort,
-		c.Pid(), util.SprintDCPCounts(c.dcpMessagesProcessed),
+	return fmt.Sprintf("consumer => app: %s name: %v tcpPort: %s ospid: %d"+
+		" dcpEventProcessed: %s v8EventProcessed: %s", c.app.AppName, c.ConsumerName(),
+		c.tcpPort, c.Pid(), util.SprintDCPCounts(c.dcpMessagesProcessed),
 		util.SprintV8Counts(c.v8WorkerMessagesProcessed))
 }
 
+// SignalConnected notifies consumer routine when CPP V8 worker has connected to
+// tcp listener instance
 func (c *Consumer) SignalConnected() {
 	c.signalConnectedCh <- true
 }
 
+// SetConnHandle sets the tcp connection handle for CPP V8 worker
 func (c *Consumer) SetConnHandle(conn net.Conn) {
 	c.Lock()
 	defer c.Unlock()
 	c.conn = conn
 }
 
+// HostPortAddr returns the HostPortAddr combination of current eventing node
+// e.g. 127.0.0.1:25000
 func (c *Consumer) HostPortAddr() string {
 	hostPortAddr := (*string)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.hostPortAddr))))
 	if hostPortAddr != nil {
@@ -178,6 +186,7 @@ func (c *Consumer) HostPortAddr() string {
 	return ""
 }
 
+// Pid returns the process id of CPP V8 worker
 func (c *Consumer) Pid() int {
 	pid, ok := c.osPid.Load().(int)
 	if ok {
@@ -186,14 +195,18 @@ func (c *Consumer) Pid() int {
 	return 0
 }
 
+// ConsumerName returns consumer name e.q <event_handler_name>_worker_1
 func (c *Consumer) ConsumerName() string {
 	return c.workerName
 }
 
+// NodeUUID returns UUID that's supplied by ns_server from command line
 func (c *Consumer) NodeUUID() string {
 	return c.uuid
 }
 
+// NotifyClusterChange is called by producer handle to signify each
+// consumer instance about StartTopologyChange rpc call from cbauth service.Manager
 func (c *Consumer) NotifyClusterChange() {
 	logging.Infof("Consumer: %s got message that cluster state has changed", c.ConsumerName())
 	c.clusterStateChangeNotifCh <- true

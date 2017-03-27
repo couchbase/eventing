@@ -141,7 +141,7 @@ func (c *Consumer) doDCPEventProcess() {
 				c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", "")
 
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
-					logging.Infof("CRVT[%s:%s:%s:%d] vbno: %v, got STREAMEND(probably because of kv rebalance). Restarting dcp stream",
+					logging.Infof("CRVT[%s:%s:%s:%d] vb: %v, got STREAMEND, needs to be reclaimed",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 					c.Lock()
 					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, e.VBucket)
@@ -332,11 +332,10 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
-
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
 }
 
-func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) {
+func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) error {
 
 	c.cbBucket.Refresh()
 
@@ -381,7 +380,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 
 			c.clearUpOnwershipInfoFromMeta(vbno)
 		}
-		return
+		return err
 	}
 
 loop:
@@ -390,7 +389,7 @@ loop:
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
 		logging.Infof("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
-		return
+		return nil
 	}
 
 	if vbFlog.streamReqRetry && vbFlog.vb == vbno {
@@ -406,6 +405,8 @@ loop:
 		dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 		goto loop
 	}
+
+	return nil
 }
 
 func (c *Consumer) getCurrentlyOwnedVbs() []int {

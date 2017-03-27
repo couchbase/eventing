@@ -180,6 +180,12 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Errorf("CRDP[%s:%s:%s:%d] populateDcpFeedVbEntriesCallback: panic and recover, %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r)
+		}
+	}()
+
 	for kvHost, dcpFeed := range c.kvHostDcpFeedMap {
 		if _, ok := c.dcpFeedVbMap[dcpFeed]; !ok {
 			c.dcpFeedVbMap[dcpFeed] = make([]uint16, 0)

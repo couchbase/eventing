@@ -353,27 +353,35 @@ func CompareSlices(s1, s2 []string) bool {
 	return true
 }
 
-func VbsSliceDiff(vbs1, vbs2 []uint16) []uint16 {
+func VbsSliceDiff(X, Y []uint16) []uint16 {
 	var diff []uint16
 
-	for i := 0; i < 2; i++ {
-		for _, s1 := range vbs1 {
-			found := false
-			for _, s2 := range vbs2 {
-				if s1 == s2 {
-					found = true
-					break
-				}
-			}
+	m := make(map[uint16]int)
 
-			if !found {
-				diff = append(diff, s1)
-			}
-		}
+	for _, y := range Y {
+		m[y]++
+	}
 
-		if i == 0 {
-			vbs1, vbs2 = vbs2, vbs1
+	for _, x := range X {
+		if m[x] > 0 {
+			m[x]--
+			continue
 		}
+		diff = append(diff, x)
+	}
+
+	n := make(map[uint16]int)
+
+	for _, x := range X {
+		n[x]++
+	}
+
+	for _, y := range Y {
+		if n[y] > 0 {
+			n[y]--
+			continue
+		}
+		diff = append(diff, y)
 	}
 
 	return diff

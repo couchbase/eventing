@@ -91,7 +91,7 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vbno uint16) bool {
 	return false
 }
 
-func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbBlob *vbucketKVBlob, cas *uint64, shouldStartStream bool) {
+func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbBlob *vbucketKVBlob, cas *uint64, shouldStartStream bool) error {
 
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
@@ -106,8 +106,10 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbB
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 
 	if shouldStartStream {
-		c.dcpRequestStreamHandle(vbno, vbBlob, vbBlob.LastSeqNoProcessed)
+		return c.dcpRequestStreamHandle(vbno, vbBlob, vbBlob.LastSeqNoProcessed)
 	}
+
+	return nil
 }
 
 func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, vbBlob *vbucketKVBlob, cas *uint64) {

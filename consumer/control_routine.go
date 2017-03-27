@@ -52,6 +52,8 @@ func (c *Consumer) controlRoutine() {
 			logging.Infof("CRCR[%s:%s:%s:%d] vbsToRestream len: %v dump: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsToRestream), vbsToRestream)
 
+			var vbsFailedToStartStream []uint16
+
 			for _, vbno := range vbsToRestream {
 				if c.checkIfVbAlreadyOwnedByCurrConsumer(vbno) {
 					continue
@@ -64,8 +66,17 @@ func (c *Consumer) controlRoutine() {
 				logging.Infof("CRCR[%s:%s:%s:%d] vbno: %v, reclaiming it back by restarting dcp stream",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
-				c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
+
+				err := c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
+				if err != nil {
+					vbsFailedToStartStream = append(vbsFailedToStartStream, vbno)
+				}
 			}
+
+			logging.Infof("CRCR[%s:%s:%s:%d] vbsFailedToStartStream => len: %v dump: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsFailedToStartStream), vbsFailedToStartStream)
+
+			vbsToRestream = util.VbsSliceDiff(vbsFailedToStartStream, vbsToRestream)
 
 			c.Lock()
 			diff := util.VbsSliceDiff(vbsToRestream, c.vbsRemainingToRestream)
