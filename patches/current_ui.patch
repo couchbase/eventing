@@ -1,38 +1,67 @@
-diff --git a/priv/public/js/app-misc.js b/priv/public/js/app-misc.js
-index 5968dfa..ed32752 100644
---- a/priv/public/js/app-misc.js
-+++ b/priv/public/js/app-misc.js
-@@ -441,6 +441,7 @@ _.extend(ViewHelpers, {
-         case 'moxi': return 'Moxi';
-         case 'index': return 'Index';
-         case 'fts': return 'Full Text';
-+        case 'eventing': return 'Eventing';
-       }
-     }).sort();
-   },
+diff --git a/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html b/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html
+index f7d4da692..3e62901c7 100644
+--- a/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html
++++ b/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html
+@@ -127,6 +127,34 @@
+   </div>
+ </div>
+ 
++<div ng-if="config.displayedServices.n1ql">
++  <div class="row formrow">
++    <div class="column width-6">
++      <input
++         ng-if="config.services"
++         ng-model="config.services.model.eventing"
++         type="checkbox"
++         ng-disabled="config.services.disabled.eventing || !isEnterprise"
++         id="eventing_ram_quota">
++      <label
++         for="eventing_ram_quota"
++         class="checkbox">
++        Eventing Service
++      </label>
++    </div>
++    <small class="form-inline width-6 text-center">
++      -------
++    </small>
++  </div>
++
++  <div
++     class="error"
++     ng-show="errors.n1qlMemoryQuota">
++    {{errors.n1qlMemoryQuota}}
++  </div>
++</div>
++
++
+ <div ng-if="config.maxMemorySize" class="text-small text-right nowrap margin-right-1">
+   <strong>TOTAL QUOTA</strong> &nbsp; {{ ((!config.displayedServices.kv || (config.services && !config.services.model.kv)) ? 0 : config.memoryQuota) +
+        ((!config.displayedServices.index || (config.services && !config.services.model.index)) ? 0 : config.indexMemoryQuota) +
 diff --git a/priv/public/ui/app/components/directives/mn_services/mn_services.html b/priv/public/ui/app/components/directives/mn_services/mn_services.html
-index 54a7733..4b7aa8e 100644
+index 0586384a7..587afb044 100644
 --- a/priv/public/ui/app/components/directives/mn_services/mn_services.html
 +++ b/priv/public/ui/app/components/directives/mn_services/mn_services.html
-@@ -46,3 +46,13 @@
- <label for="for-fts-service">
-   Full Text
- </label>
-+<input
-+    type="checkbox"
-+    value="eventing"
-+    id="eventing_service"
-+    ng-change="onChange(config.services.model.eventing, 'eventing')"
-+    ng-model="config.services.model.eventing"
-+    ng-disabled="config.services.disabled.eventing">
-+<label for="eventing_service">
-+    Eventing
-+</label>
+@@ -45,3 +45,15 @@
+     Query Service
+   </label>
+ </div>
++<div class="checkbox-service">
++  <input
++     type="checkbox"
++     value="eventing"
++     id="for-eventing-service"
++     ng-change="onChange(config.services.model.eventing, 'eventing')"
++     ng-model="config.services.model.eventing"
++     ng-disabled="config.services.disabled.eventing">
++    <label for="eventing_service">
++        Eventing
++    </label>
++</div>
 diff --git a/priv/public/ui/app/components/mn_filters.js b/priv/public/ui/app/components/mn_filters.js
-index 38f2f82..1b7201a 100644
+index 825b9a0c0..b2d07d173 100644
 --- a/priv/public/ui/app/components/mn_filters.js
 +++ b/priv/public/ui/app/components/mn_filters.js
-@@ -491,6 +491,7 @@
+@@ -495,6 +495,7 @@
          case 'n1ql': return 'Query';
          case 'index': return 'Index';
          case 'fts': return 'Full Text';
@@ -40,3 +69,69 @@ index 38f2f82..1b7201a 100644
        }
      }
    }
+diff --git a/priv/public/ui/app/mn_admin/mn_overview/mn_overview.html b/priv/public/ui/app/mn_admin/mn_overview/mn_overview.html
+index 00a5904d0..1598a2b90 100644
+--- a/priv/public/ui/app/mn_admin/mn_overview/mn_overview.html
++++ b/priv/public/ui/app/mn_admin/mn_overview/mn_overview.html
+@@ -62,6 +62,20 @@
+       </div>
+     </div>
+     <div
++       class="service-widget"
++       ng-class="['dynamic_' + overviewCtl.nodes.n1ql.statusClass]">
++      <h4>Eventing Service</h4>
++      <a ui-sref="app.admin.servers.list">
++        {{overviewCtl.nodes.eventing.length || '0'}}
++        node{{overviewCtl.getEndings(overviewCtl.nodes.eventing.length)}}
++      </a>
++      <div
++         class="error"
++         ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.eventing.nodesByStatuses">
++        {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
++      </div>
++    </div>
++    <div
+        ng-show="rbac.cluster.xdcr.remote_clusters.read"
+        class="service-widget"
+        ng-class="['dynamic_' + (adminCtl.tasks.tasksXDCR.length ? 'healthy' : 'inactive')]">
+diff --git a/priv/public/ui/app/mn_admin/mn_overview/mn_overview_service.js b/priv/public/ui/app/mn_admin/mn_overview/mn_overview_service.js
+index de3724dd0..c62051533 100644
+--- a/priv/public/ui/app/mn_admin/mn_overview/mn_overview_service.js
++++ b/priv/public/ui/app/mn_admin/mn_overview/mn_overview_service.js
+@@ -141,6 +141,7 @@
+           index: getNodesByService("index", nodes),
+           n1ql: getNodesByService("n1ql", nodes),
+           fts: getNodesByService("fts", nodes),
++          eventing: getNodesByService("eventing", nodes),
+           all: nodes
+         };
+       });
+diff --git a/priv/public/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js b/priv/public/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js
+index 14bc90414..e44793c66 100644
+--- a/priv/public/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js
++++ b/priv/public/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js
+@@ -30,8 +30,8 @@
+         password: ''
+       },
+       services: {
+-        disabled: {kv: false, index: false, n1ql: false, fts: false},
+-        model: {kv: true, index: true, n1ql: true, fts: true}
++        disabled: {kv: false, index: false, n1ql: false, fts: false, eventing: false},
++        model: {kv: true, index: true, n1ql: true, fts: true, eventing: true}
+       },
+       firstTimeAddedServices: undefined
+     };
+@@ -39,10 +39,10 @@
+       maxMemorySize: undefined,
+       totalMemorySize: undefined,
+       memoryQuota: undefined,
+-      displayedServices: {kv: true, index: true, fts: true, n1ql: true},
++      displayedServices: {kv: true, index: true, fts: true, n1ql: true, eventing: true},
+       services: {
+-        disabled: {kv: true, index: false, n1ql: false, fts: false},
+-        model: {kv: true, index: true, n1ql: true, fts: true}
++        disabled: {kv: true, index: false, n1ql: false, fts: false, eventing: false},
++        model: {kv: true, index: true, n1ql: true, fts: true, eventing: true}
+       },
+       showKVMemoryQuota: true,
+       showIndexMemoryQuota: true,

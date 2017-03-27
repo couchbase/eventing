@@ -253,6 +253,7 @@
 
         this.aceLoaded = function(editor) {
             parent.editor = editor;
+            editor.getSession().setUseWorker(false);
             editor.on("click", function(e){
                 parent.lineNum = e.getDocumentPosition().row;
             });

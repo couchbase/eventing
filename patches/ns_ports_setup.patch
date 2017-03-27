@@ -1,8 +1,8 @@
 diff --git a/src/ns_ports_setup.erl b/src/ns_ports_setup.erl
-index 4394382..6810fba 100644
+index 19952c85c..748767c62 100644
 --- a/src/ns_ports_setup.erl
 +++ b/src/ns_ports_setup.erl
-@@ -279,6 +279,7 @@ dynamic_children(normal) ->
+@@ -275,6 +275,7 @@ dynamic_children(normal) ->
               per_bucket_moxi_specs(Config),
               maybe_create_ssl_proxy_spec(Config),
               run_via_goport(fun fts_spec/1, Config),
@@ -10,7 +10,7 @@ index 4394382..6810fba 100644
               run_via_goport(fun example_service_spec/1, Config)],
  
      lists:flatten(Specs).
-@@ -646,6 +647,29 @@ fts_spec(Config) ->
+@@ -642,6 +643,28 @@ fts_spec(Config) ->
              [Spec]
      end.
  
@@ -36,7 +36,6 @@ index 4394382..6810fba 100644
 +            [Spec]
 +    end.
 +
-+
  example_service_spec(Config) ->
      CacheCmd = find_executable("cache-service"),
-     {value, NodeUUID} = ns_config:search(Config, {node, node(), uuid}),
+     NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
