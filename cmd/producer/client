@@ -2,11 +2,11 @@
 
 APPNAME=$1
 PORT=$2
-TIMESTAMP=$3
+WORKERID=$3
 LOG_FILE="bin_"$(gdate +%s%N).log
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # valgrind --leak-check=full --show-leak-kinds=all --log-file="leak_dump.log" ./client.bin $APPNAME $PORT $TIMESTAMP
 
-$DIR/client.bin $APPNAME $PORT $TIMESTAMP &> $LOG_FILE
+$DIR/client.bin $APPNAME $PORT $WORKERID &> $LOG_FILE

@@ -154,13 +154,13 @@ AppWorker::AppWorker()
 AppWorker::~AppWorker() { uv_loop_close(&main_loop); }
 
 void AppWorker::Init(const std::string &appname, const std::string &addr,
-                     int port) {
+                     const std::string &worker_id, int port) {
   uv_tcp_init(&main_loop, &tcp_sock);
   uv_ip4_addr(addr.c_str(), port, &server_sock);
 
   this->app_name = appname;
-  LOG(logInfo) << "Starting worker for appname:" << appname << " port:" << port
-               << '\n';
+  LOG(logInfo) << "Starting worker for appname:" << appname
+               << " worker_id:" << worker_id << " port:" << port << '\n';
 
   uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
                  [](uv_connect_t *conn, int status) {
@@ -332,11 +332,11 @@ AppWorker *AppWorker::GetAppWorker() {
 
 int main(int argc, char **argv) {
   std::string appname(argv[1]);
-  std::string timestamp(argv[3]);
+  std::string worker_id(argv[3]);
 
   AppWorker *worker = AppWorker::GetAppWorker();
   int port = atoi(argv[2]);
-  worker->Init("credit_score", "127.0.0.1", port);
+  worker->Init(appname, "127.0.0.1", worker_id, port);
 
   cerror_out.close();
 }

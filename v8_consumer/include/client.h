@@ -48,7 +48,8 @@ typedef struct header_s {
 class AppWorker {
 public:
   static AppWorker *GetAppWorker();
-  void Init(const std::string& appname, const std::string& addr, int port);
+  void Init(const std::string &appname, const std::string &addr,
+            const std::string &worker_id, int port);
 
   void OnConnect(uv_connect_t *conn, int status);
   void OnRead(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf);

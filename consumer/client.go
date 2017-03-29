@@ -19,8 +19,7 @@ func newClient(consumer *Consumer, appName, tcpPort, workerName string) *client 
 }
 
 func (c *client) Serve() {
-	c.cmd = exec.Command("client", c.appName, c.tcpPort,
-		time.Now().UTC().Format("2006-01-02T15:04:05.000000000-0700"))
+	c.cmd = exec.Command("client", c.appName, c.tcpPort, c.consumerHandle.ConsumerName())
 	c.cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}
