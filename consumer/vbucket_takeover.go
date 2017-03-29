@@ -56,13 +56,14 @@ func (c *Consumer) doVbTakeover(vbno uint16) {
 		if c.HostPortAddr() != vbBlob.CurrentVBOwner &&
 			!c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner) && c.checkIfCurrentNodeShouldOwnVb(vbno) {
 
-			logging.Infof("CRVT[%s:%s:%s:%d] Node: %v taking ownership of vb: %d old node: %s isn't alive any more as per ns_server",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vbno, vbBlob.CurrentVBOwner)
+			logging.Infof("CRVT[%s:%s:%s:%d] Node: %v taking ownership of vb: %d old node: %s isn't alive any more as per ns_server vbuuid: %v vblob.uuid: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vbno, vbBlob.CurrentVBOwner,
+				c.NodeUUID(), vbBlob.NodeUUID)
 
 			// Below checks help in differentiating between a hostname update vs failover from 2 -> 1
 			// eventing node. In former case, it isn't required to spawn a new dcp stream but in later
 			// it's needed.
-			if vbBlob.NodeUUID == c.NodeUUID() {
+			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
 				c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, false)
 			} else {
 				c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
@@ -109,6 +110,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbB
 		return c.dcpRequestStreamHandle(vbno, vbBlob, vbBlob.LastSeqNoProcessed)
 	}
 
+	c.cleanupStaleDcpFeedHandles()
 	return nil
 }
 

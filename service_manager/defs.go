@@ -10,16 +10,16 @@ import (
 )
 
 const (
-	MetakvEventingPath       = "/eventing/"
-	MetakvAppsPath           = MetakvEventingPath + "apps/"
-	MetakvAppSettingsPath    = MetakvEventingPath + "settings/"
-	MetakvRebalanceTokenPath = MetakvEventingPath + "rebalanceToken/"
+	metakvEventingPath       = "/eventing/"
+	metakvAppsPath           = metakvEventingPath + "apps/"
+	metakvAppSettingsPath    = metakvEventingPath + "settings/"
+	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 )
 
 const (
-	DefaultWorkerCount                  = 3
-	DefaultStatsTickDuration            = 10000
-	HTTPRequestTimeout                  = time.Duration(1000) * time.Millisecond
+	defaultWorkerCount       = 3
+	defaultStatsTickDuration = 10000
+	// HTTPRequestTimeout                  = time.Duration(1000) * time.Millisecond
 	rebalanceProgressUpdateTickInterval = time.Duration(3000) * time.Millisecond
 )
 
@@ -31,15 +31,37 @@ type ServiceMgr struct {
 	eventingAdminPort string
 	failoverNotif     bool
 	mu                *sync.RWMutex
-	nodeInfo          *service.NodeInfo
-	rebalanceCtx      *rebalanceContext
-	rebUpdateTicker   *time.Ticker
-	rebalanceRunning  bool
-	restPort          string
-	servers           []service.NodeID
+
+	nodeInfo         *service.NodeInfo
+	rebalanceCtx     *rebalanceContext
+	rebalancer       *rebalancer
+	rebalanceRunning bool
+
+	rebUpdateTicker *time.Ticker
+	restPort        string
+	servers         []service.NodeID
 	state
+
 	superSup common.EventingSuperSup
 	waiters  waiters
+}
+
+type doneCallback func(err error, cancel <-chan struct{})
+type progressCallback func(progress float64, cancel <-chan struct{})
+
+type callbacks struct {
+	done     doneCallback
+	progress progressCallback
+}
+
+type rebalancer struct {
+	cb     callbacks
+	change service.TopologyChange
+
+	c    chan struct{}
+	done chan struct{}
+
+	adminPort string
 }
 
 type rebalanceContext struct {

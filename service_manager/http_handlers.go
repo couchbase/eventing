@@ -45,11 +45,11 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 }
 
 func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
-	appList := util.ListChildren(MetakvAppsPath)
+	appList := util.ListChildren(metakvAppsPath)
 	respData := make([]application, len(appList))
 	for index, appName := range appList {
 
-		path := MetakvAppsPath + appName
+		path := metakvAppsPath + appName
 		data, err := util.MetakvGet(path)
 		if err == nil {
 
@@ -160,14 +160,14 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 
 	appContent := builder.FinishedBytes()
 
-	path := MetakvAppsPath + appName
+	path := metakvAppsPath + appName
 	err = util.MetakvSet(path, appContent, nil)
 	if err != nil {
 		fmt.Fprintf(w, "Failed to write app config to metakv, err: %v", err)
 		return
 	}
 
-	settingsPath := MetakvAppSettingsPath + appName
+	settingsPath := metakvAppSettingsPath + appName
 	sData, err := util.MetakvGet(settingsPath)
 	if err != nil {
 		fmt.Fprintf(w, "App: %s Failed to fetch settings from metakv, err: %v", appName, err)
@@ -177,8 +177,8 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	if sData == nil {
 		settings := make(map[string]interface{})
 		settings["dcp_stream_boundary"] = "everything"
-		settings["tick_duration"] = DefaultStatsTickDuration
-		settings["worker_count"] = DefaultWorkerCount
+		settings["tick_duration"] = defaultStatsTickDuration
+		settings["worker_count"] = defaultWorkerCount
 
 		mData, mErr := json.Marshal(&settings)
 		if mErr != nil {
