@@ -6,8 +6,8 @@
 #include <string>
 #include <vector>
 
-#include <include/v8.h>
 #include <include/libplatform/libplatform.h>
+#include <include/v8.h>
 
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
@@ -58,13 +58,14 @@ bool N1QL::Initialize(V8Worker *w, std::map<std::string, std::string> *n1ql) {
 
   v8::HandleScope handle_scope(GetIsolate());
 
-  v8::Local<v8::Context> context = v8::Local<v8::Context>::New(GetIsolate(), w->context_);
+  v8::Local<v8::Context> context =
+      v8::Local<v8::Context>::New(GetIsolate(), w->context_);
   context_.Reset(GetIsolate(), context);
 
   v8::Context::Scope context_scope(context);
 
   if (!InstallMaps(n1ql))
-      return false;
+    return false;
 
   return true;
 }
@@ -113,16 +114,18 @@ bool N1QL::InstallMaps(std::map<std::string, std::string> *n1ql) {
 
   v8::Local<v8::Object> n1ql_obj = WrapN1QLMap(n1ql);
 
-  v8::Local<v8::Context> context = v8::Local<v8::Context>::New(GetIsolate(), context_);
+  v8::Local<v8::Context> context =
+      v8::Local<v8::Context>::New(GetIsolate(), context_);
 
   LOG(logInfo) << "Registering handler for n1ql_alias: " << n1ql_alias.c_str()
                << '\n';
 
   // Set the options object as a property on the global object.
   context->Global()
-      ->Set(context, v8::String::NewFromUtf8(GetIsolate(), n1ql_alias.c_str(),
-                                             v8::NewStringType::kNormal)
-                         .ToLocalChecked(),
+      ->Set(context,
+            v8::String::NewFromUtf8(GetIsolate(), n1ql_alias.c_str(),
+                                    v8::NewStringType::kNormal)
+                .ToLocalChecked(),
             n1ql_obj)
       .FromJust();
 
@@ -137,11 +140,11 @@ void N1QL::N1QLEnumGetCall(v8::Local<v8::Name> name,
 
   std::string query = ObjectToString(v8::Local<v8::String>::Cast(name));
 
-  lcb_t* n1ql_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
+  lcb_t *n1ql_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
 
   lcb_error_t rc;
   lcb_N1QLPARAMS *params;
-  lcb_CMDN1QL qcmd= { 0 };
+  lcb_CMDN1QL qcmd = {0};
   Rows rows;
 
   LOG(logInfo) << "n1ql query fired: " << query << '\n';

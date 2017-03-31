@@ -20,9 +20,10 @@ extern void setLogLevel(LogLevel level);
 static std::ostringstream &Logger(LogLevel level = logInfo) {
   auto t = std::time(nullptr);
   auto tm = *std::localtime(&t);
-  os << std::put_time(&tm, "%d-%m-%YT%H-%M-%S%z");
+  os << std::put_time(&tm, "%Y-%m-%dT%H-%M-%S%z");
   os << " " << LevelToString(level) << " ";
-  os << "VWCP" << " ";
+  os << "VWCP"
+     << " ";
   return os;
 }
 
@@ -53,8 +54,10 @@ static LogLevel LevelFromString(const std::string &level) {
   return logInfo;
 }
 
-#define LOG(level) \
-  if (level > desiredLogLevel) ; \
-else Logger(level)
+#define LOG(level)                                                             \
+  if (level > desiredLogLevel)                                                 \
+    ;                                                                          \
+  else                                                                         \
+    Logger(level)
 
 #endif // __LOG_H__

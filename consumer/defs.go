@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"bytes"
 	"net"
 	"os/exec"
 	"sync"
@@ -33,7 +34,7 @@ const (
 	dcpStreamRequestRetryInterval = time.Duration(1000) * time.Millisecond
 
 	// Last processed seq # checkpoint interval
-	checkPointInterval = time.Duration(2000) * time.Millisecond
+	checkPointInterval = time.Duration(25000) * time.Millisecond
 
 	// Interval for retrying failed cluster related operations
 	clusterOpRetryInterval = time.Duration(1000) * time.Millisecond
@@ -110,6 +111,16 @@ type Consumer struct {
 
 	// Map that needed to short circuits failover log to dcp stream request routine
 	vbFlogChan chan *vbFlogEntry
+
+	sendMsgCounter int
+	// For performance reasons, Golang writes dcp events to tcp socket in batches
+	// socketWriteBatchSize controls the batch size
+	socketWriteBatchSize int
+	sendMsgBuffer        bytes.Buffer
+	// Stores the vbucket seqnos for socket write batch
+	// Upon reading message back from CPP world, vbProcessingStats will be
+	// updated for all vbuckets in that batch
+	writeBatchSeqnoMap map[uint16]uint64
 
 	// host:port handle for current eventing node
 	hostPortAddr string

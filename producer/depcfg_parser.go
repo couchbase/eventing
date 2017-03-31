@@ -57,13 +57,14 @@ func (p *Producer) parseDepcfg() error {
 		p.logLevel = settings["log_level"].(string)
 		p.statsTickDuration = time.Duration(settings["tick_duration"].(float64))
 		p.workerCount = int(settings["worker_count"].(float64))
+		p.socketWriteBatchSize = int(settings["sock_batch_size"].(float64))
 		p.app.Settings = settings
 
 		logging.Infof("DCFG[%s] Loaded app => wc: %v auth: %v bucket: %v statsTickD: %v",
 			p.appName, p.workerCount, p.auth, p.bucket, p.statsTickDuration)
 
 		if p.workerCount <= 0 {
-			return fmt.Errorf("%v", ErrorUnexpectedWorkerCount)
+			return fmt.Errorf("%v", errorUnexpectedWorkerCount)
 		}
 
 		hostaddr := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)

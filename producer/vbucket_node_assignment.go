@@ -22,7 +22,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 
 	eventingNodeAddrs := p.getEventingNodeAddrs()
 	if len(eventingNodeAddrs) <= 0 {
-		return fmt.Errorf("%v", ErrorUnexpectedEventingNodeCount)
+		return fmt.Errorf("%v", errorUnexpectedEventingNodeCount)
 	}
 
 	vbucketsPerNode := numVbuckets / len(eventingNodeAddrs)

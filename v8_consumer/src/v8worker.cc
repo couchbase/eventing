@@ -3,29 +3,28 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
-#include <unistd.h>
 #include <iostream>
 #include <mutex>
 #include <regex>
 #include <sstream>
 #include <thread>
 #include <typeinfo>
+#include <unistd.h>
 
-#include "../include/parse_deployment.h"
 #include "../include/bucket.h"
 #include "../include/n1ql.h"
+#include "../include/parse_deployment.h"
 
 #define MAXPATHLEN 256
 
-enum RETURN_CODE
-{
-    SUCCESS = 0,
-    FAILED_TO_COMPILE_JS,
-    NO_HANDLERS_DEFINED,
-    FAILED_INIT_BUCKET_HANDLE,
-    FAILED_INIT_N1QL_HANDLE,
-    ON_UPDATE_CALL_FAIL,
-    ON_DELETE_CALL_FAIL
+enum RETURN_CODE {
+  SUCCESS = 0,
+  FAILED_TO_COMPILE_JS,
+  NO_HANDLERS_DEFINED,
+  FAILED_INIT_BUCKET_HANDLE,
+  FAILED_INIT_N1QL_HANDLE,
+  ON_UPDATE_CALL_FAIL,
+  ON_DELETE_CALL_FAIL
 };
 
 // Copies a C string to a 16-bit string.  Does not check for buffer overflow.
@@ -42,8 +41,8 @@ int AsciiToUtf16(const char *input_buffer, uint16_t *output_buffer) {
 }
 
 v8::Local<v8::String> createUtf8String(v8::Isolate *isolate, const char *str) {
-  return v8::String::NewFromUtf8(isolate, str,
-          v8::NewStringType::kNormal).ToLocalChecked();
+  return v8::String::NewFromUtf8(isolate, str, v8::NewStringType::kNormal)
+      .ToLocalChecked();
 }
 
 std::string ObjectToString(v8::Local<v8::Value> value) {
@@ -64,7 +63,7 @@ std::string ToString(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
 
   v8::Local<v8::Value> result;
   v8::Local<v8::Value> args[1];
-  args[0] = { object };
+  args[0] = {object};
   result = JSON_stringify->Call(context->Global(), 1, args);
   return ObjectToString(result);
 }
@@ -72,8 +71,8 @@ std::string ToString(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
 lcb_t *UnwrapLcbInstance(v8::Local<v8::Object> obj) {
   v8::Local<v8::External> field =
       v8::Local<v8::External>::Cast(obj->GetInternalField(1));
-  void* ptr = field->Value();
-  return static_cast<lcb_t*>(ptr);
+  void *ptr = field->Value();
+  return static_cast<lcb_t *>(ptr);
 }
 
 lcb_t *UnwrapV8WorkerLcbInstance(v8::Local<v8::Object> obj) {
@@ -122,18 +121,12 @@ const char *ToJson(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
 }
 
 void Print(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  bool first = true;
+      std::string log_msg;
   for (int i = 0; i < args.Length(); i++) {
-    v8::HandleScope handle_scope(args.GetIsolate());
-    if (first) {
-      first = false;
-    } else {
-      LOG(logDebug) << " ";
+      log_msg += ToJson(args.GetIsolate(), args[i]);
+      log_msg += ' ';
     }
-    v8::String::Utf8Value str(args[i]);
-    const char* cstr = ToJson(args.GetIsolate(), args[i]);
-    LOG(logDebug) << cstr << '\n';
-  }
+    LOG(logDebug) << log_msg << '\n';
 }
 
 std::string ConvertToISO8601(std::string timestamp) {
@@ -167,7 +160,7 @@ std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch) {
 
   v8::HandleScope handle_scope(isolate);
   v8::String::Utf8Value exception(try_catch->Exception());
-  const char* exception_string = ToCString(exception);
+  const char *exception_string = ToCString(exception);
 
   v8::Handle<v8::Message> message = try_catch->Message();
 
@@ -285,7 +278,7 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "log"),
               v8::FunctionTemplate::New(GetIsolate(), Print));
 
-  if(try_catch.HasCaught()) {
+  if (try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
     LOG(logError) << "Last expection: " << last_exception << '\n';
   }
@@ -300,7 +293,9 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
 
   cb_source_bucket.assign(config->source_bucket);
 
-  std::map<std::string, std::map<std::string, std::vector<std::string>>>::iterator it = config->component_configs.begin();
+  std::map<std::string,
+           std::map<std::string, std::vector<std::string>>>::iterator it =
+      config->component_configs.begin();
 
   for (; it != config->component_configs.end(); it++) {
 
@@ -313,15 +308,20 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
             config->component_configs["buckets"][bucket_alias][0];
 
         bucket_handle =
-            new Bucket(this, bucket_name.c_str(), cb_kv_endpoint.c_str(), bucket_alias.c_str());
+            new Bucket(this, bucket_name.c_str(), cb_kv_endpoint.c_str(),
+                       bucket_alias.c_str());
       }
     }
 
-    n1ql_handle =
-        new N1QL(this, cb_source_bucket.c_str(), cb_kv_endpoint.c_str(), "_n1ql");
+    n1ql_handle = new N1QL(this, cb_source_bucket.c_str(),
+                           cb_kv_endpoint.c_str(), "_n1ql");
   }
 
-  std::string connstr = "couchbase://" + cb_kv_endpoint + "/" + config->metadata_bucket.c_str();
+  std::string connstr =
+      "couchbase://" + cb_kv_endpoint + "/" + config->metadata_bucket.c_str();
+
+  LOG(logInfo) << "Initialised V8Worker handle, app_name: " << app_name
+               << " kv_host_port: " << kv_host_port << '\n';
 
   delete config;
   // lcb related setup
@@ -487,15 +487,14 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   if (doc_type.compare("json") == 0) {
     args[0] =
         v8::JSON::Parse(v8::String::NewFromUtf8(GetIsolate(), value.c_str()));
-  }
-  else {
+  } else {
     args[0] = v8::String::NewFromUtf8(GetIsolate(), value.c_str());
   }
 
   args[1] =
       v8::JSON::Parse(v8::String::NewFromUtf8(GetIsolate(), meta.c_str()));
 
-  if(try_catch.HasCaught()) {
+  if (try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
     LOG(logError) << "Last exception: " << last_exception << '\n';
   }
@@ -551,5 +550,3 @@ const char *V8Worker::V8WorkerVersion() { return v8::V8::GetVersion(); }
 void V8Worker::V8WorkerTerminateExecution() {
   v8::V8::TerminateExecution(GetIsolate());
 }
-
-

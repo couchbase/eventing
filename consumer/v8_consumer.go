@@ -21,7 +21,7 @@ import (
 
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, p common.EventingProducer, app *common.AppConfig,
-	vbnos []uint16, bucket, logLevel, tcpPort, uuid string, workerID int) *Consumer {
+	vbnos []uint16, bucket, logLevel, tcpPort, uuid string, sockWriteBatchSize, workerID int) *Consumer {
 	var b *couchbase.Bucket
 	consumer := &Consumer{
 		app:                       app,
@@ -37,7 +37,9 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, p common.EventingProdu
 		logLevel:                  logLevel,
 		producer:                  p,
 		restartVbDcpStreamTicker:  time.NewTicker(restartVbDcpStreamTickInterval),
+		sendMsgCounter:            0,
 		signalConnectedCh:         make(chan bool, 1),
+		socketWriteBatchSize:      sockWriteBatchSize,
 		statsTicker:               time.NewTicker(statsTickInterval),
 		stopControlRoutineCh:      make(chan bool),
 		tcpPort:                   tcpPort,
@@ -50,6 +52,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, p common.EventingProdu
 		vbsRemainingToOwn:         make([]uint16, 0),
 		vbsRemainingToRestream:    make([]uint16, 0),
 		workerName:                fmt.Sprintf("worker_%s_%d", app.AppName, workerID),
+		writeBatchSeqnoMap:        make(map[uint16]uint64),
 	}
 	return consumer
 }
@@ -110,14 +113,8 @@ func (c *Consumer) HandleV8Worker() {
 
 	payload := makeV8InitPayload(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData())
 	c.sendInitV8Worker(payload)
-	resp := c.readMessage()
-	logging.Infof("V8CR[%s:%s:%s:%d] Response from worker for init call: %s",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), resp.res)
 
 	c.sendLoadV8Worker(c.app.AppCode)
-	resp = c.readMessage()
-	logging.Infof("V8CR[%s:%s:%s:%d] Response from worker for app load call: %s",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), resp.res)
 
 	go c.doLastSeqNoCheckpoint()
 

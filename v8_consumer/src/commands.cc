@@ -73,5 +73,3 @@ app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
     return oLogLevel;
   return App_Worker_Setting_Opcode_Unknown;
 }
-
-

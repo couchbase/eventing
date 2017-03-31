@@ -39,8 +39,9 @@ func main() {
 	settings := make(map[string]interface{})
 	settings["dcp_stream_boundary"] = "everything"
 	settings["log_level"] = "INFO"
-	settings["worker_count"] = 3
+	settings["sock_batch_size"] = 1000
 	settings["tick_duration"] = 5000
+	settings["worker_count"] = 3
 
 	sData, err := json.Marshal(&settings)
 	if err != nil {

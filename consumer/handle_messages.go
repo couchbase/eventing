@@ -2,13 +2,11 @@ package consumer
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/couchbase/eventing/flatbuf/worker_response"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	"github.com/couchbase/indexing/secondary/dcp/transport/client"
 	"github.com/couchbase/indexing/secondary/logging"
@@ -21,7 +19,7 @@ func (c *Consumer) sendLogLevel(logLevel string) error {
 		Header: header,
 	}
 
-	return c.sendMessage(msg)
+	return c.sendMessage(msg, 0, 0, false)
 }
 
 func (c *Consumer) sendInitV8Worker(payload []byte) error {
@@ -38,7 +36,7 @@ func (c *Consumer) sendInitV8Worker(payload []byte) error {
 	}
 	c.v8WorkerMessagesProcessed["V8_INIT"]++
 
-	return c.sendMessage(msg)
+	return c.sendMessage(msg, 0, 0, false)
 }
 
 func (c *Consumer) sendLoadV8Worker(appCode string) error {
@@ -54,7 +52,7 @@ func (c *Consumer) sendLoadV8Worker(appCode string) error {
 	}
 	c.v8WorkerMessagesProcessed["V8_LOAD"]++
 
-	return c.sendMessage(msg)
+	return c.sendMessage(msg, 0, 0, false)
 }
 
 func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent) {
@@ -89,26 +87,16 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent) {
 		Payload: dcpPayload,
 	}
 
-	c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", e.Seqno)
-
-	if err := c.sendMessage(msg); err != nil {
-		c.stopCheckpointingCh <- true
-		c.gracefulShutdownChan <- true
+	if err := c.sendMessage(msg, e.VBucket, e.Seqno, true); err != nil {
 		return
 	}
 
-	if resp := c.readMessage(); resp.err != nil {
-		c.stopCheckpointingCh <- true
-		c.gracefulShutdownChan <- true
-		return
-	}
 }
 
-func (c *Consumer) sendMessage(msg *message) error {
+func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldCheckpoint bool) error {
 
 	// Protocol encoding format:
 	//<headerSize><payloadSize><Header><Payload>
-	var buffer bytes.Buffer
 
 	// For debugging
 	// event := ReadHeader(msg.Header)
@@ -116,66 +104,92 @@ func (c *Consumer) sendMessage(msg *message) error {
 	// 	ReadPayload(msg.Payload)
 	// }
 
-	err := binary.Write(&buffer, binary.LittleEndian, uint32(len(msg.Header)))
+	err := binary.Write(&c.sendMsgBuffer, binary.LittleEndian, uint32(len(msg.Header)))
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing header size, err : %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		return err
 	}
 
-	err = binary.Write(&buffer, binary.LittleEndian, uint32(len(msg.Payload)))
+	err = binary.Write(&c.sendMsgBuffer, binary.LittleEndian, uint32(len(msg.Payload)))
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing payload size, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		return err
 	}
 
-	err = binary.Write(&buffer, binary.LittleEndian, msg.Header)
+	err = binary.Write(&c.sendMsgBuffer, binary.LittleEndian, msg.Header)
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing encoded header, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		return err
 	}
 
-	err = binary.Write(&buffer, binary.LittleEndian, msg.Payload)
+	err = binary.Write(&c.sendMsgBuffer, binary.LittleEndian, msg.Payload)
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing encoded payload, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		return err
 	}
 
-	c.conn.SetWriteDeadline(time.Now().Add(WriteDeadline))
-	err = binary.Write(c.conn, binary.LittleEndian, buffer.Bytes())
-	if err != nil {
-		logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-		c.stopConsumerCh <- true
-		c.conn.Close()
+	c.sendMsgCounter++
+	if shouldCheckpoint {
+		if _, ok := c.writeBatchSeqnoMap[vb]; !ok {
+			c.writeBatchSeqnoMap[vb] = seqno
+		}
+		c.writeBatchSeqnoMap[vb] = seqno
 	}
 
-	return err
+	if c.sendMsgCounter >= c.socketWriteBatchSize {
+		logging.Infof("CRHM[%s:%s:%s:%d] SendMsgCounter: %v, batch size: %v buffer len: %v cap: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.sendMsgCounter, c.socketWriteBatchSize,
+			c.sendMsgBuffer.Len(), c.sendMsgBuffer.Cap())
+
+		c.conn.SetWriteDeadline(time.Now().Add(WriteDeadline))
+
+		err = binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
+		if err != nil {
+			logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+			c.stopConsumerCh <- true
+			c.stopCheckpointingCh <- true
+			c.gracefulShutdownChan <- true
+			c.conn.Close()
+			return err
+		}
+
+		// Reset the sendMessage buffer and message counter
+		c.sendMsgBuffer.Reset()
+		c.sendMsgCounter = 0
+
+		if err := c.readMessage(); err != nil {
+			c.stopCheckpointingCh <- true
+			c.gracefulShutdownChan <- true
+		}
+
+		for vb, seqno := range c.writeBatchSeqnoMap {
+			c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", seqno)
+		}
+
+		c.writeBatchSeqnoMap = make(map[uint16]uint64)
+	}
+
+	return nil
 }
 
-func (c *Consumer) readMessage() *response {
-	var result *response
+func (c *Consumer) readMessage() error {
 	c.conn.SetReadDeadline(time.Now().Add(ReadDeadline))
-	msg, err := bufio.NewReader(c.conn).ReadSlice('\n')
+	msg, err := bufio.NewReader(c.conn).ReadBytes('\r')
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Read from client socket failed, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 
 		c.stopConsumerCh <- true
 		c.conn.Close()
-
-		result = &response{
-			res: "",
-			err: err,
-		}
 	} else {
-		decodedRes := worker_response.GetRootAsMessage(msg, 0)
-		logEntry := string(decodedRes.LogEntry())
-
-		result = &response{
-			logEntry: logEntry,
-			err:      err,
+		if len(msg) > 1 {
+			fmt.Println(string(msg))
 		}
-		fmt.Printf(result.logEntry)
 	}
-	return result
+	return err
 }

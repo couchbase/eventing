@@ -11,16 +11,13 @@
 int messages_processed(0);
 
 static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
-  auto header =
-      flatbuf::header::GetHeader(parsed_message->header.c_str());
+  auto header = flatbuf::header::GetHeader(parsed_message->header.c_str());
 
   std::unique_ptr<header_t> parsed_header(new header_t);
   parsed_header->event = header->event();
   parsed_header->opcode = header->opcode();
 
-  // if (header->metadata() != nullptr) {
-    parsed_header->metadata = header->metadata()->str();
-  // }
+  parsed_header->metadata = header->metadata()->str();
 
   return parsed_header;
 }
@@ -42,7 +39,7 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       dep_cfg.assign(payload->depcfg()->str());
       kv_host_port.assign(payload->kv_host_port()->str());
 
-      LOG(logInfo) << "Loading app:" << parsed_header->metadata << '\n';
+      LOG(logInfo) << "Loading app:" << app_name << '\n';
       this->v8worker = new V8Worker(app_name, dep_cfg, kv_host_port);
       result.assign("Loaded requested app\n");
       break;
@@ -113,7 +110,7 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                    << '\n';
       break;
     case App_Worker_Setting_Opcode_Unknown:
-        break;
+      break;
     }
     break;
   case Event_Unknown:
@@ -141,12 +138,11 @@ ParseServerMessage(int encoded_header_size, int encoded_payload_size,
 
 static void alloc_buffer(uv_handle_t *handle, size_t suggested_size,
                          uv_buf_t *buf) {
-  std::vector<char>* read_buffer = AppWorker::GetAppWorker()->GetReadBuffer();
+  std::vector<char> *read_buffer = AppWorker::GetAppWorker()->GetReadBuffer();
   *buf = uv_buf_init(read_buffer->data(), read_buffer->capacity());
 }
 
-AppWorker::AppWorker()
-    : main_loop_running(false), conn_handle(nullptr) {
+AppWorker::AppWorker() : main_loop_running(false), conn_handle(nullptr) {
   uv_loop_init(&main_loop);
   read_buffer.resize(MAX_BUF_SIZE);
 }
@@ -154,13 +150,17 @@ AppWorker::AppWorker()
 AppWorker::~AppWorker() { uv_loop_close(&main_loop); }
 
 void AppWorker::Init(const std::string &appname, const std::string &addr,
-                     const std::string &worker_id, int port) {
+                     const std::string &worker_id, int batch_size, int port) {
   uv_tcp_init(&main_loop, &tcp_sock);
   uv_ip4_addr(addr.c_str(), port, &server_sock);
 
   this->app_name = appname;
+  this->batch_size = batch_size;
+  this->messages_processed_counter = 0;
+
   LOG(logInfo) << "Starting worker for appname:" << appname
-               << " worker_id:" << worker_id << " port:" << port << '\n';
+               << " worker_id:" << worker_id << " batch_size:" << batch_size
+               << " port:" << port << '\n';
 
   uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
                  [](uv_connect_t *conn, int status) {
@@ -252,31 +252,23 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
           std::string result = RouteMessageWithResponse(parsed_header.get(),
                                                         parsed_message.get());
 
-          if (!result.empty()) {
+          this->messages_processed_counter++;
+
+          if (this->messages_processed_counter >= this->batch_size) {
             // TODO: replace it with unique_ptr
             write_req_t *req = new (write_req_t);
 
-            flatbuffers::FlatBufferBuilder builder;
-            auto respMsg = builder.CreateString(result.c_str());
             std::string logMsgs = FlushLog();
-            auto logEntry = builder.CreateString(logMsgs.c_str());
+            logMsgs += '\r';
+            req->buf = uv_buf_init((char *)logMsgs.c_str(),
+                                   logMsgs.length());
 
-            auto response = flatbuf::worker_response::CreateMessage(
-                builder, respMsg, logEntry);
-            builder.Finish(response);
-
-            auto bufferpointer =
-                reinterpret_cast<const char *>(builder.GetBufferPointer());
-            std::string response_buf;
-            response_buf.assign(bufferpointer,
-                                bufferpointer + builder.GetSize());
-
-            req->buf = uv_buf_init((char *)response_buf.c_str(),
-                                   response_buf.length());
             uv_write((uv_write_t *)req, stream, &req->buf, 1,
                      [](uv_write_t *req, int status) {
                        AppWorker::GetAppWorker()->OnWrite(req, status);
                      });
+
+            this->messages_processed_counter = 0;
           }
         }
       }
@@ -285,7 +277,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
   }
 
   if (buf_base.length() > 0) {
-      next_message.assign(buf_base);
+    next_message.assign(buf_base);
   }
 }
 
@@ -319,7 +311,7 @@ void AppWorker::OnWrite(uv_write_t *req, int status) {
     LOG(logError) << "Write error, err: " << uv_strerror(status) << '\n';
   }
 
-  write_req_t *wr = (write_req_t *) req;
+  write_req_t *wr = (write_req_t *)req;
   delete wr;
 }
 
@@ -332,11 +324,10 @@ AppWorker *AppWorker::GetAppWorker() {
 
 int main(int argc, char **argv) {
   std::string appname(argv[1]);
+  int port = atoi(argv[2]);
   std::string worker_id(argv[3]);
+  int batch_size = atoi(argv[4]);
 
   AppWorker *worker = AppWorker::GetAppWorker();
-  int port = atoi(argv[2]);
-  worker->Init(appname, "127.0.0.1", worker_id, port);
-
-  cerror_out.close();
+  worker->Init(appname, "127.0.0.1", worker_id, batch_size, port);
 }

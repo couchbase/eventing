@@ -5,18 +5,17 @@
 #include <string>
 #include <vector>
 
-#include <include/v8.h>
 #include <include/libplatform/libplatform.h>
+#include <include/v8.h>
 
 #include "v8worker.h"
 
 struct Rows {
-    std::vector<std::string> rows;
-    std::string metadata;
-    lcb_error_t rc;
-    short htcode;
-    Rows() : rc(LCB_ERROR), htcode(0) {
-    }
+  std::vector<std::string> rows;
+  std::string metadata;
+  lcb_error_t rc;
+  short htcode;
+  Rows() : rc(LCB_ERROR), htcode(0) {}
 };
 
 class N1QL {

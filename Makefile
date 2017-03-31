@@ -22,7 +22,7 @@ build:
 	$(CBDEPS_DIR)bin/flatc -o flatbuf/include/ -c flatbuf/schema/*.fbs
 	$(CBDEPS_DIR)bin/flatc -g flatbuf/schema/*.fbs
 	$(CXX) $(CXFLAGS) $(SOURCES) $(INCLUDE_DIRS) $(LDFLAGS) -o $(OUT)
-	cd $(CMD_DIR); go build -race; bash fix_rpath.sh
+	cd $(CMD_DIR); go build; bash fix_rpath.sh
 
 allopt:
 	$(CXX) $(CXFLAGS) $(SOURCES) $(INCLUDE_DIRS) $(LDFLAGS) -O3 -o $(OUT)

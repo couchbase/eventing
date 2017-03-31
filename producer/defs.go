@@ -67,6 +67,10 @@ type Producer struct {
 	consumerListeners []net.Listener
 	ProducerListener  net.Listener
 
+	// For performance reasons, Golang writes dcp events to tcp socket in batches
+	// socketWriteBatchSize controls the batch size
+	socketWriteBatchSize int
+
 	// Chan to notify super_supervisor about clean producer shutdown
 	notifySupervisorCh chan bool
 

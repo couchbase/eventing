@@ -19,7 +19,6 @@ extern void assert(int);
 #include <cassert>
 #endif
 
-
 class Bucket;
 class N1QL;
 class V8Worker;
@@ -37,8 +36,8 @@ v8::Local<v8::String> createUtf8String(v8::Isolate *isolate, const char *str);
 std::string ObjectToString(v8::Local<v8::Value> value);
 std::string ToString(v8::Isolate *isolate, v8::Handle<v8::Value> object);
 
-lcb_t* UnwrapLcbInstance(v8::Local<v8::Object> obj);
-lcb_t* UnwrapV8WorkerLcbInstance(v8::Local<v8::Object> obj);
+lcb_t *UnwrapLcbInstance(v8::Local<v8::Object> obj);
+lcb_t *UnwrapV8WorkerLcbInstance(v8::Local<v8::Object> obj);
 V8Worker *UnwrapV8WorkerInstance(v8::Local<v8::Object> obj);
 
 std::map<std::string, std::string> *UnwrapMap(v8::Local<v8::Object> obj);

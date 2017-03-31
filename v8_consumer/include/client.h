@@ -13,20 +13,15 @@ extern void assert(int);
 
 #include "../../flatbuf/include/header_generated.h"
 #include "../../flatbuf/include/payload_generated.h"
-#include "../../flatbuf/include/v8_worker_response_generated.h"
 
-#include <fstream>
 #include <queue>
 #include <uv.h>
 #include <vector>
 
 const size_t MAX_BUF_SIZE = 65536;
 
-const int HEADER_FRAGMENT_SIZE = 4; // uint32
+const int HEADER_FRAGMENT_SIZE = 4;  // uint32
 const int PAYLOAD_FRAGMENT_SIZE = 4; // uint32
-
-std::ofstream cinfo_out;
-std::ofstream cerror_out;
 
 typedef struct {
   uv_write_t req;
@@ -44,12 +39,11 @@ typedef struct header_s {
   std::string metadata;
 } header_t;
 
-
 class AppWorker {
 public:
   static AppWorker *GetAppWorker();
   void Init(const std::string &appname, const std::string &addr,
-            const std::string &worker_id, int port);
+            const std::string &worker_id, int batch_size, int port);
 
   void OnConnect(uv_connect_t *conn, int status);
   void OnRead(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf);
@@ -82,6 +76,14 @@ private:
   std::string app_name;
 
   std::string next_message;
+
+  // In order to improve throughput, dcp events are sent in batches
+  // batch_size controls the size of it
+  int batch_size;
+
+  // Tracks counter for dcp events processed so far and writes to
+  // socket when counter reaches batch_size;
+  int messages_processed_counter;
 
   std::vector<char> read_buffer;
   MessagePool outgoing_queue;

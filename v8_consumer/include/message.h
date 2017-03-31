@@ -1,9 +1,9 @@
 #ifndef MESSAGE_H
 #define MESSAGE_H
 
+#include <memory>
 #include <queue>
 #include <string>
-#include <memory>
 #include <uv.h>
 #include <vector>
 
@@ -30,13 +30,13 @@ public:
   void Release();
 
 protected:
-  std::queue<std::unique_ptr<uv_write_t> > unused_wr_buf_pool;
-  std::queue<std::unique_ptr<uv_write_t> > used_wr_buf_pool;
+  std::queue<std::unique_ptr<uv_write_t>> unused_wr_buf_pool;
+  std::queue<std::unique_ptr<uv_write_t>> used_wr_buf_pool;
 };
 
 class MessagePool {
 public:
-  std::queue<std::shared_ptr<Message> > messages;
+  std::queue<std::shared_ptr<Message>> messages;
   WriteBufPool write_bufs;
 };
 
