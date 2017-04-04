@@ -42,6 +42,9 @@ type Producer struct {
 	kvPort                 string
 	kvHostPorts            []string
 	logLevel               string
+	rbacpass               string
+	rbacrole               string
+	rbacuser               string
 	metadatabucket         string
 	metakvAppHostPortsPath string
 	nsServerPort           string

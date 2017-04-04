@@ -326,3 +326,15 @@ func (p *Producer) NotifyStartTopologyChange(msg *common.TopologyChangeMsg) {
 func (p *Producer) NotifyPrepareTopologyChange(keepNodes []string) {
 	p.eventingNodeUUIDs = keepNodes
 }
+
+// RbacUser return username for eventing specific rbac user, which
+// has all admin privileges
+func (p *Producer) RbacUser() string {
+	return p.rbacuser
+}
+
+// RbacPass return password for eventing specific rbac user, which
+// has all admin privileges
+func (p *Producer) RbacPass() string {
+	return p.rbacpass
+}

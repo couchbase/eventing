@@ -14,6 +14,14 @@ extern void assert(int);
 #include "../../flatbuf/include/header_generated.h"
 #include "../../flatbuf/include/payload_generated.h"
 
+#include <err.h>
+#include <errno.h>
+#include <execinfo.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <queue>
 #include <uv.h>
 #include <vector>

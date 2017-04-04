@@ -56,6 +56,7 @@ func (m *ServiceMgr) initService() {
 
 	go m.registerWithServer()
 
+	http.HandleFunc("/setSettings/", m.storeAppSettings)
 	http.HandleFunc("/getApplication/", m.fetchAppSetup)
 	http.HandleFunc("/setApplication/", m.storeAppSetup)
 	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)

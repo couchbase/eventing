@@ -44,6 +44,26 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 	w.Write(buf)
 }
 
+func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
+	params := r.URL.Query()
+	app := params["name"][0]
+
+	path := metakvAppSettingsPath + app
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
+		return
+	}
+
+	err = util.MetakvSet(path, data, nil)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to store setting for app: %v, err: %v", app, err)
+		return
+	}
+
+	fmt.Fprintf(w, "stored settings for app: %v", app)
+}
+
 func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 	appList := util.ListChildren(metakvAppsPath)
 	respData := make([]application, len(appList))
@@ -79,6 +99,21 @@ func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 					buckets = append(buckets, newBucket)
 				}
 			}
+
+			settingsPath := metakvAppSettingsPath + appName
+			sData, sErr := util.MetakvGet(settingsPath)
+			if sErr == nil {
+				settings := make(map[string]interface{})
+				uErr := json.Unmarshal(sData, &settings)
+				if uErr != nil {
+					logging.Errorf("Failed to unmarshal settings data from metakv, err: %v", uErr)
+				} else {
+					app.Settings = settings
+				}
+			} else {
+				logging.Errorf("Failed to fetch settings data from metakv, err: %v", sErr)
+			}
+
 			depcfg.Buckets = buckets
 			app.DeploymentConfig = *depcfg
 
@@ -168,29 +203,18 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	settingsPath := metakvAppSettingsPath + appName
-	sData, err := util.MetakvGet(settingsPath)
-	if err != nil {
-		fmt.Fprintf(w, "App: %s Failed to fetch settings from metakv, err: %v", appName, err)
+	settings := app.Settings
+
+	mData, mErr := json.Marshal(&settings)
+	if mErr != nil {
+		fmt.Fprintf(w, "App: %s Failed to marshal settings, err: %v", appName, mErr)
 		return
 	}
 
-	if sData == nil {
-		settings := make(map[string]interface{})
-		settings["dcp_stream_boundary"] = "everything"
-		settings["tick_duration"] = defaultStatsTickDuration
-		settings["worker_count"] = defaultWorkerCount
-
-		mData, mErr := json.Marshal(&settings)
-		if mErr != nil {
-			fmt.Fprintf(w, "App: %s Failed to marshal settings, err: %v", appName, mErr)
-			return
-		}
-
-		mkvErr := util.MetakvSet(settingsPath, mData, nil)
-		if mkvErr != nil {
-			fmt.Fprintf(w, "App: %s Failed to store updated settings in metakv, err: %v", appName, mkvErr)
-			return
-		}
+	mkvErr := util.MetakvSet(settingsPath, mData, nil)
+	if mkvErr != nil {
+		fmt.Fprintf(w, "App: %s Failed to store updated settings in metakv, err: %v", appName, mkvErr)
+		return
 	}
 
 	fmt.Fprintf(w, "Stored application config in metakv")

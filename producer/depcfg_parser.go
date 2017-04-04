@@ -55,6 +55,9 @@ func (p *Producer) parseDepcfg() error {
 
 		p.dcpStreamBoundary = common.DcpStreamBoundary(settings["dcp_stream_boundary"].(string))
 		p.logLevel = settings["log_level"].(string)
+		p.rbacpass = settings["rbacpass"].(string)
+		p.rbacrole = settings["rbacrole"].(string)
+		p.rbacuser = settings["rbacuser"].(string)
 		p.statsTickDuration = time.Duration(settings["tick_duration"].(float64))
 		p.workerCount = int(settings["worker_count"].(float64))
 		p.socketWriteBatchSize = int(settings["sock_batch_size"].(float64))

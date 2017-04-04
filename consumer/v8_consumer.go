@@ -124,6 +124,12 @@ func (c *Consumer) HandleV8Worker() {
 
 // Stop acts terminate routine for consumer handle
 func (c *Consumer) Stop() {
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Errorf("V8CR[%s:%s:%s:%d] Consumer stop routine, panic and recover, %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r)
+		}
+	}()
+
 	logging.Infof("V8CR[%s:%s:%s:%d] Gracefully shutting down consumer routine",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 

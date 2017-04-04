@@ -105,7 +105,8 @@ var connectBucketOpCallback = func(args ...interface{}) error {
 	connStr := args[2].(string)
 
 	var err error
-	*conn, err = cbbucket.Connect(connStr)
+	*conn, err = cbbucket.ConnectWithAuthCreds(connStr, c.producer.RbacUser(), c.producer.RbacPass())
+
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to bootstrap conn to source cluster, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
@@ -134,7 +135,7 @@ var cbGetBucketOpCallback = func(args ...interface{}) error {
 	metadataBucket := args[2].(string)
 
 	var err error
-	c.metadataBucketHandle, err = pool.GetBucket(metadataBucket)
+	c.metadataBucketHandle, err = pool.GetBucketWithAuth(metadataBucket, c.producer.RbacUser(), c.producer.RbacPass())
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket: %s missing, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), metadataBucket, err)

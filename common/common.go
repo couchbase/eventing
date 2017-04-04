@@ -31,6 +31,8 @@ type EventingProducer interface {
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
 	KvHostPorts() []string
 	LenRunningConsumers() int
+	RbacUser() string
+	RbacPass() string
 	MetadataBucket() string
 	NotifyInit()
 	NotifyPrepareTopologyChange(keepNodes []string)

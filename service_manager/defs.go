@@ -85,10 +85,11 @@ type cleanup struct {
 }
 
 type application struct {
-	Name             string `json:"appname"`
-	ID               int    `json:"id"`
-	DeploymentConfig depCfg `json:"depcfg"`
-	AppHandlers      string `json:"appcode"`
+	Name             string                 `json:"appname"`
+	ID               int                    `json:"id"`
+	DeploymentConfig depCfg                 `json:"depcfg"`
+	AppHandlers      string                 `json:"appcode"`
+	Settings         map[string]interface{} `json:"settings"`
 }
 
 type depCfg struct {

@@ -8,7 +8,86 @@
 #include <string>
 #include <typeinfo>
 
+static char const *global_program_name;
 int messages_processed(0);
+
+int addr2line(char const *const program_name, void const *const addr) {
+  char addr2line_cmd[512] = {0};
+
+/* have addr2line map the address to the relent line in the code */
+#ifdef __APPLE__
+  sprintf(addr2line_cmd, "atos -o %.256s %p", program_name, addr);
+#else
+  sprintf(addr2line_cmd, "addr2line -f -p -e %.256s %p", program_name, addr);
+#endif
+
+  return system(addr2line_cmd);
+}
+
+#define MAX_STACK_FRAMES 64
+static void *stack_traces[MAX_STACK_FRAMES];
+void posix_print_stack_trace() {
+  int i, trace_size = 0;
+  char **messages = (char **)NULL;
+
+  trace_size = backtrace(stack_traces, MAX_STACK_FRAMES);
+  messages = backtrace_symbols(stack_traces, trace_size);
+
+  /* skip the first couple stack frames (as they are this function and
+   our handler) and also skip the last frame as it's (always?) junk. */
+  for (i = 0; i < trace_size; ++i) {
+    if (addr2line(global_program_name, stack_traces[i]) != 0) {
+      printf("  error determining line # for: %s\n", messages[i]);
+    }
+  }
+  if (messages) {
+    free(messages);
+  }
+}
+
+void posix_signal_handler(int sig, siginfo_t *siginfo, void *context) {
+  (void)context;
+  switch (sig) {
+  case SIGSEGV:
+    fputs("Caught SIGSEGV: Segmentation Fault\n", stderr);
+    break;
+  default:
+    break;
+  }
+  posix_print_stack_trace();
+  _Exit(1);
+}
+
+static uint8_t alternate_stack[SIGSTKSZ];
+void set_signal_handler() {
+  /* setup alternate stack */
+  {
+    stack_t ss = {};
+    ss.ss_sp = (void *)alternate_stack;
+    ss.ss_size = SIGSTKSZ;
+    ss.ss_flags = 0;
+
+    if (sigaltstack(&ss, NULL) != 0) {
+      err(1, "sigaltstack");
+    }
+  }
+
+  {
+    struct sigaction sig_action = {};
+    sig_action.sa_sigaction = posix_signal_handler;
+    sigemptyset(&sig_action.sa_mask);
+
+#ifdef __APPLE__
+    sig_action.sa_flags = SA_SIGINFO;
+#else
+    sig_action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+#endif
+
+    if (sigaction(SIGSEGV, &sig_action, NULL) != 0) {
+      err(1, "sigaction");
+    }
+  }
+}
 
 static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
   auto header = flatbuf::header::GetHeader(parsed_message->header.c_str());
@@ -260,8 +339,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
             std::string logMsgs = FlushLog();
             logMsgs += '\r';
-            req->buf = uv_buf_init((char *)logMsgs.c_str(),
-                                   logMsgs.length());
+            req->buf = uv_buf_init((char *)logMsgs.c_str(), logMsgs.length());
 
             uv_write((uv_write_t *)req, stream, &req->buf, 1,
                      [](uv_write_t *req, int status) {
@@ -323,6 +401,9 @@ AppWorker *AppWorker::GetAppWorker() {
 }
 
 int main(int argc, char **argv) {
+  global_program_name = argv[0];
+  set_signal_handler();
+
   std::string appname(argv[1]);
   int port = atoi(argv[2]);
   std::string worker_id(argv[3]);
