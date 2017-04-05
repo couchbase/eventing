@@ -18,6 +18,13 @@
     border-right: 1px solid #ececec;
 }
 
+.event_settings {
+    background: white;
+    padding: 10px;
+    font-family: OpenSans, sans-serif;
+    font-size: 15px;
+}
+
 
 .event_right {
     position:absolute;
