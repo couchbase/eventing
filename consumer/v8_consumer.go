@@ -111,7 +111,8 @@ func (c *Consumer) HandleV8Worker() {
 
 	c.sendLogLevel(c.logLevel)
 
-	payload := makeV8InitPayload(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData())
+	payload := makeV8InitPayload(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData(),
+		c.producer.RbacUser(), c.producer.RbacPass())
 	c.sendInitV8Worker(payload)
 
 	c.sendLoadV8Worker(c.app.AppCode)

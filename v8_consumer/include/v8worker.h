@@ -64,7 +64,8 @@ public:
 
 class V8Worker {
 public:
-  V8Worker(std::string app_name, std::string dep_cfg, std::string kv_host_port);
+  V8Worker(std::string app_name, std::string dep_cfg, std::string kv_host_port,
+           std::string rbac_user, std::string rbac_pass);
   ~V8Worker();
 
   int V8WorkerLoad(std::string source_s);

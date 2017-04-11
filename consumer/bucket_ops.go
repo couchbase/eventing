@@ -166,7 +166,7 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	kvHostPort := args[3].(string)
 
 	dcpFeed, err := c.cbBucket.StartDcpFeedOver(
-		feedName, uint32(0), []string{kvHostPort}, 0xABCD, dcpConfig)
+		feedName, uint32(0), includeXATTRs, []string{kvHostPort}, 0xABCD, dcpConfig)
 
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed, err: %v",
@@ -198,7 +198,7 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 		// are made.
 		feedName := couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + kvHost + "_" + c.workerName + "_GetSeqNos")
 		feed, err := c.cbBucket.StartDcpFeedOver(
-			feedName, uint32(0), []string{kvHost}, 0xABCD, dcpConfig)
+			feedName, uint32(0), includeXATTRs, []string{kvHost}, 0xABCD, dcpConfig)
 		if err != nil {
 			logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed, err: %v",
 				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)

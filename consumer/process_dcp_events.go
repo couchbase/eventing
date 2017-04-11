@@ -1,6 +1,9 @@
 package consumer
 
 import (
+	"bytes"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -33,7 +36,33 @@ func (c *Consumer) doDCPEventProcess() {
 
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
-				c.sendDcpEvent(e)
+				switch e.Datatype {
+				case dcpDatatypeJSON:
+					c.sendDcpEvent(e)
+				case dcpDatatypeJSONXattr:
+					xattrLen := binary.BigEndian.Uint32(e.Value[0:])
+					xattrData := e.Value[4 : 4+xattrLen-1]
+
+					xIndex := bytes.Index(xattrData, []byte(xattrPrefix))
+					xattrVal := xattrData[xIndex+len(xattrPrefix)+1:]
+
+					var xMeta xattrMetadata
+					err := json.Unmarshal(xattrVal, &xMeta)
+					if err != nil {
+						logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v xattrVal: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), string(xattrVal))
+						continue
+					} else {
+						logging.Infof("CRDP[%s:%s:%s:%d] Key: %v xmeta: %#v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), xMeta)
+					}
+
+					// Send mutation to V8 CPP worker _only_ when DcpEvent.Cas != Cas field in xattr
+					if xMeta.Cas != e.Cas {
+						e.Value = e.Value[4+xattrLen:]
+						c.sendDcpEvent(e)
+					}
+				}
 
 			case mcd.DCP_DELETION:
 				c.sendDcpEvent(e)

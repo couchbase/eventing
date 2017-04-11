@@ -103,7 +103,8 @@ static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
 
 std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                                 message_t *parsed_message) {
-  std::string app_name, dep_cfg, kv_host_port, key, val, result;
+  std::string app_name, dep_cfg, kv_host_port, rbac_user, rbac_pass, key, val,
+      result;
   const flatbuf::payload::Payload *payload;
 
   switch (getEvent(parsed_header->event)) {
@@ -117,9 +118,12 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       app_name.assign(payload->app_name()->str());
       dep_cfg.assign(payload->depcfg()->str());
       kv_host_port.assign(payload->kv_host_port()->str());
+      rbac_user.assign(payload->rbac_user()->str());
+      rbac_pass.assign(payload->rbac_pass()->str());
 
       LOG(logInfo) << "Loading app:" << app_name << '\n';
-      this->v8worker = new V8Worker(app_name, dep_cfg, kv_host_port);
+      this->v8worker =
+          new V8Worker(app_name, dep_cfg, kv_host_port, rbac_user, rbac_pass);
       result.assign("Loaded requested app\n");
       break;
     case oLoad:

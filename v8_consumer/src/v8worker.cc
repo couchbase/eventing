@@ -278,7 +278,8 @@ static void op_set_callback(lcb_t instance, int cbtype,
 static ArrayBufferAllocator array_buffer_allocator;
 
 V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
-                   std::string kv_host_port) {
+                   std::string kv_host_port, std::string rbac_user,
+                   std::string rbac_pass) {
   v8::V8::InitializeICU();
   v8::Platform *platform = v8::platform::CreateDefaultPlatform();
   v8::V8::InitializePlatform(platform);
@@ -334,37 +335,19 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
 
         bucket_handle =
             new Bucket(this, bucket_name.c_str(), cb_kv_endpoint.c_str(),
-                       bucket_alias.c_str());
+                       bucket_alias.c_str(), rbac_user, rbac_pass);
       }
     }
   }
+  delete config;
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: " << app_name
-               << " kv_host_port: " << kv_host_port << '\n';
+               << " kv_host_port: " << kv_host_port
+               << " rbac_user: " << rbac_user << " rbac_pass: " << rbac_pass
+               << '\n';
 
   n1ql_handle =
-      new N1QL("couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket);
-
-  std::string connstr =
-      "couchbase://" + cb_kv_endpoint + "/" + config->metadata_bucket.c_str();
-
-  LOG(logInfo) << "Initialised V8Worker handle, app_name: " << app_name
-               << " kv_host_port: " << kv_host_port << '\n';
-
-  delete config;
-  // lcb related setup
-  lcb_create_st crst;
-  memset(&crst, 0, sizeof crst);
-
-  crst.version = 3;
-  crst.v.v3.connstr = connstr.c_str();
-
-  lcb_create(&cb_instance, &crst);
-  lcb_connect(cb_instance);
-  lcb_wait(cb_instance);
-
-  lcb_install_callback3(cb_instance, LCB_CALLBACK_GET, op_get_callback);
-  lcb_install_callback3(cb_instance, LCB_CALLBACK_STORE, op_set_callback);
+      new N1QL(cb_kv_endpoint, cb_source_bucket, rbac_user, rbac_pass);
 }
 
 V8Worker::~V8Worker() {

@@ -26,7 +26,8 @@
 
 class Bucket {
 public:
-  Bucket(V8Worker *w, const char *bname, const char *ep, const char *alias);
+  Bucket(V8Worker *w, const char *bname, const char *ep, const char *alias,
+         std::string rbac_user, std::string rbac_pass);
   ~Bucket();
 
   virtual bool Initialize(V8Worker *w,

@@ -43,7 +43,7 @@ static void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   result->status = resp->rc;
   result->cas = resp->cas;
 
-  LOG(logTrace) << "LCB_STORE callback "
+  LOG(logTrace) << "Bucket: LCB_STORE callback "
                 << lcb_strerror(instance, result->status) << " cas "
                 << resp->cas << '\n';
 }
@@ -64,7 +64,8 @@ uint64_t htonll_64(uint64_t value) {
 }
 
 Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
-               const char *alias) {
+               const char *alias, std::string rbac_user,
+               std::string rbac_pass) {
   isolate_ = w->GetIsolate();
   context_.Reset(isolate_, w->context_);
 
@@ -74,7 +75,11 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
 
   worker = w;
 
-  std::string connstr = "couchbase://" + GetEndPoint() + "/" + GetBucketName();
+  std::string connstr = "couchbase://" + GetEndPoint() + "/" + GetBucketName() +
+                        "?username=" + rbac_user +
+                        "&console_log_level=5&detailed_errcodes=true&select_bucket=true";
+
+  LOG(logInfo) << "Bucket: connstr " << connstr << '\n';
 
   // lcb related setup
   lcb_create_st crst;
@@ -82,6 +87,8 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
 
   crst.version = 3;
   crst.v.v3.connstr = connstr.c_str();
+  crst.v.v3.type = LCB_TYPE_BUCKET;
+  crst.v.v3.passwd = rbac_pass.c_str();
 
   lcb_create(&bucket_lcb_obj, &crst);
   lcb_connect(bucket_lcb_obj);
@@ -135,11 +142,8 @@ Bucket::WrapBucketMap(std::map<std::string, std::string> *obj) {
   v8::Local<v8::External> bucket_lcb_obj_ptr =
       v8::External::New(GetIsolate(), &bucket_lcb_obj);
 
-  v8::Local<v8::External> worker_cb_instance =
-      v8::External::New(GetIsolate(), &(worker->cb_instance));
   result->SetInternalField(0, map_ptr);
   result->SetInternalField(1, bucket_lcb_obj_ptr);
-  result->SetInternalField(2, worker_cb_instance);
 
   return handle_scope.Escape(result);
 }
@@ -153,8 +157,8 @@ bool Bucket::InstallMaps(std::map<std::string, std::string> *bucket) {
   v8::Local<v8::Context> context =
       v8::Local<v8::Context>::New(GetIsolate(), context_);
 
-  LOG(logInfo) << "Registering handler for bucket_alias: "
-               << bucket_alias.c_str() << '\n';
+  LOG(logInfo) << "Registering handler for bucket_alias: " << bucket_alias
+               << " bucket_name: " << bucket_name << '\n';
   // Set the options object as a property on the global object.
   context->Global()
       ->Set(context,
@@ -208,7 +212,6 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
   LOG(logTrace) << "Set call Key: " << key << " Value: " << value << '\n';
 
   lcb_t *bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
-  lcb_t *cb_instance = UnwrapV8WorkerLcbInstance(info.Holder());
 
   Result result;
   lcb_CMDSTORE scmd = {0};
@@ -252,7 +255,7 @@ Bucket::MakeBucketMapTemplate(v8::Isolate *isolate) {
   v8::EscapableHandleScope handle_scope(isolate);
 
   v8::Local<v8::ObjectTemplate> result = v8::ObjectTemplate::New(isolate);
-  result->SetInternalFieldCount(3);
+  result->SetInternalFieldCount(2);
   result->SetHandler(v8::NamedPropertyHandlerConfiguration(BucketGet, BucketSet,
                                                            NULL, BucketDelete));
 

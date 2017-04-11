@@ -31,23 +31,32 @@ v8::Local<v8::Function> callback;
 bool is_callback_set = false;
 bool stop_signal = false;
 
-N1QL::N1QL(std::string conn_str) {
+N1QL::N1QL(std::string cb_kv_endpoint, std::string cb_source_bucket,
+           std::string rbac_user, std::string rbac_pass) {
+
+  std::string conn_str = "couchbase://" + cb_kv_endpoint + "/" +
+                         cb_source_bucket + "?username=" + rbac_user +
+                         "&console_log_level=5&detailed_errcodes=true&select_bucket=true";
+  LOG(logInfo) << "N1QL: connstr " << conn_str << '\n';
+
   lcb_create_st options;
   lcb_error_t err;
   memset(&options, 0, sizeof(options));
   options.version = 3;
   options.v.v3.connstr = conn_str.c_str();
+  options.v.v3.type = LCB_TYPE_BUCKET;
+  options.v.v3.passwd = rbac_pass.c_str();
 
   err = lcb_create(&instance, &options);
   if (err != LCB_SUCCESS) {
     init_success = false;
-    Error(instance, "unable to create handle", err);
+    Error(instance, "N1QL: unable to create lcb handle", err);
   }
 
   err = lcb_connect(instance);
   if (err != LCB_SUCCESS) {
     init_success = false;
-    Error(instance, "unable to connect to server", err);
+    Error(instance, "N1QL: unable to connect to server", err);
   }
 
   lcb_wait(instance);
@@ -55,7 +64,7 @@ N1QL::N1QL(std::string conn_str) {
   err = lcb_get_bootstrap_status(instance);
   if (err != LCB_SUCCESS) {
     init_success = false;
-    Error(instance, "unable to get bootstrap status", err);
+    Error(instance, "N1QL: unable to get bootstrap status", err);
   }
 }
 

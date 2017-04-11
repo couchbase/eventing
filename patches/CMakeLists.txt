@@ -13,4 +13,7 @@ apply_patch(ns_cluster_membership ns_server)
 apply_patch(classic_ui ns_server)
 apply_patch(current_ui ns_server)
 
-
+apply_patch(conn_pool goproj/src/github.com/couchbase/indexing)
+apply_patch(dcp goproj/src/github.com/couchbase/indexing)
+apply_patch(dcp_feed goproj/src/github.com/couchbase/indexing)
+apply_patch(upr goproj/src/github.com/couchbase/indexing)

@@ -38,10 +38,14 @@ func main() {
 
 	settings := make(map[string]interface{})
 	settings["dcp_stream_boundary"] = "everything"
-	settings["log_level"] = "INFO"
-	settings["sock_batch_size"] = 1000
+	settings["log_level"] = "TRACE"
+	settings["sock_batch_size"] = 1
 	settings["tick_duration"] = 5000
-	settings["worker_count"] = 3
+	settings["checkpoint_interval"] = 20000
+	settings["worker_count"] = 1
+	settings["rbacpass"] = "asdasd"
+	settings["rbacuser"] = "eventing"
+	settings["rbacrole"] = "admin"
 
 	sData, err := json.Marshal(&settings)
 	if err != nil {

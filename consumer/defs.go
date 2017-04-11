@@ -17,6 +17,16 @@ import (
 )
 
 const (
+	xattrPrefix = "_eventing"
+)
+
+const (
+	dcpDatatypeJSON      = uint8(1)
+	dcpDatatypeJSONXattr = uint8(5)
+	includeXATTRs        = uint32(4)
+)
+
+const (
 	numVbuckets = 1024
 
 	// DCP consumer related configs
@@ -63,6 +73,11 @@ var dcpConfig = map[string]interface{}{
 	"genChanSize":    dcpGenChanSize,
 	"dataChanSize":   dcpDataChanSize,
 	"numConnections": dcpNumConnections,
+}
+
+type xattrMetadata struct {
+	Cas   uint64   `json:"cas"`
+	Timer []string `json:"timer"`
 }
 
 type vbFlogEntry struct {

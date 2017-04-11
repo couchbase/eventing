@@ -1,0 +1,15 @@
+diff --git a/secondary/projector/dcp.go b/secondary/projector/dcp.go
+index 9d957c0c..6656795b 100644
+--- a/secondary/projector/dcp.go
++++ b/secondary/projector/dcp.go
+@@ -61,8 +61,9 @@ func OpenBucketFeed(
+ 	config map[string]interface{}) (feeder BucketFeeder, err error) {
+ 
+ 	bdcp := &bucketDcp{bucket: b}
++	flags := uint32(0x0)
+ 	bdcp.dcpFeed, err =
+-		b.StartDcpFeedOver(feedname, uint32(0), kvaddrs, opaque, config)
++		b.StartDcpFeedOver(feedname, uint32(0), flags, kvaddrs, opaque, config)
+ 	if err != nil {
+ 		return nil, err
+ 	}

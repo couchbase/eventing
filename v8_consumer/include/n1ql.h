@@ -52,7 +52,8 @@ private:
   static void Error(lcb_t, const char *, lcb_error_t);
 
 public:
-  N1QL(std::string);
+  N1QL(std::string cb_kv_endpoint, std::string cb_source_bucket,
+       std::string rbac_user, std::string rbac_pass);
   bool GetInitStatus() { return init_success; }
   std::vector<std::string> ExecQuery(std::string);
   void ExecQuery(std::string, v8::Local<v8::Function>);
