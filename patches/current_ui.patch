@@ -1,15 +1,3 @@
-diff --git a/priv/public/js/app-misc.js b/priv/public/js/app-misc.js
-index 5968dfab4..ed32752f6 100644
---- a/priv/public/js/app-misc.js
-+++ b/priv/public/js/app-misc.js
-@@ -441,6 +441,7 @@ _.extend(ViewHelpers, {
-         case 'moxi': return 'Moxi';
-         case 'index': return 'Index';
-         case 'fts': return 'Full Text';
-+        case 'eventing': return 'Eventing';
-       }
-     }).sort();
-   },
 diff --git a/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html b/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html
 index f7d4da692..3e62901c7 100644
 --- a/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html

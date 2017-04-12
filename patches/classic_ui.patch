@@ -1,17 +1,3 @@
-diff --git a/priv/public/classic-index.html b/priv/public/classic-index.html
-index 70d6295..b26b95d 100644
---- a/priv/public/classic-index.html
-+++ b/priv/public/classic-index.html
-@@ -2847,6 +2847,9 @@
-           <input type="checkbox" class="inp" name="services" value="fts" id="add_servers_fts_checkbox" />
-           <label class="label" for="add_servers_fts_checkbox" style="text-align: left; width: 45px;">Full Text</label>
- 
-+          <input type="checkbox" class="inp" name="services" value="eventing" id="add_servers_eventing_checkbox" />
-+          <label class="label" for="add_servers_eventing_checkbox" style="text-align: left; width: 45px;">Eventing</label>
-+
-           <a class="tooltip text_11"><span>What's this?</span>
-             <span class="tooltip_msg" style="width:350px;"><span>
-               Each service represents a unique workload. Please check the service you want to enable on this node.
 diff --git a/priv/public/ui/app-classic/app.css b/priv/public/ui/app-classic/app.css
 index 1025a1c..c000022 100644
 --- a/priv/public/ui/app-classic/app.css
