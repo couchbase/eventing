@@ -30,8 +30,8 @@ ENDIF()
 GoInstall (TARGET eventing PACKAGE github.com/couchbase/eventing/cmd/producer
   GOPATH "${PROJECT_SOURCE_DIR}/../../../.." "${GODEPSDIR}"
   INSTALL_PATH bin OUTPUT eventing
-  GOVERSION ${GOVERSEION})
-                
+  GOVERSION ${GOVERSION})
+
 FILE(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cmd/producer/client DESTINATION ${CMAKE_INSTALL_PREFIX}/bin/)
 FILE(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cmd/producer/apps DESTINATION ${CMAKE_SOURCE_DIR}/ns_server/)
 FILE(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cmd/producer/apps DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase/)

@@ -1,8 +1,8 @@
 diff --git a/secondary/dcp/upr.go b/secondary/dcp/upr.go
-index 6e7fbe74..b6ccda3f 100644
+index 409fc0e2..cc385e0c 100644
 --- a/secondary/dcp/upr.go
 +++ b/secondary/dcp/upr.go
-@@ -76,7 +76,9 @@ func (b *Bucket) GetFailoverLogs(
+@@ -78,7 +78,9 @@ func (b *Bucket) GetFailoverLogs(
  		}
  
  		name := NewDcpFeedName(fmt.Sprintf("getfailoverlog-%s-%v", b.Name, time.Now().UnixNano()))
@@ -13,7 +13,7 @@ index 6e7fbe74..b6ccda3f 100644
  		if err != nil {
  			return nil, err
  		}
-@@ -120,11 +122,11 @@ type DcpFeed struct {
+@@ -123,11 +125,11 @@ type DcpFeed struct {
  // No data will be sent on the channel unless vbuckets streams
  // are requested.
  func (b *Bucket) StartDcpFeed(
@@ -27,7 +27,7 @@ index 6e7fbe74..b6ccda3f 100644
  }
  
  // StartDcpFeedOver creates and starts a new Dcp feed.
-@@ -139,7 +141,7 @@ func (b *Bucket) StartDcpFeed(
+@@ -142,7 +144,7 @@ func (b *Bucket) StartDcpFeed(
  //      "numConnections", number of connections with DCP for local vbuckets.
  func (b *Bucket) StartDcpFeedOver(
  	name DcpFeedName,
@@ -36,26 +36,25 @@ index 6e7fbe74..b6ccda3f 100644
  	kvaddrs []string,
  	opaque uint16,
  	config map[string]interface{}) (*DcpFeed, error) {
-@@ -159,7 +161,7 @@ func (b *Bucket) StartDcpFeedOver(
- 	}
- 	feed.numConnections = config["numConnections"].(int)
+@@ -164,7 +166,7 @@ func (b *Bucket) StartDcpFeedOver(
+ 	feed.activeVbOnly = config["activeVbOnly"].(bool)
+ 
  	feed.C = feed.output
 -	if feed.connectToNodes(kvaddrs, opaque, config) != nil {
 +	if feed.connectToNodes(kvaddrs, opaque, flags, config) != nil {
  		return nil, ErrorInvalidBucket
  	}
  	go feed.genServer(feed.reqch, opaque)
-@@ -283,7 +285,8 @@ loop:
+@@ -293,7 +295,7 @@ loop:
  }
  
  func (feed *DcpFeed) connectToNodes(
 -	kvaddrs []string, opaque uint16, config map[string]interface{}) error {
-+	kvaddrs []string, opaque uint16, flags uint32,
-+	config map[string]interface{}) error {
++	kvaddrs []string, opaque uint16, flags uint32, config map[string]interface{}) error {
  
  	prefix := feed.logPrefix
  	kvcache := make(map[string]bool)
-@@ -318,7 +321,7 @@ func (feed *DcpFeed) connectToNodes(
+@@ -328,7 +330,7 @@ func (feed *DcpFeed) connectToNodes(
  		for i := 0; i < feed.numConnections; i++ {
  			feedname := DcpFeedName(fmt.Sprintf("%v/%d", name, i))
  			singleFeed, err := serverConn.StartDcpFeed(

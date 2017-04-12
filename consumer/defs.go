@@ -73,6 +73,7 @@ var dcpConfig = map[string]interface{}{
 	"genChanSize":    dcpGenChanSize,
 	"dataChanSize":   dcpDataChanSize,
 	"numConnections": dcpNumConnections,
+	"activeVbOnly":   true,
 }
 
 type xattrMetadata struct {

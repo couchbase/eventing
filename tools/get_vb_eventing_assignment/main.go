@@ -14,7 +14,7 @@ import (
 
 func main() {
 	host := os.Args[1]
-	url := "http://" + host + ":9500/eventing/_design/ddoc1/_view/view1?stale=false"
+	url := "http://Administrator:asdasd@" + host + ":9500/eventing/_design/ddoc1/_view/view1?stale=false"
 
 	resp, err := http.Get(url)
 	if err != nil {
