@@ -28,7 +28,10 @@
 
 #define MAXPATHLEN 256
 #define TRANSPILER_JS_PATH "transpiler.js"
-#define ESTOOLS_PATH "estools.js"
+#define ESPRIMA_PATH "esprima.js"
+#define ESCODEGEN_PATH "escodegen.js"
+#define ESTRAVERSE_PATH "estraverse.js"
+#define BUILTIN_JS_PATH "builtin.js"
 
 N1QL *n1ql_handle;
 
@@ -301,8 +304,12 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
 
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "log"),
               v8::FunctionTemplate::New(GetIsolate(), Print));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "N1qlQuery"),
-              v8::FunctionTemplate::New(GetIsolate(), N1qlQueryConstructor));
+  global->Set(v8::String::NewFromUtf8(GetIsolate(), "iter"),
+              v8::FunctionTemplate::New(GetIsolate(), IterFunction));
+  global->Set(v8::String::NewFromUtf8(GetIsolate(), "stopIter"),
+              v8::FunctionTemplate::New(GetIsolate(), StopIterFunction));
+  global->Set(v8::String::NewFromUtf8(GetIsolate(), "execQuery"),
+              v8::FunctionTemplate::New(GetIsolate(), ExecQueryFunction));
 
   if (try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
@@ -381,9 +388,13 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     return code;
   }
 
-  std::string transpiler_js_src = ReadFile(TRANSPILER_JS_PATH);
-  transpiler_js_src += ReadFile(ESTOOLS_PATH);
+  std::string transpiler_js_src = ReadFile(ESPRIMA_PATH);
+  transpiler_js_src += ReadFile(ESCODEGEN_PATH);
+  transpiler_js_src += ReadFile(ESTRAVERSE_PATH);
+  transpiler_js_src += ReadFile(TRANSPILER_JS_PATH);
+
   script_to_execute = Transpile(transpiler_js_src, plain_js, EXEC_TRANSPILER);
+  script_to_execute += ReadFile(BUILTIN_JS_PATH);
 
   v8::Local<v8::String> source =
       v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());

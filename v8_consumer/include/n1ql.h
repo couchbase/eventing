@@ -63,6 +63,5 @@ public:
 void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &);
 void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &);
 void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &);
-void N1qlQueryConstructor(const v8::FunctionCallbackInfo<v8::Value> &);
 
 #endif

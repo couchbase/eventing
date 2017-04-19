@@ -9,6 +9,12 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+function transpile(code) {
+    return escodegen.generate(get_ast(code, esprima, estraverse, this.escodegen), {
+        comment: true
+    });
+}
+
 function get_ast(code, esprima, estraverse, escodegen) {
     function Stack() {
         var stack = [];
@@ -387,7 +393,8 @@ function get_ast(code, esprima, estraverse, escodegen) {
             }
         });
 
-        // Traverse all the 'for ... of ...' loops in the 'else' block and mark them as visited - so that we don't recursively convert these into iterator constructs.
+        // Traverse all the 'for ... of ...' loops in the 'else' block and mark them as visited - so that we don't
+        // recursively convert these into iterator constructs.
         estraverse.traverse(nodeCopy, {
             enter: function(node) {
                 if (/ForOfStatement/.test(node.type))
@@ -438,7 +445,8 @@ function get_ast(code, esprima, estraverse, escodegen) {
             }
 
             // TODO : Handle the case when the source of 'for ... of ...' is of type x.y
-            // Modifies all the 'for ... of ...' constructs to work with iteration. Takes care to see to it that it visits the node only once.
+            // Modifies all the 'for ... of ...' constructs to work with iteration. Takes care to see to it that it
+            // visits the node only once.
             if (/ForOfStatement/.test(node.type) && !node.isVisited) {
                 if (!/BlockStatement/.test(node.body.type)) {
                     convert_to_block_stmt(node);

@@ -34,9 +34,10 @@ bool stop_signal = false;
 N1QL::N1QL(std::string cb_kv_endpoint, std::string cb_source_bucket,
            std::string rbac_user, std::string rbac_pass) {
 
-  std::string conn_str = "couchbase://" + cb_kv_endpoint + "/" +
-                         cb_source_bucket + "?username=" + rbac_user +
-                         "&console_log_level=5&detailed_errcodes=true&select_bucket=true";
+  std::string conn_str =
+      "couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket + "?username=" +
+      rbac_user +
+      "&console_log_level=5&detailed_errcodes=true&select_bucket=true";
   LOG(logInfo) << "N1QL: connstr " << conn_str << '\n';
 
   lcb_create_st options;
@@ -191,39 +192,4 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   args.GetReturnValue().Set(result_array);
-}
-
-// Constructor for N1qlQuery().
-// Accepts a string as N1QL query and returns an instance of N1qlQuery.
-void N1qlQueryConstructor(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  v8::Isolate *isolate = v8::Isolate::GetCurrent();
-  v8::HandleScope handleScope(isolate);
-  v8::Local<v8::ObjectTemplate> obj = v8::ObjectTemplate::New();
-
-  v8::Local<v8::Name> query_name = v8::String::NewFromUtf8(isolate, "query");
-  v8::Local<v8::Value> empty_string = v8::String::NewFromUtf8(isolate, "");
-
-  obj->Set(query_name, empty_string);
-  v8::Local<v8::Name> is_inst_name =
-      v8::String::NewFromUtf8(isolate, "isInstance");
-  v8::Local<v8::Value> is_inst_value = v8::Boolean::New(isolate, true);
-  obj->Set(is_inst_name, is_inst_value);
-
-  v8::Local<v8::String> exec_query_name =
-      v8::String::NewFromUtf8(isolate, "execQuery");
-  obj->Set(exec_query_name,
-           v8::FunctionTemplate::New(isolate, ExecQueryFunction));
-
-  v8::Local<v8::String> iter_name = v8::String::NewFromUtf8(isolate, "iter");
-  obj->Set(iter_name, v8::FunctionTemplate::New(isolate, IterFunction));
-
-  v8::Local<v8::String> stop_iter_name =
-      v8::String::NewFromUtf8(isolate, "stopIter");
-  obj->Set(stop_iter_name,
-           v8::FunctionTemplate::New(isolate, StopIterFunction));
-
-  if (!args[0].IsEmpty() && args[0]->IsString())
-    obj->Set(query_name, args[0]);
-
-  args.GetReturnValue().Set(obj->NewInstance());
 }
