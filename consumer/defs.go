@@ -54,6 +54,8 @@ const (
 	restartVbDcpStreamTickInterval = time.Duration(3000) * time.Millisecond
 
 	retryVbsStateUpdateInterval = time.Duration(5000) * time.Millisecond
+
+	retryVbMetaStateCheckInterval = time.Duration(1000) * time.Millisecond
 )
 
 const (

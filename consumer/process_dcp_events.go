@@ -252,9 +252,8 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
 			}
 		} else {
-			// vbucket might be owned by another eventing node
 
-			if vbBlob.CurrentVBOwner == c.HostPortAddr() {
+			if vbBlob.NodeUUID == c.NodeUUID() {
 				start = vbBlob.LastSeqNoProcessed
 
 				c.dcpRequestStreamHandle(vbno, &vbBlob, start)

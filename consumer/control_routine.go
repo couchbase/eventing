@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"time"
 
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
@@ -19,21 +18,6 @@ func (c *Consumer) controlRoutine() {
 
 			logging.Infof("CRCR[%s:%s:%s:%d] Got notif that cluster state has changed",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
-
-			// Wait till vbs for which STREAMEND has been received because of KV rebalance
-			// are reclaimed back by the consumer instance
-		retryVbsStateUpdate:
-			c.RLock()
-			vbsRemainingToRestream := c.vbsRemainingToRestream
-			sort.Sort(util.Uint16Slice(vbsRemainingToRestream))
-			logging.Infof("CRCR[%s:%s:%s:%d] clusterStateChangeNotif vbsToRestream len: %v dump: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsRemainingToRestream), vbsRemainingToRestream)
-			c.RUnlock()
-
-			if len(vbsRemainingToRestream) > 0 {
-				time.Sleep(retryVbsStateUpdateInterval)
-				goto retryVbsStateUpdate
-			}
 
 			c.vbsStateUpdate()
 

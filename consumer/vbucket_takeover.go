@@ -11,18 +11,40 @@ import (
 )
 
 func (c *Consumer) vbsStateUpdate() {
-retryStreamUpdate:
 	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 
-	var vbBlob vbucketKVBlob
-	var cas uint64
-	for _, vbno := range c.vbsRemainingToGiveUp {
-		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
-		c.stopDcpStreamAndUpdateCheckpoint(vbKey, vbno, &vbBlob, &cas)
-	}
+	// Vbucket ownership give-up routine and ownership takeover working simultaneously
+	go func(c *Consumer) {
 
+		var vbBlob vbucketKVBlob
+		var cas uint64
+		for _, vbno := range c.vbsRemainingToGiveUp {
+			vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+
+			if c.vbProcessingStats.getVbStat(vbno, "node_uuid") == c.NodeUUID() &&
+				c.vbProcessingStats.getVbStat(vbno, "assigned_worker") == c.ConsumerName() {
+				c.stopDcpStreamAndUpdateCheckpoint(vbKey, vbno, &vbBlob, &cas)
+
+				// Check if another node has taken up ownership of vbucket for which
+				// ownership was given up above
+			retryVbMetaStateCheck:
+				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+
+				logging.Infof("CRVT[%s:%s:%s:%d] vb: %v vbsStateUpdate MetaState check",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+
+				if vbBlob.DCPStreamStatus != dcpStreamRunning {
+					time.Sleep(retryVbMetaStateCheckInterval)
+					goto retryVbMetaStateCheck
+				}
+			}
+		}
+
+	}(c)
+
+retryStreamUpdate:
 	for i := range c.vbsRemainingToOwn {
 		vbno := c.vbsRemainingToOwn[i]
 		c.doVbTakeover(vbno)
@@ -55,6 +77,10 @@ func (c *Consumer) doVbTakeover(vbno uint16) {
 
 		if c.HostPortAddr() != vbBlob.CurrentVBOwner &&
 			!c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner) && c.checkIfCurrentNodeShouldOwnVb(vbno) {
+
+			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker != c.ConsumerName() {
+				return
+			}
 
 			logging.Infof("CRVT[%s:%s:%s:%d] Node: %v taking ownership of vb: %d old node: %s isn't alive any more as per ns_server vbuuid: %v vblob.uuid: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vbno, vbBlob.CurrentVBOwner,
