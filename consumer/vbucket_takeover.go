@@ -10,6 +10,24 @@ import (
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
+func (c *Consumer) reclaimVbOwnership(vbno uint16) error {
+	var vbBlob vbucketKVBlob
+	var cas uint64
+
+	c.doVbTakeover(vbno)
+
+	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+
+	if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
+		logging.Infof("CRVT[%s:%s:%s:%d] vb: %v successfully reclaimed ownership",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+		return nil
+	}
+
+	return fmt.Errorf("Failed to reclaim vb ownership")
+}
+
 func (c *Consumer) vbsStateUpdate() {
 	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
@@ -35,10 +53,26 @@ func (c *Consumer) vbsStateUpdate() {
 				logging.Infof("CRVT[%s:%s:%s:%d] vb: %v vbsStateUpdate MetaState check",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
-				if vbBlob.DCPStreamStatus != dcpStreamRunning {
-					time.Sleep(retryVbMetaStateCheckInterval)
-					goto retryVbMetaStateCheck
+				select {
+				case <-c.stopVbOwnerGiveupCh:
+					roErr := c.reclaimVbOwnership(vbno)
+					if roErr != nil {
+						logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v reclaim of ownership failed, vbBlob dump: %#v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob)
+					}
+
+					logging.Infof("CRVT[%s:%s:%s:%d] Exiting vb ownership give-up routine, last vb handled: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+					return
+
+				default:
+					if vbBlob.DCPStreamStatus != dcpStreamRunning {
+						time.Sleep(retryVbMetaStateCheckInterval)
+						goto retryVbMetaStateCheck
+					}
 				}
+				logging.Infof("CRVT[%s:%s:%s:%d] Gracefully exited vb ownership give-up routine, last vb handled: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 			}
 		}
 
@@ -46,11 +80,18 @@ func (c *Consumer) vbsStateUpdate() {
 
 retryStreamUpdate:
 	for i := range c.vbsRemainingToOwn {
+		select {
+		case <-c.stopVbOwnerTakeoverCh:
+			logging.Infof("CRVT[%s:%s:%s:%d] Exiting vb ownership takeover routine",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+			return
+		default:
+		}
+
 		vbno := c.vbsRemainingToOwn[i]
 		c.doVbTakeover(vbno)
 	}
 
-	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 
 	logging.Infof("CRVT[%s:%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
@@ -58,7 +99,7 @@ retryStreamUpdate:
 
 	// Retry logic in-case previous attempt to own/start dcp stream didn't succeed
 	// because some other node has already opened(or hasn't closed) the vb dcp stream
-	if len(c.vbsRemainingToOwn) > 0 || len(c.vbsRemainingToGiveUp) > 0 {
+	if len(c.vbsRemainingToOwn) > 0 {
 		time.Sleep(dcpStreamRequestRetryInterval)
 		goto retryStreamUpdate
 	}
@@ -222,7 +263,9 @@ func (c *Consumer) getVbsOwned() []uint16 {
 	var vbsOwned []uint16
 
 	for vbno, v := range c.producer.VbEventingNodeAssignMap() {
-		if v == c.HostPortAddr() && c.checkIfCurrentNodeShouldOwnVb(vbno) {
+		if v == c.HostPortAddr() && c.checkIfCurrentNodeShouldOwnVb(vbno) &&
+			c.checkIfConsumerShouldOwnVb(vbno, c.ConsumerName()) {
+
 			vbsOwned = append(vbsOwned, vbno)
 		}
 	}

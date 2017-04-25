@@ -227,6 +227,49 @@ func (m *ServiceMgr) copyStateLocked() state {
 	return m.state
 }
 
+func (m *ServiceMgr) cancelActualTaskLocked(task *service.Task) error {
+	switch task.Type {
+	case service.TaskTypeRebalance:
+		return m.cancelRebalanceTaskLocked(task)
+	default:
+		panic("can't happen")
+	}
+}
+
+func (m *ServiceMgr) cancelRebalanceTaskLocked(task *service.Task) error {
+	switch task.Status {
+	case service.TaskStatusRunning:
+		return m.cancelRunningRebalanceTaskLocked(task)
+	case service.TaskStatusFailed:
+		return m.cancelFailedRebalanceTaskLocked()
+	default:
+		panic("can't happen")
+	}
+}
+
+func (m *ServiceMgr) cancelRunningRebalanceTaskLocked(task *service.Task) error {
+	m.rebalancer.cancel()
+	m.onRebalanceDoneLocked(nil)
+
+	path := metakvRebalanceTokenPath + task.ID
+	err := util.MetakvSet(path, []byte(stopRebalance), nil)
+	if err != nil {
+		logging.Errorf("SMRB Failed to update rebalance token: %v in metakv as part of stop running rebalance, err: %v",
+			task.ID, err)
+		return err
+	}
+
+	return nil
+}
+
+func (m *ServiceMgr) cancelFailedRebalanceTaskLocked() error {
+	m.updateStateLocked(func(s *state) {
+		s.rebalanceTask = nil
+	})
+
+	return nil
+}
+
 func isSingleNodeRebal(change service.TopologyChange) bool {
 	if len(change.KeepNodes) == 1 && len(change.EjectNodes) == 0 {
 		return true

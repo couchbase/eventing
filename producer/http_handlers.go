@@ -24,7 +24,7 @@ func (p *Producer) RebalanceStatus(w http.ResponseWriter, r *http.Request) {
 
 	progress, err := json.Marshal(producerLevelProgress)
 	if err != nil {
-		logging.Errorf("DCFG[%s] Failed to encode producer level rebalance progress, err: %v", p.appName, err)
+		logging.Errorf("PRHH[%s] Failed to encode producer level rebalance progress, err: %v", p.appName, err)
 		return
 	}
 

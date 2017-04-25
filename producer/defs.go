@@ -93,9 +93,9 @@ type Producer struct {
 	// copy of KV vbmap, needed while opening up dcp feed
 	kvVbMap map[uint16]string
 
-	// startTopologyChangeCh used by super_supervisor to notify producer
+	// topologyChangeCh used by super_supervisor to notify producer
 	// about topology change
-	startTopologyChangeCh chan *common.TopologyChangeMsg
+	topologyChangeCh chan *common.TopologyChangeMsg
 
 	// time.Ticker duration for dumping consumer stats
 	statsTickDuration time.Duration

@@ -42,6 +42,8 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, p common.EventingProdu
 		socketWriteBatchSize:      sockWriteBatchSize,
 		statsTicker:               time.NewTicker(statsTickInterval),
 		stopControlRoutineCh:      make(chan bool),
+		stopVbOwnerGiveupCh:       make(chan bool, 1),
+		stopVbOwnerTakeoverCh:     make(chan bool, 1),
 		tcpPort:                   tcpPort,
 		uuid:                      uuid,
 		vbDcpFeedMap:              make(map[uint16]*couchbase.DcpFeed),
@@ -212,8 +214,19 @@ func (c *Consumer) NodeUUID() string {
 // NotifyClusterChange is called by producer handle to signify each
 // consumer instance about StartTopologyChange rpc call from cbauth service.Manager
 func (c *Consumer) NotifyClusterChange() {
-	logging.Infof("Consumer: %s got message that cluster state has changed", c.ConsumerName())
+	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about cluster state change",
+		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid())
 	c.clusterStateChangeNotifCh <- true
+}
+
+// NotifyRebalanceStop is called by producer to signal stopping of
+// rebalance operation
+func (c *Consumer) NotifyRebalanceStop() {
+	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about rebalance stop",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+
+	c.stopVbOwnerGiveupCh <- true
+	c.stopVbOwnerTakeoverCh <- true
 }
 
 func (c *Consumer) initCBBucketConnHandle() {

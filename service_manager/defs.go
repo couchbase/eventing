@@ -14,6 +14,7 @@ const (
 	metakvAppsPath           = metakvEventingPath + "apps/"
 	metakvAppSettingsPath    = metakvEventingPath + "settings/"
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
+	stopRebalance            = "stopRebalance"
 )
 
 const (

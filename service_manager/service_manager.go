@@ -1,6 +1,7 @@
 package servicemanager
 
 import (
+	"bytes"
 	"os"
 
 	"github.com/couchbase/cbauth/service"
@@ -39,9 +40,36 @@ func (m *ServiceMgr) GetTaskList(rev service.Revision, cancel service.Cancel) (*
 
 // CancelTask callback for cbauth service.Manager
 func (m *ServiceMgr) CancelTask(id string, rev service.Revision) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	logging.Infof("SMRB ServiceMgr::CancelTask id: %#v rev: %#v", id, rev)
 
-	return nil
+	tasks := stateToTaskList(m.state).Tasks
+	task := (*service.Task)(nil)
+
+	for i := range tasks {
+		t := &tasks[i]
+
+		if t.ID == id {
+			task = t
+			break
+		}
+	}
+
+	if task == nil {
+		return service.ErrNotFound
+	}
+
+	if !task.IsCancelable {
+		return service.ErrNotSupported
+	}
+
+	if rev != nil && !bytes.Equal(rev, task.Rev) {
+		return service.ErrConflict
+	}
+
+	return m.cancelActualTaskLocked(task)
 }
 
 // GetCurrentTopology callback for cbauth service.Manager

@@ -175,6 +175,14 @@ type Consumer struct {
 
 	clusterStateChangeNotifCh chan bool
 
+	// chan to signal vbucket ownership give up routine to stop.
+	// Will be triggered in case of stop rebalance operation
+	stopVbOwnerGiveupCh chan bool
+
+	// chan to signal vbucket ownership takeover routine to exit.
+	// Will be triggered in case of stop rebalance operation
+	stopVbOwnerTakeoverCh chan bool
+
 	tcpPort string
 
 	// Tracks DCP Opcodes processed per consumer

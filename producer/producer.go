@@ -25,8 +25,8 @@ func NewProducer(appName, kvPort, metakvAppHostPortsPath, nsServerPort, uuid str
 		notifyInitCh:           make(chan bool, 1),
 		notifySupervisorCh:     make(chan bool),
 		nsServerPort:           nsServerPort,
-		startTopologyChangeCh:  make(chan *common.TopologyChangeMsg, 10),
-		uuid: uuid,
+		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
+		uuid:                   uuid,
 	}
 
 	p.eventingNodeUUIDs = append(p.eventingNodeUUIDs, uuid)
@@ -71,15 +71,27 @@ func (p *Producer) Serve() {
 
 	for {
 		select {
-		// TODO: Implement different flows for rebalance start and rebalance stop of eventing nodes
-		case <-p.startTopologyChangeCh:
+		case msg := <-p.topologyChangeCh:
+			logging.Infof("PRDR[%s:%d] Got topology change msg: %v from super_supervisor",
+				p.appName, p.LenRunningConsumers(), msg)
 
-			p.vbEventingNodeAssign()
-			p.initWorkerVbMap()
+			switch msg.CType {
+			case common.StartRebalanceCType:
+				p.vbEventingNodeAssign()
+				p.initWorkerVbMap()
 
-			for _, consumer := range p.runningConsumers {
-				logging.Infof("Consumer: %s sent cluster change message from producer", consumer.ConsumerName())
-				consumer.NotifyClusterChange()
+				for _, consumer := range p.runningConsumers {
+					logging.Infof("PRDR[%s:%d] Consumer: %s sent cluster state change message from producer",
+						p.appName, p.LenRunningConsumers(), consumer.ConsumerName())
+					consumer.NotifyClusterChange()
+				}
+
+			case common.StopRebalanceCType:
+				for _, consumer := range p.runningConsumers {
+					logging.Infof("PRDR[%s:%d] Consumer: %s sent stop rebalance message from producer",
+						p.appName, p.LenRunningConsumers(), consumer.ConsumerName())
+					consumer.NotifyRebalanceStop()
+				}
 			}
 
 		case <-p.stopProducerCh:
@@ -317,9 +329,9 @@ func (p *Producer) NotifySupervisor() {
 	<-p.notifySupervisorCh
 }
 
-// NotifyStartTopologyChange is used by super_supervisor to notify producer about topology change
-func (p *Producer) NotifyStartTopologyChange(msg *common.TopologyChangeMsg) {
-	p.startTopologyChangeCh <- msg
+// NotifyTopologyChange is used by super_supervisor to notify producer about topology change
+func (p *Producer) NotifyTopologyChange(msg *common.TopologyChangeMsg) {
+	p.topologyChangeCh <- msg
 }
 
 // NotifyPrepareTopologyChange captures keepNodes supplied as part of topology change message

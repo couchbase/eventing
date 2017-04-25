@@ -8,15 +8,20 @@ import (
 )
 
 const (
-	MetakvEventingPath          = "/eventing/"
-	MetakvAppsPath              = MetakvEventingPath + "apps/"
-	MetakvAppSettingsPath       = MetakvEventingPath + "settings/"
-	MetakvProducerHostPortsPath = MetakvEventingPath + "hostports/"
-	MetakvRebalanceTokenPath    = MetakvEventingPath + "rebalanceToken/"
+	metakvEventingPath = "/eventing/"
+
+	// MetakvAppsPath refers to path under metakv where app handlers are stored
+	MetakvAppsPath              = metakvEventingPath + "apps/"
+	metakvAppSettingsPath       = metakvEventingPath + "settings/"
+	metakvProducerHostPortsPath = metakvEventingPath + "hostports/"
+
+	// MetakvRebalanceTokenPath refers to path under metakv where rebalance tokens are stored
+	MetakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
+	stopRebalance            = "stopRebalance"
 )
 
 const (
-	RebalanceRunning = "RebalanceRunning"
+	rebalanceRunning = "RebalanceRunning"
 )
 
 type supCmdMsg struct {
@@ -24,6 +29,7 @@ type supCmdMsg struct {
 	ctx string
 }
 
+// SuperSupervisor is responsible for managing/supervising all producer instances
 type SuperSupervisor struct {
 	CancelCh          chan struct{}
 	eventingAdminPort string

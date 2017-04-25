@@ -55,25 +55,32 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 	return nil
 }
 
+// TopologyChangeNotifCallback is registered to notify any changes in MetaKvRebalanceTokenPath
 func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte, rev interface{}) error {
 	logging.Infof("SSUP[%d] TopologyChangeNotifCallback: path => %s value => %s\n", len(s.runningProducers), path, string(value))
+
 	topologyChangeMsg := &common.TopologyChangeMsg{}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if value != nil {
-		topologyChangeMsg.CType = common.StartRebalanceCType
-		for _, producer := range s.runningProducers {
-			producer.NotifyStartTopologyChange(topologyChangeMsg)
+		if string(value) == stopRebalance {
+			topologyChangeMsg.CType = common.StopRebalanceCType
+		} else {
+			topologyChangeMsg.CType = common.StartRebalanceCType
 		}
-	} else {
-		topologyChangeMsg.CType = common.StopRebalanceCType
+
+		for _, producer := range s.runningProducers {
+			producer.NotifyTopologyChange(topologyChangeMsg)
+		}
+
 	}
 
 	return nil
 }
 
 func (s *SuperSupervisor) spawnApp(appName string) {
-	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", MetakvProducerHostPortsPath, appName)
+	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 	p := producer.NewProducer(appName, s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid)
 
 	token := s.superSup.Add(p)
@@ -134,6 +141,8 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 	}
 }
 
+// NotifyPrepareTopologyChange notifies each producer instance running on current eventing nodes
+// about keepNodes supplied by ns_server
 func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
 	for _, producer := range s.runningProducers {
 		logging.Infof("SSUP[%d] NotifyPrepareTopologyChange to producer %p, keepNodes => %v", len(s.runningProducers), producer, keepNodes)
@@ -141,6 +150,8 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
 	}
 }
 
+// ProducerHostPortAddrs returns the list of hostPortAddr for http server instances running
+// on current eventing node
 func (s *SuperSupervisor) ProducerHostPortAddrs() []string {
 	var hostPortAddrs []string
 
@@ -151,6 +162,7 @@ func (s *SuperSupervisor) ProducerHostPortAddrs() []string {
 	return hostPortAddrs
 }
 
+// RestPort returns ns_server port(typically 8091/9000)
 func (s *SuperSupervisor) RestPort() string {
 	return s.restPort
 }

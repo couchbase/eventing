@@ -141,9 +141,6 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 	}
 
 	if c.sendMsgCounter >= c.socketWriteBatchSize {
-		logging.Infof("CRHM[%s:%s:%s:%d] SendMsgCounter: %v, batch size: %v buffer len: %v cap: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.sendMsgCounter, c.socketWriteBatchSize,
-			c.sendMsgBuffer.Len(), c.sendMsgBuffer.Cap())
 
 		c.conn.SetWriteDeadline(time.Now().Add(WriteDeadline))
 

@@ -36,8 +36,8 @@ type EventingProducer interface {
 	MetadataBucket() string
 	NotifyInit()
 	NotifyPrepareTopologyChange(keepNodes []string)
-	NotifyStartTopologyChange(msg *TopologyChangeMsg)
 	NotifySupervisor()
+	NotifyTopologyChange(msg *TopologyChangeMsg)
 	NsServerHostPort() string
 	NsServerNodeCount() int
 	Serve()
@@ -54,6 +54,7 @@ type EventingConsumer interface {
 	HandleV8Worker()
 	HostPortAddr() string
 	NotifyClusterChange()
+	NotifyRebalanceStop()
 	Serve()
 	SetConnHandle(net.Conn)
 	SignalConnected()
