@@ -31,6 +31,17 @@ func (p *Producer) RebalanceStatus(w http.ResponseWriter, r *http.Request) {
 	w.Write(progress)
 }
 
+// DcpEventsProcessedPSec reports back aggregate of events processed/sec from all running consumers
+func (p *Producer) DcpEventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
+	var eventsProcessedPSec int
+
+	for _, consumer := range p.runningConsumers {
+		eventsProcessedPSec += consumer.DcpEventsProcessedPSec()
+	}
+
+	fmt.Fprintf(w, "%v", eventsProcessedPSec)
+}
+
 // DcpEventsRemainingToProcess writes remaining dcp events to process
 func (p *Producer) DcpEventsRemainingToProcess(w http.ResponseWriter, r *http.Request) {
 	var remainingEvents uint64

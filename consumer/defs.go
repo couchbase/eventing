@@ -191,6 +191,11 @@ type Consumer struct {
 	// Tracks V8 Opcodes processed per consumer
 	v8WorkerMessagesProcessed map[string]int
 
+	// capture dcp operation stats, granularity of these stats depend on statsTickInterval
+	dcpOpsProcessed     int
+	opsTimestamp        time.Time
+	dcpOpsProcessedPSec int
+
 	sync.RWMutex
 	vbProcessingStats vbStats
 

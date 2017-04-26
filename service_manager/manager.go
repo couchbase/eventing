@@ -56,11 +56,12 @@ func (m *ServiceMgr) initService() {
 
 	go m.registerWithServer()
 
-	http.HandleFunc("/setSettings/", m.storeAppSettings)
-	http.HandleFunc("/getApplication/", m.fetchAppSetup)
-	http.HandleFunc("/setApplication/", m.storeAppSetup)
-	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
 	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
+	http.HandleFunc("/getApplication/", m.fetchAppSetup)
+	http.HandleFunc("/getEventsPSec", m.getEventsProcessedPSec)
+	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
+	http.HandleFunc("/setApplication/", m.storeAppSetup)
+	http.HandleFunc("/setSettings/", m.storeAppSettings)
 
 	logging.Fatalf("%v", http.ListenAndServe(":"+m.eventingAdminPort, nil))
 }

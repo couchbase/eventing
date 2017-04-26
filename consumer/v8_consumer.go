@@ -35,6 +35,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, p common.EventingProdu
 		gracefulShutdownChan:      make(chan bool, 1),
 		kvHostDcpFeedMap:          make(map[string]*couchbase.DcpFeed),
 		logLevel:                  logLevel,
+		opsTimestamp:              time.Now(),
 		producer:                  p,
 		restartVbDcpStreamTicker:  time.NewTicker(restartVbDcpStreamTickInterval),
 		sendMsgCounter:            0,
@@ -163,10 +164,10 @@ func (c *Consumer) Stop() {
 // Implement fmt.Stringer interface to allow better debugging
 // if C++ V8 worker crashes
 func (c *Consumer) String() string {
+	countMsg, _, _ := util.SprintDCPCounts(c.dcpMessagesProcessed)
 	return fmt.Sprintf("consumer => app: %s name: %v tcpPort: %s ospid: %d"+
 		" dcpEventProcessed: %s v8EventProcessed: %s", c.app.AppName, c.ConsumerName(),
-		c.tcpPort, c.Pid(), util.SprintDCPCounts(c.dcpMessagesProcessed),
-		util.SprintV8Counts(c.v8WorkerMessagesProcessed))
+		c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed))
 }
 
 // SignalConnected notifies consumer routine when CPP V8 worker has connected to

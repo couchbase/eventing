@@ -51,6 +51,7 @@ type EventingProducer interface {
 type EventingConsumer interface {
 	ConsumerName() string
 	DcpEventsRemainingToProcess() uint64
+	DcpEventsProcessedPSec() int
 	HandleV8Worker()
 	HostPortAddr() string
 	NotifyClusterChange()
@@ -66,6 +67,7 @@ type EventingConsumer interface {
 
 type EventingSuperSup interface {
 	NotifyPrepareTopologyChange(keepNodes []string)
+	AppProducerHostPortAddr(appName string) string
 	ProducerHostPortAddrs() []string
 	RestPort() string
 }

@@ -186,10 +186,19 @@ func (c *Consumer) doDCPEventProcess() {
 			vbsOwned := c.getCurrentlyOwnedVbs()
 			if len(vbsOwned) > 0 {
 				c.RLock()
+
+				countMsg, dcpOpCount, tStamp := util.SprintDCPCounts(c.dcpMessagesProcessed)
+
+				diff := tStamp.Sub(c.opsTimestamp)
+				opsDiff := dcpOpCount - c.dcpOpsProcessed
+				c.dcpOpsProcessedPSec = opsDiff / int(diff.Nanoseconds()/(1000*1000*1000))
+
 				logging.Infof("CRDP[%s:%s:%s:%d] DCP events processed: %s V8 events processed: %s, vbs owned len: %d vbs owned:[%d..%d]",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(),
-					util.SprintDCPCounts(c.dcpMessagesProcessed), util.SprintV8Counts(c.v8WorkerMessagesProcessed),
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
 					len(c.getCurrentlyOwnedVbs()), vbsOwned[0], vbsOwned[len(vbsOwned)-1])
+
+				c.opsTimestamp = tStamp
+				c.dcpOpsProcessed = dcpOpCount
 				c.RUnlock()
 			}
 

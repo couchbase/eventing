@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -87,15 +88,19 @@ func sprintWorkerState(state map[int]map[string]interface{}) string {
 	return strings.TrimRight(line, " ")
 }
 
-func SprintDCPCounts(counts map[mcd.CommandCode]int) string {
+func SprintDCPCounts(counts map[mcd.CommandCode]int) (string, int, time.Time) {
 	line := ""
+	ops := 0
+	currTimestamp := time.Now()
+
 	for i := 0; i < 256; i++ {
 		opcode := mcd.CommandCode(i)
 		if n, ok := counts[opcode]; ok {
 			line += fmt.Sprintf("%s:%v ", mcd.CommandNames[opcode], n)
+			ops += n
 		}
 	}
-	return strings.TrimRight(line, " ")
+	return strings.TrimRight(line, " "), ops, currTimestamp
 }
 
 func SprintV8Counts(counts map[string]int) string {
@@ -240,6 +245,35 @@ func ClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, error
 	}
 
 	return cinfo, nil
+}
+
+func GetProcessedPSec(urlSuffix, nodeAddr string) (int, error) {
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
+
+	url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+	res, err := netClient.Get(url)
+	if err != nil {
+		logging.Errorf("UTIL Failed to gather events processed/sec stats from url: %s, err: %v", url, err)
+		return 0, err
+	}
+	defer res.Body.Close()
+
+	buf, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+		return 0, err
+	}
+
+	pSec, err := strconv.Atoi(string(buf))
+	if err != nil {
+		logging.Errorf("UTIL Failed to convert events processed stats to int from url: %s, err: %v", url, err)
+		return 0, err
+	}
+
+	return pSec, nil
 }
 
 func GetProgress(urlSuffix string, nodeAddrs []string) *cm.RebalanceProgress {

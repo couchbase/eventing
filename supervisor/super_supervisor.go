@@ -103,6 +103,7 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 
 		h := http.NewServeMux()
 
+		h.HandleFunc("/getEventsPSec", p.DcpEventsProcessedPSec)
 		h.HandleFunc("/getNodeMap", p.GetNodeMap)
 		h.HandleFunc("/getRebalanceStatus", p.RebalanceStatus)
 		h.HandleFunc("/getRemainingEvents", p.DcpEventsRemainingToProcess)
@@ -148,6 +149,11 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
 		logging.Infof("SSUP[%d] NotifyPrepareTopologyChange to producer %p, keepNodes => %v", len(s.runningProducers), producer, keepNodes)
 		producer.NotifyPrepareTopologyChange(keepNodes)
 	}
+}
+
+// AppProducerHostPortAddr returns hostPortAddr for producer specific to an app
+func (s *SuperSupervisor) AppProducerHostPortAddr(appName string) string {
+	return s.runningProducersHostPortAddr[appName]
 }
 
 // ProducerHostPortAddrs returns the list of hostPortAddr for http server instances running

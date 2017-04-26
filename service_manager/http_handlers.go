@@ -13,6 +13,22 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
+func (m *ServiceMgr) getEventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	producerHostPortAddr := m.superSup.AppProducerHostPortAddr(appName)
+
+	pSec, err := util.GetProcessedPSec("/getEventsPSec", producerHostPortAddr)
+	if err != nil {
+		logging.Errorf("Failed to capture events processed/sec stat from producer for app: %v on current node, err: %v",
+			appName, err)
+		return
+	}
+
+	fmt.Fprintf(w, "%v", pSec)
+}
+
 // Reports progress across all producers on current node
 func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 	producerHostPortAddrs := m.superSup.ProducerHostPortAddrs()
