@@ -21,6 +21,7 @@
 #include <thread>
 #include <typeinfo>
 #include <unistd.h>
+#include <vector>
 
 #include "../include/bucket.h"
 #include "../include/n1ql.h"
@@ -178,6 +179,80 @@ std::string ConvertToISO8601(std::string timestamp) {
   return buf_s;
 }
 
+void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::HandleScope handle_scope(args.GetIsolate());
+  v8::String::Utf8Value func(args[0]);
+  v8::String::Utf8Value doc(args[1]);
+  v8::String::Utf8Value ts(args[2]);
+
+  std::string cb_func, doc_id, start_ts, timer_entry;
+  cb_func.assign(std::string(*func));
+  doc_id.assign(std::string(*doc));
+  start_ts.assign(std::string(*ts));
+
+  LOG(logTrace) << "Request to register timer, callback_func:" << cb_func
+      << " doc_id:" << doc_id << " start_ts:" << start_ts << '\n';
+  // If the doc not supposed to expire, skip
+  // setting up timer callback for it
+  if (atoi(start_ts.c_str()) == 0) {
+    LOG(logError) << "Skipping timer callback setup for doc_id:" << doc_id
+                  << ", won't expire" << '\n';
+    return;
+  }
+
+  timer_entry = ConvertToISO8601(start_ts);
+
+  // Perform xattr operations
+  lcb_CMDSUBDOC mcmd = {0};
+  LCB_CMD_SET_KEY(&mcmd, doc_id.c_str(), doc_id.size());
+
+  /*
+   * XATTR structure with timers:
+   * {
+   * "_eventing": {
+   *              "timers": ["2017-04-30T12:00:00::callback_func", ...],
+   *              "cas": ${Mutation.CAS},
+   *   }
+   * }
+   * */
+  std::string xattr_cas_path("_eventing.cas");
+  std::string xattr_timer_path("_eventing.timers");
+  std::string mutation_cas_macro("\"${Mutation.CAS}\"");
+  timer_entry += "::";
+  timer_entry += cb_func;
+  timer_entry += "\"";
+  timer_entry.insert(0, 1, '"');
+
+  std::vector<lcb_SDSPEC> specs;
+
+  lcb_SDSPEC spec = {0};
+  spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+  spec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
+
+  LCB_SDSPEC_SET_PATH(&spec, xattr_cas_path.c_str(), xattr_cas_path.size());
+  LCB_SDSPEC_SET_VALUE(&spec, mutation_cas_macro.c_str(),
+                       mutation_cas_macro.size());
+  specs.push_back(spec);
+
+  spec.sdcmd = LCB_SDCMD_ARRAY_ADD_LAST;
+  spec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
+  LCB_SDSPEC_SET_PATH(&spec, xattr_timer_path.c_str(), xattr_timer_path.size());
+  LCB_SDSPEC_SET_VALUE(&spec, timer_entry.c_str(), timer_entry.size());
+  specs.push_back(spec);
+
+  mcmd.specs = specs.data();
+  mcmd.nspecs = specs.size();
+
+  lcb_t *cb_instance = reinterpret_cast<lcb_t *>(args.GetIsolate()->GetData(1));
+  lcb_error_t rc = lcb_subdoc3(*cb_instance, NULL, &mcmd);
+  if (rc != LCB_SUCCESS) {
+    LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
+                  << doc_id << '\n';
+    return;
+  }
+  lcb_wait(*cb_instance);
+}
+
 // Exception details will be appended to the first argument.
 std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch) {
   std::string out;
@@ -253,6 +328,44 @@ std::vector<std::string> split(const std::string &s, char delim) {
   return elems;
 }
 
+template <typename... Args>
+std::string string_sprintf(const char *format, Args... args) {
+  int length = std::snprintf(nullptr, 0, format, args...);
+  assert(length >= 0);
+
+  char *buf = new char[length + 1];
+  std::snprintf(buf, length + 1, format, args...);
+
+  std::string str(buf);
+  delete[] buf;
+  return std::move(str);
+}
+
+static void multi_op_callback(lcb_t, int cbtype, const lcb_RESPBASE *rb) {
+  LOG(logTrace) << "Got callback for " << lcb_strcbtype(cbtype) << '\n';
+
+  if (rb->rc != LCB_SUCCESS && rb->rc != LCB_SUBDOC_MULTI_FAILURE) {
+    LOG(logError) << "Operation failed" << lcb_strerror(NULL, rb->rc) << '\n';
+    return;
+  }
+
+  if (cbtype == LCB_CALLBACK_GET) {
+    const lcb_RESPGET *rg = reinterpret_cast<const lcb_RESPGET *>(rb);
+    LOG(logTrace) << string_sprintf("Value %.*s", (int)rg->nvalue, rg->value)
+                  << '\n';
+  } else if (cbtype == LCB_CALLBACK_SDMUTATE ||
+             cbtype == LCB_CALLBACK_SDLOOKUP) {
+    const lcb_RESPSUBDOC *resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
+    lcb_SDENTRY ent;
+    size_t iter = 0;
+    if (lcb_sdresult_next(resp, &ent, &iter)) {
+      LOG(logTrace) << string_sprintf("Status: 0x%x. Value: %.*s\n", ent.status,
+                                      (int)ent.nvalue, ent.value)
+                    << '\n';
+    }
+  }
+}
+
 static void op_get_callback(lcb_t instance, int cbtype,
                             const lcb_RESPBASE *rb) {
   const lcb_RESPGET *resp = reinterpret_cast<const lcb_RESPGET *>(rb);
@@ -304,6 +417,8 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
 
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "log"),
               v8::FunctionTemplate::New(GetIsolate(), Print));
+  global->Set(v8::String::NewFromUtf8(GetIsolate(), "createTimer"),
+              v8::FunctionTemplate::New(GetIsolate(), CreateTimer));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "iter"),
               v8::FunctionTemplate::New(GetIsolate(), IterFunction));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "stopIter"),
@@ -355,6 +470,26 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
 
   n1ql_handle =
       new N1QL(cb_kv_endpoint, cb_source_bucket, rbac_user, rbac_pass);
+
+  std::string connstr =
+      "couchbase://" + cb_kv_endpoint + "/" + config->source_bucket.c_str() +
+      "?username=" + rbac_user +
+      "&console_log_level=5&detailed_errcodes=true&select_bucket=true";
+
+  lcb_create_st crst;
+  memset(&crst, 0, sizeof crst);
+
+  crst.version = 3;
+  crst.v.v3.connstr = connstr.c_str();
+  crst.v.v3.type = LCB_TYPE_BUCKET;
+  crst.v.v3.passwd = rbac_pass.c_str();
+
+  lcb_create(&cb_instance, &crst);
+  lcb_connect(cb_instance);
+  lcb_wait(cb_instance);
+
+  lcb_install_callback3(cb_instance, LCB_CALLBACK_DEFAULT, multi_op_callback);
+  this->GetIsolate()->SetData(1, (void *)(&cb_instance));
 }
 
 V8Worker::~V8Worker() {
