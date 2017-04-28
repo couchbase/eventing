@@ -440,3 +440,15 @@ func SliceDifferences(kv1, kv2 []string) []string {
 
 	return diff
 }
+
+func ConvertBigEndianToUint64(cas []byte) (uint64, error) {
+	// Trim "Ox"
+	cas = cas[2:]
+
+	for i := 0; i < len(cas)/2; i += 2 {
+		cas[i], cas[len(cas)-i-2] = cas[len(cas)-i-2], cas[i]
+		cas[i+1], cas[len(cas)-i-1] = cas[len(cas)-i-1], cas[i+1]
+	}
+
+	return strconv.ParseUint(string(cas), 16, 64)
+}

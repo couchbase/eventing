@@ -190,8 +190,6 @@ void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   doc_id.assign(std::string(*doc));
   start_ts.assign(std::string(*ts));
 
-  LOG(logTrace) << "Request to register timer, callback_func:" << cb_func
-      << " doc_id:" << doc_id << " start_ts:" << start_ts << '\n';
   // If the doc not supposed to expire, skip
   // setting up timer callback for it
   if (atoi(start_ts.c_str()) == 0) {
@@ -201,6 +199,8 @@ void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   timer_entry = ConvertToISO8601(start_ts);
+  LOG(logTrace) << "Request to register timer, callback_func:" << cb_func
+                << " doc_id:" << doc_id << " start_ts:" << timer_entry << '\n';
 
   // Perform xattr operations
   lcb_CMDSUBDOC mcmd = {0};
@@ -247,7 +247,7 @@ void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   lcb_error_t rc = lcb_subdoc3(*cb_instance, NULL, &mcmd);
   if (rc != LCB_SUCCESS) {
     LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
-                  << doc_id << '\n';
+                  << doc_id << " return code:" << rc << '\n';
     return;
   }
   lcb_wait(*cb_instance);

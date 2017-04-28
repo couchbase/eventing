@@ -52,15 +52,21 @@ func (c *Consumer) doDCPEventProcess() {
 						logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v xattrVal: %v",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), string(xattrVal))
 						continue
-					} else {
-						logging.Infof("CRDP[%s:%s:%s:%d] Key: %v xmeta: %#v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), xMeta)
 					}
 
+					cas, err := util.ConvertBigEndianToUint64([]byte(xMeta.Cas))
+					if err != nil {
+						logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v Failed to convert cas string from kv to uint64, err: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
+						continue
+					}
 					// Send mutation to V8 CPP worker _only_ when DcpEvent.Cas != Cas field in xattr
-					if xMeta.Cas != e.Cas {
+					if cas != e.Cas {
 						e.Value = e.Value[4+xattrLen:]
 						c.sendDcpEvent(e)
+					} else {
+						logging.Infof("CRDP[%s:%s:%s:%d] Skipping recursive mutation for Key: %v xattr cas: %v dcp cas: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), cas, e.Cas)
 					}
 				}
 

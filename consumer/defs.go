@@ -79,8 +79,8 @@ var dcpConfig = map[string]interface{}{
 }
 
 type xattrMetadata struct {
-	Cas   uint64   `json:"cas"`
-	Timer []string `json:"timer"`
+	Cas    string   `json:"cas"`
+	Timers []string `json:"timers"`
 }
 
 type vbFlogEntry struct {
