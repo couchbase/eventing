@@ -33,6 +33,7 @@ type supCmdMsg struct {
 type SuperSupervisor struct {
 	CancelCh          chan struct{}
 	eventingAdminPort string
+	eventingDir       string
 	kvPort            string
 	restPort          string
 	superSup          *suptree.Supervisor

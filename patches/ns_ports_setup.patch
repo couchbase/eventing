@@ -1,5 +1,5 @@
 diff --git a/src/ns_ports_setup.erl b/src/ns_ports_setup.erl
-index 19952c85c..748767c62 100644
+index 19952c85c..1a73b45d4 100644
 --- a/src/ns_ports_setup.erl
 +++ b/src/ns_ports_setup.erl
 @@ -275,6 +275,7 @@ dynamic_children(normal) ->
@@ -10,7 +10,7 @@ index 19952c85c..748767c62 100644
               run_via_goport(fun example_service_spec/1, Config)],
  
      lists:flatten(Specs).
-@@ -642,6 +643,28 @@ fts_spec(Config) ->
+@@ -642,6 +643,32 @@ fts_spec(Config) ->
              [Spec]
      end.
  
@@ -21,15 +21,19 @@ index 19952c85c..748767c62 100644
 +        _ ->
 +            Command = path_config:component_path(bin, "eventing"),
 +            EventingAdminPort = ns_config:search(Config, {node, node(), eventing_admin_port}, 25000),
++            {ok, EventingDir} = ns_storage_conf:this_node_ixdir(),
 +            LocalMemcachedPort = ns_config:search_node_prop(node(), Config, memcached, port),
 +            NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
 +            RestPort = misc:node_rest_port(Config, node()),
++            EventingDir2 = filename:join(EventingDir, "@eventing"),
 +            EventingAdminArg = "-adminport=" ++ integer_to_list(EventingAdminPort),
++            EventingDirArg = "-dir=" ++ EventingDir2,
 +            KVAddrArg = "-kvport=" ++ integer_to_list(LocalMemcachedPort),
 +            RestArg = "-restport=" ++ integer_to_list(RestPort),
 +            UUIDArg = "-uuid=" ++ NodeUUID,
++
 +            Spec = {'eventing', Command,
-+                    [EventingAdminArg, KVAddrArg, RestArg, UUIDArg],
++                    [EventingAdminArg, EventingDirArg, KVAddrArg, RestArg, UUIDArg],
 +                    [use_stdio, exit_status, stderr_to_stdout, stream,
 +                     {env, build_go_env_vars(Config, eventing)},
 +                     {log, "eventing.log"}]},

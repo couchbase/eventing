@@ -15,10 +15,11 @@ import (
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
-func NewProducer(appName, kvPort, metakvAppHostPortsPath, nsServerPort, uuid string) *Producer {
+func NewProducer(appName, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid string) *Producer {
 	p := &Producer{
 		listenerHandles:        make([]*abatableListener, 0),
 		appName:                appName,
+		eventingDir:            eventingDir,
 		eventingNodeUUIDs:      make([]string, 0),
 		kvPort:                 kvPort,
 		metakvAppHostPortsPath: metakvAppHostPortsPath,
@@ -151,7 +152,7 @@ func (p *Producer) handleV8Consumer(vbnos []uint16, index int) {
 	p.tcpPort = strings.Split(listener.Addr().String(), ":")[1]
 	logging.Infof("PRDR[%s:%d] Started server on port: %s", p.appName, p.LenRunningConsumers(), p.tcpPort)
 
-	c := consumer.NewConsumer(p.dcpStreamBoundary, p, p.app, vbnos, p.bucket, p.logLevel,
+	c := consumer.NewConsumer(p.dcpStreamBoundary, p.eventingDir, p, p.app, vbnos, p.bucket, p.logLevel,
 		p.tcpPort, p.uuid, p.socketWriteBatchSize, index)
 
 	p.Lock()

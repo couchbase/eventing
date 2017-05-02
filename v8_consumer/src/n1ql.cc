@@ -34,10 +34,9 @@ bool stop_signal = false;
 N1QL::N1QL(std::string cb_kv_endpoint, std::string cb_source_bucket,
            std::string rbac_user, std::string rbac_pass) {
 
-  std::string conn_str =
-      "couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket + "?username=" +
-      rbac_user +
-      "&console_log_level=5&detailed_errcodes=true&select_bucket=true";
+  std::string conn_str = "couchbase://" + cb_kv_endpoint + "/" +
+                         cb_source_bucket + "?username=" + rbac_user +
+                         "&select_bucket=true";
   LOG(logInfo) << "N1QL: connstr " << conn_str << '\n';
 
   lcb_create_st options;

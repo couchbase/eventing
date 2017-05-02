@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -14,6 +15,7 @@ import (
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/nitro/plasma"
 )
 
 func (c *Consumer) doDCPEventProcess() {
@@ -65,8 +67,85 @@ func (c *Consumer) doDCPEventProcess() {
 						e.Value = e.Value[4+xattrLen:]
 						c.sendDcpEvent(e)
 					} else {
-						logging.Infof("CRDP[%s:%s:%s:%d] Skipping recursive mutation for Key: %v xattr cas: %v dcp cas: %v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), cas, e.Cas)
+
+						// Steps:
+						// Lookup in byId plasma handle
+						// If ENOENT, then insert KV pair in byId plasma handle
+						// then insert in byTimer plasma handle as well
+
+						byIDWriterHandle, idOk := c.byIDPlasmaWriter[e.VBucket]
+						if !idOk {
+							logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v, failed to find byID plasma handle associated to vb: %v",
+								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket)
+							continue
+						}
+
+						byTimerWriterHandle, tOk := c.byTimerPlasmaWriter[e.VBucket]
+						if !tOk {
+							logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v, failed to find byTimer plasma handle associated to vb: %v",
+								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket)
+							continue
+						}
+
+						for _, timer := range xMeta.Timers {
+							byIDKey := fmt.Sprintf("%v::%v", timer, string(e.Key))
+							_, err := byIDWriterHandle.LookupKV([]byte(byIDKey))
+							if err == plasma.ErrItemNotFound {
+
+								util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
+									byIDWriterHandle, byIDKey, "", e.VBucket)
+
+								timerData := strings.Split(timer, "::")
+								ts, cbFunc := timerData[0], timerData[1]
+
+							retryLookUp:
+								tv, tErr := byTimerWriterHandle.LookupKV([]byte(ts))
+								if tErr == plasma.ErrItemNotFound {
+									v := byTimerEntry{
+										DocID:      string(e.Key),
+										CallbackFn: cbFunc,
+									}
+
+									encodedVal, mErr := json.Marshal(&v)
+									if mErr != nil {
+										logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v JSON marshalled failed, err: %v",
+											c.app.AppName, c.workerName, c.tcpPort, c.Pid(), byIDKey, err)
+										continue
+									}
+
+									util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
+										byTimerWriterHandle, ts, string(encodedVal), e.VBucket)
+
+								} else if err != nil {
+
+									goto retryLookUp
+
+								} else {
+									v := byTimerEntry{
+										DocID:      string(e.Key),
+										CallbackFn: cbFunc,
+									}
+
+									encodedVal, mErr := json.Marshal(&v)
+									if mErr != nil {
+										logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v JSON marshalled failed, err: %v",
+											c.app.AppName, c.workerName, c.tcpPort, c.Pid(), byIDKey, err)
+										continue
+									}
+
+									timerVal := fmt.Sprintf("%v,%v", string(tv), string(encodedVal))
+
+									util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
+										byTimerWriterHandle, ts, timerVal, e.VBucket)
+								}
+							} else if err != nil {
+								logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v byIDWriterHandle returned, err: %v",
+									c.app.AppName, c.workerName, c.tcpPort, c.Pid(), byIDKey, err)
+							}
+						}
+
+						logging.Infof("CRDP[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v xattr cas: %v dcp cas: %v, xmeta: %#v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, cas, e.Cas, xMeta)
 					}
 				}
 
@@ -197,7 +276,10 @@ func (c *Consumer) doDCPEventProcess() {
 
 				diff := tStamp.Sub(c.opsTimestamp)
 				opsDiff := dcpOpCount - c.dcpOpsProcessed
-				c.dcpOpsProcessedPSec = opsDiff / int(diff.Nanoseconds()/(1000*1000*1000))
+				seconds := int(diff.Nanoseconds() / (1000 * 1000 * 1000))
+				if seconds > 0 {
+					c.dcpOpsProcessedPSec = opsDiff / seconds
+				}
 
 				logging.Infof("CRDP[%s:%s:%s:%d] DCP events processed: %s V8 events processed: %s, vbs owned len: %d vbs owned:[%d..%d]",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
@@ -431,6 +513,34 @@ loop:
 
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
 		logging.Infof("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+
+		// Create plasma instances for the vbucket
+		vbPlasmaByIDDir := fmt.Sprintf("%v/%v_eventing_by_id.data", c.eventingDir, vbno)
+		vbPlasmaByTimerDir := fmt.Sprintf("%v/%v_eventing_by_timer.data", c.eventingDir, vbno)
+
+		byIDCfg := plasma.DefaultConfig()
+		byIDCfg.File = vbPlasmaByIDDir
+		byIDCfg.AutoLSSCleaning = false
+
+		byTimerCfg := plasma.DefaultConfig()
+		byTimerCfg.File = vbPlasmaByTimerDir
+		byTimerCfg.AutoLSSCleaning = false
+
+		c.byIDVbPlasmaStoreMap[vbno], err = plasma.New(byIDCfg)
+		if err != nil {
+			logging.Infof("CRDP[%s:%s:%s:%d] vb: %v Failed to create by-Id plasma instance, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
+			return err
+		}
+		c.byIDPlasmaWriter[vbno] = c.byIDVbPlasmaStoreMap[vbno].NewWriter()
+
+		c.byTimerVbPlasmaStoreMap[vbno], err = plasma.New(byTimerCfg)
+		if err != nil {
+			logging.Infof("CRDP[%s:%s:%s:%d] vb: %v Failed to create by-Timer plasma instance, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
+			return err
+		}
+		c.byTimerPlasmaWriter[vbno] = c.byTimerVbPlasmaStoreMap[vbno].NewWriter()
 
 		return nil
 	}

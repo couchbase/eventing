@@ -33,14 +33,15 @@ const (
 
 // Producer handle - one instance per app per eventing node
 type Producer struct {
-	listenerHandles        []*abatableListener
 	appName                string
 	app                    *common.AppConfig
 	auth                   string
 	bucket                 string
 	cfgData                string
+	eventingDir            string
 	kvPort                 string
 	kvHostPorts            []string
+	listenerHandles        []*abatableListener
 	logLevel               string
 	rbacpass               string
 	rbacrole               string

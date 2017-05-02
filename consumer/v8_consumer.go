@@ -17,25 +17,32 @@ import (
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	"github.com/couchbase/indexing/secondary/dcp/transport/client"
 	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/nitro/plasma"
 )
 
 // NewConsumer called by producer to create consumer handle
-func NewConsumer(streamBoundary common.DcpStreamBoundary, p common.EventingProducer, app *common.AppConfig,
+func NewConsumer(streamBoundary common.DcpStreamBoundary, eventingDir string, p common.EventingProducer, app *common.AppConfig,
 	vbnos []uint16, bucket, logLevel, tcpPort, uuid string, sockWriteBatchSize, workerID int) *Consumer {
 	var b *couchbase.Bucket
 	consumer := &Consumer{
 		app:                       app,
 		aggDCPFeed:                make(chan *memcached.DcpEvent, dcpGenChanSize),
 		bucket:                    bucket,
+		byIDPlasmaWriter:          make(map[uint16]*plasma.Writer),
+		byTimerPlasmaWriter:       make(map[uint16]*plasma.Writer),
+		byIDVbPlasmaStoreMap:      make(map[uint16]*plasma.Plasma),
+		byTimerVbPlasmaStoreMap:   make(map[uint16]*plasma.Plasma),
 		cbBucket:                  b,
 		clusterStateChangeNotifCh: make(chan bool, ClusterChangeNotifChBufSize),
 		dcpFeedCancelChs:          make([]chan bool, 0),
 		dcpFeedVbMap:              make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:         streamBoundary,
+		eventingDir:               eventingDir,
 		gracefulShutdownChan:      make(chan bool, 1),
 		kvHostDcpFeedMap:          make(map[string]*couchbase.DcpFeed),
 		logLevel:                  logLevel,
 		opsTimestamp:              time.Now(),
+		persistAllTicker:          time.NewTicker(persistAllTickInterval),
 		producer:                  p,
 		restartVbDcpStreamTicker:  time.NewTicker(restartVbDcpStreamTickInterval),
 		sendMsgCounter:            0,
@@ -43,6 +50,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, p common.EventingProdu
 		socketWriteBatchSize:      sockWriteBatchSize,
 		statsTicker:               time.NewTicker(statsTickInterval),
 		stopControlRoutineCh:      make(chan bool),
+		stopPlasmaPersistCh:       make(chan bool, 1),
 		stopVbOwnerGiveupCh:       make(chan bool, 1),
 		stopVbOwnerTakeoverCh:     make(chan bool, 1),
 		tcpPort:                   tcpPort,
@@ -105,6 +113,8 @@ func (c *Consumer) Serve() {
 
 	c.startDcp(dcpConfig, flogs)
 
+	go c.plasmaPersistAll()
+
 	c.controlRoutine()
 }
 
@@ -148,6 +158,7 @@ func (c *Consumer) Stop() {
 
 	c.stopCheckpointingCh <- true
 	c.stopControlRoutineCh <- true
+	c.stopPlasmaPersistCh <- true
 	c.gracefulShutdownChan <- true
 
 	for _, dcpFeed := range c.kvHostDcpFeedMap {

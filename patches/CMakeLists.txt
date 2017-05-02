@@ -17,3 +17,5 @@ apply_patch(conn_pool goproj/src/github.com/couchbase/indexing)
 apply_patch(dcp goproj/src/github.com/couchbase/indexing)
 apply_patch(dcp_feed goproj/src/github.com/couchbase/indexing)
 apply_patch(upr goproj/src/github.com/couchbase/indexing)
+
+apply_patch(plasma goproj/src/github.com/couchbase/nitro)

@@ -9,8 +9,11 @@ import (
 	"strings"
 )
 
+// Flags encapsulates different command-line parameters "eventing"
+// executable exposes
 type Flags struct {
 	eventingAdminPort string
+	eventingDir       string
 	kvPort            string
 	restPort          string
 	help              bool
@@ -49,6 +52,10 @@ func initFlags(flags *Flags) map[string][]string {
 	s(&flags.eventingAdminPort,
 		[]string{"adminport", "event"}, "EVENTING_PORT", "25000",
 		"Port eventing admin service is running on, default being 25000")
+
+	s(&flags.eventingDir,
+		[]string{"dir"}, "EVENTING_DIR", "",
+		"Directory where eventing relating timer data is stored on disk")
 
 	s(&flags.kvPort,
 		[]string{"kvport", "kv"}, "KV_PORT", "11210",

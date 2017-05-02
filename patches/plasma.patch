@@ -1,0 +1,24 @@
+diff --git a/plasma/plasma.go b/plasma/plasma.go
+index 89c8840..8fdd1b2 100644
+--- a/plasma/plasma.go
++++ b/plasma/plasma.go
+@@ -342,8 +342,8 @@ func New(cfg Config) (*Plasma, error) {
+ 		}
+ 	}
+ 
+-	go s.monitorMemUsage()
+-	go s.runtimeStats()
++	// go s.monitorMemUsage()
++	// go s.runtimeStats()
+ 	return s, err
+ }
+ 
+@@ -385,7 +385,7 @@ func (s *Plasma) monitorMemUsage() {
+ 		}
+ 		s.hasMemoryResPressure = s.TriggerSwapper(sctx)
+ 		s.hasLSSResPressure = s.TriggerLSSCleaner(s.Config.LSSCleanerMaxThreshold, s.Config.LSSCleanerMinSize)
+-		time.Sleep(time.Millisecond * 100)
++		time.Sleep(time.Second * 100)
+ 	}
+ }
+ 

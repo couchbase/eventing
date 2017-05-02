@@ -471,10 +471,9 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
   n1ql_handle =
       new N1QL(cb_kv_endpoint, cb_source_bucket, rbac_user, rbac_pass);
 
-  std::string connstr =
-      "couchbase://" + cb_kv_endpoint + "/" + config->source_bucket.c_str() +
-      "?username=" + rbac_user +
-      "&console_log_level=5&detailed_errcodes=true&select_bucket=true";
+  std::string connstr = "couchbase://" + cb_kv_endpoint + "/" +
+                        config->source_bucket.c_str() +
+                        "?username=" + rbac_user + "&select_bucket=true";
 
   lcb_create_st crst;
   memset(&crst, 0, sizeof crst);

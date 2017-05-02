@@ -16,10 +16,11 @@ import (
 )
 
 // NewSuperSupervisor creates the super_supervisor handle
-func NewSuperSupervisor(eventingAdminPort, kvPort, restPort, uuid string) *SuperSupervisor {
+func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid string) *SuperSupervisor {
 	s := &SuperSupervisor{
 		CancelCh:          make(chan struct{}, 1),
 		eventingAdminPort: eventingAdminPort,
+		eventingDir:       eventingDir,
 		kvPort:            kvPort,
 		producerSupervisorTokenMap:   make(map[common.EventingProducer]suptree.ServiceToken),
 		restPort:                     restPort,
@@ -35,6 +36,7 @@ func NewSuperSupervisor(eventingAdminPort, kvPort, restPort, uuid string) *Super
 	config, _ := util.NewConfig(nil)
 	config.Set("uuid", s.uuid)
 	config.Set("eventing_admin_port", s.eventingAdminPort)
+	config.Set("eventing_dir", s.eventingDir)
 	config.Set("rest_port", s.restPort)
 
 	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s)
@@ -81,7 +83,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
-	p := producer.NewProducer(appName, s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid)
+	p := producer.NewProducer(appName, s.eventingDir, s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid)
 
 	token := s.superSup.Add(p)
 	s.mu.Lock()

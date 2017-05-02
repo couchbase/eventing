@@ -76,8 +76,7 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
   worker = w;
 
   std::string connstr = "couchbase://" + GetEndPoint() + "/" + GetBucketName() +
-                        "?username=" + rbac_user +
-                        "&console_log_level=5&detailed_errcodes=true&select_bucket=true";
+                        "?username=" + rbac_user + "&select_bucket=true";
 
   LOG(logInfo) << "Bucket: connstr " << connstr << '\n';
 

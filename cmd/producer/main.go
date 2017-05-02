@@ -16,7 +16,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	s := supervisor.NewSuperSupervisor(flags.eventingAdminPort, flags.kvPort, flags.restPort, flags.uuid)
+	s := supervisor.NewSuperSupervisor(flags.eventingAdminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid)
 
 	go metakv.RunObserveChildren(supervisor.MetakvAppsPath, s.EventHandlerLoadCallback, s.CancelCh)
 	// TODO: Setting need to be dynamically reloaded

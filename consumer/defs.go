@@ -14,6 +14,7 @@ import (
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	cb "github.com/couchbase/indexing/secondary/dcp/transport/client"
+	"github.com/couchbase/nitro/plasma"
 )
 
 const (
@@ -48,6 +49,12 @@ const (
 
 	// Interval for retrying failed cluster related operations
 	clusterOpRetryInterval = time.Duration(1000) * time.Millisecond
+
+	// Interval at which plasma.PersistAll will be called against *plasma.Plasma
+	persistAllTickInterval = time.Duration(5000) * time.Millisecond
+
+	// Interval for retrying failed plasma operations
+	plasmaOpRetryInterval = time.Duration(1000) * time.Millisecond
 
 	statsTickInterval = time.Duration(5000) * time.Millisecond
 
@@ -116,6 +123,7 @@ type Consumer struct {
 	cbBucket               *couchbase.Bucket
 	dcpFeedCancelChs       []chan bool
 	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16
+	eventingDir            string
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed
 	kvVbMap                map[uint16]string
 	logLevel               string
@@ -124,6 +132,14 @@ type Consumer struct {
 	vbsRemainingToOwn      []uint16
 	vbsRemainingToGiveUp   []uint16
 	vbsRemainingToRestream []uint16
+
+	// Plasma DGM store handle to store timer entries at per vbucket level
+	byIDVbPlasmaStoreMap    map[uint16]*plasma.Plasma
+	byTimerVbPlasmaStoreMap map[uint16]*plasma.Plasma
+	byIDPlasmaWriter        map[uint16]*plasma.Writer
+	byTimerPlasmaWriter     map[uint16]*plasma.Writer
+	persistAllTicker        *time.Ticker
+	stopPlasmaPersistCh     chan bool
 
 	dcpStreamBoundary common.DcpStreamBoundary
 
@@ -202,6 +218,11 @@ type Consumer struct {
 	checkpointTicker         *time.Ticker
 	restartVbDcpStreamTicker *time.Ticker
 	statsTicker              *time.Ticker
+}
+
+type byTimerEntry struct {
+	DocID      string
+	CallbackFn string
 }
 
 type client struct {
