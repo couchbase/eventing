@@ -8,6 +8,8 @@ table Payload {
   rbac_pass:string;
   key:string; // dcp mutation key
   value:string; // dcp mutation value
+  doc_id:string; // timer event doc_id
+  callback_fn:string; // timer event callback function
 }
 
 root_type Payload;

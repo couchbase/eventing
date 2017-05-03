@@ -270,6 +270,7 @@ func (c *Consumer) getVbsOwned() []uint16 {
 		}
 	}
 
+	sort.Sort(util.Uint16Slice(vbsOwned))
 	return vbsOwned
 }
 

@@ -22,6 +22,8 @@ event_type getEvent(int8_t event) {
     return eV8_Worker;
   if (event == 5)
     return eApp_Worker_Setting;
+  if (event == 6)
+    return eTimer;
   return Event_Unknown;
 }
 

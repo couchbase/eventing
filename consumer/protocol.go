@@ -15,6 +15,7 @@ const (
 	v8DebugEvent
 	v8WorkerEvent
 	appWorkerSetting
+	timerEvent
 )
 
 const (
@@ -47,6 +48,10 @@ type response struct {
 	res      string
 	logEntry string
 	err      error
+}
+
+func makeTimerEventHeader() []byte {
+	return makeHeader(timerEvent, 0, "")
 }
 
 func makeDcpMutationHeader(mutationMeta string) []byte {
@@ -91,6 +96,22 @@ func makeHeader(event int8, opcode int8, meta string) (encodedHeader []byte) {
 	headerPos := header.HeaderEnd(builder)
 	builder.Finish(headerPos)
 	encodedHeader = builder.Bytes[builder.Head():]
+	return builder.Bytes[builder.Head():]
+}
+
+func makeTimerPayload(docID, callbackFn string) []byte {
+	builder := flatbuffers.NewBuilder(0)
+	builder.Reset()
+	docIDPos := builder.CreateString(docID)
+	callbackFnPos := builder.CreateString(callbackFn)
+
+	payload.PayloadStart(builder)
+
+	payload.PayloadAddDocId(builder, docIDPos)
+	payload.PayloadAddCallbackFn(builder, callbackFnPos)
+
+	payloadPos := payload.PayloadEnd(builder)
+	builder.Finish(payloadPos)
 	return builder.Bytes[builder.Head():]
 }
 

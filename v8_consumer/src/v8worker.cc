@@ -682,6 +682,30 @@ int V8Worker::SendDelete(std::string meta) {
   return SUCCESS;
 }
 
+void V8Worker::SendTimer(std::string doc_id, std::string callback_fn) {
+  v8::Locker locker(GetIsolate());
+  v8::Isolate::Scope isolate_scope(GetIsolate());
+  v8::HandleScope handle_scope(GetIsolate());
+
+  LOG(logTrace) << "Got timer event, doc_id" << doc_id
+               << " callback_fn:" << callback_fn << '\n';
+
+  v8::Local<v8::Context> context =
+      v8::Local<v8::Context>::New(GetIsolate(), context_);
+  v8::Context::Scope context_scope(context);
+
+  v8::Handle<v8::Value> val = context->Global()->Get(
+      v8::String::NewFromUtf8(GetIsolate(), callback_fn.c_str(),
+                              v8::NewStringType::kNormal)
+          .ToLocalChecked());
+  v8::Handle<v8::Function> cb_fn = v8::Handle<v8::Function>::Cast(val);
+
+  v8::Handle<v8::Value> arg[1];
+  arg[0] = v8::String::NewFromUtf8(GetIsolate(), doc_id.c_str());
+
+  cb_fn->Call(context->Global(), 1, arg);
+}
+
 const char *V8Worker::V8WorkerLastException() { return last_exception.c_str(); }
 
 const char *V8Worker::V8WorkerVersion() { return v8::V8::GetVersion(); }

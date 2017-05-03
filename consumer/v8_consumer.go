@@ -28,9 +28,12 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, eventingDir string, p 
 		app:                       app,
 		aggDCPFeed:                make(chan *memcached.DcpEvent, dcpGenChanSize),
 		bucket:                    bucket,
+		byIDPlasmaReader:          make(map[uint16]*plasma.Writer),
 		byIDPlasmaWriter:          make(map[uint16]*plasma.Writer),
-		byTimerPlasmaWriter:       make(map[uint16]*plasma.Writer),
 		byIDVbPlasmaStoreMap:      make(map[uint16]*plasma.Plasma),
+		byTimerEntryCh:            make(chan *byTimerEntry, timerChanSize),
+		byTimerPlasmaReader:       make(map[uint16]*plasma.Writer),
+		byTimerPlasmaWriter:       make(map[uint16]*plasma.Writer),
 		byTimerVbPlasmaStoreMap:   make(map[uint16]*plasma.Plasma),
 		cbBucket:                  b,
 		clusterStateChangeNotifCh: make(chan bool, ClusterChangeNotifChBufSize),
@@ -53,17 +56,19 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, eventingDir string, p 
 		stopPlasmaPersistCh:       make(chan bool, 1),
 		stopVbOwnerGiveupCh:       make(chan bool, 1),
 		stopVbOwnerTakeoverCh:     make(chan bool, 1),
+		stopTimerProcessCh:        make(chan bool, 1),
 		tcpPort:                   tcpPort,
-		uuid:                      uuid,
-		vbDcpFeedMap:              make(map[uint16]*couchbase.DcpFeed),
-		vbFlogChan:                make(chan *vbFlogEntry),
-		vbnos:                     vbnos,
-		vbProcessingStats:         newVbProcessingStats(),
-		vbsRemainingToGiveUp:      make([]uint16, 0),
-		vbsRemainingToOwn:         make([]uint16, 0),
-		vbsRemainingToRestream:    make([]uint16, 0),
-		workerName:                fmt.Sprintf("worker_%s_%d", app.AppName, workerID),
-		writeBatchSeqnoMap:        make(map[uint16]uint64),
+		timerProcessingTicker:     time.NewTicker(1 * time.Second),
+		uuid:                   uuid,
+		vbDcpFeedMap:           make(map[uint16]*couchbase.DcpFeed),
+		vbFlogChan:             make(chan *vbFlogEntry),
+		vbnos:                  vbnos,
+		vbProcessingStats:      newVbProcessingStats(),
+		vbsRemainingToGiveUp:   make([]uint16, 0),
+		vbsRemainingToOwn:      make([]uint16, 0),
+		vbsRemainingToRestream: make([]uint16, 0),
+		workerName:             fmt.Sprintf("worker_%s_%d", app.AppName, workerID),
+		writeBatchSeqnoMap:     make(map[uint16]uint64),
 	}
 	return consumer
 }
@@ -114,6 +119,7 @@ func (c *Consumer) Serve() {
 	c.startDcp(dcpConfig, flogs)
 
 	go c.plasmaPersistAll()
+	go c.processTimerEvents()
 
 	c.controlRoutine()
 }
@@ -155,11 +161,14 @@ func (c *Consumer) Stop() {
 	c.checkpointTicker.Stop()
 	c.restartVbDcpStreamTicker.Stop()
 	c.statsTicker.Stop()
+	c.persistAllTicker.Stop()
+	c.timerProcessingTicker.Stop()
 
+	c.gracefulShutdownChan <- true
 	c.stopCheckpointingCh <- true
 	c.stopControlRoutineCh <- true
 	c.stopPlasmaPersistCh <- true
-	c.gracefulShutdownChan <- true
+	c.stopTimerProcessCh <- true
 
 	for _, dcpFeed := range c.kvHostDcpFeedMap {
 		dcpFeed.Close()

@@ -74,6 +74,7 @@ public:
 
   int SendUpdate(std::string value, std::string meta, std::string doc_type);
   int SendDelete(std::string meta);
+  void SendTimer(std::string doc_id, std::string callback_fn);
 
   void V8WorkerDispose();
   void V8WorkerTerminateExecution();

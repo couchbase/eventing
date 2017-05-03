@@ -55,6 +55,20 @@ func (c *Consumer) sendLoadV8Worker(appCode string) error {
 	return c.sendMessage(msg, 0, 0, false)
 }
 
+func (c *Consumer) sendTimerEvent(e *byTimerEntry) {
+	timerHeader := makeTimerEventHeader()
+	timerPayload := makeTimerPayload(e.DocID, e.CallbackFn)
+
+	msg := &message{
+		Header:  timerHeader,
+		Payload: timerPayload,
+	}
+
+	if err := c.sendMessage(msg, 0, 0, false); err != nil {
+		return
+	}
+}
+
 func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent) {
 	m := dcpMetadata{
 		Cas:     e.Cas,

@@ -20,6 +20,7 @@ enum event_type {
   eV8_Debug,
   eV8_Worker,
   eApp_Worker_Setting,
+  eTimer,
   Event_Unknown
 };
 

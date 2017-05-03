@@ -96,7 +96,7 @@ func (c *Consumer) doDCPEventProcess() {
 									byIDWriterHandle, byIDKey, "", e.VBucket)
 
 								timerData := strings.Split(timer, "::")
-								ts, cbFunc := timerData[0], timerData[1]
+								ts, cbFunc := fmt.Sprintf("%vZ", timerData[0]), timerData[1]
 
 							retryLookUp:
 								tv, tErr := byTimerWriterHandle.LookupKV([]byte(ts))
@@ -108,7 +108,7 @@ func (c *Consumer) doDCPEventProcess() {
 
 									encodedVal, mErr := json.Marshal(&v)
 									if mErr != nil {
-										logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v JSON marshalled failed, err: %v",
+										logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v JSON marshal failed, err: %v",
 											c.app.AppName, c.workerName, c.tcpPort, c.Pid(), byIDKey, err)
 										continue
 									}
@@ -128,7 +128,7 @@ func (c *Consumer) doDCPEventProcess() {
 
 									encodedVal, mErr := json.Marshal(&v)
 									if mErr != nil {
-										logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v JSON marshalled failed, err: %v",
+										logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v JSON marshal failed, err: %v",
 											c.app.AppName, c.workerName, c.tcpPort, c.Pid(), byIDKey, err)
 										continue
 									}
@@ -143,6 +143,8 @@ func (c *Consumer) doDCPEventProcess() {
 									c.app.AppName, c.workerName, c.tcpPort, c.Pid(), byIDKey, err)
 							}
 						}
+						c.vbProcessingStats.updateVbStat(e.VBucket, "plasma_by_id_last_seq_no_stored", e.Seqno)
+						c.vbProcessingStats.updateVbStat(e.VBucket, "plasma_by_timer_last_seq_no_stored", e.Seqno)
 
 						logging.Infof("CRDP[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v xattr cas: %v dcp cas: %v, xmeta: %#v",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, cas, e.Cas, xMeta)
@@ -264,6 +266,18 @@ func (c *Consumer) doDCPEventProcess() {
 
 			default:
 			}
+
+		case e, ok := <-c.byTimerEntryCh:
+			if ok == false {
+				logging.Infof("CRDP[%s:%s:%s:%d] Closing timer chan", c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+
+				c.stopCheckpointingCh <- true
+				c.producer.CleanupDeadConsumer(c)
+				return
+			}
+
+			logging.Infof("CRDP[%s:%s:%s:%d] Got timer event: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e)
+			c.sendTimerEvent(e)
 
 		case <-c.statsTicker.C:
 
@@ -532,6 +546,8 @@ loop:
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
 			return err
 		}
+
+		c.byIDPlasmaReader[vbno] = c.byIDVbPlasmaStoreMap[vbno].NewWriter()
 		c.byIDPlasmaWriter[vbno] = c.byIDVbPlasmaStoreMap[vbno].NewWriter()
 
 		c.byTimerVbPlasmaStoreMap[vbno], err = plasma.New(byTimerCfg)
@@ -540,6 +556,8 @@ loop:
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
 			return err
 		}
+
+		c.byTimerPlasmaReader[vbno] = c.byTimerVbPlasmaStoreMap[vbno].NewWriter()
 		c.byTimerPlasmaWriter[vbno] = c.byTimerVbPlasmaStoreMap[vbno].NewWriter()
 
 		return nil

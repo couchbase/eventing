@@ -34,6 +34,7 @@ const (
 	dcpGenChanSize    = 10000
 	dcpDataChanSize   = 10000
 	dcpNumConnections = 1
+	timerChanSize     = 10000
 
 	// ClusterChangeNotifChBufSize limits buffer size for cluster change notif from producer
 	ClusterChangeNotifChBufSize = 10
@@ -138,8 +139,13 @@ type Consumer struct {
 	byTimerVbPlasmaStoreMap map[uint16]*plasma.Plasma
 	byIDPlasmaWriter        map[uint16]*plasma.Writer
 	byTimerPlasmaWriter     map[uint16]*plasma.Writer
+	byIDPlasmaReader        map[uint16]*plasma.Writer
+	byTimerPlasmaReader     map[uint16]*plasma.Writer
+	byTimerEntryCh          chan *byTimerEntry
 	persistAllTicker        *time.Ticker
 	stopPlasmaPersistCh     chan bool
+	stopTimerProcessCh      chan bool
+	timerProcessingTicker   *time.Ticker
 
 	dcpStreamBoundary common.DcpStreamBoundary
 
@@ -251,6 +257,12 @@ type vbucketKVBlob struct {
 	OwnershipHistory   []OwnershipEntry `json:"ownership_history"`
 	VBId               uint16           `json:"vb_id"`
 	VBuuid             uint64           `json:"vb_uuid"`
+
+	ByIDPersistedSeqNo      uint64 `json:"plasma_by_id_last_persisted_seq_no"`
+	ByTimerPersistedSeqNo   uint64 `json:"plasma_by_timer_last_persisted_seq_no"`
+	CurrentProcessedTimer   string `json:"currently_processed_timer"`
+	LastProcessedTimerEvent string `json:"last_processed_timer_event"`
+	NextTimerToProcess      string `json:"next_timer_to_process"`
 }
 
 // OwnershipEntry captures the state of vbucket within the metadata blob

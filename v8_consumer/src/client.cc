@@ -104,7 +104,7 @@ static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
 std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                                 message_t *parsed_message) {
   std::string app_name, dep_cfg, kv_host_port, rbac_user, rbac_pass, key, val,
-      result;
+      result, doc_id, callback_fn;
   const flatbuf::payload::Payload *payload;
 
   switch (getEvent(parsed_header->event)) {
@@ -157,6 +157,13 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       LOG(logError) << "dcp_opcode_unknown encountered" << '\n';
       break;
     }
+    break;
+  case eTimer:
+    payload = flatbuf::payload::GetPayload(
+        (const void *)parsed_message->payload.c_str());
+    doc_id.assign(payload->doc_id()->str());
+    callback_fn.assign(payload->callback_fn()->str());
+    this->v8worker->SendTimer(doc_id, callback_fn);
     break;
   case eHTTP:
     switch (getHTTPOpcode(parsed_header->opcode)) {
