@@ -210,7 +210,7 @@ void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
    * XATTR structure with timers:
    * {
    * "_eventing": {
-   *              "timers": ["2017-04-30T12:00:00::callback_func", ...],
+   *              "timers": ["2017-04-30ZT12:00:00::callback_func", ...],
    *              "cas": ${Mutation.CAS},
    *   }
    * }
@@ -218,7 +218,7 @@ void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   std::string xattr_cas_path("_eventing.cas");
   std::string xattr_timer_path("_eventing.timers");
   std::string mutation_cas_macro("\"${Mutation.CAS}\"");
-  timer_entry += "::";
+  timer_entry += "Z::";
   timer_entry += cb_func;
   timer_entry += "\"";
   timer_entry.insert(0, 1, '"');
@@ -688,7 +688,7 @@ void V8Worker::SendTimer(std::string doc_id, std::string callback_fn) {
   v8::HandleScope handle_scope(GetIsolate());
 
   LOG(logTrace) << "Got timer event, doc_id" << doc_id
-               << " callback_fn:" << callback_fn << '\n';
+                << " callback_fn:" << callback_fn << '\n';
 
   v8::Local<v8::Context> context =
       v8::Local<v8::Context>::New(GetIsolate(), context_);

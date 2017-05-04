@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -67,87 +66,7 @@ func (c *Consumer) doDCPEventProcess() {
 						e.Value = e.Value[4+xattrLen:]
 						c.sendDcpEvent(e)
 					} else {
-
-						// Steps:
-						// Lookup in byId plasma handle
-						// If ENOENT, then insert KV pair in byId plasma handle
-						// then insert in byTimer plasma handle as well
-
-						byIDWriterHandle, idOk := c.byIDPlasmaWriter[e.VBucket]
-						if !idOk {
-							logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v, failed to find byID plasma handle associated to vb: %v",
-								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket)
-							continue
-						}
-
-						byTimerWriterHandle, tOk := c.byTimerPlasmaWriter[e.VBucket]
-						if !tOk {
-							logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v, failed to find byTimer plasma handle associated to vb: %v",
-								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket)
-							continue
-						}
-
-						for _, timer := range xMeta.Timers {
-							byIDKey := fmt.Sprintf("%v::%v", timer, string(e.Key))
-							_, err := byIDWriterHandle.LookupKV([]byte(byIDKey))
-							if err == plasma.ErrItemNotFound {
-
-								util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
-									byIDWriterHandle, byIDKey, "", e.VBucket)
-
-								timerData := strings.Split(timer, "::")
-								ts, cbFunc := fmt.Sprintf("%vZ", timerData[0]), timerData[1]
-
-							retryLookUp:
-								tv, tErr := byTimerWriterHandle.LookupKV([]byte(ts))
-								if tErr == plasma.ErrItemNotFound {
-									v := byTimerEntry{
-										DocID:      string(e.Key),
-										CallbackFn: cbFunc,
-									}
-
-									encodedVal, mErr := json.Marshal(&v)
-									if mErr != nil {
-										logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v JSON marshal failed, err: %v",
-											c.app.AppName, c.workerName, c.tcpPort, c.Pid(), byIDKey, err)
-										continue
-									}
-
-									util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
-										byTimerWriterHandle, ts, string(encodedVal), e.VBucket)
-
-								} else if err != nil {
-
-									goto retryLookUp
-
-								} else {
-									v := byTimerEntry{
-										DocID:      string(e.Key),
-										CallbackFn: cbFunc,
-									}
-
-									encodedVal, mErr := json.Marshal(&v)
-									if mErr != nil {
-										logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v JSON marshal failed, err: %v",
-											c.app.AppName, c.workerName, c.tcpPort, c.Pid(), byIDKey, err)
-										continue
-									}
-
-									timerVal := fmt.Sprintf("%v,%v", string(tv), string(encodedVal))
-
-									util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
-										byTimerWriterHandle, ts, timerVal, e.VBucket)
-								}
-							} else if err != nil {
-								logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v byIDWriterHandle returned, err: %v",
-									c.app.AppName, c.workerName, c.tcpPort, c.Pid(), byIDKey, err)
-							}
-						}
-						c.vbProcessingStats.updateVbStat(e.VBucket, "plasma_by_id_last_seq_no_stored", e.Seqno)
-						c.vbProcessingStats.updateVbStat(e.VBucket, "plasma_by_timer_last_seq_no_stored", e.Seqno)
-
-						logging.Infof("CRDP[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v xattr cas: %v dcp cas: %v, xmeta: %#v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, cas, e.Cas, xMeta)
+						c.storeTimerEvent(e.VBucket, e.Seqno, string(e.Key), &xMeta)
 					}
 				}
 
@@ -276,7 +195,6 @@ func (c *Consumer) doDCPEventProcess() {
 				return
 			}
 
-			logging.Infof("CRDP[%s:%s:%s:%d] Got timer event: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e)
 			c.sendTimerEvent(e)
 
 		case <-c.statsTicker.C:

@@ -144,7 +144,12 @@ func (c *Consumer) processTimerEvents() {
 						}
 					}
 				}
-				c.byIDPlasmaReader[uint16(vb)].DeleteKV([]byte(currTimer))
+				err = c.byTimerPlasmaReader[vb].DeleteKV([]byte(currTimer))
+				if err != nil {
+					logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d key: %v Failed to delete from byTimer plasma handle, err: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
+				}
+
 				c.updateTimerStats(vb)
 				continue
 			}
@@ -162,6 +167,14 @@ func (c *Consumer) processTimerEvents() {
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerEvents[0], err)
 			} else {
 				c.byTimerEntryCh <- &timer
+
+				byIDKey := fmt.Sprintf("%v::%v::%v", currTimer, timer.CallbackFn, timer.DocID)
+				err = c.byIDPlasmaReader[vb].DeleteKV([]byte(byIDKey))
+				if err != nil {
+					logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d key: %v Failed to delete from byID plasma handle, err: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, byIDKey, err)
+				}
+
 			}
 
 			if len(timerEvents) > 1 {
@@ -173,12 +186,25 @@ func (c *Consumer) processTimerEvents() {
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, event, err)
 					} else {
 						c.byTimerEntryCh <- &timer
+
+						byIDKey := fmt.Sprintf("%v::%v::%v", currTimer, timer.CallbackFn, timer.DocID)
+						err = c.byIDPlasmaReader[vb].DeleteKV([]byte(byIDKey))
+						if err != nil {
+							logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d key: %v Failed to delete from byID plasma handle, err: %v",
+								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, byIDKey, err)
+						}
+
 					}
 					c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", timer.DocID)
 				}
 			}
 
-			c.byIDPlasmaReader[uint16(vb)].DeleteKV([]byte(currTimer))
+			err = c.byTimerPlasmaReader[vb].DeleteKV([]byte(currTimer))
+			if err != nil {
+				logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d key: %v Failed to delete from byTimer plasma handle, err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
+			}
+
 			c.updateTimerStats(vb)
 		}
 	}
@@ -188,7 +214,7 @@ func (c *Consumer) updateTimerStats(vb uint16) {
 
 	tsLayout := "2006-01-02T15:04:05Z"
 
-	nTimerTs := c.vbProcessingStats.getVbStat(uint16(vb), "next_timer_to_process").(string)
+	nTimerTs := c.vbProcessingStats.getVbStat(vb, "next_timer_to_process").(string)
 	c.vbProcessingStats.updateVbStat(vb, "currently_processed_timer", nTimerTs)
 
 	nextTimer, err := time.Parse(tsLayout, nTimerTs)
@@ -199,5 +225,108 @@ func (c *Consumer) updateTimerStats(vb uint16) {
 
 	c.vbProcessingStats.updateVbStat(vb, "next_timer_to_process",
 		nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
+
+}
+
+func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, key string, xMeta *xattrMetadata) {
+
+	// Steps:
+	// Lookup in byId plasma handle
+	// If ENOENT, then insert KV pair in byId plasma handle
+	// then insert in byTimer plasma handle as well
+
+	byIDWriterHandle, idOk := c.byIDPlasmaWriter[vb]
+	if !idOk {
+		logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v, failed to find byID plasma handle associated to vb: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb)
+		return
+	}
+
+	byTimerWriterHandle, tOk := c.byTimerPlasmaWriter[vb]
+	if !tOk {
+		logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v, failed to find byTimer plasma handle associated to vb: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb)
+		return
+	}
+
+	for _, timer := range xMeta.Timers {
+		// check if timer timestamp has already passed, if yes then skip adding it to plasma
+		tsLayout := "2006-01-02T15:04:05Z"
+		t := strings.Split(timer, "::")[0]
+
+		ts, err := time.Parse(tsLayout, t)
+
+		if err != nil {
+			logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timer, err)
+			continue
+		}
+
+		if !ts.After(time.Now()) {
+			logging.Infof("CRPO[%s:%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, ts)
+			continue
+		}
+
+		byIDKey := fmt.Sprintf("%v::%v", timer, key)
+		_, err = byIDWriterHandle.LookupKV([]byte(byIDKey))
+		if err == plasma.ErrItemNotFound {
+
+			util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c, byIDWriterHandle, byIDKey, "", vb)
+
+			timerData := strings.Split(timer, "::")
+			ts, cbFunc := timerData[0], timerData[1]
+
+		retryLookUp:
+			tv, tErr := byTimerWriterHandle.LookupKV([]byte(ts))
+			if tErr == plasma.ErrItemNotFound {
+				v := byTimerEntry{
+					DocID:      key,
+					CallbackFn: cbFunc,
+				}
+
+				encodedVal, mErr := json.Marshal(&v)
+				if mErr != nil {
+					logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v JSON marshal failed, err: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), byIDKey, err)
+					continue
+				}
+
+				util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
+					byTimerWriterHandle, ts, string(encodedVal), vb)
+
+			} else if err != nil {
+
+				goto retryLookUp
+
+			} else {
+				v := byTimerEntry{
+					DocID:      key,
+					CallbackFn: cbFunc,
+				}
+
+				encodedVal, mErr := json.Marshal(&v)
+				if mErr != nil {
+					logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v JSON marshal failed, err: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), byIDKey, err)
+					continue
+				}
+
+				timerVal := fmt.Sprintf("%v,%v", string(tv), string(encodedVal))
+
+				util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
+					byTimerWriterHandle, ts, timerVal, vb)
+			}
+		} else if err != nil && err != plasma.ErrItemNoValue {
+			logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v byIDWriterHandle returned, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), byIDKey, err)
+		}
+	}
+
+	c.vbProcessingStats.updateVbStat(vb, "plasma_by_id_last_seq_no_stored", seqNo)
+	c.vbProcessingStats.updateVbStat(vb, "plasma_by_timer_last_seq_no_stored", seqNo)
+
+	logging.Infof("CRDP[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v, xmeta: %#v",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, xMeta)
 
 }

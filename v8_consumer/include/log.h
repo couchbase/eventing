@@ -12,6 +12,7 @@
 #ifndef LOG_H
 #define LOG_H
 
+#include <chrono>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
@@ -29,9 +30,17 @@ extern std::ostringstream os;
 extern void setLogLevel(LogLevel level);
 
 static std::ostringstream &Logger(LogLevel level = logInfo) {
+  using namespace std::chrono;
+
+  auto now = system_clock::now();
+  auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
+
   auto t = std::time(nullptr);
   auto tm = *std::localtime(&t);
-  os << std::put_time(&tm, "%Y-%m-%dT%H-%M-%S%z");
+
+  os << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
+  os << '.' << std::setfill('0') << std::setw(3) << ms.count();
+  os << std::put_time(&tm, "%z");
   os << " " << LevelToString(level) << " ";
   os << "VWCP"
      << " ";
