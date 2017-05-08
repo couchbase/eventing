@@ -11,6 +11,7 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
 	cblib "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/indexing/secondary/dcp"
@@ -115,6 +116,9 @@ func (c *Consumer) Serve() {
 
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
 	c.clientSupToken = c.consumerSup.Add(c.client)
+
+	c.timerTransferHandle = timer.NewTimerTransfer(c.app.AppName, c.eventingDir, c.workerName)
+	c.timerTransferSupToken = c.consumerSup.Add(c.timerTransferHandle)
 
 	c.startDcp(dcpConfig, flogs)
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/timer_transfer"
 	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
@@ -146,6 +147,11 @@ type Consumer struct {
 	stopPlasmaPersistCh     chan bool
 	stopTimerProcessCh      chan bool
 	timerProcessingTicker   *time.Ticker
+
+	// Instance of timer related data transferring routine, under
+	// the supervision of consumer routine
+	timerTransferHandle   *timer.TransferSrv
+	timerTransferSupToken suptree.ServiceToken
 
 	dcpStreamBoundary common.DcpStreamBoundary
 

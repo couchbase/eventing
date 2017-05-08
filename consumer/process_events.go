@@ -447,8 +447,8 @@ loop:
 		logging.Infof("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
 		// Create plasma instances for the vbucket
-		vbPlasmaByIDDir := fmt.Sprintf("%v/%v_eventing_by_id.data", c.eventingDir, vbno)
-		vbPlasmaByTimerDir := fmt.Sprintf("%v/%v_eventing_by_timer.data", c.eventingDir, vbno)
+		vbPlasmaByIDDir := fmt.Sprintf("%v/%v/%v_by_id.data", c.eventingDir, c.app.AppName, vbno)
+		vbPlasmaByTimerDir := fmt.Sprintf("%v/%v/%v_by_timer.data", c.eventingDir, c.app.AppName, vbno)
 
 		byIDCfg := plasma.DefaultConfig()
 		byIDCfg.File = vbPlasmaByIDDir
