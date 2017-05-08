@@ -43,6 +43,7 @@ type EventingProducer interface {
 	Serve()
 	Stop()
 	String() string
+	TimerTransferHostPortAddrs() []string
 	VbEventingNodeAssignMap() map[uint16]string
 	WorkerVbMap() map[string][]uint16
 }
@@ -56,18 +57,20 @@ type EventingConsumer interface {
 	HostPortAddr() string
 	NotifyClusterChange()
 	NotifyRebalanceStop()
+	RebalanceTaskProgress() *RebalanceProgress
 	Serve()
 	SetConnHandle(net.Conn)
 	SignalConnected()
 	Stop()
 	String() string
-	RebalanceTaskProgress() *RebalanceProgress
+	TimerTransferHostPortAddr() string
 	VbProcessingStats() map[uint16]map[string]interface{}
 }
 
 type EventingSuperSup interface {
-	NotifyPrepareTopologyChange(keepNodes []string)
 	AppProducerHostPortAddr(appName string) string
+	AppTimerTransferHostPortAddrs(string) []string
+	NotifyPrepareTopologyChange(keepNodes []string)
 	ProducerHostPortAddrs() []string
 	RestPort() string
 }

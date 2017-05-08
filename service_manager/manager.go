@@ -62,6 +62,8 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
 	http.HandleFunc("/setApplication/", m.storeAppSetup)
 	http.HandleFunc("/setSettings/", m.storeAppSettings)
+	http.HandleFunc("/getTimerHostPortAddrs", m.getTimerHostPortAddrs)
+	http.HandleFunc("/getAggTimerHostPortAddrs", m.getAggTimerHostPortAddrs)
 
 	logging.Fatalf("%v", http.ListenAndServe(":"+m.eventingAdminPort, nil))
 }

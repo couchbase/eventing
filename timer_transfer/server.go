@@ -13,11 +13,12 @@ import (
 
 // NewTimerTransfer Creates a server instance responsible for migration of
 // timer related plasma files between eventing nodes
-func NewTimerTransfer(appName, eventingDir, workerName string) *TransferSrv {
+func NewTimerTransfer(appName, eventingDir, hostPortAddr, workerName string) *TransferSrv {
 	return &TransferSrv{
-		AppName:     appName,
-		EventingDir: eventingDir,
-		WorkerName:  workerName,
+		AppName:      appName,
+		EventingDir:  eventingDir,
+		HostPortAddr: hostPortAddr,
+		WorkerName:   workerName,
 	}
 }
 
@@ -40,7 +41,7 @@ func (s *TransferSrv) Serve() {
 
 	server.HandleHTTP(s.WorkerName, "/debug/"+s.WorkerName)
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", s.HostPortAddr+":0")
 	if err != nil {
 		logging.Errorf("TTSR[%s:%s] Failed to listen, err: %v", s.AppName, s.WorkerName, err)
 		return

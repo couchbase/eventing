@@ -13,10 +13,11 @@ const (
 // TransferSrv refers to server handle that's responsible for migration of
 // timer related plasma files between eventing nodes
 type TransferSrv struct {
-	Addr        string
-	AppName     string
-	EventingDir string
-	WorkerName  string
+	Addr         string
+	AppName      string
+	EventingDir  string
+	HostPortAddr string
+	WorkerName   string
 }
 
 // Client encapsulated RPC client

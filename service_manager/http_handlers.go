@@ -13,6 +13,18 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
+func (m *ServiceMgr) getTimerHostPortAddrs(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	buf, err := json.Marshal(m.superSup.AppTimerTransferHostPortAddrs(appName))
+	if err != nil {
+		fmt.Fprintf(w, "err: %v", err)
+		return
+	}
+	fmt.Fprintf(w, "%v", string(buf))
+}
+
 func (m *ServiceMgr) getEventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
@@ -27,6 +39,21 @@ func (m *ServiceMgr) getEventsProcessedPSec(w http.ResponseWriter, r *http.Reque
 	}
 
 	fmt.Fprintf(w, "%v", pSec)
+}
+
+func (m *ServiceMgr) getAggTimerHostPortAddrs(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+
+	addrs, err := util.GetTimerHostPortAddrs(fmt.Sprintf("/getTimerHostPortAddrs?name=%s", appName), m.eventingNodeAddrs)
+	if err != nil {
+		logging.Errorf("Failed to marshal timer hosts for app: %v, err: %v", appName, err)
+		return
+	}
+
+	fmt.Fprintf(w, "%v", addrs)
 }
 
 // Reports progress across all producers on current node

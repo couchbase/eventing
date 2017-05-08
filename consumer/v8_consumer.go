@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"net"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -117,7 +118,7 @@ func (c *Consumer) Serve() {
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
-	c.timerTransferHandle = timer.NewTimerTransfer(c.app.AppName, c.eventingDir, c.workerName)
+	c.timerTransferHandle = timer.NewTimerTransfer(c.app.AppName, c.eventingDir, strings.Split(c.HostPortAddr(), ":")[0], c.workerName)
 	c.timerTransferSupToken = c.consumerSup.Add(c.timerTransferHandle)
 
 	c.startDcp(dcpConfig, flogs)
@@ -234,6 +235,12 @@ func (c *Consumer) ConsumerName() string {
 // NodeUUID returns UUID that's supplied by ns_server from command line
 func (c *Consumer) NodeUUID() string {
 	return c.uuid
+}
+
+// TimerTransferHostPortAddr returns hostport combination for RPC server handling transfer of
+// timer related plasma files during rebalance
+func (c *Consumer) TimerTransferHostPortAddr() string {
+	return c.timerTransferHandle.Addr
 }
 
 // NotifyClusterChange is called by producer handle to signify each

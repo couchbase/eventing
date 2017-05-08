@@ -313,6 +313,47 @@ func GetProgress(urlSuffix string, nodeAddrs []string) *cm.RebalanceProgress {
 	return aggProgress
 }
 
+func GetTimerHostPortAddrs(urlSuffix string, nodeAddrs []string) (string, error) {
+	hostPortAddrs := make(map[string][]string)
+
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
+
+	for _, nodeAddr := range nodeAddrs {
+		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(url)
+		if err != nil {
+			logging.Errorf("UTIL Failed to gather task status from url: %s, err: %v", url, err)
+			continue
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+			continue
+		}
+
+		var addrs []string
+		err = json.Unmarshal(buf, &addrs)
+		if err != nil {
+			logging.Errorf("UTIL Failed to unmarshal progress from url: %s, err: %v", url, err)
+			continue
+		}
+
+		hostPortAddrs[nodeAddr] = addrs
+	}
+
+	buf, err := json.Marshal(&hostPortAddrs)
+	if err != nil {
+		return "", err
+	}
+
+	return string(buf), nil
+}
+
 func ListChildren(path string) []string {
 	entries, err := metakv.ListAllChildren(path)
 	if err != nil {
