@@ -43,7 +43,7 @@ type EventingProducer interface {
 	Serve()
 	Stop()
 	String() string
-	TimerTransferHostPortAddrs() []string
+	TimerTransferHostPortAddrs() map[string]string
 	VbEventingNodeAssignMap() map[uint16]string
 	WorkerVbMap() map[string][]uint16
 }
@@ -69,7 +69,7 @@ type EventingConsumer interface {
 
 type EventingSuperSup interface {
 	AppProducerHostPortAddr(appName string) string
-	AppTimerTransferHostPortAddrs(string) []string
+	AppTimerTransferHostPortAddrs(string) map[string]string
 	NotifyPrepareTopologyChange(keepNodes []string)
 	ProducerHostPortAddrs() []string
 	RestPort() string

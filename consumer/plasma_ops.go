@@ -35,12 +35,20 @@ func (c *Consumer) plasmaPersistAll() {
 		select {
 		case <-c.persistAllTicker.C:
 			for vb, s := range c.byIDVbPlasmaStoreMap {
+				if s == nil {
+					continue
+				}
+
 				s.PersistAll()
 				seqNo := c.vbProcessingStats.getVbStat(vb, "plasma_by_id_last_seq_no_stored")
 				c.vbProcessingStats.updateVbStat(vb, "plasma_by_id_last_seq_no_persisted", seqNo)
 			}
 
 			for vb, s := range c.byTimerVbPlasmaStoreMap {
+				if s == nil {
+					continue
+				}
+
 				s.PersistAll()
 				seqNo := c.vbProcessingStats.getVbStat(vb, "plasma_by_timer_last_seq_no_stored")
 				c.vbProcessingStats.updateVbStat(vb, "plasma_by_timer_last_seq_no_persisted", seqNo)
@@ -88,6 +96,22 @@ func (c *Consumer) processTimerEvents() {
 		case <-c.stopTimerProcessCh:
 			return
 		case <-c.timerProcessingTicker.C:
+		case vb := <-c.signalProcessTimerPlasmaCloseCh:
+			// Rebalance takeover routine will send signal on this channel to signify
+			// stopping of any plasma.Writer instance for a specific vbucket
+			_, ok := c.byTimerPlasmaReader[vb]
+			if ok {
+				delete(c.byTimerPlasmaReader, vb)
+			}
+
+			_, ok = c.byIDPlasmaReader[vb]
+			if ok {
+				delete(c.byIDPlasmaReader, vb)
+			}
+
+			// sends ack message back to rebalance takeover routine, so that it could
+			// safely call Close() on vb specific plasma store
+			c.signalProcessTimerPlasmaCloseAckCh <- vb
 		}
 
 		vbsOwned = c.getVbsOwned()
@@ -96,7 +120,11 @@ func (c *Consumer) processTimerEvents() {
 
 			_, ok := c.byTimerPlasmaReader[vb]
 			if !ok {
-				c.updateTimerStats(vb)
+				continue
+			}
+
+			_, ok = c.byIDPlasmaReader[vb]
+			if !ok {
 				continue
 			}
 
@@ -144,6 +172,7 @@ func (c *Consumer) processTimerEvents() {
 						}
 					}
 				}
+
 				err = c.byTimerPlasmaReader[vb].DeleteKV([]byte(currTimer))
 				if err != nil {
 					logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d key: %v Failed to delete from byTimer plasma handle, err: %v",
@@ -159,43 +188,12 @@ func (c *Consumer) processTimerEvents() {
 				continue
 			}
 			timerEvents := strings.Split(string(v), ",{")
-
-			var timer byTimerEntry
-			err = json.Unmarshal([]byte(timerEvents[0]), &timer)
-			if err != nil {
-				logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d Failed to unmarshal timerEvent: %v err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerEvents[0], err)
-			} else {
-				c.byTimerEntryCh <- &timer
-
-				byIDKey := fmt.Sprintf("%v::%v::%v", currTimer, timer.CallbackFn, timer.DocID)
-				err = c.byIDPlasmaReader[vb].DeleteKV([]byte(byIDKey))
-				if err != nil {
-					logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d key: %v Failed to delete from byID plasma handle, err: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, byIDKey, err)
-				}
-
-			}
+			c.processTimerEvent(currTimer, timerEvents[0], vb, false)
 
 			if len(timerEvents) > 1 {
 				for _, event := range timerEvents[1:] {
 					event := "{" + event
-					err = json.Unmarshal([]byte(event), &timer)
-					if err != nil {
-						logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d Failed to unmarshal timerEvent: %v err: %v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, event, err)
-					} else {
-						c.byTimerEntryCh <- &timer
-
-						byIDKey := fmt.Sprintf("%v::%v::%v", currTimer, timer.CallbackFn, timer.DocID)
-						err = c.byIDPlasmaReader[vb].DeleteKV([]byte(byIDKey))
-						if err != nil {
-							logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d key: %v Failed to delete from byID plasma handle, err: %v",
-								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, byIDKey, err)
-						}
-
-					}
-					c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", timer.DocID)
+					c.processTimerEvent(currTimer, event, vb, true)
 				}
 			}
 
@@ -207,6 +205,28 @@ func (c *Consumer) processTimerEvents() {
 
 			c.updateTimerStats(vb)
 		}
+	}
+}
+
+func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateStats bool) {
+	var timer byTimerEntry
+	err := json.Unmarshal([]byte(event), &timer)
+	if err != nil {
+		logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d processTimerEvent Failed to unmarshal timerEvent: %v err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, event, err)
+	} else {
+		c.byTimerEntryCh <- &timer
+
+		byIDKey := fmt.Sprintf("%v::%v::%v", currTimer, timer.CallbackFn, timer.DocID)
+		err = c.byIDPlasmaReader[vb].DeleteKV([]byte(byIDKey))
+		if err != nil {
+			logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d key: %v Failed to delete from byID plasma handle, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, byIDKey, err)
+		}
+	}
+
+	if updateStats {
+		c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", timer.DocID)
 	}
 }
 
@@ -277,7 +297,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, key string, xMeta *x
 			timerData := strings.Split(timer, "::")
 			ts, cbFunc := timerData[0], timerData[1]
 
-		retryLookUp:
+		retryPlasmaLookUp:
 			tv, tErr := byTimerWriterHandle.LookupKV([]byte(ts))
 			if tErr == plasma.ErrItemNotFound {
 				v := byTimerEntry{
@@ -297,7 +317,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, key string, xMeta *x
 
 			} else if err != nil {
 
-				goto retryLookUp
+				goto retryPlasmaLookUp
 
 			} else {
 				v := byTimerEntry{
@@ -328,5 +348,4 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, key string, xMeta *x
 
 	logging.Infof("CRDP[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v, xmeta: %#v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, xMeta)
-
 }

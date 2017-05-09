@@ -43,6 +43,22 @@ func (c *Consumer) vbsStateUpdate() {
 
 			if c.vbProcessingStats.getVbStat(vbno, "node_uuid") == c.NodeUUID() &&
 				c.vbProcessingStats.getVbStat(vbno, "assigned_worker") == c.ConsumerName() {
+
+				c.signalProcessTimerPlasmaCloseCh <- vbno
+				<-c.signalProcessTimerPlasmaCloseAckCh
+				logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer processing routine, about clean up of plasma.Writer instance",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+
+				c.signalStoreTimerPlasmaCloseCh <- vbno
+				<-c.signalStoreTimerPlasmaCloseAckCh
+				logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer storage routine, about clean up plasma.Writer instance",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+
+				c.Lock()
+				c.closeByIDPlasmaHandle(vbno)
+				c.closeByTimerPlasmaHandle(vbno)
+				c.Unlock()
+
 				c.stopDcpStreamAndUpdateCheckpoint(vbKey, vbno, &vbBlob, &cas)
 
 				// Check if another node has taken up ownership of vbucket for which
@@ -55,6 +71,7 @@ func (c *Consumer) vbsStateUpdate() {
 
 				select {
 				case <-c.stopVbOwnerGiveupCh:
+					// TODO: Reclaiming back of vb specific plasma store handles
 					roErr := c.reclaimVbOwnership(vbno)
 					if roErr != nil {
 						logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v reclaim of ownership failed, vbBlob dump: %#v",
@@ -93,9 +110,10 @@ retryStreamUpdate:
 	}
 
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
+	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
 
 	logging.Infof("CRVT[%s:%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.vbsRemainingToOwn, c.vbsRemainingToGiveUp)
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.vbsRemainingToOwn, vbsRemainingToGiveUp)
 
 	// Retry logic in-case previous attempt to own/start dcp stream didn't succeed
 	// because some other node has already opened(or hasn't closed) the vb dcp stream
@@ -188,6 +206,8 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 	vbBlob.DCPStreamStatus = dcpStreamStopped
 	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
+	vbBlob.PreviousAssignedWorker = c.ConsumerName()
+	vbBlob.PreviousVBOwner = c.HostPortAddr()
 	vbBlob.NodeUUID = ""
 
 	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
@@ -205,6 +225,22 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 	}
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
+}
+
+func (c *Consumer) closeByIDPlasmaHandle(vb uint16) {
+	store, ok := c.byIDVbPlasmaStoreMap[vb]
+	if ok {
+		store.Close()
+		delete(c.byIDVbPlasmaStoreMap, vb)
+	}
+}
+
+func (c *Consumer) closeByTimerPlasmaHandle(vb uint16) {
+	store, ok := c.byTimerVbPlasmaStoreMap[vb]
+	if ok {
+		store.Close()
+		delete(c.byTimerVbPlasmaStoreMap, vb)
+	}
 }
 
 func (c *Consumer) checkIfConsumerShouldOwnVb(vbno uint16, workerName string) bool {

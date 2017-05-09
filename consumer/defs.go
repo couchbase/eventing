@@ -148,6 +148,11 @@ type Consumer struct {
 	stopTimerProcessCh      chan bool
 	timerProcessingTicker   *time.Ticker
 
+	signalStoreTimerPlasmaCloseCh      chan uint16
+	signalProcessTimerPlasmaCloseCh    chan uint16
+	signalProcessTimerPlasmaCloseAckCh chan uint16
+	signalStoreTimerPlasmaCloseAckCh   chan uint16
+
 	// Instance of timer related data transferring routine, under
 	// the supervision of consumer routine
 	timerTransferHandle   *timer.TransferSrv
@@ -254,15 +259,17 @@ type vbStat struct {
 }
 
 type vbucketKVBlob struct {
-	AssignedWorker     string           `json:"assigned_worker"`
-	CurrentVBOwner     string           `json:"current_vb_owner"`
-	DCPStreamStatus    string           `json:"dcp_stream_status"`
-	LastCheckpointTime string           `json:"last_checkpoint_time"`
-	LastSeqNoProcessed uint64           `json:"last_processed_seq_no"`
-	NodeUUID           string           `json:"node_uuid"`
-	OwnershipHistory   []OwnershipEntry `json:"ownership_history"`
-	VBId               uint16           `json:"vb_id"`
-	VBuuid             uint64           `json:"vb_uuid"`
+	AssignedWorker         string           `json:"assigned_worker"`
+	CurrentVBOwner         string           `json:"current_vb_owner"`
+	DCPStreamStatus        string           `json:"dcp_stream_status"`
+	LastCheckpointTime     string           `json:"last_checkpoint_time"`
+	LastSeqNoProcessed     uint64           `json:"last_processed_seq_no"`
+	NodeUUID               string           `json:"node_uuid"`
+	OwnershipHistory       []OwnershipEntry `json:"ownership_history"`
+	PreviousAssignedWorker string           `json:"previous_assigned_worker"`
+	PreviousVBOwner        string           `json:"previous_vb_owner"`
+	VBId                   uint16           `json:"vb_id"`
+	VBuuid                 uint64           `json:"vb_uuid"`
 
 	ByIDPersistedSeqNo      uint64 `json:"plasma_by_id_last_persisted_seq_no"`
 	ByTimerPersistedSeqNo   uint64 `json:"plasma_by_timer_last_persisted_seq_no"`

@@ -175,6 +175,35 @@ func (c *Consumer) doDCPEventProcess() {
 				c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", "stopped")
 				c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", "")
 
+				c.Lock()
+				// Check if vbucket related entry already exists, if yes - then clean it up
+				// and close all associated FDs
+				if _, ok := c.byIDVbPlasmaStoreMap[e.VBucket]; ok {
+					c.signalProcessTimerPlasmaCloseCh <- e.VBucket
+					<-c.signalProcessTimerPlasmaCloseAckCh
+
+					// Instead of sending message over channel - to clean up plasma.Writer
+					// instances who are responsible for storing timers events into
+					// plasma store, cleaning up vbucket specific plasma.Writer instances
+					// directly. Reason being, c.signalStoreTimerPlasmaCloseCh and
+					// c.signalStoreTimerPlasmaCloseAckCh are being listened to/written to
+					// on current control path within the select statement
+					_, ok := c.byTimerPlasmaWriter[e.VBucket]
+					if ok {
+						delete(c.byTimerPlasmaWriter, e.VBucket)
+					}
+
+					_, ok = c.byIDPlasmaWriter[e.VBucket]
+					if ok {
+						delete(c.byIDPlasmaWriter, e.VBucket)
+					}
+
+					c.closeByIDPlasmaHandle(e.VBucket)
+					c.closeByTimerPlasmaHandle(e.VBucket)
+				}
+
+				c.Unlock()
+
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 					logging.Infof("CRVT[%s:%s:%s:%d] vb: %v, got STREAMEND, needs to be reclaimed",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
@@ -221,6 +250,23 @@ func (c *Consumer) doDCPEventProcess() {
 				c.dcpOpsProcessed = dcpOpCount
 				c.RUnlock()
 			}
+
+		case vb := <-c.signalStoreTimerPlasmaCloseCh:
+			// Rebalance takeover routine will send signal on this channel to signify
+			// stopping of any plasma.Writer instance for a specific vbucket
+			_, ok := c.byTimerPlasmaWriter[vb]
+			if ok {
+				delete(c.byTimerPlasmaWriter, vb)
+			}
+
+			_, ok = c.byIDPlasmaWriter[vb]
+			if ok {
+				delete(c.byIDPlasmaWriter, vb)
+			}
+
+			// sends ack message back to rebalance takeover routine, so that it could
+			// safely call Close() on vb specific plasma store
+			c.signalStoreTimerPlasmaCloseAckCh <- vb
 
 		case <-c.stopConsumerCh:
 

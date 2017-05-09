@@ -472,7 +472,7 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
       new N1QL(cb_kv_endpoint, cb_source_bucket, rbac_user, rbac_pass);
 
   std::string connstr = "couchbase://" + cb_kv_endpoint + "/" +
-                        config->source_bucket.c_str() +
+                        cb_source_bucket.c_str() +
                         "?username=" + rbac_user + "&select_bucket=true";
 
   lcb_create_st crst;
@@ -687,7 +687,7 @@ void V8Worker::SendTimer(std::string doc_id, std::string callback_fn) {
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
 
-  LOG(logTrace) << "Got timer event, doc_id" << doc_id
+  LOG(logTrace) << "Got timer event, doc_id:" << doc_id
                 << " callback_fn:" << callback_fn << '\n';
 
   v8::Local<v8::Context> context =

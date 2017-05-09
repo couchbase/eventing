@@ -44,11 +44,11 @@ func (p *Producer) DcpEventsProcessedPSec(w http.ResponseWriter, r *http.Request
 
 // TimerTransferHostPortAddrs returns list of hostPortAddrs for consumer level routines, that are
 // responsible for transferring of timer related metadata during rebalance
-func (p *Producer) TimerTransferHostPortAddrs() []string {
-	var hostPortAddrs []string
+func (p *Producer) TimerTransferHostPortAddrs() map[string]string {
+	hostPortAddrs := make(map[string]string)
 
 	for _, consumer := range p.runningConsumers {
-		hostPortAddrs = append(hostPortAddrs, consumer.TimerTransferHostPortAddr())
+		hostPortAddrs[consumer.ConsumerName()] = consumer.TimerTransferHostPortAddr()
 	}
 
 	return hostPortAddrs

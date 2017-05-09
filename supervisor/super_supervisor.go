@@ -160,7 +160,7 @@ func (s *SuperSupervisor) AppProducerHostPortAddr(appName string) string {
 
 // AppTimerTransferHostPortAddrs returns all running net.Listener instances of timer transfer
 // routines on current node
-func (s *SuperSupervisor) AppTimerTransferHostPortAddrs(appName string) []string {
+func (s *SuperSupervisor) AppTimerTransferHostPortAddrs(appName string) map[string]string {
 	return s.runningProducers[appName].TimerTransferHostPortAddrs()
 }
 

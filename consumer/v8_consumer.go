@@ -2,10 +2,8 @@ package consumer
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"sort"
-	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -27,40 +25,44 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, eventingDir string, p 
 	vbnos []uint16, bucket, logLevel, tcpPort, uuid string, sockWriteBatchSize, workerID int) *Consumer {
 	var b *couchbase.Bucket
 	consumer := &Consumer{
-		app:                       app,
-		aggDCPFeed:                make(chan *memcached.DcpEvent, dcpGenChanSize),
-		bucket:                    bucket,
-		byIDPlasmaReader:          make(map[uint16]*plasma.Writer),
-		byIDPlasmaWriter:          make(map[uint16]*plasma.Writer),
-		byIDVbPlasmaStoreMap:      make(map[uint16]*plasma.Plasma),
-		byTimerEntryCh:            make(chan *byTimerEntry, timerChanSize),
-		byTimerPlasmaReader:       make(map[uint16]*plasma.Writer),
-		byTimerPlasmaWriter:       make(map[uint16]*plasma.Writer),
-		byTimerVbPlasmaStoreMap:   make(map[uint16]*plasma.Plasma),
-		cbBucket:                  b,
-		clusterStateChangeNotifCh: make(chan bool, ClusterChangeNotifChBufSize),
-		dcpFeedCancelChs:          make([]chan bool, 0),
-		dcpFeedVbMap:              make(map[*couchbase.DcpFeed][]uint16),
-		dcpStreamBoundary:         streamBoundary,
-		eventingDir:               eventingDir,
-		gracefulShutdownChan:      make(chan bool, 1),
-		kvHostDcpFeedMap:          make(map[string]*couchbase.DcpFeed),
-		logLevel:                  logLevel,
-		opsTimestamp:              time.Now(),
-		persistAllTicker:          time.NewTicker(persistAllTickInterval),
-		producer:                  p,
-		restartVbDcpStreamTicker:  time.NewTicker(restartVbDcpStreamTickInterval),
-		sendMsgCounter:            0,
-		signalConnectedCh:         make(chan bool, 1),
-		socketWriteBatchSize:      sockWriteBatchSize,
-		statsTicker:               time.NewTicker(statsTickInterval),
-		stopControlRoutineCh:      make(chan bool),
-		stopPlasmaPersistCh:       make(chan bool, 1),
-		stopVbOwnerGiveupCh:       make(chan bool, 1),
-		stopVbOwnerTakeoverCh:     make(chan bool, 1),
-		stopTimerProcessCh:        make(chan bool, 1),
-		tcpPort:                   tcpPort,
-		timerProcessingTicker:     time.NewTicker(1 * time.Second),
+		app:                                app,
+		aggDCPFeed:                         make(chan *memcached.DcpEvent, dcpGenChanSize),
+		bucket:                             bucket,
+		byIDPlasmaReader:                   make(map[uint16]*plasma.Writer),
+		byIDPlasmaWriter:                   make(map[uint16]*plasma.Writer),
+		byIDVbPlasmaStoreMap:               make(map[uint16]*plasma.Plasma),
+		byTimerEntryCh:                     make(chan *byTimerEntry, timerChanSize),
+		byTimerPlasmaReader:                make(map[uint16]*plasma.Writer),
+		byTimerPlasmaWriter:                make(map[uint16]*plasma.Writer),
+		byTimerVbPlasmaStoreMap:            make(map[uint16]*plasma.Plasma),
+		cbBucket:                           b,
+		clusterStateChangeNotifCh:          make(chan bool, ClusterChangeNotifChBufSize),
+		dcpFeedCancelChs:                   make([]chan bool, 0),
+		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
+		dcpStreamBoundary:                  streamBoundary,
+		eventingDir:                        eventingDir,
+		gracefulShutdownChan:               make(chan bool, 1),
+		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
+		logLevel:                           logLevel,
+		opsTimestamp:                       time.Now(),
+		persistAllTicker:                   time.NewTicker(persistAllTickInterval),
+		producer:                           p,
+		restartVbDcpStreamTicker:           time.NewTicker(restartVbDcpStreamTickInterval),
+		sendMsgCounter:                     0,
+		signalConnectedCh:                  make(chan bool, 1),
+		signalProcessTimerPlasmaCloseAckCh: make(chan uint16),
+		signalProcessTimerPlasmaCloseCh:    make(chan uint16),
+		signalStoreTimerPlasmaCloseAckCh:   make(chan uint16),
+		signalStoreTimerPlasmaCloseCh:      make(chan uint16),
+		socketWriteBatchSize:               sockWriteBatchSize,
+		statsTicker:                        time.NewTicker(statsTickInterval),
+		stopControlRoutineCh:               make(chan bool),
+		stopPlasmaPersistCh:                make(chan bool, 1),
+		stopVbOwnerGiveupCh:                make(chan bool, 1),
+		stopVbOwnerTakeoverCh:              make(chan bool, 1),
+		stopTimerProcessCh:                 make(chan bool, 1),
+		tcpPort:                            tcpPort,
+		timerProcessingTicker:              time.NewTicker(1 * time.Second),
 		uuid:                   uuid,
 		vbDcpFeedMap:           make(map[uint16]*couchbase.DcpFeed),
 		vbFlogChan:             make(chan *vbFlogEntry),
@@ -97,11 +99,10 @@ func (c *Consumer) Serve() {
 	logging.Infof("V8CR[%s:%s:%s:%d] vbnos len: %d",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
 
-	logging.Infof("V8CR[%s:%s:%s:%d] Spawning worker corresponding to producer",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
-
-	rand.Seed(time.Now().UnixNano())
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
+
+	logging.Infof("V8CR[%s:%s:%s:%d] Spawning worker corresponding to producer, node addr: %v",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr())
 
 	var feedName couchbase.DcpFeedName
 
@@ -118,7 +119,7 @@ func (c *Consumer) Serve() {
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
-	c.timerTransferHandle = timer.NewTimerTransfer(c.app.AppName, c.eventingDir, strings.Split(c.HostPortAddr(), ":")[0], c.workerName)
+	c.timerTransferHandle = timer.NewTimerTransfer(c.app.AppName, c.eventingDir, c.HostPortAddr(), c.workerName)
 	c.timerTransferSupToken = c.consumerSup.Add(c.timerTransferHandle)
 
 	c.startDcp(dcpConfig, flogs)

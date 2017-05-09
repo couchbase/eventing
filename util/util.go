@@ -314,7 +314,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) *cm.RebalanceProgress {
 }
 
 func GetTimerHostPortAddrs(urlSuffix string, nodeAddrs []string) (string, error) {
-	hostPortAddrs := make(map[string][]string)
+	hostPortAddrs := make(map[string]map[string]string)
 
 	netClient := &http.Client{
 		Timeout: HTTPRequestTimeout,
@@ -336,13 +336,14 @@ func GetTimerHostPortAddrs(urlSuffix string, nodeAddrs []string) (string, error)
 			continue
 		}
 
-		var addrs []string
+		var addrs map[string]string
 		err = json.Unmarshal(buf, &addrs)
 		if err != nil {
 			logging.Errorf("UTIL Failed to unmarshal progress from url: %s, err: %v", url, err)
 			continue
 		}
 
+		hostPortAddrs[nodeAddr] = make(map[string]string)
 		hostPortAddrs[nodeAddr] = addrs
 	}
 
