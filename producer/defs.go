@@ -38,6 +38,7 @@ type Producer struct {
 	auth                   string
 	bucket                 string
 	cfgData                string
+	eventingAdminPort      string
 	eventingDir            string
 	kvPort                 string
 	kvHostPorts            []string

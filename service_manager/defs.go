@@ -32,6 +32,7 @@ type ServiceMgr struct {
 	eventingAdminPort string
 	failoverNotif     bool
 	mu                *sync.RWMutex
+	uuid              string
 
 	nodeInfo         *service.NodeInfo
 	rebalanceCtx     *rebalanceContext

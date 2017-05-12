@@ -276,6 +276,34 @@ func GetProcessedPSec(urlSuffix, nodeAddr string) (int, error) {
 	return pSec, nil
 }
 
+func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) map[string]string {
+	addrUUIDMap := make(map[string]string)
+
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
+
+	for _, nodeAddr := range nodeAddrs {
+		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(url)
+		if err != nil {
+			logging.Errorf("UTIL Failed to fethc node uuid from url: %s, err: %v", url, err)
+			continue
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+			continue
+		}
+
+		addrUUIDMap[string(buf)] = nodeAddr
+	}
+	return addrUUIDMap
+}
+
 func GetProgress(urlSuffix string, nodeAddrs []string) *cm.RebalanceProgress {
 	aggProgress := &cm.RebalanceProgress{}
 
@@ -311,6 +339,34 @@ func GetProgress(urlSuffix string, nodeAddrs []string) *cm.RebalanceProgress {
 	}
 
 	return aggProgress
+}
+
+func GetAggTimerHostPortAddrs(appName, eventingAdminPort, urlSuffix string) (map[string]map[string]string, error) {
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
+
+	url := fmt.Sprintf("http://127.0.0.1:%s/%s?name=%s", eventingAdminPort, urlSuffix, appName)
+
+	res, err := netClient.Get(url)
+	if err != nil {
+		logging.Errorf("UTIL Failed to capture aggregate timer host port addrs from url: %s, err: %v", url, err)
+		return nil, err
+	}
+
+	buf, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		logging.Errorf("UTIL Failed to read response from url: %s, err: %v", url, err)
+		return nil, err
+	}
+
+	hostPortAddrs := make(map[string]map[string]string)
+	err = json.Unmarshal(buf, &hostPortAddrs)
+	if err != nil {
+		return nil, err
+	}
+
+	return hostPortAddrs, nil
 }
 
 func GetTimerHostPortAddrs(urlSuffix string, nodeAddrs []string) (string, error) {

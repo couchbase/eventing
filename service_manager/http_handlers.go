@@ -13,6 +13,10 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
+func (m *ServiceMgr) getNodeUUID(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "%v", m.uuid)
+}
+
 func (m *ServiceMgr) getTimerHostPortAddrs(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]

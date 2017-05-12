@@ -1,14 +1,22 @@
 package consumer
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
 )
+
+var errFailedRPCDownloadDir = errors.New("failed to download vbucket dir from source RPC server")
+var errFailedConnectRemoteRPC = errors.New("failed to connect to remote RPC server")
+var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
+var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another node")
 
 func (c *Consumer) reclaimVbOwnership(vbno uint16) error {
 	var vbBlob vbucketKVBlob
@@ -106,7 +114,7 @@ retryStreamUpdate:
 		}
 
 		vbno := c.vbsRemainingToOwn[i]
-		c.doVbTakeover(vbno)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), vbTakeoverCallback, c, vbno)
 	}
 
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
@@ -123,7 +131,7 @@ retryStreamUpdate:
 	}
 }
 
-func (c *Consumer) doVbTakeover(vbno uint16) {
+func (c *Consumer) doVbTakeover(vbno uint16) error {
 	var vbBlob vbucketKVBlob
 	var cas uint64
 
@@ -138,7 +146,7 @@ func (c *Consumer) doVbTakeover(vbno uint16) {
 			!c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner) && c.checkIfCurrentNodeShouldOwnVb(vbno) {
 
 			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker != c.ConsumerName() {
-				return
+				return errVbOwnedByAnotherWorker
 			}
 
 			logging.Infof("CRVT[%s:%s:%s:%d] Node: %v taking ownership of vb: %d old node: %s isn't alive any more as per ns_server vbuuid: %v vblob.uuid: %v",
@@ -149,16 +157,20 @@ func (c *Consumer) doVbTakeover(vbno uint16) {
 			// eventing node. In former case, it isn't required to spawn a new dcp stream but in later
 			// it's needed.
 			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
-				c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, false)
-			} else {
-				c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, false)
 			}
+			return c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
 		}
+
+		return errVbOwnedByAnotherWorker
 
 	case dcpStreamStopped:
 
 		logging.Infof("CRVT[%s:%s:%s:%d] vb: %v starting dcp stream", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
-		c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
+		return c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
+
+	default:
+		return errUnexpectedVbStreamStatus
 	}
 }
 
@@ -192,6 +204,73 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbB
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 
 	if shouldStartStream {
+
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), aggTimerHostPortAddrsCallback, c)
+		previousAssignedWorker := vbBlob.PreviousAssignedWorker
+		previousEventingDir := vbBlob.PreviousEventingDir
+		previousNodeUUID := vbBlob.PreviousNodeUUID
+		previousVBOwner := vbBlob.PreviousVBOwner
+
+		var addr, remoteConsumerAddr string
+		var ok bool
+
+		// To handle case of hostname update
+		if addr, ok = c.timerAddrs[previousVBOwner][previousAssignedWorker]; !ok {
+			util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, c)
+
+			addrUUIDMap := util.GetNodeUUIDs("/uuid", c.eventingNodeAddrs)
+			addr = addrUUIDMap[previousNodeUUID]
+
+			remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
+				strings.Split(c.timerAddrs[addr][previousAssignedWorker], ":")[3])
+		} else {
+			remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
+				strings.Split(c.timerAddrs[previousVBOwner][previousAssignedWorker], ":")[3])
+		}
+
+		client := timer.NewRPCClient(remoteConsumerAddr, c.app.AppName, previousAssignedWorker)
+		if err := client.DialPath("/" + previousAssignedWorker + "/"); err != nil {
+			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to connect to remote RPC server addr: %v, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, err)
+
+			return errFailedConnectRemoteRPC
+		}
+		defer client.Close()
+
+		srcByIDDir := fmt.Sprintf("%v/%v/%v_by_id.data", previousEventingDir, c.app.AppName, vbno)
+		dstByIDDir := fmt.Sprintf("%v/%v/%v_by_id.data", c.eventingDir, c.app.AppName, vbno)
+
+		if srcByIDDir != dstByIDDir && c.NodeUUID() != previousNodeUUID {
+			if err := client.DownloadDir(srcByIDDir, dstByIDDir); err != nil {
+				logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to download byID dir from node: %v src: %v dst: %v err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, srcByIDDir, dstByIDDir, err)
+
+				return errFailedRPCDownloadDir
+			}
+			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded byID dir: %v to: %v from: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, srcByIDDir, dstByIDDir, remoteConsumerAddr)
+		} else {
+			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of byID dir because src and dst are same node addr: %v prev path: %v curr path: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, srcByIDDir, dstByIDDir)
+		}
+
+		srcByTimerDir := fmt.Sprintf("%v/%v/%v_by_timer.data", previousEventingDir, c.app.AppName, vbno)
+		dstByTimerDir := fmt.Sprintf("%v/%v/%v_by_timer.data", c.eventingDir, c.app.AppName, vbno)
+
+		if srcByTimerDir != dstByTimerDir && c.NodeUUID() != previousNodeUUID {
+			if err := client.DownloadDir(srcByTimerDir, dstByTimerDir); err != nil {
+				logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to download byID dir from node: %v src: %v dst: %v err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, srcByTimerDir, dstByTimerDir, err)
+
+				return errFailedRPCDownloadDir
+			}
+			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded byTimer dir: %v to: %v from: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, srcByTimerDir, dstByTimerDir, remoteConsumerAddr)
+		} else {
+			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of byTimer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, srcByTimerDir, dstByTimerDir)
+		}
+
 		return c.dcpRequestStreamHandle(vbno, vbBlob, vbBlob.LastSeqNoProcessed)
 	}
 
@@ -207,6 +286,8 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
 	vbBlob.PreviousAssignedWorker = c.ConsumerName()
+	vbBlob.PreviousEventingDir = c.eventingDir
+	vbBlob.PreviousNodeUUID = c.NodeUUID()
 	vbBlob.PreviousVBOwner = c.HostPortAddr()
 	vbBlob.NodeUUID = ""
 
@@ -215,12 +296,12 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
 
-	// TODO: Retry loop for dcp close stream as it could fail and addtional verification checks
+	// TODO: Retry loop for dcp close stream as it could fail and additional verification checks
 	// Additional check needed to verify if vbBlob.NewOwner is the expected owner
 	// as per the vbEventingNodesAssignMap
 	err := c.vbDcpFeedMap[vbno].DcpCloseStream(vbno, vbno)
 	if err != nil {
-		logging.Errorf("CRVT[%s:%s:%s:%d] vbno: %v Failed to close dcp stream, err: %v",
+		logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to close dcp stream, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
 	}
 

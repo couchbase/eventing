@@ -83,7 +83,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
-	p := producer.NewProducer(appName, s.eventingDir, s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid)
+	p := producer.NewProducer(appName, s.eventingAdminPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid)
 
 	token := s.superSup.Add(p)
 	s.mu.Lock()

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/couchbase/indexing/secondary/logging"
@@ -32,10 +31,9 @@ func (s *TransferSrv) Serve() {
 
 	server := rpc.NewServer()
 
-	serverName := fmt.Sprintf("%s_%s", s.HostPortAddr, s.WorkerName)
-	logging.Infof("TTSR[%s:%s] Registering RPC server with name: %v", s.AppName, s.WorkerName, serverName)
+	logging.Infof("TTSR[%s:%s] Registering RPC server", s.AppName, s.WorkerName)
 
-	err := server.RegisterName(serverName, &RPC{
+	err := server.RegisterName(s.WorkerName, &RPC{
 		server:  s,
 		session: session,
 	})
@@ -44,9 +42,9 @@ func (s *TransferSrv) Serve() {
 		return
 	}
 
-	server.HandleHTTP(s.WorkerName, "/debug/"+s.WorkerName)
+	server.HandleHTTP("/"+s.WorkerName+"/", "/debug/"+s.WorkerName)
 
-	listener, err := net.Listen("tcp", strings.Split(s.HostPortAddr, ":")[0]+":0")
+	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		logging.Errorf("TTSR[%s:%s] Failed to listen, err: %v", s.AppName, s.WorkerName, err)
 		return

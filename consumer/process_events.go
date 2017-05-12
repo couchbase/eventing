@@ -155,9 +155,13 @@ func (c *Consumer) doDCPEventProcess() {
 
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-				vbBlob.CurrentVBOwner = ""
 				vbBlob.AssignedWorker = ""
+				vbBlob.CurrentVBOwner = ""
 				vbBlob.DCPStreamStatus = dcpStreamStopped
+				vbBlob.PreviousAssignedWorker = c.ConsumerName()
+				vbBlob.PreviousEventingDir = c.eventingDir
+				vbBlob.PreviousNodeUUID = c.NodeUUID()
+				vbBlob.PreviousVBOwner = c.HostPortAddr()
 
 				vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64)
 				entry := OwnershipEntry{
@@ -316,6 +320,12 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 			vbBlob.AssignedWorker = c.ConsumerName()
 			vbBlob.CurrentVBOwner = c.HostPortAddr()
 
+			// Assigning previous owner and worker to current consumer
+			vbBlob.PreviousAssignedWorker = c.ConsumerName()
+			vbBlob.PreviousNodeUUID = c.NodeUUID()
+			vbBlob.PreviousVBOwner = c.HostPortAddr()
+			vbBlob.PreviousEventingDir = c.eventingDir
+
 			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, vbKey, &vbBlob)
 
 			switch c.dcpStreamBoundary {
@@ -429,6 +439,10 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
 	vbBlob.NodeUUID = ""
+	vbBlob.PreviousAssignedWorker = c.ConsumerName()
+	vbBlob.PreviousEventingDir = c.eventingDir
+	vbBlob.PreviousNodeUUID = c.NodeUUID()
+	vbBlob.PreviousVBOwner = c.HostPortAddr()
 
 	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
 	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)

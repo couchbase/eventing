@@ -12,6 +12,22 @@ import (
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
+var vbTakeoverCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+	vb := args[1].(uint16)
+
+	err := c.doVbTakeover(vb)
+	switch err {
+	case errVbOwnedByAnotherWorker:
+		logging.Errorf("CRBO[%s:%s:%s:%d] vb: %v err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+	case errFailedConnectRemoteRPC:
+		logging.Errorf("CRBO[%s:%s:%s:%d] vb: %v err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+	}
+	return err
+}
+
 var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	b := args[1].(**couchbase.Bucket)

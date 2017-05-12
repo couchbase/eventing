@@ -19,7 +19,8 @@ import (
 )
 
 const (
-	xattrPrefix = "_eventing"
+	xattrPrefix              = "_eventing"
+	getAggTimerHostPortAddrs = "getAggTimerHostPortAddrs"
 )
 
 const (
@@ -125,7 +126,9 @@ type Consumer struct {
 	cbBucket               *couchbase.Bucket
 	dcpFeedCancelChs       []chan bool
 	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16
+	eventingAdminPort      string
 	eventingDir            string
+	eventingNodeAddrs      []string
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed
 	kvVbMap                map[uint16]string
 	logLevel               string
@@ -146,6 +149,7 @@ type Consumer struct {
 	persistAllTicker        *time.Ticker
 	stopPlasmaPersistCh     chan bool
 	stopTimerProcessCh      chan bool
+	timerAddrs              map[string]map[string]string
 	timerProcessingTicker   *time.Ticker
 
 	signalStoreTimerPlasmaCloseCh      chan uint16
@@ -267,6 +271,8 @@ type vbucketKVBlob struct {
 	NodeUUID               string           `json:"node_uuid"`
 	OwnershipHistory       []OwnershipEntry `json:"ownership_history"`
 	PreviousAssignedWorker string           `json:"previous_assigned_worker"`
+	PreviousNodeUUID       string           `json:"previous_node_uuid"`
+	PreviousEventingDir    string           `json:"previous_node_eventing_dir"`
 	PreviousVBOwner        string           `json:"previous_vb_owner"`
 	VBId                   uint16           `json:"vb_id"`
 	VBuuid                 uint64           `json:"vb_uuid"`

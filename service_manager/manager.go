@@ -49,6 +49,7 @@ func (m *ServiceMgr) initService() {
 	cfg := m.config.Load()
 	m.eventingAdminPort = cfg["eventing_admin_port"].(string)
 	m.restPort = cfg["rest_port"].(string)
+	m.uuid = cfg["uuid"].(string)
 
 	logging.Infof("ServiceMgr::initService eventingAdminPort: %s", m.eventingAdminPort)
 
@@ -64,6 +65,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/setSettings/", m.storeAppSettings)
 	http.HandleFunc("/getTimerHostPortAddrs", m.getTimerHostPortAddrs)
 	http.HandleFunc("/getAggTimerHostPortAddrs", m.getAggTimerHostPortAddrs)
+	http.HandleFunc("/uuid", m.getNodeUUID)
 
 	logging.Fatalf("%v", http.ListenAndServe(":"+m.eventingAdminPort, nil))
 }

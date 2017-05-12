@@ -22,9 +22,10 @@ type TransferSrv struct {
 
 // Client encapsulated RPC client
 type Client struct {
-	Addr      string
-	AppName   string
-	rpcClient *rpc.Client
+	Addr           string
+	AppName        string
+	registeredName string
+	rpcClient      *rpc.Client
 }
 
 // SessionID to capture counter of sessions opened

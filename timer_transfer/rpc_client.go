@@ -5,23 +5,26 @@ import (
 	"io"
 	"net/rpc"
 	"os"
+	"strings"
 
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
 // NewRPCClient returns new rpc client construct
-func NewRPCClient(addr, appName string) *Client {
+func NewRPCClient(addr, appName, registeredName string) *Client {
 	return &Client{
-		Addr:    addr,
-		AppName: appName,
+		Addr:           addr,
+		AppName:        appName,
+		registeredName: registeredName,
 	}
 }
 
-// Dial connects with RPC server
-func (c *Client) Dial() error {
-	client, err := rpc.DialHTTP("tcp", c.Addr)
+// DialPath connects to HTTP RPC server at specified network address and path
+func (c *Client) DialPath(path string) error {
+	client, err := rpc.DialHTTPPath("tcp", c.Addr, path)
 	if err != nil {
-		logging.Infof("TTCL[%s] Addr: %v Client.Dial failed, err: %v", c.AppName, c.Addr, err)
+		logging.Infof("TTCL[%s:%s] Addr: %v Path: %v Client.Dial failed, err: %v",
+			c.AppName, c.registeredName, c.Addr, path, err)
 		return err
 	}
 
@@ -32,7 +35,7 @@ func (c *Client) Dial() error {
 // Open makes RPC.Open call against RPC server
 func (c *Client) Open(filename string) (SessionID, error) {
 	var res Response
-	if err := c.rpcClient.Call("RPC.Open", FileRequest{Filename: filename}, &res); err != nil {
+	if err := c.rpcClient.Call(c.registeredName+".Open", FileRequest{Filename: filename}, &res); err != nil {
 		return 0, err
 	}
 
@@ -42,7 +45,7 @@ func (c *Client) Open(filename string) (SessionID, error) {
 // Stat return os.FileInfo stats
 func (c *Client) Stat(filename string) (*StatsResponse, error) {
 	var res StatsResponse
-	if err := c.rpcClient.Call("RPC.Stat", FileRequest{Filename: filename}, &res); err != nil {
+	if err := c.rpcClient.Call(c.registeredName+".Stat", FileRequest{Filename: filename}, &res); err != nil {
 		return nil, err
 	}
 
@@ -52,7 +55,7 @@ func (c *Client) Stat(filename string) (*StatsResponse, error) {
 // CreateArchive allows to download dir from RPC Server
 func (c *Client) CreateArchive(filename string) (*StatsResponse, error) {
 	var res StatsResponse
-	if err := c.rpcClient.Call("RPC.CreateArchive", FileRequest{Filename: filename}, &res); err != nil {
+	if err := c.rpcClient.Call(c.registeredName+".CreateArchive", FileRequest{Filename: filename}, &res); err != nil {
 		return nil, err
 	}
 
@@ -62,7 +65,17 @@ func (c *Client) CreateArchive(filename string) (*StatsResponse, error) {
 // RemoveArchive requests server to remove an archive that was create for transferring a dir from server
 func (c *Client) RemoveArchive(filename string) (*Response, error) {
 	var res Response
-	if err := c.rpcClient.Call("RPC.RemoveArchive", FileRequest{Filename: filename}, &res); err != nil {
+	if err := c.rpcClient.Call(c.registeredName+".RemoveArchive", FileRequest{Filename: filename}, &res); err != nil {
+		return nil, err
+	}
+
+	return &res, nil
+}
+
+// RemoveDir requests RPC server to clean up a directory that has been successfully transferred
+func (c *Client) RemoveDir(dirname string) (*Response, error) {
+	var res Response
+	if err := c.rpcClient.Call(c.registeredName+".RemoveDir", FileRequest{Filename: dirname}, &res); err != nil {
 		return nil, err
 	}
 
@@ -74,7 +87,7 @@ func (c *Client) ReadAt(sessionID SessionID, offset int64, size int) ([]byte, er
 	res := &ReadResponse{
 		Data: make([]byte, size),
 	}
-	err := c.rpcClient.Call("RPC.ReadAt", ReadRequest{ID: sessionID, Size: size, Offset: offset}, res)
+	err := c.rpcClient.Call(c.registeredName+".ReadAt", ReadRequest{ID: sessionID, Size: size, Offset: offset}, res)
 
 	if res.EOF {
 		err = io.EOF
@@ -90,7 +103,7 @@ func (c *Client) ReadAt(sessionID SessionID, offset int64, size int) ([]byte, er
 // Read tries to instantiate connection to RPC server with specific sessionID
 func (c *Client) Read(sessionID SessionID, buf []byte) (int, error) {
 	res := &ReadResponse{Data: buf}
-	if err := c.rpcClient.Call("RPC.Read", ReadRequest{ID: sessionID, Size: cap(buf)}, res); err != nil {
+	if err := c.rpcClient.Call(c.registeredName+".Read", ReadRequest{ID: sessionID, Size: cap(buf)}, res); err != nil {
 		return 0, err
 	}
 
@@ -105,7 +118,7 @@ func (c *Client) GetBlock(sessionID SessionID, blockID int) ([]byte, error) {
 // CloseSession requests RPC server to close a specific sessionID
 func (c *Client) CloseSession(sessionID SessionID) error {
 	res := &Response{}
-	if err := c.rpcClient.Call("RPC.Close", Request{ID: sessionID}, res); err != nil {
+	if err := c.rpcClient.Call(c.registeredName+".Close", Request{ID: sessionID}, res); err != nil {
 		return err
 	}
 
@@ -144,17 +157,27 @@ func (c *Client) DownloadDir(dirname, saveLocation string) error {
 		return err
 	}
 
-	err = c.writeToFile(info, dirname+".zip", saveLocation, 0)
+	err = c.writeToFile(info, dirname+".zip", saveLocation+".zip", 0)
 	if err != nil {
 		return err
 	}
 
-	err = Unarchive(saveLocation, dirname)
+	err = Unarchive(saveLocation+".zip", saveLocation)
 	if err != nil {
 		return err
 	}
 
 	_, err = c.RemoveArchive(dirname + ".zip")
+	if err != nil {
+		return err
+	}
+
+	err = os.Remove(saveLocation + ".zip")
+	if err != nil {
+		return err
+	}
+
+	_, err = c.RemoveDir(dirname)
 	if err != nil {
 		return err
 	}
@@ -173,32 +196,39 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 		blocks++
 	}
 
-	logging.Infof("TTCL[%s] Filename: %v, downloading in %v blocks", c.AppName, filename, blocks)
+	logging.Infof("TTCL[%s:%s] Filename: %v, downloading in %v blocks", c.AppName, c.registeredName, filename, blocks)
 
 	err := os.Remove(saveLocation)
 	if err != nil {
-		logging.Infof("TTCL[%s] Filename: %v os.Remove call, err: %v",
-			c.AppName, saveLocation, err)
+		logging.Infof("TTCL[%s:%s] Filename: %v os.Remove call, err: %v",
+			c.AppName, c.registeredName, saveLocation, err)
 	}
 
 	// TODO: Setup uid/gid that works cross platform
-	file, err := os.OpenFile(saveLocation, os.O_CREATE|os.O_WRONLY, info.Mode)
+	err = os.MkdirAll(strings.Split(saveLocation, ".")[0], 0755)
 	if err != nil {
-		logging.Errorf("TTCL[%s] Filename: %v failed to OpenFile, err: %v", c.AppName, filename, err)
+		logging.Errorf("TTCL[%s:%s] Failed os.MkdirAll, err: %v", c.AppName, c.registeredName, err)
+		return err
+	}
+
+	file, err := os.OpenFile(saveLocation, os.O_CREATE|os.O_RDWR, info.Mode)
+	if err != nil {
+		logging.Errorf("TTCL[%s:%s] Filename: %v failed to OpenFile, err: %v", c.AppName, c.registeredName, filename, err)
 		return err
 	}
 	defer file.Close()
 
 	sessionID, err := c.Open(filename)
 	if err != nil {
-		logging.Errorf("TTCL[%s] Filename: %v failed to open filename, err: %v", c.AppName, filename, err)
+		logging.Errorf("TTCL[%s:%s] Filename: %v failed to open filename, err: %v", c.AppName, c.registeredName, filename, err)
 		return err
 	}
 
 	for bID := blockID; bID < blocks; bID++ {
 		buf, rErr := c.GetBlock(sessionID, bID)
 		if rErr != nil && rErr != io.EOF {
-			logging.Errorf("TTCL[%s] Filename: %v failed to in GetBlock call, err: %v", c.AppName, filename, err)
+			logging.Errorf("TTCL[%s:%s] Filename: %v failed to in GetBlock call, err: %v",
+				c.AppName, c.registeredName, filename, err)
 			return rErr
 		}
 
@@ -207,8 +237,8 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 		}
 
 		if bID%((blocks-blockID)/100+1) == 0 {
-			logging.Infof("TTCL[%s] Downloading %v [%v/%v] blocks",
-				c.AppName, filename, bID-blockID+1, blocks-blockID)
+			logging.Infof("TTCL[%s:%s] Downloading %v [%v/%v] blocks",
+				c.AppName, c.registeredName, filename, bID-blockID+1, blocks-blockID)
 		}
 
 		if rErr == io.EOF {
@@ -218,27 +248,32 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 
 	checksum, err := ComputeMD5(saveLocation)
 	if err != nil {
-		logging.Errorf("TTCL[%s] Filename: %v failed to get MD5 checksum, err: %v",
-			c.AppName, filename, err)
+		logging.Errorf("TTCL[%s:%s] Filename: %v failed to get MD5 checksum, err: %v",
+			c.AppName, c.registeredName, filename, err)
 		goto retryDownload
 	}
 
 	if checksum != info.Checksum {
-		logging.Errorf("TTCL[%s] Filename: %v checksum verification failed. From server: %v on client: %v",
-			c.AppName, filename, info.Checksum, checksum)
+		logging.Errorf("TTCL[%s:%s] Filename: %v checksum verification failed. From server: %v on client: %v",
+			c.AppName, c.registeredName, filename, info.Checksum, checksum)
 		goto retryDownload
 	}
 
-	logging.Infof("TTCL[%s] Filename: %v download completed ", c.AppName, filename)
+	logging.Infof("TTCL[%s:%s] Filename: %v download completed ", c.AppName, c.registeredName, filename)
 	c.CloseSession(sessionID)
 
 	return nil
 
 retryDownload:
-	logging.Errorf("TTCL[%s] Filename: %v Going to re-request from server over new session, closing previous session: %v",
-		c.AppName, filename, sessionID)
+	logging.Errorf("TTCL[%s:%s] Filename: %v Going to re-request from server over new session, closing previous session: %v",
+		c.AppName, c.registeredName, filename, sessionID)
 	c.CloseSession(sessionID)
 	c.Download(filename, saveLocation)
 
 	return nil
+}
+
+// Close shuts down connection
+func (c *Client) Close() error {
+	return c.rpcClient.Close()
 }
