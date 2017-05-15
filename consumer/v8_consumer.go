@@ -81,8 +81,8 @@ func (c *Consumer) Serve() {
 	c.stopConsumerCh = make(chan bool, 1)
 	c.stopCheckpointingCh = make(chan bool)
 
-	c.dcpMessagesProcessed = make(map[mcd.CommandCode]int)
-	c.v8WorkerMessagesProcessed = make(map[string]int)
+	c.dcpMessagesProcessed = make(map[mcd.CommandCode]uint64)
+	c.v8WorkerMessagesProcessed = make(map[string]uint64)
 
 	c.consumerSup = suptree.NewSimple(c.workerName)
 	go c.consumerSup.ServeBackground()

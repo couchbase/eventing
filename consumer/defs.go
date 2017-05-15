@@ -229,13 +229,15 @@ type Consumer struct {
 	tcpPort string
 
 	// Tracks DCP Opcodes processed per consumer
-	dcpMessagesProcessed map[mcd.CommandCode]int
+	dcpMessagesProcessed map[mcd.CommandCode]uint64
 
 	// Tracks V8 Opcodes processed per consumer
-	v8WorkerMessagesProcessed map[string]int
+	v8WorkerMessagesProcessed map[string]uint64
+
+	timerMessagesProcessed uint64
 
 	// capture dcp operation stats, granularity of these stats depend on statsTickInterval
-	dcpOpsProcessed     int
+	dcpOpsProcessed     uint64
 	opsTimestamp        time.Time
 	dcpOpsProcessedPSec int
 

@@ -88,9 +88,9 @@ func sprintWorkerState(state map[int]map[string]interface{}) string {
 	return strings.TrimRight(line, " ")
 }
 
-func SprintDCPCounts(counts map[mcd.CommandCode]int) (string, int, time.Time) {
+func SprintDCPCounts(counts map[mcd.CommandCode]uint64) (string, uint64, time.Time) {
 	line := ""
-	ops := 0
+	ops := uint64(0)
 	currTimestamp := time.Now()
 
 	for i := 0; i < 256; i++ {
@@ -103,7 +103,7 @@ func SprintDCPCounts(counts map[mcd.CommandCode]int) (string, int, time.Time) {
 	return strings.TrimRight(line, " "), ops, currTimestamp
 }
 
-func SprintV8Counts(counts map[string]int) string {
+func SprintV8Counts(counts map[string]uint64) string {
 	line := ""
 	for k, v := range counts {
 		line += fmt.Sprintf("%s:%v ", k, v)

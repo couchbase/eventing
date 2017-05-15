@@ -222,6 +222,7 @@ func (c *Consumer) doDCPEventProcess() {
 				return
 			}
 
+			c.timerMessagesProcessed++
 			c.sendTimerEvent(e)
 
 		case <-c.statsTicker.C:
@@ -237,12 +238,12 @@ func (c *Consumer) doDCPEventProcess() {
 				opsDiff := dcpOpCount - c.dcpOpsProcessed
 				seconds := int(diff.Nanoseconds() / (1000 * 1000 * 1000))
 				if seconds > 0 {
-					c.dcpOpsProcessedPSec = opsDiff / seconds
+					c.dcpOpsProcessedPSec = int(opsDiff) / seconds
 				}
 
-				logging.Infof("CRDP[%s:%s:%s:%d] DCP events processed: %s V8 events processed: %s, vbs owned len: %d vbs owned:[%d..%d]",
+				logging.Infof("CRDP[%s:%s:%s:%d] DCP events processed: %s V8 events processed: %s Timer events processed: %v, vbs owned len: %d vbs owned:[%d..%d]",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
-					len(c.getCurrentlyOwnedVbs()), vbsOwned[0], vbsOwned[len(vbsOwned)-1])
+					c.timerMessagesProcessed, len(c.getCurrentlyOwnedVbs()), vbsOwned[0], vbsOwned[len(vbsOwned)-1])
 
 				c.opsTimestamp = tStamp
 				c.dcpOpsProcessed = dcpOpCount
