@@ -1,4 +1,5 @@
 #!/bin/bash
+install_name_tool -change @rpath/libjemalloc.2.dylib /Users/$USER/.cbdepscache/lib/libjemalloc.2.dylib eventing
 install_name_tool -change @loader_path/libv8.dylib /Users/$USER/.cbdepscache/lib/libv8.dylib client.bin
 install_name_tool -change @rpath/libv8.dylib /Users/$USER/.cbdepscache/lib/libv8.dylib client.bin
 install_name_tool -change @rpath/libcouchbase.2.dylib /Users/$USER/.cbdepscache/lib/Release/libcouchbase.2.dylib client.bin

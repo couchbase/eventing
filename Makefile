@@ -12,8 +12,8 @@
 CXX=g++
 CXFLAGS= -DSTANDALONE_BUILD=1 -std=c++11 -ggdb3 -fno-pie -fno-inline # -O3 -Wall
 
-CBDEPS_DIR=/Users/$(USER)/.cbdepscache/
-DYLD_LIBRARY_PATH=/Users/$(USER)/.cbdepscache/lib
+CBDEPS_DIR=$(HOME)/.cbdepscache/
+DYLD_LIBRARY_PATH=$(HOME)/.cbdepscache/lib
 CMD_DIR=cmd/producer/
 
 LDFLAGS=-luv -L$(CBDEPS_DIR)lib/ -ljemalloc -L$(CBDEPS_DIR)lib/ -lv8 -lcouchbase \
@@ -36,7 +36,8 @@ build: jsify
 	$(CBDEPS_DIR)bin/flatc -o flatbuf/include/ -c flatbuf/schema/*.fbs
 	$(CBDEPS_DIR)bin/flatc -g flatbuf/schema/*.fbs
 	$(CXX) $(CXFLAGS) $(SOURCES) $(INCLUDE_DIRS) $(LDFLAGS) -o $(OUT)
-	cd $(CMD_DIR); go build -o $(EVENTING_EXEC); bash fix_rpath.sh
+	cd $(CMD_DIR); CGO_CFLAGS=-I$(CBDEPS_DIR)include/ CGO_LDFLAGS=-L$(CBDEPS_DIR)lib \
+		go build -o eventing -tags jemalloc; bash fix_rpath.sh
 
 jsify: v8_consumer/src/jsify.lex
 	$(LEX) -o v8_consumer/src/jsify.cc v8_consumer/src/jsify.lex

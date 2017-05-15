@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	xattrPrefix              = "_eventing"
+	xattrPrefix              = "eventing"
 	getAggTimerHostPortAddrs = "getAggTimerHostPortAddrs"
 )
 
@@ -27,6 +27,15 @@ const (
 	dcpDatatypeJSON      = uint8(1)
 	dcpDatatypeJSONXattr = uint8(5)
 	includeXATTRs        = uint32(4)
+)
+
+// plasma related constants
+const (
+	autoLssCleaning  = false
+	maxDeltaChainLen = 30
+	maxPageItems     = 100
+	minPageItems     = 10
+	useMemManagement = true
 )
 
 const (
@@ -139,18 +148,15 @@ type Consumer struct {
 	vbsRemainingToRestream []uint16
 
 	// Plasma DGM store handle to store timer entries at per vbucket level
-	byIDVbPlasmaStoreMap    map[uint16]*plasma.Plasma
-	byTimerVbPlasmaStoreMap map[uint16]*plasma.Plasma
-	byIDPlasmaWriter        map[uint16]*plasma.Writer
-	byTimerPlasmaWriter     map[uint16]*plasma.Writer
-	byIDPlasmaReader        map[uint16]*plasma.Writer
-	byTimerPlasmaReader     map[uint16]*plasma.Writer
-	byTimerEntryCh          chan *byTimerEntry
-	persistAllTicker        *time.Ticker
-	stopPlasmaPersistCh     chan bool
-	stopTimerProcessCh      chan bool
-	timerAddrs              map[string]map[string]string
-	timerProcessingTicker   *time.Ticker
+	vbPlasmaStoreMap      map[uint16]*plasma.Plasma
+	vbPlasmaWriter        map[uint16]*plasma.Writer
+	vbPlasmaReader        map[uint16]*plasma.Writer
+	timerEntryCh          chan *byTimerEntry
+	persistAllTicker      *time.Ticker
+	stopPlasmaPersistCh   chan bool
+	stopTimerProcessCh    chan bool
+	timerAddrs            map[string]map[string]string
+	timerProcessingTicker *time.Ticker
 
 	signalStoreTimerPlasmaCloseCh      chan uint16
 	signalProcessTimerPlasmaCloseCh    chan uint16
@@ -277,8 +283,7 @@ type vbucketKVBlob struct {
 	VBId                   uint16           `json:"vb_id"`
 	VBuuid                 uint64           `json:"vb_uuid"`
 
-	ByIDPersistedSeqNo      uint64 `json:"plasma_by_id_last_persisted_seq_no"`
-	ByTimerPersistedSeqNo   uint64 `json:"plasma_by_timer_last_persisted_seq_no"`
+	PlasmaPersistedSeqNo    uint64 `json:"plasma_last_persisted_seq_no"`
 	CurrentProcessedTimer   string `json:"currently_processed_timer"`
 	LastProcessedTimerEvent string `json:"last_processed_timer_event"`
 	NextTimerToProcess      string `json:"next_timer_to_process"`

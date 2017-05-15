@@ -209,14 +209,14 @@ void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   /*
    * XATTR structure with timers:
    * {
-   * "_eventing": {
+   * "eventing": {
    *              "timers": ["2017-04-30ZT12:00:00::callback_func", ...],
    *              "cas": ${Mutation.CAS},
    *   }
    * }
    * */
-  std::string xattr_cas_path("_eventing.cas");
-  std::string xattr_timer_path("_eventing.timers");
+  std::string xattr_cas_path("eventing.cas");
+  std::string xattr_timer_path("eventing.timers");
   std::string mutation_cas_macro("\"${Mutation.CAS}\"");
   timer_entry += "Z::";
   timer_entry += cb_func;

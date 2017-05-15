@@ -18,10 +18,8 @@ func newVbProcessingStats() vbStats {
 		// Stored in memory but not persisted to disk,
 		// persistence to disk takes place periodically. Below 4 stats
 		// will be updated by plasma writer routines
-		vbsts[i].stats["plasma_by_id_last_seq_no_stored"] = uint64(0)
-		vbsts[i].stats["plasma_by_timer_last_seq_no_stored"] = uint64(0)
-		vbsts[i].stats["plasma_by_id_last_seq_no_persisted"] = uint64(0)
-		vbsts[i].stats["plasma_by_timer_last_seq_no_persisted"] = uint64(0)
+		vbsts[i].stats["plasma_last_seq_no_stored"] = uint64(0)
+		vbsts[i].stats["plasma_last_seq_no_persisted"] = uint64(0)
 
 		// Below stats will be updated by plasma reader routines, which
 		// will process timer events

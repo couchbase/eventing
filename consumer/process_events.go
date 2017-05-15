@@ -182,7 +182,7 @@ func (c *Consumer) doDCPEventProcess() {
 				c.Lock()
 				// Check if vbucket related entry already exists, if yes - then clean it up
 				// and close all associated FDs
-				if _, ok := c.byIDVbPlasmaStoreMap[e.VBucket]; ok {
+				if _, ok := c.vbPlasmaStoreMap[e.VBucket]; ok {
 					c.signalProcessTimerPlasmaCloseCh <- e.VBucket
 					<-c.signalProcessTimerPlasmaCloseAckCh
 
@@ -192,18 +192,12 @@ func (c *Consumer) doDCPEventProcess() {
 					// directly. Reason being, c.signalStoreTimerPlasmaCloseCh and
 					// c.signalStoreTimerPlasmaCloseAckCh are being listened to/written to
 					// on current control path within the select statement
-					_, ok := c.byTimerPlasmaWriter[e.VBucket]
+					_, ok := c.vbPlasmaWriter[e.VBucket]
 					if ok {
-						delete(c.byTimerPlasmaWriter, e.VBucket)
+						delete(c.vbPlasmaWriter, e.VBucket)
 					}
 
-					_, ok = c.byIDPlasmaWriter[e.VBucket]
-					if ok {
-						delete(c.byIDPlasmaWriter, e.VBucket)
-					}
-
-					c.closeByIDPlasmaHandle(e.VBucket)
-					c.closeByTimerPlasmaHandle(e.VBucket)
+					c.closePlasmaHandle(e.VBucket)
 				}
 
 				c.Unlock()
@@ -219,7 +213,7 @@ func (c *Consumer) doDCPEventProcess() {
 			default:
 			}
 
-		case e, ok := <-c.byTimerEntryCh:
+		case e, ok := <-c.timerEntryCh:
 			if ok == false {
 				logging.Infof("CRDP[%s:%s:%s:%d] Closing timer chan", c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
@@ -258,14 +252,9 @@ func (c *Consumer) doDCPEventProcess() {
 		case vb := <-c.signalStoreTimerPlasmaCloseCh:
 			// Rebalance takeover routine will send signal on this channel to signify
 			// stopping of any plasma.Writer instance for a specific vbucket
-			_, ok := c.byTimerPlasmaWriter[vb]
+			_, ok := c.vbPlasmaWriter[vb]
 			if ok {
-				delete(c.byTimerPlasmaWriter, vb)
-			}
-
-			_, ok = c.byIDPlasmaWriter[vb]
-			if ok {
-				delete(c.byIDPlasmaWriter, vb)
+				delete(c.vbPlasmaWriter, vb)
 			}
 
 			// sends ack message back to rebalance takeover routine, so that it could
@@ -506,37 +495,25 @@ loop:
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
 		logging.Infof("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
-		// Create plasma instances for the vbucket
-		vbPlasmaByIDDir := fmt.Sprintf("%v/%v/%v_by_id.data", c.eventingDir, c.app.AppName, vbno)
-		vbPlasmaByTimerDir := fmt.Sprintf("%v/%v/%v_by_timer.data", c.eventingDir, c.app.AppName, vbno)
+		vbPlasmaDir := fmt.Sprintf("%v/%v/%v_timer.data", c.eventingDir, c.app.AppName, vbno)
 
-		byIDCfg := plasma.DefaultConfig()
-		byIDCfg.File = vbPlasmaByIDDir
-		byIDCfg.AutoLSSCleaning = false
+		cfg := plasma.DefaultConfig()
+		cfg.File = vbPlasmaDir
+		cfg.AutoLSSCleaning = autoLssCleaning
+		cfg.MaxDeltaChainLen = maxDeltaChainLen
+		cfg.MaxPageItems = maxPageItems
+		cfg.MinPageItems = minPageItems
+		cfg.UseMemoryMgmt = useMemManagement
 
-		byTimerCfg := plasma.DefaultConfig()
-		byTimerCfg.File = vbPlasmaByTimerDir
-		byTimerCfg.AutoLSSCleaning = false
-
-		c.byIDVbPlasmaStoreMap[vbno], err = plasma.New(byIDCfg)
+		c.vbPlasmaStoreMap[vbno], err = plasma.New(cfg)
 		if err != nil {
-			logging.Infof("CRDP[%s:%s:%s:%d] vb: %v Failed to create by-Id plasma instance, err: %v",
+			logging.Infof("CRDP[%s:%s:%s:%d] vb: %v Failed to create plasma store instance, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
 			return err
 		}
 
-		c.byIDPlasmaReader[vbno] = c.byIDVbPlasmaStoreMap[vbno].NewWriter()
-		c.byIDPlasmaWriter[vbno] = c.byIDVbPlasmaStoreMap[vbno].NewWriter()
-
-		c.byTimerVbPlasmaStoreMap[vbno], err = plasma.New(byTimerCfg)
-		if err != nil {
-			logging.Infof("CRDP[%s:%s:%s:%d] vb: %v Failed to create by-Timer plasma instance, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
-			return err
-		}
-
-		c.byTimerPlasmaReader[vbno] = c.byTimerVbPlasmaStoreMap[vbno].NewWriter()
-		c.byTimerPlasmaWriter[vbno] = c.byTimerVbPlasmaStoreMap[vbno].NewWriter()
+		c.vbPlasmaReader[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
+		c.vbPlasmaWriter[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
 
 		return nil
 	}

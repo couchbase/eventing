@@ -63,8 +63,7 @@ func (c *Consumer) vbsStateUpdate() {
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
 				c.Lock()
-				c.closeByIDPlasmaHandle(vbno)
-				c.closeByTimerPlasmaHandle(vbno)
+				c.closePlasmaHandle(vbno)
 				c.Unlock()
 
 				c.stopDcpStreamAndUpdateCheckpoint(vbKey, vbno, &vbBlob, &cas)
@@ -237,38 +236,21 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbB
 		}
 		defer client.Close()
 
-		srcByIDDir := fmt.Sprintf("%v/%v/%v_by_id.data", previousEventingDir, c.app.AppName, vbno)
-		dstByIDDir := fmt.Sprintf("%v/%v/%v_by_id.data", c.eventingDir, c.app.AppName, vbno)
+		srcTimerDir := fmt.Sprintf("%v/%v/%v_timer.data", previousEventingDir, c.app.AppName, vbno)
+		dstTimerDir := fmt.Sprintf("%v/%v/%v_timer.data", c.eventingDir, c.app.AppName, vbno)
 
-		if srcByIDDir != dstByIDDir && c.NodeUUID() != previousNodeUUID {
-			if err := client.DownloadDir(srcByIDDir, dstByIDDir); err != nil {
-				logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to download byID dir from node: %v src: %v dst: %v err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, srcByIDDir, dstByIDDir, err)
-
-				return errFailedRPCDownloadDir
-			}
-			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded byID dir: %v to: %v from: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, srcByIDDir, dstByIDDir, remoteConsumerAddr)
-		} else {
-			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of byID dir because src and dst are same node addr: %v prev path: %v curr path: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, srcByIDDir, dstByIDDir)
-		}
-
-		srcByTimerDir := fmt.Sprintf("%v/%v/%v_by_timer.data", previousEventingDir, c.app.AppName, vbno)
-		dstByTimerDir := fmt.Sprintf("%v/%v/%v_by_timer.data", c.eventingDir, c.app.AppName, vbno)
-
-		if srcByTimerDir != dstByTimerDir && c.NodeUUID() != previousNodeUUID {
-			if err := client.DownloadDir(srcByTimerDir, dstByTimerDir); err != nil {
-				logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to download byID dir from node: %v src: %v dst: %v err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, srcByTimerDir, dstByTimerDir, err)
+		if srcTimerDir != dstTimerDir && c.NodeUUID() != previousNodeUUID {
+			if err := client.DownloadDir(srcTimerDir, dstTimerDir); err != nil {
+				logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to download timer dir from node: %v src: %v dst: %v err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, srcTimerDir, dstTimerDir, err)
 
 				return errFailedRPCDownloadDir
 			}
-			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded byTimer dir: %v to: %v from: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, srcByTimerDir, dstByTimerDir, remoteConsumerAddr)
+			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, srcTimerDir, dstTimerDir, remoteConsumerAddr)
 		} else {
-			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of byTimer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, srcByTimerDir, dstByTimerDir)
+			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, srcTimerDir, dstTimerDir)
 		}
 
 		return c.dcpRequestStreamHandle(vbno, vbBlob, vbBlob.LastSeqNoProcessed)
@@ -308,19 +290,11 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 }
 
-func (c *Consumer) closeByIDPlasmaHandle(vb uint16) {
-	store, ok := c.byIDVbPlasmaStoreMap[vb]
+func (c *Consumer) closePlasmaHandle(vb uint16) {
+	store, ok := c.vbPlasmaStoreMap[vb]
 	if ok {
 		store.Close()
-		delete(c.byIDVbPlasmaStoreMap, vb)
-	}
-}
-
-func (c *Consumer) closeByTimerPlasmaHandle(vb uint16) {
-	store, ok := c.byTimerVbPlasmaStoreMap[vb]
-	if ok {
-		store.Close()
-		delete(c.byTimerVbPlasmaStoreMap, vb)
+		delete(c.vbPlasmaStoreMap, vb)
 	}
 }
 
