@@ -66,7 +66,10 @@ func (c *Consumer) doDCPEventProcess() {
 						e.Value = e.Value[4+xattrLen:]
 						c.sendDcpEvent(e)
 					} else {
-						c.storeTimerEvent(e.VBucket, e.Seqno, string(e.Key), &xMeta)
+						logging.Debugf("CRPO[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v, xmeta: %#v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, xMeta)
+
+						c.storeTimerEvent(e.VBucket, e.Seqno, e.Expiry, string(e.Key), &xMeta)
 					}
 				}
 

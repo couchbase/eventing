@@ -12,6 +12,7 @@ import (
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/timer_transfer"
 	cbbucket "github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gocb"
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	cb "github.com/couchbase/indexing/secondary/dcp/transport/client"
@@ -19,7 +20,10 @@ import (
 )
 
 const (
+	xattrCasPath             = "eventing.cas"
 	xattrPrefix              = "eventing"
+	xattrSeqnoPath           = "eventing.seqno"
+	xattrTimerPath           = "eventing.timers"
 	getAggTimerHostPortAddrs = "getAggTimerHostPortAddrs"
 )
 
@@ -99,6 +103,7 @@ var dcpConfig = map[string]interface{}{
 
 type xattrMetadata struct {
 	Cas    string   `json:"cas"`
+	Seqno  string   `json:"seqno"`
 	Timers []string `json:"timers"`
 }
 
@@ -133,6 +138,7 @@ type Consumer struct {
 
 	aggDCPFeed             chan *cb.DcpEvent
 	cbBucket               *couchbase.Bucket
+	gocbBucket             *gocb.Bucket
 	dcpFeedCancelChs       []chan bool
 	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16
 	eventingAdminPort      string

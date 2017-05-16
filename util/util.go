@@ -540,6 +540,10 @@ func SliceDifferences(kv1, kv2 []string) []string {
 }
 
 func ConvertBigEndianToUint64(cas []byte) (uint64, error) {
+	if len(cas) == 0 {
+		return 0, fmt.Errorf("empty cas value")
+	}
+
 	// Trim "Ox"
 	cas = cas[2:]
 

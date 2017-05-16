@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/gocb"
 	"github.com/couchbase/indexing/secondary/logging"
 	"github.com/couchbase/nitro/plasma"
 )
@@ -25,7 +26,7 @@ var plasmaInsertKV = func(args ...interface{}) error {
 		logging.Errorf("CRPO[%s:%s:%s:%d] Key: %v vb: %v Failed to insert into plasma store, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), k, vb, err)
 	} else {
-		logging.Debugf("CRPO[%s:%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
+		logging.Infof("CRPO[%s:%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), k, v, vb, err)
 	}
 	w.EndTx(token)
@@ -121,6 +122,8 @@ func (c *Consumer) processTimerEvents() {
 				goto retryLookup
 			}
 
+			c.updateTimerStats(vb)
+
 			lastTimerEvent := c.vbProcessingStats.getVbStat(vb, "last_processed_timer_event")
 			if lastTimerEvent != "" {
 				startProcess := false
@@ -174,12 +177,10 @@ func (c *Consumer) processTimerEvents() {
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
 				}
 
-				c.updateTimerStats(vb)
 				continue
 			}
 
 			if len(v) == 0 {
-				c.updateTimerStats(vb)
 				continue
 			}
 
@@ -248,7 +249,7 @@ func (c *Consumer) updateTimerStats(vb uint16) {
 
 }
 
-func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, key string, xMeta *xattrMetadata) {
+func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key string, xMeta *xattrMetadata) {
 
 	// Steps:
 	// Lookup in byId plasma handle
@@ -261,6 +262,9 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, key string, xMeta *x
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb)
 		return
 	}
+
+	entriesToPrune := 0
+	timersToKeep := make([]string, 0)
 
 	for _, timer := range xMeta.Timers {
 		// check if timer timestamp has already passed, if yes then skip adding it to plasma
@@ -276,16 +280,19 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, key string, xMeta *x
 		}
 
 		if !ts.After(time.Now()) {
-			logging.Debugf("CRPO[%s:%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
+			logging.Infof("CRPO[%s:%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, ts)
+			entriesToPrune++
 			continue
 		}
+
+		timersToKeep = append(timersToKeep, timer)
 
 		timerKey := fmt.Sprintf("%v::%v", timer, key)
 
 		// Creating transaction for memory management
 		token := plasmaWriterHandle.BeginTx()
-		_, err = plasmaWriterHandle.LookupKV([]byte(key))
+		_, err = plasmaWriterHandle.LookupKV([]byte(timerKey))
 		plasmaWriterHandle.EndTx(token)
 
 		if err == plasma.ErrItemNotFound {
@@ -347,8 +354,21 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, key string, xMeta *x
 		}
 	}
 
-	c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_stored", seqNo)
+	if entriesToPrune > 0 {
+		// Cleaning up timer event entry record which point to time in past
+		docF := c.gocbBucket.MutateIn(key, 0, expiry)
+		docF.UpsertEx(xattrTimerPath, timersToKeep, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath)
+		docF.UpsertEx(xattrCasPath, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath|gocb.SubdocFlagUseMacros)
 
-	logging.Debugf("CRPO[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v, xmeta: %#v",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, xMeta)
+		_, err := docF.Execute()
+		if err != nil {
+			logging.Errorf("CRPO[%s:%s:%s:%d]  Key: %v vb: %v, Failed to prune timer records from past, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, err)
+		} else {
+			logging.Infof("CRPO[%s:%s:%s:%d]  Key: %v vb: %v, timer records in xattr: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, timersToKeep)
+		}
+	}
+
+	c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_stored", seqNo)
 }

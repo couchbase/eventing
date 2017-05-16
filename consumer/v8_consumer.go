@@ -89,7 +89,9 @@ func (c *Consumer) Serve() {
 
 	c.initCBBucketConnHandle()
 
-	util.Retry(util.NewFixedBackoff(time.Second), commonConnectBucketOpCallback, c, &c.cbBucket)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), commonConnectBucketOpCallback, c, &c.cbBucket)
+
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), gocbConnectBucketCallback, c)
 
 	var flogs couchbase.FailoverLog
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs, dcpConfig)

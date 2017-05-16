@@ -6,6 +6,7 @@ import (
 
 	"github.com/couchbase/eventing/util"
 	cbbucket "github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/dcp"
@@ -26,6 +27,38 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
 	}
 	return err
+}
+
+var gocbConnectBucketCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+
+	connStr := fmt.Sprintf("couchbase://%s", c.producer.KvHostPorts()[0])
+
+	cluster, err := gocb.Connect(connStr)
+	if err != nil {
+		logging.Errorf("CRBO[%s:%d] GOCB Connect to cluster %s failed, err: %v",
+			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
+		return err
+	}
+
+	err = cluster.Authenticate(gocb.PasswordAuthenticator{
+		Username: c.producer.RbacUser(),
+		Password: c.producer.RbacPass(),
+	})
+	if err != nil {
+		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
+			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
+		return err
+	}
+
+	c.gocbBucket, err = cluster.OpenBucket(c.bucket, "")
+	if err != nil {
+		logging.Errorf("CRBO[%s:%d] GOCB Failed to connect to bucket %s, err: %v",
+			c.app.AppName, c.producer.LenRunningConsumers(), c.bucket, err)
+		return err
+	}
+
+	return nil
 }
 
 var commonConnectBucketOpCallback = func(args ...interface{}) error {
