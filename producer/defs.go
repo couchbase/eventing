@@ -62,6 +62,9 @@ type Producer struct {
 	// from_now - start from current vb seq no and listen forever
 	dcpStreamBoundary common.DcpStreamBoundary
 
+	// Timer event processing worker count per Eventing.Consumer instance
+	timerWorkerPoolSize int
+
 	// stats gathered from ClusterInfo
 	localAddress      string
 	eventingNodeAddrs []string

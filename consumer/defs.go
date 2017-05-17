@@ -25,6 +25,7 @@ const (
 	xattrSeqnoPath           = "eventing.seqno"
 	xattrTimerPath           = "eventing.timers"
 	getAggTimerHostPortAddrs = "getAggTimerHostPortAddrs"
+	tsLayout                 = "2006-01-02T15:04:05Z"
 )
 
 const (
@@ -160,14 +161,18 @@ type Consumer struct {
 	timerEntryCh          chan *byTimerEntry
 	persistAllTicker      *time.Ticker
 	stopPlasmaPersistCh   chan bool
-	stopTimerProcessCh    chan bool
 	timerAddrs            map[string]map[string]string
 	timerProcessingTicker *time.Ticker
 
 	signalStoreTimerPlasmaCloseCh      chan uint16
-	signalProcessTimerPlasmaCloseCh    chan uint16
 	signalProcessTimerPlasmaCloseAckCh chan uint16
 	signalStoreTimerPlasmaCloseAckCh   chan uint16
+
+	timerProcessingVbsWorkerMap   map[uint16]*timerProcessingWorker
+	timerProcessingRunningWorkers []*timerProcessingWorker
+	timerProcessingWorkerSignalCh map[*timerProcessingWorker]chan bool
+	timerProcessingWorkerCount    int
+	timerRWMutex                  *sync.RWMutex
 
 	// Instance of timer related data transferring routine, under
 	// the supervision of consumer routine
@@ -255,6 +260,15 @@ type Consumer struct {
 	statsTicker              *time.Ticker
 }
 
+type timerProcessingWorker struct {
+	id                              int
+	c                               *Consumer
+	signalProcessTimerPlasmaCloseCh chan uint16
+	stopCh                          chan bool
+	timerProcessingTicker           *time.Ticker
+	vbsAssigned                     []uint16
+}
+
 type byTimerEntry struct {
 	DocID      string
 	CallbackFn string
@@ -291,10 +305,11 @@ type vbucketKVBlob struct {
 	VBId                   uint16           `json:"vb_id"`
 	VBuuid                 uint64           `json:"vb_uuid"`
 
-	PlasmaPersistedSeqNo    uint64 `json:"plasma_last_persisted_seq_no"`
+	AssignedTimerWorker     string `json:"timer_processing_worker"`
 	CurrentProcessedTimer   string `json:"currently_processed_timer"`
 	LastProcessedTimerEvent string `json:"last_processed_timer_event"`
 	NextTimerToProcess      string `json:"next_timer_to_process"`
+	PlasmaPersistedSeqNo    uint64 `json:"plasma_last_persisted_seq_no"`
 }
 
 // OwnershipEntry captures the state of vbucket within the metadata blob

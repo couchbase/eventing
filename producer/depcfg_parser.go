@@ -60,6 +60,7 @@ func (p *Producer) parseDepcfg() error {
 		p.rbacuser = settings["rbacuser"].(string)
 		p.statsTickDuration = time.Duration(settings["tick_duration"].(float64))
 		p.workerCount = int(settings["worker_count"].(float64))
+		p.timerWorkerPoolSize = int(settings["timer_worker_pool_size"].(float64))
 		p.socketWriteBatchSize = int(settings["sock_batch_size"].(float64))
 		p.app.Settings = settings
 

@@ -46,6 +46,7 @@ func main() {
 	settings["rbacpass"] = "asdasd"
 	settings["rbacuser"] = "eventing"
 	settings["rbacrole"] = "admin"
+	settings["timer_worker_pool_size"] = 1
 
 	sData, err := json.Marshal(&settings)
 	if err != nil {

@@ -154,7 +154,7 @@ func (p *Producer) handleV8Consumer(vbnos []uint16, index int) {
 	logging.Infof("PRDR[%s:%d] Started server on port: %s", p.appName, p.LenRunningConsumers(), p.tcpPort)
 
 	c := consumer.NewConsumer(p.dcpStreamBoundary, p.eventingAdminPort, p.eventingDir, p, p.app, vbnos, p.bucket, p.logLevel,
-		p.tcpPort, p.uuid, p.socketWriteBatchSize, index)
+		p.tcpPort, p.uuid, p.socketWriteBatchSize, p.timerWorkerPoolSize, index)
 
 	p.Lock()
 	p.consumerListeners = append(p.consumerListeners, listener)

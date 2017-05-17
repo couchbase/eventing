@@ -53,78 +53,172 @@ func (c *Consumer) plasmaPersistAll() {
 	}
 }
 
-func (c *Consumer) processTimerEvents() {
+func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 	vbsOwned := c.getVbsOwned()
+
+	vbsPerWorker := len(vbsOwned) / c.timerProcessingWorkerCount
+
+	var vb int
+	startVb := vbsOwned[0]
+
+	vbsCountPerWorker := make([]int, c.timerProcessingWorkerCount)
+	for i := 0; i < c.timerProcessingWorkerCount; i++ {
+		vbsCountPerWorker[i] = vbsPerWorker
+		vb += vbsPerWorker
+	}
+
+	remainingVbs := len(vbsOwned) - vb
+	for i := 0; i < remainingVbs; i++ {
+		vbsCountPerWorker[i] = vbsCountPerWorker[i] + 1
+	}
+
+	if initWorkers {
+		for i, v := range vbsCountPerWorker {
+
+			worker := &timerProcessingWorker{
+				c:  c,
+				id: i,
+				signalProcessTimerPlasmaCloseCh: make(chan uint16),
+				stopCh:                make(chan bool, 1),
+				timerProcessingTicker: time.NewTicker(time.Second),
+			}
+
+			vbsAssigned := make([]uint16, v)
+
+			for j := 0; j < v; j++ {
+				vbsAssigned[j] = startVb
+				c.timerProcessingVbsWorkerMap[startVb] = worker
+				c.vbProcessingStats.updateVbStat(startVb, "timer_processing_worker", fmt.Sprintf("timer_%d", i))
+				startVb++
+			}
+
+			worker.vbsAssigned = vbsAssigned
+
+			c.timerProcessingRunningWorkers = append(c.timerProcessingRunningWorkers, worker)
+			c.timerProcessingWorkerSignalCh[worker] = make(chan bool, 1)
+
+			logging.Infof("CRPO[%s:%s:timer_%d:%s:%d] Initial Timer routine vbs assigned len: %d dump: %v",
+				c.app.AppName, c.workerName, worker.id, c.tcpPort, c.Pid(), len(vbsAssigned), vbsAssigned)
+		}
+	} else {
+
+		for i, v := range vbsCountPerWorker {
+
+			vbsAssigned := make([]uint16, v)
+
+			c.timerRWMutex.Lock()
+			for j := 0; j < v; j++ {
+				vbsAssigned[j] = startVb
+				c.timerProcessingVbsWorkerMap[startVb] = c.timerProcessingRunningWorkers[i]
+				c.vbProcessingStats.updateVbStat(startVb, "timer_processing_worker", fmt.Sprintf("timer_%d", i))
+				startVb++
+			}
+
+			c.timerProcessingRunningWorkers[i].vbsAssigned = vbsAssigned
+			c.timerRWMutex.Unlock()
+
+			logging.Infof("CRPO[%s:%s:timer_%d:%s:%d] Timer routine vbs assigned len: %d dump: %v",
+				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), len(vbsAssigned), vbsAssigned)
+		}
+	}
+}
+
+func (r *timerProcessingWorker) getVbsOwned() []uint16 {
+	return r.vbsAssigned
+}
+
+func (r *timerProcessingWorker) processTimerEvents() {
+	vbsOwned := r.getVbsOwned()
 
 	currTimer := time.Now().UTC().Format(time.RFC3339)
 	nextTimer := time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
 	for _, vb := range vbsOwned {
-		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
+		vbKey := fmt.Sprintf("%s_vb_%s", r.c.app.AppName, strconv.Itoa(int(vb)))
 
 		var vbBlob vbucketKVBlob
 		var cas uint64
 
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, r.c, vbKey, &vbBlob, &cas, false)
 
 		if vbBlob.CurrentProcessedTimer == "" {
-			c.vbProcessingStats.updateVbStat(vb, "currently_processed_timer", currTimer)
+			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_timer", currTimer)
 		} else {
-			c.vbProcessingStats.updateVbStat(vb, "currently_processed_timer", vbBlob.CurrentProcessedTimer)
+			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_timer", vbBlob.CurrentProcessedTimer)
 		}
 
 		if vbBlob.NextTimerToProcess == "" {
-			c.vbProcessingStats.updateVbStat(vb, "next_timer_to_process", nextTimer)
+			r.c.vbProcessingStats.updateVbStat(vb, "next_timer_to_process", nextTimer)
 		} else {
-			c.vbProcessingStats.updateVbStat(vb, "next_timer_to_process", vbBlob.NextTimerToProcess)
+			r.c.vbProcessingStats.updateVbStat(vb, "next_timer_to_process", vbBlob.NextTimerToProcess)
 		}
 
-		c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", vbBlob.LastProcessedTimerEvent)
-		c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_persisted", vbBlob.PlasmaPersistedSeqNo)
+		r.c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", vbBlob.LastProcessedTimerEvent)
+		r.c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_persisted", vbBlob.PlasmaPersistedSeqNo)
 	}
 
 	for {
 		select {
-		case <-c.stopTimerProcessCh:
+		case <-r.stopCh:
 			return
-		case <-c.timerProcessingTicker.C:
-		case vb := <-c.signalProcessTimerPlasmaCloseCh:
+		case <-r.timerProcessingTicker.C:
+		case vb := <-r.signalProcessTimerPlasmaCloseCh:
 			// Rebalance takeover routine will send signal on this channel to signify
 			// stopping of any plasma.Writer instance for a specific vbucket
-			_, ok := c.vbPlasmaReader[vb]
+			r.c.timerRWMutex.Lock()
+			_, ok := r.c.vbPlasmaReader[vb]
 			if ok {
-				delete(c.vbPlasmaReader, vb)
+				delete(r.c.vbPlasmaReader, vb)
 			}
+
+			delete(r.c.timerProcessingVbsWorkerMap, vb)
+			r.c.timerRWMutex.Unlock()
 
 			// sends ack message back to rebalance takeover routine, so that it could
 			// safely call Close() on vb specific plasma store
-			c.signalProcessTimerPlasmaCloseAckCh <- vb
+			r.c.signalProcessTimerPlasmaCloseAckCh <- vb
 		}
 
-		vbsOwned = c.getVbsOwned()
+		vbsOwned = r.getVbsOwned()
 		for _, vb := range vbsOwned {
-			currTimer := c.vbProcessingStats.getVbStat(vb, "currently_processed_timer").(string)
+			currTimer := r.c.vbProcessingStats.getVbStat(vb, "currently_processed_timer").(string)
 
-			_, ok := c.vbPlasmaReader[vb]
+			r.c.timerRWMutex.RLock()
+			_, ok := r.c.vbPlasmaReader[vb]
+			r.c.timerRWMutex.RUnlock()
 			if !ok {
+				continue
+			}
+
+			// Make sure time processing isn't going ahead of system clock
+			ts, err := time.Parse(tsLayout, currTimer)
+			if err != nil {
+				logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
+					r.c.app.AppName, r.c.workerName, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
+				continue
+			}
+
+			if ts.After(time.Now()) {
 				continue
 			}
 
 		retryLookup:
 			// For memory management
-			token := c.vbPlasmaReader[vb].BeginTx()
-			v, err := c.vbPlasmaReader[vb].LookupKV([]byte(currTimer))
-			c.vbPlasmaReader[vb].EndTx(token)
+			r.c.timerRWMutex.RLock()
+			token := r.c.vbPlasmaReader[vb].BeginTx()
+			v, err := r.c.vbPlasmaReader[vb].LookupKV([]byte(currTimer))
+			r.c.vbPlasmaReader[vb].EndTx(token)
+			r.c.timerRWMutex.RUnlock()
 
 			if err != nil && err != plasma.ErrItemNotFound {
-				logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d Failed to lookup currTimer: %v err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
+				logging.Errorf("CRPO[%s:%s:timer_%d:%s:%d] vb: %d Failed to lookup currTimer: %v err: %v",
+					r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
 				goto retryLookup
 			}
 
-			c.updateTimerStats(vb)
+			r.c.updateTimerStats(vb)
 
-			lastTimerEvent := c.vbProcessingStats.getVbStat(vb, "last_processed_timer_event")
+			lastTimerEvent := r.c.vbProcessingStats.getVbStat(vb, "last_processed_timer_event")
 			if lastTimerEvent != "" {
 				startProcess := false
 
@@ -137,8 +231,8 @@ func (c *Consumer) processTimerEvents() {
 				var timer byTimerEntry
 				err = json.Unmarshal([]byte(timerEvents[0]), &timer)
 				if err != nil {
-					logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d Failed to unmarshal timerEvent: %v err: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerEvents[0], err)
+					logging.Errorf("CRPO[%s:%s:timer_%d:%s:%d] vb: %d Failed to unmarshal timerEvent: %v err: %v",
+						r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, timerEvents[0], err)
 				} else {
 					if lastTimerEvent == timer.DocID {
 						startProcess = true
@@ -155,26 +249,28 @@ func (c *Consumer) processTimerEvents() {
 						event := "{" + event
 						err = json.Unmarshal([]byte(event), &timer)
 						if err != nil {
-							logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d Failed to unmarshal timerEvent: %v err: %v",
-								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, event, err)
+							logging.Errorf("CRPO[%s:%s:timer_%d:%s:%d] vb: %d Failed to unmarshal timerEvent: %v err: %v",
+								r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, event, err)
 						}
 
 						if startProcess {
-							c.timerEntryCh <- &timer
-							c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", timer.DocID)
+							r.c.timerEntryCh <- &timer
+							r.c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", timer.DocID)
 						} else if lastTimerEvent == timer.DocID {
 							startProcess = true
 						}
 					}
 				}
 
-				token = c.vbPlasmaReader[vb].BeginTx()
-				err = c.vbPlasmaReader[vb].DeleteKV([]byte(currTimer))
-				c.vbPlasmaReader[vb].EndTx(token)
+				r.c.timerRWMutex.RLock()
+				token = r.c.vbPlasmaReader[vb].BeginTx()
+				err = r.c.vbPlasmaReader[vb].DeleteKV([]byte(currTimer))
+				r.c.vbPlasmaReader[vb].EndTx(token)
+				r.c.timerRWMutex.RUnlock()
 
 				if err != nil {
-					logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
+					logging.Errorf("CRPO[%s:%s:timer_%d:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
+						r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
 				}
 
 				continue
@@ -186,25 +282,27 @@ func (c *Consumer) processTimerEvents() {
 
 			timerEvents := strings.Split(string(v), ",{")
 
-			c.processTimerEvent(currTimer, timerEvents[0], vb, false)
+			r.c.processTimerEvent(currTimer, timerEvents[0], vb, false)
 
 			if len(timerEvents) > 1 {
 				for _, event := range timerEvents[1:] {
 					event := "{" + event
-					c.processTimerEvent(currTimer, event, vb, true)
+					r.c.processTimerEvent(currTimer, event, vb, true)
 				}
 			}
 
-			token = c.vbPlasmaReader[vb].BeginTx()
-			err = c.vbPlasmaReader[vb].DeleteKV([]byte(currTimer))
-			c.vbPlasmaReader[vb].EndTx(token)
+			r.c.timerRWMutex.RLock()
+			token = r.c.vbPlasmaReader[vb].BeginTx()
+			err = r.c.vbPlasmaReader[vb].DeleteKV([]byte(currTimer))
+			r.c.vbPlasmaReader[vb].EndTx(token)
+			r.c.timerRWMutex.RUnlock()
 
 			if err != nil {
-				logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d key: %v Failed to delete from byTimer plasma handle, err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
+				logging.Errorf("CRPO[%s:%s:timer_%d:%s:%d] vb: %d key: %v Failed to delete from byTimer plasma handle, err: %v",
+					r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
 			}
 
-			c.updateTimerStats(vb)
+			r.c.updateTimerStats(vb)
 		}
 	}
 }
@@ -219,7 +317,9 @@ func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateS
 		c.timerEntryCh <- &timer
 
 		key := fmt.Sprintf("%v::%v::%v", currTimer, timer.CallbackFn, timer.DocID)
+		c.timerRWMutex.RLock()
 		err = c.vbPlasmaReader[vb].DeleteKV([]byte(key))
+		c.timerRWMutex.RUnlock()
 		if err != nil {
 			logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, key, err)
@@ -268,7 +368,6 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 	for _, timer := range xMeta.Timers {
 		// check if timer timestamp has already passed, if yes then skip adding it to plasma
-		tsLayout := "2006-01-02T15:04:05Z"
 		t := strings.Split(timer, "::")[0]
 
 		ts, err := time.Parse(tsLayout, t)

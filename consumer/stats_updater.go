@@ -26,6 +26,7 @@ func newVbProcessingStats() vbStats {
 		vbsts[i].stats["currently_processed_timer"] = time.Now().UTC().Format(time.RFC3339)
 		vbsts[i].stats["last_processed_timer_event"] = ""
 		vbsts[i].stats["next_timer_to_process"] = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+		vbsts[i].stats["timer_processing_worker"] = ""
 	}
 	return vbsts
 }

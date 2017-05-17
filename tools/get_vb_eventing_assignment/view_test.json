@@ -2,6 +2,9 @@
    "views" : {
         "view1": {
           "map" : "function(doc, meta){emit([doc.current_vb_owner, doc.assigned_worker, doc.node_uuid], doc.dcp_stream_status);}"
+        },
+        "view2": {
+            "map" : "function (doc, meta) {emit([doc.vb_id, doc.current_vb_owner, doc.assigned_worker], [doc.currently_processed_timer, doc.next_timer_to_process, doc.last_processed_timer_event]);}"
         }
    }
 }

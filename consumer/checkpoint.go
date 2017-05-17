@@ -69,6 +69,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 
 func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbucketKVBlob, cas *uint64) {
 
+	vbBlob.AssignedTimerWorker = c.vbProcessingStats.getVbStat(vbno, "timer_processing_worker").(string)
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
 	vbBlob.DCPStreamStatus = c.vbProcessingStats.getVbStat(vbno, "dcp_stream_status").(string)
@@ -77,10 +78,10 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbuck
 	vbBlob.NodeUUID = c.NodeUUID()
 	vbBlob.VBId = vbno
 
-	vbBlob.PlasmaPersistedSeqNo = c.vbProcessingStats.getVbStat(vbno, "plasma_last_seq_no_persisted").(uint64)
 	vbBlob.CurrentProcessedTimer = c.vbProcessingStats.getVbStat(vbno, "currently_processed_timer").(string)
-	vbBlob.NextTimerToProcess = c.vbProcessingStats.getVbStat(vbno, "next_timer_to_process").(string)
 	vbBlob.LastProcessedTimerEvent = c.vbProcessingStats.getVbStat(vbno, "last_processed_timer_event").(string)
+	vbBlob.NextTimerToProcess = c.vbProcessingStats.getVbStat(vbno, "next_timer_to_process").(string)
+	vbBlob.PlasmaPersistedSeqNo = c.vbProcessingStats.getVbStat(vbno, "plasma_last_seq_no_persisted").(uint64)
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 }

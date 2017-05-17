@@ -186,7 +186,7 @@ func (c *Consumer) doDCPEventProcess() {
 				// Check if vbucket related entry already exists, if yes - then clean it up
 				// and close all associated FDs
 				if _, ok := c.vbPlasmaStoreMap[e.VBucket]; ok {
-					c.signalProcessTimerPlasmaCloseCh <- e.VBucket
+					c.timerProcessingVbsWorkerMap[e.VBucket].signalProcessTimerPlasmaCloseCh <- e.VBucket
 					<-c.signalProcessTimerPlasmaCloseAckCh
 
 					// Instead of sending message over channel - to clean up plasma.Writer
@@ -244,7 +244,7 @@ func (c *Consumer) doDCPEventProcess() {
 					c.dcpOpsProcessedPSec = int(opsDiff) / seconds
 				}
 
-				logging.Infof("CRDP[%s:%s:%s:%d] DCP events processed: %s V8 events processed: %s Timer events processed: %v, vbs owned len: %d vbs owned:[%d..%d]",
+				logging.Infof("CRDP[%s:%s:%s:%d] DCP events: %s V8 events: %s Timer events: %v, vbs owned len: %d vbs owned:[%d..%d]",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
 					c.timerMessagesProcessed, len(c.getCurrentlyOwnedVbs()), vbsOwned[0], vbsOwned[len(vbsOwned)-1])
 
@@ -426,6 +426,7 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
+	vbBlob.AssignedTimerWorker = ""
 	vbBlob.AssignedWorker = ""
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
@@ -441,6 +442,7 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
+	c.vbProcessingStats.updateVbStat(vbno, "timer_processing_worker", vbBlob.AssignedTimerWorker)
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
 }
@@ -507,7 +509,6 @@ loop:
 		cfg.MaxDeltaChainLen = maxDeltaChainLen
 		cfg.MaxPageItems = maxPageItems
 		cfg.MinPageItems = minPageItems
-		cfg.UseMemoryMgmt = useMemManagement
 
 		c.vbPlasmaStoreMap[vbno], err = plasma.New(cfg)
 		if err != nil {
@@ -516,7 +517,9 @@ loop:
 			return err
 		}
 
+		c.timerRWMutex.Lock()
 		c.vbPlasmaReader[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
+		c.timerRWMutex.Unlock()
 		c.vbPlasmaWriter[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
 
 		return nil

@@ -52,7 +52,7 @@ func (c *Consumer) vbsStateUpdate() {
 			if c.vbProcessingStats.getVbStat(vbno, "node_uuid") == c.NodeUUID() &&
 				c.vbProcessingStats.getVbStat(vbno, "assigned_worker") == c.ConsumerName() {
 
-				c.signalProcessTimerPlasmaCloseCh <- vbno
+				c.timerProcessingVbsWorkerMap[vbno].signalProcessTimerPlasmaCloseCh <- vbno
 				<-c.signalProcessTimerPlasmaCloseAckCh
 				logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer processing routine, about clean up of plasma.Writer instance",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
@@ -65,6 +65,8 @@ func (c *Consumer) vbsStateUpdate() {
 				c.Lock()
 				c.closePlasmaHandle(vbno)
 				c.Unlock()
+
+				c.vbTimerProcessingWorkerAssign(false)
 
 				c.stopDcpStreamAndUpdateCheckpoint(vbKey, vbno, &vbBlob, &cas)
 
@@ -114,6 +116,8 @@ retryStreamUpdate:
 
 		vbno := c.vbsRemainingToOwn[i]
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), vbTakeoverCallback, c, vbno)
+		c.vbTimerProcessingWorkerAssign(false)
+
 	}
 
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
@@ -262,6 +266,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbB
 
 func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, vbBlob *vbucketKVBlob, cas *uint64) {
 
+	vbBlob.AssignedTimerWorker = ""
 	vbBlob.AssignedWorker = ""
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
@@ -277,6 +282,7 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
+	c.vbProcessingStats.updateVbStat(vbno, "timer_processing_worker", vbBlob.AssignedTimerWorker)
 
 	// TODO: Retry loop for dcp close stream as it could fail and additional verification checks
 	// Additional check needed to verify if vbBlob.NewOwner is the expected owner

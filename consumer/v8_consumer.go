@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -22,7 +23,8 @@ import (
 
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, eventingAdminPort, eventingDir string, p common.EventingProducer,
-	app *common.AppConfig, vbnos []uint16, bucket, logLevel, tcpPort, uuid string, sockWriteBatchSize, workerID int) *Consumer {
+	app *common.AppConfig, vbnos []uint16, bucket, logLevel, tcpPort, uuid string,
+	sockWriteBatchSize, timerProcessingPoolSize, workerID int) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -46,7 +48,6 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, eventingAdminPort, eve
 		sendMsgCounter:                     0,
 		signalConnectedCh:                  make(chan bool, 1),
 		signalProcessTimerPlasmaCloseAckCh: make(chan uint16),
-		signalProcessTimerPlasmaCloseCh:    make(chan uint16),
 		signalStoreTimerPlasmaCloseAckCh:   make(chan uint16),
 		signalStoreTimerPlasmaCloseCh:      make(chan uint16),
 		socketWriteBatchSize:               sockWriteBatchSize,
@@ -55,10 +56,13 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, eventingAdminPort, eve
 		stopPlasmaPersistCh:                make(chan bool, 1),
 		stopVbOwnerGiveupCh:                make(chan bool, 1),
 		stopVbOwnerTakeoverCh:              make(chan bool, 1),
-		stopTimerProcessCh:                 make(chan bool, 1),
 		tcpPort:                            tcpPort,
 		timerEntryCh:                       make(chan *byTimerEntry, timerChanSize),
-		timerProcessingTicker:              time.NewTicker(1 * time.Second),
+		timerRWMutex:                       &sync.RWMutex{},
+		timerProcessingWorkerCount:         timerProcessingPoolSize,
+		timerProcessingVbsWorkerMap:        make(map[uint16]*timerProcessingWorker),
+		timerProcessingRunningWorkers:      make([]*timerProcessingWorker, 0),
+		timerProcessingWorkerSignalCh:      make(map[*timerProcessingWorker]chan bool),
 		uuid:                   uuid,
 		vbDcpFeedMap:           make(map[uint16]*couchbase.DcpFeed),
 		vbFlogChan:             make(chan *vbFlogEntry),
@@ -125,8 +129,14 @@ func (c *Consumer) Serve() {
 
 	c.startDcp(dcpConfig, flogs)
 
+	// Initialises timer processing worker instances
+	c.vbTimerProcessingWorkerAssign(true)
+
 	go c.plasmaPersistAll()
-	go c.processTimerEvents()
+
+	for _, r := range c.timerProcessingRunningWorkers {
+		go r.processTimerEvents()
+	}
 
 	c.controlRoutine()
 }
@@ -171,11 +181,14 @@ func (c *Consumer) Stop() {
 	c.persistAllTicker.Stop()
 	c.timerProcessingTicker.Stop()
 
+	for k := range c.timerProcessingWorkerSignalCh {
+		k.stopCh <- true
+	}
+
 	c.gracefulShutdownChan <- true
 	c.stopCheckpointingCh <- true
 	c.stopControlRoutineCh <- true
 	c.stopPlasmaPersistCh <- true
-	c.stopTimerProcessCh <- true
 
 	for _, dcpFeed := range c.kvHostDcpFeedMap {
 		dcpFeed.Close()
