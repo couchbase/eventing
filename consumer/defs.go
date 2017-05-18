@@ -22,7 +22,6 @@ import (
 const (
 	xattrCasPath             = "eventing.cas"
 	xattrPrefix              = "eventing"
-	xattrSeqnoPath           = "eventing.seqno"
 	xattrTimerPath           = "eventing.timers"
 	getAggTimerHostPortAddrs = "getAggTimerHostPortAddrs"
 	tsLayout                 = "2006-01-02T15:04:05Z"
@@ -104,7 +103,6 @@ var dcpConfig = map[string]interface{}{
 
 type xattrMetadata struct {
 	Cas    string   `json:"cas"`
-	Seqno  string   `json:"seqno"`
 	Timers []string `json:"timers"`
 }
 

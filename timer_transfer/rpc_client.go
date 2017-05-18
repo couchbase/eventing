@@ -205,7 +205,7 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 	}
 
 	// TODO: Setup uid/gid that works cross platform
-	err = os.MkdirAll(strings.Split(saveLocation, ".")[0], 0755)
+	err = os.MkdirAll(strings.Join(strings.SplitN(saveLocation, ".", 3)[:2], "."), 0755)
 	if err != nil {
 		logging.Errorf("TTCL[%s:%s] Failed os.MkdirAll, err: %v", c.AppName, c.registeredName, err)
 		return err

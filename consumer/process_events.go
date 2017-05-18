@@ -195,12 +195,14 @@ func (c *Consumer) doDCPEventProcess() {
 					// directly. Reason being, c.signalStoreTimerPlasmaCloseCh and
 					// c.signalStoreTimerPlasmaCloseAckCh are being listened to/written to
 					// on current control path within the select statement
+					c.timerRWMutex.Lock()
 					_, ok := c.vbPlasmaWriter[e.VBucket]
 					if ok {
 						delete(c.vbPlasmaWriter, e.VBucket)
 					}
 
 					c.closePlasmaHandle(e.VBucket)
+					c.timerRWMutex.Unlock()
 				}
 
 				c.Unlock()
@@ -256,10 +258,12 @@ func (c *Consumer) doDCPEventProcess() {
 		case vb := <-c.signalStoreTimerPlasmaCloseCh:
 			// Rebalance takeover routine will send signal on this channel to signify
 			// stopping of any plasma.Writer instance for a specific vbucket
+			c.timerRWMutex.Lock()
 			_, ok := c.vbPlasmaWriter[vb]
 			if ok {
 				delete(c.vbPlasmaWriter, vb)
 			}
+			c.timerRWMutex.Unlock()
 
 			// sends ack message back to rebalance takeover routine, so that it could
 			// safely call Close() on vb specific plasma store
@@ -438,6 +442,14 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
 	vbBlob.PreviousVBOwner = c.HostPortAddr()
 
+	entry := OwnershipEntry{
+		AssignedWorker: c.ConsumerName(),
+		CurrentVBOwner: c.HostPortAddr(),
+		Operation:      dcpStreamStopped,
+		Timestamp:      time.Now().String(),
+	}
+	vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
+
 	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
 	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
@@ -519,8 +531,8 @@ loop:
 
 		c.timerRWMutex.Lock()
 		c.vbPlasmaReader[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
-		c.timerRWMutex.Unlock()
 		c.vbPlasmaWriter[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
+		c.timerRWMutex.Unlock()
 
 		return nil
 	}

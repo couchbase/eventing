@@ -21,7 +21,15 @@ var plasmaInsertKV = func(args ...interface{}) error {
 	vb := args[4].(uint16)
 
 	token := w.BeginTx()
-	err := w.InsertKV([]byte(k), []byte(v))
+	_, err := w.LookupKV([]byte(k))
+
+	// Purging if a previous entry for key already exists. This behaviour of plasma
+	// might change in future - presently plasma allows duplicate values for same key
+	if err == nil || err == plasma.ErrItemNoValue {
+		w.DeleteKV([]byte(k))
+	}
+
+	err = w.InsertKV([]byte(k), []byte(v))
 	if err != nil {
 		logging.Errorf("CRPO[%s:%s:%s:%d] Key: %v vb: %v Failed to insert into plasma store, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), k, vb, err)
@@ -30,6 +38,7 @@ var plasmaInsertKV = func(args ...interface{}) error {
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), k, v, vb, err)
 	}
 	w.EndTx(token)
+
 	return err
 }
 

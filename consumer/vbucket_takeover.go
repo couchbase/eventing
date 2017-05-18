@@ -62,9 +62,9 @@ func (c *Consumer) vbsStateUpdate() {
 				logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer storage routine, about clean up plasma.Writer instance",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
-				c.Lock()
+				c.timerRWMutex.Lock()
 				c.closePlasmaHandle(vbno)
-				c.Unlock()
+				c.timerRWMutex.Unlock()
 
 				c.vbTimerProcessingWorkerAssign(false)
 
