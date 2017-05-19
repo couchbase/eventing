@@ -180,13 +180,36 @@ std::string ConvertToISO8601(std::string timestamp) {
 }
 
 void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  v8::HandleScope handle_scope(args.GetIsolate());
-  v8::String::Utf8Value func(args[0]);
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+
+  std::string cb_func;
+  if (args[0]->IsFunction()) {
+    v8::Local<v8::Function> func_ref = args[0].As<v8::Function>();
+    v8::String::Utf8Value func_name(func_ref->GetName());
+    if (func_name.length()) {
+      v8::Local<v8::Context> context = isolate->GetCurrentContext();
+      v8::Local<v8::Function> timer_func_ref =
+          context->Global()->Get(func_ref->GetName()).As<v8::Function>();
+      if (timer_func_ref->IsUndefined()) {
+        LOG(logError) << *func_name << " is not defined in global scope"
+                      << '\n';
+        return;
+      }
+      cb_func.assign(std::string(*func_name));
+    } else {
+      LOG(logError) << "Invalid arg: Anonymous function is not allowed" << '\n';
+      return;
+    }
+  } else {
+    LOG(logError) << "Invalid arg: Function reference expected" << '\n';
+    return;
+  }
+
   v8::String::Utf8Value doc(args[1]);
   v8::String::Utf8Value ts(args[2]);
 
-  std::string cb_func, doc_id, start_ts, timer_entry;
-  cb_func.assign(std::string(*func));
+  std::string doc_id, start_ts, timer_entry;
   doc_id.assign(std::string(*doc));
   start_ts.assign(std::string(*ts));
 
@@ -472,8 +495,8 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
       new N1QL(cb_kv_endpoint, cb_source_bucket, rbac_user, rbac_pass);
 
   std::string connstr = "couchbase://" + cb_kv_endpoint + "/" +
-                        cb_source_bucket.c_str() +
-                        "?username=" + rbac_user + "&select_bucket=true";
+                        cb_source_bucket.c_str() + "?username=" + rbac_user +
+                        "&select_bucket=true";
 
   lcb_create_st crst;
   memset(&crst, 0, sizeof crst);
