@@ -240,21 +240,24 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbB
 		}
 		defer client.Close()
 
-		srcTimerDir := fmt.Sprintf("%v/%v/%v_timer.data", previousEventingDir, c.app.AppName, vbno)
-		dstTimerDir := fmt.Sprintf("%v/%v/%v_timer.data", c.eventingDir, c.app.AppName, vbno)
+		timerDir := fmt.Sprintf("%v_timer.data", vbno)
+		dstTimerDir := fmt.Sprintf("%v/%v", c.eventingDir, c.app.AppName)
 
-		if srcTimerDir != dstTimerDir && c.NodeUUID() != previousNodeUUID {
-			if err := client.DownloadDir(srcTimerDir, dstTimerDir); err != nil {
+		sTimerDir := fmt.Sprintf("%v/%v/%v_timer.data", previousEventingDir, c.app.AppName, vbno)
+		dTimerDir := fmt.Sprintf("%v/%v/%v_timer.data", c.eventingDir, c.app.AppName, vbno)
+
+		if previousEventingDir != c.eventingDir && c.NodeUUID() != previousNodeUUID {
+			if err := client.DownloadDir(timerDir, dstTimerDir); err != nil {
 				logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to download timer dir from node: %v src: %v dst: %v err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, srcTimerDir, dstTimerDir, err)
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, sTimerDir, dTimerDir, err)
 
 				return errFailedRPCDownloadDir
 			}
 			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, srcTimerDir, dstTimerDir, remoteConsumerAddr)
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, sTimerDir, dTimerDir, remoteConsumerAddr)
 		} else {
 			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, srcTimerDir, dstTimerDir)
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, sTimerDir, dTimerDir)
 		}
 
 		return c.dcpRequestStreamHandle(vbno, vbBlob, vbBlob.LastSeqNoProcessed)

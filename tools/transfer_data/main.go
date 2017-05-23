@@ -13,6 +13,19 @@ var mode, addr, ftype string
 var localFile, remoteFile string
 var readDirectory string
 var resumeID int
+var showSample bool
+
+func usage() {
+	fmt.Println("Start server:")
+	fmt.Println("./transfer_data -mode server -dir /tmp")
+	fmt.Println()
+	fmt.Println("Start client to download directory from rpc server:")
+	fmt.Println("./transfer_data -remotefile package -localfile download_dir -type dir -addr 127.0.0.1:53342")
+	fmt.Println()
+	fmt.Println("Start client to download file from rpc server:")
+	fmt.Println("./transfer_data -remotefile d.img -localfile . -addr 127.0.0.1:53342")
+	fmt.Println()
+}
 
 func init() {
 	flag.StringVar(&mode, "mode", "client", "run mode [client|server]")
@@ -22,7 +35,16 @@ func init() {
 	flag.StringVar(&remoteFile, "remotefile", "", "download from remotefile")
 	flag.StringVar(&readDirectory, "dir", "./", "read directory")
 	flag.IntVar(&resumeID, "resumeID", 0, "resume download")
+	flag.BoolVar(&showSample, "s", false, "sample examples")
 	flag.Parse()
+}
+
+func main() {
+
+	if showSample {
+		usage()
+		return
+	}
 
 	mode = strings.ToLower(mode)
 	if mode == "client" && remoteFile == "" {
@@ -38,17 +60,15 @@ func init() {
 			localFile = remoteFile + ".zip"
 		}
 	}
-}
 
-func main() {
 	switch mode {
 	case "server":
-		server := timer.NewTimerTransfer("credit_score", readDirectory, "worker_1")
+		server := timer.NewTimerTransfer("credit_score", readDirectory, "127.0.0.1:25000", "worker_0")
 		server.Serve()
 
 	default:
-		client := timer.NewRPCClient(addr, "credit_score")
-		if err := client.Dial(); err != nil {
+		client := timer.NewRPCClient(addr, "credit_score", "worker_0")
+		if err := client.DialPath("/worker_0/"); err != nil {
 			panic(err)
 		}
 		switch ftype {

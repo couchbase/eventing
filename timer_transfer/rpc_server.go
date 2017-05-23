@@ -5,16 +5,19 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
 // Open takes FileRequest for transferring specific file
 func (r *RPC) Open(req FileRequest, res *Response) error {
-	file, err := os.Open(req.Filename)
+	path := filepath.Join(r.server.EventingDir, req.Filename)
+
+	file, err := os.Open(path)
 	if err != nil {
 		logging.Errorf("TTRC[%s:%s] RPC.Open failed to open requested file: %v, err: %v",
-			r.server.AppName, r.server.WorkerName, req.Filename, err)
+			r.server.AppName, r.server.WorkerName, path, err)
 		return err
 	}
 
@@ -22,47 +25,51 @@ func (r *RPC) Open(req FileRequest, res *Response) error {
 	res.Result = true
 
 	logging.Infof("TTRC[%s:%s] RPC.Open file: %v sessionID: %v ",
-		r.server.AppName, r.server.WorkerName, req.Filename, res.ID)
+		r.server.AppName, r.server.WorkerName, path, res.ID)
 
 	return nil
 }
 
 // Stat returns requested file's stats
 func (r *RPC) Stat(req FileRequest, res *StatsResponse) error {
+	path := filepath.Join(r.server.EventingDir, req.Filename)
+
 	var info os.FileInfo
 	var err error
 
-	if info, err = os.Stat(req.Filename); os.IsNotExist(err) {
+	if info, err = os.Stat(path); os.IsNotExist(err) {
 		logging.Errorf("TTRC[%s:%s] RPC.Stat failed to get stats for file: %v, err: %v",
-			r.server.AppName, r.server.WorkerName, req.Filename, err)
+			r.server.AppName, r.server.WorkerName, path, err)
 		return err
 	}
 
 	if info.IsDir() {
 		res.Type = "Dir"
 	} else {
-		r.setupStatsResponse(info, req.Filename, res)
+		r.setupStatsResponse(info, path, res)
 	}
 
 	logging.Infof("TTRC[%s:%s] RPC.Stat file: %v res: %v ",
-		r.server.AppName, r.server.WorkerName, req.Filename, res)
+		r.server.AppName, r.server.WorkerName, path, res)
 
 	return nil
 }
 
 // CreateArchive creates an archive for requested dirname
 func (r *RPC) CreateArchive(req FileRequest, res *StatsResponse) error {
-	infos, err := ioutil.ReadDir(req.Filename)
+	path := filepath.Join(r.server.EventingDir, req.Filename)
+
+	infos, err := ioutil.ReadDir(path)
 	if err != nil {
 		return err
 	}
 
 	files := make([]string, len(infos))
 	for _, info := range infos {
-		files = append(files, req.Filename+"/"+info.Name())
+		files = append(files, path+"/"+info.Name())
 	}
 
-	archivePath := req.Filename + ".zip"
+	archivePath := path + ".zip"
 	err = CreateArchive(archivePath, files)
 	if err != nil {
 		return err
@@ -82,7 +89,7 @@ func (r *RPC) CreateArchive(req FileRequest, res *StatsResponse) error {
 	}
 
 	logging.Infof("TTRC[%s:%s] RPC.CreateArchive dir: %v res: %v ",
-		r.server.AppName, r.server.WorkerName, req.Filename, res)
+		r.server.AppName, r.server.WorkerName, path, res)
 
 	return nil
 }
@@ -90,18 +97,22 @@ func (r *RPC) CreateArchive(req FileRequest, res *StatsResponse) error {
 // RemoveArchive erases the archive that was previously created by
 // CreateArchive RPC call from client
 func (r *RPC) RemoveArchive(req FileRequest, res *Response) error {
-	logging.Infof("TTRC[%s:%s] RPC.RemoveArchive Request to clean up archive: %v",
-		r.server.AppName, r.server.WorkerName, req.Filename)
+	path := filepath.Join(r.server.EventingDir, req.Filename)
 
-	return os.Remove(req.Filename)
+	logging.Infof("TTRC[%s:%s] RPC.RemoveArchive Request to clean up archive: %v",
+		r.server.AppName, r.server.WorkerName, path)
+
+	return os.Remove(path)
 }
 
 // RemoveDir cleans up dir on client request
 func (r *RPC) RemoveDir(req FileRequest, res *Response) error {
-	logging.Infof("TTRC[%s:%s] RPC.RemoveDir Request to clean up dir: %v",
-		r.server.AppName, r.server.WorkerName, req.Filename)
+	path := filepath.Join(r.server.EventingDir, req.Filename)
 
-	return os.RemoveAll(req.Filename)
+	logging.Infof("TTRC[%s:%s] RPC.RemoveDir Request to clean up dir: %v",
+		r.server.AppName, r.server.WorkerName, path)
+
+	return os.RemoveAll(path)
 }
 
 // Close closes specific SessionID

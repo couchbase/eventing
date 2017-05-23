@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/rpc"
 	"os"
-	"strings"
+	"path/filepath"
 
 	"github.com/couchbase/indexing/secondary/logging"
 )
@@ -157,12 +157,12 @@ func (c *Client) DownloadDir(dirname, saveLocation string) error {
 		return err
 	}
 
-	err = c.writeToFile(info, dirname+".zip", saveLocation+".zip", 0)
+	err = c.writeToFile(info, dirname+".zip", saveLocation, 0)
 	if err != nil {
 		return err
 	}
 
-	err = Unarchive(saveLocation+".zip", saveLocation)
+	err = Unarchive(saveLocation+"/"+dirname+".zip", saveLocation+"/"+dirname)
 	if err != nil {
 		return err
 	}
@@ -172,7 +172,7 @@ func (c *Client) DownloadDir(dirname, saveLocation string) error {
 		return err
 	}
 
-	err = os.Remove(saveLocation + ".zip")
+	err = os.Remove(saveLocation + "/" + dirname + ".zip")
 	if err != nil {
 		return err
 	}
@@ -191,6 +191,8 @@ func (c *Client) Download(filename, saveLocation string) error {
 }
 
 func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string, blockID int) error {
+	path := filepath.Join(saveLocation, filename)
+
 	blocks := int(info.Size / blockSize)
 	if info.Size%blockSize != 0 {
 		blocks++
@@ -198,29 +200,29 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 
 	logging.Infof("TTCL[%s:%s] Filename: %v, downloading in %v blocks", c.AppName, c.registeredName, filename, blocks)
 
-	err := os.Remove(saveLocation)
+	err := os.Remove(path)
 	if err != nil {
 		logging.Infof("TTCL[%s:%s] Filename: %v os.Remove call, err: %v",
-			c.AppName, c.registeredName, saveLocation, err)
+			c.AppName, c.registeredName, path, err)
 	}
 
 	// TODO: Setup uid/gid that works cross platform
-	err = os.MkdirAll(strings.Join(strings.SplitN(saveLocation, ".", 3)[:2], "."), 0755)
+	err = os.MkdirAll(saveLocation, 0755)
 	if err != nil {
-		logging.Errorf("TTCL[%s:%s] Failed os.MkdirAll, err: %v", c.AppName, c.registeredName, err)
+		logging.Errorf("TTCL[%s:%s] Failed os.MkdirAll dir: %v, err: %v", c.AppName, c.registeredName, saveLocation, err)
 		return err
 	}
 
-	file, err := os.OpenFile(saveLocation, os.O_CREATE|os.O_RDWR, info.Mode)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, info.Mode)
 	if err != nil {
-		logging.Errorf("TTCL[%s:%s] Filename: %v failed to OpenFile, err: %v", c.AppName, c.registeredName, filename, err)
+		logging.Errorf("TTCL[%s:%s] Filename: %v failed to OpenFile, err: %v", c.AppName, c.registeredName, path, err)
 		return err
 	}
 	defer file.Close()
 
 	sessionID, err := c.Open(filename)
 	if err != nil {
-		logging.Errorf("TTCL[%s:%s] Filename: %v failed to open filename, err: %v", c.AppName, c.registeredName, filename, err)
+		logging.Errorf("TTCL[%s:%s] Filename: %v failed to open filename, err: %v", c.AppName, c.registeredName, path, err)
 		return err
 	}
 
@@ -246,7 +248,7 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 		}
 	}
 
-	checksum, err := ComputeMD5(saveLocation)
+	checksum, err := ComputeMD5(path)
 	if err != nil {
 		logging.Errorf("TTCL[%s:%s] Filename: %v failed to get MD5 checksum, err: %v",
 			c.AppName, c.registeredName, filename, err)

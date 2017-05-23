@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/couchbase/eventing/util"
@@ -232,7 +233,9 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 
 	defer func() {
 		if r := recover(); r != nil {
-			logging.Errorf("CRDP[%s:%s:%s:%d] populateDcpFeedVbEntriesCallback: panic and recover, %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r)
+			trace := debug.Stack()
+			logging.Errorf("CRDP[%s:%s:%s:%d] populateDcpFeedVbEntriesCallback: panic and recover, %v, stack trace: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()
 

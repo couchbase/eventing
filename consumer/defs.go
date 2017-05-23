@@ -74,6 +74,8 @@ const (
 
 	statsTickInterval = time.Duration(5000) * time.Millisecond
 
+	timerProcessingTickInterval = time.Duration(500) * time.Millisecond
+
 	restartVbDcpStreamTickInterval = time.Duration(3000) * time.Millisecond
 
 	retryVbsStateUpdateInterval = time.Duration(5000) * time.Millisecond
@@ -153,14 +155,13 @@ type Consumer struct {
 	vbsRemainingToRestream []uint16
 
 	// Plasma DGM store handle to store timer entries at per vbucket level
-	vbPlasmaStoreMap      map[uint16]*plasma.Plasma
-	vbPlasmaWriter        map[uint16]*plasma.Writer
-	vbPlasmaReader        map[uint16]*plasma.Writer
-	timerEntryCh          chan *byTimerEntry
-	persistAllTicker      *time.Ticker
-	stopPlasmaPersistCh   chan bool
-	timerAddrs            map[string]map[string]string
-	timerProcessingTicker *time.Ticker
+	persistAllTicker    *time.Ticker
+	stopPlasmaPersistCh chan bool
+	timerAddrs          map[string]map[string]string
+	timerEntryCh        chan *byTimerEntry
+	vbPlasmaStoreMap    map[uint16]*plasma.Plasma
+	vbPlasmaWriter      map[uint16]*plasma.Writer
+	vbPlasmaReader      map[uint16]*plasma.Writer
 
 	signalStoreTimerPlasmaCloseCh      chan uint16
 	signalProcessTimerPlasmaCloseAckCh chan uint16

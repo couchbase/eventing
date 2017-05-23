@@ -89,7 +89,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 				id: i,
 				signalProcessTimerPlasmaCloseCh: make(chan uint16),
 				stopCh:                make(chan bool, 1),
-				timerProcessingTicker: time.NewTicker(time.Second),
+				timerProcessingTicker: time.NewTicker(timerProcessingTickInterval),
 			}
 
 			vbsAssigned := make([]uint16, v)

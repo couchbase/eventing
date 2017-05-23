@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -348,7 +349,9 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan bool
 	go func(dcpFeed *couchbase.DcpFeed) {
 		defer func() {
 			if r := recover(); r != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] addToAggChan: panic and recover, %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r)
+				trace := debug.Stack()
+				logging.Errorf("CRDP[%s:%s:%s:%d] addToAggChan: panic and recover, %v stack trace: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 			}
 		}()
 

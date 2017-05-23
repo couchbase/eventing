@@ -1,6 +1,8 @@
 package timer
 
 import (
+	"net"
+	"net/http"
 	"net/rpc"
 	"os"
 	"sync"
@@ -17,6 +19,9 @@ type TransferSrv struct {
 	AppName      string
 	EventingDir  string
 	HostPortAddr string
+	Listener     net.Listener
+	Mux          *http.ServeMux
+	Server       *rpc.Server
 	WorkerName   string
 }
 

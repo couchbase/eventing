@@ -3,6 +3,7 @@ package consumer
 import (
 	"fmt"
 	"net"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -124,7 +125,8 @@ func (c *Consumer) Serve() {
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
-	c.timerTransferHandle = timer.NewTimerTransfer(c.app.AppName, c.eventingDir, c.HostPortAddr(), c.workerName)
+	c.timerTransferHandle = timer.NewTimerTransfer(c.app.AppName, fmt.Sprintf("%s/%s/", c.eventingDir, c.app.AppName),
+		c.HostPortAddr(), c.workerName)
 	c.timerTransferSupToken = c.consumerSup.Add(c.timerTransferHandle)
 
 	c.startDcp(dcpConfig, flogs)
@@ -163,15 +165,22 @@ func (c *Consumer) HandleV8Worker() {
 func (c *Consumer) Stop() {
 	defer func() {
 		if r := recover(); r != nil {
-			logging.Errorf("V8CR[%s:%s:%s:%d] Consumer stop routine, panic and recover, %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r)
+			trace := debug.Stack()
+			logging.Errorf("V8CR[%s:%s:%s:%d] Consumer stop routine, panic and recover, %v stack trace: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()
 
 	logging.Infof("V8CR[%s:%s:%s:%d] Gracefully shutting down consumer routine",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
+	for _, store := range c.vbPlasmaStoreMap {
+		store.Close()
+	}
+
 	c.producer.CleanupDeadConsumer(c)
 
+	c.consumerSup.Remove(c.timerTransferSupToken)
 	c.consumerSup.Remove(c.clientSupToken)
 	c.consumerSup.Stop()
 
@@ -179,7 +188,6 @@ func (c *Consumer) Stop() {
 	c.restartVbDcpStreamTicker.Stop()
 	c.statsTicker.Stop()
 	c.persistAllTicker.Stop()
-	c.timerProcessingTicker.Stop()
 
 	for k := range c.timerProcessingWorkerSignalCh {
 		k.stopCh <- true
