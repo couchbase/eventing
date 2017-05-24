@@ -84,7 +84,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, eventingAdminPort, eve
 // Serve acts as init routine for consumer handle
 func (c *Consumer) Serve() {
 	c.stopConsumerCh = make(chan bool, 1)
-	c.stopCheckpointingCh = make(chan bool)
+	c.stopCheckpointingCh = make(chan bool, 1)
 
 	c.dcpMessagesProcessed = make(map[mcd.CommandCode]uint64)
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
@@ -178,6 +178,9 @@ func (c *Consumer) Stop() {
 		store.Close()
 	}
 
+	c.cbBucket.Close()
+	c.gocbBucket.Close()
+
 	c.producer.CleanupDeadConsumer(c)
 
 	c.consumerSup.Remove(c.timerTransferSupToken)
@@ -193,8 +196,6 @@ func (c *Consumer) Stop() {
 		k.stopCh <- true
 	}
 
-	c.gracefulShutdownChan <- true
-	c.stopCheckpointingCh <- true
 	c.stopControlRoutineCh <- true
 	c.stopPlasmaPersistCh <- true
 

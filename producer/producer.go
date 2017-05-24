@@ -63,7 +63,13 @@ func (p *Producer) Serve() {
 		}
 	}
 
-	p.workerSupervisor = suptree.NewSimple(p.appName)
+	// Increasing the timeouts for Stop() routine of workers under supervision,
+	// their cleanup up involves stopping all plasma related operations, stopping
+	// all active dcp streams and more. So graceful shutdown might take time.
+	spec := suptree.Spec{
+		Timeout: supervisorTimeout,
+	}
+	p.workerSupervisor = suptree.New(p.appName, spec)
 	go p.workerSupervisor.ServeBackground()
 
 	p.initWorkerVbMap()

@@ -22,6 +22,8 @@ const (
 
 	// WatchClusterChangeInterval - Interval for spawning another routine to keep an eye on cluster state change
 	WatchClusterChangeInterval = time.Duration(100) * time.Millisecond
+
+	supervisorTimeout = 60
 )
 
 type appStatus uint16
