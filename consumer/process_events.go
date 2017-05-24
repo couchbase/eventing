@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"os"
 	"runtime/debug"
 	"strconv"
 	"time"
@@ -525,9 +526,21 @@ loop:
 		cfg.MaxPageItems = maxPageItems
 		cfg.MinPageItems = minPageItems
 
+		if c.cleanupTimers {
+			logging.Infof("CRDP[%s:%s:%s:%d] vb: %v On cleanup timer request, cleaning up plasma dir: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbPlasmaDir)
+
+			err := os.RemoveAll(vbPlasmaDir)
+			if err != nil {
+				logging.Errorf("CRDP[%s:%s:%s:%d] vb: %v Failed to remove plasma dir on cleanup timer request, err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
+				return err
+			}
+		}
+
 		c.vbPlasmaStoreMap[vbno], err = plasma.New(cfg)
 		if err != nil {
-			logging.Infof("CRDP[%s:%s:%s:%d] vb: %v Failed to create plasma store instance, err: %v",
+			logging.Errorf("CRDP[%s:%s:%s:%d] vb: %v Failed to create plasma store instance, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
 			return err
 		}

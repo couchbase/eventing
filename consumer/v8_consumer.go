@@ -23,8 +23,8 @@ import (
 )
 
 // NewConsumer called by producer to create consumer handle
-func NewConsumer(streamBoundary common.DcpStreamBoundary, eventingAdminPort, eventingDir string, p common.EventingProducer,
-	app *common.AppConfig, vbnos []uint16, bucket, logLevel, tcpPort, uuid string,
+func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, eventingAdminPort, eventingDir string,
+	p common.EventingProducer, app *common.AppConfig, vbnos []uint16, bucket, logLevel, tcpPort, uuid string,
 	sockWriteBatchSize, timerProcessingPoolSize, workerID int) *Consumer {
 
 	var b *couchbase.Bucket
@@ -33,6 +33,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, eventingAdminPort, eve
 		aggDCPFeed:                         make(chan *memcached.DcpEvent, dcpGenChanSize),
 		bucket:                             bucket,
 		cbBucket:                           b,
+		cleanupTimers:                      cleanupTimers,
 		clusterStateChangeNotifCh:          make(chan bool, ClusterChangeNotifChBufSize),
 		dcpFeedCancelChs:                   make([]chan bool, 0),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),

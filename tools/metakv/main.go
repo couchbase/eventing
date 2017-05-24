@@ -42,11 +42,12 @@ func main() {
 	settings["sock_batch_size"] = 1
 	settings["tick_duration"] = 5000
 	settings["checkpoint_interval"] = 20000
-	settings["worker_count"] = 1
+	settings["worker_count"] = 3
 	settings["rbacpass"] = "asdasd"
 	settings["rbacuser"] = "eventing"
 	settings["rbacrole"] = "admin"
 	settings["timer_worker_pool_size"] = 1
+	settings["cleanup_timers"] = true
 
 	sData, err := json.Marshal(&settings)
 	if err != nil {

@@ -53,6 +53,7 @@ func (p *Producer) parseDepcfg() error {
 			return uErr
 		}
 
+		p.cleanupTimers = settings["cleanup_timers"].(bool)
 		p.dcpStreamBoundary = common.DcpStreamBoundary(settings["dcp_stream_boundary"].(string))
 		p.logLevel = settings["log_level"].(string)
 		p.rbacpass = settings["rbacpass"].(string)

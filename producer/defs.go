@@ -39,6 +39,7 @@ type Producer struct {
 	app                    *common.AppConfig
 	auth                   string
 	bucket                 string
+	cleanupTimers          bool
 	cfgData                string
 	eventingAdminPort      string
 	eventingDir            string

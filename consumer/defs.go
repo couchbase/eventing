@@ -139,12 +139,13 @@ type Consumer struct {
 
 	aggDCPFeed             chan *cb.DcpEvent
 	cbBucket               *couchbase.Bucket
-	gocbBucket             *gocb.Bucket
+	cleanupTimers          bool
 	dcpFeedCancelChs       []chan bool
 	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16
 	eventingAdminPort      string
 	eventingDir            string
 	eventingNodeAddrs      []string
+	gocbBucket             *gocb.Bucket
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed
 	kvVbMap                map[uint16]string
 	logLevel               string
