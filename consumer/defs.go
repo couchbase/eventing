@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"bytes"
+	"errors"
 	"net"
 	"os/exec"
 	"sync"
@@ -16,6 +17,7 @@ import (
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	cb "github.com/couchbase/indexing/secondary/dcp/transport/client"
+	"github.com/couchbase/indexing/secondary/logging"
 	"github.com/couchbase/nitro/plasma"
 )
 
@@ -25,6 +27,10 @@ const (
 	xattrTimerPath           = "eventing.timers"
 	getAggTimerHostPortAddrs = "getAggTimerHostPortAddrs"
 	tsLayout                 = "2006-01-02T15:04:05Z"
+
+	metakvEventingPath    = "/eventing/"
+	metakvAppsPath        = metakvEventingPath + "apps/"
+	metakvAppSettingsPath = metakvEventingPath + "settings/"
 )
 
 const (
@@ -61,7 +67,7 @@ const (
 	dcpStreamRequestRetryInterval = time.Duration(1000) * time.Millisecond
 
 	// Last processed seq # checkpoint interval
-	checkPointInterval = time.Duration(25000) * time.Millisecond
+	checkpointInterval = time.Duration(25000) * time.Millisecond
 
 	// Interval for retrying failed cluster related operations
 	clusterOpRetryInterval = time.Duration(1000) * time.Millisecond
@@ -103,6 +109,10 @@ var dcpConfig = map[string]interface{}{
 	"activeVbOnly":   true,
 }
 
+var (
+	errPlasmaHandleMissing = errors.New("Failed to find plasma handle")
+)
+
 type xattrMetadata struct {
 	Cas    string   `json:"cas"`
 	Timers []string `json:"timers"`
@@ -139,6 +149,7 @@ type Consumer struct {
 
 	aggDCPFeed             chan *cb.DcpEvent
 	cbBucket               *couchbase.Bucket
+	checkpointInterval     time.Duration
 	cleanupTimers          bool
 	dcpFeedCancelChs       []chan bool
 	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16
@@ -146,6 +157,7 @@ type Consumer struct {
 	eventingDir            string
 	eventingNodeAddrs      []string
 	gocbBucket             *gocb.Bucket
+	isRebalanceOngoing     bool
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed
 	kvVbMap                map[uint16]string
 	logLevel               string
@@ -168,6 +180,7 @@ type Consumer struct {
 	signalProcessTimerPlasmaCloseAckCh chan uint16
 	signalStoreTimerPlasmaCloseAckCh   chan uint16
 
+	timerProcessingTickInterval   time.Duration
 	timerProcessingVbsWorkerMap   map[uint16]*timerProcessingWorker
 	timerProcessingRunningWorkers []*timerProcessingWorker
 	timerProcessingWorkerSignalCh map[*timerProcessingWorker]chan bool
@@ -214,6 +227,9 @@ type Consumer struct {
 	// correctly and downstream tcp socket is available
 	// for sending messages. Unbuffered channel.
 	signalConnectedCh chan bool
+
+	// Chan used by signal update of app handler settings
+	signalSettingsChangeCh chan bool
 
 	stopControlRoutineCh chan bool
 
@@ -318,4 +334,21 @@ type OwnershipEntry struct {
 	CurrentVBOwner string `json:"current_vb_owner"`
 	Operation      string `json:"operation"`
 	Timestamp      string `json:"timestamp"`
+}
+
+func getLogLevel(logLevel string) logging.LogLevel {
+	switch logLevel {
+	case "ERROR":
+		return logging.Error
+	case "INFO":
+		return logging.Info
+	case "WARNING":
+		return logging.Warn
+	case "DEBUG":
+		return logging.Debug
+	case "TRACE":
+		return logging.Trace
+	default:
+		return logging.Info
+	}
 }

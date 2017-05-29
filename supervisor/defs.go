@@ -11,8 +11,10 @@ const (
 	metakvEventingPath = "/eventing/"
 
 	// MetakvAppsPath refers to path under metakv where app handlers are stored
-	MetakvAppsPath              = metakvEventingPath + "apps/"
-	metakvAppSettingsPath       = metakvEventingPath + "settings/"
+	MetakvAppsPath = metakvEventingPath + "apps/"
+
+	// MetakvAppSettingsPath refers to path under metakv where app settings are stored
+	MetakvAppSettingsPath       = metakvEventingPath + "settings/"
 	metakvProducerHostPortsPath = metakvEventingPath + "hostports/"
 
 	// MetakvRebalanceTokenPath refers to path under metakv where rebalance tokens are stored
@@ -24,8 +26,14 @@ const (
 	rebalanceRunning = "RebalanceRunning"
 )
 
+const (
+	supCmdType int8 = iota
+	cmdAppLoad
+	cmdSettingsUpdate
+)
+
 type supCmdMsg struct {
-	cmd string
+	cmd int8
 	ctx string
 }
 

@@ -178,6 +178,9 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 			c.gracefulShutdownChan <- true
 		}
 
+		logging.Tracef("CRHM[%s:%s:%s:%d] WriteBatchSeqNo dump: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.writeBatchSeqnoMap)
+
 		for vb, seqno := range c.writeBatchSeqnoMap {
 			c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", seqno)
 		}

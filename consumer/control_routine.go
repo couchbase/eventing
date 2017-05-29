@@ -1,9 +1,11 @@
 package consumer
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
@@ -19,7 +21,44 @@ func (c *Consumer) controlRoutine() {
 			logging.Infof("CRCR[%s:%s:%s:%d] Got notifcation that cluster state has changed",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
+			c.isRebalanceOngoing = true
 			c.vbsStateUpdate()
+			c.isRebalanceOngoing = false
+
+		case <-c.signalSettingsChangeCh:
+			settingsPath := metakvAppSettingsPath + c.app.AppName
+			sData, err := util.MetakvGet(settingsPath)
+			if err != nil {
+				logging.Infof("CRCR[%s:%s:%s:%d] Failed to fetch updated settings from metakv, err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+				continue
+			}
+
+			settings := make(map[string]interface{})
+			err = json.Unmarshal(sData, &settings)
+			if err != nil {
+				logging.Infof("CRCR[%s:%s:%s:%d] Failed to unmarshal settings received from metakv, err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+				continue
+			}
+
+			c.stopCheckpointingCh <- true
+			c.checkpointInterval = time.Duration(settings["checkpoint_interval"].(float64)) * time.Millisecond
+			go c.doLastSeqNoCheckpoint()
+
+			c.logLevel = settings["log_level"].(string)
+			logging.SetLogLevel(getLogLevel(c.logLevel))
+			c.sendLogLevel(c.logLevel)
+
+			c.timerProcessingTickInterval = time.Duration(settings["timer_processing_tick_interval"].(float64)) * time.Millisecond
+			for k := range c.timerProcessingWorkerSignalCh {
+				k.stopCh <- true
+			}
+
+			c.vbTimerProcessingWorkerAssign(true)
+			for _, r := range c.timerProcessingRunningWorkers {
+				go r.processTimerEvents()
+			}
 
 		case <-c.restartVbDcpStreamTicker.C:
 

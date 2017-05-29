@@ -71,7 +71,14 @@ func (c *Consumer) doDCPEventProcess() {
 						logging.Debugf("CRPO[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v, xmeta: %#v",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, xMeta)
 
-						c.storeTimerEvent(e.VBucket, e.Seqno, e.Expiry, string(e.Key), &xMeta)
+					retryTimerStore:
+						err := c.storeTimerEvent(e.VBucket, e.Seqno, e.Expiry, string(e.Key), &xMeta)
+						if err == errPlasmaHandleMissing {
+							time.Sleep(time.Second)
+							goto retryTimerStore
+						}
+
+						c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", e.Seqno)
 					}
 				}
 
@@ -80,7 +87,7 @@ func (c *Consumer) doDCPEventProcess() {
 
 			case mcd.DCP_STREAMREQ:
 
-				logging.Infof("CRDP[%s:%s:%s:%d] vb: %d status: %v",
+				logging.Debugf("CRDP[%s:%s:%s:%d] vb: %d status: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
 
 				if e.Status == mcd.SUCCESS {
@@ -151,7 +158,7 @@ func (c *Consumer) doDCPEventProcess() {
 				// which will allow vbTakeOver background routine to start up new stream from
 				// new KV node, where the vbucket has been migrated
 
-				logging.Infof("CRVT[%s:%s:%s:%d] vb: %v, got STREAMEND", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+				logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v, got STREAMEND", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
 				//Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
@@ -184,10 +191,19 @@ func (c *Consumer) doDCPEventProcess() {
 				c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", "stopped")
 				c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", "")
 
-				c.Lock()
+				c.RLock()
 				// Check if vbucket related entry already exists, if yes - then clean it up
 				// and close all associated FDs
 				if _, ok := c.vbPlasmaStoreMap[e.VBucket]; ok {
+
+					if _, mOk := c.timerProcessingVbsWorkerMap[e.VBucket]; !mOk {
+						c.RUnlock()
+
+						logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v, missing entry from timerProcessingVbsWorkerMap",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+						return
+					}
+
 					c.timerProcessingVbsWorkerMap[e.VBucket].signalProcessTimerPlasmaCloseCh <- e.VBucket
 					<-c.signalProcessTimerPlasmaCloseAckCh
 
@@ -207,7 +223,7 @@ func (c *Consumer) doDCPEventProcess() {
 					c.timerRWMutex.Unlock()
 				}
 
-				c.Unlock()
+				c.RUnlock()
 
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 					logging.Infof("CRVT[%s:%s:%s:%d] vb: %v, got STREAMEND, needs to be reclaimed",
@@ -298,7 +314,7 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 		return
 	}
 
-	logging.Infof("CRDP[%s:%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
+	logging.Debugf("CRDP[%s:%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
 
 	for vbno, flog := range flogs {
@@ -377,7 +393,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan bool
 				}
 
 				if e.Opcode == mcd.DCP_STREAMEND || e.Opcode == mcd.DCP_STREAMREQ {
-					logging.Infof("CRDP[%s:%s:%s:%d] addToAggChan dcpFeed name: %v vb: %v Opcode: %v Status: %v",
+					logging.Debugf("CRDP[%s:%s:%s:%d] addToAggChan dcpFeed name: %v vb: %v Opcode: %v Status: %v",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), e.VBucket, e.Opcode, e.Status)
 				}
 
@@ -483,7 +499,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
 		c.addToAggChan(dcpFeed, cancelCh)
 
-		logging.Infof("CRDP[%s:%s:%s:%d] vb: %d kvAddr: %v Started up new dcpFeed",
+		logging.Debugf("CRDP[%s:%s:%s:%d] vb: %d kvAddr: %v Started up new dcpFeed",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr)
 	}
 
@@ -494,7 +510,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 
 	snapStart, snapEnd := start, start
 
-	logging.Infof("CRDP[%s:%s:%s:%d] vb: %d DCP stream start vbKvAddr: %v vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+	logging.Debugf("CRDP[%s:%s:%s:%d] vb: %d DCP stream start vbKvAddr: %v vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd)
 
 	err := dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
@@ -515,7 +531,7 @@ loop:
 	vbFlog := <-c.vbFlogChan
 
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
-		logging.Infof("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+		logging.Debugf("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
 		vbPlasmaDir := fmt.Sprintf("%v/%v/%v_timer.data", c.eventingDir, c.app.AppName, vbno)
 
@@ -526,7 +542,7 @@ loop:
 		cfg.MaxPageItems = maxPageItems
 		cfg.MinPageItems = minPageItems
 
-		if c.cleanupTimers {
+		if c.cleanupTimers && !c.isRebalanceOngoing {
 			logging.Infof("CRDP[%s:%s:%s:%d] vb: %v On cleanup timer request, cleaning up plasma dir: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbPlasmaDir)
 

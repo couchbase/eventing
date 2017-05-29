@@ -10,7 +10,7 @@ import (
 )
 
 func (c *Consumer) doLastSeqNoCheckpoint() {
-	c.checkpointTicker = time.NewTicker(checkPointInterval)
+	c.checkpointTicker = time.NewTicker(c.checkpointInterval)
 
 	for {
 		select {

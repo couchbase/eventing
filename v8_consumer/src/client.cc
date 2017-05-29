@@ -121,13 +121,13 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       rbac_user.assign(payload->rbac_user()->str());
       rbac_pass.assign(payload->rbac_pass()->str());
 
-      LOG(logInfo) << "Loading app:" << app_name << '\n';
+      LOG(logDebug) << "Loading app:" << app_name << '\n';
       this->v8worker =
           new V8Worker(app_name, dep_cfg, kv_host_port, rbac_user, rbac_pass);
       result.assign("Loaded requested app\n");
       break;
     case oLoad:
-      LOG(logInfo) << "Loading app code:" << parsed_header->metadata << '\n';
+      LOG(logDebug) << "Loading app code:" << parsed_header->metadata << '\n';
       this->v8worker->V8WorkerLoad(parsed_header->metadata);
       result.assign("Loaded app code\n");
       break;

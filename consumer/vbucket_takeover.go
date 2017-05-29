@@ -52,15 +52,22 @@ func (c *Consumer) vbsStateUpdate() {
 			if c.vbProcessingStats.getVbStat(vbno, "node_uuid") == c.NodeUUID() &&
 				c.vbProcessingStats.getVbStat(vbno, "assigned_worker") == c.ConsumerName() {
 
-				c.timerProcessingVbsWorkerMap[vbno].signalProcessTimerPlasmaCloseCh <- vbno
-				<-c.signalProcessTimerPlasmaCloseAckCh
-				logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer processing routine, about clean up of plasma.Writer instance",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+				if _, ok := c.timerProcessingVbsWorkerMap[vbno]; ok {
 
-				c.signalStoreTimerPlasmaCloseCh <- vbno
-				<-c.signalStoreTimerPlasmaCloseAckCh
-				logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer storage routine, about clean up plasma.Writer instance",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+					c.timerProcessingVbsWorkerMap[vbno].signalProcessTimerPlasmaCloseCh <- vbno
+					<-c.signalProcessTimerPlasmaCloseAckCh
+					logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer processing routine, about clean up of plasma.Writer instance",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+
+					c.signalStoreTimerPlasmaCloseCh <- vbno
+					<-c.signalStoreTimerPlasmaCloseAckCh
+					logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer storage routine, about clean up plasma.Writer instance",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+				} else {
+
+					logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Missing entry in timerProcessingVbsWorkerMap",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+				}
 
 				c.timerRWMutex.Lock()
 				c.closePlasmaHandle(vbno)
@@ -302,6 +309,8 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 func (c *Consumer) closePlasmaHandle(vb uint16) {
 	store, ok := c.vbPlasmaStoreMap[vb]
 	if ok {
+		// Persist all in-flight data in-memory for plasma and then close the instance
+		store.PersistAll()
 		store.Close()
 		delete(c.vbPlasmaStoreMap, vb)
 	}

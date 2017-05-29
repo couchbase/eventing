@@ -33,6 +33,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, ev
 		aggDCPFeed:                         make(chan *memcached.DcpEvent, dcpGenChanSize),
 		bucket:                             bucket,
 		cbBucket:                           b,
+		checkpointInterval:                 checkpointInterval,
 		cleanupTimers:                      cleanupTimers,
 		clusterStateChangeNotifCh:          make(chan bool, ClusterChangeNotifChBufSize),
 		dcpFeedCancelChs:                   make([]chan bool, 0),
@@ -49,6 +50,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, ev
 		restartVbDcpStreamTicker:           time.NewTicker(restartVbDcpStreamTickInterval),
 		sendMsgCounter:                     0,
 		signalConnectedCh:                  make(chan bool, 1),
+		signalSettingsChangeCh:             make(chan bool, 1),
 		signalProcessTimerPlasmaCloseAckCh: make(chan uint16),
 		signalStoreTimerPlasmaCloseAckCh:   make(chan uint16),
 		signalStoreTimerPlasmaCloseCh:      make(chan uint16),
@@ -61,6 +63,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, ev
 		tcpPort:                            tcpPort,
 		timerEntryCh:                       make(chan *byTimerEntry, timerChanSize),
 		timerRWMutex:                       &sync.RWMutex{},
+		timerProcessingTickInterval:        timerProcessingTickInterval,
 		timerProcessingWorkerCount:         timerProcessingPoolSize,
 		timerProcessingVbsWorkerMap:        make(map[uint16]*timerProcessingWorker),
 		timerProcessingRunningWorkers:      make([]*timerProcessingWorker, 0),
@@ -148,6 +151,7 @@ func (c *Consumer) Serve() {
 func (c *Consumer) HandleV8Worker() {
 	<-c.signalConnectedCh
 
+	logging.SetLogLevel(getLogLevel(c.logLevel))
 	c.sendLogLevel(c.logLevel)
 
 	payload := makeV8InitPayload(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData(),
@@ -284,6 +288,14 @@ func (c *Consumer) NotifyRebalanceStop() {
 
 	c.stopVbOwnerGiveupCh <- true
 	c.stopVbOwnerTakeoverCh <- true
+}
+
+// NotifySettingsChange signals consumer instance of settings update
+func (c *Consumer) NotifySettingsChange() {
+	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about application settings update",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+
+	c.signalSettingsChangeCh <- true
 }
 
 func (c *Consumer) initCBBucketConnHandle() {

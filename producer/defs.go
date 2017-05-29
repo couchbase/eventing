@@ -82,6 +82,9 @@ type Producer struct {
 	// socketWriteBatchSize controls the batch size
 	socketWriteBatchSize int
 
+	// Chan used to signify update of app level settings
+	notifySettingsChangeCh chan bool
+
 	// Chan to notify super_supervisor about clean producer shutdown
 	notifySupervisorCh chan bool
 

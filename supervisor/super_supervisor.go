@@ -1,6 +1,7 @@
 package supervisor
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -43,14 +44,28 @@ func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid s
 	return s
 }
 
-// EventHandlerLoadCallback is registered as callback from metakv observe calls on event handlers & settings path
+// EventHandlerLoadCallback is registered as callback from metakv observe calls on event handlers path
 func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, rev interface{}) error {
 	if value != nil {
 		splitRes := strings.Split(path, "/")
 		appName := splitRes[len(splitRes)-1]
 		msg := supCmdMsg{
 			ctx: appName,
-			cmd: "load",
+			cmd: cmdAppLoad,
+		}
+		s.supCmdCh <- msg
+	}
+	return nil
+}
+
+// SettingsChangeCallback is registered as callback from metakv observe calls on event handler settings path
+func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev interface{}) error {
+	if value != nil {
+		splitRes := strings.Split(path, "/")
+		appName := splitRes[len(splitRes)-1]
+		msg := supCmdMsg{
+			ctx: appName,
+			cmd: cmdSettingsUpdate,
 		}
 		s.supCmdCh <- msg
 	}
@@ -124,22 +139,65 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 		select {
 		case msg := <-s.supCmdCh:
 			appName := msg.ctx
-			logging.Infof("SSUP[%d] Loading app: %s", len(s.runningProducers), appName)
 
-			// Clean previous running instance of app producers
-			if p, ok := s.runningProducers[appName]; ok {
-				logging.Infof("SSUP[%d] App: %s, cleaning up previous running instance", len(s.runningProducers), appName)
-				p.NotifyInit()
+			switch msg.cmd {
+			case cmdAppLoad:
+				logging.Infof("SSUP[%d] Loading app: %s", len(s.runningProducers), appName)
 
-				s.superSup.Remove(s.producerSupervisorTokenMap[p])
-				delete(s.producerSupervisorTokenMap, p)
-				delete(s.runningProducers, appName)
+				// Clean previous running instance of app producers
+				if p, ok := s.runningProducers[appName]; ok {
+					logging.Infof("SSUP[%d] App: %s, cleaning up previous running instance", len(s.runningProducers), appName)
+					p.NotifyInit()
 
-				p.NotifySupervisor()
-				logging.Infof("SSUP[%d] Cleaned up previous running producer instance, app: %s", len(s.runningProducers), appName)
+					s.superSup.Remove(s.producerSupervisorTokenMap[p])
+					delete(s.producerSupervisorTokenMap, p)
+					delete(s.runningProducers, appName)
+
+					p.NotifySupervisor()
+					logging.Infof("SSUP[%d] Cleaned up previous running producer instance, app: %s", len(s.runningProducers), appName)
+				}
+
+				s.spawnApp(appName)
+
+				// Resetting cleanup timers in metakv. This helps in differentiating between eventing node reboot(or eventing process
+				// re-spawn) and app redeploy
+				path := MetakvAppSettingsPath + appName
+				sData, err := util.MetakvGet(path)
+				if err != nil {
+					logging.Errorf("SSUP[%d] Failed to fetch settings for app: %s, err: %v", len(s.runningProducers), appName, err)
+					continue
+				}
+
+				settings := make(map[string]interface{})
+				err = json.Unmarshal(sData, &settings)
+				if err != nil {
+					logging.Errorf("SSUP[%d] Failed to unmarshal settings for app: %s, err: %v", len(s.runningProducers), appName, err)
+					continue
+				}
+
+				settings["cleanup_timers"] = false
+
+				sData, err = json.Marshal(&settings)
+				if err != nil {
+					logging.Errorf("SSUP[%d] Failed to marshal updated settings for app: %s, err: %v", len(s.runningProducers), appName, err)
+					continue
+				}
+
+				err = util.MetakvSet(path, sData, nil)
+				if err != nil {
+					logging.Errorf("SSUP[%d] Failed to store updated settings for app: %s in metakv, err: %v",
+						len(s.runningProducers), appName, err)
+					continue
+				}
+
+			case cmdSettingsUpdate:
+				if p, ok := s.runningProducers[appName]; ok {
+					logging.Infof("SSUP[%d] App: %s, Notifying running producer instance of settings change",
+						len(s.runningProducers), appName)
+
+					p.NotifySettingsChange()
+				}
 			}
-
-			s.spawnApp(appName)
 		}
 	}
 }

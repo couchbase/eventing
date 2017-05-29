@@ -34,7 +34,7 @@ var plasmaInsertKV = func(args ...interface{}) error {
 		logging.Errorf("CRPO[%s:%s:%s:%d] Key: %v vb: %v Failed to insert into plasma store, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), k, vb, err)
 	} else {
-		logging.Infof("CRPO[%s:%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
+		logging.Debugf("CRPO[%s:%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), k, v, vb, err)
 	}
 	w.EndTx(token)
@@ -89,7 +89,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 				id: i,
 				signalProcessTimerPlasmaCloseCh: make(chan uint16),
 				stopCh:                make(chan bool, 1),
-				timerProcessingTicker: time.NewTicker(timerProcessingTickInterval),
+				timerProcessingTicker: time.NewTicker(c.timerProcessingTickInterval),
 			}
 
 			vbsAssigned := make([]uint16, v)
@@ -106,7 +106,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			c.timerProcessingRunningWorkers = append(c.timerProcessingRunningWorkers, worker)
 			c.timerProcessingWorkerSignalCh[worker] = make(chan bool, 1)
 
-			logging.Infof("CRPO[%s:%s:timer_%d:%s:%d] Initial Timer routine vbs assigned len: %d dump: %v",
+			logging.Debugf("CRPO[%s:%s:timer_%d:%s:%d] Initial Timer routine vbs assigned len: %d dump: %v",
 				c.app.AppName, c.workerName, worker.id, c.tcpPort, c.Pid(), len(vbsAssigned), vbsAssigned)
 		}
 	} else {
@@ -126,7 +126,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			c.timerProcessingRunningWorkers[i].vbsAssigned = vbsAssigned
 			c.timerRWMutex.Unlock()
 
-			logging.Infof("CRPO[%s:%s:timer_%d:%s:%d] Timer routine vbs assigned len: %d dump: %v",
+			logging.Debugf("CRPO[%s:%s:timer_%d:%s:%d] Timer routine vbs assigned len: %d dump: %v",
 				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), len(vbsAssigned), vbsAssigned)
 		}
 	}
@@ -300,6 +300,8 @@ func (r *timerProcessingWorker) processTimerEvents() {
 				}
 			}
 
+			r.c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", "")
+
 			r.c.timerRWMutex.RLock()
 			token = r.c.vbPlasmaReader[vb].BeginTx()
 			err = r.c.vbPlasmaReader[vb].DeleteKV([]byte(currTimer))
@@ -358,7 +360,7 @@ func (c *Consumer) updateTimerStats(vb uint16) {
 
 }
 
-func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key string, xMeta *xattrMetadata) {
+func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key string, xMeta *xattrMetadata) error {
 
 	// Steps:
 	// Lookup in byId plasma handle
@@ -369,7 +371,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 	if !ok {
 		logging.Errorf("CRPO[%s:%s:%s:%d] Key: %v, failed to find plasma handle associated to vb: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb)
-		return
+		return errPlasmaHandleMissing
 	}
 
 	entriesToPrune := 0
@@ -388,7 +390,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 		}
 
 		if !ts.After(time.Now()) {
-			logging.Infof("CRPO[%s:%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
+			logging.Debugf("CRPO[%s:%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, ts)
 			entriesToPrune++
 			continue
@@ -473,10 +475,11 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 			logging.Errorf("CRPO[%s:%s:%s:%d]  Key: %v vb: %v, Failed to prune timer records from past, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, err)
 		} else {
-			logging.Infof("CRPO[%s:%s:%s:%d]  Key: %v vb: %v, timer records in xattr: %v",
+			logging.Debugf("CRPO[%s:%s:%s:%d]  Key: %v vb: %v, timer records in xattr: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, timersToKeep)
 		}
 	}
 
 	c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_stored", seqNo)
+	return nil
 }

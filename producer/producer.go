@@ -25,6 +25,7 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 		listenerHandles:        make([]*abatableListener, 0),
 		metakvAppHostPortsPath: metakvAppHostPortsPath,
 		notifyInitCh:           make(chan bool, 1),
+		notifySettingsChangeCh: make(chan bool, 1),
 		notifySupervisorCh:     make(chan bool),
 		nsServerPort:           nsServerPort,
 		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
@@ -100,6 +101,13 @@ func (p *Producer) Serve() {
 						p.appName, p.LenRunningConsumers(), consumer.ConsumerName())
 					consumer.NotifyRebalanceStop()
 				}
+			}
+
+		case <-p.notifySettingsChangeCh:
+			logging.Infof("PRDR[%s:%d] Notifying consumers about settings change", p.appName, p.LenRunningConsumers())
+
+			for _, consumer := range p.runningConsumers {
+				consumer.NotifySettingsChange()
 			}
 
 		case <-p.stopProducerCh:
@@ -330,6 +338,11 @@ func (p *Producer) MetadataBucket() string {
 // NotifyInit notifies the supervisor about producer initialisation
 func (p *Producer) NotifyInit() {
 	<-p.notifyInitCh
+}
+
+// NotifySettingsChange is called by super_supervisor to notify producer about settings update
+func (p *Producer) NotifySettingsChange() {
+	p.notifySettingsChangeCh <- true
 }
 
 // NotifySupervisor notifies the supervisor about clean shutdown of producer

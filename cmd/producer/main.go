@@ -18,9 +18,13 @@ func main() {
 
 	s := supervisor.NewSuperSupervisor(flags.eventingAdminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid)
 
+	// For app reloads
 	go metakv.RunObserveChildren(supervisor.MetakvAppsPath, s.EventHandlerLoadCallback, s.CancelCh)
-	// TODO: Setting need to be dynamically reloaded
-	// go metakv.RunObserveChildren(supervisor.MetakvAppSettingsPath, s.EventHandlerLoadCallback, s.CancelCh)
+
+	// For app settings update
+	go metakv.RunObserveChildren(supervisor.MetakvAppSettingsPath, s.SettingsChangeCallback, s.CancelCh)
+
+	// For topology change notifications
 	go metakv.RunObserveChildren(supervisor.MetakvRebalanceTokenPath, s.TopologyChangeNotifCallback, s.CancelCh)
 
 	s.HandleSupCmdMsg()
