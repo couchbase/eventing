@@ -1,5 +1,5 @@
 diff --git a/cluster_connect b/cluster_connect
-index d98bbea..bad2588 100755
+index d98bbea..f2fbfaa 100755
 --- a/cluster_connect
 +++ b/cluster_connect
 @@ -3,8 +3,8 @@ import os, sys, getopt, urllib2, urllib, json
@@ -37,7 +37,7 @@ index d98bbea..bad2588 100755
 +    replica_index = False
      start_index = 0
 -    deploy = ['kv']
-+    deploy = ['eventing', 'index', 'n1ql']
++    deploy = ['eventing', 'index', 'n1ql', 'fts']
      do_rebalance = True
  
      data_base_path = os.getcwd() + "/data"

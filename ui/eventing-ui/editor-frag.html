@@ -36,6 +36,16 @@
                 <input name="worker_count" type="number" ng-model="resEditCtrl.currentApp.settings.worker_count" min="1" max="32">
                 <p ng-show="settingsForm.worker_count.$invalid"> 1 &le; Worker Count &le; 32 </p>
                 <br><br>
+                Timer Thread Count:
+                <input name="timer_worker_pool_size" type="number" ng-model="resEditCtrl.currentApp.settings.timer_worker_pool_size" min="1" max="32">
+                <p ng-show="settingsForm.worker_count.$invalid"> 1 &le; Timer Thread Count &le; 32 </p>
+                <br><br>
+                Timer Processing Interval:
+                <input name="timer_processing_tick_interval" type="number" ng-model="resEditCtrl.currentApp.settings.timer_processing_tick_interval">
+                <br><br>
+                Timer Threshold:
+                <input name="skip_timer_threshold" type="number" ng-model="resEditCtrl.currentApp.settings.skip_timer_threshold">
+                <br><br>
                 RBAC
                 <br>
                 User Name:

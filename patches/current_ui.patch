@@ -1,14 +1,14 @@
 diff --git a/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html b/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html
-index f7d4da692..3e62901c7 100644
+index a9fdb4a..140562a 100644
 --- a/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html
 +++ b/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html
-@@ -127,6 +127,34 @@
+@@ -127,6 +127,33 @@
    </div>
  </div>
  
-+<div ng-if="config.displayedServices.n1ql">
++<div ng-if="config.displayedServices.eventing">
 +  <div class="row formrow">
-+    <div class="column width-6">
++    <div class="width-6">
 +      <input
 +         ng-if="config.services"
 +         ng-model="config.services.model.eventing"
@@ -33,12 +33,11 @@ index f7d4da692..3e62901c7 100644
 +  </div>
 +</div>
 +
-+
- <div ng-if="config.maxMemorySize" class="text-small text-right nowrap margin-right-1">
-   <strong>TOTAL QUOTA</strong> &nbsp; {{ ((!config.displayedServices.kv || (config.services && !config.services.model.kv)) ? 0 : config.memoryQuota) +
-        ((!config.displayedServices.index || (config.services && !config.services.model.index)) ? 0 : config.indexMemoryQuota) +
+ <div
+    ng-if="config.calculateTotal"
+    class="text-small text-right nowrap margin-right-1">
 diff --git a/priv/public/ui/app/components/directives/mn_services/mn_services.html b/priv/public/ui/app/components/directives/mn_services/mn_services.html
-index 0586384a7..f3f4a805d 100644
+index 8fe2dc2..f051526 100644
 --- a/priv/public/ui/app/components/directives/mn_services/mn_services.html
 +++ b/priv/public/ui/app/components/directives/mn_services/mn_services.html
 @@ -45,3 +45,15 @@
@@ -58,10 +57,10 @@ index 0586384a7..f3f4a805d 100644
 +    </label>
 +</div>
 diff --git a/priv/public/ui/app/components/mn_filters.js b/priv/public/ui/app/components/mn_filters.js
-index 825b9a0c0..b2d07d173 100644
+index 9983615..c92cf30 100644
 --- a/priv/public/ui/app/components/mn_filters.js
 +++ b/priv/public/ui/app/components/mn_filters.js
-@@ -495,6 +495,7 @@
+@@ -538,6 +538,7 @@
          case 'n1ql': return 'Query';
          case 'index': return 'Index';
          case 'fts': return 'Full Text';
@@ -70,7 +69,7 @@ index 825b9a0c0..b2d07d173 100644
      }
    }
 diff --git a/priv/public/ui/app/mn_admin/mn_overview/mn_overview.html b/priv/public/ui/app/mn_admin/mn_overview/mn_overview.html
-index 00a5904d0..1598a2b90 100644
+index 2e67c6c..eb5dbf5 100644
 --- a/priv/public/ui/app/mn_admin/mn_overview/mn_overview.html
 +++ b/priv/public/ui/app/mn_admin/mn_overview/mn_overview.html
 @@ -62,6 +62,20 @@
@@ -95,10 +94,10 @@ index 00a5904d0..1598a2b90 100644
         class="service-widget"
         ng-class="['dynamic_' + (adminCtl.tasks.tasksXDCR.length ? 'healthy' : 'inactive')]">
 diff --git a/priv/public/ui/app/mn_admin/mn_overview/mn_overview_service.js b/priv/public/ui/app/mn_admin/mn_overview/mn_overview_service.js
-index de3724dd0..c62051533 100644
+index 08588df..c802119 100644
 --- a/priv/public/ui/app/mn_admin/mn_overview/mn_overview_service.js
 +++ b/priv/public/ui/app/mn_admin/mn_overview/mn_overview_service.js
-@@ -141,6 +141,7 @@
+@@ -71,6 +71,7 @@
            index: getNodesByService("index", nodes),
            n1ql: getNodesByService("n1ql", nodes),
            fts: getNodesByService("fts", nodes),
@@ -107,7 +106,7 @@ index de3724dd0..c62051533 100644
          };
        });
 diff --git a/priv/public/ui/app/mn_admin/mn_servers/add_dialog/mn_servers_add_dialog_controller.js b/priv/public/ui/app/mn_admin/mn_servers/add_dialog/mn_servers_add_dialog_controller.js
-index 3af7657f5..9c4cfeabe 100644
+index 3af7657..9c4cfea 100644
 --- a/priv/public/ui/app/mn_admin/mn_servers/add_dialog/mn_servers_add_dialog_controller.js
 +++ b/priv/public/ui/app/mn_admin/mn_servers/add_dialog/mn_servers_add_dialog_controller.js
 @@ -14,7 +14,8 @@
@@ -121,7 +120,7 @@ index 3af7657f5..9c4cfeabe 100644
        },
        credentials: {
 diff --git a/priv/public/ui/app/mn_admin/mn_settings/cluster/mn_settings_cluster_controller.js b/priv/public/ui/app/mn_admin/mn_settings/cluster/mn_settings_cluster_controller.js
-index aea7d2b3c..7cb77ecd2 100644
+index 9e6a88a..ede5f3c 100644
 --- a/priv/public/ui/app/mn_admin/mn_settings/cluster/mn_settings_cluster_controller.js
 +++ b/priv/public/ui/app/mn_admin/mn_settings/cluster/mn_settings_cluster_controller.js
 @@ -85,7 +85,8 @@
@@ -131,11 +130,11 @@ index aea7d2b3c..7cb77ecd2 100644
 -        n1ql: mnPoolDefault.export.compat.atLeast40
 +        n1ql: mnPoolDefault.export.compat.atLeast40,
 +        eventing: mnPoolDefault.export.compat.atLeast45
-       }, false))
+       }, false, false))
          .applyToScope(function (resp) {
            vm.initialMemoryQuota = resp.indexMemoryQuota;
 diff --git a/priv/public/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js b/priv/public/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js
-index 14bc90414..e44793c66 100644
+index ebf9daf..76a9a1a 100644
 --- a/priv/public/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js
 +++ b/priv/public/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js
 @@ -30,8 +30,8 @@
@@ -164,7 +163,7 @@ index 14bc90414..e44793c66 100644
        showKVMemoryQuota: true,
        showIndexMemoryQuota: true,
 diff --git a/priv/public/ui/app/mn_wizard/mn_terms_and_conditions/mn_terms_and_conditions_controller.js b/priv/public/ui/app/mn_wizard/mn_terms_and_conditions/mn_terms_and_conditions_controller.js
-index 6fea3297d..bee21f4ff 100644
+index cae1638..3e7d57f 100644
 --- a/priv/public/ui/app/mn_wizard/mn_terms_and_conditions/mn_terms_and_conditions_controller.js
 +++ b/priv/public/ui/app/mn_wizard/mn_terms_and_conditions/mn_terms_and_conditions_controller.js
 @@ -40,7 +40,7 @@
@@ -174,5 +173,5 @@ index 6fea3297d..bee21f4ff 100644
 -            .setupServices({services: 'kv,index,fts,n1ql'}).then(function () {
 +            .setupServices({services: 'kv,index,fts,n1ql,eventing'}).then(function () {
                var newClusterState = mnWizardService.getNewClusterState();
-               var newClusterConfig = mnClusterConfigurationService.getNewClusterConfig();
-               mnSettingsClusterService.postIndexSettings(newClusterConfig.indexSettings);
+               mnSettingsClusterService.postIndexSettings({storageMode: "plasma"});
+               mnSettingsClusterService

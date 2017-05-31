@@ -62,7 +62,7 @@
 
     ev.run(['$http', 'mnPoolDefault', function($http, mnPoolDefault){
       $http.get('/_p/event/getApplication/')
-            .success(function(data, status, headers, config) {
+            .then(function(data, status, headers, config) {
                 for(var i = 0; i < data.length; i++) {
                     data[i].depcfg = JSON.stringify(data[i].depcfg, null, ' ');
                     if(!appLoaded) {
@@ -78,7 +78,7 @@
         this.errorMsg = '';
         var parent = this;
         $http.get('/_p/event/getApplication/')
-            .success(function(data, status, headers, config) {
+            .then(function(data, status, headers, config) {
                 for(var i = 0; i < data.length; i++) {
                     data[i].depcfg = JSON.stringify(data[i].depcfg, null, ' ');
                     if(!appLoaded) {
@@ -87,8 +87,7 @@
                 }
                 appLoaded = true;
                 parent.showCreation = true;
-            })
-            .error(function(data, status, headers, config) {
+            }, function(data, status, headers, config) {
                 parent.showCreation = false;
                 // if we got a 404, there is no eventing service on this node.
                 // let's go through the list of nodes
@@ -127,6 +126,9 @@
                     "tick_duration" : 5000,
                     "checkpoint_interval" : 10000,
                     "worker_count" : 1,
+                    "timer_worker_pool_size" : 3,
+                    "skip_timer_threshold" : 86400,
+                    "timer_processing_tick_interval" : 500,
                     "rbacuser" : "",
                     "rbacpass" : "",
                     "rbacrole" : "admin",

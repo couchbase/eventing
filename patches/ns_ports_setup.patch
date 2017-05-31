@@ -1,20 +1,20 @@
 diff --git a/src/ns_ports_setup.erl b/src/ns_ports_setup.erl
-index 19952c85c..1a73b45d4 100644
+index 6632049..150e86f 100644
 --- a/src/ns_ports_setup.erl
 +++ b/src/ns_ports_setup.erl
-@@ -275,6 +275,7 @@ dynamic_children(normal) ->
-              per_bucket_moxi_specs(Config),
-              maybe_create_ssl_proxy_spec(Config),
-              run_via_goport(fun fts_spec/1, Config),
-+             run_via_goport(fun eventing_node_spec/1, Config),
-              run_via_goport(fun example_service_spec/1, Config)],
+@@ -275,6 +275,7 @@ do_dynamic_children(normal, Config) ->
+      per_bucket_moxi_specs(Config),
+      maybe_create_ssl_proxy_spec(Config),
+      fts_spec(Config),
++     eventing_spec(Config),
+      example_service_spec(Config)].
  
-     lists:flatten(Specs).
-@@ -642,6 +643,32 @@ fts_spec(Config) ->
+ expand_specs(Specs, Config) ->
+@@ -630,6 +631,32 @@ fts_spec(Config) ->
              [Spec]
      end.
  
-+eventing_node_spec(Config) ->
++eventing_spec(Config) ->
 +    case ns_cluster_membership:should_run_service(Config, eventing, node()) of
 +        false ->
 +            [];
@@ -34,7 +34,7 @@ index 19952c85c..1a73b45d4 100644
 +
 +            Spec = {'eventing', Command,
 +                    [EventingAdminArg, EventingDirArg, KVAddrArg, RestArg, UUIDArg],
-+                    [use_stdio, exit_status, stderr_to_stdout, stream,
++                    [via_goport, exit_status, stderr_to_stdout,
 +                     {env, build_go_env_vars(Config, eventing)},
 +                     {log, "eventing.log"}]},
 +            [Spec]
