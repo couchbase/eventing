@@ -120,6 +120,7 @@
                     "tick_duration" : 5000,
                     "checkpoint_interval" : 10000,
                     "worker_count" : 1,
+                    "cleanup_timers" : false,
                     "timer_worker_pool_size" : 3,
                     "skip_timer_threshold" : 86400,
                     "timer_processing_tick_interval" : 500,
