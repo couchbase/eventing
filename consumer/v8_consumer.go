@@ -46,6 +46,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, ev
 		logLevel:                           logLevel,
 		opsTimestamp:                       time.Now(),
 		persistAllTicker:                   time.NewTicker(persistAllTickInterval),
+		plasmaStoreRWMutex:                 &sync.RWMutex{},
 		producer:                           p,
 		restartVbDcpStreamTicker:           time.NewTicker(restartVbDcpStreamTickInterval),
 		sendMsgCounter:                     0,
@@ -145,13 +146,16 @@ func (c *Consumer) Serve() {
 	}
 
 	c.controlRoutine()
+
+	logging.Debugf("V8CR[%s:%s:%s:%d] Exiting consumer init routine",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 }
 
 // HandleV8Worker sets up CPP V8 worker post it's bootstrap
 func (c *Consumer) HandleV8Worker() {
 	<-c.signalConnectedCh
 
-	logging.SetLogLevel(getLogLevel(c.logLevel))
+	logging.SetLogLevel(util.GetLogLevel(c.logLevel))
 	c.sendLogLevel(c.logLevel)
 
 	payload := makeV8InitPayload(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData(),
@@ -179,9 +183,11 @@ func (c *Consumer) Stop() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Gracefully shutting down consumer routine",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
+	c.plasmaStoreRWMutex.RLock()
 	for _, store := range c.vbPlasmaStoreMap {
 		store.Close()
 	}
+	c.plasmaStoreRWMutex.RUnlock()
 
 	c.cbBucket.Close()
 	c.gocbBucket.Close()

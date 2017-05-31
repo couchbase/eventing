@@ -23,7 +23,7 @@ func NewRPCClient(addr, appName, registeredName string) *Client {
 func (c *Client) DialPath(path string) error {
 	client, err := rpc.DialHTTPPath("tcp", c.Addr, path)
 	if err != nil {
-		logging.Infof("TTCL[%s:%s] Addr: %v Path: %v Client.Dial failed, err: %v",
+		logging.Errorf("TTCL[%s:%s] Addr: %v Path: %v Client.Dial failed, err: %v",
 			c.AppName, c.registeredName, c.Addr, path, err)
 		return err
 	}
@@ -198,11 +198,11 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 		blocks++
 	}
 
-	logging.Infof("TTCL[%s:%s] Filename: %v, downloading in %v blocks", c.AppName, c.registeredName, filename, blocks)
+	logging.Debugf("TTCL[%s:%s] Filename: %v, downloading in %v blocks", c.AppName, c.registeredName, filename, blocks)
 
 	err := os.Remove(path)
 	if err != nil {
-		logging.Infof("TTCL[%s:%s] Filename: %v os.Remove call, err: %v",
+		logging.Errorf("TTCL[%s:%s] Filename: %v os.Remove call, err: %v",
 			c.AppName, c.registeredName, path, err)
 	}
 
@@ -239,7 +239,7 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 		}
 
 		if bID%((blocks-blockID)/100+1) == 0 {
-			logging.Infof("TTCL[%s:%s] Downloading %v [%v/%v] blocks",
+			logging.Debugf("TTCL[%s:%s] Downloading %v [%v/%v] blocks",
 				c.AppName, c.registeredName, filename, bID-blockID+1, blocks-blockID)
 		}
 

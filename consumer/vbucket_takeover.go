@@ -307,12 +307,18 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 }
 
 func (c *Consumer) closePlasmaHandle(vb uint16) {
+	c.plasmaStoreRWMutex.RLock()
 	store, ok := c.vbPlasmaStoreMap[vb]
+	c.plasmaStoreRWMutex.RUnlock()
+
 	if ok {
 		// Persist all in-flight data in-memory for plasma and then close the instance
 		store.PersistAll()
 		store.Close()
+
+		c.plasmaStoreRWMutex.Lock()
 		delete(c.vbPlasmaStoreMap, vb)
+		c.plasmaStoreRWMutex.Unlock()
 	}
 }
 

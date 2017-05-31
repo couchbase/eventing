@@ -101,7 +101,7 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 		keepNodeUUIDs = append(keepNodeUUIDs, string(node.NodeInfo.NodeID))
 	}
 
-	logging.Debugf("SMRB ServiceMgr::PrepareTopologyChange keepNodeUUIDs: %v", keepNodeUUIDs)
+	logging.Infof("SMRB ServiceMgr::PrepareTopologyChange keepNodeUUIDs: %v", keepNodeUUIDs)
 
 	m.updateStateLocked(func(s *state) {
 		m.rebalanceID = change.ID
@@ -120,12 +120,16 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 	logging.Debugf("SMRB ServiceMgr::StartTopologyChange change: %#v", change)
 
 	if m.state.rebalanceID != change.ID || m.rebalancer != nil {
+		logging.Errorf("SMRB ServiceMgr::StartTopologyChange returning errConflict, rebalanceID: %v change id: %v rebalancer dump: %#v",
+			m.state.rebalanceID, change.ID, m.rebalancer)
 		return service.ErrConflict
 	}
 
 	if change.CurrentTopologyRev != nil {
 		haveRev := decodeRev(change.CurrentTopologyRev)
 		if haveRev != m.state.rev {
+			logging.Errorf("SMRB ServiceMgr::StartTopologyChange returning errConflict, state rev: %v haveRev: %v",
+				m.state.rev, haveRev)
 			return service.ErrConflict
 		}
 	}

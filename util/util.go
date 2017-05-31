@@ -288,7 +288,7 @@ func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) map[string]string {
 
 		res, err := netClient.Get(url)
 		if err != nil {
-			logging.Errorf("UTIL Failed to fethc node uuid from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to fetch node uuid from url: %s, err: %v", url, err)
 			continue
 		}
 		defer res.Body.Close()
@@ -553,4 +553,21 @@ func ConvertBigEndianToUint64(cas []byte) (uint64, error) {
 	}
 
 	return strconv.ParseUint(string(cas), 16, 64)
+}
+
+func GetLogLevel(logLevel string) logging.LogLevel {
+	switch logLevel {
+	case "ERROR":
+		return logging.Error
+	case "INFO":
+		return logging.Info
+	case "WARNING":
+		return logging.Warn
+	case "DEBUG":
+		return logging.Debug
+	case "TRACE":
+		return logging.Trace
+	default:
+		return logging.Info
+	}
 }

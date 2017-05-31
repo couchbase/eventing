@@ -20,10 +20,21 @@ func (p *Producer) vbEventingNodeAssign() error {
 
 	util.Retry(util.NewFixedBackoff(time.Second), getNsServerNodesAddressesOpCallback, p)
 
-	eventingNodeAddrs := p.getEventingNodeAddrs()
-	if len(eventingNodeAddrs) <= 0 {
+	addrs := p.getEventingNodeAddrs()
+	if len(addrs) <= 0 {
 		return fmt.Errorf("%v", errorUnexpectedEventingNodeCount)
 	}
+
+	// In-case of eventing node(s) removal, ns_server would reflect those node(s) within
+	// eventing MDS service. Hence comparing node uuids received from prepareTopologyChange
+	// call to uuids published by eventing nodes
+	addrUUIDMap := util.GetNodeUUIDs("/uuid", addrs)
+	eventingNodeAddrs := make([]string, 0)
+
+	for _, uuid := range p.eventingNodeUUIDs {
+		eventingNodeAddrs = append(eventingNodeAddrs, addrUUIDMap[uuid])
+	}
+	sort.Strings(eventingNodeAddrs)
 
 	vbucketsPerNode := numVbuckets / len(eventingNodeAddrs)
 	var vbNo int
@@ -47,11 +58,14 @@ func (p *Producer) vbEventingNodeAssign() error {
 	}
 
 	for i, v := range vbCountPerNode {
+
+		logging.Debugf("VBNA[%s:%d] EventingNodeUUIDs: %v Eventing node index: %d eventing node addr: %v startVb: %v vbs count: %v",
+			p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, i, eventingNodeAddrs[i], startVb, v)
+
 		for j := 0; j < v; j++ {
 			p.vbEventingNodeAssignMap[startVb] = eventingNodeAddrs[i]
 			startVb++
 		}
-		fmt.Printf("eventing node index: %d\tstartVb: %d\n", i, startVb)
 	}
 	return nil
 }
@@ -62,7 +76,7 @@ func (p *Producer) initWorkerVbMap() {
 
 	eventingNodeAddr, err := util.CurrentEventingNodeAddress(p.auth, hostAddress)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to get address for current eventing node, err: %v", p.appName, p.LenRunningConsumers(), err)
+		logging.Errorf("VBNA[%s:%d] Failed to get address for current eventing node, err: %v", p.appName, p.LenRunningConsumers(), err)
 	}
 
 	// vbuckets the current eventing node is responsible to handle
@@ -76,7 +90,8 @@ func (p *Producer) initWorkerVbMap() {
 
 	sort.Ints(vbucketsToHandle)
 
-	logging.Infof("PRDR[%s:%d] eventingAddr: %v vbucketsToHandle, len: %d dump: %v", p.appName, p.LenRunningConsumers(), eventingNodeAddr, len(vbucketsToHandle), vbucketsToHandle)
+	logging.Debugf("VBNA[%s:%d] eventingAddr: %v vbucketsToHandle, len: %d dump: %v",
+		p.appName, p.LenRunningConsumers(), eventingNodeAddr, len(vbucketsToHandle), vbucketsToHandle)
 
 	vbucketPerWorker := len(vbucketsToHandle) / p.workerCount
 	var startVbIndex int
@@ -109,6 +124,9 @@ func (p *Producer) initWorkerVbMap() {
 			p.workerVbucketMap[workerName] = append(p.workerVbucketMap[workerName], uint16(vbucketsToHandle[startVbIndex]))
 			startVbIndex++
 		}
+
+		logging.Debugf("VBNA[%s:%d] eventingAddr: %v worker name: %v assigned vbs len: %d dump: %v",
+			p.appName, p.LenRunningConsumers(), eventingNodeAddr, workerName, len(p.workerVbucketMap[workerName]), p.workerVbucketMap[workerName])
 	}
 
 }

@@ -65,6 +65,9 @@ func (p *Producer) parseDepcfg() error {
 		p.socketWriteBatchSize = int(settings["sock_batch_size"].(float64))
 		p.app.Settings = settings
 
+		logLevel := settings["log_level"].(string)
+		logging.SetLogLevel(util.GetLogLevel(logLevel))
+
 		logging.Infof("DCFG[%s] Loaded app => wc: %v auth: %v bucket: %v statsTickD: %v",
 			p.appName, p.workerCount, p.auth, p.bucket, p.statsTickDuration)
 

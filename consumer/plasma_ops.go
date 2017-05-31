@@ -46,7 +46,15 @@ func (c *Consumer) plasmaPersistAll() {
 	for {
 		select {
 		case <-c.persistAllTicker.C:
+			vbPlasmaStoreMap := make(map[uint16]*plasma.Plasma)
+
+			c.plasmaStoreRWMutex.RLock()
 			for vb, s := range c.vbPlasmaStoreMap {
+				vbPlasmaStoreMap[vb] = s
+			}
+			c.plasmaStoreRWMutex.RUnlock()
+
+			for vb, s := range vbPlasmaStoreMap {
 				if s == nil {
 					continue
 				}
@@ -66,6 +74,10 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 	vbsOwned := c.getVbsOwned()
 
 	vbsPerWorker := len(vbsOwned) / c.timerProcessingWorkerCount
+
+	if len(vbsOwned) == 0 {
+		return
+	}
 
 	var vb int
 	startVb := vbsOwned[0]
@@ -288,6 +300,9 @@ func (r *timerProcessingWorker) processTimerEvents() {
 			if len(v) == 0 {
 				continue
 			}
+
+			logging.Debugf("CRPO[%s:%s:timer_%d:%s:%d] vb: %d timerEvents: %v",
+				r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, string(v))
 
 			timerEvents := strings.Split(string(v), ",{")
 

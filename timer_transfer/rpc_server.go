@@ -24,7 +24,7 @@ func (r *RPC) Open(req FileRequest, res *Response) error {
 	res.ID = r.session.Add(file)
 	res.Result = true
 
-	logging.Infof("TTRC[%s:%s] RPC.Open file: %v sessionID: %v ",
+	logging.Debugf("TTRC[%s:%s] RPC.Open file: %v sessionID: %v ",
 		r.server.AppName, r.server.WorkerName, path, res.ID)
 
 	return nil
@@ -49,7 +49,7 @@ func (r *RPC) Stat(req FileRequest, res *StatsResponse) error {
 		r.setupStatsResponse(info, path, res)
 	}
 
-	logging.Infof("TTRC[%s:%s] RPC.Stat file: %v res: %v ",
+	logging.Debugf("TTRC[%s:%s] RPC.Stat file: %v res: %v ",
 		r.server.AppName, r.server.WorkerName, path, res)
 
 	return nil
@@ -88,7 +88,7 @@ func (r *RPC) CreateArchive(req FileRequest, res *StatsResponse) error {
 		r.setupStatsResponse(arInfo, archivePath, res)
 	}
 
-	logging.Infof("TTRC[%s:%s] RPC.CreateArchive dir: %v res: %v ",
+	logging.Debugf("TTRC[%s:%s] RPC.CreateArchive dir: %v res: %v ",
 		r.server.AppName, r.server.WorkerName, path, res)
 
 	return nil
@@ -99,7 +99,7 @@ func (r *RPC) CreateArchive(req FileRequest, res *StatsResponse) error {
 func (r *RPC) RemoveArchive(req FileRequest, res *Response) error {
 	path := filepath.Join(r.server.EventingDir, req.Filename)
 
-	logging.Infof("TTRC[%s:%s] RPC.RemoveArchive Request to clean up archive: %v",
+	logging.Debugf("TTRC[%s:%s] RPC.RemoveArchive Request to clean up archive: %v",
 		r.server.AppName, r.server.WorkerName, path)
 
 	return os.Remove(path)
@@ -109,7 +109,7 @@ func (r *RPC) RemoveArchive(req FileRequest, res *Response) error {
 func (r *RPC) RemoveDir(req FileRequest, res *Response) error {
 	path := filepath.Join(r.server.EventingDir, req.Filename)
 
-	logging.Infof("TTRC[%s:%s] RPC.RemoveDir Request to clean up dir: %v",
+	logging.Debugf("TTRC[%s:%s] RPC.RemoveDir Request to clean up dir: %v",
 		r.server.AppName, r.server.WorkerName, path)
 
 	return os.RemoveAll(path)
@@ -122,7 +122,7 @@ func (r *RPC) Close(req Request, res *Response) error {
 	r.session.Delete(req.ID)
 	res.Result = true
 
-	logging.Infof("TTRC[%s:%s] RPC.Close closing session: %v file: %v",
+	logging.Debugf("TTRC[%s:%s] RPC.Close closing session: %v file: %v",
 		r.server.AppName, r.server.WorkerName, req.ID, file.Name())
 
 	return nil
@@ -152,7 +152,7 @@ func (r *RPC) Read(req ReadRequest, res *ReadResponse) error {
 	res.Size = n
 	res.Data = res.Data[:res.Size]
 
-	logging.Infof("TTRC[%s:%s] RPC.Read SessionID: %v read: %v bytes",
+	logging.Debugf("TTRC[%s:%s] RPC.Read SessionID: %v read: %v bytes",
 		r.server.AppName, r.server.WorkerName, req.ID, res.Size)
 
 	return nil
@@ -182,7 +182,7 @@ func (r *RPC) ReadAt(req ReadRequest, res *ReadResponse) error {
 	res.Size = n
 	res.Data = res.Data[:n]
 
-	logging.Infof("TTRC[%s:%s] RPC.ReadAt SessionID: %v read: %v bytes(offset: %v)",
+	logging.Debugf("TTRC[%s:%s] RPC.ReadAt SessionID: %v read: %v bytes(offset: %v)",
 		r.server.AppName, r.server.WorkerName, req.ID, res.Size, req.Offset)
 
 	return nil

@@ -191,18 +191,21 @@ func (c *Consumer) doDCPEventProcess() {
 				c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", "stopped")
 				c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", "")
 
-				c.RLock()
+				c.plasmaStoreRWMutex.RLock()
 				// Check if vbucket related entry already exists, if yes - then clean it up
 				// and close all associated FDs
 				if _, ok := c.vbPlasmaStoreMap[e.VBucket]; ok {
+					c.plasmaStoreRWMutex.RUnlock()
 
+					c.timerRWMutex.RLock()
 					if _, mOk := c.timerProcessingVbsWorkerMap[e.VBucket]; !mOk {
-						c.RUnlock()
+						c.timerRWMutex.RUnlock()
 
 						logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v, missing entry from timerProcessingVbsWorkerMap",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 						return
 					}
+					c.timerRWMutex.RUnlock()
 
 					c.timerProcessingVbsWorkerMap[e.VBucket].signalProcessTimerPlasmaCloseCh <- e.VBucket
 					<-c.signalProcessTimerPlasmaCloseAckCh
@@ -218,12 +221,12 @@ func (c *Consumer) doDCPEventProcess() {
 					if ok {
 						delete(c.vbPlasmaWriter, e.VBucket)
 					}
+					c.timerRWMutex.Unlock()
 
 					c.closePlasmaHandle(e.VBucket)
-					c.timerRWMutex.Unlock()
+				} else {
+					c.plasmaStoreRWMutex.RUnlock()
 				}
-
-				c.RUnlock()
 
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 					logging.Infof("CRVT[%s:%s:%s:%d] vb: %v, got STREAMEND, needs to be reclaimed",

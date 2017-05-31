@@ -99,6 +99,7 @@ func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 	if isSingleNodeRebal(change) && !m.failoverNotif {
 		if change.KeepNodes[0].NodeInfo.NodeID == m.nodeInfo.NodeID {
 			logging.Infof("ServiceMgr::startRebalance - only node in the cluster")
+			m.updateRebalanceProgressLocked(1.0)
 		} else {
 			return fmt.Errorf("node receiving start request isn't part of the cluster")
 		}

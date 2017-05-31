@@ -17,7 +17,6 @@ import (
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	cb "github.com/couchbase/indexing/secondary/dcp/transport/client"
-	"github.com/couchbase/indexing/secondary/logging"
 	"github.com/couchbase/nitro/plasma"
 )
 
@@ -172,6 +171,7 @@ type Consumer struct {
 	stopPlasmaPersistCh chan bool
 	timerAddrs          map[string]map[string]string
 	timerEntryCh        chan *byTimerEntry
+	plasmaStoreRWMutex  *sync.RWMutex
 	vbPlasmaStoreMap    map[uint16]*plasma.Plasma
 	vbPlasmaWriter      map[uint16]*plasma.Writer
 	vbPlasmaReader      map[uint16]*plasma.Writer
@@ -334,21 +334,4 @@ type OwnershipEntry struct {
 	CurrentVBOwner string `json:"current_vb_owner"`
 	Operation      string `json:"operation"`
 	Timestamp      string `json:"timestamp"`
-}
-
-func getLogLevel(logLevel string) logging.LogLevel {
-	switch logLevel {
-	case "ERROR":
-		return logging.Error
-	case "INFO":
-		return logging.Info
-	case "WARNING":
-		return logging.Warn
-	case "DEBUG":
-		return logging.Debug
-	case "TRACE":
-		return logging.Trace
-	default:
-		return logging.Info
-	}
 }

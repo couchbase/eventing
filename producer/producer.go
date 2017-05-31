@@ -1,6 +1,7 @@
 package producer
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
@@ -109,6 +111,25 @@ func (p *Producer) Serve() {
 			for _, consumer := range p.runningConsumers {
 				consumer.NotifySettingsChange()
 			}
+
+			settingsPath := metakvAppSettingsPath + p.app.AppName
+			sData, err := util.MetakvGet(settingsPath)
+			if err != nil {
+				logging.Errorf("PRDR[%s:%d] Failed to fetch updated settings from metakv, err: %v",
+					p.appName, p.LenRunningConsumers(), err)
+				continue
+			}
+
+			settings := make(map[string]interface{})
+			err = json.Unmarshal(sData, &settings)
+			if err != nil {
+				logging.Errorf("PRDR[%s:%d] Failed to unmarshal settings received from metakv, err: %v",
+					p.appName, p.LenRunningConsumers(), err)
+				continue
+			}
+
+			logLevel := settings["log_level"].(string)
+			logging.SetLogLevel(util.GetLogLevel(logLevel))
 
 		case <-p.stopProducerCh:
 			logging.Infof("PRDR[%s:%d] Explicitly asked to shutdown producer routine", p.appName, p.LenRunningConsumers())

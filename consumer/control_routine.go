@@ -26,10 +26,11 @@ func (c *Consumer) controlRoutine() {
 			c.isRebalanceOngoing = false
 
 		case <-c.signalSettingsChangeCh:
+
 			settingsPath := metakvAppSettingsPath + c.app.AppName
 			sData, err := util.MetakvGet(settingsPath)
 			if err != nil {
-				logging.Infof("CRCR[%s:%s:%s:%d] Failed to fetch updated settings from metakv, err: %v",
+				logging.Errorf("CRCR[%s:%s:%s:%d] Failed to fetch updated settings from metakv, err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 				continue
 			}
@@ -37,7 +38,7 @@ func (c *Consumer) controlRoutine() {
 			settings := make(map[string]interface{})
 			err = json.Unmarshal(sData, &settings)
 			if err != nil {
-				logging.Infof("CRCR[%s:%s:%s:%d] Failed to unmarshal settings received from metakv, err: %v",
+				logging.Errorf("CRCR[%s:%s:%s:%d] Failed to unmarshal settings received from metakv, err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 				continue
 			}
@@ -47,7 +48,7 @@ func (c *Consumer) controlRoutine() {
 			go c.doLastSeqNoCheckpoint()
 
 			c.logLevel = settings["log_level"].(string)
-			logging.SetLogLevel(getLogLevel(c.logLevel))
+			logging.SetLogLevel(util.GetLogLevel(c.logLevel))
 			c.sendLogLevel(c.logLevel)
 
 			c.timerProcessingTickInterval = time.Duration(settings["timer_processing_tick_interval"].(float64)) * time.Millisecond
