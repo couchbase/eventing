@@ -126,7 +126,7 @@ func main() {
 				}
 
 				key := fmt.Sprintf("ssn_%d", ssn)
-				err = bucketHandle.SetRaw(key, 0, content)
+				err = bucketHandle.SetRaw(key, 10, content)
 				if err != nil {
 					continue
 				}

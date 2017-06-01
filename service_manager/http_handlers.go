@@ -242,13 +242,6 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 
 	appContent := builder.FinishedBytes()
 
-	path := metakvAppsPath + appName
-	err = util.MetakvSet(path, appContent, nil)
-	if err != nil {
-		fmt.Fprintf(w, "Failed to write app config to metakv, err: %v", err)
-		return
-	}
-
 	settingsPath := metakvAppSettingsPath + appName
 	settings := app.Settings
 
@@ -261,6 +254,13 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	mkvErr := util.MetakvSet(settingsPath, mData, nil)
 	if mkvErr != nil {
 		fmt.Fprintf(w, "App: %s Failed to store updated settings in metakv, err: %v", appName, mkvErr)
+		return
+	}
+
+	path := metakvAppsPath + appName
+	err = util.MetakvSet(path, appContent, nil)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to write app config to metakv, err: %v", err)
 		return
 	}
 
