@@ -24,9 +24,14 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 	return progress
 }
 
-// DcpEventsProcessedPSec reports dcp events triggered per sec
-func (c *Consumer) DcpEventsProcessedPSec() int {
-	return c.dcpOpsProcessedPSec
+// EventsProcessedPSec reports dcp + timer events triggered per sec
+func (c *Consumer) EventsProcessedPSec() *cm.EventProcessingStats {
+	pStats := &cm.EventProcessingStats{
+		DcpEventsProcessedPSec:   c.dcpOpsProcessedPSec,
+		TimerEventsProcessedPSec: c.timerMessagesProcessedPSec,
+	}
+
+	return pStats
 }
 
 // DcpEventsRemainingToProcess reports dcp events remaining to producer

@@ -166,7 +166,7 @@ func (c *Consumer) HandleV8Worker() {
 
 	go c.doLastSeqNoCheckpoint()
 
-	go c.doDCPEventProcess()
+	go c.processEvents()
 
 }
 

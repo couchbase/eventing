@@ -12,13 +12,13 @@ import (
 )
 
 func main() {
-	_, err := cbauth.InternalRetryDefaultInit("http://127.0.0.1:9000", "Administrator", "asdasd")
+	_, err := cbauth.InternalRetryDefaultInit("http://127.0.0.1:9000", os.Args[1], os.Args[2])
 	if err != nil {
 		fmt.Printf("Failed to init cbauth, err: %v\n", err)
 		return
 	}
 
-	appCfgFile := os.Args[1]
+	appCfgFile := os.Args[3]
 	splitStrs := strings.Split(appCfgFile, "/")
 	appName := splitStrs[len(splitStrs)-1]
 

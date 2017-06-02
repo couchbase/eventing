@@ -247,7 +247,7 @@ func ClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, error
 	return cinfo, nil
 }
 
-func GetProcessedPSec(urlSuffix, nodeAddr string) (int, error) {
+func GetProcessedPSec(urlSuffix, nodeAddr string) (string, error) {
 	netClient := &http.Client{
 		Timeout: HTTPRequestTimeout,
 	}
@@ -257,23 +257,62 @@ func GetProcessedPSec(urlSuffix, nodeAddr string) (int, error) {
 	res, err := netClient.Get(url)
 	if err != nil {
 		logging.Errorf("UTIL Failed to gather events processed/sec stats from url: %s, err: %v", url, err)
-		return 0, err
+		return "", err
 	}
 	defer res.Body.Close()
 
 	buf, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
-		return 0, err
+		return "", err
 	}
 
-	pSec, err := strconv.Atoi(string(buf))
+	return string(buf), nil
+}
+
+func GetAggProcessedPSec(urlSuffix string, nodeAddrs []string) (string, error) {
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
+
+	var aggPStats cm.EventProcessingStats
+
+	for _, nodeAddr := range nodeAddrs {
+		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(url)
+		if err != nil {
+			logging.Errorf("UTIL Failed to gather events processed/sec stats from url: %s, err: %v", url, err)
+			continue
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+			continue
+		}
+
+		var pStats cm.EventProcessingStats
+		err = json.Unmarshal(buf, &pStats)
+		if err != nil {
+			logging.Errorf("UTIL Failed to unmarshal response body from url: %s, err: %v", url, err)
+			continue
+		}
+
+		aggPStats.DcpEventsProcessedPSec += pStats.DcpEventsProcessedPSec
+		aggPStats.TimerEventsProcessedPSec += pStats.TimerEventsProcessedPSec
+	}
+
+	aggPStats.Timestamp = time.Now().Format("2006-01-02T15:04:05Z")
+
+	stats, err := json.Marshal(&aggPStats)
 	if err != nil {
-		logging.Errorf("UTIL Failed to convert events processed stats to int from url: %s, err: %v", url, err)
-		return 0, err
+		logging.Errorf("UTIL Failed to marshal aggregate processing stats, err: %v", err)
+		return "", err
 	}
 
-	return pSec, nil
+	return string(stats), nil
 }
 
 func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) map[string]string {

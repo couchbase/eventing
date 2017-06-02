@@ -60,6 +60,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
 	http.HandleFunc("/getApplication/", m.fetchAppSetup)
 	http.HandleFunc("/getEventsPSec", m.getEventsProcessedPSec)
+	http.HandleFunc("/getAggEventsPSec", m.getAggEventsProcessedPSec)
 	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
 	http.HandleFunc("/setApplication/", m.storeAppSetup)
 	http.HandleFunc("/setSettings/", m.storeAppSettings)

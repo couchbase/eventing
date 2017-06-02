@@ -19,7 +19,9 @@ import (
 	"github.com/couchbase/nitro/plasma"
 )
 
-func (c *Consumer) doDCPEventProcess() {
+func (c *Consumer) processEvents() {
+	var timerMsgCounter uint64
+
 	for {
 		select {
 		case e, ok := <-c.aggDCPFeed:
@@ -261,10 +263,15 @@ func (c *Consumer) doDCPEventProcess() {
 				countMsg, dcpOpCount, tStamp := util.SprintDCPCounts(c.dcpMessagesProcessed)
 
 				diff := tStamp.Sub(c.opsTimestamp)
-				opsDiff := dcpOpCount - c.dcpOpsProcessed
+
+				dcpOpsDiff := dcpOpCount - c.dcpOpsProcessed
+				timerOpsDiff := c.timerMessagesProcessed - timerMsgCounter
+				timerMsgCounter = c.timerMessagesProcessed
+
 				seconds := int(diff.Nanoseconds() / (1000 * 1000 * 1000))
 				if seconds > 0 {
-					c.dcpOpsProcessedPSec = int(opsDiff) / seconds
+					c.dcpOpsProcessedPSec = int(dcpOpsDiff) / seconds
+					c.timerMessagesProcessedPSec = int(timerOpsDiff) / seconds
 				}
 
 				logging.Infof("CRDP[%s:%s:%s:%d] DCP events: %s V8 events: %s Timer events: %v, vbs owned len: %d vbs owned:[%d..%d]",

@@ -261,7 +261,8 @@ type Consumer struct {
 	// Tracks V8 Opcodes processed per consumer
 	v8WorkerMessagesProcessed map[string]uint64
 
-	timerMessagesProcessed uint64
+	timerMessagesProcessed     uint64
+	timerMessagesProcessedPSec int
 
 	// capture dcp operation stats, granularity of these stats depend on statsTickInterval
 	dcpOpsProcessed     uint64

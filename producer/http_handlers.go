@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
@@ -31,15 +32,25 @@ func (p *Producer) RebalanceStatus(w http.ResponseWriter, r *http.Request) {
 	w.Write(progress)
 }
 
-// DcpEventsProcessedPSec reports back aggregate of events processed/sec from all running consumers
-func (p *Producer) DcpEventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
-	var eventsProcessedPSec int
+// EventsProcessedPSec reports back aggregate of events processed/sec from all running consumers
+func (p *Producer) EventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
+	var eventsProcessedPSec cm.EventProcessingStats
 
 	for _, consumer := range p.runningConsumers {
-		eventsProcessedPSec += consumer.DcpEventsProcessedPSec()
+		pStats := consumer.EventsProcessedPSec()
+
+		eventsProcessedPSec.DcpEventsProcessedPSec += pStats.DcpEventsProcessedPSec
+		eventsProcessedPSec.TimerEventsProcessedPSec += pStats.TimerEventsProcessedPSec
+	}
+	eventsProcessedPSec.Timestamp = time.Now().Format("2006-01-02T15:04:05Z")
+
+	encodedStats, err := json.Marshal(&eventsProcessedPSec)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to encode event processing stats")
+		return
 	}
 
-	fmt.Fprintf(w, "%v", eventsProcessedPSec)
+	fmt.Fprintf(w, "%v", string(encodedStats))
 }
 
 // TimerTransferHostPortAddrs returns list of hostPortAddrs for consumer level routines, that are

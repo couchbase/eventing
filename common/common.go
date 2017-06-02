@@ -53,7 +53,7 @@ type EventingProducer interface {
 type EventingConsumer interface {
 	ConsumerName() string
 	DcpEventsRemainingToProcess() uint64
-	DcpEventsProcessedPSec() int
+	EventsProcessedPSec() *EventProcessingStats
 	HandleV8Worker()
 	HostPortAddr() string
 	NotifyClusterChange()
@@ -95,4 +95,10 @@ type AppConfig struct {
 type RebalanceProgress struct {
 	VbsCurrentlyOwned int
 	VbsOwnedPerPlan   int
+}
+
+type EventProcessingStats struct {
+	DcpEventsProcessedPSec   int    `json:"dcp_events_processed_psec"`
+	TimerEventsProcessedPSec int    `json:"timer_events_processed_psec"`
+	Timestamp                string `json:"timestamp"`
 }

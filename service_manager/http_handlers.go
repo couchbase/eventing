@@ -29,6 +29,21 @@ func (m *ServiceMgr) getTimerHostPortAddrs(w http.ResponseWriter, r *http.Reques
 	fmt.Fprintf(w, "%v", string(buf))
 }
 
+func (m *ServiceMgr) getAggEventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+
+	pStats, err := util.GetAggProcessedPSec(fmt.Sprintf("/getEventsPSec?name=%s", appName), m.eventingNodeAddrs)
+	if err != nil {
+		logging.Errorf("Failed to processing stats for app: %v, err: %v", appName, err)
+		return
+	}
+
+	fmt.Fprintf(w, "%v", pStats)
+}
+
 func (m *ServiceMgr) getEventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
