@@ -23,8 +23,9 @@ import (
 )
 
 // NewConsumer called by producer to create consumer handle
-func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, eventingAdminPort, eventingDir string,
-	p common.EventingProducer, app *common.AppConfig, vbnos []uint16, bucket, logLevel, tcpPort, uuid string,
+func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, skipTimerThreshold int,
+	eventingAdminPort, eventingDir string, p common.EventingProducer, app *common.AppConfig, vbnos []uint16,
+	bucket, logLevel, tcpPort, uuid string,
 	sockWriteBatchSize, timerProcessingPoolSize, workerID int) *Consumer {
 
 	var b *couchbase.Bucket
@@ -55,6 +56,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, ev
 		signalProcessTimerPlasmaCloseAckCh: make(chan uint16),
 		signalStoreTimerPlasmaCloseAckCh:   make(chan uint16),
 		signalStoreTimerPlasmaCloseCh:      make(chan uint16),
+		skipTimerThreshold:                 skipTimerThreshold,
 		socketWriteBatchSize:               sockWriteBatchSize,
 		statsTicker:                        time.NewTicker(statsTickInterval),
 		stopControlRoutineCh:               make(chan bool),

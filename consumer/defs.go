@@ -180,6 +180,7 @@ type Consumer struct {
 	signalProcessTimerPlasmaCloseAckCh chan uint16
 	signalStoreTimerPlasmaCloseAckCh   chan uint16
 
+	skipTimerThreshold            int
 	timerProcessingTickInterval   time.Duration
 	timerProcessingVbsWorkerMap   map[uint16]*timerProcessingWorker
 	timerProcessingRunningWorkers []*timerProcessingWorker

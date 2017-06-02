@@ -223,6 +223,11 @@ func (r *timerProcessingWorker) processTimerEvents() {
 				continue
 			}
 
+			// Skipping firing of timer event delayed beyond threshold
+			if int(time.Since(ts).Seconds()) > r.c.skipTimerThreshold {
+				continue
+			}
+
 		retryLookup:
 			// For memory management
 			r.c.timerRWMutex.RLock()

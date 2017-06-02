@@ -49,6 +49,7 @@ func main() {
 	settings["timer_worker_pool_size"] = 1
 	settings["cleanup_timers"] = true
 	settings["timer_processing_tick_interval"] = 500
+	settings["skip_timer_threshold"] = 600
 
 	sData, err := json.Marshal(&settings)
 	if err != nil {

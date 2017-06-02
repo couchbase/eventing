@@ -51,6 +51,8 @@ func (c *Consumer) controlRoutine() {
 			logging.SetLogLevel(util.GetLogLevel(c.logLevel))
 			c.sendLogLevel(c.logLevel)
 
+			c.skipTimerThreshold = int(settings["skip_timer_threshold"].(float64))
+
 			c.timerProcessingTickInterval = time.Duration(settings["timer_processing_tick_interval"].(float64)) * time.Millisecond
 			for k := range c.timerProcessingWorkerSignalCh {
 				k.stopCh <- true

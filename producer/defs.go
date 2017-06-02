@@ -65,6 +65,10 @@ type Producer struct {
 	// from_now - start from current vb seq no and listen forever
 	dcpStreamBoundary common.DcpStreamBoundary
 
+	// skipTimerThreshold controls the threshold beyond which if timer event
+	// trigger is delayed, it's execution will be skipped
+	skipTimerThreshold int
+
 	// Timer event processing worker count per Eventing.Consumer instance
 	timerWorkerPoolSize int
 

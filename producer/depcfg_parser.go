@@ -63,6 +63,7 @@ func (p *Producer) parseDepcfg() error {
 		p.workerCount = int(settings["worker_count"].(float64))
 		p.timerWorkerPoolSize = int(settings["timer_worker_pool_size"].(float64))
 		p.socketWriteBatchSize = int(settings["sock_batch_size"].(float64))
+		p.skipTimerThreshold = int(settings["skip_timer_threshold"].(float64))
 		p.app.Settings = settings
 
 		logLevel := settings["log_level"].(string)
