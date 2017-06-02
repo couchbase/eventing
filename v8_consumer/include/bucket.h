@@ -21,6 +21,7 @@
 
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
+#include <libcouchbase/subdoc.h>
 
 #include "v8worker.h"
 

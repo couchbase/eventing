@@ -9,6 +9,9 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#define LCB_NO_DEPR_CXX_CTORS
+#undef NDEBUG
+
 #include <arpa/inet.h>
 #include <cstdio>
 #include <cstring>
@@ -212,16 +215,33 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
 
   lcb_t *bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
 
-  Result result;
-  lcb_CMDSTORE scmd = {0};
-  LCB_CMD_SET_KEY(&scmd, key.c_str(), key.length());
-  LCB_CMD_SET_VALUE(&scmd, value.c_str(), value.length());
-  scmd.operation = LCB_SET;
-  scmd.flags = 0x2000000;
+  lcb_CMDSUBDOC mcmd = {0};
+  LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
 
-  lcb_sched_enter(*bucket_lcb_obj_ptr);
-  lcb_store3(*bucket_lcb_obj_ptr, &result, &scmd);
-  lcb_sched_leave(*bucket_lcb_obj_ptr);
+  std::vector<lcb_SDSPEC> specs;
+
+  lcb_SDSPEC xattr_spec, doc_spec = {0};
+  xattr_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+  xattr_spec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
+
+  std::string xattr_cas_path("eventing.cas");
+  std::string mutation_cas_macro("\"${Mutation.CAS}\"");
+
+  LCB_SDSPEC_SET_PATH(&xattr_spec, xattr_cas_path.c_str(), xattr_cas_path.size());
+  LCB_SDSPEC_SET_VALUE(&xattr_spec, mutation_cas_macro.c_str(),
+                       mutation_cas_macro.size());
+  specs.push_back(xattr_spec);
+
+  doc_spec.sdcmd = LCB_SDCMD_SET_FULLDOC;
+  LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
+  LCB_SDSPEC_SET_VALUE(&doc_spec, value.c_str(), value.length());
+  specs.push_back(doc_spec);
+
+  mcmd.specs = specs.data();
+  mcmd.nspecs = specs.size();
+  mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
+
+  lcb_subdoc3(*bucket_lcb_obj_ptr, NULL, &mcmd);
   lcb_wait(*bucket_lcb_obj_ptr);
 
   info.GetReturnValue().Set(value_obj);
