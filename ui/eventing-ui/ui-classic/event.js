@@ -56,12 +56,12 @@
     });
 
     ev.run(['$http', 'mnPoolDefault', function($http, mnPoolDefault){
-        $http.get('/_p/event/getApplication/')
-            .then(function(data, status, headers, config) {
-                for(var i = 0; i < data.length; i++) {
-                    data[i].depcfg = JSON.stringify(data[i].depcfg, null, ' ');
+         $http.get('/_p/event/getApplication/')
+            .then(function(response) {
+                for(var i = 0; i < response.data.length; i++) {
+                    response.data[i].depcfg = JSON.stringify(response.data[i].depcfg, null, ' ');
                     if(!appLoaded) {
-                        applications.push(data[i]);
+                        applications.push(response.data[i]);
                     }
                 }
                 appLoaded = true;
@@ -73,21 +73,21 @@
         this.errorMsg = '';
         var parent = this;
         $http.get('/_p/event/getApplication/')
-            .then(function(data, status, headers, config) {
-                for(var i = 0; i < data.length; i++) {
-                    data[i].depcfg = JSON.stringify(data[i].depcfg, null, ' ');
+            .then(function(response) {
+                for(var i = 0; i < response.data.length; i++) {
+                    response.data[i].depcfg = JSON.stringify(response.data[i].depcfg, null, ' ');
                     if(!appLoaded) {
-                        applications.push(data[i]);
+                        applications.push(response.data[i]);
                     }
                 }
                 appLoaded = true;
                 parent.showCreation = true;
-            }, function(data, status, headers, config) {
+            }, function(response) {
                 parent.showCreation = false;
                 // if we got a 404, there is no eventing service on this node.
                 // let's go through the list of nodes
                 // and see which ones have a eventing service
-                if (status == 404) {
+                if (response.status == 404) {
                     mnPoolDefault.get().then(function(value){
                         parent.eventingNodes = mnPoolDefault.getUrlsRunningService(value.nodes, "eventing");
                         if (parent.eventingNodes.length === 0) {
@@ -98,7 +98,7 @@
                                                 You may access the interface here:<br>"
                         }                   });
                 } else {
-                    parent.errorMsg = data;
+                    parent.errorMsg = response.data;
                 }
             });
     }]);
@@ -173,11 +173,10 @@
                 headers: {'Content-Type': 'application/json'},
                 data: x
             });
-            res.success(function(data, status, headers, config) {
-                this.setApplication = data;
-            });
-            res.error(function(data, status, headers, config) {
-                alert( "failure message: " + JSON.stringify({data: data}));
+            res.then(function(response) {
+                this.setApplication = response.data;
+            }, function(response) {
+                alert( "failure message: " + JSON.stringify({data: response.data}));
             });
         }
 
@@ -295,10 +294,10 @@
                 headers: {'Content-Type': 'application/json'},
                 data: settings
             });
-            res.error(function(data, status, headers, config) {
-                alert( "failure message: " + JSON.stringify({data: data}));
+            res.then( function(response) {}, function(response) {
+                alert( "failure message: " + JSON.stringify({data: response.data}));
             });
-        }
+       }
 
         this.aceLoaded = function(editor) {
             parent.editor = editor;
