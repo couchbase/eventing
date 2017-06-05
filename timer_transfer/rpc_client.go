@@ -7,14 +7,16 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
 // NewRPCClient returns new rpc client construct
-func NewRPCClient(addr, appName, registeredName string) *Client {
+func NewRPCClient(consumer common.EventingConsumer, addr, appName, registeredName string) *Client {
 	return &Client{
 		Addr:           addr,
 		AppName:        appName,
+		consumer:       consumer,
 		registeredName: registeredName,
 	}
 }
@@ -35,7 +37,8 @@ func (c *Client) DialPath(path string) error {
 // Open makes RPC.Open call against RPC server
 func (c *Client) Open(filename string) (SessionID, error) {
 	var res Response
-	if err := c.rpcClient.Call(c.registeredName+".Open", FileRequest{Filename: filename}, &res); err != nil {
+	if err := c.rpcClient.Call(c.registeredName+".Open",
+		FileRequest{Filename: filename, UUID: c.uuid()}, &res); err != nil {
 		return 0, err
 	}
 
@@ -45,7 +48,8 @@ func (c *Client) Open(filename string) (SessionID, error) {
 // Stat return os.FileInfo stats
 func (c *Client) Stat(filename string) (*StatsResponse, error) {
 	var res StatsResponse
-	if err := c.rpcClient.Call(c.registeredName+".Stat", FileRequest{Filename: filename}, &res); err != nil {
+	if err := c.rpcClient.Call(c.registeredName+".Stat",
+		FileRequest{Filename: filename, UUID: c.uuid()}, &res); err != nil {
 		return nil, err
 	}
 
@@ -55,7 +59,8 @@ func (c *Client) Stat(filename string) (*StatsResponse, error) {
 // CreateArchive allows to download dir from RPC Server
 func (c *Client) CreateArchive(filename string) (*StatsResponse, error) {
 	var res StatsResponse
-	if err := c.rpcClient.Call(c.registeredName+".CreateArchive", FileRequest{Filename: filename}, &res); err != nil {
+	if err := c.rpcClient.Call(c.registeredName+".CreateArchive",
+		FileRequest{Filename: filename, UUID: c.uuid()}, &res); err != nil {
 		return nil, err
 	}
 
@@ -65,7 +70,8 @@ func (c *Client) CreateArchive(filename string) (*StatsResponse, error) {
 // RemoveArchive requests server to remove an archive that was create for transferring a dir from server
 func (c *Client) RemoveArchive(filename string) (*Response, error) {
 	var res Response
-	if err := c.rpcClient.Call(c.registeredName+".RemoveArchive", FileRequest{Filename: filename}, &res); err != nil {
+	if err := c.rpcClient.Call(c.registeredName+".RemoveArchive",
+		FileRequest{Filename: filename, UUID: c.uuid()}, &res); err != nil {
 		return nil, err
 	}
 
@@ -75,7 +81,8 @@ func (c *Client) RemoveArchive(filename string) (*Response, error) {
 // RemoveDir requests RPC server to clean up a directory that has been successfully transferred
 func (c *Client) RemoveDir(dirname string) (*Response, error) {
 	var res Response
-	if err := c.rpcClient.Call(c.registeredName+".RemoveDir", FileRequest{Filename: dirname}, &res); err != nil {
+	if err := c.rpcClient.Call(c.registeredName+".RemoveDir",
+		FileRequest{Filename: dirname, UUID: c.uuid()}, &res); err != nil {
 		return nil, err
 	}
 
@@ -87,7 +94,8 @@ func (c *Client) ReadAt(sessionID SessionID, offset int64, size int) ([]byte, er
 	res := &ReadResponse{
 		Data: make([]byte, size),
 	}
-	err := c.rpcClient.Call(c.registeredName+".ReadAt", ReadRequest{ID: sessionID, Size: size, Offset: offset}, res)
+	err := c.rpcClient.Call(c.registeredName+".ReadAt",
+		ReadRequest{ID: sessionID, Size: size, Offset: offset, UUID: c.uuid()}, res)
 
 	if res.EOF {
 		err = io.EOF
@@ -103,7 +111,8 @@ func (c *Client) ReadAt(sessionID SessionID, offset int64, size int) ([]byte, er
 // Read tries to instantiate connection to RPC server with specific sessionID
 func (c *Client) Read(sessionID SessionID, buf []byte) (int, error) {
 	res := &ReadResponse{Data: buf}
-	if err := c.rpcClient.Call(c.registeredName+".Read", ReadRequest{ID: sessionID, Size: cap(buf)}, res); err != nil {
+	if err := c.rpcClient.Call(c.registeredName+".Read",
+		ReadRequest{ID: sessionID, Size: cap(buf), UUID: c.uuid()}, res); err != nil {
 		return 0, err
 	}
 
@@ -278,4 +287,8 @@ retryDownload:
 // Close shuts down connection
 func (c *Client) Close() error {
 	return c.rpcClient.Close()
+}
+
+func (c *Client) uuid() string {
+	return c.consumer.NodeUUID()
 }

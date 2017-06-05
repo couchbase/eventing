@@ -10,6 +10,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
@@ -17,9 +18,10 @@ var connected = "200 Connected to Go RPC"
 
 // NewTimerTransfer Creates a server instance responsible for migration of
 // timer related plasma files between eventing nodes
-func NewTimerTransfer(appName, eventingDir, hostPortAddr, workerName string) *TransferSrv {
+func NewTimerTransfer(consumer common.EventingConsumer, appName, eventingDir, hostPortAddr, workerName string) *TransferSrv {
 	return &TransferSrv{
 		AppName:      appName,
+		consumer:     consumer,
 		EventingDir:  eventingDir,
 		HostPortAddr: hostPortAddr,
 		Mux:          http.NewServeMux(),

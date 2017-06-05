@@ -25,7 +25,7 @@ import (
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, skipTimerThreshold int,
 	eventingAdminPort, eventingDir string, p common.EventingProducer, app *common.AppConfig, vbnos []uint16,
-	bucket, logLevel, tcpPort, uuid string,
+	bucket, logLevel, tcpPort, uuid string, eventingNodeUUIDs []string,
 	sockWriteBatchSize, timerProcessingPoolSize, workerID int) *Consumer {
 
 	var b *couchbase.Bucket
@@ -42,6 +42,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, sk
 		dcpStreamBoundary:                  streamBoundary,
 		eventingAdminPort:                  eventingAdminPort,
 		eventingDir:                        eventingDir,
+		eventingNodeUUIDs:                  eventingNodeUUIDs,
 		gracefulShutdownChan:               make(chan bool, 1),
 		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
 		logLevel:                           logLevel,
@@ -132,7 +133,7 @@ func (c *Consumer) Serve() {
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
-	c.timerTransferHandle = timer.NewTimerTransfer(c.app.AppName, fmt.Sprintf("%s/%s/", c.eventingDir, c.app.AppName),
+	c.timerTransferHandle = timer.NewTimerTransfer(c, c.app.AppName, fmt.Sprintf("%s/%s/", c.eventingDir, c.app.AppName),
 		c.HostPortAddr(), c.workerName)
 	c.timerTransferSupToken = c.consumerSup.Add(c.timerTransferHandle)
 
@@ -286,6 +287,17 @@ func (c *Consumer) NotifyClusterChange() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about cluster state change",
 		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid())
 	c.clusterStateChangeNotifCh <- true
+}
+
+// UpdateEventingNodesUUIDs is called by producer instance to notify about
+// updated list of node uuids
+func (c *Consumer) UpdateEventingNodesUUIDs(uuids []string) {
+	c.eventingNodeUUIDs = uuids
+}
+
+// EventingNodeUUIDs return list of known eventing node uuids
+func (c *Consumer) EventingNodeUUIDs() []string {
+	return c.eventingNodeUUIDs
 }
 
 // NotifyRebalanceStop is called by producer to signal stopping of

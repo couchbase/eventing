@@ -238,7 +238,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbB
 				strings.Split(c.timerAddrs[previousVBOwner][previousAssignedWorker], ":")[3])
 		}
 
-		client := timer.NewRPCClient(remoteConsumerAddr, c.app.AppName, previousAssignedWorker)
+		client := timer.NewRPCClient(c, remoteConsumerAddr, c.app.AppName, previousAssignedWorker)
 		if err := client.DialPath("/" + previousAssignedWorker + "/"); err != nil {
 			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to connect to remote RPC server addr: %v, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, err)

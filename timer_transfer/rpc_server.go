@@ -10,8 +10,14 @@ import (
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
+var errUnexpectedNodeUUID = fmt.Errorf("node uuid not present in list of expected node UUIDs")
+
 // Open takes FileRequest for transferring specific file
 func (r *RPC) Open(req FileRequest, res *Response) error {
+	if !r.checkIfUUIDIsExpected(req.UUID) {
+		return errUnexpectedNodeUUID
+	}
+
 	path := filepath.Join(r.server.EventingDir, req.Filename)
 
 	file, err := os.Open(path)
@@ -32,6 +38,10 @@ func (r *RPC) Open(req FileRequest, res *Response) error {
 
 // Stat returns requested file's stats
 func (r *RPC) Stat(req FileRequest, res *StatsResponse) error {
+	if !r.checkIfUUIDIsExpected(req.UUID) {
+		return errUnexpectedNodeUUID
+	}
+
 	path := filepath.Join(r.server.EventingDir, req.Filename)
 
 	var info os.FileInfo
@@ -57,6 +67,10 @@ func (r *RPC) Stat(req FileRequest, res *StatsResponse) error {
 
 // CreateArchive creates an archive for requested dirname
 func (r *RPC) CreateArchive(req FileRequest, res *StatsResponse) error {
+	if !r.checkIfUUIDIsExpected(req.UUID) {
+		return errUnexpectedNodeUUID
+	}
+
 	path := filepath.Join(r.server.EventingDir, req.Filename)
 
 	infos, err := ioutil.ReadDir(path)
@@ -97,6 +111,10 @@ func (r *RPC) CreateArchive(req FileRequest, res *StatsResponse) error {
 // RemoveArchive erases the archive that was previously created by
 // CreateArchive RPC call from client
 func (r *RPC) RemoveArchive(req FileRequest, res *Response) error {
+	if !r.checkIfUUIDIsExpected(req.UUID) {
+		return errUnexpectedNodeUUID
+	}
+
 	path := filepath.Join(r.server.EventingDir, req.Filename)
 
 	logging.Debugf("TTRC[%s:%s] RPC.RemoveArchive Request to clean up archive: %v",
@@ -107,6 +125,10 @@ func (r *RPC) RemoveArchive(req FileRequest, res *Response) error {
 
 // RemoveDir cleans up dir on client request
 func (r *RPC) RemoveDir(req FileRequest, res *Response) error {
+	if !r.checkIfUUIDIsExpected(req.UUID) {
+		return errUnexpectedNodeUUID
+	}
+
 	path := filepath.Join(r.server.EventingDir, req.Filename)
 
 	logging.Debugf("TTRC[%s:%s] RPC.RemoveDir Request to clean up dir: %v",
@@ -130,6 +152,10 @@ func (r *RPC) Close(req Request, res *Response) error {
 
 // Read returns requested file content from specified offset
 func (r *RPC) Read(req ReadRequest, res *ReadResponse) error {
+	if !r.checkIfUUIDIsExpected(req.UUID) {
+		return errUnexpectedNodeUUID
+	}
+
 	file := r.session.Get(req.ID)
 	if file == nil {
 		logging.Errorf("TTRC[%s:%s] RPC.Read SessionID: %v not found",
@@ -160,6 +186,10 @@ func (r *RPC) Read(req ReadRequest, res *ReadResponse) error {
 
 // ReadAt reads requested file contents from specific file offset
 func (r *RPC) ReadAt(req ReadRequest, res *ReadResponse) error {
+	if !r.checkIfUUIDIsExpected(req.UUID) {
+		return errUnexpectedNodeUUID
+	}
+
 	file := r.session.Get(req.ID)
 	if file == nil {
 		logging.Errorf("TTRC[%s:%s] RPC.ReadAt SessionID: %v not found",
@@ -205,4 +235,16 @@ func (r *RPC) setupStatsResponse(info os.FileInfo, path string, res *StatsRespon
 	res.Mode = info.Mode()
 	res.Size = info.Size()
 	res.Type = "File"
+}
+
+func (r *RPC) checkIfUUIDIsExpected(uuid string) bool {
+	uuids := r.server.consumer.EventingNodeUUIDs()
+
+	for _, v := range uuids {
+		if v == uuid {
+			return true
+		}
+	}
+
+	return false
 }

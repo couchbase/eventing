@@ -54,8 +54,10 @@ type EventingConsumer interface {
 	ConsumerName() string
 	DcpEventsRemainingToProcess() uint64
 	EventsProcessedPSec() *EventProcessingStats
+	EventingNodeUUIDs() []string
 	HandleV8Worker()
 	HostPortAddr() string
+	NodeUUID() string
 	NotifyClusterChange()
 	NotifyRebalanceStop()
 	NotifySettingsChange()
@@ -66,6 +68,7 @@ type EventingConsumer interface {
 	Stop()
 	String() string
 	TimerTransferHostPortAddr() string
+	UpdateEventingNodesUUIDs(uuids []string)
 	VbProcessingStats() map[uint16]map[string]interface{}
 }
 

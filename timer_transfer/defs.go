@@ -6,6 +6,8 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+
+	"github.com/couchbase/eventing/common"
 )
 
 const (
@@ -17,6 +19,7 @@ const (
 type TransferSrv struct {
 	Addr         string
 	AppName      string
+	consumer     common.EventingConsumer
 	EventingDir  string
 	HostPortAddr string
 	Listener     net.Listener
@@ -29,6 +32,7 @@ type TransferSrv struct {
 type Client struct {
 	Addr           string
 	AppName        string
+	consumer       common.EventingConsumer
 	registeredName string
 	rpcClient      *rpc.Client
 }
@@ -60,6 +64,7 @@ type Response struct {
 // FileRequest to request specific file
 type FileRequest struct {
 	Filename string
+	UUID     string
 }
 
 // GetRequest to request specific file block
@@ -80,6 +85,7 @@ type ReadRequest struct {
 	ID     SessionID
 	Offset int64
 	Size   int
+	UUID   string
 }
 
 // ReadResponse tp capture response from ReadRequest call

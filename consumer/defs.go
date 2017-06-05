@@ -155,6 +155,7 @@ type Consumer struct {
 	eventingAdminPort      string
 	eventingDir            string
 	eventingNodeAddrs      []string
+	eventingNodeUUIDs      []string
 	gocbBucket             *gocb.Bucket
 	isRebalanceOngoing     bool
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed
