@@ -94,6 +94,44 @@ var setOpCallback = func(args ...interface{}) error {
 	return err
 }
 
+var getNonDocTimerCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+	key := args[1].(string)
+	val := args[2].(*string)
+	checkEnoEnt := args[3].(bool)
+
+	var isNoEnt *bool
+	if checkEnoEnt {
+		isNoEnt = args[4].(*bool)
+	}
+
+	var err error
+	var v []byte
+	v, _, _, err = c.metadataBucketHandle.GetsRaw(key)
+
+	if checkEnoEnt {
+		if gomemcached.KEY_ENOENT == util.MemcachedErrCode(err) {
+			*isNoEnt = true
+			return nil
+		} else if err != nil {
+			logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for non_doc timer key: %s, err: %v",
+				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
+			return err
+		} else {
+			*isNoEnt = false
+			*val = string(v)
+			return nil
+		}
+	}
+
+	if err != nil {
+		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for non_doc timer key: %s, err: %v",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
+	}
+
+	return err
+}
+
 var getOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)

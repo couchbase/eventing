@@ -40,12 +40,15 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, sk
 		dcpFeedCancelChs:                   make([]chan bool, 0),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,
+		docTimerEntryCh:                    make(chan *byTimerEntry, timerChanSize),
 		eventingAdminPort:                  eventingAdminPort,
 		eventingDir:                        eventingDir,
 		eventingNodeUUIDs:                  eventingNodeUUIDs,
 		gracefulShutdownChan:               make(chan bool, 1),
 		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
 		logLevel:                           logLevel,
+		nonDocTimerEntryCh:                 make(chan string, timerChanSize),
+		nonDocTimerStopCh:                  make(chan bool, 1),
 		opsTimestamp:                       time.Now(),
 		persistAllTicker:                   time.NewTicker(persistAllTickInterval),
 		plasmaStoreRWMutex:                 &sync.RWMutex{},
@@ -65,7 +68,6 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, sk
 		stopVbOwnerGiveupCh:                make(chan bool, 1),
 		stopVbOwnerTakeoverCh:              make(chan bool, 1),
 		tcpPort:                            tcpPort,
-		timerEntryCh:                       make(chan *byTimerEntry, timerChanSize),
 		timerRWMutex:                       &sync.RWMutex{},
 		timerProcessingTickInterval:        timerProcessingTickInterval,
 		timerProcessingWorkerCount:         timerProcessingPoolSize,
@@ -144,9 +146,13 @@ func (c *Consumer) Serve() {
 
 	go c.plasmaPersistAll()
 
+	// doc_id timer events
 	for _, r := range c.timerProcessingRunningWorkers {
 		go r.processTimerEvents()
 	}
+
+	// non doc_id timer events
+	go c.processNonDocTimerEvents()
 
 	c.controlRoutine()
 
@@ -210,6 +216,7 @@ func (c *Consumer) Stop() {
 		k.stopCh <- true
 	}
 
+	c.nonDocTimerStopCh <- true
 	c.stopControlRoutineCh <- true
 	c.stopPlasmaPersistCh <- true
 

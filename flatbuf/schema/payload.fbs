@@ -10,6 +10,7 @@ table Payload {
   value:string; // dcp mutation value
   doc_id:string; // timer event doc_id
   callback_fn:string; // timer event callback function
+  doc_ids_callback_fns:string; // non doc-id based timer event doc_id-callback_fn pairs
 }
 
 root_type Payload;

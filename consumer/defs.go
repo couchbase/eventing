@@ -167,11 +167,12 @@ type Consumer struct {
 	vbsRemainingToGiveUp   []uint16
 	vbsRemainingToRestream []uint16
 
+	docTimerEntryCh    chan *byTimerEntry
+	nonDocTimerEntryCh chan string
 	// Plasma DGM store handle to store timer entries at per vbucket level
 	persistAllTicker    *time.Ticker
 	stopPlasmaPersistCh chan bool
 	timerAddrs          map[string]map[string]string
-	timerEntryCh        chan *byTimerEntry
 	plasmaStoreRWMutex  *sync.RWMutex
 	vbPlasmaStoreMap    map[uint16]*plasma.Plasma
 	vbPlasmaWriter      map[uint16]*plasma.Writer
@@ -181,6 +182,8 @@ type Consumer struct {
 	signalProcessTimerPlasmaCloseAckCh chan uint16
 	signalStoreTimerPlasmaCloseAckCh   chan uint16
 
+	nonDocTimerProcessingTicker   *time.Ticker
+	nonDocTimerStopCh             chan bool
 	skipTimerThreshold            int
 	timerProcessingTickInterval   time.Duration
 	timerProcessingVbsWorkerMap   map[uint16]*timerProcessingWorker

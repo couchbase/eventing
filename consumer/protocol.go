@@ -12,10 +12,15 @@ const (
 	eventType int8 = iota
 	dcpEvent
 	httpEvent
-	v8DebugEvent
 	v8WorkerEvent
 	appWorkerSetting
 	timerEvent
+)
+
+const (
+	timerOpcode int8 = iota
+	docTimer
+	nonDocTimer
 )
 
 const (
@@ -50,8 +55,12 @@ type response struct {
 	err      error
 }
 
-func makeTimerEventHeader() []byte {
-	return makeHeader(timerEvent, 0, "")
+func makeDocTimerEventHeader() []byte {
+	return makeHeader(timerEvent, docTimer, "")
+}
+
+func makeNonDocTimerEventHeader() []byte {
+	return makeHeader(timerEvent, nonDocTimer, "")
 }
 
 func makeDcpMutationHeader(mutationMeta string) []byte {
@@ -99,7 +108,7 @@ func makeHeader(event int8, opcode int8, meta string) (encodedHeader []byte) {
 	return builder.Bytes[builder.Head():]
 }
 
-func makeTimerPayload(docID, callbackFn string) []byte {
+func makeDocTimerPayload(docID, callbackFn string) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
 	docIDPos := builder.CreateString(docID)
@@ -109,6 +118,20 @@ func makeTimerPayload(docID, callbackFn string) []byte {
 
 	payload.PayloadAddDocId(builder, docIDPos)
 	payload.PayloadAddCallbackFn(builder, callbackFnPos)
+
+	payloadPos := payload.PayloadEnd(builder)
+	builder.Finish(payloadPos)
+	return builder.Bytes[builder.Head():]
+}
+
+func makeNonDocTimerPayload(data string) []byte {
+	builder := flatbuffers.NewBuilder(0)
+	builder.Reset()
+	pPos := builder.CreateString(data)
+
+	payload.PayloadStart(builder)
+
+	payload.PayloadAddDocIdsCallbackFns(builder, pPos)
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)

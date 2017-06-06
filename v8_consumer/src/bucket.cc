@@ -222,12 +222,14 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
 
   lcb_SDSPEC xattr_spec, doc_spec = {0};
   xattr_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-  xattr_spec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
+  xattr_spec.options =
+      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
 
   std::string xattr_cas_path("eventing.cas");
   std::string mutation_cas_macro("\"${Mutation.CAS}\"");
 
-  LCB_SDSPEC_SET_PATH(&xattr_spec, xattr_cas_path.c_str(), xattr_cas_path.size());
+  LCB_SDSPEC_SET_PATH(&xattr_spec, xattr_cas_path.c_str(),
+                      xattr_cas_path.size());
   LCB_SDSPEC_SET_VALUE(&xattr_spec, mutation_cas_macro.c_str(),
                        mutation_cas_macro.size());
   specs.push_back(xattr_spec);

@@ -17,12 +17,10 @@ event_type getEvent(int8_t event) {
   if (event == 2)
     return eHTTP;
   if (event == 3)
-    return eV8_Debug;
-  if (event == 4)
     return eV8_Worker;
-  if (event == 5)
+  if (event == 4)
     return eApp_Worker_Setting;
-  if (event == 6)
+  if (event == 5)
     return eTimer;
   return Event_Unknown;
 }
@@ -55,34 +53,16 @@ http_opcode getHTTPOpcode(int8_t opcode) {
   return HTTP_Opcode_Unknown;
 }
 
-v8_debug_opcode getV8DebugOpcode(int8_t opcode) {
-  if (opcode == 1)
-    return oBacktrace;
-  if (opcode == 2)
-    return oClear_Breakpoint;
-  if (opcode == 3)
-    return oContinue;
-  if (opcode == 4)
-    return oEvaluate;
-  if (opcode == 5)
-    return oFrame;
-  if (opcode == 6)
-    return oList_Breakpoints;
-  if (opcode == 7)
-    return oLookup;
-  if (opcode == 8)
-    return oSet_Breakpoint;
-  if (opcode == 9)
-    return oSource;
-  if (opcode == 10)
-    return oStart_Debugger;
-  if (opcode == 11)
-    return oStop_Debugger;
-  return V8_Debug_Opcode_Unknown;
-}
-
 app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
   if (opcode == 1)
     return oLogLevel;
   return App_Worker_Setting_Opcode_Unknown;
+}
+
+timer_opcode getTimerOpcode(int8_t opcode) {
+  if (opcode == 1)
+    return oDocTimer;
+  if (opcode == 2)
+    return oNonDocTimer;
+  return Timer_Opcode_Unknown;
 }

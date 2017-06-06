@@ -2,7 +2,7 @@
 #define CLIENT_H
 
 #ifndef STANDALONE_BUILD
-extern void (assert)(int);
+extern void(assert)(int);
 #else
 #include <cassert>
 #endif

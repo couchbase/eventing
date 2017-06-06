@@ -104,7 +104,7 @@ static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
 std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                                 message_t *parsed_message) {
   std::string app_name, dep_cfg, kv_host_port, rbac_user, rbac_pass, key, val,
-      result, doc_id, callback_fn;
+      result, doc_id, callback_fn, doc_ids_cb_fns;
   const flatbuf::payload::Payload *payload;
 
   switch (getEvent(parsed_header->event)) {
@@ -159,11 +159,24 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     }
     break;
   case eTimer:
-    payload = flatbuf::payload::GetPayload(
-        (const void *)parsed_message->payload.c_str());
-    doc_id.assign(payload->doc_id()->str());
-    callback_fn.assign(payload->callback_fn()->str());
-    this->v8worker->SendTimer(doc_id, callback_fn);
+
+    switch (getTimerOpcode(parsed_header->opcode)) {
+    case oDocTimer:
+      payload = flatbuf::payload::GetPayload(
+          (const void *)parsed_message->payload.c_str());
+      doc_id.assign(payload->doc_id()->str());
+      callback_fn.assign(payload->callback_fn()->str());
+      this->v8worker->SendDocTimer(doc_id, callback_fn);
+      break;
+    case oNonDocTimer:
+      payload = flatbuf::payload::GetPayload(
+          (const void *)parsed_message->payload.c_str());
+      doc_ids_cb_fns.assign(payload->doc_ids_callback_fns()->str());
+      this->v8worker->SendNonDocTimer(doc_ids_cb_fns);
+      break;
+    case Timer_Opcode_Unknown:
+      break;
+    }
     break;
   case eHTTP:
     switch (getHTTPOpcode(parsed_header->opcode)) {
@@ -171,24 +184,6 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oPost:
     case HTTP_Opcode_Unknown:
       LOG(logError) << "http_opcode_unknown encountered" << '\n';
-      break;
-    }
-    break;
-  case eV8_Debug:
-    switch (getV8DebugOpcode(parsed_header->opcode)) {
-    case oBacktrace:
-    case oClear_Breakpoint:
-    case oContinue:
-    case oEvaluate:
-    case oFrame:
-    case oList_Breakpoints:
-    case oLookup:
-    case oSet_Breakpoint:
-    case oSource:
-    case oStart_Debugger:
-    case oStop_Debugger:
-    case V8_Debug_Opcode_Unknown:
-      LOG(logError) << "v8_debug_opcode_unknown encountered" << '\n';
       break;
     }
     break;

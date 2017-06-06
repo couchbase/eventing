@@ -241,9 +241,9 @@ func (c *Consumer) processEvents() {
 			default:
 			}
 
-		case e, ok := <-c.timerEntryCh:
+		case e, ok := <-c.docTimerEntryCh:
 			if ok == false {
-				logging.Infof("CRDP[%s:%s:%s:%d] Closing timer chan", c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+				logging.Infof("CRDP[%s:%s:%s:%d] Closing doc timer chan", c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 				c.stopCheckpointingCh <- true
 				c.producer.CleanupDeadConsumer(c)
@@ -251,7 +251,19 @@ func (c *Consumer) processEvents() {
 			}
 
 			c.timerMessagesProcessed++
-			c.sendTimerEvent(e)
+			c.sendDocTimerEvent(e)
+
+		case e, ok := <-c.nonDocTimerEntryCh:
+			if ok == false {
+				logging.Infof("CRDP[%s:%s:%s:%d] Closing non_doc timer chan", c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+
+				c.stopCheckpointingCh <- true
+				c.producer.CleanupDeadConsumer(c)
+				return
+			}
+
+			c.timerMessagesProcessed++
+			c.sendNonDocTimerEvent(e)
 
 		case <-c.statsTicker.C:
 

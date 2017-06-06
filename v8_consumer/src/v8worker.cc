@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -27,6 +28,7 @@
 #include "../include/n1ql.h"
 #include "../include/parse_deployment.h"
 
+#define BUFSIZE 100
 #define MAXPATHLEN 256
 #define TRANSPILER_JS_PATH "transpiler.js"
 #define ESPRIMA_PATH "esprima.js"
@@ -179,30 +181,113 @@ std::string ConvertToISO8601(std::string timestamp) {
   return buf_s;
 }
 
-void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
+bool isFuncReference(const v8::FunctionCallbackInfo<v8::Value> &args, int i) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
 
-  std::string cb_func;
-  if (args[0]->IsFunction()) {
-    v8::Local<v8::Function> func_ref = args[0].As<v8::Function>();
+  if (args[i]->IsFunction()) {
+    v8::Local<v8::Function> func_ref = args[i].As<v8::Function>();
     v8::String::Utf8Value func_name(func_ref->GetName());
+
     if (func_name.length()) {
       v8::Local<v8::Context> context = isolate->GetCurrentContext();
       v8::Local<v8::Function> timer_func_ref =
           context->Global()->Get(func_ref->GetName()).As<v8::Function>();
+
       if (timer_func_ref->IsUndefined()) {
         LOG(logError) << *func_name << " is not defined in global scope"
                       << '\n';
-        return;
+        return false;
       }
-      cb_func.assign(std::string(*func_name));
     } else {
       LOG(logError) << "Invalid arg: Anonymous function is not allowed" << '\n';
-      return;
+      return false;
     }
   } else {
     LOG(logError) << "Invalid arg: Function reference expected" << '\n';
+    return false;
+  }
+
+  return true;
+}
+
+void CreateNonDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+
+  std::string cb_func;
+  if (isFuncReference(args, 0)) {
+    v8::Local<v8::Function> func_ref = args[0].As<v8::Function>();
+    v8::String::Utf8Value func_name(func_ref->GetName());
+    cb_func.assign(std::string(*func_name));
+  } else {
+    return;
+  }
+
+  v8::String::Utf8Value ts(args[1]);
+
+  std::string start_ts, timer_entry, value;
+  start_ts.assign(std::string(*ts));
+
+  if (atoi(start_ts.c_str()) <= 0) {
+    LOG(logError)
+        << "Skipping non-doc_id timer callback setup, invalid start timestamp"
+        << '\n';
+    return;
+  }
+
+  timer_entry = ConvertToISO8601(start_ts);
+  timer_entry.append("Z");
+  LOG(logTrace) << "Request to register non-doc_id timer, callback_func:"
+                << cb_func << "start_ts : " << timer_entry << '\n';
+
+  // Store blob in KV store, blob structure:
+  // {
+  //    "callback_func": CallbackFunc,
+  //    "start_ts": timestamp
+  // }
+
+  // prepending delimiter ";"
+  value.assign(";{\"callback_func\": \"");
+  value.append(cb_func);
+  value.append("\", \"start_ts\": \"");
+  value.append(timer_entry);
+  value.append("\"}");
+
+  lcb_t *meta_cb_instance =
+      reinterpret_cast<lcb_t *>(args.GetIsolate()->GetData(2));
+
+  // Append doc_id to key that keeps tracks of doc_ids for which
+  // callbacks need to be triggered at any given point in time
+  lcb_CMDGET gcmd = {0};
+  LCB_CMD_SET_KEY(&gcmd, timer_entry.c_str(), timer_entry.length());
+  lcb_get3(*meta_cb_instance, NULL, &gcmd);
+  lcb_set_cookie(*meta_cb_instance, timer_entry.c_str());
+  lcb_wait(*meta_cb_instance);
+  lcb_set_cookie(*meta_cb_instance, NULL);
+
+  lcb_CMDSTORE cmd = {0};
+  cmd.operation = LCB_APPEND;
+
+  LOG(logTrace) << "Non doc_id timer entry to append: " << value << '\n';
+  LCB_CMD_SET_KEY(&cmd, timer_entry.c_str(), timer_entry.length());
+  LCB_CMD_SET_VALUE(&cmd, value.c_str(), value.length());
+  lcb_sched_enter(*meta_cb_instance);
+  lcb_store3(*meta_cb_instance, NULL, &cmd);
+  lcb_sched_leave(*meta_cb_instance);
+  lcb_wait(*meta_cb_instance);
+}
+
+void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+
+  std::string cb_func;
+  if (isFuncReference(args, 0)) {
+    v8::Local<v8::Function> func_ref = args[0].As<v8::Function>();
+    v8::String::Utf8Value func_name(func_ref->GetName());
+    cb_func.assign(std::string(*func_name));
+  } else {
     return;
   }
 
@@ -339,7 +424,7 @@ std::vector<std::string> &split(const std::string &s, char delim,
                                 std::vector<std::string> &elems) {
   std::stringstream ss(s);
   std::string item;
-  while (getline(ss, item, delim)) {
+  while (std::getline(ss, item, delim)) {
     elems.push_back(item);
   }
   return elems;
@@ -364,20 +449,48 @@ std::string string_sprintf(const char *format, Args... args) {
   return std::move(str);
 }
 
-static void multi_op_callback(lcb_t, int cbtype, const lcb_RESPBASE *rb) {
+static void multi_op_callback(lcb_t cb_instance, int cbtype,
+                              const lcb_RESPBASE *rb) {
   LOG(logTrace) << "Got callback for " << lcb_strcbtype(cbtype) << '\n';
+
+  if (cbtype == LCB_CALLBACK_GET) {
+    // lcb_get calls against metadata bucket is only triggered for timer lookups
+    const lcb_RESPGET *rg = reinterpret_cast<const lcb_RESPGET *>(rb);
+    const void *data = lcb_get_cookie(cb_instance);
+
+    std::string ts;
+    std::string timestamp_marker("");
+    lcb_CMDSTORE acmd = {0};
+
+    switch (rb->rc) {
+    case LCB_KEY_ENOENT:
+      ts.assign((const char *)data);
+
+      LCB_CMD_SET_KEY(&acmd, ts.c_str(), ts.length());
+      LCB_CMD_SET_VALUE(&acmd, timestamp_marker.c_str(),
+                        timestamp_marker.length());
+      acmd.operation = LCB_ADD;
+
+      lcb_store3(cb_instance, NULL, &acmd);
+      lcb_wait(cb_instance);
+      break;
+    case LCB_SUCCESS:
+      LOG(logTrace) << string_sprintf("Value %.*s", (int)rg->nvalue, rg->value)
+                    << '\n';
+      break;
+    default:
+      LOG(logTrace) << "Operation failed, " << lcb_strerror(NULL, rb->rc)
+                    << " rc:" << rb->rc << '\n';
+      break;
+    }
+  }
 
   if (rb->rc != LCB_SUCCESS && rb->rc != LCB_SUBDOC_MULTI_FAILURE) {
     LOG(logError) << "Operation failed" << lcb_strerror(NULL, rb->rc) << '\n';
     return;
   }
 
-  if (cbtype == LCB_CALLBACK_GET) {
-    const lcb_RESPGET *rg = reinterpret_cast<const lcb_RESPGET *>(rb);
-    LOG(logTrace) << string_sprintf("Value %.*s", (int)rg->nvalue, rg->value)
-                  << '\n';
-  } else if (cbtype == LCB_CALLBACK_SDMUTATE ||
-             cbtype == LCB_CALLBACK_SDLOOKUP) {
+  if (cbtype == LCB_CALLBACK_SDMUTATE || cbtype == LCB_CALLBACK_SDLOOKUP) {
     const lcb_RESPSUBDOC *resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
     lcb_SDENTRY ent;
     size_t iter = 0;
@@ -387,31 +500,6 @@ static void multi_op_callback(lcb_t, int cbtype, const lcb_RESPBASE *rb) {
                     << '\n';
     }
   }
-}
-
-static void op_get_callback(lcb_t instance, int cbtype,
-                            const lcb_RESPBASE *rb) {
-  const lcb_RESPGET *resp = reinterpret_cast<const lcb_RESPGET *>(rb);
-  Result *result = reinterpret_cast<Result *>(rb->cookie);
-
-  result->status = resp->rc;
-  result->cas = resp->cas;
-  result->itmflags = resp->itmflags;
-  result->value.clear();
-
-  if (resp->rc == LCB_SUCCESS) {
-    result->value.assign(reinterpret_cast<const char *>(resp->value),
-                         resp->nvalue);
-  } else {
-    LOG(logError) << "lcb get failed with error "
-                  << lcb_strerror(instance, resp->rc) << '\n';
-  }
-}
-
-static void op_set_callback(lcb_t instance, int cbtype,
-                            const lcb_RESPBASE *rb) {
-  LOG(logTrace) << "lcb set response code: " << lcb_strerror(instance, rb->rc)
-                << '\n';
 }
 
 static ArrayBufferAllocator array_buffer_allocator;
@@ -440,8 +528,10 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
 
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "log"),
               v8::FunctionTemplate::New(GetIsolate(), Print));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "createTimer"),
-              v8::FunctionTemplate::New(GetIsolate(), CreateTimer));
+  global->Set(v8::String::NewFromUtf8(GetIsolate(), "docTimer"),
+              v8::FunctionTemplate::New(GetIsolate(), CreateDocTimer));
+  global->Set(v8::String::NewFromUtf8(GetIsolate(), "nonDocTimer"),
+              v8::FunctionTemplate::New(GetIsolate(), CreateNonDocTimer));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "iter"),
               v8::FunctionTemplate::New(GetIsolate(), IterFunction));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "stopIter"),
@@ -469,7 +559,6 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
       config->component_configs.begin();
 
   for (; it != config->component_configs.end(); it++) {
-
     if (it->first == "buckets") {
       std::map<std::string, std::vector<std::string>>::iterator bucket =
           config->component_configs["buckets"].begin();
@@ -484,7 +573,6 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
       }
     }
   }
-  delete config;
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: " << app_name
                << " kv_host_port: " << kv_host_port
@@ -512,6 +600,27 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
 
   lcb_install_callback3(cb_instance, LCB_CALLBACK_DEFAULT, multi_op_callback);
   this->GetIsolate()->SetData(1, (void *)(&cb_instance));
+
+  std::cout << "metadata: " << config->metadata_bucket << std::endl;
+
+  std::string meta_connstr = "couchbase://" + cb_kv_endpoint + "/" +
+                             config->metadata_bucket.c_str() +
+                             "?username=" + rbac_user + "&select_bucket=true";
+
+  crst.version = 3;
+  crst.v.v3.connstr = meta_connstr.c_str();
+  crst.v.v3.type = LCB_TYPE_BUCKET;
+  crst.v.v3.passwd = rbac_pass.c_str();
+
+  lcb_create(&meta_cb_instance, &crst);
+  lcb_connect(meta_cb_instance);
+  lcb_wait(meta_cb_instance);
+
+  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_DEFAULT,
+                        multi_op_callback);
+  this->GetIsolate()->SetData(2, (void *)(&meta_cb_instance));
+
+  delete config;
 }
 
 V8Worker::~V8Worker() {
@@ -705,7 +814,39 @@ int V8Worker::SendDelete(std::string meta) {
   return SUCCESS;
 }
 
-void V8Worker::SendTimer(std::string doc_id, std::string callback_fn) {
+void V8Worker::SendNonDocTimer(std::string doc_ids_cb_fns) {
+  std::vector<std::string> entries = split(doc_ids_cb_fns, ';');
+  char tstamp[BUFSIZE], fn[BUFSIZE];
+
+  if (entries.size() > 0) {
+    v8::Locker locker(GetIsolate());
+    v8::Isolate::Scope isolate_scope(GetIsolate());
+    v8::HandleScope handle_scope(GetIsolate());
+
+    v8::Local<v8::Context> context =
+        v8::Local<v8::Context>::New(GetIsolate(), context_);
+    v8::Context::Scope context_scope(context);
+
+    for (auto entry : entries) {
+      if (entry.length() > 0) {
+        sscanf(entry.c_str(),
+               "{\"callback_func\": \"%[^\"]\", \"start_ts\": \"%[^\"]\"}", fn,
+               tstamp);
+        LOG(logTrace) << "Non doc timer event for callback_fn: " << fn
+                      << " tstamp: " << tstamp << '\n';
+
+        v8::Handle<v8::Value> val =
+            context->Global()->Get(createUtf8String(GetIsolate(), fn));
+        v8::Handle<v8::Function> cb_func = v8::Handle<v8::Function>::Cast(val);
+
+        v8::Handle<v8::Value> arg[0];
+        cb_func->Call(context->Global(), 0, arg);
+      }
+    }
+  }
+}
+
+void V8Worker::SendDocTimer(std::string doc_id, std::string callback_fn) {
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());

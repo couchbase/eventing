@@ -55,9 +55,23 @@ func (c *Consumer) sendLoadV8Worker(appCode string) error {
 	return c.sendMessage(msg, 0, 0, false)
 }
 
-func (c *Consumer) sendTimerEvent(e *byTimerEntry) {
-	timerHeader := makeTimerEventHeader()
-	timerPayload := makeTimerPayload(e.DocID, e.CallbackFn)
+func (c *Consumer) sendDocTimerEvent(e *byTimerEntry) {
+	timerHeader := makeDocTimerEventHeader()
+	timerPayload := makeDocTimerPayload(e.DocID, e.CallbackFn)
+
+	msg := &message{
+		Header:  timerHeader,
+		Payload: timerPayload,
+	}
+
+	if err := c.sendMessage(msg, 0, 0, false); err != nil {
+		return
+	}
+}
+
+func (c *Consumer) sendNonDocTimerEvent(payload string) {
+	timerHeader := makeNonDocTimerEventHeader()
+	timerPayload := makeNonDocTimerPayload(payload)
 
 	msg := &message{
 		Header:  timerHeader,

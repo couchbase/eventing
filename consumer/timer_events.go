@@ -3,6 +3,7 @@ package consumer
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -31,10 +32,10 @@ var plasmaInsertKV = func(args ...interface{}) error {
 
 	err = w.InsertKV([]byte(k), []byte(v))
 	if err != nil {
-		logging.Errorf("CRPO[%s:%s:%s:%d] Key: %v vb: %v Failed to insert into plasma store, err: %v",
+		logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v vb: %v Failed to insert into plasma store, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), k, vb, err)
 	} else {
-		logging.Debugf("CRPO[%s:%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
+		logging.Debugf("CRTE[%s:%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), k, v, vb, err)
 	}
 	w.EndTx(token)
@@ -118,7 +119,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			c.timerProcessingRunningWorkers = append(c.timerProcessingRunningWorkers, worker)
 			c.timerProcessingWorkerSignalCh[worker] = make(chan bool, 1)
 
-			logging.Debugf("CRPO[%s:%s:timer_%d:%s:%d] Initial Timer routine vbs assigned len: %d dump: %v",
+			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Initial Timer routine vbs assigned len: %d dump: %v",
 				c.app.AppName, c.workerName, worker.id, c.tcpPort, c.Pid(), len(vbsAssigned), vbsAssigned)
 		}
 	} else {
@@ -138,7 +139,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			c.timerProcessingRunningWorkers[i].vbsAssigned = vbsAssigned
 			c.timerRWMutex.Unlock()
 
-			logging.Debugf("CRPO[%s:%s:timer_%d:%s:%d] Timer routine vbs assigned len: %d dump: %v",
+			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Timer routine vbs assigned len: %d dump: %v",
 				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), len(vbsAssigned), vbsAssigned)
 		}
 	}
@@ -214,7 +215,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 			// Make sure time processing isn't going ahead of system clock
 			ts, err := time.Parse(tsLayout, currTimer)
 			if err != nil {
-				logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
+				logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
 					r.c.app.AppName, r.c.workerName, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
 				continue
 			}
@@ -237,7 +238,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 			r.c.timerRWMutex.RUnlock()
 
 			if err != nil && err != plasma.ErrItemNotFound {
-				logging.Errorf("CRPO[%s:%s:timer_%d:%s:%d] vb: %d Failed to lookup currTimer: %v err: %v",
+				logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d Failed to lookup currTimer: %v err: %v",
 					r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
 				goto retryLookup
 			}
@@ -257,7 +258,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 				var timer byTimerEntry
 				err = json.Unmarshal([]byte(timerEvents[0]), &timer)
 				if err != nil {
-					logging.Errorf("CRPO[%s:%s:timer_%d:%s:%d] vb: %d Failed to unmarshal timerEvent: %v err: %v",
+					logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d Failed to unmarshal timerEvent: %v err: %v",
 						r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, timerEvents[0], err)
 				} else {
 					if lastTimerEvent == timer.DocID {
@@ -275,12 +276,12 @@ func (r *timerProcessingWorker) processTimerEvents() {
 						event := "{" + event
 						err = json.Unmarshal([]byte(event), &timer)
 						if err != nil {
-							logging.Errorf("CRPO[%s:%s:timer_%d:%s:%d] vb: %d Failed to unmarshal timerEvent: %v err: %v",
+							logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d Failed to unmarshal timerEvent: %v err: %v",
 								r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, event, err)
 						}
 
 						if startProcess {
-							r.c.timerEntryCh <- &timer
+							r.c.docTimerEntryCh <- &timer
 							r.c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", timer.DocID)
 						} else if lastTimerEvent == timer.DocID {
 							startProcess = true
@@ -295,7 +296,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 				r.c.timerRWMutex.RUnlock()
 
 				if err != nil {
-					logging.Errorf("CRPO[%s:%s:timer_%d:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
+					logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
 						r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
 				}
 
@@ -306,7 +307,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 				continue
 			}
 
-			logging.Debugf("CRPO[%s:%s:timer_%d:%s:%d] vb: %d timerEvents: %v",
+			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d timerEvents: %v",
 				r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, string(v))
 
 			timerEvents := strings.Split(string(v), ",{")
@@ -329,7 +330,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 			r.c.timerRWMutex.RUnlock()
 
 			if err != nil {
-				logging.Errorf("CRPO[%s:%s:timer_%d:%s:%d] vb: %d key: %v Failed to delete from byTimer plasma handle, err: %v",
+				logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d key: %v Failed to delete from byTimer plasma handle, err: %v",
 					r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
 			}
 
@@ -342,17 +343,17 @@ func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateS
 	var timer byTimerEntry
 	err := json.Unmarshal([]byte(event), &timer)
 	if err != nil {
-		logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d processTimerEvent Failed to unmarshal timerEvent: %v err: %v",
+		logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d processTimerEvent Failed to unmarshal timerEvent: %v err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, event, err)
 	} else {
-		c.timerEntryCh <- &timer
+		c.docTimerEntryCh <- &timer
 
 		key := fmt.Sprintf("%v::%v::%v", currTimer, timer.CallbackFn, timer.DocID)
 		c.timerRWMutex.RLock()
 		err = c.vbPlasmaReader[vb].DeleteKV([]byte(key))
 		c.timerRWMutex.RUnlock()
 		if err != nil {
-			logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
+			logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, key, err)
 		}
 	}
@@ -362,16 +363,59 @@ func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateS
 	}
 }
 
-func (c *Consumer) updateTimerStats(vb uint16) {
+func (c *Consumer) processNonDocTimerEvents() {
+	c.nonDocTimerProcessingTicker = time.NewTicker(time.Second)
 
-	tsLayout := "2006-01-02T15:04:05Z"
+	for {
+		select {
+		case <-c.nonDocTimerStopCh:
+			return
+
+		case t := <-c.nonDocTimerProcessingTicker.C:
+			var val string
+			var isNoEnt bool
+			ts := t.UTC()
+			key := ts.Format(tsLayout)
+
+			vb := util.VbucketByKey([]byte(key), numVbuckets)
+
+			if c.checkIfVbInOwned(vb) {
+				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getNonDocTimerCallback, c, key, &val, true, &isNoEnt)
+				logging.Tracef("CRTE[%s:%s:%s:%d] vb: %d key: %v isNoEnt: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, key, isNoEnt)
+
+				if !isNoEnt {
+					logging.Debugf("CRTE[%s:%s:%s:%d] Non doc timer key: %v val: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, val)
+					c.nonDocTimerEntryCh <- val
+					c.metadataBucketHandle.Delete(key)
+				}
+			}
+		}
+	}
+}
+
+func (c *Consumer) checkIfVbInOwned(vb uint16) bool {
+	vbs := c.getVbsOwned()
+
+	i := sort.Search(len(vbs), func(i int) bool {
+		return vbs[i] >= vb
+	})
+
+	if i < len(vbs) && vbs[i] == vb {
+		return true
+	}
+	return false
+}
+
+func (c *Consumer) updateTimerStats(vb uint16) {
 
 	nTimerTs := c.vbProcessingStats.getVbStat(vb, "next_timer_to_process").(string)
 	c.vbProcessingStats.updateVbStat(vb, "currently_processed_timer", nTimerTs)
 
 	nextTimer, err := time.Parse(tsLayout, nTimerTs)
 	if err != nil {
-		logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
+		logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, nTimerTs, err)
 	}
 
@@ -389,7 +433,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 	plasmaWriterHandle, ok := c.vbPlasmaWriter[vb]
 	if !ok {
-		logging.Errorf("CRPO[%s:%s:%s:%d] Key: %v, failed to find plasma handle associated to vb: %v",
+		logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v, failed to find plasma handle associated to vb: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb)
 		return errPlasmaHandleMissing
 	}
@@ -404,13 +448,13 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 		ts, err := time.Parse(tsLayout, t)
 
 		if err != nil {
-			logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
+			logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timer, err)
 			continue
 		}
 
 		if !ts.After(time.Now()) {
-			logging.Debugf("CRPO[%s:%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
+			logging.Debugf("CRTE[%s:%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, ts)
 			entriesToPrune++
 			continue
@@ -446,7 +490,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 				encodedVal, mErr := json.Marshal(&v)
 				if mErr != nil {
-					logging.Errorf("CRPO[%s:%s:%s:%d] Key: %v JSON marshal failed, err: %v",
+					logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v JSON marshal failed, err: %v",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), timerKey, err)
 					continue
 				}
@@ -456,7 +500,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 			} else if tErr != nil {
 
-				logging.Errorf("CRPO[%s:%s:%s:%d] vb: %d Failed to lookup entry for ts: %v err: %v. Retrying..",
+				logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to lookup entry for ts: %v err: %v. Retrying..",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, ts, err)
 				goto retryPlasmaLookUp
 
@@ -468,7 +512,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 				encodedVal, mErr := json.Marshal(&v)
 				if mErr != nil {
-					logging.Errorf("CRPO[%s:%s:%s:%d] Key: %v JSON marshal failed, err: %v",
+					logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v JSON marshal failed, err: %v",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), timerKey, err)
 					continue
 				}
@@ -479,7 +523,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 					plasmaWriterHandle, ts, timerVal, vb)
 			}
 		} else if err != nil && err != plasma.ErrItemNoValue {
-			logging.Errorf("CRPO[%s:%s:%s:%d] Key: %v plasmaWriterHandle returned, err: %v",
+			logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v plasmaWriterHandle returned, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), timerKey, err)
 		}
 	}
@@ -492,10 +536,10 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 		_, err := docF.Execute()
 		if err != nil {
-			logging.Errorf("CRPO[%s:%s:%s:%d]  Key: %v vb: %v, Failed to prune timer records from past, err: %v",
+			logging.Errorf("CRTE[%s:%s:%s:%d]  Key: %v vb: %v, Failed to prune timer records from past, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, err)
 		} else {
-			logging.Debugf("CRPO[%s:%s:%s:%d]  Key: %v vb: %v, timer records in xattr: %v",
+			logging.Debugf("CRTE[%s:%s:%s:%d]  Key: %v vb: %v, timer records in xattr: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, timersToKeep)
 		}
 	}

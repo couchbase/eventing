@@ -25,7 +25,7 @@
 #include "log.h"
 
 #ifndef STANDALONE_BUILD
-extern void (assert)(int);
+extern void(assert)(int);
 #else
 #include <cassert>
 #endif
@@ -74,7 +74,8 @@ public:
 
   int SendUpdate(std::string value, std::string meta, std::string doc_type);
   int SendDelete(std::string meta);
-  void SendTimer(std::string doc_id, std::string callback_fn);
+  void SendDocTimer(std::string doc_id, std::string callback_fn);
+  void SendNonDocTimer(std::string doc_ids_cb_fns);
 
   void V8WorkerDispose();
   void V8WorkerTerminateExecution();
@@ -88,6 +89,7 @@ public:
   v8::Global<v8::ObjectTemplate> worker_template;
 
   lcb_t cb_instance;
+  lcb_t meta_cb_instance;
 
   std::string script_to_execute_;
   std::string app_name_;

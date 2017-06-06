@@ -17,7 +17,6 @@
 enum event_type {
   eDCP,
   eHTTP,
-  eV8_Debug,
   eV8_Worker,
   eApp_Worker_Setting,
   eTimer,
@@ -37,28 +36,15 @@ enum dcp_opcode { oDelete, oMutation, DCP_Opcode_Unknown };
 
 enum http_opcode { oGet, oPost, HTTP_Opcode_Unknown };
 
-enum v8_debug_opcode {
-  oBacktrace,
-  oClear_Breakpoint,
-  oContinue,
-  oEvaluate,
-  oFrame,
-  oList_Breakpoints,
-  oLookup,
-  oSet_Breakpoint,
-  oSource,
-  oStart_Debugger,
-  oStop_Debugger,
-  V8_Debug_Opcode_Unknown
-};
-
 enum app_worker_setting_opcode { oLogLevel, App_Worker_Setting_Opcode_Unknown };
+
+enum timer_opcode { oDocTimer, oNonDocTimer, Timer_Opcode_Unknown };
 
 event_type getEvent(int8_t event);
 v8_worker_opcode getV8WorkerOpcode(int8_t opcode);
 dcp_opcode getDCPOpcode(int8_t opcode);
 http_opcode getHTTPOpcode(int8_t opcode);
-v8_debug_opcode getV8DebugOpcode(int8_t opcode);
 app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode);
+timer_opcode getTimerOpcode(int8_t opcode);
 
 #endif
