@@ -511,12 +511,8 @@ void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
 V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
                    std::string kv_host_port, std::string rbac_user,
                    std::string rbac_pass, int lcb_inst_incr_size,
-                   int lcb_inst_capacity, bool enable_recursive_mutation)
-    : lcb_inst_incr_size{lcb_inst_incr_size}, lcb_inst_capacity{
-                                                  lcb_inst_capacity} {
-
+                   int lcb_inst_capacity, bool enable_recursive_mutation) {
   enableRecursiveMutation(enable_recursive_mutation);
-
   v8::V8::InitializeICU();
   v8::Platform *platform = v8::platform::CreateDefaultPlatform();
   v8::V8::InitializePlatform(platform);
@@ -596,12 +592,12 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
                << " enable_recursive_mutation: " << enable_recursive_mutation
                << '\n';
 
-  n1ql_handle =
-      new N1QL(cb_kv_endpoint, cb_source_bucket, rbac_user, rbac_pass);
-
   std::string connstr = "couchbase://" + cb_kv_endpoint + "/" +
                         cb_source_bucket.c_str() + "?username=" + rbac_user +
                         "&select_bucket=true";
+
+  conn_pool = new ConnectionPool(lcb_inst_capacity, cb_kv_endpoint,
+                                 cb_source_bucket, rbac_user, rbac_pass);
 
   lcb_create_st crst;
   memset(&crst, 0, sizeof crst);
@@ -642,6 +638,8 @@ V8Worker::~V8Worker() {
   context_.Reset();
   on_update_.Reset();
   on_delete_.Reset();
+  delete conn_pool;
+  delete n1ql_handle;
 }
 
 std::string GetWorkingPath() {
@@ -669,13 +667,16 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     return code;
   }
 
-  std::string transpiler_js_src = ReadFile(ESPRIMA_PATH);
-  transpiler_js_src += ReadFile(ESCODEGEN_PATH);
-  transpiler_js_src += ReadFile(ESTRAVERSE_PATH);
-  transpiler_js_src += ReadFile(TRANSPILER_JS_PATH);
+  std::string transpiler_js_src = ReadFile(ESPRIMA_PATH) + '\n';
+  transpiler_js_src += ReadFile(ESCODEGEN_PATH) + '\n';
+  transpiler_js_src += ReadFile(ESTRAVERSE_PATH) + '\n';
+  transpiler_js_src += ReadFile(TRANSPILER_JS_PATH) + '\n';
 
-  script_to_execute = Transpile(transpiler_js_src, plain_js, EXEC_TRANSPILER);
-  script_to_execute += ReadFile(BUILTIN_JS_PATH);
+  n1ql_handle = new N1QL(conn_pool);
+
+  script_to_execute =
+      Transpile(transpiler_js_src, plain_js, EXEC_TRANSPILER) + '\n';
+  script_to_execute += ReadFile(BUILTIN_JS_PATH) + '\n';
 
   v8::Local<v8::String> source =
       v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());
@@ -723,12 +724,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
           return FAILED_INIT_BUCKET_HANDLE;
         }
       }
-    }
-  }
-
-  if (n1ql_handle) {
-    if (!n1ql_handle->GetInitStatus()) {
-      LOG(logError) << "Error initializing n1ql handle" << '\n';
     }
   }
 

@@ -42,7 +42,6 @@ std::string Transpile(std::string js_src, std::string user_code, int mode) {
     case EXEC_TRANSPILER:
       // Perform transpilation.
       function_name = v8::String::NewFromUtf8(isolate, "transpile");
-    default:
       break;
     }
 

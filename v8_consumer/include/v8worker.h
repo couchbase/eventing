@@ -24,6 +24,7 @@
 #include <libcouchbase/couchbase.h>
 
 #include "log.h"
+#include "n1ql.h"
 
 #ifndef STANDALONE_BUILD
 extern void(assert)(int);
@@ -101,8 +102,7 @@ public:
   std::string cb_kv_endpoint;
   std::string cb_source_bucket;
 
-  int lcb_inst_incr_size;
-  int lcb_inst_capacity;
+  ConnectionPool *conn_pool;
 
 private:
   bool ExecuteScript(v8::Local<v8::String> script);
