@@ -431,7 +431,9 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 	// If ENOENT, then insert KV pair in byId plasma handle
 	// then insert in byTimer plasma handle as well
 
+	c.timerRWMutex.RLock()
 	plasmaWriterHandle, ok := c.vbPlasmaWriter[vb]
+	c.timerRWMutex.RUnlock()
 	if !ok {
 		logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v, failed to find plasma handle associated to vb: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb)

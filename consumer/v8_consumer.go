@@ -37,6 +37,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, sk
 		checkpointInterval:                 checkpointInterval,
 		cleanupTimers:                      cleanupTimers,
 		clusterStateChangeNotifCh:          make(chan bool, ClusterChangeNotifChBufSize),
+		dcpBootstrapCh:                     make(chan bool, 10),
 		dcpFeedCancelChs:                   make([]chan bool, 0),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,
@@ -139,7 +140,11 @@ func (c *Consumer) Serve() {
 		c.HostPortAddr(), c.workerName)
 	c.timerTransferSupToken = c.consumerSup.Add(c.timerTransferHandle)
 
-	c.startDcp(dcpConfig, flogs)
+	go c.startDcp(dcpConfig, flogs)
+
+	for i := 0; i < len(c.vbnos); i++ {
+		<-c.dcpBootstrapCh
+	}
 
 	// Initialises timer processing worker instances
 	c.vbTimerProcessingWorkerAssign(true)
@@ -197,6 +202,8 @@ func (c *Consumer) Stop() {
 		store.Close()
 	}
 	c.plasmaStoreRWMutex.RUnlock()
+
+	close(c.dcpBootstrapCh)
 
 	c.cbBucket.Close()
 	c.gocbBucket.Close()

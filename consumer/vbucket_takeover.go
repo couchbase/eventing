@@ -297,11 +297,13 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 	// TODO: Retry loop for dcp close stream as it could fail and additional verification checks
 	// Additional check needed to verify if vbBlob.NewOwner is the expected owner
 	// as per the vbEventingNodesAssignMap
+	c.RLock()
 	err := c.vbDcpFeedMap[vbno].DcpCloseStream(vbno, vbno)
 	if err != nil {
 		logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to close dcp stream, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
 	}
+	c.RUnlock()
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 }

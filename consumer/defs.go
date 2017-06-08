@@ -150,6 +150,7 @@ type Consumer struct {
 	cbBucket               *couchbase.Bucket
 	checkpointInterval     time.Duration
 	cleanupTimers          bool
+	dcpBootstrapCh         chan bool
 	dcpFeedCancelChs       []chan bool
 	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16
 	eventingAdminPort      string

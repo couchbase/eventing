@@ -15,6 +15,7 @@ import (
 	sc "github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
+	"github.com/couchbase/indexing/secondary/dcp/transport/client"
 	"github.com/couchbase/indexing/secondary/logging"
 	"github.com/couchbase/nitro/plasma"
 )
@@ -340,47 +341,53 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
 
 	for vbno, flog := range flogs {
-		vbuuid, _, _ := flog.Latest()
 
-		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
-		var vbBlob vbucketKVBlob
-		var cas, start uint64
-		var isNoEnt bool
+		go func(c *Consumer, vbno uint16, flog memcached.FailoverLog) {
 
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
-		if isNoEnt {
+			vbuuid, _, _ := flog.Latest()
 
-			// Storing vbuuid in metadata bucket, will be required for start
-			// stream later on
-			vbBlob.VBuuid = vbuuid
-			vbBlob.VBId = vbno
-			vbBlob.AssignedWorker = c.ConsumerName()
-			vbBlob.CurrentVBOwner = c.HostPortAddr()
+			vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+			var vbBlob vbucketKVBlob
+			var cas, start uint64
+			var isNoEnt bool
 
-			// Assigning previous owner and worker to current consumer
-			vbBlob.PreviousAssignedWorker = c.ConsumerName()
-			vbBlob.PreviousNodeUUID = c.NodeUUID()
-			vbBlob.PreviousVBOwner = c.HostPortAddr()
-			vbBlob.PreviousEventingDir = c.eventingDir
+			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
+			if isNoEnt {
 
-			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, vbKey, &vbBlob)
+				// Storing vbuuid in metadata bucket, will be required for start
+				// stream later on
+				vbBlob.VBuuid = vbuuid
+				vbBlob.VBId = vbno
+				vbBlob.AssignedWorker = c.ConsumerName()
+				vbBlob.CurrentVBOwner = c.HostPortAddr()
 
-			switch c.dcpStreamBoundary {
-			case common.DcpEverything:
-				start = uint64(0)
-				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
-			case common.DcpFromNow:
-				start = uint64(vbSeqnos[int(vbno)])
-				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+				// Assigning previous owner and worker to current consumer
+				vbBlob.PreviousAssignedWorker = c.ConsumerName()
+				vbBlob.PreviousNodeUUID = c.NodeUUID()
+				vbBlob.PreviousVBOwner = c.HostPortAddr()
+				vbBlob.PreviousEventingDir = c.eventingDir
+
+				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, vbKey, &vbBlob)
+
+				switch c.dcpStreamBoundary {
+				case common.DcpEverything:
+					start = uint64(0)
+					c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+				case common.DcpFromNow:
+					start = uint64(vbSeqnos[int(vbno)])
+					c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+				}
+			} else {
+
+				if vbBlob.NodeUUID == c.NodeUUID() {
+					start = vbBlob.LastSeqNoProcessed
+
+					c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+				}
 			}
-		} else {
 
-			if vbBlob.NodeUUID == c.NodeUUID() {
-				start = vbBlob.LastSeqNoProcessed
-
-				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
-			}
-		}
+			c.dcpBootstrapCh <- true
+		}(c, vbno, flog)
 	}
 }
 
@@ -525,7 +532,9 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr)
 	}
 
+	c.Lock()
 	c.vbDcpFeedMap[vbno] = dcpFeed
+	c.Unlock()
 
 	opaque, flags := uint16(vbno), uint32(0)
 	end := uint64(0xFFFFFFFFFFFFFFFF)
@@ -576,7 +585,9 @@ loop:
 			}
 		}
 
+		c.plasmaStoreRWMutex.Lock()
 		c.vbPlasmaStoreMap[vbno], err = plasma.New(cfg)
+		c.plasmaStoreRWMutex.Unlock()
 		if err != nil {
 			logging.Errorf("CRDP[%s:%s:%s:%d] vb: %v Failed to create plasma store instance, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
@@ -584,8 +595,10 @@ loop:
 		}
 
 		c.timerRWMutex.Lock()
+		c.plasmaStoreRWMutex.RLock()
 		c.vbPlasmaReader[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
 		c.vbPlasmaWriter[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
+		c.plasmaStoreRWMutex.RUnlock()
 		c.timerRWMutex.Unlock()
 
 		return nil
