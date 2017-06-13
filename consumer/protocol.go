@@ -154,7 +154,8 @@ func makeDcpPayload(key, value []byte) []byte {
 	return builder.Bytes[builder.Head():]
 }
 
-func makeV8InitPayload(appName, kvHostPort, depCfg, rbacUser, rbacPass string) []byte {
+func makeV8InitPayload(appName, kvHostPort, depCfg, rbacUser, rbacPass string,
+	incrSize, capacity int) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
 
@@ -171,6 +172,8 @@ func makeV8InitPayload(appName, kvHostPort, depCfg, rbacUser, rbacPass string) [
 	payload.PayloadAddKvHostPort(builder, khp)
 	payload.PayloadAddRbacUser(builder, rUser)
 	payload.PayloadAddRbacPass(builder, rPass)
+	payload.PayloadAddLcbInstIncrSize(builder, int32(incrSize))
+	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
 
 	msgPos := payload.PayloadEnd(builder)
 	builder.Finish(msgPos)

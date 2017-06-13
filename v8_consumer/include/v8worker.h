@@ -65,7 +65,8 @@ public:
 class V8Worker {
 public:
   V8Worker(std::string app_name, std::string dep_cfg, std::string kv_host_port,
-           std::string rbac_user, std::string rbac_pass);
+           std::string rbac_user, std::string rbac_pass, int lcb_inst_incr_size,
+           int lcb_inst_capacity);
   ~V8Worker();
 
   int V8WorkerLoad(std::string source_s);
@@ -96,6 +97,9 @@ public:
 
   std::string cb_kv_endpoint;
   std::string cb_source_bucket;
+
+  int lcb_inst_incr_size;
+  int lcb_inst_capacity;
 
 private:
   bool ExecuteScript(v8::Local<v8::String> script);

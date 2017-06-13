@@ -6,11 +6,19 @@ table Payload {
   kv_host_port:string;
   rbac_user:string;
   rbac_pass:string;
+
+  // DCP event related fields
   key:string; // dcp mutation key
   value:string; // dcp mutation value
+
+  // Timer event related fields
   doc_id:string; // timer event doc_id
   callback_fn:string; // timer event callback function
   doc_ids_callback_fns:string; // non doc-id based timer event doc_id-callback_fn pairs
+
+  // Nested iterator related fields
+  lcb_inst_incr_size:int;
+  lcb_inst_capacity:int;
 }
 
 root_type Payload;

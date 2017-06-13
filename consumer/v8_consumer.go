@@ -23,8 +23,9 @@ import (
 )
 
 // NewConsumer called by producer to create consumer handle
-func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, skipTimerThreshold int,
-	eventingAdminPort, eventingDir string, p common.EventingProducer, app *common.AppConfig, vbnos []uint16,
+func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool,
+	skipTimerThreshold, lcbInstIncrSize, lcbInstCapacity int, eventingAdminPort, eventingDir string,
+	p common.EventingProducer, app *common.AppConfig, vbnos []uint16,
 	bucket, logLevel, tcpPort, uuid string, eventingNodeUUIDs []string,
 	sockWriteBatchSize, timerProcessingPoolSize, workerID int) *Consumer {
 
@@ -47,6 +48,8 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, sk
 		eventingNodeUUIDs:                  eventingNodeUUIDs,
 		gracefulShutdownChan:               make(chan struct{}, 1),
 		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
+		lcbInstCapacity:                    lcbInstCapacity,
+		lcbInstIncrSize:                    lcbInstIncrSize,
 		logLevel:                           logLevel,
 		nonDocTimerEntryCh:                 make(chan string, timerChanSize),
 		nonDocTimerStopCh:                  make(chan struct{}, 1),
@@ -173,7 +176,7 @@ func (c *Consumer) HandleV8Worker() {
 	c.sendLogLevel(c.logLevel)
 
 	payload := makeV8InitPayload(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData(),
-		c.producer.RbacUser(), c.producer.RbacPass())
+		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstIncrSize, c.lcbInstCapacity)
 	c.sendInitV8Worker(payload)
 
 	c.sendLoadV8Worker(c.app.AppCode)

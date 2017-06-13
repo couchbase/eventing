@@ -168,6 +168,10 @@ type Consumer struct {
 	vbsRemainingToGiveUp   []uint16
 	vbsRemainingToRestream []uint16
 
+	// N1QL Transpiler related nested iterator config params
+	lcbInstIncrSize int
+	lcbInstCapacity int
+
 	docTimerEntryCh    chan *byTimerEntry
 	nonDocTimerEntryCh chan string
 	// Plasma DGM store handle to store timer entries at per vbucket level

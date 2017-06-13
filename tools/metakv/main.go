@@ -38,7 +38,7 @@ func main() {
 
 	settings := make(map[string]interface{})
 	settings["dcp_stream_boundary"] = "everything"
-	settings["log_level"] = "TRACE"
+	settings["log_level"] = "INFO"
 	settings["sock_batch_size"] = 1
 	settings["tick_duration"] = 5000
 	settings["checkpoint_interval"] = 20000
@@ -50,6 +50,8 @@ func main() {
 	settings["cleanup_timers"] = true
 	settings["timer_processing_tick_interval"] = 500
 	settings["skip_timer_threshold"] = 600
+	settings["lcb_inst_incr_size"] = 1
+	settings["lcb_inst_capacity"] = 5
 
 	sData, err := json.Marshal(&settings)
 	if err != nil {

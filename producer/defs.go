@@ -59,6 +59,10 @@ type Producer struct {
 	uuid                   string
 	workerCount            int
 
+	// N1QL Transpiler related nested iterator config params
+	lcbInstIncrSize int
+	lcbInstCapacity int
+
 	// Controls start seq no for vb dcp stream
 	// currently supports:
 	// everything - start from beginning and listen forever
