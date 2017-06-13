@@ -20,7 +20,7 @@ func newClient(consumer *Consumer, appName, tcpPort, workerName string) *client 
 }
 
 func (c *client) Serve() {
-	c.cmd = exec.Command("client", c.appName, c.tcpPort, c.consumerHandle.ConsumerName(),
+	c.cmd = exec.Command("client", c.appName, c.tcpPort, c.workerName,
 		strconv.Itoa(c.consumerHandle.socketWriteBatchSize))
 	c.cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,

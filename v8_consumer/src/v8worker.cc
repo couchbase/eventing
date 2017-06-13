@@ -561,6 +561,9 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
            std::map<std::string, std::vector<std::string>>>::iterator it =
       config->component_configs.begin();
 
+
+  bucket_handle = nullptr;
+
   for (; it != config->component_configs.end(); it++) {
     if (it->first == "buckets") {
       std::map<std::string, std::vector<std::string>>::iterator bucket =

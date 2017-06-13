@@ -18,7 +18,7 @@
 #include <sstream>
 #include <string>
 
-enum LogLevel { logInfo, logError, logWarning, logDebug, logTrace };
+enum LogLevel { logSilent, logInfo, logError, logWarning, logDebug, logTrace };
 
 extern LogLevel desiredLogLevel;
 
@@ -54,12 +54,14 @@ static std::string FlushLog() {
 }
 
 static std::string LevelToString(LogLevel level) {
-  static const char *const buffer[] = {"[Info]", "[Error]", "[Warning]",
-                                       "[Debug]", "[Trace]"};
+  static const char *const buffer[] = {"[Silent]",  " [Info]", "[Error]",
+                                       "[Warning]", "[Debug]", "[Trace]"};
   return buffer[level];
 }
 
 static LogLevel LevelFromString(const std::string &level) {
+  if (level == "SILENT")
+    return logSilent;
   if (level == "INFO")
     return logInfo;
   if (level == "ERROR")
