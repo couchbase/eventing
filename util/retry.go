@@ -69,7 +69,7 @@ func Retry(b Backoff, callback CallbackFunc, args ...interface{}) error {
 			return err
 		}
 
-		logging.Infof("RTLP Retrying after %vs", next.Seconds())
+		logging.Debugf("RTLP Retrying after %vs", next.Seconds())
 		time.Sleep(next)
 	}
 }

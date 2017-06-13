@@ -9,7 +9,7 @@ import (
 // TCP Listener construct that can be signalled to stop
 type abatableListener struct {
 	*net.TCPListener
-	stopCh chan bool
+	stopCh chan struct{}
 }
 
 func newAbatableListener(l net.Listener) (*abatableListener, error) {
@@ -21,7 +21,7 @@ func newAbatableListener(l net.Listener) (*abatableListener, error) {
 
 	res := &abatableListener{
 		TCPListener: listener,
-		stopCh:      make(chan bool),
+		stopCh:      make(chan struct{}),
 	}
 
 	return res, nil

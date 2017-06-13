@@ -43,7 +43,7 @@ func (c *Consumer) controlRoutine() {
 				continue
 			}
 
-			c.stopCheckpointingCh <- true
+			c.stopCheckpointingCh <- struct{}{}
 			c.checkpointInterval = time.Duration(settings["checkpoint_interval"].(float64)) * time.Millisecond
 			go c.doLastSeqNoCheckpoint()
 
@@ -55,7 +55,7 @@ func (c *Consumer) controlRoutine() {
 
 			c.timerProcessingTickInterval = time.Duration(settings["timer_processing_tick_interval"].(float64)) * time.Millisecond
 			for k := range c.timerProcessingWorkerSignalCh {
-				k.stopCh <- true
+				k.stopCh <- struct{}{}
 			}
 
 			c.vbTimerProcessingWorkerAssign(true)
@@ -75,7 +75,7 @@ func (c *Consumer) controlRoutine() {
 			}
 
 			sort.Sort(util.Uint16Slice(vbsToRestream))
-			logging.Infof("CRCR[%s:%s:%s:%d] vbsToRestream len: %v dump: %v",
+			logging.Verbosef("CRCR[%s:%s:%s:%d] vbsToRestream len: %v dump: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsToRestream), vbsToRestream)
 
 			var vbsFailedToStartStream []uint16
@@ -113,7 +113,7 @@ func (c *Consumer) controlRoutine() {
 			sort.Sort(util.Uint16Slice(diff))
 
 			if vbsRemainingToRestream > 0 {
-				logging.Infof("CRCR[%s:%s:%s:%d] Retrying vbsToRestream, remaining len: %v dump: %v",
+				logging.Verbosef("CRCR[%s:%s:%s:%d] Retrying vbsToRestream, remaining len: %v dump: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsRemainingToRestream, diff)
 				goto retryVbsRemainingToRestream
 			}

@@ -270,7 +270,7 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 		goto retryDownload
 	}
 
-	logging.Infof("TTCL[%s:%s] Filename: %v download completed ", c.AppName, c.registeredName, filename)
+	logging.Debugf("TTCL[%s:%s] Filename: %v download completed ", c.AppName, c.registeredName, filename)
 	c.CloseSession(sessionID)
 
 	return nil

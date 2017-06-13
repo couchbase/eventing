@@ -36,45 +36,45 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, sk
 		cbBucket:                           b,
 		checkpointInterval:                 checkpointInterval,
 		cleanupTimers:                      cleanupTimers,
-		clusterStateChangeNotifCh:          make(chan bool, ClusterChangeNotifChBufSize),
-		dcpBootstrapCh:                     make(chan bool, 10),
-		dcpFeedCancelChs:                   make([]chan bool, 0),
+		clusterStateChangeNotifCh:          make(chan struct{}, ClusterChangeNotifChBufSize),
+		dcpBootstrapCh:                     make(chan struct{}, 10),
+		dcpFeedCancelChs:                   make([]chan struct{}, 0),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,
 		docTimerEntryCh:                    make(chan *byTimerEntry, timerChanSize),
 		eventingAdminPort:                  eventingAdminPort,
 		eventingDir:                        eventingDir,
 		eventingNodeUUIDs:                  eventingNodeUUIDs,
-		gracefulShutdownChan:               make(chan bool, 1),
+		gracefulShutdownChan:               make(chan struct{}, 1),
 		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
 		logLevel:                           logLevel,
 		nonDocTimerEntryCh:                 make(chan string, timerChanSize),
-		nonDocTimerStopCh:                  make(chan bool, 1),
+		nonDocTimerStopCh:                  make(chan struct{}, 1),
 		opsTimestamp:                       time.Now(),
 		persistAllTicker:                   time.NewTicker(persistAllTickInterval),
 		plasmaStoreRWMutex:                 &sync.RWMutex{},
 		producer:                           p,
 		restartVbDcpStreamTicker:           time.NewTicker(restartVbDcpStreamTickInterval),
 		sendMsgCounter:                     0,
-		signalConnectedCh:                  make(chan bool, 1),
-		signalSettingsChangeCh:             make(chan bool, 1),
+		signalConnectedCh:                  make(chan struct{}, 1),
+		signalSettingsChangeCh:             make(chan struct{}, 1),
 		signalProcessTimerPlasmaCloseAckCh: make(chan uint16),
 		signalStoreTimerPlasmaCloseAckCh:   make(chan uint16),
 		signalStoreTimerPlasmaCloseCh:      make(chan uint16),
 		skipTimerThreshold:                 skipTimerThreshold,
 		socketWriteBatchSize:               sockWriteBatchSize,
 		statsTicker:                        time.NewTicker(statsTickInterval),
-		stopControlRoutineCh:               make(chan bool),
-		stopPlasmaPersistCh:                make(chan bool, 1),
-		stopVbOwnerGiveupCh:                make(chan bool, 1),
-		stopVbOwnerTakeoverCh:              make(chan bool, 1),
+		stopControlRoutineCh:               make(chan struct{}),
+		stopPlasmaPersistCh:                make(chan struct{}, 1),
+		stopVbOwnerGiveupCh:                make(chan struct{}, 1),
+		stopVbOwnerTakeoverCh:              make(chan struct{}, 1),
 		tcpPort:                            tcpPort,
 		timerRWMutex:                       &sync.RWMutex{},
 		timerProcessingTickInterval:        timerProcessingTickInterval,
 		timerProcessingWorkerCount:         timerProcessingPoolSize,
 		timerProcessingVbsWorkerMap:        make(map[uint16]*timerProcessingWorker),
 		timerProcessingRunningWorkers:      make([]*timerProcessingWorker, 0),
-		timerProcessingWorkerSignalCh:      make(map[*timerProcessingWorker]chan bool),
+		timerProcessingWorkerSignalCh:      make(map[*timerProcessingWorker]chan struct{}),
 		uuid:                   uuid,
 		vbDcpFeedMap:           make(map[uint16]*couchbase.DcpFeed),
 		vbFlogChan:             make(chan *vbFlogEntry),
@@ -94,8 +94,8 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool, sk
 
 // Serve acts as init routine for consumer handle
 func (c *Consumer) Serve() {
-	c.stopConsumerCh = make(chan bool, 1)
-	c.stopCheckpointingCh = make(chan bool, 1)
+	c.stopConsumerCh = make(chan struct{}, 1)
+	c.stopCheckpointingCh = make(chan struct{}, 1)
 
 	c.dcpMessagesProcessed = make(map[mcd.CommandCode]uint64)
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
@@ -128,7 +128,7 @@ func (c *Consumer) Serve() {
 		feedName = couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + kvHostPort + "_" + c.workerName)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, dcpConfig, kvHostPort)
 
-		cancelCh := make(chan bool, 1)
+		cancelCh := make(chan struct{}, 1)
 		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
 		c.addToAggChan(c.kvHostDcpFeedMap[kvHostPort], cancelCh)
 	}
@@ -220,19 +220,19 @@ func (c *Consumer) Stop() {
 	c.persistAllTicker.Stop()
 
 	for k := range c.timerProcessingWorkerSignalCh {
-		k.stopCh <- true
+		k.stopCh <- struct{}{}
 	}
 
-	c.nonDocTimerStopCh <- true
-	c.stopControlRoutineCh <- true
-	c.stopPlasmaPersistCh <- true
+	c.nonDocTimerStopCh <- struct{}{}
+	c.stopControlRoutineCh <- struct{}{}
+	c.stopPlasmaPersistCh <- struct{}{}
 
 	for _, dcpFeed := range c.kvHostDcpFeedMap {
 		dcpFeed.Close()
 	}
 
 	for _, cancelCh := range c.dcpFeedCancelChs {
-		cancelCh <- true
+		cancelCh <- struct{}{}
 	}
 
 	close(c.aggDCPFeed)
@@ -250,7 +250,7 @@ func (c *Consumer) String() string {
 // SignalConnected notifies consumer routine when CPP V8 worker has connected to
 // tcp listener instance
 func (c *Consumer) SignalConnected() {
-	c.signalConnectedCh <- true
+	c.signalConnectedCh <- struct{}{}
 }
 
 // SetConnHandle sets the tcp connection handle for CPP V8 worker
@@ -300,7 +300,7 @@ func (c *Consumer) TimerTransferHostPortAddr() string {
 func (c *Consumer) NotifyClusterChange() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about cluster state change",
 		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid())
-	c.clusterStateChangeNotifCh <- true
+	c.clusterStateChangeNotifCh <- struct{}{}
 }
 
 // UpdateEventingNodesUUIDs is called by producer instance to notify about
@@ -320,8 +320,8 @@ func (c *Consumer) NotifyRebalanceStop() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about rebalance stop",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
-	c.stopVbOwnerGiveupCh <- true
-	c.stopVbOwnerTakeoverCh <- true
+	c.stopVbOwnerGiveupCh <- struct{}{}
+	c.stopVbOwnerTakeoverCh <- struct{}{}
 }
 
 // NotifySettingsChange signals consumer instance of settings update
@@ -329,7 +329,7 @@ func (c *Consumer) NotifySettingsChange() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about application settings update",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
-	c.signalSettingsChangeCh <- true
+	c.signalSettingsChangeCh <- struct{}{}
 }
 
 func (c *Consumer) initCBBucketConnHandle() {

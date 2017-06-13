@@ -601,8 +601,6 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
   lcb_install_callback3(cb_instance, LCB_CALLBACK_DEFAULT, multi_op_callback);
   this->GetIsolate()->SetData(1, (void *)(&cb_instance));
 
-  std::cout << "metadata: " << config->metadata_bucket << std::endl;
-
   std::string meta_connstr = "couchbase://" + cb_kv_endpoint + "/" +
                              config->metadata_bucket.c_str() +
                              "?username=" + rbac_user + "&select_bucket=true";

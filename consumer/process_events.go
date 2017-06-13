@@ -30,7 +30,7 @@ func (c *Consumer) processEvents() {
 				logging.Infof("CRDP[%s:%s:%s:%d] Closing DCP feed for bucket %q",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.bucket)
 
-				c.stopCheckpointingCh <- true
+				c.stopCheckpointingCh <- struct{}{}
 				c.producer.CleanupDeadConsumer(c)
 				return
 			}
@@ -246,7 +246,7 @@ func (c *Consumer) processEvents() {
 			if ok == false {
 				logging.Infof("CRDP[%s:%s:%s:%d] Closing doc timer chan", c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
-				c.stopCheckpointingCh <- true
+				c.stopCheckpointingCh <- struct{}{}
 				c.producer.CleanupDeadConsumer(c)
 				return
 			}
@@ -258,7 +258,7 @@ func (c *Consumer) processEvents() {
 			if ok == false {
 				logging.Infof("CRDP[%s:%s:%s:%d] Closing non_doc timer chan", c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
-				c.stopCheckpointingCh <- true
+				c.stopCheckpointingCh <- struct{}{}
 				c.producer.CleanupDeadConsumer(c)
 				return
 			}
@@ -314,7 +314,7 @@ func (c *Consumer) processEvents() {
 
 			logging.Errorf("CRDP[%s:%s:%s:%d] Socket belonging to V8 consumer died",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
-			c.stopCheckpointingCh <- true
+			c.stopCheckpointingCh <- struct{}{}
 			c.producer.CleanupDeadConsumer(c)
 			return
 
@@ -386,12 +386,12 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 				}
 			}
 
-			c.dcpBootstrapCh <- true
+			c.dcpBootstrapCh <- struct{}{}
 		}(c, vbno, flog)
 	}
 }
 
-func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan bool) {
+func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan struct{}) {
 	go func(dcpFeed *couchbase.DcpFeed) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -524,7 +524,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, dcpConfig, vbKvAddr)
 		dcpFeed = c.kvHostDcpFeedMap[vbKvAddr]
 
-		cancelCh := make(chan bool, 1)
+		cancelCh := make(chan struct{}, 1)
 		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
 		c.addToAggChan(dcpFeed, cancelCh)
 

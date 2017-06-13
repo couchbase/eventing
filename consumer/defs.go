@@ -150,8 +150,8 @@ type Consumer struct {
 	cbBucket               *couchbase.Bucket
 	checkpointInterval     time.Duration
 	cleanupTimers          bool
-	dcpBootstrapCh         chan bool
-	dcpFeedCancelChs       []chan bool
+	dcpBootstrapCh         chan struct{}
+	dcpFeedCancelChs       []chan struct{}
 	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16
 	eventingAdminPort      string
 	eventingDir            string
@@ -172,7 +172,7 @@ type Consumer struct {
 	nonDocTimerEntryCh chan string
 	// Plasma DGM store handle to store timer entries at per vbucket level
 	persistAllTicker    *time.Ticker
-	stopPlasmaPersistCh chan bool
+	stopPlasmaPersistCh chan struct{}
 	timerAddrs          map[string]map[string]string
 	plasmaStoreRWMutex  *sync.RWMutex
 	vbPlasmaStoreMap    map[uint16]*plasma.Plasma
@@ -184,12 +184,12 @@ type Consumer struct {
 	signalStoreTimerPlasmaCloseAckCh   chan uint16
 
 	nonDocTimerProcessingTicker   *time.Ticker
-	nonDocTimerStopCh             chan bool
+	nonDocTimerStopCh             chan struct{}
 	skipTimerThreshold            int
 	timerProcessingTickInterval   time.Duration
 	timerProcessingVbsWorkerMap   map[uint16]*timerProcessingWorker
 	timerProcessingRunningWorkers []*timerProcessingWorker
-	timerProcessingWorkerSignalCh map[*timerProcessingWorker]chan bool
+	timerProcessingWorkerSignalCh map[*timerProcessingWorker]chan struct{}
 	timerProcessingWorkerCount    int
 	timerRWMutex                  *sync.RWMutex
 
@@ -232,32 +232,32 @@ type Consumer struct {
 	// Populated when C++ v8 worker is spawned
 	// correctly and downstream tcp socket is available
 	// for sending messages. Unbuffered channel.
-	signalConnectedCh chan bool
+	signalConnectedCh chan struct{}
 
 	// Chan used by signal update of app handler settings
-	signalSettingsChangeCh chan bool
+	signalSettingsChangeCh chan struct{}
 
-	stopControlRoutineCh chan bool
+	stopControlRoutineCh chan struct{}
 
 	// Populated when downstream tcp socket mapping to
 	// C++ v8 worker is down. Buffered channel to avoid deadlock
-	stopConsumerCh chan bool
+	stopConsumerCh chan struct{}
 
 	// Chan to stop background checkpoint routine, keeping track
 	// of last seq # processed
-	stopCheckpointingCh chan bool
+	stopCheckpointingCh chan struct{}
 
-	gracefulShutdownChan chan bool
+	gracefulShutdownChan chan struct{}
 
-	clusterStateChangeNotifCh chan bool
+	clusterStateChangeNotifCh chan struct{}
 
 	// chan to signal vbucket ownership give up routine to stop.
 	// Will be triggered in case of stop rebalance operation
-	stopVbOwnerGiveupCh chan bool
+	stopVbOwnerGiveupCh chan struct{}
 
 	// chan to signal vbucket ownership takeover routine to exit.
 	// Will be triggered in case of stop rebalance operation
-	stopVbOwnerTakeoverCh chan bool
+	stopVbOwnerTakeoverCh chan struct{}
 
 	tcpPort string
 
@@ -287,7 +287,7 @@ type timerProcessingWorker struct {
 	id                              int
 	c                               *Consumer
 	signalProcessTimerPlasmaCloseCh chan uint16
-	stopCh                          chan bool
+	stopCh                          chan struct{}
 	timerProcessingTicker           *time.Ticker
 	vbsAssigned                     []uint16
 }

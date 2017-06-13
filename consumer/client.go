@@ -40,8 +40,8 @@ func (c *client) Serve() {
 	c.cmd.Wait()
 
 	// Signal shutdown of consumer doDCPProcessEvents and checkpointing routine
-	c.consumerHandle.gracefulShutdownChan <- true
-	c.consumerHandle.stopCheckpointingCh <- true
+	c.consumerHandle.gracefulShutdownChan <- struct{}{}
+	c.consumerHandle.stopCheckpointingCh <- struct{}{}
 
 	// Allow additional time for doDCPProcessEvents and checkpointing routine to exit,
 	// else there could be race. Currently set twice the socket read deadline
@@ -52,8 +52,8 @@ func (c *client) Serve() {
 }
 
 func (c *client) Stop() {
-	c.consumerHandle.gracefulShutdownChan <- true
-	c.consumerHandle.stopCheckpointingCh <- true
+	c.consumerHandle.gracefulShutdownChan <- struct{}{}
+	c.consumerHandle.stopCheckpointingCh <- struct{}{}
 	if c.osPid != 0 {
 		syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL)
 	}

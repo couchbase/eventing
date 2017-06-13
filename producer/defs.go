@@ -55,7 +55,7 @@ type Producer struct {
 	nsServerPort           string
 	nsServerHostPort       string
 	tcpPort                string
-	stopProducerCh         chan bool
+	stopProducerCh         chan struct{}
 	uuid                   string
 	workerCount            int
 
@@ -87,16 +87,16 @@ type Producer struct {
 	socketWriteBatchSize int
 
 	// Chan used to signify update of app level settings
-	notifySettingsChangeCh chan bool
+	notifySettingsChangeCh chan struct{}
 
 	// Chan to notify super_supervisor about clean producer shutdown
-	notifySupervisorCh chan bool
+	notifySupervisorCh chan struct{}
 
 	// Chan to notify supervisor about producer initialisation
-	notifyInitCh chan bool
+	notifyInitCh chan struct{}
 
 	// Feedback channel to notify change in cluster state
-	clusterStateChange chan bool
+	clusterStateChange chan struct{}
 
 	// List of running consumers, will be needed if we want to gracefully shut them down
 	runningConsumers           []common.EventingConsumer

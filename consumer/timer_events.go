@@ -101,7 +101,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 				c:  c,
 				id: i,
 				signalProcessTimerPlasmaCloseCh: make(chan uint16),
-				stopCh:                make(chan bool, 1),
+				stopCh:                make(chan struct{}, 1),
 				timerProcessingTicker: time.NewTicker(c.timerProcessingTickInterval),
 			}
 
@@ -117,7 +117,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			worker.vbsAssigned = vbsAssigned
 
 			c.timerProcessingRunningWorkers = append(c.timerProcessingRunningWorkers, worker)
-			c.timerProcessingWorkerSignalCh[worker] = make(chan bool, 1)
+			c.timerProcessingWorkerSignalCh[worker] = make(chan struct{}, 1)
 
 			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Initial Timer routine vbs assigned len: %d dump: %v",
 				c.app.AppName, c.workerName, worker.id, c.tcpPort, c.Pid(), len(vbsAssigned), vbsAssigned)
@@ -381,8 +381,6 @@ func (c *Consumer) processNonDocTimerEvents() {
 
 			if c.checkIfVbInOwned(vb) {
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getNonDocTimerCallback, c, key, &val, true, &isNoEnt)
-				logging.Tracef("CRTE[%s:%s:%s:%d] vb: %d key: %v isNoEnt: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, key, isNoEnt)
 
 				if !isNoEnt {
 					logging.Debugf("CRTE[%s:%s:%s:%d] Non doc timer key: %v val: %v",

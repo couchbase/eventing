@@ -26,9 +26,9 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 		kvPort:                 kvPort,
 		listenerHandles:        make([]*abatableListener, 0),
 		metakvAppHostPortsPath: metakvAppHostPortsPath,
-		notifyInitCh:           make(chan bool, 1),
-		notifySettingsChangeCh: make(chan bool, 1),
-		notifySupervisorCh:     make(chan bool),
+		notifyInitCh:           make(chan struct{}, 1),
+		notifySettingsChangeCh: make(chan struct{}, 1),
+		notifySupervisorCh:     make(chan struct{}),
 		nsServerPort:           nsServerPort,
 		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
 		uuid:                   uuid,
@@ -54,8 +54,8 @@ func (p *Producer) Serve() {
 
 	p.getKvVbMap()
 
-	p.stopProducerCh = make(chan bool)
-	p.clusterStateChange = make(chan bool)
+	p.stopProducerCh = make(chan struct{})
+	p.clusterStateChange = make(chan struct{})
 	p.consumerSupervisorTokenMap = make(map[common.EventingConsumer]suptree.ServiceToken)
 
 	if p.auth != "" {
@@ -78,7 +78,7 @@ func (p *Producer) Serve() {
 	p.initWorkerVbMap()
 	p.startBucket()
 
-	p.notifyInitCh <- true
+	p.notifyInitCh <- struct{}{}
 
 	for {
 		select {
@@ -145,7 +145,7 @@ func (p *Producer) Serve() {
 			}
 			p.consumerListeners = p.consumerListeners[:0]
 
-			p.notifySupervisorCh <- true
+			p.notifySupervisorCh <- struct{}{}
 			return
 		}
 	}
@@ -158,7 +158,7 @@ func (p *Producer) Stop() {
 		lHandle.Stop()
 	}
 
-	p.stopProducerCh <- true
+	p.stopProducerCh <- struct{}{}
 	p.ProducerListener.Close()
 }
 
@@ -364,7 +364,7 @@ func (p *Producer) NotifyInit() {
 
 // NotifySettingsChange is called by super_supervisor to notify producer about settings update
 func (p *Producer) NotifySettingsChange() {
-	p.notifySettingsChangeCh <- true
+	p.notifySettingsChangeCh <- struct{}{}
 }
 
 // NotifySupervisor notifies the supervisor about clean shutdown of producer

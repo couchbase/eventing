@@ -176,9 +176,9 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 		if err != nil {
 			logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-			c.stopConsumerCh <- true
-			c.stopCheckpointingCh <- true
-			c.gracefulShutdownChan <- true
+			c.stopConsumerCh <- struct{}{}
+			c.stopCheckpointingCh <- struct{}{}
+			c.gracefulShutdownChan <- struct{}{}
 			c.conn.Close()
 			return err
 		}
@@ -188,8 +188,8 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 		c.sendMsgCounter = 0
 
 		if err := c.readMessage(); err != nil {
-			c.stopCheckpointingCh <- true
-			c.gracefulShutdownChan <- true
+			c.stopCheckpointingCh <- struct{}{}
+			c.gracefulShutdownChan <- struct{}{}
 		}
 
 		logging.Tracef("CRHM[%s:%s:%s:%d] WriteBatchSeqNo dump: %v",
@@ -212,7 +212,7 @@ func (c *Consumer) readMessage() error {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Read from client socket failed, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 
-		c.stopConsumerCh <- true
+		c.stopConsumerCh <- struct{}{}
 		c.conn.Close()
 	} else {
 		if len(msg) > 1 {

@@ -56,12 +56,12 @@ func (c *Consumer) vbsStateUpdate() {
 
 					c.timerProcessingVbsWorkerMap[vbno].signalProcessTimerPlasmaCloseCh <- vbno
 					<-c.signalProcessTimerPlasmaCloseAckCh
-					logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer processing routine, about clean up of plasma.Writer instance",
+					logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer processing routine, about clean up of plasma.Writer instance",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
 					c.signalStoreTimerPlasmaCloseCh <- vbno
 					<-c.signalStoreTimerPlasmaCloseAckCh
-					logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer storage routine, about clean up plasma.Writer instance",
+					logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer storage routine, about clean up plasma.Writer instance",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 				} else {
 
@@ -82,7 +82,7 @@ func (c *Consumer) vbsStateUpdate() {
 			retryVbMetaStateCheck:
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-				logging.Infof("CRVT[%s:%s:%s:%d] vb: %v vbsStateUpdate MetaState check",
+				logging.Tracef("CRVT[%s:%s:%s:%d] vb: %v vbsStateUpdate MetaState check",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
 				select {
@@ -94,7 +94,7 @@ func (c *Consumer) vbsStateUpdate() {
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob)
 					}
 
-					logging.Infof("CRVT[%s:%s:%s:%d] Exiting vb ownership give-up routine, last vb handled: %v",
+					logging.Debugf("CRVT[%s:%s:%s:%d] Exiting vb ownership give-up routine, last vb handled: %v",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 					return
 
@@ -104,7 +104,7 @@ func (c *Consumer) vbsStateUpdate() {
 						goto retryVbMetaStateCheck
 					}
 				}
-				logging.Infof("CRVT[%s:%s:%s:%d] Gracefully exited vb ownership give-up routine, last vb handled: %v",
+				logging.Debugf("CRVT[%s:%s:%s:%d] Gracefully exited vb ownership give-up routine, last vb handled: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 			}
 		}
@@ -115,7 +115,7 @@ retryStreamUpdate:
 	for i := range c.vbsRemainingToOwn {
 		select {
 		case <-c.stopVbOwnerTakeoverCh:
-			logging.Infof("CRVT[%s:%s:%s:%d] Exiting vb ownership takeover routine",
+			logging.Debugf("CRVT[%s:%s:%s:%d] Exiting vb ownership takeover routine",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 			return
 		default:
@@ -130,7 +130,7 @@ retryStreamUpdate:
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
 
-	logging.Infof("CRVT[%s:%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
+	logging.Debugf("CRVT[%s:%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.vbsRemainingToOwn, vbsRemainingToGiveUp)
 
 	// Retry logic in-case previous attempt to own/start dcp stream didn't succeed
@@ -159,7 +159,7 @@ func (c *Consumer) doVbTakeover(vbno uint16) error {
 				return errVbOwnedByAnotherWorker
 			}
 
-			logging.Infof("CRVT[%s:%s:%s:%d] Node: %v taking ownership of vb: %d old node: %s isn't alive any more as per ns_server vbuuid: %v vblob.uuid: %v",
+			logging.Verbosef("CRVT[%s:%s:%s:%d] Node: %v taking ownership of vb: %d old node: %s isn't alive any more as per ns_server vbuuid: %v vblob.uuid: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vbno, vbBlob.CurrentVBOwner,
 				c.NodeUUID(), vbBlob.NodeUUID)
 
@@ -176,7 +176,7 @@ func (c *Consumer) doVbTakeover(vbno uint16) error {
 
 	case dcpStreamStopped:
 
-		logging.Infof("CRVT[%s:%s:%s:%d] vb: %v starting dcp stream", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+		logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v starting dcp stream", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 		return c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
 
 	default:
@@ -260,10 +260,10 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbB
 
 				return errFailedRPCDownloadDir
 			}
-			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
+			logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, sTimerDir, dTimerDir, remoteConsumerAddr)
 		} else {
-			logging.Infof("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
+			logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, sTimerDir, dTimerDir)
 		}
 
@@ -369,7 +369,7 @@ func (c *Consumer) getVbRemainingToOwn() []uint16 {
 	}
 
 	sort.Sort(util.Uint16Slice(vbsRemainingToOwn))
-	logging.Infof("CRVT[%s:%s:%s:%d] vbs remaining to own len: %d dump: %v",
+	logging.Tracef("CRVT[%s:%s:%s:%d] vbs remaining to own len: %d dump: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsRemainingToOwn), vbsRemainingToOwn)
 
 	return vbsRemainingToOwn
@@ -402,7 +402,7 @@ func (c *Consumer) getVbRemainingToGiveUp() []uint16 {
 	}
 
 	sort.Sort(util.Uint16Slice(vbsRemainingToGiveUp))
-	logging.Infof("CRVT[%s:%s:%s:%d] vbs remaining to give up len: %d dump: %v",
+	logging.Tracef("CRVT[%s:%s:%s:%d] vbs remaining to give up len: %d dump: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsRemainingToGiveUp), vbsRemainingToGiveUp)
 
 	return vbsRemainingToGiveUp
