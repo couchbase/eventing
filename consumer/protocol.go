@@ -155,7 +155,7 @@ func makeDcpPayload(key, value []byte) []byte {
 }
 
 func makeV8InitPayload(appName, kvHostPort, depCfg, rbacUser, rbacPass string,
-	incrSize, capacity int) []byte {
+	incrSize, capacity int, enableRecursiveMutation bool) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
 
@@ -164,6 +164,9 @@ func makeV8InitPayload(appName, kvHostPort, depCfg, rbacUser, rbacPass string,
 	khp := builder.CreateString(kvHostPort)
 	rUser := builder.CreateString(rbacUser)
 	rPass := builder.CreateString(rbacPass)
+
+	buf := make([]byte, 1)
+	flatbuffers.WriteBool(buf, enableRecursiveMutation)
 
 	payload.PayloadStart(builder)
 
@@ -174,6 +177,7 @@ func makeV8InitPayload(appName, kvHostPort, depCfg, rbacUser, rbacPass string,
 	payload.PayloadAddRbacPass(builder, rPass)
 	payload.PayloadAddLcbInstIncrSize(builder, int32(incrSize))
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
+	payload.PayloadAddEnableRecursiveMutation(builder, buf[0])
 
 	msgPos := payload.PayloadEnd(builder)
 	builder.Finish(msgPos)

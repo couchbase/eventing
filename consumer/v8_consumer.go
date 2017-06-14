@@ -23,7 +23,7 @@ import (
 )
 
 // NewConsumer called by producer to create consumer handle
-func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool,
+func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
 	skipTimerThreshold, lcbInstIncrSize, lcbInstCapacity int, eventingAdminPort, eventingDir string,
 	p common.EventingProducer, app *common.AppConfig, vbnos []uint16,
 	bucket, logLevel, tcpPort, uuid string, eventingNodeUUIDs []string,
@@ -43,6 +43,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers bool,
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,
 		docTimerEntryCh:                    make(chan *byTimerEntry, timerChanSize),
+		enableRecursiveMutation:            enableRecursiveMutation,
 		eventingAdminPort:                  eventingAdminPort,
 		eventingDir:                        eventingDir,
 		eventingNodeUUIDs:                  eventingNodeUUIDs,
@@ -176,7 +177,10 @@ func (c *Consumer) HandleV8Worker() {
 	c.sendLogLevel(c.logLevel)
 
 	payload := makeV8InitPayload(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData(),
-		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstIncrSize, c.lcbInstCapacity)
+		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstIncrSize, c.lcbInstCapacity,
+		c.enableRecursiveMutation)
+	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 	c.sendInitV8Worker(payload)
 
 	c.sendLoadV8Worker(c.app.AppCode)

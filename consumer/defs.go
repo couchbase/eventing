@@ -202,6 +202,8 @@ type Consumer struct {
 	timerTransferHandle   *timer.TransferSrv
 	timerTransferSupToken suptree.ServiceToken
 
+	enableRecursiveMutation bool
+
 	dcpStreamBoundary common.DcpStreamBoundary
 
 	// Map that needed to short circuits failover log to dcp stream request routine

@@ -19,6 +19,8 @@ table Payload {
   // Nested iterator related fields
   lcb_inst_incr_size:int;
   lcb_inst_capacity:int;
+
+  enable_recursive_mutation:bool;
 }
 
 root_type Payload;

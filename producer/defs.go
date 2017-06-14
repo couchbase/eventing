@@ -63,6 +63,8 @@ type Producer struct {
 	lcbInstIncrSize int
 	lcbInstCapacity int
 
+	enableRecursiveMutation bool
+
 	// Controls start seq no for vb dcp stream
 	// currently supports:
 	// everything - start from beginning and listen forever

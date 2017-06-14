@@ -191,7 +191,7 @@ void Bucket::BucketGet(v8::Local<v8::Name> name,
   lcb_sched_leave(*bucket_lcb_obj_ptr);
   lcb_wait(*bucket_lcb_obj_ptr);
 
-  LOG(logTrace) << "GET call result Key: " << key << " Value: " << result.value
+  LOG(logTrace) << "Get call result Key: " << key << " Value: " << result.value
                 << '\n';
 
   const std::string &value = result.value;
@@ -211,7 +211,9 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
   std::string key = ObjectToString(v8::Local<v8::String>::Cast(name));
   std::string value = ToString(info.GetIsolate(), value_obj);
 
-  LOG(logTrace) << "Set call Key: " << key << " Value: " << value << '\n';
+  LOG(logTrace) << "Set call Key: " << key << " Value: " << value
+                << " enable_recursive_mutation: " << enable_recursive_mutation
+                << '\n';
 
   lcb_t *bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
 
@@ -221,30 +223,54 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
   std::vector<lcb_SDSPEC> specs;
 
   lcb_SDSPEC xattr_spec, doc_spec = {0};
-  xattr_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-  xattr_spec.options =
-      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
 
-  std::string xattr_cas_path("eventing.cas");
-  std::string mutation_cas_macro("\"${Mutation.CAS}\"");
+  if (!enable_recursive_mutation) {
+    LOG(logTrace) << "Adding macro in xattr to avoid retriggering of handler "
+                     "from recursive mutation, enable_recursive_mutation: "
+                  << enable_recursive_mutation << '\n';
 
-  LCB_SDSPEC_SET_PATH(&xattr_spec, xattr_cas_path.c_str(),
-                      xattr_cas_path.size());
-  LCB_SDSPEC_SET_VALUE(&xattr_spec, mutation_cas_macro.c_str(),
-                       mutation_cas_macro.size());
-  specs.push_back(xattr_spec);
+    xattr_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+    xattr_spec.options =
+        LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
 
-  doc_spec.sdcmd = LCB_SDCMD_SET_FULLDOC;
-  LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
-  LCB_SDSPEC_SET_VALUE(&doc_spec, value.c_str(), value.length());
-  specs.push_back(doc_spec);
+    std::string xattr_cas_path("eventing.cas");
+    std::string mutation_cas_macro("\"${Mutation.CAS}\"");
 
-  mcmd.specs = specs.data();
-  mcmd.nspecs = specs.size();
-  mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
+    LCB_SDSPEC_SET_PATH(&xattr_spec, xattr_cas_path.c_str(),
+                        xattr_cas_path.size());
+    LCB_SDSPEC_SET_VALUE(&xattr_spec, mutation_cas_macro.c_str(),
+                         mutation_cas_macro.size());
+    specs.push_back(xattr_spec);
 
-  lcb_subdoc3(*bucket_lcb_obj_ptr, NULL, &mcmd);
-  lcb_wait(*bucket_lcb_obj_ptr);
+    doc_spec.sdcmd = LCB_SDCMD_SET_FULLDOC;
+    LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
+    LCB_SDSPEC_SET_VALUE(&doc_spec, value.c_str(), value.length());
+    specs.push_back(doc_spec);
+
+    mcmd.specs = specs.data();
+    mcmd.nspecs = specs.size();
+    mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
+
+    lcb_subdoc3(*bucket_lcb_obj_ptr, NULL, &mcmd);
+    lcb_wait(*bucket_lcb_obj_ptr);
+
+  } else {
+    LOG(logTrace)
+        << "Performing recursive mutation, enable_recursive_mutation: "
+        << enable_recursive_mutation << '\n';
+
+    Result result;
+    lcb_CMDSTORE scmd = {0};
+    LCB_CMD_SET_KEY(&scmd, key.c_str(), key.length());
+    LCB_CMD_SET_VALUE(&scmd, value.c_str(), value.length());
+    scmd.operation = LCB_SET;
+    scmd.flags = 0x2000000;
+
+    lcb_sched_enter(*bucket_lcb_obj_ptr);
+    lcb_store3(*bucket_lcb_obj_ptr, &result, &scmd);
+    lcb_sched_leave(*bucket_lcb_obj_ptr);
+    lcb_wait(*bucket_lcb_obj_ptr);
+  }
 
   info.GetReturnValue().Set(value_obj);
 }

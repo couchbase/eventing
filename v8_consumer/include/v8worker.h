@@ -52,6 +52,8 @@ V8Worker *UnwrapV8WorkerInstance(v8::Local<v8::Object> obj);
 
 std::map<std::string, std::string> *UnwrapMap(v8::Local<v8::Object> obj);
 
+extern bool enable_recursive_mutation;
+
 class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
 public:
   virtual void *Allocate(size_t length) {
@@ -66,7 +68,7 @@ class V8Worker {
 public:
   V8Worker(std::string app_name, std::string dep_cfg, std::string kv_host_port,
            std::string rbac_user, std::string rbac_pass, int lcb_inst_incr_size,
-           int lcb_inst_capacity);
+           int lcb_inst_capacity, bool enable_recursive_mutation);
   ~V8Worker();
 
   int V8WorkerLoad(std::string source_s);

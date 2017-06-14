@@ -125,7 +125,8 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       LOG(logDebug) << "Loading app:" << app_name << '\n';
       this->v8worker = new V8Worker(app_name, dep_cfg, kv_host_port, rbac_user,
                                     rbac_pass, payload->lcb_inst_incr_size(),
-                                    payload->lcb_inst_capacity());
+                                    payload->lcb_inst_capacity(),
+                                    payload->enable_recursive_mutation());
       result.assign("Loaded requested app\n");
       break;
     case oLoad:

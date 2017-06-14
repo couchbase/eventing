@@ -52,6 +52,7 @@ func main() {
 	settings["skip_timer_threshold"] = 600
 	settings["lcb_inst_incr_size"] = 1
 	settings["lcb_inst_capacity"] = 5
+	settings["enable_recursive_mutation"] = false
 
 	sData, err := json.Marshal(&settings)
 	if err != nil {

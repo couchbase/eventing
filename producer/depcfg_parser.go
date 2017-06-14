@@ -76,6 +76,11 @@ func (p *Producer) parseDepcfg() error {
 		} else {
 			p.lcbInstCapacity = 5
 		}
+		if val, ok := settings["enable_recursive_mutation"]; ok {
+			p.enableRecursiveMutation = val.(bool)
+		} else {
+			p.enableRecursiveMutation = false
+		}
 
 		p.app.Settings = settings
 

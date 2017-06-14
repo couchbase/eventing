@@ -36,6 +36,8 @@
 #define ESTRAVERSE_PATH "estraverse.js"
 #define BUILTIN_JS_PATH "builtin.js"
 
+bool enable_recursive_mutation = false;
+
 N1QL *n1ql_handle;
 
 enum RETURN_CODE {
@@ -504,12 +506,17 @@ static void multi_op_callback(lcb_t cb_instance, int cbtype,
 
 static ArrayBufferAllocator array_buffer_allocator;
 
+void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
+
 V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
                    std::string kv_host_port, std::string rbac_user,
                    std::string rbac_pass, int lcb_inst_incr_size,
-                   int lcb_inst_capacity)
+                   int lcb_inst_capacity, bool enable_recursive_mutation)
     : lcb_inst_incr_size{lcb_inst_incr_size}, lcb_inst_capacity{
                                                   lcb_inst_capacity} {
+
+  enableRecursiveMutation(enable_recursive_mutation);
+
   v8::V8::InitializeICU();
   v8::Platform *platform = v8::platform::CreateDefaultPlatform();
   v8::V8::InitializePlatform(platform);
@@ -584,7 +591,9 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
                << " kv_host_port: " << kv_host_port
                << " rbac_user: " << rbac_user << " rbac_pass: " << rbac_pass
                << " incr_size: " << lcb_inst_incr_size
-               << " lcb_cap: " << lcb_inst_capacity << '\n';
+               << " lcb_cap: " << lcb_inst_capacity
+               << " enable_recursive_mutation: " << enable_recursive_mutation
+               << '\n';
 
   n1ql_handle =
       new N1QL(cb_kv_endpoint, cb_source_bucket, rbac_user, rbac_pass);
