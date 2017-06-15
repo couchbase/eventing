@@ -110,7 +110,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			for j := 0; j < v; j++ {
 				vbsAssigned[j] = startVb
 				c.timerProcessingVbsWorkerMap[startVb] = worker
-				c.vbProcessingStats.updateVbStat(startVb, "timer_processing_worker", fmt.Sprintf("timer_%d", i))
+				c.vbProcessingStats.updateVbStat(startVb, "doc_id_timer_processing_worker", fmt.Sprintf("timer_%d", i))
 				startVb++
 			}
 
@@ -132,7 +132,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			for j := 0; j < v; j++ {
 				vbsAssigned[j] = startVb
 				c.timerProcessingVbsWorkerMap[startVb] = c.timerProcessingRunningWorkers[i]
-				c.vbProcessingStats.updateVbStat(startVb, "timer_processing_worker", fmt.Sprintf("timer_%d", i))
+				c.vbProcessingStats.updateVbStat(startVb, "doc_id_timer_processing_worker", fmt.Sprintf("timer_%d", i))
 				startVb++
 			}
 
@@ -163,19 +163,19 @@ func (r *timerProcessingWorker) processTimerEvents() {
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, r.c, vbKey, &vbBlob, &cas, false)
 
-		if vbBlob.CurrentProcessedTimer == "" {
-			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_timer", currTimer)
+		if vbBlob.CurrentProcessedDocIDTimer == "" {
+			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", currTimer)
 		} else {
-			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_timer", vbBlob.CurrentProcessedTimer)
+			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer)
 		}
 
-		if vbBlob.NextTimerToProcess == "" {
-			r.c.vbProcessingStats.updateVbStat(vb, "next_timer_to_process", nextTimer)
+		if vbBlob.NextDocIDTimerToProcess == "" {
+			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", nextTimer)
 		} else {
-			r.c.vbProcessingStats.updateVbStat(vb, "next_timer_to_process", vbBlob.NextTimerToProcess)
+			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess)
 		}
 
-		r.c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", vbBlob.LastProcessedTimerEvent)
+		r.c.vbProcessingStats.updateVbStat(vb, "last_processed_doc_id_timer_event", vbBlob.LastProcessedDocIDTimerEvent)
 		r.c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_persisted", vbBlob.PlasmaPersistedSeqNo)
 	}
 
@@ -203,7 +203,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 
 		vbsOwned = r.getVbsOwned()
 		for _, vb := range vbsOwned {
-			currTimer := r.c.vbProcessingStats.getVbStat(vb, "currently_processed_timer").(string)
+			currTimer := r.c.vbProcessingStats.getVbStat(vb, "currently_processed_doc_id_timer").(string)
 
 			r.c.timerRWMutex.RLock()
 			_, ok := r.c.vbPlasmaReader[vb]
@@ -245,7 +245,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 
 			r.c.updateTimerStats(vb)
 
-			lastTimerEvent := r.c.vbProcessingStats.getVbStat(vb, "last_processed_timer_event")
+			lastTimerEvent := r.c.vbProcessingStats.getVbStat(vb, "last_processed_doc_id_timer_event")
 			if lastTimerEvent != "" {
 				startProcess := false
 
@@ -282,7 +282,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 
 						if startProcess {
 							r.c.docTimerEntryCh <- &timer
-							r.c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", timer.DocID)
+							r.c.vbProcessingStats.updateVbStat(vb, "last_processed_doc_id_timer_event", timer.DocID)
 						} else if lastTimerEvent == timer.DocID {
 							startProcess = true
 						}
@@ -321,7 +321,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 				}
 			}
 
-			r.c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", "")
+			r.c.vbProcessingStats.updateVbStat(vb, "last_processed_doc_id_timer_event", "")
 
 			r.c.timerRWMutex.RLock()
 			token = r.c.vbPlasmaReader[vb].BeginTx()
@@ -359,38 +359,88 @@ func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateS
 	}
 
 	if updateStats {
-		c.vbProcessingStats.updateVbStat(vb, "last_processed_timer_event", timer.DocID)
+		c.vbProcessingStats.updateVbStat(vb, "last_processed_doc_id_timer_event", timer.DocID)
 	}
 }
 
 func (c *Consumer) processNonDocTimerEvents() {
-	c.nonDocTimerProcessingTicker = time.NewTicker(time.Second)
+	c.nonDocTimerProcessingTicker = time.NewTicker(c.timerProcessingTickInterval)
+
+	currTimer := time.Now().UTC().Format(time.RFC3339)
+	nextTimer := time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+
+	vbsOwned := c.getVbsOwned()
+
+	for _, vb := range vbsOwned {
+		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
+
+		var vbBlob vbucketKVBlob
+		var cas uint64
+
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+
+		if vbBlob.CurrentProcessedDocIDTimer == "" {
+			c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", currTimer)
+		} else {
+			c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", vbBlob.CurrentProcessedNonDocTimer)
+		}
+
+		if vbBlob.NextDocIDTimerToProcess == "" {
+			c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", nextTimer)
+		} else {
+			c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", vbBlob.NextNonDocTimerToProcess)
+		}
+	}
 
 	for {
 		select {
 		case <-c.nonDocTimerStopCh:
 			return
 
-		case t := <-c.nonDocTimerProcessingTicker.C:
+		case <-c.nonDocTimerProcessingTicker.C:
 			var val string
 			var isNoEnt bool
-			ts := t.UTC()
-			key := ts.Format(tsLayout)
 
-			vb := util.VbucketByKey([]byte(key), numVbuckets)
+			vbsOwned := c.getVbsOwned()
+			for _, vb := range vbsOwned {
+				currTimer := c.vbProcessingStats.getVbStat(vb, "currently_processed_non_doc_timer").(string)
+				ts, err := time.Parse(tsLayout, currTimer)
+				if err != nil {
+					logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
+					continue
+				}
 
-			if c.checkIfVbInOwned(vb) {
-				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getNonDocTimerCallback, c, key, &val, true, &isNoEnt)
+				if ts.After(time.Now()) {
+					continue
+				}
+
+				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getNonDocTimerCallback, c, currTimer, &val, true, &isNoEnt)
 
 				if !isNoEnt {
 					logging.Debugf("CRTE[%s:%s:%s:%d] Non doc timer key: %v val: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, val)
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), currTimer, val)
 					c.nonDocTimerEntryCh <- val
-					c.metadataBucketHandle.Delete(key)
+					c.metadataBucketHandle.Delete(currTimer)
 				}
+				c.updateNonDocTimerStats(vb)
 			}
 		}
 	}
+}
+
+func (c *Consumer) updateNonDocTimerStats(vb uint16) {
+	nTimerTs := c.vbProcessingStats.getVbStat(vb, "next_non_doc_timer_to_process").(string)
+	c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", nTimerTs)
+
+	nextTimer, err := time.Parse(tsLayout, nTimerTs)
+	if err != nil {
+		logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, nTimerTs, err)
+	}
+
+	c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process",
+		nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
 }
 
 func (c *Consumer) checkIfVbInOwned(vb uint16) bool {
@@ -408,8 +458,8 @@ func (c *Consumer) checkIfVbInOwned(vb uint16) bool {
 
 func (c *Consumer) updateTimerStats(vb uint16) {
 
-	nTimerTs := c.vbProcessingStats.getVbStat(vb, "next_timer_to_process").(string)
-	c.vbProcessingStats.updateVbStat(vb, "currently_processed_timer", nTimerTs)
+	nTimerTs := c.vbProcessingStats.getVbStat(vb, "next_doc_id_timer_to_process").(string)
+	c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", nTimerTs)
 
 	nextTimer, err := time.Parse(tsLayout, nTimerTs)
 	if err != nil {
@@ -417,9 +467,8 @@ func (c *Consumer) updateTimerStats(vb uint16) {
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, nTimerTs, err)
 	}
 
-	c.vbProcessingStats.updateVbStat(vb, "next_timer_to_process",
+	c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process",
 		nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
-
 }
 
 func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key string, xMeta *xattrMetadata) error {

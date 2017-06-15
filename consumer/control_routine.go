@@ -58,10 +58,14 @@ func (c *Consumer) controlRoutine() {
 				k.stopCh <- struct{}{}
 			}
 
+			// Spawning DocID based timer processing routines
 			c.vbTimerProcessingWorkerAssign(true)
 			for _, r := range c.timerProcessingRunningWorkers {
 				go r.processTimerEvents()
 			}
+
+			c.nonDocTimerStopCh <- struct{}{}
+			go c.processNonDocTimerEvents()
 
 		case <-c.restartVbDcpStreamTicker.C:
 

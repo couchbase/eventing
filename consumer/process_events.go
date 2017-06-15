@@ -479,7 +479,7 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-	vbBlob.AssignedTimerWorker = ""
+	vbBlob.AssignedDocIDTimerWorker = ""
 	vbBlob.AssignedWorker = ""
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
@@ -503,7 +503,7 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
-	c.vbProcessingStats.updateVbStat(vbno, "timer_processing_worker", vbBlob.AssignedTimerWorker)
+	c.vbProcessingStats.updateVbStat(vbno, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
 }

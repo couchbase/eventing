@@ -276,7 +276,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbB
 
 func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, vbBlob *vbucketKVBlob, cas *uint64) {
 
-	vbBlob.AssignedTimerWorker = ""
+	vbBlob.AssignedDocIDTimerWorker = ""
 	vbBlob.AssignedWorker = ""
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
@@ -292,7 +292,7 @@ func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, v
 	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
-	c.vbProcessingStats.updateVbStat(vbno, "timer_processing_worker", vbBlob.AssignedTimerWorker)
+	c.vbProcessingStats.updateVbStat(vbno, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
 
 	// TODO: Retry loop for dcp close stream as it could fail and additional verification checks
 	// Additional check needed to verify if vbBlob.NewOwner is the expected owner

@@ -334,11 +334,13 @@ type vbucketKVBlob struct {
 	VBId                   uint16           `json:"vb_id"`
 	VBuuid                 uint64           `json:"vb_uuid"`
 
-	AssignedTimerWorker     string `json:"timer_processing_worker"`
-	CurrentProcessedTimer   string `json:"currently_processed_timer"`
-	LastProcessedTimerEvent string `json:"last_processed_timer_event"`
-	NextTimerToProcess      string `json:"next_timer_to_process"`
-	PlasmaPersistedSeqNo    uint64 `json:"plasma_last_persisted_seq_no"`
+	AssignedDocIDTimerWorker     string `json:"doc_id_timer_processing_worker"`
+	CurrentProcessedDocIDTimer   string `json:"currently_processed_doc_id_timer"`
+	CurrentProcessedNonDocTimer  string `json:"currently_processed_non_doc_timer"`
+	LastProcessedDocIDTimerEvent string `json:"last_processed_doc_id_timer_event"`
+	NextDocIDTimerToProcess      string `json:"next_doc_id_timer_to_process"`
+	NextNonDocTimerToProcess     string `json:"next_non_doc_timer_to_process"`
+	PlasmaPersistedSeqNo         uint64 `json:"plasma_last_persisted_seq_no"`
 }
 
 // OwnershipEntry captures the state of vbucket within the metadata blob
