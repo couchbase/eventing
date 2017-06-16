@@ -12,6 +12,7 @@
 #ifndef V8WORKER_H
 #define V8WORKER_H
 
+#include <list>
 #include <map>
 #include <string>
 
@@ -109,9 +110,7 @@ private:
   ArrayBufferAllocator allocator;
   v8::Isolate *isolate_;
 
-  Bucket *bucket_handle;
-
-  std::map<std::string, std::string> bucket;
+  std::list<Bucket *> bucket_handles;
 
   std::string last_exception;
 };

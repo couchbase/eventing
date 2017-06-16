@@ -568,8 +568,7 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
            std::map<std::string, std::vector<std::string>>>::iterator it =
       config->component_configs.begin();
 
-
-  bucket_handle = nullptr;
+  Bucket *bucket_handle = nullptr;
 
   for (; it != config->component_configs.end(); it++) {
     if (it->first == "buckets") {
@@ -583,6 +582,8 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
         bucket_handle =
             new Bucket(this, bucket_name.c_str(), cb_kv_endpoint.c_str(),
                        bucket_alias.c_str(), rbac_user, rbac_pass);
+
+        bucket_handles.push_back(bucket_handle);
       }
     }
   }
@@ -711,10 +712,17 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
       v8::Local<v8::Function>::Cast(on_delete_val);
   on_delete_.Reset(GetIsolate(), on_delete_fun);
 
-  if (bucket_handle) {
-    if (!bucket_handle->Initialize(this, &bucket)) {
-      LOG(logError) << "Error initializing bucket handle" << '\n';
-      return FAILED_INIT_BUCKET_HANDLE;
+  if (bucket_handles.size() > 0) {
+    std::list<Bucket *>::iterator bucket_handle = bucket_handles.begin();
+
+    for (; bucket_handle != bucket_handles.end(); bucket_handle++) {
+      if (*bucket_handle) {
+        std::map<std::string, std::string> data_bucket;
+        if (!(*bucket_handle)->Initialize(this, &data_bucket)) {
+          LOG(logError) << "Error initializing bucket handle" << '\n';
+          return FAILED_INIT_BUCKET_HANDLE;
+        }
+      }
     }
   }
 
