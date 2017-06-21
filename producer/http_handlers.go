@@ -19,7 +19,7 @@ func (p *Producer) RebalanceStatus(w http.ResponseWriter, r *http.Request) {
 	for _, consumer := range p.runningConsumers {
 		consumerProgress := consumer.RebalanceTaskProgress()
 
-		producerLevelProgress.VbsCurrentlyOwned += consumerProgress.VbsCurrentlyOwned
+		producerLevelProgress.VbsRemainingToShuffle += consumerProgress.VbsRemainingToShuffle
 		producerLevelProgress.VbsOwnedPerPlan += consumerProgress.VbsOwnedPerPlan
 	}
 

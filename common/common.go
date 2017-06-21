@@ -27,6 +27,7 @@ type EventingProducer interface {
 	Auth() string
 	CfgData() string
 	CleanupDeadConsumer(consumer EventingConsumer)
+	ClearEventStats()
 	GetNsServerPort() string
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
 	KvHostPorts() []string
@@ -51,6 +52,7 @@ type EventingProducer interface {
 
 // EventingConsumer interface to export functions from eventing_consumer
 type EventingConsumer interface {
+	ClearEventStats()
 	ConsumerName() string
 	DcpEventsRemainingToProcess() uint64
 	EventsProcessedPSec() *EventProcessingStats
@@ -75,6 +77,7 @@ type EventingConsumer interface {
 type EventingSuperSup interface {
 	AppProducerHostPortAddr(appName string) string
 	AppTimerTransferHostPortAddrs(string) map[string]string
+	ClearEventStats()
 	NotifyPrepareTopologyChange(keepNodes []string)
 	ProducerHostPortAddrs() []string
 	RestPort() string
@@ -96,8 +99,8 @@ type AppConfig struct {
 }
 
 type RebalanceProgress struct {
-	VbsCurrentlyOwned int
-	VbsOwnedPerPlan   int
+	VbsRemainingToShuffle int
+	VbsOwnedPerPlan       int
 }
 
 type EventProcessingStats struct {

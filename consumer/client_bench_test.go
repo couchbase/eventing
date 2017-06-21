@@ -71,7 +71,7 @@ func init() {
 
 	c.sendLogLevel("SILENT")
 	payload := makeV8InitPayload("credit_score", "localhost:12000", string(cfgData),
-		"eventing", "asdasd", 1, 5, false)
+		"eventing", "asdasd", 5, false)
 	c.sendInitV8Worker(payload)
 	c.sendLoadV8Worker(appCode)
 }

@@ -15,10 +15,9 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 
 	if len(vbsRemainingToGiveUp) > 0 || len(vbsRemainingToOwn) > 0 {
 		vbsOwnedPerPlan := c.getVbsOwned()
-		vbsCurrentlyOwned := c.verifyVbsCurrentlyOwned(vbsOwnedPerPlan)
 
-		progress.VbsCurrentlyOwned = len(vbsCurrentlyOwned)
 		progress.VbsOwnedPerPlan = len(vbsOwnedPerPlan)
+		progress.VbsRemainingToShuffle = len(vbsRemainingToOwn) + len(vbsRemainingToGiveUp)
 	}
 
 	return progress

@@ -150,7 +150,6 @@ type Consumer struct {
 	cbBucket               *couchbase.Bucket
 	checkpointInterval     time.Duration
 	cleanupTimers          bool
-	dcpBootstrapCh         chan struct{}
 	dcpFeedCancelChs       []chan struct{}
 	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16
 	eventingAdminPort      string
@@ -169,7 +168,6 @@ type Consumer struct {
 	vbsRemainingToRestream []uint16
 
 	// N1QL Transpiler related nested iterator config params
-	lcbInstIncrSize int
 	lcbInstCapacity int
 
 	docTimerEntryCh    chan *byTimerEntry

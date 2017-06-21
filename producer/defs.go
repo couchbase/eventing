@@ -60,7 +60,6 @@ type Producer struct {
 	workerCount            int
 
 	// N1QL Transpiler related nested iterator config params
-	lcbInstIncrSize int
 	lcbInstCapacity int
 
 	enableRecursiveMutation bool

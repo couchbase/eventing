@@ -42,7 +42,8 @@ func main() {
 		for i := range rows {
 			row := rows[i].(map[string]interface{})
 
-			vbucket, _ := strconv.Atoi(strings.Split(row["id"].(string), "_")[3])
+			rowID := strings.Split(row["id"].(string), "_")
+			vbucket, _ := strconv.Atoi(rowID[len(rowID)-1])
 			viewKey := row["key"].([]interface{})
 			currentOwner, workerID, ownerUUID := viewKey[0].(string), viewKey[1].(string), viewKey[2].(string)
 

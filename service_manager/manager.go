@@ -57,6 +57,7 @@ func (m *ServiceMgr) initService() {
 
 	go m.registerWithServer()
 
+	http.HandleFunc("/clearEventStats", m.clearEventStats)
 	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
 	http.HandleFunc("/getApplication/", m.fetchAppSetup)
 	http.HandleFunc("/getEventsPSec", m.getEventsProcessedPSec)

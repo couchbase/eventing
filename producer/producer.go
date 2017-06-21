@@ -189,7 +189,7 @@ func (p *Producer) handleV8Consumer(vbnos []uint16, index int) {
 	logging.Infof("PRDR[%s:%d] Started server on port: %s", p.appName, p.LenRunningConsumers(), p.tcpPort)
 
 	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
-		p.skipTimerThreshold, p.lcbInstIncrSize, p.lcbInstCapacity, p.eventingAdminPort,
+		p.skipTimerThreshold, p.lcbInstCapacity, p.eventingAdminPort,
 		p.eventingDir, p, p.app, vbnos, p.bucket, p.logLevel, p.tcpPort,
 		p.uuid, p.eventingNodeUUIDs, p.socketWriteBatchSize, p.timerWorkerPoolSize, index)
 
@@ -351,6 +351,13 @@ func (p *Producer) getConsumerAssignedVbuckets(workerName string) []uint16 {
 // CfgData returns deployment descriptor content
 func (p *Producer) CfgData() string {
 	return p.cfgData
+}
+
+// ClearEventStats flushes event processing stats
+func (p *Producer) ClearEventStats() {
+	for _, c := range p.runningConsumers {
+		c.ClearEventStats()
+	}
 }
 
 // MetadataBucket return metadata bucket for event handler

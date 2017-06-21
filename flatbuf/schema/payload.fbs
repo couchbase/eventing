@@ -17,7 +17,6 @@ table Payload {
   doc_ids_callback_fns:string; // non doc-id based timer event doc_id-callback_fn pairs
 
   // Nested iterator related fields
-  lcb_inst_incr_size:int;
   lcb_inst_capacity:int;
 
   enable_recursive_mutation:bool;

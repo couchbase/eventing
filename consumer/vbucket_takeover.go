@@ -28,7 +28,7 @@ func (c *Consumer) reclaimVbOwnership(vbno uint16) error {
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 	if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
-		logging.Infof("CRVT[%s:%s:%s:%d] vb: %v successfully reclaimed ownership",
+		logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v successfully reclaimed ownership",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 		return nil
 	}

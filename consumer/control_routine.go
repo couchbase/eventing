@@ -93,7 +93,7 @@ func (c *Consumer) controlRoutine() {
 				var cas uint64
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
 
-				logging.Infof("CRCR[%s:%s:%s:%d] vbno: %v, reclaiming it back by restarting dcp stream",
+				logging.Debugf("CRCR[%s:%s:%s:%d] vbno: %v, reclaiming it back by restarting dcp stream",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
@@ -103,7 +103,7 @@ func (c *Consumer) controlRoutine() {
 				}
 			}
 
-			logging.Infof("CRCR[%s:%s:%s:%d] vbsFailedToStartStream => len: %v dump: %v",
+			logging.Debugf("CRCR[%s:%s:%s:%d] vbsFailedToStartStream => len: %v dump: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsFailedToStartStream), vbsFailedToStartStream)
 
 			vbsToRestream = util.VbsSliceDiff(vbsFailedToStartStream, vbsToRestream)

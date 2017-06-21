@@ -50,7 +50,6 @@ func main() {
 	settings["cleanup_timers"] = true
 	settings["timer_processing_tick_interval"] = 500
 	settings["skip_timer_threshold"] = 600
-	settings["lcb_inst_incr_size"] = 1
 	settings["lcb_inst_capacity"] = 5
 	settings["enable_recursive_mutation"] = false
 

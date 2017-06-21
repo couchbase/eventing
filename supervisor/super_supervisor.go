@@ -238,3 +238,10 @@ func (s *SuperSupervisor) ProducerHostPortAddrs() []string {
 func (s *SuperSupervisor) RestPort() string {
 	return s.restPort
 }
+
+// ClearEventStats flushes event processing stats
+func (s *SuperSupervisor) ClearEventStats() {
+	for _, p := range s.runningProducers {
+		p.ClearEventStats()
+	}
+}

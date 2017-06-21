@@ -13,6 +13,12 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
+func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
+	logging.Infof("Got request to clear event stats from host: %v", r.Host)
+
+	m.superSup.ClearEventStats()
+}
+
 func (m *ServiceMgr) getNodeUUID(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%v", m.uuid)
 }

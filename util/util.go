@@ -373,7 +373,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) *cm.RebalanceProgress {
 			continue
 		}
 
-		aggProgress.VbsCurrentlyOwned += progress.VbsCurrentlyOwned
+		aggProgress.VbsRemainingToShuffle += progress.VbsRemainingToShuffle
 		aggProgress.VbsOwnedPerPlan += progress.VbsOwnedPerPlan
 	}
 

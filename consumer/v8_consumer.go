@@ -24,7 +24,7 @@ import (
 
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
-	skipTimerThreshold, lcbInstIncrSize, lcbInstCapacity int, eventingAdminPort, eventingDir string,
+	skipTimerThreshold, lcbInstCapacity int, eventingAdminPort, eventingDir string,
 	p common.EventingProducer, app *common.AppConfig, vbnos []uint16,
 	bucket, logLevel, tcpPort, uuid string, eventingNodeUUIDs []string,
 	sockWriteBatchSize, timerProcessingPoolSize, workerID int) *Consumer {
@@ -38,7 +38,6 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		checkpointInterval:                 checkpointInterval,
 		cleanupTimers:                      cleanupTimers,
 		clusterStateChangeNotifCh:          make(chan struct{}, ClusterChangeNotifChBufSize),
-		dcpBootstrapCh:                     make(chan struct{}, 10),
 		dcpFeedCancelChs:                   make([]chan struct{}, 0),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,
@@ -50,7 +49,6 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		gracefulShutdownChan:               make(chan struct{}, 1),
 		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
 		lcbInstCapacity:                    lcbInstCapacity,
-		lcbInstIncrSize:                    lcbInstIncrSize,
 		logLevel:                           logLevel,
 		nonDocTimerEntryCh:                 make(chan string, timerChanSize),
 		nonDocTimerStopCh:                  make(chan struct{}, 1),
@@ -144,11 +142,7 @@ func (c *Consumer) Serve() {
 		c.HostPortAddr(), c.workerName)
 	c.timerTransferSupToken = c.consumerSup.Add(c.timerTransferHandle)
 
-	go c.startDcp(dcpConfig, flogs)
-
-	for i := 0; i < len(c.vbnos); i++ {
-		<-c.dcpBootstrapCh
-	}
+	c.startDcp(dcpConfig, flogs)
 
 	// Initialises timer processing worker instances
 	c.vbTimerProcessingWorkerAssign(true)
@@ -177,8 +171,7 @@ func (c *Consumer) HandleV8Worker() {
 	c.sendLogLevel(c.logLevel)
 
 	payload := makeV8InitPayload(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData(),
-		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstIncrSize, c.lcbInstCapacity,
-		c.enableRecursiveMutation)
+		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity, c.enableRecursiveMutation)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 	c.sendInitV8Worker(payload)
@@ -209,8 +202,6 @@ func (c *Consumer) Stop() {
 		store.Close()
 	}
 	c.plasmaStoreRWMutex.RUnlock()
-
-	close(c.dcpBootstrapCh)
 
 	c.cbBucket.Close()
 	c.gocbBucket.Close()
@@ -265,6 +256,15 @@ func (c *Consumer) SetConnHandle(conn net.Conn) {
 	c.Lock()
 	defer c.Unlock()
 	c.conn = conn
+}
+
+// ClearEventStats flushes event processing stats
+func (c *Consumer) ClearEventStats() {
+	c.Lock()
+	c.dcpMessagesProcessed = make(map[mcd.CommandCode]uint64)
+	c.v8WorkerMessagesProcessed = make(map[string]uint64)
+	c.timerMessagesProcessed = 0
+	c.Unlock()
 }
 
 // HostPortAddr returns the HostPortAddr combination of current eventing node

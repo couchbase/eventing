@@ -66,11 +66,6 @@ func (p *Producer) parseDepcfg() error {
 		p.skipTimerThreshold = int(settings["skip_timer_threshold"].(float64))
 
 		// TODO: Remove if exists checking once UI starts to pass below fields
-		if val, ok := settings["lcb_inst_incr_size"]; ok {
-			p.lcbInstIncrSize = int(val.(float64))
-		} else {
-			p.lcbInstIncrSize = 1
-		}
 		if val, ok := settings["lcb_inst_capacity"]; ok {
 			p.lcbInstCapacity = int(val.(float64))
 		} else {

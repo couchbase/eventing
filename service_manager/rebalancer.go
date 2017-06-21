@@ -50,7 +50,7 @@ func (r *rebalancer) gatherProgress() {
 			if p.VbsOwnedPerPlan == 0 {
 				progress = 1.0
 			} else {
-				progress = float64(p.VbsCurrentlyOwned) / float64(p.VbsOwnedPerPlan)
+				progress = 1.0 - (float64(p.VbsRemainingToShuffle) / 2 / float64(p.VbsOwnedPerPlan))
 			}
 
 			r.cb.progress(progress, r.c)

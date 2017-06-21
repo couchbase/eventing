@@ -15,7 +15,6 @@ import (
 	sc "github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
-	"github.com/couchbase/indexing/secondary/dcp/transport/client"
 	"github.com/couchbase/indexing/secondary/logging"
 	"github.com/couchbase/nitro/plasma"
 )
@@ -232,7 +231,7 @@ func (c *Consumer) processEvents() {
 				}
 
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
-					logging.Infof("CRVT[%s:%s:%s:%d] vb: %v, got STREAMEND, needs to be reclaimed",
+					logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v, got STREAMEND, needs to be reclaimed",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 					c.Lock()
 					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, e.VBucket)
@@ -273,7 +272,9 @@ func (c *Consumer) processEvents() {
 			if len(vbsOwned) > 0 {
 				c.RLock()
 
+				c.RLock()
 				countMsg, dcpOpCount, tStamp := util.SprintDCPCounts(c.dcpMessagesProcessed)
+				c.RUnlock()
 
 				diff := tStamp.Sub(c.opsTimestamp)
 
@@ -287,9 +288,11 @@ func (c *Consumer) processEvents() {
 					c.timerMessagesProcessedPSec = int(timerOpsDiff) / seconds
 				}
 
+				c.RLock()
 				logging.Infof("CRDP[%s:%s:%s:%d] DCP events: %s V8 events: %s Timer events: %v, vbs owned len: %d vbs owned:[%d..%d]",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
 					c.timerMessagesProcessed, len(c.getCurrentlyOwnedVbs()), vbsOwned[0], vbsOwned[len(vbsOwned)-1])
+				c.RUnlock()
 
 				c.opsTimestamp = tStamp
 				c.dcpOpsProcessed = dcpOpCount
@@ -342,52 +345,47 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 
 	for vbno, flog := range flogs {
 
-		go func(c *Consumer, vbno uint16, flog memcached.FailoverLog) {
+		vbuuid, _, _ := flog.Latest()
 
-			vbuuid, _, _ := flog.Latest()
+		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+		var vbBlob vbucketKVBlob
+		var cas, start uint64
+		var isNoEnt bool
 
-			vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
-			var vbBlob vbucketKVBlob
-			var cas, start uint64
-			var isNoEnt bool
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
+		if isNoEnt {
 
-			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
-			if isNoEnt {
+			// Storing vbuuid in metadata bucket, will be required for start
+			// stream later on
+			vbBlob.VBuuid = vbuuid
+			vbBlob.VBId = vbno
+			vbBlob.AssignedWorker = c.ConsumerName()
+			vbBlob.CurrentVBOwner = c.HostPortAddr()
 
-				// Storing vbuuid in metadata bucket, will be required for start
-				// stream later on
-				vbBlob.VBuuid = vbuuid
-				vbBlob.VBId = vbno
-				vbBlob.AssignedWorker = c.ConsumerName()
-				vbBlob.CurrentVBOwner = c.HostPortAddr()
+			// Assigning previous owner and worker to current consumer
+			vbBlob.PreviousAssignedWorker = c.ConsumerName()
+			vbBlob.PreviousNodeUUID = c.NodeUUID()
+			vbBlob.PreviousVBOwner = c.HostPortAddr()
+			vbBlob.PreviousEventingDir = c.eventingDir
 
-				// Assigning previous owner and worker to current consumer
-				vbBlob.PreviousAssignedWorker = c.ConsumerName()
-				vbBlob.PreviousNodeUUID = c.NodeUUID()
-				vbBlob.PreviousVBOwner = c.HostPortAddr()
-				vbBlob.PreviousEventingDir = c.eventingDir
+			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, vbKey, &vbBlob)
 
-				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, vbKey, &vbBlob)
-
-				switch c.dcpStreamBoundary {
-				case common.DcpEverything:
-					start = uint64(0)
-					c.dcpRequestStreamHandle(vbno, &vbBlob, start)
-				case common.DcpFromNow:
-					start = uint64(vbSeqnos[int(vbno)])
-					c.dcpRequestStreamHandle(vbno, &vbBlob, start)
-				}
-			} else {
-
-				if vbBlob.NodeUUID == c.NodeUUID() {
-					start = vbBlob.LastSeqNoProcessed
-
-					c.dcpRequestStreamHandle(vbno, &vbBlob, start)
-				}
+			switch c.dcpStreamBoundary {
+			case common.DcpEverything:
+				start = uint64(0)
+				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+			case common.DcpFromNow:
+				start = uint64(vbSeqnos[int(vbno)])
+				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
 			}
+		} else {
 
-			c.dcpBootstrapCh <- struct{}{}
-		}(c, vbno, flog)
+			if vbBlob.NodeUUID == c.NodeUUID() {
+				start = vbBlob.LastSeqNoProcessed
+
+				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+			}
+		}
 	}
 }
 
@@ -574,7 +572,7 @@ loop:
 		cfg.MinPageItems = minPageItems
 
 		if c.cleanupTimers && !c.isRebalanceOngoing {
-			logging.Infof("CRDP[%s:%s:%s:%d] vb: %v On cleanup timer request, cleaning up plasma dir: %v",
+			logging.Debugf("CRDP[%s:%s:%s:%d] vb: %v On cleanup timer request, cleaning up plasma dir: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbPlasmaDir)
 
 			err := os.RemoveAll(vbPlasmaDir)

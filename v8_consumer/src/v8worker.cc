@@ -510,8 +510,8 @@ void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
 
 V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
                    std::string kv_host_port, std::string rbac_user,
-                   std::string rbac_pass, int lcb_inst_incr_size,
-                   int lcb_inst_capacity, bool enable_recursive_mutation) {
+                   std::string rbac_pass, int lcb_inst_capacity,
+                   bool enable_recursive_mutation) {
   enableRecursiveMutation(enable_recursive_mutation);
   v8::V8::InitializeICU();
   v8::Platform *platform = v8::platform::CreateDefaultPlatform();
@@ -587,7 +587,6 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
   LOG(logInfo) << "Initialised V8Worker handle, app_name: " << app_name
                << " kv_host_port: " << kv_host_port
                << " rbac_user: " << rbac_user << " rbac_pass: " << rbac_pass
-               << " incr_size: " << lcb_inst_incr_size
                << " lcb_cap: " << lcb_inst_capacity
                << " enable_recursive_mutation: " << enable_recursive_mutation
                << '\n';
