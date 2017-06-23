@@ -308,9 +308,9 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  timer_entry = ConvertToISO8601(start_ts);
-  LOG(logTrace) << "Request to register timer, callback_func:" << cb_func
-                << " doc_id:" << doc_id << " start_ts:" << timer_entry << '\n';
+  timer_entry.assign(appName);
+  timer_entry += "::";
+  timer_entry += ConvertToISO8601(start_ts);
 
   // Perform xattr operations
   lcb_CMDSUBDOC mcmd = {0};
@@ -320,7 +320,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
    * XATTR structure with timers:
    * {
    * "eventing": {
-   *              "timers": ["2017-04-30ZT12:00:00::callback_func", ...],
+   *              "timers": ["appname::2017-04-30ZT12:00:00::callback_func", ...],
    *              "cas": ${Mutation.CAS},
    *   }
    * }
@@ -332,6 +332,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_entry += cb_func;
   timer_entry += "\"";
   timer_entry.insert(0, 1, '"');
+  LOG(logTrace) << "Request to register timer, callback_func:" << cb_func
+                << " doc_id:" << doc_id << " start_ts:" << timer_entry << '\n';
 
   std::vector<lcb_SDSPEC> specs;
 

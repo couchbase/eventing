@@ -21,10 +21,13 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 	err := c.doVbTakeover(vb)
 	switch err {
 	case errVbOwnedByAnotherWorker:
-		logging.Errorf("CRBO[%s:%s:%s:%d] vb: %v err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] vb: %v vbTakeover request, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
 	case errFailedConnectRemoteRPC:
-		logging.Errorf("CRBO[%s:%s:%s:%d] vb: %v err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] vb: %v vbTakeover request, err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+	default:
+		logging.Debugf("CRBO[%s:%s:%s:%d] vb: %v vbTakeover request, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
 	}
 	return err

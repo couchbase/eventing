@@ -7,6 +7,7 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/nitro/plasma"
 )
 
 const (
@@ -56,6 +57,7 @@ type Producer struct {
 	nsServerHostPort       string
 	tcpPort                string
 	stopProducerCh         chan struct{}
+	superSup               common.EventingSuperSup
 	uuid                   string
 	workerCount            int
 
@@ -106,9 +108,12 @@ type Producer struct {
 	// List of running consumers, will be needed if we want to gracefully shut them down
 	runningConsumers           []common.EventingConsumer
 	consumerSupervisorTokenMap map[common.EventingConsumer]suptree.ServiceToken
+	workerNameConsumerMap      map[string]common.EventingConsumer
 
 	// vbucket to eventing node assignment
 	vbEventingNodeAssignMap map[uint16]string
+
+	vbPlasmaStoreMap map[uint16]*plasma.Plasma
 
 	// copy of KV vbmap, needed while opening up dcp feed
 	kvVbMap map[uint16]string

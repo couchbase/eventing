@@ -20,21 +20,25 @@ func (p *Producer) vbEventingNodeAssign() error {
 
 	util.Retry(util.NewFixedBackoff(time.Second), getNsServerNodesAddressesOpCallback, p)
 
-	addrs := p.getEventingNodeAddrs()
-	if len(addrs) <= 0 {
+	eventingNodeAddrs := p.getEventingNodeAddrs()
+	if len(eventingNodeAddrs) <= 0 {
 		return fmt.Errorf("%v", errorUnexpectedEventingNodeCount)
 	}
+	sort.Strings(eventingNodeAddrs)
 
 	// In-case of eventing node(s) removal, ns_server would reflect those node(s) within
 	// eventing MDS service. Hence comparing node uuids received from prepareTopologyChange
 	// call to uuids published by eventing nodes
-	addrUUIDMap := util.GetNodeUUIDs("/uuid", addrs)
-	eventingNodeAddrs := make([]string, 0)
+	addrUUIDMap := util.GetNodeUUIDs("/uuid", eventingNodeAddrs)
+	eventingNodeUUIDs := make([]string, 0)
 
-	for _, uuid := range p.eventingNodeUUIDs {
-		eventingNodeAddrs = append(eventingNodeAddrs, addrUUIDMap[uuid])
+	for uuid := range addrUUIDMap {
+		eventingNodeUUIDs = append(eventingNodeUUIDs, uuid)
 	}
-	sort.Strings(eventingNodeAddrs)
+	p.eventingNodeUUIDs = eventingNodeUUIDs
+
+	logging.Debugf("VBNA[%s:%d] EventingNodeUUIDs: %v eventingNodeAddrs: %v",
+		p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, eventingNodeAddrs)
 
 	vbucketsPerNode := numVbuckets / len(eventingNodeAddrs)
 	var vbNo int

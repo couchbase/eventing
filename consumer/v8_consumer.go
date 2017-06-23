@@ -24,10 +24,10 @@ import (
 
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
-	skipTimerThreshold, lcbInstCapacity int, eventingAdminPort, eventingDir string,
-	p common.EventingProducer, app *common.AppConfig, vbnos []uint16,
-	bucket, logLevel, tcpPort, uuid string, eventingNodeUUIDs []string,
-	sockWriteBatchSize, timerProcessingPoolSize, workerID int) *Consumer {
+	index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize, timerProcessingPoolSize int,
+	bucket, eventingAdminPort, eventingDir, logLevel, tcpPort, uuid string,
+	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
+	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStoreMap map[uint16]*plasma.Plasma) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -54,12 +54,15 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		nonDocTimerStopCh:                  make(chan struct{}, 1),
 		opsTimestamp:                       time.Now(),
 		persistAllTicker:                   time.NewTicker(persistAllTickInterval),
+		plasmaReaderRWMutex:                &sync.RWMutex{},
 		plasmaStoreRWMutex:                 &sync.RWMutex{},
 		producer:                           p,
 		restartVbDcpStreamTicker:           time.NewTicker(restartVbDcpStreamTickInterval),
 		sendMsgCounter:                     0,
 		signalConnectedCh:                  make(chan struct{}, 1),
 		signalSettingsChangeCh:             make(chan struct{}, 1),
+		signalPlasmaClosedCh:               make(chan uint16, numVbuckets),
+		signalPlasmaTransferFinishCh:       make(chan *plasmaStoreMsg, numVbuckets),
 		signalProcessTimerPlasmaCloseAckCh: make(chan uint16),
 		signalStoreTimerPlasmaCloseAckCh:   make(chan uint16),
 		signalStoreTimerPlasmaCloseCh:      make(chan uint16),
@@ -70,6 +73,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		stopPlasmaPersistCh:                make(chan struct{}, 1),
 		stopVbOwnerGiveupCh:                make(chan struct{}, 1),
 		stopVbOwnerTakeoverCh:              make(chan struct{}, 1),
+		superSup:                           s,
 		tcpPort:                            tcpPort,
 		timerRWMutex:                       &sync.RWMutex{},
 		timerProcessingTickInterval:        timerProcessingTickInterval,
@@ -83,14 +87,20 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		vbnos:                  vbnos,
 		vbPlasmaReader:         make(map[uint16]*plasma.Writer),
 		vbPlasmaWriter:         make(map[uint16]*plasma.Writer),
-		vbPlasmaStoreMap:       make(map[uint16]*plasma.Plasma),
 		vbProcessingStats:      newVbProcessingStats(),
 		vbsRemainingToGiveUp:   make([]uint16, 0),
 		vbsRemainingToOwn:      make([]uint16, 0),
 		vbsRemainingToRestream: make([]uint16, 0),
-		workerName:             fmt.Sprintf("worker_%s_%d", app.AppName, workerID),
+		workerName:             fmt.Sprintf("worker_%s_%d", app.AppName, index),
 		writeBatchSeqnoMap:     make(map[uint16]uint64),
 	}
+
+	consumer.vbPlasmaStoreMap = make(map[uint16]*plasma.Plasma)
+
+	for vb, store := range vbPlasmaStoreMap {
+		consumer.vbPlasmaStoreMap[vb] = store
+	}
+
 	return consumer
 }
 
@@ -104,6 +114,10 @@ func (c *Consumer) Serve() {
 
 	c.consumerSup = suptree.NewSimple(c.workerName)
 	go c.consumerSup.ServeBackground()
+
+	c.timerTransferHandle = timer.NewTimerTransfer(c, c.app.AppName, c.eventingDir,
+		c.HostPortAddr(), c.workerName)
+	c.timerTransferSupToken = c.consumerSup.Add(c.timerTransferHandle)
 
 	c.initCBBucketConnHandle()
 
@@ -137,10 +151,6 @@ func (c *Consumer) Serve() {
 
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
 	c.clientSupToken = c.consumerSup.Add(c.client)
-
-	c.timerTransferHandle = timer.NewTimerTransfer(c, c.app.AppName, fmt.Sprintf("%s/%s/", c.eventingDir, c.app.AppName),
-		c.HostPortAddr(), c.workerName)
-	c.timerTransferSupToken = c.consumerSup.Add(c.timerTransferHandle)
 
 	c.startDcp(dcpConfig, flogs)
 
@@ -198,9 +208,6 @@ func (c *Consumer) Stop() {
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 	c.plasmaStoreRWMutex.RLock()
-	for _, store := range c.vbPlasmaStoreMap {
-		store.Close()
-	}
 	c.plasmaStoreRWMutex.RUnlock()
 
 	c.cbBucket.Close()
@@ -299,6 +306,10 @@ func (c *Consumer) NodeUUID() string {
 // TimerTransferHostPortAddr returns hostport combination for RPC server handling transfer of
 // timer related plasma files during rebalance
 func (c *Consumer) TimerTransferHostPortAddr() string {
+	if c.timerTransferHandle == nil {
+		return ""
+	}
+
 	return c.timerTransferHandle.Addr
 }
 
@@ -351,4 +362,20 @@ func (c *Consumer) initCBBucketConnHandle() {
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), poolGetBucketOpCallback, c, &conn, &pool, "default")
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), cbGetBucketOpCallback, c, &pool, metadataBucket)
+}
+
+// SignalPlasmaClosed is used by producer instance to signal message from SuperSupervisor
+// to under consumer about Closed plasma store instance
+func (c *Consumer) SignalPlasmaClosed(vb uint16) {
+	logging.Infof("V8CR[%s:%s:%s:%d] vb: %v got signal from parent producer about plasma store instance close",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
+	c.signalPlasmaClosedCh <- vb
+}
+
+// SignalPlasmaTransferFinish is called by parent producer instance to signal consumer
+// about timer data transfer completion during rebalance
+func (c *Consumer) SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma) {
+	logging.Infof("V8CR[%s:%s:%s:%d] vb: %v got signal from parent producer about plasma timer data transfer finish",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
+	c.signalPlasmaTransferFinishCh <- &plasmaStoreMsg{vb, store}
 }

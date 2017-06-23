@@ -3,6 +3,7 @@ package consumer
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/nitro/plasma"
 )
 
 var errFailedRPCDownloadDir = errors.New("failed to download vbucket dir from source RPC server")
@@ -18,18 +20,18 @@ var errFailedConnectRemoteRPC = errors.New("failed to connect to remote RPC serv
 var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
 var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another node")
 
-func (c *Consumer) reclaimVbOwnership(vbno uint16) error {
+func (c *Consumer) reclaimVbOwnership(vb uint16) error {
 	var vbBlob vbucketKVBlob
 	var cas uint64
 
-	c.doVbTakeover(vbno)
+	c.doVbTakeover(vb)
 
-	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 	if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
 		logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v successfully reclaimed ownership",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
 		return nil
 	}
 
@@ -40,42 +42,79 @@ func (c *Consumer) vbsStateUpdate() {
 	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 
-	// Vbucket ownership give-up routine and ownership takeover working simultaneously
+	// Vbucket ownership give-up routine
 	go func(c *Consumer) {
+
+		if len(c.vbsRemainingToGiveUp) == 0 {
+			logging.Tracef("CRVT[%s:%s:%s:%d] No vbuckets remaining to give up",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
 
 		var vbBlob vbucketKVBlob
 		var cas uint64
-		for _, vbno := range c.vbsRemainingToGiveUp {
-			vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+		for _, vb := range c.vbsRemainingToGiveUp {
+			vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-			if c.vbProcessingStats.getVbStat(vbno, "node_uuid") == c.NodeUUID() &&
-				c.vbProcessingStats.getVbStat(vbno, "assigned_worker") == c.ConsumerName() {
+			if c.vbProcessingStats.getVbStat(vb, "node_uuid") == c.NodeUUID() &&
+				c.vbProcessingStats.getVbStat(vb, "assigned_worker") == c.ConsumerName() {
 
-				if _, ok := c.timerProcessingVbsWorkerMap[vbno]; ok {
+				c.plasmaStoreRWMutex.RLock()
+				vbEntry, ok := c.timerProcessingVbsWorkerMap[vb]
+				c.plasmaStoreRWMutex.RUnlock()
 
-					c.timerProcessingVbsWorkerMap[vbno].signalProcessTimerPlasmaCloseCh <- vbno
+				if ok {
+					// TODO: Retry loop for dcp close stream as it could fail and additional verification checks
+					// Additional check needed to verify if vbBlob.NewOwner is the expected owner
+					// as per the vbEventingNodesAssignMap
+					c.RLock()
+					err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
+					if err != nil {
+						logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to close dcp stream, err: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+					}
+					c.RUnlock()
+
+					// Before stopping timer related against plasma store, stopping
+					// vbucket dcp stream - so that dcp event processing is aligned
+					// with stored timer events
+
+					vbEntry.signalProcessTimerPlasmaCloseCh <- vb
 					<-c.signalProcessTimerPlasmaCloseAckCh
 					logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer processing routine, about clean up of plasma.Writer instance",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
 
-					c.signalStoreTimerPlasmaCloseCh <- vbno
+					c.signalStoreTimerPlasmaCloseCh <- vb
 					<-c.signalStoreTimerPlasmaCloseAckCh
-					logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer storage routine, about clean up plasma.Writer instance",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+					logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer storage routine, about clean up of plasma.Writer instance",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
+
+					c.plasmaStoreRWMutex.RLock()
+					c.vbPlasmaStoreMap[vb].PersistAll()
+					c.plasmaStoreRWMutex.RUnlock()
+
+					c.producer.SignalToClosePlasmaStore(vb)
+
+				listenPlasmaClosedCh:
+					v := <-c.signalPlasmaClosedCh
+					if v != vb {
+						logging.Errorf("CRVT[%s:%s:%s:%d] Got closed plasma store instance signal for for vb: %v, expected vb: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), v, vb)
+						goto listenPlasmaClosedCh
+					}
+
+					logging.Infof("CRVT[%s:%s:%s:%d] Got closed plasma store instance signal for for vb: %v, expected vb: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), v, vb)
 				} else {
 
 					logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Missing entry in timerProcessingVbsWorkerMap",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
 				}
-
-				c.timerRWMutex.Lock()
-				c.closePlasmaHandle(vbno)
-				c.timerRWMutex.Unlock()
 
 				c.vbTimerProcessingWorkerAssign(false)
 
-				c.stopDcpStreamAndUpdateCheckpoint(vbKey, vbno, &vbBlob, &cas)
+				c.updateCheckpoint(vbKey, vb, &vbBlob, &cas)
 
 				// Check if another node has taken up ownership of vbucket for which
 				// ownership was given up above
@@ -83,19 +122,19 @@ func (c *Consumer) vbsStateUpdate() {
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 				logging.Tracef("CRVT[%s:%s:%s:%d] vb: %v vbsStateUpdate MetaState check",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
 
 				select {
 				case <-c.stopVbOwnerGiveupCh:
 					// TODO: Reclaiming back of vb specific plasma store handles
-					roErr := c.reclaimVbOwnership(vbno)
+					roErr := c.reclaimVbOwnership(vb)
 					if roErr != nil {
 						logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v reclaim of ownership failed, vbBlob dump: %#v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob)
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob)
 					}
 
 					logging.Debugf("CRVT[%s:%s:%s:%d] Exiting vb ownership give-up routine, last vb handled: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
 					return
 
 				default:
@@ -105,12 +144,13 @@ func (c *Consumer) vbsStateUpdate() {
 					}
 				}
 				logging.Debugf("CRVT[%s:%s:%s:%d] Gracefully exited vb ownership give-up routine, last vb handled: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
 			}
 		}
 
 	}(c)
 
+	// Vbucket ownership takeover routine
 retryStreamUpdate:
 	for i := range c.vbsRemainingToOwn {
 		select {
@@ -121,8 +161,11 @@ retryStreamUpdate:
 		default:
 		}
 
-		vbno := c.vbsRemainingToOwn[i]
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), vbTakeoverCallback, c, vbno)
+		vb := c.vbsRemainingToOwn[i]
+		logging.Tracef("CRVT[%s:%s:%s:%d] vb: %v triggering vbTakeover",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
+
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), vbTakeoverCallback, c, vb)
 		c.vbTimerProcessingWorkerAssign(false)
 
 	}
@@ -130,7 +173,7 @@ retryStreamUpdate:
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
 
-	logging.Debugf("CRVT[%s:%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
+	logging.Tracef("CRVT[%s:%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.vbsRemainingToOwn, vbsRemainingToGiveUp)
 
 	// Retry logic in-case previous attempt to own/start dcp stream didn't succeed
@@ -141,169 +184,254 @@ retryStreamUpdate:
 	}
 }
 
-func (c *Consumer) doVbTakeover(vbno uint16) error {
+func (c *Consumer) doVbTakeover(vb uint16) error {
 	var vbBlob vbucketKVBlob
 	var cas uint64
 
-	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+
+	logging.Tracef("CRVT[%s:%s:%s:%d] vb: %v getOpCallback blob dump: %#v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob)
 
 	switch vbBlob.DCPStreamStatus {
 	case dcpStreamRunning:
 
 		if c.HostPortAddr() != vbBlob.CurrentVBOwner &&
-			!c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner) && c.checkIfCurrentNodeShouldOwnVb(vbno) {
+			!c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner) && c.checkIfCurrentNodeShouldOwnVb(vb) {
 
 			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker != c.ConsumerName() {
 				return errVbOwnedByAnotherWorker
 			}
 
 			logging.Verbosef("CRVT[%s:%s:%s:%d] Node: %v taking ownership of vb: %d old node: %s isn't alive any more as per ns_server vbuuid: %v vblob.uuid: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vbno, vbBlob.CurrentVBOwner,
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vb, vbBlob.CurrentVBOwner,
 				c.NodeUUID(), vbBlob.NodeUUID)
 
 			// Below checks help in differentiating between a hostname update vs failover from 2 -> 1
 			// eventing node. In former case, it isn't required to spawn a new dcp stream but in later
 			// it's needed.
 			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, false)
+
+				shouldWait := c.superSup.SignalTimerDataTransferStart(vb)
+				logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v vbblob stream status: %v starting dcp stream, should wait for timer data transfer: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus, shouldWait)
+
+				if shouldWait {
+
+				retryListenForPlasmaTransferFinish1:
+					msg := <-c.signalPlasmaTransferFinishCh
+
+					if msg.vb != vb {
+						logging.Tracef("CRVT[%s:%s:%s:%d] vb: %v isn't same as msg.vb: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, msg.vb)
+						goto retryListenForPlasmaTransferFinish1
+					}
+
+					logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v message received from super supervisor: %#v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, msg)
+					c.plasmaStoreRWMutex.Lock()
+					c.vbPlasmaStoreMap[vb] = msg.store
+					c.plasmaStoreRWMutex.Unlock()
+
+					return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, &cas, true, false)
+				}
+
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, &cas, true, true)
 			}
-			return c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
+			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, &cas, true, true)
 		}
 
 		return errVbOwnedByAnotherWorker
 
 	case dcpStreamStopped:
 
-		logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v starting dcp stream", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
-		return c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
+		shouldWait := c.superSup.SignalTimerDataTransferStart(vb)
+		logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v vbblob stream status: %v, starting dcp stream, should wait for timer data transfer: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus, shouldWait)
+
+		if shouldWait {
+
+		retryListenForPlasmaTransferFinish2:
+			msg := <-c.signalPlasmaTransferFinishCh
+
+			if msg.vb != vb {
+				logging.Tracef("CRVT[%s:%s:%s:%d] vb: %v isn't same as msg.vb: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, msg.vb)
+				goto retryListenForPlasmaTransferFinish2
+			}
+
+			logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v message received from super supervisor: %#v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, msg)
+			c.plasmaStoreRWMutex.Lock()
+			c.vbPlasmaStoreMap[vb] = msg.store
+			c.plasmaStoreRWMutex.Unlock()
+
+			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, &cas, true, false)
+		}
+		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, &cas, true, true)
 
 	default:
 		return errUnexpectedVbStreamStatus
 	}
 }
 
-func (c *Consumer) checkIfCurrentNodeShouldOwnVb(vbno uint16) bool {
+func (c *Consumer) checkIfCurrentNodeShouldOwnVb(vb uint16) bool {
 	vbEventingNodeAssignMap := c.producer.VbEventingNodeAssignMap()
-	return vbEventingNodeAssignMap[vbno] == c.HostPortAddr()
+	return vbEventingNodeAssignMap[vb] == c.HostPortAddr()
 }
 
-func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vbno uint16) bool {
+func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 	workerVbMap := c.producer.WorkerVbMap()
-	for _, vb := range workerVbMap[c.workerName] {
-		if vbno == vb {
+	for _, v := range workerVbMap[c.workerName] {
+		if vb == v {
 			return true
 		}
 	}
 	return false
 }
 
-func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vbno uint16, vbBlob *vbucketKVBlob, cas *uint64, shouldStartStream bool) error {
+func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob, cas *uint64, shouldStartStream, shouldPerformPlasmaTransfer bool) error {
 
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
 	vbBlob.DCPStreamStatus = dcpStreamRunning
 
-	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
-	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
-	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
-	c.vbProcessingStats.updateVbStat(vbno, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
-	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
+	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
+	c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", vbBlob.CurrentVBOwner)
+	c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", vbBlob.DCPStreamStatus)
+	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
+	c.vbProcessingStats.updateVbStat(vb, "node_uuid", vbBlob.NodeUUID)
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 
 	if shouldStartStream {
 
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), aggTimerHostPortAddrsCallback, c)
-		previousAssignedWorker := vbBlob.PreviousAssignedWorker
-		previousEventingDir := vbBlob.PreviousEventingDir
-		previousNodeUUID := vbBlob.PreviousNodeUUID
-		previousVBOwner := vbBlob.PreviousVBOwner
+		if shouldPerformPlasmaTransfer {
 
-		var addr, remoteConsumerAddr string
-		var ok bool
+			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), aggTimerHostPortAddrsCallback, c)
+			previousAssignedWorker := vbBlob.PreviousAssignedWorker
+			previousEventingDir := vbBlob.PreviousEventingDir
+			previousNodeUUID := vbBlob.PreviousNodeUUID
+			previousVBOwner := vbBlob.PreviousVBOwner
 
-		// To handle case of hostname update
-		if addr, ok = c.timerAddrs[previousVBOwner][previousAssignedWorker]; !ok {
-			util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, c)
+			var addr, remoteConsumerAddr string
+			var ok bool
 
-			addrUUIDMap := util.GetNodeUUIDs("/uuid", c.eventingNodeAddrs)
-			addr = addrUUIDMap[previousNodeUUID]
+			// To handle case of hostname update
+			if addr, ok = c.timerAddrs[previousVBOwner][previousAssignedWorker]; !ok {
+				util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, c)
 
-			remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
-				strings.Split(c.timerAddrs[addr][previousAssignedWorker], ":")[3])
-		} else {
-			remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
-				strings.Split(c.timerAddrs[previousVBOwner][previousAssignedWorker], ":")[3])
-		}
+				addrUUIDMap := util.GetNodeUUIDs("/uuid", c.eventingNodeAddrs)
+				addr = addrUUIDMap[previousNodeUUID]
 
-		client := timer.NewRPCClient(c, remoteConsumerAddr, c.app.AppName, previousAssignedWorker)
-		if err := client.DialPath("/" + previousAssignedWorker + "/"); err != nil {
-			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to connect to remote RPC server addr: %v, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, err)
-
-			return errFailedConnectRemoteRPC
-		}
-		defer client.Close()
-
-		timerDir := fmt.Sprintf("%v_timer.data", vbno)
-		dstTimerDir := fmt.Sprintf("%v/%v", c.eventingDir, c.app.AppName)
-
-		sTimerDir := fmt.Sprintf("%v/%v/%v_timer.data", previousEventingDir, c.app.AppName, vbno)
-		dTimerDir := fmt.Sprintf("%v/%v/%v_timer.data", c.eventingDir, c.app.AppName, vbno)
-
-		if previousEventingDir != c.eventingDir && c.NodeUUID() != previousNodeUUID {
-			if err := client.DownloadDir(timerDir, dstTimerDir); err != nil {
-				logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to download timer dir from node: %v src: %v dst: %v err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, sTimerDir, dTimerDir, err)
-
-				return errFailedRPCDownloadDir
+				remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
+					strings.Split(c.timerAddrs[addr][previousAssignedWorker], ":")[3])
+			} else {
+				remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
+					strings.Split(c.timerAddrs[previousVBOwner][previousAssignedWorker], ":")[3])
 			}
-			logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, sTimerDir, dTimerDir, remoteConsumerAddr)
-		} else {
-			logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, remoteConsumerAddr, sTimerDir, dTimerDir)
+
+			client := timer.NewRPCClient(c, remoteConsumerAddr, c.app.AppName, previousAssignedWorker)
+			if err := client.DialPath("/" + previousAssignedWorker + "/"); err != nil {
+				logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to connect to remote RPC server addr: %v, err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, err)
+
+				return errFailedConnectRemoteRPC
+			}
+			defer client.Close()
+
+			timerDir := fmt.Sprintf("%v_timer.data", vb)
+
+			sTimerDir := fmt.Sprintf("%v/%v_timer.data", previousEventingDir, vb)
+			dTimerDir := fmt.Sprintf("%v/%v_timer.data", c.eventingDir, vb)
+
+			if previousEventingDir != c.eventingDir && c.NodeUUID() != previousNodeUUID {
+				if err := client.DownloadDir(timerDir, c.eventingDir); err != nil {
+					logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to download timer dir from node: %v src: %v dst: %v err: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir, err)
+
+					return errFailedRPCDownloadDir
+				}
+				logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, sTimerDir, dTimerDir, remoteConsumerAddr)
+			} else {
+				logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir)
+			}
+
+			_, err := c.openPlasmaStore(dTimerDir, vb)
+			if err != nil {
+				logging.Errorf("CRDP[%s:%s:%s:%d] vb: %v Failed to open plasma store, err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+				return err
+			}
 		}
 
-		return c.dcpRequestStreamHandle(vbno, vbBlob, vbBlob.LastSeqNoProcessed)
+		return c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
 	}
 
 	c.cleanupStaleDcpFeedHandles()
 	return nil
 }
 
-func (c *Consumer) stopDcpStreamAndUpdateCheckpoint(vbKey string, vbno uint16, vbBlob *vbucketKVBlob, cas *uint64) {
+func (c *Consumer) openPlasmaStore(vbPlasmaDir string, vb uint16) (*plasma.Plasma, error) {
+	cfg := plasma.DefaultConfig()
+	cfg.File = vbPlasmaDir
+	cfg.AutoLSSCleaning = autoLssCleaning
+	cfg.MaxDeltaChainLen = maxDeltaChainLen
+	cfg.MaxPageItems = maxPageItems
+	cfg.MinPageItems = minPageItems
+
+	if c.cleanupTimers && !c.isRebalanceOngoing {
+		logging.Tracef("CRDP[%s:%s:%s:%d] vb: %v On cleanup timer request, cleaning up plasma dir: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbPlasmaDir)
+
+		err := os.RemoveAll(vbPlasmaDir)
+		if err != nil {
+			logging.Errorf("CRDP[%s:%s:%s:%d] vb: %v Failed to remove plasma dir on cleanup timer request, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+			return nil, err
+		}
+	}
+
+	store, err := plasma.New(cfg)
+	if err != nil {
+		logging.Errorf("CRDP[%s:%s:%s:%d] vb: %v Failed to create plasma store instance, err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+		return nil, err
+	}
+
+	c.plasmaStoreRWMutex.Lock()
+	c.vbPlasmaStoreMap[vb] = store
+	c.plasmaStoreRWMutex.Unlock()
+
+	logging.Tracef("CRDP[%s:%s:%s:%d] vb: %v Signalling super supervisor about plasma timer data transfer finish, dir: %v",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbPlasmaDir)
+	c.superSup.SignalTimerDataTransferStop(vb, store)
+
+	return store, nil
+}
+
+func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBlob, cas *uint64) {
 
 	vbBlob.AssignedDocIDTimerWorker = ""
 	vbBlob.AssignedWorker = ""
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
 	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
-	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
+	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vb, "last_processed_seq_no").(uint64)
 	vbBlob.PreviousAssignedWorker = c.ConsumerName()
 	vbBlob.PreviousEventingDir = c.eventingDir
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
 	vbBlob.PreviousVBOwner = c.HostPortAddr()
 	vbBlob.NodeUUID = ""
 
-	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
-	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
-	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
-	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
-	c.vbProcessingStats.updateVbStat(vbno, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
-
-	// TODO: Retry loop for dcp close stream as it could fail and additional verification checks
-	// Additional check needed to verify if vbBlob.NewOwner is the expected owner
-	// as per the vbEventingNodesAssignMap
-	c.RLock()
-	err := c.vbDcpFeedMap[vbno].DcpCloseStream(vbno, vbno)
-	if err != nil {
-		logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to close dcp stream, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
-	}
-	c.RUnlock()
+	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
+	c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", vbBlob.CurrentVBOwner)
+	c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", vbBlob.DCPStreamStatus)
+	c.vbProcessingStats.updateVbStat(vb, "node_uuid", vbBlob.NodeUUID)
+	c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
 }
@@ -324,21 +452,21 @@ func (c *Consumer) closePlasmaHandle(vb uint16) {
 	}
 }
 
-func (c *Consumer) checkIfConsumerShouldOwnVb(vbno uint16, workerName string) bool {
+func (c *Consumer) checkIfConsumerShouldOwnVb(vb uint16, workerName string) bool {
 	workerVbMap := c.producer.WorkerVbMap()
-	for _, vb := range workerVbMap[workerName] {
-		if vbno == vb {
+	for _, v := range workerVbMap[workerName] {
+		if vb == v {
 			return true
 		}
 	}
 	return false
 }
 
-func (c *Consumer) getConsumerForGivenVbucket(vbno uint16) string {
+func (c *Consumer) getConsumerForGivenVbucket(vb uint16) string {
 	workerVbMap := c.producer.WorkerVbMap()
-	for workerName, vbnos := range workerVbMap {
-		for _, vb := range vbnos {
-			if vbno == vb {
+	for workerName, vbs := range workerVbMap {
+		for _, v := range vbs {
+			if vb == v {
 				return workerName
 			}
 		}
@@ -346,9 +474,9 @@ func (c *Consumer) getConsumerForGivenVbucket(vbno uint16) string {
 	return ""
 }
 
-func (c *Consumer) checkIfVbAlreadyOwnedByCurrConsumer(vbno uint16) bool {
-	if c.vbProcessingStats.getVbStat(vbno, "current_vb_owner") == c.HostPortAddr() &&
-		c.vbProcessingStats.getVbStat(vbno, "assigned_worker") == c.ConsumerName() {
+func (c *Consumer) checkIfVbAlreadyOwnedByCurrConsumer(vb uint16) bool {
+	if c.vbProcessingStats.getVbStat(vb, "current_vb_owner") == c.HostPortAddr() &&
+		c.vbProcessingStats.getVbStat(vb, "assigned_worker") == c.ConsumerName() {
 		return true
 	}
 
@@ -358,13 +486,13 @@ func (c *Consumer) checkIfVbAlreadyOwnedByCurrConsumer(vbno uint16) bool {
 func (c *Consumer) getVbRemainingToOwn() []uint16 {
 	var vbsRemainingToOwn []uint16
 
-	for vbno, v := range c.producer.VbEventingNodeAssignMap() {
+	for vb, v := range c.producer.VbEventingNodeAssignMap() {
 
-		if v == c.HostPortAddr() && (c.vbProcessingStats.getVbStat(vbno, "current_vb_owner") != c.HostPortAddr() ||
-			c.vbProcessingStats.getVbStat(vbno, "assigned_worker") != c.ConsumerName()) &&
-			c.checkIfCurrentConsumerShouldOwnVb(vbno) {
+		if v == c.HostPortAddr() && (c.vbProcessingStats.getVbStat(vb, "current_vb_owner") != c.HostPortAddr() ||
+			c.vbProcessingStats.getVbStat(vb, "assigned_worker") != c.ConsumerName()) &&
+			c.checkIfCurrentConsumerShouldOwnVb(vb) {
 
-			vbsRemainingToOwn = append(vbsRemainingToOwn, vbno)
+			vbsRemainingToOwn = append(vbsRemainingToOwn, vb)
 		}
 	}
 
@@ -379,11 +507,11 @@ func (c *Consumer) getVbRemainingToOwn() []uint16 {
 func (c *Consumer) getVbsOwned() []uint16 {
 	var vbsOwned []uint16
 
-	for vbno, v := range c.producer.VbEventingNodeAssignMap() {
-		if v == c.HostPortAddr() && c.checkIfCurrentNodeShouldOwnVb(vbno) &&
-			c.checkIfConsumerShouldOwnVb(vbno, c.ConsumerName()) {
+	for vb, v := range c.producer.VbEventingNodeAssignMap() {
+		if v == c.HostPortAddr() && c.checkIfCurrentNodeShouldOwnVb(vb) &&
+			c.checkIfConsumerShouldOwnVb(vb, c.ConsumerName()) {
 
-			vbsOwned = append(vbsOwned, vbno)
+			vbsOwned = append(vbsOwned, vb)
 		}
 	}
 
@@ -394,10 +522,10 @@ func (c *Consumer) getVbsOwned() []uint16 {
 func (c *Consumer) getVbRemainingToGiveUp() []uint16 {
 	var vbsRemainingToGiveUp []uint16
 
-	for vbno := range c.vbProcessingStats {
-		if c.ConsumerName() == c.vbProcessingStats.getVbStat(vbno, "assigned_worker") &&
-			!c.checkIfCurrentConsumerShouldOwnVb(vbno) {
-			vbsRemainingToGiveUp = append(vbsRemainingToGiveUp, vbno)
+	for vb := range c.vbProcessingStats {
+		if c.ConsumerName() == c.vbProcessingStats.getVbStat(vb, "assigned_worker") &&
+			!c.checkIfCurrentConsumerShouldOwnVb(vb) {
+			vbsRemainingToGiveUp = append(vbsRemainingToGiveUp, vb)
 		}
 	}
 
@@ -411,10 +539,10 @@ func (c *Consumer) getVbRemainingToGiveUp() []uint16 {
 func (c *Consumer) verifyVbsCurrentlyOwned(vbsToMigrate []uint16) []uint16 {
 	var vbsCurrentlyOwned []uint16
 
-	for _, vbno := range vbsToMigrate {
-		if c.HostPortAddr() == c.vbProcessingStats.getVbStat(vbno, "current_vb_owner") &&
-			c.ConsumerName() == c.vbProcessingStats.getVbStat(vbno, "assigned_worker") {
-			vbsCurrentlyOwned = append(vbsCurrentlyOwned, vbno)
+	for _, vb := range vbsToMigrate {
+		if c.HostPortAddr() == c.vbProcessingStats.getVbStat(vb, "current_vb_owner") &&
+			c.ConsumerName() == c.vbProcessingStats.getVbStat(vb, "assigned_worker") {
+			vbsCurrentlyOwned = append(vbsCurrentlyOwned, vb)
 		}
 	}
 

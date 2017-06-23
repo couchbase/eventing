@@ -27,12 +27,17 @@ func (m *ServiceMgr) getTimerHostPortAddrs(w http.ResponseWriter, r *http.Reques
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	buf, err := json.Marshal(m.superSup.AppTimerTransferHostPortAddrs(appName))
-	if err != nil {
-		fmt.Fprintf(w, "err: %v", err)
-		return
+	data, err := m.superSup.AppTimerTransferHostPortAddrs(appName)
+	if err == nil {
+		buf, err := json.Marshal(data)
+		if err != nil {
+			fmt.Fprintf(w, "err: %v", err)
+			return
+		}
+		fmt.Fprintf(w, "%v", string(buf))
 	}
-	fmt.Fprintf(w, "%v", string(buf))
+
+	fmt.Fprintf(w, "")
 }
 
 func (m *ServiceMgr) getAggEventsProcessedPSec(w http.ResponseWriter, r *http.Request) {

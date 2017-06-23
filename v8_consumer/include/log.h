@@ -20,6 +20,7 @@
 
 enum LogLevel { logSilent, logInfo, logError, logWarning, logDebug, logTrace };
 
+extern std::string appName;
 extern LogLevel desiredLogLevel;
 
 inline std::string NowTime();
@@ -27,6 +28,7 @@ static std::string LevelToString(LogLevel level);
 
 extern std::ostringstream os;
 
+extern void setAppName(std::string appName);
 extern void setLogLevel(LogLevel level);
 
 static std::ostringstream &Logger(LogLevel level = logInfo) {
@@ -40,10 +42,21 @@ static std::ostringstream &Logger(LogLevel level = logInfo) {
 
   os << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
   os << '.' << std::setfill('0') << std::setw(3) << ms.count();
-  os << std::put_time(&tm, "%z");
+
+  // %z format specifier will dump timezone offset as hhmm format
+  // Performing string splits to get hh:mm format - in order to make
+  // it consistent with golang format specifier
+  std::ostringstream time_fmt_os;
+  time_fmt_os << std::put_time(&tm, "%z");
+  std::string ts = time_fmt_os.str();
+  time_fmt_os.str(std::string());
+
+  os << ts.substr(0, ts.length() - 2);
+  os << ":";
+  os << ts.substr(ts.length() - 2);
+
   os << " " << LevelToString(level) << " ";
-  os << "VWCP"
-     << " ";
+  os << "VWCP [" << appName << "] ";
   return os;
 }
 
@@ -54,7 +67,7 @@ static std::string FlushLog() {
 }
 
 static std::string LevelToString(LogLevel level) {
-  static const char *const buffer[] = {"[Silent]",  " [Info]", "[Error]",
+  static const char *const buffer[] = {"[Silent]",  "[Info]", "[Error]",
                                        "[Warning]", "[Debug]", "[Trace]"};
   return buffer[level];
 }

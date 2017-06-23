@@ -18,7 +18,7 @@ func (c *Consumer) controlRoutine() {
 
 			util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-			logging.Infof("CRCR[%s:%s:%s:%d] Got notifcation that cluster state has changed",
+			logging.Infof("CRCR[%s:%s:%s:%d] Got notification that cluster state has changed(could also trigger on app deploy)",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 			c.isRebalanceOngoing = true
@@ -97,7 +97,7 @@ func (c *Consumer) controlRoutine() {
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-				err := c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true)
+				err := c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true, true)
 				if err != nil {
 					vbsFailedToStartStream = append(vbsFailedToStartStream, vbno)
 				}

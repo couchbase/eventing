@@ -5,6 +5,7 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/nitro/plasma"
 )
 
 const (
@@ -24,6 +25,12 @@ const (
 
 const (
 	rebalanceRunning = "RebalanceRunning"
+	autoLssCleaning  = false
+	maxDeltaChainLen = 30
+	maxPageItems     = 100
+	minPageItems     = 10
+	numVbuckets      = 1024
+	numTimerVbMoves  = 10
 )
 
 const (
@@ -39,6 +46,7 @@ type supCmdMsg struct {
 
 // SuperSupervisor is responsible for managing/supervising all producer instances
 type SuperSupervisor struct {
+	auth              string
 	CancelCh          chan struct{}
 	eventingAdminPort string
 	eventingDir       string
@@ -48,10 +56,15 @@ type SuperSupervisor struct {
 	supCmdCh          chan supCmdMsg
 	uuid              string
 
+	mu                           *sync.RWMutex
+	plasmaCloseSignalMap         map[uint16]int
 	producerSupervisorTokenMap   map[common.EventingProducer]suptree.ServiceToken
 	runningProducers             map[string]common.EventingProducer
 	runningProducersHostPortAddr map[string]string
-	mu                           *sync.RWMutex
+	timerDataTransferReq         map[uint16]struct{}
+	timerDataTransferReqCh       chan uint16
+	vbPlasmaStoreMap             map[uint16]*plasma.Plasma
 
 	serviceMgr common.EventingServiceMgr
+	sync.RWMutex
 }

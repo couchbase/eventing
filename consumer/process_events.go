@@ -5,9 +5,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"os"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -16,7 +16,6 @@ import (
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	"github.com/couchbase/indexing/secondary/logging"
-	"github.com/couchbase/nitro/plasma"
 )
 
 func (c *Consumer) processEvents() {
@@ -196,8 +195,10 @@ func (c *Consumer) processEvents() {
 				c.plasmaStoreRWMutex.RLock()
 				// Check if vbucket related entry already exists, if yes - then clean it up
 				// and close all associated FDs
-				if _, ok := c.vbPlasmaStoreMap[e.VBucket]; ok {
-					c.plasmaStoreRWMutex.RUnlock()
+				_, ok := c.vbPlasmaStoreMap[e.VBucket]
+				c.plasmaStoreRWMutex.RUnlock()
+
+				if ok {
 
 					c.timerRWMutex.RLock()
 					if _, mOk := c.timerProcessingVbsWorkerMap[e.VBucket]; !mOk {
@@ -205,11 +206,11 @@ func (c *Consumer) processEvents() {
 
 						logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v, missing entry from timerProcessingVbsWorkerMap",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
-						return
+						continue
 					}
-					c.timerRWMutex.RUnlock()
 
 					c.timerProcessingVbsWorkerMap[e.VBucket].signalProcessTimerPlasmaCloseCh <- e.VBucket
+					c.timerRWMutex.RUnlock()
 					<-c.signalProcessTimerPlasmaCloseAckCh
 
 					// Instead of sending message over channel - to clean up plasma.Writer
@@ -223,9 +224,9 @@ func (c *Consumer) processEvents() {
 					if ok {
 						delete(c.vbPlasmaWriter, e.VBucket)
 					}
+					delete(c.timerProcessingVbsWorkerMap, e.VBucket)
 					c.timerRWMutex.Unlock()
 
-					c.closePlasmaHandle(e.VBucket)
 				} else {
 					c.plasmaStoreRWMutex.RUnlock()
 				}
@@ -262,7 +263,8 @@ func (c *Consumer) processEvents() {
 				return
 			}
 
-			c.timerMessagesProcessed++
+			eventCount := uint64(strings.Count(e, ";"))
+			c.timerMessagesProcessed += eventCount
 			c.sendNonDocTimerEvent(e)
 
 		case <-c.statsTicker.C:
@@ -562,42 +564,12 @@ loop:
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
 		logging.Debugf("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
-		vbPlasmaDir := fmt.Sprintf("%v/%v/%v_timer.data", c.eventingDir, c.app.AppName, vbno)
-
-		cfg := plasma.DefaultConfig()
-		cfg.File = vbPlasmaDir
-		cfg.AutoLSSCleaning = autoLssCleaning
-		cfg.MaxDeltaChainLen = maxDeltaChainLen
-		cfg.MaxPageItems = maxPageItems
-		cfg.MinPageItems = minPageItems
-
-		if c.cleanupTimers && !c.isRebalanceOngoing {
-			logging.Debugf("CRDP[%s:%s:%s:%d] vb: %v On cleanup timer request, cleaning up plasma dir: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbPlasmaDir)
-
-			err := os.RemoveAll(vbPlasmaDir)
-			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] vb: %v Failed to remove plasma dir on cleanup timer request, err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
-				return err
-			}
-		}
-
-		c.plasmaStoreRWMutex.Lock()
-		c.vbPlasmaStoreMap[vbno], err = plasma.New(cfg)
-		c.plasmaStoreRWMutex.Unlock()
-		if err != nil {
-			logging.Errorf("CRDP[%s:%s:%s:%d] vb: %v Failed to create plasma store instance, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, err)
-			return err
-		}
-
-		c.timerRWMutex.Lock()
+		c.plasmaReaderRWMutex.Lock()
 		c.plasmaStoreRWMutex.RLock()
 		c.vbPlasmaReader[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
 		c.vbPlasmaWriter[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
 		c.plasmaStoreRWMutex.RUnlock()
-		c.timerRWMutex.Unlock()
+		c.plasmaReaderRWMutex.Unlock()
 
 		return nil
 	}

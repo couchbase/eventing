@@ -14,10 +14,12 @@ import (
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/nitro/plasma"
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
-func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid string) *Producer {
+func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid string,
+	superSup common.EventingSuperSup, vbPlasmaStoreMap map[uint16]*plasma.Plasma) *Producer {
 	p := &Producer{
 		appName:                appName,
 		eventingAdminPort:      eventingAdminPort,
@@ -30,8 +32,11 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 		notifySettingsChangeCh: make(chan struct{}, 1),
 		notifySupervisorCh:     make(chan struct{}),
 		nsServerPort:           nsServerPort,
+		superSup:               superSup,
 		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
 		uuid:                   uuid,
+		vbPlasmaStoreMap:       vbPlasmaStoreMap,
+		workerNameConsumerMap:  make(map[string]common.EventingConsumer),
 	}
 
 	p.eventingNodeUUIDs = append(p.eventingNodeUUIDs, uuid)
@@ -139,6 +144,7 @@ func (p *Producer) Serve() {
 				delete(p.consumerSupervisorTokenMap, consumer)
 			}
 			p.runningConsumers = p.runningConsumers[:0]
+			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
 
 			for _, listener := range p.consumerListeners {
 				listener.Close()
@@ -174,11 +180,11 @@ func (p *Producer) startBucket() {
 
 	for i := 0; i < p.workerCount; i++ {
 		workerName := fmt.Sprintf("worker_%s_%d", p.appName, i)
-		p.handleV8Consumer(p.workerVbucketMap[workerName], i)
+		p.handleV8Consumer(workerName, p.workerVbucketMap[workerName], i)
 	}
 }
 
-func (p *Producer) handleV8Consumer(vbnos []uint16, index int) {
+func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int) {
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -189,14 +195,15 @@ func (p *Producer) handleV8Consumer(vbnos []uint16, index int) {
 	logging.Infof("PRDR[%s:%d] Started server on port: %s", p.appName, p.LenRunningConsumers(), p.tcpPort)
 
 	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
-		p.skipTimerThreshold, p.lcbInstCapacity, p.eventingAdminPort,
-		p.eventingDir, p, p.app, vbnos, p.bucket, p.logLevel, p.tcpPort,
-		p.uuid, p.eventingNodeUUIDs, p.socketWriteBatchSize, p.timerWorkerPoolSize, index)
+		index, p.lcbInstCapacity, p.skipTimerThreshold, p.socketWriteBatchSize, p.timerWorkerPoolSize,
+		p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel, p.tcpPort, p.uuid,
+		p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStoreMap)
 
 	p.Lock()
 	p.consumerListeners = append(p.consumerListeners, listener)
 	serviceToken := p.workerSupervisor.Add(c)
 	p.runningConsumers = append(p.runningConsumers, c)
+	p.workerNameConsumerMap[workerName] = c
 	p.consumerSupervisorTokenMap[c] = serviceToken
 	p.Unlock()
 
@@ -244,6 +251,8 @@ func (p *Producer) CleanupDeadConsumer(c common.EventingConsumer) {
 	} else {
 		p.runningConsumers = p.runningConsumers[:0]
 	}
+
+	delete(p.workerNameConsumerMap, c.ConsumerName())
 }
 
 // VbEventingNodeAssignMap returns the vbucket to evening node mapping
@@ -405,4 +414,69 @@ func (p *Producer) RbacUser() string {
 // has all admin privileges
 func (p *Producer) RbacPass() string {
 	return p.rbacpass
+}
+
+// SignalToClosePlasmaStore is called by running consumer instances to signal that they
+// have stopped any operations against plasma instance associated with a specific
+// vbucket
+func (p *Producer) SignalToClosePlasmaStore(vb uint16) {
+	logging.Infof("PRDR[%s:%d] Got request from running consumer for vb: %v, requesting close of plasma store",
+		p.appName, p.LenRunningConsumers(), vb)
+	p.superSup.SignalToClosePlasmaStore(vb)
+}
+
+// SignalPlasmaClosed is used to signal every running consumer for a given app handler
+// to mark the dcp stream status as stopped after timer data transfer is finished
+func (p *Producer) SignalPlasmaClosed(vb uint16) {
+	for _, c := range p.runningConsumers {
+		logging.Infof("PRDR[%s:%d] vb: %v Signalling worker: %v about plasma store instance close",
+			p.appName, p.LenRunningConsumers(), vb, c.ConsumerName())
+		c.SignalPlasmaClosed(vb)
+	}
+}
+
+// SignalPlasmaTransferFinish is called by super supervisor instance on an eventing
+// node to signal every running producer instance that transfer of timer related
+// plasma files has finished
+func (p *Producer) SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma) {
+	// p.Lock()
+	// p.vbPlasmaStoreMap[vb] = store
+	// p.Unlock()
+
+	c, err := p.vbConsumerOwner(vb)
+	if err != nil {
+		logging.Errorf("PRDR[%s:%d] vb: %v failed to find consumer to signal about plasma timer data transfer finish",
+			p.appName, p.LenRunningConsumers(), vb)
+		return
+	}
+
+	logging.Tracef("PRDR[%s:%d] vb: %v Signalling worker: %v about plasma timer data transfer finish",
+		p.appName, p.LenRunningConsumers(), vb, c.ConsumerName())
+	c.SignalPlasmaTransferFinish(vb, store)
+}
+
+func (p *Producer) vbConsumerOwner(vb uint16) (common.EventingConsumer, error) {
+	p.RLock()
+	workerVbucketMap := p.WorkerVbMap()
+	p.RUnlock()
+
+	var workerName string
+	for w, vbs := range workerVbucketMap {
+		for _, v := range vbs {
+			if v == vb {
+				workerName = w
+			}
+		}
+	}
+
+	if workerName == "" {
+		logging.Errorf("PRDR[%s:%d] No worker found for vb: %v", p.appName, p.LenRunningConsumers(), vb)
+		return nil, fmt.Errorf("worker not found")
+	}
+
+	p.RLock()
+	c := p.workerNameConsumerMap[workerName]
+	p.RUnlock()
+
+	return c, nil
 }

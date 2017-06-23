@@ -161,6 +161,7 @@ type Consumer struct {
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed
 	kvVbMap                map[uint16]string
 	logLevel               string
+	superSup               common.EventingSuperSup
 	vbDcpFeedMap           map[uint16]*couchbase.DcpFeed
 	vbnos                  []uint16
 	vbsRemainingToOwn      []uint16
@@ -176,6 +177,7 @@ type Consumer struct {
 	persistAllTicker    *time.Ticker
 	stopPlasmaPersistCh chan struct{}
 	timerAddrs          map[string]map[string]string
+	plasmaReaderRWMutex *sync.RWMutex
 	plasmaStoreRWMutex  *sync.RWMutex
 	vbPlasmaStoreMap    map[uint16]*plasma.Plasma
 	vbPlasmaWriter      map[uint16]*plasma.Writer
@@ -184,6 +186,8 @@ type Consumer struct {
 	signalStoreTimerPlasmaCloseCh      chan uint16
 	signalProcessTimerPlasmaCloseAckCh chan uint16
 	signalStoreTimerPlasmaCloseAckCh   chan uint16
+	signalPlasmaClosedCh               chan uint16
+	signalPlasmaTransferFinishCh       chan *plasmaStoreMsg
 
 	nonDocTimerProcessingTicker   *time.Ticker
 	nonDocTimerStopCh             chan struct{}
@@ -315,6 +319,11 @@ type vbStats map[uint16]*vbStat
 type vbStat struct {
 	stats map[string]interface{}
 	sync.RWMutex
+}
+
+type plasmaStoreMsg struct {
+	vb    uint16
+	store *plasma.Plasma
 }
 
 type vbucketKVBlob struct {

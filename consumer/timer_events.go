@@ -109,7 +109,11 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 
 			for j := 0; j < v; j++ {
 				vbsAssigned[j] = startVb
+
+				c.timerRWMutex.Lock()
 				c.timerProcessingVbsWorkerMap[startVb] = worker
+				c.timerRWMutex.Unlock()
+
 				c.vbProcessingStats.updateVbStat(startVb, "doc_id_timer_processing_worker", fmt.Sprintf("timer_%d", i))
 				startVb++
 			}
@@ -187,14 +191,14 @@ func (r *timerProcessingWorker) processTimerEvents() {
 		case vb := <-r.signalProcessTimerPlasmaCloseCh:
 			// Rebalance takeover routine will send signal on this channel to signify
 			// stopping of any plasma.Writer instance for a specific vbucket
-			r.c.timerRWMutex.Lock()
+			r.c.plasmaReaderRWMutex.Lock()
 			_, ok := r.c.vbPlasmaReader[vb]
 			if ok {
 				delete(r.c.vbPlasmaReader, vb)
 			}
 
 			delete(r.c.timerProcessingVbsWorkerMap, vb)
-			r.c.timerRWMutex.Unlock()
+			r.c.plasmaReaderRWMutex.Unlock()
 
 			// sends ack message back to rebalance takeover routine, so that it could
 			// safely call Close() on vb specific plasma store
@@ -205,9 +209,9 @@ func (r *timerProcessingWorker) processTimerEvents() {
 		for _, vb := range vbsOwned {
 			currTimer := r.c.vbProcessingStats.getVbStat(vb, "currently_processed_doc_id_timer").(string)
 
-			r.c.timerRWMutex.RLock()
+			r.c.plasmaReaderRWMutex.RLock()
 			_, ok := r.c.vbPlasmaReader[vb]
-			r.c.timerRWMutex.RUnlock()
+			r.c.plasmaReaderRWMutex.RUnlock()
 			if !ok {
 				continue
 			}
@@ -230,12 +234,14 @@ func (r *timerProcessingWorker) processTimerEvents() {
 			}
 
 		retryLookup:
+
+			byTimerKey := fmt.Sprintf("%s::%s", r.c.app.AppName, currTimer)
 			// For memory management
-			r.c.timerRWMutex.RLock()
+			r.c.plasmaReaderRWMutex.RLock()
 			token := r.c.vbPlasmaReader[vb].BeginTx()
-			v, err := r.c.vbPlasmaReader[vb].LookupKV([]byte(currTimer))
+			v, err := r.c.vbPlasmaReader[vb].LookupKV([]byte(byTimerKey))
 			r.c.vbPlasmaReader[vb].EndTx(token)
-			r.c.timerRWMutex.RUnlock()
+			r.c.plasmaReaderRWMutex.RUnlock()
 
 			if err != nil && err != plasma.ErrItemNotFound {
 				logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d Failed to lookup currTimer: %v err: %v",
@@ -289,15 +295,15 @@ func (r *timerProcessingWorker) processTimerEvents() {
 					}
 				}
 
-				r.c.timerRWMutex.RLock()
+				r.c.plasmaReaderRWMutex.RLock()
 				token = r.c.vbPlasmaReader[vb].BeginTx()
-				err = r.c.vbPlasmaReader[vb].DeleteKV([]byte(currTimer))
+				err = r.c.vbPlasmaReader[vb].DeleteKV([]byte(byTimerKey))
 				r.c.vbPlasmaReader[vb].EndTx(token)
-				r.c.timerRWMutex.RUnlock()
+				r.c.plasmaReaderRWMutex.RUnlock()
 
 				if err != nil {
 					logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
-						r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
+						r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, byTimerKey, err)
 				}
 
 				continue
@@ -323,15 +329,15 @@ func (r *timerProcessingWorker) processTimerEvents() {
 
 			r.c.vbProcessingStats.updateVbStat(vb, "last_processed_doc_id_timer_event", "")
 
-			r.c.timerRWMutex.RLock()
+			r.c.plasmaReaderRWMutex.RLock()
 			token = r.c.vbPlasmaReader[vb].BeginTx()
-			err = r.c.vbPlasmaReader[vb].DeleteKV([]byte(currTimer))
+			err = r.c.vbPlasmaReader[vb].DeleteKV([]byte(byTimerKey))
 			r.c.vbPlasmaReader[vb].EndTx(token)
-			r.c.timerRWMutex.RUnlock()
+			r.c.plasmaReaderRWMutex.RUnlock()
 
 			if err != nil {
 				logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d key: %v Failed to delete from byTimer plasma handle, err: %v",
-					r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
+					r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, byTimerKey, err)
 			}
 
 			r.c.updateTimerStats(vb)
@@ -348,10 +354,10 @@ func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateS
 	} else {
 		c.docTimerEntryCh <- &timer
 
-		key := fmt.Sprintf("%v::%v::%v", currTimer, timer.CallbackFn, timer.DocID)
-		c.timerRWMutex.RLock()
+		key := fmt.Sprintf("%v::%v::%v::%v", c.app.AppName, currTimer, timer.CallbackFn, timer.DocID)
+		c.plasmaReaderRWMutex.RLock()
 		err = c.vbPlasmaReader[vb].DeleteKV([]byte(key))
-		c.timerRWMutex.RUnlock()
+		c.plasmaReaderRWMutex.RUnlock()
 		if err != nil {
 			logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, key, err)
@@ -492,7 +498,12 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 	for _, timer := range xMeta.Timers {
 		// check if timer timestamp has already passed, if yes then skip adding it to plasma
-		t := strings.Split(timer, "::")[0]
+		app := strings.Split(timer, "::")[0]
+		if app != c.app.AppName {
+			continue
+		}
+
+		t := strings.Split(timer, "::")[1]
 
 		ts, err := time.Parse(tsLayout, t)
 
@@ -523,7 +534,8 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 			util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c, plasmaWriterHandle, timerKey, "", vb)
 
 			timerData := strings.Split(timer, "::")
-			ts, cbFunc := timerData[0], timerData[1]
+			ts, cbFunc := timerData[1], timerData[2]
+			byTimerKey := fmt.Sprintf("%s::%s", c.app.AppName, ts)
 
 		retryPlasmaLookUp:
 
@@ -545,7 +557,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 				}
 
 				util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
-					plasmaWriterHandle, ts, string(encodedVal), vb)
+					plasmaWriterHandle, byTimerKey, string(encodedVal), vb)
 
 			} else if tErr != nil {
 
@@ -569,7 +581,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 				timerVal := fmt.Sprintf("%v,%v", string(tv), string(encodedVal))
 
 				util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
-					plasmaWriterHandle, ts, timerVal, vb)
+					plasmaWriterHandle, byTimerKey, timerVal, vb)
 			}
 		} else if err != nil && err != plasma.ErrItemNoValue {
 			logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v plasmaWriterHandle returned, err: %v",

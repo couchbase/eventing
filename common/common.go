@@ -2,6 +2,8 @@ package common
 
 import (
 	"net"
+
+	"github.com/couchbase/nitro/plasma"
 )
 
 type DcpStreamBoundary string
@@ -42,6 +44,9 @@ type EventingProducer interface {
 	NotifyTopologyChange(msg *TopologyChangeMsg)
 	NsServerHostPort() string
 	NsServerNodeCount() int
+	SignalPlasmaClosed(vb uint16)
+	SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma)
+	SignalToClosePlasmaStore(vb uint16)
 	Serve()
 	Stop()
 	String() string
@@ -67,6 +72,8 @@ type EventingConsumer interface {
 	Serve()
 	SetConnHandle(net.Conn)
 	SignalConnected()
+	SignalPlasmaClosed(vb uint16)
+	SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma)
 	Stop()
 	String() string
 	TimerTransferHostPortAddr() string
@@ -76,11 +83,14 @@ type EventingConsumer interface {
 
 type EventingSuperSup interface {
 	AppProducerHostPortAddr(appName string) string
-	AppTimerTransferHostPortAddrs(string) map[string]string
+	AppTimerTransferHostPortAddrs(string) (map[string]string, error)
 	ClearEventStats()
 	NotifyPrepareTopologyChange(keepNodes []string)
 	ProducerHostPortAddrs() []string
 	RestPort() string
+	SignalToClosePlasmaStore(vb uint16)
+	SignalTimerDataTransferStart(vb uint16) bool
+	SignalTimerDataTransferStop(vb uint16, store *plasma.Plasma)
 }
 
 type EventingServiceMgr interface {

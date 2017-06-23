@@ -14,22 +14,27 @@ import (
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/nitro/plasma"
 )
 
 // NewSuperSupervisor creates the super_supervisor handle
 func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid string) *SuperSupervisor {
 	s := &SuperSupervisor{
-		CancelCh:          make(chan struct{}, 1),
-		eventingAdminPort: eventingAdminPort,
-		eventingDir:       eventingDir,
-		kvPort:            kvPort,
+		CancelCh:                     make(chan struct{}, 1),
+		eventingAdminPort:            eventingAdminPort,
+		eventingDir:                  eventingDir,
+		kvPort:                       kvPort,
+		plasmaCloseSignalMap:         make(map[uint16]int),
 		producerSupervisorTokenMap:   make(map[common.EventingProducer]suptree.ServiceToken),
 		restPort:                     restPort,
 		runningProducers:             make(map[string]common.EventingProducer),
 		runningProducersHostPortAddr: make(map[string]string),
 		supCmdCh:                     make(chan supCmdMsg, 10),
 		superSup:                     suptree.NewSimple("super_supervisor"),
-		uuid:                         uuid,
+		timerDataTransferReq:         make(map[uint16]struct{}),
+		timerDataTransferReqCh:       make(chan uint16, numTimerVbMoves),
+		uuid:             uuid,
+		vbPlasmaStoreMap: make(map[uint16]*plasma.Plasma),
 	}
 	s.mu = &sync.RWMutex{}
 	go s.superSup.ServeBackground()
@@ -41,11 +46,16 @@ func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid s
 	config.Set("rest_port", s.restPort)
 
 	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s)
+	s.initPlasmaHandles()
+
+	go s.processPlasmaCloseRequests()
 	return s
 }
 
 // EventHandlerLoadCallback is registered as callback from metakv observe calls on event handlers path
 func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, rev interface{}) error {
+	logging.Infof("SSUP[%d] EventHandlerLoadCallback: path => %s encoded value size=> %v\n", len(s.runningProducers), path, len(value))
+
 	if value != nil {
 		splitRes := strings.Split(path, "/")
 		appName := splitRes[len(splitRes)-1]
@@ -60,6 +70,8 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 
 // SettingsChangeCallback is registered as callback from metakv observe calls on event handler settings path
 func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev interface{}) error {
+	logging.Infof("SSUP[%d] SettingsChangeCallback: path => %s value => %s\n", len(s.runningProducers), path, string(value))
+
 	if value != nil {
 		splitRes := strings.Split(path, "/")
 		appName := splitRes[len(splitRes)-1]
@@ -98,7 +110,12 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
-	p := producer.NewProducer(appName, s.eventingAdminPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid)
+
+	// Grabbing read lock because s.vbPlasmaStoreMap is being passed to newly spawned producer
+	s.RLock()
+	p := producer.NewProducer(appName, s.eventingAdminPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
+		s.restPort, s.uuid, s, s.vbPlasmaStoreMap)
+	s.RUnlock()
 
 	token := s.superSup.Add(p)
 	s.mu.Lock()
@@ -131,6 +148,18 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 
 		http.Serve(p.ProducerListener, h)
 	}(p, s, appName, metakvAppHostPortsPath)
+
+	// Presently there are 3 observe callbacks registered against metakv:
+	// MetakvAppsPath, MetakvAppSettingsPath and MetaKvRebalanceTokenPath
+	// There isn't any ordering for execution of these callbacks. As a result,
+	// when a new eventing node is added to cluster or when a new app handler
+	// is deployed - it might not be aware of eventing nodes that are existing.
+	// (case when callback against MetakvAppsPath is triggered and callback for
+	// MetaKvRebalanceTokenPath is delayed). Hence mimicking rebalance trigger on
+	// app spawn
+	topologyChangeMsg := &common.TopologyChangeMsg{}
+	topologyChangeMsg.CType = common.StartRebalanceCType
+	p.NotifyTopologyChange(topologyChangeMsg)
 }
 
 // HandleSupCmdMsg handles control commands like app (re)deploy, settings update
@@ -218,8 +247,16 @@ func (s *SuperSupervisor) AppProducerHostPortAddr(appName string) string {
 
 // AppTimerTransferHostPortAddrs returns all running net.Listener instances of timer transfer
 // routines on current node
-func (s *SuperSupervisor) AppTimerTransferHostPortAddrs(appName string) map[string]string {
-	return s.runningProducers[appName].TimerTransferHostPortAddrs()
+func (s *SuperSupervisor) AppTimerTransferHostPortAddrs(appName string) (map[string]string, error) {
+
+	if _, ok := s.runningProducers[appName]; ok {
+		return s.runningProducers[appName].TimerTransferHostPortAddrs(), nil
+	}
+
+	logging.Errorf("SSUP[%d] app: %v No running producer instance found",
+		len(s.runningProducers), appName)
+
+	return nil, fmt.Errorf("No running producer instance found")
 }
 
 // ProducerHostPortAddrs returns the list of hostPortAddr for http server instances running
