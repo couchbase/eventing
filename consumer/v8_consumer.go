@@ -27,7 +27,8 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 	index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize, timerProcessingPoolSize int,
 	bucket, eventingAdminPort, eventingDir, logLevel, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
-	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStoreMap map[uint16]*plasma.Plasma) *Consumer {
+	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStoreMap map[uint16]*plasma.Plasma,
+	socketTimeout time.Duration) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -67,6 +68,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		signalStoreTimerPlasmaCloseAckCh:   make(chan uint16),
 		signalStoreTimerPlasmaCloseCh:      make(chan uint16),
 		skipTimerThreshold:                 skipTimerThreshold,
+		socketTimeout:                      socketTimeout,
 		socketWriteBatchSize:               sockWriteBatchSize,
 		statsTicker:                        time.NewTicker(statsTickInterval),
 		stopControlRoutineCh:               make(chan struct{}),

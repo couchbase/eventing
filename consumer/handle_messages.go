@@ -170,7 +170,7 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 
 	if c.sendMsgCounter >= c.socketWriteBatchSize {
 
-		c.conn.SetWriteDeadline(time.Now().Add(WriteDeadline))
+		c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
 
 		err = binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
 		if err != nil {
@@ -206,7 +206,7 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 }
 
 func (c *Consumer) readMessage() error {
-	c.conn.SetReadDeadline(time.Now().Add(ReadDeadline))
+	c.conn.SetReadDeadline(time.Now().Add(c.socketTimeout))
 	msg, err := bufio.NewReader(c.conn).ReadBytes('\r')
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Read from client socket failed, err: %v",

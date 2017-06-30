@@ -45,7 +45,7 @@ func (c *client) Serve() {
 
 	// Allow additional time for doDCPProcessEvents and checkpointing routine to exit,
 	// else there could be race. Currently set twice the socket read deadline
-	time.Sleep(2 * ReadDeadline)
+	time.Sleep(2 * c.consumerHandle.socketTimeout)
 
 	logging.Debugf("CRCL[%s:%s:%s:%d] Exiting c++ worker init routine",
 		c.appName, c.workerName, c.tcpPort, c.osPid)

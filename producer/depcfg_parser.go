@@ -76,6 +76,11 @@ func (p *Producer) parseDepcfg() error {
 		} else {
 			p.enableRecursiveMutation = false
 		}
+		if val, ok := settings["deadline_timeout"]; ok {
+			p.socketTimeout = time.Duration(val.(int)) * time.Second
+		} else {
+			p.socketTimeout = time.Duration(time.Second)
+		}
 
 		p.app.Settings = settings
 

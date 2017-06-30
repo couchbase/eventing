@@ -89,14 +89,6 @@ const (
 )
 
 const (
-	// ReadDeadline for net.Conn
-	ReadDeadline = time.Duration(1000) * time.Millisecond
-
-	// WriteDeadline for net.Conn
-	WriteDeadline = time.Duration(1000) * time.Millisecond
-)
-
-const (
 	dcpStreamRunning = "running"
 	dcpStreamStopped = "stopped"
 )
@@ -192,6 +184,7 @@ type Consumer struct {
 	nonDocTimerProcessingTicker   *time.Ticker
 	nonDocTimerStopCh             chan struct{}
 	skipTimerThreshold            int
+	socketTimeout                 time.Duration
 	timerProcessingTickInterval   time.Duration
 	timerProcessingVbsWorkerMap   map[uint16]*timerProcessingWorker
 	timerProcessingRunningWorkers []*timerProcessingWorker

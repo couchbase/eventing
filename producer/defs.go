@@ -66,6 +66,10 @@ type Producer struct {
 
 	enableRecursiveMutation bool
 
+	// Controls read and write deadline timeout for communication
+	// between Go and C++ process
+	socketTimeout time.Duration
+
 	// Controls start seq no for vb dcp stream
 	// currently supports:
 	// everything - start from beginning and listen forever

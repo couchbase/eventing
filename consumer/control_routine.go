@@ -67,6 +67,10 @@ func (c *Consumer) controlRoutine() {
 			c.nonDocTimerStopCh <- struct{}{}
 			go c.processNonDocTimerEvents()
 
+			if val, ok := settings["deadline_timeout"]; ok {
+				c.socketTimeout = time.Duration(val.(int)) * time.Second
+			}
+
 		case <-c.restartVbDcpStreamTicker.C:
 
 		retryVbsRemainingToRestream:

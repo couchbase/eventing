@@ -197,7 +197,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
 		index, p.lcbInstCapacity, p.skipTimerThreshold, p.socketWriteBatchSize, p.timerWorkerPoolSize,
 		p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel, p.tcpPort, p.uuid,
-		p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStoreMap)
+		p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStoreMap, p.socketTimeout)
 
 	p.Lock()
 	p.consumerListeners = append(p.consumerListeners, listener)
