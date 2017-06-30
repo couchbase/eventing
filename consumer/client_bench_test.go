@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/flatbuf/cfg"
@@ -22,7 +23,7 @@ func BenchmarkOnUpdate(b *testing.B) {
 		Key:     []byte("key"),
 		Opcode:  mcd.DCP_MUTATION,
 		Seqno:   uint64(100),
-		Value:   []byte("{\"city\": \"BLR\"}"),
+		Value:   []byte("{\"city\": \"BLR\", \"type\": \"cpu_op\"}"),
 		VBucket: uint16(0),
 	}
 
@@ -49,7 +50,7 @@ func BenchmarkOnDelete(b *testing.B) {
 }
 
 func init() {
-	cfgData, _ := ioutil.ReadFile("../cmd/producer/apps/test_app1")
+	cfgData, _ := ioutil.ReadFile("../cmd/producer/apps/credit_score")
 	config := cfg.GetRootAsConfig(cfgData, 0)
 	appCode := string(config.AppCode())
 
@@ -62,6 +63,7 @@ func init() {
 	c.socketWriteBatchSize = 100
 	c.writeBatchSeqnoMap = make(map[uint16]uint64)
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
+	c.socketTimeout = 5 * time.Second
 
 	client := newClient(c, "credit_score", port, "worker_0")
 	go client.Serve()
@@ -69,9 +71,9 @@ func init() {
 	conn, _ := listener.Accept()
 	c.SetConnHandle(conn)
 
-	c.sendLogLevel("SILENT")
+	c.sendLogLevel("TRACE")
 	payload := makeV8InitPayload("credit_score", "localhost:12000", string(cfgData),
-		"eventing", "asdasd", 5, false)
+		"eventing", "asdasd", 5, 1, false)
 	c.sendInitV8Worker(payload)
 	c.sendLoadV8Worker(appCode)
 }

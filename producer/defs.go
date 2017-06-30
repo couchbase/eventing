@@ -70,6 +70,10 @@ type Producer struct {
 	// between Go and C++ process
 	socketTimeout time.Duration
 
+	// Caps wall clock time allowed for execution of Javascript handler
+	// code by V8 runtime(in seconds)
+	executionTimeout int
+
 	// Controls start seq no for vb dcp stream
 	// currently supports:
 	// everything - start from beginning and listen forever

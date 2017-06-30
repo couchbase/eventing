@@ -9,13 +9,10 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include <atomic>
-#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
-#include <iostream>
 #include <mutex>
 #include <regex>
 #include <sstream>
@@ -513,7 +510,7 @@ void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
 V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
                    std::string kv_host_port, std::string rbac_user,
                    std::string rbac_pass, int lcb_inst_capacity,
-                   bool enable_recursive_mutation) {
+                   int execution_timeout, bool enable_recursive_mutation) {
   enableRecursiveMutation(enable_recursive_mutation);
   v8::V8::InitializeICU();
   v8::Platform *platform = v8::platform::CreateDefaultPlatform();
@@ -567,6 +564,9 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
       config->component_configs.begin();
 
   Bucket *bucket_handle = nullptr;
+  execute_flag = true;
+  shutdown_terminator = false;
+  max_task_duration = SECS_TO_NS * execution_timeout ;
 
   for (; it != config->component_configs.end(); it++) {
     if (it->first == "buckets") {
@@ -728,6 +728,12 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     }
   }
 
+  // Spawning terminator thread to monitor the wall clock time for execution of
+  // javascript code isn't going beyond max_task_duration. Passing reference to
+  // current object instead of having terminator thread make a copy of the object.
+  // Spawned thread will execute the temininator loop logic in function call operator()
+  // for V8Worker class
+  terminator_thr = new std::thread(std::ref(*this));
   return SUCCESS;
 }
 
@@ -790,7 +796,11 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
 
   v8::Local<v8::Function> on_doc_update =
       v8::Local<v8::Function>::New(GetIsolate(), on_update_);
+
+  execute_flag = true;
+  execute_start_time = Time::now();
   on_doc_update->Call(context->Global(), 2, args);
+  execute_flag = false;
 
   if (try_catch.HasCaught()) {
     LOG(logDebug) << "Exception message: "
@@ -821,7 +831,11 @@ int V8Worker::SendDelete(std::string meta) {
 
   v8::Local<v8::Function> on_doc_delete =
       v8::Local<v8::Function>::New(GetIsolate(), on_delete_);
+
+  execute_flag = true;
+  execute_start_time = Time::now();
   on_doc_delete->Call(context->Global(), 1, args);
+  execute_flag = false;
 
   if (try_catch.HasCaught()) {
     LOG(logError) << "Exception message"
@@ -858,7 +872,11 @@ void V8Worker::SendNonDocTimer(std::string doc_ids_cb_fns) {
         v8::Handle<v8::Function> cb_func = v8::Handle<v8::Function>::Cast(val);
 
         v8::Handle<v8::Value> arg[0];
+
+        execute_flag = true;
+        execute_start_time = Time::now();
         cb_func->Call(context->Global(), 0, arg);
+        execute_flag = false;
       }
     }
   }
@@ -885,7 +903,10 @@ void V8Worker::SendDocTimer(std::string doc_id, std::string callback_fn) {
   v8::Handle<v8::Value> arg[1];
   arg[0] = v8::String::NewFromUtf8(GetIsolate(), doc_id.c_str());
 
+  execute_flag = true;
+  execute_start_time = Time::now();
   cb_fn->Call(context->Global(), 1, arg);
+  execute_flag = false;
 }
 
 const char *V8Worker::V8WorkerLastException() { return last_exception.c_str(); }

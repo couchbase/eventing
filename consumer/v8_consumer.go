@@ -24,7 +24,7 @@ import (
 
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
-	index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize, timerProcessingPoolSize int,
+	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize, timerProcessingPoolSize int,
 	bucket, eventingAdminPort, eventingDir, logLevel, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStoreMap map[uint16]*plasma.Plasma,
@@ -47,6 +47,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		eventingAdminPort:                  eventingAdminPort,
 		eventingDir:                        eventingDir,
 		eventingNodeUUIDs:                  eventingNodeUUIDs,
+		executionTimeout:                   executionTimeout,
 		gracefulShutdownChan:               make(chan struct{}, 1),
 		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
 		lcbInstCapacity:                    lcbInstCapacity,
@@ -183,7 +184,7 @@ func (c *Consumer) HandleV8Worker() {
 	c.sendLogLevel(c.logLevel)
 
 	payload := makeV8InitPayload(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData(),
-		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity, c.enableRecursiveMutation)
+		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity, c.executionTimeout, c.enableRecursiveMutation)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 	c.sendInitV8Worker(payload)

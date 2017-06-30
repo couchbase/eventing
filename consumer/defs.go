@@ -148,6 +148,7 @@ type Consumer struct {
 	eventingDir            string
 	eventingNodeAddrs      []string
 	eventingNodeUUIDs      []string
+	executionTimeout       int
 	gocbBucket             *gocb.Bucket
 	isRebalanceOngoing     bool
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed

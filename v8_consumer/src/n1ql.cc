@@ -18,7 +18,6 @@
 #include <string>
 #include <vector>
 
-#include "../include/log.h"
 #include "../include/n1ql.h"
 
 // Reference to the query engine instantiated by v8worker.

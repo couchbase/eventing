@@ -195,8 +195,8 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	logging.Infof("PRDR[%s:%d] Started server on port: %s", p.appName, p.LenRunningConsumers(), p.tcpPort)
 
 	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
-		index, p.lcbInstCapacity, p.skipTimerThreshold, p.socketWriteBatchSize, p.timerWorkerPoolSize,
-		p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel, p.tcpPort, p.uuid,
+		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold, p.socketWriteBatchSize,
+		p.timerWorkerPoolSize, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel, p.tcpPort, p.uuid,
 		p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStoreMap, p.socketTimeout)
 
 	p.Lock()

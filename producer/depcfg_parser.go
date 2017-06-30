@@ -79,7 +79,12 @@ func (p *Producer) parseDepcfg() error {
 		if val, ok := settings["deadline_timeout"]; ok {
 			p.socketTimeout = time.Duration(val.(int)) * time.Second
 		} else {
-			p.socketTimeout = time.Duration(time.Second)
+			p.socketTimeout = time.Duration(2 * time.Second)
+		}
+		if val, ok := settings["execution_timeout"]; ok {
+			p.executionTimeout = val.(int)
+		} else {
+			p.executionTimeout = 1
 		}
 
 		p.app.Settings = settings

@@ -12,9 +12,13 @@
 #ifndef V8WORKER_H
 #define V8WORKER_H
 
+#include <atomic>
+#include <cstdio>
+#include <chrono>
 #include <list>
 #include <map>
 #include <string>
+#include <thread>
 
 #include <include/libplatform/libplatform.h>
 #include <include/v8-debug.h>
@@ -31,6 +35,12 @@ extern void(assert)(int);
 #else
 #include <cassert>
 #endif
+
+typedef std::chrono::high_resolution_clock Time;
+typedef std::chrono::nanoseconds ns;
+typedef std::chrono::duration<float> fsec;
+
+#define SECS_TO_NS 1000 * 1000 * 1000ULL
 
 class Bucket;
 class V8Worker;
@@ -70,8 +80,28 @@ class V8Worker {
 public:
   V8Worker(std::string app_name, std::string dep_cfg, std::string kv_host_port,
            std::string rbac_user, std::string rbac_pass, int lcb_inst_capacity,
-           bool enable_recursive_mutation);
+           int execution_timeout, bool enable_recursive_mutation);
   ~V8Worker();
+
+  void operator()() const {
+    while (!shutdown_terminator) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+      if (execute_flag) {
+        Time::time_point t = Time::now();
+        fsec fs = t - execute_start_time;
+        ns d = std::chrono::duration_cast<ns>(fs);
+
+        if (d.count() > max_task_duration) {
+          if (isolate_) {
+            LOG(logTrace) << "Task took: " << d.count()
+                          << "ns, terminating it's execution" << '\n';
+            v8::V8::TerminateExecution(isolate_);
+           }
+        }
+      }
+    }
+  }
 
   int V8WorkerLoad(std::string source_s);
   const char *V8WorkerLastException();
@@ -102,16 +132,19 @@ public:
   std::string cb_kv_endpoint;
   std::string cb_source_bucket;
 
-  ConnectionPool *conn_pool;
-
-private:
-  bool ExecuteScript(v8::Local<v8::String> script);
-
-  ArrayBufferAllocator allocator;
   v8::Isolate *isolate_;
 
-  std::list<Bucket *> bucket_handles;
+  volatile bool execute_flag;
+  volatile bool shutdown_terminator;
+  Time::time_point execute_start_time;
+  uint64_t max_task_duration;
+  std::thread *terminator_thr;
 
+  ConnectionPool *conn_pool;
+
+  bool ExecuteScript(v8::Local<v8::String> script);
+  ArrayBufferAllocator allocator;
+  std::list<Bucket *> bucket_handles;
   std::string last_exception;
 };
 

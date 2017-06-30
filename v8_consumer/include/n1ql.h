@@ -22,6 +22,8 @@
 #include "libcouchbase/couchbase.h"
 #include "libcouchbase/n1ql.h"
 
+#include "log.h"
+
 enum op_code {
   OK,
   KWD_ALTER,
