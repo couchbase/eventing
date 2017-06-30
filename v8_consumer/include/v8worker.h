@@ -91,13 +91,14 @@ public:
         nsecs ns = std::chrono::duration_cast<nsecs>(t - execute_start_time);
 
         LOG(logTrace) << "ns.count(): " << ns.count()
-                      << "ns, max_task_duration: " << max_task_duration << "ns" << '\n';
+                      << "ns, max_task_duration: " << max_task_duration << "ns"
+                      << '\n';
         if (ns.count() > max_task_duration) {
           if (isolate_) {
             LOG(logTrace) << "Task took: " << ns.count()
                           << "ns, terminating it's execution" << '\n';
             v8::V8::TerminateExecution(isolate_);
-           }
+          }
         }
       }
     }
@@ -141,6 +142,11 @@ public:
   std::thread *terminator_thr;
 
   ConnectionPool *conn_pool;
+
+private:
+  std::string connstr;
+  std::string meta_connstr;
+  std::string rbac_pass;
 
   bool ExecuteScript(v8::Local<v8::String> script);
   ArrayBufferAllocator allocator;

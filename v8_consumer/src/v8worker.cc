@@ -129,6 +129,14 @@ const char *ToCString(const v8::String::Utf8Value &value) {
   return *value ? *value : "<std::string conversion failed>";
 }
 
+bool ToCBool(const v8::Local<v8::Boolean> &value) {
+  if (value.IsEmpty()) {
+    LOG(logError) << "Failed to convert to bool" << '\n';
+  }
+
+  return value->Value();
+}
+
 const char *ToJson(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
   v8::HandleScope handle_scope(isolate);
 
@@ -145,6 +153,7 @@ const char *ToJson(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
   args[0] = {object};
   result = JSON_stringify->Call(context->Global(), 1, args);
   v8::String::Utf8Value str(result->ToString());
+
   return ToCString(str);
 }
 
@@ -585,7 +594,8 @@ void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
 V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
                    std::string kv_host_port, std::string rbac_user,
                    std::string rbac_pass, int lcb_inst_capacity,
-                   int execution_timeout, bool enable_recursive_mutation) {
+                   int execution_timeout, bool enable_recursive_mutation)
+    : rbac_pass(rbac_pass) {
   enableRecursiveMutation(enable_recursive_mutation);
   v8::V8::InitializeICU();
   v8::Platform *platform = v8::platform::CreateDefaultPlatform();
@@ -618,6 +628,8 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
               v8::FunctionTemplate::New(GetIsolate(), StopIterFunction));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "execQuery"),
               v8::FunctionTemplate::New(GetIsolate(), ExecQueryFunction));
+  global->Set(v8::String::NewFromUtf8(GetIsolate(), "getReturnValue"),
+              v8::FunctionTemplate::New(GetIsolate(), GetReturnValueFunction));
 
   if (try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
@@ -670,45 +682,15 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
                << " enable_recursive_mutation: " << enable_recursive_mutation
                << '\n';
 
-  std::string connstr = "couchbase://" + cb_kv_endpoint + "/" +
-                        cb_source_bucket.c_str() + "?username=" + rbac_user +
-                        "&select_bucket=true";
+  connstr = "couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket.c_str() +
+            "?username=" + rbac_user + "&select_bucket=true";
+
+  meta_connstr = "couchbase://" + cb_kv_endpoint + "/" +
+                 config->metadata_bucket.c_str() + "?username=" + rbac_user +
+                 "&select_bucket=true";
 
   conn_pool = new ConnectionPool(lcb_inst_capacity, cb_kv_endpoint,
                                  cb_source_bucket, rbac_user, rbac_pass);
-
-  lcb_create_st crst;
-  memset(&crst, 0, sizeof crst);
-
-  crst.version = 3;
-  crst.v.v3.connstr = connstr.c_str();
-  crst.v.v3.type = LCB_TYPE_BUCKET;
-  crst.v.v3.passwd = rbac_pass.c_str();
-
-  lcb_create(&cb_instance, &crst);
-  lcb_connect(cb_instance);
-  lcb_wait(cb_instance);
-
-  lcb_install_callback3(cb_instance, LCB_CALLBACK_DEFAULT, multi_op_callback);
-  this->GetIsolate()->SetData(1, (void *)(&cb_instance));
-
-  std::string meta_connstr = "couchbase://" + cb_kv_endpoint + "/" +
-                             config->metadata_bucket.c_str() +
-                             "?username=" + rbac_user + "&select_bucket=true";
-
-  crst.version = 3;
-  crst.v.v3.connstr = meta_connstr.c_str();
-  crst.v.v3.type = LCB_TYPE_BUCKET;
-  crst.v.v3.passwd = rbac_pass.c_str();
-
-  lcb_create(&meta_cb_instance, &crst);
-  lcb_connect(meta_cb_instance);
-  lcb_wait(meta_cb_instance);
-
-  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_DEFAULT,
-                        multi_op_callback);
-  this->GetIsolate()->SetData(2, (void *)(&meta_cb_instance));
-
   delete config;
 }
 
@@ -752,8 +734,8 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
   n1ql_handle = new N1QL(conn_pool);
 
-  script_to_execute =
-      Transpile(transpiler_js_src, plain_js, EXEC_TRANSPILER) + '\n';
+  Transpiler transpiler(transpiler_js_src);
+  script_to_execute = transpiler.Transpile(plain_js) + '\n';
   script_to_execute += ReadFile(BUILTIN_JS_PATH) + '\n';
 
   v8::Local<v8::String> source =
@@ -805,6 +787,38 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     }
   }
 
+  if (transpiler.IsTimerCalled(script_to_execute)) {
+    LOG(logDebug) << "Transpiler is called" << std::endl;
+
+    lcb_create_st crst;
+    memset(&crst, 0, sizeof crst);
+
+    crst.version = 3;
+    crst.v.v3.connstr = connstr.c_str();
+    crst.v.v3.type = LCB_TYPE_BUCKET;
+    crst.v.v3.passwd = rbac_pass.c_str();
+
+    lcb_create(&cb_instance, &crst);
+    lcb_connect(cb_instance);
+    lcb_wait(cb_instance);
+
+    lcb_install_callback3(cb_instance, LCB_CALLBACK_DEFAULT, multi_op_callback);
+    this->GetIsolate()->SetData(1, (void *)(&cb_instance));
+
+    crst.version = 3;
+    crst.v.v3.connstr = meta_connstr.c_str();
+    crst.v.v3.type = LCB_TYPE_BUCKET;
+    crst.v.v3.passwd = rbac_pass.c_str();
+
+    lcb_create(&meta_cb_instance, &crst);
+    lcb_connect(meta_cb_instance);
+    lcb_wait(meta_cb_instance);
+
+    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_DEFAULT,
+                          multi_op_callback);
+    this->GetIsolate()->SetData(2, (void *)(&meta_cb_instance));
+  }
+
   // Spawning terminator thread to monitor the wall clock time for execution of
   // javascript code isn't going beyond max_task_duration. Passing reference to
   // current object instead of having terminator thread make a copy of the
@@ -813,6 +827,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   // operator()
   // for V8Worker class
   terminator_thr = new std::thread(std::ref(*this));
+
   return SUCCESS;
 }
 

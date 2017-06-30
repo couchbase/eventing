@@ -95,15 +95,16 @@ ConnectionPool::~ConnectionPool() {
 
 void HashedStack::Push(QueryHandler &q_handler) {
   qstack.push(q_handler);
-  qmap[q_handler.index_hash] = &q_handler;
+  qmap[q_handler.hash] = &q_handler;
 }
 
 void HashedStack::Pop() {
-  auto it = qmap.find(qstack.top().index_hash);
+  auto it = qmap.find(qstack.top().hash);
   qmap.erase(it);
   qstack.pop();
 }
 
+// Row-callback for iterator.
 template <>
 void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
                                          const lcb_RESPN1QL *resp) {
@@ -134,6 +135,7 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
   }
 }
 
+// Row-callback for blocking query.
 template <>
 void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
                                              const lcb_RESPN1QL *resp) {
@@ -189,96 +191,165 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   inst_pool->Restore(instance);
 }
 
+// iter() function that is exposed to JavaScript.
 void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Isolate *isolate = args.GetIsolate();
-  v8::HandleScope handleScope(isolate);
+  v8::HandleScope handle_scope(isolate);
 
-  // Concatenate stack index with the hash of N1QL instance in JavaScript.
-  std::string index_hash = AppendStackIndex(args.This()->GetIdentityHash());
-  SetHiddenValue(args, "index_hash", index_hash);
+  try {
+    // Make the hash of N1QL instance in JavaScript unique.
+    std::string hash = SetUniqueHash(args);
 
-  // Query to run.
-  v8::Local<v8::Name> query_name = v8::String::NewFromUtf8(isolate, "query");
-  v8::Local<v8::Value> query_value = args.This()->Get(query_name);
-  v8::String::Utf8Value query_string(query_value);
+    // Query to run.
+    v8::Local<v8::Name> query_name = v8::String::NewFromUtf8(isolate, "query");
+    v8::Local<v8::Value> query_value = args.This()->Get(query_name);
+    v8::String::Utf8Value query_string(query_value);
 
-  // Callback function to execute.
-  v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(args[0]);
+    // Callback function to execute.
+    v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(args[0]);
 
-  // Prepare data for query execution.
-  IterQueryHandler iter_handler;
-  iter_handler.callback = func;
-  iter_handler.return_value = v8::String::NewFromUtf8(isolate, "");
-  QueryHandler q_handler;
-  q_handler.index_hash = index_hash;
-  q_handler.query = *query_string;
-  q_handler.isolate = args.GetIsolate();
-  q_handler.iter_handler = &iter_handler;
+    // Prepare data for query execution.
+    IterQueryHandler iter_handler;
+    iter_handler.callback = func;
+    QueryHandler q_handler;
+    q_handler.hash = hash;
+    q_handler.query = *query_string;
+    q_handler.isolate = args.GetIsolate();
+    q_handler.iter_handler = &iter_handler;
 
-  n1ql_handle->ExecQuery<IterQueryHandler>(q_handler);
+    n1ql_handle->ExecQuery<IterQueryHandler>(q_handler);
 
-  // Add query metadata.
-  v8::Local<v8::Object> n1ql_obj = args.This();
-  AddQueryMetadata(iter_handler, isolate, n1ql_obj);
-  args.This() = n1ql_obj;
+    // Add query metadata.
+    v8::Local<v8::Object> n1ql_obj = args.This();
+    AddQueryMetadata(iter_handler, isolate, n1ql_obj);
+    args.This() = n1ql_obj;
 
-  args.GetReturnValue().Set(iter_handler.return_value);
+    PopScopeStack(args);
+  } catch (const char *e) {
+    LOG(logError) << "Failed to set unique hash: " << e << '\n';
+  }
 }
 
+// stopIter() function that is exposed to JavaScript.
 void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::EscapableHandleScope handle_scope(isolate);
-  v8::Local<v8::Value> arg = args[0];
+  auto arg = v8::Local<v8::Object>::Cast(args[0]);
 
-  std::string index_hash = GetHiddenValue(args, "index_hash");
+  try {
+    // Get the unique hash for this object that was set by IterFunction.
+    std::string hash = GetUniqueHash(args);
 
-  // Cancel the query corresponding to obj_hash.
-  QueryHandler *q_handler = n1ql_handle->qhandler_stack.Get(index_hash);
-  lcb_t instance = q_handler->instance;
-  lcb_N1QLHANDLE *handle = (lcb_N1QLHANDLE *)lcb_get_cookie(instance);
-  lcb_n1ql_cancel(instance, *handle);
+    // Cancel the query corresponding to the unique hash.
+    QueryHandler *q_handler = n1ql_handle->qhandler_stack.Get(hash);
+    lcb_t instance = q_handler->instance;
+    lcb_N1QLHANDLE *handle = (lcb_N1QLHANDLE *)lcb_get_cookie(instance);
+    lcb_n1ql_cancel(instance, *handle);
 
-  // Bubble up the message sent from JavaScript.
-  q_handler->iter_handler->return_value = handle_scope.Escape(arg);
+    // Bubble up the message sent from JavaScript.
+    SetReturnValue(args, handle_scope.Escape(arg));
+  } catch (const char *e) {
+    LOG(logError) << "Failed to get unique hash: " << e << '\n';
+  }
 }
 
+// execQuery() function that is exposed to JavaScript.
 void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handleScope(isolate);
 
-  // Concatenate stack index with the hash of N1QL instance in JavaScript.
-  std::string index_hash = AppendStackIndex(args.This()->GetIdentityHash());
-  SetHiddenValue(args, "index_hash", index_hash);
+  try {
+    // Make the hash of N1QL instance in JavaScript unique.
+    std::string hash = SetUniqueHash(args);
 
-  // Query to run.
-  v8::Local<v8::Name> query_name = v8::String::NewFromUtf8(isolate, "query");
-  v8::Local<v8::Value> query_value = args.This()->Get(query_name);
-  v8::String::Utf8Value query_string(query_value);
+    // Query to run.
+    v8::Local<v8::Name> query_name = v8::String::NewFromUtf8(isolate, "query");
+    v8::Local<v8::Value> query_value = args.This()->Get(query_name);
+    v8::String::Utf8Value query_string(query_value);
 
-  // Prepare data for query execution.
-  BlockingQueryHandler block_handler;
-  QueryHandler q_handler;
-  q_handler.index_hash = index_hash;
-  q_handler.query = *query_string;
-  q_handler.isolate = args.GetIsolate();
-  q_handler.block_handler = &block_handler;
+    // Prepare data for query execution.
+    BlockingQueryHandler block_handler;
+    QueryHandler q_handler;
+    q_handler.hash = hash;
+    q_handler.query = *query_string;
+    q_handler.isolate = args.GetIsolate();
+    q_handler.block_handler = &block_handler;
 
-  n1ql_handle->ExecQuery<BlockingQueryHandler>(q_handler);
+    n1ql_handle->ExecQuery<BlockingQueryHandler>(q_handler);
 
-  std::vector<std::string> &rows = block_handler.rows;
-  v8::Local<v8::Array> result_array =
-      v8::Array::New(isolate, static_cast<int>(rows.size()));
+    std::vector<std::string> &rows = block_handler.rows;
+    auto result_array = v8::Array::New(isolate, static_cast<int>(rows.size()));
 
-  // Populate the result array with the rows of the result.
-  for (int i = 0; i < rows.size(); ++i) {
-    v8::Local<v8::Value> json_row =
-        v8::JSON::Parse(v8::String::NewFromUtf8(isolate, rows[i].c_str()));
-    result_array->Set(static_cast<uint32_t>(i), json_row);
+    // Populate the result array with the rows of the result.
+    for (int i = 0; i < rows.size(); ++i) {
+      v8::Local<v8::Value> json_row =
+          v8::JSON::Parse(v8::String::NewFromUtf8(isolate, rows[i].c_str()));
+      result_array->Set(static_cast<uint32_t>(i), json_row);
+    }
+
+    AddQueryMetadata(block_handler, isolate, result_array);
+
+    args.GetReturnValue().Set(result_array);
+  } catch (const char *e) {
+    LOG(logError) << "Failed to set unique hash: " << e << '\n';
+  }
+}
+
+// Add return_obj as a private field on iterator.
+void SetReturnValue(const v8::FunctionCallbackInfo<v8::Value> &args,
+                    v8::Local<v8::Object> return_obj) {
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
+  // return_obj contains the following properties.
+  const std::vector<std::string> props({"code", "args", "data"});
+
+  for (int i = 0; i < props.size(); ++i) {
+    auto key = v8::String::NewFromUtf8(isolate, props[i].c_str());
+    auto value = return_obj->Get(key);
+    auto private_key = v8::Private::ForApi(isolate, key);
+    args.This()->SetPrivate(context, private_key, value);
   }
 
-  AddQueryMetadata(block_handler, isolate, result_array);
+  // We also save return_obj iteself as a JavaScript object.
+  auto key = v8::Private::ForApi(
+      isolate, v8::String::NewFromUtf8(isolate, "return_value"));
+  args.This()->SetPrivate(context, key, return_obj);
+}
 
-  args.GetReturnValue().Set(result_array);
+// getReturnValue([bool]) function exposed to JavaScript.
+void GetReturnValueFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
+  // Get return_obj from private field.
+  auto key = v8::Private::ForApi(
+      isolate, v8::String::NewFromUtf8(isolate, "return_value"));
+  auto return_value = ToLocal(args.This()->GetPrivate(context, key));
+
+  auto do_concat = v8::Local<v8::Boolean>::Cast(args[0]);
+  // Concatenate 'code' and 'args' fields if [bool] is true.
+  // Else, return the return_obj as it is.
+  if (do_concat->Value()) {
+    auto code_key = v8::String::NewFromUtf8(isolate, "code");
+    auto code_private_key = v8::Private::ForApi(isolate, code_key);
+    auto code_value =
+        ToLocal(args.This()->GetPrivate(context, code_private_key));
+
+    auto args_key = v8::String::NewFromUtf8(isolate, "args");
+    auto args_private_key = v8::Private::ForApi(isolate, args_key);
+    auto args_value =
+        ToLocal(args.This()->GetPrivate(context, args_private_key));
+
+    auto return_value =
+        v8::String::Concat(v8::Local<v8::String>::Cast(code_value),
+                           v8::Local<v8::String>::Cast(args_value));
+    args.GetReturnValue().Set(return_value);
+  } else {
+    args.GetReturnValue().Set(return_value);
+  }
 }
 
 template <typename HandlerType, typename ResultType>
@@ -286,41 +357,193 @@ void AddQueryMetadata(HandlerType handler, v8::Isolate *isolate,
                       ResultType &result) {
   if (handler.metadata.length() > 0) {
     // Query metadata.
-    v8::Local<v8::String> meta_name =
-        v8::String::NewFromUtf8(isolate, "metadata");
-    v8::Local<v8::String> meta_str =
-        v8::String::NewFromUtf8(isolate, handler.metadata.c_str());
-    v8::Local<v8::Value> meta_value = v8::JSON::Parse(meta_str);
+    auto metadata_key = v8::String::NewFromUtf8(isolate, "metadata");
+    auto metadata = v8::String::NewFromUtf8(isolate, handler.metadata.c_str());
+    auto metadata_json = v8::JSON::Parse(metadata);
 
-    result->Set(meta_name, meta_value);
+    result->Set(metadata_key, metadata_json);
   }
 }
 
 std::string AppendStackIndex(int obj_hash) {
-  std::string index_hash = std::to_string(obj_hash);
+  std::string index_hash = std::to_string(obj_hash) + '|';
   index_hash += std::to_string(n1ql_handle->qhandler_stack.Size());
 
   return index_hash;
 }
 
-void SetHiddenValue(const v8::FunctionCallbackInfo<v8::Value> &args,
-                    std::string key_str, std::string value_str) {
+// Every N1qlQuery instance of JavaScript is associated with a private stack.
+// This maintains the uniqueness of the hash of instances.
+void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
+                    std::string base_hash_str, std::string unique_hash_str) {
   v8::Isolate *isolate = args.GetIsolate();
-  auto key = v8::Private::ForApi(
-      isolate, v8::String::NewFromUtf8(isolate, key_str.c_str()));
-  auto value = v8::String::NewFromUtf8(isolate, value_str.c_str());
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
 
-  args.This()->SetPrivate(isolate->GetCurrentContext(), key, value);
+  auto base_hash = v8::Private::ForApi(
+      isolate, v8::String::NewFromUtf8(isolate, base_hash_str.c_str()));
+  auto unique_hash = v8::String::NewFromUtf8(isolate, unique_hash_str.c_str());
+  v8::Local<v8::Map> scope_stack;
+  bool exists = HasKey(args, base_hash_str);
+
+  // If a base hash exists, then get the stack and push the unique hash onto it.
+  if (exists) {
+    auto stack = ToLocal(args.This()->GetPrivate(context, base_hash));
+    scope_stack = v8::Local<v8::Map>::Cast(stack);
+    auto result = scope_stack->Set(
+        context, v8::Number::New(isolate, scope_stack->Size()), unique_hash);
+  } else {
+    // Otherwise, create a new stack and push the base hash onto it.
+    scope_stack = v8::Map::New(isolate);
+    scope_stack = ToLocal(
+        scope_stack->Set(context, v8::Number::New(isolate, 0), unique_hash));
+    args.This()->SetPrivate(context, base_hash, scope_stack);
+  }
 }
 
-std::string GetHiddenValue(const v8::FunctionCallbackInfo<v8::Value> &args,
-                           std::string key_str) {
+// Pop the unique hash associated with the N1qlQuery instance.
+void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
+  // Get base hash associated with this instance.
+  bool exists;
+  std::string base_hash = GetBaseHash(args, exists);
+
+  if (exists) {
+    auto hash_key = v8::Private::ForApi(
+        isolate, v8::String::NewFromUtf8(isolate, base_hash.c_str()));
+    exists = HasKey(args, base_hash);
+
+    // If the base hash exists, then pop the unique hash from top of stack.
+    if (exists) {
+      auto stack = ToLocal(args.This()->GetPrivate(context, hash_key));
+      auto scope_stack = v8::Local<v8::Map>::Cast(stack);
+      auto result = scope_stack->Delete(
+          context, v8::Number::New(isolate, scope_stack->Size() - 1));
+    } else {
+      throw "scope stack not set";
+    }
+  } else {
+    throw "base hash not set";
+  }
+}
+
+// Retrieve the unique hash associated with the N1qlQuery instance.
+std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
+  // Get base hash associated with this instance.
+  bool exists;
+  std::string base_hash_str = GetBaseHash(args, exists);
+
+  if (exists) {
+    auto base_hash = v8::Private::ForApi(
+        isolate, v8::String::NewFromUtf8(isolate, base_hash_str.c_str()));
+    exists = HasKey(args, base_hash_str);
+
+    // If the base hash exists, then return the unique hash from top of stack.
+    if (exists) {
+      auto stack = ToLocal(args.This()->GetPrivate(context, base_hash));
+      auto scope_stack = v8::Local<v8::Map>::Cast(stack);
+      auto top_value = ToLocal(scope_stack->Get(
+          context, v8::Number::New(isolate, scope_stack->Size() - 1)));
+      v8::String::Utf8Value hash(top_value);
+      return *hash;
+    } else {
+      throw "scope stack not set";
+    }
+  } else {
+    throw "base hash not set";
+  }
+
+  return "";
+}
+
+// Generates and sets a unique hash to a N1qlQuery instance.
+std::string SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
+  bool exists;
+  std::string base_hash = GetBaseHash(args, exists);
+  auto key =
+      v8::Private::ForApi(isolate, v8::String::NewFromUtf8(isolate, "hash"));
+
+  // If the base hash exists, then generate unique hash and push it onto stack.
+  if (exists) {
+    std::string unique_hash = AppendStackIndex(args.This()->GetIdentityHash());
+    PushScopeStack(args, base_hash, unique_hash);
+
+    return unique_hash;
+  } else {
+    // Otherwise, base hash is itself unique.
+    base_hash = AppendStackIndex(args.This()->GetIdentityHash());
+    auto hash = v8::String::NewFromUtf8(isolate, base_hash.c_str());
+    args.This()->SetPrivate(context, key, hash);
+    PushScopeStack(args, base_hash, base_hash);
+
+    return base_hash;
+  }
+}
+
+// Returns base hash from the field.
+std::string GetBaseHash(const v8::FunctionCallbackInfo<v8::Value> &args,
+                        bool &exists) {
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
+  exists = HasKey(args, "hash");
+  if (exists) {
+    auto key =
+        v8::Private::ForApi(isolate, v8::String::NewFromUtf8(isolate, "hash"));
+    auto value = ToLocal(args.This()->GetPrivate(context, key));
+    v8::String::Utf8Value value_str(value);
+
+    return ToCString(value_str);
+  }
+
+  return "";
+}
+
+// Check if a key is present in private field.
+bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args,
+            std::string key_str) {
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
   auto key = v8::Private::ForApi(
       isolate, v8::String::NewFromUtf8(isolate, key_str.c_str()));
-  v8::MaybeLocal<v8::Value> value =
-      args.This()->GetPrivate(isolate->GetCurrentContext(), key);
-  v8::String::Utf8Value value_str(value.ToLocalChecked());
+  v8::Maybe<bool> has_key = args.This()->HasPrivate(context, key);
 
-  return *value_str;
+  // Checking for FromJust would crash the v8 process if has_key is empty -
+  // https://v8.paulfryzel.com/docs/master/classv8_1_1_maybe.html#a6c35f4870a5b5049d09ba5f13c67ede9
+  bool result;
+  try {
+    result = !has_key.IsNothing() && has_key.IsJust() && has_key.FromJust();
+  } catch (...) {
+    LOG(logError) << "Key was empty " << '\n';
+  }
+
+  return result;
+}
+
+// Utility method to convert a MaybeLocal handle to a local handle.
+template <typename T> v8::Local<T> ToLocal(const v8::MaybeLocal<T> &handle) {
+  if (handle.IsEmpty()) {
+    throw "Handle is empty";
+  }
+
+  v8::Isolate *isolate = v8::Isolate::GetCurrent();
+  v8::EscapableHandleScope handle_scope(isolate);
+
+  v8::Local<T> value;
+  auto result = handle.ToLocal(&value);
+  return handle_scope.Escape(value);
 }

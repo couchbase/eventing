@@ -58,7 +58,7 @@ struct BlockingQueryHandler {
 };
 
 struct QueryHandler {
-  std::string index_hash;
+  std::string hash;
   std::string query;
   lcb_t instance = nullptr;
   v8::Isolate *isolate = nullptr;
@@ -118,23 +118,43 @@ public:
   ~N1QL() {}
 };
 
-enum builder_mode { EXEC_JS_FORMAT, EXEC_TRANSPILER };
-std::string Transpile(std::string js_src, std::string user_code, int mode);
+class Transpiler {
+  v8::Isolate *isolate;
+  v8::Local<v8::Context> context;
+
+public:
+  Transpiler(std::string transpiler_src);
+  v8::Local<v8::Value> ExecTranspiler(std::string code, std::string function);
+  std::string Transpile(std::string user_code);
+  std::string JsFormat(std::string user_code);
+  bool IsTimerCalled(std::string user_code);
+  ~Transpiler() {}
+};
+
 int Jsify(const char *, std::string *);
 
 void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
+void GetReturnValueFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
+void SetReturnValue(const v8::FunctionCallbackInfo<v8::Value> &args,
+                    v8::Local<v8::Object> return_value);
+
 template <typename HandlerType, typename ResultType>
 void AddQueryMetadata(HandlerType handler, v8::Isolate *isolate,
                       ResultType &result);
 
-// Makes obj_hash unique by appending stack index.
 std::string AppendStackIndex(int obj_hash);
-// Functions to get and set the hidden value of a JavaScript object.
-void SetHiddenValue(const v8::FunctionCallbackInfo<v8::Value> &args,
-                    std::string key, std::string value);
-std::string GetHiddenValue(const v8::FunctionCallbackInfo<v8::Value> &args,
-                           std::string key);
+bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args, std::string key);
+std::string SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args);
+std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args);
+std::string GetBaseHash(const v8::FunctionCallbackInfo<v8::Value> &args,
+                        bool &exists);
+void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
+                    std::string key_hash_str, std::string value_hash_str);
+void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args);
+const char *ToCString(const v8::String::Utf8Value &value);
+bool ToCBool(const v8::Local<v8::Boolean> &value);
+template <typename T> v8::Local<T> ToLocal(const v8::MaybeLocal<T> &handle);
 
 #endif

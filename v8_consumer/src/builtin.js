@@ -16,4 +16,5 @@ function N1qlQuery(query) {
     this.iter = iter;
     this.execQuery = execQuery;
     this.stopIter = stopIter;
+    this.getReturnValue = getReturnValue;
 }
