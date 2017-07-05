@@ -13,8 +13,8 @@
 #define V8WORKER_H
 
 #include <atomic>
-#include <cstdio>
 #include <chrono>
+#include <cstdio>
 #include <list>
 #include <map>
 #include <string>
@@ -37,22 +37,21 @@ extern void(assert)(int);
 #endif
 
 typedef std::chrono::high_resolution_clock Time;
-typedef std::chrono::nanoseconds ns;
-typedef std::chrono::duration<float> fsec;
+typedef std::chrono::nanoseconds nsecs;
 
 #define SECS_TO_NS 1000 * 1000 * 1000ULL
 
+struct Result {
+  lcb_CAS cas;
+  lcb_error_t rc;
+  std::string value;
+  uint32_t exptime;
+
+  Result() : cas(0), rc(LCB_SUCCESS) {}
+};
+
 class Bucket;
 class V8Worker;
-
-struct Result {
-  std::string value;
-  lcb_CAS cas;
-  lcb_U32 itmflags;
-  lcb_error_t status;
-
-  Result() : cas(0), itmflags(0), status(LCB_SUCCESS) {}
-};
 
 v8::Local<v8::String> createUtf8String(v8::Isolate *isolate, const char *str);
 std::string ObjectToString(v8::Local<v8::Value> value);
@@ -89,12 +88,13 @@ public:
 
       if (execute_flag) {
         Time::time_point t = Time::now();
-        fsec fs = t - execute_start_time;
-        ns d = std::chrono::duration_cast<ns>(fs);
+        nsecs ns = std::chrono::duration_cast<nsecs>(t - execute_start_time);
 
-        if (d.count() > max_task_duration) {
+        LOG(logTrace) << "ns.count(): " << ns.count()
+                      << "ns, max_task_duration: " << max_task_duration << "ns" << '\n';
+        if (ns.count() > max_task_duration) {
           if (isolate_) {
-            LOG(logTrace) << "Task took: " << d.count()
+            LOG(logTrace) << "Task took: " << ns.count()
                           << "ns, terminating it's execution" << '\n';
             v8::V8::TerminateExecution(isolate_);
            }

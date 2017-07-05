@@ -309,15 +309,12 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_entry += "::";
   timer_entry += ConvertToISO8601(start_ts);
 
-  // Perform xattr operations
-  lcb_CMDSUBDOC mcmd = {0};
-  LCB_CMD_SET_KEY(&mcmd, doc_id.c_str(), doc_id.size());
-
-  /*
-   * XATTR structure with timers:
+  /* Perform XATTR operations, XATTR structure with timers:
+   *
    * {
    * "eventing": {
-   *              "timers": ["appname::2017-04-30ZT12:00:00::callback_func", ...],
+   *              "timers": ["appname::2017-04-30ZT12:00:00::callback_func",
+   * ...],
    *              "cas": ${Mutation.CAS},
    *   }
    * }
@@ -325,6 +322,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   std::string xattr_cas_path("eventing.cas");
   std::string xattr_timer_path("eventing.timers");
   std::string mutation_cas_macro("\"${Mutation.CAS}\"");
+  std::string doc_exptime("$document.exptime");
   timer_entry += "Z::";
   timer_entry += cb_func;
   timer_entry += "\"";
@@ -332,34 +330,78 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   LOG(logTrace) << "Request to register timer, callback_func:" << cb_func
                 << " doc_id:" << doc_id << " start_ts:" << timer_entry << '\n';
 
-  std::vector<lcb_SDSPEC> specs;
+  while (true) {
+    lcb_t *cb_instance =
+        reinterpret_cast<lcb_t *>(args.GetIsolate()->GetData(1));
 
-  lcb_SDSPEC spec = {0};
-  spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-  spec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
+    lcb_CMDSUBDOC gcmd = {0};
+    LCB_CMD_SET_KEY(&gcmd, doc_id.c_str(), doc_id.size());
 
-  LCB_SDSPEC_SET_PATH(&spec, xattr_cas_path.c_str(), xattr_cas_path.size());
-  LCB_SDSPEC_SET_VALUE(&spec, mutation_cas_macro.c_str(),
-                       mutation_cas_macro.size());
-  specs.push_back(spec);
+    // Fetch document expiration using virtual extended attributes
+    Result res;
+    lcb_SDSPEC gspec = {0};
+    gcmd.specs = &gspec;
+    gcmd.nspecs = 1;
 
-  spec.sdcmd = LCB_SDCMD_ARRAY_ADD_LAST;
-  spec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
-  LCB_SDSPEC_SET_PATH(&spec, xattr_timer_path.c_str(), xattr_timer_path.size());
-  LCB_SDSPEC_SET_VALUE(&spec, timer_entry.c_str(), timer_entry.size());
-  specs.push_back(spec);
+    gspec.sdcmd = LCB_SDCMD_GET;
+    gspec.options = LCB_SDSPEC_F_XATTRPATH;
+    LCB_SDSPEC_SET_PATH(&gspec, doc_exptime.c_str(), doc_exptime.size());
+    lcb_subdoc3(*cb_instance, &res, &gcmd);
+    lcb_wait(*cb_instance);
 
-  mcmd.specs = specs.data();
-  mcmd.nspecs = specs.size();
+    LOG(logTrace) << "CreateDocTimer cas: " << res.cas
+                  << " exptime: " << res.exptime << '\n';
 
-  lcb_t *cb_instance = reinterpret_cast<lcb_t *>(args.GetIsolate()->GetData(1));
-  lcb_error_t rc = lcb_subdoc3(*cb_instance, NULL, &mcmd);
-  if (rc != LCB_SUCCESS) {
-    LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
-                  << doc_id << " return code:" << rc << '\n';
-    return;
+    lcb_CMDSUBDOC mcmd = {0};
+    lcb_SDSPEC spec = {0};
+    LCB_CMD_SET_KEY(&mcmd, doc_id.c_str(), doc_id.size());
+
+    std::vector<lcb_SDSPEC> specs;
+
+    mcmd.cas = res.cas;
+    // TODO - waiting on fix for https://issues.couchbase.com/browse/CCBC-799 -
+    // updating expiration on subdoc mutation
+    // mcmd.exptime = res.exptime;
+
+    spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+    spec.options =
+        LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
+
+    LCB_SDSPEC_SET_PATH(&spec, xattr_cas_path.c_str(), xattr_cas_path.size());
+    LCB_SDSPEC_SET_VALUE(&spec, mutation_cas_macro.c_str(),
+                         mutation_cas_macro.size());
+    specs.push_back(spec);
+
+    spec.sdcmd = LCB_SDCMD_ARRAY_ADD_LAST;
+    spec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
+    LCB_SDSPEC_SET_PATH(&spec, xattr_timer_path.c_str(),
+                        xattr_timer_path.size());
+    LCB_SDSPEC_SET_VALUE(&spec, timer_entry.c_str(), timer_entry.size());
+    specs.push_back(spec);
+
+    mcmd.specs = specs.data();
+    mcmd.nspecs = specs.size();
+
+    lcb_error_t rc = lcb_subdoc3(*cb_instance, NULL, &mcmd);
+    if (rc != LCB_SUCCESS) {
+      LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
+                    << doc_id << " return code:" << rc
+                    << " msg:" << lcb_strerror(NULL, rc) << '\n';
+      return;
+    }
+    lcb_wait(*cb_instance);
+
+    if (res.rc == LCB_SUCCESS) {
+      break;
+    } else if (res.rc == LCB_KEY_EEXISTS) {
+      LOG(logTrace) << "CAS Mismatch for " << doc_id << ". Retrying" << '\n';
+      continue;
+    } else {
+      LOG(logTrace)
+          << "Couldn't store xattr update as part of doc_id based timer"
+          << '\n';
+    }
   }
-  lcb_wait(*cb_instance);
 }
 
 // Exception details will be appended to the first argument.
@@ -491,7 +533,7 @@ static void multi_op_callback(lcb_t cb_instance, int cbtype,
     return;
   }
 
-  if (cbtype == LCB_CALLBACK_SDMUTATE || cbtype == LCB_CALLBACK_SDLOOKUP) {
+  if (cbtype == LCB_CALLBACK_SDMUTATE) {
     const lcb_RESPSUBDOC *resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
     lcb_SDENTRY ent;
     size_t iter = 0;
@@ -499,6 +541,36 @@ static void multi_op_callback(lcb_t cb_instance, int cbtype,
       LOG(logTrace) << string_sprintf("Status: 0x%x. Value: %.*s\n", ent.status,
                                       (int)ent.nvalue, ent.value)
                     << '\n';
+    }
+  }
+
+  if (cbtype == LCB_CALLBACK_SDLOOKUP) {
+    Result *res = reinterpret_cast<Result *>(rb->cookie);
+    res->cas = rb->cas;
+    res->rc = rb->rc;
+
+    if (rb->rc == LCB_SUCCESS) {
+      const lcb_RESPGET *rg = reinterpret_cast<const lcb_RESPGET *>(rb);
+      res->value.assign(reinterpret_cast<const char *>(rg->value), rg->nvalue);
+
+      const lcb_RESPSUBDOC *resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
+      lcb_SDENTRY ent;
+      size_t iter = 0;
+      if (lcb_sdresult_next(resp, &ent, &iter)) {
+        LOG(logTrace) << string_sprintf("Status: 0x%x. Value: %.*s\n",
+                                        ent.status, (int)ent.nvalue, ent.value)
+                      << '\n';
+
+        std::string exptime(reinterpret_cast<const char *>(ent.value));
+        exptime.substr(0, (int)ent.nvalue);
+
+        unsigned long long int ttl;
+        char *pEnd;
+        ttl = strtoull(exptime.c_str(), &pEnd, 10);
+        res->exptime = (uint32_t)ttl;
+      } else {
+        LOG(logTrace) << "LCB_CALLBACK_SDLOOKUP: No result!" << '\n';
+      }
     }
   }
 }
@@ -554,6 +626,8 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
 
   app_name_ = app_name;
   cb_kv_endpoint = kv_host_port;
+  execute_flag = false;
+  execute_start_time = Time::now();
 
   deployment_config *config = ParseDeployment(dep_cfg.c_str());
 
@@ -566,7 +640,7 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
   Bucket *bucket_handle = nullptr;
   execute_flag = true;
   shutdown_terminator = false;
-  max_task_duration = SECS_TO_NS * execution_timeout ;
+  max_task_duration = SECS_TO_NS * execution_timeout;
 
   for (; it != config->component_configs.end(); it++) {
     if (it->first == "buckets") {
@@ -590,6 +664,7 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
                << " kv_host_port: " << kv_host_port
                << " rbac_user: " << rbac_user << " rbac_pass: " << rbac_pass
                << " lcb_cap: " << lcb_inst_capacity
+               << " execution_timeout: " << execution_timeout
                << " enable_recursive_mutation: " << enable_recursive_mutation
                << '\n';
 
@@ -730,8 +805,10 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
   // Spawning terminator thread to monitor the wall clock time for execution of
   // javascript code isn't going beyond max_task_duration. Passing reference to
-  // current object instead of having terminator thread make a copy of the object.
-  // Spawned thread will execute the temininator loop logic in function call operator()
+  // current object instead of having terminator thread make a copy of the
+  // object.
+  // Spawned thread will execute the temininator loop logic in function call
+  // operator()
   // for V8Worker class
   terminator_thr = new std::thread(std::ref(*this));
   return SUCCESS;

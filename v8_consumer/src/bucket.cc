@@ -31,7 +31,7 @@ static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
   const lcb_RESPGET *resp = reinterpret_cast<const lcb_RESPGET *>(rb);
   Result *result = reinterpret_cast<Result *>(rb->cookie);
 
-  result->status = resp->rc;
+  result->rc = resp->rc;
   result->value.clear();
   if (resp->rc == LCB_SUCCESS) {
     result->value.assign(reinterpret_cast<const char *>(resp->value),
@@ -43,12 +43,12 @@ static void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   const lcb_RESPSTORE *resp = reinterpret_cast<const lcb_RESPSTORE *>(rb);
   Result *result = reinterpret_cast<Result *>(rb->cookie);
 
-  result->status = resp->rc;
+  result->rc = resp->rc;
   result->cas = resp->cas;
 
   LOG(logTrace) << "Bucket: LCB_STORE callback "
-                << lcb_strerror(instance, result->status) << " cas "
-                << resp->cas << '\n';
+                << lcb_strerror(instance, result->rc) << " cas " << resp->cas
+                << '\n';
 }
 
 // convert Little endian unsigned int64 to Big endian notation
