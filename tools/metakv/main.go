@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strings"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/metakv"
@@ -19,8 +18,7 @@ func main() {
 	}
 
 	appCfgFile := os.Args[3]
-	splitStrs := strings.Split(appCfgFile, "/")
-	appName := splitStrs[len(splitStrs)-1]
+	appName := os.Args[4]
 
 	data, err := ioutil.ReadFile("./" + appCfgFile)
 	if err != nil {

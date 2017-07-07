@@ -68,7 +68,7 @@ func (c *Consumer) controlRoutine() {
 			go c.processNonDocTimerEvents()
 
 			if val, ok := settings["deadline_timeout"]; ok {
-				c.socketTimeout = time.Duration(val.(int)) * time.Second
+				c.socketTimeout = time.Duration(val.(float64)) * time.Second
 			}
 
 		case <-c.restartVbDcpStreamTicker.C:

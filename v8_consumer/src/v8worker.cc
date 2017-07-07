@@ -235,7 +235,9 @@ void CreateNonDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  timer_entry = ConvertToISO8601(start_ts);
+  timer_entry.assign(appName);
+  timer_entry.append("::");
+  timer_entry.append(ConvertToISO8601(start_ts));
   timer_entry.append("Z");
   LOG(logTrace) << "Request to register non-doc_id timer, callback_func:"
                 << cb_func << "start_ts : " << timer_entry << '\n';
@@ -327,7 +329,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_entry += cb_func;
   timer_entry += "\"";
   timer_entry.insert(0, 1, '"');
-  LOG(logTrace) << "Request to register timer, callback_func:" << cb_func
+  LOG(logTrace) << "Request to register doc timer, callback_func:" << cb_func
                 << " doc_id:" << doc_id << " start_ts:" << timer_entry << '\n';
 
   while (true) {
@@ -382,7 +384,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     mcmd.specs = specs.data();
     mcmd.nspecs = specs.size();
 
-    lcb_error_t rc = lcb_subdoc3(*cb_instance, NULL, &mcmd);
+    lcb_error_t rc = lcb_subdoc3(*cb_instance, &res, &mcmd);
     if (rc != LCB_SUCCESS) {
       LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
                     << doc_id << " return code:" << rc
@@ -392,6 +394,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     lcb_wait(*cb_instance);
 
     if (res.rc == LCB_SUCCESS) {
+      LOG(logTrace) << "Stored doc_id timer_entry: " << timer_entry
+                    << " for doc_id: " << doc_id << '\n';
       break;
     } else if (res.rc == LCB_KEY_EEXISTS) {
       LOG(logTrace) << "CAS Mismatch for " << doc_id << ". Retrying" << '\n';
@@ -399,7 +403,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     } else {
       LOG(logTrace)
           << "Couldn't store xattr update as part of doc_id based timer"
-          << '\n';
+          << res.rc << " msg: " << lcb_strerror(NULL, res.rc) << '\n';
     }
   }
 }
@@ -522,21 +526,20 @@ static void multi_op_callback(lcb_t cb_instance, int cbtype,
                     << '\n';
       break;
     default:
-      LOG(logTrace) << "Operation failed, " << lcb_strerror(NULL, rb->rc)
-                    << " rc:" << rb->rc << '\n';
+      LOG(logTrace) << "LCB_CALLBACK_GET: Operation failed, "
+                    << lcb_strerror(NULL, rb->rc) << " rc:" << rb->rc << '\n';
       break;
     }
-  }
-
-  if (rb->rc != LCB_SUCCESS && rb->rc != LCB_SUBDOC_MULTI_FAILURE) {
-    LOG(logError) << "Operation failed" << lcb_strerror(NULL, rb->rc) << '\n';
-    return;
   }
 
   if (cbtype == LCB_CALLBACK_SDMUTATE) {
     const lcb_RESPSUBDOC *resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
     lcb_SDENTRY ent;
     size_t iter = 0;
+
+    Result *res = reinterpret_cast<Result *>(rb->cookie);
+    res->rc = rb->rc;
+
     if (lcb_sdresult_next(resp, &ent, &iter)) {
       LOG(logTrace) << string_sprintf("Status: 0x%x. Value: %.*s\n", ent.status,
                                       (int)ent.nvalue, ent.value)
@@ -626,7 +629,6 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
 
   app_name_ = app_name;
   cb_kv_endpoint = kv_host_port;
-  execute_flag = false;
   execute_start_time = Time::now();
 
   deployment_config *config = ParseDeployment(dep_cfg.c_str());
@@ -638,7 +640,7 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
       config->component_configs.begin();
 
   Bucket *bucket_handle = nullptr;
-  execute_flag = true;
+  execute_flag = false;
   shutdown_terminator = false;
   max_task_duration = SECS_TO_NS * execution_timeout;
 

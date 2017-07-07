@@ -90,7 +90,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		vbnos:                  vbnos,
 		vbPlasmaReader:         make(map[uint16]*plasma.Writer),
 		vbPlasmaWriter:         make(map[uint16]*plasma.Writer),
-		vbProcessingStats:      newVbProcessingStats(),
+		vbProcessingStats:      newVbProcessingStats(app.AppName),
 		vbsRemainingToGiveUp:   make([]uint16, 0),
 		vbsRemainingToOwn:      make([]uint16, 0),
 		vbsRemainingToRestream: make([]uint16, 0),

@@ -78,7 +78,7 @@ retry:
 }
 
 func main() {
-	connStr, eventingConnStr := argParse()
+	connStr, _ := argParse()
 
 	conn, err := couchbase.ConnectWithAuthCreds(connStr, options.rbacUser, options.rbacPass)
 	if err != nil {
@@ -100,96 +100,110 @@ func main() {
 
 	fmt.Printf("Populating %v items\n", options.itemCount)
 
-	go func(bucketHandle *couchbase.Bucket) {
-	loop:
-		switch options.docType {
-		case "credit_score":
-			ssn := random(1000, 100000)
-			creditLimit := random(1, 10000)
+loop:
+	switch options.docType {
+	case "credit_score":
+		ssn := random(1000, 100000)
+		creditLimit := random(1, 10000)
 
-			for i := 0; i < options.itemCount; i++ {
+		for i := 0; i < options.itemCount; i++ {
 
-				ssn++
-				blob := creditScoreBlob{
-					SSN:              ssn,
-					CreditScore:      random(500, 800),
-					CreditCardCount:  random(1, 10),
-					TotalCreditLimit: creditLimit,
-					CreditLimitUsed:  random(1, creditLimit),
-					MissedEMIs:       random(1, 10),
-					Type:             "credit_score",
-				}
-
-				content, err := json.Marshal(&blob)
-				if err != nil {
-					continue
-				}
-
-				key := fmt.Sprintf("ssn_%d", ssn)
-				err = bucketHandle.SetRaw(key, 10, content)
-				if err != nil {
-					continue
-				}
+			ssn++
+			blob := creditScoreBlob{
+				SSN:              ssn,
+				CreditScore:      random(500, 800),
+				CreditCardCount:  random(1, 10),
+				TotalCreditLimit: creditLimit,
+				CreditLimitUsed:  random(1, creditLimit),
+				MissedEMIs:       random(1, 10),
+				Type:             "credit_score",
 			}
 
-			if options.loop {
-				goto loop
+			content, err := json.Marshal(&blob)
+			if err != nil {
+				continue
 			}
 
-		case "travel_sample":
-			for i := 0; i < options.itemCount; i++ {
-				blob := travelSampleBlob{
-					Type:        "travel_sample",
-					ID:          i,
-					Source:      "BLR",
-					Destination: "DEL",
-				}
-
-				content, err := json.Marshal(&blob)
-				if err != nil {
-					continue
-				}
-
-				key := fmt.Sprintf("ts_%d", i)
-				err = bucketHandle.SetRaw(key, 0, content)
-				if err != nil {
-					continue
-				}
+			key := fmt.Sprintf("ssn_%d", ssn)
+			err = bucketHandle.SetRaw(key, options.expiry, content)
+			if err != nil {
+				continue
 			}
-
-			if options.loop {
-				goto loop
-			}
-
-		case "cpu_op":
-			for i := 0; i < options.itemCount; i++ {
-				blob := cpuOpBlob{
-					Type: "cpu_op",
-					ID:   i,
-				}
-
-				content, err := json.Marshal(&blob)
-				if err != nil {
-					continue
-				}
-
-				key := fmt.Sprintf("co_%d", i)
-				err = bucketHandle.SetRaw(key, 0, content)
-				if err != nil {
-					continue
-				}
-			}
-
-			if options.loop {
-				goto loop
-			}
-
-		default:
 		}
-	}(bucketHandle)
 
-	pSec := statsCollector(eventingConnStr, options.appName)
-	fmt.Println("Ops/s:", pSec)
+		if options.loop {
+			goto loop
+		}
+
+	case "travel_sample":
+		for i := 0; i < options.itemCount; i++ {
+			blob := travelSampleBlob{
+				Type:        "travel_sample",
+				ID:          i,
+				Source:      "BLR",
+				Destination: "DEL",
+			}
+
+			content, err := json.Marshal(&blob)
+			if err != nil {
+				continue
+			}
+
+			key := fmt.Sprintf("ts_%d", i)
+			err = bucketHandle.SetRaw(key, options.expiry, content)
+			if err != nil {
+				continue
+			}
+		}
+
+		if options.loop {
+			goto loop
+		}
+
+	case "cpu_op":
+		for i := 0; i < options.itemCount; i++ {
+			blob := cpuOpBlob{
+				Type: "cpu_op",
+				ID:   i,
+			}
+
+			content, err := json.Marshal(&blob)
+			if err != nil {
+				continue
+			}
+
+			key := fmt.Sprintf("co_%d", i)
+			err = bucketHandle.SetRaw(key, options.expiry, content)
+			if err != nil {
+				continue
+			}
+		}
+
+	case "doc_timer":
+		for i := 0; i < options.itemCount; i++ {
+			blob := docTimerBlob{
+				Type: "doc_timer",
+				ID:   i,
+			}
+
+			content, err := json.Marshal(&blob)
+			if err != nil {
+				continue
+			}
+
+			key := fmt.Sprintf("dtb_%d", i)
+			err = bucketHandle.SetRaw(key, options.expiry, content)
+			if err != nil {
+				continue
+			}
+		}
+
+		if options.loop {
+			goto loop
+		}
+
+	default:
+	}
 }
 
 func random(min, max int) int {

@@ -77,12 +77,12 @@ func (p *Producer) parseDepcfg() error {
 			p.enableRecursiveMutation = false
 		}
 		if val, ok := settings["deadline_timeout"]; ok {
-			p.socketTimeout = time.Duration(val.(int)) * time.Second
+			p.socketTimeout = time.Duration(val.(float64)) * time.Second
 		} else {
 			p.socketTimeout = time.Duration(2 * time.Second)
 		}
 		if val, ok := settings["execution_timeout"]; ok {
-			p.executionTimeout = val.(int)
+			p.executionTimeout = int(val.(float64))
 		} else {
 			p.executionTimeout = 1
 		}

@@ -372,8 +372,8 @@ func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateS
 func (c *Consumer) processNonDocTimerEvents() {
 	c.nonDocTimerProcessingTicker = time.NewTicker(c.timerProcessingTickInterval)
 
-	currTimer := time.Now().UTC().Format(time.RFC3339)
-	nextTimer := time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+	currTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Format(time.RFC3339))
+	nextTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Add(time.Second).Format(time.RFC3339))
 
 	vbsOwned := c.getVbsOwned()
 
@@ -410,7 +410,9 @@ func (c *Consumer) processNonDocTimerEvents() {
 			vbsOwned := c.getVbsOwned()
 			for _, vb := range vbsOwned {
 				currTimer := c.vbProcessingStats.getVbStat(vb, "currently_processed_non_doc_timer").(string)
-				ts, err := time.Parse(tsLayout, currTimer)
+
+				cts := strings.Split(currTimer, "::")[1]
+				ts, err := time.Parse(tsLayout, cts)
 				if err != nil {
 					logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
@@ -436,17 +438,19 @@ func (c *Consumer) processNonDocTimerEvents() {
 }
 
 func (c *Consumer) updateNonDocTimerStats(vb uint16) {
-	nTimerTs := c.vbProcessingStats.getVbStat(vb, "next_non_doc_timer_to_process").(string)
-	c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", nTimerTs)
+	timerTs := c.vbProcessingStats.getVbStat(vb, "next_non_doc_timer_to_process").(string)
+	c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", timerTs)
 
-	nextTimer, err := time.Parse(tsLayout, nTimerTs)
+	ts := strings.Split(timerTs, "::")[1]
+	nextTimer, err := time.Parse(tsLayout, ts)
 	if err != nil {
 		logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, nTimerTs, err)
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerTs, err)
 	}
 
-	c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process",
-		nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
+	nextTimerTs := fmt.Sprintf("%s::%s", c.app.AppName, nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
+
+	c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", nextTimerTs)
 }
 
 func (c *Consumer) checkIfVbInOwned(vb uint16) bool {

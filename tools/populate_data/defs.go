@@ -21,3 +21,8 @@ type cpuOpBlob struct {
 	Type string `json:"type"`
 	ID   int    `json:"doc_id"`
 }
+
+type docTimerBlob struct {
+	Type string `json:"type"`
+	ID   int    `json:"doc_id"`
+}

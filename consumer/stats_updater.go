@@ -1,10 +1,11 @@
 package consumer
 
 import (
+	"fmt"
 	"time"
 )
 
-func newVbProcessingStats() vbStats {
+func newVbProcessingStats(appName string) vbStats {
 	vbsts := make(vbStats, numVbuckets)
 	for i := uint16(0); i < numVbuckets; i++ {
 		vbsts[i] = &vbStat{
@@ -24,10 +25,10 @@ func newVbProcessingStats() vbStats {
 		// Below stats will be updated by plasma reader routines, which
 		// will process timer events
 		vbsts[i].stats["currently_processed_doc_id_timer"] = time.Now().UTC().Format(time.RFC3339)
-		vbsts[i].stats["currently_processed_non_doc_timer"] = time.Now().UTC().Format(time.RFC3339)
+		vbsts[i].stats["currently_processed_non_doc_timer"] = fmt.Sprintf("%s::%s", appName, time.Now().UTC().Format(time.RFC3339))
 		vbsts[i].stats["last_processed_doc_id_timer_event"] = ""
 		vbsts[i].stats["next_doc_id_timer_to_process"] = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
-		vbsts[i].stats["next_non_doc_timer_to_process"] = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+		vbsts[i].stats["next_non_doc_timer_to_process"] = fmt.Sprintf("%s::%s", appName, time.Now().UTC().Add(time.Second).Format(time.RFC3339))
 		vbsts[i].stats["doc_id_timer_processing_worker"] = ""
 	}
 	return vbsts
