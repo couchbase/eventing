@@ -27,6 +27,9 @@ func (c *Consumer) controlRoutine() {
 
 		case <-c.signalSettingsChangeCh:
 
+			logging.Infof("CRCR[%s:%s:%s:%d] Got notification about settings update",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+
 			settingsPath := metakvAppSettingsPath + c.app.AppName
 			sData, err := util.MetakvGet(settingsPath)
 			if err != nil {
@@ -57,6 +60,8 @@ func (c *Consumer) controlRoutine() {
 			for k := range c.timerProcessingWorkerSignalCh {
 				k.stopCh <- struct{}{}
 			}
+			c.timerProcessingWorkerSignalCh = make(map[*timerProcessingWorker]chan struct{})
+			c.timerProcessingRunningWorkers = make([]*timerProcessingWorker, 0)
 
 			// Spawning DocID based timer processing routines
 			c.vbTimerProcessingWorkerAssign(true)

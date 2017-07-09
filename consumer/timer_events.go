@@ -187,7 +187,6 @@ func (r *timerProcessingWorker) processTimerEvents() {
 		select {
 		case <-r.stopCh:
 			return
-		case <-r.timerProcessingTicker.C:
 		case vb := <-r.signalProcessTimerPlasmaCloseCh:
 			// Rebalance takeover routine will send signal on this channel to signify
 			// stopping of any plasma.Writer instance for a specific vbucket
@@ -203,6 +202,8 @@ func (r *timerProcessingWorker) processTimerEvents() {
 			// sends ack message back to rebalance takeover routine, so that it could
 			// safely call Close() on vb specific plasma store
 			r.c.signalProcessTimerPlasmaCloseAckCh <- vb
+			continue
+		case <-r.timerProcessingTicker.C:
 		}
 
 		vbsOwned = r.getVbsOwned()
