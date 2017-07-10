@@ -161,6 +161,41 @@ func (c *Consumer) processEvents() {
 
 				logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v, got STREAMEND", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
+				// Different scenarios where DCP_STREAMEND could be triggered:
+				// (a) vb give up as part of eventing rebalance
+				// (b) Existing KV node where vbucket mapped to isn't part of cluster any more(this will
+				//     trigger DCP_STREAMEND in bulk as the old KV node would have hosted multiple vbuckets)
+				// For (a) plasma related FD cleanup signalling is already done in vbucket give up
+				// routine. Handling case for (b) below.
+
+				c.plasmaStoreRWMutex.RLock()
+				vbEntry, ok := c.timerProcessingVbsWorkerMap[e.VBucket]
+				c.plasmaStoreRWMutex.RUnlock()
+				if ok {
+					logging.Debugf("CRPE[%s:%s:%s:%d] vb: %v , stopping plasma processing",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+
+					vbEntry.signalProcessTimerPlasmaCloseCh <- e.VBucket
+					<-c.signalProcessTimerPlasmaCloseAckCh
+					logging.Verbosef("CRPE[%s:%s:%s:%d] vb: %v Got ack from timer processing routine, about clean up of plasma.Writer instance",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+
+					c.signalStoreTimerPlasmaCloseCh <- e.VBucket
+					// Not waiting for ack, as ack handling is part of this select clause
+					logging.Verbosef("CRPE[%s:%s:%s:%d] vb: %v Sent msg to timer storage routine, about clean up of plasma.Writer instance",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+
+					c.plasmaStoreRWMutex.RLock()
+					c.vbPlasmaStoreMap[e.VBucket].PersistAll()
+					c.plasmaStoreRWMutex.RUnlock()
+
+					c.producer.SignalToClosePlasmaStore(e.VBucket)
+
+					c.plasmaStoreRWMutex.Lock()
+					delete(c.timerProcessingVbsWorkerMap, e.VBucket)
+					c.plasmaStoreRWMutex.Unlock()
+				}
+
 				//Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
 				var vbBlob vbucketKVBlob
@@ -195,7 +230,7 @@ func (c *Consumer) processEvents() {
 				c.plasmaStoreRWMutex.RLock()
 				// Check if vbucket related entry already exists, if yes - then clean it up
 				// and close all associated FDs
-				_, ok := c.vbPlasmaStoreMap[e.VBucket]
+				_, ok = c.vbPlasmaStoreMap[e.VBucket]
 				c.plasmaStoreRWMutex.RUnlock()
 
 				if ok {
@@ -220,11 +255,13 @@ func (c *Consumer) processEvents() {
 					// c.signalStoreTimerPlasmaCloseAckCh are being listened to/written to
 					// on current control path within the select statement
 					c.timerRWMutex.Lock()
+					c.plasmaStoreRWMutex.Lock()
 					_, ok := c.vbPlasmaWriter[e.VBucket]
 					if ok {
 						delete(c.vbPlasmaWriter, e.VBucket)
 					}
 					delete(c.timerProcessingVbsWorkerMap, e.VBucket)
+					c.plasmaStoreRWMutex.Unlock()
 					c.timerRWMutex.Unlock()
 
 				} else {
@@ -564,12 +601,14 @@ loop:
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
 		logging.Debugf("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
+		c.timerRWMutex.Lock()
 		c.plasmaReaderRWMutex.Lock()
 		c.plasmaStoreRWMutex.RLock()
 		c.vbPlasmaReader[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
 		c.vbPlasmaWriter[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
 		c.plasmaStoreRWMutex.RUnlock()
 		c.plasmaReaderRWMutex.Unlock()
+		c.timerRWMutex.Unlock()
 
 		return nil
 	}

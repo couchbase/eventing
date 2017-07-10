@@ -38,6 +38,24 @@ func (c *Consumer) reclaimVbOwnership(vb uint16) error {
 	return fmt.Errorf("Failed to reclaim vb ownership")
 }
 
+func (c *Consumer) stopPlasmaProcessing(vbEntry *timerProcessingWorker, vb uint16) {
+	vbEntry.signalProcessTimerPlasmaCloseCh <- vb
+	<-c.signalProcessTimerPlasmaCloseAckCh
+	logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer processing routine, about clean up of plasma.Writer instance",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
+
+	c.signalStoreTimerPlasmaCloseCh <- vb
+	<-c.signalStoreTimerPlasmaCloseAckCh
+	logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer storage routine, about clean up of plasma.Writer instance",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
+
+	c.plasmaStoreRWMutex.RLock()
+	c.vbPlasmaStoreMap[vb].PersistAll()
+	c.plasmaStoreRWMutex.RUnlock()
+
+	c.producer.SignalToClosePlasmaStore(vb)
+}
+
 func (c *Consumer) vbsStateUpdate() {
 	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
@@ -80,21 +98,11 @@ func (c *Consumer) vbsStateUpdate() {
 					// vbucket dcp stream - so that dcp event processing is aligned
 					// with stored timer events
 
-					vbEntry.signalProcessTimerPlasmaCloseCh <- vb
-					<-c.signalProcessTimerPlasmaCloseAckCh
-					logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer processing routine, about clean up of plasma.Writer instance",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
+					c.stopPlasmaProcessing(vbEntry, vb)
 
-					c.signalStoreTimerPlasmaCloseCh <- vb
-					<-c.signalStoreTimerPlasmaCloseAckCh
-					logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v Got ack from timer storage routine, about clean up of plasma.Writer instance",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
-
-					c.plasmaStoreRWMutex.RLock()
-					c.vbPlasmaStoreMap[vb].PersistAll()
-					c.plasmaStoreRWMutex.RUnlock()
-
-					c.producer.SignalToClosePlasmaStore(vb)
+					c.plasmaStoreRWMutex.Lock()
+					delete(c.timerProcessingVbsWorkerMap, vb)
+					c.plasmaStoreRWMutex.Unlock()
 
 				listenPlasmaClosedCh:
 					v := <-c.signalPlasmaClosedCh
