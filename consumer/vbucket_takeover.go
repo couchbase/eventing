@@ -78,9 +78,9 @@ func (c *Consumer) vbsStateUpdate() {
 			if c.vbProcessingStats.getVbStat(vb, "node_uuid") == c.NodeUUID() &&
 				c.vbProcessingStats.getVbStat(vb, "assigned_worker") == c.ConsumerName() {
 
-				c.plasmaStoreRWMutex.RLock()
+				c.timerRWMutex.RLock()
 				vbEntry, ok := c.timerProcessingVbsWorkerMap[vb]
-				c.plasmaStoreRWMutex.RUnlock()
+				c.timerRWMutex.RUnlock()
 
 				if ok {
 					// TODO: Retry loop for dcp close stream as it could fail and additional verification checks
@@ -100,9 +100,9 @@ func (c *Consumer) vbsStateUpdate() {
 
 					c.stopPlasmaProcessing(vbEntry, vb)
 
-					c.plasmaStoreRWMutex.Lock()
+					c.timerRWMutex.Lock()
 					delete(c.timerProcessingVbsWorkerMap, vb)
-					c.plasmaStoreRWMutex.Unlock()
+					c.timerRWMutex.Unlock()
 
 				listenPlasmaClosedCh:
 					v := <-c.signalPlasmaClosedCh

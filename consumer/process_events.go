@@ -168,9 +168,9 @@ func (c *Consumer) processEvents() {
 				// For (a) plasma related FD cleanup signalling is already done in vbucket give up
 				// routine. Handling case for (b) below.
 
-				c.plasmaStoreRWMutex.RLock()
+				c.timerRWMutex.RLock()
 				vbEntry, ok := c.timerProcessingVbsWorkerMap[e.VBucket]
-				c.plasmaStoreRWMutex.RUnlock()
+				c.timerRWMutex.RUnlock()
 				if ok {
 					logging.Debugf("CRPE[%s:%s:%s:%d] vb: %v , stopping plasma processing",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
@@ -191,9 +191,9 @@ func (c *Consumer) processEvents() {
 
 					c.producer.SignalToClosePlasmaStore(e.VBucket)
 
-					c.plasmaStoreRWMutex.Lock()
+					c.timerRWMutex.Lock()
 					delete(c.timerProcessingVbsWorkerMap, e.VBucket)
-					c.plasmaStoreRWMutex.Unlock()
+					c.timerRWMutex.Unlock()
 				}
 
 				//Store the latest state of vbucket processing stats in the metadata bucket
@@ -254,14 +254,16 @@ func (c *Consumer) processEvents() {
 					// directly. Reason being, c.signalStoreTimerPlasmaCloseCh and
 					// c.signalStoreTimerPlasmaCloseAckCh are being listened to/written to
 					// on current control path within the select statement
-					c.timerRWMutex.Lock()
+
 					c.plasmaStoreRWMutex.Lock()
 					_, ok := c.vbPlasmaWriter[e.VBucket]
 					if ok {
 						delete(c.vbPlasmaWriter, e.VBucket)
 					}
-					delete(c.timerProcessingVbsWorkerMap, e.VBucket)
 					c.plasmaStoreRWMutex.Unlock()
+
+					c.timerRWMutex.Lock()
+					delete(c.timerProcessingVbsWorkerMap, e.VBucket)
 					c.timerRWMutex.Unlock()
 
 				} else {
@@ -341,12 +343,12 @@ func (c *Consumer) processEvents() {
 		case vb := <-c.signalStoreTimerPlasmaCloseCh:
 			// Rebalance takeover routine will send signal on this channel to signify
 			// stopping of any plasma.Writer instance for a specific vbucket
-			c.timerRWMutex.Lock()
+			c.plasmaStoreRWMutex.Lock()
 			_, ok := c.vbPlasmaWriter[vb]
 			if ok {
 				delete(c.vbPlasmaWriter, vb)
 			}
-			c.timerRWMutex.Unlock()
+			c.plasmaStoreRWMutex.Unlock()
 
 			// sends ack message back to rebalance takeover routine, so that it could
 			// safely call Close() on vb specific plasma store
@@ -601,14 +603,12 @@ loop:
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
 		logging.Debugf("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
-		c.timerRWMutex.Lock()
 		c.plasmaReaderRWMutex.Lock()
-		c.plasmaStoreRWMutex.RLock()
+		c.plasmaStoreRWMutex.Lock()
 		c.vbPlasmaReader[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
 		c.vbPlasmaWriter[vbno] = c.vbPlasmaStoreMap[vbno].NewWriter()
-		c.plasmaStoreRWMutex.RUnlock()
+		c.plasmaStoreRWMutex.Unlock()
 		c.plasmaReaderRWMutex.Unlock()
-		c.timerRWMutex.Unlock()
 
 		return nil
 	}

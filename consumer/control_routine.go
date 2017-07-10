@@ -57,17 +57,26 @@ func (c *Consumer) controlRoutine() {
 			c.skipTimerThreshold = int(settings["skip_timer_threshold"].(float64))
 
 			c.timerProcessingTickInterval = time.Duration(settings["timer_processing_tick_interval"].(float64)) * time.Millisecond
+
+			c.timerRWMutex.RLock()
 			for k := range c.timerProcessingWorkerSignalCh {
 				k.stopCh <- struct{}{}
 			}
+			c.timerRWMutex.RUnlock()
+
+			c.timerRWMutex.Lock()
 			c.timerProcessingWorkerSignalCh = make(map[*timerProcessingWorker]chan struct{})
 			c.timerProcessingRunningWorkers = make([]*timerProcessingWorker, 0)
+			c.timerRWMutex.Unlock()
 
 			// Spawning DocID based timer processing routines
 			c.vbTimerProcessingWorkerAssign(true)
+
+			c.timerRWMutex.RLock()
 			for _, r := range c.timerProcessingRunningWorkers {
 				go r.processTimerEvents()
 			}
+			c.timerRWMutex.RUnlock()
 
 			c.nonDocTimerStopCh <- struct{}{}
 			go c.processNonDocTimerEvents()

@@ -210,9 +210,6 @@ func (c *Consumer) Stop() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Gracefully shutting down consumer routine",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
-	c.plasmaStoreRWMutex.RLock()
-	c.plasmaStoreRWMutex.RUnlock()
-
 	c.cbBucket.Close()
 	c.gocbBucket.Close()
 

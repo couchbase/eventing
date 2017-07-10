@@ -135,7 +135,7 @@ type dcpMetadata struct {
 type Consumer struct {
 	app    *common.AppConfig
 	bucket string
-	conn   net.Conn
+	conn   net.Conn // Access controlled by default lock
 	uuid   string
 
 	aggDCPFeed             chan *cb.DcpEvent
@@ -143,7 +143,7 @@ type Consumer struct {
 	checkpointInterval     time.Duration
 	cleanupTimers          bool
 	dcpFeedCancelChs       []chan struct{}
-	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16
+	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
 	eventingAdminPort      string
 	eventingDir            string
 	eventingNodeAddrs      []string
@@ -151,8 +151,8 @@ type Consumer struct {
 	executionTimeout       int
 	gocbBucket             *gocb.Bucket
 	isRebalanceOngoing     bool
-	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed
-	kvVbMap                map[uint16]string
+	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed // Access controlled by default lock
+	kvVbMap                map[uint16]string             // Access controlled by default lock
 	logLevel               string
 	superSup               common.EventingSuperSup
 	vbDcpFeedMap           map[uint16]*couchbase.DcpFeed
@@ -172,9 +172,9 @@ type Consumer struct {
 	timerAddrs          map[string]map[string]string
 	plasmaReaderRWMutex *sync.RWMutex
 	plasmaStoreRWMutex  *sync.RWMutex
-	vbPlasmaStoreMap    map[uint16]*plasma.Plasma
-	vbPlasmaWriter      map[uint16]*plasma.Writer
-	vbPlasmaReader      map[uint16]*plasma.Writer
+	vbPlasmaStoreMap    map[uint16]*plasma.Plasma // Access controlled by plasmaStoreRWMutex
+	vbPlasmaWriter      map[uint16]*plasma.Writer // Access controlled by plasmaStoreRWMutex
+	vbPlasmaReader      map[uint16]*plasma.Writer // Access controlled by plasmaReaderRWMutex
 
 	signalStoreTimerPlasmaCloseCh      chan uint16
 	signalProcessTimerPlasmaCloseAckCh chan uint16
@@ -187,9 +187,9 @@ type Consumer struct {
 	skipTimerThreshold            int
 	socketTimeout                 time.Duration
 	timerProcessingTickInterval   time.Duration
-	timerProcessingVbsWorkerMap   map[uint16]*timerProcessingWorker
-	timerProcessingRunningWorkers []*timerProcessingWorker
-	timerProcessingWorkerSignalCh map[*timerProcessingWorker]chan struct{}
+	timerProcessingVbsWorkerMap   map[uint16]*timerProcessingWorker        // Access controlled by timerRWMutex
+	timerProcessingRunningWorkers []*timerProcessingWorker                 // Access controlled by timerRWMutex
+	timerProcessingWorkerSignalCh map[*timerProcessingWorker]chan struct{} // Access controlled by timerRWMutex
 	timerProcessingWorkerCount    int
 	timerRWMutex                  *sync.RWMutex
 
@@ -264,10 +264,10 @@ type Consumer struct {
 	tcpPort string
 
 	// Tracks DCP Opcodes processed per consumer
-	dcpMessagesProcessed map[mcd.CommandCode]uint64
+	dcpMessagesProcessed map[mcd.CommandCode]uint64 // Access controlled by default lock
 
 	// Tracks V8 Opcodes processed per consumer
-	v8WorkerMessagesProcessed map[string]uint64
+	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by default lock
 
 	timerMessagesProcessed     uint64
 	timerMessagesProcessedPSec int

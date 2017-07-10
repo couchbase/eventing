@@ -196,7 +196,10 @@ func (r *timerProcessingWorker) processTimerEvents() {
 				delete(r.c.vbPlasmaReader, vb)
 			}
 
+			r.c.timerRWMutex.Lock()
 			delete(r.c.timerProcessingVbsWorkerMap, vb)
+			r.c.timerRWMutex.Unlock()
+
 			r.c.plasmaReaderRWMutex.Unlock()
 
 			// sends ack message back to rebalance takeover routine, so that it could
@@ -489,9 +492,9 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 	// If ENOENT, then insert KV pair in byId plasma handle
 	// then insert in byTimer plasma handle as well
 
-	c.timerRWMutex.RLock()
+	c.plasmaStoreRWMutex.RLock()
 	plasmaWriterHandle, ok := c.vbPlasmaWriter[vb]
-	c.timerRWMutex.RUnlock()
+	c.plasmaStoreRWMutex.RUnlock()
 	if !ok {
 		logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v, failed to find plasma handle associated to vb: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb)
