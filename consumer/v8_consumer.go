@@ -375,6 +375,14 @@ func (c *Consumer) SignalPlasmaClosed(vb uint16) {
 // SignalPlasmaTransferFinish is called by parent producer instance to signal consumer
 // about timer data transfer completion during rebalance
 func (c *Consumer) SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma) {
+	defer func() {
+		if r := recover(); r != nil {
+			trace := debug.Stack()
+			logging.Errorf("V8CR[%s:%s:%s:%d] vb: %v SignalPlasmaTransferFinish: panic and recover, %v, stack trace: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, r, string(trace))
+		}
+	}()
+
 	logging.Infof("V8CR[%s:%s:%s:%d] vb: %v got signal from parent producer about plasma timer data transfer finish",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
 	c.signalPlasmaTransferFinishCh <- &plasmaStoreMsg{vb, store}

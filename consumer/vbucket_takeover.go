@@ -200,8 +200,6 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-	logging.Tracef("CRVT[%s:%s:%s:%d] vb: %v getOpCallback blob dump: %#v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob)
-
 	switch vbBlob.DCPStreamStatus {
 	case dcpStreamRunning:
 

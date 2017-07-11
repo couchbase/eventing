@@ -64,6 +64,7 @@ type SuperSupervisor struct {
 	timerDataTransferReq         map[uint16]struct{}
 	timerDataTransferReqCh       chan uint16
 	vbPlasmaStoreMap             map[uint16]*plasma.Plasma
+	vbucketsToOwn                []uint16
 
 	serviceMgr common.EventingServiceMgr
 	sync.RWMutex
