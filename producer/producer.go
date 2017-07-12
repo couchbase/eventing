@@ -480,3 +480,14 @@ func (p *Producer) vbConsumerOwner(vb uint16) (common.EventingConsumer, error) {
 
 	return c, nil
 }
+
+// SignalCheckpointBlobCleanup signals all running consumer to cleanup all associated
+// checkpoint blob related to a given app. This is typically kicked at the time of app/lambda
+// purge request
+func (p *Producer) SignalCheckpointBlobCleanup() {
+	for _, consumer := range p.runningConsumers {
+		logging.Infof("PRDR[%s:%d] Consumer: %s sent message to cleanup checkpoint blobs",
+			p.appName, p.LenRunningConsumers(), consumer.ConsumerName())
+		consumer.SignalCheckpointBlobCleanup()
+	}
+}

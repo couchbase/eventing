@@ -35,6 +35,7 @@ const (
 
 const (
 	supCmdType int8 = iota
+	cmdAppDelete
 	cmdAppLoad
 	cmdSettingsUpdate
 )

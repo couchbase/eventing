@@ -34,8 +34,6 @@ type EventingProducer interface {
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
 	KvHostPorts() []string
 	LenRunningConsumers() int
-	RbacUser() string
-	RbacPass() string
 	MetadataBucket() string
 	NotifyInit()
 	NotifyPrepareTopologyChange(keepNodes []string)
@@ -44,6 +42,9 @@ type EventingProducer interface {
 	NotifyTopologyChange(msg *TopologyChangeMsg)
 	NsServerHostPort() string
 	NsServerNodeCount() int
+	RbacPass() string
+	RbacUser() string
+	SignalCheckpointBlobCleanup()
 	SignalPlasmaClosed(vb uint16)
 	SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma)
 	SignalToClosePlasmaStore(vb uint16)
@@ -69,6 +70,7 @@ type EventingConsumer interface {
 	NotifyRebalanceStop()
 	NotifySettingsChange()
 	RebalanceTaskProgress() *RebalanceProgress
+	SignalCheckpointBlobCleanup()
 	Serve()
 	SetConnHandle(net.Conn)
 	SignalConnected()
@@ -85,6 +87,7 @@ type EventingSuperSup interface {
 	AppProducerHostPortAddr(appName string) string
 	AppTimerTransferHostPortAddrs(string) (map[string]string, error)
 	ClearEventStats()
+	DeployedAppList() []string
 	NotifyPrepareTopologyChange(keepNodes []string)
 	ProducerHostPortAddrs() []string
 	RestPort() string

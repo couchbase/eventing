@@ -23,6 +23,35 @@ func (m *ServiceMgr) getNodeUUID(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%v", m.uuid)
 }
 
+func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	appList := m.superSup.DeployedAppList()
+	for _, app := range appList {
+		if app == appName {
+			settingsPath := metakvAppSettingsPath + appName
+			err := util.MetaKvDelete(settingsPath, nil)
+			if err != nil {
+				fmt.Fprintf(w, "Failed to delete setting for app: %v, err: %v", appName, err)
+				return
+			}
+
+			appsPath := metakvAppsPath + appName
+			err = util.MetaKvDelete(appsPath, nil)
+			if err != nil {
+				fmt.Fprintf(w, "Failed to delete app definition for app: %v, err: %v", appName, err)
+				return
+			}
+
+			fmt.Fprintf(w, "Deleting app: %v in the background", appName)
+			return
+		}
+	}
+
+	fmt.Fprintf(w, "App: %v not deployed", appName)
+}
+
 func (m *ServiceMgr) getTimerHostPortAddrs(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
@@ -119,9 +148,9 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 
 func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
-	app := params["name"][0]
+	appName := params["name"][0]
 
-	path := metakvAppSettingsPath + app
+	path := metakvAppSettingsPath + appName
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
@@ -130,11 +159,11 @@ func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
 
 	err = util.MetakvSet(path, data, nil)
 	if err != nil {
-		fmt.Fprintf(w, "Failed to store setting for app: %v, err: %v", app, err)
+		fmt.Fprintf(w, "Failed to store setting for app: %v, err: %v", appName, err)
 		return
 	}
 
-	fmt.Fprintf(w, "stored settings for app: %v", app)
+	fmt.Fprintf(w, "stored settings for app: %v", appName)
 }
 
 func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {

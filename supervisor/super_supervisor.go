@@ -1,12 +1,14 @@
 package supervisor
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/producer"
@@ -62,6 +64,16 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 		msg := supCmdMsg{
 			ctx: appName,
 			cmd: cmdAppLoad,
+		}
+		s.supCmdCh <- msg
+	} else {
+
+		// Delete application request
+		splitRes := strings.Split(path, "/")
+		appName := splitRes[len(splitRes)-1]
+		msg := supCmdMsg{
+			ctx: appName,
+			cmd: cmdAppDelete,
 		}
 		s.supCmdCh <- msg
 	}
@@ -170,6 +182,42 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 			appName := msg.ctx
 
 			switch msg.cmd {
+			case cmdAppDelete:
+				logging.Infof("SSUP[%d] Deleting app: %s", len(s.runningProducers), appName)
+				// Signal all producer to signal all running consumers to purge all checkpoint
+				// blobs in metadata bucket
+				appProducer := s.runningProducers[appName]
+				appProducer.SignalCheckpointBlobCleanup()
+
+				s.superSup.Remove(s.producerSupervisorTokenMap[appProducer])
+
+				var addrs []string
+				var currNodeAddr string
+
+				util.Retry(util.NewFixedBackoff(time.Second), getEventingNodeAddrsCallback, s, &addrs)
+
+				util.Retry(util.NewFixedBackoff(time.Second), getCurrentEventingNodeAddrCallback, s, &currNodeAddr)
+
+				s.assignVbucketsToOwn(addrs, currNodeAddr)
+
+				logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
+
+				// Purge entries for deleted apps from plasma store
+				for _, vb := range s.vbucketsToOwn {
+					store := s.vbPlasmaStoreMap[vb]
+					r := store.NewReader()
+					w := store.NewWriter()
+					snapshot := store.NewSnapshot()
+
+					itr := r.NewSnapshotIterator(snapshot)
+					for itr.SeekFirst(); itr.Valid(); itr.Next() {
+						if bytes.Compare(itr.Key(), []byte(appName)) > 0 {
+							w.DeleteKV(itr.Key())
+						}
+					}
+				}
+				logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
+
 			case cmdAppLoad:
 				logging.Infof("SSUP[%d] Loading app: %s", len(s.runningProducers), appName)
 
@@ -281,4 +329,15 @@ func (s *SuperSupervisor) ClearEventStats() {
 	for _, p := range s.runningProducers {
 		p.ClearEventStats()
 	}
+}
+
+// DeployedAppList returns list of deployed lambdas running under super_supervisor
+func (s *SuperSupervisor) DeployedAppList() []string {
+	appList := make([]string, 0)
+
+	for app := range s.runningProducers {
+		appList = append(appList, app)
+	}
+
+	return appList
 }

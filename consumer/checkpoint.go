@@ -32,7 +32,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					var cas uint64
 					var isNoEnt bool
 
-					//Metadata blob doesn't exist probably the app is deployed for the first time.
+					// Metadata blob doesn't exist probably the app is deployed for the first time.
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
 					if isNoEnt {
 

@@ -5,6 +5,7 @@ import (
 	"net"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -386,4 +387,21 @@ func (c *Consumer) SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma) {
 	logging.Infof("V8CR[%s:%s:%s:%d] vb: %v got signal from parent producer about plasma timer data transfer finish",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
 	c.signalPlasmaTransferFinishCh <- &plasmaStoreMsg{vb, store}
+}
+
+// SignalCheckpointBlobCleanup called by parent producer instance to signal consumer to clear
+// up all checkpoint metadata blobs from metadata bucket. Kicked off at the time of app/lambda
+// purge request
+func (c *Consumer) SignalCheckpointBlobCleanup() {
+	c.stopCheckpointingCh <- struct{}{}
+
+	for vb := range c.vbProcessingStats {
+		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
+
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, c, vbKey)
+	}
+
+	// TODO: check if Name works
+	logging.Infof("V8CR[%s:%s:%s:%d] Purged all owned checkpoint blobs from metadata bucket: %s",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.metadataBucketHandle.Name)
 }
