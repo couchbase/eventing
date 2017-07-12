@@ -56,7 +56,7 @@
     });
 
     ev.run(['$http', 'mnPoolDefault', function($http, mnPoolDefault){
-         $http.get('/_p/event/getApplication/')
+        $http.get('/_p/event/getApplication/')
             .then(function(response) {
                 for(var i = 0; i < response.data.length; i++) {
                     response.data[i].depcfg = JSON.stringify(response.data[i].depcfg, null, ' ');
@@ -65,7 +65,7 @@
                     }
                 }
                 appLoaded = true;
-            })
+            }, function(response){})
     }]);
     ev.controller('EventController',['$http', 'mnPoolDefault', function($http, mnPoolDefault) {
         this.eventingNodes = [];
@@ -152,6 +152,10 @@
 
     ev.controller('PerAppController', ['$location', '$http', function($location, $http) {
         this.currentApp = null;
+        var isOpera = !!window.opera;
+        this.isChromeBrowser = !!window.chrome && !isOpera;
+        this.debugUrl = null;
+
         var appName = $location.path().slice(7);
         for(var i = 0; i < applications.length; i++) {
             if(applications[i].appname === appName) {
@@ -184,29 +188,43 @@
             this.currentApp.deploy = false;
         }
 
-        this.startDbg = function() {
-            this.currentApp.debug = true;
-            var uri = '/_p/event/start_dbg/?name=' + this.currentApp.appname;
+        function getDebugUrl(appName) {
+            var uri = '/_p/event/getDebuggerUrl/?name=' + appName;
             var res = $http.post(uri, null);
-            res.success(function(data, status, headers, config) {
-                this.setApplication = data;
+            res.then(function(response) {
+                if (response.data == '') {
+                    setTimeout(getDebugUrl, 1000, appName);
+                }
+            }, function(response) {
+                alert( "failure message: " + JSON.stringify({data: response.data}));
             });
-            res.error(function(data, status, headers, config) {
-                alert( "failure message: " + JSON.stringify({data: data}));
+        }
+        var self = this;
+        function getDebugUrl(appName) {
+            var uri = '/_p/event/getDebuggerUrl/?name=' + appName;
+            var res = $http.post(uri, null);
+            res.then(function(response) {
+                if (response.data == '') {
+                  setTimeout(getDebugUrl, 1000, appName);
+                }
+                else {
+                    self.debugUrl = response.data;
+                }
+            }, function(response) {
+                alert( "failure message: " + JSON.stringify({data: response.data}));
             });
         }
         this.stopDbg = function() {
             this.currentApp.debug = false;
-            var uri = '/_p/event/stop_dbg/?name=' + this.currentApp.appname;
+            var uri = '/_p/event/stopDebugger/?name=' + this.currentApp.appname;
             var res = $http.post(uri, null);
-            res.success(function(data, status, headers, config) {
-                this.setApplication = data;
-            });
-            res.error(function(data, status, headers, config) {
-                alert( "failure message: " + JSON.stringify({data: data}));
+            res.then(function(response) {
+                this.setApplication = response.data;
+                self.debugUrl = null;
+            }, function(response) {
+                alert( "failure message: " + JSON.stringify({data: response.data}));
             });
         }
-
     }]);
 
     ev.controller('ResEditorController', ['$location', '$http', function($location, $http){
@@ -256,35 +274,7 @@
             asset.operation = "delete";
             asset.content = null;
         }
-        this.lineNum = null;
-        this.response = null;
-        this.editor = null;
-        this.breakpoints = [];
-        this.watchVar = null;
-        this.showHistory = false;
-        this.dbgHistory = [];
-        parent = this;
-
-        function sendPostCommand(uri, command) {
-            var res = $http({url: uri,
-                method: "POST",
-                mnHttp: {
-                    isNotForm: true
-                },
-                headers: {'Content-Type': 'application/json'},
-                data: command
-            });
-            res.success(function(data, status, headers, config) {
-                parent.response = data;
-                parent.dbgHistory.push({request:command, response:data});
-            });
-            res.error(function(data, status, headers, config) {
-                alert( "failure message: " + JSON.stringify({data: data}));
-            });
-        }
-
         this.saveSettings = function(settings) {
-            console.log(settings);
             var uri = '/_p/event/setSettings/?name=' + this.currentApp.appname;
             var res = $http({url: uri,
                 method: "POST",
@@ -297,135 +287,8 @@
             res.then( function(response) {}, function(response) {
                 alert( "failure message: " + JSON.stringify({data: response.data}));
             });
-       }
-
-        this.aceLoaded = function(editor) {
-            parent.editor = editor;
-            editor.getSession().setUseWorker(false);
-            editor.on("click", function(e){
-                parent.lineNum = e.getDocumentPosition().row;
-            });
-        }
-        this.setBreakpoint = function() {
-            if (parent.lineNum == null) {
-                alert("Select line number to set breakpoint");
-            }
-            else {
-                var command = {
-                    'seq' : 1,
-                    'type': "request",
-                    'command': "setbreakpoint",
-                    'arguments' : {
-                        'type' : 'function',
-                        'line' : parent.lineNum + 1,
-                        'target' : 'OnUpdate',
-                    }
-                };
-                var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=setbreakpoint';
-                sendPostCommand(uri, command);
-                parent.editor.session.setBreakpoint(parent.lineNum, 'setMarker');
-                parent.breakpoints.push(parent.lineNum);
-                parent.lineNum = null;
-            }
-        }
-        this.clearBreakpoints = function() {
-            var command = {
-                'seq' : 1,
-                'type': "request",
-                'command': "clearbreakpoint",
-                'arguments' : {
-                    'type' : 'script',
-                    'breakpoint' : parent.breakpoints.length,
-                }
-            };
-            var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=clearbreakpoint';
-            sendPostCommand(uri, command);
-            for (var i = 0; i < parent.breakpoints.length; i++) {
-                parent.editor.session.clearBreakpoint(parent.breakpoints[i]);
-            }
-            parent.breakpoints = [];
-        }
-        this.listBreakpoints = function() {
-            var command = {
-                'seq' : 1,
-                'type' : "request",
-                'command' : "listbreakpoints"
-            };
-            var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=listbreakpoints';
-            sendPostCommand(uri, command);
-        }
-        this.setMutation =  function() {
-            $http.get('/_p/event/store_blob/?appname=' + this.currentApp.appname);
-        }
-        this.continue = function() {
-            var command = {
-                'seq' : 1,
-                'type' : "request",
-                'command' : "continue"
-            };
-            var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=continue';
-            sendPostCommand(uri, command);
-        }
-        this.singleStep = function() {
-            var command = {
-                'seq' : 1,
-                'type' : "request",
-                'command' : "continue",
-                'arguments' : {"stepaction" : "next",
-                    "stepcount": 1}
-            };
-            var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=continue';
-            sendPostCommand(uri, command);
-        }
-        this.stepInto = function() {
-            var command = {
-                'seq' : 1,
-                'type' : "request",
-                'command' : "continue",
-                'arguments' : {"stepaction" : "in",
-                    "stepcount": 1}
-            };
-            var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=continue';
-            sendPostCommand(uri, command);
-        }
-        this.stepOut = function() {
-            var command = {
-                'seq' : 1,
-                'type' : "request",
-                'command' : "continue",
-                'arguments' : {"stepaction" : "out",
-                    "stepcount": 1}
-            };
-            var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=continue';
-            sendPostCommand(uri, command);
-        }
-        this.evalExpr = function() {
-            if(parent.watchVar == null) {
-                alert("Enter expression to evaluate");
-            }
-            else {
-                var command = {
-                    'seq' : 1,
-                    'type' : "request",
-                    'command' : "evaluate",
-                    'arguments' : {'expression' : parent.watchVar,
-                        'global': false,
-                        'disable_break' : true}
-                };
-                var uri ='/_p/event/debug?appname=' + this.currentApp.appname + '&command=evaluate';
-                sendPostCommand(uri, command);
-            }
-            parent.watchVar = null;
         }
 
-        this.showDbgHistory = function() {
-            this.showJSEditor = false;
-            this.showHistory = true;
-        }
-        this.closeDbgHistory = function() {
-            this.showJSEditor = true;
-            this.showHistory = false;
-        }
     }]);
 
     ev.directive('onReadFile', ['$parse', function ($parse) {

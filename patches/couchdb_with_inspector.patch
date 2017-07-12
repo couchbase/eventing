@@ -1,0 +1,289 @@
+diff --git a/src/couch_set_view/include/couch_set_view.hrl b/src/couch_set_view/include/couch_set_view.hrl
+index 0d4974f..82a5825 100644
+--- a/src/couch_set_view/include/couch_set_view.hrl
++++ b/src/couch_set_view/include/couch_set_view.hrl
+@@ -265,7 +265,8 @@
+     stats_ets = nil                         :: atom(),
+     header_pos = 0                          :: non_neg_integer(),
+     dcp_pid = nil                           :: 'nil' | pid(),
+-    index_xattr_on_deleted_docs = false     :: boolean()
++    index_xattr_on_deleted_docs = false     :: boolean(),
++    debug_ddoc_using_v8inspector = false    :: boolean()
+ }).
+ 
+ -record(set_view_updater_stats, {
+diff --git a/src/couch_set_view/src/couch_set_view_mapreduce.erl b/src/couch_set_view/src/couch_set_view_mapreduce.erl
+index 3e2035d..6a71a3d 100644
+--- a/src/couch_set_view/src/couch_set_view_mapreduce.erl
++++ b/src/couch_set_view/src/couch_set_view_mapreduce.erl
+@@ -27,11 +27,18 @@
+ -define(SUM_ERROR_MSG,   <<"Builtin _sum function requires map values to be numbers">>).
+ 
+ 
+-get_map_context(#set_view_group{mod = Mod, views = Views, sig = Sig}) ->
++get_map_context(#set_view_group{mod = Mod, views = Views, sig = Sig} = Group) ->
+     case ets:lookup(map_context_store, Sig) of
+     [] ->
+-        {ok, Ctx} = mapreduce:start_map_context(
+-            Mod, [View#set_view.def || View <- Views]),
++        {ok, Ctx} = case Group#set_view_group.debug_ddoc_using_v8inspector of
++        false ->
++            mapreduce:start_map_context(Mod,
++                [View#set_view.def || View <- Views]);
++        true ->
++            mapreduce:start_map_context(Mod,
++                [View#set_view.def || View <- Views],
++                couch_util:to_hex(Sig))
++        end,
+         ets:insert(map_context_store, {Sig, Ctx}),
+         Ctx;
+     [{Sig, Ctx}] ->
+diff --git a/src/couch_set_view/src/mapreduce_view.erl b/src/couch_set_view/src/mapreduce_view.erl
+index dacc6cd..fd10432 100644
+--- a/src/couch_set_view/src/mapreduce_view.erl
++++ b/src/couch_set_view/src/mapreduce_view.erl
+@@ -256,6 +256,7 @@ design_doc_to_set_view_group(SetName, #doc{id = Id, body = {Fields}}) ->
+         end,
+         0, lists:sort(dict:to_list(DictBySrc))),
+     IndexXATTRonDeletedDocs = couch_util:get_value(<<"index_xattr_on_deleted_docs">>, Fields, false),
++    DebugDdocUsingV8Inspector = couch_util:get_value(<<"debug_ddoc_using_v8inspector">>, Fields, false),
+     SetViewGroup = #set_view_group{
+         set_name = SetName,
+         name = Id,
+@@ -263,7 +264,8 @@ design_doc_to_set_view_group(SetName, #doc{id = Id, body = {Fields}}) ->
+         design_options = DesignOptions,
+         mod = ?MODULE,
+         extension = index_extension(),
+-        index_xattr_on_deleted_docs = IndexXATTRonDeletedDocs
++        index_xattr_on_deleted_docs = IndexXATTRonDeletedDocs,
++        debug_ddoc_using_v8inspector = DebugDdocUsingV8Inspector
+     },
+     set_view_sig(SetViewGroup).
+ 
+diff --git a/src/mapreduce/CMakeLists.txt b/src/mapreduce/CMakeLists.txt
+index 5664e71..7ad7948 100644
+--- a/src/mapreduce/CMakeLists.txt
++++ b/src/mapreduce/CMakeLists.txt
+@@ -18,13 +18,14 @@ SET(COUCH_VIEW_MR_SRC mapreduce_nif.cc
+ 
+ INCLUDE_DIRECTORIES(BEFORE ${V8_INCLUDE_DIR}
+                            ${Platform_SOURCE_DIR}/include
+-                           ${ERLANG_INCLUDE_PATH})
++                           ${ERLANG_INCLUDE_PATH}
++                           ${CMAKE_SOURCE_DIR}/v8inspector)
+ 
+ ADD_LIBRARY(mapreduce_nif MODULE ${COUCH_VIEW_MR_SRC})
+ SET_TARGET_PROPERTIES(mapreduce_nif PROPERTIES PREFIX "")
+ 
+ TARGET_LINK_LIBRARIES(mapreduce_nif platform ${COUCHBASE_UNRESOLVED}
+-                                    ${V8_LIBRARIES}
++                                    ${V8_LIBRARIES} v8inspector
+                                     ${COUCHBASE_MATH_LIBS})
+ SET_TARGET_PROPERTIES(mapreduce_nif PROPERTIES
+     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/priv"
+diff --git a/src/mapreduce/mapreduce.cc b/src/mapreduce/mapreduce.cc
+index eb48894..c2eff3d 100644
+--- a/src/mapreduce/mapreduce.cc
++++ b/src/mapreduce/mapreduce.cc
+@@ -151,10 +151,12 @@ void setOptimizeDocLoadFlag(const char *flag)
+ }
+ 
+ void initContext(map_reduce_ctx_t *ctx, const function_sources_list_t &funs,
+-                 const view_index_type_t viewType)
++                 const view_index_type_t viewType, bool enableDebug,
++                 std::string ddocSign)
+ {
+     ctx = new (ctx) map_reduce_ctx_t();
+-
++    ctx->debugEnabled = enableDebug;
++    ctx->ddocSign.assign(ddocSign);
+     try {
+         doInitContext(ctx, funs, viewType);
+         Locker locker(ctx->isolate);
+@@ -512,6 +514,12 @@ static Local<Context> createJsContext(map_reduce_ctx_t *ctx)
+     Handle<Context> context = Context::New(ctx->isolate, NULL, global);
+     Context::Scope context_scope(context);
+ 
++    if (ctx->debugEnabled) {
++        ctx->agent = new inspector::Agent("172.31.0.219", "/tmp/" + ctx->ddocSign + "_frontend.url");
++        ctx->agent->Start(ctx->isolate, v8platform, nullptr);
++        ctx->agent->PauseOnNextJavascriptStatement("Break on start");
++    }
++
+     Handle<Function> sumFun = compileFunction(SUM_FUNCTION_STRING);
+     context->Global()->Set(createUtf8String(ctx->isolate, "sum"), sumFun);
+ 
+@@ -525,7 +533,6 @@ static Local<Context> createJsContext(map_reduce_ctx_t *ctx)
+     context->Global()->Set(createUtf8String(ctx->isolate, "dateToArray"),
+                            dateToArrayFun);
+ 
+-
+     // Use EscapableHandleScope and return using .Escape
+     // This will ensure that return values are not garbage collected
+     // as soon as the function returns.
+@@ -708,7 +715,7 @@ void loadFunctions(map_reduce_ctx_t *ctx,
+     Context::Scope context_scope(context);
+ 
+     bool isDocUsed;
+-    if(optimize_doc_load) {
++    if(optimize_doc_load && !ctx->debugEnabled) {
+         // If esprima compilation fails restore back to pulling in documents.
+         try {
+             compileFunction((char *)jsFunction_src);
+@@ -828,6 +835,7 @@ void taskFinished(map_reduce_ctx_t *ctx)
+ 
+ void terminateTask(map_reduce_ctx_t *ctx)
+ {
++    if (ctx->debugEnabled) return;
+     V8::TerminateExecution(ctx->isolate);
+     ctx->taskStartTime = 0;
+ }
+diff --git a/src/mapreduce/mapreduce.erl b/src/mapreduce/mapreduce.erl
+index 5719767..4f37f46 100644
+--- a/src/mapreduce/mapreduce.erl
++++ b/src/mapreduce/mapreduce.erl
+@@ -18,7 +18,7 @@
+ 
+ -module(mapreduce).
+ 
+--export([start_map_context/2]).
++-export([start_map_context/2, start_map_context/3]).
+ -export([map_doc/3]).
+ 
+ -export([start_reduce_context/1]).
+@@ -53,6 +53,8 @@ init() ->
+ start_map_context(_Mod, _MapFunSources) ->
+     erlang:nif_error(mapreduce_nif_not_loaded).
+ 
++start_map_context(_Mod, _MapFunSources, _Sig) ->
++    erlang:nif_error(mapreduce_nif_not_loaded).
+ 
+ map_doc(_Context, _Doc, _Meta) ->
+     erlang:nif_error(mapreduce_nif_not_loaded).
+diff --git a/src/mapreduce/mapreduce.h b/src/mapreduce/mapreduce.h
+index 43178ee..fc622b6 100644
+--- a/src/mapreduce/mapreduce.h
++++ b/src/mapreduce/mapreduce.h
+@@ -31,6 +31,7 @@
+ 
+ #include "erl_nif_compat.h"
+ #include "nif_stl_allocator.h"
++#include "inspector_agent.h"
+ 
+ class MapReduceError;
+ 
+@@ -83,11 +84,15 @@ typedef struct {
+     log_results_list_t                           *logResults;
+     view_index_type_t                            viewType;
+     cb_mutex_t                                   exitMutex;
++    std::string                                  ddocSign;
++    bool                                         debugEnabled;
++    inspector::Agent*                            agent;
+ } map_reduce_ctx_t;
+ 
+ 
+ void initContext(map_reduce_ctx_t *ctx, const function_sources_list_t &funs,
+-                 const view_index_type_t viewType);
++                 const view_index_type_t viewType, bool enableDebug = false,
++                 std::string ddocSign = "");
+ void destroyContext(map_reduce_ctx_t *ctx);
+ 
+ map_results_list_t mapDoc(map_reduce_ctx_t *ctx,
+diff --git a/src/mapreduce/mapreduce_nif.cc b/src/mapreduce/mapreduce_nif.cc
+index 69eefeb..abce6cd 100644
+--- a/src/mapreduce/mapreduce_nif.cc
++++ b/src/mapreduce/mapreduce_nif.cc
+@@ -51,6 +51,7 @@ static std::unordered_set< map_reduce_ctx_t* >     contexts;
+ 
+ // NIF API functions
+ static ERL_NIF_TERM startMapContext(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
++static ERL_NIF_TERM startDbgMapContext(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+ static ERL_NIF_TERM doMapDoc(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+ static ERL_NIF_TERM startReduceContext(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+ static ERL_NIF_TERM doReduce(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+@@ -59,6 +60,8 @@ static ERL_NIF_TERM setTimeout(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
+ static ERL_NIF_TERM setMaxKvSize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+ static ERL_NIF_TERM isDocUsed(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+ static ERL_NIF_TERM setOptimizeDocLoad(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
++static ERL_NIF_TERM setDebugFlag(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
++static ERL_NIF_TERM setDDocSign(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+ 
+ // NIF API callbacks
+ static int onLoad(ErlNifEnv* env, void** priv, ERL_NIF_TERM info);
+@@ -102,6 +105,8 @@ ERL_NIF_TERM startMapContext(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
+     map_reduce_ctx_t *ctx = static_cast<map_reduce_ctx_t *>(
+         enif_alloc_resource(MAP_REDUCE_CTX_RES, sizeof(map_reduce_ctx_t)));
+ 
++    ctx->debugEnabled = false;
++
+     try {
+         initContext(ctx, mapFunctions, viewType);
+ 
+@@ -119,6 +124,50 @@ ERL_NIF_TERM startMapContext(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
+     }
+ }
+ 
++ERL_NIF_TERM startDbgMapContext(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
++{
++    char viewTypeAtom[256], ddocSign[33];
++    view_index_type_t viewType;
++    function_sources_list_t mapFunctions;
++
++    if (!enif_get_atom(env, argv[0], viewTypeAtom, sizeof(viewTypeAtom),
++                       ERL_NIF_LATIN1)) {
++        return enif_make_badarg(env);
++    }
++    if (!strcmp(viewTypeAtom, "mapreduce_view")) {
++        viewType = VIEW_INDEX_TYPE_MAPREDUCE;
++    } else if (!strcmp(viewTypeAtom, "spatial_view")) {
++        viewType = VIEW_INDEX_TYPE_SPATIAL;
++    } else {
++        return makeError(env, "unknown view type");
++    }
++
++    if (!parseFunctions(env, argv[1], mapFunctions)) {
++        return enif_make_badarg(env);
++    }
++
++    map_reduce_ctx_t *ctx = static_cast<map_reduce_ctx_t *>(
++        enif_alloc_resource(MAP_REDUCE_CTX_RES, sizeof(map_reduce_ctx_t)));
++
++    if (!enif_get_string(env, argv[2], ddocSign, sizeof(ddocSign), ERL_NIF_LATIN1)) {
++        return enif_make_badarg(env);
++    }
++    try {
++        initContext(ctx, mapFunctions, viewType, true, std::string(ddocSign));
++
++        ERL_NIF_TERM res = enif_make_resource(env, ctx);
++        enif_release_resource(ctx);
++
++        registerContext(ctx);
++
++        return enif_make_tuple2(env, ATOM_OK, res);
++
++    } catch(MapReduceError &e) {
++        return makeError(env, e.getMsg());
++    } catch(std::bad_alloc &) {
++        return makeError(env, "memory allocation failure");
++    }
++}
+ 
+ ERL_NIF_TERM doMapDoc(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+ {
+@@ -582,6 +631,7 @@ void unregisterContext(map_reduce_ctx_t *ctx)
+ 
+ static ErlNifFunc nif_functions[] = {
+     {"start_map_context", 2, startMapContext},
++    {"start_map_context", 3, startDbgMapContext},
+     {"map_doc", 3, doMapDoc},
+     {"start_reduce_context", 1, startReduceContext},
+     {"reduce", 2, doReduce},
+@@ -590,7 +640,7 @@ static ErlNifFunc nif_functions[] = {
+     {"set_timeout", 1, setTimeout},
+     {"set_max_kv_size_per_doc", 1, setMaxKvSize},
+     {"is_doc_used", 1, isDocUsed},
+-    {"set_optimize_doc_load", 1, setOptimizeDocLoad}
++    {"set_optimize_doc_load", 1, setOptimizeDocLoad},
+ };
+ 
+ // Due to the stupid macros I need to manually do this in order

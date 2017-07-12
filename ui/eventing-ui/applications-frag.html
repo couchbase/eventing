@@ -12,10 +12,13 @@
     <br><br><br><br>
     <button class="btn_1" align="left">Save to disk</button>
     <br><br><br><br>
-    <div ng-show="!perAppCtrl.currentApp.debug">
+    <div ng-show="!perAppCtrl.currentApp.debug && perAppCtrl.isChromeBrowser">
         <button class="btn_1" align="left" ng-click="perAppCtrl.startDbg()">Start Debug</button>
     </div>
-    <div ng-show="perAppCtrl.currentApp.debug">
+    <div ng-show="perAppCtrl.currentApp.debug && perAppCtrl.isChromeBrowser">
+        <br> Debug using <br>
+        <a ng-href = "{{perAppCtrl.debugUrl}}">{{perAppCtrl.debugUrl}}</a>
+        <br><br>
         <button class="btn_1" align="left" ng-click="perAppCtrl.stopDbg()">Stop Debug</button>
     </div>
 </div>

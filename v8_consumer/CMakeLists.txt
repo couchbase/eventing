@@ -19,6 +19,7 @@ INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
                            ${CMAKE_CURRENT_BINARY_DIR}
                            ${CMAKE_CURRENT_SOURCE_DIR}
                            ${CMAKE_CURRENT_SOURCE_DIR}/include
+                           ${CMAKE_SOURCE_DIR}/v8inspector
                            ${FLATBUFFERS_INCLUDE_DIR}
                            ${Platform_SOURCE_DIR}/include
                            ${CMAKE_INSTALL_PREFIX}/include)
@@ -30,7 +31,7 @@ SET(EVENTING_SOURCES src/client.cc src/commands.cc
     src/bucket.cc src/n1ql.cc src/parse_deployment.cc
     src/log.cc ${CMAKE_CURRENT_BINARY_DIR}/jsify.cc src/transpiler.cc)
 
-SET(EVENTING_LIBRARIES ${V8_LIBRARIES} ${ICU_LIBRARIES} -ll ${JEMALLOC_LIBRARIES} ${CURL_LIBRARIES} ${LIBCOUCHBASE_LIBRARIES} ${LIBUV_LIBRARIES} platform)
+SET(EVENTING_LIBRARIES ${V8_LIBRARIES} ${ICU_LIBRARIES} -ll ${JEMALLOC_LIBRARIES} ${CURL_LIBRARIES} ${LIBCOUCHBASE_LIBRARIES} ${LIBUV_LIBRARIES} platform v8inspector)
 ADD_EXECUTABLE(client.bin ${EVENTING_SOURCES})
 TARGET_LINK_LIBRARIES(client.bin ${EVENTING_LIBRARIES})
 INSTALL(TARGETS client.bin

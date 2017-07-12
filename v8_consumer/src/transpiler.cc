@@ -11,7 +11,7 @@
 
 #include "../include/log.h"
 #include "../include/n1ql.h"
-#include "include/v8.h"
+#include "v8.h"
 
 Transpiler::Transpiler(std::string transpiler_src) {
   isolate = v8::Isolate::GetCurrent();

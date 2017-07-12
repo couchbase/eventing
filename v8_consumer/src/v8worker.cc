@@ -587,8 +587,6 @@ static void multi_op_callback(lcb_t cb_instance, int cbtype,
   }
 }
 
-static ArrayBufferAllocator array_buffer_allocator;
-
 void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
 
 V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
@@ -599,12 +597,12 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
     : rbac_pass(rbac_pass), curr_host_addr(host_addr) {
   enableRecursiveMutation(enable_recursive_mutation);
   v8::V8::InitializeICU();
-  v8::Platform *platform = v8::platform::CreateDefaultPlatform();
+  platform = v8::platform::CreateDefaultPlatform();
   v8::V8::InitializePlatform(platform);
   v8::V8::Initialize();
 
   v8::Isolate::CreateParams create_params;
-  create_params.array_buffer_allocator = &allocator;
+  create_params.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();;
 
   isolate_ = v8::Isolate::New(create_params);
   v8::Locker locker(isolate_);
@@ -721,7 +719,10 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::Context::Scope context_scope(context);
 
   v8::TryCatch try_catch;
-
+  if( debugger_started ) {
+  agent->Start(GetIsolate(), platform, nullptr);
+  agent->PauseOnNextJavascriptStatement("Break on start");
+  }
   std::string plain_js;
   int code = Jsify(script_to_execute.c_str(), &plain_js);
   LOG(logTrace) << "jsified code: " << plain_js << '\n';
@@ -791,7 +792,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   }
 
   if (transpiler.IsTimerCalled(script_to_execute)) {
-    LOG(logDebug) << "Transpiler is called" << std::endl;
+    LOG(logDebug) << "Transpiler is called" << '\n';
 
     lcb_create_st crst;
     memset(&crst, 0, sizeof crst);
@@ -1011,15 +1012,23 @@ void V8Worker::StartDebugger() {
     LOG(logError) << "Debugger already started" << '\n';
     return;
   }
-
+  v8::Locker locker(GetIsolate());
+  v8::Isolate::Scope isolate_scope(GetIsolate());
+  v8::HandleScope handle_scope(GetIsolate());
+  v8::Local<v8::Context> context =
+      v8::Local<v8::Context>::New(GetIsolate(), context_);
+  v8::Context::Scope context_scope(context);
   LOG(logInfo) << "Starting Debugger" << '\n';
   debugger_started = true;
+  agent = new inspector::Agent(curr_host_addr, GetWorkingPath() + "/" + app_name_ + "_frontend.url");
 }
 
 void V8Worker::StopDebugger() {
   if (debugger_started) {
     LOG(logInfo) << "Stopping Debugger" << '\n';
     debugger_started = false;
+    agent->Stop();
+    delete agent;
   } else {
     LOG(logError) << "Debugger wasn't started" << '\n';
   }

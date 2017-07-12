@@ -9,8 +9,8 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include <include/libplatform/libplatform.h>
-#include <include/v8.h>
+#include <libplatform/libplatform.h>
+#include <v8.h>
 #include <iostream>
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>

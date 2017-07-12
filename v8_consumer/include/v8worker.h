@@ -20,15 +20,16 @@
 #include <string>
 #include <thread>
 
-#include <include/libplatform/libplatform.h>
-#include <include/v8-debug.h>
-#include <include/v8.h>
+#include <libplatform/libplatform.h>
+#include <v8-debug.h>
+#include <v8.h>
 
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 
 #include "log.h"
 #include "n1ql.h"
+#include "inspector_agent.h"
 
 #ifndef STANDALONE_BUILD
 extern void(assert)(int);
@@ -65,16 +66,6 @@ std::map<std::string, std::string> *UnwrapMap(v8::Local<v8::Object> obj);
 
 extern bool enable_recursive_mutation;
 
-class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
-public:
-  virtual void *Allocate(size_t length) {
-    void *data = AllocateUninitialized(length);
-    return data == NULL ? data : memset(data, 0, length);
-  }
-  virtual void *AllocateUninitialized(size_t length) { return malloc(length); }
-  virtual void Free(void *data, size_t) { free(data); }
-};
-
 class V8Worker {
 public:
   V8Worker(std::string app_name, std::string dep_cfg,
@@ -84,6 +75,7 @@ public:
   ~V8Worker();
 
   void operator()() const {
+    if (debugger_started) return;
     while (!shutdown_terminator) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -137,7 +129,6 @@ public:
   std::string cb_kv_endpoint;
   std::string cb_source_bucket;
 
-  v8::Isolate *isolate_;
 
   volatile bool execute_flag;
   volatile bool shutdown_terminator;
@@ -154,9 +145,11 @@ private:
   std::string rbac_pass;
 
   bool ExecuteScript(v8::Local<v8::String> script);
-  ArrayBufferAllocator allocator;
   std::list<Bucket *> bucket_handles;
   std::string last_exception;
+  v8::Isolate *isolate_;
+  v8::Platform *platform;
+  inspector::Agent *agent;
 };
 
 #endif

@@ -12,7 +12,7 @@
 #ifndef N1QL_H
 #define N1QL_H
 
-#include <include/v8.h>
+#include <v8.h>
 #include <map>
 #include <queue>
 #include <stack>

@@ -75,34 +75,6 @@
                 </tr>
         </table>
     </div>
-    <div style="padding:6px" ng-show="resEditCtrl.showJSEditor && resEditCtrl.currentApp.debug">
-        <button class="btn_1" ng-click="resEditCtrl.setBreakpoint()"> Set Breakpint </button>
-        <button class="btn_1" ng-click="resEditCtrl.clearBreakpoints()"> Clear All Breakpint </button>
-        <button class="btn_1" ng-click="resEditCtrl.listBreakpoints()"> List Breakpints </button>
-        <button class="btn_1" ng-click="resEditCtrl.continue()"> Continue </button>
-        <button class="btn_1" ng-click="resEditCtrl.singleStep()"> Single Step </button>
-        <button class="btn_1" ng-click="resEditCtrl.stepOver()"> Step Over </button>
-        <button class="btn_1" ng-click="resEditCtrl.stepInto()"> Step Into </button>
-        <button style="float: right;" class="btn_1" ng-click="resEditCtrl.setMutation()"> Simulate Mutation </button>
-        <p style="padding:6px">
-        <input type="text" ng-model="resEditCtrl.watchVar" placeholder="Enter expression to evaluate">
-        <button class="btn_1" ng-click="resEditCtrl.evalExpr()"> Evaluate </button>
-        <button style="float: right;" class="btn_1" ng-click="resEditCtrl.showDbgHistory()"> Debug History </button>
-        </p>
-    </div>
-    <div class="dbg_frame" ng-show="resEditCtrl.showJSEditor && resEditCtrl.currentApp.debug">
-        {{resEditCtrl.response}}
-    </div>
-    <div ng-show="resEditCtrl.currentApp.debug && resEditCtrl.showHistory">
-        <button style="float: right;" class="btn_1" ng-click="resEditCtrl.closeDbgHistory()">Close </button>
-        <br><br>
-        <center><h3> Debug History </h3></center>
-        <div class="dbg_frame" ng-repeat="item in resEditCtrl.dbgHistory">
-            <h3>Request Sent: </h3> <p> {{item.request}} </p>
-            <h3>Response Received: </h3> <p> {{item.response}} </p>
-            <br><br>
-        </div>
-    </div>
     <div ng-show="resEditCtrl.showJSEditor" ng-model="resEditCtrl.currentApp.appcode" ng-readonly="resEditCtrl.currentApp.deploy" ui-ace="{mode: 'javascript', useWrapMode:true, onLoad:resEditCtrl.aceLoaded}">
     </div>
 </div>
