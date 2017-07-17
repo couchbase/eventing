@@ -80,6 +80,18 @@ func (p *Producer) Serve() {
 	p.workerSupervisor = suptree.New(p.appName, spec)
 	go p.workerSupervisor.ServeBackground()
 
+	p.initMetadataBucketHandle()
+	// Write debugger blobs in metadata bucket
+	dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
+	debugBlob := &common.StartDebugBlob{
+		StartDebug: false,
+	}
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, p, dFlagKey, debugBlob)
+
+	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
+	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, p, dInstAddrKey, debuggerInstBlob)
+
 	p.initWorkerVbMap()
 	p.startBucket()
 
@@ -490,4 +502,56 @@ func (p *Producer) SignalCheckpointBlobCleanup() {
 			p.appName, p.LenRunningConsumers(), consumer.ConsumerName())
 		consumer.SignalCheckpointBlobCleanup()
 	}
+}
+
+// SignalStartDebugger updates KV blob in metadata bucket signalling request to start
+// V8 Debugger
+func (p *Producer) SignalStartDebugger() {
+	key := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
+	blob := &common.StartDebugBlob{
+		StartDebug: true,
+	}
+
+	// Check if debugger instance is already running somewhere
+	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
+	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, dInstAddrKey, dInstAddrBlob)
+
+	if dInstAddrBlob.NodeUUID == "" {
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, p, key, blob)
+	} else {
+		logging.Errorf("PRDR[%s:%d] Debugger already started. Host: %v Worker: %v uuid: %v",
+			p.appName, p.LenRunningConsumers(), dInstAddrBlob.HostPortAddr, dInstAddrBlob.ConsumerName, dInstAddrBlob.NodeUUID)
+	}
+}
+
+// SignalStopDebugger updates KV blob in metadata bucket signalling request to stop
+// V8 Debugger
+func (p *Producer) SignalStopDebugger() {
+	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
+	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
+
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, dInstAddrKey, debuggerInstBlob)
+
+	if debuggerInstBlob.NodeUUID == p.uuid {
+		for _, c := range p.runningConsumers {
+			if c.ConsumerName() == debuggerInstBlob.ConsumerName {
+				c.SignalStopDebugger()
+			}
+		}
+	} else {
+		util.StopDebugger("stopDebugger", debuggerInstBlob.HostPortAddr, p.appName)
+	}
+}
+
+// GetDebuggerURL returns V8 Debugger url
+func (p *Producer) GetDebuggerURL() string {
+	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
+	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
+
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, dInstAddrKey, debuggerInstBlob)
+
+	debugURL := util.GetDebuggerURL("/debugUrl", debuggerInstBlob.HostPortAddr, p.appName)
+
+	return debugURL
 }

@@ -315,6 +315,42 @@ func GetAggProcessedPSec(urlSuffix string, nodeAddrs []string) (string, error) {
 	return string(stats), nil
 }
 
+func StopDebugger(urlSuffix, nodeAddr, appName string) {
+	url := fmt.Sprintf("http://%s/stopDebugger/?name=%s", nodeAddr, appName)
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
+
+	_, err := netClient.Get(url)
+	if err != nil {
+		logging.Errorf("UTIL Failed to capture v8 debugger url from url: %s, err: %v", url, err)
+		return
+	}
+	return
+}
+
+func GetDebuggerURL(urlSuffix, nodeAddr, appName string) string {
+	url := fmt.Sprintf("http://%s/%s/?name=%s", nodeAddr, urlSuffix, appName)
+
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
+
+	res, err := netClient.Get(url)
+	if err != nil {
+		logging.Errorf("UTIL Failed to capture v8 debugger url from url: %s, err: %v", url, err)
+		return ""
+	}
+
+	buf, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		logging.Errorf("UTIL Failed to read v8 debugger url response from url: %s, err: %v", url, err)
+		return ""
+	}
+
+	return string(buf)
+}
+
 func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) map[string]string {
 	addrUUIDMap := make(map[string]string)
 

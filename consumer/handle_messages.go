@@ -22,6 +22,38 @@ func (c *Consumer) sendLogLevel(logLevel string) error {
 	return c.sendMessage(msg, 0, 0, false)
 }
 
+func (c *Consumer) sendDebuggerStart() error {
+
+	header := makeV8DebuggerStartHeader()
+
+	msg := &message{
+		Header: header,
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_START"]; !ok {
+		c.v8WorkerMessagesProcessed["DEBUG_START"] = 0
+	}
+	c.v8WorkerMessagesProcessed["DEBUG_START"]++
+
+	return c.sendMessage(msg, 0, 0, false)
+}
+
+func (c *Consumer) sendDebuggerStop() error {
+
+	header := makeV8DebuggerStopHeader()
+
+	msg := &message{
+		Header: header,
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_STOP"]; !ok {
+		c.v8WorkerMessagesProcessed["DEBUG_STOP"] = 0
+	}
+	c.v8WorkerMessagesProcessed["DEBUG_STOP"]++
+
+	return c.sendMessage(msg, 0, 0, false)
+}
+
 func (c *Consumer) sendInitV8Worker(payload []byte) error {
 
 	header := makeV8InitOpcodeHeader()
@@ -170,7 +202,12 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 
 	if c.sendMsgCounter >= c.socketWriteBatchSize {
 
-		c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
+		if !c.disableSocketTimeout {
+			c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
+		} else {
+			var t time.Time
+			c.conn.SetWriteDeadline(t)
+		}
 
 		err = binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
 		if err != nil {
@@ -192,21 +229,32 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 			c.gracefulShutdownChan <- struct{}{}
 		}
 
+		c.RLock()
 		logging.Tracef("CRHM[%s:%s:%s:%d] WriteBatchSeqNo dump: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.writeBatchSeqnoMap)
+		c.RUnlock()
 
 		for vb, seqno := range c.writeBatchSeqnoMap {
 			c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", seqno)
 		}
 
+		c.Lock()
 		c.writeBatchSeqnoMap = make(map[uint16]uint64)
+		c.Unlock()
 	}
 
 	return nil
 }
 
 func (c *Consumer) readMessage() error {
-	c.conn.SetReadDeadline(time.Now().Add(c.socketTimeout))
+
+	if !c.disableSocketTimeout {
+		c.conn.SetReadDeadline(time.Now().Add(c.socketTimeout))
+	} else {
+		var t time.Time
+		c.conn.SetReadDeadline(t)
+	}
+
 	msg, err := bufio.NewReader(c.conn).ReadBytes('\r')
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Read from client socket failed, err: %v",

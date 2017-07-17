@@ -40,6 +40,18 @@ func (c *Consumer) processEvents() {
 
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
+				if c.debuggerState == startDebug {
+					c.consumerSup.Remove(c.clientSupToken)
+
+					c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
+					c.clientSupToken = c.consumerSup.Add(c.client)
+
+					<-c.signalClientBootstrapCh
+					c.signalUpdateDebuggerInstBlobCh <- struct{}{}
+					<-c.signalStartDebuggerCh
+					c.debuggerState = stopDebug
+				}
+
 				switch e.Datatype {
 				case dcpDatatypeJSON:
 					c.sendDcpEvent(e)
@@ -84,6 +96,18 @@ func (c *Consumer) processEvents() {
 				}
 
 			case mcd.DCP_DELETION:
+				if c.debuggerState == startDebug {
+					c.consumerSup.Remove(c.clientSupToken)
+
+					c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
+					c.clientSupToken = c.consumerSup.Add(c.client)
+
+					<-c.signalClientBootstrapCh
+					c.signalUpdateDebuggerInstBlobCh <- struct{}{}
+					<-c.signalStartDebuggerCh
+					c.debuggerState = stopDebug
+				}
+
 				c.sendDcpEvent(e)
 
 			case mcd.DCP_STREAMREQ:
@@ -132,7 +156,7 @@ func (c *Consumer) processEvents() {
 					}
 					vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
 
-					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob)
 
 					c.vbFlogChan <- vbFlog
 					continue
@@ -220,7 +244,7 @@ func (c *Consumer) processEvents() {
 				}
 				vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
 
-				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
+				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob)
 
 				c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", "")
 				c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", "")
@@ -353,6 +377,21 @@ func (c *Consumer) processEvents() {
 			// sends ack message back to rebalance takeover routine, so that it could
 			// safely call Close() on vb specific plasma store
 			c.signalStoreTimerPlasmaCloseAckCh <- vb
+
+		case <-c.signalStopDebuggerCh:
+			c.debuggerState = stopDebug
+			c.consumerSup.Remove(c.clientSupToken)
+
+			c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
+			c.clientSupToken = c.consumerSup.Add(c.client)
+
+			<-c.signalClientBootstrapCh
+			c.debuggerState = debuggerOpcode
+
+			// Reset debuggerInstanceAddr blob, otherwise next debugger session can't start
+			dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
+			dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
+			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, dInstAddrKey, dInstAddrBlob)
 
 		case <-c.stopConsumerCh:
 
@@ -544,7 +583,7 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
 	c.vbProcessingStats.updateVbStat(vbno, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob, &cas)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob)
 }
 
 func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) error {

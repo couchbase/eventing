@@ -77,7 +77,8 @@ public:
 
 class V8Worker {
 public:
-  V8Worker(std::string app_name, std::string dep_cfg, std::string kv_host_port,
+  V8Worker(std::string app_name, std::string dep_cfg,
+           std::string curr_host_addr, std::string kv_host_port,
            std::string rbac_user, std::string rbac_pass, int lcb_inst_capacity,
            int execution_timeout, bool enable_recursive_mutation);
   ~V8Worker();
@@ -112,6 +113,8 @@ public:
   int SendDelete(std::string meta);
   void SendDocTimer(std::string doc_id, std::string callback_fn);
   void SendNonDocTimer(std::string doc_ids_cb_fns);
+  void StartDebugger();
+  void StopDebugger();
 
   void V8WorkerDispose();
   void V8WorkerTerminateExecution();
@@ -130,6 +133,7 @@ public:
   std::string script_to_execute_;
   std::string app_name_;
 
+  std::string curr_host_addr;
   std::string cb_kv_endpoint;
   std::string cb_source_bucket;
 
@@ -137,6 +141,7 @@ public:
 
   volatile bool execute_flag;
   volatile bool shutdown_terminator;
+  volatile bool debugger_started;
   Time::time_point execute_start_time;
   uint64_t max_task_duration;
   std::thread *terminator_thr;

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/couchbase/eventing/flatbuf/cfg"
@@ -45,6 +46,87 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 			}
 
 			fmt.Fprintf(w, "Deleting app: %v in the background", appName)
+			return
+		}
+	}
+
+	fmt.Fprintf(w, "App: %v not deployed", appName)
+}
+
+func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	logging.Infof("App: %v got request to get V8 debugger url", appName)
+
+	appList := m.superSup.DeployedAppList()
+	for _, app := range appList {
+		if app == appName {
+			debugURL := m.superSup.GetDebuggerURL(appName)
+
+			fmt.Fprintf(w, "%s", debugURL)
+			return
+		}
+	}
+
+	fmt.Fprintf(w, "App: %v not deployed", appName)
+}
+
+func (m *ServiceMgr) getLocalDebuggerURL(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	logging.Infof("App: %v got request to get local V8 debugger url", appName)
+
+	dir, err := os.Getwd()
+	if err != nil {
+		logging.Infof("App: %v failed to get current working dir, err: %v", appName, err)
+		fmt.Fprintf(w, "")
+		return
+	}
+
+	filePath := fmt.Sprintf("%s/%s_frontend.url", dir, appName)
+	u, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		logging.Errorf("App: %v Failed to read contents from debugger frontend url file, err: %v", appName, err)
+		fmt.Fprintf(w, "")
+		return
+	}
+
+	fmt.Fprintf(w, "%v", string(u))
+}
+
+func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	logging.Infof("App: %v got request to start V8 debugger", appName)
+
+	appList := m.superSup.DeployedAppList()
+	for _, app := range appList {
+		if app == appName {
+			m.superSup.SignalStartDebugger(appName)
+
+			fmt.Fprintf(w, "App: %v Started Debugger", appName)
+			return
+		}
+	}
+
+	fmt.Fprintf(w, "App: %v not deployed", appName)
+}
+
+func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	logging.Infof("App: %v got request to stop V8 debugger", appName)
+
+	appList := m.superSup.DeployedAppList()
+	for _, app := range appList {
+		if app == appName {
+			m.superSup.SignalStopDebugger(appName)
+
+			fmt.Fprintf(w, "App: %v Stopped Debugger", appName)
 			return
 		}
 	}

@@ -30,6 +30,7 @@ type EventingProducer interface {
 	CfgData() string
 	CleanupDeadConsumer(consumer EventingConsumer)
 	ClearEventStats()
+	GetDebuggerURL() string
 	GetNsServerPort() string
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
 	KvHostPorts() []string
@@ -47,6 +48,8 @@ type EventingProducer interface {
 	SignalCheckpointBlobCleanup()
 	SignalPlasmaClosed(vb uint16)
 	SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma)
+	SignalStartDebugger()
+	SignalStopDebugger()
 	SignalToClosePlasmaStore(vb uint16)
 	Serve()
 	Stop()
@@ -76,6 +79,7 @@ type EventingConsumer interface {
 	SignalConnected()
 	SignalPlasmaClosed(vb uint16)
 	SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma)
+	SignalStopDebugger()
 	Stop()
 	String() string
 	TimerTransferHostPortAddr() string
@@ -88,9 +92,12 @@ type EventingSuperSup interface {
 	AppTimerTransferHostPortAddrs(string) (map[string]string, error)
 	ClearEventStats()
 	DeployedAppList() []string
+	GetDebuggerURL(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)
 	ProducerHostPortAddrs() []string
 	RestPort() string
+	SignalStartDebugger(appName string)
+	SignalStopDebugger(appName string)
 	SignalToClosePlasmaStore(vb uint16)
 	SignalTimerDataTransferStart(vb uint16) bool
 	SignalTimerDataTransferStop(vb uint16, store *plasma.Plasma)
@@ -120,4 +127,14 @@ type EventProcessingStats struct {
 	DcpEventsProcessedPSec   int    `json:"dcp_events_processed_psec"`
 	TimerEventsProcessedPSec int    `json:"timer_events_processed_psec"`
 	Timestamp                string `json:"timestamp"`
+}
+
+type StartDebugBlob struct {
+	StartDebug bool `json:"start_debug"`
+}
+
+type DebuggerInstanceAddrBlob struct {
+	ConsumerName string `json:"consumer_name"`
+	HostPortAddr string `json:"host_port_addr"`
+	NodeUUID     string `json:"uuid"`
 }

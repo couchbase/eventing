@@ -7,6 +7,7 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
+	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/nitro/plasma"
 )
 
@@ -17,14 +18,18 @@ const (
 )
 
 const (
+	bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
+
 	dataService = "kv"
 
 	numVbuckets = 1024
 
-	// WatchClusterChangeInterval - Interval for spawning another routine to keep an eye on cluster state change
-	WatchClusterChangeInterval = time.Duration(100) * time.Millisecond
-
 	supervisorTimeout = 60
+
+	// KV blob suffixes to assist in choose right consumer instance
+	// for instantiating V8 Debugger instance
+	startDebuggerFlag    = "startDebugger"
+	debuggerInstanceAddr = "debuggerInstAddr"
 )
 
 type appStatus uint16
@@ -33,6 +38,10 @@ const (
 	appUndeployed appStatus = iota
 	appDeployed
 )
+
+type startDebugBlob struct {
+	StartDebug bool `json:"start_debug"`
+}
 
 // Producer handle - one instance per app per eventing node
 type Producer struct {
@@ -52,6 +61,7 @@ type Producer struct {
 	rbacrole               string
 	rbacuser               string
 	metadatabucket         string
+	metadataBucketHandle   *cbbucket.Bucket
 	metakvAppHostPortsPath string
 	nsServerPort           string
 	nsServerHostPort       string

@@ -50,6 +50,11 @@ const (
 const (
 	numVbuckets = 1024
 
+	// KV blob suffixes to assist in choose right consumer instance
+	// for instantiating V8 Debugger instance
+	startDebuggerFlag    = "startDebugger"
+	debuggerInstanceAddr = "debuggerInstAddr"
+
 	// DCP consumer related configs
 	dcpGenChanSize    = 10000
 	dcpDataChanSize   = 10000
@@ -58,6 +63,8 @@ const (
 
 	// ClusterChangeNotifChBufSize limits buffer size for cluster change notif from producer
 	ClusterChangeNotifChBufSize = 10
+
+	debuggerFlagCheckInterval = time.Duration(5000) * time.Millisecond
 
 	// Interval for retrying failed bucket operations using go-couchbase
 	bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
@@ -103,6 +110,12 @@ var dcpConfig = map[string]interface{}{
 var (
 	errPlasmaHandleMissing = errors.New("Failed to find plasma handle")
 )
+
+type debuggerBlob struct {
+	ConsumerName string `json:"consumer_name"`
+	HostPortAddr string `json:"host_port_addr"`
+	UUID         string `json:"uuid"`
+}
 
 type xattrMetadata struct {
 	Cas    string   `json:"cas"`
@@ -182,6 +195,19 @@ type Consumer struct {
 	signalPlasmaClosedCh               chan uint16
 	signalPlasmaTransferFinishCh       chan *plasmaStoreMsg
 
+	// Signals V8 consumer to start V8 Debugger agent
+	signalStartDebuggerCh          chan struct{}
+	signalStopDebuggerCh           chan struct{}
+	signalClientBootstrapCh        chan struct{}
+	signalUpdateDebuggerInstBlobCh chan struct{}
+	signalDebugBlobDebugStopCh     chan struct{}
+	signalStopDebuggerRoutineCh    chan struct{}
+	debuggerState                  int8
+
+	// Needed during V8 Debugger run as debugging session could run
+	// for long duration, which is beyond socket timeout duration
+	disableSocketTimeout bool
+
 	nonDocTimerProcessingTicker   *time.Ticker
 	nonDocTimerStopCh             chan struct{}
 	skipTimerThreshold            int
@@ -213,7 +239,7 @@ type Consumer struct {
 	// Stores the vbucket seqnos for socket write batch
 	// Upon reading message back from CPP world, vbProcessingStats will be
 	// updated for all vbuckets in that batch
-	writeBatchSeqnoMap map[uint16]uint64
+	writeBatchSeqnoMap map[uint16]uint64 // Access controlled by default lock
 
 	// host:port handle for current eventing node
 	hostPortAddr string

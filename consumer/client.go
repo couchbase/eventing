@@ -40,8 +40,8 @@ func (c *client) Serve() {
 	c.cmd.Wait()
 
 	// Signal shutdown of consumer doDCPProcessEvents and checkpointing routine
-	c.consumerHandle.gracefulShutdownChan <- struct{}{}
-	c.consumerHandle.stopCheckpointingCh <- struct{}{}
+	// c.consumerHandle.gracefulShutdownChan <- struct{}{}
+	// c.consumerHandle.stopCheckpointingCh <- struct{}{}
 
 	// Allow additional time for doDCPProcessEvents and checkpointing routine to exit,
 	// else there could be race. Currently set twice the socket read deadline
@@ -52,6 +52,8 @@ func (c *client) Serve() {
 }
 
 func (c *client) Stop() {
+	logging.Debugf("CRCL[%s:%s:%s:%d] Exiting c++ worker", c.appName, c.workerName, c.tcpPort, c.osPid)
+
 	c.consumerHandle.gracefulShutdownChan <- struct{}{}
 	c.consumerHandle.stopCheckpointingCh <- struct{}{}
 	if c.osPid != 0 {

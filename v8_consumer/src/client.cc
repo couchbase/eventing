@@ -103,8 +103,8 @@ static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
 
 std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                                 message_t *parsed_message) {
-  std::string app_name, dep_cfg, kv_host_port, rbac_user, rbac_pass, key, val,
-      result, doc_id, callback_fn, doc_ids_cb_fns;
+  std::string app_name, dep_cfg, curr_host_port, kv_host_port, rbac_user,
+      rbac_pass, key, val, result, doc_id, callback_fn, doc_ids_cb_fns;
   const flatbuf::payload::Payload *payload;
 
   switch (getEvent(parsed_header->event)) {
@@ -116,16 +116,17 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           (const void *)parsed_message->payload.c_str());
 
       app_name.assign(payload->app_name()->str());
+      curr_host_port.assign(payload->curr_host_port()->str());
       dep_cfg.assign(payload->depcfg()->str());
       kv_host_port.assign(payload->kv_host_port()->str());
       rbac_user.assign(payload->rbac_user()->str());
       rbac_pass.assign(payload->rbac_pass()->str());
 
       LOG(logDebug) << "Loading app:" << app_name << '\n';
-      this->v8worker = new V8Worker(app_name, dep_cfg, kv_host_port, rbac_user,
-                                    rbac_pass, payload->lcb_inst_capacity(),
-                                    payload->execution_timeout(),
-                                    payload->enable_recursive_mutation());
+      this->v8worker = new V8Worker(
+          app_name, dep_cfg, curr_host_port, kv_host_port, rbac_user, rbac_pass,
+          payload->lcb_inst_capacity(), payload->execution_timeout(),
+          payload->enable_recursive_mutation());
       result.assign("Loaded requested app\n");
       break;
     case oLoad:
@@ -196,6 +197,18 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                    << '\n';
       break;
     case App_Worker_Setting_Opcode_Unknown:
+      break;
+    }
+    break;
+  case eDebugger:
+    switch (getDebuggerOpcode(parsed_header->opcode)) {
+    case oDebuggerStart:
+      this->v8worker->StartDebugger();
+      break;
+    case oDebuggerStop:
+      this->v8worker->StopDebugger();
+      break;
+    case Debugger_Opcode_Unknown:
       break;
     }
     break;

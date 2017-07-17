@@ -22,6 +22,8 @@ event_type getEvent(int8_t event) {
     return eApp_Worker_Setting;
   if (event == 5)
     return eTimer;
+  if (event == 6)
+    return eDebugger;
   return Event_Unknown;
 }
 
@@ -65,4 +67,12 @@ timer_opcode getTimerOpcode(int8_t opcode) {
   if (opcode == 2)
     return oNonDocTimer;
   return Timer_Opcode_Unknown;
+}
+
+debugger_opcode getDebuggerOpcode(int8_t opcode) {
+  if (opcode == 1)
+    return oDebuggerStart;
+  if (opcode == 2)
+    return oDebuggerStop;
+  return Debugger_Opcode_Unknown;
 }

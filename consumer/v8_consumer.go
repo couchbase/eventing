@@ -3,9 +3,11 @@ package consumer
 import (
 	"fmt"
 	"net"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,6 +45,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		dcpFeedCancelChs:                   make([]chan struct{}, 0),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,
+		disableSocketTimeout:               false,
 		docTimerEntryCh:                    make(chan *byTimerEntry, timerChanSize),
 		enableRecursiveMutation:            enableRecursiveMutation,
 		eventingAdminPort:                  eventingAdminPort,
@@ -62,13 +65,19 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		producer:                           p,
 		restartVbDcpStreamTicker:           time.NewTicker(restartVbDcpStreamTickInterval),
 		sendMsgCounter:                     0,
+		signalClientBootstrapCh:            make(chan struct{}),
 		signalConnectedCh:                  make(chan struct{}, 1),
+		signalDebugBlobDebugStopCh:         make(chan struct{}, 1),
 		signalSettingsChangeCh:             make(chan struct{}, 1),
 		signalPlasmaClosedCh:               make(chan uint16, numVbuckets),
 		signalPlasmaTransferFinishCh:       make(chan *plasmaStoreMsg, numVbuckets),
 		signalProcessTimerPlasmaCloseAckCh: make(chan uint16, numVbuckets),
+		signalStartDebuggerCh:              make(chan struct{}, 1),
+		signalStopDebuggerCh:               make(chan struct{}, 1),
+		signalStopDebuggerRoutineCh:        make(chan struct{}, 1),
 		signalStoreTimerPlasmaCloseAckCh:   make(chan uint16, numVbuckets),
 		signalStoreTimerPlasmaCloseCh:      make(chan uint16, numVbuckets),
+		signalUpdateDebuggerInstBlobCh:     make(chan struct{}, 1),
 		skipTimerThreshold:                 skipTimerThreshold,
 		socketTimeout:                      socketTimeout,
 		socketWriteBatchSize:               sockWriteBatchSize,
@@ -171,6 +180,9 @@ func (c *Consumer) Serve() {
 	// non doc_id timer events
 	go c.processNonDocTimerEvents()
 
+	// V8 Debugger polling routine
+	go c.pollForDebuggerStart()
+
 	c.controlRoutine()
 
 	logging.Debugf("V8CR[%s:%s:%s:%d] Exiting consumer init routine",
@@ -184,11 +196,35 @@ func (c *Consumer) HandleV8Worker() {
 	logging.SetLogLevel(util.GetLogLevel(c.logLevel))
 	c.sendLogLevel(c.logLevel)
 
-	payload := makeV8InitPayload(c.app.AppName, c.producer.KvHostPorts()[0], c.producer.CfgData(),
+	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
+
+	var currHostAddr string
+	h := c.HostPortAddr()
+	if h != "" {
+		currHostAddr = strings.Split(h, ":")[0]
+	} else {
+		currHostAddr = "127.0.0.1"
+	}
+
+	payload := makeV8InitPayload(c.app.AppName, currHostAddr, c.producer.KvHostPorts()[0], c.producer.CfgData(),
 		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity, c.executionTimeout, c.enableRecursiveMutation)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
+
 	c.sendInitV8Worker(payload)
+
+	switch c.debuggerState {
+	case startDebug:
+		c.sendDebuggerStart()
+		c.signalClientBootstrapCh <- struct{}{}
+		c.disableSocketTimeout = true
+
+	case stopDebug:
+		c.signalClientBootstrapCh <- struct{}{}
+		c.disableSocketTimeout = false
+
+	default:
+	}
 
 	c.sendLoadV8Worker(c.app.AppCode)
 
@@ -232,6 +268,7 @@ func (c *Consumer) Stop() {
 	c.nonDocTimerStopCh <- struct{}{}
 	c.stopControlRoutineCh <- struct{}{}
 	c.stopPlasmaPersistCh <- struct{}{}
+	c.signalStopDebuggerRoutineCh <- struct{}{}
 
 	for _, dcpFeed := range c.kvHostDcpFeedMap {
 		dcpFeed.Close()
@@ -401,7 +438,33 @@ func (c *Consumer) SignalCheckpointBlobCleanup() {
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, c, vbKey)
 	}
 
-	// TODO: check if Name works
 	logging.Infof("V8CR[%s:%s:%s:%d] Purged all owned checkpoint blobs from metadata bucket: %s",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.metadataBucketHandle.Name)
+}
+
+// SignalStopDebugger signal C++ V8 consumer to stop Debugger Agent
+func (c *Consumer) SignalStopDebugger() {
+	logging.Infof("V8CR[%s:%s:%s:%d] Got signal to stop V8 Debugger Agent",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+
+	c.signalStopDebuggerCh <- struct{}{}
+
+	// Reset the debugger instance blob
+	dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
+	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, dInstAddrKey, dInstAddrBlob)
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		logging.Infof("V8CR[%s:%s:%s:%d] Failed to get current working dir, err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		return
+	}
+
+	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", cwd, c.app.AppName)
+	err = os.Remove(frontendURLFilePath)
+	if err != nil {
+		logging.Infof("V8CR[%s:%s:%s:%d] Failed to remove frontend.url file, err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+	}
 }

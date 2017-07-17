@@ -191,32 +191,39 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 				s.superSup.Remove(s.producerSupervisorTokenMap[appProducer])
 
-				var addrs []string
-				var currNodeAddr string
+				// Spawning another routine to process cleanup of plasma store, otherwise
+				// it would block (re)deploy of new lambdas
+				go func(s *SuperSupervisor) {
+					var addrs []string
+					var currNodeAddr string
 
-				util.Retry(util.NewFixedBackoff(time.Second), getEventingNodeAddrsCallback, s, &addrs)
+					util.Retry(util.NewFixedBackoff(time.Second), getEventingNodeAddrsCallback, s, &addrs)
 
-				util.Retry(util.NewFixedBackoff(time.Second), getCurrentEventingNodeAddrCallback, s, &currNodeAddr)
+					util.Retry(util.NewFixedBackoff(time.Second), getCurrentEventingNodeAddrCallback, s, &currNodeAddr)
 
-				s.assignVbucketsToOwn(addrs, currNodeAddr)
+					s.assignVbucketsToOwn(addrs, currNodeAddr)
 
-				logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
+					logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
 
-				// Purge entries for deleted apps from plasma store
-				for _, vb := range s.vbucketsToOwn {
-					store := s.vbPlasmaStoreMap[vb]
-					r := store.NewReader()
-					w := store.NewWriter()
-					snapshot := store.NewSnapshot()
+					// Purge entries for deleted apps from plasma store
+					for _, vb := range s.vbucketsToOwn {
+						s.RLock()
+						store := s.vbPlasmaStoreMap[vb]
+						s.RUnlock()
 
-					itr := r.NewSnapshotIterator(snapshot)
-					for itr.SeekFirst(); itr.Valid(); itr.Next() {
-						if bytes.Compare(itr.Key(), []byte(appName)) > 0 {
-							w.DeleteKV(itr.Key())
+						r := store.NewReader()
+						w := store.NewWriter()
+						snapshot := store.NewSnapshot()
+
+						itr := r.NewSnapshotIterator(snapshot)
+						for itr.SeekFirst(); itr.Valid(); itr.Next() {
+							if bytes.Compare(itr.Key(), []byte(appName)) > 0 {
+								w.DeleteKV(itr.Key())
+							}
 						}
 					}
-				}
-				logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
+					logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
+				}(s)
 
 			case cmdAppLoad:
 				logging.Infof("SSUP[%d] Loading app: %s", len(s.runningProducers), appName)
@@ -340,4 +347,23 @@ func (s *SuperSupervisor) DeployedAppList() []string {
 	}
 
 	return appList
+}
+
+// SignalStartDebugger kicks off V8 Debugger for a specific deployed lambda
+func (s *SuperSupervisor) SignalStartDebugger(appName string) {
+	p := s.runningProducers[appName]
+	p.SignalStartDebugger()
+}
+
+// SignalStopDebugger stops V8 Debugger for a specific deployed lambda
+func (s *SuperSupervisor) SignalStopDebugger(appName string) {
+	p := s.runningProducers[appName]
+	p.SignalStopDebugger()
+}
+
+// GetDebuggerURL returns the v8 debugger url for supplied appname
+func (s *SuperSupervisor) GetDebuggerURL(appName string) string {
+	logging.Infof("SSUP[%d] GetDebuggerURL request for app: %v", len(s.runningProducers), appName)
+	p := s.runningProducers[appName]
+	return p.GetDebuggerURL()
 }

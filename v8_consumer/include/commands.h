@@ -20,6 +20,7 @@ enum event_type {
   eV8_Worker,
   eApp_Worker_Setting,
   eTimer,
+  eDebugger,
   Event_Unknown
 };
 
@@ -40,11 +41,14 @@ enum app_worker_setting_opcode { oLogLevel, App_Worker_Setting_Opcode_Unknown };
 
 enum timer_opcode { oDocTimer, oNonDocTimer, Timer_Opcode_Unknown };
 
+enum debugger_opcode { oDebuggerStart, oDebuggerStop, Debugger_Opcode_Unknown };
+
 event_type getEvent(int8_t event);
 v8_worker_opcode getV8WorkerOpcode(int8_t opcode);
 dcp_opcode getDCPOpcode(int8_t opcode);
 http_opcode getHTTPOpcode(int8_t opcode);
 app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode);
 timer_opcode getTimerOpcode(int8_t opcode);
+debugger_opcode getDebuggerOpcode(int8_t opcode);
 
 #endif

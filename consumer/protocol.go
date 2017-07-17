@@ -15,6 +15,13 @@ const (
 	v8WorkerEvent
 	appWorkerSetting
 	timerEvent
+	debuggerEvent
+)
+
+const (
+	debuggerOpcode int8 = iota
+	startDebug
+	stopDebug
 )
 
 const (
@@ -73,6 +80,18 @@ func makeDcpDeletionHeader(deletionMeta string) []byte {
 
 func makeDcpHeader(opcode int8, meta string) []byte {
 	return makeHeader(dcpEvent, opcode, meta)
+}
+
+func makeV8DebuggerStartHeader() []byte {
+	return makeV8DebuggerHeader(startDebug, "")
+}
+
+func makeV8DebuggerStopHeader() []byte {
+	return makeV8DebuggerHeader(stopDebug, "")
+}
+
+func makeV8DebuggerHeader(opcode int8, meta string) []byte {
+	return makeHeader(debuggerEvent, opcode, meta)
 }
 
 func makeV8InitOpcodeHeader() []byte {
@@ -154,12 +173,13 @@ func makeDcpPayload(key, value []byte) []byte {
 	return builder.Bytes[builder.Head():]
 }
 
-func makeV8InitPayload(appName, kvHostPort, depCfg, rbacUser, rbacPass string,
+func makeV8InitPayload(appName, currHostAddr, kvHostPort, depCfg, rbacUser, rbacPass string,
 	capacity, executionTimeout int, enableRecursiveMutation bool) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
 
 	app := builder.CreateString(appName)
+	chp := builder.CreateString(currHostAddr)
 	dcfg := builder.CreateString(depCfg)
 	khp := builder.CreateString(kvHostPort)
 	rUser := builder.CreateString(rbacUser)
@@ -171,6 +191,7 @@ func makeV8InitPayload(appName, kvHostPort, depCfg, rbacUser, rbacPass string,
 	payload.PayloadStart(builder)
 
 	payload.PayloadAddAppName(builder, app)
+	payload.PayloadAddCurrHostPort(builder, chp)
 	payload.PayloadAddDepcfg(builder, dcfg)
 	payload.PayloadAddKvHostPort(builder, khp)
 	payload.PayloadAddRbacUser(builder, rUser)

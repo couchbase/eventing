@@ -85,5 +85,5 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbuck
 	vbBlob.NextNonDocTimerToProcess = c.vbProcessingStats.getVbStat(vbno, "next_non_doc_timer_to_process").(string)
 	vbBlob.PlasmaPersistedSeqNo = c.vbProcessingStats.getVbStat(vbno, "plasma_last_seq_no_persisted").(uint64)
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob, cas)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob)
 }

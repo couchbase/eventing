@@ -87,7 +87,7 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 var setOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
-	vbBlob := args[2].(*vbucketKVBlob)
+	vbBlob := args[2]
 
 	err := c.metadataBucketHandle.Set(vbKey, 0, vbBlob)
 	if err != nil {
@@ -154,7 +154,7 @@ var deleteOpCallback = func(args ...interface{}) error {
 var getOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
-	vbBlob := args[2].(*vbucketKVBlob)
+	vbBlob := args[2]
 	cas := args[3].(*uint64)
 	skipEnoEnt := args[4].(bool)
 
@@ -194,14 +194,16 @@ var getOpCallback = func(args ...interface{}) error {
 var casOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
-	vbBlob := args[2].(*vbucketKVBlob)
-	cas := args[3].(*uint64)
+	vbBlob := args[2]
 
-	_, err := c.metadataBucketHandle.Cas(vbKey, 0, *cas, vbBlob)
+	var cas uint64
+	var blob vbucketKVBlob
+	util.Retry(util.NewFixedBackoff(time.Second), getOpCallback, c, vbKey, &blob, &cas, false)
+
+	_, err := c.metadataBucketHandle.Cas(vbKey, 0, cas, vbBlob)
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket cas failed for key: %s, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
-		util.Retry(util.NewFixedBackoff(time.Second), getOpCallback, c, vbKey, vbBlob, cas, false)
 	}
 	return err
 }

@@ -3,6 +3,7 @@ namespace flatbuf.payload;
 table Payload {
   app_name:string;
   depcfg:string;
+  curr_host_port:string;
   kv_host_port:string;
   rbac_user:string;
   rbac_pass:string;
@@ -19,6 +20,8 @@ table Payload {
   lcb_inst_capacity:int; // Nested iterator related fields
 
   execution_timeout:int; // Execution timeout for handler code execution
+
+  enable_v8_debugger:bool;
 
   enable_recursive_mutation:bool;
 }

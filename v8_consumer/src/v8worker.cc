@@ -592,10 +592,11 @@ static ArrayBufferAllocator array_buffer_allocator;
 void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
 
 V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
-                   std::string kv_host_port, std::string rbac_user,
-                   std::string rbac_pass, int lcb_inst_capacity,
-                   int execution_timeout, bool enable_recursive_mutation)
-    : rbac_pass(rbac_pass) {
+                   std::string host_addr, std::string kv_host_port,
+                   std::string rbac_user, std::string rbac_pass,
+                   int lcb_inst_capacity, int execution_timeout,
+                   bool enable_recursive_mutation)
+    : rbac_pass(rbac_pass), curr_host_addr(host_addr) {
   enableRecursiveMutation(enable_recursive_mutation);
   v8::V8::InitializeICU();
   v8::Platform *platform = v8::platform::CreateDefaultPlatform();
@@ -652,6 +653,7 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
       config->component_configs.begin();
 
   Bucket *bucket_handle = nullptr;
+  debugger_started = false;
   execute_flag = false;
   shutdown_terminator = false;
   max_task_duration = SECS_TO_NS * execution_timeout;
@@ -675,6 +677,7 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
   }
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: " << app_name
+               << " curr_host_addr: " << curr_host_addr
                << " kv_host_port: " << kv_host_port
                << " rbac_user: " << rbac_user << " rbac_pass: " << rbac_pass
                << " lcb_cap: " << lcb_inst_capacity
@@ -1001,6 +1004,25 @@ void V8Worker::SendDocTimer(std::string doc_id, std::string callback_fn) {
   execute_start_time = Time::now();
   cb_fn->Call(context->Global(), 1, arg);
   execute_flag = false;
+}
+
+void V8Worker::StartDebugger() {
+  if (debugger_started) {
+    LOG(logError) << "Debugger already started" << '\n';
+    return;
+  }
+
+  LOG(logInfo) << "Starting Debugger" << '\n';
+  debugger_started = true;
+}
+
+void V8Worker::StopDebugger() {
+  if (debugger_started) {
+    LOG(logInfo) << "Stopping Debugger" << '\n';
+    debugger_started = false;
+  } else {
+    LOG(logError) << "Debugger wasn't started" << '\n';
+  }
 }
 
 const char *V8Worker::V8WorkerLastException() { return last_exception.c_str(); }
