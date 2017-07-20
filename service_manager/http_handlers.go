@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/flatbuf/cfg"
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 	flatbuffers "github.com/google/flatbuffers/go"
+	"path"
 	"strconv"
+	"strings"
 )
 
 func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
@@ -52,38 +54,55 @@ func (m *ServiceMgr) getNodeUUID(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%v", m.uuid)
 }
 
-func (m *ServiceMgr) getHandler(w http.ResponseWriter, r *http.Request) {
-	values := r.URL.Query()
-	appName := values["name"][0]
+func (m *ServiceMgr) debugging(w http.ResponseWriter, r *http.Request) {
+	jsFile := path.Base(r.URL.Path)
+	if strings.HasSuffix(jsFile, srcCodeExt) {
+		appName := jsFile[:len(jsFile)-len(srcCodeExt)]
+		handler := m.getHandler(appName)
 
-	appList := m.superSup.DeployedAppList()
-	for _, app := range appList {
-		if app == appName {
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-			fmt.Fprintf(w, "%s", m.superSup.GetAppCode(appName))
-			return
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", handler)
+		if handler == "" {
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+			fmt.Fprintf(w, "App: %s not deployed", appName)
 		}
-	}
+	} else if strings.HasSuffix(jsFile, srcMapExt) {
+		appName := jsFile[:len(jsFile)-len(srcMapExt)]
+		sourceMap := m.getSourceMap(appName)
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	fmt.Fprintf(w, "App: %s not deployed", appName)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", sourceMap)
+
+		if sourceMap == "" {
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+			fmt.Fprintf(w, "App: %s not deployed", appName)
+		}
+	} else {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errInvalidExt.Code))
+		fmt.Fprintf(w, "Invalid extension for %s", jsFile)
+	}
 }
 
-func (m *ServiceMgr) getSourceMap(w http.ResponseWriter, r *http.Request) {
-	values := r.URL.Query()
-	appName := values["name"][0]
-
+func (m *ServiceMgr) getHandler(appName string) string {
 	appList := m.superSup.DeployedAppList()
 	for _, app := range appList {
 		if app == appName {
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-			fmt.Fprintf(w, "%s", m.superSup.GetSourceMap(appName))
-			return
+			return m.superSup.GetHandlerCode(appName)
 		}
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	fmt.Fprintf(w, "App: %s not deployed", appName)
+	return ""
+}
+
+func (m *ServiceMgr) getSourceMap(appName string) string {
+	appList := m.superSup.DeployedAppList()
+	for _, app := range appList {
+		if app == appName {
+			return m.superSup.GetSourceMap(appName)
+		}
+	}
+
+	return ""
 }
 
 func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {

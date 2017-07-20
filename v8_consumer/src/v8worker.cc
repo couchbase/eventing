@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <fstream>
 #include <mutex>
 #include <regex>
 #include <sstream>
@@ -29,6 +30,7 @@
 #include "../gen/escodegen.h"
 #include "../gen/esprima.h"
 #include "../gen/estraverse.h"
+#include "../gen/source-map.h"
 #include "../gen/transpiler.h"
 
 #define BUFSIZE 100
@@ -70,6 +72,11 @@ v8::Local<v8::String> createUtf8String(v8::Isolate *isolate, const char *str) {
 std::string ObjectToString(v8::Local<v8::Value> value) {
   v8::String::Utf8Value utf8_value(value);
   return std::string(*utf8_value);
+}
+
+std::string GetWorkingPath() {
+  char temp[MAXPATHLEN];
+  return (getcwd(temp, MAXPATHLEN) ? std::string(temp) : std::string(""));
 }
 
 std::string ToString(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
@@ -151,13 +158,37 @@ const char *ToJson(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
   return ToCString(str);
 }
 
-void Print(const v8::FunctionCallbackInfo<v8::Value> &args) {
+void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   std::string log_msg;
   for (int i = 0; i < args.Length(); i++) {
     log_msg += ToJson(args.GetIsolate(), args[i]);
     log_msg += ' ';
   }
+
   LOG(logDebug) << log_msg << '\n';
+}
+
+// console.log for debugger - also logs to eventing.log
+void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
+  Log(args);
+  auto console_v8_str = v8::String::NewFromUtf8(isolate, "console");
+  auto log_v8_str = v8::String::NewFromUtf8(isolate, "log");
+  auto console = context->Global()
+                     ->Get(console_v8_str)
+                     ->ToObject(context)
+                     .ToLocalChecked();
+  auto log_fn = v8::Local<v8::Function>::Cast(console->Get(log_v8_str));
+  v8::Local<v8::Value> log_args[args.Length()];
+  for (auto i = 0; i < args.Length(); ++i) {
+    log_args[i] = args[i];
+  }
+
+  // Calling console.log with the args passed to log() function.
+  log_fn->Call(log_fn, args.Length(), log_args);
 }
 
 std::string ConvertToISO8601(std::string timestamp) {
@@ -663,7 +694,7 @@ V8Worker::V8Worker(v8::Platform *platform, std::string app_name,
   v8::TryCatch try_catch;
 
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "log"),
-              v8::FunctionTemplate::New(GetIsolate(), Print));
+              v8::FunctionTemplate::New(GetIsolate(), Log));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "docTimer"),
               v8::FunctionTemplate::New(GetIsolate(), CreateDocTimer));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "nonDocTimer"),
@@ -740,6 +771,7 @@ V8Worker::V8Worker(v8::Platform *platform, std::string app_name,
 
   conn_pool = new ConnectionPool(lcb_inst_capacity, cb_kv_endpoint,
                                  cb_source_bucket, rbac_user, rbac_pass);
+  src_path = GetWorkingPath() + "/" + app_name_ + ".t.js";
   delete config;
 
   this->worker_queue = new Queue<worker_msg_t>();
@@ -759,10 +791,47 @@ V8Worker::~V8Worker() {
   delete n1ql_handle;
 }
 
-std::string GetWorkingPath() {
-  char temp[MAXPATHLEN];
-  return (getcwd(temp, MAXPATHLEN) ? std::string(temp) : std::string(""));
+#ifdef ZLIB_FOUND
+// Re-compile and execute handler code for debugger
+bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
+                            int args_len) {
+  v8::HandleScope handle_scope(isolate_);
+  v8::TryCatch try_catch(isolate_);
+
+  // Need to construct origin for source-map to apply.
+  auto origin_v8_str = v8::String::NewFromUtf8(isolate_, src_path.c_str());
+  v8::ScriptOrigin origin(origin_v8_str);
+  auto context = context_.Get(isolate_);
+  auto source = v8::String::NewFromUtf8(isolate_, script_to_execute_.c_str());
+
+  // Replace the usual log function with console.log
+  auto global = context->Global();
+  global->Set(v8::String::NewFromUtf8(isolate_, "log"),
+              v8::FunctionTemplate::New(isolate_, ConsoleLog)->GetFunction());
+
+  v8::Local<v8::Script> script;
+  if (!v8::Script::Compile(context, source, &origin).ToLocal(&script)) {
+    return false;
+  } else {
+    v8::Local<v8::Value> result;
+    if (!script->Run(context).ToLocal(&result)) {
+      assert(try_catch.HasCaught());
+      return false;
+    } else {
+      assert(!try_catch.HasCaught());
+      auto func_v8_str = v8::String::NewFromUtf8(isolate_, func_name);
+      auto func_ref = context->Global()->Get(func_v8_str);
+      auto func = v8::Local<v8::Function>::Cast(func_ref);
+      func->Call(v8::Null(isolate_), args_len, args);
+      if (try_catch.HasCaught()) {
+        agent->FatalException(try_catch.Exception(), try_catch.Message());
+      }
+
+      return true;
+    }
+  }
 }
+#endif
 
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   LOG(logInfo) << "getcwd: " << GetWorkingPath() << '\n';
@@ -770,23 +839,24 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
 
-  v8::Local<v8::Context> context =
-      v8::Local<v8::Context>::New(GetIsolate(), context_);
+  auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
   v8::TryCatch try_catch;
-#ifdef ZLIB_FOUND
-  if (debugger_started) {
-    agent->Start(GetIsolate(), platform_, nullptr);
-    agent->PauseOnNextJavascriptStatement("Break on start");
-  }
-#endif
-
 #ifdef FLEX_FOUND
   std::string plain_js;
-  int code = Jsify(script_to_execute.c_str(), &plain_js);
+  int code = UniLineN1QL(script_to_execute.c_str(), &plain_js);
+  LOG(logTrace) << "code after Unilining N1QL: " << plain_js << '\n';
+  if (code != kOK) {
+    LOG(logError) << "failed to uniline N1QL: " << code << '\n';
+    return code;
+  }
+
+  handler_code_ = plain_js;
+
+  code = Jsify(script_to_execute.c_str(), &plain_js);
   LOG(logTrace) << "jsified code: " << plain_js << '\n';
-  if (code != OK) {
+  if (code != kOK) {
     LOG(logError) << "failed to jsify: " << code << '\n';
     return code;
   }
@@ -795,17 +865,24 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   LOG(logError) << "jsify built without flex, n1ql will not work\n";
 #endif
 
+  plain_js += std::string((const char *)js_builtin) + '\n';
+
   std::string transpiler_js_src =
       std::string((const char *)js_esprima) + '\n' +
       std::string((const char *)js_escodegen) + '\n' +
       std::string((const char *)js_estraverse) + '\n' +
-      std::string((const char *)js_transpiler) + '\n';
+      std::string((const char *)js_transpiler) + '\n' +
+      std::string((const char *)js_source_map);
 
   n1ql_handle = new N1QL(conn_pool);
 
   Transpiler transpiler(transpiler_js_src);
-  script_to_execute = transpiler.Transpile(plain_js) + '\n';
-  script_to_execute += std::string((const char *)js_builtin) + '\n';
+  script_to_execute =
+      transpiler.Transpile(plain_js, app_name_ + ".js", app_name_ + ".map.json",
+                           curr_host_addr) +
+      '\n';
+  source_map_ = transpiler.GetSourceMap(plain_js, app_name_ + ".js");
+  LOG(logTrace) << "source map:" << source_map_ << '\n';
 
   v8::Local<v8::String> source =
       v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());
@@ -857,7 +934,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   }
 
   if (transpiler.IsTimerCalled(script_to_execute)) {
-    LOG(logDebug) << "Transpiler is called" << '\n';
+    LOG(logDebug) << "Timer is called" << '\n';
 
     lcb_create_st crst;
     memset(&crst, 0, sizeof crst);
@@ -970,13 +1047,16 @@ void V8Worker::RouteMessage() {
 
 bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
   v8::HandleScope handle_scope(GetIsolate());
-
   v8::TryCatch try_catch(GetIsolate());
 
-  v8::Local<v8::Context> context(GetIsolate()->GetCurrentContext());
+  auto context = context_.Get(isolate_);
+  auto script_name =
+      v8::String::NewFromUtf8(isolate_, (app_name_ + ".js").c_str());
+  v8::ScriptOrigin origin(script_name);
 
   v8::Local<v8::Script> compiled_script;
-  if (!v8::Script::Compile(context, script).ToLocal(&compiled_script)) {
+  if (!v8::Script::Compile(context, script, &origin)
+           .ToLocal(&compiled_script)) {
     assert(try_catch.HasCaught());
     last_exception = ExceptionString(GetIsolate(), &try_catch);
     LOG(logError) << "Exception logged:" << last_exception << '\n';
@@ -992,6 +1072,7 @@ bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
     // Running the script failed; bail out.
     return false;
   }
+
   return true;
 }
 
@@ -1001,8 +1082,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
 
-  v8::Local<v8::Context> context =
-      v8::Local<v8::Context>::New(GetIsolate(), context_);
+  auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
   LOG(logTrace) << "value: " << value << " meta: " << meta
@@ -1025,21 +1105,34 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
     LOG(logError) << "Last exception: " << last_exception << '\n';
   }
 
-  v8::Local<v8::Function> on_doc_update =
-      v8::Local<v8::Function>::New(GetIsolate(), on_update_);
+  if (debugger_started) {
+#ifdef ZLIB_FOUND
+    if (!agent->IsStarted()) {
+      agent->Start(isolate_, platform_, src_path.c_str());
+    }
 
-  execute_flag = true;
-  execute_start_time = Time::now();
-  on_doc_update->Call(context->Global(), 2, args);
-  execute_flag = false;
-
-  if (try_catch.HasCaught()) {
-    LOG(logDebug) << "Exception message: "
-                  << ExceptionString(GetIsolate(), &try_catch) << '\n';
+    agent->PauseOnNextJavascriptStatement("Break on start");
+    if (DebugExecute("OnUpdate", args, 2)) {
+      return SUCCESS;
+    }
+#endif
     return ON_UPDATE_CALL_FAIL;
-  }
+  } else {
+    auto on_doc_update = on_update_.Get(isolate_);
 
-  return SUCCESS;
+    execute_flag = true;
+    execute_start_time = Time::now();
+    on_doc_update->Call(context->Global(), 2, args);
+    execute_flag = false;
+
+    if (try_catch.HasCaught()) {
+      LOG(logDebug) << "Exception message: "
+                    << ExceptionString(GetIsolate(), &try_catch) << '\n';
+      return ON_UPDATE_CALL_FAIL;
+    }
+
+    return SUCCESS;
+  }
 }
 
 int V8Worker::SendDelete(std::string meta) {
@@ -1047,8 +1140,7 @@ int V8Worker::SendDelete(std::string meta) {
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
 
-  v8::Local<v8::Context> context =
-      v8::Local<v8::Context>::New(GetIsolate(), context_);
+  auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
   LOG(logTrace) << " meta: " << meta << '\n';
@@ -1060,21 +1152,34 @@ int V8Worker::SendDelete(std::string meta) {
 
   assert(!try_catch.HasCaught());
 
-  v8::Local<v8::Function> on_doc_delete =
-      v8::Local<v8::Function>::New(GetIsolate(), on_delete_);
+  if (debugger_started) {
+#ifdef ZLIB_FOUND
+    if (!agent->IsStarted()) {
+      agent->Start(isolate_, platform_, src_path.c_str());
+    }
 
-  execute_flag = true;
-  execute_start_time = Time::now();
-  on_doc_delete->Call(context->Global(), 1, args);
-  execute_flag = false;
-
-  if (try_catch.HasCaught()) {
-    LOG(logError) << "Exception message"
-                  << ExceptionString(GetIsolate(), &try_catch) << '\n';
+    agent->PauseOnNextJavascriptStatement("Break on start");
+    if (DebugExecute("OnDelete", args, 1)) {
+      return SUCCESS;
+    }
+#endif
     return ON_DELETE_CALL_FAIL;
-  }
+  } else {
+    auto on_doc_delete = on_delete_.Get(isolate_);
 
-  return SUCCESS;
+    execute_flag = true;
+    execute_start_time = Time::now();
+    on_doc_delete->Call(context->Global(), 1, args);
+    execute_flag = false;
+
+    if (try_catch.HasCaught()) {
+      LOG(logError) << "Exception message"
+                    << ExceptionString(GetIsolate(), &try_catch) << '\n';
+      return ON_DELETE_CALL_FAIL;
+    }
+
+    return SUCCESS;
+  }
 }
 
 void V8Worker::SendNonDocTimer(std::string doc_ids_cb_fns) {
@@ -1086,8 +1191,7 @@ void V8Worker::SendNonDocTimer(std::string doc_ids_cb_fns) {
     v8::Isolate::Scope isolate_scope(GetIsolate());
     v8::HandleScope handle_scope(GetIsolate());
 
-    v8::Local<v8::Context> context =
-        v8::Local<v8::Context>::New(GetIsolate(), context_);
+    auto context = context_.Get(isolate_);
     v8::Context::Scope context_scope(context);
 
     for (auto entry : entries) {
@@ -1104,10 +1208,23 @@ void V8Worker::SendNonDocTimer(std::string doc_ids_cb_fns) {
 
         v8::Handle<v8::Value> arg[0];
 
-        execute_flag = true;
-        execute_start_time = Time::now();
-        cb_func->Call(context->Global(), 0, arg);
-        execute_flag = false;
+        if (debugger_started) {
+#ifdef ZLIB_FOUND
+          if (!agent->IsStarted()) {
+            agent->Start(isolate_, platform_, src_path.c_str());
+          }
+
+          agent->PauseOnNextJavascriptStatement("Break on start");
+          if (DebugExecute(fn, arg, 0)) {
+            return;
+          }
+#endif
+        } else {
+          execute_flag = true;
+          execute_start_time = Time::now();
+          cb_func->Call(context->Global(), 0, arg);
+          execute_flag = false;
+        }
       }
     }
   }
@@ -1121,8 +1238,7 @@ void V8Worker::SendDocTimer(std::string doc_id, std::string callback_fn) {
   LOG(logTrace) << "Got timer event, doc_id:" << doc_id
                 << " callback_fn:" << callback_fn << '\n';
 
-  v8::Local<v8::Context> context =
-      v8::Local<v8::Context>::New(GetIsolate(), context_);
+  auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
   v8::Handle<v8::Value> val = context->Global()->Get(
@@ -1134,10 +1250,23 @@ void V8Worker::SendDocTimer(std::string doc_id, std::string callback_fn) {
   v8::Handle<v8::Value> arg[1];
   arg[0] = v8::String::NewFromUtf8(GetIsolate(), doc_id.c_str());
 
-  execute_flag = true;
-  execute_start_time = Time::now();
-  cb_fn->Call(context->Global(), 1, arg);
-  execute_flag = false;
+  if (debugger_started) {
+#ifdef ZLIB_FOUND
+    if (!agent->IsStarted()) {
+      agent->Start(isolate_, platform_, src_path.c_str());
+    }
+
+    agent->PauseOnNextJavascriptStatement("Break on start");
+    if (DebugExecute(callback_fn.c_str(), arg, 1)) {
+      return;
+    }
+#endif
+  } else {
+    execute_flag = true;
+    execute_start_time = Time::now();
+    cb_fn->Call(context->Global(), 1, arg);
+    execute_flag = false;
+  }
 }
 
 void V8Worker::StartDebugger() {
@@ -1146,16 +1275,11 @@ void V8Worker::StartDebugger() {
     LOG(logError) << "Debugger already started" << '\n';
     return;
   }
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
-  v8::Local<v8::Context> context =
-      v8::Local<v8::Context>::New(GetIsolate(), context_);
-  v8::Context::Scope context_scope(context);
+
   LOG(logInfo) << "Starting Debugger" << '\n';
-  debugger_started = true;
   agent = new inspector::Agent(curr_host_addr, GetWorkingPath() + "/" +
                                                    app_name_ + "_frontend.url");
+  debugger_started = true;
 #endif
 }
 
@@ -1171,8 +1295,6 @@ void V8Worker::StopDebugger() {
   }
 #endif
 }
-
-std::string V8Worker::GetSourceMap() { return source_map_; }
 
 void V8Worker::Enqueue(header_t *h, message_t *p) {
   const flatbuf::payload::Payload *payload;

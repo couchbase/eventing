@@ -81,10 +81,15 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oTerminate:
       break;
     case oGetSourceMap:
-      resp_msg->msg = this->workers[0]->GetSourceMap();
-      resp_msg->msg.assign("source map");
+      resp_msg->msg = this->workers[0]->source_map_;
       resp_msg->msg_type = mV8_Worker_Config;
       resp_msg->opcode = oSourceMap;
+      msg_priority = true;
+      break;
+    case oGetHandlerCode:
+      resp_msg->msg = this->workers[0]->handler_code_;
+      resp_msg->msg_type = mV8_Worker_Config;
+      resp_msg->opcode = oHandlerCode;
       msg_priority = true;
       break;
     case oVersion:

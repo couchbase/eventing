@@ -484,3 +484,12 @@ func (s *SuperSupervisor) GetSourceMap(appName string) string {
 	}
 	return ""
 }
+
+// GetHandlerCode returns handler code for requested appname
+func (s *SuperSupervisor) GetHandlerCode(appName string) string {
+	logging.Infof("SSUP[%d] GetHandlerCode request for app: %v", len(s.runningProducers), appName)
+	if p, ok := s.runningProducers[appName]; ok {
+		return p.GetHandlerCode()
+	}
+	return ""
+}

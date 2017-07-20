@@ -26,25 +26,27 @@
 #include "v8worker.h"
 
 enum op_code {
-  OK,
-  KWD_ALTER,
-  KWD_BUILD,
-  KWD_CREATE,
-  KWD_DELETE,
-  KWD_DROP,
-  KWD_EXECUTE,
-  KWD_EXPLAIN,
-  KWD_GRANT,
-  KWD_INFER,
-  KWD_INSERT,
-  KWD_MERGE,
-  KWD_PREPARE,
-  KWD_RENAME,
-  KWD_REVOKE,
-  KWD_SELECT,
-  KWD_UPDATE,
-  KWD_UPSERT
+  kOK,
+  kKeywordAlter,
+  kKeywordBuild,
+  kKeywordCreate,
+  kKeywordDelete,
+  kKeywordDrop,
+  kKeywordExecute,
+  kKeywordExplain,
+  kKeywordGrant,
+  kKeywordInfer,
+  kKeywordInsert,
+  kKeywordMerge,
+  kKeywordPrepare,
+  kKeywordRename,
+  kKeywordRevoke,
+  kKeywordSelect,
+  kKeywordUpdate,
+  kKeywordUpsert
 };
+
+enum lex_op_code { kJsify, kUniLineN1QL };
 
 // Data type for managing iterators.
 struct IterQueryHandler {
@@ -127,14 +129,19 @@ class Transpiler {
 
 public:
   Transpiler(std::string transpiler_src);
-  v8::Local<v8::Value> ExecTranspiler(std::string code, std::string function);
-  std::string Transpile(std::string user_code);
+  v8::Local<v8::Value> ExecTranspiler(std::string function,
+                                      v8::Local<v8::Value> args[],
+                                      int args_len);
+  std::string Transpile(std::string user_code, std::string filename,
+                        std::string src_map_name, std::string host_addr);
   std::string JsFormat(std::string user_code);
+  std::string GetSourceMap(std::string user_code, std::string filename);
   bool IsTimerCalled(std::string user_code);
   ~Transpiler() {}
 };
 
 int Jsify(const char *, std::string *);
+int UniLineN1QL(const char *input, std::string *output);
 
 void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args);

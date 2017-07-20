@@ -9,8 +9,8 @@ import (
 
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 //NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
@@ -68,14 +68,13 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getAppTempStore/", m.fetchAppTempStore)
 	http.HandleFunc("/getEventsPSec", m.getEventsProcessedPSec)
 	http.HandleFunc("/getAggEventsPSec", m.getAggEventsProcessedPSec)
-	http.HandleFunc("/getHandlers/", m.getHandler)
-	http.HandleFunc("/getSourceMap/", m.getSourceMap)
 	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
 	http.HandleFunc("/saveAppTempStore/", m.saveAppSetup)
 	http.HandleFunc("/setApplication/", m.storeAppSetup)
 	http.HandleFunc("/setSettings/", m.storeAppSettings)
 	http.HandleFunc("/debugUrl/", m.getLocalDebuggerURL)
 	http.HandleFunc("/getDebuggerUrl/", m.getDebuggerURL)
+	http.HandleFunc("/debugging/", m.debugging)
 	http.HandleFunc("/startDebugger/", m.startDebugger)
 	http.HandleFunc("/stopDebugger/", m.stopDebugger)
 	http.HandleFunc("/startTracing", m.startTracer)
@@ -183,7 +182,9 @@ func (ctx *rebalanceContext) incRev() uint64 {
 
 func (m *ServiceMgr) wait(rev service.Revision, cancel service.Cancel) (state, error) {
 	m.mu.Lock()
-	unlock := newCleanup(func() { m.mu.Unlock() })
+	unlock := newCleanup(func() {
+		m.mu.Unlock()
+	})
 	defer unlock.run()
 
 	currState := m.copyStateLocked()
@@ -356,7 +357,9 @@ func (m *ServiceMgr) rebalanceProgressCallback(progress float64, cancel <-chan s
 }
 
 func (m *ServiceMgr) rebalanceDoneCallback(err error, cancel <-chan struct{}) {
-	m.runRebalanceCallback(cancel, func() { m.onRebalanceDoneLocked(err) })
+	m.runRebalanceCallback(cancel, func() {
+		m.onRebalanceDoneLocked(err)
+	})
 }
 
 func (m *ServiceMgr) onRebalanceDoneLocked(err error) {

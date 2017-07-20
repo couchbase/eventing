@@ -230,6 +230,7 @@ func (c *Consumer) HandleV8Worker() {
 	c.sendLoadV8Worker(c.app.AppCode, false)
 
 	c.sendGetSourceMap(false)
+	c.sendGetHandlerCode(false)
 
 	go c.doLastSeqNoCheckpoint()
 
@@ -493,4 +494,9 @@ func (c *Consumer) SignalStopDebugger() {
 // GetSourceMap returns source map to assist V8 debugger
 func (c *Consumer) GetSourceMap() string {
 	return c.sourceMap
+}
+
+// GetHandlerCode returns handler code to assist V8 debugger
+func (c *Consumer) GetHandlerCode() string {
+	return c.handlerCode
 }

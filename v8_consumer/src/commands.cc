@@ -38,6 +38,8 @@ v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
     return oTerminate;
   if (opcode == 5)
     return oGetSourceMap;
+  if (opcode == 6)
+    return oGetHandlerCode;
   return V8_Worker_Opcode_Unknown;
 }
 

@@ -43,6 +43,7 @@ type statusCodes struct {
 	errReadReq          statusBase
 	errUnmarshalPld     statusBase
 	errSrcMbSame        statusBase
+	errInvalidExt       statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
@@ -65,6 +66,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errReadReq:          statusBase{"ERR_READ_REQ", 15},
 		errUnmarshalPld:     statusBase{"ERR_UNMARSHAL_PLD", 16},
 		errSrcMbSame:        statusBase{"ERR_SRC_MB_SAME", 17},
+		errInvalidExt:       statusBase{"ERR_INVALID_EXT", 18},
 	}
 
 	errors := []errorPayload{
@@ -155,6 +157,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errSrcMbSame.Name,
 			Code:        m.statusCodes.errSrcMbSame.Code,
 			Description: "Source bucket same as metadata bucket",
+		},
+		{
+			Name:        m.statusCodes.errInvalidExt.Name,
+			Code:        m.statusCodes.errInvalidExt.Code,
+			Description: "Invalid file extension",
 		},
 	}
 

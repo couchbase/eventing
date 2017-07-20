@@ -34,6 +34,7 @@ type EventingProducer interface {
 	GetDebuggerURL() string
 	GetNsServerPort() string
 	GetSourceMap() string
+	GetHandlerCode() string
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
 	KvHostPorts() []string
 	LenRunningConsumers() int
@@ -69,6 +70,7 @@ type EventingConsumer interface {
 	EventsProcessedPSec() *EventProcessingStats
 	EventingNodeUUIDs() []string
 	GetSourceMap() string
+	GetHandlerCode() string
 	HandleV8Worker()
 	HostPortAddr() string
 	NodeUUID() string
@@ -98,6 +100,7 @@ type EventingSuperSup interface {
 	GetAppCode(appName string) string
 	GetDebuggerURL(appName string) string
 	GetSourceMap(appName string) string
+	GetHandlerCode(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)
 	ProducerHostPortAddrs() []string
 	RestPort() string

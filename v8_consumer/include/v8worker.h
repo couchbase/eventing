@@ -133,14 +133,15 @@ public:
   const char *V8WorkerLastException();
   const char *V8WorkerVersion();
 
-  std::string GetSourceMap();
-
   int SendUpdate(std::string value, std::string meta, std::string doc_type);
   int SendDelete(std::string meta);
   void SendDocTimer(std::string doc_id, std::string callback_fn);
   void SendNonDocTimer(std::string doc_ids_cb_fns);
+
   void StartDebugger();
   void StopDebugger();
+  bool DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
+                    int args_len);
 
   void Enqueue(header_t *header, message_t *payload);
 
@@ -160,6 +161,7 @@ public:
 
   std::string script_to_execute_;
   std::string source_map_;
+  std::string handler_code_;
   std::string app_name_;
 
   std::string curr_host_addr;
@@ -169,6 +171,7 @@ public:
   volatile bool execute_flag;
   volatile bool shutdown_terminator;
   volatile bool debugger_started;
+
   Time::time_point execute_start_time;
   uint64_t max_task_duration;
 
@@ -183,6 +186,7 @@ private:
   std::string connstr;
   std::string meta_connstr;
   std::string rbac_pass;
+  std::string src_path;
 
   bool ExecuteScript(v8::Local<v8::String> script);
   std::list<Bucket *> bucket_handles;

@@ -42,6 +42,7 @@ const (
 	v8WorkerLoad
 	v8WorkerTerminate
 	v8WorkerSourceMap
+	v8WorkerHandlerCode
 )
 
 const (
@@ -66,6 +67,7 @@ const (
 const (
 	respV8WorkerConfigOpcode int8 = iota
 	sourceMap
+	handlerCode
 	logMessage
 )
 
@@ -321,6 +323,8 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 		switch opcode {
 		case sourceMap:
 			c.sourceMap = msg
+		case handlerCode:
+			c.handlerCode = msg
 		case logMessage:
 			fmt.Printf("%s", msg)
 		}

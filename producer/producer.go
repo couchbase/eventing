@@ -601,3 +601,12 @@ func (p *Producer) GetSourceMap() string {
 	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
 	return ""
 }
+
+// GetHandlerCode returns handler code to assist V8 Debugger
+func (p *Producer) GetHandlerCode() string {
+	if len(p.runningConsumers) > 0 {
+		return p.runningConsumers[0].GetHandlerCode()
+	}
+	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
+	return ""
+}

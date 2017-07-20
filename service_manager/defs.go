@@ -25,6 +25,11 @@ const (
 
 const headerKey = "status"
 
+const (
+	srcMapExt  = ".map.json"
+	srcCodeExt = ".js"
+)
+
 // ServiceMgr implements cbauth_service interface
 type ServiceMgr struct {
 	auth              string

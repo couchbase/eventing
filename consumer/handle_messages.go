@@ -146,6 +146,21 @@ func (c *Consumer) sendGetSourceMap(sendToDebugger bool) error {
 	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
 }
 
+func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) error {
+	header := makeHeader(v8WorkerEvent, v8WorkerHandlerCode, 0, "")
+
+	msg := &message{
+		Header: header,
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["HANDLER_CODE"]; !ok {
+		c.v8WorkerMessagesProcessed["HANDLER_CODE"] = 0
+	}
+	c.v8WorkerMessagesProcessed["HANDLER_CODE"]++
+
+	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+}
+
 func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 	partition := int16(util.VbucketByKey([]byte(e.DocID), cppWorkerPartitionCount))
 	timerHeader := makeDocTimerEventHeader(partition)

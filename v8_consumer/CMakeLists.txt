@@ -15,6 +15,7 @@ js2header("src/transpiler.js" "js_transpiler" "gen/transpiler.h")
 js2header("../third_party/estools/esprima.js" "js_esprima" "gen/esprima.h")
 js2header("../third_party/estools/escodegen.js" "js_escodegen" "gen/escodegen.h")
 js2header("../third_party/estools/estraverse.js" "js_estraverse" "gen/estraverse.h")
+js2header("../third_party/source-map/source-map.js" "js_source_map" "gen/source-map.h")
 
 INCLUDE_DIRECTORIES(BEFORE ${LIBCOUCHBASE_INCLUDE_DIR} ${LIBUV_INCLUDE_DIR})
 
@@ -63,4 +64,3 @@ ENDIF()
 ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})
 TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES})
 INSTALL(TARGETS eventing-consumer RUNTIME DESTINATION bin)
-

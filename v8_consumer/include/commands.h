@@ -31,6 +31,7 @@ enum v8_worker_opcode {
   oLoad,
   oTerminate,
   oGetSourceMap,
+  oGetHandlerCode,
   oVersion,
   V8_Worker_Opcode_Unknown
 };
@@ -64,6 +65,7 @@ enum msg_type { mType, mV8_Worker_Config, Msg_Unknown };
 enum v8_worker_config_opcode {
   oConfigOpcode,
   oSourceMap,
+  oHandlerCode,
   oLogMessage,
   V8_Worker_Config_Opcode_Unknown
 };
