@@ -214,9 +214,6 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vb, vbBlob.CurrentVBOwner,
 				c.NodeUUID(), vbBlob.NodeUUID)
 
-			// Below checks help in differentiating between a hostname update vs failover from 2 -> 1
-			// eventing node. In former case, it isn't required to spawn a new dcp stream but in later
-			// it's needed.
 			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
 
 				shouldWait := c.superSup.SignalTimerDataTransferStart(vb)

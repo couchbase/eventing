@@ -207,7 +207,7 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 		blocks++
 	}
 
-	logging.Debugf("TTCL[%s:%s] Filename: %v, downloading in %v blocks", c.AppName, c.registeredName, filename, blocks)
+	logging.Debugf("TTCL[%s:%s:%s] Filename: %v, downloading in %v blocks", c.AppName, c.Addr, c.registeredName, filename, blocks)
 
 	err := os.Remove(path)
 	if err != nil {
@@ -218,28 +218,29 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 	// TODO: Setup uid/gid that works cross platform
 	err = os.MkdirAll(saveLocation, 0755)
 	if err != nil {
-		logging.Errorf("TTCL[%s:%s] Failed os.MkdirAll dir: %v, err: %v", c.AppName, c.registeredName, saveLocation, err)
+		logging.Errorf("TTCL[%s:%s:%s] Failed os.MkdirAll dir: %v, err: %v",
+			c.AppName, c.Addr, c.registeredName, saveLocation, err)
 		return err
 	}
 
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, info.Mode)
 	if err != nil {
-		logging.Errorf("TTCL[%s:%s] Filename: %v failed to OpenFile, err: %v", c.AppName, c.registeredName, path, err)
+		logging.Errorf("TTCL[%s:%s:%s] Filename: %v failed to OpenFile, err: %v", c.AppName, c.Addr, c.registeredName, path, err)
 		return err
 	}
 	defer file.Close()
 
 	sessionID, err := c.Open(filename)
 	if err != nil {
-		logging.Errorf("TTCL[%s:%s] Filename: %v failed to open filename, err: %v", c.AppName, c.registeredName, path, err)
+		logging.Errorf("TTCL[%s:%s:%s] Filename: %v failed to open filename, err: %v", c.AppName, c.Addr, c.registeredName, path, err)
 		return err
 	}
 
 	for bID := blockID; bID < blocks; bID++ {
 		buf, rErr := c.GetBlock(sessionID, bID)
 		if rErr != nil && rErr != io.EOF {
-			logging.Errorf("TTCL[%s:%s] Filename: %v failed to in GetBlock call, err: %v",
-				c.AppName, c.registeredName, filename, err)
+			logging.Errorf("TTCL[%s:%s:%s] Filename: %v failed to in GetBlock call, err: %v",
+				c.AppName, c.Addr, c.registeredName, filename, err)
 			return rErr
 		}
 
@@ -248,8 +249,8 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 		}
 
 		if bID%((blocks-blockID)/100+1) == 0 {
-			logging.Debugf("TTCL[%s:%s] Downloading %v [%v/%v] blocks",
-				c.AppName, c.registeredName, filename, bID-blockID+1, blocks-blockID)
+			logging.Debugf("TTCL[%s:%s:%s] Downloading %v [%v/%v] blocks",
+				c.AppName, c.Addr, c.registeredName, filename, bID-blockID+1, blocks-blockID)
 		}
 
 		if rErr == io.EOF {
@@ -259,25 +260,25 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 
 	checksum, err := ComputeMD5(path)
 	if err != nil {
-		logging.Errorf("TTCL[%s:%s] Filename: %v failed to get MD5 checksum, err: %v",
-			c.AppName, c.registeredName, filename, err)
+		logging.Errorf("TTCL[%s:%s:%s] Filename: %v failed to get MD5 checksum, err: %v",
+			c.AppName, c.Addr, c.registeredName, filename, err)
 		goto retryDownload
 	}
 
 	if checksum != info.Checksum {
-		logging.Errorf("TTCL[%s:%s] Filename: %v checksum verification failed. From server: %v on client: %v",
-			c.AppName, c.registeredName, filename, info.Checksum, checksum)
+		logging.Errorf("TTCL[%s:%s:%s] Filename: %v checksum verification failed. From server: %v on client: %v",
+			c.AppName, c.Addr, c.registeredName, filename, info.Checksum, checksum)
 		goto retryDownload
 	}
 
-	logging.Debugf("TTCL[%s:%s] Filename: %v download completed ", c.AppName, c.registeredName, filename)
+	logging.Debugf("TTCL[%s:%s:%s] Filename: %v download completed ", c.AppName, c.Addr, c.registeredName, filename)
 	c.CloseSession(sessionID)
 
 	return nil
 
 retryDownload:
-	logging.Errorf("TTCL[%s:%s] Filename: %v Going to re-request from server over new session, closing previous session: %v",
-		c.AppName, c.registeredName, filename, sessionID)
+	logging.Errorf("TTCL[%s:%s:%s] Filename: %v Going to re-request from server over new session, closing previous session: %v",
+		c.AppName, c.Addr, c.registeredName, filename, sessionID)
 	c.CloseSession(sessionID)
 	c.Download(filename, saveLocation)
 

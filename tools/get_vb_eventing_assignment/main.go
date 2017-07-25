@@ -42,9 +42,16 @@ func main() {
 		for i := range rows {
 			row := rows[i].(map[string]interface{})
 
+			if strings.EqualFold(row["id"].(string), "debugger") {
+				continue
+			}
+
 			rowID := strings.Split(row["id"].(string), "_")
 			vbucket, _ := strconv.Atoi(rowID[len(rowID)-1])
 			viewKey := row["key"].([]interface{})
+			if viewKey[0] == nil || viewKey[1] == nil || viewKey[2] == nil {
+				continue
+			}
 			currentOwner, workerID, ownerUUID := viewKey[0].(string), viewKey[1].(string), viewKey[2].(string)
 
 			nodeUUIDMap[currentOwner] = ownerUUID

@@ -58,14 +58,17 @@ type SuperSupervisor struct {
 	uuid              string
 
 	mu                           *sync.RWMutex
-	plasmaCloseSignalMap         map[uint16]int
+	plasmaCloseSignalMap         map[uint16]int // Access controlled by plasmaRWMutex
 	producerSupervisorTokenMap   map[common.EventingProducer]suptree.ServiceToken
 	runningProducers             map[string]common.EventingProducer
 	runningProducersHostPortAddr map[string]string
-	timerDataTransferReq         map[uint16]struct{}
+	timerDataTransferReq         map[uint16]struct{} // Access controlled by default lock
 	timerDataTransferReqCh       chan uint16
-	vbPlasmaStoreMap             map[uint16]*plasma.Plasma
+	vbPlasmaStoreMap             map[uint16]*plasma.Plasma // Access controlled by plasmaRWMutex
 	vbucketsToOwn                []uint16
+	vbucketsToSkipPlasmaClose    map[uint16]struct{} // Access controlled by default lock
+
+	plasmaRWMutex *sync.RWMutex
 
 	serviceMgr common.EventingServiceMgr
 	sync.RWMutex

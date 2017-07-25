@@ -35,8 +35,10 @@ func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid s
 		superSup:                     suptree.NewSimple("super_supervisor"),
 		timerDataTransferReq:         make(map[uint16]struct{}),
 		timerDataTransferReqCh:       make(chan uint16, numTimerVbMoves),
-		uuid:             uuid,
-		vbPlasmaStoreMap: make(map[uint16]*plasma.Plasma),
+		plasmaRWMutex:                &sync.RWMutex{},
+		uuid:                         uuid,
+		vbPlasmaStoreMap:             make(map[uint16]*plasma.Plasma),
+		vbucketsToSkipPlasmaClose:    make(map[uint16]struct{}),
 	}
 	s.mu = &sync.RWMutex{}
 	go s.superSup.ServeBackground()
@@ -124,10 +126,10 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
 	// Grabbing read lock because s.vbPlasmaStoreMap is being passed to newly spawned producer
-	s.RLock()
+	s.plasmaRWMutex.RLock()
 	p := producer.NewProducer(appName, s.eventingAdminPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
 		s.restPort, s.uuid, s, s.vbPlasmaStoreMap)
-	s.RUnlock()
+	s.plasmaRWMutex.RUnlock()
 
 	token := s.superSup.Add(p)
 	s.mu.Lock()
@@ -207,9 +209,9 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 					// Purge entries for deleted apps from plasma store
 					for _, vb := range s.vbucketsToOwn {
-						s.RLock()
+						s.plasmaRWMutex.RLock()
 						store := s.vbPlasmaStoreMap[vb]
-						s.RUnlock()
+						s.plasmaRWMutex.RUnlock()
 
 						r := store.NewReader()
 						w := store.NewWriter()

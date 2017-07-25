@@ -19,9 +19,11 @@ func (s *SuperSupervisor) initPlasmaHandles() {
 	util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, s, &user, &password)
 	s.auth = fmt.Sprintf("%s:%s", user, password)
 
-	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodeAddrsCallback, s, &addrs)
-
+	// Requesting current node address before trying to fetch list of all eventing nodes. Otherwise
+	// in some cases current eventing node might not show up in list of eventing nodes the cluster has
 	util.Retry(util.NewFixedBackoff(time.Second), getCurrentEventingNodeAddrCallback, s, &currNodeAddr)
+
+	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodeAddrsCallback, s, &addrs)
 
 	logging.Infof("SSVA current eventing node addr: %v all eventing node addrs: %#v", currNodeAddr, addrs)
 
@@ -61,9 +63,9 @@ func (s *SuperSupervisor) openPlasmaStore(vb uint16, shouldRemove bool) {
 		}
 	}
 
-	s.Lock()
+	s.plasmaRWMutex.Lock()
 	s.vbPlasmaStoreMap[uint16(vb)], err = plasma.New(cfg)
-	s.Unlock()
+	s.plasmaRWMutex.Unlock()
 	if err != nil {
 		logging.Errorf("SSVA vb: %v Failed to create plasma store instance, err: %v", vb, err)
 	}
@@ -120,7 +122,7 @@ func (s *SuperSupervisor) assignVbucketsToOwn(addrs []string, currNodeAddr strin
 		s.vbucketsToOwn = append(s.vbucketsToOwn, vb)
 	}
 
-	logging.Infof("SSUP[%d] currNodeAddr: %v vbucketsToOwn: %v", len(s.runningProducers), s.vbucketsToOwn)
+	logging.Infof("SSUP[%d] currNodeAddr: %v vbucketsToOwn: %v", len(s.runningProducers), currNodeAddr, s.vbucketsToOwn)
 }
 
 // SignalToClosePlasmaStore called by producer instance to signal that their respective consumer
@@ -129,8 +131,8 @@ func (s *SuperSupervisor) assignVbucketsToOwn(addrs []string, currNodeAddr strin
 // SuperSupervisor could make RPC request to transfer timer related plasma data for that
 // vbucket
 func (s *SuperSupervisor) SignalToClosePlasmaStore(vb uint16) {
-	s.Lock()
-	defer s.Unlock()
+	s.plasmaRWMutex.Lock()
+	defer s.plasmaRWMutex.Unlock()
 	s.plasmaCloseSignalMap[vb]++
 	logging.Infof("SSUP[%d] vb: %v Got request to close plasma store from producer. Current counter: %d",
 		len(s.runningProducers), vb, s.plasmaCloseSignalMap[vb])
@@ -153,10 +155,12 @@ func (s *SuperSupervisor) processPlasmaCloseRequests() {
 		select {
 		case <-ticker.C:
 
-			var plasmaCloseSignalMap map[uint16]int
-			s.RLock()
-			plasmaCloseSignalMap = s.plasmaCloseSignalMap
-			s.RUnlock()
+			plasmaCloseSignalMap := make(map[uint16]int)
+			s.plasmaRWMutex.RLock()
+			for k, v := range s.plasmaCloseSignalMap {
+				plasmaCloseSignalMap[k] = v
+			}
+			s.plasmaRWMutex.RUnlock()
 
 			if len(plasmaCloseSignalMap) == 0 {
 				continue
@@ -168,13 +172,27 @@ func (s *SuperSupervisor) processPlasmaCloseRequests() {
 				if count == v {
 
 					s.Lock()
-					delete(s.plasmaCloseSignalMap, vb)
+					_, ok := s.vbucketsToSkipPlasmaClose[vb]
+					if ok {
+						logging.Infof("SSUP[%d] vb: %v Skip plasma instance close as the vb is marked in vbstoSkipinPlasmaClose",
+							len(s.runningProducers), vb)
+						delete(s.vbucketsToSkipPlasmaClose, vb)
+						s.Unlock()
+
+						s.plasmaRWMutex.Lock()
+						delete(s.plasmaCloseSignalMap, vb)
+						s.plasmaRWMutex.Unlock()
+
+						continue
+					}
 					s.Unlock()
 
-					s.RLock()
+					s.plasmaRWMutex.Lock()
+					delete(s.plasmaCloseSignalMap, vb)
+
 					store := s.vbPlasmaStoreMap[vb]
-					s.RUnlock()
-					// TODO: need to clean up vb entry from vbPlasmaStoreMap
+					delete(s.vbPlasmaStoreMap, vb)
+					s.plasmaRWMutex.Unlock()
 
 					store.PersistAll()
 
@@ -211,8 +229,20 @@ func (s *SuperSupervisor) SignalTimerDataTransferStart(vb uint16) bool {
 // transfer for a specific vbucket. Consumer will also provide plasma.Plasma instance, so that
 // super supervisor share it with other running producer instances requesting for it
 func (s *SuperSupervisor) SignalTimerDataTransferStop(vb uint16, store *plasma.Plasma) {
-	s.Lock()
+
+	s.plasmaRWMutex.Lock()
+	if fd, ok := s.vbPlasmaStoreMap[vb]; ok {
+		logging.Infof("SSUP[%d] vb: %v SignalTimerDataTransferStop call, found already existing entry in vbPlasmaStoreMap. Purging that entry",
+			len(s.runningProducers), vb)
+		fd.Close()
+	}
+
 	s.vbPlasmaStoreMap[vb] = store
+	delete(s.plasmaCloseSignalMap, vb)
+	s.plasmaRWMutex.Unlock()
+
+	s.Lock()
+	s.vbucketsToSkipPlasmaClose[vb] = struct{}{}
 	delete(s.timerDataTransferReq, vb)
 	s.Unlock()
 
