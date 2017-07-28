@@ -22,8 +22,7 @@ func (c *Consumer) controlRoutine() {
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 			c.isRebalanceOngoing = true
-			c.vbsStateUpdate()
-			c.isRebalanceOngoing = false
+			go c.vbsStateUpdate()
 
 		case <-c.signalSettingsChangeCh:
 
@@ -139,6 +138,17 @@ func (c *Consumer) controlRoutine() {
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsRemainingToRestream, diff)
 				goto retryVbsRemainingToRestream
 			}
+
+		case vb := <-c.signalStoreTimerPlasmaCloseCh:
+			// Rebalance takeover routine will send signal on this channel to signify
+			// stopping of any plasma.Writer instance for a specific vbucket
+			c.plasmaStoreRWMutex.Lock()
+			delete(c.vbPlasmaWriter, vb)
+			c.plasmaStoreRWMutex.Unlock()
+
+			// sends ack message back to rebalance takeover routine, so that it could
+			// safely call Close() on vb specific plasma store
+			c.signalStoreTimerPlasmaCloseAckCh <- vb
 
 		case <-c.stopControlRoutineCh:
 			return

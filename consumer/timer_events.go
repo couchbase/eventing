@@ -196,10 +196,6 @@ func (r *timerProcessingWorker) processTimerEvents() {
 				delete(r.c.vbPlasmaReader, vb)
 			}
 
-			r.c.timerRWMutex.Lock()
-			delete(r.c.timerProcessingVbsWorkerMap, vb)
-			r.c.timerRWMutex.Unlock()
-
 			r.c.plasmaReaderRWMutex.Unlock()
 
 			// sends ack message back to rebalance takeover routine, so that it could

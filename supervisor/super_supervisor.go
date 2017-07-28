@@ -52,7 +52,6 @@ func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid s
 	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s)
 	s.initPlasmaHandles()
 
-	go s.processPlasmaCloseRequests()
 	return s
 }
 

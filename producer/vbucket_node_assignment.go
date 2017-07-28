@@ -29,7 +29,12 @@ func (p *Producer) vbEventingNodeAssign() error {
 	// In-case of eventing node(s) removal, ns_server would reflect those node(s) within
 	// eventing MDS service. Hence comparing node uuids received from prepareTopologyChange
 	// call to uuids published by eventing nodes
-	addrUUIDMap := util.GetNodeUUIDs("/uuid", eventingNodeAddrs)
+	addrUUIDMap, err := util.GetNodeUUIDs("/uuid", eventingNodeAddrs)
+	if err != nil {
+		logging.Errorf("VBNA[%s:%d] Failed to get eventing node uuids, err: %v",
+			p.appName, p.LenRunningConsumers(), err)
+		return err
+	}
 	eventingNodeUUIDs := make([]string, 0)
 
 	for uuid := range addrUUIDMap {

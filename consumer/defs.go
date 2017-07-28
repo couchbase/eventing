@@ -73,7 +73,7 @@ const (
 	dcpStreamRequestRetryInterval = time.Duration(1000) * time.Millisecond
 
 	// Last processed seq # checkpoint interval
-	checkpointInterval = time.Duration(25000) * time.Millisecond
+	checkpointInterval = time.Duration(3000) * time.Millisecond
 
 	// Interval for retrying failed cluster related operations
 	clusterOpRetryInterval = time.Duration(1000) * time.Millisecond

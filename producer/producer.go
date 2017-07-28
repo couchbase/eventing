@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/couchbase/cbauth"
@@ -451,15 +452,14 @@ func (p *Producer) SignalPlasmaClosed(vb uint16) {
 // node to signal every running producer instance that transfer of timer related
 // plasma files has finished
 func (p *Producer) SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma) {
-	// p.Lock()
-	// p.vbPlasmaStoreMap[vb] = store
-	// p.Unlock()
 
+retryConsumerTransferFinishSig:
 	c, err := p.vbConsumerOwner(vb)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] vb: %v failed to find consumer to signal about plasma timer data transfer finish",
+		logging.Errorf("PRDR[%s:%d] vb: %v failed to find consumer to signal about plasma timer data transfer finish. Retrying",
 			p.appName, p.LenRunningConsumers(), vb)
-		return
+		time.Sleep(bucketOpRetryInterval)
+		goto retryConsumerTransferFinishSig
 	}
 
 	logging.Tracef("PRDR[%s:%d] vb: %v Signalling worker: %v about plasma timer data transfer finish",
@@ -477,10 +477,12 @@ func (p *Producer) vbConsumerOwner(vb uint16) (common.EventingConsumer, error) {
 		for _, v := range vbs {
 			if v == vb {
 				workerName = w
+				goto breakWorkerLookup
 			}
 		}
 	}
 
+breakWorkerLookup:
 	if workerName == "" {
 		logging.Errorf("PRDR[%s:%d] No worker found for vb: %v", p.appName, p.LenRunningConsumers(), vb)
 		return nil, fmt.Errorf("worker not found")
@@ -490,7 +492,13 @@ func (p *Producer) vbConsumerOwner(vb uint16) (common.EventingConsumer, error) {
 	c := p.workerNameConsumerMap[workerName]
 	p.RUnlock()
 
-	return c, nil
+	// Checking if assigned Eventing.Consumer is alive or not
+	for _, consumer := range p.runningConsumers {
+		if consumer.ConsumerName() == c.ConsumerName() {
+			return c, nil
+		}
+	}
+	return nil, fmt.Errorf("worker not alive at present")
 }
 
 // SignalCheckpointBlobCleanup signals all running consumer to cleanup all associated

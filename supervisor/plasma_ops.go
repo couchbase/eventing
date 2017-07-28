@@ -3,7 +3,6 @@ package supervisor
 import (
 	"fmt"
 	"os"
-	"runtime/debug"
 	"sort"
 	"time"
 
@@ -132,97 +131,39 @@ func (s *SuperSupervisor) assignVbucketsToOwn(addrs []string, currNodeAddr strin
 // vbucket
 func (s *SuperSupervisor) SignalToClosePlasmaStore(vb uint16) {
 	s.plasmaRWMutex.Lock()
-	defer s.plasmaRWMutex.Unlock()
 	s.plasmaCloseSignalMap[vb]++
 	logging.Infof("SSUP[%d] vb: %v Got request to close plasma store from producer. Current counter: %d",
 		len(s.runningProducers), vb, s.plasmaCloseSignalMap[vb])
-}
 
-func (s *SuperSupervisor) processPlasmaCloseRequests() {
-	defer func() {
-		if r := recover(); r != nil {
-			trace := debug.Stack()
-			logging.Errorf("SSUP[%d] processPlasmaCloseRequests: panic and recover, %v, stack trace: %v",
-				len(s.runningProducers), r, string(trace))
+	if s.plasmaCloseSignalMap[vb] == len(s.runningProducers) {
+		delete(s.plasmaCloseSignalMap, vb)
 
-			go s.processPlasmaCloseRequests()
+		store, ok := s.vbPlasmaStoreMap[vb]
+		if ok {
+			delete(s.vbPlasmaStoreMap, vb)
+			s.plasmaRWMutex.Unlock()
+
+			store.PersistAll()
+
+			for _, p := range s.runningProducers {
+				p.SignalPlasmaClosed(vb)
+			}
+
+			logging.Infof("SSUP[%d] vb: %v Signalled all running producers about closed plasma store instance",
+				len(s.runningProducers), vb)
+			// Signal producer about plasma close and they will intimate consumer
+			// to update metadata bucket
+
+			logging.Infof("SSUP[%d] vb: %v Closed plasma store instance", len(s.runningProducers), vb)
+			store.Close()
+		} else {
+			logging.Infof("SSUP[%d] vb: %v Missing entry in vbPlasmaStoreMap",
+				len(s.runningProducers), vb, s.plasmaCloseSignalMap[vb])
+			s.plasmaRWMutex.Unlock()
 		}
-	}()
-
-	ticker := time.NewTicker(time.Second)
-
-	for {
-		select {
-		case <-ticker.C:
-
-			plasmaCloseSignalMap := make(map[uint16]int)
-			s.plasmaRWMutex.RLock()
-			for k, v := range s.plasmaCloseSignalMap {
-				plasmaCloseSignalMap[k] = v
-			}
-			s.plasmaRWMutex.RUnlock()
-
-			if len(plasmaCloseSignalMap) == 0 {
-				continue
-			}
-
-			count := len(s.runningProducers)
-
-			for vb, v := range plasmaCloseSignalMap {
-				if count == v {
-
-					s.Lock()
-					_, ok := s.vbucketsToSkipPlasmaClose[vb]
-					if ok {
-						logging.Infof("SSUP[%d] vb: %v Skip plasma instance close as the vb is marked in vbstoSkipinPlasmaClose",
-							len(s.runningProducers), vb)
-						delete(s.vbucketsToSkipPlasmaClose, vb)
-						s.Unlock()
-
-						s.plasmaRWMutex.Lock()
-						delete(s.plasmaCloseSignalMap, vb)
-						s.plasmaRWMutex.Unlock()
-
-						continue
-					}
-					s.Unlock()
-
-					s.plasmaRWMutex.Lock()
-					delete(s.plasmaCloseSignalMap, vb)
-
-					store := s.vbPlasmaStoreMap[vb]
-					delete(s.vbPlasmaStoreMap, vb)
-					s.plasmaRWMutex.Unlock()
-
-					store.PersistAll()
-
-					for _, p := range s.runningProducers {
-						p.SignalPlasmaClosed(vb)
-					}
-
-					logging.Infof("SSUP[%d] vb: %v Signalled all running producers about closed plasma store instance",
-						len(s.runningProducers), vb)
-					// Signal producer about plasma close and they will intimate consumer
-					// to update metadata bucket
-
-					logging.Infof("SSUP[%d] vb: %v Closed plasma store instance", len(s.runningProducers), vb)
-					store.Close()
-				}
-			}
-		}
+	} else {
+		s.plasmaRWMutex.Unlock()
 	}
-}
-
-// SignalTimerDataTransferStart is called by consumer instance to signal start of timer data transfer
-func (s *SuperSupervisor) SignalTimerDataTransferStart(vb uint16) bool {
-	s.Lock()
-	defer s.Unlock()
-	if _, ok := s.timerDataTransferReq[vb]; ok {
-		logging.Infof("SSUP[%d] vb: %v timer data transfer already in progress", len(s.runningProducers), vb)
-		return true
-	}
-	s.timerDataTransferReq[vb] = struct{}{}
-	return false
 }
 
 // SignalTimerDataTransferStop is called by consumer instance to signal finish of timer data
@@ -249,4 +190,16 @@ func (s *SuperSupervisor) SignalTimerDataTransferStop(vb uint16, store *plasma.P
 	for _, p := range s.runningProducers {
 		p.SignalPlasmaTransferFinish(vb, store)
 	}
+}
+
+// SignalTimerDataTransferStart is called by consumer instance to signal start of timer data transfer
+func (s *SuperSupervisor) SignalTimerDataTransferStart(vb uint16) bool {
+	s.Lock()
+	defer s.Unlock()
+	if _, ok := s.timerDataTransferReq[vb]; ok {
+		logging.Infof("SSUP[%d] vb: %v timer data transfer already in progress", len(s.runningProducers), vb)
+		return true
+	}
+	s.timerDataTransferReq[vb] = struct{}{}
+	return false
 }

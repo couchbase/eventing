@@ -74,3 +74,18 @@ var aggTimerHostPortAddrsCallback = func(args ...interface{}) error {
 
 	return nil
 }
+
+var aggUUIDCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+	addrUUIDMap := args[1].(*map[string]string)
+
+	var err error
+	*addrUUIDMap, err = util.GetNodeUUIDs("/uuid", c.eventingNodeAddrs)
+	if err != nil {
+		logging.Errorf("CRCO[%s:%s:%s:%d] Failed to grab node uuids, err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		return err
+	}
+
+	return nil
+}

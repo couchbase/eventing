@@ -196,7 +196,7 @@ func (c *Consumer) processEvents() {
 				vbEntry, ok := c.timerProcessingVbsWorkerMap[e.VBucket]
 				c.timerRWMutex.RUnlock()
 				if ok {
-					logging.Debugf("CRPE[%s:%s:%s:%d] vb: %v , stopping plasma processing",
+					logging.Debugf("CRPE[%s:%s:%s:%d] vb: %v stopping plasma processing",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
 					vbEntry.signalProcessTimerPlasmaCloseCh <- e.VBucket
@@ -205,7 +205,7 @@ func (c *Consumer) processEvents() {
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
 					c.signalStoreTimerPlasmaCloseCh <- e.VBucket
-					// Not waiting for ack, as ack handling is part of this select clause
+					<-c.signalStoreTimerPlasmaCloseAckCh
 					logging.Verbosef("CRPE[%s:%s:%s:%d] vb: %v Sent msg to timer storage routine, about clean up of plasma.Writer instance",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
@@ -213,7 +213,7 @@ func (c *Consumer) processEvents() {
 					c.vbPlasmaStoreMap[e.VBucket].PersistAll()
 					c.plasmaStoreRWMutex.RUnlock()
 
-					c.producer.SignalToClosePlasmaStore(e.VBucket)
+					c.superSup.SignalToClosePlasmaStore(e.VBucket)
 
 					c.timerRWMutex.Lock()
 					delete(c.timerProcessingVbsWorkerMap, e.VBucket)
@@ -227,15 +227,6 @@ func (c *Consumer) processEvents() {
 
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-				vbBlob.AssignedWorker = ""
-				vbBlob.CurrentVBOwner = ""
-				vbBlob.DCPStreamStatus = dcpStreamStopped
-				vbBlob.PreviousAssignedWorker = c.ConsumerName()
-				vbBlob.PreviousEventingDir = c.eventingDir
-				vbBlob.PreviousNodeUUID = c.NodeUUID()
-				vbBlob.PreviousVBOwner = c.HostPortAddr()
-
-				vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64)
 				entry := OwnershipEntry{
 					AssignedWorker: c.ConsumerName(),
 					CurrentVBOwner: c.HostPortAddr(),
@@ -246,10 +237,7 @@ func (c *Consumer) processEvents() {
 
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob)
 
-				c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", "")
-				c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", "")
-				c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", "stopped")
-				c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", "")
+				c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
 
 				c.plasmaStoreRWMutex.RLock()
 				// Check if vbucket related entry already exists, if yes - then clean it up
@@ -263,7 +251,7 @@ func (c *Consumer) processEvents() {
 					if _, mOk := c.timerProcessingVbsWorkerMap[e.VBucket]; !mOk {
 						c.timerRWMutex.RUnlock()
 
-						logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v, missing entry from timerProcessingVbsWorkerMap",
+						logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Missing entry from timerProcessingVbsWorkerMap",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 						continue
 					}
@@ -286,16 +274,12 @@ func (c *Consumer) processEvents() {
 					}
 					c.plasmaStoreRWMutex.Unlock()
 
-					c.timerRWMutex.Lock()
-					delete(c.timerProcessingVbsWorkerMap, e.VBucket)
-					c.timerRWMutex.Unlock()
-
 				} else {
 					c.plasmaStoreRWMutex.RUnlock()
 				}
 
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
-					logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v, got STREAMEND, needs to be reclaimed",
+					logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 					c.Lock()
 					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, e.VBucket)
@@ -332,7 +316,6 @@ func (c *Consumer) processEvents() {
 
 		case <-c.statsTicker.C:
 
-			util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 			vbsOwned := c.getCurrentlyOwnedVbs()
 			if len(vbsOwned) > 0 {
 				c.RLock()
@@ -363,20 +346,6 @@ func (c *Consumer) processEvents() {
 				c.dcpOpsProcessed = dcpOpCount
 				c.RUnlock()
 			}
-
-		case vb := <-c.signalStoreTimerPlasmaCloseCh:
-			// Rebalance takeover routine will send signal on this channel to signify
-			// stopping of any plasma.Writer instance for a specific vbucket
-			c.plasmaStoreRWMutex.Lock()
-			_, ok := c.vbPlasmaWriter[vb]
-			if ok {
-				delete(c.vbPlasmaWriter, vb)
-			}
-			c.plasmaStoreRWMutex.Unlock()
-
-			// sends ack message back to rebalance takeover routine, so that it could
-			// safely call Close() on vb specific plasma store
-			c.signalStoreTimerPlasmaCloseAckCh <- vb
 
 		case <-c.signalStopDebuggerCh:
 			c.debuggerState = stopDebug
@@ -538,6 +507,9 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() {
 	}
 
 	for _, kvAddr := range kvAddrDcpFeedsToClose {
+		logging.Debugf("CRDP[%s:%s:%s:%d] Going to cleanup kv dcp feed for kvAddr: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), kvAddr)
+
 		c.kvHostDcpFeedMap[kvAddr].Close()
 
 		c.Lock()
@@ -673,8 +645,7 @@ func (c *Consumer) getCurrentlyOwnedVbs() []int {
 	var vbsOwned []int
 
 	for vbNo := 0; vbNo < numVbuckets; vbNo++ {
-		if c.vbProcessingStats.getVbStat(uint16(vbNo), "current_vb_owner") == c.HostPortAddr() &&
-			c.vbProcessingStats.getVbStat(uint16(vbNo), "assigned_worker") == c.ConsumerName() &&
+		if c.vbProcessingStats.getVbStat(uint16(vbNo), "assigned_worker") == c.ConsumerName() &&
 			c.vbProcessingStats.getVbStat(uint16(vbNo), "node_uuid") == c.NodeUUID() {
 
 			vbsOwned = append(vbsOwned, vbNo)

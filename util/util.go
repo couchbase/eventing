@@ -351,7 +351,7 @@ func GetDebuggerURL(urlSuffix, nodeAddr, appName string) string {
 	return string(buf)
 }
 
-func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) map[string]string {
+func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) (map[string]string, error) {
 	addrUUIDMap := make(map[string]string)
 
 	netClient := &http.Client{
@@ -364,19 +364,19 @@ func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) map[string]string {
 		res, err := netClient.Get(url)
 		if err != nil {
 			logging.Errorf("UTIL Failed to fetch node uuid from url: %s, err: %v", url, err)
-			continue
+			return nil, err
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
-			continue
+			return nil, err
 		}
 
 		addrUUIDMap[string(buf)] = nodeAddr
 	}
-	return addrUUIDMap
+	return addrUUIDMap, nil
 }
 
 func GetProgress(urlSuffix string, nodeAddrs []string) *cm.RebalanceProgress {
@@ -456,22 +456,22 @@ func GetTimerHostPortAddrs(urlSuffix string, nodeAddrs []string) (string, error)
 
 		res, err := netClient.Get(url)
 		if err != nil {
-			logging.Errorf("UTIL Failed to gather task status from url: %s, err: %v", url, err)
-			continue
+			logging.Errorf("UTIL Failed to gather timer host port addrs from url: %s, err: %v", url, err)
+			return "", err
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
-			continue
+			return "", err
 		}
 
 		var addrs map[string]string
 		err = json.Unmarshal(buf, &addrs)
 		if err != nil {
-			logging.Errorf("UTIL Failed to unmarshal progress from url: %s, err: %v", url, err)
-			continue
+			logging.Errorf("UTIL Failed to unmarshal timer host port addrs from url: %s, err: %v", url, err)
+			return "", nil
 		}
 
 		hostPortAddrs[nodeAddr] = make(map[string]string)
@@ -645,4 +645,36 @@ func GetLogLevel(logLevel string) logging.LogLevel {
 	default:
 		return logging.Info
 	}
+}
+
+func VbucketDistribution(vbs []uint16, numWorkers int) map[int][]uint16 {
+	vbucketsPerWorker := len(vbs) / numWorkers
+
+	var vbNo int
+
+	vbWorkerAssignMap := make(map[int][]uint16)
+	vbCountPerWorker := make([]int, numWorkers)
+	for i := 0; i < numWorkers; i++ {
+		vbCountPerWorker[i] = vbucketsPerWorker
+		vbNo += vbucketsPerWorker
+	}
+
+	remainingVbs := len(vbs) - vbNo
+	if remainingVbs > 0 {
+		for i := 0; i < remainingVbs; i++ {
+			vbCountPerWorker[i] = vbCountPerWorker[i] + 1
+		}
+	}
+
+	startVb := vbs[0]
+	for i, v := range vbCountPerWorker {
+		assignedVbs := make([]uint16, 0)
+		for j := 0; j < v; j++ {
+			assignedVbs = append(assignedVbs, startVb)
+			startVb++
+		}
+		vbWorkerAssignMap[i] = assignedVbs
+	}
+
+	return vbWorkerAssignMap
 }
