@@ -201,7 +201,7 @@ func (m *ServiceMgr) getAggTimerHostPortAddrs(w http.ResponseWriter, r *http.Req
 func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 	producerHostPortAddrs := m.superSup.ProducerHostPortAddrs()
 
-	progress := util.GetProgress("/getRebalanceStatus", producerHostPortAddrs)
+	progress, _ := util.GetProgress("/getRebalanceStatus", producerHostPortAddrs)
 
 	buf, err := json.Marshal(progress)
 	if err != nil {
@@ -217,7 +217,7 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 
 	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
 
-	aggProgress := util.GetProgress("/getRebalanceProgress", m.eventingNodeAddrs)
+	aggProgress, _ := util.GetProgress("/getRebalanceProgress", m.eventingNodeAddrs)
 
 	buf, err := json.Marshal(aggProgress)
 	if err != nil {

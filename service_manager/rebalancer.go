@@ -1,10 +1,14 @@
 package servicemanager
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/couchbase/cbauth/service"
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/indexing/secondary/logging"
 )
 
 func newRebalancer(eventingAdminPort string, change service.TopologyChange,
@@ -40,17 +44,57 @@ func (r *rebalancer) doRebalance() {
 func (r *rebalancer) gatherProgress() {
 	progressTicker := time.NewTicker(rebalanceProgressUpdateTickInterval)
 
+	<-progressTicker.C
+	// Store the initial state of rebalance progress in metakv
+	initProgress, err := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
+	if err != nil {
+		logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to capture cluster wide state of vbs to shuffle as part of rebalance. Retrying")
+		return
+	}
+
+	logging.Infof("ServiceMgr::rebalancer::gatherProgress initProgress dump: %v", initProgress)
+
+	buf, err := json.Marshal(initProgress)
+	if err != nil {
+		logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to marshal rebalance progress. Retrying")
+		return
+	}
+
+	progressPath := fmt.Sprintf("%sprogress", metakvRebalanceProgress)
+	err = util.MetakvSet(progressPath, buf, nil)
+	if err != nil {
+		logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to write rebalance init progress to metakv. Retrying")
+		return
+	}
+
 	for {
 		select {
 		case <-progressTicker.C:
-			p := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
+			p, _ := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
 
 			var progress float64
 
 			if p.VbsOwnedPerPlan == 0 {
 				progress = 1.0
 			} else {
-				progress = 1.0 - (float64(p.VbsRemainingToShuffle) / 2 / float64(p.VbsOwnedPerPlan))
+				aggProgress := &common.RebalanceProgress{}
+
+				buf, err = util.MetakvGet(progressPath)
+				if err != nil {
+					logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to read rebalance init progress from metakv")
+					continue
+				}
+
+				err = json.Unmarshal(buf, &aggProgress)
+				if err != nil {
+					logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to unmarshal rebalance init progress")
+					continue
+				}
+
+				logging.Infof("ServiceMgr::rebalancer::gatherProgress total vbs to shuffle: %v vbs remaining to shuffle: %v",
+					aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle)
+
+				progress = 1.0 - (float64(p.VbsRemainingToShuffle))/float64(aggProgress.VbsRemainingToShuffle)
 			}
 
 			r.cb.progress(progress, r.c)

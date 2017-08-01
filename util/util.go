@@ -379,7 +379,7 @@ func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) (map[string]string, erro
 	return addrUUIDMap, nil
 }
 
-func GetProgress(urlSuffix string, nodeAddrs []string) *cm.RebalanceProgress {
+func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, error) {
 	aggProgress := &cm.RebalanceProgress{}
 
 	netClient := &http.Client{
@@ -392,28 +392,28 @@ func GetProgress(urlSuffix string, nodeAddrs []string) *cm.RebalanceProgress {
 		res, err := netClient.Get(url)
 		if err != nil {
 			logging.Errorf("UTIL Failed to gather task status from url: %s, err: %v", url, err)
-			continue
+			return nil, err
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
-			continue
+			return nil, err
 		}
 
 		var progress cm.RebalanceProgress
 		err = json.Unmarshal(buf, &progress)
 		if err != nil {
 			logging.Errorf("UTIL Failed to unmarshal progress from url: %s, err: %v", url, err)
-			continue
+			return nil, err
 		}
 
 		aggProgress.VbsRemainingToShuffle += progress.VbsRemainingToShuffle
 		aggProgress.VbsOwnedPerPlan += progress.VbsOwnedPerPlan
 	}
 
-	return aggProgress
+	return aggProgress, nil
 }
 
 func GetAggTimerHostPortAddrs(appName, eventingAdminPort, urlSuffix string) (map[string]map[string]string, error) {

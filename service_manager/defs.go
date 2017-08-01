@@ -14,13 +14,11 @@ const (
 	metakvAppsPath           = metakvEventingPath + "apps/"
 	metakvAppSettingsPath    = metakvEventingPath + "settings/"
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
+	metakvRebalanceProgress  = metakvEventingPath + "rebalanceProgress/"
 	stopRebalance            = "stopRebalance"
 )
 
 const (
-	defaultWorkerCount       = 3
-	defaultStatsTickDuration = 10000
-	// HTTPRequestTimeout                  = time.Duration(1000) * time.Millisecond
 	rebalanceProgressUpdateTickInterval = time.Duration(3000) * time.Millisecond
 )
 
