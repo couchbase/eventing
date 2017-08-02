@@ -35,7 +35,10 @@ type ServiceMgr struct {
 	auth              string
 	config            util.ConfigHolder
 	eventingNodeAddrs []string
-	eventingAdminPort string
+	adminHttpPort     string
+	adminSSLPort      string
+	certFile          string
+	keyFile           string
 	failoverNotif     bool
 	mu                *sync.RWMutex
 	uuid              string

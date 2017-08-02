@@ -147,7 +147,7 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 	case service.TopologyChangeTypeRebalance:
 		m.startRebalance(change)
 
-		rebalancer := newRebalancer(m.eventingAdminPort, change, m.rebalanceDoneCallback, m.rebalanceProgressCallback)
+		rebalancer := newRebalancer(m.adminHttpPort, change, m.rebalanceDoneCallback, m.rebalanceProgressCallback)
 		m.rebalancer = rebalancer
 
 	default:
