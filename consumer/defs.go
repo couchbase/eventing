@@ -164,8 +164,9 @@ type Consumer struct {
 	executionTimeout       int
 	gocbBucket             *gocb.Bucket
 	isRebalanceOngoing     bool
-	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed // Access controlled by default lock
-	kvVbMap                map[uint16]string             // Access controlled by default lock
+	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
+	hostDcpFeedRWMutex     *sync.RWMutex
+	kvVbMap                map[uint16]string // Access controlled by default lock
 	logLevel               string
 	superSup               common.EventingSuperSup
 	vbDcpFeedMap           map[uint16]*couchbase.DcpFeed
@@ -173,6 +174,11 @@ type Consumer struct {
 	vbsRemainingToOwn      []uint16
 	vbsRemainingToGiveUp   []uint16
 	vbsRemainingToRestream []uint16
+
+	// Routines to control parallel vbucket ownership transfer
+	// during rebalance
+	vbOwnershipGiveUpRoutineCount   int
+	vbOwnershipTakeoverRoutineCount int
 
 	// N1QL Transpiler related nested iterator config params
 	lcbInstCapacity int

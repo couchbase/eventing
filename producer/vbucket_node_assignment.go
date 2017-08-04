@@ -89,18 +89,18 @@ func (p *Producer) initWorkerVbMap() {
 	}
 
 	// vbuckets the current eventing node is responsible to handle
-	var vbucketsToHandle []int
+	var vbucketsToHandle []uint16
 
 	for k, v := range p.vbEventingNodeAssignMap {
 		if v == eventingNodeAddr {
-			vbucketsToHandle = append(vbucketsToHandle, int(k))
+			vbucketsToHandle = append(vbucketsToHandle, k)
 		}
 	}
 
-	sort.Ints(vbucketsToHandle)
+	sort.Sort(util.Uint16Slice(vbucketsToHandle))
 
 	logging.Debugf("VBNA[%s:%d] eventingAddr: %v vbucketsToHandle, len: %d dump: %v",
-		p.appName, p.LenRunningConsumers(), eventingNodeAddr, len(vbucketsToHandle), vbucketsToHandle)
+		p.appName, p.LenRunningConsumers(), eventingNodeAddr, len(vbucketsToHandle), util.Condense(vbucketsToHandle))
 
 	vbucketPerWorker := len(vbucketsToHandle) / p.workerCount
 	var startVbIndex int
@@ -130,12 +130,13 @@ func (p *Producer) initWorkerVbMap() {
 		workerName = fmt.Sprintf("worker_%s_%d", p.appName, i)
 
 		for j := 0; j < vbCountPerWorker[i]; j++ {
-			p.workerVbucketMap[workerName] = append(p.workerVbucketMap[workerName], uint16(vbucketsToHandle[startVbIndex]))
+			p.workerVbucketMap[workerName] = append(p.workerVbucketMap[workerName], vbucketsToHandle[startVbIndex])
 			startVbIndex++
 		}
 
 		logging.Debugf("VBNA[%s:%d] eventingAddr: %v worker name: %v assigned vbs len: %d dump: %v",
-			p.appName, p.LenRunningConsumers(), eventingNodeAddr, workerName, len(p.workerVbucketMap[workerName]), p.workerVbucketMap[workerName])
+			p.appName, p.LenRunningConsumers(), eventingNodeAddr, workerName,
+			len(p.workerVbucketMap[workerName]), util.Condense(p.workerVbucketMap[workerName]))
 	}
 
 }

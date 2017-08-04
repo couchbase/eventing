@@ -100,7 +100,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			worker := &timerProcessingWorker{
 				c:  c,
 				id: i,
-				signalProcessTimerPlasmaCloseCh: make(chan uint16),
+				signalProcessTimerPlasmaCloseCh: make(chan uint16, numVbuckets),
 				stopCh:                make(chan struct{}, 1),
 				timerProcessingTicker: time.NewTicker(c.timerProcessingTickInterval),
 			}
@@ -124,17 +124,23 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			c.timerProcessingWorkerSignalCh[worker] = make(chan struct{}, 1)
 
 			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Initial Timer routine vbs assigned len: %d dump: %v",
-				c.app.AppName, c.workerName, worker.id, c.tcpPort, c.Pid(), len(vbsAssigned), vbsAssigned)
+				c.app.AppName, c.workerName, worker.id, c.tcpPort, c.Pid(),
+				len(vbsAssigned), util.Condense(vbsAssigned))
 		}
 	} else {
 
 		for i, v := range vbsCountPerWorker {
+
+			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Timer routine timerProcessingRunningWorkers[%v]: %v",
+				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), i,
+				util.Condense(c.timerProcessingRunningWorkers[i].vbsAssigned))
 
 			vbsAssigned := make([]uint16, v)
 
 			c.timerRWMutex.Lock()
 			for j := 0; j < v; j++ {
 				vbsAssigned[j] = startVb
+
 				c.timerProcessingVbsWorkerMap[startVb] = c.timerProcessingRunningWorkers[i]
 				c.vbProcessingStats.updateVbStat(startVb, "doc_id_timer_processing_worker", fmt.Sprintf("timer_%d", i))
 				startVb++
@@ -144,7 +150,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			c.timerRWMutex.Unlock()
 
 			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Timer routine vbs assigned len: %d dump: %v",
-				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), len(vbsAssigned), vbsAssigned)
+				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), len(vbsAssigned), util.Condense(vbsAssigned))
 		}
 	}
 }

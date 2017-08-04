@@ -275,7 +275,10 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
 		return err
 	}
+
+	c.hostDcpFeedRWMutex.Lock()
 	c.kvHostDcpFeedMap[kvHostPort] = dcpFeed
+	c.hostDcpFeedRWMutex.Unlock()
 
 	return nil
 }
@@ -291,10 +294,20 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 		}
 	}()
 
+	kvHostDcpFeedMap := make(map[string]*couchbase.DcpFeed)
+
+	c.hostDcpFeedRWMutex.RLock()
 	for kvHost, dcpFeed := range c.kvHostDcpFeedMap {
+		kvHostDcpFeedMap[kvHost] = dcpFeed
+	}
+	c.hostDcpFeedRWMutex.RUnlock()
+
+	for kvHost, dcpFeed := range kvHostDcpFeedMap {
+		c.Lock()
 		if _, ok := c.dcpFeedVbMap[dcpFeed]; !ok {
 			c.dcpFeedVbMap[dcpFeed] = make([]uint16, 0)
 		}
+		c.Unlock()
 
 		// Starting feed for sole purpose of fetching available vbuckets on
 		// a specific kv node(via GETSEQ opcode) and post that closing the feed.
@@ -321,7 +334,9 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 		for vbNo := range vbSeqNos {
 			vbNos = append(vbNos, vbNo)
 		}
+		c.Lock()
 		c.dcpFeedVbMap[dcpFeed] = vbNos
+		c.Unlock()
 	}
 
 	return nil

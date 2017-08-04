@@ -71,6 +71,11 @@ type Producer struct {
 	uuid                   string
 	workerCount            int
 
+	// Routines to control parallel vbucket ownership transfer
+	// during rebalance
+	vbOwnershipGiveUpRoutineCount   int
+	vbOwnershipTakeoverRoutineCount int
+
 	// N1QL Transpiler related nested iterator config params
 	lcbInstCapacity int
 

@@ -28,6 +28,7 @@ import (
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
 	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize, timerProcessingPoolSize int,
+	vbOwnershipGiveUpRoutineCount, vbOwnershipTakeoverRoutineCount int,
 	bucket, eventingAdminPort, eventingDir, logLevel, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStoreMap map[uint16]*plasma.Plasma,
@@ -53,6 +54,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		eventingNodeUUIDs:                  eventingNodeUUIDs,
 		executionTimeout:                   executionTimeout,
 		gracefulShutdownChan:               make(chan struct{}, 1),
+		hostDcpFeedRWMutex:                 &sync.RWMutex{},
 		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
 		lcbInstCapacity:                    lcbInstCapacity,
 		logLevel:                           logLevel,
@@ -94,18 +96,20 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		timerProcessingVbsWorkerMap:        make(map[uint16]*timerProcessingWorker),
 		timerProcessingRunningWorkers:      make([]*timerProcessingWorker, 0),
 		timerProcessingWorkerSignalCh:      make(map[*timerProcessingWorker]chan struct{}),
-		uuid:                   uuid,
-		vbDcpFeedMap:           make(map[uint16]*couchbase.DcpFeed),
-		vbFlogChan:             make(chan *vbFlogEntry),
-		vbnos:                  vbnos,
-		vbPlasmaReader:         make(map[uint16]*plasma.Writer),
-		vbPlasmaWriter:         make(map[uint16]*plasma.Writer),
-		vbProcessingStats:      newVbProcessingStats(app.AppName),
-		vbsRemainingToGiveUp:   make([]uint16, 0),
-		vbsRemainingToOwn:      make([]uint16, 0),
-		vbsRemainingToRestream: make([]uint16, 0),
-		workerName:             fmt.Sprintf("worker_%s_%d", app.AppName, index),
-		writeBatchSeqnoMap:     make(map[uint16]uint64),
+		uuid:         uuid,
+		vbDcpFeedMap: make(map[uint16]*couchbase.DcpFeed),
+		vbFlogChan:   make(chan *vbFlogEntry),
+		vbnos:        vbnos,
+		vbOwnershipGiveUpRoutineCount:   vbOwnershipGiveUpRoutineCount,
+		vbOwnershipTakeoverRoutineCount: vbOwnershipTakeoverRoutineCount,
+		vbPlasmaReader:                  make(map[uint16]*plasma.Writer),
+		vbPlasmaWriter:                  make(map[uint16]*plasma.Writer),
+		vbProcessingStats:               newVbProcessingStats(app.AppName),
+		vbsRemainingToGiveUp:            make([]uint16, 0),
+		vbsRemainingToOwn:               make([]uint16, 0),
+		vbsRemainingToRestream:          make([]uint16, 0),
+		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
+		writeBatchSeqnoMap:              make(map[uint16]uint64),
 	}
 
 	consumer.vbPlasmaStoreMap = make(map[uint16]*plasma.Plasma)
@@ -356,7 +360,13 @@ func (c *Consumer) TimerTransferHostPortAddr() string {
 func (c *Consumer) NotifyClusterChange() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about cluster state change",
 		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid())
-	c.clusterStateChangeNotifCh <- struct{}{}
+
+	if !c.isRebalanceOngoing {
+		c.clusterStateChangeNotifCh <- struct{}{}
+	} else {
+		logging.Infof("V8CR[%s:%s:%s:%d] Skipping cluster state change notification to control routine because another rebalance is in ongoing",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid())
+	}
 }
 
 // UpdateEventingNodesUUIDs is called by producer instance to notify about
@@ -376,8 +386,13 @@ func (c *Consumer) NotifyRebalanceStop() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about rebalance stop",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
-	c.stopVbOwnerGiveupCh <- struct{}{}
-	c.stopVbOwnerTakeoverCh <- struct{}{}
+	for i := 0; i < c.vbOwnershipGiveUpRoutineCount; i++ {
+		c.stopVbOwnerGiveupCh <- struct{}{}
+	}
+
+	for i := 0; i < c.vbOwnershipTakeoverRoutineCount; i++ {
+		c.stopVbOwnerTakeoverCh <- struct{}{}
+	}
 }
 
 // NotifySettingsChange signals consumer instance of settings update

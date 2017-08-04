@@ -71,16 +71,31 @@ func (p *Producer) parseDepcfg() error {
 		} else {
 			p.lcbInstCapacity = 5
 		}
+
 		if val, ok := settings["enable_recursive_mutation"]; ok {
 			p.enableRecursiveMutation = val.(bool)
 		} else {
 			p.enableRecursiveMutation = false
 		}
+
 		if val, ok := settings["deadline_timeout"]; ok {
 			p.socketTimeout = time.Duration(val.(float64)) * time.Second
 		} else {
 			p.socketTimeout = time.Duration(2 * time.Second)
 		}
+
+		if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
+			p.vbOwnershipGiveUpRoutineCount = int(val.(float64))
+		} else {
+			p.vbOwnershipGiveUpRoutineCount = 3
+		}
+
+		if val, ok := settings["vb_ownership_takeover_routine_count"]; ok {
+			p.vbOwnershipTakeoverRoutineCount = int(val.(float64))
+		} else {
+			p.vbOwnershipTakeoverRoutineCount = 3
+		}
+
 		if val, ok := settings["execution_timeout"]; ok {
 			p.executionTimeout = int(val.(float64))
 		} else {

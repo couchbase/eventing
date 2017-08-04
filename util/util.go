@@ -647,12 +647,23 @@ func GetLogLevel(logLevel string) logging.LogLevel {
 	}
 }
 
-func VbucketDistribution(vbs []uint16, numWorkers int) map[int][]uint16 {
+// VbucketNodeAssignment will be used as generic partitioning scheme for vbucket assignment to
+// Eventing.Consumer and Eventing.Producer instances
+func VbucketNodeAssignment(vbs []uint16, numWorkers int) map[int][]uint16 {
 	vbucketsPerWorker := len(vbs) / numWorkers
 
 	var vbNo int
 
 	vbWorkerAssignMap := make(map[int][]uint16)
+	if len(vbs) == 0 {
+		for i := 0; i < numWorkers; i++ {
+			assignedVbs := make([]uint16, 0)
+			vbWorkerAssignMap[i] = assignedVbs
+		}
+
+		return vbWorkerAssignMap
+	}
+
 	vbCountPerWorker := make([]int, numWorkers)
 	for i := 0; i < numWorkers; i++ {
 		vbCountPerWorker[i] = vbucketsPerWorker
@@ -677,4 +688,65 @@ func VbucketDistribution(vbs []uint16, numWorkers int) map[int][]uint16 {
 	}
 
 	return vbWorkerAssignMap
+}
+
+// VbucketDistribution is used by vbucket ownership give up and takeover routines during rebalance
+func VbucketDistribution(vbs []uint16, numWorkers int) map[int][]uint16 {
+
+	vbWorkerAssignMap := make(map[int][]uint16)
+	for i := 0; i < numWorkers; i++ {
+		assignedVbs := make([]uint16, 0)
+		vbWorkerAssignMap[i] = assignedVbs
+	}
+
+	if len(vbs) == 0 {
+		return vbWorkerAssignMap
+	}
+
+	for i := 0; i < len(vbs); {
+		for j := 0; j < numWorkers; j++ {
+			if i < len(vbs) {
+				vbWorkerAssignMap[j] = append(vbWorkerAssignMap[j], vbs[i])
+				i++
+			} else {
+				return vbWorkerAssignMap
+			}
+		}
+	}
+
+	return vbWorkerAssignMap
+}
+
+func Condense(vbs []uint16) string {
+	if len(vbs) == 0 {
+		return "[]"
+	}
+
+	startVb := vbs[0]
+	res := fmt.Sprintf("[%d", startVb)
+	prevVb := startVb
+
+	for i := 1; i < len(vbs); {
+		if vbs[i] == startVb+1 {
+			startVb++
+		} else {
+
+			if prevVb != startVb {
+				res = fmt.Sprintf("%s-%d, %d", res, startVb, vbs[i])
+			} else {
+				res = fmt.Sprintf("%s, %d", res, vbs[i])
+			}
+			startVb = vbs[i]
+			prevVb = startVb
+		}
+
+		if i == len(vbs)-1 {
+			res = fmt.Sprintf("%s-%d]", res, vbs[i])
+			return res
+		}
+
+		i++
+	}
+
+	return res
 }

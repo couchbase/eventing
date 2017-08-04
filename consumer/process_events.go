@@ -318,7 +318,6 @@ func (c *Consumer) processEvents() {
 
 			vbsOwned := c.getCurrentlyOwnedVbs()
 			if len(vbsOwned) > 0 {
-				c.RLock()
 
 				c.RLock()
 				countMsg, dcpOpCount, tStamp := util.SprintDCPCounts(c.dcpMessagesProcessed)
@@ -336,15 +335,12 @@ func (c *Consumer) processEvents() {
 					c.timerMessagesProcessedPSec = int(timerOpsDiff) / seconds
 				}
 
-				c.RLock()
-				logging.Infof("CRDP[%s:%s:%s:%d] DCP events: %s V8 events: %s Timer events: %v, vbs owned len: %d vbs owned:[%d..%d]",
+				logging.Infof("CRDP[%s:%s:%s:%d] DCP events: %s V8 events: %s Timer events: %v, vbs owned len: %d vbs owned:%v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
-					c.timerMessagesProcessed, len(c.getCurrentlyOwnedVbs()), vbsOwned[0], vbsOwned[len(vbsOwned)-1])
-				c.RUnlock()
+					c.timerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned))
 
 				c.opsTimestamp = tStamp
 				c.dcpOpsProcessed = dcpOpCount
-				c.RUnlock()
 			}
 
 		case <-c.signalStopDebuggerCh:
@@ -453,17 +449,19 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 			case e, ok := <-dcpFeed.C:
 				if ok == false {
 					var kvAddr string
+					c.hostDcpFeedRWMutex.RLock()
 					for addr, feed := range c.kvHostDcpFeedMap {
 						if feed == dcpFeed {
 							kvAddr = addr
 						}
 					}
+					c.hostDcpFeedRWMutex.RUnlock()
 
 					logging.Infof("CRDP[%s:%s:%s:%d] Closing dcp feed: %v for bucket: %s",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), c.bucket)
-					c.Lock()
+					c.hostDcpFeedRWMutex.Lock()
 					delete(c.kvHostDcpFeedMap, kvAddr)
-					c.Unlock()
+					c.hostDcpFeedRWMutex.Unlock()
 
 					return
 				}
@@ -494,11 +492,11 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() {
 	}
 
 	var kvHostDcpFeedMapEntries []string
-	c.RLock()
+	c.hostDcpFeedRWMutex.RLock()
 	for kvAddr := range c.kvHostDcpFeedMap {
 		kvHostDcpFeedMapEntries = append(kvHostDcpFeedMapEntries, kvAddr)
 	}
-	c.RUnlock()
+	c.hostDcpFeedRWMutex.RUnlock()
 
 	kvAddrDcpFeedsToClose := util.SliceDifferences(kvHostDcpFeedMapEntries, kvAddrListPerVbMap)
 
@@ -510,12 +508,14 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() {
 		logging.Debugf("CRDP[%s:%s:%s:%d] Going to cleanup kv dcp feed for kvAddr: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), kvAddr)
 
+		c.hostDcpFeedRWMutex.RLock()
 		c.kvHostDcpFeedMap[kvAddr].Close()
+		c.hostDcpFeedRWMutex.RUnlock()
 
-		c.Lock()
+		c.hostDcpFeedRWMutex.Lock()
 		vbsMetadataToUpdate := c.dcpFeedVbMap[c.kvHostDcpFeedMap[kvAddr]]
 		delete(c.kvHostDcpFeedMap, kvAddr)
-		c.Unlock()
+		c.hostDcpFeedRWMutex.Unlock()
 
 		for _, vbno := range vbsMetadataToUpdate {
 			c.clearUpOnwershipInfoFromMeta(vbno)
@@ -568,11 +568,16 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 	// Closing feeds for KV hosts which are no more present in kv vb map
 	c.cleanupStaleDcpFeedHandles()
 
+	c.hostDcpFeedRWMutex.RLock()
 	dcpFeed, ok := c.kvHostDcpFeedMap[vbKvAddr]
+	c.hostDcpFeedRWMutex.RUnlock()
 	if !ok {
 		feedName := couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + vbKvAddr + "_" + c.workerName)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, dcpConfig, vbKvAddr)
+
+		c.hostDcpFeedRWMutex.RLock()
 		dcpFeed = c.kvHostDcpFeedMap[vbKvAddr]
+		c.hostDcpFeedRWMutex.RUnlock()
 
 		cancelCh := make(chan struct{}, 1)
 		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
@@ -641,14 +646,14 @@ loop:
 	return nil
 }
 
-func (c *Consumer) getCurrentlyOwnedVbs() []int {
-	var vbsOwned []int
+func (c *Consumer) getCurrentlyOwnedVbs() []uint16 {
+	var vbsOwned []uint16
 
-	for vbNo := 0; vbNo < numVbuckets; vbNo++ {
-		if c.vbProcessingStats.getVbStat(uint16(vbNo), "assigned_worker") == c.ConsumerName() &&
-			c.vbProcessingStats.getVbStat(uint16(vbNo), "node_uuid") == c.NodeUUID() {
+	for vb := 0; vb < numVbuckets; vb++ {
+		if c.vbProcessingStats.getVbStat(uint16(vb), "assigned_worker") == c.ConsumerName() &&
+			c.vbProcessingStats.getVbStat(uint16(vb), "node_uuid") == c.NodeUUID() {
 
-			vbsOwned = append(vbsOwned, vbNo)
+			vbsOwned = append(vbsOwned, uint16(vb))
 		}
 	}
 	return vbsOwned
