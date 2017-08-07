@@ -16,8 +16,8 @@ CBDEPS_DIR=$(HOME)/.cbdepscache/
 DYLD_LIBRARY_PATH=$(HOME)/.cbdepscache/lib
 CMD_DIR=cmd/producer/
 
-LDFLAGS=-luv -L$(CBDEPS_DIR)lib/ -ljemalloc -L ./v8inspector -linspector -L$(CBDEPS_DIR)lib/ -lv8 -lcouchbase \
-		-headerpad_max_install_names -ll
+LDFLAGS=-luv -L$(CBDEPS_DIR)lib/ -ljemalloc -L./v8inspector -linspector -L$(CBDEPS_DIR)lib/ -lv8 \
+	-lv8_libplatform -lv8_libbase -licui18n -licuuc -lcouchbase -headerpad_max_install_names -ll
 
 SOURCES=v8_consumer/src/client.cc v8_consumer/src/commands.cc \
 				v8_consumer/src/message.cc v8_consumer/src/v8worker.cc \
@@ -27,7 +27,7 @@ SOURCES=v8_consumer/src/client.cc v8_consumer/src/commands.cc \
 				v8_consumer/src/jsify.cc \
 				v8_consumer/src/transpiler.cc
 
-INCLUDE_DIRS=-I$(CBDEPS_DIR) -I$(CBDEPS_DIR)include -I v8_consumer/include/ -I ./v8inspector/
+INCLUDE_DIRS=-I$(CBDEPS_DIR) -I$(CBDEPS_DIR)include -I v8_consumer/include/ -I v8inspector/
 
 OUT=$(CMD_DIR)client.bin
 EVENTING_EXEC=eventing
@@ -36,11 +36,12 @@ build: inspector jsify
 	$(CBDEPS_DIR)bin/flatc -o flatbuf/include/ -c flatbuf/schema/*.fbs
 	$(CBDEPS_DIR)bin/flatc -g flatbuf/schema/*.fbs
 	$(CXX) $(CXFLAGS) $(SOURCES) $(INCLUDE_DIRS) $(LDFLAGS) -o $(OUT)
-	cd cmd/producer && bash fix_rpath.sh
+	cd $(CMD_DIR); CGO_CFLAGS=-I$(CBDEPS_DIR)include/ CGO_LDFLAGS=-L$(CBDEPS_DIR)lib \
+		go build -o eventing -tags jemalloc; bash fix_rpath.sh
 
 inspector:
-	git clone git://github.com/hsharsha/v8inspector
-	cd v8inspector && make && cp libinspector.dylib $(CBDEPS_DIR)/lib/
+	if [ ! -d "v8inspector" ]; then git clone git://github.com/hsharsha/v8inspector; fi
+	cd v8inspector && make && cp libinspector.dylib $(CBDEPS_DIR)lib/
 
 jsify: v8_consumer/src/jsify.lex
 	$(LEX) -o v8_consumer/src/jsify.cc v8_consumer/src/jsify.lex

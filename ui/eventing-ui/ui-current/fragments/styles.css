@@ -1,0 +1,13 @@
+.handler-editor {
+    height: 800px;
+    width: 1800px;
+    border: 1px solid lightskyblue;
+}
+
+.field-error {
+    font-size: 13px;
+}
+
+.settings-heading {
+    font-size: 20px;
+}

@@ -1,0 +1,38 @@
+<!--This is the summary page-->
+<div ng-if="summaryCtrl.serverNodes.length">
+  <mn-element-cargo depot="alerts">
+    <div ng-show="summaryCtrl.showSuccessAlert">
+      <div class="animate-alert enable-ng-animation alert alert-success">
+        <p>{{summaryCtrl.alertMessage}}</p>
+      </div>
+    </div>
+  </mn-element-cargo>
+  <div class="cbui-table">
+    <div class="cbui-table-header">
+      <span class="cbui-table-cell">Name</span>
+    </div>
+    <section ng-repeat="(appname, app) in summaryCtrl.appList" ng-init="summaryCtrl.attachAppState(app)">
+      <div class="cbui-tablerow has-hover" ng-click="app.toggleActionsVisibility()">
+        <span class="cbui-table-cell cbui-tablerow-title">{{appname}}</span>
+        <span class="cbui-table-cell">{{app.appState.isDeployed}}</span>
+        <span class="cbui-table-cell">{{app.appState.isEnabled}}</span>
+        <a ui-sref="app.admin.eventing.settings({appName:app.appname})"><span
+            class="cbui-table-cell">Settings</span></a>&nbsp;&nbsp;
+        <a ng-disabled="true">Statistics</a>
+      </div>
+      <div class="cbui-tablerow-expanded row flex-right" ng-if="app.actionsVisible">
+        <button ng-click="summaryCtrl.exportApp(app.appname)">Export</button>&nbsp;
+        <button ng-disabled="true">Disable</button>&nbsp;
+        <button ng-click="summaryCtrl.deleteApp(app.appname)">Delete</button>&nbsp;
+        <button ng-click="summaryCtrl.deployApp(app.appname)">Deploy</button>&nbsp;
+        <button ui-sref="app.admin.eventing.handler({appName:app.appname})">Edit</button>&nbsp;
+      </div>
+    </section>
+  </div>
+</div>
+<div ng-if="summaryCtrl.serverNodes.length === 0">
+  <p>No node in the cluster runs Functions service</p>
+</div>
+<div ng-if="summaryCtrl.isAppListEmpty()">
+  <p>No Functions running currently</p>
+</div>

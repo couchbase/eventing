@@ -1,0 +1,21 @@
+<!--This dialog will be used for delete and deploy-->
+<div class="dialog-sm">
+  <div class="panel-header">
+    <h2>Confirm {{actionTitle}}</h2>
+  </div>
+  <div class="panel-content">
+    <p>Are you sure you want to {{action}} <strong>{{appName}}</strong>?</p>
+    <p ng-if="action==='delete'" class="error field-error">Note: Deleting will remove all function executions and
+      related artifacts!
+    </p>
+    <div ng-if="action==='deploy'">
+      <input type="checkbox" id="cleanup-timers" ng-model="cleanupTimers"/>
+      <label for="cleanup-timers"><strong>Cleanup artifacts</strong></label>
+      <p class="error field-error">Note: The new function will be executed for all invocations henceforth</p>
+    </div>
+  </div>
+  <div class="panel-footer">
+    <a ng-click="$dismiss('cancel')">No</a>&nbsp;
+    <button ng-click="$close(cleanupTimers)">Yes</button>
+  </div>
+</div>

@@ -8,3 +8,5 @@ install_name_tool -change libinspector.dylib  /Users/$USER/.cbdepscache/lib/libi
 install_name_tool -change @loader_path/libv8_libplatform.dylib /Users/$USER/.cbdepscache/lib/libv8_libplatform.dylib client.bin
 install_name_tool -change @loader_path/libicui18n.dylib /Users/$USER/.cbdepscache/lib/libicui18n.dylib ~/.cbdepscache/lib/libv8.dylib
 install_name_tool -change @loader_path/libicuuc.dylib /Users/$USER/.cbdepscache/lib/libicuuc.dylib ~/.cbdepscache/lib/libv8.dylib
+install_name_tool -change @rpath/libicui18n.56.1.dylib ~/.cbdepscache/lib/libicui18n.56.1.dylib client.bin
+install_name_tool -change @rpath/libicuuc.56.1.dylib ~/.cbdepscache/lib/libicuuc.56.1.dylib client.bin

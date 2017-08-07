@@ -1,0 +1,20 @@
+<!--Dialog for debugging-->
+<div class="dialog-sm" ng-controller="DebugCtrl as debugCtrl">
+  <div class="panel-header">
+    <h2>Debugging {{appName}}</h2>
+  </div>
+  <div class="panel-content">
+    <div class="row">
+      <p>Open the following URL to begin debugging.</p>
+    </div>
+    <div class="row">
+      <input ng-disabled="!urlReceived" id="debug-url" type="text" size="25" ng-model="url" readonly/>
+      <button ng-disabled="!urlReceived" ng-click="debugCtrl.copyUrl()"
+        uib-tooltip="URL has been copied to clipboard" tooltip-placement="top">Copy
+      </button>
+    </div>
+  </div>
+  <div class="panel-footer">
+    <button ng-click="$close('stop debugging')">Stop debugging</button>
+  </div>
+</div>

@@ -1,0 +1,8 @@
+<mn-element-cargo depot="actions">
+  <div class="header-controls" ng-controller="HeaderCtrl as headerCtrl">
+    <a href="" class="outline" ng-click="headerCtrl.importConfig()">IMPORT</a>
+    <a href="" ng-click="headerCtrl.showCreateDialog()">CREATE</a>
+    <input type="file" id="loadConfig" name="config" style="display:none"/>
+  </div>
+</mn-element-cargo>
+<div ui-view></div>

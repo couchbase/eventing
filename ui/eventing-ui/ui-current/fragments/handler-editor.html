@@ -1,0 +1,35 @@
+<div ng-controller="HandlerCtrl as handlerCtrl">
+  <mn-element-cargo depot="alerts">
+    <div ng-show="handlerCtrl.showSuccessAlert">
+      <div class="animate-alert enable-ng-animation alert alert-success">
+        <p>{{handlerCtrl.alertMessage}}</p>
+      </div>
+    </div>
+    <div ng-show="handlerCtrl.showWarningAlert" class="animate-alert alert enable-ng-animation ng-scope alert-warning">
+      <p class="ng-binding">{{handlerCtrl.warningMessage}}</p>
+    </div>
+  </mn-element-cargo>
+  <form name="formHandler">
+    <div class="handler-editor" name="handlerEditor" id="handler-editor" ng-model="handlerCtrl.handler"
+      ui-ace="{onLoad: aceLoaded, onChange: aceChanged, useWrapMode: true, showGutter: true, mode: 'javascript', require: ['ace/ext/language_tools'], advanced: {enableSnippets: true, enableBasicAutocompletion: true, enableLiveAutocompletion: true}}">
+    </div>
+  </form>
+  <br/>
+  <div class="row">
+    <div class="flex-left">
+      <button ng-click="handlerCtrl.debugApp()">Debug</button>
+      <span class="fa-stack icon-info" uib-tooltip="{{handlerCtrl.debugToolTip}}" tooltip-placement="top">
+      <span class="icon fa-circle-thin fa-stack-2x"></span>
+      <span class="icon fa-info fa-stack-1x"></span>
+      </span>
+    </div>
+    <div class="flex-right">
+      <button ng-click="handlerCtrl.cancelEdit()"
+        ng-disabled="formHandler.handlerEditor.$pristine || handlerCtrl.disableCancelButton">Cancel
+      </button>&nbsp;
+      <button ng-click="handlerCtrl.saveEdit()"
+        ng-disabled="formHandler.handlerEditor.$pristine || handlerCtrl.disableSaveButton">Save
+      </button>&nbsp;
+    </div>
+  </div>
+</div>
