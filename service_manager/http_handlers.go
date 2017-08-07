@@ -250,7 +250,9 @@ func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
 
 func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 	appList := util.ListChildren(metakvAppsPath)
-	respData := make([]application, len(appList))
+	tempAppList := util.ListChildren(metakvTempAppsPath)
+	respData := make([]application, len(appList)+len(tempAppList))
+
 	for index, appName := range appList {
 
 		path := metakvAppsPath + appName
@@ -305,12 +307,49 @@ func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	for index, appName := range tempAppList {
+		path := metakvTempAppsPath + appName
+		data, err := util.MetakvGet(path)
+		if err == nil {
+			var app application
+			uErr := json.Unmarshal(data, &app)
+			if uErr != nil {
+				logging.Errorf("Failed to unmarshal settings data from metakv, err: %v", uErr)
+				continue
+			}
+
+			respData[index+len(appList)] = app
+		}
+	}
+
 	data, err := json.Marshal(respData)
 	if err != nil {
 		fmt.Fprintf(w, "Failed to marshal response for get_application, err: %v", err)
 		return
 	}
 	fmt.Fprintf(w, "%s\n", data)
+}
+
+func (m *ServiceMgr) saveAppSetup(w http.ResponseWriter, r *http.Request) {
+	params := r.URL.Query()
+	appName := params["name"][0]
+
+	logging.Infof("Got request to save handlers for: %v", appName)
+
+	path := metakvTempAppsPath + appName
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
+		return
+	}
+
+	err = util.MetakvSet(path, data, nil)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to store handlers for app: %v err: %v", appName, err)
+		return
+	}
+
+	fmt.Fprintf(w, "Stored handlers for app: %v", appName)
 }
 
 func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
@@ -331,6 +370,11 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 		errString := fmt.Sprintf("App: %s, Failed to unmarshal payload", appName)
 		logging.Errorf("%s, err: %v", errString, err)
 		fmt.Fprintf(w, "%s\n", errString)
+		return
+	}
+
+	if app.DeploymentConfig.SourceBucket == app.DeploymentConfig.MetadataBucket {
+		fmt.Fprintf(w, "Source bucket same as metadata bucket")
 		return
 	}
 

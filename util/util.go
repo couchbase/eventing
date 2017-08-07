@@ -741,6 +741,11 @@ func Condense(vbs []uint16) string {
 		}
 
 		if i == len(vbs)-1 {
+			if prevVb == vbs[i] {
+				res = fmt.Sprintf("%s]", res)
+				return res
+			}
+
 			res = fmt.Sprintf("%s-%d]", res, vbs[i])
 			return res
 		}
