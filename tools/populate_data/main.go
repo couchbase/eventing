@@ -198,6 +198,29 @@ loop:
 			}
 		}
 
+	case "non_doc_timer":
+		for i := 0; i < options.itemCount; i++ {
+			blob := docTimerBlob{
+				Type: "non_doc_timer",
+				ID:   i,
+			}
+
+			content, err := json.Marshal(&blob)
+			if err != nil {
+				continue
+			}
+
+			key := fmt.Sprintf("ndtb_%d", i)
+			err = bucketHandle.SetRaw(key, options.expiry, content)
+			if err != nil {
+				continue
+			}
+		}
+
+		if options.loop {
+			goto loop
+		}
+
 		if options.loop {
 			goto loop
 		}

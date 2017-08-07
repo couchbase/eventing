@@ -432,8 +432,8 @@ func (c *Consumer) processNonDocTimerEvents() {
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getNonDocTimerCallback, c, currTimer, &val, true, &isNoEnt)
 
 				if !isNoEnt {
-					logging.Debugf("CRTE[%s:%s:%s:%d] Non doc timer key: %v val: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), currTimer, val)
+					logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Non doc timer key: %v val: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val)
 					c.nonDocTimerEntryCh <- val
 					c.metadataBucketHandle.Delete(currTimer)
 				}
@@ -455,6 +455,10 @@ func (c *Consumer) updateNonDocTimerStats(vb uint16) {
 	}
 
 	nextTimerTs := fmt.Sprintf("%s::%s", c.app.AppName, nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
+	for util.VbucketByKey([]byte(nextTimerTs), numVbuckets) != vb {
+		nextTimer = nextTimer.UTC().Add(time.Second)
+		nextTimerTs = fmt.Sprintf("%s::%s", c.app.AppName, nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
+	}
 
 	c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", nextTimerTs)
 }
