@@ -18,7 +18,10 @@ std::ostringstream os;
 
 std::string appName = "";
 LogLevel desiredLogLevel = LogLevel(0);
+std::string workerID = "";
 
 void setAppName(std::string app) { appName = app; }
 
 void setLogLevel(LogLevel level) { desiredLogLevel = level; }
+
+void setWorkerID(std::string wID) { workerID = wID; }

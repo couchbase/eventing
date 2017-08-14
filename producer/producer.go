@@ -494,7 +494,12 @@ breakWorkerLookup:
 	p.RUnlock()
 
 	// Checking if assigned Eventing.Consumer is alive or not
+	p.RLock()
+	defer p.RUnlock()
 	for _, consumer := range p.runningConsumers {
+		if consumer == nil || c == nil {
+			return nil, fmt.Errorf("worker not alive at present")
+		}
 		if consumer.ConsumerName() == c.ConsumerName() {
 			return c, nil
 		}

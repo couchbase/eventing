@@ -149,7 +149,7 @@ func (m *ServiceMgr) updateRebalanceProgressLocked(progress float64) {
 
 	task := &service.Task{
 		Rev:          encodeRev(rev),
-		ID:           fmt.Sprintf("rebalance/%s", changeID),
+		ID:           fmt.Sprintf("%s", changeID),
 		Type:         service.TaskTypeRebalance,
 		Status:       service.TaskStatusRunning,
 		IsCancelable: true,

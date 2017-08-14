@@ -63,16 +63,16 @@ var getKvVbMap = func(args ...interface{}) error {
 
 var aggTimerHostPortAddrsCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
+	timerAddrs := args[1].(*map[string]map[string]string)
 
 	var err error
-	c.timerAddrs, err = util.GetAggTimerHostPortAddrs(c.app.AppName, c.eventingAdminPort, getAggTimerHostPortAddrs)
+	*timerAddrs, err = util.GetAggTimerHostPortAddrs(c.app.AppName, c.eventingAdminPort, getAggTimerHostPortAddrs)
 	if err != nil {
 		logging.Errorf("CRCO[%s:%s:%s:%d] Failed to grab aggregate timer host port addrs, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-		return err
 	}
 
-	return nil
+	return err
 }
 
 var aggUUIDCallback = func(args ...interface{}) error {

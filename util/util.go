@@ -330,6 +330,11 @@ func StopDebugger(urlSuffix, nodeAddr, appName string) {
 }
 
 func GetDebuggerURL(urlSuffix, nodeAddr, appName string) string {
+	if nodeAddr == "" {
+		logging.Verbosef("UTIL Debugger host not found. Debugger not started")
+		return ""
+	}
+
 	url := fmt.Sprintf("http://%s/%s/?name=%s", nodeAddr, urlSuffix, appName)
 
 	netClient := &http.Client{

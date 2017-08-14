@@ -154,9 +154,8 @@ func (c *Consumer) processEvents() {
 						Operation:      dcpStreamRunning,
 						Timestamp:      time.Now().String(),
 					}
-					vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
 
-					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob)
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySRCallback, c, vbKey, &vbBlob, &entry)
 
 					c.vbFlogChan <- vbFlog
 					continue
@@ -233,9 +232,8 @@ func (c *Consumer) processEvents() {
 					Operation:      dcpStreamStopped,
 					Timestamp:      time.Now().String(),
 				}
-				vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
 
-				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob)
+				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySECallback, c, vbKey, &entry)
 
 				c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
 
@@ -413,6 +411,14 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 			vbBlob.PreviousVBOwner = c.HostPortAddr()
 			vbBlob.PreviousEventingDir = c.eventingDir
 
+			entry := OwnershipEntry{
+				AssignedWorker: c.ConsumerName(),
+				CurrentVBOwner: c.HostPortAddr(),
+				Operation:      dcpStreamBootstrap,
+				Timestamp:      time.Now().String(),
+			}
+			vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
+
 			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, vbKey, &vbBlob)
 
 			switch c.dcpStreamBoundary {
@@ -509,7 +515,10 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() {
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), kvAddr)
 
 		c.hostDcpFeedRWMutex.RLock()
-		c.kvHostDcpFeedMap[kvAddr].Close()
+		feed, ok := c.kvHostDcpFeedMap[kvAddr]
+		if ok && feed != nil {
+			feed.Close()
+		}
 		c.hostDcpFeedRWMutex.RUnlock()
 
 		c.hostDcpFeedRWMutex.Lock()
@@ -547,7 +556,8 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 		Operation:      dcpStreamStopped,
 		Timestamp:      time.Now().String(),
 	}
-	vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
+
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySECallback, c, vbKey, &entry)
 
 	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
 	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
@@ -555,7 +565,7 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
 	c.vbProcessingStats.updateVbStat(vbno, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, &vbBlob)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateCheckpointCallback, c, vbKey, &vbBlob)
 }
 
 func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) error {

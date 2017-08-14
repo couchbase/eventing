@@ -365,11 +365,13 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
 	c.vbProcessingStats.updateVbStat(vb, "node_uuid", vbBlob.NodeUUID)
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateVbOwnerAndStartStreamCallback, c, vbKey, vbBlob)
 
 	if shouldPerformPlasmaTransfer {
 
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), aggTimerHostPortAddrsCallback, c)
+		timerAddrs := make(map[string]map[string]string)
+
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), aggTimerHostPortAddrsCallback, c, &timerAddrs)
 		previousAssignedWorker := vbBlob.PreviousAssignedWorker
 		previousEventingDir := vbBlob.PreviousEventingDir
 		previousNodeUUID := vbBlob.PreviousNodeUUID
@@ -379,7 +381,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		var ok bool
 
 		// To handle case of hostname update
-		if addr, ok = c.timerAddrs[previousVBOwner][previousAssignedWorker]; !ok {
+		if addr, ok = timerAddrs[previousVBOwner][previousAssignedWorker]; !ok {
 			util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, c)
 
 			var addrUUIDMap map[string]string
@@ -387,10 +389,10 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 			addr = addrUUIDMap[previousNodeUUID]
 
 			remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
-				strings.Split(c.timerAddrs[addr][previousAssignedWorker], ":")[3])
+				strings.Split(timerAddrs[addr][previousAssignedWorker], ":")[3])
 		} else {
 			remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
-				strings.Split(c.timerAddrs[previousVBOwner][previousAssignedWorker], ":")[3])
+				strings.Split(timerAddrs[previousVBOwner][previousAssignedWorker], ":")[3])
 		}
 
 		client := timer.NewRPCClient(c, remoteConsumerAddr, c.app.AppName, previousAssignedWorker)
@@ -495,7 +497,7 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 	c.vbProcessingStats.updateVbStat(vb, "node_uuid", vbBlob.NodeUUID)
 	c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), casOpCallback, c, vbKey, vbBlob)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateCheckpointCallback, c, vbKey, vbBlob)
 
 	logging.Tracef("CRDP[%s:%s:%s:%d] vb: %v Stopped dcp stream, updated checkpoint blob in bucket",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)

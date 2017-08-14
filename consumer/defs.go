@@ -96,8 +96,9 @@ const (
 )
 
 const (
-	dcpStreamRunning = "running"
-	dcpStreamStopped = "stopped"
+	dcpStreamBootstrap = "bootstrap"
+	dcpStreamRunning   = "running"
+	dcpStreamStopped   = "stopped"
 )
 
 var dcpConfig = map[string]interface{}{
@@ -163,6 +164,7 @@ type Consumer struct {
 	eventingNodeUUIDs      []string
 	executionTimeout       int
 	gocbBucket             *gocb.Bucket
+	gocbMetaBucket         *gocb.Bucket
 	isRebalanceOngoing     bool
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
 	hostDcpFeedRWMutex     *sync.RWMutex

@@ -142,6 +142,8 @@ func (c *Consumer) Serve() {
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), gocbConnectBucketCallback, c)
 
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), gocbConnectMetaBucketCallback, c)
+
 	var flogs couchbase.FailoverLog
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs, dcpConfig)
 
@@ -219,9 +221,9 @@ func (c *Consumer) HandleV8Worker() {
 
 	switch c.debuggerState {
 	case startDebug:
+		c.disableSocketTimeout = true
 		c.sendDebuggerStart()
 		c.signalClientBootstrapCh <- struct{}{}
-		c.disableSocketTimeout = true
 
 	case stopDebug:
 		c.signalClientBootstrapCh <- struct{}{}

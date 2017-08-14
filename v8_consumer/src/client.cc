@@ -430,6 +430,7 @@ int main(int argc, char **argv) {
   int batch_size = atoi(argv[4]);
 
   setAppName(appname);
+  setWorkerID(worker_id);
   AppWorker *worker = AppWorker::GetAppWorker();
   worker->Init(appname, "127.0.0.1", worker_id, batch_size, port);
 }

@@ -22,6 +22,7 @@ enum LogLevel { logSilent, logInfo, logError, logWarning, logDebug, logTrace };
 
 extern std::string appName;
 extern LogLevel desiredLogLevel;
+extern std::string workerID;
 
 inline std::string NowTime();
 static std::string LevelToString(LogLevel level);
@@ -30,6 +31,7 @@ extern std::ostringstream os;
 
 extern void setAppName(std::string appName);
 extern void setLogLevel(LogLevel level);
+extern void setWorkerID(std::string ID);
 
 static std::ostringstream &Logger(LogLevel level = logInfo) {
   using namespace std::chrono;
@@ -56,7 +58,7 @@ static std::ostringstream &Logger(LogLevel level = logInfo) {
   os << ts.substr(ts.length() - 2);
 
   os << " " << LevelToString(level) << " ";
-  os << "VWCP [" << appName << "] ";
+  os << "VWCP [" << appName << ":" << workerID << "] ";
   return os;
 }
 
