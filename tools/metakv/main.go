@@ -52,6 +52,7 @@ func main() {
 	settings["enable_recursive_mutation"] = false
 	settings["deadline_timeout"] = 2
 	settings["execution_timeout"] = 1
+	settings["processing_status"] = true
 
 	sData, err := json.Marshal(&settings)
 	if err != nil {

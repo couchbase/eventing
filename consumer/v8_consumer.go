@@ -255,6 +255,7 @@ func (c *Consumer) Stop() {
 
 	c.cbBucket.Close()
 	c.gocbBucket.Close()
+	c.gocbMetaBucket.Close()
 
 	c.producer.CleanupDeadConsumer(c)
 

@@ -57,6 +57,11 @@ type SuperSupervisor struct {
 	supCmdCh          chan supCmdMsg
 	uuid              string
 
+	appRWMutex *sync.RWMutex
+
+	// Captures if the app is enabled or not
+	appStatus map[string]bool // Access controlled by appRWMutex
+
 	mu                           *sync.RWMutex
 	plasmaCloseSignalMap         map[uint16]int // Access controlled by plasmaRWMutex
 	producerSupervisorTokenMap   map[common.EventingProducer]suptree.ServiceToken

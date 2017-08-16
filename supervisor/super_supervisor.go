@@ -22,6 +22,7 @@ import (
 // NewSuperSupervisor creates the super_supervisor handle
 func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid string) *SuperSupervisor {
 	s := &SuperSupervisor{
+		appStatus:                    make(map[string]bool),
 		CancelCh:                     make(chan struct{}, 1),
 		eventingAdminPort:            eventingAdminPort,
 		eventingDir:                  eventingDir,
@@ -40,6 +41,7 @@ func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid s
 		vbPlasmaStoreMap:             make(map[uint16]*plasma.Plasma),
 		vbucketsToSkipPlasmaClose:    make(map[uint16]struct{}),
 	}
+	s.appRWMutex = &sync.RWMutex{}
 	s.mu = &sync.RWMutex{}
 	go s.superSup.ServeBackground()
 
@@ -57,7 +59,7 @@ func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid s
 
 // EventHandlerLoadCallback is registered as callback from metakv observe calls on event handlers path
 func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, rev interface{}) error {
-	logging.Infof("SSUP[%d] EventHandlerLoadCallback: path => %s encoded value size=> %v\n", len(s.runningProducers), path, len(value))
+	logging.Infof("SSUP[%d] EventHandlerLoadCallback: path => %s encoded value size => %v\n", len(s.runningProducers), path, len(value))
 
 	if value != nil {
 		splitRes := strings.Split(path, "/")
@@ -66,7 +68,34 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 			ctx: appName,
 			cmd: cmdAppLoad,
 		}
-		s.supCmdCh <- msg
+
+		settingsPath := MetakvAppSettingsPath + appName
+		sData, err := util.MetakvGet(settingsPath)
+		if err != nil {
+			logging.Errorf("SSUP[%d] App: %s Failed to fetch updated settings from metakv, err: %v",
+				len(s.runningProducers), appName, err)
+		}
+
+		settings := make(map[string]interface{})
+		err = json.Unmarshal(sData, &settings)
+		if err != nil {
+			logging.Errorf("SSUP[%d] App: %s Failed to unmarshal settings received, err: %v",
+				len(s.runningProducers), appName, err)
+		}
+
+		s.appRWMutex.Lock()
+		if _, ok := s.appStatus[appName]; !ok {
+			s.appStatus[appName] = false
+		}
+
+		if processingStatus, ok := settings["processing_status"].(bool); ok {
+			if s.appStatus[appName] == false && processingStatus {
+				s.supCmdCh <- msg
+				s.appStatus[appName] = true
+			}
+		}
+		s.appRWMutex.Unlock()
+
 	} else {
 
 		// Delete application request
@@ -76,14 +105,20 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 			ctx: appName,
 			cmd: cmdAppDelete,
 		}
-		s.supCmdCh <- msg
+
+		if !s.appStatus[appName] {
+			s.supCmdCh <- msg
+		} else {
+			logging.Errorf("SSUP[%d] App: %s, got request to delete the app but app isn't un-deployed. Ignoring delete request",
+				len(s.runningProducers), appName)
+		}
 	}
 	return nil
 }
 
 // SettingsChangeCallback is registered as callback from metakv observe calls on event handler settings path
 func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev interface{}) error {
-	logging.Infof("SSUP[%d] SettingsChangeCallback: path => %s value => %s\n", len(s.runningProducers), path, string(value))
+	logging.Infof("SSUP[%d] SettingsChangeCallback: path => %s value => %s", len(s.runningProducers), path, string(value))
 
 	if value != nil {
 		splitRes := strings.Split(path, "/")
@@ -92,7 +127,65 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			ctx: appName,
 			cmd: cmdSettingsUpdate,
 		}
-		s.supCmdCh <- msg
+
+		settings := make(map[string]interface{})
+		err := json.Unmarshal(value, &settings)
+		if err != nil {
+			logging.Errorf("SSUP[%d] App: %s Failed to unmarshal settings received, err: %v",
+				len(s.runningProducers), appName, err)
+		}
+
+		processingStatus := settings["processing_status"].(bool)
+
+		s.appRWMutex.Lock()
+		if _, ok := s.appStatus[appName]; !ok {
+			s.appStatus[appName] = false
+		}
+
+		switch s.appStatus[appName] {
+		case true:
+			switch processingStatus {
+			case true:
+				logging.Infof("SSUP[%d] App: %s already enabled. Passing settings change message to Eventing.Consumer",
+					len(s.runningProducers), appName)
+
+				s.supCmdCh <- msg
+
+			case false:
+				logging.Infof("SSUP[%d] App: %s enabled, settings change requesting for disabling processing for it",
+					len(s.runningProducers), appName)
+
+				if p, ok := s.runningProducers[appName]; ok {
+					logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
+					p.NotifyInit()
+
+					s.superSup.Remove(s.producerSupervisorTokenMap[p])
+					delete(s.producerSupervisorTokenMap, p)
+					delete(s.runningProducers, appName)
+
+					p.NotifySupervisor()
+					logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)
+				}
+				s.appStatus[appName] = false
+			}
+
+		case false:
+			switch processingStatus {
+			case true:
+				logging.Infof("SSUP[%d] App: %s disabled currently, settings change requesting to enable processing for it",
+					len(s.runningProducers), appName)
+
+				s.spawnApp(appName)
+				s.appStatus[appName] = true
+
+			case false:
+				logging.Infof("SSUP[%d] App: %s disabled currently, settings change requesting for disabling it again. Ignoring",
+					len(s.runningProducers), appName)
+			}
+		}
+
+		s.appRWMutex.Unlock()
+
 	}
 	return nil
 }
@@ -222,6 +315,7 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 								w.DeleteKV(itr.Key())
 							}
 						}
+						snapshot.Close()
 					}
 					logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
 				}(s)

@@ -26,9 +26,6 @@ func (c *Consumer) controlRoutine() {
 
 		case <-c.signalSettingsChangeCh:
 
-			logging.Infof("CRCR[%s:%s:%s:%d] Got notification about settings update",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
-
 			settingsPath := metakvAppSettingsPath + c.app.AppName
 			sData, err := util.MetakvGet(settingsPath)
 			if err != nil {
