@@ -51,6 +51,7 @@ func (m *ServiceMgr) initService() {
 	m.eventingAdminPort = cfg["eventing_admin_port"].(string)
 	m.restPort = cfg["rest_port"].(string)
 	m.uuid = cfg["uuid"].(string)
+	m.initErrCodes()
 
 	logging.Infof("ServiceMgr::initService eventingAdminPort: %s", m.eventingAdminPort)
 
@@ -59,13 +60,16 @@ func (m *ServiceMgr) initService() {
 	go m.registerWithServer()
 
 	http.HandleFunc("/clearEventStats", m.clearEventStats)
+	http.HandleFunc("/getErrorCodes", m.getErrCodes)
 	http.HandleFunc("/deleteApplication/", m.deleteApplication)
+	http.HandleFunc("/deleteAppTempStore/", m.deleteAppTempStore)
 	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
 	http.HandleFunc("/getApplication/", m.fetchAppSetup)
+	http.HandleFunc("/getAppTempStore/", m.fetchAppTempStore)
 	http.HandleFunc("/getEventsPSec", m.getEventsProcessedPSec)
 	http.HandleFunc("/getAggEventsPSec", m.getAggEventsProcessedPSec)
 	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
-	http.HandleFunc("/saveApplication/", m.saveAppSetup)
+	http.HandleFunc("/saveAppTempStore/", m.saveAppSetup)
 	http.HandleFunc("/setApplication/", m.storeAppSetup)
 	http.HandleFunc("/setSettings/", m.storeAppSettings)
 	http.HandleFunc("/debugUrl/", m.getLocalDebuggerURL)

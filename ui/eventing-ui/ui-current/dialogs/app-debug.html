@@ -8,9 +8,11 @@
       <p>Open the following URL to begin debugging.</p>
     </div>
     <div class="row">
-      <input ng-disabled="!urlReceived" id="debug-url" type="text" size="25" ng-model="url" readonly/>
+      <input ng-disabled="!urlReceived" id="debug-url" type="text" size="25"
+             ng-model="url" readonly/>
       <button ng-disabled="!urlReceived" ng-click="debugCtrl.copyUrl()"
-        uib-tooltip="URL has been copied to clipboard" tooltip-placement="top">Copy
+              uib-tooltip="URL has been copied to clipboard"
+              tooltip-placement="top">Copy
       </button>
     </div>
   </div>

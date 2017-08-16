@@ -16,9 +16,9 @@ $ brew upgrade libcouchbase
 
 ### Clone and build Couchbase server
 ```bash
-$ repo init -u git://github.com/couchbase/manifest.git -m toy/toy-eventing.xml
+$ repo init -u git://github.com/couchbase/manifest.git -m toy/toy-eventing.xml -g all
 $ repo sync --jobs=20
-$ make -j8
+$ BUILD_ENTERPRISE=ON make -j8
 ```
 
 Make sure that the number of open files under ulimit is atleast 5000.
@@ -32,11 +32,6 @@ $ echo "ulimit -n 5000" > ~/.bashrc or ~/.bash_profile or ~/.zshrc
 $ cd ns_server
 $ ./cluster_run –n1
 $ ./cluster_connect –n1
-```
-
-### Set Memory-Optimized Global Secondary Indexes
-```bash
-$ curl -X POST http://localhost:9102/settings -u Administrator:asdasd -d '{"indexer.settings.storage_mode": "memory_optimized"}'
 ```
 
 ### Add admin user

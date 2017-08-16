@@ -23,6 +23,8 @@ const (
 	rebalanceProgressUpdateTickInterval = time.Duration(3000) * time.Millisecond
 )
 
+const headerKey = "status"
+
 // ServiceMgr implements cbauth_service interface
 type ServiceMgr struct {
 	auth              string
@@ -47,6 +49,9 @@ type ServiceMgr struct {
 
 	superSup common.EventingSuperSup
 	waiters  waiters
+
+	statusCodes   statusCodes
+	statusPayload []byte
 }
 
 type doneCallback func(err error, cancel <-chan struct{})

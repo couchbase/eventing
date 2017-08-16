@@ -1,60 +1,161 @@
 angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault'])
     // Controller for the summary page.
-    .controller('SummaryCtrl', ['$scope', '$state', '$uibModal', '$timeout', 'ApplicationService', 'serverNodes',
-        function($scope, $state, $uibModal, $timeout, ApplicationService, serverNodes) {
+    .controller('SummaryCtrl', ['$q', '$scope', '$state', '$uibModal', '$timeout', 'ApplicationService', 'serverNodes',
+        function($q, $scope, $state, $uibModal, $timeout, ApplicationService, serverNodes) {
             var self = this;
 
+            self.errorState = !ApplicationService.status.isErrorCodesLoaded();
             self.showSuccessAlert = false;
             self.serverNodes = serverNodes;
-            self.appList = ApplicationService.getAllApps();
+            self.appList = ApplicationService.local.getAllApps();
 
             self.isAppListEmpty = function() {
                 return Object.keys(self.appList).length === 0;
             };
 
-            // Callback for deployment.
-            self.deployApp = function(appName) {
-                $scope.appName = appName;
-                $scope.actionTitle = 'Deployment';
-                $scope.action = 'deploy';
-                $scope.cleanupTimers = false;
+            self.toggleProcessing = function(app) {
+                // Clone the app for easier backtracking.
+                var appClone = app.clone();
+                appClone.settings.processing_status = !appClone.settings.processing_status;
+
+                ApplicationService.tempStore.saveApp(appClone)
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
+
+                        console.log(response.data);
+                        return ApplicationService.primaryStore.saveSettings(appClone);
+                    })
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
+
+                        console.log(response.data);
+                        // Processing status was successfully toggled, update the UI.
+                        app.settings.processing_status = appClone.settings.processing_status;
+                    })
+                    .catch(function(errResponse) {
+                        console.error(errResponse);
+                    });
+            };
+
+            self.toggleDeployment = function(app) {
+                var deploymentScope = $scope.$new(true);
+                deploymentScope.appName = app.appname;
+                deploymentScope.actionTitle = app.settings.deployment_status ? 'Undeployment' : 'Deployment';
+                deploymentScope.action = app.settings.deployment_status ? 'undeploy' : 'deploy';
+                deploymentScope.cleanupTimers = false;
+
+                if (app.settings.deployment_status) {
+                    undeployApp(app, deploymentScope);
+                } else {
+                    deployApp(app, deploymentScope);
+                }
+            };
+
+            function deployApp(app, scope) {
+                var appClone = app.clone();
 
                 // Open dialog to confirm application deployment.
                 $uibModal.open({
                         templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
-                        scope: $scope
+                        scope: scope
                     }).result
                     .then(function(cleanupTimers) {
-                        // checkbox for cleanupTimers.
+                        // If cleanupTimers is set, then first modify its settings.
                         if (cleanupTimers) {
-                            // If cleanupTimers is set, then first modify its settings.
-                            var app = ApplicationService.getAppByName(appName);
-                            app.settings.cleanup_timers = cleanupTimers;
+                            appClone.settings.cleanup_timers = cleanupTimers;
                         }
 
-                        // Deploy the application.
-                        ApplicationService.deployApp(appName)
-                            .then(function(response) {
-                                // Show an alert upon successful deployment.
-                                showSuccessAlert(appName + ' deployed successfully!');
+                        // Set app to 'deployed & enabled' state and save.
+                        appClone.settings.deployment_status = true;
+                        appClone.settings.processing_status = true;
+                        return ApplicationService.tempStore.saveApp(appClone);
+                    })
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
 
-                                // TODO : This is a small work-around. Need to model this properly.
-                                var app = ApplicationService.getAppByName(appName);
-                                app.appState = {
-                                    isDeployed: 'Deployed',
-                                    isEnabled: 'Enabled'
-                                };
-                            }, function(errResponse) {
-                                console.error('Unable to deploy:', errResponse.data);
-                            });
-                    }, function(errResponse) {
-                        console.error('Deployment cancelled');
+                        console.log(response.data);
+                        return ApplicationService.primaryStore.deployApp(appClone);
+                    })
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
+
+                        console.log(response.data);
+
+                        // Update settings in the UI.
+                        app.settings.cleanup_timers = appClone.settings.cleanup_timers;
+                        app.settings.deployment_status = appClone.settings.deployment_status;
+                        app.settings.processing_status = appClone.settings.processing_status;
+
+                        // Show an alert upon successful deployment.
+                        showSuccessAlert(app.appname + ' deployed successfully!');
+                    })
+                    .catch(function(errResponse) {
+                        console.error(errResponse);
                     });
-            };
+            }
+
+            function undeployApp(app, scope) {
+                var appClone = app.clone();
+
+                $uibModal.open({
+                        templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
+                        scope: scope
+                    }).result
+                    .then(function(response) {
+                        // Set app to 'undeployed & disabled' state and save.
+                        appClone.settings.deployment_status = false;
+                        appClone.settings.processing_status = false;
+                        return ApplicationService.tempStore.saveApp(appClone);
+                    })
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
+
+                        console.log(response.data);
+                        return ApplicationService.primaryStore.saveSettings(appClone);
+                    })
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
+
+                        console.log(response.data);
+                        return ApplicationService.primaryStore.deleteApp(appClone.appname);
+                    })
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
+
+                        console.log(response.data);
+                        app.settings.deployment_status = appClone.settings.deployment_status;
+                        app.settings.processing_status = appClone.settings.processing_status;
+                        showSuccessAlert(app.appname + ' undeployed successfully!');
+                    })
+                    .catch(function(errResponse) {
+                        console.error(errResponse);
+                    });
+            }
 
             // Callback to export the app.
             self.exportApp = function(appName) {
-                ApplicationService.getDeployedApps()
+                ApplicationService.tempStore.getAllApps()
                     .then(function(deployedAppsMgr) {
                         var app = deployedAppsMgr.getAppByName(appName);
                         var fileName = appName + '.json';
@@ -67,18 +168,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                         // Save the file.
                         saveAs(fileToSave, fileName);
+                    })
+                    .catch(function(errResponse) {
+                        console.error('Failed to get apps from server', errResponse);
                     });
-            };
-
-            self.attachAppState = function(app) {
-                var state = ApplicationService.getAppState(app.appname);
-                // Workaround - must not check for the appState to set it.
-                if (!app.appState) {
-                    app.appState = {
-                        isDeployed: state.deployed ? 'Deployed' : 'Undeployed',
-                        isEnabled: state.enabled ? 'Enabled' : 'Disabled'
-                    };
-                }
             };
 
             // Callback for deleting application.
@@ -93,14 +186,26 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         scope: $scope
                     }).result
                     .then(function(response) {
-                        ApplicationService.deleteApp(appName)
-                            .then(function(response) {
-                                showSuccessAlert(appName + ' deleted successfully!');
-                            }, function(errResponse) {
-                                console.error('error in deleting application', errResponse.data);
-                            });
-                    }, function(errResponse) {
-                        console.error('Delete cancelled');
+                        return ApplicationService.tempStore.deleteApp(appName)
+                    })
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
+
+                        return ApplicationService.primaryStore.deleteApp(appName)
+                    })
+                    .then(function(response) {
+                        // No need to check if app was deleted successfully from
+                        // primary store since we would have deleted the
+                        // application from primary store during undeploy.
+
+                        ApplicationService.local.deleteApp(appName);
+                        showSuccessAlert(appName + ' deleted successfully!');
+                    })
+                    .catch(function(errResponse) {
+                        console.error(errResponse);
                     });
             };
 
@@ -139,7 +244,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                             }
 
                                             return buckets;
-                                        }, function(errResponse) {
+                                        })
+                                        .catch(function(errResponse) {
                                             console.error(errResponse);
                                         });
                                 }
@@ -149,13 +255,30 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     .then(function(response) { // Upon continue.
                         creationScope.appModel.depcfg.buckets = ApplicationService.convertBindingToConfig(creationScope.bindings);
                         creationScope.appModel.fillWithMissingDefaults();
-                        ApplicationService.createApp(creationScope.appModel);
 
-                        $state.go('app.admin.eventing.handler', {
+                        // When we import the application, we want it to be in
+                        // disabled and undeployed state.
+                        creationScope.appModel.settings.processing_status = false;
+                        creationScope.appModel.settings.deployment_status = false;
+
+                        ApplicationService.local.createApp(creationScope.appModel);
+                        return $state.go('app.admin.eventing.handler', {
                             appName: creationScope.appModel.appname
                         });
-                    }, function(errResponse) { // Upon cancel.
-                        console.error('failure');
+                    })
+                    .then(function(response) {
+                        return ApplicationService.tempStore.saveApp(creationScope.appModel);
+                    })
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
+
+                        return ApplicationService.tempStore.saveApp(creationScope.appModel);
+                    })
+                    .catch(function(errResponse) { // Upon cancel.
+                        console.error(errResponse);
                     });
             }
 
@@ -204,9 +327,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     reader.readAsText(this.files[0]);
                 }
 
-                $("#loadConfig")[0].value = null;
-                $("#loadConfig")[0].addEventListener('change', handleFileSelect, false);
-                $("#loadConfig")[0].click();
+                var loadConfigElement = $("#loadConfig")[0];
+                loadConfigElement.value = null;
+                loadConfigElement.addEventListener('change', handleFileSelect, false);
+                loadConfigElement.click();
             };
         }
     ])
@@ -220,16 +344,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.sourceBuckets = bucketsResolve;
             self.metadataBuckets = bucketsResolve.reverse();
 
-            self.isFromInvalid = function() {
-                return FormValidationService.isFromInvalid(self.createAppForm);
+            self.isFormInvalid = function() {
+                return FormValidationService.isFormInvalid(self.createAppForm);
             };
         }
     ])
     // Controller for settings.
-    .controller('SettingsCtrl', ['$uibModal', '$state', '$timeout', '$scope', '$stateParams', 'ApplicationService', 'FormValidationService', 'bucketsResolve',
-        function($uibModal, $state, $timeout, $scope, $stateParams, ApplicationService, FormValidationService, bucketsResolve) {
+    .controller('SettingsCtrl', ['$q', '$uibModal', '$state', '$timeout', '$scope', '$stateParams', 'ApplicationService', 'FormValidationService', 'bucketsResolve',
+        function($q, $uibModal, $state, $timeout, $scope, $stateParams, ApplicationService, FormValidationService, bucketsResolve) {
             var self = this,
-                appModel = ApplicationService.getAppByName($stateParams.appName);
+                appModel = ApplicationService.local.getAppByName($stateParams.appName);
 
             self.isDialog = false;
             self.showSuccessAlert = false;
@@ -251,25 +375,51 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             // Need to pass a deep copy or the changes will be stored locally till refresh.
             $scope.appModel = JSON.parse(JSON.stringify(appModel));
 
-            self.isFromInvalid = function() {
-                return FormValidationService.isFromInvalid(self.createAppForm);
+            self.isFormInvalid = function() {
+                return FormValidationService.isFormInvalid(self.createAppForm);
             };
 
             self.saveSettings = function() {
                 var bindings = ApplicationService.convertBindingToConfig(self.bindings);
                 if (JSON.stringify(appModel.depcfg.buckets) !== JSON.stringify(bindings)) {
-                    showWarningAlert('Bindings changed. Re-deploy for changes to take effect!')
+                    $scope.appModel.depcfg.buckets = bindings;
+                    showWarningAlert('Bindings changed. Deploy for changes to take effect!');
                 }
 
-                appModel.depcfg.buckets = bindings;
-                appModel.depcfg.source_bucket = self.sourceBucket;
-                appModel.depcfg.metadata_bucket = self.metadataBucket;
+                ApplicationService.tempStore.saveApp($scope.appModel)
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
 
-                ApplicationService.saveAppSettings($scope.appModel);
-                showSuccessAlert('Settings saved successfully!');
+                        console.log(response.data);
+                        return ApplicationService.primaryStore.saveSettings($scope.appModel);
+                    })
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
+
+                        console.log('Settings saved:', response.data);
+                        showSuccessAlert('Settings saved successfully!');
+                        // Update local changes.
+                        appModel.settings = $scope.appModel.settings;
+                        appModel.depcfg.buckets = bindings;
+
+
+                        // TODO : May not need these as we don't allow editing of these buckets.
+                        appModel.depcfg.source_bucket = self.sourceBucket;
+                        appModel.depcfg.metadata_bucket = self.metadataBucket;
+                    })
+                    .catch(function(errResponse) {
+                        console.error(errResponse.data);
+                    });
             };
 
             self.cancelEdit = function() {
+                // TODO : Consider using appModel.clone()
                 $scope.appModel = JSON.parse(JSON.stringify(appModel));
                 $scope.appModel.settings.cleanup_timers = String(appModel.settings.cleanup_timers);
 
@@ -295,12 +445,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for editing handler code.
-    .controller('HandlerCtrl', ['$uibModal', '$timeout', '$state', '$scope', '$stateParams', 'ApplicationService',
-        function($uibModal, $timeout, $state, $scope, $stateParams, ApplicationService) {
+    .controller('HandlerCtrl', ['$q', '$uibModal', '$timeout', '$state', '$scope', '$stateParams', 'ApplicationService',
+        function($q, $uibModal, $timeout, $state, $scope, $stateParams, ApplicationService) {
             var self = this,
                 isDebugOn = false,
                 debugScope = $scope.$new(true),
-                app = ApplicationService.getAppByName($stateParams.appName);
+                app = ApplicationService.local.getAppByName($stateParams.appName);
 
             debugScope.appName = app.appname;
 
@@ -309,6 +459,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.debugToolTip = 'Displays a URL that connects the Chrome Dev-Tools with the application handler. Code must be deployed in order to debug.';
             self.disableCancelButton = true;
             self.disableSaveButton = true;
+            self.editorDisabled = app.settings.deployment_status || app.settings.processing_status;
+            self.debugDisabled = !(app.settings.deployment_status && app.settings.processing_status);
 
             $scope.aceLoaded = function(editor) {
                 // Current line highlight would overlap on the nav bar in compressed mode.
@@ -319,10 +471,17 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 // TODO : Figure out how to add N1QL grammar to ace editor.
                 editor.getSession().setUseWorker(false);
 
+                editor.on('focus', function(event) {
+                    if (self.editorDisabled) {
+                        showWarningAlert('Undeploy the application to edit!');
+                    }
+                });
+
                 // Make the ace editor responsive to changes in browser dimensions.
                 function resizeEditor() {
-                    $('#handler-editor').width($(window).width() * 0.9);
-                    $('#handler-editor').height($(window).height() * 0.7);
+                    var handlerEditor = $('#handler-editor');
+                    handlerEditor.width($(window).width() * 0.9);
+                    handlerEditor.height($(window).height() * 0.7);
                 }
 
                 $(window).resize(resizeEditor);
@@ -336,13 +495,18 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             self.saveEdit = function() {
                 app.appcode = self.handler;
-                showSuccessAlert('Code saved successfully!');
-                showWarningAlert('Re-deploy for changes to take effect!');
-                // TODO: Make a server call here to save the handler code.
-                console.log(ApplicationService.getAllApps());
+                ApplicationService.tempStore.saveApp(app)
+                    .then(function(response) {
+                        showSuccessAlert('Code saved successfully!');
+                        showWarningAlert('Deploy for changes to take effect!');
 
-                self.disableCancelButton = self.disableSaveButton = true;
-                self.disableDeployButton = false;
+                        self.disableCancelButton = self.disableSaveButton = true;
+                        self.disableDeployButton = false;
+                        console.log(response.data);
+                    })
+                    .catch(function(errResponse) {
+                        console.error(errResponse);
+                    });
             };
 
             self.cancelEdit = function() {
@@ -359,30 +523,44 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     isDebugOn = true;
 
                     // Starts the debugger agent.
-                    ApplicationService.startAppDebug(app.appname)
+                    ApplicationService.debug.start(app.appname)
                         .then(function(response) {
+                            var responseCode = ApplicationService.status.getResponseCode(response);
+                            if (responseCode) {
+                                var errMsg = ApplicationService.status.getErroMsg(responseCode, response.data);
+                                return $q.reject(errMsg);
+                            }
+
                             console.log('Start debug:', response.data);
 
                             // Poll till we get the URL for debugging.
                             function getDebugUrl() {
                                 console.log('Fetching debug url for ' + app.appname);
-                                ApplicationService.getDebugUrl(app.appname)
+                                ApplicationService.debug.getUrl(app.appname)
                                     .then(function(response) {
-                                        if (response.data === '') {
+                                        var responseCode = ApplicationService.status.getResponseCode(response);
+                                        if (responseCode) {
+                                            var errMsg = ApplicationService.status.getErroMsg(responseCode, response.data);
+                                            return $q.reject(errMsg);
+                                        }
+
+                                        if (isDebugOn && response.data === '') {
                                             setTimeout(getDebugUrl, 1000);
                                         } else {
                                             debugScope.urlReceived = true;
                                             debugScope.url = response.data;
                                         }
-                                    }, function(errResponse) {
+                                    })
+                                    .catch(function(errResponse) {
                                         console.error('Unable to get debugger URL for ' + app.appname, errResponse.data);
                                     });
                             }
 
                             getDebugUrl();
-                        }, function(errResponse) {
-                            console.error('Failed to start debugger', errResponse.data);
-                        });
+                        })
+                        .catch(function(errResponse) {
+                            console.error('Failed to start debugger', errResponse);
+                        })
                 }
 
                 // Open the dialog to show the URL for debugging.
@@ -392,16 +570,23 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     }).result
                     .then(function(response) {
                         // Stop debugger agent.
-                        ApplicationService.stopAppDebug(app.appname)
-                            .then(function(response) {
-                                console.log('debugger stopped');
-                                isDebugOn = false;
-                                debugScope.url = 'Waiting for mutation';
-                                debugScope.urlReceived = false;
-                            }, function(errResponse) {
-                                console.error('Unable to stop debugger for ' + app.appname, errResponse.data);
-                            });
-                    }, function(errResponse) {});
+                        return ApplicationService.debug.stop(app.appname)
+                    })
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            var errMsg = ApplicationService.status.getErroMsg(responseCode, response.data);
+                            return $q.reject(errMsg);
+                        }
+
+                        console.log('debugger stopped');
+                        isDebugOn = false;
+                        debugScope.url = 'Waiting for mutation';
+                        debugScope.urlReceived = false;
+                    })
+                    .catch(function(errResponse) {
+                        console.error('Failed to start debugger:', errResponse.data);
+                    });
             };
 
             function showSuccessAlert(message) {
@@ -422,7 +607,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller to copy the debug URL.
-    .controller('DebugCtrl', ['ApplicationService', function(ApplicationService) {
+    .controller('DebugCtrl', [function() {
         var self = this;
 
         self.copyUrl = function() {
@@ -431,143 +616,175 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         };
     }])
     // Service to manage the applications.
-    .factory('ApplicationService', ['$http',
-        function($http) {
+    .factory('ApplicationService', ['$q', '$http', '$state',
+        function($q, $http, $state) {
             var appManager = new ApplicationManager();
+            var errHandler;
 
-            // Retrieve all the applications in the eventing server.
-            var loaderPromise = $http.get('/_p/event/getApplication/')
+            // Note : There's no trailing '/' after getErrorCodes in the URL,
+            // It results in 404 page not found for 'getErrorCodes/'
+            var loaderPromise = $http.get('/_p/event/getErrorCodes')
                 .then(function(response) {
+                    console.log('Obtained error codes');
+
+                    errHandler = new ErrorHandler(response.data);
+                    return $http.get('/_p/event/getAppTempStore/');
+                })
+                .then(function getAppTempStore(response) {
+                    var responseCode = Number(response.headers(ErrorHandler.headerKey));
+                    if (responseCode) {
+                        var errMsg = errHandler.createErrorMsg(responseCode, response.data);
+                        // Try to resolve according to the attributes of the error.
+                        errHandler.tryResolve(function() {
+                            return $http.get('/_p/event/getAppTempStore/');
+                        }, getAppTempStore, errMsg, responseCode);
+                        return $q.reject(errMsg);
+                    }
+
+                    console.log('Got applications from TempStore');
+
                     // Add apps to appManager.
                     for (var app of response.data) {
-                        appManager.pushApp(new Application(app), {
-                            deployed: true,
-                            enabled: true
-                        });
+                        appManager.pushApp(new Application(app));
                     }
-                }, function(errResponse) {
+                })
+                .catch(function(errResponse) {
                     console.error('Failed to get the data:', errResponse);
+                    $state.go('app.admin.eventing.summary');
                 });
 
             // APIs provided by the ApplicationService.
             return {
-                // loadApps just returns the Promise for the init call to load apps.
-                loadApps: function() {
-                    return loaderPromise;
+                local: {
+                    deleteApp: function(appName) {
+                        appManager.deleteApp(appName);
+                    },
+                    loadApps: function() {
+                        return loaderPromise;
+                    },
+                    getAllApps: function() {
+                        return appManager.getApplications();
+                    },
+                    createApp: function(appModel) {
+                        appManager.createApp(appModel);
+                    },
+                    getAppByName: function(appName) {
+                        return appManager.getAppByName(appName);
+                    }
                 },
-                getDeployedApps: function() {
-                    // Make a new call to get the apps from server.
-                    return $http.get('/_p/event/getApplication/')
-                        .then(function(response) {
-                            // Create and return an ApplicationManager instance.
-                            var deployedAppsMgr = new ApplicationManager();
+                tempStore: {
+                    getAllApps: function() {
+                        return $http.get('/_p/event/getAppTempStore/')
+                            .then(function(response) {
+                                // Create and return an ApplicationManager instance.
+                                var deployedAppsMgr = new ApplicationManager();
 
-                            for (var deployedApp of response.data) {
-                                deployedAppsMgr.pushApp(new Application(deployedApp), {
-                                    deployed: true,
-                                    enabled: true
-                                });
-                            }
-                            return deployedAppsMgr;
-                        }, function(errResponse) {
-                            console.error('Failed to get apps from server', errResponse.data);
+                                for (var deployedApp of response.data) {
+                                    deployedAppsMgr.pushApp(new Application(deployedApp));
+                                }
+
+                                return deployedAppsMgr;
+                            });
+                    },
+                    saveApp: function(app) {
+                        return $http({
+                            url: '/_p/event/saveAppTempStore/?name=' + app.appname,
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: app
                         });
+                    },
+                    deleteApp: function(appName) {
+                        return $http.get('/_p/event/deleteAppTempStore/?name=' + appName);
+                    }
                 },
-                getAllApps: function() {
-                    return appManager.getApplications();
+                primaryStore: {
+                    deployApp: function(app) {
+                        return $http({
+                            url: '/_p/event/setApplication/?name=' + app.appname,
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: app
+                        });
+                    },
+                    saveSettings: function(app) {
+                        return $http({
+                            url: '/_p/event/setSettings/?name=' + app.appname,
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: app.settings
+                        });
+                    },
+                    deleteApp: function(appName) {
+                        return $http.get('/_p/event/deleteApplication/?name=' + appName);
+                    }
                 },
-                createApp: function(appModel) {
-                    appManager.createApp(appModel);
-                    console.log(appManager.getApplications());
+                debug: {
+                    start: function(appName) {
+                        return $http({
+                            url: '/_p/event/startDebugger/?name=' + appName,
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: {}
+                        });
+                    },
+                    getUrl: function(appName) {
+                        return $http({
+                            url: '/_p/event/getDebuggerUrl/?name=' + appName,
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: {}
+                        });
+                    },
+                    stop: function(appName) {
+                        return $http({
+                            url: '/_p/event/stopDebugger/?name=' + appName,
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: {}
+                        });
+                    }
                 },
-                getAppByName: function(appName) {
-                    return appManager.getAppByName(appName);
-                },
-                getAppState: function(appName) {
-                    return appManager.appState[appName];
-                },
-                deployApp: function(appName) {
-                    var app = appManager.getAppByName(appName);
-                    return $http({
-                        url: '/_p/event/setApplication/?name=' + appName,
-                        method: 'POST',
-                        mnHttp: {
-                            isNotForm: true
-                        },
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        data: app
-                    });
-                },
-                saveAppSettings: function(appModel) {
-                    var app = appManager.getAppByName(appModel.appname);
-                    app.settings = appModel.settings;
-
-                    return $http({
-                        url: '/_p/event/setSettings/?name=' + app.appname,
-                        method: 'POST',
-                        mnHttp: {
-                            isNotForm: true
-                        },
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        data: app.settings
-                    });
-                },
-                deleteApp: function(appName) {
-                    appManager.deleteApp(appName);
-                    return $http({
-                        url: '/_p/event/deleteApplication/?name=' + appName,
-                        method: 'POST',
-                        mnHttp: {
-                            isNotForm: true
-                        },
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        data: {}
-                    });
-                },
-                startAppDebug: function(appName) {
-                    return $http({
-                        url: '/_p/event/startDebugger/?name=' + appName,
-                        method: 'POST',
-                        mnHttp: {
-                            isNotForm: true
-                        },
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        data: {}
-                    });
-                },
-                getDebugUrl: function(appName) {
-                    return $http({
-                        url: '/_p/event/getDebuggerUrl/?name=' + appName,
-                        method: 'POST',
-                        mnHttp: {
-                            isNotForm: true
-                        },
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        data: {}
-                    });
-                },
-                stopAppDebug: function(appName) {
-                    return $http({
-                        url: '/_p/event/stopDebugger/?name=' + appName,
-                        method: 'POST',
-                        mnHttp: {
-                            isNotForm: true
-                        },
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        data: {}
-                    });
+                status: {
+                    isErrorCodesLoaded: function() {
+                        return errHandler;
+                    },
+                    getErroMsg: function(errCode, details) {
+                        return errHandler.createErrorMsg(errCode, details);
+                    },
+                    getResponseCode: function(response) {
+                        return Number(response.headers(ErrorHandler.headerKey));
+                    }
                 },
                 convertBindingToConfig: function(bindings) {
                     // A binding is of the form -
@@ -603,7 +820,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
     .factory('FormValidationService', [
         function() {
             return {
-                isFromInvalid: function(form) {
+                isFormInvalid: function(form) {
                     // Need to check where rbacpass is empty manually and update state.
                     // Don't know why AngularJS is giving wrong state for this field.
                     form.rbacpass.$error.required = form.rbacpass.$modelValue === '';
@@ -637,12 +854,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     controller: 'SummaryCtrl',
                     controllerAs: 'summaryCtrl',
                     resolve: {
+                        loadApps: ['ApplicationService', function(ApplicationService) {
+                            return ApplicationService.local.loadApps();
+                        }],
                         serverNodes: ['mnPoolDefault', function(mnPoolDefault) {
                             return mnPoolDefault.get()
                                 .then(function(response) {
                                     return mnPoolDefault.getUrlsRunningService(response.nodes, 'eventing');
-                                }, function(errResponse) {
-                                    console.error('Unable to get server nodes', errResponse.data);
+                                })
+                                .catch(function(errResponse) {
+                                    console.error('Unable to get server nodes', errResponse);
                                 });
                         }]
                     }
@@ -654,20 +875,22 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     controllerAs: 'formCtrl',
                     resolve: {
                         loadApps: ['ApplicationService', function(ApplicationService) {
-                            return ApplicationService.loadApps();
+                            return ApplicationService.local.loadApps();
                         }],
                         bucketsResolve: ['$http', 'mnPoolDefault', function($http, mnPoolDefault) {
                             // Getting the list of buckets.
                             var poolDefault = mnPoolDefault.latestValue().value;
-                            return $http.get(poolDefault.buckets.uri).then(function(response) {
-                                var buckets = [];
-                                for (var bucket of response.data) {
-                                    buckets.push(bucket.name);
-                                }
-                                return buckets;
-                            }, function(errResponse) {
-                                console.error(errResponse);
-                            });
+                            return $http.get(poolDefault.buckets.uri)
+                                .then(function(response) {
+                                    var buckets = [];
+                                    for (var bucket of response.data) {
+                                        buckets.push(bucket.name);
+                                    }
+                                    return buckets;
+                                })
+                                .catch(function(errResponse) {
+                                    console.error('Unable to load buckets from server', errResponse);
+                                });
                         }]
                     }
                 })
@@ -676,7 +899,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     templateUrl: '../_p/ui/event/ui-current/fragments/handler-editor.html',
                     resolve: {
                         loadApps: ['ApplicationService', function(ApplicationService) {
-                            return ApplicationService.loadApps();
+                            return ApplicationService.local.loadApps();
                         }]
                     }
                 });

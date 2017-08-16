@@ -2,11 +2,11 @@
 <!--The controller that invokes this HTML must provide an implementation for formCtrl-->
 <!--The data binding is always done through $scope-->
 <div ng-show="!formCtrl.isDialog && formCtrl.showSuccessAlert"
-  class="animate-alert alert enable-ng-animation ng-scope alert-success">
+     class="animate-alert alert enable-ng-animation ng-scope alert-success">
   <p class="ng-binding">{{formCtrl.alertMessage}}</p>
 </div>
 <div ng-show="!formCtrl.isDialog && formCtrl.showWarningAlert"
-  class="animate-alert alert enable-ng-animation ng-scope alert-warning">
+     class="animate-alert alert enable-ng-animation ng-scope alert-warning">
   <p class="ng-binding">{{formCtrl.warningMessage}}</p>
 </div>
 <form name="formCtrl.createAppForm" class="forms">
@@ -19,31 +19,35 @@
         <div class="formrow">
           <div class="row">
             <label class="column width-3">Source bucket</label>
-            <select class="column width-9" ng-disabled="!formCtrl.isDialog" ng-model="appModel.depcfg.source_bucket"
-              ng-options="bucket for bucket in formCtrl.sourceBuckets"></select>
+            <select class="column width-9" ng-disabled="!formCtrl.isDialog"
+                    ng-model="appModel.depcfg.source_bucket"
+                    ng-options="bucket for bucket in formCtrl.sourceBuckets"></select>
           </div>
           <br/>
           <div class="row">
             <label class="column width-3">Metadata bucket</label>
-            <select class="column width-9" ng-disabled="!formCtrl.isDialog" ng-model="appModel.depcfg.metadata_bucket"
-              ng-options="bucket for bucket in formCtrl.metadataBuckets"></select>
+            <select class="column width-9" ng-disabled="!formCtrl.isDialog"
+                    ng-model="appModel.depcfg.metadata_bucket"
+                    ng-options="bucket for bucket in formCtrl.metadataBuckets"></select>
           </div>
         </div>
         <br/>
         <div class="formrow">
           <label>Name</label>
           <span class="input-append">
-          <input type="text" name="appname" ng-disabled="!formCtrl.isDialog" ng-model="appModel.appname" required/>
+          <input type="text" name="appname" ng-disabled="!formCtrl.isDialog"
+                 ng-model="appModel.appname" required/>
           </span>
           <div class="error field-error"
-            ng-show="formCtrl.createAppForm.appname.$error.required && formCtrl.createAppForm.appname.$dirty">
+               ng-show="formCtrl.createAppForm.appname.$error.required && formCtrl.createAppForm.appname.$dirty">
             Name cannot be empty
           </div>
         </div>
         <div class="formrow">
           <label>Description</label>
           <span class="input-append">
-          <textarea ng-model="appModel.description" cols="30" rows="5"></textarea>
+          <textarea ng-model="appModel.settings.description" cols="30"
+                    rows="5"></textarea>
           </span>
         </div>
         <br/>
@@ -56,12 +60,14 @@
               <label>RBAC username</label>
               </span>
               <span class="cbui-table-cell input-append">
-              <input type="text" name="rbacuser" ng-model="appModel.settings.rbacuser" placeholder="Username"
-                required/>
+              <input type="text" name="rbacuser"
+                     ng-model="appModel.settings.rbacuser"
+                     placeholder="Username"
+                     required/>
               </span>
             </div>
             <div class="error field-error"
-              ng-show="formCtrl.createAppForm.rbacuser.$error.required && formCtrl.createAppForm.rbacuser.$dirty">
+                 ng-show="formCtrl.createAppForm.rbacuser.$error.required && formCtrl.createAppForm.rbacuser.$dirty">
               RBAC username cannot be empty
             </div>
             <div class="cbui-tablerow has-hover">
@@ -69,28 +75,31 @@
               <label>RBAC password</label>
               </span>
               <span class="cbui-table-cell input-append">
-              <input type="password" name="rbacpass" ng-model="appModel.settings.rbacpass" placeholder="******"/>
+              <input type="password" name="rbacpass"
+                     ng-model="appModel.settings.rbacpass"
+                     placeholder="******"/>
               </span>
             </div>
             <div class="error field-error"
-              ng-show="formCtrl.createAppForm.rbacpass.$error.required && formCtrl.createAppForm.rbacpass.$dirty">
+                 ng-show="formCtrl.createAppForm.rbacpass.$error.required && formCtrl.createAppForm.rbacpass.$dirty">
               RBAC password cannot be empty
             </div>
           </div>
         </div>
         <hr/>
         <div class="formrow">
-          <span class="disclosure settings-heading" ng-class="{disclosed: showSettings}"
-            ng-click="showSettings = !showSettings">Settings</span>
+          <span class="disclosure settings-heading"
+                ng-class="{disclosed: showSettings}"
+                ng-click="showSettings = !showSettings">Settings</span>
         </div>
         <div class="formrow" ng-show="showSettings">
           <div class="cbui-table">
             <div class="cbui-tablerow has-hover">
               <span class="cbui-table-cell">
-              <label>DCP stream boundary</label>
+              <label>Change feed boundary</label>
               </span>
               <span class="cbui-table-cell input-append"
-                ng-init="appModel.settings.dcp_stream_boundary = appModel.settings.dcp_stream_boundary ? appModel.settings.dcp_stream_boundary : 'everything'">
+                    ng-init="appModel.settings.dcp_stream_boundary = appModel.settings.dcp_stream_boundary ? appModel.settings.dcp_stream_boundary : 'everything'">
                 <select ng-model="appModel.settings.dcp_stream_boundary">
                   <option value="everything">Everything</option>
                   <option value="from_now">From now</option>
@@ -102,7 +111,7 @@
               <label>Log level</label>
               </span>
               <span class="cbui-table-cell input-append"
-                ng-init="appModel.settings.log_level = appModel.settings.log_level ? appModel.settings.log_level : 'TRACE'">
+                    ng-init="appModel.settings.log_level = appModel.settings.log_level ? appModel.settings.log_level : 'TRACE'">
                 <select ng-model="appModel.settings.log_level">
                   <option value="INFO">Info</option>
                   <option value="ERROR">Error</option>
@@ -120,8 +129,9 @@
             <h3>Bindings</h3>
             <span>
             <button class="outline btn-small" title="Add parameter"
-              ng-click="bindings.push({type:'alias', name:'', value:''})">+</button>
-            <button class="outline btn-small" title="Remove parameter" ng-click="bindings.splice(-1, 1)">-</button>
+                    ng-click="bindings.push({type:'alias', name:'', value:''})">+</button>
+            <button class="outline btn-small" title="Remove parameter"
+                    ng-click="bindings.splice(-1, 1)">-</button>
             </span>
           </div>
           <hr/>
@@ -130,7 +140,8 @@
               <label>type</label>
               <span class="input-prepend">
                 <select>
-                  <option value="alias" ng-model="bindings[$index].type">Alias</option>
+                  <option value="alias"
+                          ng-model="bindings[$index].type">Alias</option>
                 </select>
               </span>
             </div>
@@ -149,13 +160,15 @@
       </div>
       <div class="panel-footer">
         <a ng-show="formCtrl.isDialog" ng-click="$dismiss('cancel')">Cancel</a>&nbsp;
-        <button ng-show="formCtrl.isDialog" ng-click="$close('ok')" ng-disabled="formCtrl.isFromInvalid()">Continue
+        <button ng-show="formCtrl.isDialog" ng-click="$close('ok')"
+                ng-disabled="formCtrl.isFormInvalid()">Continue
         </button>
         <button ng-show="!formCtrl.isDialog" ng-click="formCtrl.cancelEdit()"
-          ng-disabled="formCtrl.createAppForm.$pristine">Cancel
+                ng-disabled="formCtrl.createAppForm.$pristine">Cancel
         </button>&nbsp;
         <button ng-show="!formCtrl.isDialog" ng-click="formCtrl.saveSettings()"
-          ng-disabled="formCtrl.isFromInvalid() || formCtrl.createAppForm.$pristine">Save
+                ng-disabled="formCtrl.isFormInvalid() || formCtrl.createAppForm.$pristine">
+          Save
         </button>
       </div>
     </div>
@@ -166,18 +179,20 @@
             <h3>Bindings</h3>
             <span>
             <button class="outline btn-small" title="Add parameter"
-              ng-click="formCtrl.bindings.push({type:'alias', name:'', value:''})">+</button>
+                    ng-click="formCtrl.bindings.push({type:'alias', name:'', value:''})">+</button>
             <button class="outline btn-small" title="Remove parameter"
-              ng-click="formCtrl.bindings.splice(-1, 1); formCtrl.createAppForm.$pristine = false">-</button>
+                    ng-click="formCtrl.bindings.splice(-1, 1); formCtrl.createAppForm.$pristine = false">-</button>
             </span>
           </div>
           <hr/>
-          <div class="row" ng-repeat="binding in formCtrl.bindings track by $index">
+          <div class="row"
+               ng-repeat="binding in formCtrl.bindings track by $index">
             <div class="column width-4" style="margin-bottom:.5rem">
               <label>type</label>
               <span class="input-prepend">
                 <select>
-                  <option value="alias" ng-model="formCtrl.bindings[$index].type">Alias</option>
+                  <option value="alias"
+                          ng-model="formCtrl.bindings[$index].type">Alias</option>
                 </select>
               </span>
             </div>

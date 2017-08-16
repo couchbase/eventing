@@ -8,7 +8,7 @@ Application.prototype.actionsVisible = false;
 
 // Actions are Export, Enable/Disable, Delete, Deploy, Edit
 Application.prototype.toggleActionsVisibility = function() {
-    this.actionsVisible = this.actionsVisible ? false : true;
+    this.actionsVisible = !this.actionsVisible;
 };
 
 // TODO : May deprecate this soon.
@@ -16,6 +16,28 @@ Application.prototype.enforceSchema = function() {
     if (typeof this.depcfg === 'string') {
         this.depcfg = JSON.parse(this.depcfg);
     }
+};
+
+Application.prototype.getProcessingStatus = function(inverted) {
+    // Inverted case is used for the button.
+    if (inverted) {
+        return this.settings.processing_status ? 'Disable' : 'Enable';
+    }
+
+    return this.settings.processing_status ? 'Enabled' : 'Disabled';
+};
+
+Application.prototype.getDeploymentStatus = function(inverted) {
+    // Inverted case is used for the button.
+    if (inverted) {
+        return this.settings.deployment_status ? 'Undeploy' : 'Deploy';
+    }
+
+    return this.settings.deployment_status ? 'Deployed' : 'Undeployed';
+};
+
+Application.prototype.clone = function() {
+    return JSON.parse(JSON.stringify(this));
 };
 
 // ApplicationManager manages the list of applications in the front-end.
@@ -26,9 +48,6 @@ function ApplicationManager() {
         return applications;
     };
 }
-
-// This contains each of the applications' states - enabled/disable or deployed/undeployed.
-ApplicationManager.prototype.appState = {};
 
 // Creates a new app in the front-end.
 ApplicationManager.prototype.createApp = function(appModel) {
@@ -42,27 +61,16 @@ ApplicationManager.prototype.createApp = function(appModel) {
     app.id = appList.length;
     app.enforceSchema();
 
-    this.appState[app.appname] = {
-        deployed: false,
-        enabled: false
-    };
-
     // Store the app - appname is the key for the application.
     appList[app.appname] = app;
 };
 
-ApplicationManager.prototype.pushApp = function(app, state) {
+ApplicationManager.prototype.pushApp = function(app) {
     if (!app instanceof Application) {
         throw 'Parameter must be an instance of Application';
     }
 
-    if (!state) {
-        throw 'State is missing for ' + app.appname;
-    }
-
-    this.appState[app.appname] = state;
     app.enforceSchema();
-
     this.getApplications()[app.appname] = app;
 };
 
@@ -78,9 +86,6 @@ ApplicationManager.prototype.getAppByName = function(appName) {
 
 ApplicationManager.prototype.deleteApp = function(appName) {
     var appList = this.getApplications();
-
-    // Remove the app's state.
-    delete this.appState[appName];
 
     if (appList[appName]) {
         delete appList[appName];
@@ -99,7 +104,7 @@ function ApplicationModel(app) {
 }
 
 ApplicationModel.prototype.getDefaultModel = function() {
-    var code = 'function OnUpdate(doc, meta){} function OnDelete(doc){}';
+    var code = 'function OnUpdate(doc, meta){log(\'document\', doc);} function OnDelete(doc){}';
     return {
         appname: 'Application name',
         appcode: formatCode(code),
@@ -121,7 +126,10 @@ ApplicationModel.prototype.getDefaultModel = function() {
             timer_processing_tick_interval: 500,
             rbacuser: 'eventing',
             rbacpass: 'asdasd',
-            rbacrole: 'admin'
+            rbacrole: 'admin',
+            processing_status: false,
+            deployment_status: false,
+            description: ''
         }
     }
 };

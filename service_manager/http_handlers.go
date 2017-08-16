@@ -13,6 +13,7 @@ import (
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
 	flatbuffers "github.com/google/flatbuffers/go"
+	"strconv"
 )
 
 func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +62,7 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 			settingsPath := metakvAppSettingsPath + appName
 			err := util.MetaKvDelete(settingsPath, nil)
 			if err != nil {
+				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errDelAppSettingsPs.Code))
 				fmt.Fprintf(w, "Failed to delete setting for app: %v, err: %v", appName, err)
 				return
 			}
@@ -68,16 +70,44 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 			appsPath := metakvAppsPath + appName
 			err = util.MetaKvDelete(appsPath, nil)
 			if err != nil {
+				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errDelAppPs.Code))
 				fmt.Fprintf(w, "Failed to delete app definition for app: %v, err: %v", appName, err)
 				return
 			}
 
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 			fmt.Fprintf(w, "Deleting app: %v in the background", appName)
 			return
 		}
 	}
 
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 	fmt.Fprintf(w, "App: %v not deployed", appName)
+}
+
+func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+	tempAppList := util.ListChildren(metakvTempAppsPath)
+
+	for _, tempAppName := range tempAppList {
+		if appName == tempAppName {
+			path := metakvTempAppsPath + tempAppName
+			err := util.MetaKvDelete(path, nil)
+			if err != nil {
+				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errDelAppTs.Code))
+				fmt.Fprintf(w, "Failed to delete from temp store for %v, err: %v", appName, err)
+				return
+			}
+
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+			fmt.Fprintf(w, "Deleting app: %v in the background", appName)
+			return
+		}
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotFoundTs.Code))
+	fmt.Fprintf(w, "App not found in temp store : %v", appName)
 }
 
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
@@ -90,12 +120,12 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	for _, app := range appList {
 		if app == appName {
 			debugURL := m.superSup.GetDebuggerURL(appName)
-
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 			fmt.Fprintf(w, "%s", debugURL)
 			return
 		}
 	}
-
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
@@ -133,12 +163,13 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 	for _, app := range appList {
 		if app == appName {
 			m.superSup.SignalStartDebugger(appName)
-
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 			fmt.Fprintf(w, "App: %v Started Debugger", appName)
 			return
 		}
 	}
 
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
@@ -152,12 +183,13 @@ func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 	for _, app := range appList {
 		if app == appName {
 			m.superSup.SignalStopDebugger(appName)
-
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 			fmt.Fprintf(w, "App: %v Stopped Debugger", appName)
 			return
 		}
 	}
 
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
@@ -262,23 +294,25 @@ func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
 	path := metakvAppSettingsPath + appName
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
 		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
 		return
 	}
 
 	err = util.MetakvSet(path, data, nil)
 	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSetSettingsPs.Code))
 		fmt.Fprintf(w, "Failed to store setting for app: %v, err: %v", appName, err)
 		return
 	}
 
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "stored settings for app: %v", appName)
 }
 
 func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 	appList := util.ListChildren(metakvAppsPath)
-	tempAppList := util.ListChildren(metakvTempAppsPath)
-	respData := make([]application, len(appList)+len(tempAppList))
+	respData := make([]application, len(appList))
 
 	for index, appName := range appList {
 
@@ -334,6 +368,21 @@ func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	data, err := json.Marshal(respData)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		fmt.Fprintf(w, "Failed to marshal response for get_application, err: %v", err)
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s\n", data)
+}
+
+func (m *ServiceMgr) fetchAppTempStore(w http.ResponseWriter, r *http.Request) {
+	tempAppList := util.ListChildren(metakvTempAppsPath)
+	respData := make([]application, len(tempAppList))
+
 	for index, appName := range tempAppList {
 		path := metakvTempAppsPath + appName
 		data, err := util.MetakvGet(path)
@@ -345,15 +394,18 @@ func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			respData[index+len(appList)] = app
+			respData[index] = app
 		}
 	}
 
 	data, err := json.Marshal(respData)
 	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		fmt.Fprintf(w, "Failed to marshal response for get_application, err: %v", err)
 		return
 	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "%s\n", data)
 }
 
@@ -366,16 +418,19 @@ func (m *ServiceMgr) saveAppSetup(w http.ResponseWriter, r *http.Request) {
 	path := metakvTempAppsPath + appName
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
 		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
 		return
 	}
 
 	err = util.MetakvSet(path, data, nil)
 	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSaveAppTs.Code))
 		fmt.Fprintf(w, "Failed to store handlers for app: %v err: %v", appName, err)
 		return
 	}
 
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "Stored handlers for app: %v", appName)
 }
 
@@ -387,6 +442,7 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		errString := fmt.Sprintf("App: %s, failed to read content from http request body", appName)
 		logging.Errorf("%s, err: %v", errString, err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
 		fmt.Fprintf(w, "%s\n", errString)
 		return
 	}
@@ -396,11 +452,13 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		errString := fmt.Sprintf("App: %s, Failed to unmarshal payload", appName)
 		logging.Errorf("%s, err: %v", errString, err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errUnmarshalPld.Code))
 		fmt.Fprintf(w, "%s\n", errString)
 		return
 	}
 
 	if app.DeploymentConfig.SourceBucket == app.DeploymentConfig.MetadataBucket {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSrcMbSame.Code))
 		fmt.Fprintf(w, "Source bucket same as metadata bucket")
 		return
 	}
@@ -455,12 +513,14 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 
 	mData, mErr := json.Marshal(&settings)
 	if mErr != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		fmt.Fprintf(w, "App: %s Failed to marshal settings, err: %v", appName, mErr)
 		return
 	}
 
 	mkvErr := util.MetakvSet(settingsPath, mData, nil)
 	if mkvErr != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSetSettingsPs.Code))
 		fmt.Fprintf(w, "App: %s Failed to store updated settings in metakv, err: %v", appName, mkvErr)
 		return
 	}
@@ -468,9 +528,15 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	path := metakvAppsPath + appName
 	err = util.MetakvSet(path, appContent, nil)
 	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSaveAppPs.Code))
 		fmt.Fprintf(w, "Failed to write app config to metakv, err: %v", err)
 		return
 	}
 
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "Stored application config in metakv")
+}
+
+func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
+	w.Write(m.statusPayload)
 }
