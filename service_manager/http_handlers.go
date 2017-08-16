@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"runtime/trace"
 	"time"
 
 	"github.com/couchbase/eventing/flatbuf/cfg"
@@ -18,6 +19,32 @@ func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 	logging.Infof("Got request to clear event stats from host: %v", r.Host)
 
 	m.superSup.ClearEventStats()
+}
+
+func (m *ServiceMgr) startTracer(w http.ResponseWriter, r *http.Request) {
+	logging.Infof("Got request to start tracing")
+
+	os.Remove(m.uuid + "_trace.out")
+
+	f, err := os.Create(m.uuid + "_trace.out")
+	if err != nil {
+		logging.Infof("Failed to open file to write trace output, err: %v", err)
+		return
+	}
+	defer f.Close()
+
+	err = trace.Start(f)
+	if err != nil {
+		logging.Infof("Failed to start runtime.Trace, err: %v", err)
+		return
+	}
+
+	<-m.stopTracerCh
+	trace.Stop()
+}
+
+func (m *ServiceMgr) stopTracer(w http.ResponseWriter, r *http.Request) {
+	m.stopTracerCh <- struct{}{}
 }
 
 func (m *ServiceMgr) getNodeUUID(w http.ResponseWriter, r *http.Request) {

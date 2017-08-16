@@ -33,6 +33,8 @@ type ServiceMgr struct {
 	mu                *sync.RWMutex
 	uuid              string
 
+	stopTracerCh chan struct{} // chan used to signal stopping of runtime.Trace
+
 	nodeInfo         *service.NodeInfo
 	rebalanceCtx     *rebalanceContext
 	rebalancer       *rebalancer

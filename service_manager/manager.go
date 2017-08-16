@@ -28,8 +28,9 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 			rev:           0,
 			servers:       make([]service.NodeID, 0),
 		},
-		servers:  make([]service.NodeID, 0),
-		superSup: superSup,
+		servers:      make([]service.NodeID, 0),
+		superSup:     superSup,
+		stopTracerCh: make(chan struct{}, 1),
 	}
 
 	mgr.config.Store(config)
@@ -71,6 +72,8 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getDebuggerUrl/", m.getDebuggerURL)
 	http.HandleFunc("/startDebugger/", m.startDebugger)
 	http.HandleFunc("/stopDebugger/", m.stopDebugger)
+	http.HandleFunc("/startTracing", m.startTracer)
+	http.HandleFunc("/stopTracing", m.stopTracer)
 	http.HandleFunc("/getTimerHostPortAddrs", m.getTimerHostPortAddrs)
 	http.HandleFunc("/getAggTimerHostPortAddrs", m.getAggTimerHostPortAddrs)
 	http.HandleFunc("/uuid", m.getNodeUUID)
