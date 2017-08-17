@@ -41,6 +41,7 @@ typedef std::chrono::high_resolution_clock Time;
 typedef std::chrono::nanoseconds nsecs;
 
 #define SECS_TO_NS 1000 * 1000 * 1000ULL
+#define LCB_OP_RETRY_INTERVAL 100 // in milliseconds
 
 struct Result {
   lcb_CAS cas;

@@ -8,6 +8,6 @@ LOG_FILE="bin_"$(gdate +%s%N).log
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# valgrind --leak-check=full --show-leak-kinds=all --log-file="leak_dump.log" ./client.bin $APPNAME $PORT $WORKERID $BATCHSIZE
+# valgrind --leak-check=full --show-leak-kinds=all --log-file="leak_dump.log" ./client.bin "$@"
 
-$DIR/client.bin $APPNAME $PORT $WORKERID $BATCHSIZE &> $LOG_FILE
+$DIR/client.bin "$@" &> $LOG_FILE

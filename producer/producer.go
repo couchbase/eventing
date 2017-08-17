@@ -554,7 +554,19 @@ func (p *Producer) SignalStopDebugger() {
 			}
 		}
 	} else {
-		util.StopDebugger("stopDebugger", debuggerInstBlob.HostPortAddr, p.appName)
+		if debuggerInstBlob.HostPortAddr == "" {
+			logging.Errorf("PRDR[%s:%d] Debugger hasn't started.", p.appName, p.LenRunningConsumers())
+
+			debugBlob := &common.StartDebugBlob{
+				StartDebug: false,
+			}
+			dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
+
+			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, p, dFlagKey, debugBlob)
+
+		} else {
+			util.StopDebugger("stopDebugger", debuggerInstBlob.HostPortAddr, p.appName)
+		}
 	}
 }
 

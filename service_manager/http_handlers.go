@@ -55,7 +55,7 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	appList := m.superSup.DeployedAppList()
+	appList := util.ListChildren(metakvAppsPath)
 	for _, app := range appList {
 		if app == appName {
 			settingsPath := metakvAppSettingsPath + appName

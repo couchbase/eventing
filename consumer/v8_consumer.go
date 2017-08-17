@@ -46,7 +46,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		dcpFeedCancelChs:                   make([]chan struct{}, 0),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,
-		disableSocketTimeout:               false,
+		debuggerStarted:                    false,
 		docTimerEntryCh:                    make(chan *byTimerEntry, timerChanSize),
 		enableRecursiveMutation:            enableRecursiveMutation,
 		eventingAdminPort:                  eventingAdminPort,
@@ -67,9 +67,10 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		producer:                           p,
 		restartVbDcpStreamTicker:           time.NewTicker(restartVbDcpStreamTickInterval),
 		sendMsgCounter:                     0,
-		signalClientBootstrapCh:            make(chan struct{}),
+		sendMsgToDebugger:                  false,
 		signalConnectedCh:                  make(chan struct{}, 1),
 		signalDebugBlobDebugStopCh:         make(chan struct{}, 1),
+		signalInstBlobCasOpFinishCh:        make(chan struct{}, 1),
 		signalSettingsChangeCh:             make(chan struct{}, 1),
 		signalPlasmaClosedCh:               make(chan uint16, numVbuckets),
 		signalPlasmaTransferFinishCh:       make(chan *plasmaStoreMsg, numVbuckets),
@@ -161,11 +162,15 @@ func (c *Consumer) Serve() {
 	kvHostPorts := c.producer.KvHostPorts()
 	for _, kvHostPort := range kvHostPorts {
 		feedName = couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + kvHostPort + "_" + c.workerName)
+
+		c.hostDcpFeedRWMutex.Lock()
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, dcpConfig, kvHostPort)
 
 		cancelCh := make(chan struct{}, 1)
 		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
+
 		c.addToAggChan(c.kvHostDcpFeedMap[kvHostPort], cancelCh)
+		c.hostDcpFeedRWMutex.Unlock()
 	}
 
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
@@ -200,7 +205,7 @@ func (c *Consumer) HandleV8Worker() {
 	<-c.signalConnectedCh
 
 	logging.SetLogLevel(util.GetLogLevel(c.logLevel))
-	c.sendLogLevel(c.logLevel)
+	c.sendLogLevel(c.logLevel, false)
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
@@ -217,22 +222,9 @@ func (c *Consumer) HandleV8Worker() {
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 
-	c.sendInitV8Worker(payload)
+	c.sendInitV8Worker(payload, false)
 
-	switch c.debuggerState {
-	case startDebug:
-		c.disableSocketTimeout = true
-		c.sendDebuggerStart()
-		c.signalClientBootstrapCh <- struct{}{}
-
-	case stopDebug:
-		c.signalClientBootstrapCh <- struct{}{}
-		c.disableSocketTimeout = false
-
-	default:
-	}
-
-	c.sendLoadV8Worker(c.app.AppCode)
+	c.sendLoadV8Worker(c.app.AppCode, false)
 
 	go c.doLastSeqNoCheckpoint()
 
@@ -267,6 +259,10 @@ func (c *Consumer) Stop() {
 	c.restartVbDcpStreamTicker.Stop()
 	c.statsTicker.Stop()
 	c.persistAllTicker.Stop()
+
+	c.conn.Close()
+	c.debugConn.Close()
+	c.debugListener.Close()
 
 	for k := range c.timerProcessingWorkerSignalCh {
 		k.stopCh <- struct{}{}
@@ -466,6 +462,8 @@ func (c *Consumer) SignalStopDebugger() {
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 	c.signalStopDebuggerCh <- struct{}{}
+
+	c.stopDebuggerServer()
 
 	// Reset the debugger instance blob
 	dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)

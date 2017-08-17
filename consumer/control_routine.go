@@ -48,7 +48,7 @@ func (c *Consumer) controlRoutine() {
 
 			c.logLevel = settings["log_level"].(string)
 			logging.SetLogLevel(util.GetLogLevel(c.logLevel))
-			c.sendLogLevel(c.logLevel)
+			c.sendLogLevel(c.logLevel, false)
 
 			c.skipTimerThreshold = int(settings["skip_timer_threshold"].(float64))
 

@@ -408,11 +408,15 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       break;
     } else if (res.rc == LCB_KEY_EEXISTS) {
       LOG(logTrace) << "CAS Mismatch for " << doc_id << ". Retrying" << '\n';
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
       continue;
     } else {
       LOG(logTrace)
           << "Couldn't store xattr update as part of doc_id based timer"
           << res.rc << " msg: " << lcb_strerror(NULL, res.rc) << '\n';
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
     }
   }
 }
@@ -602,7 +606,9 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
   v8::V8::Initialize();
 
   v8::Isolate::CreateParams create_params;
-  create_params.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();;
+  create_params.array_buffer_allocator =
+      v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+  ;
 
   isolate_ = v8::Isolate::New(create_params);
   v8::Locker locker(isolate_);
@@ -719,9 +725,9 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::Context::Scope context_scope(context);
 
   v8::TryCatch try_catch;
-  if( debugger_started ) {
-  agent->Start(GetIsolate(), platform, nullptr);
-  agent->PauseOnNextJavascriptStatement("Break on start");
+  if (debugger_started) {
+    agent->Start(GetIsolate(), platform, nullptr);
+    agent->PauseOnNextJavascriptStatement("Break on start");
   }
   std::string plain_js;
   int code = Jsify(script_to_execute.c_str(), &plain_js);
@@ -1020,7 +1026,8 @@ void V8Worker::StartDebugger() {
   v8::Context::Scope context_scope(context);
   LOG(logInfo) << "Starting Debugger" << '\n';
   debugger_started = true;
-  agent = new inspector::Agent(curr_host_addr, GetWorkingPath() + "/" + app_name_ + "_frontend.url");
+  agent = new inspector::Agent(curr_host_addr, GetWorkingPath() + "/" +
+                                                   app_name_ + "_frontend.url");
 }
 
 void V8Worker::StopDebugger() {

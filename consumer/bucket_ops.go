@@ -415,9 +415,7 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	c.hostDcpFeedRWMutex.Lock()
 	c.kvHostDcpFeedMap[kvHostPort] = dcpFeed
-	c.hostDcpFeedRWMutex.Unlock()
 
 	return nil
 }

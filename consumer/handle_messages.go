@@ -12,14 +12,14 @@ import (
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
-func (c *Consumer) sendLogLevel(logLevel string) error {
+func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) error {
 	header := makeLogLevelHeader(logLevel)
 
 	msg := &message{
 		Header: header,
 	}
 
-	return c.sendMessage(msg, 0, 0, false)
+	return c.sendMessage(msg, 0, 0, false, sendToDebugger)
 }
 
 func (c *Consumer) sendDebuggerStart() error {
@@ -35,7 +35,7 @@ func (c *Consumer) sendDebuggerStart() error {
 	}
 	c.v8WorkerMessagesProcessed["DEBUG_START"]++
 
-	return c.sendMessage(msg, 0, 0, false)
+	return c.sendMessage(msg, 0, 0, false, true)
 }
 
 func (c *Consumer) sendDebuggerStop() error {
@@ -51,10 +51,10 @@ func (c *Consumer) sendDebuggerStop() error {
 	}
 	c.v8WorkerMessagesProcessed["DEBUG_STOP"]++
 
-	return c.sendMessage(msg, 0, 0, false)
+	return c.sendMessage(msg, 0, 0, false, true)
 }
 
-func (c *Consumer) sendInitV8Worker(payload []byte) error {
+func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool) error {
 
 	header := makeV8InitOpcodeHeader()
 
@@ -68,10 +68,10 @@ func (c *Consumer) sendInitV8Worker(payload []byte) error {
 	}
 	c.v8WorkerMessagesProcessed["V8_INIT"]++
 
-	return c.sendMessage(msg, 0, 0, false)
+	return c.sendMessage(msg, 0, 0, false, sendToDebugger)
 }
 
-func (c *Consumer) sendLoadV8Worker(appCode string) error {
+func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) error {
 
 	header := makeV8LoadOpcodeHeader(appCode)
 
@@ -84,10 +84,10 @@ func (c *Consumer) sendLoadV8Worker(appCode string) error {
 	}
 	c.v8WorkerMessagesProcessed["V8_LOAD"]++
 
-	return c.sendMessage(msg, 0, 0, false)
+	return c.sendMessage(msg, 0, 0, false, sendToDebugger)
 }
 
-func (c *Consumer) sendDocTimerEvent(e *byTimerEntry) {
+func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 	timerHeader := makeDocTimerEventHeader()
 	timerPayload := makeDocTimerPayload(e.DocID, e.CallbackFn)
 
@@ -96,12 +96,12 @@ func (c *Consumer) sendDocTimerEvent(e *byTimerEntry) {
 		Payload: timerPayload,
 	}
 
-	if err := c.sendMessage(msg, 0, 0, false); err != nil {
+	if err := c.sendMessage(msg, 0, 0, false, sendToDebugger); err != nil {
 		return
 	}
 }
 
-func (c *Consumer) sendNonDocTimerEvent(payload string) {
+func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
 	timerHeader := makeNonDocTimerEventHeader()
 	timerPayload := makeNonDocTimerPayload(payload)
 
@@ -110,12 +110,21 @@ func (c *Consumer) sendNonDocTimerEvent(payload string) {
 		Payload: timerPayload,
 	}
 
-	if err := c.sendMessage(msg, 0, 0, false); err != nil {
+	if err := c.sendMessage(msg, 0, 0, false, sendToDebugger); err != nil {
 		return
 	}
 }
 
-func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent) {
+func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
+
+	if sendToDebugger {
+	checkDebuggerStarted:
+		if !c.debuggerStarted {
+			time.Sleep(retryInterval)
+			goto checkDebuggerStarted
+		}
+	}
+
 	m := dcpMetadata{
 		Cas:     e.Cas,
 		DocID:   string(e.Key),
@@ -147,14 +156,13 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent) {
 		Payload: dcpPayload,
 	}
 
-	if err := c.sendMessage(msg, e.VBucket, e.Seqno, true); err != nil {
+	if err := c.sendMessage(msg, e.VBucket, e.Seqno, true, sendToDebugger); err != nil {
 		return
 	}
 
 }
 
-func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldCheckpoint bool) error {
-
+func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldCheckpoint bool, sendToDebugger bool) error {
 	// Protocol encoding format:
 	//<headerSize><payloadSize><Header><Payload>
 
@@ -194,49 +202,67 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 
 	c.sendMsgCounter++
 	if shouldCheckpoint {
+		c.Lock()
 		if _, ok := c.writeBatchSeqnoMap[vb]; !ok {
 			c.writeBatchSeqnoMap[vb] = seqno
 		}
 		c.writeBatchSeqnoMap[vb] = seqno
+		c.Unlock()
 	}
 
 	if c.sendMsgCounter >= c.socketWriteBatchSize {
 
-		if !c.disableSocketTimeout {
+		if !sendToDebugger {
 			c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
-		} else {
-			var t time.Time
-			c.conn.SetWriteDeadline(t)
-		}
 
-		err = binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
-		if err != nil {
-			logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-			c.stopConsumerCh <- struct{}{}
-			c.stopCheckpointingCh <- struct{}{}
-			c.gracefulShutdownChan <- struct{}{}
-			c.conn.Close()
-			return err
+			err = binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
+			if err != nil {
+				logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+				c.stopConsumerCh <- struct{}{}
+				c.stopCheckpointingCh <- struct{}{}
+				c.gracefulShutdownChan <- struct{}{}
+				c.conn.Close()
+				return err
+			}
+		} else {
+			err = binary.Write(c.debugConn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
+			if err != nil {
+				logging.Errorf("CRHM[%s:%s:%s:%d] Write to debug enabled worker socket failed, err: %v",
+					c.app.AppName, c.workerName, c.debugTCPPort, c.Pid(), err)
+				c.debugConn.Close()
+				return err
+			}
+			c.sendMsgToDebugger = false
+
 		}
 
 		// Reset the sendMessage buffer and message counter
 		c.sendMsgBuffer.Reset()
 		c.sendMsgCounter = 0
 
-		if err := c.readMessage(); err != nil {
-			c.stopCheckpointingCh <- struct{}{}
-			c.gracefulShutdownChan <- struct{}{}
+		var err error
+		if !sendToDebugger {
+			if err = c.readMessage(sendToDebugger); err != nil {
+				c.stopCheckpointingCh <- struct{}{}
+				c.gracefulShutdownChan <- struct{}{}
+			}
+		} else {
+			err = c.readMessage(sendToDebugger)
+		}
+
+		if sendToDebugger && err == nil {
+			c.sendMsgToDebugger = true
 		}
 
 		c.RLock()
 		logging.Tracef("CRHM[%s:%s:%s:%d] WriteBatchSeqNo dump: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.writeBatchSeqnoMap)
-		c.RUnlock()
 
 		for vb, seqno := range c.writeBatchSeqnoMap {
 			c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", seqno)
 		}
+		c.RUnlock()
 
 		c.Lock()
 		c.writeBatchSeqnoMap = make(map[uint16]uint64)
@@ -246,22 +272,30 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 	return nil
 }
 
-func (c *Consumer) readMessage() error {
-
-	if !c.disableSocketTimeout {
+func (c *Consumer) readMessage(readFromDebugger bool) error {
+	if !readFromDebugger {
 		c.conn.SetReadDeadline(time.Now().Add(c.socketTimeout))
-	} else {
-		var t time.Time
-		c.conn.SetReadDeadline(t)
+
+		msg, err := bufio.NewReader(c.conn).ReadBytes('\r')
+		if err != nil {
+			logging.Errorf("CRHM[%s:%s:%s:%d] Read from client socket failed, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+
+			c.stopConsumerCh <- struct{}{}
+			c.conn.Close()
+		} else {
+			if len(msg) > 1 {
+				fmt.Println(string(msg))
+			}
+		}
+		return err
 	}
 
-	msg, err := bufio.NewReader(c.conn).ReadBytes('\r')
+	msg, err := bufio.NewReader(c.debugConn).ReadBytes('\r')
 	if err != nil {
-		logging.Errorf("CRHM[%s:%s:%s:%d] Read from client socket failed, err: %v",
+		logging.Errorf("CRHM[%s:%s:%s:%d] Read from debug enabled worker socket failed, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-
-		c.stopConsumerCh <- struct{}{}
-		c.conn.Close()
+		c.sendMsgToDebugger = false
 	} else {
 		if len(msg) > 1 {
 			fmt.Println(string(msg))

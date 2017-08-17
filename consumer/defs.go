@@ -93,6 +93,8 @@ const (
 	retryVbsStateUpdateInterval = time.Duration(5000) * time.Millisecond
 
 	retryVbMetaStateCheckInterval = time.Duration(1000) * time.Millisecond
+
+	retryInterval = time.Duration(1000) * time.Millisecond
 )
 
 const (
@@ -152,6 +154,10 @@ type Consumer struct {
 	conn   net.Conn // Access controlled by default lock
 	uuid   string
 
+	debugConn         net.Conn // Interface to support communication between Go and C++ worker spawned for debugging
+	debugListener     net.Listener
+	sendMsgToDebugger bool
+
 	aggDCPFeed             chan *cb.DcpEvent
 	cbBucket               *couchbase.Bucket
 	checkpointInterval     time.Duration
@@ -206,15 +212,12 @@ type Consumer struct {
 	// Signals V8 consumer to start V8 Debugger agent
 	signalStartDebuggerCh          chan struct{}
 	signalStopDebuggerCh           chan struct{}
-	signalClientBootstrapCh        chan struct{}
+	signalInstBlobCasOpFinishCh    chan struct{}
 	signalUpdateDebuggerInstBlobCh chan struct{}
 	signalDebugBlobDebugStopCh     chan struct{}
 	signalStopDebuggerRoutineCh    chan struct{}
 	debuggerState                  int8
-
-	// Needed during V8 Debugger run as debugging session could run
-	// for long duration, which is beyond socket timeout duration
-	disableSocketTimeout bool
+	debuggerStarted                bool
 
 	nonDocTimerProcessingTicker   *time.Ticker
 	nonDocTimerStopCh             chan struct{}
@@ -261,7 +264,10 @@ type Consumer struct {
 	osPid atomic.Value
 
 	// C++ v8 worker cmd handle, would be required to killing worker that are no more needed
-	client         *client
+	client              *client
+	debugClient         *debugClient // C++ V8 worker spawned for debugging purpose
+	debugClientSupToken suptree.ServiceToken
+
 	consumerSup    *suptree.Supervisor
 	clientSupToken suptree.ServiceToken
 
@@ -295,7 +301,10 @@ type Consumer struct {
 	// Will be triggered in case of stop rebalance operation
 	stopVbOwnerTakeoverCh chan struct{}
 
-	tcpPort string
+	debugTCPPort string
+	tcpPort      string
+
+	signalDebuggerConnectedCh chan struct{}
 
 	// Tracks DCP Opcodes processed per consumer
 	dcpMessagesProcessed map[mcd.CommandCode]uint64 // Access controlled by default lock
@@ -331,6 +340,16 @@ type timerProcessingWorker struct {
 type byTimerEntry struct {
 	DocID      string
 	CallbackFn string
+}
+
+// For V8 worker spawned for debugging purpose
+type debugClient struct {
+	appName        string
+	consumerHandle *Consumer
+	cmd            *exec.Cmd
+	osPid          int
+	debugTCPPort   string
+	workerName     string
 }
 
 type client struct {

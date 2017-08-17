@@ -43,7 +43,7 @@ func (c *client) Serve() {
 	// c.consumerHandle.gracefulShutdownChan <- struct{}{}
 	// c.consumerHandle.stopCheckpointingCh <- struct{}{}
 
-	// Allow additional time for doDCPProcessEvents and checkpointing routine to exit,
+	// Allow additional time for processEvents and checkpointing routine to exit,
 	// else there could be race. Currently set twice the socket read deadline
 	time.Sleep(2 * c.consumerHandle.socketTimeout)
 

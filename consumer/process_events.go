@@ -40,21 +40,31 @@ func (c *Consumer) processEvents() {
 
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
+
 				if c.debuggerState == startDebug {
-					c.consumerSup.Remove(c.clientSupToken)
 
-					c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
-					c.clientSupToken = c.consumerSup.Add(c.client)
-
-					<-c.signalClientBootstrapCh
 					c.signalUpdateDebuggerInstBlobCh <- struct{}{}
-					<-c.signalStartDebuggerCh
+
+					select {
+					case <-c.signalInstBlobCasOpFinishCh:
+						select {
+						case <-c.signalStartDebuggerCh:
+							go c.startDebuggerServer()
+							c.sendMsgToDebugger = true
+						default:
+						}
+					}
+
 					c.debuggerState = stopDebug
 				}
 
 				switch e.Datatype {
 				case dcpDatatypeJSON:
-					c.sendDcpEvent(e)
+					if !c.sendMsgToDebugger {
+						c.sendDcpEvent(e, c.sendMsgToDebugger)
+					} else {
+						go c.sendDcpEvent(e, c.sendMsgToDebugger)
+					}
 				case dcpDatatypeJSONXattr:
 					xattrLen := binary.BigEndian.Uint32(e.Value[0:])
 					xattrData := e.Value[4 : 4+xattrLen-1]
@@ -79,7 +89,12 @@ func (c *Consumer) processEvents() {
 					// Send mutation to V8 CPP worker _only_ when DcpEvent.Cas != Cas field in xattr
 					if cas != e.Cas {
 						e.Value = e.Value[4+xattrLen:]
-						c.sendDcpEvent(e)
+
+						if !c.sendMsgToDebugger {
+							c.sendDcpEvent(e, c.sendMsgToDebugger)
+						} else {
+							go c.sendDcpEvent(e, c.sendMsgToDebugger)
+						}
 					} else {
 						logging.Debugf("CRPO[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v, xmeta: %#v",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, xMeta)
@@ -97,18 +112,26 @@ func (c *Consumer) processEvents() {
 
 			case mcd.DCP_DELETION:
 				if c.debuggerState == startDebug {
-					c.consumerSup.Remove(c.clientSupToken)
 
-					c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
-					c.clientSupToken = c.consumerSup.Add(c.client)
-
-					<-c.signalClientBootstrapCh
 					c.signalUpdateDebuggerInstBlobCh <- struct{}{}
-					<-c.signalStartDebuggerCh
+
+					select {
+					case <-c.signalInstBlobCasOpFinishCh:
+						select {
+						case <-c.signalStartDebuggerCh:
+							go c.startDebuggerServer()
+							c.sendMsgToDebugger = true
+						default:
+						}
+					}
 					c.debuggerState = stopDebug
 				}
 
-				c.sendDcpEvent(e)
+				if !c.sendMsgToDebugger {
+					c.sendDcpEvent(e, c.sendMsgToDebugger)
+				} else {
+					go c.sendDcpEvent(e, c.sendMsgToDebugger)
+				}
 
 			case mcd.DCP_STREAMREQ:
 
@@ -297,7 +320,7 @@ func (c *Consumer) processEvents() {
 			}
 
 			c.timerMessagesProcessed++
-			c.sendDocTimerEvent(e)
+			c.sendDocTimerEvent(e, c.sendMsgToDebugger)
 
 		case e, ok := <-c.nonDocTimerEntryCh:
 			if ok == false {
@@ -310,7 +333,7 @@ func (c *Consumer) processEvents() {
 
 			eventCount := uint64(strings.Count(e, ";"))
 			c.timerMessagesProcessed += eventCount
-			c.sendNonDocTimerEvent(e)
+			c.sendNonDocTimerEvent(e, c.sendMsgToDebugger)
 
 		case <-c.statsTicker.C:
 
@@ -343,12 +366,8 @@ func (c *Consumer) processEvents() {
 
 		case <-c.signalStopDebuggerCh:
 			c.debuggerState = stopDebug
-			c.consumerSup.Remove(c.clientSupToken)
+			c.consumerSup.Remove(c.debugClientSupToken)
 
-			c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
-			c.clientSupToken = c.consumerSup.Add(c.client)
-
-			<-c.signalClientBootstrapCh
 			c.debuggerState = debuggerOpcode
 
 			// Reset debuggerInstanceAddr blob, otherwise next debugger session can't start
