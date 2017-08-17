@@ -58,7 +58,6 @@ type Producer struct {
 	listenerHandles        []*abatableListener
 	logLevel               string
 	rbacpass               string
-	rbacrole               string
 	rbacuser               string
 	metadatabucket         string
 	metadataBucketHandle   *cbbucket.Bucket

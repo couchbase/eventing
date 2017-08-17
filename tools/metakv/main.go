@@ -41,9 +41,6 @@ func main() {
 	settings["tick_duration"] = 5000
 	settings["checkpoint_interval"] = 20000
 	settings["worker_count"] = 3
-	settings["rbacpass"] = "asdasd"
-	settings["rbacuser"] = "eventing"
-	settings["rbacrole"] = "admin"
 	settings["timer_worker_pool_size"] = 1
 	settings["cleanup_timers"] = true
 	settings["timer_processing_tick_interval"] = 500

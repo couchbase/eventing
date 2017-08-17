@@ -35,6 +35,8 @@ func (p *Producer) parseDepcfg() error {
 		util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, p, &user, &password)
 		p.auth = fmt.Sprintf("%s:%s", user, password)
 
+		util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, p)
+
 		p.bucket = string(depcfg.SourceBucket())
 		p.cfgData = string(cfgData)
 		p.metadatabucket = string(depcfg.MetadataBucket())
@@ -56,9 +58,6 @@ func (p *Producer) parseDepcfg() error {
 		p.cleanupTimers = settings["cleanup_timers"].(bool)
 		p.dcpStreamBoundary = common.DcpStreamBoundary(settings["dcp_stream_boundary"].(string))
 		p.logLevel = settings["log_level"].(string)
-		p.rbacpass = settings["rbacpass"].(string)
-		p.rbacrole = settings["rbacrole"].(string)
-		p.rbacuser = settings["rbacuser"].(string)
 		p.statsTickDuration = time.Duration(settings["tick_duration"].(float64))
 		p.workerCount = int(settings["worker_count"].(float64))
 		p.timerWorkerPoolSize = int(settings["timer_worker_pool_size"].(float64))
