@@ -1,12 +1,14 @@
 diff --git a/secondary/dcp/upr.go b/secondary/dcp/upr.go
-index 409fc0e2..cc385e0c 100644
+index 409fc0e2..8bea4ab9 100644
 --- a/secondary/dcp/upr.go
 +++ b/secondary/dcp/upr.go
-@@ -78,7 +78,9 @@ func (b *Bucket) GetFailoverLogs(
+@@ -77,8 +77,10 @@ func (b *Bucket) GetFailoverLogs(
+ 			continue
  		}
  
- 		name := NewDcpFeedName(fmt.Sprintf("getfailoverlog-%s-%v", b.Name, time.Now().UnixNano()))
+-		name := NewDcpFeedName(fmt.Sprintf("getfailoverlog-%s-%v", b.Name, time.Now().UnixNano()))
 -		singleFeed, err := serverConn.StartDcpFeed(name, 0, nil, opaque, config)
++		name := DcpFeedName(fmt.Sprintf("getfailoverlog-%s-%v", b.Name, time.Now().UnixNano()))
 +		flags := uint32(0x0)
 +		singleFeed, err := serverConn.StartDcpFeed(
 +			name, 0, flags, nil, opaque, config)
@@ -36,8 +38,12 @@ index 409fc0e2..cc385e0c 100644
  	kvaddrs []string,
  	opaque uint16,
  	config map[string]interface{}) (*DcpFeed, error) {
-@@ -164,7 +166,7 @@ func (b *Bucket) StartDcpFeedOver(
- 	feed.activeVbOnly = config["activeVbOnly"].(bool)
+@@ -161,10 +163,10 @@ func (b *Bucket) StartDcpFeedOver(
+ 		logPrefix: fmt.Sprintf("DCP[%v]", name),
+ 	}
+ 	feed.numConnections = config["numConnections"].(int)
+-	feed.activeVbOnly = config["activeVbOnly"].(bool)
++	// feed.activeVbOnly = config["activeVbOnly"].(bool)
  
  	feed.C = feed.output
 -	if feed.connectToNodes(kvaddrs, opaque, config) != nil {
