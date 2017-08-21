@@ -104,17 +104,45 @@ void HashedStack::Pop() {
   qstack.pop();
 }
 
+// Extracts error messages from the metadata JSON.
+std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata,
+                                               v8::Isolate *isolate) {
+  v8::HandleScope handle_scope(isolate);
+
+  std::vector<std::string> errors;
+  auto metadata_v8str = v8::String::NewFromUtf8(isolate, metadata);
+  auto metadata_obj = v8::JSON::Parse(metadata_v8str).As<v8::Object>();
+
+  if (!metadata_obj.IsEmpty()) {
+    auto errors_v8val =
+        metadata_obj->Get(v8::String::NewFromUtf8(isolate, "errors"));
+    auto errors_v8arr = errors_v8val.As<v8::Array>();
+
+    for (uint32_t i = 0; i < errors_v8arr->Length(); ++i) {
+      auto error = errors_v8arr->Get(i).As<v8::Object>();
+      auto msg_v8str = error->Get(v8::String::NewFromUtf8(isolate, "msg"));
+      v8::String::Utf8Value msg(msg_v8str);
+      errors.push_back(*msg);
+    }
+  } else {
+    LOG(logError) << "Error parsing JSON while extracting N1QL error message" << '\n';
+  }
+
+  return errors;
+}
+
 // Row-callback for iterator.
 template <>
 void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
                                          const lcb_RESPN1QL *resp) {
   QueryHandler q_handler = n1ql_handle->qhandler_stack.Top();
+  v8::Isolate *isolate = q_handler.isolate;
+  v8::HandleScope handle_scope(isolate);
 
   if (!(resp->rflags & LCB_RESP_F_FINAL)) {
     char *row_str;
     asprintf(&row_str, "%.*s\n", static_cast<int>(resp->nrow), resp->row);
 
-    v8::Isolate *isolate = q_handler.isolate;
     v8::Local<v8::Value> args[1];
     args[0] = v8::JSON::Parse(v8::String::NewFromUtf8(isolate, row_str));
 
@@ -131,6 +159,11 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
 
     free(row_str);
   } else {
+    if (resp->rc != LCB_SUCCESS) {
+      auto errors = n1ql_handle->ExtractErrorMsg(resp->row, isolate);
+      V8Worker::exception.Throw(instance, resp->rc, errors);
+    }
+
     q_handler.iter_handler->metadata = resp->row;
   }
 }
@@ -150,6 +183,11 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
 
     free(row_str);
   } else {
+    if (resp->rc != LCB_SUCCESS) {
+      auto errors = n1ql_handle->ExtractErrorMsg(resp->row, q_handler.isolate);
+      V8Worker::exception.Throw(instance, resp->rc, errors);
+    }
+
     q_handler.block_handler->metadata = resp->row;
   }
 }

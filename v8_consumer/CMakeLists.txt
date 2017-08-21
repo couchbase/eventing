@@ -39,7 +39,7 @@ SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${SSE42_COMPILE_FLAG}")
 SET(EVENTING_SOURCES src/client.cc src/commands.cc
     src/message.cc src/v8worker.cc src/assert.cc
     src/bucket.cc src/n1ql.cc src/parse_deployment.cc src/crc32c.cc
-    src/log.cc ${CMAKE_CURRENT_BINARY_DIR}/jsify.cc src/transpiler.cc)
+    src/log.cc ${CMAKE_CURRENT_BINARY_DIR}/jsify.cc src/transpiler.cc src/js_exception.cc)
 
 SET(EVENTING_LIBRARIES -ll
       ${V8_LIBRARIES} ${ICU_LIBRARIES} ${JEMALLOC_LIBRARIES}

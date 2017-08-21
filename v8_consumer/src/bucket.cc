@@ -37,6 +37,7 @@ static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
 
   result->rc = resp->rc;
   result->value.clear();
+
   if (resp->rc == LCB_SUCCESS) {
     result->value.assign(reinterpret_cast<const char *>(resp->value),
                          static_cast<int>(resp->nvalue));
@@ -63,6 +64,13 @@ static void sdmutate_callback(lcb_t, int cbtype, const lcb_RESPBASE *rb) {
 
   LOG(logTrace) << "Bucket: LCB_SDMUTATE callback "
                 << lcb_strerror(NULL, result->rc) << '\n';
+}
+
+static void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
+  const lcb_RESPREMOVE *resp = reinterpret_cast<const lcb_RESPREMOVE *>(rb);
+  Result *result = reinterpret_cast<Result *>(rb->cookie);
+
+  result->rc = resp->rc;
 }
 
 // convert Little endian unsigned int64 to Big endian notation
@@ -112,8 +120,8 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
 
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_GET, get_callback);
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_STORE, set_callback);
-  lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_SDMUTATE,
-                        sdmutate_callback);
+  lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_SDMUTATE, sdmutate_callback);
+  lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_REMOVE, del_callback);
 }
 
 Bucket::~Bucket() {
@@ -191,7 +199,6 @@ bool Bucket::InstallMaps(std::map<std::string, std::string> *bucket) {
 
 void Bucket::BucketGet(v8::Local<v8::Name> name,
                        const v8::PropertyCallbackInfo<v8::Value> &info) {
-
   if (name->IsSymbol())
     return;
 
@@ -207,6 +214,12 @@ void Bucket::BucketGet(v8::Local<v8::Name> name,
   lcb_sched_leave(*bucket_lcb_obj_ptr);
   lcb_wait(*bucket_lcb_obj_ptr);
 
+  // Throw an exception in JavaScript if the bucket get call failed.
+  if (result.rc != LCB_SUCCESS) {
+    V8Worker::exception.Throw(*bucket_lcb_obj_ptr, result.rc);
+    return;
+  }
+
   LOG(logTrace) << "Get call result Key: " << key << " Value: " << result.value
                 << '\n';
 
@@ -220,7 +233,6 @@ void Bucket::BucketGet(v8::Local<v8::Name> name,
 
 void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
                        const v8::PropertyCallbackInfo<v8::Value> &info) {
-
   if (name->IsSymbol())
     return;
 
@@ -232,6 +244,7 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
                 << '\n';
 
   lcb_t *bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
+  Result sres;
 
   if (!enable_recursive_mutation) {
     LOG(logTrace) << "Adding macro in xattr to avoid retriggering of handler "
@@ -239,7 +252,7 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
                   << enable_recursive_mutation << '\n';
 
     while (true) {
-      Result gres, sres;
+      Result gres;
       lcb_CMDGET gcmd = {0};
       LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
       lcb_sched_enter(*bucket_lcb_obj_ptr);
@@ -336,7 +349,6 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
         << "Performing recursive mutation, enable_recursive_mutation: "
         << enable_recursive_mutation << '\n';
 
-    Result result;
     lcb_CMDSTORE scmd = {0};
     LCB_CMD_SET_KEY(&scmd, key.c_str(), key.length());
     LCB_CMD_SET_VALUE(&scmd, value.c_str(), value.length());
@@ -344,9 +356,15 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
     scmd.flags = 0x2000000;
 
     lcb_sched_enter(*bucket_lcb_obj_ptr);
-    lcb_store3(*bucket_lcb_obj_ptr, &result, &scmd);
+    lcb_store3(*bucket_lcb_obj_ptr, &sres, &scmd);
     lcb_sched_leave(*bucket_lcb_obj_ptr);
     lcb_wait(*bucket_lcb_obj_ptr);
+  }
+
+  // Throw an exception in JavaScript if the bucket set call failed.
+  if (sres.rc != LCB_SUCCESS) {
+    V8Worker::exception.Throw(*bucket_lcb_obj_ptr, sres.rc);
+    return;
   }
 
   info.GetReturnValue().Set(value_obj);
@@ -354,7 +372,6 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
 
 void Bucket::BucketDelete(v8::Local<v8::Name> name,
                           const v8::PropertyCallbackInfo<v8::Boolean> &info) {
-
   if (name->IsSymbol())
     return;
 
@@ -362,13 +379,20 @@ void Bucket::BucketDelete(v8::Local<v8::Name> name,
 
   lcb_t *bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
 
+  Result result;
   lcb_CMDREMOVE rcmd = {0};
   LCB_CMD_SET_KEY(&rcmd, key.c_str(), key.length());
 
   lcb_sched_enter(*bucket_lcb_obj_ptr);
-  lcb_remove3(*bucket_lcb_obj_ptr, NULL, &rcmd);
+  lcb_remove3(*bucket_lcb_obj_ptr, &result, &rcmd);
   lcb_sched_leave(*bucket_lcb_obj_ptr);
   lcb_wait(*bucket_lcb_obj_ptr);
+
+  // Throw an exception in JavaScript if the bucket delete call failed.
+  if (result.rc != LCB_SUCCESS) {
+    V8Worker::exception.Throw(*bucket_lcb_obj_ptr, result.rc);
+    return;
+  }
 
   info.GetReturnValue().Set(true);
 }

@@ -23,6 +23,7 @@
 #include "libcouchbase/n1ql.h"
 
 #include "log.h"
+#include "v8worker.h"
 
 enum op_code {
   OK,
@@ -113,6 +114,8 @@ private:
 public:
   N1QL(ConnectionPool *inst_pool) : inst_pool(inst_pool) {}
   HashedStack qhandler_stack;
+  std::vector<std::string> ExtractErrorMsg(const char *metadata,
+                                           v8::Isolate *isolate);
   // Schedules operations for execution.
   template <typename> void ExecQuery(QueryHandler &q_handler);
   ~N1QL() {}

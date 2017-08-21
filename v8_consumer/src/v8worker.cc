@@ -37,6 +37,7 @@
 bool enable_recursive_mutation = false;
 
 N1QL *n1ql_handle;
+JsException V8Worker::exception;
 
 enum RETURN_CODE {
   SUCCESS = 0,
@@ -269,6 +270,7 @@ void CreateNonDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   lcb_wait(*meta_cb_instance);
   lcb_set_cookie(*meta_cb_instance, NULL);
 
+  Result result;
   lcb_CMDSTORE cmd = {0};
   cmd.operation = LCB_APPEND;
 
@@ -276,9 +278,14 @@ void CreateNonDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   LCB_CMD_SET_KEY(&cmd, timer_entry.c_str(), timer_entry.length());
   LCB_CMD_SET_VALUE(&cmd, value.c_str(), value.length());
   lcb_sched_enter(*meta_cb_instance);
-  lcb_store3(*meta_cb_instance, NULL, &cmd);
+  lcb_store3(*meta_cb_instance, &result, &cmd);
   lcb_sched_leave(*meta_cb_instance);
   lcb_wait(*meta_cb_instance);
+
+  if (result.rc != LCB_SUCCESS) {
+    V8Worker::exception.Throw(*meta_cb_instance, result.rc);
+    return;
+  }
 }
 
 void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
@@ -418,7 +425,12 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
                     << " msg:" << lcb_strerror(NULL, rc) << '\n';
       return;
     }
+
     lcb_wait(*cb_instance);
+    if (res.rc != LCB_SUCCESS) {
+      V8Worker::exception.Throw(*cb_instance, res.rc);
+      return;
+    }
 
     if (res.rc == LCB_SUCCESS) {
       LOG(logTrace) << "Stored doc_id timer_entry: " << timer_entry
@@ -531,6 +543,12 @@ static void multi_op_callback(lcb_t cb_instance, int cbtype,
                               const lcb_RESPBASE *rb) {
   LOG(logTrace) << "Got callback for " << lcb_strcbtype(cbtype) << '\n';
 
+  if (cbtype == LCB_CALLBACK_STORE) {
+    const lcb_RESPSTORE *rs = reinterpret_cast<const lcb_RESPSTORE *>(rb);
+    Result *result = reinterpret_cast<Result *>(rb->cookie);
+    result->rc = rs->rc;
+  }
+
   if (cbtype == LCB_CALLBACK_GET) {
     // lcb_get calls against metadata bucket is only triggered for timer lookups
     const lcb_RESPGET *rg = reinterpret_cast<const lcb_RESPGET *>(rb);
@@ -636,7 +654,6 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
-  ;
 
   isolate_ = v8::Isolate::New(create_params);
   v8::Locker locker(isolate_);
@@ -671,6 +688,7 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
 
   v8::Local<v8::Context> context = v8::Context::New(GetIsolate(), NULL, global);
   context_.Reset(GetIsolate(), context);
+  exception = JsException(isolate_);
 
   app_name_ = app_name;
   cb_kv_endpoint = kv_host_port;

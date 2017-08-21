@@ -29,6 +29,7 @@
 
 #include "crc32c.h"
 #include "inspector_agent.h"
+#include "js_exception.h"
 #include "log.h"
 #include "n1ql.h"
 
@@ -55,6 +56,7 @@ struct Result {
 
 class Bucket;
 class V8Worker;
+class ConnectionPool;
 
 v8::Local<v8::String> createUtf8String(v8::Isolate *isolate, const char *str);
 std::string ObjectToString(v8::Local<v8::Value> value);
@@ -141,6 +143,7 @@ public:
   Time::time_point execute_start_time;
   uint64_t max_task_duration;
   std::thread *terminator_thr;
+  static JsException exception;
 
   ConnectionPool *conn_pool;
 
