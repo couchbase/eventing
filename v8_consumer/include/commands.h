@@ -14,6 +14,7 @@
 
 #include <iostream>
 
+// Opcodes for incoming messages from Go to C++
 enum event_type {
   eDCP,
   eHTTP,
@@ -29,6 +30,7 @@ enum v8_worker_opcode {
   oInit,
   oLoad,
   oTerminate,
+  oGetSourceMap,
   oVersion,
   V8_Worker_Opcode_Unknown
 };
@@ -50,5 +52,15 @@ http_opcode getHTTPOpcode(int8_t opcode);
 app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode);
 timer_opcode getTimerOpcode(int8_t opcode);
 debugger_opcode getDebuggerOpcode(int8_t opcode);
+
+// Opcodes for outgoing messages from C++ to Go
+enum msg_type { mType, mV8_Worker_Config, Msg_Unknown };
+
+enum v8_worker_config_opcode {
+  oConfigOpcode,
+  oSourceMap,
+  oLogMessage,
+  V8_Worker_Config_Opcode_Unknown
+};
 
 #endif

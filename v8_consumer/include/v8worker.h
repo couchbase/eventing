@@ -27,9 +27,9 @@
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 
+#include "inspector_agent.h"
 #include "log.h"
 #include "n1ql.h"
-#include "inspector_agent.h"
 
 #ifndef STANDALONE_BUILD
 extern void(assert)(int);
@@ -76,7 +76,8 @@ public:
   ~V8Worker();
 
   void operator()() const {
-    if (debugger_started) return;
+    if (debugger_started)
+      return;
     while (!shutdown_terminator) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -102,6 +103,8 @@ public:
   const char *V8WorkerLastException();
   const char *V8WorkerVersion();
 
+  std::string GetSourceMap();
+
   int SendUpdate(std::string value, std::string meta, std::string doc_type);
   int SendDelete(std::string meta);
   void SendDocTimer(std::string doc_id, std::string callback_fn);
@@ -124,12 +127,12 @@ public:
   lcb_t meta_cb_instance;
 
   std::string script_to_execute_;
+  std::string source_map_;
   std::string app_name_;
 
   std::string curr_host_addr;
   std::string cb_kv_endpoint;
   std::string cb_source_bucket;
-
 
   volatile bool execute_flag;
   volatile bool shutdown_terminator;

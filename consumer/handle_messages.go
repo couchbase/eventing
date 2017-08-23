@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
@@ -19,7 +18,7 @@ func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) error {
 		Header: header,
 	}
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger)
+	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
 }
 
 func (c *Consumer) sendDebuggerStart() error {
@@ -35,7 +34,7 @@ func (c *Consumer) sendDebuggerStart() error {
 	}
 	c.v8WorkerMessagesProcessed["DEBUG_START"]++
 
-	return c.sendMessage(msg, 0, 0, false, true)
+	return c.sendMessage(msg, 0, 0, false, true, true)
 }
 
 func (c *Consumer) sendDebuggerStop() error {
@@ -51,7 +50,7 @@ func (c *Consumer) sendDebuggerStop() error {
 	}
 	c.v8WorkerMessagesProcessed["DEBUG_STOP"]++
 
-	return c.sendMessage(msg, 0, 0, false, true)
+	return c.sendMessage(msg, 0, 0, false, true, true)
 }
 
 func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool) error {
@@ -68,7 +67,7 @@ func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool) error {
 	}
 	c.v8WorkerMessagesProcessed["V8_INIT"]++
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger)
+	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
 }
 
 func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) error {
@@ -84,7 +83,7 @@ func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) error {
 	}
 	c.v8WorkerMessagesProcessed["V8_LOAD"]++
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger)
+	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
 }
 
 func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
@@ -96,7 +95,7 @@ func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 		Payload: timerPayload,
 	}
 
-	if err := c.sendMessage(msg, 0, 0, false, sendToDebugger); err != nil {
+	if err := c.sendMessage(msg, 0, 0, false, sendToDebugger, false); err != nil {
 		return
 	}
 }
@@ -110,7 +109,7 @@ func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
 		Payload: timerPayload,
 	}
 
-	if err := c.sendMessage(msg, 0, 0, false, sendToDebugger); err != nil {
+	if err := c.sendMessage(msg, 0, 0, false, sendToDebugger, false); err != nil {
 		return
 	}
 }
@@ -156,13 +155,13 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 		Payload: dcpPayload,
 	}
 
-	if err := c.sendMessage(msg, e.VBucket, e.Seqno, true, sendToDebugger); err != nil {
+	if err := c.sendMessage(msg, e.VBucket, e.Seqno, true, sendToDebugger, false); err != nil {
 		return
 	}
 
 }
 
-func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldCheckpoint bool, sendToDebugger bool) error {
+func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldCheckpoint bool, sendToDebugger bool, prioritise bool) error {
 	// Protocol encoding format:
 	//<headerSize><payloadSize><Header><Payload>
 
@@ -210,7 +209,7 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 		c.Unlock()
 	}
 
-	if c.sendMsgCounter >= c.socketWriteBatchSize {
+	if c.sendMsgCounter >= c.socketWriteBatchSize || prioritise {
 
 		if !sendToDebugger {
 			c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
@@ -285,7 +284,7 @@ func (c *Consumer) readMessage(readFromDebugger bool) error {
 			c.conn.Close()
 		} else {
 			if len(msg) > 1 {
-				fmt.Println(string(msg))
+				c.parseWorkerResponse(msg[:len(msg)-1], 0)
 			}
 		}
 		return err
@@ -298,7 +297,7 @@ func (c *Consumer) readMessage(readFromDebugger bool) error {
 		c.sendMsgToDebugger = false
 	} else {
 		if len(msg) > 1 {
-			fmt.Println(string(msg))
+			c.parseWorkerResponse(msg[:len(msg)-1], 0)
 		}
 	}
 	return err

@@ -1041,6 +1041,8 @@ void V8Worker::StopDebugger() {
   }
 }
 
+std::string V8Worker::GetSourceMap() { return source_map_; }
+
 const char *V8Worker::V8WorkerLastException() { return last_exception.c_str(); }
 
 const char *V8Worker::V8WorkerVersion() { return v8::V8::GetVersion(); }

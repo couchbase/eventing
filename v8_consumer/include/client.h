@@ -13,6 +13,7 @@ extern void(assert)(int);
 
 #include "../../flatbuf/include/header_generated.h"
 #include "../../flatbuf/include/payload_generated.h"
+#include "../../flatbuf/include/response_generated.h"
 
 #include <err.h>
 #include <errno.h>
@@ -46,6 +47,12 @@ typedef struct header_s {
   uint8_t opcode;
   std::string metadata;
 } header_t;
+
+typedef struct resp_msg_s {
+  uint8_t msg_type;
+  uint8_t opcode;
+  std::string msg;
+} resp_msg_t;
 
 class AppWorker {
 public:
@@ -92,6 +99,12 @@ private:
   // Tracks counter for dcp events processed so far and writes to
   // socket when counter reaches batch_size;
   int messages_processed_counter;
+
+  // Captures the config message that will be written by C++ worker
+  // to the tcp socket in order to communicate message to Go world
+  resp_msg_t *resp_msg;
+
+  bool msg_priority;
 
   std::vector<char> read_buffer;
   MessagePool outgoing_queue;

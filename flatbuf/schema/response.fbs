@@ -1,0 +1,9 @@
+namespace flatbuf.response;
+
+table Response {
+  msg_type:byte;
+  opcode:byte;
+  msg:string;
+}
+
+root_type Response;

@@ -9,13 +9,13 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include <libplatform/libplatform.h>
-#include <v8.h>
 #include <iostream>
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 #include <libcouchbase/n1ql.h>
+#include <libplatform/libplatform.h>
 #include <string>
+#include <v8.h>
 #include <vector>
 
 #include "../include/n1ql.h"

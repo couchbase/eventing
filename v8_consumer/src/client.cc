@@ -127,14 +127,23 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           app_name, dep_cfg, curr_host_port, kv_host_port, rbac_user, rbac_pass,
           payload->lcb_inst_capacity(), payload->execution_timeout(),
           payload->enable_recursive_mutation());
+      msg_priority = true;
       result.assign("Loaded requested app\n");
       break;
     case oLoad:
       LOG(logDebug) << "Loading app code:" << parsed_header->metadata << '\n';
       this->v8worker->V8WorkerLoad(parsed_header->metadata);
+      msg_priority = true;
       result.assign("Loaded app code\n");
       break;
     case oTerminate:
+      break;
+    case oGetSourceMap:
+      resp_msg->msg = this->v8worker->GetSourceMap();
+      resp_msg->msg_type = mV8_Worker_Config;
+      resp_msg->opcode = oSourceMap;
+      msg_priority = true;
+      break;
     case oVersion:
     case V8_Worker_Opcode_Unknown:
       LOG(logError) << "worker_opcode_unknown encountered" << '\n';
@@ -195,6 +204,7 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       setLogLevel(LevelFromString(parsed_header->metadata));
       LOG(logInfo) << "Configured log level: " << parsed_header->metadata
                    << '\n';
+      msg_priority = true;
       break;
     case App_Worker_Setting_Opcode_Unknown:
       break;
@@ -204,9 +214,11 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     switch (getDebuggerOpcode(parsed_header->opcode)) {
     case oDebuggerStart:
       this->v8worker->StartDebugger();
+      msg_priority = true;
       break;
     case oDebuggerStop:
       this->v8worker->StopDebugger();
+      msg_priority = true;
       break;
     case Debugger_Opcode_Unknown:
       break;
@@ -244,6 +256,8 @@ static void alloc_buffer(uv_handle_t *handle, size_t suggested_size,
 AppWorker::AppWorker() : main_loop_running(false), conn_handle(nullptr) {
   uv_loop_init(&main_loop);
   read_buffer.resize(MAX_BUF_SIZE);
+  resp_msg = new (resp_msg_t);
+  msg_priority = false;
 }
 
 AppWorker::~AppWorker() { uv_loop_close(&main_loop); }
@@ -353,17 +367,75 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
           this->messages_processed_counter++;
 
-          if (this->messages_processed_counter >= this->batch_size) {
-            // TODO: replace it with unique_ptr
+          if (this->messages_processed_counter >= this->batch_size ||
+              msg_priority) {
+
+            // Reset the message priority flag
+            msg_priority = false;
+
+            // Flatbuffer encoding for writing responses to Go world
+            flatbuffers::FlatBufferBuilder builder;
+            if (!resp_msg->msg.empty()) {
+              auto msg_offset = builder.CreateString(resp_msg->msg.c_str());
+              auto r = flatbuf::response::CreateResponse(
+                  builder, resp_msg->msg_type, resp_msg->opcode, msg_offset);
+              builder.Finish(r);
+
+              // Reset the values
+              resp_msg->msg.clear();
+              resp_msg->msg_type = 0;
+              resp_msg->opcode = 0;
+
+              int s = builder.GetSize();
+              char *size = (char *)&s;
+
+              // TODO: use unique_ptr for write_req
+              // Write size of payload to socket
+              write_req_t *req_size = new (write_req_t);
+              req_size->buf = uv_buf_init(size, sizeof(uint32_t));
+              uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
+                       [](uv_write_t *req_size, int status) {
+                         AppWorker::GetAppWorker()->OnWrite(req_size, status);
+                       });
+
+              // Write payload to socket
+              write_req_t *req_msg = new (write_req_t);
+              std::string msg((const char *)builder.GetBufferPointer(),
+                              builder.GetSize());
+              req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
+              uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
+                       [](uv_write_t *req_msg, int status) {
+                         AppWorker::GetAppWorker()->OnWrite(req_msg, status);
+                       });
+            }
+
+            auto msg_offset = builder.CreateString(FlushLog());
+            auto r = flatbuf::response::CreateResponse(
+                builder, mV8_Worker_Config, oLogMessage, msg_offset);
+            builder.Finish(r);
+
             write_req_t *req = new (write_req_t);
 
-            std::string logMsgs = FlushLog();
-            logMsgs += '\r';
-            req->buf = uv_buf_init((char *)logMsgs.c_str(), logMsgs.length());
+            int s = builder.GetSize();
+            char *size = (char *)&s;
 
-            uv_write((uv_write_t *)req, stream, &req->buf, 1,
-                     [](uv_write_t *req, int status) {
-                       AppWorker::GetAppWorker()->OnWrite(req, status);
+            // Write size of payload to socket
+            write_req_t *req_size = new (write_req_t);
+            req_size->buf = uv_buf_init(size, sizeof(uint32_t));
+            uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
+                     [](uv_write_t *req_size, int status) {
+                       AppWorker::GetAppWorker()->OnWrite(req_size, status);
+                     });
+
+            // Write payload to socket
+            write_req_t *req_msg = new (write_req_t);
+            std::string msg((const char *)builder.GetBufferPointer(),
+                            builder.GetSize());
+            msg += '\r';
+            req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
+            uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
+                     [](uv_write_t *req_msg, int status) {
+                       AppWorker::GetAppWorker()->OnWrite(req_msg, status);
                      });
 
             this->messages_processed_counter = 0;

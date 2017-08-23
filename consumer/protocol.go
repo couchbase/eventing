@@ -1,10 +1,13 @@
 package consumer
 
 import (
+	"encoding/binary"
+	"fmt"
 	"log"
 
 	"github.com/couchbase/eventing/flatbuf/header"
 	"github.com/couchbase/eventing/flatbuf/payload"
+	"github.com/couchbase/eventing/flatbuf/response"
 	"github.com/google/flatbuffers/go"
 )
 
@@ -49,17 +52,21 @@ const (
 	logLevel
 )
 
+// message and opcode types for interpreting messages from C++ To Go
+const (
+	respMsgType int8 = iota
+	respV8WorkerConfig
+)
+
+const (
+	respV8WorkerConfigOpcode int8 = iota
+	sourceMap
+	logMessage
+)
+
 type message struct {
 	Header  []byte
 	Payload []byte
-
-	ResChan chan response
-}
-
-type response struct {
-	res      string
-	logEntry string
-	err      error
 }
 
 func makeDocTimerEventHeader() []byte {
@@ -224,4 +231,35 @@ func readPayload(buf []byte) {
 	val := string(payloadPos.Value())
 
 	log.Printf("ReadPayload => key: %s val: %s\n", key, val)
+}
+
+func (c *Consumer) parseWorkerResponse(m []byte, start int) {
+	msg := m[start:]
+
+	size := binary.LittleEndian.Uint32(msg[0:headerFragmentSize])
+	if len(msg) >= int(size+headerFragmentSize) {
+
+		r := response.GetRootAsResponse(msg[headerFragmentSize:headerFragmentSize+size], 0)
+
+		msgType := r.MsgType()
+		opcode := r.Opcode()
+		message := string(r.Msg())
+
+		c.routeResponse(msgType, opcode, message)
+
+		if len(msg) > 2*headerFragmentSize+int(size) {
+			c.parseWorkerResponse(msg, int(size)+headerFragmentSize)
+		}
+	}
+}
+
+func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
+	switch msgType {
+	case respV8WorkerConfig:
+		switch opcode {
+		case sourceMap:
+		case logMessage:
+			fmt.Printf("%s", msg)
+		}
+	}
 }

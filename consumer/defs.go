@@ -61,6 +61,9 @@ const (
 	dcpNumConnections = 1
 	timerChanSize     = 10000
 
+	// To decode messages from c++ world to Go
+	headerFragmentSize = 4
+
 	// ClusterChangeNotifChBufSize limits buffer size for cluster change notif from producer
 	ClusterChangeNotifChBufSize = 10
 

@@ -69,7 +69,7 @@ static std::string FlushLog() {
 }
 
 static std::string LevelToString(LogLevel level) {
-  static const char *const buffer[] = {"[Silent]",  "[Info]", "[Error]",
+  static const char *const buffer[] = {"[Silent]",  "[Info]",  "[Error]",
                                        "[Warning]", "[Debug]", "[Trace]"};
   return buffer[level];
 }

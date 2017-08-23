@@ -12,11 +12,11 @@
 #ifndef N1QL_H
 #define N1QL_H
 
-#include <v8.h>
 #include <map>
 #include <queue>
 #include <stack>
 #include <string>
+#include <v8.h>
 #include <vector>
 
 #include "libcouchbase/couchbase.h"
