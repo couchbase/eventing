@@ -225,11 +225,18 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	doc.UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath)
 	doc.UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath)
 	doc.UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker, gocb.SubdocFlagCreatePath)
 	doc.UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath)
 	doc.UpsertEx("last_processed_seq_no", vbBlob.LastSeqNoProcessed, gocb.SubdocFlagCreatePath)
 	doc.UpsertEx("node_uuid", vbBlob.NodeUUID, gocb.SubdocFlagCreatePath)
 	doc.UpsertEx("vb_id", vbBlob.VBId, gocb.SubdocFlagCreatePath)
+
+	doc.UpsertEx("doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker, gocb.SubdocFlagCreatePath)
+	doc.UpsertEx("currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer, gocb.SubdocFlagCreatePath)
+	doc.UpsertEx("currently_processed_non_doc_timer", vbBlob.CurrentProcessedNonDocTimer, gocb.SubdocFlagCreatePath)
+	doc.UpsertEx("last_processed_doc_id_timer_event", vbBlob.LastProcessedDocIDTimerEvent, gocb.SubdocFlagCreatePath)
+	doc.UpsertEx("next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess, gocb.SubdocFlagCreatePath)
+	doc.UpsertEx("next_non_doc_timer_to_process", vbBlob.NextNonDocTimerToProcess, gocb.SubdocFlagCreatePath)
+	doc.UpsertEx("plasma_last_persisted_seq_no", vbBlob.PlasmaPersistedSeqNo, gocb.SubdocFlagCreatePath)
 
 	_, err := doc.Execute()
 	if err != nil {

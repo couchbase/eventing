@@ -191,7 +191,13 @@ loop:
 				continue
 			}
 
-			key := fmt.Sprintf("dtb_%d", i)
+			var key string
+			if options.inpKey {
+				key = options.key
+			} else {
+				key = fmt.Sprintf("dtb_%d", i)
+			}
+			fmt.Printf("key: %s\n", key)
 			err = bucketHandle.SetRaw(key, options.expiry, content)
 			if err != nil {
 				continue

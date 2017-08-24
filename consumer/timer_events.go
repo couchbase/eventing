@@ -511,7 +511,6 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 	timersToKeep := make([]string, 0)
 
 	for _, timer := range xMeta.Timers {
-		// check if timer timestamp has already passed, if yes then skip adding it to plasma
 		app := strings.Split(timer, "::")[0]
 		if app != c.app.AppName {
 			continue

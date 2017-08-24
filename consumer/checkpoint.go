@@ -23,8 +23,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 			for vbno := range c.vbProcessingStats {
 
 				// only checkpoint stats for vbuckets that the consumer instance owns
-				if c.HostPortAddr() == c.vbProcessingStats.getVbStat(vbno, "current_vb_owner") &&
-					c.ConsumerName() == c.vbProcessingStats.getVbStat(vbno, "assigned_worker") &&
+				if c.ConsumerName() == c.vbProcessingStats.getVbStat(vbno, "assigned_worker") &&
 					c.NodeUUID() == c.vbProcessingStats.getVbStat(vbno, "node_uuid") {
 
 					vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))

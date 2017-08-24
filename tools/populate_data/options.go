@@ -12,6 +12,8 @@ var options struct {
 	docType      string
 	expiry       int
 	itemCount    int
+	inpKey       bool
+	key          string
 	rbacPass     string
 	rbacUser     string
 	loop         bool
@@ -22,7 +24,9 @@ func argParse() (string, string) {
 	flag.StringVar(&options.appName, "app", "credit_score", "eventing app handler name")
 	flag.StringVar(&options.bucket, "bucket", "default", "bucket to write mutations to")
 	flag.StringVar(&options.docType, "doc", "credit_score", "document type that will be written to bucket")
+	flag.StringVar(&options.key, "key", "dtb_1", "key to write to bucket")
 	flag.IntVar(&options.expiry, "expiry", 0, "document ttl/expiry")
+	flag.BoolVar(&options.inpKey, "i", false, "take key name input from user")
 	flag.IntVar(&options.itemCount, "count", 1, "count of items to write to couchbase bucket")
 	flag.BoolVar(&options.loop, "loop", false, "loop forever until interrupted")
 	flag.StringVar(&options.rbacPass, "pass", "asdasd", "rbac user password")

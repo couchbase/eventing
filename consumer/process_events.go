@@ -597,16 +597,13 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 	// Closing feeds for KV hosts which are no more present in kv vb map
 	c.cleanupStaleDcpFeedHandles()
 
-	c.hostDcpFeedRWMutex.RLock()
+	c.hostDcpFeedRWMutex.Lock()
 	dcpFeed, ok := c.kvHostDcpFeedMap[vbKvAddr]
-	c.hostDcpFeedRWMutex.RUnlock()
 	if !ok {
 		feedName := couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + vbKvAddr + "_" + c.workerName)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, dcpConfig, vbKvAddr)
 
-		c.hostDcpFeedRWMutex.RLock()
 		dcpFeed = c.kvHostDcpFeedMap[vbKvAddr]
-		c.hostDcpFeedRWMutex.RUnlock()
 
 		cancelCh := make(chan struct{}, 1)
 		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
@@ -615,6 +612,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 		logging.Debugf("CRDP[%s:%s:%s:%d] vb: %d kvAddr: %v Started up new dcpFeed",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr)
 	}
+	c.hostDcpFeedRWMutex.Unlock()
 
 	c.Lock()
 	c.vbDcpFeedMap[vbno] = dcpFeed
