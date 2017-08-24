@@ -1,18 +1,31 @@
-# Building Couchbase server with Eventing
+# Building Couchbase server with Functions
 ### Dependencies
-We need to install the latest version of `libuv` and `libcouchbase >= 2.7.5`
+The dependencies are `libuv`, `v8 5.9.211` and `libcouchbase >= 2.7.5`
 #### For Mac OS X
+##### libuv
 ```bash
 $ brew upgrade
 $ brew install libuv
-$ brew install libcouchbase
 ```
 
-If you have already installed them, then upgrade them to the latest
+If you have already installed libuv, then upgrade it to the latest
 ```bash
 $ brew upgrade libuv
-$ brew upgrade libcouchbase
 ```
+Download the following dependencies and put them to `~/.cbdepscache/`
+
+##### v8
+
+https://drive.google.com/open?id=0B4VRo9qU8CtkNWtoc0NGQmUtUEE <br>
+https://drive.google.com/open?id=0B4VRo9qU8CtkS190UDBqSlhWTWM
+
+##### icu56
+https://drive.google.com/open?id=0B4VRo9qU8CtkYmpfRjdNQWE1OVE <br>
+https://drive.google.com/open?id=0B4VRo9qU8CtkUER1QlBhcUhwRU0
+
+##### libcouchbase
+https://drive.google.com/open?id=0B4VRo9qU8CtkQlVMZmhFTHR5cGM <br>
+https://drive.google.com/open?id=0B4VRo9qU8CtkUER1QlBhcUhwRU0
 
 ### Clone and build Couchbase server
 ```bash
@@ -47,9 +60,6 @@ Under the Query tab execute –
 CREATE PRIMARY INDEX ON `beer-sample`;
 ```
 
-Now you can goto Eventing and create and deploy apps.
->Please remember to add user in the application settings for each app that you create.
-
 ### Logs
 From ns_server directory,
 ```bash
@@ -58,20 +68,23 @@ $ tail -f logs/n_0/eventing.log
 
 ---
 
-# Sample application
-Let us consider the following example -<br/>
-We want to monitor the `beer-sample` bucket for those beers whose `abv > 20` and add those into another bucket called `abv_bucket`.
+# Samples
+Please create the following buckets before trying the sample applications -
+1) default
+2) eventing
+3) hello-world
 
-Please do the following before proceeding with this example –
-1) Create a bucket `abv_bucket`.
-2) Under the Query tab and execute –
-```sql
-CREATE PRIMARY INDEX ON abv_bucket;
-```
+The sample can be found in the [samples](https://github.com/couchbase/eventing/tree/master/samples) directory. You can import them using the `import` functionality under the Functions tab. The imported functions will be disabled by default. You need to `deploy` them to spin them up into action.
 
-Under 'Eventing' tab, create a new application.
+# Creating a function
+Let us try creating a function. Consider the following example -<br/>
+We want to monitor the `beer-sample` bucket for those beers whose `abv > 20` and add those into the `default` bucket.
 
-### Handler
+> Please make sure that you have added beer-sample bucket and have created a primary index on it.
+
+Under Functions tab, click on `Create`. Set `Source bucket` to `beer-sample` and `Metadata bucket` to `eventing`. Give a name and enter the `RBAC Credentials`. Click `Continue`.
+
+You will now be taken to the editor page where you can define the logic of your function. Replace the text with the content below.
 ```javascript
 function OnUpdate(doc, meta) {
     var bucket = '`beer-sample`';
@@ -87,7 +100,7 @@ function OnUpdate(doc, meta) {
 		var data = JSON.stringify(row);
 
 		// Upsert these rows into abv_bucket.
-		var ins = UPSERT INTO abv_bucket (KEY, VALUE) VALUES (':name', :data);
+		var ins = UPSERT INTO default (KEY, VALUE) VALUES (':name', :data);
 		ins.execQuery();
 	}
 }
@@ -95,21 +108,4 @@ function OnUpdate(doc, meta) {
 function OnDelete(msg){
 }
 ```
-
-### Deployment plan
-```json
-{
-"buckets": [
-  {
-   "alias": "abv_bucket",
-   "bucket_name": "abv_bucket"
-  }
-],
-"metadata_bucket": "eventing",
-"source_bucket": "beer-sample"
-}
-```
-
-### Settings
-Make sure that you’ve added user `eventing` with password `asdasd`.
-Set the log level to `Trace` incase you want to see the log messages in `eventing.log`.
+Go back to the Functions tab and hit `Deploy`.
