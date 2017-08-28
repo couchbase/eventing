@@ -119,7 +119,7 @@ ApplicationModel.prototype.getDefaultModel = function() {
             sock_batch_size: 1,
             tick_duration: 5000,
             checkpoint_interval: 10000,
-            worker_count: 1,
+            worker_count: 3,
             cleanup_timers: false,
             timer_worker_pool_size: 3,
             skip_timer_threshold: 86400,

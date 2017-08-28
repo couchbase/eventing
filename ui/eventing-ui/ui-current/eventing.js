@@ -308,8 +308,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             var app = JSON.parse(reader.result);
                             var scope = $scope.$new(true);
                             scope.appModel = new ApplicationModel(app);
-                            scope.bindings = ApplicationService.getBindingFromConfig(app.buckets);
-                            if (scope.bindings.length) {
+                            scope.bindings = ApplicationService.getBindingFromConfig(app.depcfg.buckets);
+                            if (!scope.bindings.length) {
                                 // Add a sample row of bindings.
                                 scope.bindings.push({
                                     type: 'alias',
