@@ -72,30 +72,24 @@ func (c *Consumer) plasmaPersistAll() {
 }
 
 func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
-	vbsOwned := c.getVbsOwned()
+	var vbsOwned []uint16
 
-	vbsPerWorker := len(vbsOwned) / c.timerProcessingWorkerCount
+	if initWorkers {
+		vbsOwned = c.getVbsOwned()
+	} else {
+		vbsOwned = c.getCurrentlyOwnedVbs()
+	}
 
 	if len(vbsOwned) == 0 {
+		logging.Verbosef("CRTE[%s:%s:%s:%d] Timer processing worker vbucket assignment, no vbucket owned by consumer",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 		return
 	}
 
-	var vb int
-	startVb := vbsOwned[0]
-
-	vbsCountPerWorker := make([]int, c.timerProcessingWorkerCount)
-	for i := 0; i < c.timerProcessingWorkerCount; i++ {
-		vbsCountPerWorker[i] = vbsPerWorker
-		vb += vbsPerWorker
-	}
-
-	remainingVbs := len(vbsOwned) - vb
-	for i := 0; i < remainingVbs; i++ {
-		vbsCountPerWorker[i] = vbsCountPerWorker[i] + 1
-	}
+	vbsWorkerDistribution := util.VbucketNodeAssignment(vbsOwned, c.timerProcessingWorkerCount)
 
 	if initWorkers {
-		for i, v := range vbsCountPerWorker {
+		for i, vbs := range vbsWorkerDistribution {
 
 			worker := &timerProcessingWorker{
 				c:  c,
@@ -105,52 +99,43 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 				timerProcessingTicker: time.NewTicker(c.timerProcessingTickInterval),
 			}
 
-			vbsAssigned := make([]uint16, v)
-
-			for j := 0; j < v; j++ {
-				vbsAssigned[j] = startVb
-
+			for _, vb := range vbs {
 				c.timerRWMutex.Lock()
-				c.timerProcessingVbsWorkerMap[startVb] = worker
+				c.timerProcessingVbsWorkerMap[vb] = worker
 				c.timerRWMutex.Unlock()
 
-				c.vbProcessingStats.updateVbStat(startVb, "doc_id_timer_processing_worker", fmt.Sprintf("timer_%d", i))
-				startVb++
+				c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", fmt.Sprintf("timer_%d", i))
 			}
 
-			worker.vbsAssigned = vbsAssigned
+			worker.vbsAssigned = vbs
 
 			c.timerProcessingRunningWorkers = append(c.timerProcessingRunningWorkers, worker)
 			c.timerProcessingWorkerSignalCh[worker] = make(chan struct{}, 1)
 
 			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Initial Timer routine vbs assigned len: %d dump: %v",
 				c.app.AppName, c.workerName, worker.id, c.tcpPort, c.Pid(),
-				len(vbsAssigned), util.Condense(vbsAssigned))
+				len(vbs), util.Condense(vbs))
 		}
 	} else {
 
-		for i, v := range vbsCountPerWorker {
+		for i, vbs := range vbsWorkerDistribution {
 
 			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Timer routine timerProcessingRunningWorkers[%v]: %v",
 				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), i,
 				util.Condense(c.timerProcessingRunningWorkers[i].vbsAssigned))
 
-			vbsAssigned := make([]uint16, v)
-
 			c.timerRWMutex.Lock()
-			for j := 0; j < v; j++ {
-				vbsAssigned[j] = startVb
 
-				c.timerProcessingVbsWorkerMap[startVb] = c.timerProcessingRunningWorkers[i]
-				c.vbProcessingStats.updateVbStat(startVb, "doc_id_timer_processing_worker", fmt.Sprintf("timer_%d", i))
-				startVb++
+			for _, vb := range vbs {
+				c.timerProcessingVbsWorkerMap[vb] = c.timerProcessingRunningWorkers[i]
+				c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", fmt.Sprintf("timer_%d", i))
 			}
 
-			c.timerProcessingRunningWorkers[i].vbsAssigned = vbsAssigned
+			c.timerProcessingRunningWorkers[i].vbsAssigned = vbs
 			c.timerRWMutex.Unlock()
 
 			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Timer routine vbs assigned len: %d dump: %v",
-				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), len(vbsAssigned), util.Condense(vbsAssigned))
+				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), len(vbs), util.Condense(vbs))
 		}
 	}
 }
@@ -553,7 +538,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 		retryPlasmaLookUp:
 
 			token = plasmaWriterHandle.BeginTx()
-			tv, tErr := plasmaWriterHandle.LookupKV([]byte(ts))
+			tv, tErr := plasmaWriterHandle.LookupKV([]byte(byTimerKey))
 			plasmaWriterHandle.EndTx(token)
 
 			if tErr == plasma.ErrItemNotFound {

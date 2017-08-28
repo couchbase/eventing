@@ -43,8 +43,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					}
 
 					// Steady state cluster
-					if c.HostPortAddr() == vbBlob.CurrentVBOwner {
-
+					if c.NodeUUID() == vbBlob.NodeUUID && vbBlob.DCPStreamStatus == dcpStreamRunning {
 						c.updateCheckpointInfo(vbKey, vbno, &vbBlob, &cas)
 						continue
 					}

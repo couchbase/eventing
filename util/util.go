@@ -697,14 +697,13 @@ func VbucketNodeAssignment(vbs []uint16, numWorkers int) map[int][]uint16 {
 
 // VbucketDistribution is used by vbucket ownership give up and takeover routines during rebalance
 func VbucketDistribution(vbs []uint16, numWorkers int) map[int][]uint16 {
-
 	vbWorkerAssignMap := make(map[int][]uint16)
 	for i := 0; i < numWorkers; i++ {
 		assignedVbs := make([]uint16, 0)
 		vbWorkerAssignMap[i] = assignedVbs
 	}
 
-	if len(vbs) == 0 {
+	if len(vbs) == 0 || numWorkers == 0 {
 		return vbWorkerAssignMap
 	}
 

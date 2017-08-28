@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -164,12 +165,13 @@ func (c *Consumer) processEvents() {
 					}
 
 					// Update metadata with latest vbuuid and rolback seq no.
-					vbBlob.LastSeqNoProcessed = seqNo
-					vbBlob.VBuuid = vbuuid
 					vbBlob.AssignedWorker = c.ConsumerName()
 					vbBlob.CurrentVBOwner = c.HostPortAddr()
 					vbBlob.DCPStreamStatus = dcpStreamRunning
 					vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
+					vbBlob.LastSeqNoProcessed = seqNo
+					vbBlob.NodeUUID = c.uuid
+					vbBlob.VBuuid = vbuuid
 
 					entry := OwnershipEntry{
 						AssignedWorker: c.ConsumerName(),
@@ -683,5 +685,8 @@ func (c *Consumer) getCurrentlyOwnedVbs() []uint16 {
 			vbsOwned = append(vbsOwned, uint16(vb))
 		}
 	}
+
+	sort.Sort(util.Uint16Slice(vbsOwned))
+
 	return vbsOwned
 }
