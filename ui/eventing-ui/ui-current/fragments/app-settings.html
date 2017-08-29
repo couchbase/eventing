@@ -18,12 +18,23 @@
       <div class="panel-content">
         <div class="formrow">
           <div class="row">
-            <label class="column width-3">Source bucket</label>
+            <!--Source bucket-->
+            <label class="column width-3">
+              Source bucket
+              <!--Tooltip-->
+              <span class="fa-stack icon-info"
+                    uib-tooltip="The bucket to which the function will listen for changes."
+                    tooltip-placement="bottom">
+              <span class="icon fa-circle-thin fa-stack-2x"></span>
+              <span class="icon fa-info fa-stack-1x"></span>
+              </span>
+            </label>
             <select class="column width-9" ng-disabled="!formCtrl.isDialog"
                     ng-model="appModel.depcfg.source_bucket"
                     ng-options="bucket for bucket in formCtrl.sourceBuckets"></select>
           </div>
           <br/>
+          <!--Metadata bucket-->
           <div class="row">
             <label class="column width-3">Metadata bucket</label>
             <select class="column width-9" ng-disabled="!formCtrl.isDialog"
@@ -94,21 +105,19 @@
         </div>
         <div class="formrow" ng-show="showSettings">
           <div class="cbui-table">
+            <!--Log level-->
             <div class="cbui-tablerow has-hover">
               <span class="cbui-table-cell">
-              <label>Change feed boundary</label>
-              </span>
-              <span class="cbui-table-cell input-append"
-                    ng-init="appModel.settings.dcp_stream_boundary = appModel.settings.dcp_stream_boundary ? appModel.settings.dcp_stream_boundary : 'everything'">
-                <select ng-model="appModel.settings.dcp_stream_boundary">
-                  <option value="everything">Everything</option>
-                  <option value="from_now">From now</option>
-                </select>
-              </span>
-            </div>
-            <div class="cbui-tablerow has-hover">
-              <span class="cbui-table-cell">
-              <label>Log level</label>
+                <label>
+                  Log level
+                  <!--Tooltip-->
+                  <span class="fa-stack icon-info"
+                        uib-tooltip="Granularity at which messages get logged."
+                        tooltip-placement="top">
+                  <span class="icon fa-circle-thin fa-stack-2x"></span>
+                  <span class="icon fa-info fa-stack-2x"></span>
+                  </span>
+                </label>
               </span>
               <span class="cbui-table-cell input-append"
                     ng-init="appModel.settings.log_level = appModel.settings.log_level ? appModel.settings.log_level : 'TRACE'">
@@ -120,6 +129,74 @@
                   <option value="TRACE">Trace</option>
                 </select>
               </span>
+            </div>
+            <!--Worker count-->
+            <div class="cbui-tablerow has-hover">
+              <span class="cbui-table-cell">
+                <label>
+                  Workers
+                  <!--Tooltip-->
+                  <span class="fa-stack icon-info"
+                        uib-tooltip="Number of workers to take up the load."
+                        tooltip-placement="top">
+                  <span class="icon fa-circle-thin fa-stack-2x"></span>
+                  <span class="icon fa-info fa-stack-2x"></span>
+                  </span>
+                </label>
+              </span>
+              <span class="cbui-table-cell input-append">
+              <input type="number"
+                     name="worker_count"
+                     ng-model="appModel.settings.worker_count"
+                     required min="1" max="128"/>
+              </span>
+            </div>
+            <!--Worker count errors-->
+            <div class="error field-error"
+                 ng-show="formCtrl.createAppForm.worker_count.$error.min && formCtrl.createAppForm.worker_count.$dirty">
+              Worker count must be positive
+            </div>
+            <div class="error field-error"
+                 ng-show="formCtrl.createAppForm.worker_count.$error.required && formCtrl.createAppForm.worker_count.$dirty">
+              Worker count requires a value
+            </div>
+            <div class="error field-error"
+                 ng-show="formCtrl.createAppForm.worker_count.$error.max && formCtrl.createAppForm.worker_count.$dirty">
+              Worker count must be less than 128
+            </div>
+            <!--Script execution timeout-->
+            <div class="cbui-tablerow has-hover">
+              <span class="cbui-table-cell">
+                <label>
+                  Script timeout
+                  <!--Tooltip-->
+                  <span class="fa-stack icon-info"
+                        uib-tooltip="Timeout for executing the function."
+                        tooltip-placement="top">
+                  <span class="icon fa-circle-thin fa-stack-2x"></span>
+                  <span class="icon fa-info fa-stack-2x"></span>
+                  </span>
+                </label>
+              </span>
+              <span class="cbui-table-cell input-append">
+              <input type="number"
+                     name="execution_timeout"
+                     ng-model="appModel.settings.execution_timeout"
+                     required min="1" max="60"/><abbr>&nbsp;s</abbr>
+              </span>
+            </div>
+            <!--Script timeout errors-->
+            <div class="error field-error"
+                 ng-show="formCtrl.createAppForm.execution_timeout.$error.min && formCtrl.createAppForm.execution_timeout.$dirty">
+              Script timeout must be positive
+            </div>
+            <div class="error field-error"
+                 ng-show="formCtrl.createAppForm.execution_timeout.$error.required && formCtrl.createAppForm.execution_timeout.$dirty">
+              Script timeout requires a value
+            </div>
+            <div class="error field-error"
+                 ng-show="formCtrl.createAppForm.execution_timeout.$error.max && formCtrl.createAppForm.execution_timeout.$dirty">
+              Script timeout must be less than 60
             </div>
           </div>
         </div>
@@ -143,6 +220,13 @@
                   <option value="alias"
                           ng-model="bindings[$index].type">Alias</option>
                 </select>
+                <!--Tooltip-->
+                &nbsp;&nbsp;<span class="fa-stack icon-info"
+                                  uib-tooltip="Binding that allows to refer to a bucket in functions. 'name' refers to the name of the bucket in the cluster. 'value' is the alias used to refer to the bucket in the function."
+                                  tooltip-placement="right">
+                <span class="icon fa-circle-thin fa-stack-2x"></span>
+                <span class="icon fa-info fa-stack-1x"></span>
+                </span>
               </span>
             </div>
             <div class="column width-4" style="margin-bottom:.5rem">
@@ -176,35 +260,59 @@
       <div class="panel-content">
         <div class="formrow">
           <div class="row">
-            <h3>Bindings</h3>
+            <h3>
+              Bindings
+              <!--Tooltip-->
+              <span class="fa-stack icon-info"
+                    uib-tooltip="Special variables used in functions."
+                    tooltip-placement="right">
+              <span class="icon fa-circle-thin fa-stack-2x"></span>
+              <span class="icon fa-info fa-stack-1x"></span>
+              </span>
+            </h3>
             <span>
             <button class="outline btn-small" title="Add parameter"
-                    ng-click="formCtrl.bindings.push({type:'alias', name:'', value:''})">+</button>
+                    ng-click="formCtrl.bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:''})">+</button>
             <button class="outline btn-small" title="Remove parameter"
                     ng-click="formCtrl.bindings.splice(-1, 1); formCtrl.createAppForm.$pristine = false">-</button>
             </span>
           </div>
           <hr/>
-          <div class="row"
-               ng-repeat="binding in formCtrl.bindings track by $index">
-            <div class="column width-4" style="margin-bottom:.5rem">
-              <label>type</label>
-              <span class="input-prepend">
-                <select>
-                  <option value="alias"
-                          ng-model="formCtrl.bindings[$index].type">Alias</option>
+          <div ng-repeat="binding in formCtrl.bindings track by $index">
+            <div class="row">
+              <div class="column width-4" style="margin-bottom:.5rem">
+                <label>type</label>
+                <span class="input-prepend">
+                  <select>
+                    <option value="alias"
+                            ng-model="formCtrl.bindings[$index].type">Alias</option>
+                  </select>
+                  <!--Tooltip-->
+                  &nbsp;&nbsp;<span class="fa-stack icon-info"
+                                    uib-tooltip="Binding that allows to refer to a bucket in functions. 'name' refers to the name of the bucket in the cluster. 'value' is the alias used to refer to the bucket in the function."
+                                    tooltip-placement="right">
+                  <span class="icon fa-circle-thin fa-stack-2x"></span>
+                  <span class="icon fa-info fa-stack-1x"></span>
+                  </span>
+                </span>
+              </div>
+              <div class="column width-4" style="margin-bottom:.5rem">
+                <label>name</label>
+                <span class="input-prepend">
+                <select ng-model="formCtrl.bindings[$index].name"
+                        ng-options="bucket for bucket in formCtrl.sourceBuckets">
                 </select>
-              </span>
+                </span>
+              </div>
+              <div class="column width-4" style="margin-bottom:.5rem">
+                <label>value</label>
+                <input type="text" ng-model="formCtrl.bindings[$index].value"/>
+              </div>
             </div>
-            <div class="column width-4" style="margin-bottom:.5rem">
-              <label>name</label>
-              <span class="input-prepend">
-              <input type="text" ng-model="formCtrl.bindings[$index].name"/>
-              </span>
-            </div>
-            <div class="column width-4" style="margin-bottom:.5rem">
-              <label>value</label>
-              <input type="text" ng-model="formCtrl.bindings[$index].value"/>
+            <!--Binding error-->
+            <div class="row error field-error"
+                 ng-show="!formCtrl.validateBinding(formCtrl.bindings[$index])">
+              Alias value must be a valid identifier
             </div>
           </div>
         </div>

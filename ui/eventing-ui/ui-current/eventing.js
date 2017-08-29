@@ -59,17 +59,18 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             function deployApp(app, scope) {
                 var appClone = app.clone();
+                scope.settings = {};
+                scope.settings.cleanupTimers = false;
+                scope.settings.changeFeedBoundary = 'everything';
 
                 // Open dialog to confirm application deployment.
                 $uibModal.open({
                         templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
                         scope: scope
                     }).result
-                    .then(function(cleanupTimers) {
-                        // If cleanupTimers is set, then first modify its settings.
-                        if (cleanupTimers) {
-                            appClone.settings.cleanup_timers = cleanupTimers;
-                        }
+                    .then(function(response) {
+                        appClone.settings.cleanup_timers = scope.settings.cleanupTimers;
+                        appClone.settings.dcp_stream_boundary = scope.settings.changeFeedBoundary;
 
                         // Set app to 'deployed & enabled' state and save.
                         appClone.settings.deployment_status = true;
@@ -220,8 +221,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for the buttons in header.
-    .controller('HeaderCtrl', ['$scope', '$uibModal', '$state', 'mnPoolDefault', 'ApplicationService',
-        function($scope, $uibModal, $state, mnPoolDefault, ApplicationService) {
+    .controller('HeaderCtrl', ['$q', '$scope', '$uibModal', '$state', 'mnPoolDefault', 'ApplicationService',
+        function($q, $scope, $uibModal, $state, mnPoolDefault, ApplicationService) {
             var self = this;
 
             function createApp(creationScope) {
@@ -232,27 +233,15 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         controller: 'CreateCtrl',
                         controllerAs: 'formCtrl',
                         resolve: {
-                            bucketsResolve: ['$http', 'mnPoolDefault',
-                                function($http, mnPoolDefault) {
+                            bucketsResolve: ['ApplicationService',
+                                function(ApplicationService) {
                                     // Getting the list of buckets from server.
-                                    var poolDefault = mnPoolDefault.latestValue().value;
-                                    return $http.get(poolDefault.buckets.uri)
-                                        .then(function(response) {
-                                            var buckets = [];
-                                            for (var bucket of response.data) {
-                                                buckets.push(bucket.name);
-                                            }
-
-                                            return buckets;
-                                        })
-                                        .catch(function(errResponse) {
-                                            console.error(errResponse);
-                                        });
+                                    return ApplicationService.server.getLatestBuckets();
                                 }
                             ]
                         }
                     }).result
-                    .then(function(response) { // Upon continue.
+                    .then(function(repsonse) { // Upon continue.
                         creationScope.appModel.depcfg.buckets = ApplicationService.convertBindingToConfig(creationScope.bindings);
                         creationScope.appModel.fillWithMissingDefaults();
 
@@ -260,6 +249,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         // disabled and undeployed state.
                         creationScope.appModel.settings.processing_status = false;
                         creationScope.appModel.settings.deployment_status = false;
+
+                        // Deadline timeout must be greater and execution timeout.
+                        creationScope.appModel.settings.deadline_timeout = creationScope.appModel.settings.execution_timeout + 2;
 
                         ApplicationService.local.createApp(creationScope.appModel);
                         return $state.go('app.admin.eventing.handler', {
@@ -344,8 +336,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.sourceBuckets = bucketsResolve;
             self.metadataBuckets = bucketsResolve.reverse();
 
+            self.bindings = [];
             self.isFormInvalid = function() {
-                return FormValidationService.isFormInvalid(self.createAppForm);
+                return FormValidationService.isFormInvalid(self);
             };
         }
     ])
@@ -376,7 +369,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             $scope.appModel = JSON.parse(JSON.stringify(appModel));
 
             self.isFormInvalid = function() {
-                return FormValidationService.isFormInvalid(self.createAppForm);
+                return FormValidationService.isFormInvalid(self);
+            };
+
+            self.validateBinding = function(binding) {
+                return FormValidationService.isValidIdentifier(binding.value);
             };
 
             self.saveSettings = function() {
@@ -385,6 +382,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     $scope.appModel.depcfg.buckets = bindings;
                     showWarningAlert('Bindings changed. Deploy for changes to take effect!');
                 }
+
+                // Deadline timeout must be greater than execution timeout.
+                $scope.appModel.settings.deadline_timeout = $scope.appModel.settings.execution_timeout + 2;
 
                 ApplicationService.tempStore.saveApp($scope.appModel)
                     .then(function(response) {
@@ -616,8 +616,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         };
     }])
     // Service to manage the applications.
-    .factory('ApplicationService', ['$q', '$http', '$state',
-        function($q, $http, $state) {
+    .factory('ApplicationService', ['$q', '$http', '$state', 'mnPoolDefault',
+        function($q, $http, $state, mnPoolDefault) {
             var appManager = new ApplicationManager();
             var errHandler;
 
@@ -786,6 +786,24 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         return Number(response.headers(ErrorHandler.headerKey));
                     }
                 },
+                server: {
+                    getLatestBuckets: function() {
+                        // Getting the list of buckets.
+                        var poolDefault = mnPoolDefault.latestValue().value;
+                        return $http.get(poolDefault.buckets.uri)
+                            .then(function(response) {
+                                var buckets = [];
+                                for (var bucket of response.data) {
+                                    buckets.push(bucket.name);
+                                }
+
+                                return buckets;
+                            })
+                            .catch(function(errResponse) {
+                                console.error('Unable to load buckets from server', errResponse);
+                            });
+                    }
+                },
                 convertBindingToConfig: function(bindings) {
                     // A binding is of the form -
                     // [{type:'alias', name:'', value:''}]
@@ -819,15 +837,43 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
     // Service to validate the form in settings and create app.
     .factory('FormValidationService', [
         function() {
+            function isValidIdentifier(value) {
+                var re = /\b[a-zA-Z_$][a-zA-Z_$0-9]*\b/g;
+                return value && value.trim().match(re);
+            }
+
             return {
-                isFormInvalid: function(form) {
+                isValidIdentifier: function(value) {
+                    return isValidIdentifier(value);
+                },
+                isFormInvalid: function(formCtrl) {
+                    var bindingsValid = true,
+                        form = formCtrl.createAppForm;
+
+                    for (var binding of formCtrl.bindings) {
+                        if (!bindingsValid) {
+                            break;
+                        }
+
+                        if (binding.value.length) {
+                            bindingsValid = isValidIdentifier(binding.value);
+                        }
+                    }
+
                     // Need to check where rbacpass is empty manually and update state.
                     // Don't know why AngularJS is giving wrong state for this field.
                     form.rbacpass.$error.required = form.rbacpass.$modelValue === '';
 
                     return form.appname.$error.required ||
                         form.rbacuser.$error.required ||
-                        form.rbacpass.$error.required;
+                        form.rbacpass.$error.required ||
+                        form.worker_count.$error.required ||
+                        form.worker_count.$error.min ||
+                        form.worker_count.$error.max ||
+                        form.execution_timeout.$error.required ||
+                        form.execution_timeout.$error.min ||
+                        form.execution_timeout.$error.max ||
+                        !bindingsValid;
                 }
             }
         }
@@ -877,21 +923,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         loadApps: ['ApplicationService', function(ApplicationService) {
                             return ApplicationService.local.loadApps();
                         }],
-                        bucketsResolve: ['$http', 'mnPoolDefault', function($http, mnPoolDefault) {
-                            // Getting the list of buckets.
-                            var poolDefault = mnPoolDefault.latestValue().value;
-                            return $http.get(poolDefault.buckets.uri)
-                                .then(function(response) {
-                                    var buckets = [];
-                                    for (var bucket of response.data) {
-                                        buckets.push(bucket.name);
-                                    }
-                                    return buckets;
-                                })
-                                .catch(function(errResponse) {
-                                    console.error('Unable to load buckets from server', errResponse);
-                                });
-                        }]
+                        bucketsResolve: ['ApplicationService',
+                            function(ApplicationService) {
+                                // Getting the list of buckets.
+                                return ApplicationService.server.getLatestBuckets();
+                            }
+                        ]
                     }
                 })
                 .state('app.admin.eventing.handler', {

@@ -4,21 +4,41 @@
     <h2>Confirm {{actionTitle}}</h2>
   </div>
   <div class="panel-content">
+    <!--Delete action-->
     <p>Are you sure you want to {{action}} <strong>{{appName}}</strong>?</p>
     <p ng-if="action==='delete'" class="error field-error">Note: Deleting will
       remove all function executions and
       related artifacts!
     </p>
-    <div ng-if="action==='deploy'">
-      <input type="checkbox" id="cleanup-timers" ng-model="cleanupTimers"/>
-      <label for="cleanup-timers"><strong>Cleanup artifacts</strong></label>
-      <p class="error field-error">Note: The new function will be executed for
-        all invocations henceforth
-      </p>
+    <!--Deploy action-->
+    <div ng-if="action==='deploy'" class="cbui-table">
+      <div class="cbui-tablerow has-hover">
+        <span class="cbui-table-cell">
+        <label>Change feed boundary</label>
+        </span>
+        <span class="cbui-table-cell input-append">
+          <select ng-model="settings.changeFeedBoundary">
+            <option value="everything">Everything</option>
+            <option value="from_now">From now</option>
+          </select>
+        </span>
+      </div>
+      <div class="cbui-tablerow has-hover">
+        <span class="cbui-table-cell">
+          <input type="checkbox" id="cleanup-timers" ng-model="settings.cleanupTimers"/>
+          <label for="cleanup-timers"><strong>Cleanup artifacts</strong></label>
+          <p class="error field-error">Note: The new function will be executed for
+            all invocations henceforth
+          </p>
+        </span>
+      </div>
     </div>
   </div>
   <div class="panel-footer">
     <a ng-click="$dismiss('cancel')">No</a>&nbsp;
-    <button ng-click="$close(cleanupTimers)">Yes</button>
+    <button
+        ng-click="$close('ok')">
+      Yes
+    </button>
   </div>
 </div>

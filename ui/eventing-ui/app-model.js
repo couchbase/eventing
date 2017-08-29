@@ -129,6 +129,10 @@ ApplicationModel.prototype.getDefaultModel = function() {
             rbacrole: 'admin',
             processing_status: false,
             deployment_status: false,
+            enable_recursive_mutation: false,
+            lcb_inst_capacity: 5,
+            deadline_timeout: 2,
+            execution_timeout: 1,
             description: ''
         }
     }
@@ -161,11 +165,13 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.settings = {};
     this.settings.checkpoint_interval = 10000;
     this.settings.sock_batch_size = 1;
-    this.settings.worker_count = 1;
+    this.settings.worker_count = 3;
     this.settings.skip_timer_threshold = 86400;
     this.settings.tick_duration = 5000;
     this.settings.timer_processing_tick_interval = 500;
     this.settings.timer_worker_pool_size = 3;
+    this.settings.deadline_timeout = 2;
+    this.settings.execution_timeout = 1;
 };
 
 // Prettifies the JavaScript code.
