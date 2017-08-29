@@ -13,6 +13,7 @@ INCLUDE (FindCouchbaseFlatbuffers)
 INCLUDE (FindCouchbaseEventingDep)
 
 ADD_SUBDIRECTORY(patches)
+ADD_SUBDIRECTORY(third_party)
 ADD_SUBDIRECTORY(flatbuf/schema)
 ADD_SUBDIRECTORY(v8_consumer)
 ADD_SUBDIRECTORY(ui)

@@ -19,7 +19,7 @@ INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
                            ${CMAKE_CURRENT_BINARY_DIR}
                            ${CMAKE_CURRENT_SOURCE_DIR}
                            ${CMAKE_CURRENT_SOURCE_DIR}/include
-                           ${CMAKE_SOURCE_DIR}/v8inspector
+                           ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector
                            ${FLATBUFFERS_INCLUDE_DIR}
                            ${Platform_SOURCE_DIR}/include
                            ${CMAKE_INSTALL_PREFIX}/include)
@@ -40,9 +40,3 @@ FILE(COPY src/transpiler.js DESTINATION ${CMAKE_SOURCE_DIR}/ns_server/)
 FILE(COPY src/transpiler.js DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase)
 FILE(COPY src/builtin.js DESTINATION ${CMAKE_SOURCE_DIR}/ns_server/)
 FILE(COPY src/builtin.js DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase)
-FILE(COPY third_party/esprima.js DESTINATION ${CMAKE_SOURCE_DIR}/ns_server/)
-FILE(COPY third_party/esprima.js DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase)
-FILE(COPY third_party/escodegen.js DESTINATION ${CMAKE_SOURCE_DIR}/ns_server/)
-FILE(COPY third_party/escodegen.js DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase)
-FILE(COPY third_party/estraverse.js DESTINATION ${CMAKE_SOURCE_DIR}/ns_server/)
-FILE(COPY third_party/estraverse.js DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase)

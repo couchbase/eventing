@@ -1,0 +1,3 @@
+This module is derived from following two sources:
+https://raw.githubusercontent.com/nodejs/node/master/LICENSE
+https://github.com/v8/v8/blob/master/LICENSE

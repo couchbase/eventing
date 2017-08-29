@@ -14,8 +14,6 @@ apply_patch(classic_ui ns_server)
 apply_patch(current_ui ns_server)
 apply_patch(couchstore couchstore)
 apply_patch(couchdb couchdb)
-# apply inspector support for couchdb patch after the above patch
-apply_patch(couchdb couchdb_with_inspector)
 apply_patch(conn_pool goproj/src/github.com/couchbase/indexing)
 apply_patch(dcp goproj/src/github.com/couchbase/indexing)
 apply_patch(dcp_feed goproj/src/github.com/couchbase/indexing)

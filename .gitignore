@@ -1,3 +1,4 @@
 cmd/producer/client.bin
 cmd/producer/producer
-
+flatbuf/
+third_party/inspector/v8_inspector_protocol_json.h
