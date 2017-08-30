@@ -412,11 +412,11 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
           std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
       continue;
     } else {
-      LOG(logTrace)
-          << "Couldn't store xattr update as part of doc_id based timer"
-          << res.rc << " msg: " << lcb_strerror(NULL, res.rc) << '\n';
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
+      LOG(logTrace) << "Couldn't store xattr update as part of doc_id based "
+                       "timer for doc_id:"
+                    << doc_id << " return code: " << res.rc
+                    << " msg: " << lcb_strerror(NULL, res.rc) << '\n';
+      break;
     }
   }
 }

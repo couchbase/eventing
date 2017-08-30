@@ -359,6 +359,7 @@ type client struct {
 	appName        string
 	consumerHandle *Consumer
 	cmd            *exec.Cmd
+	eventingPort   string
 	osPid          int
 	tcpPort        string
 	workerName     string

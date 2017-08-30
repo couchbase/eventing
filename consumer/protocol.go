@@ -4,10 +4,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"runtime/debug"
 
 	"github.com/couchbase/eventing/flatbuf/header"
 	"github.com/couchbase/eventing/flatbuf/payload"
 	"github.com/couchbase/eventing/flatbuf/response"
+	"github.com/couchbase/indexing/secondary/logging"
 	"github.com/google/flatbuffers/go"
 )
 
@@ -234,6 +236,14 @@ func readPayload(buf []byte) {
 }
 
 func (c *Consumer) parseWorkerResponse(m []byte, start int) {
+	defer func() {
+		if r := recover(); r != nil {
+			trace := debug.Stack()
+			logging.Errorf("CRDP[%s:%s:%s:%d] parseWorkerResponse: panic and recover, %v stack trace: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
+		}
+	}()
+
 	msg := m[start:]
 
 	size := binary.LittleEndian.Uint32(msg[0:headerFragmentSize])

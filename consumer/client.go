@@ -10,10 +10,11 @@ import (
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
-func newClient(consumer *Consumer, appName, tcpPort, workerName string) *client {
+func newClient(consumer *Consumer, appName, tcpPort, workerName, eventingAdminPort string) *client {
 	return &client{
 		appName:        appName,
 		consumerHandle: consumer,
+		eventingPort:   eventingAdminPort,
 		tcpPort:        tcpPort,
 		workerName:     workerName,
 	}
@@ -21,7 +22,7 @@ func newClient(consumer *Consumer, appName, tcpPort, workerName string) *client 
 
 func (c *client) Serve() {
 	c.cmd = exec.Command("client", c.appName, c.tcpPort, c.workerName,
-		strconv.Itoa(c.consumerHandle.socketWriteBatchSize))
+		strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.eventingPort)
 	c.cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}

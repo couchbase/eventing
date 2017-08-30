@@ -4,7 +4,8 @@ APPNAME=$1
 PORT=$2
 WORKERID=$3
 BATCHSIZE=$4
-LOG_FILE="bin_"$(gdate +%s%N).log
+ADMIN_PORT=$5
+LOG_FILE="bin_"$APPNAME"_"$WORKERID"_"$ADMIN_PORT"_"$(gdate +%s%N).log
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 

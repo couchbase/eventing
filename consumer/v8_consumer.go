@@ -173,7 +173,7 @@ func (c *Consumer) Serve() {
 		c.hostDcpFeedRWMutex.Unlock()
 	}
 
-	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName)
+	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName, c.eventingAdminPort)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
 	c.startDcp(dcpConfig, flogs)
