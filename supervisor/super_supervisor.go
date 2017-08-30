@@ -308,14 +308,20 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 						r := store.NewReader()
 						w := store.NewWriter()
 						snapshot := store.NewSnapshot()
+						defer snapshot.Close()
 
-						itr := r.NewSnapshotIterator(snapshot)
+						itr, err := r.NewSnapshotIterator(snapshot)
+						if err != nil {
+							logging.Errorf("SSUP[%d] App: %s Failed to open snapshot iterator to purge doc id timer entries, err: %v",
+								len(s.runningProducers), appName, err)
+							return
+						}
+
 						for itr.SeekFirst(); itr.Valid(); itr.Next() {
 							if bytes.Compare(itr.Key(), []byte(appName)) > 0 {
 								w.DeleteKV(itr.Key())
 							}
 						}
-						snapshot.Close()
 					}
 					logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
 				}(s)
