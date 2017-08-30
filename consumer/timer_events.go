@@ -11,7 +11,7 @@ import (
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/indexing/secondary/logging"
-	"github.com/couchbase/nitro/plasma"
+	"github.com/couchbase/plasma"
 )
 
 var plasmaInsertKV = func(args ...interface{}) error {

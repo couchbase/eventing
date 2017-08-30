@@ -3,7 +3,7 @@ package common
 import (
 	"net"
 
-	"github.com/couchbase/nitro/plasma"
+	"github.com/couchbase/plasma"
 )
 
 type DcpStreamBoundary string

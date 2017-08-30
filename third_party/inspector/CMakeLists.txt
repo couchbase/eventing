@@ -17,7 +17,8 @@ ENDIF (${CMAKE_MAJOR_VERSION} GREATER 2)
 
 PROJECT (v8inspector)
 
-INCLUDE (FindCouchbaseEventingDep)
+INCLUDE (FindCouchbaseLibuv)
+INCLUDE (FindCouchbaseLibCouchbase)
 INCLUDE (FindCouchbaseOpenSSL)
 
 INCLUDE_DIRECTORIES(BEFORE ${LIBUV_INCLUDE_DIR})

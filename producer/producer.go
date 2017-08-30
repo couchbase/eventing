@@ -15,7 +15,7 @@ import (
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
-	"github.com/couchbase/nitro/plasma"
+	"github.com/couchbase/plasma"
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor

@@ -17,7 +17,7 @@ import (
 	"github.com/couchbase/indexing/secondary/dcp"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	cb "github.com/couchbase/indexing/secondary/dcp/transport/client"
-	"github.com/couchbase/nitro/plasma"
+	"github.com/couchbase/plasma"
 )
 
 const (

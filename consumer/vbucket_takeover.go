@@ -13,7 +13,7 @@ import (
 	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/indexing/secondary/logging"
-	"github.com/couchbase/nitro/plasma"
+	"github.com/couchbase/plasma"
 )
 
 var errFailedRPCDownloadDir = errors.New("failed to download vbucket dir from source RPC server")
