@@ -3,16 +3,13 @@ IF (${CMAKE_MAJOR_VERSION} GREATER 2)
     CMAKE_POLICY(SET CMP0042 NEW)
 ENDIF (${CMAKE_MAJOR_VERSION} GREATER 2)
 
-
 PROJECT (eventing)
-
 
 INCLUDE (FindCouchbaseGo)
 INCLUDE (FindCouchbaseJemalloc)
 INCLUDE (FindCouchbaseFlatbuffers)
 INCLUDE (FindCouchbaseEventingDep)
 
-ADD_SUBDIRECTORY(patches)
 ADD_SUBDIRECTORY(third_party)
 ADD_SUBDIRECTORY(flatbuf/schema)
 ADD_SUBDIRECTORY(v8_consumer)
