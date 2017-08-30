@@ -8,7 +8,6 @@ PROJECT (eventing)
 INCLUDE (FindCouchbaseGo)
 INCLUDE (FindCouchbaseJemalloc)
 INCLUDE (FindCouchbaseFlatbuffers)
-INCLUDE (FindCouchbaseEventingDep)
 
 ADD_SUBDIRECTORY(third_party)
 ADD_SUBDIRECTORY(flatbuf/schema)
