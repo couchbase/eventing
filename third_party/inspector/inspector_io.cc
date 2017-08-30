@@ -9,6 +9,7 @@
 #include <sstream>
 #include <unicode/unistr.h>
 
+#include <stdlib.h>
 #include <string.h>
 #include <vector>
 #include <openssl/rand.h>
@@ -61,7 +62,11 @@ std::string ScriptPath(uv_loop_t* loop, const std::string& script_name) {
 // Used ver 4 - with numbers
 std::string GenerateID() {
   uint8_t buffer[16];
+#ifdef __APPLE__
+  arc4random_buf(buffer, sizeof(buffer));
+#else
   RAND_bytes(buffer, sizeof(buffer));
+#endif
   char uuid[256];
   snprintf(uuid, sizeof(uuid), "%04x%04x-%04x-%04x-%04x-%04x%04x%04x",
            buffer[0],

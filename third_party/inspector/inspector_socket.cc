@@ -2,7 +2,11 @@
 
 #include "base64.h"
 
-#include "openssl/sha.h"  // Sha-1 hash
+#ifdef __APPLE__
+  #include <CommonCrypto/CommonDigest.h>
+#else
+  #include "openssl/sha.h"  // Sha-1 hash
+#endif
 
 #include <string.h>
 #include <vector>
@@ -389,9 +393,16 @@ static void generate_accept_string(const std::string& client_key,
   // Magic string from websockets spec.
   static const char ws_magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
   std::string input(client_key + ws_magic);
+
+#ifdef __APPLE__
+  char hash[CC_SHA1_DIGEST_LENGTH];
+  CC_SHA1(reinterpret_cast<const unsigned char*>(&input[0]), input.size(),
+       reinterpret_cast<unsigned char*>(hash));
+#else
   char hash[SHA_DIGEST_LENGTH];
   SHA1(reinterpret_cast<const unsigned char*>(&input[0]), input.size(),
        reinterpret_cast<unsigned char*>(hash));
+#endif
   base64_encode(hash, sizeof(hash), *buffer, sizeof(*buffer));
 }
 
