@@ -9,6 +9,13 @@
 # or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
+include(../convertjs/js2header.cmake)
+js2header("src/builtin.js" "js_builtin" "gen/builtin.h")
+js2header("src/transpiler.js" "js_transpiler" "gen/transpiler.h")
+js2header("../third_party/estools/esprima.js" "js_esprima" "gen/esprima.h")
+js2header("../third_party/estools/escodegen.js" "js_escodegen" "gen/escodegen.h")
+js2header("../third_party/estools/estraverse.js" "js_estraverse" "gen/estraverse.h")
+
 INCLUDE_DIRECTORIES(BEFORE ${LIBCOUCHBASE_INCLUDE_DIR} ${LIBUV_INCLUDE_DIR})
 
 FIND_PACKAGE(FLEX REQUIRED)
@@ -34,9 +41,5 @@ SET(EVENTING_SOURCES src/client.cc src/commands.cc
 SET(EVENTING_LIBRARIES ${V8_LIBRARIES} ${ICU_LIBRARIES} -ll ${JEMALLOC_LIBRARIES} ${CURL_LIBRARIES} ${LIBCOUCHBASE_LIBRARIES} ${LIBUV_LIBRARIES} platform v8inspector)
 ADD_EXECUTABLE(client.bin ${EVENTING_SOURCES})
 TARGET_LINK_LIBRARIES(client.bin ${EVENTING_LIBRARIES})
-INSTALL(TARGETS client.bin
-        RUNTIME DESTINATION bin)
-FILE(COPY src/transpiler.js DESTINATION ${CMAKE_SOURCE_DIR}/ns_server/)
-FILE(COPY src/transpiler.js DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase)
-FILE(COPY src/builtin.js DESTINATION ${CMAKE_SOURCE_DIR}/ns_server/)
-FILE(COPY src/builtin.js DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase)
+INSTALL(TARGETS client.bin RUNTIME DESTINATION bin)
+

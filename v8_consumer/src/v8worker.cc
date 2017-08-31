@@ -25,13 +25,14 @@
 #include "../include/n1ql.h"
 #include "../include/parse_deployment.h"
 
+#include "../gen/esprima.h"
+#include "../gen/escodegen.h"
+#include "../gen/estraverse.h"
+#include "../gen/builtin.h"
+#include "../gen/transpiler.h"
+
 #define BUFSIZE 100
 #define MAXPATHLEN 256
-#define TRANSPILER_JS_PATH "transpiler.js"
-#define ESPRIMA_PATH "esprima.js"
-#define ESCODEGEN_PATH "escodegen.js"
-#define ESTRAVERSE_PATH "estraverse.js"
-#define BUILTIN_JS_PATH "builtin.js"
 
 bool enable_recursive_mutation = false;
 
@@ -60,13 +61,6 @@ int AsciiToUtf16(const char *input_buffer, uint16_t *output_buffer) {
   return i;
 }
 
-// Reads a file from the given path and returns the content.
-std::string ReadFile(std::string file_path) {
-  std::ifstream file(file_path);
-  std::string source((std::istreambuf_iterator<char>(file)),
-                     std::istreambuf_iterator<char>());
-  return source;
-}
 
 v8::Local<v8::String> createUtf8String(v8::Isolate *isolate, const char *str) {
   return v8::String::NewFromUtf8(isolate, str, v8::NewStringType::kNormal)
@@ -737,16 +731,17 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     return code;
   }
 
-  std::string transpiler_js_src = ReadFile(ESPRIMA_PATH) + '\n';
-  transpiler_js_src += ReadFile(ESCODEGEN_PATH) + '\n';
-  transpiler_js_src += ReadFile(ESTRAVERSE_PATH) + '\n';
-  transpiler_js_src += ReadFile(TRANSPILER_JS_PATH) + '\n';
+  std::string transpiler_js_src =
+    std::string((const char*) js_esprima)    + '\n' +
+    std::string((const char*) js_escodegen)  + '\n' +
+    std::string((const char*) js_estraverse) + '\n' +
+    std::string((const char*) js_transpiler) + '\n';
 
   n1ql_handle = new N1QL(conn_pool);
 
   Transpiler transpiler(transpiler_js_src);
   script_to_execute = transpiler.Transpile(plain_js) + '\n';
-  script_to_execute += ReadFile(BUILTIN_JS_PATH) + '\n';
+  script_to_execute += std::string((const char*) js_builtin) + '\n';
 
   v8::Local<v8::String> source =
       v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());

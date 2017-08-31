@@ -11,12 +11,16 @@ INCLUDE (FindCouchbaseFlatbuffers)
 INCLUDE (FindCouchbaseLibuv)
 INCLUDE (FindCouchbaseLibCouchbase)
 
-ADD_SUBDIRECTORY(third_party)
 ADD_SUBDIRECTORY(flatbuf/schema)
 ADD_SUBDIRECTORY(v8_consumer)
 ADD_SUBDIRECTORY(ui)
+ADD_SUBDIRECTORY(third_party/inspector)
 
 SET (LDFLAGS)
+IF (APPLE)
+  # On macOS, we must use -rpath to locate libraries
+  SET (LDFLAGS "-extldflags '-Wl,-rpath,@executable_path/../lib'")
+ENDIF ()
 IF (WIN32)
    SET (LDFLAGS "${LDFLAGS} -linkmode internal")
 ENDIF ()
@@ -36,7 +40,6 @@ GoInstall (TARGET eventing PACKAGE github.com/couchbase/eventing/cmd/producer
   CGO_LIBRARY_DIRS "${CGO_LIBRARY_DIRS}"
   GOTAGS "${TAGS}"
   LDFLAGS "${LDFLAGS}"
-  INSTALL_PATH bin OUTPUT indexer
   GOVERSION ${GOVERSION})
 
 FILE(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cmd/producer/client DESTINATION ${CMAKE_INSTALL_PREFIX}/bin/)

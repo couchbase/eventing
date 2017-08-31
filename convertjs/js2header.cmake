@@ -9,10 +9,19 @@
 # or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-FILE(COPY estools/esprima.js DESTINATION ${CMAKE_SOURCE_DIR}/ns_server/)
-FILE(COPY estools/esprima.js DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase)
-FILE(COPY estools/escodegen.js DESTINATION ${CMAKE_SOURCE_DIR}/ns_server/)
-FILE(COPY estools/escodegen.js DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase)
-FILE(COPY estools/estraverse.js DESTINATION ${CMAKE_SOURCE_DIR}/ns_server/)
-FILE(COPY estools/estraverse.js DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase)
-ADD_SUBDIRECTORY(inspector)
+INCLUDE (FindCouchbaseGo)
+GET_GOROOT ("1.8.3" GOROOT _ver)
+SET(THIS_DIR ${CMAKE_CURRENT_LIST_DIR})
+
+macro(js2header)
+    MESSAGE (STATUS "Converting ${ARGV0} to ${ARGV1} header as variable ${ARGV2}")
+    SET (ENV{GOROOT} "${GOROOT}")
+    EXEC_PROGRAM(
+        ${GOROOT}/bin/go ${CMAKE_CURRENT_SOURCE_DIR}
+	ARGS run ${THIS_DIR}/generate.go ${ARGV0} ${ARGV1} ${ARGV2}
+        RETURN_VALUE rval)
+    IF (NOT "${rval}" STREQUAL "0")
+        MESSAGE(FATAL_ERROR "Error converting ${ARGV0} to header")
+    endif()
+endmacro(js2header)
+
