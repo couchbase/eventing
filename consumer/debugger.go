@@ -24,7 +24,7 @@ func newDebugClient(c *Consumer, appName, tcpPort, workerName string) *debugClie
 }
 
 func (c *debugClient) Serve() {
-	c.cmd = exec.Command("client", c.appName, c.debugTCPPort, c.workerName,
+	c.cmd = exec.Command("eventing-consumer", c.appName, c.debugTCPPort, c.workerName,
 		strconv.Itoa(c.consumerHandle.socketWriteBatchSize), "debug")
 	c.cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,

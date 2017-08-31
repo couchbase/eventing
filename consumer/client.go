@@ -21,7 +21,7 @@ func newClient(consumer *Consumer, appName, tcpPort, workerName, eventingAdminPo
 }
 
 func (c *client) Serve() {
-	c.cmd = exec.Command("client", c.appName, c.tcpPort, c.workerName,
+	c.cmd = exec.Command("eventing-consumer", c.appName, c.tcpPort, c.workerName,
 		strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.eventingPort)
 	c.cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,

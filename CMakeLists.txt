@@ -1,8 +1,3 @@
-CMAKE_MINIMUM_REQUIRED (VERSION 2.8)
-IF (${CMAKE_MAJOR_VERSION} GREATER 2)
-    CMAKE_POLICY(SET CMP0042 NEW)
-ENDIF (${CMAKE_MAJOR_VERSION} GREATER 2)
-
 PROJECT (eventing)
 
 INCLUDE (FindCouchbaseGo)
@@ -33,13 +28,12 @@ SET (ENV{CGO_CFLAGS} "$ENV{CGO_CFLAGS} -DJEMALLOC=1")
 SET(CGO_INCLUDE_DIRS "${sigar_SOURCE_DIR}/include;${Platform_SOURCE_DIR}/include;${JEMALLOC_INCLUDE_DIR}")
 SET(CGO_LIBRARY_DIRS "${sigar_BINARY_DIR}/src;${Platform_BINARY_DIR};${JEMALLOC_LIB_DIR}")
 
-GoInstall (TARGET eventing PACKAGE github.com/couchbase/eventing/cmd/producer
+GoInstall (TARGET eventing-producer PACKAGE github.com/couchbase/eventing/cmd/producer
   GOPATH "${PROJECT_SOURCE_DIR}/../../../.." "${GODEPSDIR}"
-  INSTALL_PATH bin OUTPUT eventing
+  INSTALL_PATH bin OUTPUT eventing-producer
   CGO_INCLUDE_DIRS "${CGO_INCLUDE_DIRS}"
   CGO_LIBRARY_DIRS "${CGO_LIBRARY_DIRS}"
   GOTAGS "${TAGS}"
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION})
 
-FILE(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cmd/producer/client DESTINATION ${CMAKE_INSTALL_PREFIX}/bin/)
