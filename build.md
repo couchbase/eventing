@@ -1,37 +1,13 @@
 # Building Couchbase server with Functions
 ### Dependencies
-The dependencies are `libuv`, `v8 5.9.211` and `libcouchbase >= 2.7.5`
-#### For Mac OS X
-##### libuv
-```bash
-$ brew upgrade
-$ brew install libuv
-```
+Currently, eventing only works on Mac OS as necessary dependencies
+are still being added to deps mechanism.
 
-If you have already installed libuv, then upgrade it to the latest
-```bash
-$ brew upgrade libuv
-```
-Download the following dependencies and put them to `~/.cbdepscache/`
-
-##### v8
-
-https://drive.google.com/open?id=0B4VRo9qU8CtkNWtoc0NGQmUtUEE <br>
-https://drive.google.com/open?id=0B4VRo9qU8CtkS190UDBqSlhWTWM
-
-##### icu56
-https://drive.google.com/open?id=0B4VRo9qU8CtkYmpfRjdNQWE1OVE <br>
-https://drive.google.com/open?id=0B4VRo9qU8CtkUER1QlBhcUhwRU0
-
-##### libcouchbase
-https://drive.google.com/open?id=0B4VRo9qU8CtkQlVMZmhFTHR5cGM <br>
-https://drive.google.com/open?id=0B4VRo9qU8CtkUUJ4M0tMRDJUWlk
-
-### Clone and build Couchbase server
+### Clone and build eventing toy 
 ```bash
 $ repo init -u git://github.com/couchbase/manifest.git -m toy/toy-eventing.xml -g all
 $ repo sync --jobs=20
-$ BUILD_ENTERPRISE=ON make -j8
+$ make -j8
 ```
 
 Make sure that the number of open files under ulimit is atleast 5000.
@@ -42,16 +18,12 @@ $ echo "ulimit -n 5000" > ~/.bashrc or ~/.bash_profile or ~/.zshrc
 
 ### Starting the server and cluster setup
 ```bash
-$ cd ns_server
-$ ./cluster_run –n1
-$ ./cluster_connect –n1
+$ cd install/bin
+$ ./couchbase-server
 ```
 
 ### Add admin user
-Add `eventing` user as admin with password `asdasd`
-```bash
-$ curl -u Administrator:asdasd -v -XPUT -d "password=asdasd&roles=admin" http://localhost:9000/settings/rbac/users/local/eventing
-```
+Open the console and in security, add an `eventing` user with admin role 
 
 ### Add sample bucket
 Add the `beer-sample` bucket from `Settings > Sample buckets`.
@@ -61,12 +33,9 @@ CREATE PRIMARY INDEX ON `beer-sample`;
 ```
 
 ### Logs
-From ns_server directory,
 ```bash
-$ tail -f logs/n_0/eventing.log
+$ tail -f install/var/lib/couchbase/eventing.log
 ```
-
----
 
 # Samples
 Please create the following buckets before trying the sample applications -
