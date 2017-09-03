@@ -494,6 +494,11 @@ AppWorker *AppWorker::GetAppWorker() {
 
 int main(int argc, char **argv) {
   global_program_name = argv[0];
+
+  if (isSSE42Supported()) {
+    initCrcTable();
+  }
+
   set_signal_handler();
 
   std::string appname(argv[1]);

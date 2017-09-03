@@ -27,6 +27,7 @@
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 
+#include "crc32c.h"
 #include "inspector_agent.h"
 #include "log.h"
 #include "n1ql.h"

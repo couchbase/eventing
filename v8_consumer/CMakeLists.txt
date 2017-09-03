@@ -33,9 +33,12 @@ INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
 
 FLEX_TARGET(jsify src/jsify.lex ${CMAKE_CURRENT_BINARY_DIR}/jsify.cc)
 
+SET(SSE42_COMPILE_FLAG "-msse4.2")
+SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${SSE42_COMPILE_FLAG}")
+
 SET(EVENTING_SOURCES src/client.cc src/commands.cc
     src/message.cc src/v8worker.cc src/assert.cc
-    src/bucket.cc src/n1ql.cc src/parse_deployment.cc
+    src/bucket.cc src/n1ql.cc src/parse_deployment.cc src/crc32c.cc
     src/log.cc ${CMAKE_CURRENT_BINARY_DIR}/jsify.cc src/transpiler.cc)
 
 SET(EVENTING_LIBRARIES -ll

@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"fmt"
+	"hash/crc32"
 	"net"
 	"os"
 	"runtime/debug"
@@ -43,6 +44,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		checkpointInterval:                 checkpointInterval,
 		cleanupTimers:                      cleanupTimers,
 		clusterStateChangeNotifCh:          make(chan struct{}, ClusterChangeNotifChBufSize),
+		crcTable:                           crc32.MakeTable(crc32.Castagnoli),
 		dcpFeedCancelChs:                   make([]chan struct{}, 0),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,

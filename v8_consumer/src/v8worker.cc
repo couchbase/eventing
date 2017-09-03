@@ -25,10 +25,10 @@
 #include "../include/n1ql.h"
 #include "../include/parse_deployment.h"
 
-#include "../gen/esprima.h"
-#include "../gen/escodegen.h"
-#include "../gen/estraverse.h"
 #include "../gen/builtin.h"
+#include "../gen/escodegen.h"
+#include "../gen/esprima.h"
+#include "../gen/estraverse.h"
 #include "../gen/transpiler.h"
 
 #define BUFSIZE 100
@@ -60,7 +60,6 @@ int AsciiToUtf16(const char *input_buffer, uint16_t *output_buffer) {
   output_buffer[i] = 0;
   return i;
 }
-
 
 v8::Local<v8::String> createUtf8String(v8::Isolate *isolate, const char *str) {
   return v8::String::NewFromUtf8(isolate, str, v8::NewStringType::kNormal)
@@ -325,6 +324,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
    * }
    * */
   std::string xattr_cas_path("eventing.cas");
+  std::string xattr_digest_path("eventing.digest");
   std::string xattr_timer_path("eventing.timers");
   std::string mutation_cas_macro("\"${Mutation.CAS}\"");
   std::string doc_exptime("$document.exptime");
@@ -344,45 +344,69 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     // Fetch document expiration using virtual extended attributes
     Result res;
-    lcb_SDSPEC gspec = {0};
-    gcmd.specs = &gspec;
-    gcmd.nspecs = 1;
+    std::vector<lcb_SDSPEC> gspecs;
+    lcb_SDSPEC exp_spec, fdoc_spec = {0};
 
-    gspec.sdcmd = LCB_SDCMD_GET;
-    gspec.options = LCB_SDSPEC_F_XATTRPATH;
-    LCB_SDSPEC_SET_PATH(&gspec, doc_exptime.c_str(), doc_exptime.size());
+    exp_spec.sdcmd = LCB_SDCMD_GET;
+    exp_spec.options = LCB_SDSPEC_F_XATTRPATH;
+    LCB_SDSPEC_SET_PATH(&exp_spec, doc_exptime.c_str(), doc_exptime.size());
+    gspecs.push_back(exp_spec);
+
+    fdoc_spec.sdcmd = LCB_SDCMD_GET_FULLDOC;
+    gspecs.push_back(fdoc_spec);
+
+    gcmd.specs = gspecs.data();
+    gcmd.nspecs = gspecs.size();
     lcb_subdoc3(*cb_instance, &res, &gcmd);
     lcb_wait(*cb_instance);
 
+    if (res.rc != LCB_SUCCESS) {
+      LOG(logError)
+          << "Failed to while performing lookup for fulldoc and exptime"
+          << lcb_strerror(NULL, res.rc) << '\n';
+      return;
+    }
+
+    uint32_t d = crc32c(0, res.value.c_str(), res.value.length());
+    std::string digest = std::to_string(d);
+
     LOG(logTrace) << "CreateDocTimer cas: " << res.cas
-                  << " exptime: " << res.exptime << '\n';
+                  << " exptime: " << res.exptime << " digest: " << digest
+                  << '\n';
 
     lcb_CMDSUBDOC mcmd = {0};
-    lcb_SDSPEC spec = {0};
+    lcb_SDSPEC digest_spec, xattr_spec, tspec = {0};
     LCB_CMD_SET_KEY(&mcmd, doc_id.c_str(), doc_id.size());
 
     std::vector<lcb_SDSPEC> specs;
 
     mcmd.cas = res.cas;
-    // TODO - waiting on fix for https://issues.couchbase.com/browse/CCBC-799 -
-    // updating expiration on subdoc mutation
-    // mcmd.exptime = res.exptime;
+    mcmd.exptime = res.exptime;
 
-    spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-    spec.options =
+    digest_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+    digest_spec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
+
+    LCB_SDSPEC_SET_PATH(&digest_spec, xattr_digest_path.c_str(),
+                        xattr_digest_path.size());
+    LCB_SDSPEC_SET_VALUE(&digest_spec, digest.c_str(), digest.size());
+    specs.push_back(digest_spec);
+
+    xattr_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+    xattr_spec.options =
         LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
 
-    LCB_SDSPEC_SET_PATH(&spec, xattr_cas_path.c_str(), xattr_cas_path.size());
-    LCB_SDSPEC_SET_VALUE(&spec, mutation_cas_macro.c_str(),
+    LCB_SDSPEC_SET_PATH(&xattr_spec, xattr_cas_path.c_str(),
+                        xattr_cas_path.size());
+    LCB_SDSPEC_SET_VALUE(&xattr_spec, mutation_cas_macro.c_str(),
                          mutation_cas_macro.size());
-    specs.push_back(spec);
+    specs.push_back(xattr_spec);
 
-    spec.sdcmd = LCB_SDCMD_ARRAY_ADD_LAST;
-    spec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
-    LCB_SDSPEC_SET_PATH(&spec, xattr_timer_path.c_str(),
+    tspec.sdcmd = LCB_SDCMD_ARRAY_ADD_LAST;
+    tspec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
+    LCB_SDSPEC_SET_PATH(&tspec, xattr_timer_path.c_str(),
                         xattr_timer_path.size());
-    LCB_SDSPEC_SET_VALUE(&spec, timer_entry.c_str(), timer_entry.size());
-    specs.push_back(spec);
+    LCB_SDSPEC_SET_VALUE(&tspec, timer_entry.c_str(), timer_entry.size());
+    specs.push_back(tspec);
 
     mcmd.specs = specs.data();
     mcmd.nspecs = specs.size();
@@ -399,18 +423,18 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     if (res.rc == LCB_SUCCESS) {
       LOG(logTrace) << "Stored doc_id timer_entry: " << timer_entry
                     << " for doc_id: " << doc_id << '\n';
-      break;
+      return;
     } else if (res.rc == LCB_KEY_EEXISTS) {
       LOG(logTrace) << "CAS Mismatch for " << doc_id << ". Retrying" << '\n';
       std::this_thread::sleep_for(
           std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
-      continue;
+      break;
     } else {
       LOG(logTrace) << "Couldn't store xattr update as part of doc_id based "
                        "timer for doc_id:"
                     << doc_id << " return code: " << res.rc
                     << " msg: " << lcb_strerror(NULL, res.rc) << '\n';
-      break;
+      return;
     }
   }
 }
@@ -518,7 +542,7 @@ static void multi_op_callback(lcb_t cb_instance, int cbtype,
 
     switch (rb->rc) {
     case LCB_KEY_ENOENT:
-      ts.assign((const char *)data);
+      ts.assign(reinterpret_cast<const char *>(data));
 
       LCB_CMD_SET_KEY(&acmd, ts.c_str(), ts.length());
       LCB_CMD_SET_VALUE(&acmd, timestamp_marker.c_str(),
@@ -529,8 +553,9 @@ static void multi_op_callback(lcb_t cb_instance, int cbtype,
       lcb_wait(cb_instance);
       break;
     case LCB_SUCCESS:
-      LOG(logTrace) << string_sprintf("Value %.*s", (int)rg->nvalue, rg->value)
-                    << '\n';
+      LOG(logTrace) << string_sprintf(
+          "Value %.*s", static_cast<int>(rg->nvalue),
+          reinterpret_cast<const char *>(rg->value));
       break;
     default:
       LOG(logTrace) << "LCB_CALLBACK_GET: Operation failed, "
@@ -548,9 +573,10 @@ static void multi_op_callback(lcb_t cb_instance, int cbtype,
     res->rc = rb->rc;
 
     if (lcb_sdresult_next(resp, &ent, &iter)) {
-      LOG(logTrace) << string_sprintf("Status: 0x%x. Value: %.*s\n", ent.status,
-                                      (int)ent.nvalue, ent.value)
-                    << '\n';
+      LOG(logTrace) << string_sprintf(
+          "Status: 0x%x. Value: %.*s\n", ent.status,
+          static_cast<int>(ent.nvalue),
+          reinterpret_cast<const char *>(ent.value));
     }
   }
 
@@ -566,20 +592,28 @@ static void multi_op_callback(lcb_t cb_instance, int cbtype,
       const lcb_RESPSUBDOC *resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
       lcb_SDENTRY ent;
       size_t iter = 0;
-      if (lcb_sdresult_next(resp, &ent, &iter)) {
-        LOG(logTrace) << string_sprintf("Status: 0x%x. Value: %.*s\n",
-                                        ent.status, (int)ent.nvalue, ent.value)
-                      << '\n';
+      int index = 0;
+      while (lcb_sdresult_next(resp, &ent, &iter)) {
+        LOG(logTrace) << string_sprintf(
+            "Status: 0x%x. Value: %.*s\n", ent.status,
+            static_cast<int>(ent.nvalue),
+            reinterpret_cast<const char *>(ent.value));
 
-        std::string exptime(reinterpret_cast<const char *>(ent.value));
-        exptime.substr(0, (int)ent.nvalue);
+        if (index == 0) {
+          std::string exptime(reinterpret_cast<const char *>(ent.value));
+          exptime.substr(0, static_cast<int>(ent.nvalue));
 
-        unsigned long long int ttl;
-        char *pEnd;
-        ttl = strtoull(exptime.c_str(), &pEnd, 10);
-        res->exptime = (uint32_t)ttl;
-      } else {
-        LOG(logTrace) << "LCB_CALLBACK_SDLOOKUP: No result!" << '\n';
+          unsigned long long int ttl;
+          char *pEnd;
+          ttl = strtoull(exptime.c_str(), &pEnd, 10);
+          res->exptime = (uint32_t)ttl;
+        }
+
+        if (index == 1) {
+          res->value.assign(reinterpret_cast<const char *>(ent.value),
+                            static_cast<int>(ent.nvalue));
+        }
+        index++;
       }
     }
   }
@@ -723,6 +757,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     agent->Start(GetIsolate(), platform, nullptr);
     agent->PauseOnNextJavascriptStatement("Break on start");
   }
+
   std::string plain_js;
   int code = Jsify(script_to_execute.c_str(), &plain_js);
   LOG(logTrace) << "jsified code: " << plain_js << '\n';
@@ -732,16 +767,16 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   }
 
   std::string transpiler_js_src =
-    std::string((const char*) js_esprima)    + '\n' +
-    std::string((const char*) js_escodegen)  + '\n' +
-    std::string((const char*) js_estraverse) + '\n' +
-    std::string((const char*) js_transpiler) + '\n';
+      std::string((const char *)js_esprima) + '\n' +
+      std::string((const char *)js_escodegen) + '\n' +
+      std::string((const char *)js_estraverse) + '\n' +
+      std::string((const char *)js_transpiler) + '\n';
 
   n1ql_handle = new N1QL(conn_pool);
 
   Transpiler transpiler(transpiler_js_src);
   script_to_execute = transpiler.Transpile(plain_js) + '\n';
-  script_to_execute += std::string((const char*) js_builtin) + '\n';
+  script_to_execute += std::string((const char *)js_builtin) + '\n';
 
   v8::Local<v8::String> source =
       v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());

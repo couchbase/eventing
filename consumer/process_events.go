@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -34,10 +35,12 @@ func (c *Consumer) processEvents() {
 				return
 			}
 
+			c.Lock()
 			if _, ok := c.dcpMessagesProcessed[e.Opcode]; !ok {
 				c.dcpMessagesProcessed[e.Opcode] = 0
 			}
 			c.dcpMessagesProcessed[e.Opcode]++
+			c.Unlock()
 
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
@@ -76,10 +79,13 @@ func (c *Consumer) processEvents() {
 					var xMeta xattrMetadata
 					err := json.Unmarshal(xattrVal, &xMeta)
 					if err != nil {
-						logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v xattrVal: %v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), string(xattrVal))
+						logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v xattrVal: %v err: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), string(xattrVal), err)
 						continue
 					}
+
+					logging.Tracef("CRDP[%s:%s:%s:%d] Key: %s xmeta dump: %#v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), xMeta)
 
 					cas, err := util.ConvertBigEndianToUint64([]byte(xMeta.Cas))
 					if err != nil {
@@ -91,20 +97,30 @@ func (c *Consumer) processEvents() {
 					if cas != e.Cas {
 						e.Value = e.Value[4+xattrLen:]
 
-						if !c.sendMsgToDebugger {
-							c.sendDcpEvent(e, c.sendMsgToDebugger)
+						if crc32.Update(0, c.crcTable, e.Value) != xMeta.Digest {
+							if !c.sendMsgToDebugger {
+								c.sendDcpEvent(e, c.sendMsgToDebugger)
+							} else {
+								go c.sendDcpEvent(e, c.sendMsgToDebugger)
+							}
 						} else {
-							go c.sendDcpEvent(e, c.sendMsgToDebugger)
+						retryTimerStore1:
+							err := c.storeTimerEvent(e.VBucket, e.Seqno, e.Expiry, string(e.Key), &xMeta)
+							if err == errPlasmaHandleMissing {
+								time.Sleep(time.Second)
+								goto retryTimerStore1
+							}
+
 						}
 					} else {
 						logging.Debugf("CRPO[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v, xmeta: %#v",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, xMeta)
 
-					retryTimerStore:
+					retryTimerStore2:
 						err := c.storeTimerEvent(e.VBucket, e.Seqno, e.Expiry, string(e.Key), &xMeta)
 						if err == errPlasmaHandleMissing {
 							time.Sleep(time.Second)
-							goto retryTimerStore
+							goto retryTimerStore2
 						}
 
 						c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", e.Seqno)

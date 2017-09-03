@@ -31,11 +31,17 @@ static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
   const lcb_RESPGET *resp = reinterpret_cast<const lcb_RESPGET *>(rb);
   Result *result = reinterpret_cast<Result *>(rb->cookie);
 
+  LOG(logTrace) << "Bucket: LCB_GET callback, res: "
+                << lcb_strerror(NULL, rb->rc) << rb->rc << " cas " << rb->cas
+                << '\n';
+
   result->rc = resp->rc;
   result->value.clear();
   if (resp->rc == LCB_SUCCESS) {
     result->value.assign(reinterpret_cast<const char *>(resp->value),
-                         resp->nvalue);
+                         static_cast<int>(resp->nvalue));
+    LOG(logTrace) << "Value: " << result->value << " flags: " << resp->itmflags
+                  << std::endl;
   }
 }
 
@@ -49,6 +55,14 @@ static void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   LOG(logTrace) << "Bucket: LCB_STORE callback "
                 << lcb_strerror(instance, result->rc) << " cas " << resp->cas
                 << '\n';
+}
+
+static void sdmutate_callback(lcb_t, int cbtype, const lcb_RESPBASE *rb) {
+  Result *result = reinterpret_cast<Result *>(rb->cookie);
+  result->rc = rb->rc;
+
+  LOG(logTrace) << "Bucket: LCB_SDMUTATE callback "
+                << lcb_strerror(NULL, result->rc) << '\n';
 }
 
 // convert Little endian unsigned int64 to Big endian notation
@@ -98,6 +112,8 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
 
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_GET, get_callback);
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_STORE, set_callback);
+  lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_SDMUTATE,
+                        sdmutate_callback);
 }
 
 Bucket::~Bucket() {
@@ -217,43 +233,104 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
 
   lcb_t *bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
 
-  lcb_CMDSUBDOC mcmd = {0};
-  LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
-
-  std::vector<lcb_SDSPEC> specs;
-
-  lcb_SDSPEC xattr_spec, doc_spec = {0};
-
   if (!enable_recursive_mutation) {
     LOG(logTrace) << "Adding macro in xattr to avoid retriggering of handler "
                      "from recursive mutation, enable_recursive_mutation: "
                   << enable_recursive_mutation << '\n';
 
-    xattr_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-    xattr_spec.options =
-        LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
+    while (true) {
+      Result gres, sres;
+      lcb_CMDGET gcmd = {0};
+      LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
+      lcb_sched_enter(*bucket_lcb_obj_ptr);
+      lcb_get3(*bucket_lcb_obj_ptr, &gres, &gcmd);
+      lcb_sched_leave(*bucket_lcb_obj_ptr);
+      lcb_wait(*bucket_lcb_obj_ptr);
 
-    std::string xattr_cas_path("eventing.cas");
-    std::string mutation_cas_macro("\"${Mutation.CAS}\"");
+      switch (gres.rc) {
+      case LCB_KEY_ENOENT:
+        LOG(logTrace)
+            << "Key: " << key
+            << " doesn't exist in bucket where mutation has to be written"
+            << '\n';
+        break;
+      case LCB_SUCCESS:
+        break;
+      default:
+        LOG(logTrace) << "Failed to fetch full doc: " << key
+                      << " to calculate digest, res: "
+                      << lcb_strerror(NULL, gres.rc) << '\n';
+        return;
+      }
 
-    LCB_SDSPEC_SET_PATH(&xattr_spec, xattr_cas_path.c_str(),
-                        xattr_cas_path.size());
-    LCB_SDSPEC_SET_VALUE(&xattr_spec, mutation_cas_macro.c_str(),
-                         mutation_cas_macro.size());
-    specs.push_back(xattr_spec);
+      std::string digest;
+      if (gres.rc == LCB_SUCCESS) {
+        uint32_t d = crc32c(0, gres.value.c_str(), gres.value.length());
+        digest.assign(std::to_string(d));
+        LOG(logTrace) << "key: " << key << " digest: " << digest
+                      << " value: " << gres.value << '\n';
+      }
 
-    doc_spec.sdcmd = LCB_SDCMD_SET_FULLDOC;
-    LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
-    LCB_SDSPEC_SET_VALUE(&doc_spec, value.c_str(), value.length());
-    specs.push_back(doc_spec);
+      lcb_CMDSUBDOC mcmd = {0};
+      LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
 
-    mcmd.specs = specs.data();
-    mcmd.nspecs = specs.size();
-    mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
+      lcb_SDSPEC digest_spec, xattr_spec, doc_spec = {0};
+      std::vector<lcb_SDSPEC> specs;
 
-    lcb_subdoc3(*bucket_lcb_obj_ptr, NULL, &mcmd);
-    lcb_wait(*bucket_lcb_obj_ptr);
+      digest_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+      digest_spec.options = LCB_SDSPEC_F_XATTRPATH;
 
+      xattr_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+      xattr_spec.options =
+          LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
+
+      std::string xattr_cas_path("eventing.cas");
+      std::string xattr_digest_path("eventing.digest");
+      std::string mutation_cas_macro("\"${Mutation.CAS}\"");
+
+      if (gres.rc == LCB_SUCCESS) {
+        LCB_SDSPEC_SET_PATH(&digest_spec, xattr_digest_path.c_str(),
+                            xattr_digest_path.size());
+        LCB_SDSPEC_SET_VALUE(&digest_spec, digest.c_str(), digest.size());
+        specs.push_back(digest_spec);
+      }
+
+      LCB_SDSPEC_SET_PATH(&xattr_spec, xattr_cas_path.c_str(),
+                          xattr_cas_path.size());
+      LCB_SDSPEC_SET_VALUE(&xattr_spec, mutation_cas_macro.c_str(),
+                           mutation_cas_macro.size());
+      specs.push_back(xattr_spec);
+
+      doc_spec.sdcmd = LCB_SDCMD_SET_FULLDOC;
+      LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
+      LCB_SDSPEC_SET_VALUE(&doc_spec, value.c_str(), value.length());
+      specs.push_back(doc_spec);
+
+      mcmd.specs = specs.data();
+      mcmd.nspecs = specs.size();
+      mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
+      mcmd.cas = gres.cas;
+
+      lcb_subdoc3(*bucket_lcb_obj_ptr, &sres, &mcmd);
+      lcb_wait(*bucket_lcb_obj_ptr);
+
+      switch (sres.rc) {
+      case LCB_SUCCESS:
+        LOG(logTrace) << "Successfully wrote doc:" << key << '\n';
+        info.GetReturnValue().Set(value_obj);
+        return;
+      case LCB_KEY_EEXISTS:
+        LOG(logTrace) << "CAS mismatch for doc:" << key << '\n';
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
+        break;
+      default:
+        LOG(logTrace) << "Encountered error:" << lcb_strerror(NULL, sres.rc)
+                      << " for key:" << key << '\n';
+        info.GetReturnValue().Set(value_obj);
+        return;
+      }
+    }
   } else {
     LOG(logTrace)
         << "Performing recursive mutation, enable_recursive_mutation: "

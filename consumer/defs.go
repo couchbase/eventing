@@ -3,6 +3,7 @@ package consumer
 import (
 	"bytes"
 	"errors"
+	"hash/crc32"
 	"net"
 	"os/exec"
 	"sync"
@@ -125,6 +126,7 @@ type debuggerBlob struct {
 
 type xattrMetadata struct {
 	Cas    string   `json:"cas"`
+	Digest uint32   `json:"digest"`
 	Timers []string `json:"timers"`
 }
 
@@ -157,6 +159,7 @@ type Consumer struct {
 	conn   net.Conn // Access controlled by default lock
 	uuid   string
 
+	crcTable          *crc32.Table
 	debugConn         net.Conn // Interface to support communication between Go and C++ worker spawned for debugging
 	debugListener     net.Listener
 	sendMsgToDebugger bool
