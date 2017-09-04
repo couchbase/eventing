@@ -462,9 +462,29 @@ func (s *SuperSupervisor) SignalStopDebugger(appName string) {
 	p.SignalStopDebugger()
 }
 
+// GetAppCode returns handler code for requested appname
+func (s *SuperSupervisor) GetAppCode(appName string) string {
+	logging.Infof("SSUP[%d] GetAppCode request for app: %v", len(s.runningProducers), appName)
+	if p, ok := s.runningProducers[appName]; ok {
+		return p.GetAppCode()
+	}
+	return ""
+}
+
 // GetDebuggerURL returns the v8 debugger url for supplied appname
 func (s *SuperSupervisor) GetDebuggerURL(appName string) string {
 	logging.Infof("SSUP[%d] GetDebuggerURL request for app: %v", len(s.runningProducers), appName)
-	p := s.runningProducers[appName]
-	return p.GetDebuggerURL()
+	if p, ok := s.runningProducers[appName]; !ok {
+		return p.GetDebuggerURL()
+	}
+	return ""
+}
+
+// GetSourceMap returns source map for requested appname
+func (s *SuperSupervisor) GetSourceMap(appName string) string {
+	logging.Infof("SSUP[%d] GetSourceMap request for app: %v", len(s.runningProducers), appName)
+	if p, ok := s.runningProducers[appName]; ok {
+		return p.GetSourceMap()
+	}
+	return ""
 }

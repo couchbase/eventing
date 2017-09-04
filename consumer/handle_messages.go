@@ -86,6 +86,21 @@ func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) error {
 	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
 }
 
+func (c *Consumer) sendGetSourceMap(sendToDebugger bool) error {
+	header := makeHeader(v8WorkerEvent, v8WorkerSourceMap, "")
+
+	msg := &message{
+		Header: header,
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["SOURCE_MAP"]; !ok {
+		c.v8WorkerMessagesProcessed["SOURCE_MAP"] = 0
+	}
+	c.v8WorkerMessagesProcessed["SOURCE_MAP"]++
+
+	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+}
+
 func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 	timerHeader := makeDocTimerEventHeader()
 	timerPayload := makeDocTimerPayload(e.DocID, e.CallbackFn)

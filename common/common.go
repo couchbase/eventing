@@ -30,8 +30,10 @@ type EventingProducer interface {
 	CfgData() string
 	CleanupDeadConsumer(consumer EventingConsumer)
 	ClearEventStats()
+	GetAppCode() string
 	GetDebuggerURL() string
 	GetNsServerPort() string
+	GetSourceMap() string
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
 	KvHostPorts() []string
 	LenRunningConsumers() int
@@ -66,6 +68,7 @@ type EventingConsumer interface {
 	DcpEventsRemainingToProcess() uint64
 	EventsProcessedPSec() *EventProcessingStats
 	EventingNodeUUIDs() []string
+	GetSourceMap() string
 	HandleV8Worker()
 	HostPortAddr() string
 	NodeUUID() string
@@ -92,7 +95,9 @@ type EventingSuperSup interface {
 	AppTimerTransferHostPortAddrs(string) (map[string]string, error)
 	ClearEventStats()
 	DeployedAppList() []string
+	GetAppCode(appName string) string
 	GetDebuggerURL(appName string) string
+	GetSourceMap(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)
 	ProducerHostPortAddrs() []string
 	RestPort() string

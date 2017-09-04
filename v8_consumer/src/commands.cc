@@ -36,6 +36,8 @@ v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
     return oLoad;
   if (opcode == 4)
     return oTerminate;
+  if (opcode == 5)
+    return oGetSourceMap;
   return V8_Worker_Opcode_Unknown;
 }
 

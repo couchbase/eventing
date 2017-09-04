@@ -52,6 +52,40 @@ func (m *ServiceMgr) getNodeUUID(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%v", m.uuid)
 }
 
+func (m *ServiceMgr) getHandler(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	appList := m.superSup.DeployedAppList()
+	for _, app := range appList {
+		if app == appName {
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+			fmt.Fprintf(w, "%s", m.superSup.GetAppCode(appName))
+			return
+		}
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+	fmt.Fprintf(w, "App: %s not deployed", appName)
+}
+
+func (m *ServiceMgr) getSourceMap(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	appList := m.superSup.DeployedAppList()
+	for _, app := range appList {
+		if app == appName {
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+			fmt.Fprintf(w, "%s", m.superSup.GetSourceMap(appName))
+			return
+		}
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+	fmt.Fprintf(w, "App: %s not deployed", appName)
+}
+
 func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]

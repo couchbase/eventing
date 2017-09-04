@@ -228,6 +228,8 @@ func (c *Consumer) HandleV8Worker() {
 
 	c.sendLoadV8Worker(c.app.AppCode, false)
 
+	c.sendGetSourceMap(false)
+
 	go c.doLastSeqNoCheckpoint()
 
 	go c.processEvents()
@@ -485,4 +487,9 @@ func (c *Consumer) SignalStopDebugger() {
 		logging.Infof("V8CR[%s:%s:%s:%d] Failed to remove frontend.url file, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 	}
+}
+
+// GetSourceMap returns source map to assist V8 debugger
+func (c *Consumer) GetSourceMap() string {
+	return c.sourceMap
 }

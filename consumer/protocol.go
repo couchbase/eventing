@@ -41,6 +41,7 @@ const (
 	v8WorkerInit
 	v8WorkerLoad
 	v8WorkerTerminate
+	v8WorkerSourceMap
 )
 
 const (
@@ -268,6 +269,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 	case respV8WorkerConfig:
 		switch opcode {
 		case sourceMap:
+			c.sourceMap = msg
 		case logMessage:
 			fmt.Printf("%s", msg)
 		}

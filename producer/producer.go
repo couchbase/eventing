@@ -570,6 +570,11 @@ func (p *Producer) SignalStopDebugger() {
 	}
 }
 
+// GetAppCode returns handler code for the current app
+func (p *Producer) GetAppCode() string {
+	return p.app.AppCode
+}
+
 // GetDebuggerURL returns V8 Debugger url
 func (p *Producer) GetDebuggerURL() string {
 	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
@@ -580,4 +585,13 @@ func (p *Producer) GetDebuggerURL() string {
 	debugURL := util.GetDebuggerURL("/debugUrl", debuggerInstBlob.HostPortAddr, p.appName)
 
 	return debugURL
+}
+
+// GetSourceMap return source map to assist V8 Debugger
+func (p *Producer) GetSourceMap() string {
+	if len(p.runningConsumers) > 0 {
+		return p.runningConsumers[0].GetSourceMap()
+	}
+	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
+	return ""
 }

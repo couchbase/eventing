@@ -68,6 +68,8 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getAppTempStore/", m.fetchAppTempStore)
 	http.HandleFunc("/getEventsPSec", m.getEventsProcessedPSec)
 	http.HandleFunc("/getAggEventsPSec", m.getAggEventsProcessedPSec)
+	http.HandleFunc("/getHandlers/", m.getHandler)
+	http.HandleFunc("/getSourceMap/", m.getSourceMap)
 	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
 	http.HandleFunc("/saveAppTempStore/", m.saveAppSetup)
 	http.HandleFunc("/setApplication/", m.storeAppSetup)

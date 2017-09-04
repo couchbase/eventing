@@ -35,7 +35,7 @@ type statusCodes struct {
 	errSetSettingsPs    statusBase
 	startDbg            statusBase
 	stopDbg             statusBase
-	getDbgUrl           statusBase
+	getDbgURL           statusBase
 	errDelAppSettingsPs statusBase
 	errAppNotDeployed   statusBase
 	errAppNotFoundTs    statusBase
@@ -57,7 +57,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errSetSettingsPs:    statusBase{"ERR_SET_SETTINGS_PS", 7},
 		startDbg:            statusBase{"ERR_START_DBG", 8},
 		stopDbg:             statusBase{"ERR_STOP_DBG", 9},
-		getDbgUrl:           statusBase{"ERR_GET_DBG_URL", 10},
+		getDbgURL:           statusBase{"ERR_GET_DBG_URL", 10},
 		errDelAppSettingsPs: statusBase{"ERR_DEL_APP_SETTINGS_PS", 11},
 		errAppNotDeployed:   statusBase{"ERR_APP_NOT_DEPLOYED", 12},
 		errAppNotFoundTs:    statusBase{"ERR_APP_NOT_FOUND_TS", 13},
@@ -117,8 +117,8 @@ func (m *ServiceMgr) initErrCodes() {
 			Description: "Unable to stop debugger",
 		},
 		{
-			Name:        m.statusCodes.getDbgUrl.Name,
-			Code:        m.statusCodes.getDbgUrl.Code,
+			Name:        m.statusCodes.getDbgURL.Name,
+			Code:        m.statusCodes.getDbgURL.Code,
 			Description: "Unable to get debugger URL",
 		},
 		{
