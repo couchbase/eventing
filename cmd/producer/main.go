@@ -21,7 +21,7 @@ func main() {
 	s := supervisor.NewSuperSupervisor(flags.eventingAdminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid)
 
 	// For app reloads
-	go func() {
+	go func(s *supervisor.SuperSupervisor) {
 		cancelCh := make(chan struct{})
 		for {
 			err := metakv.RunObserveChildren(supervisor.MetakvAppsPath, s.EventHandlerLoadCallback, cancelCh)
@@ -30,10 +30,10 @@ func main() {
 				time.Sleep(2 * time.Second)
 			}
 		}
-	}()
+	}(s)
 
 	// For app settings update
-	go func() {
+	go func(s *supervisor.SuperSupervisor) {
 		cancelCh := make(chan struct{})
 		for {
 			err := metakv.RunObserveChildren(supervisor.MetakvAppSettingsPath, s.SettingsChangeCallback, cancelCh)
@@ -42,10 +42,10 @@ func main() {
 				time.Sleep(2 * time.Second)
 			}
 		}
-	}()
+	}(s)
 
 	// For topology change notifications
-	go func() {
+	go func(s *supervisor.SuperSupervisor) {
 		cancelCh := make(chan struct{})
 		for {
 			err := metakv.RunObserveChildren(supervisor.MetakvRebalanceTokenPath, s.TopologyChangeNotifCallback, cancelCh)
@@ -54,7 +54,7 @@ func main() {
 				time.Sleep(2 * time.Second)
 			}
 		}
-	}()
+	}(s)
 
 	s.HandleSupCmdMsg()
 }

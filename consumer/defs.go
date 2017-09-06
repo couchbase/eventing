@@ -354,6 +354,7 @@ type debugClient struct {
 	appName        string
 	consumerHandle *Consumer
 	cmd            *exec.Cmd
+	eventingPort   string
 	osPid          int
 	debugTCPPort   string
 	workerName     string

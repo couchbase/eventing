@@ -474,7 +474,7 @@ func (s *SuperSupervisor) GetAppCode(appName string) string {
 // GetDebuggerURL returns the v8 debugger url for supplied appname
 func (s *SuperSupervisor) GetDebuggerURL(appName string) string {
 	logging.Infof("SSUP[%d] GetDebuggerURL request for app: %v", len(s.runningProducers), appName)
-	if p, ok := s.runningProducers[appName]; !ok {
+	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetDebuggerURL()
 	}
 	return ""

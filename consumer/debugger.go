@@ -14,18 +14,19 @@ import (
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
-func newDebugClient(c *Consumer, appName, tcpPort, workerName string) *debugClient {
+func newDebugClient(c *Consumer, appName, eventingPort, tcpPort, workerName string) *debugClient {
 	return &debugClient{
 		appName:        appName,
 		consumerHandle: c,
 		debugTCPPort:   tcpPort,
+		eventingPort:   eventingPort,
 		workerName:     workerName,
 	}
 }
 
 func (c *debugClient) Serve() {
 	c.cmd = exec.Command("eventing-consumer", c.appName, c.debugTCPPort, c.workerName,
-		strconv.Itoa(c.consumerHandle.socketWriteBatchSize), "debug")
+		strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.eventingPort, "debug")
 	c.cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}
@@ -171,7 +172,7 @@ func (c *Consumer) startDebuggerServer() {
 	}(c)
 
 	c.debugTCPPort = strings.Split(c.debugListener.Addr().String(), ":")[3]
-	c.debugClient = newDebugClient(c, c.app.AppName, c.debugTCPPort, c.workerName)
+	c.debugClient = newDebugClient(c, c.app.AppName, c.eventingAdminPort, c.debugTCPPort, c.workerName)
 	c.debugClientSupToken = c.consumerSup.Add(c.debugClient)
 
 	<-c.signalDebuggerConnectedCh
