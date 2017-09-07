@@ -39,9 +39,9 @@
 #include "queue.h"
 #include "utils.h"
 
-#include "../../flatbuf/include/header_generated.h"
-#include "../../flatbuf/include/payload_generated.h"
-#include "../../flatbuf/include/response_generated.h"
+#include "../../gen/flatbuf/header_generated.h"
+#include "../../gen/flatbuf/payload_generated.h"
+#include "../../gen/flatbuf/response_generated.h"
 
 #ifndef STANDALONE_BUILD
 extern void(assert)(int);

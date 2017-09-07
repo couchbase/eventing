@@ -25,12 +25,12 @@
 #include "../include/n1ql.h"
 #include "../include/parse_deployment.h"
 
-#include "../gen/builtin.h"
-#include "../gen/escodegen.h"
-#include "../gen/esprima.h"
-#include "../gen/estraverse.h"
-#include "../gen/source-map.h"
-#include "../gen/transpiler.h"
+#include "../../gen/js/builtin.h"
+#include "../../gen/js/escodegen.h"
+#include "../../gen/js/esprima.h"
+#include "../../gen/js/estraverse.h"
+#include "../../gen/js/source-map.h"
+#include "../../gen/js/transpiler.h"
 
 #define BUFSIZE 100
 

@@ -21,7 +21,7 @@ extern void(assert)(int);
 #include <cassert>
 #endif
 
-#include "../../flatbuf/include/cfg_schema_generated.h"
+#include "../../gen/flatbuf/cfg_schema_generated.h"
 
 typedef struct deployment_config_s {
   std::string metadata_bucket;

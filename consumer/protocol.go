@@ -6,9 +6,9 @@ import (
 	"log"
 	"runtime/debug"
 
-	"github.com/couchbase/eventing/flatbuf/header"
-	"github.com/couchbase/eventing/flatbuf/payload"
-	"github.com/couchbase/eventing/flatbuf/response"
+	"github.com/couchbase/eventing/gen/flatbuf/header"
+	"github.com/couchbase/eventing/gen/flatbuf/payload"
+	"github.com/couchbase/eventing/gen/flatbuf/response"
 	"github.com/couchbase/eventing/logging"
 	"github.com/google/flatbuffers/go"
 )

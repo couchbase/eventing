@@ -9,11 +9,11 @@
 # or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-ADD_SUBDIRECTORY(gen)
+INCLUDE (FindCouchbaseJemalloc)
+INCLUDE (FindCouchbaseLibuv)
+INCLUDE (FindCouchbaseLibCouchbase)
 
 INCLUDE_DIRECTORIES(BEFORE ${LIBCOUCHBASE_INCLUDE_DIR} ${LIBUV_INCLUDE_DIR})
-
-FIND_PACKAGE(ZLIB)
 
 INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
                            ${V8_INCLUDE_DIR}

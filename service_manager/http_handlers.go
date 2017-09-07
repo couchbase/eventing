@@ -9,13 +9,14 @@ import (
 	"runtime/trace"
 	"time"
 
-	"github.com/couchbase/eventing/flatbuf/cfg"
-	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/util"
-	flatbuffers "github.com/google/flatbuffers/go"
 	"path"
 	"strconv"
 	"strings"
+
+	"github.com/couchbase/eventing/gen/flatbuf/cfg"
+	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
+	flatbuffers "github.com/google/flatbuffers/go"
 )
 
 func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
