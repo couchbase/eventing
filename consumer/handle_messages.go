@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"time"
 
-	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
-	"github.com/couchbase/indexing/secondary/dcp/transport/client"
-	"github.com/couchbase/indexing/secondary/logging"
+	mcd "github.com/couchbase/eventing/dcp/transport"
+	"github.com/couchbase/eventing/dcp/transport/client"
+	"github.com/couchbase/eventing/logging"
 )
 
 func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) error {

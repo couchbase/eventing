@@ -15,10 +15,10 @@ import (
 
 	"github.com/couchbase/cbauth/metakv"
 	cm "github.com/couchbase/eventing/common"
+	mcd "github.com/couchbase/eventing/dcp/transport"
+	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/shared"
 	"github.com/couchbase/gomemcached"
-	"github.com/couchbase/indexing/secondary/common"
-	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
-	"github.com/couchbase/indexing/secondary/logging"
 )
 
 const (
@@ -220,7 +220,7 @@ func KVVbMap(auth, bucket, hostaddress string) (map[uint16]string, error) {
 
 		vbs, err := cinfo.GetVBuckets(kvAddr, bucket)
 		if err != nil {
-			logging.Errorf("UTIL Failed to get vbuckets for given kv common.NodeId, err: %v", err)
+			logging.Errorf("UTIL Failed to get vbuckets for given kv shared.NodeId, err: %v", err)
 			return nil, err
 		}
 
@@ -232,10 +232,10 @@ func KVVbMap(auth, bucket, hostaddress string) (map[uint16]string, error) {
 	return kvVbMap, nil
 }
 
-func ClusterInfoCache(auth, hostaddress string) (*common.ClusterInfoCache, error) {
+func ClusterInfoCache(auth, hostaddress string) (*shared.ClusterInfoCache, error) {
 	clusterURL := fmt.Sprintf("http://%s@%s", auth, hostaddress)
 
-	cinfo, err := common.NewClusterInfoCache(clusterURL, "default")
+	cinfo, err := shared.NewClusterInfoCache(clusterURL, "default")
 	if err != nil {
 		return nil, err
 	}

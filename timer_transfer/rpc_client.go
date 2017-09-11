@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 // NewRPCClient returns new rpc client construct

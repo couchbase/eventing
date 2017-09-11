@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 const (

@@ -14,7 +14,7 @@ import (
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/plasma"
 )
 

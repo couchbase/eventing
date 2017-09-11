@@ -6,7 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {

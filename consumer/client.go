@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 func newClient(consumer *Consumer, appName, tcpPort, workerName, eventingAdminPort string) *client {

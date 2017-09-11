@@ -2,8 +2,8 @@ package consumer
 
 import (
 	cm "github.com/couchbase/eventing/common"
-	"github.com/couchbase/indexing/secondary/common"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/shared"
+	"github.com/couchbase/eventing/logging"
 )
 
 // RebalanceTaskProgress reports progress to producer
@@ -37,7 +37,7 @@ func (c *Consumer) EventsProcessedPSec() *cm.EventProcessingStats {
 func (c *Consumer) DcpEventsRemainingToProcess() uint64 {
 	vbsTohandle := c.vbsToHandle()
 
-	seqNos, err := common.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+	seqNos, err := shared.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil {
 		logging.Errorf("CRVT[%s:%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 		return 0

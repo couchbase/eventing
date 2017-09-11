@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 var errUnexpectedNodeUUID = fmt.Errorf("node uuid not present in list of expected node UUIDs")

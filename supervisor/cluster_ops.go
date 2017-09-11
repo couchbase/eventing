@@ -5,7 +5,7 @@ import (
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 var getHTTPServiceAuth = func(args ...interface{}) error {

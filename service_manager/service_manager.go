@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/couchbase/cbauth/service"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 // GetNodeInfo callback for cbauth service.Manager

@@ -19,10 +19,10 @@ import (
 	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
 	cblib "github.com/couchbase/go-couchbase"
-	"github.com/couchbase/indexing/secondary/dcp"
-	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
-	"github.com/couchbase/indexing/secondary/dcp/transport/client"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/dcp"
+	mcd "github.com/couchbase/eventing/dcp/transport"
+	"github.com/couchbase/eventing/dcp/transport/client"
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/plasma"
 )
 

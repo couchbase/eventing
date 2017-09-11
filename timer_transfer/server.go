@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 var connected = "200 Connected to Go RPC"

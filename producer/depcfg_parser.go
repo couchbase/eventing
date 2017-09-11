@@ -8,7 +8,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/flatbuf/cfg"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 func (p *Producer) parseDepcfg() error {

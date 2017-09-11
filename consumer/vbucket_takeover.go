@@ -12,7 +12,7 @@ import (
 
 	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/plasma"
 )
 

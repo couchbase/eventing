@@ -7,7 +7,7 @@ import (
 
 	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/eventing/supervisor"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 func main() {

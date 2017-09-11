@@ -10,7 +10,7 @@ import (
 
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/plasma"
 )
 

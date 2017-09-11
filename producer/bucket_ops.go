@@ -5,7 +5,7 @@ import (
 
 	"github.com/couchbase/eventing/util"
 	cbbucket "github.com/couchbase/go-couchbase"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 func (p *Producer) initMetadataBucketHandle() {

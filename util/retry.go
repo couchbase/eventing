@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 const (

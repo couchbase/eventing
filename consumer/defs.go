@@ -15,9 +15,9 @@ import (
 	"github.com/couchbase/eventing/timer_transfer"
 	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
-	"github.com/couchbase/indexing/secondary/dcp"
-	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
-	cb "github.com/couchbase/indexing/secondary/dcp/transport/client"
+	"github.com/couchbase/eventing/dcp"
+	mcd "github.com/couchbase/eventing/dcp/transport"
+	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/plasma"
 )
 

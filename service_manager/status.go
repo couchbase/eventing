@@ -2,7 +2,7 @@ package servicemanager
 
 import (
 	"encoding/json"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 type statusBase struct {

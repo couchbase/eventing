@@ -9,8 +9,8 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/flatbuf/cfg"
-	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
-	"github.com/couchbase/indexing/secondary/dcp/transport/client"
+	mcd "github.com/couchbase/eventing/dcp/transport"
+	"github.com/couchbase/eventing/dcp/transport/client"
 )
 
 var c *Consumer

@@ -10,7 +10,7 @@ import (
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 )
 
 //NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager

@@ -9,7 +9,7 @@ import (
 	"github.com/couchbase/eventing/flatbuf/header"
 	"github.com/couchbase/eventing/flatbuf/payload"
 	"github.com/couchbase/eventing/flatbuf/response"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/logging"
 	"github.com/google/flatbuffers/go"
 )
 

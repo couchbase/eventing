@@ -8,13 +8,13 @@ import (
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/indexing/secondary/common"
-	"github.com/couchbase/indexing/secondary/logging"
+	"github.com/couchbase/eventing/shared"
+	"github.com/couchbase/eventing/logging"
 )
 
 var getClusterInfoCacheOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
-	cinfo := args[1].(**common.ClusterInfoCache)
+	cinfo := args[1].(**shared.ClusterInfoCache)
 
 	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
 
