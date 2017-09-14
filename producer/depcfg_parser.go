@@ -7,8 +7,8 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/flatbuf/cfg"
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 func (p *Producer) parseDepcfg() error {
@@ -35,6 +35,7 @@ func (p *Producer) parseDepcfg() error {
 		util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, p, &user, &password)
 		p.auth = fmt.Sprintf("%s:%s", user, password)
 
+		// TODO: ns_server rbac auth has problems during rebalance
 		util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, p)
 
 		p.bucket = string(depcfg.SourceBucket())
@@ -63,6 +64,10 @@ func (p *Producer) parseDepcfg() error {
 		p.timerWorkerPoolSize = int(settings["timer_worker_pool_size"].(float64))
 		p.socketWriteBatchSize = int(settings["sock_batch_size"].(float64))
 		p.skipTimerThreshold = int(settings["skip_timer_threshold"].(float64))
+
+		// p.rbacpass = settings["rbacpass"].(string)
+		// p.rbacuser = settings["rbacuser"].(string)
+		logging.Infof("DCFG[%s] RBAC user: %s pass: %s", p.appName, p.rbacuser, p.rbacpass)
 
 		// TODO: Remove if exists checking once UI starts to pass below fields
 		if val, ok := settings["lcb_inst_capacity"]; ok {
@@ -99,6 +104,12 @@ func (p *Producer) parseDepcfg() error {
 			p.executionTimeout = int(val.(float64))
 		} else {
 			p.executionTimeout = 1
+		}
+
+		if val, ok := settings["cpp_worker_thread_count"]; ok {
+			p.cppWorkerThrCount = int(val.(float64))
+		} else {
+			p.cppWorkerThrCount = 1
 		}
 
 		p.app.Settings = settings

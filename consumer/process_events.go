@@ -706,3 +706,13 @@ func (c *Consumer) getCurrentlyOwnedVbs() []uint16 {
 
 	return vbsOwned
 }
+
+// Distribute partitions among cpp worker threads
+func (c *Consumer) cppWorkerThrPartitionMap() {
+	partitions := make([]uint16, cppWorkerPartitionCount)
+	for i := 0; i < int(cppWorkerPartitionCount); i++ {
+		partitions[i] = uint16(i)
+	}
+
+	c.cppThrPartitionMap = util.VbucketDistribution(partitions, c.cppWorkerThrCount)
+}

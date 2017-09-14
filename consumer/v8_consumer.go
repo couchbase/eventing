@@ -29,7 +29,7 @@ import (
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
 	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize, timerProcessingPoolSize int,
-	vbOwnershipGiveUpRoutineCount, vbOwnershipTakeoverRoutineCount int,
+	cppWorkerThrCount, vbOwnershipGiveUpRoutineCount, vbOwnershipTakeoverRoutineCount int,
 	bucket, eventingAdminPort, eventingDir, logLevel, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStoreMap map[uint16]*plasma.Plasma,
@@ -44,6 +44,8 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		checkpointInterval:                 checkpointInterval,
 		cleanupTimers:                      cleanupTimers,
 		clusterStateChangeNotifCh:          make(chan struct{}, ClusterChangeNotifChBufSize),
+		cppThrPartitionMap:                 make(map[int][]uint16),
+		cppWorkerThrCount:                  cppWorkerThrCount,
 		crcTable:                           crc32.MakeTable(crc32.Castagnoli),
 		dcpFeedCancelChs:                   make([]chan struct{}, 0),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
@@ -139,6 +141,8 @@ func (c *Consumer) Serve() {
 		c.HostPortAddr(), c.workerName)
 	c.timerTransferSupToken = c.consumerSup.Add(c.timerTransferHandle)
 
+	c.cppWorkerThrPartitionMap()
+
 	c.initCBBucketConnHandle()
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), commonConnectBucketOpCallback, c, &c.cbBucket)
@@ -208,6 +212,8 @@ func (c *Consumer) HandleV8Worker() {
 
 	logging.SetLogLevel(util.GetLogLevel(c.logLevel))
 	c.sendLogLevel(c.logLevel, false)
+	c.sendWorkerThrMap(nil, false)
+	c.sendWorkerThrCount(0, false)
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 

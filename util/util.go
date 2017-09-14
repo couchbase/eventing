@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -758,4 +759,9 @@ func Condense(vbs []uint16) string {
 	}
 
 	return res
+}
+
+// VbucketByKey returns doc_id to vbucket mapping
+func VbucketByKey(key []byte, numVbuckets int) uint16 {
+	return uint16((crc32.ChecksumIEEE(key) >> 16) % uint32(numVbuckets))
 }

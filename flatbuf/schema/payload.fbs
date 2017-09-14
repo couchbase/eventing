@@ -1,5 +1,10 @@
 namespace flatbuf.payload;
 
+table VbsThreadMap {
+  threadID:short;
+  partitions:[short];
+}
+
 table Payload {
   app_name:string;
   depcfg:string;
@@ -24,6 +29,9 @@ table Payload {
   enable_v8_debugger:bool;
 
   enable_recursive_mutation:bool;
+
+  partitionCount:short; // Virtual partitions for sharding workload among c++ workers
+  thr_map: [VbsThreadMap]; // Mapping of vbuckets to std::thread associated with V8Worker instance;
 }
 
 root_type Payload;

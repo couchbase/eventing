@@ -27,11 +27,17 @@
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 
+#include "commands.h"
 #include "crc32c.h"
 #include "inspector_agent.h"
 #include "js_exception.h"
 #include "log.h"
 #include "n1ql.h"
+#include "queue.h"
+
+#include "../../flatbuf/include/header_generated.h"
+#include "../../flatbuf/include/payload_generated.h"
+#include "../../flatbuf/include/response_generated.h"
 
 #ifndef STANDALONE_BUILD
 extern void(assert)(int);
@@ -45,6 +51,18 @@ typedef std::chrono::nanoseconds nsecs;
 #define SECS_TO_NS 1000 * 1000 * 1000ULL
 #define LCB_OP_RETRY_INTERVAL 100 // in milliseconds
 
+typedef struct header_s {
+  uint8_t event;
+  uint8_t opcode;
+  int16_t partition;
+  std::string metadata;
+} header_t;
+
+typedef struct message_s {
+  std::string header;
+  std::string payload;
+} message_t;
+
 struct Result {
   lcb_CAS cas;
   lcb_error_t rc;
@@ -54,9 +72,14 @@ struct Result {
   Result() : cas(0), rc(LCB_SUCCESS) {}
 };
 
+typedef struct worker_msg_s {
+  header_t *header;
+  message_t *payload;
+} worker_msg_t;
+
 class Bucket;
-class V8Worker;
 class ConnectionPool;
+class V8Worker;
 
 v8::Local<v8::String> createUtf8String(v8::Isolate *isolate, const char *str);
 std::string ObjectToString(v8::Local<v8::Value> value);
@@ -72,7 +95,7 @@ extern bool enable_recursive_mutation;
 
 class V8Worker {
 public:
-  V8Worker(std::string app_name, std::string dep_cfg,
+  V8Worker(v8::Platform *platform, std::string app_name, std::string dep_cfg,
            std::string curr_host_addr, std::string kv_host_port,
            std::string rbac_user, std::string rbac_pass, int lcb_inst_capacity,
            int execution_timeout, bool enable_recursive_mutation);
@@ -103,6 +126,8 @@ public:
   }
 
   int V8WorkerLoad(std::string source_s);
+  void RouteMessage();
+
   const char *V8WorkerLastException();
   const char *V8WorkerVersion();
 
@@ -114,6 +139,8 @@ public:
   void SendNonDocTimer(std::string doc_ids_cb_fns);
   void StartDebugger();
   void StopDebugger();
+
+  void Enqueue(header_t *header, message_t *payload);
 
   void V8WorkerDispose();
   void V8WorkerTerminateExecution();
@@ -142,10 +169,13 @@ public:
   volatile bool debugger_started;
   Time::time_point execute_start_time;
   uint64_t max_task_duration;
+
   std::thread *terminator_thr;
-  static JsException exception;
+  std::thread processing_thr;
+  Queue<worker_msg_t> *worker_queue;
 
   ConnectionPool *conn_pool;
+  static JsException exception;
 
 private:
   std::string connstr;
@@ -156,7 +186,7 @@ private:
   std::list<Bucket *> bucket_handles;
   std::string last_exception;
   v8::Isolate *isolate_;
-  v8::Platform *platform;
+  v8::Platform *platform_;
   inspector::Agent *agent;
 };
 

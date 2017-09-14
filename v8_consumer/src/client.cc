@@ -11,101 +11,28 @@
 static char const *global_program_name;
 int messages_processed(0);
 
-int addr2line(char const *const program_name, void const *const addr) {
-  char addr2line_cmd[512] = {0};
-
-/* have addr2line map the address to the relent line in the code */
-#ifdef __APPLE__
-  sprintf(addr2line_cmd, "atos -o %.256s %p", program_name, addr);
-#else
-  sprintf(addr2line_cmd, "addr2line -f -p -e %.256s %p", program_name, addr);
-#endif
-
-  return system(addr2line_cmd);
-}
-
-#define MAX_STACK_FRAMES 64
-static void *stack_traces[MAX_STACK_FRAMES];
-void posix_print_stack_trace() {
-  int i, trace_size = 0;
-  char **messages = (char **)NULL;
-
-  trace_size = backtrace(stack_traces, MAX_STACK_FRAMES);
-  messages = backtrace_symbols(stack_traces, trace_size);
-
-  /* skip the first couple stack frames (as they are this function and
-   our handler) and also skip the last frame as it's (always?) junk. */
-  for (i = 0; i < trace_size; ++i) {
-    if (addr2line(global_program_name, stack_traces[i]) != 0) {
-      printf("  error determining line # for: %s\n", messages[i]);
-    }
-  }
-  if (messages) {
-    free(messages);
-  }
-}
-
-void posix_signal_handler(int sig, siginfo_t *siginfo, void *context) {
-  (void)context;
-  switch (sig) {
-  case SIGSEGV:
-    fputs("Caught SIGSEGV: Segmentation Fault\n", stderr);
-    break;
-  default:
-    break;
-  }
-  posix_print_stack_trace();
-  _Exit(1);
-}
-
-static uint8_t alternate_stack[SIGSTKSZ];
-void set_signal_handler() {
-  /* setup alternate stack */
-  {
-    stack_t ss = {};
-    ss.ss_sp = (void *)alternate_stack;
-    ss.ss_size = SIGSTKSZ;
-    ss.ss_flags = 0;
-
-    if (sigaltstack(&ss, NULL) != 0) {
-      err(1, "sigaltstack");
-    }
-  }
-
-  {
-    struct sigaction sig_action = {};
-    sig_action.sa_sigaction = posix_signal_handler;
-    sigemptyset(&sig_action.sa_mask);
-
-#ifdef __APPLE__
-    sig_action.sa_flags = SA_SIGINFO;
-#else
-    sig_action.sa_flags = SA_SIGINFO | SA_ONSTACK;
-#endif
-
-    if (sigaction(SIGSEGV, &sig_action, NULL) != 0) {
-      err(1, "sigaction");
-    }
-  }
-}
-
-static std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
+std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
   auto header = flatbuf::header::GetHeader(parsed_message->header.c_str());
 
   std::unique_ptr<header_t> parsed_header(new header_t);
   parsed_header->event = header->event();
   parsed_header->opcode = header->opcode();
+  parsed_header->partition = header->partition();
 
   parsed_header->metadata = header->metadata()->str();
 
   return parsed_header;
 }
 
-std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
-                                                message_t *parsed_message) {
+void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
+                                         message_t *parsed_message) {
   std::string app_name, dep_cfg, curr_host_port, kv_host_port, rbac_user,
-      rbac_pass, key, val, result, doc_id, callback_fn, doc_ids_cb_fns;
+      rbac_pass, key, val, doc_id, callback_fn, doc_ids_cb_fns;
+  v8::Platform *platform;
+
   const flatbuf::payload::Payload *payload;
+  const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
+      *thr_map;
 
   switch (getEvent(parsed_header->event)) {
   case eV8_Worker:
@@ -123,29 +50,45 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       rbac_pass.assign(payload->rbac_pass()->str());
 
       LOG(logDebug) << "Loading app:" << app_name << '\n';
-      this->v8worker = new V8Worker(
-          app_name, dep_cfg, curr_host_port, kv_host_port, rbac_user, rbac_pass,
-          payload->lcb_inst_capacity(), payload->execution_timeout(),
-          payload->enable_recursive_mutation());
+
+      v8::V8::InitializeICU();
+      platform = v8::platform::CreateDefaultPlatform();
+      v8::V8::InitializePlatform(platform);
+      v8::V8::Initialize();
+
+      for (int16_t i = 0; i < thr_count; i++) {
+        V8Worker *w = new V8Worker(
+            platform, app_name, dep_cfg, curr_host_port, kv_host_port,
+            rbac_user, rbac_pass, payload->lcb_inst_capacity(),
+            payload->execution_timeout(), payload->enable_recursive_mutation());
+
+        LOG(logDebug) << "Init index: " << i << " V8Worker: " << w << '\n';
+        this->workers[i] = w;
+      }
+
       msg_priority = true;
-      result.assign("Loaded requested app\n");
       break;
     case oLoad:
       LOG(logDebug) << "Loading app code:" << parsed_header->metadata << '\n';
-      this->v8worker->V8WorkerLoad(parsed_header->metadata);
+      for (int16_t i = 0; i < thr_count; i++) {
+        this->workers[i]->V8WorkerLoad(parsed_header->metadata);
+
+        LOG(logDebug) << "Load index: " << i
+                      << " V8Worker: " << this->workers[i] << '\n';
+      }
       msg_priority = true;
-      result.assign("Loaded app code\n");
       break;
     case oTerminate:
       break;
     case oGetSourceMap:
-      resp_msg->msg = this->v8worker->GetSourceMap();
+      resp_msg->msg = this->workers[0]->GetSourceMap();
+      resp_msg->msg.assign("source map");
       resp_msg->msg_type = mV8_Worker_Config;
       resp_msg->opcode = oSourceMap;
       msg_priority = true;
       break;
     case oVersion:
-    case V8_Worker_Opcode_Unknown:
+    default:
       LOG(logError) << "worker_opcode_unknown encountered" << '\n';
       break;
     }
@@ -153,19 +96,18 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   case eDCP:
     payload = flatbuf::payload::GetPayload(
         (const void *)parsed_message->payload.c_str());
-    key.assign(payload->key()->str());
     val.assign(payload->value()->str());
 
     switch (getDCPOpcode(parsed_header->opcode)) {
     case oDelete:
-      this->v8worker->SendDelete(parsed_header->metadata);
-      result.assign("deletion processed\n");
+      workers[partition_thr_map[parsed_header->partition]]->Enqueue(
+          parsed_header, parsed_message);
       break;
     case oMutation:
-      this->v8worker->SendUpdate(val, parsed_header->metadata, "json");
-      result.assign("mutation processed\n");
+      workers[partition_thr_map[parsed_header->partition]]->Enqueue(
+          parsed_header, parsed_message);
       break;
-    case DCP_Opcode_Unknown:
+    default:
       LOG(logError) << "dcp_opcode_unknown encountered" << '\n';
       break;
     }
@@ -173,19 +115,14 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   case eTimer:
     switch (getTimerOpcode(parsed_header->opcode)) {
     case oDocTimer:
-      payload = flatbuf::payload::GetPayload(
-          (const void *)parsed_message->payload.c_str());
-      doc_id.assign(payload->doc_id()->str());
-      callback_fn.assign(payload->callback_fn()->str());
-      this->v8worker->SendDocTimer(doc_id, callback_fn);
+      workers[partition_thr_map[parsed_header->partition]]->Enqueue(
+          parsed_header, parsed_message);
       break;
     case oNonDocTimer:
-      payload = flatbuf::payload::GetPayload(
-          (const void *)parsed_message->payload.c_str());
-      doc_ids_cb_fns.assign(payload->doc_ids_callback_fns()->str());
-      this->v8worker->SendNonDocTimer(doc_ids_cb_fns);
+      workers[partition_thr_map[parsed_header->partition]]->Enqueue(
+          parsed_header, parsed_message);
       break;
-    case Timer_Opcode_Unknown:
+    default:
       break;
     }
     break;
@@ -193,7 +130,7 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     switch (getHTTPOpcode(parsed_header->opcode)) {
     case oGet:
     case oPost:
-    case HTTP_Opcode_Unknown:
+    default:
       LOG(logError) << "http_opcode_unknown encountered" << '\n';
       break;
     }
@@ -206,35 +143,60 @@ std::string AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                    << '\n';
       msg_priority = true;
       break;
-    case App_Worker_Setting_Opcode_Unknown:
+    case oWorkerThreadCount:
+      LOG(logInfo) << "Worker thread count: " << parsed_header->metadata
+                   << '\n';
+      thr_count = int16_t(std::stoi(parsed_header->metadata));
+      msg_priority = true;
+      break;
+    case oWorkerThreadMap:
+      payload = flatbuf::payload::GetPayload(
+          (const void *)parsed_message->payload.c_str());
+      thr_map = payload->thr_map();
+      partition_count = payload->partitionCount();
+      LOG(logInfo) << "Request for worker thread map, size: " << thr_map->size()
+                   << " partition_count: " << partition_count << '\n';
+
+      for (unsigned int i = 0; i < thr_map->size(); i++) {
+        int16_t thread_id = thr_map->Get(i)->threadID();
+
+        for (unsigned int j = 0; j < thr_map->Get(i)->partitions()->size();
+             j++) {
+          auto p_id = thr_map->Get(i)->partitions()->Get(j);
+          partition_thr_map[p_id] = thread_id;
+        }
+      }
+      msg_priority = true;
+      break;
+    default:
       break;
     }
     break;
   case eDebugger:
     switch (getDebuggerOpcode(parsed_header->opcode)) {
     case oDebuggerStart:
-      this->v8worker->StartDebugger();
+      workers[partition_thr_map[parsed_header->partition]]->Enqueue(
+          parsed_header, parsed_message);
       msg_priority = true;
       break;
     case oDebuggerStop:
-      this->v8worker->StopDebugger();
+      workers[partition_thr_map[parsed_header->partition]]->Enqueue(
+          parsed_header, parsed_message);
       msg_priority = true;
       break;
-    case Debugger_Opcode_Unknown:
+    default:
       break;
     }
     break;
-  case Event_Unknown:
+  default:
     LOG(logError) << "Unknown command" << '\n';
     break;
   }
-
-  return result;
 }
 
-static std::unique_ptr<message_t>
-ParseServerMessage(int encoded_header_size, int encoded_payload_size,
-                   const std::string &message) {
+std::unique_ptr<message_t> ParseServerMessage(int encoded_header_size,
+                                              int encoded_payload_size,
+                                              const std::string &message) {
   std::unique_ptr<message_t> parsed_message(new message_t);
   parsed_message->header = message.substr(
       HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE, encoded_header_size);
@@ -357,13 +319,12 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
                     << " messages processed: " << messages_processed << '\n';
 
       if (parsed_message) {
-        std::unique_ptr<header_t> parsed_header =
-            ParseHeader(parsed_message.get());
+        message_t *pmessage = parsed_message.release();
+        std::unique_ptr<header_t> parsed_header = ParseHeader(pmessage);
 
         if (parsed_header) {
-          header_t *pheader = parsed_header.get();
-          std::string result = RouteMessageWithResponse(parsed_header.get(),
-                                                        parsed_message.get());
+          header_t *pheader = parsed_header.release();
+          RouteMessageWithResponse(pheader, pmessage);
 
           this->messages_processed_counter++;
 
@@ -498,8 +459,6 @@ int main(int argc, char **argv) {
   if (isSSE42Supported()) {
     initCrcTable();
   }
-
-  set_signal_handler();
 
   std::string appname(argv[1]);
   int port = atoi(argv[2]);

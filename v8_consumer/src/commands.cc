@@ -60,6 +60,10 @@ http_opcode getHTTPOpcode(int8_t opcode) {
 app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
   if (opcode == 1)
     return oLogLevel;
+  if (opcode == 2)
+    return oWorkerThreadCount;
+  if (opcode == 3)
+    return oWorkerThreadMap;
   return App_Worker_Setting_Opcode_Unknown;
 }
 

@@ -39,7 +39,12 @@ enum dcp_opcode { oDelete, oMutation, DCP_Opcode_Unknown };
 
 enum http_opcode { oGet, oPost, HTTP_Opcode_Unknown };
 
-enum app_worker_setting_opcode { oLogLevel, App_Worker_Setting_Opcode_Unknown };
+enum app_worker_setting_opcode {
+  oLogLevel,
+  oWorkerThreadCount,
+  oWorkerThreadMap,
+  App_Worker_Setting_Opcode_Unknown
+};
 
 enum timer_opcode { oDocTimer, oNonDocTimer, Timer_Opcode_Unknown };
 

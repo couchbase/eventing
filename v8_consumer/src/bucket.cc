@@ -42,7 +42,7 @@ static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
     result->value.assign(reinterpret_cast<const char *>(resp->value),
                          static_cast<int>(resp->nvalue));
     LOG(logTrace) << "Value: " << result->value << " flags: " << resp->itmflags
-                  << std::endl;
+                  << '\n';
   }
 }
 
@@ -120,7 +120,8 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
 
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_GET, get_callback);
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_STORE, set_callback);
-  lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_SDMUTATE, sdmutate_callback);
+  lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_SDMUTATE,
+                        sdmutate_callback);
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_REMOVE, del_callback);
 }
 

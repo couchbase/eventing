@@ -53,6 +53,8 @@ const (
 const (
 	appWorkerSettingsOpcode int8 = iota
 	logLevel
+	workerThreadCount
+	workerThreadPartitionMap
 )
 
 // message and opcode types for interpreting messages from C++ To Go
@@ -72,24 +74,24 @@ type message struct {
 	Payload []byte
 }
 
-func makeDocTimerEventHeader() []byte {
-	return makeHeader(timerEvent, docTimer, "")
+func makeDocTimerEventHeader(partition int16) []byte {
+	return makeHeader(timerEvent, docTimer, partition, "")
 }
 
-func makeNonDocTimerEventHeader() []byte {
-	return makeHeader(timerEvent, nonDocTimer, "")
+func makeNonDocTimerEventHeader(partition int16) []byte {
+	return makeHeader(timerEvent, nonDocTimer, partition, "")
 }
 
-func makeDcpMutationHeader(mutationMeta string) []byte {
-	return makeDcpHeader(dcpMutation, mutationMeta)
+func makeDcpMutationHeader(partition int16, mutationMeta string) []byte {
+	return makeDcpHeader(dcpMutation, partition, mutationMeta)
 }
 
-func makeDcpDeletionHeader(deletionMeta string) []byte {
-	return makeDcpHeader(dcpDeletion, deletionMeta)
+func makeDcpDeletionHeader(partition int16, deletionMeta string) []byte {
+	return makeDcpHeader(dcpDeletion, partition, deletionMeta)
 }
 
-func makeDcpHeader(opcode int8, meta string) []byte {
-	return makeHeader(dcpEvent, opcode, meta)
+func makeDcpHeader(opcode int8, partition int16, meta string) []byte {
+	return makeHeader(dcpEvent, opcode, partition, meta)
 }
 
 func makeV8DebuggerStartHeader() []byte {
@@ -101,7 +103,7 @@ func makeV8DebuggerStopHeader() []byte {
 }
 
 func makeV8DebuggerHeader(opcode int8, meta string) []byte {
-	return makeHeader(debuggerEvent, opcode, meta)
+	return makeHeader(debuggerEvent, opcode, 0, meta)
 }
 
 func makeV8InitOpcodeHeader() []byte {
@@ -113,14 +115,22 @@ func makeV8LoadOpcodeHeader(appCode string) []byte {
 }
 
 func makeV8EventHeader(opcode int8, meta string) []byte {
-	return makeHeader(v8WorkerEvent, opcode, meta)
+	return makeHeader(v8WorkerEvent, opcode, 0, meta)
 }
 
 func makeLogLevelHeader(meta string) []byte {
-	return makeHeader(appWorkerSetting, logLevel, meta)
+	return makeHeader(appWorkerSetting, logLevel, 0, meta)
 }
 
-func makeHeader(event int8, opcode int8, meta string) (encodedHeader []byte) {
+func makeThrCountHeader(meta string) []byte {
+	return makeHeader(appWorkerSetting, workerThreadCount, 0, meta)
+}
+
+func makeThrMapHeader() []byte {
+	return makeHeader(appWorkerSetting, workerThreadPartitionMap, 0, "")
+}
+
+func makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte) {
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
 	metadata := builder.CreateString(meta)
@@ -129,11 +139,49 @@ func makeHeader(event int8, opcode int8, meta string) (encodedHeader []byte) {
 
 	header.HeaderAddEvent(builder, event)
 	header.HeaderAddOpcode(builder, opcode)
+	header.HeaderAddPartition(builder, partition)
 	header.HeaderAddMetadata(builder, metadata)
 
 	headerPos := header.HeaderEnd(builder)
 	builder.Finish(headerPos)
 	encodedHeader = builder.Bytes[builder.Head():]
+	return builder.Bytes[builder.Head():]
+}
+
+func makeThrMapPayload(thrMap map[int][]uint16, partitionCount int) []byte {
+	builder := flatbuffers.NewBuilder(0)
+	builder.Reset()
+
+	tMaps := make([]flatbuffers.UOffsetT, 0)
+
+	for i := 0; i < len(thrMap); i++ {
+		payload.VbsThreadMapStartPartitionsVector(builder, len(thrMap[i]))
+
+		for j := 0; j < len(thrMap[i]); j++ {
+			builder.PrependUint16(thrMap[i][j])
+		}
+		partitions := builder.EndVector(len(thrMap[i]))
+
+		payload.VbsThreadMapStart(builder)
+		payload.VbsThreadMapAddPartitions(builder, partitions)
+		payload.VbsThreadMapAddThreadID(builder, int16(i))
+
+		tMaps = append(tMaps, payload.VbsThreadMapEnd(builder))
+	}
+
+	payload.PayloadStartThrMapVector(builder, len(tMaps))
+	for i := len(tMaps) - 1; i >= 0; i-- {
+		builder.PrependUOffsetT(tMaps[i])
+	}
+
+	resMap := builder.EndVector(len(tMaps))
+
+	payload.PayloadStart(builder)
+	payload.PayloadAddThrMap(builder, resMap)
+	payload.PayloadAddPartitionCount(builder, int16(partitionCount))
+	payloadPos := payload.PayloadEnd(builder)
+	builder.Finish(payloadPos)
+
 	return builder.Bytes[builder.Head():]
 }
 
@@ -247,19 +295,22 @@ func (c *Consumer) parseWorkerResponse(m []byte, start int) {
 
 	msg := m[start:]
 
-	size := binary.LittleEndian.Uint32(msg[0:headerFragmentSize])
-	if len(msg) >= int(size+headerFragmentSize) {
+	if len(msg) > headerFragmentSize {
+		size := binary.LittleEndian.Uint32(msg[0:headerFragmentSize])
 
-		r := response.GetRootAsResponse(msg[headerFragmentSize:headerFragmentSize+size], 0)
+		if len(msg) >= int(headerFragmentSize+size) {
 
-		msgType := r.MsgType()
-		opcode := r.Opcode()
-		message := string(r.Msg())
+			r := response.GetRootAsResponse(msg[headerFragmentSize:headerFragmentSize+size], 0)
 
-		c.routeResponse(msgType, opcode, message)
+			msgType := r.MsgType()
+			opcode := r.Opcode()
+			message := string(r.Msg())
 
-		if len(msg) > 2*headerFragmentSize+int(size) {
-			c.parseWorkerResponse(msg, int(size)+headerFragmentSize)
+			c.routeResponse(msgType, opcode, message)
+
+			if len(msg) > 2*headerFragmentSize+int(size) {
+				c.parseWorkerResponse(msg, int(size)+headerFragmentSize)
+			}
 		}
 	}
 }

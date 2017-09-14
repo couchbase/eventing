@@ -68,6 +68,8 @@ const (
 	// ClusterChangeNotifChBufSize limits buffer size for cluster change notif from producer
 	ClusterChangeNotifChBufSize = 10
 
+	cppWorkerPartitionCount = 1024
+
 	debuggerFlagCheckInterval = time.Duration(5000) * time.Millisecond
 
 	// Interval for retrying failed bucket operations using go-couchbase
@@ -159,11 +161,13 @@ type Consumer struct {
 	conn   net.Conn // Access controlled by default lock
 	uuid   string
 
-	crcTable          *crc32.Table
-	debugConn         net.Conn // Interface to support communication between Go and C++ worker spawned for debugging
-	debugListener     net.Listener
-	sourceMap         string // source map to assist with V8 Debugger
-	sendMsgToDebugger bool
+	cppThrPartitionMap map[int][]uint16
+	cppWorkerThrCount  int // No. of worker threads per CPP worker process
+	crcTable           *crc32.Table
+	debugConn          net.Conn // Interface to support communication between Go and C++ worker spawned for debugging
+	debugListener      net.Listener
+	sourceMap          string // source map to assist with V8 Debugger
+	sendMsgToDebugger  bool
 
 	aggDCPFeed             chan *cb.DcpEvent
 	cbBucket               *couchbase.Bucket

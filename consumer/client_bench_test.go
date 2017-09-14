@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/flatbuf/cfg"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/dcp/transport/client"
+	"github.com/couchbase/eventing/flatbuf/cfg"
 )
 
 var c *Consumer
@@ -20,7 +20,6 @@ func BenchmarkOnUpdate(b *testing.B) {
 		Cas:     uint64(100),
 		Expiry:  uint32(100),
 		Flags:   uint32(100),
-		Key:     []byte("key"),
 		Opcode:  mcd.DCP_MUTATION,
 		Seqno:   uint64(100),
 		Value:   []byte("{\"city\": \"BLR\", \"type\": \"cpu_op\"}"),
@@ -28,7 +27,17 @@ func BenchmarkOnUpdate(b *testing.B) {
 	}
 
 	for n := 0; n < b.N; n++ {
-		c.sendDcpEvent(e)
+		switch n % 4 {
+		case 0:
+			e.Key = []byte("zzz_cb_dummy_76")
+		case 1:
+			e.Key = []byte("zzz_cb_dummy_255")
+		case 2:
+			e.Key = []byte("zzz_cb_dummy_3769")
+		case 3:
+			e.Key = []byte("zzz_cb_dummy_5849")
+		}
+		c.sendDcpEvent(e, false)
 	}
 }
 
@@ -37,7 +46,6 @@ func BenchmarkOnDelete(b *testing.B) {
 		Cas:     uint64(100),
 		Expiry:  uint32(100),
 		Flags:   uint32(100),
-		Key:     []byte("key"),
 		Opcode:  mcd.DCP_DELETION,
 		Seqno:   uint64(100),
 		Value:   []byte(""),
@@ -45,7 +53,17 @@ func BenchmarkOnDelete(b *testing.B) {
 	}
 
 	for n := 0; n < b.N; n++ {
-		c.sendDcpEvent(e)
+		switch n % 4 {
+		case 0:
+			e.Key = []byte("zzz_cb_dummy_76")
+		case 1:
+			e.Key = []byte("zzz_cb_dummy_255")
+		case 2:
+			e.Key = []byte("zzz_cb_dummy_3769")
+		case 3:
+			e.Key = []byte("zzz_cb_dummy_5849")
+		}
+		c.sendDcpEvent(e, false)
 	}
 }
 
@@ -58,22 +76,29 @@ func init() {
 	port := strings.Split(listener.Addr().String(), ":")[1]
 
 	c = &Consumer{}
-	c.vbProcessingStats = newVbProcessingStats()
+	c.vbProcessingStats = newVbProcessingStats("credit_score")
 	c.app = &common.AppConfig{}
 	c.socketWriteBatchSize = 100
 	c.writeBatchSeqnoMap = make(map[uint16]uint64)
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
 	c.socketTimeout = 5 * time.Second
+	c.executionTimeout = 1
+	c.cppWorkerThrCount = 2
 
-	client := newClient(c, "credit_score", port, "worker_0")
+	client := newClient(c, "credit_score", port, "worker_0", "25000")
 	go client.Serve()
 
 	conn, _ := listener.Accept()
 	c.SetConnHandle(conn)
 
-	c.sendLogLevel("TRACE")
-	payload := makeV8InitPayload("credit_score", "localhost:12000", string(cfgData),
+	c.cppWorkerThrPartitionMap()
+
+	c.sendLogLevel("SILENT", false)
+	c.sendWorkerThrMap(nil, false)
+	c.sendWorkerThrCount(0, false)
+
+	payload := makeV8InitPayload("credit_score", "localhost:25000", "localhost:12000", string(cfgData),
 		"eventing", "asdasd", 5, 1, false)
-	c.sendInitV8Worker(payload)
-	c.sendLoadV8Worker(appCode)
+	c.sendInitV8Worker(payload, false)
+	c.sendLoadV8Worker(appCode, false)
 }

@@ -125,7 +125,8 @@ std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata,
       errors.push_back(*msg);
     }
   } else {
-    LOG(logError) << "Error parsing JSON while extracting N1QL error message" << '\n';
+    LOG(logError) << "Error parsing JSON while extracting N1QL error message"
+                  << '\n';
   }
 
   return errors;

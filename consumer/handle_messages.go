@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"encoding/binary"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) error {
@@ -17,6 +19,49 @@ func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) error {
 	msg := &message{
 		Header: header,
 	}
+
+	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+}
+
+func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) error {
+	var header []byte
+	if sendToDebugger {
+		header = makeThrCountHeader(strconv.Itoa(thrCount))
+	} else {
+		header = makeThrCountHeader(strconv.Itoa(c.cppWorkerThrCount))
+	}
+
+	msg := &message{
+		Header: header,
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["THR_COUNT"]; !ok {
+		c.v8WorkerMessagesProcessed["THR_COUNT"] = 0
+	}
+	c.v8WorkerMessagesProcessed["THR_COUNT"]++
+
+	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+}
+
+func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebugger bool) error {
+	header := makeThrMapHeader()
+
+	var payload []byte
+	if sendToDebugger {
+		payload = makeThrMapPayload(thrPartitionMap, cppWorkerPartitionCount)
+	} else {
+		payload = makeThrMapPayload(c.cppThrPartitionMap, cppWorkerPartitionCount)
+	}
+
+	msg := &message{
+		Header:  header,
+		Payload: payload,
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["THR_MAP"]; !ok {
+		c.v8WorkerMessagesProcessed["THR_MAP"] = 0
+	}
+	c.v8WorkerMessagesProcessed["THR_MAP"]++
 
 	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
 }
@@ -87,7 +132,7 @@ func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) error {
 }
 
 func (c *Consumer) sendGetSourceMap(sendToDebugger bool) error {
-	header := makeHeader(v8WorkerEvent, v8WorkerSourceMap, "")
+	header := makeHeader(v8WorkerEvent, v8WorkerSourceMap, 0, "")
 
 	msg := &message{
 		Header: header,
@@ -102,7 +147,8 @@ func (c *Consumer) sendGetSourceMap(sendToDebugger bool) error {
 }
 
 func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
-	timerHeader := makeDocTimerEventHeader()
+	partition := int16(util.VbucketByKey([]byte(e.DocID), cppWorkerPartitionCount))
+	timerHeader := makeDocTimerEventHeader(partition)
 	timerPayload := makeDocTimerPayload(e.DocID, e.CallbackFn)
 
 	msg := &message{
@@ -116,7 +162,8 @@ func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 }
 
 func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
-	timerHeader := makeNonDocTimerEventHeader()
+	partition := int16(util.VbucketByKey([]byte(payload), cppWorkerPartitionCount))
+	timerHeader := makeNonDocTimerEventHeader(partition)
 	timerPayload := makeNonDocTimerPayload(payload)
 
 	msg := &message{
@@ -155,13 +202,15 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 		return
 	}
 
+	partition := int16(util.VbucketByKey(e.Key, cppWorkerPartitionCount))
+
 	var dcpHeader []byte
 	if e.Opcode == mcd.DCP_MUTATION {
-		dcpHeader = makeDcpMutationHeader(string(metadata))
+		dcpHeader = makeDcpMutationHeader(partition, string(metadata))
 	}
 
 	if e.Opcode == mcd.DCP_DELETION {
-		dcpHeader = makeDcpDeletionHeader(string(metadata))
+		dcpHeader = makeDcpDeletionHeader(partition, string(metadata))
 	}
 
 	dcpPayload := makeDcpPayload(e.Key, e.Value)

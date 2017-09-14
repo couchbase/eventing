@@ -15,6 +15,7 @@
 #include <chrono>
 #include <ctime>
 #include <iomanip>
+#include <mutex>
 #include <sstream>
 #include <string>
 
@@ -33,6 +34,8 @@ extern void setAppName(std::string appName);
 extern void setLogLevel(LogLevel level);
 extern void setWorkerID(std::string ID);
 
+extern std::mutex log_mutex;
+
 static std::ostringstream &Logger(LogLevel level = logInfo) {
   using namespace std::chrono;
 
@@ -42,9 +45,6 @@ static std::ostringstream &Logger(LogLevel level = logInfo) {
   auto t = std::time(nullptr);
   auto tm = *std::localtime(&t);
 
-  os << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
-  os << '.' << std::setfill('0') << std::setw(3) << ms.count();
-
   // %z format specifier will dump timezone offset as hhmm format
   // Performing string splits to get hh:mm format - in order to make
   // it consistent with golang format specifier
@@ -52,6 +52,10 @@ static std::ostringstream &Logger(LogLevel level = logInfo) {
   time_fmt_os << std::put_time(&tm, "%z");
   std::string ts = time_fmt_os.str();
   time_fmt_os.str(std::string());
+
+  std::lock_guard<std::mutex> lock(log_mutex);
+  os << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
+  os << '.' << std::setfill('0') << std::setw(3) << ms.count();
 
   os << ts.substr(0, ts.length() - 2);
   os << ":";

@@ -595,10 +595,10 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 		_, err := docF.Execute()
 		if err != nil {
-			logging.Errorf("CRTE[%s:%s:%s:%d]  Key: %v vb: %v, Failed to prune timer records from past, err: %v",
+			logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v vb: %v, Failed to prune timer records from past, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, err)
 		} else {
-			logging.Debugf("CRTE[%s:%s:%s:%d]  Key: %v vb: %v, timer records in xattr: %v",
+			logging.Debugf("CRTE[%s:%s:%s:%d] Key: %v vb: %v, timer records in xattr: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, timersToKeep)
 		}
 	}

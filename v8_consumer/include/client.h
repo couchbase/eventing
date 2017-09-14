@@ -7,17 +7,13 @@ extern void(assert)(int);
 #include <cassert>
 #endif
 
-#include "commands.h"
 #include "message.h"
 #include "v8worker.h"
-
-#include "../../flatbuf/include/header_generated.h"
-#include "../../flatbuf/include/payload_generated.h"
-#include "../../flatbuf/include/response_generated.h"
 
 #include <err.h>
 #include <errno.h>
 #include <execinfo.h>
+#include <map>
 #include <queue>
 #include <signal.h>
 #include <stdbool.h>
@@ -36,17 +32,6 @@ typedef struct {
   uv_write_t req;
   uv_buf_t buf;
 } write_req_t;
-
-typedef struct message_s {
-  std::string header;
-  std::string payload;
-} message_t;
-
-typedef struct header_s {
-  uint8_t event;
-  uint8_t opcode;
-  std::string metadata;
-} header_t;
 
 typedef struct resp_msg_s {
   uint8_t msg_type;
@@ -68,10 +53,8 @@ public:
 
   void ParseValidChunk(uv_stream_t *stream, int nread, const char *buf);
 
-  void RouteMessageWithoutResponse(header_t *parsed_header,
-                                   message_t *parsed_message);
-  std::string RouteMessageWithResponse(header_t *parsed_header,
-                                       message_t *parsed_message);
+  void RouteMessageWithResponse(header_t *parsed_header,
+                                message_t *parsed_message);
 
   std::vector<char> *GetReadBuffer();
 
@@ -79,7 +62,7 @@ private:
   AppWorker();
   ~AppWorker();
 
-  V8Worker *v8worker;
+  std::map<int16_t, V8Worker *> workers;
 
   uv_loop_t main_loop;
   uv_tcp_t tcp_sock;
@@ -91,6 +74,16 @@ private:
   std::string app_name;
 
   std::string next_message;
+
+  std::map<int16_t, int16_t> partition_thr_map;
+
+  // Controls the number of virtual partitions, in order to shard work among
+  // worker threads
+  int16_t partition_count;
+
+  // Controls the size of thread pool, each thread executing user supplied
+  // handler code against dcp/timer events
+  int16_t thr_count;
 
   // In order to improve throughput, dcp events are sent in batches
   // batch_size controls the size of it

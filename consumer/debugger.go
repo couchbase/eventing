@@ -179,6 +179,15 @@ func (c *Consumer) startDebuggerServer() {
 
 	c.sendLogLevel(c.logLevel, true)
 
+	partitions := make([]uint16, cppWorkerPartitionCount)
+	for i := 0; i < int(cppWorkerPartitionCount); i++ {
+		partitions[i] = uint16(i)
+	}
+	thrPartitionMap := util.VbucketDistribution(partitions, 1)
+	c.sendWorkerThrMap(thrPartitionMap, true)
+
+	c.sendWorkerThrCount(1, true) // Spawn just one thread when debugger is spawned to avoid complexity
+
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
 	var currHostAddr string

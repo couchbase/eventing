@@ -3,6 +3,7 @@ namespace flatbuf.header;
 table Header {
   event:byte;
   opcode:byte;
+  partition:short;
   metadata:string;
 }
 

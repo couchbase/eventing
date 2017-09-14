@@ -639,17 +639,13 @@ static void multi_op_callback(lcb_t cb_instance, int cbtype,
 
 void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
 
-V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
-                   std::string host_addr, std::string kv_host_port,
-                   std::string rbac_user, std::string rbac_pass,
-                   int lcb_inst_capacity, int execution_timeout,
-                   bool enable_recursive_mutation)
-    : rbac_pass(rbac_pass), curr_host_addr(host_addr) {
+V8Worker::V8Worker(v8::Platform *platform, std::string app_name,
+                   std::string dep_cfg, std::string host_addr,
+                   std::string kv_host_port, std::string rbac_user,
+                   std::string rbac_pass, int lcb_inst_capacity,
+                   int execution_timeout, bool enable_recursive_mutation)
+    : platform_(platform), rbac_pass(rbac_pass), curr_host_addr(host_addr) {
   enableRecursiveMutation(enable_recursive_mutation);
-  v8::V8::InitializeICU();
-  platform = v8::platform::CreateDefaultPlatform();
-  v8::V8::InitializePlatform(platform);
-  v8::V8::Initialize();
 
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
@@ -745,9 +741,17 @@ V8Worker::V8Worker(std::string app_name, std::string dep_cfg,
   conn_pool = new ConnectionPool(lcb_inst_capacity, cb_kv_endpoint,
                                  cb_source_bucket, rbac_user, rbac_pass);
   delete config;
+
+  this->worker_queue = new Queue<worker_msg_t>();
+
+  std::thread th(&V8Worker::RouteMessage, this);
+  processing_thr = std::move(th);
 }
 
 V8Worker::~V8Worker() {
+  if (processing_thr.joinable()) {
+    processing_thr.join();
+  }
   context_.Reset();
   on_update_.Reset();
   on_delete_.Reset();
@@ -772,7 +776,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
   v8::TryCatch try_catch;
   if (debugger_started) {
-    agent->Start(GetIsolate(), platform, nullptr);
+    agent->Start(GetIsolate(), platform_, nullptr);
     agent->PauseOnNextJavascriptStatement("Break on start");
   }
 
@@ -881,12 +885,80 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   // javascript code isn't going beyond max_task_duration. Passing reference to
   // current object instead of having terminator thread make a copy of the
   // object.
-  // Spawned thread will execute the temininator loop logic in function call
-  // operator()
-  // for V8Worker class
+  // Spawned thread will execute the terminator loop logic in function call
+  // operator() for V8Worker class
   terminator_thr = new std::thread(std::ref(*this));
 
   return SUCCESS;
+}
+
+void V8Worker::RouteMessage() {
+  const flatbuf::payload::Payload *payload;
+  std::string key, val, doc_id, callback_fn, doc_ids_cb_fns, metadata;
+
+  while (true) {
+    worker_msg_t msg;
+    msg = worker_queue->pop();
+    payload = flatbuf::payload::GetPayload(
+        (const void *)msg.payload->payload.c_str());
+
+    LOG(logTrace) << " event: " << static_cast<int16_t>(msg.header->event)
+                  << " opcode: " << static_cast<int16_t>(msg.header->opcode)
+                  << " metadata: " << msg.header->metadata
+                  << " partition: " << msg.header->partition << '\n';
+
+    switch (getEvent(msg.header->event)) {
+    case eDCP:
+      switch (getDCPOpcode(msg.header->opcode)) {
+      case oDelete:
+        this->SendDelete(msg.header->metadata);
+        break;
+      case oMutation:
+        payload = flatbuf::payload::GetPayload(
+            (const void *)msg.payload->payload.c_str());
+        val.assign(payload->value()->str());
+        metadata.assign(msg.header->metadata);
+        this->SendUpdate(val, metadata, "json");
+        break;
+      default:
+        break;
+      }
+      break;
+    case eTimer:
+      switch (getTimerOpcode(msg.header->opcode)) {
+      case oDocTimer:
+        payload = flatbuf::payload::GetPayload(
+            (const void *)msg.payload->payload.c_str());
+        doc_id.assign(payload->doc_id()->str());
+        callback_fn.assign(payload->callback_fn()->str());
+        this->SendDocTimer(doc_id, callback_fn);
+        break;
+
+      case oNonDocTimer:
+        payload = flatbuf::payload::GetPayload(
+            (const void *)msg.payload->payload.c_str());
+        doc_ids_cb_fns.assign(payload->doc_ids_callback_fns()->str());
+        this->SendNonDocTimer(doc_ids_cb_fns);
+        break;
+      default:
+        break;
+      }
+      break;
+    case eDebugger:
+      switch (getDebuggerOpcode(msg.header->opcode)) {
+      case oDebuggerStart:
+        this->StartDebugger();
+        break;
+      case oDebuggerStop:
+        this->StopDebugger();
+        break;
+      default:
+        break;
+      }
+    default:
+      break;
+    }
+  }
 }
 
 bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
@@ -1090,6 +1162,21 @@ void V8Worker::StopDebugger() {
 }
 
 std::string V8Worker::GetSourceMap() { return source_map_; }
+
+void V8Worker::Enqueue(header_t *h, message_t *p) {
+  const flatbuf::payload::Payload *payload;
+  std::string key, val;
+  payload = flatbuf::payload::GetPayload((const void *)p->payload.c_str());
+
+  worker_msg_t msg;
+  msg.header = h;
+  msg.payload = p;
+  LOG(logTrace) << "Inserting event: " << static_cast<int16_t>(h->event)
+                << " opcode: " << static_cast<int16_t>(h->opcode)
+                << " partition: " << h->partition
+                << " metadata: " << h->metadata << '\n';
+  worker_queue->push(msg);
+}
 
 const char *V8Worker::V8WorkerLastException() { return last_exception.c_str(); }
 
