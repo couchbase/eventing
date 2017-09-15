@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
-	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/plasma"
 )
 
@@ -47,23 +47,9 @@ func (c *Consumer) plasmaPersistAll() {
 	for {
 		select {
 		case <-c.persistAllTicker.C:
-			vbPlasmaStoreMap := make(map[uint16]*plasma.Plasma)
-
-			c.plasmaStoreRWMutex.RLock()
-			for vb, s := range c.vbPlasmaStoreMap {
-				vbPlasmaStoreMap[vb] = s
-			}
-			c.plasmaStoreRWMutex.RUnlock()
-
-			for vb, s := range vbPlasmaStoreMap {
-				if s == nil {
-					continue
-				}
-
-				s.PersistAll()
-				seqNo := c.vbProcessingStats.getVbStat(vb, "plasma_last_seq_no_stored")
-				c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_persisted", seqNo)
-			}
+			c.vbPlasmaStore.PersistAll()
+			// seqNo := c.vbProcessingStats.getVbStat(vb, "plasma_last_seq_no_stored")
+			// c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_persisted", seqNo)
 
 		case <-c.stopPlasmaPersistCh:
 			return

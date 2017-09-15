@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/producer"
 	"github.com/couchbase/eventing/service_manager"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/plasma"
 )
 
@@ -52,7 +52,6 @@ func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid s
 	config.Set("rest_port", s.restPort)
 
 	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s)
-	s.initPlasmaHandles()
 
 	return s
 }
@@ -217,11 +216,8 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
-	// Grabbing read lock because s.vbPlasmaStoreMap is being passed to newly spawned producer
-	s.plasmaRWMutex.RLock()
 	p := producer.NewProducer(appName, s.eventingAdminPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
-		s.restPort, s.uuid, s, s.vbPlasmaStoreMap)
-	s.plasmaRWMutex.RUnlock()
+		s.restPort, s.uuid, s)
 
 	token := s.superSup.Add(p)
 	s.mu.Lock()

@@ -15,14 +15,14 @@ import (
 	"unsafe"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/eventing/timer_transfer"
-	"github.com/couchbase/eventing/util"
-	cblib "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/timer_transfer"
+	"github.com/couchbase/eventing/util"
+	cblib "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/plasma"
 )
 
@@ -32,7 +32,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 	cppWorkerThrCount, vbOwnershipGiveUpRoutineCount, vbOwnershipTakeoverRoutineCount int,
 	bucket, eventingAdminPort, eventingDir, logLevel, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
-	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStoreMap map[uint16]*plasma.Plasma,
+	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
 	socketTimeout time.Duration) *Consumer {
 
 	var b *couchbase.Bucket
@@ -107,6 +107,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		vbnos:        vbnos,
 		vbOwnershipGiveUpRoutineCount:   vbOwnershipGiveUpRoutineCount,
 		vbOwnershipTakeoverRoutineCount: vbOwnershipTakeoverRoutineCount,
+		vbPlasmaStore:                   vbPlasmaStore,
 		vbPlasmaReader:                  make(map[uint16]*plasma.Writer),
 		vbPlasmaWriter:                  make(map[uint16]*plasma.Writer),
 		vbProcessingStats:               newVbProcessingStats(app.AppName),
@@ -115,12 +116,6 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		vbsRemainingToRestream:          make([]uint16, 0),
 		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
 		writeBatchSeqnoMap:              make(map[uint16]uint64),
-	}
-
-	consumer.vbPlasmaStoreMap = make(map[uint16]*plasma.Plasma)
-
-	for vb, store := range vbPlasmaStoreMap {
-		consumer.vbPlasmaStoreMap[vb] = store
 	}
 
 	return consumer
@@ -187,7 +182,7 @@ func (c *Consumer) Serve() {
 	// Initialises timer processing worker instances
 	c.vbTimerProcessingWorkerAssign(true)
 
-	go c.plasmaPersistAll()
+	// go c.plasmaPersistAll()
 
 	// doc_id timer events
 	for _, r := range c.timerProcessingRunningWorkers {

@@ -12,15 +12,15 @@ import (
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/consumer"
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/plasma"
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid string,
-	superSup common.EventingSuperSup, vbPlasmaStoreMap map[uint16]*plasma.Plasma) *Producer {
+	superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                appName,
 		eventingAdminPort:      eventingAdminPort,
@@ -36,8 +36,7 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 		superSup:               superSup,
 		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
 		uuid:                   uuid,
-		vbPlasmaStoreMap:       vbPlasmaStoreMap,
-		workerNameConsumerMap:  make(map[string]common.EventingConsumer),
+		workerNameConsumerMap: make(map[string]common.EventingConsumer),
 	}
 
 	p.eventingNodeUUIDs = append(p.eventingNodeUUIDs, uuid)
@@ -55,6 +54,12 @@ func (p *Producer) Serve() {
 	err = p.vbEventingNodeAssign()
 	if err != nil {
 		logging.Fatalf("PRDR[%s:%d] Failure while assigning vbuckets to workers, err: %v", p.appName, p.LenRunningConsumers(), err)
+		return
+	}
+
+	err = p.openPlasmaStore()
+	if err != nil {
+		logging.Fatalf("PRDR[%s:%d] Failure opening up plasma instance, err: %v", p.appName, p.LenRunningConsumers(), err)
 		return
 	}
 
@@ -211,7 +216,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold, p.socketWriteBatchSize,
 		p.timerWorkerPoolSize, p.cppWorkerThrCount, p.vbOwnershipGiveUpRoutineCount,
 		p.vbOwnershipTakeoverRoutineCount, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
-		p.tcpPort, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStoreMap,
+		p.tcpPort, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStore,
 		p.socketTimeout)
 
 	p.Lock()

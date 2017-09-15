@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/plasma"
 )
 
@@ -293,7 +293,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 					logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v message received from super supervisor: %#v",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, msg)
 					c.plasmaStoreRWMutex.Lock()
-					c.vbPlasmaStoreMap[vb] = msg.store
+					// c.vbPlasmaStoreMap[vb] = msg.store
 					c.plasmaStoreRWMutex.Unlock()
 
 					return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, &cas, true, false)
@@ -326,7 +326,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 			logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v message received from super supervisor: %#v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, msg)
 			c.plasmaStoreRWMutex.Lock()
-			c.vbPlasmaStoreMap[vb] = msg.store
+			// c.vbPlasmaStoreMap[vb] = msg.store
 			c.plasmaStoreRWMutex.Unlock()
 
 			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, &cas, true, false)
@@ -467,7 +467,7 @@ func (c *Consumer) openPlasmaStore(vbPlasmaDir string, vb uint16) (*plasma.Plasm
 	}
 
 	c.plasmaStoreRWMutex.Lock()
-	c.vbPlasmaStoreMap[vb] = store
+	// c.vbPlasmaStoreMap[vb] = store
 	c.plasmaStoreRWMutex.Unlock()
 
 	logging.Tracef("CRDP[%s:%s:%s:%d] vb: %v Signalling super supervisor about plasma timer data transfer finish, dir: %v",
@@ -504,19 +504,21 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 }
 
 func (c *Consumer) closePlasmaHandle(vb uint16) {
-	c.plasmaStoreRWMutex.RLock()
-	store, ok := c.vbPlasmaStoreMap[vb]
-	c.plasmaStoreRWMutex.RUnlock()
+	/*
+		c.plasmaStoreRWMutex.RLock()
+	    store, ok := c.vbPlasmaStoreMap[vb]
+		c.plasmaStoreRWMutex.RUnlock()
 
-	if ok {
-		// Persist all in-flight data in-memory for plasma and then close the instance
-		store.PersistAll()
-		store.Close()
+		if ok {
+			// Persist all in-flight data in-memory for plasma and then close the instance
+			store.PersistAll()
+			store.Close()
 
-		c.plasmaStoreRWMutex.Lock()
-		delete(c.vbPlasmaStoreMap, vb)
-		c.plasmaStoreRWMutex.Unlock()
-	}
+			c.plasmaStoreRWMutex.Lock()
+			delete(c.vbPlasmaStoreMap, vb)
+			c.plasmaStoreRWMutex.Unlock()
+		}
+	*/
 }
 
 func (c *Consumer) checkIfConsumerShouldOwnVb(vb uint16, workerName string) bool {

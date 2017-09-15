@@ -30,6 +30,12 @@ const (
 	// for instantiating V8 Debugger instance
 	startDebuggerFlag    = "startDebugger"
 	debuggerInstanceAddr = "debuggerInstAddr"
+
+	// Plasma related constants
+	autoLssCleaning  = false
+	maxDeltaChainLen = 30
+	maxPageItems     = 100
+	minPageItems     = 10
 )
 
 type appStatus uint16
@@ -136,7 +142,7 @@ type Producer struct {
 	// vbucket to eventing node assignment
 	vbEventingNodeAssignMap map[uint16]string
 
-	vbPlasmaStoreMap map[uint16]*plasma.Plasma
+	vbPlasmaStore *plasma.Plasma
 
 	// copy of KV vbmap, needed while opening up dcp feed
 	kvVbMap map[uint16]string

@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/dcp"
+	mcd "github.com/couchbase/eventing/dcp/transport"
+	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/timer_transfer"
 	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
-	"github.com/couchbase/eventing/dcp"
-	mcd "github.com/couchbase/eventing/dcp/transport"
-	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/plasma"
 )
 
@@ -210,7 +210,7 @@ type Consumer struct {
 	timerAddrs          map[string]map[string]string
 	plasmaReaderRWMutex *sync.RWMutex
 	plasmaStoreRWMutex  *sync.RWMutex
-	vbPlasmaStoreMap    map[uint16]*plasma.Plasma // Access controlled by plasmaStoreRWMutex
+	vbPlasmaStore       *plasma.Plasma
 	vbPlasmaWriter      map[uint16]*plasma.Writer // Access controlled by plasmaStoreRWMutex
 	vbPlasmaReader      map[uint16]*plasma.Writer // Access controlled by plasmaReaderRWMutex
 
