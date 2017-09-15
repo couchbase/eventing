@@ -11,17 +11,20 @@
     </div>
   </mn-element-cargo>
   <form name="formHandler">
-    <div class="handler-editor" name="handlerEditor" id="handler-editor"
+    <div class="functions-editor-wrapper">
+    <div class="functions-editor" name="handlerEditor" id="handler-editor"
          ng-model="handlerCtrl.handler"
          ng-readonly="handlerCtrl.editorDisabled"
          ui-ace="{onLoad: aceLoaded, onChange: aceChanged, useWrapMode: true, showGutter: true, mode: 'javascript', require: ['ace/ext/language_tools'], advanced: {enableSnippets: true, enableBasicAutocompletion: true, enableLiveAutocompletion: true}}">
     </div>
+  </div>
   </form>
-  <br/>
-  <div class="row">
+  <div class="panel-footer spaced">
     <div class="flex-left">
-      <button ng-click="handlerCtrl.debugApp()"
-              ng-disabled="handlerCtrl.debugDisabled">Debug
+      <button
+         ng-click="handlerCtrl.debugApp()"
+         ng-disabled="handlerCtrl.debugDisabled">
+        Debug
       </button>
       <span class="fa-stack icon-info"
             uib-tooltip="{{handlerCtrl.debugToolTip}}" tooltip-placement="top">
@@ -29,15 +32,16 @@
       <span class="icon fa-info fa-stack-1x"></span>
       </span>
     </div>
-    <div class="flex-right">
-      <button ng-click="handlerCtrl.cancelEdit()"
+
+    <div>
+      <a ng-click="handlerCtrl.cancelEdit()"
               ng-disabled="formHandler.handlerEditor.$pristine || handlerCtrl.disableCancelButton">
         Cancel
-      </button>&nbsp;
+      </a>
       <button ng-click="handlerCtrl.saveEdit()"
               ng-disabled="formHandler.handlerEditor.$pristine || handlerCtrl.disableSaveButton">
         Save
-      </button>&nbsp;
+      </button>
     </div>
   </div>
 </div>

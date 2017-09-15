@@ -1,44 +1,49 @@
 <!--This dialog will be used for delete and deploy-->
-<div class="dialog-sm">
+<div class="dialog-small">
   <div class="panel-header">
-    <h2>Confirm {{actionTitle}}</h2>
+    <h2>Confirm {{actionTitle}} Function</h2>
   </div>
   <div class="panel-content">
     <!--Delete action-->
-    <p>Are you sure you want to {{action}} <strong>{{appName}}</strong>?</p>
-    <p ng-if="action==='delete'" class="error field-error">Note: Deleting will
-      remove all function executions and
-      related artifacts!
-    </p>
+    <span ng-if="action==='delete'">
+      <div class="row flex-left">
+        <span class="icon fa-warning fa-2x red-3"></span>
+        <p>
+          Warning: Deleting will remove the function and related artifacts.
+          <br>Delete this function?
+        </p>
+      </div>
+    </span>
     <!--Deploy action-->
-    <div ng-if="action==='deploy'" class="cbui-table">
-      <div class="cbui-tablerow has-hover">
-        <span class="cbui-table-cell">
-        <label>Change feed boundary</label>
-        </span>
-        <span class="cbui-table-cell input-append">
-          <select ng-model="settings.changeFeedBoundary">
-            <option value="everything">Everything</option>
-            <option value="from_now">From now</option>
-          </select>
-        </span>
+    <div ng-if="action==='deploy'">
+      <p>
+        Execute the new function for all invocations henceforth.
+      </p>
+      <div class="formrow">
+          Feed boundary:<br>
+        <select ng-model="settings.changeFeedBoundary">
+          <option value="everything">Everything</option>
+          <option value="from_now">From now</option>
+        </select>
       </div>
-      <div class="cbui-tablerow has-hover">
-        <span class="cbui-table-cell">
-          <input type="checkbox" id="cleanup-timers" ng-model="settings.cleanupTimers"/>
-          <label for="cleanup-timers"><strong>Cleanup artifacts</strong></label>
-          <p class="error field-error">Note: The new function will be executed for
-            all invocations henceforth
-          </p>
-        </span>
+      <div class="formrow">
+        <input type="checkbox" id="cleanup-timers" ng-model="settings.cleanupTimers"/>
+        <label for="cleanup-timers">Cleanup artifacts?</label>
       </div>
+    </div>
+    <!--Undeploy action-->
+    <div ng-if="action==='undeploy'">
+      <p>
+        Stop executing this function for any invocations henceforth.
+      </p>
     </div>
   </div>
   <div class="panel-footer">
-    <a ng-click="$dismiss('cancel')">No</a>&nbsp;
-    <button
-        ng-click="$close('ok')">
-      Yes
+    <a ng-click="$dismiss('cancel')">Cancel</a>
+    <button ng-click="$close('ok')">
+      <span ng-if="action==='delete'">Delete Function</span>
+      <span ng-if="action==='deploy'">Deploy Function</span>
+      <span ng-if="action==='undeploy'">Undeploy Function</span>
     </button>
   </div>
 </div>

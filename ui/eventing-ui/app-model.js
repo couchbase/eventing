@@ -21,10 +21,10 @@ Application.prototype.enforceSchema = function() {
 Application.prototype.getProcessingStatus = function(inverted) {
     // Inverted case is used for the button.
     if (inverted) {
-        return this.settings.processing_status ? 'Disable' : 'Enable';
+        return this.settings.processing_status ? 'Pause' : 'Play';
     }
 
-    return this.settings.processing_status ? 'Enabled' : 'Disabled';
+    return this.settings.processing_status ? 'running' : 'paused';
 };
 
 Application.prototype.getDeploymentStatus = function(inverted) {
@@ -33,7 +33,7 @@ Application.prototype.getDeploymentStatus = function(inverted) {
         return this.settings.deployment_status ? 'Undeploy' : 'Deploy';
     }
 
-    return this.settings.deployment_status ? 'Deployed' : 'Undeployed';
+    return this.settings.deployment_status ? 'deployed' : 'undeployed';
 };
 
 Application.prototype.clone = function() {
