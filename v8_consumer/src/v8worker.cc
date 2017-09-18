@@ -790,7 +790,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   }
 #else
   std::string plain_js = script_to_execute;
-  #warning "jsify built without flex, n1ql will not work"
   LOG(logError) << "jsify built without flex, n1ql will not work\n";
 #endif
 
