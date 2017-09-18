@@ -19,6 +19,7 @@ js2header("../third_party/estools/estraverse.js" "js_estraverse" "gen/estraverse
 INCLUDE_DIRECTORIES(BEFORE ${LIBCOUCHBASE_INCLUDE_DIR} ${LIBUV_INCLUDE_DIR})
 
 FIND_PACKAGE(FLEX)
+FIND_PACKAGE(ZLIB)
 
 INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
                            ${V8_INCLUDE_DIR}
@@ -26,7 +27,6 @@ INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
                            ${CMAKE_CURRENT_BINARY_DIR}
                            ${CMAKE_CURRENT_SOURCE_DIR}
                            ${CMAKE_CURRENT_SOURCE_DIR}/include
-                           ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector
                            ${FLATBUFFERS_INCLUDE_DIR}
                            ${Platform_SOURCE_DIR}/include
                            ${CMAKE_INSTALL_PREFIX}/include)
@@ -45,13 +45,19 @@ SET(EVENTING_SOURCES
 SET(EVENTING_LIBRARIES
       ${V8_LIBRARIES} ${ICU_LIBRARIES} ${JEMALLOC_LIBRARIES}
       ${CURL_LIBRARIES} ${LIBCOUCHBASE_LIBRARIES} ${LIBUV_LIBRARIES}
-      platform eventing-inspector)
+      platform)
 
 IF(FLEX_FOUND)
-  FLEX_TARGET(jsify src/jsify.lex gen/jsify.cc)
+  FLEX_TARGET(jsify src/jsify.lex ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFLEX_FOUND")
-  SET(EVENTING_SOURCES ${EVENTING_SOURCES} gen/jsify.cc)
+  SET(EVENTING_SOURCES ${EVENTING_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc)
   SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} "-ll")
+ENDIF()
+
+IF(ZLIB_FOUND)
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DZLIB_FOUND")
+  INCLUDE_DIRECTORIES(AFTER ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector)
+  SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} eventing-inspector)
 ENDIF()
 
 ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})

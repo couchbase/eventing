@@ -775,10 +775,12 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::Context::Scope context_scope(context);
 
   v8::TryCatch try_catch;
+#ifdef ZLIB_FOUND
   if (debugger_started) {
     agent->Start(GetIsolate(), platform_, nullptr);
     agent->PauseOnNextJavascriptStatement("Break on start");
   }
+#endif
 
 #ifdef FLEX_FOUND
   std::string plain_js;
@@ -1139,6 +1141,7 @@ void V8Worker::SendDocTimer(std::string doc_id, std::string callback_fn) {
 }
 
 void V8Worker::StartDebugger() {
+#ifdef ZLIB_FOUND
   if (debugger_started) {
     LOG(logError) << "Debugger already started" << '\n';
     return;
@@ -1153,9 +1156,11 @@ void V8Worker::StartDebugger() {
   debugger_started = true;
   agent = new inspector::Agent(curr_host_addr, GetWorkingPath() + "/" +
                                                    app_name_ + "_frontend.url");
+#endif
 }
 
 void V8Worker::StopDebugger() {
+#ifdef ZLIB_FOUND
   if (debugger_started) {
     LOG(logInfo) << "Stopping Debugger" << '\n';
     debugger_started = false;
@@ -1164,6 +1169,7 @@ void V8Worker::StopDebugger() {
   } else {
     LOG(logError) << "Debugger wasn't started" << '\n';
   }
+#endif
 }
 
 std::string V8Worker::GetSourceMap() { return source_map_; }

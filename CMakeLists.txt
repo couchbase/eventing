@@ -9,7 +9,11 @@ INCLUDE (FindCouchbaseLibCouchbase)
 ADD_SUBDIRECTORY(flatbuf/schema)
 ADD_SUBDIRECTORY(v8_consumer)
 ADD_SUBDIRECTORY(ui)
-ADD_SUBDIRECTORY(third_party/inspector)
+
+FIND_PACKAGE(ZLIB)
+IF(ZLIB_FOUND)
+  ADD_SUBDIRECTORY(third_party/inspector)
+ENDIF()
 
 SET (LDFLAGS)
 IF (APPLE)
