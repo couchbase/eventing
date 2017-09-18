@@ -37,30 +37,14 @@ extern void setWorkerID(std::string ID);
 extern std::mutex log_mutex;
 
 static std::ostringstream &Logger(LogLevel level = logInfo) {
-  using namespace std::chrono;
-
-  auto now = system_clock::now();
-  auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
-
-  auto t = std::time(nullptr);
-  auto tm = *std::localtime(&t);
-
-  // %z format specifier will dump timezone offset as hhmm format
-  // Performing string splits to get hh:mm format - in order to make
-  // it consistent with golang format specifier
-  std::ostringstream time_fmt_os;
-  time_fmt_os << std::put_time(&tm, "%z");
-  std::string ts = time_fmt_os.str();
-  time_fmt_os.str(std::string());
+  time_t ctm;
+  std::time(&ctm);
+  char cts[128];
+  std::strftime(cts, sizeof(cts), "%Y-%m-%dT%H:%M:%S%z", std::localtime(&ctm));
+  std::string ts = cts;
 
   std::lock_guard<std::mutex> lock(log_mutex);
-  os << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
-  os << '.' << std::setfill('0') << std::setw(3) << ms.count();
-
-  os << ts.substr(0, ts.length() - 2);
-  os << ":";
-  os << ts.substr(ts.length() - 2);
-
+  os << ts.substr(0, ts.length() - 2) << ":" << ts.substr(ts.length() - 2);
   os << " " << LevelToString(level) << " ";
   os << "VWCP [" << appName << ":" << workerID << "] ";
   return os;
