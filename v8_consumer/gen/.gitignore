@@ -1,1 +1,6 @@
-*.h
+builtin.h
+escodegen.h
+esprima.h
+estraverse.h
+transpiler.h
+jsify.cc

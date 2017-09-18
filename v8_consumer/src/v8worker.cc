@@ -780,6 +780,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     agent->PauseOnNextJavascriptStatement("Break on start");
   }
 
+#ifdef FLEX_FOUND
   std::string plain_js;
   int code = Jsify(script_to_execute.c_str(), &plain_js);
   LOG(logTrace) << "jsified code: " << plain_js << '\n';
@@ -787,6 +788,11 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     LOG(logError) << "failed to jsify: " << code << '\n';
     return code;
   }
+#else
+  std::string plain_js = script_to_execute;
+  #warning "jsify built without flex, n1ql will not work"
+  LOG(logError) << "jsify built without flex, n1ql will not work\n";
+#endif
 
   std::string transpiler_js_src =
       std::string((const char *)js_esprima) + '\n' +
