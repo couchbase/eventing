@@ -43,7 +43,6 @@ SET(EVENTING_SOURCES
     src/log.cc src/transpiler.cc src/js_exception.cc)
 
 SET(EVENTING_LIBRARIES
-      -lssl -lcrypto
       ${V8_LIBRARIES} ${ICU_LIBRARIES} ${JEMALLOC_LIBRARIES}
       ${CURL_LIBRARIES} ${LIBCOUCHBASE_LIBRARIES} ${LIBUV_LIBRARIES}
       platform eventing-inspector)
