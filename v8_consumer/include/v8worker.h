@@ -79,6 +79,22 @@ typedef struct worker_msg_s {
   message_t *payload;
 } worker_msg_t;
 
+typedef struct server_settings_s {
+  std::string eventing_port;
+  std::string host_addr;
+  std::string kv_host_port;
+  std::string rbac_pass;
+  std::string rbac_user;
+} server_settings_t;
+
+typedef struct handler_config_s {
+  std::string app_name;
+  std::string dep_cfg;
+  int execution_timeout;
+  int lcb_inst_capacity;
+  bool enable_recursive_mutation;
+} handler_config_t;
+
 class Bucket;
 class ConnectionPool;
 class V8Worker;
@@ -97,10 +113,8 @@ extern bool enable_recursive_mutation;
 
 class V8Worker {
 public:
-  V8Worker(v8::Platform *platform, std::string app_name, std::string dep_cfg,
-           std::string curr_host_addr, std::string kv_host_port,
-           std::string rbac_user, std::string rbac_pass, int lcb_inst_capacity,
-           int execution_timeout, bool enable_recursive_mutation);
+  V8Worker(v8::Platform *platform, handler_config_t *config,
+           server_settings_t *settings);
   ~V8Worker();
 
   void operator()() const {
@@ -164,7 +178,8 @@ public:
   std::string handler_code_;
   std::string app_name_;
 
-  std::string curr_host_addr;
+  std::string curr_eventing_port;
+  std::string curr_host;
   std::string cb_kv_endpoint;
   std::string cb_source_bucket;
 

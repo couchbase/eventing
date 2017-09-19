@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 func (c *Consumer) controlRoutine() {

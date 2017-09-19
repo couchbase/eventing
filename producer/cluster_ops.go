@@ -7,9 +7,9 @@ import (
 	"unsafe"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/eventing/shared"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/shared"
+	"github.com/couchbase/eventing/util"
 )
 
 var getClusterInfoCacheOpCallback = func(args ...interface{}) error {

@@ -233,13 +233,14 @@ func makeDcpPayload(key, value []byte) []byte {
 	return builder.Bytes[builder.Head():]
 }
 
-func makeV8InitPayload(appName, currHostAddr, kvHostPort, depCfg, rbacUser, rbacPass string,
+func makeV8InitPayload(appName, currHost, eventingPort, kvHostPort, depCfg, rbacUser, rbacPass string,
 	capacity, executionTimeout int, enableRecursiveMutation bool) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
 
 	app := builder.CreateString(appName)
-	chp := builder.CreateString(currHostAddr)
+	ch := builder.CreateString(currHost)
+	ep := builder.CreateString(eventingPort)
 	dcfg := builder.CreateString(depCfg)
 	khp := builder.CreateString(kvHostPort)
 	rUser := builder.CreateString(rbacUser)
@@ -251,7 +252,8 @@ func makeV8InitPayload(appName, currHostAddr, kvHostPort, depCfg, rbacUser, rbac
 	payload.PayloadStart(builder)
 
 	payload.PayloadAddAppName(builder, app)
-	payload.PayloadAddCurrHostPort(builder, chp)
+	payload.PayloadAddCurrHost(builder, ch)
+	payload.PayloadAddCurrEventingPort(builder, ep)
 	payload.PayloadAddDepcfg(builder, dcfg)
 	payload.PayloadAddKvHostPort(builder, khp)
 	payload.PayloadAddRbacUser(builder, rUser)

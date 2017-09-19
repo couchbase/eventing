@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 var getHTTPServiceAuth = func(args ...interface{}) error {

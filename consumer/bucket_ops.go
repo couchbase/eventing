@@ -5,13 +5,13 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/couchbase/eventing/dcp"
+	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/shared"
 	"github.com/couchbase/eventing/util"
 	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
-	"github.com/couchbase/eventing/shared"
-	"github.com/couchbase/eventing/dcp"
-	"github.com/couchbase/eventing/logging"
 )
 
 var vbTakeoverCallback = func(args ...interface{}) error {

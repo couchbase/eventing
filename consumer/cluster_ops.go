@@ -5,8 +5,8 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {

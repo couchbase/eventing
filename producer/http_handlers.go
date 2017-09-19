@@ -8,8 +8,8 @@ import (
 	"time"
 
 	cm "github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 // RebalanceStatus assists in reporting back progress to ns_server via cbauth_service

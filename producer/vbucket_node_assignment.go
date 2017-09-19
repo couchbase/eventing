@@ -5,9 +5,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/eventing/shared"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/shared"
+	"github.com/couchbase/eventing/util"
 )
 
 // Generates the vbucket to eventing node assignment, ideally generated map should

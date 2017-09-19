@@ -212,15 +212,15 @@ func (c *Consumer) HandleV8Worker() {
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-	var currHostAddr string
+	var currHost string
 	h := c.HostPortAddr()
 	if h != "" {
-		currHostAddr = strings.Split(h, ":")[0]
+		currHost = strings.Split(h, ":")[0]
 	} else {
-		currHostAddr = "127.0.0.1"
+		currHost = "127.0.0.1"
 	}
 
-	payload := makeV8InitPayload(c.app.AppName, currHostAddr, c.producer.KvHostPorts()[0], c.producer.CfgData(),
+	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingAdminPort, c.producer.KvHostPorts()[0], c.producer.CfgData(),
 		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity, c.executionTimeout, c.enableRecursiveMutation)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)

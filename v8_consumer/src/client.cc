@@ -26,9 +26,10 @@ std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
 
 void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                          message_t *parsed_message) {
-  std::string app_name, dep_cfg, curr_host_port, kv_host_port, rbac_user,
-      rbac_pass, key, val, doc_id, callback_fn, doc_ids_cb_fns;
+  std::string key, val, doc_id, callback_fn, doc_ids_cb_fns;
   v8::Platform *platform;
+  std::unique_ptr<server_settings_t> server_settings;
+  std::unique_ptr<handler_config_t> handler_config;
 
   const flatbuf::payload::Payload *payload;
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
@@ -42,12 +43,23 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       payload = flatbuf::payload::GetPayload(
           (const void *)parsed_message->payload.c_str());
 
-      app_name.assign(payload->app_name()->str());
-      curr_host_port.assign(payload->curr_host_port()->str());
-      dep_cfg.assign(payload->depcfg()->str());
-      kv_host_port.assign(payload->kv_host_port()->str());
-      rbac_user.assign(payload->rbac_user()->str());
-      rbac_pass.assign(payload->rbac_pass()->str());
+      handler_config = std::unique_ptr<handler_config_t>(new handler_config_t);
+      server_settings =
+          std::unique_ptr<server_settings_t>(new server_settings_t);
+
+      handler_config->app_name.assign(payload->app_name()->str());
+      handler_config->dep_cfg.assign(payload->depcfg()->str());
+      handler_config->execution_timeout = payload->execution_timeout();
+      handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
+      handler_config->enable_recursive_mutation =
+          payload->enable_recursive_mutation();
+
+      server_settings->eventing_port.assign(
+          payload->curr_eventing_port()->str());
+      server_settings->host_addr.assign(payload->curr_host()->str());
+      server_settings->kv_host_port.assign(payload->kv_host_port()->str());
+      server_settings->rbac_pass.assign(payload->rbac_pass()->str());
+      server_settings->rbac_user.assign(payload->rbac_user()->str());
 
       LOG(logDebug) << "Loading app:" << app_name << '\n';
 
@@ -57,10 +69,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       v8::V8::Initialize();
 
       for (int16_t i = 0; i < thr_count; i++) {
-        V8Worker *w = new V8Worker(
-            platform, app_name, dep_cfg, curr_host_port, kv_host_port,
-            rbac_user, rbac_pass, payload->lcb_inst_capacity(),
-            payload->execution_timeout(), payload->enable_recursive_mutation());
+        V8Worker *w =
+            new V8Worker(platform, handler_config.get(), server_settings.get());
 
         LOG(logDebug) << "Init index: " << i << " V8Worker: " << w << '\n';
         this->workers[i] = w;

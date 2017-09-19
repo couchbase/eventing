@@ -2,8 +2,8 @@ package consumer
 
 import (
 	cm "github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/shared"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/shared"
 )
 
 // RebalanceTaskProgress reports progress to producer

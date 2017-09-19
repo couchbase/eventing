@@ -133,7 +133,8 @@ public:
                                       v8::Local<v8::Value> args[],
                                       int args_len);
   std::string Transpile(std::string user_code, std::string filename,
-                        std::string src_map_name, std::string host_addr);
+                        std::string src_map_name, std::string host_addr,
+                        std::string eventing_port);
   std::string JsFormat(std::string user_code);
   std::string GetSourceMap(std::string user_code, std::string filename);
   bool IsTimerCalled(std::string user_code);

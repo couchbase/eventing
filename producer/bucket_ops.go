@@ -3,9 +3,9 @@ package producer
 import (
 	"fmt"
 
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	cbbucket "github.com/couchbase/go-couchbase"
-	"github.com/couchbase/eventing/logging"
 )
 
 func (p *Producer) initMetadataBucketHandle() {

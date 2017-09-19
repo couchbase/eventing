@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 func newDebugClient(c *Consumer, appName, eventingPort, tcpPort, workerName string) *debugClient {
@@ -190,15 +190,15 @@ func (c *Consumer) startDebuggerServer() {
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-	var currHostAddr string
+	var currHost string
 	h := c.HostPortAddr()
 	if h != "" {
-		currHostAddr = strings.Split(h, ":")[0]
+		currHost = strings.Split(h, ":")[0]
 	} else {
-		currHostAddr = "127.0.0.1"
+		currHost = "127.0.0.1"
 	}
 
-	payload := makeV8InitPayload(c.app.AppName, currHostAddr, c.producer.KvHostPorts()[0], c.producer.CfgData(),
+	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingAdminPort, c.producer.KvHostPorts()[0], c.producer.CfgData(),
 		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity, c.executionTimeout, c.enableRecursiveMutation)
 	logging.Debugf("CRSD[%s:%s:%s:%d] Debug enabled V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.debugTCPPort, c.Pid(), c.enableRecursiveMutation)

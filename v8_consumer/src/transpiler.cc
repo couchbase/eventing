@@ -43,7 +43,8 @@ v8::Local<v8::Value> Transpiler::ExecTranspiler(std::string function,
 std::string Transpiler::Transpile(std::string handler_code,
                                   std::string src_filename,
                                   std::string src_map_name,
-                                  std::string host_addr) {
+                                  std::string host_addr,
+                                  std::string eventing_port) {
   v8::Local<v8::Value> args[2];
   args[0] = v8::String::NewFromUtf8(isolate, handler_code.c_str());
   args[1] = v8::String::NewFromUtf8(isolate, src_filename.c_str());
@@ -51,8 +52,8 @@ std::string Transpiler::Transpile(std::string handler_code,
   v8::String::Utf8Value utf8result(result);
 
   std::string src_transpiled = *utf8result;
-  src_transpiled += "\n//# sourceMappingURL=http://" + host_addr +
-                    ":25000/debugging/" + src_map_name;
+  src_transpiled += "\n//# sourceMappingURL=http://" + host_addr + ":" +
+                    eventing_port + "/debugging/" + src_map_name;
 
   return src_transpiled;
 }

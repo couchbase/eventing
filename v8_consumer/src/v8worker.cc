@@ -670,13 +670,12 @@ static void multi_op_callback(lcb_t cb_instance, int cbtype,
 
 void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
 
-V8Worker::V8Worker(v8::Platform *platform, std::string app_name,
-                   std::string dep_cfg, std::string host_addr,
-                   std::string kv_host_port, std::string rbac_user,
-                   std::string rbac_pass, int lcb_inst_capacity,
-                   int execution_timeout, bool enable_recursive_mutation)
-    : platform_(platform), rbac_pass(rbac_pass), curr_host_addr(host_addr) {
-  enableRecursiveMutation(enable_recursive_mutation);
+V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
+                   server_settings_t *settings)
+    : platform_(platform), rbac_pass(settings->rbac_pass),
+      curr_host(settings->host_addr),
+      curr_eventing_port(settings->eventing_port) {
+  enableRecursiveMutation(h_config->enable_recursive_mutation);
 
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
@@ -717,11 +716,11 @@ V8Worker::V8Worker(v8::Platform *platform, std::string app_name,
   context_.Reset(GetIsolate(), context);
   exception = JsException(isolate_);
 
-  app_name_ = app_name;
-  cb_kv_endpoint = kv_host_port;
+  app_name_ = h_config->app_name;
+  cb_kv_endpoint = settings->kv_host_port;
   execute_start_time = Time::now();
 
-  deployment_config *config = ParseDeployment(dep_cfg.c_str());
+  deployment_config *config = ParseDeployment(h_config->dep_cfg.c_str());
 
   cb_source_bucket.assign(config->source_bucket);
 
@@ -733,7 +732,7 @@ V8Worker::V8Worker(v8::Platform *platform, std::string app_name,
   debugger_started = false;
   execute_flag = false;
   shutdown_terminator = false;
-  max_task_duration = SECS_TO_NS * execution_timeout;
+  max_task_duration = SECS_TO_NS * h_config->execution_timeout;
 
   for (; it != config->component_configs.end(); it++) {
     if (it->first == "buckets") {
@@ -746,31 +745,34 @@ V8Worker::V8Worker(v8::Platform *platform, std::string app_name,
 
         bucket_handle =
             new Bucket(this, bucket_name.c_str(), cb_kv_endpoint.c_str(),
-                       bucket_alias.c_str(), rbac_user, rbac_pass);
+                       bucket_alias.c_str(), settings->rbac_user, rbac_pass);
 
         bucket_handles.push_back(bucket_handle);
       }
     }
   }
 
-  LOG(logInfo) << "Initialised V8Worker handle, app_name: " << app_name
-               << " curr_host_addr: " << curr_host_addr
-               << " kv_host_port: " << kv_host_port
-               << " rbac_user: " << rbac_user << " rbac_pass: " << rbac_pass
-               << " lcb_cap: " << lcb_inst_capacity
-               << " execution_timeout: " << execution_timeout
+  LOG(logInfo) << "Initialised V8Worker handle, app_name: "
+               << h_config->app_name << " curr_host: " << curr_host
+               << " curr_eventing_port: " << curr_eventing_port
+               << " kv_host_port: " << cb_kv_endpoint
+               << " rbac_user: " << settings->rbac_user
+               << " rbac_pass: " << rbac_pass
+               << " lcb_cap: " << h_config->lcb_inst_capacity
+               << " execution_timeout: " << h_config->execution_timeout
                << " enable_recursive_mutation: " << enable_recursive_mutation
                << '\n';
 
   connstr = "couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket.c_str() +
-            "?username=" + rbac_user + "&select_bucket=true";
+            "?username=" + settings->rbac_user + "&select_bucket=true";
 
   meta_connstr = "couchbase://" + cb_kv_endpoint + "/" +
-                 config->metadata_bucket.c_str() + "?username=" + rbac_user +
-                 "&select_bucket=true";
+                 config->metadata_bucket.c_str() +
+                 "?username=" + settings->rbac_user + "&select_bucket=true";
 
-  conn_pool = new ConnectionPool(lcb_inst_capacity, cb_kv_endpoint,
-                                 cb_source_bucket, rbac_user, rbac_pass);
+  conn_pool =
+      new ConnectionPool(h_config->lcb_inst_capacity, cb_kv_endpoint,
+                         cb_source_bucket, settings->rbac_user, rbac_pass);
   src_path = GetWorkingPath() + "/" + app_name_ + ".t.js";
   delete config;
 
@@ -879,7 +881,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   Transpiler transpiler(transpiler_js_src);
   script_to_execute =
       transpiler.Transpile(plain_js, app_name_ + ".js", app_name_ + ".map.json",
-                           curr_host_addr) +
+                           curr_host, curr_eventing_port) +
       '\n';
   source_map_ = transpiler.GetSourceMap(plain_js, app_name_ + ".js");
   LOG(logTrace) << "source map:" << source_map_ << '\n';
@@ -1277,9 +1279,9 @@ void V8Worker::StartDebugger() {
   }
 
   LOG(logInfo) << "Starting Debugger" << '\n';
-  agent = new inspector::Agent(curr_host_addr, GetWorkingPath() + "/" +
-                                                   app_name_ + "_frontend.url");
   debugger_started = true;
+  agent = new inspector::Agent(curr_host, GetWorkingPath() + "/" + app_name_ +
+                                              "_frontend.url");
 #endif
 }
 
