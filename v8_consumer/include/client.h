@@ -10,9 +10,6 @@ extern void(assert)(int);
 #include "message.h"
 #include "v8worker.h"
 
-#include <err.h>
-#include <errno.h>
-#include <execinfo.h>
 #include <map>
 #include <queue>
 #include <signal.h>
