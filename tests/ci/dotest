@@ -148,7 +148,7 @@ grep '\sfail\s*$' $WORKSPACE/test.log >> /tmp/fail.log
 grep 'FAIL\s*github.com/couchbase' $WORKSPACE/test.log >> /tmp/fail.log
 grep -- '--- FAIL:' $WORKSPACE/test.log >> /tmp/fail.log
 grep '^\s*2i' $WORKSPACE/test.log | grep 'fail\s*$' >> /tmp/fail.log
-skiplist="`cat skip.txt`"
+skiplist="`cat tests/ci/skip.txt`"
 for tst in $skiplist; do
   echo "$tst" | grep -qs '^\s*#' && continue
   echo "$tst" | grep -qs '^\s*$' && continue
