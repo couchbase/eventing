@@ -182,6 +182,22 @@ void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
                      ->ToObject(context)
                      .ToLocalChecked();
   auto log_fn = v8::Local<v8::Function>::Cast(console->Get(log_v8_str));
+
+#if defined(_WIN32) || defined(WIN32)
+  v8::Local<v8::Value> log_args[CONSOLE_LOG_MAX_ARITY];
+  auto i = 0;
+  for (; i < args.Length() && i < CONSOLE_LOG_MAX_ARITY; ++i) {
+    log_args[i] = args[i];
+  }
+
+  // Calling console.log with the args passed to log() function.
+  if (i < CONSOLE_LOG_MAX_ARITY) {
+    log_fn->Call(log_fn, args.Length(), log_args);
+  } else {
+    log_fn->Call(log_fn, CONSOLE_LOG_MAX_ARITY, log_args);
+  }
+
+#else
   v8::Local<v8::Value> log_args[args.Length()];
   for (auto i = 0; i < args.Length(); ++i) {
     log_args[i] = args[i];
@@ -189,6 +205,7 @@ void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   // Calling console.log with the args passed to log() function.
   log_fn->Call(log_fn, args.Length(), log_args);
+#endif
 }
 
 std::string ConvertToISO8601(std::string timestamp) {
@@ -485,8 +502,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 // Exception details will be appended to the first argument.
 std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch) {
   std::string out;
-  size_t scratchSize = 20;
-  char scratch[scratchSize]; // just some scratch space for sprintf
+  char scratch[EXCEPTION_STR_SIZE]; // just some scratch space for sprintf
 
   v8::HandleScope handle_scope(isolate);
   v8::String::Utf8Value exception(try_catch->Exception());
@@ -505,7 +521,7 @@ std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch) {
     const char *filename_string = ToCString(filename);
     int linenum = message->GetLineNumber();
 
-    snprintf(scratch, scratchSize, "%i", linenum);
+    snprintf(scratch, EXCEPTION_STR_SIZE, "%i", linenum);
     out.append(filename_string);
     out.append(":");
     out.append(scratch);
@@ -1208,7 +1224,7 @@ void V8Worker::SendNonDocTimer(std::string doc_ids_cb_fns) {
             context->Global()->Get(createUtf8String(GetIsolate(), fn));
         v8::Handle<v8::Function> cb_func = v8::Handle<v8::Function>::Cast(val);
 
-        v8::Handle<v8::Value> arg[0];
+        v8::Handle<v8::Value> arg[1];
 
         if (debugger_started) {
 #ifdef ZLIB_FOUND

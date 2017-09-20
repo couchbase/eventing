@@ -52,6 +52,8 @@ typedef std::chrono::nanoseconds nsecs;
 
 #define SECS_TO_NS 1000 * 1000 * 1000ULL
 #define LCB_OP_RETRY_INTERVAL 100 // in milliseconds
+#define EXCEPTION_STR_SIZE 20
+#define CONSOLE_LOG_MAX_ARITY 20
 
 typedef struct header_s {
   uint8_t event;
