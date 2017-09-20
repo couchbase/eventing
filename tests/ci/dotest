@@ -122,12 +122,9 @@ cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests
 go get -t ./... 1>/dev/null 2>&1
 
 # Unit tests
-echo "</pre><h4>Unit tests</h4><pre>"
-export phase=functional
-
-# Go tests
-export CBAUTH_REVRPC_URL="http://Administrator:asdasd@127.0.0.1:9000/query"
 echo "</pre><h4>Functional tests</h4><pre>"
+export phase=functional
+export CBAUTH_REVRPC_URL="http://Administrator:asdasd@127.0.0.1:9000/query"
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests
 GOMAXPROCS=16 echo "TODO: Plug in here: go test -timeout 4h -v" 2>&1 | tee -a $WORKSPACE/test.log
 collect_logs
