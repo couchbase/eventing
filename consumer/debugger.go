@@ -3,10 +3,10 @@ package consumer
 import (
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -27,9 +27,6 @@ func newDebugClient(c *Consumer, appName, eventingPort, tcpPort, workerName stri
 func (c *debugClient) Serve() {
 	c.cmd = exec.Command("eventing-consumer", c.appName, c.debugTCPPort, c.workerName,
 		strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.eventingPort, "debug")
-	c.cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
 
 	err := c.cmd.Start()
 	if err != nil {
@@ -54,9 +51,13 @@ func (c *debugClient) Stop() {
 
 	c.consumerHandle.debugListener.Close()
 
-	if c.osPid != 0 {
-		syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL)
+	if c.osPid > 1 {
+		ps, err := os.FindProcess(c.osPid)
+		if err != nil {
+			ps.Signal(os.Kill)
+		}
 	}
+
 }
 
 func (c *debugClient) String() string {
