@@ -7,7 +7,7 @@ if [ "$WORKSPACE" = "" ]; then
   exit 2
 fi
 
-for i in {1..60}; do
+for i in {1..240}; do
   cd $WORKSPACE
   sleep 60
   branch=unstable

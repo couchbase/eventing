@@ -53,8 +53,8 @@ func (c *debugClient) Stop() {
 
 	if c.osPid > 1 {
 		ps, err := os.FindProcess(c.osPid)
-		if err != nil {
-			ps.Signal(os.Kill)
+		if err == nil {
+			ps.Kill()
 		}
 	}
 
