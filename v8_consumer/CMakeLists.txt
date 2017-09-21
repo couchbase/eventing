@@ -9,14 +9,6 @@
 # or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-include(../convertjs/js2header.cmake)
-js2header("src/builtin.js" "js_builtin" "gen/builtin.h")
-js2header("src/transpiler.js" "js_transpiler" "gen/transpiler.h")
-js2header("../third_party/estools/esprima.js" "js_esprima" "gen/esprima.h")
-js2header("../third_party/estools/escodegen.js" "js_escodegen" "gen/escodegen.h")
-js2header("../third_party/estools/estraverse.js" "js_estraverse" "gen/estraverse.h")
-js2header("../third_party/source-map/source-map.js" "js_source_map" "gen/source-map.h")
-
 INCLUDE_DIRECTORIES(BEFORE ${LIBCOUCHBASE_INCLUDE_DIR} ${LIBUV_INCLUDE_DIR})
 
 FIND_PACKAGE(FLEX)
@@ -50,10 +42,13 @@ SET(EVENTING_LIBRARIES
 
 # All of below is temporary. Flex will be required and we will use c++ mode
 IF(FLEX_FOUND)
-  FLEX_TARGET(jsify src/jsify.lex ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc)
-  FILE(READ ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc JSIFY)
-  STRING(REPLACE "extern int yylex" "extern \"C\" int yylex" JSIFY "${JSIFY}")
-  FILE(WRITE ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc "${JSIFY}")
+  FLEX_TARGET(jsify src/jsify.lex ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.c)
+  ADD_CUSTOM_COMMAND(
+         OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc
+         COMMAND "${CMAKE_COMMAND}" --trace -P macros/fixjsify.cmake
+         DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.c
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  )
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFLEX_FOUND")
   SET(EVENTING_SOURCES ${EVENTING_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc)
   SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} ${FLEX_LIBRARIES})
@@ -65,6 +60,14 @@ IF(ZLIB_FOUND)
   INCLUDE_DIRECTORIES(AFTER ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector)
   SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} eventing-inspector)
 ENDIF()
+
+include(macros/js2header.cmake)
+js2header("src/builtin.js" "js_builtin" "gen/builtin.h")
+js2header("src/transpiler.js" "js_transpiler" "gen/transpiler.h")
+js2header("../third_party/estools/esprima.js" "js_esprima" "gen/esprima.h")
+js2header("../third_party/estools/escodegen.js" "js_escodegen" "gen/escodegen.h")
+js2header("../third_party/estools/estraverse.js" "js_estraverse" "gen/estraverse.h")
+js2header("../third_party/source-map/source-map.js" "js_source_map" "gen/source-map.h")
 
 ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})
 TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES})
