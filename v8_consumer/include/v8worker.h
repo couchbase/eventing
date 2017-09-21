@@ -111,6 +111,8 @@ V8Worker *UnwrapV8WorkerInstance(v8::Local<v8::Object> obj);
 
 std::map<std::string, std::string> *UnwrapMap(v8::Local<v8::Object> obj);
 
+int vasprintf(char **strp, const char *fmt, va_list ap);
+
 extern bool enable_recursive_mutation;
 
 class V8Worker {

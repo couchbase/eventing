@@ -142,7 +142,12 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
 
   if (!(resp->rflags & LCB_RESP_F_FINAL)) {
     char *row_str;
+
+#if defined(_WIN32) || defined(WIN32)
+    vasprintf(&row_str, "%.*s\n", static_cast<int>(resp->nrow), resp->row);
+#else
     asprintf(&row_str, "%.*s\n", static_cast<int>(resp->nrow), resp->row);
+#endif
 
     v8::Local<v8::Value> args[1];
     args[0] = v8::JSON::Parse(v8::String::NewFromUtf8(isolate, row_str));
@@ -177,7 +182,12 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
 
   if (!(resp->rflags & LCB_RESP_F_FINAL)) {
     char *row_str;
+
+#if defined(_WIN32) || defined(WIN32)
+    vasprintf(&row_str, "%.*s\n", static_cast<int>(resp->nrow), resp->row);
+#else
     asprintf(&row_str, "%.*s\n", static_cast<int>(resp->nrow), resp->row);
+#endif
 
     // Append the result to the rows vector.
     q_handler.block_handler->rows.push_back(std::string(row_str));

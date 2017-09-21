@@ -12,7 +12,6 @@
 #define LCB_NO_DEPR_CXX_CTORS
 #undef NDEBUG
 
-#include <arpa/inet.h>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -71,21 +70,6 @@ static void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   Result *result = reinterpret_cast<Result *>(rb->cookie);
 
   result->rc = resp->rc;
-}
-
-// convert Little endian unsigned int64 to Big endian notation
-uint64_t htonll_64(uint64_t value) {
-  static const int num = 42;
-
-  if (*reinterpret_cast<const char *>(&num) == num) {
-    const uint32_t high_part = htonl(static_cast<uint32_t>(value >> 32));
-    const uint32_t low_part =
-        htonl(static_cast<uint32_t>(value & 0xFFFFFFFFLL));
-
-    return (static_cast<uint64_t>(low_part) << 32) | high_part;
-  } else {
-    return value;
-  }
 }
 
 Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
