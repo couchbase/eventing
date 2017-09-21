@@ -52,7 +52,15 @@ enum RETURN_CODE {
 };
 
 #if defined(WIN32) || defined(_WIN32)
-int vasprintf(char **strp, const char *fmt, va_list ap) {
+int WinSprintf(char **strp, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int r = Wvasprintf(strp, fmt, ap);
+    va_end(ap);
+    return r;
+}
+
+int Wvasprintf(char **strp, const char *fmt, va_list ap) {
   // _vscprintf tells you how big the buffer needs to be
   int len = _vscprintf(fmt, ap);
   if (len == -1) {

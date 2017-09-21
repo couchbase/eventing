@@ -144,7 +144,7 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
     char *row_str;
 
 #if defined(_WIN32) || defined(WIN32)
-    vasprintf(&row_str, "%.*s\n", static_cast<int>(resp->nrow), resp->row);
+    WinSprintf(&row_str, "%.*s\n", static_cast<int>(resp->nrow), resp->row);
 #else
     asprintf(&row_str, "%.*s\n", static_cast<int>(resp->nrow), resp->row);
 #endif
@@ -184,7 +184,7 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
     char *row_str;
 
 #if defined(_WIN32) || defined(WIN32)
-    vasprintf(&row_str, "%.*s\n", static_cast<int>(resp->nrow), resp->row);
+    WinSprintf(&row_str, "%.*s\n", static_cast<int>(resp->nrow), resp->row);
 #else
     asprintf(&row_str, "%.*s\n", static_cast<int>(resp->nrow), resp->row);
 #endif
