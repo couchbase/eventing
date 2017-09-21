@@ -48,13 +48,18 @@ SET(EVENTING_LIBRARIES
       ${CURL_LIBRARIES} ${LIBCOUCHBASE_LIBRARIES} ${LIBUV_LIBRARIES}
       platform)
 
+# All of below is temporary. Flex will be required and we will use c++ mode
 IF(FLEX_FOUND)
   FLEX_TARGET(jsify src/jsify.lex ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc)
+  FILE(READ ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc JSIFY)
+  STRING(REPLACE "extern int yylex" "extern \"C\" int yylex" JSIFY "${JSIFY}")
+  FILE(WRITE ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc "${JSIFY}")
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFLEX_FOUND")
   SET(EVENTING_SOURCES ${EVENTING_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc)
   SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} ${FLEX_LIBRARIES})
 ENDIF()
 
+# All of below is temporary. Zlib will be required
 IF(ZLIB_FOUND)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DZLIB_FOUND")
   INCLUDE_DIRECTORIES(AFTER ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector)
