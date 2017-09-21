@@ -8,6 +8,7 @@ table VbsThreadMap {
 table Payload {
   app_name:string;
   depcfg:string;
+  eventing_dir:string;
   curr_host:string;
   curr_eventing_port:string;
   kv_host_port:string;

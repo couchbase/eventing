@@ -199,7 +199,7 @@ func (c *Consumer) startDebuggerServer() {
 		currHost = "127.0.0.1"
 	}
 
-	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingAdminPort, c.producer.KvHostPorts()[0], c.producer.CfgData(),
+	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.producer.KvHostPorts()[0], c.producer.CfgData(),
 		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity, c.executionTimeout, c.enableRecursiveMutation)
 	logging.Debugf("CRSD[%s:%s:%s:%d] Debug enabled V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.debugTCPPort, c.Pid(), c.enableRecursiveMutation)

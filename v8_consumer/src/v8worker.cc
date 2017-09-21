@@ -53,25 +53,25 @@ enum RETURN_CODE {
 
 #if defined(WIN32) || defined(_WIN32)
 int vasprintf(char **strp, const char *fmt, va_list ap) {
-    // _vscprintf tells you how big the buffer needs to be
-    int len = _vscprintf(fmt, ap);
-    if (len == -1) {
-        return -1;
-    }
-    size_t size = (size_t)len + 1;
-    char *str = static_cast<char *>(malloc(size));
-    if (!str) {
-        return -1;
-    }
+  // _vscprintf tells you how big the buffer needs to be
+  int len = _vscprintf(fmt, ap);
+  if (len == -1) {
+    return -1;
+  }
+  size_t size = (size_t)len + 1;
+  char *str = static_cast<char *>(malloc(size));
+  if (!str) {
+    return -1;
+  }
 
-    // vsprintf_s is the "secure" version of vsprintf
-    int r = vsprintf_s(str, len + 1, fmt, ap);
-    if (r == -1) {
-        free(str);
-        return -1;
-    }
-    *strp = str;
-    return r;
+  // vsprintf_s is the "secure" version of vsprintf
+  int r = vsprintf_s(str, len + 1, fmt, ap);
+  if (r == -1) {
+    free(str);
+    return -1;
+  }
+  *strp = str;
+  return r;
 }
 #endif
 
@@ -96,11 +96,6 @@ v8::Local<v8::String> createUtf8String(v8::Isolate *isolate, const char *str) {
 std::string ObjectToString(v8::Local<v8::Value> value) {
   v8::String::Utf8Value utf8_value(value);
   return std::string(*utf8_value);
-}
-
-std::string GetWorkingPath() {
-  char temp[MAXPATHLEN];
-  return (getcwd(temp, MAXPATHLEN) ? std::string(temp) : std::string(""));
 }
 
 std::string ToString(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
@@ -714,7 +709,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    server_settings_t *settings)
     : platform_(platform), rbac_pass(settings->rbac_pass),
       curr_host(settings->host_addr),
-      curr_eventing_port(settings->eventing_port) {
+      curr_eventing_port(settings->eventing_port),
+      eventing_dir(settings->eventing_dir) {
   enableRecursiveMutation(h_config->enable_recursive_mutation);
 
   v8::Isolate::CreateParams create_params;
@@ -813,7 +809,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   conn_pool =
       new ConnectionPool(h_config->lcb_inst_capacity, cb_kv_endpoint,
                          cb_source_bucket, settings->rbac_user, rbac_pass);
-  src_path = GetWorkingPath() + "/" + app_name_ + ".t.js";
+  src_path = eventing_dir + "/" + app_name_ + ".t.js";
   delete config;
 
   this->worker_queue = new Queue<worker_msg_t>();
@@ -876,7 +872,7 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
 #endif
 
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
-  LOG(logInfo) << "getcwd: " << GetWorkingPath() << '\n';
+  LOG(logInfo) << "Eventing dir: " << eventing_dir << '\n';
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
@@ -1320,7 +1316,7 @@ void V8Worker::StartDebugger() {
 
   LOG(logInfo) << "Starting Debugger" << '\n';
   debugger_started = true;
-  agent = new inspector::Agent(curr_host, GetWorkingPath() + "/" + app_name_ +
+  agent = new inspector::Agent(curr_host, eventing_dir + "/" + app_name_ +
                                               "_frontend.url");
 #endif
 }

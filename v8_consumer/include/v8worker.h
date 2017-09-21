@@ -82,6 +82,7 @@ typedef struct worker_msg_s {
 } worker_msg_t;
 
 typedef struct server_settings_s {
+  std::string eventing_dir;
   std::string eventing_port;
   std::string host_addr;
   std::string kv_host_port;
@@ -186,6 +187,7 @@ public:
   std::string curr_host;
   std::string cb_kv_endpoint;
   std::string cb_source_bucket;
+  std::string eventing_dir;
 
   volatile bool execute_flag;
   volatile bool shutdown_terminator;

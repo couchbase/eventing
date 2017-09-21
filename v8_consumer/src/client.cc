@@ -54,6 +54,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       handler_config->enable_recursive_mutation =
           payload->enable_recursive_mutation();
 
+      server_settings->eventing_dir.assign(payload->eventing_dir()->str());
       server_settings->eventing_port.assign(
           payload->curr_eventing_port()->str());
       server_settings->host_addr.assign(payload->curr_host()->str());
