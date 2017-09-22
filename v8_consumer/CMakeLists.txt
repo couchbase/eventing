@@ -42,12 +42,12 @@ SET(EVENTING_LIBRARIES
       platform)
 
 # All of below is temporary. Flex will be required and we will use c++ mode
-IF(FLEX_FOUND)
-  FLEX_TARGET(jsify src/jsify.lex ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc)
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFLEX_FOUND -DYY_DECL=\"extern \\\"C\\\" int yylex (void)\"")
-  SET(EVENTING_SOURCES ${EVENTING_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc)
-  SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} ${FLEX_LIBRARIES})
-ENDIF()
+# IF(FLEX_FOUND)
+#  FLEX_TARGET(jsify src/jsify.lex ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc)
+#  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFLEX_FOUND -DYY_DECL=\"extern \\\"C\\\" int yylex (void)\"")
+#  SET(EVENTING_SOURCES ${EVENTING_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc)
+#  SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} ${FLEX_LIBRARIES})
+# ENDIF()
 
 # All of below is temporary. Zlib will be required
 IF(ZLIB_FOUND)
