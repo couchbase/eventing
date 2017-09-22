@@ -9,10 +9,9 @@
 # or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-ADD_SUBDIRECTORY(gen)
-
 INCLUDE_DIRECTORIES(BEFORE ${LIBCOUCHBASE_INCLUDE_DIR} ${LIBUV_INCLUDE_DIR})
 
+FIND_PACKAGE(FLEX)
 FIND_PACKAGE(ZLIB)
 
 INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
@@ -42,6 +41,14 @@ SET(EVENTING_LIBRARIES
       ${CURL_LIBRARIES} ${LIBCOUCHBASE_LIBRARIES} ${LIBUV_LIBRARIES}
       platform)
 
+# All of below is temporary. Flex will be required and we will use c++ mode
+# IF(FLEX_FOUND)
+#  FLEX_TARGET(jsify src/jsify.lex ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc)
+#  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFLEX_FOUND -DYY_DECL=\"extern \\\"C\\\" int yylex (void)\"")
+#  SET(EVENTING_SOURCES ${EVENTING_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/gen/jsify.cc)
+#  SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} ${FLEX_LIBRARIES})
+# ENDIF()
+
 # All of below is temporary. Zlib will be required
 IF(ZLIB_FOUND)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DZLIB_FOUND")
@@ -49,7 +56,14 @@ IF(ZLIB_FOUND)
   SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} eventing-inspector)
 ENDIF()
 
+include(macros/js2header.cmake)
+js2header("src/builtin.js" "js_builtin" "gen/builtin.h")
+js2header("src/transpiler.js" "js_transpiler" "gen/transpiler.h")
+js2header("../third_party/estools/esprima.js" "js_esprima" "gen/esprima.h")
+js2header("../third_party/estools/escodegen.js" "js_escodegen" "gen/escodegen.h")
+js2header("../third_party/estools/estraverse.js" "js_estraverse" "gen/estraverse.h")
+js2header("../third_party/source-map/source-map.js" "js_source_map" "gen/source-map.h")
+
 ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})
-ADD_DEPENDENCIES(eventing-consumer generated)
 TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES})
 INSTALL(TARGETS eventing-consumer RUNTIME DESTINATION bin)
