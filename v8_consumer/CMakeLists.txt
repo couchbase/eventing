@@ -33,7 +33,8 @@ SET(EVENTING_SOURCES
     src/client.cc src/commands.cc src/message.cc
     src/v8worker.cc src/assert.cc src/bucket.cc
     src/n1ql.cc src/parse_deployment.cc src/crc32c.cc
-    src/log.cc src/transpiler.cc src/js_exception.cc)
+    src/log.cc src/transpiler.cc src/js_exception.cc
+    src/utils.cc src/function_templates.cc)
 
 SET(EVENTING_LIBRARIES
       ${V8_LIBRARIES} ${ICU_LIBRARIES} ${JEMALLOC_LIBRARIES}

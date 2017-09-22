@@ -83,7 +83,7 @@ func init() {
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
 	c.socketTimeout = 5 * time.Second
 	c.executionTimeout = 1
-	c.cppWorkerThrCount = 2
+	c.cppWorkerThrCount = 1
 
 	client := newClient(c, "credit_score", port, "worker_0", "25000")
 	go client.Serve()
@@ -97,7 +97,7 @@ func init() {
 	c.sendWorkerThrMap(nil, false)
 	c.sendWorkerThrCount(0, false)
 
-	payload := makeV8InitPayload("credit_score", "localhost:25000", "localhost:12000", string(cfgData),
+	payload := makeV8InitPayload("credit_score", "localhost", "/tmp", "25000", "localhost:12000", string(cfgData),
 		"eventing", "asdasd", 5, 1, false)
 	c.sendInitV8Worker(payload, false)
 	c.sendLoadV8Worker(appCode, false)

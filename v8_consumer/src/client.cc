@@ -231,7 +231,7 @@ static void alloc_buffer(uv_handle_t *handle, size_t suggested_size,
   *buf = uv_buf_init(read_buffer->data(), read_buffer->capacity());
 }
 
-AppWorker::AppWorker() : main_loop_running(false), conn_handle(nullptr) {
+AppWorker::AppWorker() : conn_handle(nullptr), main_loop_running(false) {
   uv_loop_init(&main_loop);
   read_buffer.resize(MAX_BUF_SIZE);
   resp_msg = new (resp_msg_t);
@@ -282,7 +282,7 @@ void AppWorker::OnConnect(uv_connect_t *conn, int status) {
 
 int combineAsciiToInt(std::vector<int> *input) {
   int result = 0;
-  for (int i = 0; i < input->size(); i++) {
+  for (std::string::size_type i = 0; i < input->size(); i++) {
     if ((*input)[i] < 0) {
       result = result + pow(256, i) * (256 + (*input)[i]);
     } else {
@@ -319,8 +319,9 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
     }
     encoded_payload_size = combineAsciiToInt(&payload_entries);
 
-    int message_size = HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE +
-                       encoded_header_size + encoded_payload_size;
+    std::string::size_type message_size =
+        HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE + encoded_header_size +
+        encoded_payload_size;
 
     if (buf_base.length() < message_size) {
       next_message.assign(buf_base);
@@ -390,8 +391,6 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             auto r = flatbuf::response::CreateResponse(
                 builder, mV8_Worker_Config, oLogMessage, msg_offset);
             builder.Finish(r);
-
-            write_req_t *req = new (write_req_t);
 
             int s = builder.GetSize();
             char *size = (char *)&s;

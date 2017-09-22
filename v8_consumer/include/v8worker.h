@@ -29,6 +29,7 @@
 
 #include "commands.h"
 #include "crc32c.h"
+#include "function_templates.h"
 #ifdef ZLIB_FOUND
 #include "inspector_agent.h"
 #endif
@@ -36,6 +37,7 @@
 #include "log.h"
 #include "n1ql.h"
 #include "queue.h"
+#include "utils.h"
 
 #include "../../flatbuf/include/header_generated.h"
 #include "../../flatbuf/include/payload_generated.h"
@@ -51,10 +53,8 @@ typedef std::chrono::high_resolution_clock Time;
 typedef std::chrono::nanoseconds nsecs;
 
 #define SECS_TO_NS 1000 * 1000 * 1000ULL
-#define LCB_OP_RETRY_INTERVAL 100 // in milliseconds
-#define EXCEPTION_STR_SIZE 20
-#define CONSOLE_LOG_MAX_ARITY 20
 
+// Header frame structure for messages from Go world
 typedef struct header_s {
   uint8_t event;
   uint8_t opcode;
@@ -62,20 +62,13 @@ typedef struct header_s {
   std::string metadata;
 } header_t;
 
+// Flatbuffer encoded message from Go world
 typedef struct message_s {
   std::string header;
   std::string payload;
 } message_t;
 
-struct Result {
-  lcb_CAS cas;
-  lcb_error_t rc;
-  std::string value;
-  uint32_t exptime;
-
-  Result() : cas(0), rc(LCB_SUCCESS) {}
-};
-
+// Struct to contain flatbuffer decoded message from Go world
 typedef struct worker_msg_s {
   header_t *header;
   message_t *payload;
@@ -101,18 +94,6 @@ typedef struct handler_config_s {
 class Bucket;
 class ConnectionPool;
 class V8Worker;
-
-v8::Local<v8::String> createUtf8String(v8::Isolate *isolate, const char *str);
-std::string ObjectToString(v8::Local<v8::Value> value);
-std::string ToString(v8::Isolate *isolate, v8::Handle<v8::Value> object);
-
-lcb_t *UnwrapLcbInstance(v8::Local<v8::Object> obj);
-lcb_t *UnwrapV8WorkerLcbInstance(v8::Local<v8::Object> obj);
-V8Worker *UnwrapV8WorkerInstance(v8::Local<v8::Object> obj);
-
-std::map<std::string, std::string> *UnwrapMap(v8::Local<v8::Object> obj);
-
-int WinSprintf(char **strp, const char *fmt, ...);
 
 extern bool enable_recursive_mutation;
 
@@ -175,26 +156,25 @@ public:
 
   v8::Global<v8::ObjectTemplate> worker_template;
 
+  // lcb instances to source and metadata buckets
   lcb_t cb_instance;
   lcb_t meta_cb_instance;
 
+  std::string app_name_;
+  std::string handler_code_;
   std::string script_to_execute_;
   std::string source_map_;
-  std::string handler_code_;
-  std::string app_name_;
 
-  std::string curr_eventing_port;
-  std::string curr_host;
-  std::string cb_kv_endpoint;
   std::string cb_source_bucket;
-  std::string eventing_dir;
+  int64_t max_task_duration;
+
+  server_settings_t *settings;
 
   volatile bool execute_flag;
   volatile bool shutdown_terminator;
   volatile bool debugger_started;
 
   Time::time_point execute_start_time;
-  uint64_t max_task_duration;
 
   std::thread *terminator_thr;
   std::thread processing_thr;
@@ -206,7 +186,6 @@ public:
 private:
   std::string connstr;
   std::string meta_connstr;
-  std::string rbac_pass;
   std::string src_path;
 
   bool ExecuteScript(v8::Local<v8::String> script);

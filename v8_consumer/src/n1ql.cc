@@ -330,7 +330,7 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     auto result_array = v8::Array::New(isolate, static_cast<int>(rows.size()));
 
     // Populate the result array with the rows of the result.
-    for (int i = 0; i < rows.size(); ++i) {
+    for (std::string::size_type i = 0; i < rows.size(); ++i) {
       v8::Local<v8::Value> json_row =
           v8::JSON::Parse(v8::String::NewFromUtf8(isolate, rows[i].c_str()));
       result_array->Set(static_cast<uint32_t>(i), json_row);
@@ -354,7 +354,7 @@ void SetReturnValue(const v8::FunctionCallbackInfo<v8::Value> &args,
   // return_obj contains the following properties.
   const std::vector<std::string> props({"code", "args", "data"});
 
-  for (int i = 0; i < props.size(); ++i) {
+  for (std::string::size_type i = 0; i < props.size(); ++i) {
     auto key = v8::String::NewFromUtf8(isolate, props[i].c_str());
     auto value = return_obj->Get(key);
     auto private_key = v8::Private::ForApi(isolate, key);
