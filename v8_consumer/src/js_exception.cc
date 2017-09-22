@@ -94,7 +94,7 @@ void JsException::Throw(lcb_t instance, lcb_error_t error,
 
   auto desc_arr =
       v8::Array::New(isolate, static_cast<int>(error_msgs.size() + 1));
-  for (auto i = 0; i < error_msgs.size(); ++i) {
+  for (std::string::size_type i = 0; i < error_msgs.size(); ++i) {
     auto desc = v8::String::NewFromUtf8(isolate, error_msgs[i].c_str());
     desc_arr->Set(static_cast<uint32_t>(i), desc);
   }

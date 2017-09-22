@@ -220,7 +220,7 @@ func (c *Consumer) HandleV8Worker() {
 		currHost = "127.0.0.1"
 	}
 
-	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingAdminPort, c.producer.KvHostPorts()[0], c.producer.CfgData(),
+	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.producer.KvHostPorts()[0], c.producer.CfgData(),
 		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity, c.executionTimeout, c.enableRecursiveMutation)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)

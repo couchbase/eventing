@@ -46,7 +46,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.toggleDeployment = function(app) {
                 var deploymentScope = $scope.$new(true);
                 deploymentScope.appName = app.appname;
-                deploymentScope.actionTitle = app.settings.deployment_status ? 'Undeployment' : 'Deployment';
+                deploymentScope.actionTitle = app.settings.deployment_status ? 'Undeploy' : 'Deploy';
                 deploymentScope.action = app.settings.deployment_status ? 'undeploy' : 'deploy';
                 deploymentScope.cleanupTimers = false;
 
@@ -380,7 +380,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 var bindings = ApplicationService.convertBindingToConfig(self.bindings);
                 if (JSON.stringify(appModel.depcfg.buckets) !== JSON.stringify(bindings)) {
                     $scope.appModel.depcfg.buckets = bindings;
-                    showWarningAlert('Bindings changed. Deploy for changes to take effect!');
+                    showWarningAlert('Bindings changed. Deploy for changes to take effect.');
                 }
 
                 // Deadline timeout must be greater than execution timeout.
@@ -480,7 +480,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 // Make the ace editor responsive to changes in browser dimensions.
                 function resizeEditor() {
                     var handlerEditor = $('#handler-editor');
-                    handlerEditor.width($(window).width() * 0.9);
+                    //handlerEditor.width($(window).width() * 0.85);
                     handlerEditor.height($(window).height() * 0.7);
                 }
 

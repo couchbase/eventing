@@ -2,9 +2,9 @@ package consumer
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/couchbase/eventing/logging"
@@ -23,9 +23,6 @@ func newClient(consumer *Consumer, appName, tcpPort, workerName, eventingAdminPo
 func (c *client) Serve() {
 	c.cmd = exec.Command("eventing-consumer", c.appName, c.tcpPort, c.workerName,
 		strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.eventingPort)
-	c.cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
 
 	err := c.cmd.Start()
 	if err != nil {
@@ -57,8 +54,12 @@ func (c *client) Stop() {
 
 	c.consumerHandle.gracefulShutdownChan <- struct{}{}
 	c.consumerHandle.stopCheckpointingCh <- struct{}{}
-	if c.osPid != 0 {
-		syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL)
+
+	if c.osPid > 1 {
+		ps, err := os.FindProcess(c.osPid)
+		if err == nil {
+			ps.Kill()
+		}
 	}
 }
 

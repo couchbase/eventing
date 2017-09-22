@@ -188,12 +188,8 @@ func (m *ServiceMgr) getLocalDebuggerURL(w http.ResponseWriter, r *http.Request)
 
 	logging.Infof("App: %v got request to get local V8 debugger url", appName)
 
-	dir, err := os.Getwd()
-	if err != nil {
-		logging.Infof("App: %v failed to get current working dir, err: %v", appName, err)
-		fmt.Fprintf(w, "")
-		return
-	}
+	cfg := m.config.Load()
+	dir := cfg["eventing_dir"].(string)
 
 	filePath := fmt.Sprintf("%s/%s_frontend.url", dir, appName)
 	u, err := ioutil.ReadFile(filePath)

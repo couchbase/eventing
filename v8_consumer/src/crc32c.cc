@@ -45,7 +45,7 @@ void initCrcTable() {
 
 // Check for availability of hardware-based CRC-32C
 void cpuid(uint32_t op, uint32_t reg[4]) {
-#if defined(_WIN64) || defined(_WIN32)
+#if defined(_WIN32) || defined(WIN32)
 #include <intrin.h>
   __cpuid((int *)reg, 1);
 #elif defined(__x86_64__)

@@ -1,13 +1,12 @@
-.handler-editor {
-    height: 800px;
-    width: 1800px;
-    border: 1px solid lightskyblue;
+.functions-editor {
+  width: 100%;
+  background-color: inherit;
 }
-
-.field-error {
-    font-size: 13px;
+.functions-editor-wrapper {
+  background-color: #f6f7f9;
+  padding-top: 1rem;
 }
-
-.settings-heading {
-    font-size: 20px;
+.functions-editor * {
+  line-height: 1.4rem !important;
+  font-size: 14px !important;
 }
