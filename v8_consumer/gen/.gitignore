@@ -4,4 +4,3 @@ esprima.h
 estraverse.h
 source-map.h
 transpiler.h
-jsify.cc
