@@ -1,0 +1,372 @@
+diff --git a/cluster_connect b/cluster_connect
+index d98bbea49..1a497b389 100755
+--- a/cluster_connect
++++ b/cluster_connect
+@@ -4,7 +4,7 @@ import os, sys, getopt, urllib2, urllib, json
+ from urllib2 import HTTPError
+ 
+ valid_bucket_types = ["ephemeral", "membase", "memcached"]
+-valid_service_types = {"kv", "n1ql", "index", "fts", "example"}
++valid_service_types = {"kv", "n1ql", "index", "fts", "example", "eventing"}
+ 
+ def usage():
+     print "usage: \n\
+diff --git a/cluster_run b/cluster_run
+index 38bfd1f42..e684e5d03 100755
+--- a/cluster_run
++++ b/cluster_run
+@@ -9,6 +9,7 @@ base_projector_port = 10000
+ base_xdcr_port = 13000
+ base_indexer_port = 9100
+ base_fts_port = 9200
++base_eventing_port = 25000
+ 
+ LOGLEVELS = ["debug", "info", "warn", "error", "critical"]
+ 
+@@ -159,7 +160,8 @@ def erlang_args_for_node(i):
+         "indexer_stcatchup_port", str(base_indexer_port + i * 6 + 4),
+         "indexer_stmaint_port", str(base_indexer_port + i * 6 + 5),
+         "fts_http_port", str(base_fts_port + i),
+-        "fts_ssl_port", str(10000 + base_fts_port + i)
++        "fts_ssl_port", str(10000 + base_fts_port + i),
++        "eventing_admin_port", str(base_eventing_port + i)
+         ] + cluster_extra_args
+ 
+     return args
+diff --git a/priv/public/ui/app-classic/app.css b/priv/public/ui/app-classic/app.css
+index 1025a1cb5..c0000224c 100644
+--- a/priv/public/ui/app-classic/app.css
++++ b/priv/public/ui/app-classic/app.css
+@@ -99,7 +99,7 @@ a.dynamic_disabled{text-decoration:none;cursor:default;}
+ #headerNav .contents{width:1060px;margin:auto;}
+ #headerNav ul {margin-left: 37px;}
+ #headerNav ul li {float:left;position:relative}
+-#headerNav li a {display:block;text-decoration:none;padding:13px 23px 7px;line-height:27px}
++#headerNav li a {display:block;text-decoration:none;padding:13px 12px 7px;line-height:27px}
+ #headerNav li:hover {background:url('/images/active_hover_bg.png') repeat-x;}
+ #headerNav li.currentNav {background:url('/images/active_bg.png') no-repeat center;}
+ /* to position the badges in the navigation correctly */
+diff --git a/priv/public/ui/app-classic/components/directives/mn_services/mn_services.html b/priv/public/ui/app-classic/components/directives/mn_services/mn_services.html
+index c44ecc2f6..9b9729f5c 100644
+--- a/priv/public/ui/app-classic/components/directives/mn_services/mn_services.html
++++ b/priv/public/ui/app-classic/components/directives/mn_services/mn_services.html
+@@ -8,6 +8,8 @@
+   <label class="label" for="n1ql_service">Query</label>
+   <input type="checkbox" class="js_service_flag" name="services" value="fts" id="fts_service" ng-change="onChange(config.services.model.fts, 'fts')" ng-model="config.services.model.fts" ng-disabled="config.services.disabled.fts" />
+   <label class="label" for="fts_service">Full Text</label>
++  <input type="checkbox" class="js_service_flag" name="services" value="eventing" id="eventing_service" ng-change="onChange(config.services.model.eventing, 'eventing')" ng-model="config.services.model.eventing" ng-disabled="config.services.disabled.eventing" />
++  <label class="label" for="eventing_service">Eventing</label>
+ </div>
+ <a class="tooltip text_11"><span>What&#39;s this?</span>
+   <span class="tooltip_msg" style="width:350px;"><span>
+diff --git a/priv/public/ui/app-classic/components/mn_filters.js b/priv/public/ui/app-classic/components/mn_filters.js
+index 6cd473079..1dfdc4154 100644
+--- a/priv/public/ui/app-classic/components/mn_filters.js
++++ b/priv/public/ui/app-classic/components/mn_filters.js
+@@ -487,6 +487,7 @@
+         case 'n1ql': return 'Query';
+         case 'index': return 'Index';
+         case 'fts': return 'Full Text';
++        case 'eventing': return 'Eventing';
+       }
+     }
+   }
+diff --git a/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html b/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html
+index 942482ac5..b4b7592df 100644
+--- a/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html
++++ b/priv/public/ui/app/components/directives/mn_memory_quota/mn_memory_quota.html
+@@ -127,6 +127,33 @@
+   </div>
+ </div>
+ 
++<div ng-if="config.displayedServices.eventing">
++  <div class="row formrow">
++    <div class="width-6">
++      <input
++         ng-if="config.services"
++         ng-model="config.services.model.eventing"
++         type="checkbox"
++         ng-disabled="config.services.disabled.eventing || !isEnterprise"
++         id="eventing_ram_quota">
++      <label
++         for="eventing_ram_quota"
++         class="checkbox">
++        Eventing Service
++      </label>
++    </div>
++    <small class="form-inline width-6 text-center">
++      -------
++    </small>
++  </div>
++
++  <div
++     class="error"
++     ng-show="errors.n1qlMemoryQuota">
++    {{errors.n1qlMemoryQuota}}
++  </div>
++</div>
++
+ <div
+    ng-if="config.calculateTotal"
+    class="text-small text-right nowrap margin-right-1">
+diff --git a/priv/public/ui/app/components/directives/mn_services/mn_services.html b/priv/public/ui/app/components/directives/mn_services/mn_services.html
+index a2f5c3c84..4fbe36074 100644
+--- a/priv/public/ui/app/components/directives/mn_services/mn_services.html
++++ b/priv/public/ui/app/components/directives/mn_services/mn_services.html
+@@ -45,3 +45,15 @@
+     Query Service
+   </label>
+ </div>
++<div class="checkbox-service">
++  <input
++     type="checkbox"
++     value="eventing"
++     id="for-eventing-service"
++     ng-change="onChange(config.services.model.eventing, 'eventing')"
++     ng-model="config.services.model.eventing"
++     ng-disabled="config.services.disabled.eventing">
++    <label for="for-eventing-service">
++        Eventing
++    </label>
++</div>
+diff --git a/priv/public/ui/app/components/mn_filters.js b/priv/public/ui/app/components/mn_filters.js
+index 7c031a9b1..ff54c77de 100644
+--- a/priv/public/ui/app/components/mn_filters.js
++++ b/priv/public/ui/app/components/mn_filters.js
+@@ -548,6 +548,7 @@
+         case 'n1ql': return 'Query';
+         case 'index': return 'Index';
+         case 'fts': return 'Full Text';
++        case 'eventing': return 'Eventing';
+       }
+     }
+   }
+diff --git a/priv/public/ui/app/mn_admin/mn_overview/mn_overview.html b/priv/public/ui/app/mn_admin/mn_overview/mn_overview.html
+index 2e67c6cca..eb5dbf55c 100644
+--- a/priv/public/ui/app/mn_admin/mn_overview/mn_overview.html
++++ b/priv/public/ui/app/mn_admin/mn_overview/mn_overview.html
+@@ -62,6 +62,20 @@
+       </div>
+     </div>
+     <div
++       class="service-widget"
++       ng-class="['dynamic_' + overviewCtl.nodes.n1ql.statusClass]">
++      <h4>Eventing Service</h4>
++      <a ui-sref="app.admin.servers.list">
++        {{overviewCtl.nodes.eventing.length || '0'}}
++        node{{overviewCtl.getEndings(overviewCtl.nodes.eventing.length)}}
++      </a>
++      <div
++         class="error"
++         ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.eventing.nodesByStatuses">
++        {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
++      </div>
++    </div>
++    <div
+        ng-show="rbac.cluster.xdcr.remote_clusters.read"
+        class="service-widget"
+        ng-class="['dynamic_' + (adminCtl.tasks.tasksXDCR.length ? 'healthy' : 'inactive')]">
+diff --git a/priv/public/ui/app/mn_admin/mn_overview/mn_overview_service.js b/priv/public/ui/app/mn_admin/mn_overview/mn_overview_service.js
+index 08588df61..c802119aa 100644
+--- a/priv/public/ui/app/mn_admin/mn_overview/mn_overview_service.js
++++ b/priv/public/ui/app/mn_admin/mn_overview/mn_overview_service.js
+@@ -71,6 +71,7 @@
+           index: getNodesByService("index", nodes),
+           n1ql: getNodesByService("n1ql", nodes),
+           fts: getNodesByService("fts", nodes),
++          eventing: getNodesByService("eventing", nodes),
+           all: nodes
+         };
+       });
+diff --git a/priv/public/ui/app/mn_admin/mn_servers/add_dialog/mn_servers_add_dialog_controller.js b/priv/public/ui/app/mn_admin/mn_servers/add_dialog/mn_servers_add_dialog_controller.js
+index 974ace208..f20a9ac83 100644
+--- a/priv/public/ui/app/mn_admin/mn_servers/add_dialog/mn_servers_add_dialog_controller.js
++++ b/priv/public/ui/app/mn_admin/mn_servers/add_dialog/mn_servers_add_dialog_controller.js
+@@ -14,7 +14,8 @@
+           kv: true,
+           index: $scope.poolDefault.compat.atLeast40,
+           n1ql: $scope.poolDefault.compat.atLeast40,
+-          fts: $scope.poolDefault.compat.atLeast50
++          fts: $scope.poolDefault.compat.atLeast50,
++          eventing: $scope.poolDefault.compat.atLeast50
+         }
+       },
+       credentials: {
+diff --git a/priv/public/ui/app/mn_admin/mn_settings/cluster/mn_settings_cluster_controller.js b/priv/public/ui/app/mn_admin/mn_settings/cluster/mn_settings_cluster_controller.js
+index ae68d672a..c4d830638 100644
+--- a/priv/public/ui/app/mn_admin/mn_settings/cluster/mn_settings_cluster_controller.js
++++ b/priv/public/ui/app/mn_admin/mn_settings/cluster/mn_settings_cluster_controller.js
+@@ -85,7 +85,8 @@
+         kv: true,
+         index: mnPoolDefault.export.compat.atLeast40,
+         fts: mnPoolDefault.export.compat.atLeast45,
+-        n1ql: mnPoolDefault.export.compat.atLeast40
++        n1ql: mnPoolDefault.export.compat.atLeast40,
++        eventing: mnPoolDefault.export.compat.atLeast45
+       }, false, false))
+         .applyToScope(function (resp) {
+           vm.initialMemoryQuota = resp.indexMemoryQuota;
+diff --git a/priv/public/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js b/priv/public/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js
+index 7233af95c..54134ab09 100644
+--- a/priv/public/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js
++++ b/priv/public/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js
+@@ -31,8 +31,8 @@
+         password: ''
+       },
+       services: {
+-        disabled: {kv: false, index: false, n1ql: false, fts: false},
+-        model: {kv: true, index: true, n1ql: true, fts: true}
++        disabled: {kv: false, index: false, n1ql: false, fts: false, eventing: false},
++        model: {kv: true, index: true, n1ql: true, fts: true, eventing: true}
+       },
+       firstTimeAddedServices: undefined
+     };
+@@ -40,10 +40,10 @@
+       maxMemorySize: undefined,
+       totalMemorySize: undefined,
+       memoryQuota: undefined,
+-      displayedServices: {kv: true, index: true, fts: true, n1ql: true},
++      displayedServices: {kv: true, index: true, fts: true, n1ql: true, eventing: true},
+       services: {
+-        disabled: {kv: true, index: false, n1ql: false, fts: false},
+-        model: {kv: true, index: true, n1ql: true, fts: true}
++        disabled: {kv: true, index: false, n1ql: false, fts: false, eventing: false},
++        model: {kv: true, index: true, n1ql: true, fts: true, eventing: true}
+       },
+       showKVMemoryQuota: true,
+       showIndexMemoryQuota: true,
+diff --git a/priv/public/ui/app/mn_wizard/mn_terms_and_conditions/mn_terms_and_conditions_controller.js b/priv/public/ui/app/mn_wizard/mn_terms_and_conditions/mn_terms_and_conditions_controller.js
+index edff9cc03..a6672fc3e 100644
+--- a/priv/public/ui/app/mn_wizard/mn_terms_and_conditions/mn_terms_and_conditions_controller.js
++++ b/priv/public/ui/app/mn_wizard/mn_terms_and_conditions/mn_terms_and_conditions_controller.js
+@@ -41,7 +41,7 @@
+         .postStats(vm.register, true).then(function () {
+           var setupServicesPromise =
+               mnServersService.setupServices({
+-                services: 'kv,index,fts,n1ql',
++                services: 'kv,index,fts,n1ql,eventing',
+                 setDefaultMemQuotas : true
+               });
+ 
+diff --git a/src/bucket_info_cache.erl b/src/bucket_info_cache.erl
+index c4b64040c..c0b6ee74a 100644
+--- a/src/bucket_info_cache.erl
++++ b/src/bucket_info_cache.erl
+@@ -177,6 +177,8 @@ build_services(Node, Config, EnabledServices) ->
+                          Port ->
+                              [{ftsSSL, Port}]
+                      end;
++             eventing ->
++                 [{eventingAdminPort, ns_config:search(Config, {node, Node, eventing_admin_port}, undefined)}];
+              example ->
+                  []
+          end || S <- EnabledServices],
+diff --git a/src/menelaus_pluggable_ui.erl b/src/menelaus_pluggable_ui.erl
+index 5f862f4fa..04ca335cb 100644
+--- a/src/menelaus_pluggable_ui.erl
++++ b/src/menelaus_pluggable_ui.erl
+@@ -230,7 +230,10 @@ port_for(n1ql, Node) ->
+     lookup_port(query_port, Node);
+ 
+ port_for(views, Node) ->
+-    lookup_port(capi_port, Node).
++    lookup_port(capi_port, Node);
++
++port_for(eventing, Node) ->
++    lookup_port(eventing_admin_port, Node).
+ 
+ lookup_port(Name, Node) ->
+     {value, Port} = ns_config:search(ns_config:latest(),
+diff --git a/src/ns_cluster_membership.erl b/src/ns_cluster_membership.erl
+index c4da71b60..723a444ca 100644
+--- a/src/ns_cluster_membership.erl
++++ b/src/ns_cluster_membership.erl
+@@ -226,7 +226,13 @@ supported_services_for_version(CompatVersion) ->
+             Services1 = [n1ql, index] ++ Services0,
+             case cluster_compat_mode:is_version_45(CompatVersion) of
+                 true ->
+-                    [fts] ++ maybe_example_service() ++ Services1;
++                    Services2 = [fts] ++ maybe_example_service() ++ Services1,
++                    case cluster_compat_mode:is_version_45(CompatVersion) of
++                        true ->
++                            [eventing] ++ Services2;
++                        false ->
++                            Services2
++                    end;
+                 false ->
+                     Services1
+             end;
+@@ -258,7 +264,13 @@ topology_aware_services_for_version(Version) ->
+             Services = [fts | maybe_example_service()],
+             case cluster_compat_mode:is_version_spock(Version) of
+                 true ->
+-                    [index | Services];
++                    Services1 = [index | Services],
++                    case cluster_compat_mode:is_version_spock(Version) of
++                        true ->
++                            [eventing | Services1];
++                        false ->
++                            Services1
++                    end;
+                 false ->
+                     Services
+             end;
+diff --git a/src/ns_config_default.erl b/src/ns_config_default.erl
+index 6f36624be..a5af38608 100644
+--- a/src/ns_config_default.erl
++++ b/src/ns_config_default.erl
+@@ -212,6 +212,9 @@ default() ->
+           _ -> undefined
+       end},
+ 
++     {{node, node(), eventing_admin_port},
++      misc:get_env_default(eventing_admin_port, 25000)},
++
+      {{node, node(), ssl_proxy_downstream_port},
+       case IsEnterprise of
+           true -> misc:get_env_default(ssl_proxy_downstream_port, 11214);
+diff --git a/src/ns_ports_setup.erl b/src/ns_ports_setup.erl
+index 361a32749..abcdc002e 100644
+--- a/src/ns_ports_setup.erl
++++ b/src/ns_ports_setup.erl
+@@ -277,6 +277,7 @@ do_dynamic_children(normal, Config) ->
+      per_bucket_moxi_specs(Config),
+      maybe_create_ssl_proxy_spec(Config),
+      fts_spec(Config),
++     eventing_spec(Config),
+      example_service_spec(Config)].
+ 
+ expand_specs(Specs, Config) ->
+@@ -650,6 +651,32 @@ fts_spec(Config) ->
+             [Spec]
+     end.
+ 
++eventing_spec(Config) ->
++    case ns_cluster_membership:should_run_service(Config, eventing, node()) of
++        false ->
++            [];
++        _ ->
++            Command = path_config:component_path(bin, "eventing-producer"),
++            EventingAdminPort = ns_config:search(Config, {node, node(), eventing_admin_port}, 25000),
++            {ok, EventingDir} = ns_storage_conf:this_node_ixdir(),
++            LocalMemcachedPort = ns_config:search_node_prop(node(), Config, memcached, port),
++            NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
++            RestPort = misc:node_rest_port(Config, node()),
++            EventingDir2 = filename:join(EventingDir, "@eventing"),
++            EventingAdminArg = "-adminport=" ++ integer_to_list(EventingAdminPort),
++            EventingDirArg = "-dir=" ++ EventingDir2,
++            KVAddrArg = "-kvport=" ++ integer_to_list(LocalMemcachedPort),
++            RestArg = "-restport=" ++ integer_to_list(RestPort),
++            UUIDArg = "-uuid=" ++ NodeUUID,
++
++            Spec = {'eventing', Command,
++                    [EventingAdminArg, EventingDirArg, KVAddrArg, RestArg, UUIDArg],
++                    [via_goport, exit_status, stderr_to_stdout,
++                     {env, build_go_env_vars(Config, eventing)},
++                     {log, "eventing.log"}]},
++            [Spec]
++    end.
++
+ example_service_spec(Config) ->
+     CacheCmd = find_executable("cache-service"),
+     NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
