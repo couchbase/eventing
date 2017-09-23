@@ -69,45 +69,40 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
-	OUTPUT flatbuf/header_generated.h flatbuf/flatbuf/header/Header.go
-	COMMAND ${FLATC} -c ARGS -c -o flatbuf/ ../flatbuf/header.fbs
-	COMMAND ${FLATC} -g ARGS -c -o flatbuf/ ../flatbuf/header.fbs
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-	COMMENT "Converting ../flatbuf/header.fbs to flatbuf/header_generated.h and flatbuf/flatbuf/header/Header.go"
+	OUTPUT flatbuf/header_generated.h flatbuf/header/Header.go
+	COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf header.fbs
+	COMMAND ${FLATC} -g ARGS -o ../gen header.fbs
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
+	COMMENT "Converting ../flatbuf/header.fbs to flatbuf/header_generated.h and flatbuf/header/Header.go"
 )
-
 ADD_CUSTOM_COMMAND(
-	OUTPUT flatbuf/payload_generated.h flatbuf/flatbuf/payload/Payload.go
-	COMMAND ${FLATC} -c ARGS -c -o flatbuf/ ../flatbuf/payload.fbs
-	COMMAND ${FLATC} -g ARGS -c -o flatbuf/ ../flatbuf/payload.fbs
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-	COMMENT "Converting ../flatbuf/payload.fbs to flatbuf/payload_generated.h and flatbuf/flatbuf/payload/Payload.go"
+	OUTPUT flatbuf/payload_generated.h flatbuf/payload/Payload.go
+	COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf payload.fbs
+	COMMAND ${FLATC} -g ARGS -o ../gen payload.fbs
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
+	COMMENT "Converting ../flatbuf/payload.fbs to flatbuf/payload_generated.h and flatbuf/payload/Payload.go"
 )
-
 ADD_CUSTOM_COMMAND(
-	OUTPUT flatbuf/cfg_schema_generated.h flatbuf/flatbuf/cfg_schema/Cfg_schema.go
-	COMMAND ${FLATC} -c ARGS -c -o flatbuf/ ../flatbuf/cfg_schema.fbs
-	COMMAND ${FLATC} -g ARGS -c -o flatbuf/ ../flatbuf/cfg_schema.fbs
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-	COMMENT "Converting ../flatbuf/cfg_schema.fbs to flatbuf/cfg_schema_generated.h and flatbuf/flatbuf/cfg_schema/Cfg_schema.go"
+	OUTPUT flatbuf/cfg_schema_generated.h flatbuf/cfg_schema/Cfg_schema.go
+	COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf cfg_schema.fbs
+	COMMAND ${FLATC} -g ARGS -o ../gen cfg_schema.fbs
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
+	COMMENT "Converting ../flatbuf/cfg_schema.fbs to flatbuf/cfg_schema_generated.h and flatbuf/cfg_schema/Cfg_schema.go"
 )
-
 ADD_CUSTOM_COMMAND(
-	OUTPUT flatbuf/response_generated.h flatbuf/flatbuf/response/Response.go
-	COMMAND ${FLATC} -c ARGS -c -o flatbuf/ ../flatbuf/response.fbs
-	COMMAND ${FLATC} -g ARGS -c -o flatbuf/ ../flatbuf/response.fbs
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-	COMMENT "Converting ../flatbuf/response.fbs to flatbuf/response_generated.h and flatbuf/flatbuf/response/Response.go"
+	OUTPUT flatbuf/response_generated.h flatbuf/response/Response.go
+	COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf response.fbs
+	COMMAND ${FLATC} -g ARGS -o ../gen response.fbs
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
+	COMMENT "Converting ../flatbuf/response.fbs to flatbuf/response_generated.h and flatbuf/response/Response.go"
 )
 
 ADD_CUSTOM_TARGET(generated DEPENDS
         js/builtin.h js/transpiler.h js/esprima.h js/escodegen.h js/estraverse.h js/source-map.h
         inspector/v8_inspector_protocol_json.h
-	flatbuf/header_generated.h flatbuf/flatbuf/header/Header.go
-	flatbuf/payload_generated.h flatbuf/flatbuf/payload/Payload.go
-	flatbuf/response_generated.h flatbuf/flatbuf/response/Response.go
-	flatbuf/cfg_schema_generated.h flatbuf/flatbuf/cfg_schema/Cfg_schema.go
+	flatbuf/header_generated.h flatbuf/header/Header.go
+	flatbuf/payload_generated.h flatbuf/payload/Payload.go
+	flatbuf/response_generated.h flatbuf/response/Response.go
+	flatbuf/cfg_schema_generated.h flatbuf/cfg_schema/Cfg_schema.go
 )
 
-#Flatbuffers(cfg_schema)
-#Flatbuffers(response)

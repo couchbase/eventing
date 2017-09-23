@@ -13,11 +13,11 @@ flatbuf/cfg_schema_generated.h
 flatbuf/header_generated.h
 flatbuf/payload_generated.h
 flatbuf/response_generated.h
-flatbuf/flatbuf/cfg/Bucket.go
-flatbuf/flatbuf/cfg/Config.go
-flatbuf/flatbuf/cfg/DepCfg.go
-flatbuf/flatbuf/header/Header.go
-flatbuf/flatbuf/payload/Payload.go
-flatbuf/flatbuf/payload/VbsThreadMap.go
-flatbuf/flatbuf/response/Response.go
+flatbuf/cfg/Bucket.go
+flatbuf/cfg/Config.go
+flatbuf/cfg/DepCfg.go
+flatbuf/header/Header.go
+flatbuf/payload/Payload.go
+flatbuf/payload/VbsThreadMap.go
+flatbuf/response/Response.go
 

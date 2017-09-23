@@ -1,3 +1,5 @@
+PROJECT (eventing-producer)
+
 INCLUDE (FindCouchbaseGo)
 INCLUDE (FindCouchbaseJemalloc)
 
