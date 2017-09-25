@@ -111,3 +111,4 @@ ADD_CUSTOM_TARGET(generated DEPENDS
 	flatbuf/cfg_schema_generated.h flatbuf/cfg_schema/Cfg_schema.go
 )
 
+ADD_DEPENDENCIES(generated convertjs)
