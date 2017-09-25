@@ -416,7 +416,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     }
   }
 
-#ifndef FLEX_FOUND
+#ifdef FLEX_FOUND
   if (transpiler.IsTimerCalled(script_to_execute)) {
     LOG(logDebug) << "Timer is called" << '\n';
 
