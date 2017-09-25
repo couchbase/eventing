@@ -321,3 +321,9 @@ bool is_esc()
 {
 	return js_code.length() > 0 ? js_code[js_code.length() - 1] == '\\' : 0;
 }
+
+// A default yywrap
+extern "C" int yywrap()
+{
+	return 1;
+}

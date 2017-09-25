@@ -362,7 +362,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
   n1ql_handle = new N1QL(conn_pool);
 
-  /*
+#ifdef FLEX_FOUND
   Transpiler transpiler(transpiler_js_src);
   script_to_execute =
       transpiler.Transpile(plain_js, app_name_ + ".js", app_name_ + ".map.json",
@@ -370,7 +370,9 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
       '\n';
   source_map_ = transpiler.GetSourceMap(plain_js, app_name_ + ".js");
   LOG(logTrace) << "source map:" << source_map_ << '\n';
-  */
+#else
+  LOG(logError) << "Built without flex, cannot transpile\n";
+#endif
 
   v8::Local<v8::String> source =
       v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());
@@ -414,45 +416,51 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     }
   }
 
-  // if (transpiler.IsTimerCalled(script_to_execute)) {
-  //  LOG(logDebug) << "Timer is called" << '\n';
+#ifndef FLEX_FOUND
+  if (transpiler.IsTimerCalled(script_to_execute)) {
+    LOG(logDebug) << "Timer is called" << '\n';
 
-  lcb_create_st crst;
-  memset(&crst, 0, sizeof crst);
+    lcb_create_st crst;
+    memset(&crst, 0, sizeof crst);
 
-  crst.version = 3;
-  crst.v.v3.connstr = connstr.c_str();
-  crst.v.v3.type = LCB_TYPE_BUCKET;
-  crst.v.v3.passwd = settings->rbac_pass.c_str();
+    crst.version = 3;
+    crst.v.v3.connstr = connstr.c_str();
+    crst.v.v3.type = LCB_TYPE_BUCKET;
+    crst.v.v3.passwd = settings->rbac_pass.c_str();
 
-  lcb_create(&cb_instance, &crst);
-  lcb_connect(cb_instance);
-  lcb_wait(cb_instance);
+    lcb_create(&cb_instance, &crst);
+    lcb_connect(cb_instance);
+    lcb_wait(cb_instance);
 
-  lcb_install_callback3(cb_instance, LCB_CALLBACK_GET, get_callback);
-  lcb_install_callback3(cb_instance, LCB_CALLBACK_STORE, set_callback);
-  lcb_install_callback3(cb_instance, LCB_CALLBACK_SDMUTATE, sdmutate_callback);
-  lcb_install_callback3(cb_instance, LCB_CALLBACK_SDLOOKUP, sdlookup_callback);
+    lcb_install_callback3(cb_instance, LCB_CALLBACK_GET, get_callback);
+    lcb_install_callback3(cb_instance, LCB_CALLBACK_STORE, set_callback);
+    lcb_install_callback3(cb_instance, LCB_CALLBACK_SDMUTATE,
+                          sdmutate_callback);
+    lcb_install_callback3(cb_instance, LCB_CALLBACK_SDLOOKUP,
+                          sdlookup_callback);
 
-  this->GetIsolate()->SetData(1, (void *)(&cb_instance));
+    this->GetIsolate()->SetData(1, (void *)(&cb_instance));
 
-  crst.version = 3;
-  crst.v.v3.connstr = meta_connstr.c_str();
-  crst.v.v3.type = LCB_TYPE_BUCKET;
-  crst.v.v3.passwd = settings->rbac_pass.c_str();
+    crst.version = 3;
+    crst.v.v3.connstr = meta_connstr.c_str();
+    crst.v.v3.type = LCB_TYPE_BUCKET;
+    crst.v.v3.passwd = settings->rbac_pass.c_str();
 
-  lcb_create(&meta_cb_instance, &crst);
-  lcb_connect(meta_cb_instance);
-  lcb_wait(meta_cb_instance);
+    lcb_create(&meta_cb_instance, &crst);
+    lcb_connect(meta_cb_instance);
+    lcb_wait(meta_cb_instance);
 
-  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_GET, get_callback);
-  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_STORE, set_callback);
-  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDMUTATE,
-                        sdmutate_callback);
-  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDLOOKUP,
-                        sdlookup_callback);
-  this->GetIsolate()->SetData(2, (void *)(&meta_cb_instance));
-  // }
+    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_GET, get_callback);
+    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_STORE, set_callback);
+    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDMUTATE,
+                          sdmutate_callback);
+    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDLOOKUP,
+                          sdlookup_callback);
+    this->GetIsolate()->SetData(2, (void *)(&meta_cb_instance));
+  }
+#else
+  LOG(logError) << "Built without flex, timers will not work\n";
+#endif
 
   // Spawning terminator thread to monitor the wall clock time for execution of
   // javascript code isn't going beyond max_task_duration. Passing reference to
