@@ -66,6 +66,10 @@ repo sync --jobs=32 1>>$WORKSPACE/make.log 2>&1
 test $? -eq 0 || error_exit "Updating tree"
 test $WORKSPACE/cbbuild && test $WORKSPACE/voltron || error_exit "Unable to find voltron"
 
+cd $WORKSPACE
+chmod a+w CMakeLists.txt
+perl -pi -e 's/CB_ENABLE_EVENTING (.*) OFF/CB_ENABLE_EVENTING \1 ON/' $WORKSPACE/CMakeLists.txt
+echo "Enabled option CB_ENABLE_EVENTING"
 
 cd $WORKSPACE/goproj/src/github.com/couchbase/plasma
 current="`git rev-parse HEAD`"

@@ -25,10 +25,6 @@ INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
                            ${Platform_SOURCE_DIR}/include
                            ${CMAKE_INSTALL_PREFIX}/include)
 
-EXECUTE_PROCESS(COMMAND python compress_json.py js_protocol.json
-                v8_inspector_protocol_json.h
-                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-
 SET(V8INSPECTOR_SOURCES assert.cc http_parser.cc inspector_agent.cc
     inspector_io.cc inspector_socket.cc inspector_socket_server.cc)
 
@@ -38,3 +34,4 @@ SET(V8INSPECTOR_LIBRARIES
 
 ADD_LIBRARY(eventing-inspector STATIC ${V8INSPECTOR_SOURCES})
 TARGET_LINK_LIBRARIES(eventing-inspector ${V8INSPECTOR_LIBRARIES})
+ADD_DEPENDENCIES(eventing-inspector generated)

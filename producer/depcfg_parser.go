@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/flatbuf/cfg"
+	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )

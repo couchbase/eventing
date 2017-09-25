@@ -1,0 +1,23 @@
+#
+# Please list generated files without using wildcards
+#
+
+js/builtin.h
+js/escodegen.h
+js/esprima.h
+js/estraverse.h
+js/source-map.h
+js/transpiler.h
+inspector/v8_inspector_protocol_json.h
+flatbuf/cfg_schema_generated.h
+flatbuf/header_generated.h
+flatbuf/payload_generated.h
+flatbuf/response_generated.h
+flatbuf/cfg/Bucket.go
+flatbuf/cfg/Config.go
+flatbuf/cfg/DepCfg.go
+flatbuf/header/Header.go
+flatbuf/payload/Payload.go
+flatbuf/payload/VbsThreadMap.go
+flatbuf/response/Response.go
+jsify.cc

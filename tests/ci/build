@@ -9,7 +9,7 @@ git checkout unstable
 
 while true; do
   git pull -q
-  find eventing/tests/ci -not -name 'build' -and -not -name '.*' -type f -exec cp -v {} ~/bin/ \;
+  find tests/ci -not -name 'build' -and -not -name '.*' -type f -exec cp -v {} ~/bin/ \;
   domain
   sleep 600
 done
