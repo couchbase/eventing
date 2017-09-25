@@ -11,34 +11,56 @@
 
 INCLUDE (FindCouchbaseGo)
 INCLUDE (FindCouchbaseFlatbuffers)
-GET_GOROOT ("1.8.3" GOROOT _ver)
 
-MACRO(convertjs src var out)
-  IF(NOT WIN32)
-    ADD_CUSTOM_COMMAND(
-      OUTPUT ${out}
-      COMMAND GOROOT=${GOROOT} ${GOROOT}/bin/go
-      ARGS run generate.go ${src} ${var} ${out}
-      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-      COMMENT "Converting ${src} to ${out} with variable ${var}")
-   ELSE()
-    ADD_CUSTOM_COMMAND(
-      OUTPUT ${out}
-      COMMAND set GOROOT=${GOROOT} & ${GOROOT}/bin/go
-      ARGS run generate.go ${src} ${var} ${out}
-      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-      COMMENT "Converting ${src} to ${out} with variable ${var}")
-   ENDIF()
-ENDMACRO()
+GoInstall(
+  TARGET convertjs
+  PACKAGE github.com/couchbase/eventing/gen/convertjs
+  GOPATH "${PROJECT_SOURCE_DIR}/../../../.."
+  GOVERSION "1.8.3"
+)
 
-MACRO(flatbuf src outc outg)
-  ADD_CUSTOM_COMMAND(
-    OUTPUT ${outc} ${outg}
-    COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf ${src}
-    COMMAND ${FLATC} -g ARGS -o ../gen ${src}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
-    COMMENT "Converting ${src} to {$outc} and ${outg}")
-ENDMACRO()
+ADD_CUSTOM_COMMAND(
+        OUTPUT js/builtin.h
+        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
+        ARGS ../v8_consumer/src/builtin.js js_builtin js/builtin.h
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Converting ../v8_consumer/src/builtin.js to js/builtin.h with variable js_builtin"
+)
+ADD_CUSTOM_COMMAND(
+        OUTPUT js/transpiler.h
+        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
+        ARGS ../v8_consumer/src/transpiler.js js_transpiler js/transpiler.h
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Converting ../v8_consumer/src/transpiler.js to js/transpiler.h with variable js_transpiler"
+)
+ADD_CUSTOM_COMMAND(
+        OUTPUT js/esprima.h
+        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
+        ARGS ../third_party/estools/esprima.js js_esprima js/esprima.h
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Converting ../third_party/estools/esprima.js to js/esprima.h with variable js_esprima"
+)
+ADD_CUSTOM_COMMAND(
+        OUTPUT js/escodegen.h
+        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
+        ARGS ../third_party/estools/escodegen.js js_escodegen js/escodegen.h
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Converting ../third_party/estools/escodegen.js to js/escodegen.h with variable js_escodegen"
+)
+ADD_CUSTOM_COMMAND(
+        OUTPUT js/estraverse.h
+        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
+        ARGS ../third_party/estools/estraverse.js js_estraverse js/estraverse.h
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Converting ../third_party/estools/estraverse.js to js/estraverse.h with variable js_estraverse"
+)
+ADD_CUSTOM_COMMAND(
+        OUTPUT js/source-map.h
+        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
+        ARGS ../third_party/source-map/source-map.js js_source_map js/source-map.h
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Converting ../third_party/source-map/source-map.js to js/source-map.h with variable js_source_map"
+)
 
 ADD_CUSTOM_COMMAND(
         OUTPUT inspector/v8_inspector_protocol_json.h
@@ -51,17 +73,34 @@ ADD_CUSTOM_COMMAND(
         COMMENT "Converting ../third_party/inspector/js_protocol.json to inspector/v8_inspector_protocol_json.h"
 )
 
-convertjs(../v8_consumer/src/builtin.js js_builtin js/builtin.h)
-convertjs(../v8_consumer/src/transpiler.js js_transpiler js/transpiler.h)
-convertjs(../third_party/estools/esprima.js js_esprima js/esprima.h)
-convertjs(../third_party/estools/escodegen.js js_escodegen js/escodegen.h)
-convertjs(../third_party/estools/estraverse.js js_estraverse js/estraverse.h)
-convertjs(../third_party/source-map/source-map.js js_source_map js/source-map.h)
-
-flatbuf(header.fbs flatbuf/header_generated.h flatbuf/header/Header.go)
-flatbuf(payload.fbs flatbuf/payload_generated.h flatbuf/payload/Payload.go)
-flatbuf(cfg_schema.fbs flatbuf/cfg_schema_generated.h flatbuf/cfg_schema/Cfg_schema.go)
-flatbuf(response.fbs flatbuf/response_generated.h flatbuf/response/Response.go)
+ADD_CUSTOM_COMMAND(
+	OUTPUT flatbuf/header_generated.h flatbuf/header/Header.go
+	COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf header.fbs
+	COMMAND ${FLATC} -g ARGS -o ../gen header.fbs
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
+	COMMENT "Converting ../flatbuf/header.fbs to flatbuf/header_generated.h and flatbuf/header/Header.go"
+)
+ADD_CUSTOM_COMMAND(
+	OUTPUT flatbuf/payload_generated.h flatbuf/payload/Payload.go
+	COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf payload.fbs
+	COMMAND ${FLATC} -g ARGS -o ../gen payload.fbs
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
+	COMMENT "Converting ../flatbuf/payload.fbs to flatbuf/payload_generated.h and flatbuf/payload/Payload.go"
+)
+ADD_CUSTOM_COMMAND(
+	OUTPUT flatbuf/cfg_schema_generated.h flatbuf/cfg_schema/Cfg_schema.go
+	COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf cfg_schema.fbs
+	COMMAND ${FLATC} -g ARGS -o ../gen cfg_schema.fbs
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
+	COMMENT "Converting ../flatbuf/cfg_schema.fbs to flatbuf/cfg_schema_generated.h and flatbuf/cfg_schema/Cfg_schema.go"
+)
+ADD_CUSTOM_COMMAND(
+	OUTPUT flatbuf/response_generated.h flatbuf/response/Response.go
+	COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf response.fbs
+	COMMAND ${FLATC} -g ARGS -o ../gen response.fbs
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
+	COMMENT "Converting ../flatbuf/response.fbs to flatbuf/response_generated.h and flatbuf/response/Response.go"
+)
 
 ADD_CUSTOM_TARGET(generated DEPENDS
         js/builtin.h js/transpiler.h js/esprima.h js/escodegen.h js/estraverse.h js/source-map.h
