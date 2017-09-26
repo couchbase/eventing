@@ -862,11 +862,13 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                     // Need to check where rbacpass is empty manually and update state.
                     // Don't know why AngularJS is giving wrong state for this field.
-                    form.rbacpass.$error.required = form.rbacpass.$modelValue === '';
+                    // Disabling this field as it may be deprecated.
+                    // form.rbacpass.$error.required = form.rbacpass.$modelValue === '';
 
                     return form.appname.$error.required ||
-                        form.rbacuser.$error.required ||
-                        form.rbacpass.$error.required ||
+                        // Disabling RBAC username and password checks.
+                        // form.rbacuser.$error.required ||
+                        // form.rbacpass.$error.required ||
                         form.worker_count.$error.required ||
                         form.worker_count.$error.min ||
                         form.worker_count.$error.max ||
