@@ -70,8 +70,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       v8::V8::Initialize();
 
       for (int16_t i = 0; i < thr_count; i++) {
-        V8Worker *w =
-            new V8Worker(platform, handler_config.get(), server_settings.get());
+        V8Worker *w = new V8Worker(platform, handler_config.release(),
+                                   server_settings.release());
 
         LOG(logDebug) << "Init index: " << i << " V8Worker: " << w << '\n';
         this->workers[i] = w;
