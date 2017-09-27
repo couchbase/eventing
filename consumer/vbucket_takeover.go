@@ -306,7 +306,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 		return errVbOwnedByAnotherNode
 
-	case dcpStreamStopped:
+	case dcpStreamStopped, dcpStreamUninitialised:
 
 		shouldWait := c.superSup.SignalTimerDataTransferStart(vb)
 		logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v vbblob stream status: %v, starting dcp stream, should wait for timer data transfer: %v",
@@ -505,19 +505,19 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 
 func (c *Consumer) closePlasmaHandle(vb uint16) {
 	/*
-		c.plasmaStoreRWMutex.RLock()
-	    store, ok := c.vbPlasmaStoreMap[vb]
-		c.plasmaStoreRWMutex.RUnlock()
+			c.plasmaStoreRWMutex.RLock()
+			store, ok := c.vbPlasmaStoreMap[vb]
+			c.plasmaStoreRWMutex.RUnlock()
 
-		if ok {
-			// Persist all in-flight data in-memory for plasma and then close the instance
-			store.PersistAll()
-			store.Close()
+			if ok {
+			   // Persist all in-flight data in-memory for plasma and then close the instance
+			   store.PersistAll()
+			   store.Close()
 
-			c.plasmaStoreRWMutex.Lock()
-			delete(c.vbPlasmaStoreMap, vb)
-			c.plasmaStoreRWMutex.Unlock()
-		}
+			   c.plasmaStoreRWMutex.Lock()
+			   delete(c.vbPlasmaStoreMap, vb)
+			   c.plasmaStoreRWMutex.Unlock()
+		  }
 	*/
 }
 

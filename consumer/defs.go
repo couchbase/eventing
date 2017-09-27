@@ -104,9 +104,10 @@ const (
 )
 
 const (
-	dcpStreamBootstrap = "bootstrap"
-	dcpStreamRunning   = "running"
-	dcpStreamStopped   = "stopped"
+	dcpStreamBootstrap     = "bootstrap"
+	dcpStreamRunning       = "running"
+	dcpStreamStopped       = "stopped"
+	dcpStreamUninitialised = ""
 )
 
 var dcpConfig = map[string]interface{}{
