@@ -36,7 +36,7 @@ extern void setWorkerID(std::string ID);
 
 extern std::mutex log_mutex;
 
-static std::ostringstream &Logger(LogLevel level = logInfo) {
+inline std::ostringstream &Logger(LogLevel level = logInfo) {
   time_t ctm;
   std::time(&ctm);
   char cts[128];
@@ -50,7 +50,7 @@ static std::ostringstream &Logger(LogLevel level = logInfo) {
   return os;
 }
 
-static std::string FlushLog() {
+inline std::string FlushLog() {
   std::string str = os.str();
   os.str(std::string());
   return str;
@@ -62,7 +62,7 @@ static std::string LevelToString(LogLevel level) {
   return buffer[level];
 }
 
-static LogLevel LevelFromString(const std::string &level) {
+inline LogLevel LevelFromString(const std::string &level) {
   if (level == "SILENT")
     return logSilent;
   if (level == "INFO")
