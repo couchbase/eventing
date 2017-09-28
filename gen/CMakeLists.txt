@@ -120,7 +120,7 @@ ADD_CUSTOM_COMMAND(
 ADD_CUSTOM_COMMAND(
         OUTPUT parser/jsify.cc
         COMMAND ${FLEX_EXECUTABLE}
-        ARGS -B -o parser/jsify.cc ../v8_consumer/src/jsify.lex
+        ARGS -B -oparser/jsify.cc ../v8_consumer/src/jsify.lex
         DEPENDS ../v8_consumer/src/jsify.lex
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Converting ../v8_consumer/src/jsify.lex to parser/jsify.cc"
