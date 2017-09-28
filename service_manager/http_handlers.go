@@ -306,6 +306,22 @@ func (m *ServiceMgr) getAggTimerHostPortAddrs(w http.ResponseWriter, r *http.Req
 	fmt.Fprintf(w, "%v", addrs)
 }
 
+// Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
+func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
+	deployedApps := m.superSup.GetDeployedApps()
+
+	buf, err := json.Marshal(deployedApps)
+	if err != nil {
+		logging.Errorf("Failed to marshal list of deployed apps, err: %v", err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		fmt.Fprintf(w, "")
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", string(buf))
+}
+
 // Reports progress across all producers on current node
 func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 	producerHostPortAddrs := m.superSup.ProducerHostPortAddrs()

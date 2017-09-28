@@ -24,6 +24,7 @@ func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid s
 	s := &SuperSupervisor{
 		appStatus:                    make(map[string]bool),
 		CancelCh:                     make(chan struct{}, 1),
+		deployedApps:                 make(map[string]string),
 		eventingAdminPort:            eventingAdminPort,
 		eventingDir:                  eventingDir,
 		kvPort:                       kvPort,
@@ -157,6 +158,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			case false:
 				logging.Infof("SSUP[%d] App: %s enabled, settings change requesting for disabling processing for it",
 					len(s.runningProducers), appName)
+				delete(s.deployedApps, appName)
 
 				if p, ok := s.runningProducers[appName]; ok {
 					logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
@@ -179,6 +181,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 				s.spawnApp(appName)
 				s.appStatus[appName] = true
+				if producer, ok := s.runningProducers[appName]; ok {
+					producer.SignalBootstrapFinish()
+					s.deployedApps[appName] = time.Now().String()
+				}
 
 			case false:
 				logging.Infof("SSUP[%d] App: %s disabled currently, settings change requesting for disabling it again. Ignoring",
@@ -378,6 +384,11 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					continue
 				}
 
+				if producer, ok := s.runningProducers[appName]; ok {
+					producer.SignalBootstrapFinish()
+					s.deployedApps[appName] = time.Now().String()
+				}
+
 			case cmdSettingsUpdate:
 				if p, ok := s.runningProducers[appName]; ok {
 					logging.Infof("SSUP[%d] App: %s, Notifying running producer instance of settings change",
@@ -508,4 +519,10 @@ func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
 		return p.GetSeqsProcessed()
 	}
 	return nil
+}
+
+// GetDeployedApps returns list of deployed apps and their last deployment time
+func (s *SuperSupervisor) GetDeployedApps() map[string]string {
+	logging.Infof("SSUP[%d] GetDeployedApps request", len(s.runningProducers))
+	return s.deployedApps
 }

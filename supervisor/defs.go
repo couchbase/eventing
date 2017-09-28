@@ -62,6 +62,9 @@ type SuperSupervisor struct {
 	// Captures if the app is enabled or not
 	appStatus map[string]bool // Access controlled by appRWMutex
 
+	// Captures list of deployed apps and their last deployment time
+	deployedApps map[string]string
+
 	mu                           *sync.RWMutex
 	plasmaCloseSignalMap         map[uint16]int // Access controlled by plasmaRWMutex
 	producerSupervisorTokenMap   map[common.EventingProducer]suptree.ServiceToken

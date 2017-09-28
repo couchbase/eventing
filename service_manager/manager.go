@@ -59,6 +59,9 @@ func (m *ServiceMgr) initService() {
 
 	go m.registerWithServer()
 
+	// TODO: Rest endpoints are growing big, need to document in source code purpose of each
+	// Eventually it would work as documentation.
+
 	http.HandleFunc("/clearEventStats", m.clearEventStats)
 	http.HandleFunc("/getErrorCodes", m.getErrCodes)
 	http.HandleFunc("/deleteApplication/", m.deleteApplication)
@@ -66,8 +69,9 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
 	http.HandleFunc("/getApplication/", m.fetchAppSetup)
 	http.HandleFunc("/getAppTempStore/", m.fetchAppTempStore)
-	http.HandleFunc("/getEventsPSec", m.getEventsProcessedPSec)
 	http.HandleFunc("/getAggEventsPSec", m.getAggEventsProcessedPSec)
+	http.HandleFunc("/getEventsPSec", m.getEventsProcessedPSec)
+	http.HandleFunc("/getDeployedApps", m.getDeployedApps)
 	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
 	http.HandleFunc("/getSeqsProcessed", m.getSeqsProcessed)
 	http.HandleFunc("/saveAppTempStore/", m.saveAppSetup)

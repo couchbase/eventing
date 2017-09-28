@@ -284,6 +284,10 @@ type Consumer struct {
 	consumerSup    *suptree.Supervisor
 	clientSupToken suptree.ServiceToken
 
+	// Chan to signal that current Eventing.Consumer instance
+	// has finished bootstrap
+	signalBootstrapFinishCh chan struct{}
+
 	// Populated when C++ v8 worker is spawned
 	// correctly and downstream tcp socket is available
 	// for sending messages. Unbuffered channel.

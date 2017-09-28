@@ -71,6 +71,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		restartVbDcpStreamTicker:           time.NewTicker(restartVbDcpStreamTickInterval),
 		sendMsgCounter:                     0,
 		sendMsgToDebugger:                  false,
+		signalBootstrapFinishCh:            make(chan struct{}, 1),
 		signalConnectedCh:                  make(chan struct{}, 1),
 		signalDebugBlobDebugStopCh:         make(chan struct{}, 1),
 		signalInstBlobCasOpFinishCh:        make(chan struct{}, 1),
@@ -193,6 +194,8 @@ func (c *Consumer) Serve() {
 
 	// V8 Debugger polling routine
 	go c.pollForDebuggerStart()
+
+	c.signalBootstrapFinishCh <- struct{}{}
 
 	c.controlRoutine()
 
@@ -500,4 +503,13 @@ func (c *Consumer) GetSeqsProcessed() map[int]int64 {
 	}
 
 	return seqNoProcessed
+}
+
+// SignalBootstrapFinish is leveraged by Eventing.Producer instance to know
+// if corresponding Eventing.Consumer instance has finished bootstrap
+func (c *Consumer) SignalBootstrapFinish() {
+	logging.Infof("V8CR[%s:%s:%s:%d] Got request to signal bootstrap status",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+
+	<-c.signalBootstrapFinishCh
 }

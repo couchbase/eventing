@@ -49,6 +49,7 @@ type EventingProducer interface {
 	NsServerNodeCount() int
 	RbacPass() string
 	RbacUser() string
+	SignalBootstrapFinish()
 	SignalCheckpointBlobCleanup()
 	SignalPlasmaClosed(vb uint16)
 	SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma)
@@ -82,6 +83,7 @@ type EventingConsumer interface {
 	RebalanceTaskProgress() *RebalanceProgress
 	Serve()
 	SetConnHandle(net.Conn)
+	SignalBootstrapFinish()
 	SignalConnected()
 	SignalPlasmaClosed(vb uint16)
 	SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma)
@@ -100,6 +102,7 @@ type EventingSuperSup interface {
 	DeployedAppList() []string
 	GetAppCode(appName string) string
 	GetDebuggerURL(appName string) string
+	GetDeployedApps() map[string]string
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
 	GetHandlerCode(appName string) string

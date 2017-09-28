@@ -23,6 +23,7 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 	superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                appName,
+		bootstrapFinishCh:      make(chan struct{}, 1),
 		eventingAdminPort:      eventingAdminPort,
 		eventingDir:            eventingDir,
 		eventingNodeUUIDs:      make([]string, 0),
@@ -101,6 +102,7 @@ func (p *Producer) Serve() {
 	p.initWorkerVbMap()
 	p.startBucket()
 
+	p.bootstrapFinishCh <- struct{}{}
 	p.notifyInitCh <- struct{}{}
 
 	for {
@@ -625,4 +627,26 @@ func (p *Producer) GetSeqsProcessed() map[int]int64 {
 	}
 	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
 	return nil
+}
+
+// SignalBootstrapFinish is leveraged by EventingSuperSup instance to
+// check if app handler has finished bootstrapping
+func (p *Producer) SignalBootstrapFinish() {
+	runningConsumers := make([]common.EventingConsumer, 0)
+
+	logging.Infof("PRDR[%s:%d] Got request to signal bootstrap status", p.appName, p.LenRunningConsumers())
+	<-p.bootstrapFinishCh
+
+	p.RLock()
+	for _, c := range p.runningConsumers {
+		runningConsumers = append(runningConsumers, c)
+	}
+	p.RUnlock()
+
+	for _, c := range runningConsumers {
+		if c == nil {
+			continue
+		}
+		c.SignalBootstrapFinish()
+	}
 }
