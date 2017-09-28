@@ -160,22 +160,6 @@ var getNonDocTimerCallback = func(args ...interface{}) error {
 	return err
 }
 
-var deleteOpCallback = func(args ...interface{}) error {
-	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
-
-	err := c.metadataBucketHandle.Delete(vbKey)
-	if gomemcached.KEY_ENOENT == util.MemcachedErrCode(err) {
-		logging.Infof("CRBO[%s:%s:%s:%d] Key: %s doesn't exist, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
-		return nil
-	} else if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket delete failed for key: %s, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
-	}
-	return err
-}
-
 var getOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
@@ -213,6 +197,29 @@ var getOpCallback = func(args ...interface{}) error {
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
 
+	return err
+}
+
+var getMetaOpCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+	vbKey := args[1].(string)
+	seqNo := args[2]
+	subdocPath := args[3].(string)
+
+	res, err := c.gocbMetaBucket.LookupIn(vbKey).GetEx(subdocPath, gocb.SubdocFlagNone).Execute()
+	if err == nil {
+		cErr := res.Content(subdocPath, seqNo)
+		if cErr != nil {
+			logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s path: %s reading contents from subdoc path failed, err: %v",
+				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, subdocPath, cErr)
+			return cErr
+		}
+
+		return nil
+	}
+
+	logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s path: %s subdoc lookup failed, err: %v",
+		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, subdocPath, err)
 	return err
 }
 

@@ -513,15 +513,22 @@ breakWorkerLookup:
 	return nil, fmt.Errorf("worker not alive at present")
 }
 
-// SignalCheckpointBlobCleanup signals all running consumer to cleanup all associated
-// checkpoint blob related to a given app. This is typically kicked at the time of app/lambda
-// purge request
+// SignalCheckpointBlobCleanup cleans up eventing app related blobs from metadata bucket
 func (p *Producer) SignalCheckpointBlobCleanup() {
-	for _, consumer := range p.runningConsumers {
-		logging.Infof("PRDR[%s:%d] Consumer: %s sent message to cleanup checkpoint blobs",
-			p.appName, p.LenRunningConsumers(), consumer.ConsumerName())
-		consumer.SignalCheckpointBlobCleanup()
+
+	for vb := 0; vb < numVbuckets; vb++ {
+		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, vbKey)
 	}
+
+	dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, dFlagKey)
+
+	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, dInstAddrKey)
+
+	logging.Infof("PRDR[%s:%d] Purged all owned checkpoint & debugger blobs from metadata bucket: %s",
+		p.appName, p.LenRunningConsumers(), p.metadataBucketHandle.Name)
 }
 
 // SignalStartDebugger updates KV blob in metadata bucket signalling request to start
@@ -609,4 +616,13 @@ func (p *Producer) GetHandlerCode() string {
 	}
 	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
 	return ""
+}
+
+// GetSeqsProcessed returns vbucket specific sequence nos processed so far
+func (p *Producer) GetSeqsProcessed() map[int]int64 {
+	if len(p.runningConsumers) > 0 {
+		return p.runningConsumers[0].GetSeqsProcessed()
+	}
+	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
+	return nil
 }

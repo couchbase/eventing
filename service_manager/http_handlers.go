@@ -337,6 +337,32 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 	w.Write(buf)
 }
 
+func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
+	params := r.URL.Query()
+	appName := params["name"][0]
+
+	appList := m.superSup.DeployedAppList()
+	for _, app := range appList {
+		if app == appName {
+			seqNoProcessed := m.superSup.GetSeqsProcessed(appName)
+
+			data, err := json.Marshal(seqNoProcessed)
+			if err != nil {
+				logging.Errorf("App: %v, failed to fetch vb sequences processed so far, err: %v", appName, err)
+
+				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errGetVbSeqs.Code))
+				fmt.Fprintf(w, "")
+				return
+			}
+
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+			fmt.Fprintf(w, "%s", string(data))
+			return
+		}
+	}
+
+}
+
 func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
 	appName := params["name"][0]

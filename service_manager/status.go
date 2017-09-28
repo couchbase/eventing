@@ -44,6 +44,7 @@ type statusCodes struct {
 	errUnmarshalPld     statusBase
 	errSrcMbSame        statusBase
 	errInvalidExt       statusBase
+	errGetVbSeqs        statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
@@ -67,6 +68,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errUnmarshalPld:     statusBase{"ERR_UNMARSHAL_PLD", 16},
 		errSrcMbSame:        statusBase{"ERR_SRC_MB_SAME", 17},
 		errInvalidExt:       statusBase{"ERR_INVALID_EXT", 18},
+		errGetVbSeqs:        statusBase{"ERR_GET_VB_SEQS", 19},
 	}
 
 	errors := []errorPayload{
@@ -162,6 +164,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errInvalidExt.Name,
 			Code:        m.statusCodes.errInvalidExt.Code,
 			Description: "Invalid file extension",
+		},
+		{
+			Name:        m.statusCodes.errGetVbSeqs.Name,
+			Code:        m.statusCodes.errGetVbSeqs.Code,
+			Description: "Failed to fetch vb sequence processed so far",
 		},
 	}
 
