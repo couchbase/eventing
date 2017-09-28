@@ -32,6 +32,8 @@ INCLUDE_DIRECTORIES(AFTER
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DYY_NEVER_INTERACTIVE")
 
+SET_SOURCE_FILES_PROPERTIES(../gen/parser/jsify.cc PROPERTIES GENERATED TRUE)
+
 SET(EVENTING_SOURCES
     src/client.cc src/commands.cc src/message.cc
     src/v8worker.cc src/assert.cc src/bucket.cc
