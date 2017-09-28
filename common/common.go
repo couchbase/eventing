@@ -33,6 +33,7 @@ type EventingProducer interface {
 	GetAppCode() string
 	GetDebuggerURL() string
 	GetNsServerPort() string
+	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
 	GetHandlerCode() string
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
@@ -69,8 +70,9 @@ type EventingConsumer interface {
 	DcpEventsRemainingToProcess() uint64
 	EventsProcessedPSec() *EventProcessingStats
 	EventingNodeUUIDs() []string
-	GetSourceMap() string
 	GetHandlerCode() string
+	GetSeqsProcessed() map[int]int64
+	GetSourceMap() string
 	HandleV8Worker()
 	HostPortAddr() string
 	NodeUUID() string
@@ -98,6 +100,7 @@ type EventingSuperSup interface {
 	DeployedAppList() []string
 	GetAppCode(appName string) string
 	GetDebuggerURL(appName string) string
+	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
 	GetHandlerCode(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)

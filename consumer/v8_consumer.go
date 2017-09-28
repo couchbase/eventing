@@ -485,3 +485,19 @@ func (c *Consumer) GetSourceMap() string {
 func (c *Consumer) GetHandlerCode() string {
 	return c.handlerCode
 }
+
+// GetSeqsProcessed returns vbucket specific sequence nos processed so far
+func (c *Consumer) GetSeqsProcessed() map[int]int64 {
+	seqNoProcessed := make(map[int]int64)
+
+	var seqNo int64
+	subdocPath := "last_processed_seq_no"
+
+	for vb := 0; vb < numVbuckets; vb++ {
+		vbKey := fmt.Sprintf("%s_vb_%d", c.app.AppName, vb)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getMetaOpCallback, c, vbKey, &seqNo, subdocPath)
+		seqNoProcessed[vb] = seqNo
+	}
+
+	return seqNoProcessed
+}

@@ -200,6 +200,29 @@ var getOpCallback = func(args ...interface{}) error {
 	return err
 }
 
+var getMetaOpCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+	vbKey := args[1].(string)
+	seqNo := args[2]
+	subdocPath := args[3].(string)
+
+	res, err := c.gocbMetaBucket.LookupIn(vbKey).GetEx(subdocPath, gocb.SubdocFlagNone).Execute()
+	if err == nil {
+		cErr := res.Content(subdocPath, seqNo)
+		if cErr != nil {
+			logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s path: %s reading contents from subdoc path failed, err: %v",
+				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, subdocPath, cErr)
+			return cErr
+		}
+
+		return nil
+	}
+
+	logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s path: %s subdoc lookup failed, err: %v",
+		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, subdocPath, err)
+	return err
+}
+
 var periodicCheckpointCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)

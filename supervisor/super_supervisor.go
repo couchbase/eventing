@@ -500,3 +500,12 @@ func (s *SuperSupervisor) GetHandlerCode(appName string) string {
 	}
 	return ""
 }
+
+// GetSeqsProcessed returns vbucket specific sequence nos processed so far
+func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
+	logging.Infof("SSUP[%d] GetSeqsProcessed request for app: %v", len(s.runningProducers), appName)
+	if p, ok := s.runningProducers[appName]; ok {
+		return p.GetSeqsProcessed()
+	}
+	return nil
+}

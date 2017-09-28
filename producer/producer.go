@@ -617,3 +617,12 @@ func (p *Producer) GetHandlerCode() string {
 	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
 	return ""
 }
+
+// GetSeqsProcessed returns vbucket specific sequence nos processed so far
+func (p *Producer) GetSeqsProcessed() map[int]int64 {
+	if len(p.runningConsumers) > 0 {
+		return p.runningConsumers[0].GetSeqsProcessed()
+	}
+	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
+	return nil
+}
