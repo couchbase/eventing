@@ -893,7 +893,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
                     },
                     data: {
-                        title: 'Functions'
+                        title: 'Eventing'
                     }
                 })
                 .state('app.admin.eventing.summary', {
@@ -944,7 +944,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 });
 
             mnPluggableUiRegistryProvider.registerConfig({
-                name: 'Functions',
+                name: 'Eventing',
                 state: 'app.admin.eventing.summary',
                 plugIn: 'adminTab',
                 after: 'indexes',
