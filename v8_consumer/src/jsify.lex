@@ -18,7 +18,7 @@
 	*/
 	#include <iostream>
 	#include <fstream>
-	#include "../include/n1ql.h"
+        #include "n1ql.h"
 
 	std::string parse(const char*);
 	lex_op_code lex_op;

@@ -1,12 +1,7 @@
 PROJECT (eventing)
 
 ADD_SUBDIRECTORY(gen)
-
-FIND_PACKAGE(ZLIB)
-IF(ZLIB_FOUND)
-  ADD_SUBDIRECTORY(third_party/inspector)
-ENDIF()
-
+ADD_SUBDIRECTORY(third_party/inspector)
 ADD_SUBDIRECTORY(v8_consumer)
 ADD_SUBDIRECTORY(producer)
 ADD_SUBDIRECTORY(ui)

@@ -15,6 +15,8 @@ INCLUDE (FindCouchbaseLibuv)
 INCLUDE (FindCouchbaseLibCouchbase)
 INCLUDE (FindCouchbaseOpenSSL)
 
+FIND_PACKAGE(ZLIB)
+
 INCLUDE_DIRECTORIES(BEFORE ${LIBUV_INCLUDE_DIR})
 
 INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
@@ -23,7 +25,8 @@ INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
                            ${V8_INCLUDE_DIR}/include
                            ${CMAKE_CURRENT_SOURCE_DIR}
                            ${Platform_SOURCE_DIR}/include
-                           ${CMAKE_INSTALL_PREFIX}/include)
+                           ${CMAKE_INSTALL_PREFIX}/include
+                           ${ZLIB_INCLUDE_DIR})
 
 SET(V8INSPECTOR_SOURCES assert.cc http_parser.cc inspector_agent.cc
     inspector_io.cc inspector_socket.cc inspector_socket_server.cc)
