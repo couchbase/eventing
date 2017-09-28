@@ -32,7 +32,7 @@ INCLUDE_DIRECTORIES(AFTER
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DYY_NEVER_INTERACTIVE")
 
-SET_SOURCE_FILES_PROPERTIES(../gen/parser/jsify.cc PROPERTIES GENERATED TRUE)
+SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc PROPERTIES GENERATED TRUE)
 
 SET(EVENTING_SOURCES
     src/client.cc src/commands.cc src/message.cc
@@ -40,7 +40,7 @@ SET(EVENTING_SOURCES
     src/n1ql.cc src/parse_deployment.cc src/crc32c.cc
     src/log.cc src/transpiler.cc src/js_exception.cc
     src/utils.cc src/function_templates.cc
-    ../gen/parser/jsify.cc)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc)
 
 SET(EVENTING_LIBRARIES
       ${V8_LIBRARIES} ${ICU_LIBRARIES} ${JEMALLOC_LIBRARIES}
