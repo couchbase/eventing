@@ -30,9 +30,7 @@
 #include "commands.h"
 #include "crc32c.h"
 #include "function_templates.h"
-#ifdef ZLIB_FOUND
 #include "inspector_agent.h"
-#endif
 #include "js_exception.h"
 #include "log.h"
 #include "n1ql.h"
@@ -193,9 +191,7 @@ private:
   std::string last_exception;
   v8::Isolate *isolate_;
   v8::Platform *platform_;
-#ifdef ZLIB_FOUND
   inspector::Agent *agent;
-#endif
 };
 
 #endif

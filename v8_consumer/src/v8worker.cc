@@ -277,7 +277,6 @@ V8Worker::~V8Worker() {
   delete n1ql_handle;
 }
 
-#ifdef ZLIB_FOUND
 // Re-compile and execute handler code for debugger
 bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
                             int args_len) {
@@ -317,7 +316,6 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
     }
   }
 }
-#endif
 
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   LOG(logInfo) << "Eventing dir: " << settings->eventing_dir << '\n';
@@ -329,7 +327,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::Context::Scope context_scope(context);
 
   v8::TryCatch try_catch;
-#ifdef FLEX_FOUND
   std::string plain_js;
   int code = UniLineN1QL(script_to_execute.c_str(), &plain_js);
   LOG(logTrace) << "code after Unilining N1QL: " << plain_js << '\n';
@@ -346,10 +343,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     LOG(logError) << "failed to jsify: " << code << '\n';
     return code;
   }
-#else
-  std::string plain_js = script_to_execute;
-  LOG(logError) << "jsify built without flex, n1ql will not work\n";
-#endif
 
   plain_js += std::string((const char *)js_builtin) + '\n';
 
@@ -362,7 +355,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
   n1ql_handle = new N1QL(conn_pool);
 
-#ifdef FLEX_FOUND
   Transpiler transpiler(transpiler_js_src);
   script_to_execute =
       transpiler.Transpile(plain_js, app_name_ + ".js", app_name_ + ".map.json",
@@ -370,9 +362,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
       '\n';
   source_map_ = transpiler.GetSourceMap(plain_js, app_name_ + ".js");
   LOG(logTrace) << "source map:" << source_map_ << '\n';
-#else
-  LOG(logError) << "Built without flex, cannot transpile\n";
-#endif
 
   v8::Local<v8::String> source =
       v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());
@@ -416,7 +405,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     }
   }
 
-#ifdef FLEX_FOUND
   if (transpiler.IsTimerCalled(script_to_execute)) {
     LOG(logDebug) << "Timer is called" << '\n';
 
@@ -458,9 +446,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
                           sdlookup_callback);
     this->GetIsolate()->SetData(2, (void *)(&meta_cb_instance));
   }
-#else
-  LOG(logError) << "Built without flex, timers will not work\n";
-#endif
 
   // Spawning terminator thread to monitor the wall clock time for execution of
   // javascript code isn't going beyond max_task_duration. Passing reference to
@@ -603,7 +588,6 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   }
 
   if (debugger_started) {
-#ifdef ZLIB_FOUND
     if (!agent->IsStarted()) {
       agent->Start(isolate_, platform_, src_path.c_str());
     }
@@ -612,7 +596,6 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
     if (DebugExecute("OnUpdate", args, 2)) {
       return kSuccess;
     }
-#endif
     return kOnUpdateCallFail;
   } else {
     auto on_doc_update = on_update_.Get(isolate_);
@@ -650,7 +633,6 @@ int V8Worker::SendDelete(std::string meta) {
   assert(!try_catch.HasCaught());
 
   if (debugger_started) {
-#ifdef ZLIB_FOUND
     if (!agent->IsStarted()) {
       agent->Start(isolate_, platform_, src_path.c_str());
     }
@@ -659,7 +641,6 @@ int V8Worker::SendDelete(std::string meta) {
     if (DebugExecute("OnDelete", args, 1)) {
       return kSuccess;
     }
-#endif
     return kOnDeleteCallFail;
   } else {
     auto on_doc_delete = on_delete_.Get(isolate_);
@@ -706,7 +687,6 @@ void V8Worker::SendNonDocTimer(std::string doc_ids_cb_fns) {
         v8::Handle<v8::Value> arg[1];
 
         if (debugger_started) {
-#ifdef ZLIB_FOUND
           if (!agent->IsStarted()) {
             agent->Start(isolate_, platform_, src_path.c_str());
           }
@@ -715,7 +695,6 @@ void V8Worker::SendNonDocTimer(std::string doc_ids_cb_fns) {
           if (DebugExecute(fn, arg, 0)) {
             return;
           }
-#endif
         } else {
           execute_flag = true;
           execute_start_time = Time::now();
@@ -748,7 +727,6 @@ void V8Worker::SendDocTimer(std::string doc_id, std::string callback_fn) {
   arg[0] = v8::String::NewFromUtf8(GetIsolate(), doc_id.c_str());
 
   if (debugger_started) {
-#ifdef ZLIB_FOUND
     if (!agent->IsStarted()) {
       agent->Start(isolate_, platform_, src_path.c_str());
     }
@@ -757,7 +735,6 @@ void V8Worker::SendDocTimer(std::string doc_id, std::string callback_fn) {
     if (DebugExecute(callback_fn.c_str(), arg, 1)) {
       return;
     }
-#endif
   } else {
     execute_flag = true;
     execute_start_time = Time::now();
@@ -767,7 +744,6 @@ void V8Worker::SendDocTimer(std::string doc_id, std::string callback_fn) {
 }
 
 void V8Worker::StartDebugger() {
-#ifdef ZLIB_FOUND
   if (debugger_started) {
     LOG(logError) << "Debugger already started" << '\n';
     return;
@@ -778,11 +754,9 @@ void V8Worker::StartDebugger() {
   agent = new inspector::Agent(settings->host_addr, settings->eventing_dir +
                                                         "/" + app_name_ +
                                                         "_frontend.url");
-#endif
 }
 
 void V8Worker::StopDebugger() {
-#ifdef ZLIB_FOUND
   if (debugger_started) {
     LOG(logInfo) << "Stopping Debugger" << '\n';
     debugger_started = false;
@@ -791,7 +765,6 @@ void V8Worker::StopDebugger() {
   } else {
     LOG(logError) << "Debugger wasn't started" << '\n';
   }
-#endif
 }
 
 void V8Worker::Enqueue(header_t *h, message_t *p) {

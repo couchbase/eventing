@@ -16,10 +16,10 @@ configure_file (pluggable-ui-eventing.json.in pluggable-ui-eventing.json)
 
 # copy rewritten config file and code to install directory
 install(FILES "${_instdir}/ui/pluggable-ui-eventing.json"
-		DESTINATION etc/couchbase)
+        DESTINATION etc/couchbase)
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/eventing-ui
-		DESTINATION lib)
+        DESTINATION lib)
 
 # rewrite the config file for running locally (using cluster-run)
 SET (BIN_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/")
