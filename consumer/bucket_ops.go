@@ -160,22 +160,6 @@ var getNonDocTimerCallback = func(args ...interface{}) error {
 	return err
 }
 
-var deleteOpCallback = func(args ...interface{}) error {
-	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
-
-	err := c.metadataBucketHandle.Delete(vbKey)
-	if gomemcached.KEY_ENOENT == util.MemcachedErrCode(err) {
-		logging.Infof("CRBO[%s:%s:%s:%d] Key: %s doesn't exist, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
-		return nil
-	} else if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket delete failed for key: %s, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
-	}
-	return err
-}
-
 var getOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)

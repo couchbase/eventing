@@ -7,7 +7,6 @@ import (
 	"os"
 	"runtime/debug"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -267,8 +266,10 @@ func (c *Consumer) Stop() {
 	c.persistAllTicker.Stop()
 
 	c.conn.Close()
-	c.debugConn.Close()
-	c.debugListener.Close()
+	if c.debugClient != nil {
+		c.debugConn.Close()
+		c.debugListener.Close()
+	}
 
 	for k := range c.timerProcessingWorkerSignalCh {
 		k.stopCh <- struct{}{}
@@ -279,12 +280,12 @@ func (c *Consumer) Stop() {
 	c.stopPlasmaPersistCh <- struct{}{}
 	c.signalStopDebuggerRoutineCh <- struct{}{}
 
-	for _, dcpFeed := range c.kvHostDcpFeedMap {
-		dcpFeed.Close()
-	}
-
 	for _, cancelCh := range c.dcpFeedCancelChs {
 		cancelCh <- struct{}{}
+	}
+
+	for _, dcpFeed := range c.kvHostDcpFeedMap {
+		dcpFeed.Close()
 	}
 
 	close(c.aggDCPFeed)
@@ -444,22 +445,6 @@ func (c *Consumer) SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma) {
 	logging.Infof("V8CR[%s:%s:%s:%d] vb: %v got signal from parent producer about plasma timer data transfer finish",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
 	c.signalPlasmaTransferFinishCh <- &plasmaStoreMsg{vb, store}
-}
-
-// SignalCheckpointBlobCleanup called by parent producer instance to signal consumer to clear
-// up all checkpoint metadata blobs from metadata bucket. Kicked off at the time of app/lambda
-// purge request
-func (c *Consumer) SignalCheckpointBlobCleanup() {
-	c.stopCheckpointingCh <- struct{}{}
-
-	for vb := range c.vbProcessingStats {
-		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
-
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, c, vbKey)
-	}
-
-	logging.Infof("V8CR[%s:%s:%s:%d] Purged all owned checkpoint blobs from metadata bucket: %s",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.metadataBucketHandle.Name)
 }
 
 // SignalStopDebugger signal C++ V8 consumer to stop Debugger Agent

@@ -78,7 +78,6 @@ type EventingConsumer interface {
 	NotifyRebalanceStop()
 	NotifySettingsChange()
 	RebalanceTaskProgress() *RebalanceProgress
-	SignalCheckpointBlobCleanup()
 	Serve()
 	SetConnHandle(net.Conn)
 	SignalConnected()
