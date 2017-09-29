@@ -13,20 +13,52 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/couchbase/cbauth"
+	"github.com/couchbase/cbauth/cbauthimpl"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
+func (m *ServiceMgr) isAuthValid(r *http.Request) (cbauth.Creds, bool, error) {
+	creds, err := cbauth.AuthWebCreds(r)
+	if err != nil {
+		if strings.Contains(err.Error(), cbauthimpl.ErrNoAuth.Error()) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	return creds, true, nil
+}
+
+func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request) (cbauth.Creds, bool) {
+	creds, valid, err := m.isAuthValid(r)
+	if err != nil {
+		logging.Errorf("Failed to validate auth, err: %v", err)
+	} else if valid == false {
+		w.WriteHeader(401)
+	}
+	return creds, valid
+}
+
 func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 	logging.Infof("Got request to clear event stats from host: %v", r.Host)
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
 
 	m.superSup.ClearEventStats()
 }
 
 func (m *ServiceMgr) startTracer(w http.ResponseWriter, r *http.Request) {
 	logging.Infof("Got request to start tracing")
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
 
 	os.Remove(m.uuid + "_trace.out")
 
@@ -48,6 +80,11 @@ func (m *ServiceMgr) startTracer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) stopTracer(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	m.stopTracerCh <- struct{}{}
 }
 
@@ -101,6 +138,11 @@ func (m *ServiceMgr) getSourceMap(appName string) string {
 }
 
 func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -134,6 +176,11 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	values := r.URL.Query()
 	appName := values["name"][0]
 	tempAppList := util.ListChildren(metakvTempAppsPath)
@@ -159,6 +206,11 @@ func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) 
 }
 
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -196,6 +248,11 @@ func (m *ServiceMgr) getLocalDebuggerURL(w http.ResponseWriter, r *http.Request)
 }
 
 func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -213,6 +270,11 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -404,6 +466,11 @@ func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	params := r.URL.Query()
 	appName := params["name"][0]
 
@@ -427,6 +494,11 @@ func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	appList := util.ListChildren(metakvAppsPath)
 	respData := make([]application, len(appList))
 
@@ -496,6 +568,11 @@ func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) fetchAppTempStore(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	tempAppList := util.ListChildren(metakvTempAppsPath)
 	respData := make([]application, len(tempAppList))
 
@@ -526,6 +603,11 @@ func (m *ServiceMgr) fetchAppTempStore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) saveAppSetup(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	params := r.URL.Query()
 	appName := params["name"][0]
 
@@ -551,6 +633,11 @@ func (m *ServiceMgr) saveAppSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -654,5 +741,10 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	w.Write(m.statusPayload)
 }
