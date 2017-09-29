@@ -35,17 +35,32 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DYY_NEVER_INTERACTIVE")
 SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc PROPERTIES GENERATED TRUE)
 
 SET(EVENTING_SOURCES
-    src/client.cc src/commands.cc src/message.cc
-    src/v8worker.cc src/assert.cc src/bucket.cc
-    src/n1ql.cc src/parse_deployment.cc src/crc32c.cc
-    src/log.cc src/transpiler.cc src/js_exception.cc
-    src/utils.cc src/function_templates.cc
+    src/client.cc
+    src/commands.cc
+    src/message.cc
+    src/v8worker.cc
+    src/assert.cc
+    src/bucket.cc
+    src/n1ql.cc
+    src/parse_deployment.cc
+    src/crc32c.cc
+    src/log.cc
+    src/transpiler.cc
+    src/js_exception.cc
+    src/utils.cc
+    src/function_templates.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc)
 
 SET(EVENTING_LIBRARIES
-      ${V8_LIBRARIES} ${ICU_LIBRARIES} ${JEMALLOC_LIBRARIES}
-      ${CURL_LIBRARIES} ${LIBCOUCHBASE_LIBRARIES} ${LIBUV_LIBRARIES}
-      eventing-inspector platform)
+    ${V8_LIBRARIES}
+    ${ICU_LIBRARIES}
+    ${JEMALLOC_LIBRARIES}
+    ${CURL_LIBRARIES}
+    ${LIBCOUCHBASE_LIBRARIES}
+    ${LIBUV_LIBRARIES}
+    ${ZLIB_LIBRARIES}
+    eventing-inspector
+    platform)
 
 IF(APPLE)
   SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} ${FLEX_LIBRARIES})

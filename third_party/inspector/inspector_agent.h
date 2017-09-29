@@ -25,13 +25,13 @@ class CBInspectorClient;
 
 class Agent {
  public:
-   __attribute__((visibility("default"))) Agent(std::string host_name, std::string file_path);
-  __attribute__((visibility("default"))) ~Agent();
+   Agent(std::string host_name, std::string file_path);
+  ~Agent();
 
   // Create client_, may create io_ if option enabled
-  __attribute__((visibility("default"))) bool Start(Isolate* isolate, Platform* platform, const char* path);
+  bool Start(Isolate* isolate, Platform* platform, const char* path);
   // Stop and destroy io_
-  __attribute__((visibility("default"))) void Stop();
+  void Stop();
 
   bool IsStarted() { return !!client_; }
 
@@ -53,7 +53,7 @@ class Agent {
 
   void RunMessageLoop();
   bool enabled() { return enabled_; }
-  __attribute__((visibility("default"))) void PauseOnNextJavascriptStatement(const std::string& reason);
+  void PauseOnNextJavascriptStatement(const std::string& reason);
 
   // Initialize 'inspector' module bindings
   static void InitInspector(Local<Object> target,

@@ -32,8 +32,12 @@ SET(V8INSPECTOR_SOURCES assert.cc http_parser.cc inspector_agent.cc
     inspector_io.cc inspector_socket.cc inspector_socket_server.cc)
 
 SET(V8INSPECTOR_LIBRARIES
-   ${V8_LIBRARIES} ${ICU_LIBRARIES} -lz
-   ${LIBUV_LIBRARIES} platform ${OPENSSL_LIBRARIES})
+   ${V8_LIBRARIES}
+   ${ICU_LIBRARIES}
+   ${LIBUV_LIBRARIES}
+   ${OPENSSL_LIBRARIES}
+   ${ZLIB_LIBRARIES}
+   platform)
 
 ADD_LIBRARY(eventing-inspector STATIC ${V8INSPECTOR_SOURCES})
 TARGET_LINK_LIBRARIES(eventing-inspector ${V8INSPECTOR_LIBRARIES})
