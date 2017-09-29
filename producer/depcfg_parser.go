@@ -65,8 +65,8 @@ func (p *Producer) parseDepcfg() error {
 		p.socketWriteBatchSize = int(settings["sock_batch_size"].(float64))
 		p.skipTimerThreshold = int(settings["skip_timer_threshold"].(float64))
 
-		// p.rbacpass = settings["rbacpass"].(string)
-		// p.rbacuser = settings["rbacuser"].(string)
+		p.rbacpass = settings["rbacpass"].(string)
+		p.rbacuser = settings["rbacuser"].(string)
 		logging.Infof("DCFG[%s] RBAC user: %s pass: %s", p.appName, p.rbacuser, p.rbacpass)
 
 		// TODO: Remove if exists checking once UI starts to pass below fields
