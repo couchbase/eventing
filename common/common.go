@@ -31,11 +31,11 @@ type EventingProducer interface {
 	CleanupDeadConsumer(consumer EventingConsumer)
 	ClearEventStats()
 	GetAppCode() string
+	GetHandlerCode() string
 	GetDebuggerURL() string
 	GetNsServerPort() string
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
-	GetHandlerCode() string
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
 	KvHostPorts() []string
 	LenRunningConsumers() int
@@ -69,8 +69,8 @@ type EventingConsumer interface {
 	ClearEventStats()
 	ConsumerName() string
 	DcpEventsRemainingToProcess() uint64
-	EventsProcessedPSec() *EventProcessingStats
 	EventingNodeUUIDs() []string
+	EventsProcessedPSec() *EventProcessingStats
 	GetHandlerCode() string
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
@@ -103,17 +103,17 @@ type EventingSuperSup interface {
 	GetAppCode(appName string) string
 	GetDebuggerURL(appName string) string
 	GetDeployedApps() map[string]string
+	GetHandlerCode(appName string) string
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
-	GetHandlerCode(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)
 	ProducerHostPortAddrs() []string
 	RestPort() string
 	SignalStartDebugger(appName string)
 	SignalStopDebugger(appName string)
-	SignalToClosePlasmaStore(vb uint16)
 	SignalTimerDataTransferStart(vb uint16) bool
 	SignalTimerDataTransferStop(vb uint16, store *plasma.Plasma)
+	SignalToClosePlasmaStore(vb uint16)
 }
 
 type EventingServiceMgr interface {
