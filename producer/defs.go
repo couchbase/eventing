@@ -77,6 +77,10 @@ type Producer struct {
 	uuid                   string
 	workerCount            int
 
+	// Chan used to signal if Eventing.Producer has finished bootstrap
+	// i.e. started up all it's child routines
+	bootstrapFinishCh chan struct{}
+
 	// Routines to control parallel vbucket ownership transfer
 	// during rebalance
 	vbOwnershipGiveUpRoutineCount   int

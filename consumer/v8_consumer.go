@@ -7,7 +7,6 @@ import (
 	"os"
 	"runtime/debug"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -72,6 +71,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		restartVbDcpStreamTicker:           time.NewTicker(restartVbDcpStreamTickInterval),
 		sendMsgCounter:                     0,
 		sendMsgToDebugger:                  false,
+		signalBootstrapFinishCh:            make(chan struct{}, 1),
 		signalConnectedCh:                  make(chan struct{}, 1),
 		signalDebugBlobDebugStopCh:         make(chan struct{}, 1),
 		signalInstBlobCasOpFinishCh:        make(chan struct{}, 1),
@@ -195,6 +195,8 @@ func (c *Consumer) Serve() {
 	// V8 Debugger polling routine
 	go c.pollForDebuggerStart()
 
+	c.signalBootstrapFinishCh <- struct{}{}
+
 	c.controlRoutine()
 
 	logging.Debugf("V8CR[%s:%s:%s:%d] Exiting consumer init routine",
@@ -267,8 +269,10 @@ func (c *Consumer) Stop() {
 	c.persistAllTicker.Stop()
 
 	c.conn.Close()
-	c.debugConn.Close()
-	c.debugListener.Close()
+	if c.debugClient != nil {
+		c.debugConn.Close()
+		c.debugListener.Close()
+	}
 
 	for k := range c.timerProcessingWorkerSignalCh {
 		k.stopCh <- struct{}{}
@@ -279,12 +283,12 @@ func (c *Consumer) Stop() {
 	c.stopPlasmaPersistCh <- struct{}{}
 	c.signalStopDebuggerRoutineCh <- struct{}{}
 
-	for _, dcpFeed := range c.kvHostDcpFeedMap {
-		dcpFeed.Close()
-	}
-
 	for _, cancelCh := range c.dcpFeedCancelChs {
 		cancelCh <- struct{}{}
+	}
+
+	for _, dcpFeed := range c.kvHostDcpFeedMap {
+		dcpFeed.Close()
 	}
 
 	close(c.aggDCPFeed)
@@ -446,22 +450,6 @@ func (c *Consumer) SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma) {
 	c.signalPlasmaTransferFinishCh <- &plasmaStoreMsg{vb, store}
 }
 
-// SignalCheckpointBlobCleanup called by parent producer instance to signal consumer to clear
-// up all checkpoint metadata blobs from metadata bucket. Kicked off at the time of app/lambda
-// purge request
-func (c *Consumer) SignalCheckpointBlobCleanup() {
-	c.stopCheckpointingCh <- struct{}{}
-
-	for vb := range c.vbProcessingStats {
-		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
-
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, c, vbKey)
-	}
-
-	logging.Infof("V8CR[%s:%s:%s:%d] Purged all owned checkpoint blobs from metadata bucket: %s",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.metadataBucketHandle.Name)
-}
-
 // SignalStopDebugger signal C++ V8 consumer to stop Debugger Agent
 func (c *Consumer) SignalStopDebugger() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Got signal to stop V8 Debugger Agent",
@@ -499,4 +487,29 @@ func (c *Consumer) GetSourceMap() string {
 // GetHandlerCode returns handler code to assist V8 debugger
 func (c *Consumer) GetHandlerCode() string {
 	return c.handlerCode
+}
+
+// GetSeqsProcessed returns vbucket specific sequence nos processed so far
+func (c *Consumer) GetSeqsProcessed() map[int]int64 {
+	seqNoProcessed := make(map[int]int64)
+
+	var seqNo int64
+	subdocPath := "last_processed_seq_no"
+
+	for vb := 0; vb < numVbuckets; vb++ {
+		vbKey := fmt.Sprintf("%s_vb_%d", c.app.AppName, vb)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getMetaOpCallback, c, vbKey, &seqNo, subdocPath)
+		seqNoProcessed[vb] = seqNo
+	}
+
+	return seqNoProcessed
+}
+
+// SignalBootstrapFinish is leveraged by Eventing.Producer instance to know
+// if corresponding Eventing.Consumer instance has finished bootstrap
+func (c *Consumer) SignalBootstrapFinish() {
+	logging.Infof("V8CR[%s:%s:%s:%d] Got request to signal bootstrap status",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+
+	<-c.signalBootstrapFinishCh
 }

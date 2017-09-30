@@ -6,6 +6,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	cbbucket "github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gomemcached"
 )
 
 func (p *Producer) initMetadataBucketHandle() {
@@ -84,5 +85,21 @@ var getOpCallback = func(args ...interface{}) error {
 		logging.Errorf("PRDR[%s:%d] Bucket set failed for key: %v , err: %v", p.appName, p.LenRunningConsumers(), key, err)
 	}
 
+	return err
+}
+
+var deleteOpCallback = func(args ...interface{}) error {
+	p := args[0].(*Producer)
+	key := args[1].(string)
+
+	err := p.metadataBucketHandle.Delete(key)
+	if gomemcached.KEY_ENOENT == util.MemcachedErrCode(err) {
+		logging.Errorf("PRDR[%s:%d] Key: %v doesn't exist, err: %v",
+			p.appName, p.LenRunningConsumers(), key, err)
+		return nil
+	} else if err != nil {
+		logging.Errorf("PRDR[%s:%d] Bucket delete failed for key: %v, err: %v",
+			p.appName, p.LenRunningConsumers(), key, err)
+	}
 	return err
 }

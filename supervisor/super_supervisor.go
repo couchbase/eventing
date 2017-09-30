@@ -1,7 +1,7 @@
 package supervisor
 
 import (
-	"bytes"
+	// "bytes"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -24,6 +24,7 @@ func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid s
 	s := &SuperSupervisor{
 		appStatus:                    make(map[string]bool),
 		CancelCh:                     make(chan struct{}, 1),
+		deployedApps:                 make(map[string]string),
 		eventingAdminPort:            eventingAdminPort,
 		eventingDir:                  eventingDir,
 		kvPort:                       kvPort,
@@ -52,6 +53,10 @@ func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid s
 	config.Set("rest_port", s.restPort)
 
 	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s)
+
+	var user, password string
+	util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, s, &user, &password)
+	s.auth = fmt.Sprintf("%s:%s", user, password)
 
 	return s
 }
@@ -153,6 +158,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			case false:
 				logging.Infof("SSUP[%d] App: %s enabled, settings change requesting for disabling processing for it",
 					len(s.runningProducers), appName)
+				delete(s.deployedApps, appName)
 
 				if p, ok := s.runningProducers[appName]; ok {
 					logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
@@ -160,7 +166,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 					s.superSup.Remove(s.producerSupervisorTokenMap[p])
 					delete(s.producerSupervisorTokenMap, p)
-					delete(s.runningProducers, appName)
 
 					p.NotifySupervisor()
 					logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)
@@ -176,6 +181,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 				s.spawnApp(appName)
 				s.appStatus[appName] = true
+				if producer, ok := s.runningProducers[appName]; ok {
+					producer.SignalBootstrapFinish()
+					s.deployedApps[appName] = time.Now().String()
+				}
 
 			case false:
 				logging.Infof("SSUP[%d] App: %s disabled currently, settings change requesting for disabling it again. Ignoring",
@@ -276,8 +285,10 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 				logging.Infof("SSUP[%d] Deleting app: %s", len(s.runningProducers), appName)
 				// Signal all producer to signal all running consumers to purge all checkpoint
 				// blobs in metadata bucket
-				appProducer := s.runningProducers[appName]
-				appProducer.SignalCheckpointBlobCleanup()
+				appProducer, ok := s.runningProducers[appName]
+				if ok {
+					appProducer.SignalCheckpointBlobCleanup()
+				}
 
 				s.superSup.Remove(s.producerSupervisorTokenMap[appProducer])
 
@@ -296,29 +307,31 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
 
 					// Purge entries for deleted apps from plasma store
-					for _, vb := range s.vbucketsToOwn {
-						s.plasmaRWMutex.RLock()
-						store := s.vbPlasmaStoreMap[vb]
-						s.plasmaRWMutex.RUnlock()
+					/*
+						for _, vb := range s.vbucketsToOwn {
+							s.plasmaRWMutex.RLock()
+							store := s.vbPlasmaStoreMap[vb]
+							s.plasmaRWMutex.RUnlock()
 
-						r := store.NewReader()
-						w := store.NewWriter()
-						snapshot := store.NewSnapshot()
-						defer snapshot.Close()
+							r := store.NewReader()
+							w := store.NewWriter()
+							snapshot := store.NewSnapshot()
+							defer snapshot.Close()
 
-						itr, err := r.NewSnapshotIterator(snapshot)
-						if err != nil {
-							logging.Errorf("SSUP[%d] App: %s Failed to open snapshot iterator to purge doc id timer entries, err: %v",
-								len(s.runningProducers), appName, err)
-							return
-						}
+							itr, err := r.NewSnapshotIterator(snapshot)
+							if err != nil {
+								logging.Errorf("SSUP[%d] App: %s Failed to open snapshot iterator to purge doc id timer entries, err: %v",
+									len(s.runningProducers), appName, err)
+								return
+							}
 
-						for itr.SeekFirst(); itr.Valid(); itr.Next() {
-							if bytes.Compare(itr.Key(), []byte(appName)) > 0 {
-								w.DeleteKV(itr.Key())
+							for itr.SeekFirst(); itr.Valid(); itr.Next() {
+								if bytes.Compare(itr.Key(), []byte(appName)) > 0 {
+									w.DeleteKV(itr.Key())
+								}
 							}
 						}
-					}
+					*/
 					logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
 				}(s)
 
@@ -369,6 +382,11 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					logging.Errorf("SSUP[%d] Failed to store updated settings for app: %s in metakv, err: %v",
 						len(s.runningProducers), appName, err)
 					continue
+				}
+
+				if producer, ok := s.runningProducers[appName]; ok {
+					producer.SignalBootstrapFinish()
+					s.deployedApps[appName] = time.Now().String()
 				}
 
 			case cmdSettingsUpdate:
@@ -492,4 +510,19 @@ func (s *SuperSupervisor) GetHandlerCode(appName string) string {
 		return p.GetHandlerCode()
 	}
 	return ""
+}
+
+// GetSeqsProcessed returns vbucket specific sequence nos processed so far
+func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
+	logging.Infof("SSUP[%d] GetSeqsProcessed request for app: %v", len(s.runningProducers), appName)
+	if p, ok := s.runningProducers[appName]; ok {
+		return p.GetSeqsProcessed()
+	}
+	return nil
+}
+
+// GetDeployedApps returns list of deployed apps and their last deployment time
+func (s *SuperSupervisor) GetDeployedApps() map[string]string {
+	logging.Infof("SSUP[%d] GetDeployedApps request", len(s.runningProducers))
+	return s.deployedApps
 }

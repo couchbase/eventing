@@ -104,9 +104,10 @@ const (
 )
 
 const (
-	dcpStreamBootstrap = "bootstrap"
-	dcpStreamRunning   = "running"
-	dcpStreamStopped   = "stopped"
+	dcpStreamBootstrap     = "bootstrap"
+	dcpStreamRunning       = "running"
+	dcpStreamStopped       = "stopped"
+	dcpStreamUninitialised = ""
 )
 
 var dcpConfig = map[string]interface{}{
@@ -282,6 +283,10 @@ type Consumer struct {
 
 	consumerSup    *suptree.Supervisor
 	clientSupToken suptree.ServiceToken
+
+	// Chan to signal that current Eventing.Consumer instance
+	// has finished bootstrap
+	signalBootstrapFinishCh chan struct{}
 
 	// Populated when C++ v8 worker is spawned
 	// correctly and downstream tcp socket is available
