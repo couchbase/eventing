@@ -471,6 +471,11 @@ AppWorker *AppWorker::GetAppWorker() {
 int main(int argc, char **argv) {
   global_program_name = argv[0];
 
+  if (argc < 5) {
+        std::cerr << "Need at least 4 arguments: appname, port, worker_id, batch_size" << '\n';
+        return 2;
+  }
+
   if (isSSE42Supported()) {
     initCrcTable();
   }
