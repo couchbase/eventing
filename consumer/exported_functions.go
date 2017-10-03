@@ -30,6 +30,17 @@ func (c *Consumer) EventingNodeUUIDs() []string {
 	return c.eventingNodeUUIDs
 }
 
+// GetEventProcessingStats exposes dcp/timer processing stats
+func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
+	stats := make(map[string]uint64)
+	for opcode, value := range c.dcpMessagesProcessed {
+		stats[mcd.CommandNames[opcode]] = value
+	}
+	stats["TIMER_EVENTS"] = c.timerMessagesProcessed
+
+	return stats
+}
+
 // GetHandlerCode returns handler code to assist V8 debugger
 func (c *Consumer) GetHandlerCode() string {
 	return c.handlerCode

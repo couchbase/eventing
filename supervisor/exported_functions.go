@@ -43,6 +43,14 @@ func (s *SuperSupervisor) DeployedAppList() []string {
 	return appList
 }
 
+// GetEventProcessingStats returns dcp/timer event processing stats
+func (s *SuperSupervisor) GetEventProcessingStats(appName string) map[string]uint64 {
+	if p, ok := s.runningProducers[appName]; ok {
+		return p.GetEventProcessingStats()
+	}
+	return nil
+}
+
 // GetAppCode returns handler code for requested appname
 func (s *SuperSupervisor) GetAppCode(appName string) string {
 	logging.Infof("SSUP[%d] GetAppCode request for app: %v", len(s.runningProducers), appName)

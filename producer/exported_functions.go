@@ -34,6 +34,22 @@ func (p *Producer) GetAppCode() string {
 	return p.app.AppCode
 }
 
+// GetEventProcessingStats exposes dcp/timer processing stats
+func (p *Producer) GetEventProcessingStats() map[string]uint64 {
+	aggStats := make(map[string]uint64)
+	for _, consumer := range p.runningConsumers {
+		stats := consumer.GetEventProcessingStats()
+		for stat, value := range stats {
+			if _, ok := aggStats[stat]; !ok {
+				aggStats[stat] = 0
+			}
+			aggStats[stat] += value
+		}
+	}
+
+	return aggStats
+}
+
 // GetHandlerCode returns handler code to assist V8 Debugger
 func (p *Producer) GetHandlerCode() string {
 	if len(p.runningConsumers) > 0 {
