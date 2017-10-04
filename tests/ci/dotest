@@ -134,7 +134,7 @@ stop_cluster
 echo "</pre><h4>Integration tests</h4><pre>"
 export phase=integration
 cd $WORKSPACE/testrunner
-(timeout 1h echo "TODO: Plug in here: make eventing-integration-tests PARAMS=foo" 2>&1 | ts) | tee -a $WORKSPACE/test.log
+(timeout 1h make test-functions-sanity-tests 2>&1 | ts) | tee -a $WORKSPACE/test.log
 collect_logs
 
 # Verify results
