@@ -9,6 +9,7 @@ import (
 
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/gocb"
 )
 
 func (c *Consumer) controlRoutine() {
@@ -114,14 +115,14 @@ func (c *Consumer) controlRoutine() {
 				}
 
 				var vbBlob vbucketKVBlob
-				var cas uint64
+				var cas gocb.Cas
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
 
 				logging.Debugf("CRCR[%s:%s:%s:%d] vbno: %v, reclaiming it back by restarting dcp stream",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-				err := c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, &cas, true, true)
+				err := c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, true, true)
 				if err != nil {
 					vbsFailedToStartStream = append(vbsFailedToStartStream, vbno)
 				}

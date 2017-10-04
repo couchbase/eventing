@@ -137,18 +137,6 @@ func (p *Producer) NsServerNodeCount() int {
 	return 0
 }
 
-// RbacPass return password for eventing specific rbac user, which
-// has all admin privileges
-func (p *Producer) RbacPass() string {
-	return p.rbacpass
-}
-
-// RbacUser return username for eventing specific rbac user, which
-// has all admin privileges
-func (p *Producer) RbacUser() string {
-	return p.rbacuser
-}
-
 // SignalBootstrapFinish is leveraged by EventingSuperSup instance to
 // check if app handler has finished bootstrapping
 func (p *Producer) SignalBootstrapFinish() {

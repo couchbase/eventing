@@ -7,7 +7,7 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
-	cbbucket "github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gocb"
 	"github.com/couchbase/plasma"
 )
 
@@ -64,10 +64,8 @@ type Producer struct {
 	kvHostPorts            []string
 	listenerHandles        []*abatableListener
 	logLevel               string
-	rbacpass               string
-	rbacuser               string
 	metadatabucket         string
-	metadataBucketHandle   *cbbucket.Bucket
+	metadataBucketHandle   *gocb.Bucket
 	metakvAppHostPortsPath string
 	nsServerPort           string
 	nsServerHostPort       string

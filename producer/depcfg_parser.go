@@ -35,9 +35,6 @@ func (p *Producer) parseDepcfg() error {
 		util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, p, &user, &password)
 		p.auth = fmt.Sprintf("%s:%s", user, password)
 
-		// TODO: ns_server rbac auth has problems during rebalance
-		util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, p)
-
 		p.bucket = string(depcfg.SourceBucket())
 		p.cfgData = string(cfgData)
 		p.metadatabucket = string(depcfg.MetadataBucket())
@@ -64,10 +61,6 @@ func (p *Producer) parseDepcfg() error {
 		p.timerWorkerPoolSize = int(settings["timer_worker_pool_size"].(float64))
 		p.socketWriteBatchSize = int(settings["sock_batch_size"].(float64))
 		p.skipTimerThreshold = int(settings["skip_timer_threshold"].(float64))
-
-		// p.rbacpass = settings["rbacpass"].(string)
-		// p.rbacuser = settings["rbacuser"].(string)
-		logging.Infof("DCFG[%s] RBAC user: %s pass: %s", p.appName, p.rbacuser, p.rbacpass)
 
 		// TODO: Remove if exists checking once UI starts to pass below fields
 		if val, ok := settings["lcb_inst_capacity"]; ok {

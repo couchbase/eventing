@@ -140,7 +140,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 		vbKey := fmt.Sprintf("%s_vb_%s", r.c.app.AppName, strconv.Itoa(int(vb)))
 
 		var vbBlob vbucketKVBlob
-		var cas uint64
+		var cas gocb.Cas
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, r.c, vbKey, &vbBlob, &cas, false)
 
@@ -358,7 +358,7 @@ func (c *Consumer) processNonDocTimerEvents() {
 		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 
 		var vbBlob vbucketKVBlob
-		var cas uint64
+		var cas gocb.Cas
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
@@ -406,7 +406,7 @@ func (c *Consumer) processNonDocTimerEvents() {
 					logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Non doc timer key: %v val: %v",
 						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val)
 					c.nonDocTimerEntryCh <- val
-					c.metadataBucketHandle.Delete(currTimer)
+					c.gocbMetaBucket.Remove(currTimer, 0)
 				}
 				c.updateNonDocTimerStats(vb)
 			}

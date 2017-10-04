@@ -48,8 +48,6 @@ type EventingProducer interface {
 	NotifyTopologyChange(msg *TopologyChangeMsg)
 	NsServerHostPort() string
 	NsServerNodeCount() int
-	RbacPass() string
-	RbacUser() string
 	SignalBootstrapFinish()
 	SignalCheckpointBlobCleanup()
 	SignalPlasmaClosed(vb uint16)

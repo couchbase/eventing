@@ -87,7 +87,8 @@ func (p *Producer) Serve() {
 	p.workerSupervisor = suptree.New(p.appName, spec)
 	go p.workerSupervisor.ServeBackground()
 
-	p.initMetadataBucketHandle()
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), gocbConnectMetaBucketCallback, p)
+
 	// Write debugger blobs in metadata bucket
 	dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
 	debugBlob := &common.StartDebugBlob{

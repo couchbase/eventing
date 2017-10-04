@@ -18,7 +18,6 @@ import (
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
-	cblib "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/plasma"
 )
 
@@ -135,8 +134,6 @@ func (c *Consumer) Serve() {
 
 	c.cppWorkerThrPartitionMap()
 
-	c.initCBBucketConnHandle()
-
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), commonConnectBucketOpCallback, c, &c.cbBucket)
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), gocbConnectBucketCallback, c)
@@ -219,8 +216,12 @@ func (c *Consumer) HandleV8Worker() {
 		currHost = "127.0.0.1"
 	}
 
-	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.producer.KvHostPorts()[0], c.producer.CfgData(),
-		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity, c.executionTimeout, c.enableRecursiveMutation)
+	var user, password string
+	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, c.producer.KvHostPorts()[0], &user, &password)
+
+	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
+		c.producer.KvHostPorts()[0], c.producer.CfgData(), user, password, c.lcbInstCapacity,
+		c.executionTimeout, c.enableRecursiveMutation)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 
@@ -344,20 +345,6 @@ func (c *Consumer) NotifySettingsChange() {
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 	c.signalSettingsChangeCh <- struct{}{}
-}
-
-func (c *Consumer) initCBBucketConnHandle() {
-	metadataBucket := c.producer.MetadataBucket()
-	connStr := fmt.Sprintf("http://127.0.0.1:" + c.producer.GetNsServerPort())
-
-	var conn cblib.Client
-	var pool cblib.Pool
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), connectBucketOpCallback, c, &conn, connStr)
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), poolGetBucketOpCallback, c, &conn, &pool, "default")
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), cbGetBucketOpCallback, c, &pool, metadataBucket)
 }
 
 // SignalPlasmaClosed is used by producer instance to signal message from SuperSupervisor
