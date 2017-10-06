@@ -99,12 +99,16 @@ var getHTTPServiceAuth = func(args ...interface{}) error {
 
 var getMemcachedServiceAuth = func(args ...interface{}) error {
 	p := args[0].(*Producer)
+	kvHostPort := args[1].(string)
+	user := args[2].(*string)
+	pass := args[3].(*string)
 
 	var err error
-	clusterURL := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
-	p.rbacuser, p.rbacpass, err = cbauth.GetMemcachedServiceAuth(clusterURL)
+	*user, *pass, err = cbauth.GetMemcachedServiceAuth(kvHostPort)
 	if err != nil {
 		logging.Errorf("PRCO[%s:%d] Failed to get rbac auth details, err: %v", p.appName, p.LenRunningConsumers(), err)
+	} else {
+		logging.Infof("Producer - rbac creds, user: %v password: %v", *user, *pass)
 	}
 	return err
 }

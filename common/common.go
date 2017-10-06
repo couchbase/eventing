@@ -31,11 +31,12 @@ type EventingProducer interface {
 	CleanupDeadConsumer(consumer EventingConsumer)
 	ClearEventStats()
 	GetAppCode() string
+	GetEventProcessingStats() map[string]uint64
+	GetHandlerCode() string
 	GetDebuggerURL() string
 	GetNsServerPort() string
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
-	GetHandlerCode() string
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
 	KvHostPorts() []string
 	LenRunningConsumers() int
@@ -47,8 +48,6 @@ type EventingProducer interface {
 	NotifyTopologyChange(msg *TopologyChangeMsg)
 	NsServerHostPort() string
 	NsServerNodeCount() int
-	RbacPass() string
-	RbacUser() string
 	SignalBootstrapFinish()
 	SignalCheckpointBlobCleanup()
 	SignalPlasmaClosed(vb uint16)
@@ -69,8 +68,9 @@ type EventingConsumer interface {
 	ClearEventStats()
 	ConsumerName() string
 	DcpEventsRemainingToProcess() uint64
-	EventsProcessedPSec() *EventProcessingStats
 	EventingNodeUUIDs() []string
+	EventsProcessedPSec() *EventProcessingStats
+	GetEventProcessingStats() map[string]uint64
 	GetHandlerCode() string
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
@@ -100,20 +100,21 @@ type EventingSuperSup interface {
 	AppTimerTransferHostPortAddrs(string) (map[string]string, error)
 	ClearEventStats()
 	DeployedAppList() []string
+	GetEventProcessingStats(appName string) map[string]uint64
 	GetAppCode(appName string) string
 	GetDebuggerURL(appName string) string
 	GetDeployedApps() map[string]string
+	GetHandlerCode(appName string) string
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
-	GetHandlerCode(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)
 	ProducerHostPortAddrs() []string
 	RestPort() string
 	SignalStartDebugger(appName string)
 	SignalStopDebugger(appName string)
-	SignalToClosePlasmaStore(vb uint16)
 	SignalTimerDataTransferStart(vb uint16) bool
 	SignalTimerDataTransferStop(vb uint16, store *plasma.Plasma)
+	SignalToClosePlasmaStore(vb uint16)
 }
 
 type EventingServiceMgr interface {

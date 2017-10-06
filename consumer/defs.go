@@ -16,7 +16,6 @@ import (
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/timer_transfer"
-	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/plasma"
 )
@@ -270,8 +269,6 @@ type Consumer struct {
 
 	workerName string
 	producer   common.EventingProducer
-
-	metadataBucketHandle *cbbucket.Bucket
 
 	// OS pid of c++ v8 worker
 	osPid atomic.Value

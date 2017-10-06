@@ -13,6 +13,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/gocb"
 	"github.com/couchbase/plasma"
 )
 
@@ -24,7 +25,7 @@ var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")
 
 func (c *Consumer) reclaimVbOwnership(vb uint16) error {
 	var vbBlob vbucketKVBlob
-	var cas uint64
+	var cas gocb.Cas
 
 	c.doVbTakeover(vb)
 
@@ -71,7 +72,8 @@ func (c *Consumer) vbGiveUpRoutine() {
 			defer wg.Done()
 
 			var vbBlob vbucketKVBlob
-			var cas uint64
+			var cas gocb.Cas
+
 			for _, vb := range vbsRemainingToGiveUp {
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
@@ -253,7 +255,7 @@ retryStreamUpdate:
 
 func (c *Consumer) doVbTakeover(vb uint16) error {
 	var vbBlob vbucketKVBlob
-	var cas uint64
+	var cas gocb.Cas
 
 	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 
@@ -296,12 +298,12 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 					// c.vbPlasmaStoreMap[vb] = msg.store
 					c.plasmaStoreRWMutex.Unlock()
 
-					return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, &cas, true, false)
+					return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true, false)
 				}
 
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, &cas, true, true)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true, true)
 			}
-			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, &cas, true, true)
+			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true, true)
 		}
 
 		return errVbOwnedByAnotherNode
@@ -329,9 +331,9 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 			// c.vbPlasmaStoreMap[vb] = msg.store
 			c.plasmaStoreRWMutex.Unlock()
 
-			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, &cas, true, false)
+			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true, false)
 		}
-		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, &cas, true, true)
+		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true, true)
 
 	default:
 		return errUnexpectedVbStreamStatus
@@ -353,7 +355,7 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 	return false
 }
 
-func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob, cas *uint64, shouldStartStream, shouldPerformPlasmaTransfer bool) error {
+func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob, shouldStartStream, shouldPerformPlasmaTransfer bool) error {
 
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()

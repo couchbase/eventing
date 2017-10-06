@@ -12,6 +12,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/gocb"
 )
 
 func newDebugClient(c *Consumer, appName, eventingPort, tcpPort, workerName string) *debugClient {
@@ -71,7 +72,7 @@ func (c *Consumer) pollForDebuggerStart() {
 
 	dFlagBlob := &common.StartDebugBlob{}
 	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
-	var cas uint64
+	var cas gocb.Cas
 
 	for {
 
@@ -134,7 +135,7 @@ func (c *Consumer) pollForDebuggerStart() {
 				dInstAddrBlob.HostPortAddr = c.HostPortAddr()
 				dInstAddrBlob.NodeUUID = c.NodeUUID()
 
-				_, err := c.metadataBucketHandle.Cas(dInstAddrKey, 0, cas, dInstAddrBlob)
+				_, err := c.gocbMetaBucket.Replace(dInstAddrKey, dInstAddrBlob, gocb.Cas(cas), 0)
 				if err != nil {
 					logging.Errorf("CRPS[%s:%s:%s:%d] Bucket cas failed for debugger inst addr key: %s, err: %v",
 						c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, err)
@@ -199,8 +200,12 @@ func (c *Consumer) startDebuggerServer() {
 		currHost = "127.0.0.1"
 	}
 
-	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.producer.KvHostPorts()[0], c.producer.CfgData(),
-		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity, c.executionTimeout, c.enableRecursiveMutation)
+	var user, password string
+	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, c.producer.KvHostPorts()[0], &user, &password)
+
+	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
+		c.producer.KvHostPorts()[0], c.producer.CfgData(), user, password, c.lcbInstCapacity,
+		c.executionTimeout, c.enableRecursiveMutation)
 	logging.Debugf("CRSD[%s:%s:%s:%d] Debug enabled V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.debugTCPPort, c.Pid(), c.enableRecursiveMutation)
 

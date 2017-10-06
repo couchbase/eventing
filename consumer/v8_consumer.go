@@ -3,15 +3,12 @@ package consumer
 import (
 	"fmt"
 	"hash/crc32"
-	"net"
 	"os"
 	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
@@ -21,7 +18,6 @@ import (
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
-	cblib "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/plasma"
 )
 
@@ -138,8 +134,6 @@ func (c *Consumer) Serve() {
 
 	c.cppWorkerThrPartitionMap()
 
-	c.initCBBucketConnHandle()
-
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), commonConnectBucketOpCallback, c, &c.cbBucket)
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), gocbConnectBucketCallback, c)
@@ -222,8 +216,12 @@ func (c *Consumer) HandleV8Worker() {
 		currHost = "127.0.0.1"
 	}
 
-	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.producer.KvHostPorts()[0], c.producer.CfgData(),
-		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity, c.executionTimeout, c.enableRecursiveMutation)
+	var user, password string
+	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, c.producer.KvHostPorts()[0], &user, &password)
+
+	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
+		c.producer.KvHostPorts()[0], c.producer.CfgData(), user, password, c.lcbInstCapacity,
+		c.executionTimeout, c.enableRecursiveMutation)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 
@@ -303,38 +301,6 @@ func (c *Consumer) String() string {
 		c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed))
 }
 
-// SignalConnected notifies consumer routine when CPP V8 worker has connected to
-// tcp listener instance
-func (c *Consumer) SignalConnected() {
-	c.signalConnectedCh <- struct{}{}
-}
-
-// SetConnHandle sets the tcp connection handle for CPP V8 worker
-func (c *Consumer) SetConnHandle(conn net.Conn) {
-	c.Lock()
-	defer c.Unlock()
-	c.conn = conn
-}
-
-// ClearEventStats flushes event processing stats
-func (c *Consumer) ClearEventStats() {
-	c.Lock()
-	c.dcpMessagesProcessed = make(map[mcd.CommandCode]uint64)
-	c.v8WorkerMessagesProcessed = make(map[string]uint64)
-	c.timerMessagesProcessed = 0
-	c.Unlock()
-}
-
-// HostPortAddr returns the HostPortAddr combination of current eventing node
-// e.g. 127.0.0.1:25000
-func (c *Consumer) HostPortAddr() string {
-	hostPortAddr := (*string)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.hostPortAddr))))
-	if hostPortAddr != nil {
-		return *hostPortAddr
-	}
-	return ""
-}
-
 // Pid returns the process id of CPP V8 worker
 func (c *Consumer) Pid() int {
 	pid, ok := c.osPid.Load().(int)
@@ -342,26 +308,6 @@ func (c *Consumer) Pid() int {
 		return pid
 	}
 	return 0
-}
-
-// ConsumerName returns consumer name e.q <event_handler_name>_worker_1
-func (c *Consumer) ConsumerName() string {
-	return c.workerName
-}
-
-// NodeUUID returns UUID that's supplied by ns_server from command line
-func (c *Consumer) NodeUUID() string {
-	return c.uuid
-}
-
-// TimerTransferHostPortAddr returns hostport combination for RPC server handling transfer of
-// timer related plasma files during rebalance
-func (c *Consumer) TimerTransferHostPortAddr() string {
-	if c.timerTransferHandle == nil {
-		return ""
-	}
-
-	return c.timerTransferHandle.Addr
 }
 
 // NotifyClusterChange is called by producer handle to signify each
@@ -376,17 +322,6 @@ func (c *Consumer) NotifyClusterChange() {
 		logging.Infof("V8CR[%s:%s:%s:%d] Skipping cluster state change notification to control routine because another rebalance is in ongoing",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid())
 	}
-}
-
-// UpdateEventingNodesUUIDs is called by producer instance to notify about
-// updated list of node uuids
-func (c *Consumer) UpdateEventingNodesUUIDs(uuids []string) {
-	c.eventingNodeUUIDs = uuids
-}
-
-// EventingNodeUUIDs return list of known eventing node uuids
-func (c *Consumer) EventingNodeUUIDs() []string {
-	return c.eventingNodeUUIDs
 }
 
 // NotifyRebalanceStop is called by producer to signal stopping of
@@ -410,20 +345,6 @@ func (c *Consumer) NotifySettingsChange() {
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 	c.signalSettingsChangeCh <- struct{}{}
-}
-
-func (c *Consumer) initCBBucketConnHandle() {
-	metadataBucket := c.producer.MetadataBucket()
-	connStr := fmt.Sprintf("http://127.0.0.1:" + c.producer.GetNsServerPort())
-
-	var conn cblib.Client
-	var pool cblib.Pool
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), connectBucketOpCallback, c, &conn, connStr)
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), poolGetBucketOpCallback, c, &conn, &pool, "default")
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), cbGetBucketOpCallback, c, &pool, metadataBucket)
 }
 
 // SignalPlasmaClosed is used by producer instance to signal message from SuperSupervisor
@@ -477,39 +398,4 @@ func (c *Consumer) SignalStopDebugger() {
 		logging.Infof("V8CR[%s:%s:%s:%d] Failed to remove frontend.url file, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 	}
-}
-
-// GetSourceMap returns source map to assist V8 debugger
-func (c *Consumer) GetSourceMap() string {
-	return c.sourceMap
-}
-
-// GetHandlerCode returns handler code to assist V8 debugger
-func (c *Consumer) GetHandlerCode() string {
-	return c.handlerCode
-}
-
-// GetSeqsProcessed returns vbucket specific sequence nos processed so far
-func (c *Consumer) GetSeqsProcessed() map[int]int64 {
-	seqNoProcessed := make(map[int]int64)
-
-	var seqNo int64
-	subdocPath := "last_processed_seq_no"
-
-	for vb := 0; vb < numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s_vb_%d", c.app.AppName, vb)
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getMetaOpCallback, c, vbKey, &seqNo, subdocPath)
-		seqNoProcessed[vb] = seqNo
-	}
-
-	return seqNoProcessed
-}
-
-// SignalBootstrapFinish is leveraged by Eventing.Producer instance to know
-// if corresponding Eventing.Consumer instance has finished bootstrap
-func (c *Consumer) SignalBootstrapFinish() {
-	logging.Infof("V8CR[%s:%s:%s:%d] Got request to signal bootstrap status",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
-
-	<-c.signalBootstrapFinishCh
 }

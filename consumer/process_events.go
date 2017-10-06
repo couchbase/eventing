@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/shared"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/gocb"
 )
 
 func (c *Consumer) processEvents() {
@@ -166,7 +167,7 @@ func (c *Consumer) processEvents() {
 					vbFlog := &vbFlogEntry{streamReqRetry: false, statusCode: e.Status}
 
 					var vbBlob vbucketKVBlob
-					var cas uint64
+					var cas gocb.Cas
 
 					vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
 
@@ -261,7 +262,7 @@ func (c *Consumer) processEvents() {
 				//Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
 				var vbBlob vbucketKVBlob
-				var cas uint64
+				var cas gocb.Cas
 
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
@@ -429,7 +430,8 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 
 		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
 		var vbBlob vbucketKVBlob
-		var cas, start uint64
+		var start uint64
+		var cas gocb.Cas
 		var isNoEnt bool
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
@@ -571,7 +573,7 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() {
 
 func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 	var vbBlob vbucketKVBlob
-	var cas uint64
+	var cas gocb.Cas
 	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 

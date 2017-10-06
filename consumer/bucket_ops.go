@@ -11,7 +11,6 @@ import (
 	"github.com/couchbase/eventing/util"
 	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
-	"github.com/couchbase/gomemcached"
 )
 
 var vbTakeoverCallback = func(args ...interface{}) error {
@@ -38,9 +37,12 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
+	var user, password string
+	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, c.producer.KvHostPorts()[0], &user, &password)
+
 	err = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: c.producer.RbacUser(),
-		Password: c.producer.RbacPass(),
+		Username: user,
+		Password: password,
 	})
 	if err != nil {
 		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
@@ -70,9 +72,12 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
+	var user, password string
+	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, c.producer.KvHostPorts()[0], &user, &password)
+
 	err = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: c.producer.RbacUser(),
-		Password: c.producer.RbacPass(),
+		Username: user,
+		Password: password,
 	})
 	if err != nil {
 		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
@@ -114,7 +119,7 @@ var setOpCallback = func(args ...interface{}) error {
 	vbKey := args[1].(string)
 	vbBlob := args[2]
 
-	err := c.metadataBucketHandle.Set(vbKey, 0, vbBlob)
+	_, err := c.gocbMetaBucket.Upsert(vbKey, vbBlob, 0)
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s Bucket set failed, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
@@ -135,10 +140,10 @@ var getNonDocTimerCallback = func(args ...interface{}) error {
 
 	var err error
 	var v []byte
-	v, _, _, err = c.metadataBucketHandle.GetsRaw(key)
+	_, err = c.gocbMetaBucket.Get(key, &v)
 
 	if checkEnoEnt {
-		if gomemcached.KEY_ENOENT == util.MemcachedErrCode(err) {
+		if err == gocb.ErrKeyNotFound {
 			*isNoEnt = true
 			return nil
 		} else if err != nil {
@@ -164,7 +169,7 @@ var getOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
 	vbBlob := args[2]
-	cas := args[3].(*uint64)
+	cas := args[3].(*gocb.Cas)
 	skipEnoEnt := args[4].(bool)
 
 	var isNoEnt *bool
@@ -172,14 +177,15 @@ var getOpCallback = func(args ...interface{}) error {
 		isNoEnt = args[5].(*bool)
 	}
 
-	err := c.metadataBucketHandle.Gets(vbKey, vbBlob, cas)
+	var err error
+	*cas, err = c.gocbMetaBucket.Get(vbKey, vbBlob)
 
 	if skipEnoEnt {
 		// 1. If vbKey metadata blob doesn't exist then return nil
 		// 2. If vbKey Get operation fails retry the operation
 		// 3. If vbKey already exists i.e. Get operation return nil error, then return
 
-		if gomemcached.KEY_ENOENT == util.MemcachedErrCode(err) {
+		if err == gocb.ErrKeyNotFound {
 			*isNoEnt = true
 			return nil
 		} else if err != nil {
@@ -337,30 +343,16 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 	return err
 }
 
-var casOpCallback = func(args ...interface{}) error {
-	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
-	vbBlob := args[2]
-
-	var cas uint64
-	var blob vbucketKVBlob
-	util.Retry(util.NewFixedBackoff(time.Second), getOpCallback, c, vbKey, &blob, &cas, false)
-
-	_, err := c.metadataBucketHandle.Cas(vbKey, 0, cas, vbBlob)
-	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket cas failed for key: %s, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
-	}
-	return err
-}
-
 var connectBucketOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	conn := args[1].(*cbbucket.Client)
 	connStr := args[2].(string)
 
+	var user, password string
+	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, c.producer.KvHostPorts()[0], &user, &password)
+
 	var err error
-	*conn, err = cbbucket.ConnectWithAuthCreds(connStr, c.producer.RbacUser(), c.producer.RbacPass())
+	*conn, err = cbbucket.ConnectWithAuthCreds(connStr, user, password)
 
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to bootstrap conn to source cluster, err: %v",
@@ -380,20 +372,6 @@ var poolGetBucketOpCallback = func(args ...interface{}) error {
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to get pool info, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
-	}
-	return err
-}
-
-var cbGetBucketOpCallback = func(args ...interface{}) error {
-	c := args[0].(*Consumer)
-	pool := args[1].(*cbbucket.Pool)
-	metadataBucket := args[2].(string)
-
-	var err error
-	c.metadataBucketHandle, err = pool.GetBucketWithAuth(metadataBucket, c.producer.RbacUser(), c.producer.RbacPass())
-	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket: %s missing, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), metadataBucket, err)
 	}
 	return err
 }

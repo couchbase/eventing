@@ -7,6 +7,7 @@ import (
 
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/gocb"
 )
 
 func (c *Consumer) doLastSeqNoCheckpoint() {
@@ -28,7 +29,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 
 					vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
 
-					var cas uint64
+					var cas gocb.Cas
 					var isNoEnt bool
 
 					// Metadata blob doesn't exist probably the app is deployed for the first time.
@@ -38,13 +39,13 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 						logging.Infof("CRCH[%s:%s:%s:%d] vb: %d Creating the initial metadata blob entry",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
-						c.updateCheckpointInfo(vbKey, vbno, &vbBlob, &cas)
+						c.updateCheckpointInfo(vbKey, vbno, &vbBlob)
 						continue
 					}
 
 					// Steady state cluster
 					if c.NodeUUID() == vbBlob.NodeUUID && vbBlob.DCPStreamStatus == dcpStreamRunning {
-						c.updateCheckpointInfo(vbKey, vbno, &vbBlob, &cas)
+						c.updateCheckpointInfo(vbKey, vbno, &vbBlob)
 						continue
 					}
 
@@ -52,7 +53,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					if vbBlob.CurrentVBOwner == "" && c.checkIfCurrentNodeShouldOwnVb(vbno) &&
 						c.checkIfCurrentConsumerShouldOwnVb(vbno) && vbBlob.DCPStreamStatus == dcpStreamStopped {
 
-						c.updateCheckpointInfo(vbKey, vbno, &vbBlob, &cas)
+						c.updateCheckpointInfo(vbKey, vbno, &vbBlob)
 						continue
 					}
 
@@ -65,7 +66,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 	}
 }
 
-func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbucketKVBlob, cas *uint64) {
+func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbucketKVBlob) {
 
 	vbBlob.AssignedDocIDTimerWorker = c.vbProcessingStats.getVbStat(vbno, "doc_id_timer_processing_worker").(string)
 	vbBlob.AssignedWorker = c.ConsumerName()

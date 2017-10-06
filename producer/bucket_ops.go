@@ -2,65 +2,47 @@ package producer
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	cbbucket "github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
 )
 
-func (p *Producer) initMetadataBucketHandle() {
-	connStr := fmt.Sprintf("http://127.0.0.1:" + p.nsServerPort)
-
-	var conn cbbucket.Client
-	var pool cbbucket.Pool
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), connectBucketOpCallback, p, &conn, connStr)
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), poolGetBucketOpCallback, p, &conn, &pool, "default")
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), cbGetBucketOpCallback, p, &pool)
-}
-
-var connectBucketOpCallback = func(args ...interface{}) error {
+var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
-	conn := args[1].(*cbbucket.Client)
-	connStr := args[2].(string)
 
-	var err error
-	*conn, err = cbbucket.ConnectWithAuthCreds(connStr, p.rbacuser, p.rbacpass)
+	connStr := fmt.Sprintf("couchbase://%s", p.KvHostPorts()[0])
 
+	cluster, err := gocb.Connect(connStr)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to bootstrap conn to source cluster, err: %v",
-			p.appName, p.LenRunningConsumers(), err)
+		logging.Errorf("PRDR[%s:%d] GOCB Connect to cluster %s failed, err: %v",
+			p.appName, p.LenRunningConsumers(), connStr, err)
+		return err
 	}
-	return err
-}
 
-var poolGetBucketOpCallback = func(args ...interface{}) error {
-	p := args[0].(*Producer)
-	conn := args[1].(*cbbucket.Client)
-	pool := args[2].(*cbbucket.Pool)
-	poolName := args[3].(string)
+	var user, password string
+	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, p, p.KvHostPorts()[0], &user, &password)
 
-	var err error
-	*pool, err = conn.GetPool(poolName)
+	err = cluster.Authenticate(gocb.PasswordAuthenticator{
+		Username: user,
+		Password: password,
+	})
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to get pool info, err: %v", p.appName, p.LenRunningConsumers(), err)
+		logging.Errorf("PRDR[%s:%d] GOCB Failed to authenticate to the cluster %s failed, err: %v",
+			p.appName, p.LenRunningConsumers(), connStr, err)
+		return err
 	}
-	return err
-}
 
-var cbGetBucketOpCallback = func(args ...interface{}) error {
-	p := args[0].(*Producer)
-	pool := args[1].(*cbbucket.Pool)
-
-	var err error
-	p.metadataBucketHandle, err = pool.GetBucketWithAuth(p.metadatabucket, p.rbacuser, p.rbacpass)
+	p.metadataBucketHandle, err = cluster.OpenBucket(p.metadatabucket, "")
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Bucket: %s missing, err: %v", p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+		logging.Errorf("PRDR[%s:%d] GOCB Failed to connect to bucket %s failed, err: %v",
+			p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+		return err
 	}
-	return err
+
+	return nil
 }
 
 var setOpCallback = func(args ...interface{}) error {
@@ -68,7 +50,7 @@ var setOpCallback = func(args ...interface{}) error {
 	key := args[1].(string)
 	blob := args[2]
 
-	err := p.metadataBucketHandle.Set(key, 0, blob)
+	_, err := p.metadataBucketHandle.Upsert(key, blob, 0)
 	if err != nil {
 		logging.Errorf("PRDR[%s:%d] Bucket set failed for key: %v , err: %v", p.appName, p.LenRunningConsumers(), key, err)
 	}
@@ -80,7 +62,7 @@ var getOpCallback = func(args ...interface{}) error {
 	key := args[1].(string)
 	blob := args[2]
 
-	err := p.metadataBucketHandle.Get(key, blob)
+	_, err := p.metadataBucketHandle.Get(key, blob)
 	if err != nil {
 		logging.Errorf("PRDR[%s:%d] Bucket set failed for key: %v , err: %v", p.appName, p.LenRunningConsumers(), key, err)
 	}
@@ -92,7 +74,7 @@ var deleteOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 	key := args[1].(string)
 
-	err := p.metadataBucketHandle.Delete(key)
+	_, err := p.metadataBucketHandle.Remove(key, 0)
 	if gomemcached.KEY_ENOENT == util.MemcachedErrCode(err) {
 		logging.Errorf("PRDR[%s:%d] Key: %v doesn't exist, err: %v",
 			p.appName, p.LenRunningConsumers(), key, err)

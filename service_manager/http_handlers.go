@@ -13,20 +13,52 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/couchbase/cbauth"
+	"github.com/couchbase/cbauth/cbauthimpl"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
+func (m *ServiceMgr) isAuthValid(r *http.Request) (cbauth.Creds, bool, error) {
+	creds, err := cbauth.AuthWebCreds(r)
+	if err != nil {
+		if strings.Contains(err.Error(), cbauthimpl.ErrNoAuth.Error()) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	return creds, true, nil
+}
+
+func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request) (cbauth.Creds, bool) {
+	creds, valid, err := m.isAuthValid(r)
+	if err != nil {
+		logging.Errorf("Failed to validate auth, err: %v", err)
+	} else if valid == false {
+		w.WriteHeader(401)
+	}
+	return creds, valid
+}
+
 func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 	logging.Infof("Got request to clear event stats from host: %v", r.Host)
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
 
 	m.superSup.ClearEventStats()
 }
 
 func (m *ServiceMgr) startTracer(w http.ResponseWriter, r *http.Request) {
 	logging.Infof("Got request to start tracing")
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
 
 	os.Remove(m.uuid + "_trace.out")
 
@@ -48,6 +80,11 @@ func (m *ServiceMgr) startTracer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) stopTracer(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	m.stopTracerCh <- struct{}{}
 }
 
@@ -85,28 +122,27 @@ func (m *ServiceMgr) debugging(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getHandler(appName string) string {
-	appList := m.superSup.DeployedAppList()
-	for _, app := range appList {
-		if app == appName {
-			return m.superSup.GetHandlerCode(appName)
-		}
+	if m.checkIfDeployed(appName) {
+		return m.superSup.GetHandlerCode(appName)
 	}
 
 	return ""
 }
 
 func (m *ServiceMgr) getSourceMap(appName string) string {
-	appList := m.superSup.DeployedAppList()
-	for _, app := range appList {
-		if app == appName {
-			return m.superSup.GetSourceMap(appName)
-		}
+	if m.checkIfDeployed(appName) {
+		return m.superSup.GetSourceMap(appName)
 	}
 
 	return ""
 }
 
 func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -140,6 +176,11 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	values := r.URL.Query()
 	appName := values["name"][0]
 	tempAppList := util.ListChildren(metakvTempAppsPath)
@@ -165,20 +206,23 @@ func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) 
 }
 
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	values := r.URL.Query()
 	appName := values["name"][0]
 
 	logging.Infof("App: %v got request to get V8 debugger url", appName)
 
-	appList := m.superSup.DeployedAppList()
-	for _, app := range appList {
-		if app == appName {
-			debugURL := m.superSup.GetDebuggerURL(appName)
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-			fmt.Fprintf(w, "%s", debugURL)
-			return
-		}
+	if m.checkIfDeployed(appName) {
+		debugURL := m.superSup.GetDebuggerURL(appName)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", debugURL)
+		return
 	}
+
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
@@ -204,19 +248,21 @@ func (m *ServiceMgr) getLocalDebuggerURL(w http.ResponseWriter, r *http.Request)
 }
 
 func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	values := r.URL.Query()
 	appName := values["name"][0]
 
 	logging.Infof("App: %v got request to start V8 debugger", appName)
 
-	appList := m.superSup.DeployedAppList()
-	for _, app := range appList {
-		if app == appName {
-			m.superSup.SignalStartDebugger(appName)
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-			fmt.Fprintf(w, "App: %v Started Debugger", appName)
-			return
-		}
+	if m.checkIfDeployed(appName) {
+		m.superSup.SignalStartDebugger(appName)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "App: %v Started Debugger", appName)
+		return
 	}
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
@@ -224,19 +270,21 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	values := r.URL.Query()
 	appName := values["name"][0]
 
 	logging.Infof("App: %v got request to stop V8 debugger", appName)
 
-	appList := m.superSup.DeployedAppList()
-	for _, app := range appList {
-		if app == appName {
-			m.superSup.SignalStopDebugger(appName)
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-			fmt.Fprintf(w, "App: %v Stopped Debugger", appName)
-			return
-		}
+	if m.checkIfDeployed(appName) {
+		m.superSup.SignalStopDebugger(appName)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "App: %v Stopped Debugger", appName)
+		return
 	}
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
@@ -275,20 +323,59 @@ func (m *ServiceMgr) getAggEventsProcessedPSec(w http.ResponseWriter, r *http.Re
 	fmt.Fprintf(w, "%v", pStats)
 }
 
+func (m *ServiceMgr) checkIfDeployed(appName string) bool {
+	deployedApps := m.superSup.DeployedAppList()
+	for _, app := range deployedApps {
+		if app == appName {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	if m.checkIfDeployed(appName) {
+		stats := m.superSup.GetEventProcessingStats(appName)
+
+		data, err := json.Marshal(&stats)
+		if err != nil {
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+			fmt.Fprintf(w, "Failed to marshal response event processing stats, err: %v", err)
+			return
+		}
+
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", string(data))
+
+	} else {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+		fmt.Fprintf(w, "App: %v not deployed", appName)
+	}
+}
+
 func (m *ServiceMgr) getEventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	producerHostPortAddr := m.superSup.AppProducerHostPortAddr(appName)
+	if m.checkIfDeployed(appName) {
+		producerHostPortAddr := m.superSup.AppProducerHostPortAddr(appName)
 
-	pSec, err := util.GetProcessedPSec("/getEventsPSec", producerHostPortAddr)
-	if err != nil {
-		logging.Errorf("Failed to capture events processed/sec stat from producer for app: %v on current node, err: %v",
-			appName, err)
-		return
+		pSec, err := util.GetProcessedPSec("/getEventsPSec", producerHostPortAddr)
+		if err != nil {
+			logging.Errorf("Failed to capture events processed/sec stat from producer for app: %v on current node, err: %v",
+				appName, err)
+			return
+		}
+
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%v", pSec)
+	} else {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+		fmt.Fprintf(w, "App: %v not deployed", appName)
 	}
-
-	fmt.Fprintf(w, "%v", pSec)
 }
 
 func (m *ServiceMgr) getAggTimerHostPortAddrs(w http.ResponseWriter, r *http.Request) {
@@ -357,29 +444,33 @@ func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
 	appName := params["name"][0]
 
-	appList := m.superSup.DeployedAppList()
-	for _, app := range appList {
-		if app == appName {
-			seqNoProcessed := m.superSup.GetSeqsProcessed(appName)
+	if m.checkIfDeployed(appName) {
+		seqNoProcessed := m.superSup.GetSeqsProcessed(appName)
 
-			data, err := json.Marshal(seqNoProcessed)
-			if err != nil {
-				logging.Errorf("App: %v, failed to fetch vb sequences processed so far, err: %v", appName, err)
+		data, err := json.Marshal(seqNoProcessed)
+		if err != nil {
+			logging.Errorf("App: %v, failed to fetch vb sequences processed so far, err: %v", appName, err)
 
-				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errGetVbSeqs.Code))
-				fmt.Fprintf(w, "")
-				return
-			}
-
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-			fmt.Fprintf(w, "%s", string(data))
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errGetVbSeqs.Code))
+			fmt.Fprintf(w, "")
 			return
 		}
+
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", string(data))
+	} else {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+		fmt.Fprintf(w, "App: %v not deployed", appName)
 	}
 
 }
 
 func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	params := r.URL.Query()
 	appName := params["name"][0]
 
@@ -403,6 +494,11 @@ func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	appList := util.ListChildren(metakvAppsPath)
 	respData := make([]application, len(appList))
 
@@ -472,6 +568,11 @@ func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) fetchAppTempStore(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	tempAppList := util.ListChildren(metakvTempAppsPath)
 	respData := make([]application, len(tempAppList))
 
@@ -502,6 +603,11 @@ func (m *ServiceMgr) fetchAppTempStore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) saveAppSetup(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	params := r.URL.Query()
 	appName := params["name"][0]
 
@@ -527,6 +633,11 @@ func (m *ServiceMgr) saveAppSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -630,5 +741,10 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
 	w.Write(m.statusPayload)
 }

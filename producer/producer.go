@@ -87,7 +87,8 @@ func (p *Producer) Serve() {
 	p.workerSupervisor = suptree.New(p.appName, spec)
 	go p.workerSupervisor.ServeBackground()
 
-	p.initMetadataBucketHandle()
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), gocbConnectMetaBucketCallback, p)
+
 	// Write debugger blobs in metadata bucket
 	dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
 	debugBlob := &common.StartDebugBlob{
@@ -251,11 +252,6 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	}(al, c)
 }
 
-// LenRunningConsumers returns the number of actively running consumers for a given app's producer
-func (p *Producer) LenRunningConsumers() int {
-	return len(p.runningConsumers)
-}
-
 // CleanupDeadConsumer cleans up a dead consumer handle from list of active running consumers
 func (p *Producer) CleanupDeadConsumer(c common.EventingConsumer) {
 	p.Lock()
@@ -277,62 +273,6 @@ func (p *Producer) CleanupDeadConsumer(c common.EventingConsumer) {
 	delete(p.workerNameConsumerMap, c.ConsumerName())
 }
 
-// VbEventingNodeAssignMap returns the vbucket to evening node mapping
-func (p *Producer) VbEventingNodeAssignMap() map[uint16]string {
-	p.RLock()
-	defer p.RUnlock()
-	return p.vbEventingNodeAssignMap
-}
-
-// IsEventingNodeAlive verifies if a hostPortAddr combination is an active eventing node
-func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr string) bool {
-	eventingNodeAddrs := (*[]string)(atomic.LoadPointer(
-		(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs))))
-	if eventingNodeAddrs != nil {
-		for _, v := range *eventingNodeAddrs {
-			if v == eventingHostPortAddr {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// WorkerVbMap returns mapping of active consumers to vbuckets they should handle as per static planner
-func (p *Producer) WorkerVbMap() map[string][]uint16 {
-	p.RLock()
-	defer p.RUnlock()
-	return p.workerVbucketMap
-}
-
-// GetNsServerPort return rest port for ns_server
-func (p *Producer) GetNsServerPort() string {
-	p.RLock()
-	defer p.RUnlock()
-	return p.nsServerPort
-}
-
-// NsServerHostPort returns host:port combination for ns_server instance
-func (p *Producer) NsServerHostPort() string {
-	p.RLock()
-	defer p.RUnlock()
-	return p.nsServerHostPort
-}
-
-// KvHostPorts returns host:port combination for kv service
-func (p *Producer) KvHostPorts() []string {
-	p.RLock()
-	defer p.RUnlock()
-	return p.kvHostPorts
-}
-
-// Auth returns username:password combination for the cluster
-func (p *Producer) Auth() string {
-	p.RLock()
-	defer p.RUnlock()
-	return p.auth
-}
-
 func (p *Producer) getEventingNodeAddrs() []string {
 	eventingNodeAddrs := (*[]string)(atomic.LoadPointer(
 		(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs))))
@@ -351,16 +291,6 @@ func (p *Producer) getKvNodeAddrs() []string {
 	return nil
 }
 
-// NsServerNodeCount returns count of currently active ns_server nodes in the cluster
-func (p *Producer) NsServerNodeCount() int {
-	nsServerNodeAddrs := (*[]string)(atomic.LoadPointer(
-		(*unsafe.Pointer)(unsafe.Pointer(&p.nsServerNodeAddrs))))
-	if nsServerNodeAddrs != nil {
-		return len(*nsServerNodeAddrs)
-	}
-	return 0
-}
-
 func (p *Producer) getEventingNodeAssignedVbuckets(eventingNode string) []uint16 {
 	var vbnos []uint16
 	p.RLock()
@@ -377,28 +307,6 @@ func (p *Producer) getConsumerAssignedVbuckets(workerName string) []uint16 {
 	p.RLock()
 	defer p.RUnlock()
 	return p.workerVbucketMap[workerName]
-}
-
-// CfgData returns deployment descriptor content
-func (p *Producer) CfgData() string {
-	return p.cfgData
-}
-
-// ClearEventStats flushes event processing stats
-func (p *Producer) ClearEventStats() {
-	for _, c := range p.runningConsumers {
-		c.ClearEventStats()
-	}
-}
-
-// MetadataBucket return metadata bucket for event handler
-func (p *Producer) MetadataBucket() string {
-	return p.metadatabucket
-}
-
-// NotifyInit notifies the supervisor about producer initialisation
-func (p *Producer) NotifyInit() {
-	<-p.notifyInitCh
 }
 
 // NotifySettingsChange is called by super_supervisor to notify producer about settings update
@@ -424,18 +332,6 @@ func (p *Producer) NotifyPrepareTopologyChange(keepNodes []string) {
 		consumer.UpdateEventingNodesUUIDs(keepNodes)
 	}
 
-}
-
-// RbacUser return username for eventing specific rbac user, which
-// has all admin privileges
-func (p *Producer) RbacUser() string {
-	return p.rbacuser
-}
-
-// RbacPass return password for eventing specific rbac user, which
-// has all admin privileges
-func (p *Producer) RbacPass() string {
-	return p.rbacpass
 }
 
 // SignalToClosePlasmaStore is called by running consumer instances to signal that they
@@ -515,24 +411,6 @@ breakWorkerLookup:
 	return nil, fmt.Errorf("worker not alive at present")
 }
 
-// SignalCheckpointBlobCleanup cleans up eventing app related blobs from metadata bucket
-func (p *Producer) SignalCheckpointBlobCleanup() {
-
-	for vb := 0; vb < numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, vbKey)
-	}
-
-	dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, dFlagKey)
-
-	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, dInstAddrKey)
-
-	logging.Infof("PRDR[%s:%d] Purged all owned checkpoint & debugger blobs from metadata bucket: %s",
-		p.appName, p.LenRunningConsumers(), p.metadataBucketHandle.Name)
-}
-
 // SignalStartDebugger updates KV blob in metadata bucket signalling request to start
 // V8 Debugger
 func (p *Producer) SignalStartDebugger() {
@@ -585,11 +463,6 @@ func (p *Producer) SignalStopDebugger() {
 	}
 }
 
-// GetAppCode returns handler code for the current app
-func (p *Producer) GetAppCode() string {
-	return p.app.AppCode
-}
-
 // GetDebuggerURL returns V8 Debugger url
 func (p *Producer) GetDebuggerURL() string {
 	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
@@ -600,53 +473,4 @@ func (p *Producer) GetDebuggerURL() string {
 	debugURL := util.GetDebuggerURL("/debugUrl", debuggerInstBlob.HostPortAddr, p.appName)
 
 	return debugURL
-}
-
-// GetSourceMap return source map to assist V8 Debugger
-func (p *Producer) GetSourceMap() string {
-	if len(p.runningConsumers) > 0 {
-		return p.runningConsumers[0].GetSourceMap()
-	}
-	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
-	return ""
-}
-
-// GetHandlerCode returns handler code to assist V8 Debugger
-func (p *Producer) GetHandlerCode() string {
-	if len(p.runningConsumers) > 0 {
-		return p.runningConsumers[0].GetHandlerCode()
-	}
-	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
-	return ""
-}
-
-// GetSeqsProcessed returns vbucket specific sequence nos processed so far
-func (p *Producer) GetSeqsProcessed() map[int]int64 {
-	if len(p.runningConsumers) > 0 {
-		return p.runningConsumers[0].GetSeqsProcessed()
-	}
-	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
-	return nil
-}
-
-// SignalBootstrapFinish is leveraged by EventingSuperSup instance to
-// check if app handler has finished bootstrapping
-func (p *Producer) SignalBootstrapFinish() {
-	runningConsumers := make([]common.EventingConsumer, 0)
-
-	logging.Infof("PRDR[%s:%d] Got request to signal bootstrap status", p.appName, p.LenRunningConsumers())
-	<-p.bootstrapFinishCh
-
-	p.RLock()
-	for _, c := range p.runningConsumers {
-		runningConsumers = append(runningConsumers, c)
-	}
-	p.RUnlock()
-
-	for _, c := range runningConsumers {
-		if c == nil {
-			continue
-		}
-		c.SignalBootstrapFinish()
-	}
 }
