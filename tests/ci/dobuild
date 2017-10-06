@@ -218,6 +218,9 @@ else
 fi
 
 cd $WORKSPACE/testrunner
+echo "Switching testrunner to master"
+git checkout master 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout master"
+git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
 current="`git rev-parse HEAD`"
 test -f ~/testrunner.good || (echo $current > ~/testrunner.good)
 good="`cat ~/testrunner.good`"
