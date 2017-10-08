@@ -28,8 +28,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                          message_t *parsed_message) {
   std::string key, val, doc_id, callback_fn, doc_ids_cb_fns;
   v8::Platform *platform;
-  std::unique_ptr<server_settings_t> server_settings;
-  std::unique_ptr<handler_config_t> handler_config;
+  std::shared_ptr<server_settings_t> server_settings;
+  std::shared_ptr<handler_config_t> handler_config;
 
   const flatbuf::payload::Payload *payload;
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
@@ -43,24 +43,23 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       payload = flatbuf::payload::GetPayload(
           (const void *)parsed_message->payload.c_str());
 
-      handler_config = std::unique_ptr<handler_config_t>(new handler_config_t);
-      server_settings =
-          std::unique_ptr<server_settings_t>(new server_settings_t);
+      handler_config = std::make_shared<handler_config_t>();
+      server_settings = std::make_shared<server_settings_t>();
 
-      handler_config->app_name.assign(payload->app_name()->str());
-      handler_config->dep_cfg.assign(payload->depcfg()->str());
-      handler_config->execution_timeout = payload->execution_timeout();
-      handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
-      handler_config->enable_recursive_mutation =
+      (*handler_config).app_name.assign(payload->app_name()->str());
+      (*handler_config).dep_cfg.assign(payload->depcfg()->str());
+      (*handler_config).execution_timeout = payload->execution_timeout();
+      (*handler_config).lcb_inst_capacity = payload->lcb_inst_capacity();
+      (*handler_config).enable_recursive_mutation =
           payload->enable_recursive_mutation();
 
-      server_settings->eventing_dir.assign(payload->eventing_dir()->str());
-      server_settings->eventing_port.assign(
-          payload->curr_eventing_port()->str());
-      server_settings->host_addr.assign(payload->curr_host()->str());
-      server_settings->kv_host_port.assign(payload->kv_host_port()->str());
-      server_settings->rbac_pass.assign(payload->rbac_pass()->str());
-      server_settings->rbac_user.assign(payload->rbac_user()->str());
+      (*server_settings).eventing_dir.assign(payload->eventing_dir()->str());
+      (*server_settings)
+          .eventing_port.assign(payload->curr_eventing_port()->str());
+      (*server_settings).host_addr.assign(payload->curr_host()->str());
+      (*server_settings).kv_host_port.assign(payload->kv_host_port()->str());
+      (*server_settings).rbac_pass.assign(payload->rbac_pass()->str());
+      (*server_settings).rbac_user.assign(payload->rbac_user()->str());
 
       LOG(logDebug) << "Loading app:" << app_name << '\n';
 
@@ -70,8 +69,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       v8::V8::Initialize();
 
       for (int16_t i = 0; i < thr_count; i++) {
-        V8Worker *w = new V8Worker(platform, handler_config.release(),
-                                   server_settings.release());
+        V8Worker *w =
+            new V8Worker(platform, handler_config.get(), server_settings.get());
 
         LOG(logDebug) << "Init index: " << i << " V8Worker: " << w << '\n';
         this->workers[i] = w;
@@ -472,8 +471,10 @@ int main(int argc, char **argv) {
   global_program_name = argv[0];
 
   if (argc < 5) {
-        std::cerr << "Need at least 4 arguments: appname, port, worker_id, batch_size" << '\n';
-        return 2;
+    std::cerr
+        << "Need at least 4 arguments: appname, port, worker_id, batch_size"
+        << '\n';
+    return 2;
   }
 
   if (isSSE42Supported()) {
