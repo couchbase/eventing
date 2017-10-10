@@ -524,6 +524,9 @@ void V8Worker::RouteMessage() {
     default:
       break;
     }
+
+    delete msg.header;
+    delete msg.payload;
   }
 }
 
