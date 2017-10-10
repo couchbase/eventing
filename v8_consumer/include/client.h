@@ -39,8 +39,12 @@ typedef struct resp_msg_s {
 class AppWorker {
 public:
   static AppWorker *GetAppWorker();
-  void Init(const std::string &appname, const std::string &addr,
-            const std::string &worker_id, int batch_size, int port);
+  void InitTcpSock(const std::string &appname, const std::string &addr,
+                   const std::string &worker_id, int batch_size, int port);
+
+  void InitUDS(const std::string &appname, const std::string &addr,
+               const std::string &worker_id, int batch_size,
+               std::string uds_sock_path);
 
   void OnConnect(uv_connect_t *conn, int status);
   void OnRead(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf);
@@ -62,7 +66,10 @@ private:
   std::map<int16_t, V8Worker *> workers;
 
   uv_loop_t main_loop;
+
+  uv_pipe_t uds_sock;
   uv_tcp_t tcp_sock;
+
   uv_connect_t conn;
   uv_stream_t *conn_handle;
   struct sockaddr_in server_sock;

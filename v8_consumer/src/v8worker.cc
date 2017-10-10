@@ -59,7 +59,7 @@ std::string string_sprintf(const char *format, Args... args) {
 
   std::string str(buf);
   delete[] buf;
-  return std::move(str);
+  return str;
 }
 
 void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {

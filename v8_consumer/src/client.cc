@@ -239,7 +239,32 @@ AppWorker::AppWorker() : conn_handle(nullptr), main_loop_running(false) {
 
 AppWorker::~AppWorker() { uv_loop_close(&main_loop); }
 
-void AppWorker::Init(const std::string &appname, const std::string &addr,
+void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
+                        const std::string &worker_id, int batch_size,
+                        std::string uds_sock_path) {
+  uv_pipe_init(&main_loop, &uds_sock, 0);
+
+  this->app_name = appname;
+  this->batch_size = batch_size;
+  this->messages_processed_counter = 0;
+
+  LOG(logInfo) << "Starting worker with uds for appname:" << appname
+               << " worker_id:" << worker_id << " batch_size:" << batch_size
+               << " uds_path:" << uds_sock_path << '\n';
+
+  uv_pipe_connect(&conn, &uds_sock, uds_sock_path.c_str(),
+                  [](uv_connect_t *conn, int status) {
+                    AppWorker::GetAppWorker()->OnConnect(conn, status);
+                  });
+
+  if (main_loop_running == false) {
+    uv_run(&main_loop, UV_RUN_DEFAULT);
+    main_loop_running = true;
+  }
+}
+
+
+void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
                      const std::string &worker_id, int batch_size, int port) {
   uv_tcp_init(&main_loop, &tcp_sock);
   uv_ip4_addr(addr.c_str(), port, &server_sock);
@@ -482,12 +507,26 @@ int main(int argc, char **argv) {
   }
 
   std::string appname(argv[1]);
-  int port = atoi(argv[2]);
-  std::string worker_id(argv[3]);
+
+#if defined(__APPLE__) || defined(__linux__)
+  std::string uds_sock_path = argv[2];
+#else
+   int port = atoi(argv[2]);
+#endif
+
+   std::string worker_id(argv[3]);
   int batch_size = atoi(argv[4]);
 
   setAppName(appname);
   setWorkerID(worker_id);
   AppWorker *worker = AppWorker::GetAppWorker();
-  worker->Init(appname, "127.0.0.1", worker_id, batch_size, port);
+
+// For darwin/linux leverage unix domain socket
+// For windows leverage TCP socket
+
+#if defined(__APPLE__) || defined(__linux__)
+  worker->InitUDS(appname, "127.0.0.1", worker_id, batch_size, uds_sock_path);
+#else
+  worker->InitTcpSock(appname, "127.0.0.1", worker_id, batch_size, port);
+#endif
 }
