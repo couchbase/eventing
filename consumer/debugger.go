@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -154,15 +155,29 @@ func (c *Consumer) pollForDebuggerStart() {
 
 func (c *Consumer) startDebuggerServer() {
 	var err error
-	c.debugListener, err = net.Listen("tcp", ":0")
-	if err != nil {
-		logging.Errorf("CRSD[%s:%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
-			c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
-		return
-	}
+	var udsSockPath string
 
-	logging.Infof("CRSD[%s:%s:%s:%d] Start server on addr: %v for communication to C++ debugger",
-		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.debugListener.Addr().String())
+	if runtime.GOOS == "windows" {
+		c.debugListener, err = net.Listen("tcp", ":0")
+		if err != nil {
+			logging.Errorf("CRSD[%s:%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
+				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
+			return
+		}
+
+		logging.Infof("CRSD[%s:%s:%s:%d] Start server on addr: %v for communication to C++ debugger",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.debugListener.Addr().String())
+	} else {
+		udsSockPath = fmt.Sprintf("%s/debug_%s.sock", c.eventingDir, c.ConsumerName())
+
+		os.Remove(udsSockPath)
+
+		c.debugListener, err = net.Listen("unix", udsSockPath)
+		if err != nil {
+			logging.Errorf("CRSD[%s:%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
+				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
+		}
+	}
 
 	c.signalDebuggerConnectedCh = make(chan struct{}, 1)
 
@@ -173,7 +188,18 @@ func (c *Consumer) startDebuggerServer() {
 		}
 	}(c)
 
-	c.debugTCPPort = strings.Split(c.debugListener.Addr().String(), ":")[3]
+	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", c.eventingDir, c.app.AppName)
+	err = os.Remove(frontendURLFilePath)
+	if err != nil {
+		logging.Infof("CRSD[%s:%s:%s:%d] Failed to remove frontend.url file, err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+	}
+
+	if runtime.GOOS == "windows" {
+		c.debugTCPPort = strings.Split(c.debugListener.Addr().String(), ":")[3]
+	} else {
+		c.debugTCPPort = udsSockPath
+	}
 	c.debugClient = newDebugClient(c, c.app.AppName, c.eventingAdminPort, c.debugTCPPort, c.workerName)
 	c.debugClientSupToken = c.consumerSup.Add(c.debugClient)
 

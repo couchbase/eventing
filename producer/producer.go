@@ -226,7 +226,8 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 		sockIdentifier = p.tcpPort
 	} else {
-		udsSockPath := fmt.Sprintf("%s/%s_%s.sock", p.eventingDir, p.appName, workerName)
+		// https://github.com/golang/go/issues/6895 - uds pathname limited to 108 chars
+		udsSockPath := fmt.Sprintf("%s/%s.sock", p.eventingDir, workerName)
 
 		os.Remove(udsSockPath)
 

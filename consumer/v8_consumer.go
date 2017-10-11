@@ -385,15 +385,8 @@ func (c *Consumer) SignalStopDebugger() {
 	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, dInstAddrKey, dInstAddrBlob)
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		logging.Infof("V8CR[%s:%s:%s:%d] Failed to get current working dir, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-		return
-	}
-
-	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", cwd, c.app.AppName)
-	err = os.Remove(frontendURLFilePath)
+	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", c.eventingDir, c.app.AppName)
+	err := os.Remove(frontendURLFilePath)
 	if err != nil {
 		logging.Infof("V8CR[%s:%s:%s:%d] Failed to remove frontend.url file, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
