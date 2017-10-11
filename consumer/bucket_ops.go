@@ -146,11 +146,7 @@ var getNonDocTimerCallback = func(args ...interface{}) error {
 		if err == gocb.ErrKeyNotFound {
 			*isNoEnt = true
 			return nil
-		} else if err != nil {
-			logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for non_doc timer key: %s, err: %v",
-				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
-			return err
-		} else {
+		} else if err == nil {
 			*isNoEnt = false
 			*val = string(v)
 			return nil
