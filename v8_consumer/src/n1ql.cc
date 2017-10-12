@@ -160,7 +160,8 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
     v8::TryCatch tryCatch(isolate);
     callback->Call(callback, 1, args);
     if (tryCatch.HasCaught()) {
-      // Cancel the query if an exception was thrown and re-throw the exception.
+      // Cancel the query if an exception was thrown and
+      // re-throw the exception.
       lcb_N1QLHANDLE *handle = (lcb_N1QLHANDLE *)lcb_get_cookie(instance);
       lcb_n1ql_cancel(instance, *handle);
       tryCatch.ReThrow();
@@ -215,32 +216,60 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   lcb_t &instance = q_handler.instance;
   lcb_error_t err;
   lcb_CMDN1QL cmd = {0};
-  lcb_N1QLHANDLE handle = NULL;
+  lcb_N1QLHANDLE handle = nullptr;
   cmd.handle = &handle;
   cmd.callback = RowCallback<HandlerType>;
 
   lcb_N1QLPARAMS *n1ql_params = lcb_n1p_new();
   err = lcb_n1p_setstmtz(n1ql_params, q_handler.query.c_str());
-  if (err != LCB_SUCCESS)
+  if (err != LCB_SUCCESS) {
     ConnectionPool::Error(instance, "unable to build query string", err);
+  }
+
+  for (const auto &param : *q_handler.pos_params) {
+    err = lcb_n1p_posparam(n1ql_params, param.c_str(), param.length());
+    if (err != LCB_SUCCESS) {
+      ConnectionPool::Error(instance, "unable to set positional parameters",
+                            err);
+    }
+  }
 
   lcb_n1p_mkcmd(n1ql_params, &cmd);
 
-  err = lcb_n1ql_query(instance, NULL, &cmd);
-  if (err != LCB_SUCCESS)
+  err = lcb_n1ql_query(instance, nullptr, &cmd);
+  if (err != LCB_SUCCESS) {
     ConnectionPool::Error(instance, "unable to query", err);
+  }
 
   lcb_n1p_free(n1ql_params);
 
-  // Set the N1QL handle as cookie for instance - allow for query cancellation.
+  // Set the N1QL handle as cookie for instance - allow for query
+  // cancellation.
   lcb_set_cookie(instance, &handle);
   // Run the query.
   lcb_wait(instance);
 
   // Resource clean-up.
-  lcb_set_cookie(instance, NULL);
+  lcb_set_cookie(instance, nullptr);
   n1ql_handle->qhandler_stack.Pop();
   inst_pool->Restore(instance);
+}
+
+std::list<std::string>
+ExtractPosParams(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+
+  auto options = args.This()->Get(v8Str(isolate, "options"))->ToObject();
+  auto pos_params = options->Get(v8Str(isolate, "posParams")).As<v8::Array>();
+  std::list<std::string> pos_params_l;
+
+  for (auto i = 0; i < pos_params->Length(); ++i) {
+    v8::String::Utf8Value param(pos_params->Get(i));
+    pos_params_l.push_back(*param);
+  }
+
+  return pos_params_l;
 }
 
 // iter() function that is exposed to JavaScript.
@@ -253,9 +282,9 @@ void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     std::string hash = SetUniqueHash(args);
 
     // Query to run.
-    v8::Local<v8::Name> query_name = v8::String::NewFromUtf8(isolate, "query");
-    v8::Local<v8::Value> query_value = args.This()->Get(query_name);
-    v8::String::Utf8Value query_string(query_value);
+    auto query = args.This()->Get(v8Str(isolate, "query"));
+    v8::String::Utf8Value query_string(query);
+    auto pos_params = ExtractPosParams(args);
 
     // Callback function to execute.
     v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(args[0]);
@@ -266,6 +295,7 @@ void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     QueryHandler q_handler;
     q_handler.hash = hash;
     q_handler.query = *query_string;
+    q_handler.pos_params = &pos_params;
     q_handler.isolate = args.GetIsolate();
     q_handler.iter_handler = &iter_handler;
 
@@ -289,7 +319,8 @@ void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto arg = v8::Local<v8::Object>::Cast(args[0]);
 
   try {
-    // Get the unique hash for this object that was set by IterFunction.
+    // Get the unique hash for this object that was set by
+    // IterFunction.
     std::string hash = GetUniqueHash(args);
 
     // Cancel the query corresponding to the unique hash.
@@ -315,15 +346,16 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     std::string hash = SetUniqueHash(args);
 
     // Query to run.
-    v8::Local<v8::Name> query_name = v8::String::NewFromUtf8(isolate, "query");
-    v8::Local<v8::Value> query_value = args.This()->Get(query_name);
-    v8::String::Utf8Value query_string(query_value);
+    auto query = args.This()->Get(v8Str(isolate, "query"));
+    v8::String::Utf8Value query_string(query);
+    auto pos_params = ExtractPosParams(args);
 
     // Prepare data for query execution.
     BlockingQueryHandler block_handler;
     QueryHandler q_handler;
     q_handler.hash = hash;
     q_handler.query = *query_string;
+    q_handler.pos_params = &pos_params;
     q_handler.isolate = args.GetIsolate();
     q_handler.block_handler = &block_handler;
 
@@ -438,7 +470,8 @@ void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
   v8::Local<v8::Map> scope_stack;
   bool exists = HasKey(args, base_hash_str);
 
-  // If a base hash exists, then get the stack and push the unique hash onto it.
+  // If a base hash exists, then get the stack and push the unique hash
+  // onto it.
   if (exists) {
     auto stack = ToLocal(args.This()->GetPrivate(context, base_hash));
     scope_stack = v8::Local<v8::Map>::Cast(stack);
@@ -468,7 +501,8 @@ void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
         isolate, v8::String::NewFromUtf8(isolate, base_hash.c_str()));
     exists = HasKey(args, base_hash);
 
-    // If the base hash exists, then pop the unique hash from top of stack.
+    // If the base hash exists, then pop the unique hash from top of
+    // stack.
     if (exists) {
       auto stack = ToLocal(args.This()->GetPrivate(context, hash_key));
       auto scope_stack = v8::Local<v8::Map>::Cast(stack);
@@ -497,7 +531,8 @@ std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
         isolate, v8::String::NewFromUtf8(isolate, base_hash_str.c_str()));
     exists = HasKey(args, base_hash_str);
 
-    // If the base hash exists, then return the unique hash from top of stack.
+    // If the base hash exists, then return the unique hash from top
+    // of stack.
     if (exists) {
       auto stack = ToLocal(args.This()->GetPrivate(context, base_hash));
       auto scope_stack = v8::Local<v8::Map>::Cast(stack);
@@ -526,7 +561,8 @@ std::string SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto key =
       v8::Private::ForApi(isolate, v8::String::NewFromUtf8(isolate, "hash"));
 
-  // If the base hash exists, then generate unique hash and push it onto stack.
+  // If the base hash exists, then generate unique hash and push it onto
+  // stack.
   if (exists) {
     std::string unique_hash = AppendStackIndex(args.This()->GetIdentityHash());
     PushScopeStack(args, base_hash, unique_hash);
@@ -574,7 +610,8 @@ bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args,
       isolate, v8::String::NewFromUtf8(isolate, key_str.c_str()));
   v8::Maybe<bool> has_key = args.This()->HasPrivate(context, key);
 
-  // Checking for FromJust would crash the v8 process if has_key is empty -
+  // Checking for FromJust would crash the v8 process if has_key is empty
+  // -
   // https://v8.paulfryzel.com/docs/master/classv8_1_1_maybe.html#a6c35f4870a5b5049d09ba5f13c67ede9
   bool result;
   try {

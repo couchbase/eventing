@@ -9,12 +9,31 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-function N1qlQuery(query) {
+function N1qlQuery(query, options) {
     this.query = query;
+    this.options = options;
     this.metadata = null;
     this.isInstance = true;
     this.iter = iter;
     this.execQuery = execQuery;
     this.stopIter = stopIter;
     this.getReturnValue = getReturnValue;
+
+    for (var i in this.options.posParams) {
+        var param = this.options.posParams[i];
+        if (typeof param === 'object') {
+            param = JSON.stringify(param);
+        }
+
+        var quotesEscaped = '';
+        for (var c of param) {
+            if (c == '"') {
+                quotesEscaped += '\\';
+            }
+
+            quotesEscaped += c;
+        }
+
+        this.options.posParams[i] = '"' + quotesEscaped + '"';
+    }
 }
