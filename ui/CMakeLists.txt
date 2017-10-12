@@ -29,7 +29,15 @@ install(FILES
            ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ace/ext-language_tools.js
         DESTINATION lib/eventing-ui/lib)
 
-# rewrite the config file for running locally (using cluster-run)
+# for cluster_run
+file(COPY
+           ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/estools/escodegen.min.js
+           ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/estools/esprima.min.js
+           ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ace/ace.js
+           ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ace/ui-ace.min.js
+           ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ace/ext-language_tools.js
+        DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/eventing-ui/lib)
+
 SET (BIN_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/")
 configure_file (pluggable-ui-eventing.json.in ${_instdir}/../../../../../cluster_run_ui_plugins/pluggable-ui-eventing.cluster_run.json)
 
