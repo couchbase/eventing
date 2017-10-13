@@ -104,7 +104,7 @@ function ApplicationModel(app) {
 }
 
 ApplicationModel.prototype.getDefaultModel = function() {
-    var code = 'function OnUpdate(doc, meta){log(\'document\', doc);} function OnDelete(doc){}';
+    var code = 'function OnUpdate(doc, meta){log(\'document\', doc);} function OnDelete(meta){}';
     return {
         appname: 'Application name',
         appcode: formatCode(code),
