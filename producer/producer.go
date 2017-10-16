@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -28,7 +30,7 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 		eventingDir:            eventingDir,
 		eventingNodeUUIDs:      make([]string, 0),
 		kvPort:                 kvPort,
-		listenerHandles:        make([]*abatableListener, 0),
+		listenerHandles:        make([]net.Listener, 0),
 		metakvAppHostPortsPath: metakvAppHostPortsPath,
 		notifyInitCh:           make(chan struct{}, 1),
 		notifySettingsChangeCh: make(chan struct{}, 1),
@@ -182,7 +184,7 @@ func (p *Producer) Serve() {
 func (p *Producer) Stop() {
 	// Cleanup all consumer listen handles
 	for _, lHandle := range p.listenerHandles {
-		lHandle.Stop()
+		lHandle.Close()
 	}
 
 	p.stopProducerCh <- struct{}{}
@@ -207,19 +209,40 @@ func (p *Producer) startBucket() {
 
 func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int) {
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to listen on tcp port, err: %v", p.appName, p.LenRunningConsumers(), err)
-	}
+	var listener net.Listener
+	var err error
+	var sockIdentifier string
 
-	p.tcpPort = strings.Split(listener.Addr().String(), ":")[1]
-	logging.Infof("PRDR[%s:%d] Started server on port: %s", p.appName, p.LenRunningConsumers(), p.tcpPort)
+	// For windows use tcp socket based communication
+	// For linux/macos use unix domain sockets
+	if runtime.GOOS == "windows" {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			logging.Errorf("PRDR[%s:%d] Failed to listen on tcp port, err: %v", p.appName, p.LenRunningConsumers(), err)
+		}
+
+		p.tcpPort = strings.Split(listener.Addr().String(), ":")[1]
+		logging.Infof("PRDR[%s:%d] Started server on port: %s", p.appName, p.LenRunningConsumers(), p.tcpPort)
+
+		sockIdentifier = p.tcpPort
+	} else {
+		// https://github.com/golang/go/issues/6895 - uds pathname limited to 108 chars
+		udsSockPath := fmt.Sprintf("%s/%s.sock", p.eventingDir, workerName)
+
+		os.Remove(udsSockPath)
+
+		listener, err = net.Listen("unix", udsSockPath)
+		if err != nil {
+			logging.Errorf("PRDR[%s:%d] Failed to listen on unix domain socket, err: %v", p.appName, p.LenRunningConsumers(), err)
+		}
+		sockIdentifier = udsSockPath
+	}
 
 	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
 		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold, p.socketWriteBatchSize,
 		p.timerWorkerPoolSize, p.cppWorkerThrCount, p.vbOwnershipGiveUpRoutineCount,
 		p.vbOwnershipTakeoverRoutineCount, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
-		p.tcpPort, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStore,
+		sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStore,
 		p.socketTimeout)
 
 	p.Lock()
@@ -230,17 +253,11 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	p.consumerSupervisorTokenMap[c] = serviceToken
 	p.Unlock()
 
-	al, err := newAbatableListener(listener)
-	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to create instance of interruptible tcp server, err: %v", p.appName, p.LenRunningConsumers(), err)
-		return
-	}
+	p.listenerHandles = append(p.listenerHandles, listener)
 
-	p.listenerHandles = append(p.listenerHandles, al)
-
-	go func(al *abatableListener, c *consumer.Consumer) {
+	go func(listener net.Listener, c *consumer.Consumer) {
 		for {
-			conn, err := al.Accept()
+			conn, err := listener.Accept()
 			if err != nil {
 				logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.appName, p.LenRunningConsumers(), err)
 				return
@@ -249,7 +266,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 			c.SignalConnected()
 			c.HandleV8Worker()
 		}
-	}(al, c)
+	}(listener, c)
 }
 
 // CleanupDeadConsumer cleans up a dead consumer handle from list of active running consumers

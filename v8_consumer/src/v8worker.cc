@@ -59,7 +59,7 @@ std::string string_sprintf(const char *format, Args... args) {
 
   std::string str(buf);
   delete[] buf;
-  return std::move(str);
+  return str;
 }
 
 void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
@@ -275,6 +275,7 @@ V8Worker::~V8Worker() {
   on_delete_.Reset();
   delete conn_pool;
   delete n1ql_handle;
+  delete settings;
 }
 
 // Re-compile and execute handler code for debugger
@@ -375,21 +376,24 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::Local<v8::String> on_update = v8Str(GetIsolate(), "OnUpdate");
   v8::Local<v8::String> on_delete = v8Str(GetIsolate(), "OnDelete");
 
-  v8::Local<v8::Value> on_update_val;
-  v8::Local<v8::Value> on_delete_val;
+  auto on_update_def = context->Global()->Get(on_update);
+  auto on_delete_def = context->Global()->Get(on_delete);
 
-  if (!context->Global()->Get(context, on_update).ToLocal(&on_update_val) ||
-      !context->Global()->Get(context, on_delete).ToLocal(&on_delete_val)) {
+  if (!on_update_def->IsFunction() && !on_delete_def->IsFunction()) {
     return kNoHandlersDefined;
   }
 
-  v8::Local<v8::Function> on_update_fun =
-      v8::Local<v8::Function>::Cast(on_update_val);
-  on_update_.Reset(GetIsolate(), on_update_fun);
+  if (on_update_def->IsFunction()) {
+    v8::Local<v8::Function> on_update_fun =
+        v8::Local<v8::Function>::Cast(on_update_def);
+    on_update_.Reset(GetIsolate(), on_update_fun);
+  }
 
-  v8::Local<v8::Function> on_delete_fun =
-      v8::Local<v8::Function>::Cast(on_delete_val);
-  on_delete_.Reset(GetIsolate(), on_delete_fun);
+  if (on_delete_def->IsFunction()) {
+    v8::Local<v8::Function> on_delete_fun =
+        v8::Local<v8::Function>::Cast(on_delete_def);
+    on_delete_.Reset(GetIsolate(), on_delete_fun);
+  }
 
   if (bucket_handles.size() > 0) {
     std::list<Bucket *>::iterator bucket_handle = bucket_handles.begin();
@@ -524,6 +528,9 @@ void V8Worker::RouteMessage() {
     default:
       break;
     }
+
+    delete msg.header;
+    delete msg.payload;
   }
 }
 
@@ -563,6 +570,10 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
+
+  if (on_update_.IsEmpty()) {
+    return kOnUpdateCallFail;
+  }
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
@@ -619,6 +630,10 @@ int V8Worker::SendDelete(std::string meta) {
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
+
+  if (on_delete_.IsEmpty()) {
+    return kOnDeleteCallFail;
+  }
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
