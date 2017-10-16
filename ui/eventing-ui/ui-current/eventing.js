@@ -332,11 +332,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             var self = this;
             self.isDialog = true;
 
-            // TODO : Need to make sure that source and metadata buckets are not the same.
             self.sourceBuckets = bucketsResolve;
             self.metadataBuckets = bucketsResolve.reverse();
 
             self.bindings = [];
+
+            // Checks whether source and metadata buckets are the same.
+            self.srcMetaSameBucket = function(appModel) {
+                return appModel.depcfg.source_bucket === appModel.depcfg.metadata_bucket;
+            };
+
             self.isFormInvalid = function() {
                 return FormValidationService.isFormInvalid(self);
             };
@@ -875,6 +880,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         form.execution_timeout.$error.required ||
                         form.execution_timeout.$error.min ||
                         form.execution_timeout.$error.max ||
+                        formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
+                        formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
                         !bindingsValid;
                 }
             }

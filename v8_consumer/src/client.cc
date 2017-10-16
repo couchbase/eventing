@@ -28,8 +28,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                          message_t *parsed_message) {
   std::string key, val, doc_id, callback_fn, doc_ids_cb_fns;
   v8::Platform *platform;
-  std::unique_ptr<server_settings_t> server_settings;
-  std::unique_ptr<handler_config_t> handler_config;
+  server_settings_t *server_settings;
+  handler_config_t *handler_config;
 
   const flatbuf::payload::Payload *payload;
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
@@ -43,9 +43,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       payload = flatbuf::payload::GetPayload(
           (const void *)parsed_message->payload.c_str());
 
-      handler_config = std::unique_ptr<handler_config_t>(new handler_config_t);
-      server_settings =
-          std::unique_ptr<server_settings_t>(new server_settings_t);
+      handler_config = new handler_config_t;
+      server_settings = new server_settings_t;
 
       handler_config->app_name.assign(payload->app_name()->str());
       handler_config->dep_cfg.assign(payload->depcfg()->str());
@@ -70,12 +69,13 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       v8::V8::Initialize();
 
       for (int16_t i = 0; i < thr_count; i++) {
-        V8Worker *w = new V8Worker(platform, handler_config.release(),
-                                   server_settings.release());
+        V8Worker *w = new V8Worker(platform, handler_config, server_settings);
 
         LOG(logDebug) << "Init index: " << i << " V8Worker: " << w << '\n';
         this->workers[i] = w;
       }
+
+      delete handler_config;
 
       msg_priority = true;
       break;
@@ -240,8 +240,33 @@ AppWorker::AppWorker() : conn_handle(nullptr), main_loop_running(false) {
 
 AppWorker::~AppWorker() { uv_loop_close(&main_loop); }
 
-void AppWorker::Init(const std::string &appname, const std::string &addr,
-                     const std::string &worker_id, int batch_size, int port) {
+void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
+                        const std::string &worker_id, int batch_size,
+                        std::string uds_sock_path) {
+  uv_pipe_init(&main_loop, &uds_sock, 0);
+
+  this->app_name = appname;
+  this->batch_size = batch_size;
+  this->messages_processed_counter = 0;
+
+  LOG(logInfo) << "Starting worker with uds for appname:" << appname
+               << " worker_id:" << worker_id << " batch_size:" << batch_size
+               << " uds_path:" << uds_sock_path << '\n';
+
+  uv_pipe_connect(&conn, &uds_sock, uds_sock_path.c_str(),
+                  [](uv_connect_t *conn, int status) {
+                    AppWorker::GetAppWorker()->OnConnect(conn, status);
+                  });
+
+  if (main_loop_running == false) {
+    uv_run(&main_loop, UV_RUN_DEFAULT);
+    main_loop_running = true;
+  }
+}
+
+void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
+                            const std::string &worker_id, int batch_size,
+                            int port) {
   uv_tcp_init(&main_loop, &tcp_sock);
   uv_ip4_addr(addr.c_str(), port, &server_sock);
 
@@ -472,8 +497,10 @@ int main(int argc, char **argv) {
   global_program_name = argv[0];
 
   if (argc < 5) {
-        std::cerr << "Need at least 4 arguments: appname, port, worker_id, batch_size" << '\n';
-        return 2;
+    std::cerr
+        << "Need at least 4 arguments: appname, port, worker_id, batch_size"
+        << '\n';
+    return 2;
   }
 
   if (isSSE42Supported()) {
@@ -481,12 +508,26 @@ int main(int argc, char **argv) {
   }
 
   std::string appname(argv[1]);
+
+#if defined(__APPLE__) || defined(__linux__)
+  std::string uds_sock_path = argv[2];
+#else
   int port = atoi(argv[2]);
+#endif
+
   std::string worker_id(argv[3]);
   int batch_size = atoi(argv[4]);
 
   setAppName(appname);
   setWorkerID(worker_id);
   AppWorker *worker = AppWorker::GetAppWorker();
-  worker->Init(appname, "127.0.0.1", worker_id, batch_size, port);
+
+// For darwin/linux leverage unix domain socket
+// For windows leverage TCP socket
+
+#if defined(__APPLE__) || defined(__linux__)
+  worker->InitUDS(appname, "127.0.0.1", worker_id, batch_size, uds_sock_path);
+#else
+  worker->InitTcpSock(appname, "127.0.0.1", worker_id, batch_size, port);
+#endif
 }

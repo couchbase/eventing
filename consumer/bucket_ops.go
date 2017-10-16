@@ -146,15 +146,17 @@ var getNonDocTimerCallback = func(args ...interface{}) error {
 		if err == gocb.ErrKeyNotFound {
 			*isNoEnt = true
 			return nil
-		} else if err != nil {
-			logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for non_doc timer key: %s, err: %v",
-				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
-			return err
-		} else {
+		} else if err == nil {
 			*isNoEnt = false
 			*val = string(v)
 			return nil
 		}
+	}
+
+	if err == gocb.ErrShutdown {
+		logging.Errorf("CRBO[%s:%s:%s:%d] Non_doc timer key: %s fetch failed cause bucket handler got closed, err: %v",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
+		return nil
 	}
 
 	if err != nil {
@@ -192,10 +194,15 @@ var getOpCallback = func(args ...interface{}) error {
 			logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for key: %s, err: %v",
 				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 			return err
-		} else {
-			*isNoEnt = false
-			return nil
 		}
+		*isNoEnt = false
+		return nil
+	}
+
+	if err == gocb.ErrShutdown {
+		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s fetch failed cause bucket handler got closed, err: %v",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
+		return nil
 	}
 
 	if err != nil {

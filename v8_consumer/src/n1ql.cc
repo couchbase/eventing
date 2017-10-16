@@ -20,6 +20,9 @@
 
 #include "../include/n1ql.h"
 
+template v8::Local<v8::Value> ToLocal(const v8::MaybeLocal<v8::Value> &handle);
+template v8::Local<v8::Map> ToLocal(const v8::MaybeLocal<v8::Map> &handle);
+
 // Reference to the query engine instantiated by v8worker.
 extern N1QL *n1ql_handle;
 
@@ -594,5 +597,8 @@ template <typename T> v8::Local<T> ToLocal(const v8::MaybeLocal<T> &handle) {
 
   v8::Local<T> value;
   auto result = handle.ToLocal(&value);
+  if (!result) {
+    LOG(logError) << "handle.ToLocal failed" << '\n';
+  }
   return handle_scope.Escape(value);
 }

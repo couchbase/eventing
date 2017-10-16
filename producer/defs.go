@@ -62,7 +62,7 @@ type Producer struct {
 	eventingDir            string
 	kvPort                 string
 	kvHostPorts            []string
-	listenerHandles        []*abatableListener
+	listenerHandles        []net.Listener
 	logLevel               string
 	metadatabucket         string
 	metadataBucketHandle   *gocb.Bucket

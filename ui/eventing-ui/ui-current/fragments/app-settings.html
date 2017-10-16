@@ -2,11 +2,11 @@
 <!--The controller that invokes this HTML must provide an implementation for formCtrl-->
 <!--The data binding is always done through $scope-->
 <div ng-show="!formCtrl.isDialog && formCtrl.showSuccessAlert"
-     class="animate-alert alert enable-ng-animation ng-scope alert-success">
+  class="animate-alert alert enable-ng-animation ng-scope alert-success">
   <p class="ng-binding">{{formCtrl.alertMessage}}</p>
 </div>
 <div ng-show="!formCtrl.isDialog && formCtrl.showWarningAlert"
-     class="animate-alert alert enable-ng-animation ng-scope alert-warning">
+  class="animate-alert alert enable-ng-animation ng-scope alert-warning">
   <p class="ng-binding">{{formCtrl.warningMessage}}</p>
 </div>
 <form name="formCtrl.createAppForm" class="forms">
@@ -23,23 +23,34 @@
               Source bucket
               <!--Tooltip-->
               <span class="fa-stack icon-info"
-                    uib-tooltip="The bucket to which the function will listen for changes."
-                    tooltip-placement="bottom">
+                uib-tooltip="The bucket to which the function will listen for changes."
+                tooltip-placement="bottom">
               <span class="icon fa-circle-thin fa-stack-2x"></span>
               <span class="icon fa-info fa-stack-1x"></span>
               </span>
             </label>
             <select class="column width-9" ng-disabled="!formCtrl.isDialog"
-                    ng-model="appModel.depcfg.source_bucket"
-                    ng-options="bucket for bucket in formCtrl.sourceBuckets"></select>
+              ng-model="appModel.depcfg.source_bucket"
+              ng-options="bucket for bucket in formCtrl.sourceBuckets"
+              name="source_bucket"></select>
+          </div>
+          <div class="error field-error" ng-show="formCtrl.sourceBuckets.indexOf(appModel.depcfg.source_bucket) === -1">
+            Source bucket must not be empty
           </div>
           <br/>
           <!--Metadata bucket-->
           <div class="row">
             <label class="column width-3">Metadata bucket</label>
             <select class="column width-9" ng-disabled="!formCtrl.isDialog"
-                    ng-model="appModel.depcfg.metadata_bucket"
-                    ng-options="bucket for bucket in formCtrl.metadataBuckets"></select>
+              ng-model="appModel.depcfg.metadata_bucket"
+              ng-options="bucket for bucket in formCtrl.metadataBuckets"
+              name="metadata_bucket"></select>
+          </div>
+          <div class="error field-error" ng-show="formCtrl.metadataBuckets.indexOf(appModel.depcfg.metadata_bucket) === -1">
+            Metadata bucket must not be empty
+          </div>
+          <div class="error field-error" ng-show="formCtrl.srcMetaSameBucket(appModel)">
+            Source and metadata buckets must not be the same
           </div>
         </div>
         <br/>
@@ -47,10 +58,10 @@
           <label>Name</label>
           <span class="input-append">
           <input type="text" name="appname" ng-disabled="!formCtrl.isDialog"
-                 ng-model="appModel.appname" required/>
+            ng-model="appModel.appname" required/>
           </span>
           <div class="error field-error"
-               ng-show="formCtrl.createAppForm.appname.$error.required && formCtrl.createAppForm.appname.$dirty">
+            ng-show="formCtrl.createAppForm.appname.$error.required && formCtrl.createAppForm.appname.$dirty">
             Name cannot be empty
           </div>
         </div>
@@ -58,48 +69,48 @@
           <label>Description</label>
           <span class="input-append">
           <textarea ng-model="appModel.settings.description" cols="30"
-                    rows="5"></textarea>
+            rows="5"></textarea>
           </span>
         </div>
         <br/>
         <!--<h3>RBAC Credentials</h3>
-        <div class="formrow">
-          <div class="cbui-table">
-            <div class="cbui-tablerow has-hover">
-              <span class="cbui-table-cell">
-              <label>RBAC username</label>
-              </span>
-              <span class="cbui-table-cell input-append">
-              <input type="text" name="rbacuser"
-                     ng-model="appModel.settings.rbacuser"
-                     placeholder="Username"
-                     required/>
-              </span>
+          <div class="formrow">
+            <div class="cbui-table">
+              <div class="cbui-tablerow has-hover">
+                <span class="cbui-table-cell">
+                <label>RBAC username</label>
+                </span>
+                <span class="cbui-table-cell input-append">
+                <input type="text" name="rbacuser"
+                       ng-model="appModel.settings.rbacuser"
+                       placeholder="Username"
+                       required/>
+                </span>
+              </div>
+              <div class="error field-error"
+                   ng-show="formCtrl.createAppForm.rbacuser.$error.required && formCtrl.createAppForm.rbacuser.$dirty">
+                RBAC username cannot be empty
+              </div>
+              <div class="cbui-tablerow has-hover">
+                <span class="cbui-table-cell">
+                <label>RBAC password</label>
+                </span>
+                <span class="cbui-table-cell input-append">
+                <input type="password" name="rbacpass"
+                       ng-model="appModel.settings.rbacpass"
+                       placeholder="******"/>
+                </span>
+              </div>
+              <div class="error field-error"
+                   ng-show="formCtrl.createAppForm.rbacpass.$error.required && formCtrl.createAppForm.rbacpass.$dirty">
+                RBAC password cannot be empty
+              </div>
             </div>
-            <div class="error field-error"
-                 ng-show="formCtrl.createAppForm.rbacuser.$error.required && formCtrl.createAppForm.rbacuser.$dirty">
-              RBAC username cannot be empty
-            </div>
-            <div class="cbui-tablerow has-hover">
-              <span class="cbui-table-cell">
-              <label>RBAC password</label>
-              </span>
-              <span class="cbui-table-cell input-append">
-              <input type="password" name="rbacpass"
-                     ng-model="appModel.settings.rbacpass"
-                     placeholder="******"/>
-              </span>
-            </div>
-            <div class="error field-error"
-                 ng-show="formCtrl.createAppForm.rbacpass.$error.required && formCtrl.createAppForm.rbacpass.$dirty">
-              RBAC password cannot be empty
-            </div>
-          </div>
-        </div>-->
+          </div>-->
         <div class="formrow">
           <span class="disclosure settings-heading"
-                ng-class="{disclosed: showSettings}"
-                ng-click="showSettings = !showSettings">Settings</span>
+            ng-class="{disclosed: showSettings}"
+            ng-click="showSettings = !showSettings">Settings</span>
         </div>
         <div class="formrow" ng-show="showSettings">
           <div class="cbui-table">
@@ -110,15 +121,15 @@
                   Log level
                   <!--Tooltip-->
                   <span class="fa-stack icon-info"
-                        uib-tooltip="Granularity at which messages get logged."
-                        tooltip-placement="top">
+                    uib-tooltip="Granularity at which messages get logged."
+                    tooltip-placement="top">
                   <span class="icon fa-circle-thin fa-stack-2x"></span>
                   <span class="icon fa-info fa-stack-2x"></span>
                   </span>
                 </label>
               </span>
               <span class="cbui-table-cell input-append"
-                    ng-init="appModel.settings.log_level = appModel.settings.log_level ? appModel.settings.log_level : 'TRACE'">
+                ng-init="appModel.settings.log_level = appModel.settings.log_level ? appModel.settings.log_level : 'TRACE'">
                 <select ng-model="appModel.settings.log_level">
                   <option value="INFO">Info</option>
                   <option value="ERROR">Error</option>
@@ -135,8 +146,8 @@
                   Workers
                   <!--Tooltip-->
                   <span class="fa-stack icon-info"
-                        uib-tooltip="Number of workers to take up the load."
-                        tooltip-placement="top">
+                    uib-tooltip="Number of workers to take up the load."
+                    tooltip-placement="top">
                   <span class="icon fa-circle-thin fa-stack-2x"></span>
                   <span class="icon fa-info fa-stack-2x"></span>
                   </span>
@@ -144,22 +155,22 @@
               </span>
               <span class="cbui-table-cell input-append">
               <input type="number"
-                     name="worker_count"
-                     ng-model="appModel.settings.worker_count"
-                     required min="1" max="128"/>
+                name="worker_count"
+                ng-model="appModel.settings.worker_count"
+                required min="1" max="128"/>
               </span>
             </div>
             <!--Worker count errors-->
             <div class="error field-error"
-                 ng-show="formCtrl.createAppForm.worker_count.$error.min && formCtrl.createAppForm.worker_count.$dirty">
+              ng-show="formCtrl.createAppForm.worker_count.$error.min && formCtrl.createAppForm.worker_count.$dirty">
               Worker count must be positive
             </div>
             <div class="error field-error"
-                 ng-show="formCtrl.createAppForm.worker_count.$error.required && formCtrl.createAppForm.worker_count.$dirty">
+              ng-show="formCtrl.createAppForm.worker_count.$error.required && formCtrl.createAppForm.worker_count.$dirty">
               Worker count requires a value
             </div>
             <div class="error field-error"
-                 ng-show="formCtrl.createAppForm.worker_count.$error.max && formCtrl.createAppForm.worker_count.$dirty">
+              ng-show="formCtrl.createAppForm.worker_count.$error.max && formCtrl.createAppForm.worker_count.$dirty">
               Worker count must be less than 128
             </div>
             <!--Script execution timeout-->
@@ -169,8 +180,8 @@
                   Script timeout
                   <!--Tooltip-->
                   <span class="fa-stack icon-info"
-                        uib-tooltip="Timeout for executing the function."
-                        tooltip-placement="top">
+                    uib-tooltip="Timeout for executing the function."
+                    tooltip-placement="top">
                   <span class="icon fa-circle-thin fa-stack-2x"></span>
                   <span class="icon fa-info fa-stack-2x"></span>
                   </span>
@@ -178,22 +189,22 @@
               </span>
               <span class="cbui-table-cell input-append">
               <input type="number"
-                     name="execution_timeout"
-                     ng-model="appModel.settings.execution_timeout"
-                     required min="1" max="60"/><abbr>&nbsp;s</abbr>
+                name="execution_timeout"
+                ng-model="appModel.settings.execution_timeout"
+                required min="1" max="60"/><abbr>&nbsp;s</abbr>
               </span>
             </div>
             <!--Script timeout errors-->
             <div class="error field-error"
-                 ng-show="formCtrl.createAppForm.execution_timeout.$error.min && formCtrl.createAppForm.execution_timeout.$dirty">
+              ng-show="formCtrl.createAppForm.execution_timeout.$error.min && formCtrl.createAppForm.execution_timeout.$dirty">
               Script timeout must be positive
             </div>
             <div class="error field-error"
-                 ng-show="formCtrl.createAppForm.execution_timeout.$error.required && formCtrl.createAppForm.execution_timeout.$dirty">
+              ng-show="formCtrl.createAppForm.execution_timeout.$error.required && formCtrl.createAppForm.execution_timeout.$dirty">
               Script timeout requires a value
             </div>
             <div class="error field-error"
-                 ng-show="formCtrl.createAppForm.execution_timeout.$error.max && formCtrl.createAppForm.execution_timeout.$dirty">
+              ng-show="formCtrl.createAppForm.execution_timeout.$error.max && formCtrl.createAppForm.execution_timeout.$dirty">
               Script timeout must be less than 60
             </div>
           </div>
@@ -204,9 +215,9 @@
             <h3>Bindings</h3>
             <span>
             <button class="outline btn-small" title="Add parameter"
-                    ng-click="bindings.push({type:'alias', name:'', value:''})">+</button>
+              ng-click="bindings.push({type:'alias', name:'', value:''})">+</button>
             <button class="outline btn-small" title="Remove parameter"
-                    ng-click="bindings.splice(-1, 1)">-</button>
+              ng-click="bindings.splice(-1, 1)">-</button>
             </span>
           </div>
           <hr/>
@@ -216,12 +227,12 @@
               <span class="input-prepend">
                 <select>
                   <option value="alias"
-                          ng-model="bindings[$index].type">Alias</option>
+                    ng-model="bindings[$index].type">Alias</option>
                 </select>
                 <!--Tooltip-->
                 &nbsp;&nbsp;<span class="fa-stack icon-info"
-                                  uib-tooltip="Binding that allows to refer to a bucket in functions. 'name' refers to the name of the bucket in the cluster. 'value' is the alias used to refer to the bucket in the function."
-                                  tooltip-placement="right">
+                  uib-tooltip="Binding that allows to refer to a bucket in functions. 'name' refers to the name of the bucket in the cluster. 'value' is the alias used to refer to the bucket in the function."
+                  tooltip-placement="right">
                 <span class="icon fa-circle-thin fa-stack-2x"></span>
                 <span class="icon fa-info fa-stack-1x"></span>
                 </span>
@@ -243,14 +254,14 @@
       <div class="panel-footer">
         <a ng-show="formCtrl.isDialog" ng-click="$dismiss('cancel')">Cancel</a>&nbsp;
         <button ng-show="formCtrl.isDialog" ng-click="$close('ok')"
-                ng-disabled="formCtrl.isFormInvalid()">Continue
+          ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel)">Continue
         </button>
         <button ng-show="!formCtrl.isDialog" ng-click="formCtrl.cancelEdit()"
-                ng-disabled="formCtrl.createAppForm.$pristine">Cancel
+          ng-disabled="formCtrl.createAppForm.$pristine">Cancel
         </button>&nbsp;
         <button ng-show="!formCtrl.isDialog" ng-click="formCtrl.saveSettings()"
-                ng-disabled="formCtrl.isFormInvalid() || formCtrl.createAppForm.$pristine">
-          Save
+          ng-disabled="formCtrl.isFormInvalid() || formCtrl.createAppForm.$pristine">
+        Save
         </button>
       </div>
     </div>
@@ -262,17 +273,17 @@
               Bindings
               <!--Tooltip-->
               <span class="fa-stack icon-info"
-                    uib-tooltip="Special variables used in functions."
-                    tooltip-placement="right">
+                uib-tooltip="Special variables used in functions."
+                tooltip-placement="right">
               <span class="icon fa-circle-thin fa-stack-2x"></span>
               <span class="icon fa-info fa-stack-1x"></span>
               </span>
             </h3>
             <span>
             <button class="outline btn-small" title="Add parameter"
-                    ng-click="formCtrl.bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:''})">+</button>
+              ng-click="formCtrl.bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:''})">+</button>
             <button class="outline btn-small" title="Remove parameter"
-                    ng-click="formCtrl.bindings.splice(-1, 1); formCtrl.createAppForm.$pristine = false">-</button>
+              ng-click="formCtrl.bindings.splice(-1, 1); formCtrl.createAppForm.$pristine = false">-</button>
             </span>
           </div>
           <hr/>
@@ -283,12 +294,12 @@
                 <span class="input-prepend">
                   <select>
                     <option value="alias"
-                            ng-model="formCtrl.bindings[$index].type">Alias</option>
+                      ng-model="formCtrl.bindings[$index].type">Alias</option>
                   </select>
                   <!--Tooltip-->
                   &nbsp;&nbsp;<span class="fa-stack icon-info"
-                                    uib-tooltip="Binding that allows to refer to a bucket in functions. 'name' refers to the name of the bucket in the cluster. 'value' is the alias used to refer to the bucket in the function."
-                                    tooltip-placement="right">
+                    uib-tooltip="Binding that allows to refer to a bucket in functions. 'name' refers to the name of the bucket in the cluster. 'value' is the alias used to refer to the bucket in the function."
+                    tooltip-placement="right">
                   <span class="icon fa-circle-thin fa-stack-2x"></span>
                   <span class="icon fa-info fa-stack-1x"></span>
                   </span>
@@ -298,7 +309,7 @@
                 <label>name</label>
                 <span class="input-prepend">
                 <select ng-model="formCtrl.bindings[$index].name"
-                        ng-options="bucket for bucket in formCtrl.sourceBuckets">
+                  ng-options="bucket for bucket in formCtrl.sourceBuckets">
                 </select>
                 </span>
               </div>
@@ -309,7 +320,7 @@
             </div>
             <!--Binding error-->
             <div class="row error field-error"
-                 ng-show="!formCtrl.validateBinding(formCtrl.bindings[$index])">
+              ng-show="!formCtrl.validateBinding(formCtrl.bindings[$index])">
               Alias value must be a valid identifier
             </div>
           </div>

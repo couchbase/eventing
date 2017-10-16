@@ -33,10 +33,12 @@ func (c *Consumer) EventingNodeUUIDs() []string {
 // GetEventProcessingStats exposes dcp/timer processing stats
 func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	stats := make(map[string]uint64)
+	c.RLock()
 	for opcode, value := range c.dcpMessagesProcessed {
 		stats[mcd.CommandNames[opcode]] = value
 	}
 	stats["TIMER_EVENTS"] = c.timerMessagesProcessed
+	c.RUnlock()
 
 	return stats
 }
