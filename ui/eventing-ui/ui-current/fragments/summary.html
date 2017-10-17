@@ -1,6 +1,6 @@
 <!--This is the summary page-->
-<div ng-if="!summaryCtrl.errorState">
-  <div ng-if="summaryCtrl.serverNodes.length">
+<div ng-if="summaryCtrl.serverNodes.length">
+  <div ng-if="!summaryCtrl.errorState">
     <mn-element-cargo depot="alerts">
       <div ng-show="summaryCtrl.showSuccessAlert">
         <div class="alert alert-success">
@@ -14,13 +14,13 @@
         <span class="cbui-table-cell">status</span>
         <span class="cbui-table-cell"></span>
       </div>
-<!-- TO DO
-     add to <section> element: ng-class="['dynamic_' + someStatus]" where "someStatus" returns healthy/unhealthy/warmup,
-     remove "dynamic_healthy from the normal class below (it's a placeholder) -->
+      <!-- TO DO
+        add to <section> element: ng-class="['dynamic_' + someStatus]" where "someStatus" returns healthy/unhealthy/warmup,
+        remove "dynamic_healthy from the normal class below (it's a placeholder) -->
       <section
-         class="has-hover dynamic_healthy"
-         ng-repeat="(appname, app) in summaryCtrl.appList"
-         ng-click="app.toggleActionsVisibility()">
+        class="has-hover dynamic_healthy"
+        ng-repeat="(appname, app) in summaryCtrl.appList"
+        ng-click="app.toggleActionsVisibility()">
         <div class="cbui-tablerow">
           <span class="cbui-table-cell cbui-tablerow-title">{{appname}}</span>
           <span class="cbui-table-cell row flex-left">
@@ -29,61 +29,62 @@
               {{app.getDeploymentStatus()}}
             </div>
             <span>
-              <span class="icon fa-fw" ng-class="app.getProcessingStatus() == 'running' ? 'fa-check green-3':'fa-warning orange-1'"></span>
-              {{app.getProcessingStatus()}}
+            <span class="icon fa-fw" ng-class="app.getProcessingStatus() == 'running' ? 'fa-check green-3':'fa-warning orange-1'"></span>
+            {{app.getProcessingStatus()}}
             </span>
           </span>
           <span class="cbui-table-cell text-right">
-            <a
-               ui-sref="app.admin.eventing.settings({appName:app.appname})"
-               ng-click="$event.stopPropagation();">
-              Settings
-            </a>
+          <a
+            ui-sref="app.admin.eventing.settings({appName:app.appname})"
+            ng-click="$event.stopPropagation();">
+          Settings
+          </a>
           </span>
         </div>
         <div class="cbui-tablerow-expanded"
-             ng-if="app.actionsVisible">
+          ng-if="app.actionsVisible">
           <p class="width-6">{{app.settings.description}}</p>
           <div class="width-12 text-right">
             <button
-               class="outline"
-               ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
-               ng-disabled="app.settings.processing_status || app.settings.deployment_status">
-              Delete
+              class="outline"
+              ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
+              ng-disabled="app.settings.processing_status || app.settings.deployment_status">
+            Delete
             </button>
             <button
-               class="outline"
-               ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname)">
-              Export
+              class="outline"
+              ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname)">
+            Export
             </button>
             <button
-               class="outline"
-               ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
-              {{app.getDeploymentStatus(true)}}
+              class="outline"
+              ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
+            {{app.getDeploymentStatus(true)}}
             </button>
             <button
-               class="outline"
-               ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)"
-               ng-disabled="!app.settings.deployment_status">
-              {{app.getProcessingStatus(true)}}
+              class="outline"
+              ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)"
+              ng-disabled="!app.settings.deployment_status">
+            {{app.getProcessingStatus(true)}}
             </button>
             <button
-               ng-click="$event.stopPropagation();"
-               ui-sref="app.admin.eventing.handler({appName:app.appname})">
-              Edit JavaScript
+              ng-click="$event.stopPropagation();"
+              ui-sref="app.admin.eventing.handler({appName:app.appname})">
+            Edit JavaScript
             </button>
           </div>
         </div>
       </section>
     </div>
+    <div ng-if="summaryCtrl.isAppListEmpty()">
+      <p class="zero-content">No Functions running currently. Import or use ADD above to begin.</p>
+    </div>
   </div>
-  <div ng-if="summaryCtrl.serverNodes.length === 0">
-    <p>No Functions nodes found in this cluster.</p>
-  </div>
-  <div ng-if="summaryCtrl.isAppListEmpty()">
-    <p class="zero-content">No Functions running currently. Import or use ADD above to begin.</p>
+  <div ng-if="summaryCtrl.errorState">
+    <p>Something went wrong with the Eventing service.</p>
   </div>
 </div>
-<div ng-if="summaryCtrl.errorState">
-  <p>Something went wrong with the Functions service.</p>
+<div ng-if="summaryCtrl.serverNodes.length === 0">
+  <p>The Eventing interface is only available on Couchbase nodes running the Eventing service.</p>
+  <p class="error">No Eventing nodes were found on this cluster.</p>
 </div>
