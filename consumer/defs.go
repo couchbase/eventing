@@ -50,6 +50,8 @@ const (
 const (
 	numVbuckets = 1024
 
+	udsSockPathLimit = 100
+
 	// KV blob suffixes to assist in choose right consumer instance
 	// for instantiating V8 Debugger instance
 	startDebuggerFlag    = "startDebugger"
@@ -184,6 +186,7 @@ type Consumer struct {
 	gocbBucket             *gocb.Bucket
 	gocbMetaBucket         *gocb.Bucket
 	isRebalanceOngoing     bool
+	ipcType                string                        // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
 	hostDcpFeedRWMutex     *sync.RWMutex
 	kvVbMap                map[uint16]string // Access controlled by default lock
@@ -359,11 +362,12 @@ type byTimerEntry struct {
 // For V8 worker spawned for debugging purpose
 type debugClient struct {
 	appName        string
-	consumerHandle *Consumer
 	cmd            *exec.Cmd
-	eventingPort   string
-	osPid          int
+	consumerHandle *Consumer
 	debugTCPPort   string
+	eventingPort   string
+	ipcType        string
+	osPid          int
 	workerName     string
 }
 

@@ -21,6 +21,8 @@ const (
 	bucketOpRetryInterval  = time.Duration(1000) * time.Millisecond
 	persistAllTickInterval = time.Duration(5000) * time.Millisecond
 
+	udsSockPathLimit = 100
+
 	dataService = "kv"
 
 	numVbuckets = 1024

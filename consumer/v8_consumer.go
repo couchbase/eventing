@@ -25,7 +25,7 @@ import (
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
 	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize, timerProcessingPoolSize int,
 	cppWorkerThrCount, vbOwnershipGiveUpRoutineCount, vbOwnershipTakeoverRoutineCount int,
-	bucket, eventingAdminPort, eventingDir, logLevel, tcpPort, uuid string,
+	bucket, eventingAdminPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
 	socketTimeout time.Duration) *Consumer {
@@ -53,6 +53,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		eventingNodeUUIDs:                  eventingNodeUUIDs,
 		executionTimeout:                   executionTimeout,
 		gracefulShutdownChan:               make(chan struct{}, 1),
+		ipcType:                            ipcType,
 		hostDcpFeedRWMutex:                 &sync.RWMutex{},
 		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
 		lcbInstCapacity:                    lcbInstCapacity,

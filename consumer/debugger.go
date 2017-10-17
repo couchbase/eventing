@@ -16,19 +16,20 @@ import (
 	"github.com/couchbase/gocb"
 )
 
-func newDebugClient(c *Consumer, appName, eventingPort, tcpPort, workerName string) *debugClient {
+func newDebugClient(c *Consumer, appName, eventingPort, ipcType, tcpPort, workerName string) *debugClient {
 	return &debugClient{
 		appName:        appName,
 		consumerHandle: c,
 		debugTCPPort:   tcpPort,
 		eventingPort:   eventingPort,
+		ipcType:        ipcType,
 		workerName:     workerName,
 	}
 }
 
 func (c *debugClient) Serve() {
-	c.cmd = exec.Command("eventing-consumer", c.appName, c.debugTCPPort, c.workerName,
-		strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.eventingPort, "debug")
+	c.cmd = exec.Command("eventing-consumer", c.appName, c.ipcType, c.debugTCPPort,
+		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.eventingPort, "debug")
 
 	err := c.cmd.Start()
 	if err != nil {
@@ -155,9 +156,10 @@ func (c *Consumer) pollForDebuggerStart() {
 
 func (c *Consumer) startDebuggerServer() {
 	var err error
-	var udsSockPath string
+	var ipcType string
+	udsSockPath := fmt.Sprintf("%s/debug_%s.sock", os.TempDir(), c.ConsumerName())
 
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == "windows" || len(udsSockPath) > udsSockPathLimit {
 		c.debugListener, err = net.Listen("tcp", ":0")
 		if err != nil {
 			logging.Errorf("CRSD[%s:%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
@@ -167,8 +169,11 @@ func (c *Consumer) startDebuggerServer() {
 
 		logging.Infof("CRSD[%s:%s:%s:%d] Start server on addr: %v for communication to C++ debugger",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.debugListener.Addr().String())
+
+		c.debugTCPPort = strings.Split(c.debugListener.Addr().String(), ":")[3]
+		ipcType = "af_inet"
+
 	} else {
-		udsSockPath = fmt.Sprintf("%s/debug_%s.sock", c.eventingDir, c.ConsumerName())
 
 		os.Remove(udsSockPath)
 
@@ -177,6 +182,9 @@ func (c *Consumer) startDebuggerServer() {
 			logging.Errorf("CRSD[%s:%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
 				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
 		}
+
+		ipcType = "af_unix"
+		c.debugTCPPort = udsSockPath
 	}
 
 	c.signalDebuggerConnectedCh = make(chan struct{}, 1)
@@ -195,12 +203,7 @@ func (c *Consumer) startDebuggerServer() {
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 	}
 
-	if runtime.GOOS == "windows" {
-		c.debugTCPPort = strings.Split(c.debugListener.Addr().String(), ":")[3]
-	} else {
-		c.debugTCPPort = udsSockPath
-	}
-	c.debugClient = newDebugClient(c, c.app.AppName, c.eventingAdminPort, c.debugTCPPort, c.workerName)
+	c.debugClient = newDebugClient(c, c.app.AppName, c.eventingAdminPort, ipcType, c.debugTCPPort, c.workerName)
 	c.debugClientSupToken = c.consumerSup.Add(c.debugClient)
 
 	<-c.signalDebuggerConnectedCh

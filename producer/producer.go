@@ -216,24 +216,26 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	var listener net.Listener
 	var err error
-	var sockIdentifier string
+	var ipcType, sockIdentifier string
 
 	// For windows use tcp socket based communication
 	// For linux/macos use unix domain sockets
-	if runtime.GOOS == "windows" {
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
+	// https://github.com/golang/go/issues/6895 - uds pathname limited to 108 chars
+	udsSockPath := fmt.Sprintf("%s/%s.sock", os.TempDir(), workerName)
+
+	if runtime.GOOS == "windows" || len(udsSockPath) > udsSockPathLimit {
+		listener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			logging.Errorf("PRDR[%s:%d] Failed to listen on tcp port, err: %v", p.appName, p.LenRunningConsumers(), err)
 		}
 
 		p.tcpPort = strings.Split(listener.Addr().String(), ":")[1]
-		logging.Infof("PRDR[%s:%d] Started server on port: %s", p.appName, p.LenRunningConsumers(), p.tcpPort)
+		logging.Infof("PRDR[%s:%d] Started server on port: %s listener: %v", p.appName, p.LenRunningConsumers(), p.tcpPort, listener)
 
 		sockIdentifier = p.tcpPort
-	} else {
-		// https://github.com/golang/go/issues/6895 - uds pathname limited to 108 chars
-		udsSockPath := fmt.Sprintf("%s/%s.sock", p.eventingDir, workerName)
+		ipcType = "af_inet"
 
+	} else {
 		os.Remove(udsSockPath)
 
 		listener, err = net.Listen("unix", udsSockPath)
@@ -241,13 +243,15 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 			logging.Errorf("PRDR[%s:%d] Failed to listen on unix domain socket, err: %v", p.appName, p.LenRunningConsumers(), err)
 		}
 		sockIdentifier = udsSockPath
+		ipcType = "af_unix"
+
 	}
 
 	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
 		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold, p.socketWriteBatchSize,
 		p.timerWorkerPoolSize, p.cppWorkerThrCount, p.vbOwnershipGiveUpRoutineCount,
 		p.vbOwnershipTakeoverRoutineCount, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
-		sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStore,
+		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStore,
 		p.socketTimeout)
 
 	p.Lock()
