@@ -23,3 +23,15 @@ func (p *Producer) openPlasmaStore() error {
 	}
 	return nil
 }
+
+func (p *Producer) persistPlasma() {
+	for {
+		select {
+		case <-p.persistAllTicker.C:
+			p.vbPlasmaStore.PersistAll()
+
+		case <-p.signalStopPersistAllCh:
+			return
+		}
+	}
+}

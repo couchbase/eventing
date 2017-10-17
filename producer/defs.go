@@ -18,7 +18,8 @@ const (
 )
 
 const (
-	bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
+	bucketOpRetryInterval  = time.Duration(1000) * time.Millisecond
+	persistAllTickInterval = time.Duration(5000) * time.Millisecond
 
 	dataService = "kv"
 
@@ -69,11 +70,15 @@ type Producer struct {
 	metakvAppHostPortsPath string
 	nsServerPort           string
 	nsServerHostPort       string
+	persistAllTicker       *time.Ticker
 	tcpPort                string
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
 	uuid                   string
 	workerCount            int
+
+	rbacUser string
+	rbacPass string
 
 	// Chan used to signal if Eventing.Producer has finished bootstrap
 	// i.e. started up all it's child routines
@@ -148,6 +153,8 @@ type Producer struct {
 
 	// copy of KV vbmap, needed while opening up dcp feed
 	kvVbMap map[uint16]string
+
+	signalStopPersistAllCh chan struct{}
 
 	// topologyChangeCh used by super_supervisor to notify producer
 	// about topology change
