@@ -252,8 +252,6 @@ func (c *Consumer) processEvents() {
 
 					c.vbPlasmaStore.PersistAll()
 
-					c.superSup.SignalToClosePlasmaStore(e.VBucket)
-
 					c.timerRWMutex.Lock()
 					delete(c.timerProcessingVbsWorkerMap, e.VBucket)
 					c.timerRWMutex.Unlock()
@@ -276,47 +274,6 @@ func (c *Consumer) processEvents() {
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySECallback, c, vbKey, &entry)
 
 				c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
-
-				/*
-					c.plasmaStoreRWMutex.RLock()
-					// Check if vbucket related entry already exists, if yes - then clean it up
-					// and close all associated FDs
-					_, ok = c.vbPlasmaStoreMap[e.VBucket]
-					c.plasmaStoreRWMutex.RUnlock()
-
-					if ok {
-
-						c.timerRWMutex.RLock()
-						if _, mOk := c.timerProcessingVbsWorkerMap[e.VBucket]; !mOk {
-							c.timerRWMutex.RUnlock()
-
-							logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Missing entry from timerProcessingVbsWorkerMap",
-								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
-							continue
-						}
-
-						c.timerProcessingVbsWorkerMap[e.VBucket].signalProcessTimerPlasmaCloseCh <- e.VBucket
-						c.timerRWMutex.RUnlock()
-						<-c.signalProcessTimerPlasmaCloseAckCh
-
-						// Instead of sending message over channel - to clean up plasma.Writer
-						// instances who are responsible for storing timers events into
-						// plasma store, cleaning up vbucket specific plasma.Writer instances
-						// directly. Reason being, c.signalStoreTimerPlasmaCloseCh and
-						// c.signalStoreTimerPlasmaCloseAckCh are being listened to/written to
-						// on current control path within the select statement
-
-						c.plasmaStoreRWMutex.Lock()
-						_, ok := c.vbPlasmaWriter[e.VBucket]
-						if ok {
-							delete(c.vbPlasmaWriter, e.VBucket)
-						}
-						c.plasmaStoreRWMutex.Unlock()
-
-					} else {
-						c.plasmaStoreRWMutex.RUnlock()
-					}
-				*/
 
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 					logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",

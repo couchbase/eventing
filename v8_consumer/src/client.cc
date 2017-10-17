@@ -496,10 +496,10 @@ AppWorker *AppWorker::GetAppWorker() {
 int main(int argc, char **argv) {
   global_program_name = argv[0];
 
-  if (argc < 5) {
-    std::cerr
-        << "Need at least 4 arguments: appname, port, worker_id, batch_size"
-        << '\n';
+  if (argc < 6) {
+    std::cerr << "Need at least 5 arguments: appname, ipc_type, port, "
+                 "worker_id, batch_size"
+              << '\n';
     return 2;
   }
 
@@ -508,26 +508,27 @@ int main(int argc, char **argv) {
   }
 
   std::string appname(argv[1]);
+  std::string ipc_type(argv[2]); // can be af_unix or af_inet
 
-#if defined(__APPLE__) || defined(__linux__)
-  std::string uds_sock_path = argv[2];
-#else
-  int port = atoi(argv[2]);
-#endif
+  std::string uds_sock_path;
+  int port;
 
-  std::string worker_id(argv[3]);
-  int batch_size = atoi(argv[4]);
+  if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
+    uds_sock_path.assign(argv[3]);
+  } else {
+    port = atoi(argv[3]);
+  }
+
+  std::string worker_id(argv[4]);
+  int batch_size = atoi(argv[5]);
 
   setAppName(appname);
   setWorkerID(worker_id);
   AppWorker *worker = AppWorker::GetAppWorker();
 
-// For darwin/linux leverage unix domain socket
-// For windows leverage TCP socket
-
-#if defined(__APPLE__) || defined(__linux__)
-  worker->InitUDS(appname, "127.0.0.1", worker_id, batch_size, uds_sock_path);
-#else
-  worker->InitTcpSock(appname, "127.0.0.1", worker_id, batch_size, port);
-#endif
+  if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
+    worker->InitUDS(appname, "127.0.0.1", worker_id, batch_size, uds_sock_path);
+  } else {
+    worker->InitTcpSock(appname, "127.0.0.1", worker_id, batch_size, port);
+  }
 }

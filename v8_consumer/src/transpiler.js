@@ -11,7 +11,9 @@
 
 function transpile(code, sourceFileName) {
     var ast = getAst(code, sourceFileName);
-    return escodegen.generate(ast);
+    return escodegen.generate(ast, {
+        comment: true
+    });
 }
 
 function jsFormat(code) {
@@ -25,7 +27,7 @@ function isTimerCalled(code) {
 
 function getSourceMap(code, sourceFileName) {
     var ast = getAst(code, sourceFileName);
-    return escodegen.generate(ast, {
+    return escodegen.generate(getAst(code, sourceFileName), {
         sourceMap: true,
         sourceMapWithCode: true
     }).map;
@@ -66,6 +68,7 @@ function getAst(code, sourceFileName) {
 
         // Deletes a node from the body.
         this.deleteNode = function(parentBody, nodeToDel) {
+
             var deleteIndex = parentBody.indexOf(nodeToDel);
             parentBody.splice(deleteIndex, 1);
         };
@@ -83,52 +86,46 @@ function getAst(code, sourceFileName) {
 
             // Using this check temporarily.
             // if (!self.hasLocNode(sourceCopy)) {
-            // 	return source;
+            //   return source;
             // }
 
             // Attach the loc nodes based on the context.
             switch (context) {
                 // Mapping of loc nodes for N1qlQuery happens during the substitution of variables in the N1QL query string.
                 /*
-                	Before:
-                	var res1 = new N1qlQuery(`select * from :bucket LIMIT 10;`);
-                	After:
-                	var res1 = new N1qlQuery('select * from ' + bucket + ' LIMIT 10;');
-                */
+                 Before:
+                 var res1 = new N1qlQuery(`select * from :bucket LIMIT 10;`);
+                 After:
+                 var res1 = new N1qlQuery('select * from ' + bucket + ' LIMIT 10;');
+                 */
                 case Context.N1qlQuery:
                     source.loc = self.deepCopy(sourceCopy.loc);
                     source.callee.loc = self.deepCopy(sourceCopy.callee.loc);
-                    source.arguments[0].loc = self.deepCopy(sourceCopy.arguments[
-                        0].quasis[0].loc);
+                    source.arguments[0].loc = self.deepCopy(sourceCopy.arguments[0].loc);
                     break;
 
                     // Mapping of if-else block to for-of loop.
                     /*
-                    	Before:
-                    	for (var r of res1){...}
-                    	After:
-                    	if (res1.isInstance) {
-                    		res1.iter(function (r) {...}
-                    	} else {...}
-                    */
+                     Before:
+                     for (var r of res1){...}
+                     After:
+                     if (res1.isInstance) {
+                     res1.iter(function (r) {...}
+                     } else {...}
+                     */
                 case Context.IterTypeCheck:
                     source.loc = self.deepCopy(sourceCopy.loc);
                     source.consequent.loc = self.deepCopy(sourceCopy.body.loc);
                     source.test.loc = self.deepCopy(sourceCopy.right.loc);
-                    source.test.object.loc = self.deepCopy(sourceCopy.right
-                        .loc);
-                    source.test.property.loc = self.deepCopy(sourceCopy.right
-                        .loc);
+                    source.test.object.loc = self.deepCopy(sourceCopy.right.loc);
+                    source.test.property.loc = self.deepCopy(sourceCopy.right.loc);
 
                     // TODO: Currently, after breaking out from labeled break statement, it goes to the beginning of the for-of loop.
-                    //		Ideally, it should go to the end of the labeled block. This looks quite ideal to show the iteration behaviour -
-                    //		It stops at the enclosing for-of loops (iterators) before coming out and thus, demonstrating the stopping
-                    //		of iteration. Need to ask whether this is ok or if the default behaviour is needed.
-                    if (source.consequent.body.length > 1 &&
-                        /SwitchStatement/.test(source.consequent.body[1].type)
-                    ) {
-                        self.forceSetLocForAllNodes(sourceCopy.loc, source.consequent
-                            .body[1]);
+                    //    Ideally, it should go to the end of the labeled block. This looks quite ideal to show the iteration behaviour -
+                    //    It stops at the enclosing for-of loops (iterators) before coming out and thus, demonstrating the stopping
+                    //    of iteration. Need to ask whether this is ok or if the default behaviour is needed.
+                    if (source.consequent.body.length > 1 && /SwitchStatement/.test(source.consequent.body[1].type)) {
+                        self.forceSetLocForAllNodes(sourceCopy.loc, source.consequent.body[1]);
                     }
                     break;
 
@@ -139,17 +136,14 @@ function getAst(code, sourceFileName) {
                         // Return to continue statement mapping - source: return, target: continue
                         case 'ContinueStatement':
                             if (source.label) {
-                                source.label.loc = self.deepCopy(sourceCopy
-                                    .loc);
+                                source.label.loc = self.deepCopy(sourceCopy.loc);
                             }
                             break;
 
                             // Continue to return statement mapping - source: continue, target: return
                         case 'ReturnStatement':
                             if (source.argument && sourceCopy.label.loc) {
-                                source.argument = self.setLocForAllNodes(
-                                    sourceCopy.label.loc, source.argument
-                                );
+                                source.argument = self.setLocForAllNodes(sourceCopy.label.loc, source.argument);
                             }
                             break;
 
@@ -164,14 +158,12 @@ function getAst(code, sourceFileName) {
                     switch (source.type) {
                         // Return to break statement mapping - source: return, target: break
                         case 'BreakStatement':
-                            source.label.loc = self.deepCopy(sourceCopy.argument
-                                .loc);
+                            source.label.loc = self.deepCopy(sourceCopy.argument.loc);
                             break;
 
                             // Break to return statement mapping - source: break, target: return
                         case 'ReturnStatement':
-                            source.argument = self.setLocForAllNodes(
-                                sourceCopy.loc, source.argument);
+                            source.argument = self.setLocForAllNodes(sourceCopy.loc, source.argument);
                             break;
 
                         default:
@@ -181,17 +173,17 @@ function getAst(code, sourceFileName) {
 
                     // The following case handles mapping of loc nodes between two different 'stopIter' calls.
                     /*
-                    	Before:
-                    	return res2.stopIter({
-                    		'code': 'labeled_break',
-                    		'args': 'x'
-                    	});
-                    	After:
-                    	return res1.stopIter({
-                    		'code': 'labeled_break',
-                    		'args': 'x'
-                    	});
-                    */
+                     Before:
+                     return res2.stopIter({
+                     'code': 'labeled_break',
+                     'args': 'x'
+                     });
+                     After:
+                     return res1.stopIter({
+                     'code': 'labeled_break',
+                     'args': 'x'
+                     });
+                     */
                 case Context.BreakAltInterrupt:
                     self.setLocMatchingNodes(sourceCopy, source);
                     break;
@@ -199,13 +191,13 @@ function getAst(code, sourceFileName) {
                     // The following case handles the mapping of loc nodes between stopIter and
                     // return statement or between two stopIter statements as the above case.
                     /*
-                    	Before:
-                    	return res2.stopIter({
-                    			'code': 'labeled_continue',
-                    			'args': 'x'
-                    		});
-                    	After:
-                    	return;
+                     Before:
+                     return res2.stopIter({
+                     'code': 'labeled_continue',
+                     'args': 'x'
+                     });
+                     After:
+                     return;
                      */
                 case Context.ContinueAltInterrupt:
                     if (source.argument) {
@@ -258,11 +250,10 @@ function getAst(code, sourceFileName) {
                 loc: true
             });
 
-            // We new traverse astWithLoc and replace all the loc nodes.
+            // We now traverse astWithLoc and replace all the loc nodes.
             estraverse.traverse(astWithLoc, {
                 enter: function(node) {
-                    node.loc = node.loc ? nodeUtils.deepCopy(
-                        loc) : null;
+                    node.loc = node.loc ? nodeUtils.deepCopy(loc) : null;
                 }
             });
 
@@ -299,17 +290,14 @@ function getAst(code, sourceFileName) {
         };
 
         // Inserts the given node to the given parentBody at the specified index.
-        this.insertNode = function(parentBody, refNode, nodeToInsert,
-            insertAfter) {
-            var insertIndex = insertAfter ? parentBody.indexOf(refNode) + 1 :
-                parentBody.indexOf(refNode);
+        this.insertNode = function(parentBody, refNode, nodeToInsert, insertAfter) {
+            var insertIndex = insertAfter ? parentBody.indexOf(refNode) + 1 : parentBody.indexOf(refNode);
             parentBody.splice(insertIndex, 0, nodeToInsert);
         };
 
         // A N1QL node is a statement of the form new N1qlQuery('...');
         this.isN1qlNode = function(node) {
-            return /NewExpression/.test(node.type) && /N1qlQuery/.test(node
-                .callee.name);
+            return /NewExpression/.test(node.type) && /N1qlQuery/.test(node.callee.name);
         };
 
         this.convertToBlockStmt = function(node) {
@@ -336,20 +324,73 @@ function getAst(code, sourceFileName) {
         // Inserts an array of AST nodes into parentBody at the specified index.
         this.insertNodeArray = function(parentBody, insAfterNode, arrayToInsert) {
             var insertIndex = parentBody.indexOf(insAfterNode) + 1;
-            parentBody.splice.apply(parentBody, [insertIndex, 0].concat(
-                arrayToInsert));
+            parentBody.splice.apply(parentBody, [insertIndex, 0].concat(arrayToInsert));
         };
 
         // Build an ast node for N1QL function call from the query.
         this.getQueryAst = function(query) {
-            // Identifier regex.
-            var re = /:([a-zA-Z_$][a-zA-Z_$0-9]*)/g;
+            var subs = nodeUtils.placeholderSubstitutions(query);
+            return new N1QLQueryAst(subs.query, subs.placeholders);
+        };
 
-            // Replace the :<var> with proper substitution.
-            query = query.replace(re, '" + $1 + "');
-            query = 'new N1qlQuery("' + query + '");';
+        this.placeholderSubstitutions = function(query) {
+            function isQuote(c) {
+                return c === '\'' || c === '"';
+            }
 
-            return esprima.parse(query).body[0].expression;
+            function isEscaped(i) {
+                var escCount = 0;
+                for (var j = i - 1; j >= 0; --j) {
+                    if (query[j] !== '\\') {
+                        break;
+                    }
+
+                    ++escCount;
+                }
+
+                return escCount & 1;
+            }
+
+            function parsePlaceholder(i) {
+                var re = /:([a-zA-Z_$][a-zA-Z_$0-9]*)/;
+                var qMatch = re.exec(query.slice(i));
+                if (qMatch && qMatch.index === 0) {
+                    return qMatch[1];
+                }
+
+                return null;
+            }
+
+            var quoteStack = new Stack();
+            var substitutedQuery = '';
+            var placeholders = [];
+            for (var i = 0; i < query.length; ++i) {
+                var substituted = false;
+                if (isQuote(query[i]) && !isEscaped(i)) {
+                    if (quoteStack.isEmpty()) {
+                        quoteStack.push(query[i]);
+                    } else if (quoteStack.peek() === query[i]) {
+                        quoteStack.pop();
+                    }
+                } else if (query[i] === ':' && quoteStack.isEmpty()) {
+                    var placeholder = parsePlaceholder(i);
+                    if (placeholder) {
+                        placeholders.push(placeholder);
+                        substitutedQuery += '$' + placeholders.length;
+                        substituted = true;
+                        i += placeholder.length;
+                    }
+                }
+
+                if (!substituted) {
+                    substitutedQuery += query[i];
+                }
+            }
+
+            return {
+                query: substitutedQuery,
+                placeholders: placeholders
+            };
         };
 
         // Checks if the global scope contains only function declarations.
@@ -615,8 +656,7 @@ function getAst(code, sourceFileName) {
                 // For break and continue, the replacement criteria is the for-of node being the parent on TOS.
                 case LoopModifier.CONST.CONTINUE:
                 case LoopModifier.CONST.BREAK:
-                    return ancestorStack.getSize() > 0 && /ForOfStatement/.test(
-                        ancestorStack.peek().type);
+                    return ancestorStack.getSize() > 0 && /ForOfStatement/.test(ancestorStack.peek().type);
 
                 case LoopModifier.CONST.LABELED_CONTINUE:
                     // For labelled break, the replacement criteria is the absence of the label which the break is
@@ -633,10 +673,8 @@ function getAst(code, sourceFileName) {
                     if (ancestorStack.getSize() === 0) {
                         return true;
                     }
-                    return !(/FunctionDeclaration/.test(ancestorStack.peek()
-                            .type) ||
-                        /FunctionExpression/.test(ancestorStack.peek().type)
-                    );
+                    return !(/FunctionDeclaration/.test(ancestorStack.peek().type) ||
+                        /FunctionExpression/.test(ancestorStack.peek().type));
 
                 default:
                     throw 'Invalid modifier type';
@@ -884,7 +922,7 @@ function getAst(code, sourceFileName) {
 
     // Returns AST of the form -
     /*
-    	res.iter(function(row){...});
+     res.iter(function(row){...});
      */
     function IteratorSkeletonAst(iterVar, arg) {
         Ast.call(this, 'ExpressionStatement');
@@ -925,6 +963,42 @@ function getAst(code, sourceFileName) {
         this.body = [body];
     }
 
+    function N1QLQueryAst(query, posParams) {
+        Ast.call(this, 'NewExpression');
+        this.callee = {
+            "type": "Identifier",
+            "name": "N1qlQuery"
+        };
+        this.arguments = [{
+            "type": "Literal",
+            "value": query
+        }, {
+            "type": "ObjectExpression",
+            "properties": [{
+                "type": "Property",
+                "key": {
+                    "type": "Identifier",
+                    "name": "posParams"
+                },
+                "computed": false,
+                "value": {
+                    "type": "ArrayExpression",
+                    "elements": []
+                },
+                "kind": "init",
+                "method": false,
+                "shorthand": false
+            }]
+        }];
+
+        for (var param of posParams) {
+            this.arguments[1].properties[0].value.elements.push({
+                "type": "Identifier",
+                "name": param
+            });
+        }
+    }
+
     // Class for maintaining the object that will be passed to 'stopIter'.
     function Arg(arg) {
         this.code = arg.code;
@@ -932,8 +1006,7 @@ function getAst(code, sourceFileName) {
 
         this.getAst = function() {
             // Need to wrap 'arg' inside '()' to turn it into a statement - it becomes a JSON object otherwise.
-            var argsAst = esprima.parse('(' + this.toString() + ')').body[0]
-                .expression;
+            var argsAst = esprima.parse('(' + this.toString() + ')').body[0].expression;
 
             // Setting appendData to 'true' will generate the AST for 'args' and append it to 'argsAst'.
             if (arg.appendData) {
@@ -996,11 +1069,9 @@ function getAst(code, sourceFileName) {
 
         // Returns a switch-case block to perform post-iteration steps.
         this.getAst = function(iterVar, stackHelper) {
-            var discriminantAst = esprima.parse(iterVar + '.' + this.iterProp)
-                .body[0].expression,
+            var discriminantAst = esprima.parse(iterVar + '.' + this.iterProp).body[0].expression,
                 switchAst = new SwitchAst(discriminantAst),
-                postIter, caseAst, lookup, stopIterAst, arg, returnStmtAst,
-                pushCase;
+                postIter, caseAst, lookup, stopIterAst, arg, returnStmtAst, pushCase;
 
             // Loop over all the stmts and generate the corresponding 'case' block.
             for (var postIterStmt of stmts) {
@@ -1017,29 +1088,26 @@ function getAst(code, sourceFileName) {
                         // Search the ancestor stack for the label. Interrupt the search if a for-of node is found.
                         lookup = stackHelper.searchStack({
                             targetComparator: function(node) {
-                                return /LabeledStatement/.test(
-                                        node.type) && node.label
-                                    .name === postIter.args;
+                                return /LabeledStatement/.test(node.type) && node.label.name === postIter.args;
                             },
                             stopComparator: function(node) {
-                                return /ForOfStatement/.test(
-                                    node.type);
+                                return /ForOfStatement/.test(node.type);
                             }
                         });
                         // If the label is found and doesn't point to the for-of node, then add a break <label>.
                         if (lookup.targetFound) {
+
                             if (/ForOfStatement/.test(lookup.stopNode.body.type)) {
                                 pushCase = false;
                             } else {
-                                caseAst.consequent.push(new LabeledBreakAst(
-                                    postIter.args));
+                                caseAst.consequent.push(new LabeledBreakAst(postIter.args));
                             }
                         }
                         // If the search was interrupted, then it means that it encountered a for-of node. So, add a
                         // 'return stopIter' node.
                         if (lookup.searchInterrupted) {
-                            stopIterAst = new StopIterAst(lookup.stopNode.right
-                                .name);
+
+                            stopIterAst = new StopIterAst(lookup.stopNode.right.name);
                             arg = new Arg({
                                 code: LoopModifier.CONST.LABELED_BREAK,
                                 args: postIter.args
@@ -1058,29 +1126,26 @@ function getAst(code, sourceFileName) {
                         // This is very similar to Labeled break case.
                         lookup = stackHelper.searchStack({
                             targetComparator: function(node) {
-                                return /LabeledStatement/.test(
-                                        node.type) && node.label
-                                    .name === postIter.args;
+                                return /LabeledStatement/.test(node.type) && node.label.name === postIter.args;
                             },
                             stopComparator: function(node) {
-                                return /ForOfStatement/.test(
-                                    node.type);
+                                return /ForOfStatement/.test(node.type);
                             }
                         });
                         if (lookup.targetFound) {
+
                             if (/ForOfStatement/.test(lookup.stopNode.body.type)) {
                                 pushCase = false;
                             } else {
-                                caseAst.consequent.push(new LabeledContinueAst(
-                                    postIter.args));
+                                caseAst.consequent.push(new LabeledContinueAst(postIter.args));
                             }
                         }
                         if (lookup.searchInterrupted) {
+
                             if (lookup.stopNode.parentLabel === postIter.args) {
                                 returnStmtAst = new ReturnAst(null);
                             } else {
-                                stopIterAst = new StopIterAst(lookup.stopNode
-                                    .right.name);
+                                stopIterAst = new StopIterAst(lookup.stopNode.right.name);
                                 arg = new Arg({
                                     code: LoopModifier.CONST.LABELED_CONTINUE,
                                     args: postIter.args
@@ -1100,30 +1165,23 @@ function getAst(code, sourceFileName) {
                         // a for-of node.
                         lookup = stackHelper.searchStack({
                             targetComparator: function(item) {
-                                return (/FunctionDeclaration/.test(
-                                            item.type) ||
-                                        /FunctionExpression/.test(
-                                            item.type)) &&
-                                    (item.id ? item.id.name :
-                                        null) === postIter.targetFunction;
+                                return (/FunctionDeclaration/.test(item.type) || /FunctionExpression/.test(item.type)) &&
+                                    (item.id ? item.id.name : null) === postIter.targetFunction;
                             },
                             stopComparator: function(item) {
-                                return /ForOfStatement/.test(
-                                    item.type);
+                                return /ForOfStatement/.test(item.type);
                             }
                         });
                         if (lookup.targetFound) {
-                            returnStmtAst = new ReturnAst(new ReturnDataAst(
-                                postIter.iterVar, this.returnBubbleFunc
-                            ));
+
+                            returnStmtAst = new ReturnAst(new ReturnDataAst(postIter.iterVar, this.returnBubbleFunc));
                         }
                         if (lookup.searchInterrupted) {
-                            stopIterAst = new StopIterAst(lookup.stopNode.right
-                                .name);
+
+                            stopIterAst = new StopIterAst(lookup.stopNode.right.name);
                             arg = new Arg({
                                 code: LoopModifier.CONST.RETURN,
-                                args: postIter.iterVar + '.' + this
-                                    .returnBubbleFunc + '().data',
+                                args: postIter.iterVar + '.' + this.returnBubbleFunc + '().data',
                                 appendData: true
                             });
                             stopIterAst.arguments.push(arg.getAst());
@@ -1187,9 +1245,7 @@ function getAst(code, sourceFileName) {
         this.traverse = function(traversal) {
             estraverse.traverse(_this.nodeCopy, {
                 enter: function(node) {
-                    traversal(node, _this.nodeCopy, breakMod,
-                        continueMod, lblBreakMod,
-                        lblContinueMod, returnMod);
+                    traversal(node, _this.nodeCopy, breakMod, continueMod, lblBreakMod, lblContinueMod, returnMod);
                 },
                 leave: function(node) {
                     _this.decrAndPop();
@@ -1217,9 +1273,7 @@ function getAst(code, sourceFileName) {
             // List to store post iteration exit statements.
             var postIter = new PostIter(iterProp, returnBubbleFunc);
 
-            iterator.traverse(function(node, nodeCopy, breakMod,
-                continueMod, lblBreakMod, lblContinueMod, returnMod
-            ) {
+            iterator.traverse(function(node, nodeCopy, breakMod, continueMod, lblBreakMod, lblContinueMod, returnMod) {
                 iterator.incrAndPush(node);
 
                 var arg,
@@ -1244,8 +1298,7 @@ function getAst(code, sourceFileName) {
                             break;
 
                         default:
-                            throw 'Unhandled case: ' + node.metaData
-                                .code;
+                            throw 'Unhandled case: ' + node.metaData.code;
                     }
 
                     postIter.push(arg.toString());
@@ -1274,10 +1327,8 @@ function getAst(code, sourceFileName) {
 								'args': 'x'
 							});
 					 	*/
-                        if (node.label && lblBreakMod.isReplaceReq(
-                                node.label.name)) {
-                            stopIterAst = new StopIterAst(nodeCopy.right
-                                .name);
+                        if (node.label && lblBreakMod.isReplaceReq(node.label.name)) {
+                            stopIterAst = new StopIterAst(nodeCopy.right.name);
                             arg = new Arg({
                                 code: LoopModifier.CONST.LABELED_BREAK,
                                 args: node.label.name
@@ -1286,93 +1337,80 @@ function getAst(code, sourceFileName) {
                         } else if (!node.label && breakMod.isReplaceReq()) {
                             // Unlabeled break statement.
                             /*
-                            	Before:
-                            	break;
-                            	After:
-                            	return res.stopIter({ 'code': 'break' });
+                             Before:
+                             break;
+                             After:
+                             return res.stopIter({ 'code': 'break' });
                              */
-                            stopIterAst = new StopIterAst(nodeCopy.right
-                                .name);
+                            stopIterAst = new StopIterAst(nodeCopy.right.name);
                             arg = new Arg({
                                 code: LoopModifier.CONST.BREAK
                             });
                         }
 
                         if (stopIterAst && arg) {
-                            returnStmtAst = new ReturnAst(
-                                stopIterAst);
+                            returnStmtAst = new ReturnAst(stopIterAst);
                             // Add 'arg' as the argument to 'stopIter()'.
                             stopIterAst.arguments.push(arg.getAst());
-                            nodeUtils.replaceNode(node,
-                                returnStmtAst, Context.BreakStatement
-                            );
+                            nodeUtils.replaceNode(node, returnStmtAst, Context.BreakStatement);
                         }
                         break;
 
                     case 'ContinueStatement':
                         // Labeled continue statement.
                         /*
-                        	Before:
-                        	continue x;
-                        	After:
-                        	return res.stopIter({
-                        		'code': 'labeled_continue',
-                        		'args': 'x'
-                        	});
+                         Before:
+                         continue x;
+                         After:
+                         return res.stopIter({
+                         'code': 'labeled_continue',
+                         'args': 'x'
+                         });
                          */
-                        if (node.label && lblContinueMod.isReplaceReq(
-                                node.label.name)) {
-                            if (nodeCopy.parentLabel === node.label
-                                .name) {
+                        if (node.label && lblContinueMod.isReplaceReq(node.label.name)) {
+                            if (nodeCopy.parentLabel === node.label.name) {
                                 // If the target of labeled continue is its immediate parent, then just 'return'.
                                 returnStmtAst = new ReturnAst(null);
                             } else {
                                 arg = new Arg({
-                                    code: LoopModifier.CONST
-                                        .LABELED_CONTINUE,
+                                    code: LoopModifier.CONST.LABELED_CONTINUE,
                                     args: node.label.name
                                 });
-                                stopIterAst = new StopIterAst(
-                                    nodeCopy.right.name);
-                                returnStmtAst = new ReturnAst(
-                                    stopIterAst);
+                                stopIterAst = new StopIterAst(nodeCopy.right.name);
+                                returnStmtAst = new ReturnAst(stopIterAst);
                                 stopIterAst.arguments.push(arg.getAst());
 
                                 postIter.push(arg.toString());
                             }
 
-                            nodeUtils.replaceNode(node,
-                                returnStmtAst, Context.ContinueStatement
-                            );
+                            nodeUtils.replaceNode(node, returnStmtAst, Context.ContinueStatement);
                         } else if (continueMod.isReplaceReq()) {
                             // Unlabeled continue statement.
                             /*
-                            	Before:
-                            	continue;
-                            	After:
-                            	return;
+                             Before:
+                             continue;
+                             After:
+                             return;
                              */
-                            nodeUtils.replaceNode(node, new ReturnAst(
-                                null), Context.ContinueStatement);
+                            nodeUtils.replaceNode(node, new ReturnAst(null), Context.ContinueStatement);
                         }
                         break;
 
                     case 'ReturnStatement':
                         /*
-                        	Before:
-                        	return a + b;
-                        	After:
-                        	return res.stopIter({
-                        		'code': 'return',
-                        		'args': '(a + b)',
-                        		'data': a + b
-                        	});
+                         Before:
+                         return a + b;
+                         After:
+                         return res.stopIter({
+                         'code': 'return',
+                         'args': '(a + b)',
+                         'data': a + b
+                         });
                          */
                         if (returnMod.isReplaceReq(node)) {
                             // Return statement may or may not have arguments.
                             // In case there's no argument, we populate it with null.
-                            var argStr = node.argument ? escodegen.generate(
-                                node.argument) : null;
+                            var argStr = node.argument ? escodegen.generate(node.argument) : null;
                             // Must enclose the return statement's argument within an expression '()'.
                             // Otherwise, it causes an error when returning anonymous function.
                             arg = new Arg({
@@ -1380,13 +1418,10 @@ function getAst(code, sourceFileName) {
                                 args: '(' + argStr + ')',
                                 appendData: true
                             });
-                            stopIterAst = new StopIterAst(nodeCopy.right
-                                .name);
+                            stopIterAst = new StopIterAst(nodeCopy.right.name);
                             stopIterAst.arguments.push(arg.getAst());
-                            returnStmtAst = new ReturnAst(
-                                stopIterAst);
-                            self.mapSourceNode(node, returnStmtAst,
-                                Context.ReturnStatement);
+                            returnStmtAst = new ReturnAst(stopIterAst);
+                            self.mapSourceNode(node, returnStmtAst, Context.ReturnStatement);
 
                             var postIterArgs = JSON.stringify({
                                 code: LoopModifier.CONST.RETURN,
@@ -1396,8 +1431,7 @@ function getAst(code, sourceFileName) {
                             });
 
                             postIter.push(postIterArgs);
-                            nodeUtils.replaceNode(node,
-                                returnStmtAst);
+                            nodeUtils.replaceNode(node, returnStmtAst);
                         }
                         break;
 
@@ -1409,9 +1443,7 @@ function getAst(code, sourceFileName) {
                 }
             });
 
-            var iter = new IteratorSkeletonAst(forOfNode.right.name, (
-                forOfNode.left.name ? forOfNode.left.name :
-                forOfNode.left.declarations[0].id.name));
+            var iter = new IteratorSkeletonAst(forOfNode.right.name, (forOfNode.left.name ? forOfNode.left.name : forOfNode.left.declarations[0].id.name));
             iter.expression.arguments[0].body = iterator.nodeCopy.body;
             self.mapSourceNode(forOfNode, iter, Context.IterConsequent);
 
@@ -1420,8 +1452,7 @@ function getAst(code, sourceFileName) {
             // Pop the top for-of node.
             stackHelper.popTopForOfNode();
 
-            var postIterAst = postIter.getAst(forOfNode.right.name,
-                stackHelper);
+            var postIterAst = postIter.getAst(forOfNode.right.name, stackHelper);
             if (postIterAst) {
                 iterBlockAst.body.push(postIterAst);
             }
@@ -1436,38 +1467,33 @@ function getAst(code, sourceFileName) {
             switch (context) {
                 // Maps the source to target loc during the following kind of transformation -
                 /*
-                	Before:
-                	for (var r of res3){...}
-                	After:
-                	res.iter(function (r) {...}
+                 Before:
+                 for (var r of res3){...}
+                 After:
+                 res.iter(function (r) {...}
                  */
                 case Context.IterConsequent:
                     target.loc = nodeUtils.deepCopy(source.loc);
                     target.expression.loc = nodeUtils.deepCopy(source.loc);
-                    target.expression.callee.loc = nodeUtils.deepCopy(
-                        source.loc);
-                    target.expression.callee.object.loc = nodeUtils.deepCopy(
-                        source.right.loc);
-                    target.expression.callee.property.loc = nodeUtils.deepCopy(
-                        source.right.loc);
-                    target.expression.arguments[0].loc = nodeUtils.deepCopy(
-                        source.right.loc);
-                    target.expression.arguments[0].params[0].loc =
-                        nodeUtils.deepCopy(source.left.declarations[0].id.loc);
+                    target.expression.callee.loc = nodeUtils.deepCopy(source.loc);
+                    target.expression.callee.object.loc = nodeUtils.deepCopy(source.right.loc);
+                    target.expression.callee.property.loc = nodeUtils.deepCopy(source.right.loc);
+                    target.expression.arguments[0].loc = nodeUtils.deepCopy(source.right.loc);
+                    target.expression.arguments[0].params[0].loc = nodeUtils.deepCopy(source.left.declarations[0].id.loc);
                     break;
 
                     // Maps the source to target loc during the following kind of transformation -
                     /*
-                    	source: return function () {
-                    		return inner;
-                    	};
-                    	target: return res1.stopIter({
-                    		'code': 'return',
-                    		'args': '(function () {\n    return inner;\n})',
-                    		'data': function () {
-                    			return inner;
-                    		}
-                    	});
+                     source: return function () {
+                     return inner;
+                     };
+                     target: return res1.stopIter({
+                     'code': 'return',
+                     'args': '(function () {\n    return inner;\n})',
+                     'data': function () {
+                     return inner;
+                     }
+                     });
                      */
                 case Context.ReturnStatement:
                     target.loc = source.loc;
@@ -1484,12 +1510,12 @@ function getAst(code, sourceFileName) {
 
                     // Maps the source to target loc during the following kind of transformation -
                     /*
-                    	source: return res.stopIter({
-                    		'code': 'return',
-                    		'args': 'res.getReturnValue().data',
-                    		'data': res.getReturnValue().data
-                    	});
-                    	target: return res.getReturnValue().data;
+                     source: return res.stopIter({
+                     'code': 'return',
+                     'args': 'res.getReturnValue().data',
+                     'data': res.getReturnValue().data
+                     });
+                     target: return res.getReturnValue().data;
                      */
                 case Context.ReturnAltFound:
                     target.loc = source.loc;
@@ -1503,16 +1529,16 @@ function getAst(code, sourceFileName) {
 
                     // Maps the source to target loc during the following kind of transformation -
                     /*
-                    	source: return res1.stopIter({
-                    		'code': 'return',
-                    		'args': 'res.getReturnValue().data',
-                    		'data': res.getReturnValue().data
-                    	});
-                    	target: return res2.stopIter({
-                    		'code': 'return',
-                    		'args': 'res.getReturnValue().data',
-                    		'data': res.getReturnValue().data
-                    	});
+                     source: return res1.stopIter({
+                     'code': 'return',
+                     'args': 'res.getReturnValue().data',
+                     'data': res.getReturnValue().data
+                     });
+                     target: return res2.stopIter({
+                     'code': 'return',
+                     'args': 'res.getReturnValue().data',
+                     'data': res.getReturnValue().data
+                     });
                      */
                 case Context.ReturnAltInterrupt:
                     nodeUtils.setLocMatchingNodes(source, target);
@@ -1525,11 +1551,8 @@ function getAst(code, sourceFileName) {
         // Returns AST for 'else' block.
         this.getIterAlternateAst = function() {
             var iterator = new Iter(forOfNode);
-            iterator.traverse(function(node, nodeCopy, breakMod,
-                continueMod, lblBreakMod, lblContinueMod, returnMod
-            ) {
-                var lookup, stopIterAst, arg, returnStmtAst,
-                    stopNode = null,
+            iterator.traverse(function(node, nodeCopy, breakMod, continueMod, lblBreakMod, lblContinueMod, returnMod) {
+                var lookup, stopIterAst, arg, returnStmtAst, stopNode = null,
                     context;
 
                 if (node.isAnnotated) {
@@ -1537,124 +1560,87 @@ function getAst(code, sourceFileName) {
                     lookup = stackHelper.searchStack({
                         targetComparator: function(item) {
                             switch (node.metaData.code) {
-                                case LoopModifier.CONST
-                                .RETURN:
+                                case LoopModifier.CONST.RETURN:
                                     // For a 'return' statement, the target is to find the function that the 'return'
                                     // statement was associated with, before transpilation.
-                                    return (
-                                            /FunctionDeclaration/
-                                            .test(item.type) ||
-                                            /FunctionExpression/
-                                            .test(item.type)
-                                        ) &&
-                                        item.id.name ===
-                                        node.metaData.targetFunction;
-                                case LoopModifier.CONST
-                                .LABELED_CONTINUE:
-                                case LoopModifier.CONST
-                                .LABELED_BREAK:
-                                    return /LabeledStatement/
-                                        .test(item.type) &&
-                                        item.label.name ===
-                                        node.metaData.args;
+                                    return (/FunctionDeclaration/.test(item.type) || /FunctionExpression/.test(item.type)) &&
+                                        item.id.name === node.metaData.targetFunction;
+                                case LoopModifier.CONST.LABELED_CONTINUE:
+                                case LoopModifier.CONST.LABELED_BREAK:
+                                    return /LabeledStatement/.test(item.type) && item.label.name === node.metaData.args;
                                 default:
-                                    throw 'Unhandled case: ' +
-                                        node.metaData.code;
+                                    throw 'Unhandled case: ' + node.metaData.code;
                             }
                         },
                         stopComparator: function(item) {
-                            return /ForOfStatement/.test(
-                                item.type);
+                            return /ForOfStatement/.test(item.type);
                         }
                     });
                     if (lookup.targetFound) {
                         switch (node.metaData.code) {
                             case LoopModifier.CONST.LABELED_BREAK:
-                                nodeUtils.replaceNode(node, new LabeledBreakAst(
-                                        node.metaData.args),
-                                    Context.BreakStatement);
+                                nodeUtils.replaceNode(node, new LabeledBreakAst(node.metaData.args), Context.BreakStatement);
                                 break;
                             case LoopModifier.CONST.LABELED_CONTINUE:
-                                nodeUtils.replaceNode(node, new LabeledContinueAst(
-                                        node.metaData.args),
-                                    Context.ContinueStatement);
+                                nodeUtils.replaceNode(node, new LabeledContinueAst(node.metaData.args), Context.ContinueStatement);
                                 break;
                             case LoopModifier.CONST.RETURN:
                                 arg = new Arg({
-                                    code: LoopModifier.CONST
-                                        .RETURN,
+                                    code: LoopModifier.CONST.RETURN,
                                     args: node.metaData.args,
                                     appendData: true
                                 });
                                 returnStmtAst = new ReturnAst(arg.getDataAst());
-                                self.mapSourceNode(node,
-                                    returnStmtAst, Context.ReturnAltFound
-                                );
-                                nodeUtils.replaceNode(node,
-                                    returnStmtAst);
+                                self.mapSourceNode(node, returnStmtAst, Context.ReturnAltFound);
+                                nodeUtils.replaceNode(node, returnStmtAst);
                                 break;
                         }
                     }
                     if (lookup.searchInterrupted) {
                         switch (node.metaData.code) {
                             case LoopModifier.CONST.LABELED_BREAK:
-                                stopIterAst = new StopIterAst(
-                                    lookup.stopNode.right.name);
+                                stopIterAst = new StopIterAst(lookup.stopNode.right.name);
                                 arg = new Arg({
                                     code: node.metaData.code,
                                     args: node.metaData.args
                                 });
                                 stopIterAst.arguments.push(arg.getAst());
-                                returnStmtAst = new ReturnAst(
-                                    stopIterAst);
+                                returnStmtAst = new ReturnAst(stopIterAst);
                                 context = Context.BreakAltInterrupt;
                                 break;
 
                             case LoopModifier.CONST.LABELED_CONTINUE:
-                                if (lookup.stopNode.parentLabel ===
-                                    node.metaData.args) {
-                                    returnStmtAst = new ReturnAst(
-                                        null);
+                                if (lookup.stopNode.parentLabel === node.metaData.args) {
+                                    returnStmtAst = new ReturnAst(null);
                                 } else {
-                                    stopIterAst = new StopIterAst(
-                                        lookup.stopNode.right.name
-                                    );
+                                    stopIterAst = new StopIterAst(lookup.stopNode.right.name);
                                     arg = new Arg({
-                                        code: node.metaData
-                                            .code,
-                                        args: node.metaData
-                                            .args
+                                        code: node.metaData.code,
+                                        args: node.metaData.args
                                     });
                                     stopIterAst.arguments.push(arg.getAst());
-                                    returnStmtAst = new ReturnAst(
-                                        stopIterAst);
+                                    returnStmtAst = new ReturnAst(stopIterAst);
                                 }
                                 context = Context.ContinueAltInterrupt;
                                 break;
 
                             case LoopModifier.CONST.RETURN:
                                 arg = new Arg({
-                                    code: LoopModifier.CONST
-                                        .RETURN,
+                                    code: LoopModifier.CONST.RETURN,
                                     args: node.metaData.args,
                                     appendData: true
                                 });
-                                stopIterAst = new StopIterAst(
-                                    lookup.stopNode.right.name);
+                                stopIterAst = new StopIterAst(lookup.stopNode.right.name);
                                 stopIterAst.arguments.push(arg.getAst());
-                                returnStmtAst = new ReturnAst(
-                                    stopIterAst);
-                                self.mapSourceNode(node,
-                                    returnStmtAst, Context.ReturnAltInterrupt
-                                );
+                                returnStmtAst = new ReturnAst(stopIterAst);
+                                self.mapSourceNode(node, returnStmtAst, Context.ReturnAltInterrupt);
                                 break;
                         }
 
                         returnStmtAst.isAnnotated = true;
                         returnStmtAst.metaData = node.metaData;
 
-                        nodeUtils.replaceNode(node, returnStmtAst,
-                            context);
+                        nodeUtils.replaceNode(node, returnStmtAst, context);
 
                     }
 
@@ -1665,32 +1651,23 @@ function getAst(code, sourceFileName) {
 
                 switch (node.type) {
                     case 'BreakStatement':
-                        if (node.label && lblBreakMod.isReplaceReq(
-                                node.label.name)) {
+                        if (node.label && lblBreakMod.isReplaceReq(node.label.name)) {
                             lookup = stackHelper.searchStack({
-                                targetComparator: function(
-                                    item) {
-                                    return /LabeledStatement/
-                                        .test(item.type) &&
-                                        item.label.name ===
-                                        node.label.name;
+                                targetComparator: function(item) {
+                                    return /LabeledStatement/.test(item.type) && item.label.name === node.label.name;
                                 },
-                                stopComparator: function(
-                                    item) {
-                                    return /ForOfStatement/
-                                        .test(item.type);
+                                stopComparator: function(item) {
+                                    return /ForOfStatement/.test(item.type);
                                 }
                             });
                             if (lookup.searchInterrupted) {
-                                stopIterAst = new StopIterAst(
-                                    lookup.stopNode.right.name);
+
+                                stopIterAst = new StopIterAst(lookup.stopNode.right.name);
                                 arg = new Arg({
-                                    code: LoopModifier.CONST
-                                        .LABELED_BREAK,
+                                    code: LoopModifier.CONST.LABELED_BREAK,
                                     args: node.label.name
                                 });
-                                returnStmtAst = new ReturnAst(
-                                    stopIterAst);
+                                returnStmtAst = new ReturnAst(stopIterAst);
                                 stopIterAst.arguments.push(arg.getAst());
 
                                 returnStmtAst.isAnnotated = true;
@@ -1698,45 +1675,31 @@ function getAst(code, sourceFileName) {
                                     code: LoopModifier.CONST.LABELED_BREAK,
                                     args: node.label.name
                                 };
-                                nodeUtils.replaceNode(node,
-                                    returnStmtAst, Context.BreakStatement
-                                );
+                                nodeUtils.replaceNode(node, returnStmtAst, Context.BreakStatement);
                             }
                         }
                         break;
                     case 'ContinueStatement':
-                        if (node.label && lblContinueMod.isReplaceReq(
-                                node.label.name)) {
+                        if (node.label && lblContinueMod.isReplaceReq(node.label.name)) {
                             lookup = stackHelper.searchStack({
-                                targetComparator: function(
-                                    item) {
-                                    return /LabeledStatement/
-                                        .test(item.type) &&
-                                        item.label.name ===
-                                        node.label.name;
+                                targetComparator: function(item) {
+                                    return /LabeledStatement/.test(item.type) && item.label.name === node.label.name;
                                 },
-                                stopComparator: function(
-                                    item) {
-                                    return /ForOfStatement/
-                                        .test(item.type);
+                                stopComparator: function(item) {
+                                    return /ForOfStatement/.test(item.type);
                                 }
                             });
                             if (lookup.searchInterrupted) {
-                                if (lookup.stopNode.parentLabel ===
-                                    node.label.name) {
-                                    returnStmtAst = new ReturnAst(
-                                        null);
+
+                                if (lookup.stopNode.parentLabel === node.label.name) {
+                                    returnStmtAst = new ReturnAst(null);
                                 } else {
-                                    stopIterAst = new StopIterAst(
-                                        lookup.stopNode.right.name
-                                    );
+                                    stopIterAst = new StopIterAst(lookup.stopNode.right.name);
                                     arg = new Arg({
-                                        code: LoopModifier.CONST
-                                            .LABELED_CONTINUE,
+                                        code: LoopModifier.CONST.LABELED_CONTINUE,
                                         args: node.label.name
                                     });
-                                    returnStmtAst = new ReturnAst(
-                                        stopIterAst);
+                                    returnStmtAst = new ReturnAst(stopIterAst);
                                     stopIterAst.arguments.push(arg.getAst());
                                 }
 
@@ -1745,52 +1708,33 @@ function getAst(code, sourceFileName) {
                                     code: LoopModifier.CONST.LABELED_CONTINUE,
                                     args: node.label.name
                                 };
-                                nodeUtils.replaceNode(node,
-                                    returnStmtAst, Context.ContinueStatement
-                                );
+                                nodeUtils.replaceNode(node, returnStmtAst, Context.ContinueStatement);
                             }
                         }
                         break;
                     case 'ReturnStatement':
                         if (node.targetFunction) {
                             lookup = stackHelper.searchStack({
-                                targetComparator: function(
-                                    item) {
-                                    return (
-                                            /FunctionDeclaration/
-                                            .test(item.type) ||
-                                            /FunctionExpression/
-                                            .test(item.type)
-                                        ) &&
-                                        item.id.name ===
-                                        node.targetFunction;
+                                targetComparator: function(item) {
+                                    return (/FunctionDeclaration/.test(item.type) || /FunctionExpression/.test(item.type)) &&
+                                        item.id.name === node.targetFunction;
                                 },
-                                stopComparator: function(
-                                    item) {
-                                    return /ForOfStatement/
-                                        .test(item.type);
+                                stopComparator: function(item) {
+                                    return /ForOfStatement/.test(item.type);
                                 }
                             });
                             if (lookup.searchInterrupted) {
-                                var argStr = node.argument ?
-                                    escodegen.generate(node.argument) :
-                                    null;
+                                var argStr = node.argument ? escodegen.generate(node.argument) : null;
 
                                 arg = new Arg({
-                                    code: LoopModifier.CONST
-                                        .RETURN,
-                                    args: '(' + argStr +
-                                        ')',
+                                    code: LoopModifier.CONST.RETURN,
+                                    args: '(' + argStr + ')',
                                     appendData: true
                                 });
-                                stopIterAst = new StopIterAst(
-                                    lookup.stopNode.right.name);
+                                stopIterAst = new StopIterAst(lookup.stopNode.right.name);
                                 stopIterAst.arguments.push(arg.getAst());
-                                returnStmtAst = new ReturnAst(
-                                    stopIterAst);
-                                self.mapSourceNode(node,
-                                    returnStmtAst, Context.ReturnStatement
-                                );
+                                returnStmtAst = new ReturnAst(stopIterAst);
+                                self.mapSourceNode(node, returnStmtAst, Context.ReturnStatement);
 
                                 returnStmtAst.isAnnotated = true;
                                 returnStmtAst.metaData = {
@@ -1800,8 +1744,7 @@ function getAst(code, sourceFileName) {
                                     targetFunction: node.targetFunction
                                 };
 
-                                nodeUtils.replaceNode(node,
-                                    returnStmtAst);
+                                nodeUtils.replaceNode(node, returnStmtAst);
                             }
                         }
                         break;
@@ -1810,9 +1753,7 @@ function getAst(code, sourceFileName) {
 
             iterator.assertEmpty();
 
-            return iterator.nodeCopy.parentLabel ? new LabeledStmtAst(
-                    iterator.nodeCopy.parentLabel, iterator.nodeCopy) :
-                iterator.nodeCopy;
+            return iterator.nodeCopy.parentLabel ? new LabeledStmtAst(iterator.nodeCopy.parentLabel, iterator.nodeCopy) : iterator.nodeCopy;
         };
 
         this.getAst = function() {
@@ -1847,11 +1788,16 @@ function getAst(code, sourceFileName) {
 
     // Get the Abstract Syntax Tree (ast) of the input code.
     var ast = esprima.parse(code, {
-        attachComment: true,
+        range: true,
+        tokens: true,
+        comment: true,
         sourceType: 'script',
         loc: true,
         source: sourceFileName
     });
+
+    // Attaching comments is a separate step.
+    ast = escodegen.attachComments(ast, ast.comments, ast.tokens);
 
     nodeUtils.checkGlobals(ast);
 
@@ -1860,42 +1806,34 @@ function getAst(code, sourceFileName) {
             globalAncestorStack.push(node);
 
             // Grab the for-of statement's label and mark the label for deletion.
-            if (/ForOfStatement/.test(node.type) && !node.isVisited &&
-                /LabeledStatement/.test(parent.type)) {
+            if (/ForOfStatement/.test(node.type) && !node.isVisited && /LabeledStatement/.test(parent.type)) {
                 node.parentLabel = parent.label.name;
                 parent.remLabel = true;
             }
 
             // Find the function that the 'return' statement associates with.
             if (/ReturnStatement/.test(node.type)) {
-                var stackHelper = new StackHelper(
-                    globalAncestorStack);
+                var stackHelper = new StackHelper(globalAncestorStack);
                 var lookup = stackHelper.searchStack({
                     targetComparator: function(item) {
-                        return /FunctionDeclaration/.test(
-                                item.type) ||
-                            /FunctionExpression/.test(
-                                item.type);
+                        return /FunctionDeclaration/.test(item.type) || /FunctionExpression/.test(item.type);
                     },
                     stopComparator: function(item) {
                         return false;
                     }
                 });
                 if (lookup.targetFound) {
+
                     // TODO :   Anonymous function might require some attention because comparing null doesn't make sense.
-                    node.targetFunction = lookup.stopNode.id ?
-                        lookup.stopNode.id.name : null;
+                    node.targetFunction = lookup.stopNode.id ? lookup.stopNode.id.name : null;
                 }
             }
         },
         leave: function(node) {
             // Perform variable substitution in query constructor.
-            if (nodeUtils.isN1qlNode(node) && node.arguments.length >
-                0) {
-                var queryAst = nodeUtils.getQueryAst(node.arguments[
-                    0].quasis[0].value.raw);
-                nodeUtils.replaceNode(node, nodeUtils.deepCopy(
-                    queryAst), Context.N1qlQuery);
+            if (nodeUtils.isN1qlNode(node) && node.arguments.length > 0) {
+                var queryAst = nodeUtils.getQueryAst(node.arguments[0].value);
+                nodeUtils.replaceNode(node, nodeUtils.deepCopy(queryAst), Context.N1qlQuery);
             }
 
             // TODO : Handle the case when the source of for-of loop is of type x.y
@@ -1908,8 +1846,7 @@ function getAst(code, sourceFileName) {
 
                 var iterator = new IterCompatible(node);
                 var iterAst = iterator.getAst();
-                nodeUtils.replaceNode(node, nodeUtils.deepCopy(
-                    iterAst), Context.IterTypeCheck);
+                nodeUtils.replaceNode(node, nodeUtils.deepCopy(iterAst), Context.IterTypeCheck);
             } else if (/LabeledStatement/.test(node.type) && node.remLabel) {
                 // Delete the label.
                 nodeUtils.replaceNode(node, node.body);

@@ -62,6 +62,9 @@ func (p *Producer) parseDepcfg() error {
 		p.socketWriteBatchSize = int(settings["sock_batch_size"].(float64))
 		p.skipTimerThreshold = int(settings["skip_timer_threshold"].(float64))
 
+		p.rbacUser = settings["rbacuser"].(string)
+		p.rbacPass = settings["rbacpass"].(string)
+
 		// TODO: Remove if exists checking once UI starts to pass below fields
 		if val, ok := settings["lcb_inst_capacity"]; ok {
 			p.lcbInstCapacity = int(val.(float64))

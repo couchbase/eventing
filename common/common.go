@@ -48,13 +48,12 @@ type EventingProducer interface {
 	NotifyTopologyChange(msg *TopologyChangeMsg)
 	NsServerHostPort() string
 	NsServerNodeCount() int
+	RbacUser() string
+	RbacPass() string
 	SignalBootstrapFinish()
 	SignalCheckpointBlobCleanup()
-	SignalPlasmaClosed(vb uint16)
-	SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma)
 	SignalStartDebugger()
 	SignalStopDebugger()
-	SignalToClosePlasmaStore(vb uint16)
 	Serve()
 	Stop()
 	String() string
@@ -112,9 +111,6 @@ type EventingSuperSup interface {
 	RestPort() string
 	SignalStartDebugger(appName string)
 	SignalStopDebugger(appName string)
-	SignalTimerDataTransferStart(vb uint16) bool
-	SignalTimerDataTransferStop(vb uint16, store *plasma.Plasma)
-	SignalToClosePlasmaStore(vb uint16)
 }
 
 type EventingServiceMgr interface {
