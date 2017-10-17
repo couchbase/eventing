@@ -41,8 +41,8 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, c.producer.KvHostPorts()[0], &user, &password)
 
 	err = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: c.producer.RbacUser(),
-		Password: c.producer.RbacPass(),
+		Username: user,
+		Password: password,
 	})
 	if err != nil {
 		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
@@ -76,8 +76,8 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, c.producer.KvHostPorts()[0], &user, &password)
 
 	err = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: c.producer.RbacUser(),
-		Password: c.producer.RbacPass(),
+		Username: user,
+		Password: password,
 	})
 	if err != nil {
 		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
@@ -124,18 +124,13 @@ var setOpCallback = func(args ...interface{}) error {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s Bucket set failed, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
-
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
 	return err
 }
 
 var getNonDocTimerCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	key := args[1].(string)
-	val := args[2].(*[]byte)
+	val := args[2].(*string)
 	checkEnoEnt := args[3].(bool)
 
 	var isNoEnt *bool
@@ -143,7 +138,9 @@ var getNonDocTimerCallback = func(args ...interface{}) error {
 		isNoEnt = args[4].(*bool)
 	}
 
-	_, err := c.gocbMetaBucket.Get(key, val)
+	var err error
+	var v []byte
+	_, err = c.gocbMetaBucket.Get(key, &v)
 
 	if checkEnoEnt {
 		if err == gocb.ErrKeyNotFound {
@@ -151,17 +148,20 @@ var getNonDocTimerCallback = func(args ...interface{}) error {
 			return nil
 		} else if err == nil {
 			*isNoEnt = false
+			*val = string(v)
 			return nil
 		}
 	}
 
 	if err == gocb.ErrShutdown {
+		logging.Errorf("CRBO[%s:%s:%s:%d] Non_doc timer key: %s fetch failed cause bucket handler got closed, err: %v",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
 		return nil
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for non_doc timer key: %s val: %v, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, string(*val), err)
+		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for non_doc timer key: %s, err: %v",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
 	}
 
 	return err
@@ -200,6 +200,8 @@ var getOpCallback = func(args ...interface{}) error {
 	}
 
 	if err == gocb.ErrShutdown {
+		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s fetch failed cause bucket handler got closed, err: %v",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 		return nil
 	}
 
@@ -226,10 +228,6 @@ var getMetaOpCallback = func(args ...interface{}) error {
 			return cErr
 		}
 
-		return nil
-	}
-
-	if err == gocb.ErrShutdown {
 		return nil
 	}
 
@@ -265,11 +263,6 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing periodic checkpoint update, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
-
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
 	return err
 }
 
@@ -296,11 +289,6 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing checkpoint update post dcp stop stream, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
-
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
 	return err
 }
 
@@ -319,11 +307,6 @@ var updateVbOwnerAndStartStreamCallback = func(args ...interface{}) error {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing checkpoint update before dcp stream start, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
-
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
 	return err
 }
 
@@ -348,11 +331,6 @@ var addOwnershipHistorySRCallback = func(args ...interface{}) error {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing ownership entry app post STREAMREQ, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
-
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
 	return err
 }
 
@@ -369,11 +347,6 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing ownership entry app post STREAMEND, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
-
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
 	return err
 }
 

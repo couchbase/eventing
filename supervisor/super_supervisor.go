@@ -164,7 +164,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
 					p.NotifyInit()
 
-					p.SignalCheckpointBlobCleanup()
 					s.superSup.Remove(s.producerSupervisorTokenMap[p])
 					delete(s.producerSupervisorTokenMap, p)
 
@@ -307,6 +306,32 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 					logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
 
+					// Purge entries for deleted apps from plasma store
+					/*
+						for _, vb := range s.vbucketsToOwn {
+							s.plasmaRWMutex.RLock()
+							store := s.vbPlasmaStoreMap[vb]
+							s.plasmaRWMutex.RUnlock()
+
+							r := store.NewReader()
+							w := store.NewWriter()
+							snapshot := store.NewSnapshot()
+							defer snapshot.Close()
+
+							itr, err := r.NewSnapshotIterator(snapshot)
+							if err != nil {
+								logging.Errorf("SSUP[%d] App: %s Failed to open snapshot iterator to purge doc id timer entries, err: %v",
+									len(s.runningProducers), appName, err)
+								return
+							}
+
+							for itr.SeekFirst(); itr.Valid(); itr.Next() {
+								if bytes.Compare(itr.Key(), []byte(appName)) > 0 {
+									w.DeleteKV(itr.Key())
+								}
+							}
+						}
+					*/
 					logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
 				}(s)
 

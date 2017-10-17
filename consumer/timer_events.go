@@ -212,7 +212,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 
 		retryLookup:
 
-			byTimerKey := fmt.Sprintf("vb_%v::%s::%s", vb, r.c.app.AppName, currTimer)
+			byTimerKey := fmt.Sprintf("%s::%s", r.c.app.AppName, currTimer)
 			// For memory management
 			r.c.plasmaReaderRWMutex.RLock()
 			token := r.c.vbPlasmaReader[vb].BeginTx()
@@ -331,7 +331,7 @@ func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateS
 	} else {
 		c.docTimerEntryCh <- &timer
 
-		key := fmt.Sprintf("vb_%v::%v::%v::%v::%v", vb, c.app.AppName, currTimer, timer.CallbackFn, timer.DocID)
+		key := fmt.Sprintf("%v::%v::%v::%v", c.app.AppName, currTimer, timer.CallbackFn, timer.DocID)
 		c.plasmaReaderRWMutex.RLock()
 		err = c.vbPlasmaReader[vb].DeleteKV([]byte(key))
 		c.plasmaReaderRWMutex.RUnlock()
@@ -381,7 +381,7 @@ func (c *Consumer) processNonDocTimerEvents() {
 			return
 
 		case <-c.nonDocTimerProcessingTicker.C:
-			var val []byte
+			var val string
 			var isNoEnt bool
 
 			vbsOwned := c.getVbsOwned()
@@ -404,8 +404,8 @@ func (c *Consumer) processNonDocTimerEvents() {
 
 				if !isNoEnt {
 					logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Non doc timer key: %v val: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, string(val))
-					c.nonDocTimerEntryCh <- string(val)
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val)
+					c.nonDocTimerEntryCh <- val
 					c.gocbMetaBucket.Remove(currTimer, 0)
 				}
 				c.updateNonDocTimerStats(vb)
@@ -506,9 +506,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 		timersToKeep = append(timersToKeep, timer)
 
-		timerKey := fmt.Sprintf("vb_%v::%v::%v", vb, timer, key)
-
-		logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v doc-id timerKey: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerKey)
+		timerKey := fmt.Sprintf("%v::%v", timer, key)
 
 		// Creating transaction for memory management
 		token := plasmaWriterHandle.BeginTx()
@@ -521,8 +519,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 			timerData := strings.Split(timer, "::")
 			ts, cbFunc := timerData[1], timerData[2]
-			byTimerKey := fmt.Sprintf("vb_%v::%s::%s", vb, c.app.AppName, ts)
-			logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v doc-id byTimerKey: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, byTimerKey)
+			byTimerKey := fmt.Sprintf("%s::%s", c.app.AppName, ts)
 
 		retryPlasmaLookUp:
 

@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
+	"github.com/couchbase/plasma"
 )
 
 var errFailedRPCDownloadDir = errors.New("failed to download vbucket dir from source RPC server")
@@ -97,53 +97,16 @@ func (c *Consumer) vbGiveUpRoutine() {
 					}
 					c.RUnlock()
 
-					sig := make(chan struct{}, 1)
-					go func(c *Consumer, i int, vb uint16, sig chan struct{}) {
-						r := c.vbPlasmaStore.NewReader()
-						w := c.vbPlasmaStore.NewWriter()
-						snapshot := c.vbPlasmaStore.NewSnapshot()
-						defer snapshot.Close()
+				listenPlasmaClosedCh:
+					v := <-signalPlasmaClosedCh
+					if v != vb {
+						logging.Verbosef("CRVT[%s:%s:giveup_r_%d:%s:%d] Got closed plasma store instance signal for for vb: %v, expected vb: %v",
+							c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), v, vb)
+						goto listenPlasmaClosedCh
+					}
 
-						itr, err := r.NewSnapshotIterator(snapshot)
-						if err != nil {
-							logging.Errorf("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v Failed to create snapshot, err: %v",
-								c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
-						}
-
-						vbPlasmaDir := fmt.Sprintf("%v/reb_%v_%v_timer.data", c.eventingDir, vb, c.app.AppName)
-						vbRebPlasmaStore, err := c.openPlasmaStore(vbPlasmaDir)
-						if err != nil {
-							logging.Errorf("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v Failed to create temporary plasma instance during rebalance, err: %v",
-								c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
-							return
-						}
-
-						defer vbRebPlasmaStore.Close()
-						defer vbRebPlasmaStore.PersistAll()
-
-						rebPlasmaWriter := vbRebPlasmaStore.NewWriter()
-
-						for itr.SeekFirst(); itr.Valid(); itr.Next() {
-							keyPrefix := []byte(fmt.Sprintf("vb_%v", vb))
-
-							if bytes.Compare(itr.Key(), keyPrefix) > 0 {
-								val, err := w.LookupKV(itr.Key())
-								if err != nil {
-									logging.Errorf("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v key: %s failed lookup, err: %v",
-										c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb, string(itr.Key()), err)
-									continue
-								}
-
-								err = rebPlasmaWriter.InsertKV(itr.Key(), val)
-								if err != nil {
-									logging.Errorf("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v key: %s failed to insert, err: %v",
-										c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb, string(itr.Key()), err)
-									continue
-								}
-							}
-						}
-
-					}(c, i, vb, sig)
+					logging.Infof("CRVT[%s:%s:giveup_r_%d:%s:%d] Got closed plasma store instance signal for for vb: %v, expected vb: %v",
+						c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), v, vb)
 
 					c.vbTimerProcessingWorkerAssign(false)
 
@@ -293,7 +256,6 @@ retryStreamUpdate:
 func (c *Consumer) doVbTakeover(vb uint16) error {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
-	var shouldWait bool
 
 	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 
@@ -315,22 +277,63 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
 
+				shouldWait := c.superSup.SignalTimerDataTransferStart(vb)
 				logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v vbblob stream status: %v starting dcp stream, should wait for timer data transfer: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus, shouldWait)
 
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+				if shouldWait {
+
+				retryListenForPlasmaTransferFinish1:
+					msg := <-c.signalPlasmaTransferFinishCh
+
+					if msg.vb != vb {
+						logging.Tracef("CRVT[%s:%s:%s:%d] vb: %v isn't same as msg.vb: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, msg.vb)
+						goto retryListenForPlasmaTransferFinish1
+					}
+
+					logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v message received from super supervisor: %#v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, msg)
+					c.plasmaStoreRWMutex.Lock()
+					// c.vbPlasmaStoreMap[vb] = msg.store
+					c.plasmaStoreRWMutex.Unlock()
+
+					return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true, false)
+				}
+
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true, true)
 			}
-			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true, true)
 		}
 
 		return errVbOwnedByAnotherNode
 
 	case dcpStreamStopped, dcpStreamUninitialised:
 
+		shouldWait := c.superSup.SignalTimerDataTransferStart(vb)
 		logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v vbblob stream status: %v, starting dcp stream, should wait for timer data transfer: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus, shouldWait)
 
-		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+		if shouldWait {
+
+		retryListenForPlasmaTransferFinish2:
+			msg := <-c.signalPlasmaTransferFinishCh
+
+			if msg.vb != vb {
+				logging.Tracef("CRVT[%s:%s:%s:%d] vb: %v isn't same as msg.vb: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, msg.vb)
+				goto retryListenForPlasmaTransferFinish2
+			}
+
+			logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v message received from super supervisor: %#v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, msg)
+			c.plasmaStoreRWMutex.Lock()
+			// c.vbPlasmaStoreMap[vb] = msg.store
+			c.plasmaStoreRWMutex.Unlock()
+
+			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true, false)
+		}
+		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true, true)
 
 	default:
 		return errUnexpectedVbStreamStatus
@@ -352,7 +355,7 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 	return false
 }
 
-func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob, shouldStartStream bool) error {
+func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob, shouldStartStream, shouldPerformPlasmaTransfer bool) error {
 
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
@@ -366,104 +369,67 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateVbOwnerAndStartStreamCallback, c, vbKey, vbBlob)
 
-	timerAddrs := make(map[string]map[string]string)
+	if shouldPerformPlasmaTransfer {
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), aggTimerHostPortAddrsCallback, c, &timerAddrs)
-	previousAssignedWorker := vbBlob.PreviousAssignedWorker
-	previousEventingDir := vbBlob.PreviousEventingDir
-	previousNodeUUID := vbBlob.PreviousNodeUUID
-	previousVBOwner := vbBlob.PreviousVBOwner
+		timerAddrs := make(map[string]map[string]string)
 
-	var addr, remoteConsumerAddr string
-	var ok bool
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), aggTimerHostPortAddrsCallback, c, &timerAddrs)
+		previousAssignedWorker := vbBlob.PreviousAssignedWorker
+		previousEventingDir := vbBlob.PreviousEventingDir
+		previousNodeUUID := vbBlob.PreviousNodeUUID
+		previousVBOwner := vbBlob.PreviousVBOwner
 
-	// To handle case of hostname update
-	if addr, ok = timerAddrs[previousVBOwner][previousAssignedWorker]; !ok {
-		util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, c)
+		var addr, remoteConsumerAddr string
+		var ok bool
 
-		var addrUUIDMap map[string]string
-		util.Retry(util.NewFixedBackoff(time.Second), aggUUIDCallback, c, &addrUUIDMap)
-		addr = addrUUIDMap[previousNodeUUID]
+		// To handle case of hostname update
+		if addr, ok = timerAddrs[previousVBOwner][previousAssignedWorker]; !ok {
+			util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, c)
 
-		remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
-			strings.Split(timerAddrs[addr][previousAssignedWorker], ":")[3])
-	} else {
-		remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
-			strings.Split(timerAddrs[previousVBOwner][previousAssignedWorker], ":")[3])
-	}
+			var addrUUIDMap map[string]string
+			util.Retry(util.NewFixedBackoff(time.Second), aggUUIDCallback, c, &addrUUIDMap)
+			addr = addrUUIDMap[previousNodeUUID]
 
-	client := timer.NewRPCClient(c, remoteConsumerAddr, c.app.AppName, previousAssignedWorker)
-	if err := client.DialPath("/" + previousAssignedWorker + "/"); err != nil {
-		logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to connect to remote RPC server addr: %v, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, err)
-
-		return errFailedConnectRemoteRPC
-	}
-	defer client.Close()
-
-	timerDir := fmt.Sprintf("reb_%v_%v_timer.data", vb, c.app.AppName)
-
-	sTimerDir := fmt.Sprintf("%v/reb_%v_%v_timer.data", previousEventingDir, vb, c.app.AppName)
-	dTimerDir := fmt.Sprintf("%v/reb_%v_%v_timer.data", c.eventingDir, vb, c.app.AppName)
-
-	if previousEventingDir != c.eventingDir && c.NodeUUID() != previousNodeUUID {
-		if err := client.DownloadDir(timerDir, c.eventingDir); err != nil {
-			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to download timer dir from node: %v src: %v dst: %v err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir, err)
-
-			return errFailedRPCDownloadDir
-		}
-		logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, sTimerDir, dTimerDir, remoteConsumerAddr)
-
-		pStore, err := c.openPlasmaStore(dTimerDir)
-		if err != nil {
-			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to create plasma instance for plasma data dir: %v received, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, dTimerDir, err)
-		}
-		plasmaStoreWriter := c.vbPlasmaStore.NewWriter()
-
-		r := pStore.NewReader()
-		w := pStore.NewWriter()
-		snapshot := pStore.NewSnapshot()
-
-		defer os.RemoveAll(dTimerDir)
-		defer pStore.Close()
-		defer snapshot.Close()
-
-		itr, err := r.NewSnapshotIterator(snapshot)
-		if err != nil {
-			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to create snapshot, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+			remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
+				strings.Split(timerAddrs[addr][previousAssignedWorker], ":")[3])
+		} else {
+			remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
+				strings.Split(timerAddrs[previousVBOwner][previousAssignedWorker], ":")[3])
 		}
 
-		for itr.SeekFirst(); itr.Valid(); itr.Next() {
+		client := timer.NewRPCClient(c, remoteConsumerAddr, c.app.AppName, previousAssignedWorker)
+		if err := client.DialPath("/" + previousAssignedWorker + "/"); err != nil {
+			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to connect to remote RPC server addr: %v, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, err)
 
-			val, err := w.LookupKV(itr.Key())
-			if err != nil {
-				logging.Errorf("CRVT[%s:%s:%s:%d] key: %v Failed to lookup, err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), itr.Key(), err)
-				continue
-			} else {
-				logging.Infof("CRVT[%s:%s:%s:%d] key: %v Lookup value: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), itr.Key(), val)
+			return errFailedConnectRemoteRPC
+		}
+		defer client.Close()
+
+		timerDir := fmt.Sprintf("%v_timer.data", vb)
+
+		sTimerDir := fmt.Sprintf("%v/%v_timer.data", previousEventingDir, vb)
+		dTimerDir := fmt.Sprintf("%v/%v_timer.data", c.eventingDir, vb)
+
+		if previousEventingDir != c.eventingDir && c.NodeUUID() != previousNodeUUID {
+			if err := client.DownloadDir(timerDir, c.eventingDir); err != nil {
+				logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to download timer dir from node: %v src: %v dst: %v err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir, err)
+
+				return errFailedRPCDownloadDir
 			}
-
-			err = plasmaStoreWriter.InsertKV(itr.Key(), val)
-			if err != nil {
-				logging.Errorf("CRVT[%s:%s:%s:%d] key: %v Failed to insert, err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), itr.Key(), err)
-				continue
-			}
+			logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, sTimerDir, dTimerDir, remoteConsumerAddr)
+		} else {
+			logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir)
 		}
 
-	} else {
-		logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir)
-		_, err := client.RemoveDir(timerDir)
+		_, err := c.openPlasmaStore(dTimerDir, vb)
 		if err != nil {
-			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed in removeDir rpc call, err: %v",
+			logging.Errorf("CRDP[%s:%s:%s:%d] vb: %v Failed to open plasma store, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+			return err
 		}
 	}
 
@@ -473,6 +439,44 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 
 	c.cleanupStaleDcpFeedHandles()
 	return nil
+}
+
+func (c *Consumer) openPlasmaStore(vbPlasmaDir string, vb uint16) (*plasma.Plasma, error) {
+	cfg := plasma.DefaultConfig()
+	cfg.File = vbPlasmaDir
+	cfg.AutoLSSCleaning = autoLssCleaning
+	cfg.MaxDeltaChainLen = maxDeltaChainLen
+	cfg.MaxPageItems = maxPageItems
+	cfg.MinPageItems = minPageItems
+
+	if c.cleanupTimers && !c.isRebalanceOngoing {
+		logging.Tracef("CRDP[%s:%s:%s:%d] vb: %v On cleanup timer request, cleaning up plasma dir: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbPlasmaDir)
+
+		err := os.RemoveAll(vbPlasmaDir)
+		if err != nil {
+			logging.Errorf("CRDP[%s:%s:%s:%d] vb: %v Failed to remove plasma dir on cleanup timer request, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+			return nil, err
+		}
+	}
+
+	store, err := plasma.New(cfg)
+	if err != nil {
+		logging.Errorf("CRDP[%s:%s:%s:%d] vb: %v Failed to create plasma store instance, err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+		return nil, err
+	}
+
+	c.plasmaStoreRWMutex.Lock()
+	// c.vbPlasmaStoreMap[vb] = store
+	c.plasmaStoreRWMutex.Unlock()
+
+	logging.Tracef("CRDP[%s:%s:%s:%d] vb: %v Signalling super supervisor about plasma timer data transfer finish, dir: %v",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbPlasmaDir)
+	c.superSup.SignalTimerDataTransferStop(vb, store)
+
+	return store, nil
 }
 
 func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBlob) {
@@ -499,6 +503,24 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 
 	logging.Tracef("CRDP[%s:%s:%s:%d] vb: %v Stopped dcp stream, updated checkpoint blob in bucket",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
+}
+
+func (c *Consumer) closePlasmaHandle(vb uint16) {
+	/*
+			c.plasmaStoreRWMutex.RLock()
+			store, ok := c.vbPlasmaStoreMap[vb]
+			c.plasmaStoreRWMutex.RUnlock()
+
+			if ok {
+			   // Persist all in-flight data in-memory for plasma and then close the instance
+			   store.PersistAll()
+			   store.Close()
+
+			   c.plasmaStoreRWMutex.Lock()
+			   delete(c.vbPlasmaStoreMap, vb)
+			   c.plasmaStoreRWMutex.Unlock()
+		  }
+	*/
 }
 
 func (c *Consumer) checkIfConsumerShouldOwnVb(vb uint16, workerName string) bool {

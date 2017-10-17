@@ -7,6 +7,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
+	"github.com/couchbase/gomemcached"
 )
 
 var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
@@ -25,8 +26,8 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, p, p.KvHostPorts()[0], &user, &password)
 
 	err = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: p.rbacUser,
-		Password: p.rbacPass,
+		Username: user,
+		Password: password,
 	})
 	if err != nil {
 		logging.Errorf("PRDR[%s:%d] GOCB Failed to authenticate to the cluster %s failed, err: %v",
@@ -50,9 +51,7 @@ var setOpCallback = func(args ...interface{}) error {
 	blob := args[2]
 
 	_, err := p.metadataBucketHandle.Upsert(key, blob, 0)
-	if err == gocb.ErrShutdown {
-		return nil
-	} else if err != nil {
+	if err != nil {
 		logging.Errorf("PRDR[%s:%d] Bucket set failed for key: %v , err: %v", p.appName, p.LenRunningConsumers(), key, err)
 	}
 	return err
@@ -64,9 +63,7 @@ var getOpCallback = func(args ...interface{}) error {
 	blob := args[2]
 
 	_, err := p.metadataBucketHandle.Get(key, blob)
-	if err == gocb.ErrShutdown {
-		return nil
-	} else if err != nil {
+	if err != nil {
 		logging.Errorf("PRDR[%s:%d] Bucket set failed for key: %v , err: %v", p.appName, p.LenRunningConsumers(), key, err)
 	}
 
@@ -78,12 +75,8 @@ var deleteOpCallback = func(args ...interface{}) error {
 	key := args[1].(string)
 
 	_, err := p.metadataBucketHandle.Remove(key, 0)
-	if err == gocb.ErrKeyNotFound {
+	if gomemcached.KEY_ENOENT == util.MemcachedErrCode(err) {
 		logging.Errorf("PRDR[%s:%d] Key: %v doesn't exist, err: %v",
-			p.appName, p.LenRunningConsumers(), key, err)
-		return nil
-	} else if err == gocb.ErrShutdown {
-		logging.Errorf("PRDR[%s:%d] Key: %v bucket handle closed, err: %v",
 			p.appName, p.LenRunningConsumers(), key, err)
 		return nil
 	} else if err != nil {

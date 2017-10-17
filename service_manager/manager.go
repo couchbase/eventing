@@ -57,17 +57,7 @@ func (m *ServiceMgr) initService() {
 
 	util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, m)
 
-	go func(m *ServiceMgr) {
-		for {
-			err := m.registerWithServer()
-			if err != nil {
-				logging.Infof("Retrying to register against cbauth_service")
-				time.Sleep(2 * time.Second)
-			} else {
-				break
-			}
-		}
-	}(m)
+	go m.registerWithServer()
 
 	// TODO: Rest endpoints are growing big, need to document in source code purpose of each
 	// Eventually it would work as documentation.
@@ -102,17 +92,15 @@ func (m *ServiceMgr) initService() {
 	logging.Fatalf("%v", http.ListenAndServe(":"+m.eventingAdminPort, nil))
 }
 
-func (m *ServiceMgr) registerWithServer() error {
+func (m *ServiceMgr) registerWithServer() {
 	cfg := m.config.Load()
 	logging.Infof("Registering against cbauth_service, uuid: %v", cfg["uuid"].(string))
 
 	err := service.RegisterManager(m, nil)
 	if err != nil {
 		logging.Errorf("Failed to register against cbauth_service, err: %v", err)
-		return err
+		return
 	}
-
-	return nil
 }
 
 func (m *ServiceMgr) prepareRebalance(change service.TopologyChange) error {
