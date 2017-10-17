@@ -70,6 +70,7 @@ void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   std::string ts;
   std::string timestamp_marker("");
   lcb_CMDSTORE acmd = {0};
+  Result res;
 
   switch (rb->rc) {
   case LCB_KEY_ENOENT:
@@ -80,7 +81,7 @@ void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
                       timestamp_marker.length());
     acmd.operation = LCB_ADD;
 
-    lcb_store3(instance, NULL, &acmd);
+    lcb_store3(instance, &res, &acmd);
     lcb_wait(instance);
     break;
   case LCB_SUCCESS:

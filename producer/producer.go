@@ -17,7 +17,6 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/plasma"
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
@@ -36,6 +35,8 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 		notifySettingsChangeCh: make(chan struct{}, 1),
 		notifySupervisorCh:     make(chan struct{}),
 		nsServerPort:           nsServerPort,
+		persistAllTicker:       time.NewTicker(persistAllTickInterval),
+		signalStopPersistAllCh: make(chan struct{}, 1),
 		superSup:               superSup,
 		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
 		uuid:                   uuid,
@@ -104,6 +105,8 @@ func (p *Producer) Serve() {
 
 	p.initWorkerVbMap()
 	p.startBucket()
+
+	go p.persistPlasma()
 
 	p.bootstrapFinishCh <- struct{}{}
 	p.notifyInitCh <- struct{}{}
@@ -187,7 +190,9 @@ func (p *Producer) Stop() {
 		lHandle.Close()
 	}
 
+	p.metadataBucketHandle.Close()
 	p.stopProducerCh <- struct{}{}
+	p.signalStopPersistAllCh <- struct{}{}
 	p.ProducerListener.Close()
 }
 
@@ -349,83 +354,6 @@ func (p *Producer) NotifyPrepareTopologyChange(keepNodes []string) {
 		consumer.UpdateEventingNodesUUIDs(keepNodes)
 	}
 
-}
-
-// SignalToClosePlasmaStore is called by running consumer instances to signal that they
-// have stopped any operations against plasma instance associated with a specific
-// vbucket
-func (p *Producer) SignalToClosePlasmaStore(vb uint16) {
-	logging.Infof("PRDR[%s:%d] Got request from running consumer for vb: %v, requesting close of plasma store",
-		p.appName, p.LenRunningConsumers(), vb)
-	p.superSup.SignalToClosePlasmaStore(vb)
-}
-
-// SignalPlasmaClosed is used to signal every running consumer for a given app handler
-// to mark the dcp stream status as stopped after timer data transfer is finished
-func (p *Producer) SignalPlasmaClosed(vb uint16) {
-	for _, c := range p.runningConsumers {
-		logging.Infof("PRDR[%s:%d] vb: %v Signalling worker: %v about plasma store instance close",
-			p.appName, p.LenRunningConsumers(), vb, c.ConsumerName())
-		c.SignalPlasmaClosed(vb)
-	}
-}
-
-// SignalPlasmaTransferFinish is called by super supervisor instance on an eventing
-// node to signal every running producer instance that transfer of timer related
-// plasma files has finished
-func (p *Producer) SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma) {
-
-retryConsumerTransferFinishSig:
-	c, err := p.vbConsumerOwner(vb)
-	if err != nil {
-		logging.Errorf("PRDR[%s:%d] vb: %v failed to find consumer to signal about plasma timer data transfer finish. Retrying",
-			p.appName, p.LenRunningConsumers(), vb)
-		time.Sleep(bucketOpRetryInterval)
-		goto retryConsumerTransferFinishSig
-	}
-
-	logging.Tracef("PRDR[%s:%d] vb: %v Signalling worker: %v about plasma timer data transfer finish",
-		p.appName, p.LenRunningConsumers(), vb, c.ConsumerName())
-	c.SignalPlasmaTransferFinish(vb, store)
-}
-
-func (p *Producer) vbConsumerOwner(vb uint16) (common.EventingConsumer, error) {
-	p.RLock()
-	workerVbucketMap := p.WorkerVbMap()
-	p.RUnlock()
-
-	var workerName string
-	for w, vbs := range workerVbucketMap {
-		for _, v := range vbs {
-			if v == vb {
-				workerName = w
-				goto breakWorkerLookup
-			}
-		}
-	}
-
-breakWorkerLookup:
-	if workerName == "" {
-		logging.Errorf("PRDR[%s:%d] No worker found for vb: %v", p.appName, p.LenRunningConsumers(), vb)
-		return nil, fmt.Errorf("worker not found")
-	}
-
-	p.RLock()
-	c := p.workerNameConsumerMap[workerName]
-	p.RUnlock()
-
-	// Checking if assigned Eventing.Consumer is alive or not
-	p.RLock()
-	defer p.RUnlock()
-	for _, consumer := range p.runningConsumers {
-		if consumer == nil || c == nil {
-			return nil, fmt.Errorf("worker not alive at present")
-		}
-		if consumer.ConsumerName() == c.ConsumerName() {
-			return c, nil
-		}
-	}
-	return nil, fmt.Errorf("worker not alive at present")
 }
 
 // SignalStartDebugger updates KV blob in metadata bucket signalling request to start
