@@ -424,3 +424,13 @@ type OwnershipEntry struct {
 	Operation      string `json:"operation"`
 	Timestamp      string `json:"timestamp"`
 }
+
+type cronTimerEntry struct {
+	CallbackFunc string `json:"callback_func"`
+	Payload      string `json:"payload"`
+}
+
+type cronTimer struct {
+	CronTimers []cronTimerEntry `json:"cron_timers"`
+	Version    string           `json:"version"`
+}

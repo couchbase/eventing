@@ -134,7 +134,7 @@ public:
   int SendUpdate(std::string value, std::string meta, std::string doc_type);
   int SendDelete(std::string meta);
   void SendDocTimer(std::string doc_id, std::string callback_fn);
-  void SendNonDocTimer(std::string doc_ids_cb_fns);
+  void SendCronTimer(std::string cron_cb_fns);
 
   void StartDebugger();
   void StopDebugger();

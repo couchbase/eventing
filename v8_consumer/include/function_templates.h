@@ -39,7 +39,7 @@ struct Result {
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args);
 void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args);
 
-void CreateNonDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args);
+void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args);
 void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 #endif

@@ -73,7 +73,7 @@ timer_opcode getTimerOpcode(int8_t opcode) {
   if (opcode == 1)
     return oDocTimer;
   if (opcode == 2)
-    return oNonDocTimer;
+    return oCronTimer;
   return Timer_Opcode_Unknown;
 }
 

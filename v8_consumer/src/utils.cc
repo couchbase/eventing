@@ -35,11 +35,11 @@ int Wvasprintf(char **strp, const char *fmt, va_list ap) {
 }
 
 int WinSprintf(char **strp, const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    int r = Wvasprintf(strp, fmt, ap);
-    va_end(ap);
-    return r;
+  va_list ap;
+  va_start(ap, fmt);
+  int r = Wvasprintf(strp, fmt, ap);
+  va_end(ap);
+  return r;
 }
 #endif
 
@@ -53,7 +53,7 @@ std::string ObjectToString(v8::Local<v8::Value> value) {
   return std::string(*utf8_value);
 }
 
-std::string ToString(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
+std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
   v8::HandleScope handle_scope(isolate);
 
   v8::Local<v8::Context> context = isolate->GetCurrentContext();

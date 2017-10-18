@@ -134,7 +134,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       workers[partition_thr_map[parsed_header->partition]]->Enqueue(
           parsed_header, parsed_message);
       break;
-    case oNonDocTimer:
+    case oCronTimer:
       workers[partition_thr_map[parsed_header->partition]]->Enqueue(
           parsed_header, parsed_message);
       break;

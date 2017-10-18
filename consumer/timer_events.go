@@ -381,7 +381,7 @@ func (c *Consumer) processNonDocTimerEvents() {
 			return
 
 		case <-c.nonDocTimerProcessingTicker.C:
-			var val []byte
+			var val cronTimer
 			var isNoEnt bool
 
 			vbsOwned := c.getVbsOwned()
@@ -400,12 +400,17 @@ func (c *Consumer) processNonDocTimerEvents() {
 					continue
 				}
 
-				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getNonDocTimerCallback, c, currTimer, &val, true, &isNoEnt)
+				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getCronTimerCallback, c, currTimer, &val, true, &isNoEnt)
 
 				if !isNoEnt {
-					logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Non doc timer key: %v val: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, string(val))
-					c.nonDocTimerEntryCh <- string(val)
+					logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val)
+					data, err := json.Marshal(&val)
+					if err != nil {
+						logging.Errorf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v, err: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val, err)
+					}
+					c.nonDocTimerEntryCh <- string(data)
 					c.gocbMetaBucket.Remove(currTimer, 0)
 				}
 				c.updateNonDocTimerStats(vb)

@@ -31,7 +31,7 @@ int WinSprintf(char **strp, const char *fmt, ...);
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const char *str);
 std::string ObjectToString(v8::Local<v8::Value> value);
 
-std::string ToString(v8::Isolate *isolate, v8::Handle<v8::Value> object);
+std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object);
 
 lcb_t *UnwrapLcbInstance(v8::Local<v8::Object> object);
 lcb_t *UnwrapV8WorkerLcbInstance(v8::Local<v8::Object> object);

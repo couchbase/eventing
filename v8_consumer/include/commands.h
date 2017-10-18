@@ -47,7 +47,7 @@ enum app_worker_setting_opcode {
   App_Worker_Setting_Opcode_Unknown
 };
 
-enum timer_opcode { oDocTimer, oNonDocTimer, Timer_Opcode_Unknown };
+enum timer_opcode { oDocTimer, oCronTimer, Timer_Opcode_Unknown };
 
 enum debugger_opcode { oDebuggerStart, oDebuggerStop, Debugger_Opcode_Unknown };
 
