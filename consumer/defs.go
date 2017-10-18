@@ -149,9 +149,9 @@ type v8InitMeta struct {
 
 type dcpMetadata struct {
 	Cas     uint64 `json:"cas"`
-	DocID   string `json:"docid"`
-	Expiry  uint32 `json:"expiry"`
-	Flag    uint32 `json:"flag"`
+	DocID   string `json:"id"`
+	Expiry  uint32 `json:"expiration"`
+	Flag    uint32 `json:"flags"`
 	Vbucket uint16 `json:"vb"`
 	SeqNo   uint64 `json:"seq"`
 }
