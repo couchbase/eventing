@@ -121,3 +121,9 @@ func (c *Consumer) TimerTransferHostPortAddr() string {
 func (c *Consumer) UpdateEventingNodesUUIDs(uuids []string) {
 	c.eventingNodeUUIDs = uuids
 }
+
+// GetLatencyStats returns latency stats for event handlers from from cpp world
+func (c *Consumer) GetLatencyStats() map[string]uint64 {
+	c.sendGetLatencyStats(false)
+	return c.latencyStats
+}

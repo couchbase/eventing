@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"log"
 	"runtime/debug"
@@ -43,6 +44,7 @@ const (
 	v8WorkerTerminate
 	v8WorkerSourceMap
 	v8WorkerHandlerCode
+	v8WorkerLatencyStats
 )
 
 const (
@@ -69,6 +71,7 @@ const (
 	sourceMap
 	handlerCode
 	logMessage
+	latencyStats
 )
 
 type message struct {
@@ -331,6 +334,12 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			c.handlerCode = msg
 		case logMessage:
 			fmt.Printf("%s", msg)
+		case latencyStats:
+			err := json.Unmarshal([]byte(msg), &c.latencyStats)
+			if err != nil {
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal latency stats, msg: %s err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
 		}
 	}
 }

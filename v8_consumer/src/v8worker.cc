@@ -161,6 +161,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
     : settings(server_settings), platform_(platform) {
   enableRecursiveMutation(h_config->enable_recursive_mutation);
 
+  histogram = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
+
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
@@ -277,6 +279,7 @@ V8Worker::~V8Worker() {
   delete conn_pool;
   delete n1ql_handle;
   delete settings;
+  delete histogram;
 }
 
 // Re-compile and execute handler code for debugger
@@ -566,13 +569,22 @@ bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
   return true;
 }
 
+void V8Worker::UpdateHistogram(Time::time_point start_time) {
+  Time::time_point t = Time::now();
+  nsecs ns = std::chrono::duration_cast<nsecs>(t - start_time);
+  histogram->Add(ns.count() / 1000);
+}
+
 int V8Worker::SendUpdate(std::string value, std::string meta,
                          std::string doc_type) {
+  Time::time_point start_time = Time::now();
+
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
 
   if (on_update_.IsEmpty()) {
+    UpdateHistogram(start_time);
     return kOnUpdateCallFail;
   }
 
@@ -620,19 +632,24 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
     if (try_catch.HasCaught()) {
       LOG(logDebug) << "Exception message: "
                     << ExceptionString(GetIsolate(), &try_catch) << '\n';
+      UpdateHistogram(start_time);
       return kOnUpdateCallFail;
     }
 
+    UpdateHistogram(start_time);
     return kSuccess;
   }
 }
 
 int V8Worker::SendDelete(std::string meta) {
+  Time::time_point start_time = Time::now();
+
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
 
   if (on_delete_.IsEmpty()) {
+    UpdateHistogram(start_time);
     return kOnDeleteCallFail;
   }
 
@@ -669,9 +686,11 @@ int V8Worker::SendDelete(std::string meta) {
     if (try_catch.HasCaught()) {
       LOG(logError) << "Exception message"
                     << ExceptionString(GetIsolate(), &try_catch) << '\n';
+      UpdateHistogram(start_time);
       return kOnDeleteCallFail;
     }
 
+    UpdateHistogram(start_time);
     return kSuccess;
   }
 }

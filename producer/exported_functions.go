@@ -29,6 +29,21 @@ func (p *Producer) ClearEventStats() {
 	}
 }
 
+// GetLatencyStats returns latency stats for event handlers from from cpp world
+func (p *Producer) GetLatencyStats() map[string]uint64 {
+	latencyStats := make(map[string]uint64)
+	for _, c := range p.runningConsumers {
+		clStats := c.GetLatencyStats()
+		for k, v := range clStats {
+			if _, ok := latencyStats[k]; !ok {
+				latencyStats[k] = 0
+			}
+			latencyStats[k] += v
+		}
+	}
+	return latencyStats
+}
+
 // GetAppCode returns handler code for the current app
 func (p *Producer) GetAppCode() string {
 	return p.app.AppCode
