@@ -208,7 +208,7 @@ type Consumer struct {
 	lcbInstCapacity int
 
 	docTimerEntryCh    chan *byTimerEntry
-	nonDocTimerEntryCh chan string
+	nonDocTimerEntryCh chan timerMsg
 	// Plasma DGM store handle to store timer entries at per vbucket level
 	persistAllTicker    *time.Ticker
 	stopPlasmaPersistCh chan struct{}
@@ -434,4 +434,9 @@ type cronTimerEntry struct {
 type cronTimer struct {
 	CronTimers []cronTimerEntry `json:"cron_timers"`
 	Version    string           `json:"version"`
+}
+
+type timerMsg struct {
+	payload  string
+	msgCount int
 }

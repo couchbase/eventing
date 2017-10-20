@@ -58,7 +58,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
 		lcbInstCapacity:                    lcbInstCapacity,
 		logLevel:                           logLevel,
-		nonDocTimerEntryCh:                 make(chan string, timerChanSize),
+		nonDocTimerEntryCh:                 make(chan timerMsg, timerChanSize),
 		nonDocTimerStopCh:                  make(chan struct{}, 1),
 		opsTimestamp:                       time.Now(),
 		persistAllTicker:                   time.NewTicker(persistAllTickInterval),

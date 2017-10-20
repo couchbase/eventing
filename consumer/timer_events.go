@@ -410,7 +410,7 @@ func (c *Consumer) processNonDocTimerEvents() {
 						logging.Errorf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v, err: %v",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val, err)
 					}
-					c.nonDocTimerEntryCh <- string(data)
+					c.nonDocTimerEntryCh <- timerMsg{payload: string(data), msgCount: len(val.CronTimers)}
 					c.gocbMetaBucket.Remove(currTimer, 0)
 				}
 				c.updateNonDocTimerStats(vb)

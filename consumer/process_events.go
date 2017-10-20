@@ -9,7 +9,6 @@ import (
 	"runtime/debug"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -307,9 +306,8 @@ func (c *Consumer) processEvents() {
 				return
 			}
 
-			eventCount := uint64(strings.Count(e, ";"))
-			c.timerMessagesProcessed += eventCount
-			c.sendNonDocTimerEvent(e, c.sendMsgToDebugger)
+			c.timerMessagesProcessed += uint64(e.msgCount)
+			c.sendNonDocTimerEvent(e.payload, c.sendMsgToDebugger)
 
 		case <-c.statsTicker.C:
 
