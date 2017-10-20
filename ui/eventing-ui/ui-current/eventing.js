@@ -1,14 +1,12 @@
 angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault'])
     // Controller for the summary page.
-    .controller('SummaryCtrl', ['$location', '$q', '$scope', '$state', '$uibModal', '$timeout', 'ApplicationService', 'serverNodes',
-        function($location, $q, $scope, $state, $uibModal, $timeout, ApplicationService, serverNodes) {
+    .controller('SummaryCtrl', ['$q', '$scope', '$state', '$uibModal', '$timeout', 'ApplicationService', 'serverNodes',
+        function($q, $scope, $state, $uibModal, $timeout, ApplicationService, serverNodes) {
             var self = this;
 
             self.errorState = !ApplicationService.status.isErrorCodesLoaded();
             self.showSuccessAlert = false;
             self.serverNodes = serverNodes;
-            // Check if the current node has eventing service enabled.
-            self.resolveServerNodes = self.serverNodes.indexOf($location.path()) !== -1;
             self.appList = ApplicationService.local.getAllApps();
 
             self.isAppListEmpty = function() {
