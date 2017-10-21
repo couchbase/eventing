@@ -190,6 +190,8 @@ var getOpCallback = func(args ...interface{}) error {
 		if err == gocb.ErrKeyNotFound {
 			*isNoEnt = true
 			return nil
+		} else if err == gocb.ErrShutdown {
+			return nil
 		} else if err != nil {
 			logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for key: %s, err: %v",
 				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)

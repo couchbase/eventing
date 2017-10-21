@@ -330,8 +330,13 @@ type Consumer struct {
 	// Tracks V8 Opcodes processed per consumer
 	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by default lock
 
-	timerMessagesProcessed     uint64
+	doctimerMessagesProcessed  uint64
+	crontimerMessagesProcessed uint64
 	timerMessagesProcessedPSec int
+
+	plasmaInsertCounter uint64
+	plasmaDeleteCounter uint64
+	plasmaLookupCounter uint64
 
 	// capture dcp operation stats, granularity of these stats depend on statsTickInterval
 	dcpOpsProcessed     uint64
