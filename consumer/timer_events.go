@@ -43,20 +43,6 @@ var plasmaInsertKV = func(args ...interface{}) error {
 	return err
 }
 
-func (c *Consumer) plasmaPersistAll() {
-	for {
-		select {
-		case <-c.persistAllTicker.C:
-			c.vbPlasmaStore.PersistAll()
-			// seqNo := c.vbProcessingStats.getVbStat(vb, "plasma_last_seq_no_stored")
-			// c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_persisted", seqNo)
-
-		case <-c.stopPlasmaPersistCh:
-			return
-		}
-	}
-}
-
 func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 	var vbsOwned []uint16
 
@@ -228,64 +214,6 @@ func (r *timerProcessingWorker) processTimerEvents() {
 			}
 
 			r.c.updateTimerStats(vb)
-
-			lastTimerEvent := r.c.vbProcessingStats.getVbStat(vb, "last_processed_doc_id_timer_event")
-			if lastTimerEvent != "" {
-				startProcess := false
-
-				// Previous timer entry wasn't processed completely, hence will resume from where things were left
-				timerEvents := strings.Split(string(v), ",{")
-				if len(timerEvents) == 0 || len(timerEvents[0]) == 0 {
-					continue
-				}
-
-				var timer byTimerEntry
-				err = json.Unmarshal([]byte(timerEvents[0]), &timer)
-				if err != nil {
-					logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d Failed to unmarshal timerEvent: %v err: %v",
-						r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, timerEvents[0], err)
-				} else {
-					if lastTimerEvent == timer.DocID {
-						startProcess = true
-					}
-				}
-
-				if len(timerEvents) > 1 {
-					for _, event := range timerEvents[1:] {
-
-						if len(event) == 0 {
-							continue
-						}
-
-						event := "{" + event
-						err = json.Unmarshal([]byte(event), &timer)
-						if err != nil {
-							logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d Failed to unmarshal timerEvent: %v err: %v",
-								r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, event, err)
-						}
-
-						if startProcess {
-							r.c.docTimerEntryCh <- &timer
-							r.c.vbProcessingStats.updateVbStat(vb, "last_processed_doc_id_timer_event", timer.DocID)
-						} else if lastTimerEvent == timer.DocID {
-							startProcess = true
-						}
-					}
-				}
-
-				r.c.plasmaReaderRWMutex.RLock()
-				token = r.c.vbPlasmaReader[vb].BeginTx()
-				err = r.c.vbPlasmaReader[vb].DeleteKV([]byte(byTimerKey))
-				r.c.vbPlasmaReader[vb].EndTx(token)
-				r.c.plasmaReaderRWMutex.RUnlock()
-
-				if err != nil {
-					logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
-						r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, byTimerKey, err)
-				}
-
-				continue
-			}
 
 			if len(v) == 0 {
 				continue
@@ -592,7 +520,8 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 		docF.UpsertEx(xattrCasPath, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath|gocb.SubdocFlagUseMacros)
 
 		_, err := docF.Execute()
-		if err != nil {
+		if err == gocb.ErrKeyNotFound {
+		} else if err != nil {
 			logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v vb: %v, Failed to prune timer records from past, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, err)
 		} else {

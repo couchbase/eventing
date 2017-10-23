@@ -42,6 +42,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		cppThrPartitionMap:                 make(map[int][]uint16),
 		cppWorkerThrCount:                  cppWorkerThrCount,
 		crcTable:                           crc32.MakeTable(crc32.Castagnoli),
+		connMutex:                          &sync.RWMutex{},
 		dcpFeedCancelChs:                   make([]chan struct{}, 0),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,
@@ -177,8 +178,6 @@ func (c *Consumer) Serve() {
 	// Initialises timer processing worker instances
 	c.vbTimerProcessingWorkerAssign(true)
 
-	// go c.plasmaPersistAll()
-
 	// doc_id timer events
 	for _, r := range c.timerProcessingRunningWorkers {
 		go r.processTimerEvents()
@@ -217,11 +216,8 @@ func (c *Consumer) HandleV8Worker() {
 		currHost = "127.0.0.1"
 	}
 
-	var user, password string
-	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, c.producer.KvHostPorts()[0], &user, &password)
-
 	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
-		c.producer.KvHostPorts()[0], c.producer.CfgData(), user, password, c.lcbInstCapacity,
+		c.producer.KvHostPorts()[0], c.producer.CfgData(), c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity,
 		c.executionTimeout, c.enableRecursiveMutation)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
@@ -265,7 +261,6 @@ func (c *Consumer) Stop() {
 	c.checkpointTicker.Stop()
 	c.restartVbDcpStreamTicker.Stop()
 	c.statsTicker.Stop()
-	c.persistAllTicker.Stop()
 
 	c.conn.Close()
 	if c.debugClient != nil {
@@ -279,7 +274,7 @@ func (c *Consumer) Stop() {
 
 	c.nonDocTimerStopCh <- struct{}{}
 	c.stopControlRoutineCh <- struct{}{}
-	c.stopPlasmaPersistCh <- struct{}{}
+	c.stopConsumerCh <- struct{}{}
 	c.signalStopDebuggerRoutineCh <- struct{}{}
 
 	for _, cancelCh := range c.dcpFeedCancelChs {

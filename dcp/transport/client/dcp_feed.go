@@ -1020,7 +1020,6 @@ loop:
 			logging.Errorf("%v doReceive(): %v\n", feed.logPrefix, err)
 			break loop
 		}
-		logging.Tracef("%v packet received %#v", feed.logPrefix, pkt)
 		if len(rcvch) == cap(rcvch) {
 			start, blocked = time.Now(), true
 		}

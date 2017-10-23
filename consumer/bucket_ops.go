@@ -263,13 +263,13 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	doc.UpsertEx("plasma_last_persisted_seq_no", vbBlob.PlasmaPersistedSeqNo, gocb.SubdocFlagCreatePath)
 
 	_, err := doc.Execute()
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing periodic checkpoint update, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
-	}
-
-	if err == gocb.ErrShutdown {
-		return nil
 	}
 
 	return err

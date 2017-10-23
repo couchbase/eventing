@@ -160,8 +160,10 @@ type dcpMetadata struct {
 type Consumer struct {
 	app    *common.AppConfig
 	bucket string
-	conn   net.Conn // Access controlled by default lock
 	uuid   string
+
+	connMutex *sync.RWMutex
+	conn      net.Conn // Access controlled by connMutex
 
 	cppThrPartitionMap map[int][]uint16
 	cppWorkerThrCount  int // No. of worker threads per CPP worker process

@@ -97,9 +97,12 @@ func (c *Consumer) NodeUUID() string {
 
 // SetConnHandle sets the tcp connection handle for CPP V8 worker
 func (c *Consumer) SetConnHandle(conn net.Conn) {
-	c.Lock()
-	defer c.Unlock()
+	c.connMutex.Lock()
+	defer c.connMutex.Unlock()
+
 	c.conn = conn
+	logging.Infof("V8CR[%s:%s:%s:%d] Setting conn handle: %v",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.conn)
 }
 
 // SignalBootstrapFinish is leveraged by Eventing.Producer instance to know
