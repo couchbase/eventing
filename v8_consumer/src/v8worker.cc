@@ -349,8 +349,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     return code;
   }
 
-  plain_js += std::string((const char *)js_builtin) + '\n';
-
   std::string transpiler_js_src =
       std::string((const char *)js_esprima) + '\n' +
       std::string((const char *)js_escodegen) + '\n' +
@@ -365,6 +363,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
       transpiler.Transpile(plain_js, app_name_ + ".js", app_name_ + ".map.json",
                            settings->host_addr, settings->eventing_port) +
       '\n';
+  script_to_execute += std::string((const char *)js_builtin) + '\n';
   source_map_ = transpiler.GetSourceMap(plain_js, app_name_ + ".js");
   LOG(logTrace) << "source map:" << source_map_ << '\n';
 
