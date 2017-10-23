@@ -1,12 +1,13 @@
 angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault'])
     // Controller for the summary page.
-    .controller('SummaryCtrl', ['$q', '$scope', '$state', '$uibModal', '$timeout', 'ApplicationService', 'serverNodes',
-        function($q, $scope, $state, $uibModal, $timeout, ApplicationService, serverNodes) {
+    .controller('SummaryCtrl', ['$q', '$scope', '$state', '$uibModal', '$timeout', '$location', 'ApplicationService', 'serverNodes', 'isEventingRunning',
+        function($q, $scope, $state, $uibModal, $timeout, $location, ApplicationService, serverNodes, isEventingRunning) {
             var self = this;
 
             self.errorState = !ApplicationService.status.isErrorCodesLoaded();
             self.showSuccessAlert = false;
             self.serverNodes = serverNodes;
+            self.isEventingRunning = isEventingRunning;
             self.appList = ApplicationService.local.getAllApps();
 
             self.isAppListEmpty = function() {
@@ -807,6 +808,31 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             .catch(function(errResponse) {
                                 console.error('Unable to load buckets from server', errResponse);
                             });
+                    },
+                    isEventingRunning: function() {
+                        return $http.get('/pools/default/nodeServices')
+                            .then(function(response) {
+                                for (var node of response.data.nodesExt) {
+                                    // The response JSON will have 'thisNode = true' from which the REST call was made.
+                                    if (node.thisNode && 'eventingAdminPort' in node.services) {
+                                        return true;
+                                    }
+                                }
+
+                                return false;
+                            })
+                            .catch(function(errResponse) {
+                                console.error('Unable to check if eventing service is running', errResponse);
+                            });
+                    },
+                    getAllEventingNodes: function() {
+                        return mnPoolDefault.get()
+                            .then(function(response) {
+                                return mnPoolDefault.getUrlsRunningService(response.nodes, 'eventing');
+                            })
+                            .catch(function(errResponse) {
+                                console.error('Unable to get server nodes', errResponse);
+                            });
                     }
                 },
                 convertBindingToConfig: function(bindings) {
@@ -909,18 +935,21 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     controller: 'SummaryCtrl',
                     controllerAs: 'summaryCtrl',
                     resolve: {
-                        loadApps: ['ApplicationService', function(ApplicationService) {
-                            return ApplicationService.local.loadApps();
-                        }],
-                        serverNodes: ['mnPoolDefault', function(mnPoolDefault) {
-                            return mnPoolDefault.get()
-                                .then(function(response) {
-                                    return mnPoolDefault.getUrlsRunningService(response.nodes, 'eventing');
-                                })
-                                .catch(function(errResponse) {
-                                    console.error('Unable to get server nodes', errResponse);
-                                });
-                        }]
+                        loadApps: ['ApplicationService',
+                            function(ApplicationService) {
+                                return ApplicationService.local.loadApps();
+                            }
+                        ],
+                        serverNodes: ['ApplicationService',
+                            function(ApplicationService) {
+                                return ApplicationService.server.getAllEventingNodes();
+                            }
+                        ],
+                        isEventingRunning: ['ApplicationService',
+                            function(ApplicationService) {
+                                return ApplicationService.server.isEventingRunning();
+                            }
+                        ]
                     }
                 })
                 .state('app.admin.eventing.settings', {
@@ -929,9 +958,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     controller: 'SettingsCtrl',
                     controllerAs: 'formCtrl',
                     resolve: {
-                        loadApps: ['ApplicationService', function(ApplicationService) {
-                            return ApplicationService.local.loadApps();
-                        }],
+                        loadApps: ['ApplicationService',
+                            function(ApplicationService) {
+                                return ApplicationService.local.loadApps();
+                            }
+                        ],
                         bucketsResolve: ['ApplicationService',
                             function(ApplicationService) {
                                 // Getting the list of buckets.
@@ -944,9 +975,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     url: '/handler/:appName',
                     templateUrl: '../_p/ui/event/ui-current/fragments/handler-editor.html',
                     resolve: {
-                        loadApps: ['ApplicationService', function(ApplicationService) {
-                            return ApplicationService.local.loadApps();
-                        }]
+                        loadApps: ['ApplicationService',
+                            function(ApplicationService) {
+                                return ApplicationService.local.loadApps();
+                            }
+                        ]
                     }
                 });
 
