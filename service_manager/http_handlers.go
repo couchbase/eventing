@@ -669,6 +669,12 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
+	if m.checkIfDeployed(appName) {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppDeployed.Code))
+		fmt.Fprintf(w, "App with same name is already deployed, skipping save request")
+		return
+	}
+
 	content, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		errString := fmt.Sprintf("App: %s, failed to read content from http request body", appName)
