@@ -131,6 +131,21 @@ func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) error {
 	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
 }
 
+func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) error {
+	header := makeHeader(v8WorkerEvent, v8WorkerLatencyStats, 0, "")
+
+	msg := &message{
+		Header: header,
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["LATENCY_STATS"]; !ok {
+		c.v8WorkerMessagesProcessed["LATENCY_STATS"] = 0
+	}
+	c.v8WorkerMessagesProcessed["LATENCY_STATS"]++
+
+	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+}
+
 func (c *Consumer) sendGetSourceMap(sendToDebugger bool) error {
 	header := makeHeader(v8WorkerEvent, v8WorkerSourceMap, 0, "")
 

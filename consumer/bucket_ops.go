@@ -132,10 +132,10 @@ var setOpCallback = func(args ...interface{}) error {
 	return err
 }
 
-var getNonDocTimerCallback = func(args ...interface{}) error {
+var getCronTimerCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	key := args[1].(string)
-	val := args[2].(*[]byte)
+	val := args[2].(*cronTimer)
 	checkEnoEnt := args[3].(bool)
 
 	var isNoEnt *bool
@@ -160,8 +160,8 @@ var getNonDocTimerCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for non_doc timer key: %s val: %v, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, string(*val), err)
+		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for cron timer key: %s val: %v, err: %v",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, val, err)
 	}
 
 	return err
@@ -189,6 +189,8 @@ var getOpCallback = func(args ...interface{}) error {
 
 		if err == gocb.ErrKeyNotFound {
 			*isNoEnt = true
+			return nil
+		} else if err == gocb.ErrShutdown {
 			return nil
 		} else if err != nil {
 			logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for key: %s, err: %v",

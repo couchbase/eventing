@@ -31,6 +31,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   server_settings_t *server_settings;
   handler_config_t *handler_config;
 
+  int64_t latency_buckets;
+  std::vector<int64_t> agg_hgram, worker_hgram;
+  std::ostringstream lstats;
+
   const flatbuf::payload::Payload *payload;
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
       *thr_map;
@@ -103,6 +107,39 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       resp_msg->opcode = oHandlerCode;
       msg_priority = true;
       break;
+    case oGetLatencyStats:
+      latency_buckets = this->workers[0]->histogram->Buckets();
+      agg_hgram.assign(latency_buckets, 0);
+      for (const auto &w : workers) {
+        worker_hgram = w.second->histogram->Hgram();
+        for (std::string::size_type i = 0; i < worker_hgram.size(); i++) {
+          agg_hgram[i] += worker_hgram[i];
+        }
+      }
+
+      lstats.str(std::string());
+
+      for (std::string::size_type i = 0; i < agg_hgram.size(); i++) {
+        if (i == 0) {
+          lstats << "{";
+        }
+
+        if (agg_hgram[i] > 0) {
+          if ((i > 0) && (lstats.str().length() > 1)) {
+            lstats << ",";
+          }
+          lstats << "\"" << i << "\":" << agg_hgram[i];
+        }
+
+        if (i == agg_hgram.size() - 1) {
+          lstats << "}";
+        }
+      }
+      resp_msg->msg.assign(lstats.str());
+      resp_msg->msg_type = mV8_Worker_Config;
+      resp_msg->opcode = oLatencyStats;
+      msg_priority = true;
+      break;
     case oVersion:
     default:
       LOG(logError) << "worker_opcode_unknown encountered" << '\n';
@@ -134,7 +171,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       workers[partition_thr_map[parsed_header->partition]]->Enqueue(
           parsed_header, parsed_message);
       break;
-    case oNonDocTimer:
+    case oCronTimer:
       workers[partition_thr_map[parsed_header->partition]]->Enqueue(
           parsed_header, parsed_message);
       break;

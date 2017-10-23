@@ -30,6 +30,7 @@
 #include "commands.h"
 #include "crc32c.h"
 #include "function_templates.h"
+#include "histogram.h"
 #include "inspector_agent.h"
 #include "js_exception.h"
 #include "log.h"
@@ -51,6 +52,12 @@ typedef std::chrono::high_resolution_clock Time;
 typedef std::chrono::nanoseconds nsecs;
 
 #define SECS_TO_NS 1000 * 1000 * 1000ULL
+
+// Histogram to capture latency stats. Latency buckets have granularity of 1ms,
+// starting from 100us to 10s
+#define HIST_FROM 100
+#define HIST_TILL 1000 * 1000 * 10
+#define HIST_WIDTH 1000
 
 // Header frame structure for messages from Go world
 typedef struct header_s {
@@ -134,7 +141,7 @@ public:
   int SendUpdate(std::string value, std::string meta, std::string doc_type);
   int SendDelete(std::string meta);
   void SendDocTimer(std::string doc_id, std::string callback_fn);
-  void SendNonDocTimer(std::string doc_ids_cb_fns);
+  void SendCronTimer(std::string cron_cb_fns);
 
   void StartDebugger();
   void StopDebugger();
@@ -145,6 +152,8 @@ public:
 
   void V8WorkerDispose();
   void V8WorkerTerminateExecution();
+
+  void UpdateHistogram(Time::time_point t);
 
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
@@ -180,6 +189,8 @@ public:
 
   ConnectionPool *conn_pool;
   static JsException exception;
+
+  Histogram *histogram;
 
 private:
   std::string connstr;

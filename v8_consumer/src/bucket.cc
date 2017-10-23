@@ -222,7 +222,7 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
     return;
 
   std::string key = ObjectToString(v8::Local<v8::String>::Cast(name));
-  std::string value = ToString(info.GetIsolate(), value_obj);
+  std::string value = JSONStringify(info.GetIsolate(), value_obj);
 
   LOG(logTrace) << "Set call Key: " << key << " Value: " << value
                 << " enable_recursive_mutation: " << enable_recursive_mutation

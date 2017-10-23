@@ -40,6 +40,8 @@ v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
     return oGetSourceMap;
   if (opcode == 6)
     return oGetHandlerCode;
+  if (opcode == 7)
+    return oGetLatencyStats;
   return V8_Worker_Opcode_Unknown;
 }
 
@@ -73,7 +75,7 @@ timer_opcode getTimerOpcode(int8_t opcode) {
   if (opcode == 1)
     return oDocTimer;
   if (opcode == 2)
-    return oNonDocTimer;
+    return oCronTimer;
   return Timer_Opcode_Unknown;
 }
 

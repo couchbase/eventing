@@ -9,7 +9,6 @@ import (
 	"runtime/debug"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -295,7 +294,7 @@ func (c *Consumer) processEvents() {
 				return
 			}
 
-			c.timerMessagesProcessed++
+			c.doctimerMessagesProcessed++
 			c.sendDocTimerEvent(e, c.sendMsgToDebugger)
 
 		case e, ok := <-c.nonDocTimerEntryCh:
@@ -307,9 +306,8 @@ func (c *Consumer) processEvents() {
 				return
 			}
 
-			eventCount := uint64(strings.Count(e, ";"))
-			c.timerMessagesProcessed += eventCount
-			c.sendNonDocTimerEvent(e, c.sendMsgToDebugger)
+			c.crontimerMessagesProcessed += uint64(e.msgCount)
+			c.sendNonDocTimerEvent(e.payload, c.sendMsgToDebugger)
 
 		case <-c.statsTicker.C:
 
@@ -323,8 +321,8 @@ func (c *Consumer) processEvents() {
 				diff := tStamp.Sub(c.opsTimestamp)
 
 				dcpOpsDiff := dcpOpCount - c.dcpOpsProcessed
-				timerOpsDiff := c.timerMessagesProcessed - timerMsgCounter
-				timerMsgCounter = c.timerMessagesProcessed
+				timerOpsDiff := (c.doctimerMessagesProcessed + c.crontimerMessagesProcessed) - timerMsgCounter
+				timerMsgCounter = (c.doctimerMessagesProcessed + c.crontimerMessagesProcessed)
 
 				seconds := int(diff.Nanoseconds() / (1000 * 1000 * 1000))
 				if seconds > 0 {
@@ -332,9 +330,10 @@ func (c *Consumer) processEvents() {
 					c.timerMessagesProcessedPSec = int(timerOpsDiff) / seconds
 				}
 
-				logging.Infof("CRDP[%s:%s:%s:%d] DCP events: %s V8 events: %s Timer events: %v, vbs owned len: %d vbs owned:%v",
+				logging.Infof("CRDP[%s:%s:%s:%d] DCP events: %s V8 events: %s Timer events: Doc: %v Cron: %v, vbs owned len: %d vbs owned: %v Plasma stats: Insert: %v Delete: %v Lookup: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
-					c.timerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned))
+					c.doctimerMessagesProcessed, c.crontimerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned),
+					c.plasmaInsertCounter, c.plasmaDeleteCounter, c.plasmaLookupCounter)
 
 				c.opsTimestamp = tStamp
 				c.dcpOpsProcessed = dcpOpCount

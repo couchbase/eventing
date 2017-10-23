@@ -34,6 +34,7 @@ type EventingProducer interface {
 	GetEventProcessingStats() map[string]uint64
 	GetHandlerCode() string
 	GetDebuggerURL() string
+	GetLatencyStats() map[string]uint64
 	GetNsServerPort() string
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
@@ -71,6 +72,7 @@ type EventingConsumer interface {
 	EventsProcessedPSec() *EventProcessingStats
 	GetEventProcessingStats() map[string]uint64
 	GetHandlerCode() string
+	GetLatencyStats() map[string]uint64
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
 	HandleV8Worker()
@@ -104,6 +106,7 @@ type EventingSuperSup interface {
 	GetDebuggerURL(appName string) string
 	GetDeployedApps() map[string]string
 	GetHandlerCode(appName string) string
+	GetLatencyStats(appName string) map[string]uint64
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)

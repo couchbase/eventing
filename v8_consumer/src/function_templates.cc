@@ -11,26 +11,6 @@
 
 #include "../include/function_templates.h"
 
-const char *JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
-  v8::HandleScope handle_scope(isolate);
-
-  v8::Local<v8::Context> context = isolate->GetCurrentContext();
-  v8::Local<v8::Object> global = context->Global();
-
-  v8::Local<v8::Object> JSON =
-      global->Get(v8::String::NewFromUtf8(isolate, "JSON"))->ToObject();
-  v8::Local<v8::Function> JSON_stringify = v8::Local<v8::Function>::Cast(
-      JSON->Get(v8::String::NewFromUtf8(isolate, "stringify")));
-
-  v8::Local<v8::Value> result;
-  v8::Local<v8::Value> args[1];
-  args[0] = {object};
-  result = JSON_stringify->Call(global, 1, args);
-  v8::String::Utf8Value str(result->ToString());
-
-  return ToCString(str);
-}
-
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   std::string log_msg;
   for (int i = 0; i < args.Length(); i++) {
@@ -70,9 +50,16 @@ void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 }
 
-void CreateNonDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
+void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
+
+  if (args.Length() != 3) {
+    LOG(logError) << "Cron timer needs 3 args: <callback_func> <payload> "
+                     "<timeWhenToKickOff>"
+                  << '\n';
+    return;
+  }
 
   std::string cb_func;
   if (isFuncReference(args, 0)) {
@@ -83,14 +70,16 @@ void CreateNonDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  v8::String::Utf8Value ts(args[1]);
+  std::string opaque(JSONStringify(args.GetIsolate(), args[1]));
+
+  v8::String::Utf8Value ts(args[2]);
 
   std::string start_ts, timer_entry, value;
   start_ts.assign(std::string(*ts));
 
   if (atoi(start_ts.c_str()) <= 0) {
     LOG(logError)
-        << "Skipping non-doc_id timer callback setup, invalid start timestamp"
+        << "Skipping cron timer callback setup, invalid start timestamp"
         << '\n';
     return;
   }
@@ -99,48 +88,54 @@ void CreateNonDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_entry.append("::");
   timer_entry.append(ConvertToISO8601(start_ts));
   timer_entry.append("Z");
-  LOG(logTrace) << "Request to register non-doc_id timer, callback_func:"
-                << cb_func << "start_ts : " << timer_entry << '\n';
+  LOG(logTrace) << "Request to register cron timer, callback_func:" << cb_func
+                << "start_ts : " << timer_entry << '\n';
 
   // Store blob in KV store, blob structure:
   // {
   //    "callback_func": CallbackFunc,
-  //    "start_ts": timestamp
+  //    "payload": opaque
   // }
 
-  // prepending delimiter ";"
-  value.assign(";{\"callback_func\": \"");
+  value.assign("{\"callback_func\": \"");
   value.append(cb_func);
-  value.append("\", \"start_ts\": \"");
-  value.append(timer_entry);
-  value.append("\"}");
+  value.append("\", \"payload\": ");
+  value.append(opaque);
+  value.append("}");
+
+  LOG(logTrace) << "cron timer value:" << value << '\n';
 
   lcb_t *meta_cb_instance =
       reinterpret_cast<lcb_t *>(args.GetIsolate()->GetData(2));
 
-  // Append doc_id to key that keeps tracks of doc_ids for which
-  // callbacks need to be triggered at any given point in time
-  lcb_CMDGET gcmd = {0};
-  LCB_CMD_SET_KEY(&gcmd, timer_entry.c_str(), timer_entry.length());
-  lcb_get3(*meta_cb_instance, NULL, &gcmd);
-  lcb_set_cookie(*meta_cb_instance, timer_entry.c_str());
+  Result res;
+  lcb_CMDSUBDOC mcmd = {0};
+  LCB_CMD_SET_KEY(&mcmd, timer_entry.c_str(), timer_entry.length());
+
+  std::vector<lcb_SDSPEC> specs;
+
+  lcb_SDSPEC cspec = {0};
+  cspec.sdcmd = LCB_SDCMD_ARRAY_ADD_LAST;
+  cspec.options = LCB_SDSPEC_F_MKINTERMEDIATES;
+  LCB_SDSPEC_SET_PATH(&cspec, "cron_timers", 11);
+  LCB_SDSPEC_SET_VALUE(&cspec, value.c_str(), value.length());
+  specs.push_back(cspec);
+
+  lcb_SDSPEC dspec = {0};
+  dspec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+  LCB_SDSPEC_SET_PATH(&dspec, "version", 7);
+  LCB_SDSPEC_SET_VALUE(&dspec, "\"vulcan\"", 8);
+  specs.push_back(dspec);
+
+  mcmd.specs = specs.data();
+  mcmd.nspecs = specs.size();
+  mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
+
+  lcb_subdoc3(*meta_cb_instance, &res, &mcmd);
   lcb_wait(*meta_cb_instance);
-  lcb_set_cookie(*meta_cb_instance, NULL);
 
-  Result result;
-  lcb_CMDSTORE cmd = {0};
-  cmd.operation = LCB_APPEND;
-
-  LOG(logTrace) << "Non doc_id timer entry to append: " << value << '\n';
-  LCB_CMD_SET_KEY(&cmd, timer_entry.c_str(), timer_entry.length());
-  LCB_CMD_SET_VALUE(&cmd, value.c_str(), value.length());
-  lcb_sched_enter(*meta_cb_instance);
-  lcb_store3(*meta_cb_instance, &result, &cmd);
-  lcb_sched_leave(*meta_cb_instance);
-  lcb_wait(*meta_cb_instance);
-
-  if (result.rc != LCB_SUCCESS) {
-    V8Worker::exception.Throw(*meta_cb_instance, result.rc);
+  if (res.rc != LCB_SUCCESS) {
+    V8Worker::exception.Throw(*meta_cb_instance, res.rc);
     return;
   }
 }

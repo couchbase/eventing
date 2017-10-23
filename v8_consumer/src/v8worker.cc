@@ -161,6 +161,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
     : settings(server_settings), platform_(platform) {
   enableRecursiveMutation(h_config->enable_recursive_mutation);
 
+  histogram = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
+
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
@@ -180,8 +182,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
               v8::FunctionTemplate::New(GetIsolate(), Log));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "docTimer"),
               v8::FunctionTemplate::New(GetIsolate(), CreateDocTimer));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "nonDocTimer"),
-              v8::FunctionTemplate::New(GetIsolate(), CreateNonDocTimer));
+  global->Set(v8::String::NewFromUtf8(GetIsolate(), "cronTimer"),
+              v8::FunctionTemplate::New(GetIsolate(), CreateCronTimer));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "iter"),
               v8::FunctionTemplate::New(GetIsolate(), IterFunction));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "stopIter"),
@@ -193,7 +195,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   if (try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Last expection: " << last_exception << '\n';
+    LOG(logError) << "Last exception: " << last_exception << '\n';
   }
 
   v8::Local<v8::Context> context = v8::Context::New(GetIsolate(), NULL, global);
@@ -277,6 +279,7 @@ V8Worker::~V8Worker() {
   delete conn_pool;
   delete n1ql_handle;
   delete settings;
+  delete histogram;
 }
 
 // Re-compile and execute handler code for debugger
@@ -465,7 +468,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
 void V8Worker::RouteMessage() {
   const flatbuf::payload::Payload *payload;
-  std::string key, val, doc_id, callback_fn, doc_ids_cb_fns, metadata;
+  std::string key, val, doc_id, callback_fn, cron_cb_fns, metadata;
 
   while (true) {
     worker_msg_t msg;
@@ -505,11 +508,11 @@ void V8Worker::RouteMessage() {
         this->SendDocTimer(doc_id, callback_fn);
         break;
 
-      case oNonDocTimer:
+      case oCronTimer:
         payload = flatbuf::payload::GetPayload(
             (const void *)msg.payload->payload.c_str());
-        doc_ids_cb_fns.assign(payload->doc_ids_callback_fns()->str());
-        this->SendNonDocTimer(doc_ids_cb_fns);
+        cron_cb_fns.assign(payload->doc_ids_callback_fns()->str());
+        this->SendCronTimer(cron_cb_fns);
         break;
       default:
         break;
@@ -566,13 +569,22 @@ bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
   return true;
 }
 
+void V8Worker::UpdateHistogram(Time::time_point start_time) {
+  Time::time_point t = Time::now();
+  nsecs ns = std::chrono::duration_cast<nsecs>(t - start_time);
+  histogram->Add(ns.count() / 1000);
+}
+
 int V8Worker::SendUpdate(std::string value, std::string meta,
                          std::string doc_type) {
+  Time::time_point start_time = Time::now();
+
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
 
   if (on_update_.IsEmpty()) {
+    UpdateHistogram(start_time);
     return kOnUpdateCallFail;
   }
 
@@ -620,19 +632,24 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
     if (try_catch.HasCaught()) {
       LOG(logDebug) << "Exception message: "
                     << ExceptionString(GetIsolate(), &try_catch) << '\n';
+      UpdateHistogram(start_time);
       return kOnUpdateCallFail;
     }
 
+    UpdateHistogram(start_time);
     return kSuccess;
   }
 }
 
 int V8Worker::SendDelete(std::string meta) {
+  Time::time_point start_time = Time::now();
+
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
 
   if (on_delete_.IsEmpty()) {
+    UpdateHistogram(start_time);
     return kOnDeleteCallFail;
   }
 
@@ -669,38 +686,62 @@ int V8Worker::SendDelete(std::string meta) {
     if (try_catch.HasCaught()) {
       LOG(logError) << "Exception message"
                     << ExceptionString(GetIsolate(), &try_catch) << '\n';
+      UpdateHistogram(start_time);
       return kOnDeleteCallFail;
     }
 
+    UpdateHistogram(start_time);
     return kSuccess;
   }
 }
 
-void V8Worker::SendNonDocTimer(std::string doc_ids_cb_fns) {
-  std::vector<std::string> entries = split(doc_ids_cb_fns, ';');
-  char tstamp[BUFSIZE], fn[BUFSIZE];
+void V8Worker::SendCronTimer(std::string cron_cb_fns) {
+  /*
+   {"cron_timers":[
+                   {"callback_func":"timerCallback1", "payload": "doc_id1"},
+                   {"callback_func":"timerCallback2", "payload": "doc_id2"},
+                   ...
+                  ]
+    ,"version":"vulcan"}
+ */
+  LOG(logTrace) << "cron timers: " << cron_cb_fns << '\n';
 
-  if (entries.size() > 0) {
-    v8::Locker locker(GetIsolate());
-    v8::Isolate::Scope isolate_scope(GetIsolate());
-    v8::HandleScope handle_scope(GetIsolate());
+  v8::Locker locker(GetIsolate());
+  v8::Isolate::Scope isolate_scope(GetIsolate());
+  v8::HandleScope handle_scope(GetIsolate());
 
-    auto context = context_.Get(isolate_);
-    v8::Context::Scope context_scope(context);
+  auto context = context_.Get(isolate_);
+  v8::Context::Scope context_scope(context);
 
-    for (auto entry : entries) {
-      if (entry.length() > 0) {
-        sscanf(entry.c_str(),
-               "{\"callback_func\": \"%[^\"]\", \"start_ts\": \"%[^\"]\"}", fn,
-               tstamp);
-        LOG(logTrace) << "Non doc timer event for callback_fn: " << fn
-                      << " tstamp: " << tstamp << '\n';
+  auto data = v8::JSON::Parse(v8Str(GetIsolate(), cron_cb_fns.c_str()));
 
-        v8::Handle<v8::Value> val =
-            context->Global()->Get(v8Str(GetIsolate(), fn));
-        v8::Handle<v8::Function> cb_func = v8::Handle<v8::Function>::Cast(val);
+  auto params = data->ToObject(context).ToLocalChecked();
+  auto cron_timers = v8Str(GetIsolate(), "cron_timers");
+
+  auto cron_timer_entries = params->Get(cron_timers);
+
+  if (cron_timer_entries->IsArray()) {
+
+    auto entries = cron_timer_entries->ToObject(context).ToLocalChecked();
+    auto entries_arr = entries.As<v8::Array>();
+
+    auto callback_fn = v8Str(GetIsolate(), "callback_func");
+    auto payload = v8Str(GetIsolate(), "payload");
+
+    for (int i = 0; i < static_cast<int>(entries_arr->Length()); i++) {
+      auto entry = entries_arr->Get(i).As<v8::Object>();
+
+      auto cb_fn = entry->Get(callback_fn);
+      auto opaque = entry->Get(payload);
+
+      if (cb_fn->IsString() && opaque->IsString()) {
+        v8::String::Utf8Value fn(cb_fn);
+
+        auto fn_value = context->Global()->Get(v8Str(GetIsolate(), *fn));
+        auto fn_handle = v8::Handle<v8::Function>::Cast(fn_value);
 
         v8::Handle<v8::Value> arg[1];
+        arg[0] = opaque;
 
         if (debugger_started) {
           if (!agent->IsStarted()) {
@@ -708,13 +749,13 @@ void V8Worker::SendNonDocTimer(std::string doc_ids_cb_fns) {
           }
 
           agent->PauseOnNextJavascriptStatement("Break on start");
-          if (DebugExecute(fn, arg, 0)) {
+          if (DebugExecute(*fn, arg, 1)) {
             return;
           }
         } else {
           execute_flag = true;
           execute_start_time = Time::now();
-          cb_func->Call(context->Global(), 0, arg);
+          fn_handle->Call(context->Global(), 1, arg);
           execute_flag = false;
         }
       }

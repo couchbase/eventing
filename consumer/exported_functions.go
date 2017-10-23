@@ -16,7 +16,11 @@ func (c *Consumer) ClearEventStats() {
 	c.Lock()
 	c.dcpMessagesProcessed = make(map[mcd.CommandCode]uint64)
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
-	c.timerMessagesProcessed = 0
+	c.doctimerMessagesProcessed = 0
+	c.crontimerMessagesProcessed = 0
+	c.plasmaDeleteCounter = 0
+	c.plasmaInsertCounter = 0
+	c.plasmaLookupCounter = 0
 	c.Unlock()
 }
 
@@ -37,7 +41,14 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	for opcode, value := range c.dcpMessagesProcessed {
 		stats[mcd.CommandNames[opcode]] = value
 	}
-	stats["TIMER_EVENTS"] = c.timerMessagesProcessed
+	if c.doctimerMessagesProcessed > 0 {
+		stats["DOC_TIMER_EVENTS"] = c.doctimerMessagesProcessed
+	}
+
+	if c.crontimerMessagesProcessed > 0 {
+		stats["CRON_TIMER_EVENTS"] = c.crontimerMessagesProcessed
+	}
+
 	c.RUnlock()
 
 	return stats
@@ -120,4 +131,10 @@ func (c *Consumer) TimerTransferHostPortAddr() string {
 // updated list of node uuids
 func (c *Consumer) UpdateEventingNodesUUIDs(uuids []string) {
 	c.eventingNodeUUIDs = uuids
+}
+
+// GetLatencyStats returns latency stats for event handlers from from cpp world
+func (c *Consumer) GetLatencyStats() map[string]uint64 {
+	c.sendGetLatencyStats(false)
+	return c.latencyStats
 }

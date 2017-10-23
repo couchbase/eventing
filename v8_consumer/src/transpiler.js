@@ -22,7 +22,7 @@ function jsFormat(code) {
 }
 
 function isTimerCalled(code) {
-    return isFuncCalled('docTimer', code) || isFuncCalled('nonDocTimer', code);
+    return isFuncCalled('docTimer', code) || isFuncCalled('cronTimer', code);
 }
 
 function getSourceMap(code, sourceFileName) {

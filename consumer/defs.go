@@ -149,9 +149,9 @@ type v8InitMeta struct {
 
 type dcpMetadata struct {
 	Cas     uint64 `json:"cas"`
-	DocID   string `json:"docid"`
-	Expiry  uint32 `json:"expiry"`
-	Flag    uint32 `json:"flag"`
+	DocID   string `json:"id"`
+	Expiry  uint32 `json:"expiration"`
+	Flag    uint32 `json:"flags"`
 	Vbucket uint16 `json:"vb"`
 	SeqNo   uint64 `json:"seq"`
 }
@@ -188,6 +188,7 @@ type Consumer struct {
 	isRebalanceOngoing     bool
 	ipcType                string                        // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
+	latencyStats           map[string]uint64
 	hostDcpFeedRWMutex     *sync.RWMutex
 	kvVbMap                map[uint16]string // Access controlled by default lock
 	logLevel               string
@@ -207,7 +208,7 @@ type Consumer struct {
 	lcbInstCapacity int
 
 	docTimerEntryCh    chan *byTimerEntry
-	nonDocTimerEntryCh chan string
+	nonDocTimerEntryCh chan timerMsg
 	// Plasma DGM store handle to store timer entries at per vbucket level
 	persistAllTicker    *time.Ticker
 	stopPlasmaPersistCh chan struct{}
@@ -329,8 +330,13 @@ type Consumer struct {
 	// Tracks V8 Opcodes processed per consumer
 	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by default lock
 
-	timerMessagesProcessed     uint64
+	doctimerMessagesProcessed  uint64
+	crontimerMessagesProcessed uint64
 	timerMessagesProcessedPSec int
+
+	plasmaInsertCounter uint64
+	plasmaDeleteCounter uint64
+	plasmaLookupCounter uint64
 
 	// capture dcp operation stats, granularity of these stats depend on statsTickInterval
 	dcpOpsProcessed     uint64
@@ -423,4 +429,19 @@ type OwnershipEntry struct {
 	CurrentVBOwner string `json:"current_vb_owner"`
 	Operation      string `json:"operation"`
 	Timestamp      string `json:"timestamp"`
+}
+
+type cronTimerEntry struct {
+	CallbackFunc string `json:"callback_func"`
+	Payload      string `json:"payload"`
+}
+
+type cronTimer struct {
+	CronTimers []cronTimerEntry `json:"cron_timers"`
+	Version    string           `json:"version"`
+}
+
+type timerMsg struct {
+	payload  string
+	msgCount int
 }

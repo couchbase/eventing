@@ -83,6 +83,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getEventProcessingStats", m.getEventProcessingStats)
 	http.HandleFunc("/getEventsPSec", m.getEventsProcessedPSec)
 	http.HandleFunc("/getDeployedApps", m.getDeployedApps)
+	http.HandleFunc("/getLatencyStats", m.getLatencyStats)
 	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
 	http.HandleFunc("/getSeqsProcessed", m.getSeqsProcessed)
 	http.HandleFunc("/saveAppTempStore/", m.saveAppSetup)

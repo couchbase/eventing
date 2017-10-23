@@ -216,6 +216,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 			// For memory management
 			r.c.plasmaReaderRWMutex.RLock()
 			token := r.c.vbPlasmaReader[vb].BeginTx()
+			r.c.plasmaLookupCounter++
 			v, err := r.c.vbPlasmaReader[vb].LookupKV([]byte(byTimerKey))
 			r.c.vbPlasmaReader[vb].EndTx(token)
 			r.c.plasmaReaderRWMutex.RUnlock()
@@ -293,6 +294,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d timerEvents: %v",
 				r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, string(v))
 
+			// TODO: Update the last processed doc id timer, as eventing could crash in between
 			timerEvents := strings.Split(string(v), ",{")
 
 			r.c.processTimerEvent(currTimer, timerEvents[0], vb, false)
@@ -316,8 +318,6 @@ func (r *timerProcessingWorker) processTimerEvents() {
 				logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d key: %v Failed to delete from byTimer plasma handle, err: %v",
 					r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, byTimerKey, err)
 			}
-
-			r.c.updateTimerStats(vb)
 		}
 	}
 }
@@ -333,6 +333,7 @@ func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateS
 
 		key := fmt.Sprintf("vb_%v::%v::%v::%v::%v", vb, c.app.AppName, currTimer, timer.CallbackFn, timer.DocID)
 		c.plasmaReaderRWMutex.RLock()
+		c.plasmaDeleteCounter++
 		err = c.vbPlasmaReader[vb].DeleteKV([]byte(key))
 		c.plasmaReaderRWMutex.RUnlock()
 		if err != nil {
@@ -381,7 +382,7 @@ func (c *Consumer) processNonDocTimerEvents() {
 			return
 
 		case <-c.nonDocTimerProcessingTicker.C:
-			var val []byte
+			var val cronTimer
 			var isNoEnt bool
 
 			vbsOwned := c.getVbsOwned()
@@ -400,12 +401,17 @@ func (c *Consumer) processNonDocTimerEvents() {
 					continue
 				}
 
-				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getNonDocTimerCallback, c, currTimer, &val, true, &isNoEnt)
+				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getCronTimerCallback, c, currTimer, &val, true, &isNoEnt)
 
 				if !isNoEnt {
-					logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Non doc timer key: %v val: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, string(val))
-					c.nonDocTimerEntryCh <- string(val)
+					logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val)
+					data, err := json.Marshal(&val)
+					if err != nil {
+						logging.Errorf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v, err: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val, err)
+					}
+					c.nonDocTimerEntryCh <- timerMsg{payload: string(data), msgCount: len(val.CronTimers)}
 					c.gocbMetaBucket.Remove(currTimer, 0)
 				}
 				c.updateNonDocTimerStats(vb)
@@ -506,6 +512,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 		timersToKeep = append(timersToKeep, timer)
 
+		// Sample timer key: vb_<vb_no>::<app_name>::<timestamp in GMT>::<callback_func>::<doc_id>
 		timerKey := fmt.Sprintf("vb_%v::%v::%v", vb, timer, key)
 
 		logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v doc-id timerKey: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerKey)
@@ -517,8 +524,10 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 		if err == plasma.ErrItemNotFound {
 
+			c.plasmaInsertCounter++
 			util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c, plasmaWriterHandle, timerKey, "", vb)
 
+			// Sample timer: <app_name>::<timestamp in GMT>::<callback_func>::<doc_id>
 			timerData := strings.Split(timer, "::")
 			ts, cbFunc := timerData[1], timerData[2]
 			byTimerKey := fmt.Sprintf("vb_%v::%s::%s", vb, c.app.AppName, ts)
