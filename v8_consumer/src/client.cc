@@ -14,12 +14,21 @@ int messages_processed(0);
 std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
   auto header = flatbuf::header::GetHeader(parsed_message->header.c_str());
 
-  std::unique_ptr<header_t> parsed_header(new header_t);
-  parsed_header->event = header->event();
-  parsed_header->opcode = header->opcode();
-  parsed_header->partition = header->partition();
+  auto verifier = flatbuffers::Verifier(
+      reinterpret_cast<const uint8_t *>(parsed_message->header.c_str()),
+      parsed_message->header.size());
 
-  parsed_header->metadata = header->metadata()->str();
+  bool ok = header->Verify(verifier);
+
+  std::unique_ptr<header_t> parsed_header(new header_t);
+
+  if (ok) {
+    parsed_header->event = header->event();
+    parsed_header->opcode = header->opcode();
+    parsed_header->partition = header->partition();
+
+    parsed_header->metadata = header->metadata()->str();
+  }
 
   return parsed_header;
 }
@@ -31,6 +40,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   server_settings_t *server_settings;
   handler_config_t *handler_config;
 
+  int worker_index;
   int64_t latency_buckets;
   std::vector<int64_t> agg_hgram, worker_hgram;
   std::ostringstream lstats;
@@ -38,6 +48,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   const flatbuf::payload::Payload *payload;
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
       *thr_map;
+
+  LOG(logError) << "Event: " << static_cast<int16_t>(parsed_header->event)
+                << " Opcode: " << static_cast<int16_t>(parsed_header->opcode)
+                << '\n';
 
   switch (getEvent(parsed_header->event)) {
   case eV8_Worker:
@@ -75,8 +89,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       for (int16_t i = 0; i < thr_count; i++) {
         V8Worker *w = new V8Worker(platform, handler_config, server_settings);
 
-        LOG(logDebug) << "Init index: " << i << " V8Worker: " << w << '\n';
-        this->workers[i] = w;
+        LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << '\n';
+        workers[i] = w;
       }
 
       delete handler_config;
@@ -86,29 +100,29 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oLoad:
       LOG(logDebug) << "Loading app code:" << parsed_header->metadata << '\n';
       for (int16_t i = 0; i < thr_count; i++) {
-        this->workers[i]->V8WorkerLoad(parsed_header->metadata);
+        workers[i]->V8WorkerLoad(parsed_header->metadata);
 
-        LOG(logDebug) << "Load index: " << i
-                      << " V8Worker: " << this->workers[i] << '\n';
+        LOG(logInfo) << "Load index: " << i << " V8Worker: " << workers[i]
+                     << '\n';
       }
       msg_priority = true;
       break;
     case oTerminate:
       break;
     case oGetSourceMap:
-      resp_msg->msg = this->workers[0]->source_map_;
+      resp_msg->msg = workers[0]->source_map_;
       resp_msg->msg_type = mV8_Worker_Config;
       resp_msg->opcode = oSourceMap;
       msg_priority = true;
       break;
     case oGetHandlerCode:
-      resp_msg->msg = this->workers[0]->handler_code_;
+      resp_msg->msg = workers[0]->handler_code_;
       resp_msg->msg_type = mV8_Worker_Config;
       resp_msg->opcode = oHandlerCode;
       msg_priority = true;
       break;
     case oGetLatencyStats:
-      latency_buckets = this->workers[0]->histogram->Buckets();
+      latency_buckets = workers[0]->histogram->Buckets();
       agg_hgram.assign(latency_buckets, 0);
       for (const auto &w : workers) {
         worker_hgram = w.second->histogram->Hgram();
@@ -136,6 +150,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
         }
       }
       resp_msg->msg.assign(lstats.str());
+      LOG(logInfo) << "Latency stats dump - " << resp_msg->msg << '\n';
       resp_msg->msg_type = mV8_Worker_Config;
       resp_msg->opcode = oLatencyStats;
       msg_priority = true;
@@ -153,12 +168,16 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
     switch (getDCPOpcode(parsed_header->opcode)) {
     case oDelete:
-      workers[partition_thr_map[parsed_header->partition]]->Enqueue(
-          parsed_header, parsed_message);
+      worker_index = partition_thr_map[parsed_header->partition];
+      if (workers[worker_index] != nullptr) {
+        workers[worker_index]->Enqueue(parsed_header, parsed_message);
+      }
       break;
     case oMutation:
-      workers[partition_thr_map[parsed_header->partition]]->Enqueue(
-          parsed_header, parsed_message);
+      worker_index = partition_thr_map[parsed_header->partition];
+      if (workers[worker_index] != nullptr) {
+        workers[worker_index]->Enqueue(parsed_header, parsed_message);
+      }
       break;
     default:
       LOG(logError) << "dcp_opcode_unknown encountered" << '\n';
@@ -168,12 +187,16 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   case eTimer:
     switch (getTimerOpcode(parsed_header->opcode)) {
     case oDocTimer:
-      workers[partition_thr_map[parsed_header->partition]]->Enqueue(
-          parsed_header, parsed_message);
+      worker_index = partition_thr_map[parsed_header->partition];
+      if (workers[worker_index] != nullptr) {
+        workers[worker_index]->Enqueue(parsed_header, parsed_message);
+      }
       break;
     case oCronTimer:
-      workers[partition_thr_map[parsed_header->partition]]->Enqueue(
-          parsed_header, parsed_message);
+      worker_index = partition_thr_map[parsed_header->partition];
+      if (workers[worker_index] != nullptr) {
+        workers[worker_index]->Enqueue(parsed_header, parsed_message);
+      }
       break;
     default:
       break;
@@ -228,14 +251,18 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   case eDebugger:
     switch (getDebuggerOpcode(parsed_header->opcode)) {
     case oDebuggerStart:
-      workers[partition_thr_map[parsed_header->partition]]->Enqueue(
-          parsed_header, parsed_message);
-      msg_priority = true;
+      worker_index = partition_thr_map[parsed_header->partition];
+      if (workers[worker_index] != nullptr) {
+        workers[worker_index]->Enqueue(parsed_header, parsed_message);
+        msg_priority = true;
+      }
       break;
     case oDebuggerStop:
-      workers[partition_thr_map[parsed_header->partition]]->Enqueue(
-          parsed_header, parsed_message);
-      msg_priority = true;
+      worker_index = partition_thr_map[parsed_header->partition];
+      if (workers[worker_index] != nullptr) {
+        workers[worker_index]->Enqueue(parsed_header, parsed_message);
+        msg_priority = true;
+      }
       break;
     default:
       break;
@@ -282,9 +309,9 @@ void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
                         std::string uds_sock_path) {
   uv_pipe_init(&main_loop, &uds_sock, 0);
 
-  this->app_name = appname;
-  this->batch_size = batch_size;
-  this->messages_processed_counter = 0;
+  app_name = appname;
+  batch_size = batch_size;
+  messages_processed_counter = 0;
 
   LOG(logInfo) << "Starting worker with uds for appname:" << appname
                << " worker_id:" << worker_id << " batch_size:" << batch_size
@@ -307,9 +334,9 @@ void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
   uv_tcp_init(&main_loop, &tcp_sock);
   uv_ip4_addr(addr.c_str(), port, &server_sock);
 
-  this->app_name = appname;
-  this->batch_size = batch_size;
-  this->messages_processed_counter = 0;
+  app_name = appname;
+  batch_size = batch_size;
+  messages_processed_counter = 0;
 
   LOG(logInfo) << "Starting worker for appname:" << appname
                << " worker_id:" << worker_id << " batch_size:" << batch_size
@@ -405,10 +432,9 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
           header_t *pheader = parsed_header.release();
           RouteMessageWithResponse(pheader, pmessage);
 
-          this->messages_processed_counter++;
+          messages_processed_counter++;
 
-          if (this->messages_processed_counter >= this->batch_size ||
-              msg_priority) {
+          if (messages_processed_counter >= batch_size || msg_priority) {
 
             // Reset the message priority flag
             msg_priority = false;
@@ -429,8 +455,6 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
               int s = builder.GetSize();
               char *size = (char *)&s;
 
-              // TODO: use unique_ptr for write_req
-              // Write size of payload to socket
               write_req_t *req_size = new (write_req_t);
               req_size->buf = uv_buf_init(size, sizeof(uint32_t));
               uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
@@ -476,7 +500,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
                        AppWorker::GetAppWorker()->OnWrite(req_msg, status);
                      });
 
-            this->messages_processed_counter = 0;
+            messages_processed_counter = 0;
           }
         }
       }

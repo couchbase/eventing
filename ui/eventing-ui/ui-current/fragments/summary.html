@@ -1,5 +1,5 @@
 <!--This is the summary page-->
-<div ng-if="summaryCtrl.serverNodes.length">
+<div ng-if="summaryCtrl.isEventingRunning">
   <div ng-if="!summaryCtrl.errorState">
     <mn-element-cargo depot="alerts">
       <div ng-show="summaryCtrl.showSuccessAlert">
@@ -84,7 +84,13 @@
     <p>Something went wrong with the Eventing service.</p>
   </div>
 </div>
-<div ng-if="summaryCtrl.serverNodes.length === 0">
+<div ng-if="!summaryCtrl.isEventingRunning">
   <p>The Eventing interface is only available on Couchbase nodes running the Eventing service.</p>
-  <p class="error">No Eventing nodes were found on this cluster.</p>
+  <p ng-if="summaryCtrl.serverNodes.length === 0" class="error">No Eventing nodes were found on this cluster.</p>
+  <div ng-if="summaryCtrl.serverNodes.length">
+    <p>The Eventing service was found on the following nodes:</p>
+    <ul class="nobullet">
+      <li ng-repeat="url in summaryCtrl.serverNodes"><a href="{{url}}">{{url}}</a></li>
+    </ul>
+  </div>
 </div>

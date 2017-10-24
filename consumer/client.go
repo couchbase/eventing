@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"time"
 
 	"github.com/couchbase/eventing/logging"
 )
@@ -37,23 +36,17 @@ func (c *client) Serve() {
 
 	c.cmd.Wait()
 
-	// Signal shutdown of consumer doDCPProcessEvents and checkpointing routine
-	// c.consumerHandle.gracefulShutdownChan <- struct{}{}
-	// c.consumerHandle.stopCheckpointingCh <- struct{}{}
-
-	// Allow additional time for processEvents and checkpointing routine to exit,
-	// else there could be race. Currently set twice the socket read deadline
-	time.Sleep(2 * c.consumerHandle.socketTimeout)
-
 	logging.Debugf("CRCL[%s:%s:%s:%d] Exiting c++ worker init routine",
 		c.appName, c.workerName, c.tcpPort, c.osPid)
+
+	c.consumerHandle.connMutex.Lock()
+	defer c.consumerHandle.connMutex.Unlock()
+	c.consumerHandle.conn.Close()
+	c.consumerHandle.conn = nil
 }
 
 func (c *client) Stop() {
 	logging.Debugf("CRCL[%s:%s:%s:%d] Exiting c++ worker", c.appName, c.workerName, c.tcpPort, c.osPid)
-
-	c.consumerHandle.gracefulShutdownChan <- struct{}{}
-	c.consumerHandle.stopCheckpointingCh <- struct{}{}
 
 	if c.osPid > 1 {
 		ps, err := os.FindProcess(c.osPid)

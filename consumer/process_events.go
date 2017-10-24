@@ -354,11 +354,7 @@ func (c *Consumer) processEvents() {
 
 			logging.Errorf("CRDP[%s:%s:%s:%d] Socket belonging to V8 consumer died",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
-			c.stopCheckpointingCh <- struct{}{}
 			c.producer.CleanupDeadConsumer(c)
-			return
-
-		case <-c.gracefulShutdownChan:
 			return
 		}
 	}

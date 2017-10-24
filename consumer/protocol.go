@@ -136,6 +136,8 @@ func makeThrMapHeader() []byte {
 }
 
 func makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte) {
+	logging.Infof("makeHeader event: %v opcode: %v", event, opcode)
+
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
 	metadata := builder.CreateString(meta)
@@ -307,7 +309,7 @@ func (c *Consumer) parseWorkerResponse(m []byte, start int) {
 	if len(msg) > headerFragmentSize {
 		size := binary.LittleEndian.Uint32(msg[0:headerFragmentSize])
 
-		if len(msg) >= int(headerFragmentSize+size) {
+		if len(msg) >= int(headerFragmentSize+size) && size > 0 {
 
 			r := response.GetRootAsResponse(msg[headerFragmentSize:headerFragmentSize+size], 0)
 

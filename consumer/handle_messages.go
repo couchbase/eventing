@@ -186,9 +186,7 @@ func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 		Payload: timerPayload,
 	}
 
-	if err := c.sendMessage(msg, 0, 0, false, sendToDebugger, false); err != nil {
-		return
-	}
+	util.Retry(util.NewFixedBackoff(5*time.Second), sendMsgCallback, c, msg, uint16(0), uint64(0), false, sendToDebugger, false)
 }
 
 func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
@@ -201,9 +199,7 @@ func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
 		Payload: timerPayload,
 	}
 
-	if err := c.sendMessage(msg, 0, 0, false, sendToDebugger, false); err != nil {
-		return
-	}
+	util.Retry(util.NewFixedBackoff(5*time.Second), sendMsgCallback, c, msg, uint16(0), uint64(0), false, sendToDebugger, false)
 }
 
 func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
@@ -249,10 +245,20 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 		Payload: dcpPayload,
 	}
 
-	if err := c.sendMessage(msg, e.VBucket, e.Seqno, true, sendToDebugger, false); err != nil {
-		return
-	}
+	util.Retry(util.NewFixedBackoff(5*time.Second), sendMsgCallback, c, msg, e.VBucket, e.Seqno, true, sendToDebugger, false)
+}
 
+var sendMsgCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+	msg := args[1].(*message)
+	vb := args[2].(uint16)
+	seqno := args[3].(uint64)
+	shouldCheckpoint := args[4].(bool)
+	sendToDebugger := args[5].(bool)
+	prioritise := args[6].(bool)
+
+	err := c.sendMessage(msg, vb, seqno, shouldCheckpoint, sendToDebugger, prioritise)
+	return err
 }
 
 func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldCheckpoint bool, sendToDebugger bool, prioritise bool) error {
@@ -304,21 +310,19 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 	}
 
 	if c.sendMsgCounter >= c.socketWriteBatchSize || prioritise {
+		c.connMutex.Lock()
+		defer c.connMutex.Unlock()
 
-		if !sendToDebugger {
+		if !sendToDebugger && c.conn != nil {
 			c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
 
 			err = binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
 			if err != nil {
 				logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-				c.stopConsumerCh <- struct{}{}
-				c.stopCheckpointingCh <- struct{}{}
-				c.gracefulShutdownChan <- struct{}{}
-				c.conn.Close()
 				return err
 			}
-		} else {
+		} else if c.debugConn != nil {
 			err = binary.Write(c.debugConn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
 			if err != nil {
 				logging.Errorf("CRHM[%s:%s:%s:%d] Write to debug enabled worker socket failed, err: %v",
@@ -327,7 +331,6 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 				return err
 			}
 			c.sendMsgToDebugger = false
-
 		}
 
 		// Reset the sendMessage buffer and message counter
@@ -335,10 +338,12 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 		c.sendMsgCounter = 0
 
 		var err error
-		if !sendToDebugger {
+		if !sendToDebugger && c.conn != nil {
 			if err = c.readMessage(sendToDebugger); err != nil {
-				c.stopCheckpointingCh <- struct{}{}
-				c.gracefulShutdownChan <- struct{}{}
+				logging.Errorf("CRHM[%s:%s:%s:%d] Read message: Closing conn: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.conn)
+				c.client.Stop()
+				return err
 			}
 		} else {
 			err = c.readMessage(sendToDebugger)
@@ -368,16 +373,13 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 }
 
 func (c *Consumer) readMessage(readFromDebugger bool) error {
-	if !readFromDebugger {
+	if !readFromDebugger && c.conn != nil {
 		c.conn.SetReadDeadline(time.Now().Add(c.socketTimeout))
 
 		msg, err := bufio.NewReader(c.conn).ReadBytes('\r')
 		if err != nil {
 			logging.Errorf("CRHM[%s:%s:%s:%d] Read from client socket failed, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-
-			c.stopConsumerCh <- struct{}{}
-			c.conn.Close()
 		} else {
 			if len(msg) > 1 {
 				c.parseWorkerResponse(msg[:len(msg)-1], 0)
@@ -386,15 +388,19 @@ func (c *Consumer) readMessage(readFromDebugger bool) error {
 		return err
 	}
 
-	msg, err := bufio.NewReader(c.debugConn).ReadBytes('\r')
-	if err != nil {
-		logging.Errorf("CRHM[%s:%s:%s:%d] Read from debug enabled worker socket failed, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-		c.sendMsgToDebugger = false
-	} else {
-		if len(msg) > 1 {
-			c.parseWorkerResponse(msg[:len(msg)-1], 0)
+	if c.debugConn != nil {
+		msg, err := bufio.NewReader(c.debugConn).ReadBytes('\r')
+		if err != nil {
+			logging.Errorf("CRHM[%s:%s:%s:%d] Read from debug enabled worker socket failed, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+			c.sendMsgToDebugger = false
+		} else {
+			if len(msg) > 1 {
+				c.parseWorkerResponse(msg[:len(msg)-1], 0)
+			}
 		}
+		return err
 	}
-	return err
+
+	return nil
 }
