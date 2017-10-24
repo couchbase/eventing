@@ -64,7 +64,7 @@ warmed="never"
 echo "</pre><h4>Integration tests</h4><pre>"
 export phase=integration
 cd $WORKSPACE/testrunner
-(timeout 1h make test-functions-sanity-tests 2>&1 | ts) | tee -a $WORKSPACE/test.log
+(timeout 1h make test-eventing-sanity-tests 2>&1 | ts) | tee -a $WORKSPACE/test.log
 collect_logs
 
 # Test the base
