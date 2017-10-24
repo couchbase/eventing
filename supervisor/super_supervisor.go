@@ -172,6 +172,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)
 				}
 				s.appStatus[appName] = false
+
+				delete(s.runningProducers, appName)
 			}
 
 		case false:

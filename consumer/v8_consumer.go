@@ -173,6 +173,9 @@ func (c *Consumer) Serve() {
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName, c.eventingAdminPort)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
+	currTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Format(time.RFC3339))
+	nextTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Add(time.Second).Format(time.RFC3339))
+
 	c.startDcp(dcpConfig, flogs)
 
 	// Initialises timer processing worker instances
@@ -184,7 +187,7 @@ func (c *Consumer) Serve() {
 	}
 
 	// non doc_id timer events
-	go c.processNonDocTimerEvents()
+	go c.processNonDocTimerEvents(currTimer, nextTimer, true)
 
 	// V8 Debugger polling routine
 	go c.pollForDebuggerStart()
@@ -262,16 +265,11 @@ func (c *Consumer) Stop() {
 	c.restartVbDcpStreamTicker.Stop()
 	c.statsTicker.Stop()
 
-	c.conn.Close()
-	if c.debugClient != nil {
-		c.debugConn.Close()
-		c.debugListener.Close()
-	}
-
 	for k := range c.timerProcessingWorkerSignalCh {
 		k.stopCh <- struct{}{}
 	}
 
+	c.stopCheckpointingCh <- struct{}{}
 	c.nonDocTimerStopCh <- struct{}{}
 	c.stopControlRoutineCh <- struct{}{}
 	c.stopConsumerCh <- struct{}{}
@@ -286,6 +284,12 @@ func (c *Consumer) Stop() {
 	}
 
 	close(c.aggDCPFeed)
+
+	c.conn.Close()
+	if c.debugClient != nil {
+		c.debugConn.Close()
+		c.debugListener.Close()
+	}
 }
 
 // Implement fmt.Stringer interface to allow better debugging

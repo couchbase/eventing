@@ -275,11 +275,8 @@ func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateS
 	}
 }
 
-func (c *Consumer) processNonDocTimerEvents() {
+func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string, bootstrap bool) {
 	c.nonDocTimerProcessingTicker = time.NewTicker(c.timerProcessingTickInterval)
-
-	currTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Format(time.RFC3339))
-	nextTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Add(time.Second).Format(time.RFC3339))
 
 	vbsOwned := c.getVbsOwned()
 
@@ -291,14 +288,14 @@ func (c *Consumer) processNonDocTimerEvents() {
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-		if vbBlob.CurrentProcessedDocIDTimer == "" {
-			c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", currTimer)
+		if vbBlob.CurrentProcessedDocIDTimer == "" && bootstrap {
+			c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", cTimer)
 		} else {
 			c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", vbBlob.CurrentProcessedNonDocTimer)
 		}
 
-		if vbBlob.NextDocIDTimerToProcess == "" {
-			c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", nextTimer)
+		if vbBlob.NextDocIDTimerToProcess == "" && bootstrap {
+			c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", nTimer)
 		} else {
 			c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", vbBlob.NextNonDocTimerToProcess)
 		}
