@@ -54,15 +54,21 @@
           </div>
         </div>
         <br/>
+        <!--Function name-->
         <div class="formrow">
           <label>Name</label>
           <span class="input-append">
           <input type="text" name="appname" ng-disabled="!formCtrl.isDialog"
             ng-model="appModel.appname" required/>
           </span>
+          <!--Function name errors-->
           <div class="error field-error"
             ng-show="formCtrl.createAppForm.appname.$error.required && formCtrl.createAppForm.appname.$dirty">
             Name cannot be empty
+          </div>
+          <div class="error field-error"
+            ng-show="formCtrl.createAppForm.appname.$error.appExists">
+            Function already exists
           </div>
         </div>
         <div class="formrow">

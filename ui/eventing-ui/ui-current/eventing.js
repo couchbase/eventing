@@ -239,6 +239,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                     // Getting the list of buckets from server.
                                     return ApplicationService.server.getLatestBuckets();
                                 }
+                            ],
+                            savedApps: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.tempStore.getAllApps();
+                                }
                             ]
                         }
                     }).result
@@ -328,13 +333,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for creating an application.
-    .controller('CreateCtrl', ['FormValidationService', 'bucketsResolve',
-        function(FormValidationService, bucketsResolve) {
+    .controller('CreateCtrl', ['FormValidationService', 'bucketsResolve', 'savedApps',
+        function(FormValidationService, bucketsResolve, savedApps) {
             var self = this;
             self.isDialog = true;
 
             self.sourceBuckets = bucketsResolve;
             self.metadataBuckets = bucketsResolve.reverse();
+            self.savedApps = savedApps.getApplications();
 
             self.bindings = [];
 
@@ -891,12 +897,18 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
                     }
 
+                    // Check whether the appname exists in the list of apps.
+                    if (form.appname.$viewValue) {
+                        form.appname.$error.appExists = form.appname.$viewValue in formCtrl.savedApps;
+                    }
+
                     // Need to check where rbacpass is empty manually and update state.
                     // Don't know why AngularJS is giving wrong state for this field.
                     // Disabling this field as it may be deprecated.
                     form.rbacpass.$error.required = form.rbacpass.$modelValue === '';
 
                     return form.appname.$error.required ||
+                        form.appname.$error.appExists ||
                         // Disabling RBAC username and password checks.
                         form.rbacuser.$error.required ||
                         form.rbacpass.$error.required ||
