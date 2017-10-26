@@ -4,7 +4,12 @@
     <mn-element-cargo depot="alerts">
       <div ng-show="summaryCtrl.showSuccessAlert">
         <div class="alert alert-success">
-          <p>{{summaryCtrl.alertMessage}}</p>
+          <p>{{summaryCtrl.successMessage}}</p>
+        </div>
+      </div>
+      <div ng-show="summaryCtrl.showErrorAlert">
+        <div class="alert alert-error">
+          <p>{{summaryCtrl.errorMessage}}</p>
         </div>
       </div>
     </mn-element-cargo>
