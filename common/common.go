@@ -24,6 +24,14 @@ type TopologyChangeMsg struct {
 	CType ChangeType
 }
 
+const (
+	AppState int8 = iota
+	AppStateUndeployed
+	AppStateEnabled
+	AppStateDisabled
+	AppStateUnexpected
+)
+
 // EventingProducer interface to export functions from eventing_producer
 type EventingProducer interface {
 	Auth() string
@@ -49,6 +57,7 @@ type EventingProducer interface {
 	NotifyTopologyChange(msg *TopologyChangeMsg)
 	NsServerHostPort() string
 	NsServerNodeCount() int
+	PauseProducer()
 	RbacUser() string
 	RbacPass() string
 	SignalBootstrapFinish()
@@ -57,6 +66,7 @@ type EventingProducer interface {
 	SignalStopDebugger()
 	Serve()
 	Stop()
+	StopProducer()
 	String() string
 	TimerTransferHostPortAddrs() map[string]string
 	VbEventingNodeAssignMap() map[uint16]string
@@ -103,6 +113,7 @@ type EventingSuperSup interface {
 	DeployedAppList() []string
 	GetEventProcessingStats(appName string) map[string]uint64
 	GetAppCode(appName string) string
+	GetAppState(appName string) int8
 	GetDebuggerURL(appName string) string
 	GetDeployedApps() map[string]string
 	GetHandlerCode(appName string) string

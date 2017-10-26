@@ -189,7 +189,7 @@ func (p *Producer) SignalCheckpointBlobCleanup() {
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, dInstAddrKey)
 
 	logging.Infof("PRDR[%s:%d] Purged all owned checkpoint & debugger blobs from metadata bucket: %s",
-		p.appName, p.LenRunningConsumers(), p.metadataBucketHandle.Name)
+		p.appName, p.LenRunningConsumers(), p.metadataBucketHandle.Name())
 }
 
 // VbEventingNodeAssignMap returns the vbucket to evening node mapping
@@ -214,4 +214,16 @@ func (p *Producer) RbacUser() string {
 // RbacPass returns the rbac password supplied as part of app settings
 func (p *Producer) RbacPass() string {
 	return p.rbacPass
+}
+
+// PauseProducer pauses the execution of Eventing.Producer and corresponding Eventing.Consumer instances
+func (p *Producer) PauseProducer() {
+	p.pauseProducerCh <- struct{}{}
+}
+
+// StopProducer cleans up resource handles
+func (p *Producer) StopProducer() {
+	p.stopProducerCh <- struct{}{}
+	p.metadataBucketHandle.Close()
+	p.workerSupervisor.Stop()
 }

@@ -510,6 +510,39 @@ func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var settings map[string]interface{}
+	err = json.Unmarshal(data, &settings)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		fmt.Fprintf(w, "Failed to unmarshal setting supplied, err: %v", err)
+		return
+	}
+
+	deployedApps := m.superSup.GetDeployedApps()
+
+	processingStatus, pOk := settings["processing_status"].(bool)
+	deploymentStatus, dOk := settings["deployment_status"].(bool)
+
+	if pOk && dOk {
+		// Check for disable processing
+		if deploymentStatus == true && processingStatus == false {
+			if _, ok := deployedApps[appName]; !ok {
+				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotInit.Code))
+				fmt.Fprintf(w, "App: %v not bootstrapped, discarding request to disable processing for it", appName)
+				return
+			}
+		}
+
+		// Check for undeploy
+		if deploymentStatus == false && processingStatus == false {
+			if _, ok := deployedApps[appName]; !ok {
+				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotInit.Code))
+				fmt.Fprintf(w, "App: %v not bootstrapped, discarding request to undeploy it", appName)
+				return
+			}
+		}
+	}
+
 	err = util.MetakvSet(path, data, nil)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSetSettingsPs.Code))

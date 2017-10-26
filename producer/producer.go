@@ -31,10 +31,11 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 		kvPort:                 kvPort,
 		listenerHandles:        make([]net.Listener, 0),
 		metakvAppHostPortsPath: metakvAppHostPortsPath,
-		notifyInitCh:           make(chan struct{}, 1),
+		notifyInitCh:           make(chan struct{}, 2),
 		notifySettingsChangeCh: make(chan struct{}, 1),
 		notifySupervisorCh:     make(chan struct{}),
 		nsServerPort:           nsServerPort,
+		pauseProducerCh:        make(chan struct{}, 1),
 		persistAllTicker:       time.NewTicker(persistAllTickInterval),
 		signalStopPersistAllCh: make(chan struct{}, 1),
 		superSup:               superSup,
@@ -109,7 +110,11 @@ func (p *Producer) Serve() {
 	go p.persistPlasma()
 
 	p.bootstrapFinishCh <- struct{}{}
-	p.notifyInitCh <- struct{}{}
+
+	// Inserting twice because producer can be stopped either because of pause/undeploy
+	for i := 0; i < 2; i++ {
+		p.notifyInitCh <- struct{}{}
+	}
 
 	for {
 		select {
@@ -162,6 +167,33 @@ func (p *Producer) Serve() {
 			logLevel := settings["log_level"].(string)
 			logging.SetLogLevel(util.GetLogLevel(logLevel))
 
+		case <-p.pauseProducerCh:
+
+			// This routine cleans up everything apart from metadataBucketHandle,
+			// which would be needed to clean up metadata bucket
+			logging.Infof("PRDR[%s:%d] Pausing processing", p.appName, p.LenRunningConsumers())
+
+			for _, consumer := range p.runningConsumers {
+				p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[consumer])
+				delete(p.consumerSupervisorTokenMap, consumer)
+			}
+			p.runningConsumers = p.runningConsumers[:0]
+			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
+
+			for _, listener := range p.consumerListeners {
+				listener.Close()
+			}
+
+			p.consumerListeners = p.consumerListeners[:0]
+			for _, lHandle := range p.listenerHandles {
+				lHandle.Close()
+			}
+
+			p.signalStopPersistAllCh <- struct{}{}
+			p.ProducerListener.Close()
+
+			p.notifySupervisorCh <- struct{}{}
+
 		case <-p.stopProducerCh:
 			logging.Infof("PRDR[%s:%d] Explicitly asked to shutdown producer routine", p.appName, p.LenRunningConsumers())
 
@@ -194,6 +226,8 @@ func (p *Producer) Stop() {
 	p.stopProducerCh <- struct{}{}
 	p.signalStopPersistAllCh <- struct{}{}
 	p.ProducerListener.Close()
+
+	p.vbPlasmaStore.Close()
 }
 
 // Implement fmt.Stringer interface for better debugging in case
@@ -247,6 +281,8 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	}
 
+	logging.Infof("PRDR[%s:%d] Spawning consumer to listen on socket: %v", p.appName, p.LenRunningConsumers(), sockIdentifier)
+
 	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
 		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold, p.socketWriteBatchSize,
 		p.timerWorkerPoolSize, p.cppWorkerThrCount, p.vbOwnershipGiveUpRoutineCount,
@@ -271,6 +307,8 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 				logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.appName, p.LenRunningConsumers(), err)
 				return
 			}
+
+			logging.Infof("PRDR[%s:%d] Got request from cpp worker, conn: %v", p.appName, p.LenRunningConsumers(), conn)
 			c.SetConnHandle(conn)
 			c.SignalConnected()
 			c.HandleV8Worker()

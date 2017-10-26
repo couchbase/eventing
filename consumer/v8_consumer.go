@@ -285,7 +285,10 @@ func (c *Consumer) Stop() {
 
 	close(c.aggDCPFeed)
 
-	c.conn.Close()
+	if c.conn != nil {
+		c.conn.Close()
+	}
+
 	if c.debugClient != nil {
 		c.debugConn.Close()
 		c.debugListener.Close()

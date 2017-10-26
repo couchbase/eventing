@@ -46,6 +46,7 @@ type statusCodes struct {
 	errInvalidExt       statusBase
 	errGetVbSeqs        statusBase
 	errAppDeployed      statusBase
+	errAppNotInit       statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
@@ -71,6 +72,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errInvalidExt:       statusBase{"ERR_INVALID_EXT", 18},
 		errGetVbSeqs:        statusBase{"ERR_GET_VB_SEQS", 19},
 		errAppDeployed:      statusBase{"ERR_APP_ALREADY_DEPLOYED", 20},
+		errAppNotInit:       statusBase{"ERR_APP_NOT_BOOTSTRAPPED", 21},
 	}
 
 	errors := []errorPayload{
@@ -176,6 +178,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errAppDeployed.Name,
 			Code:        m.statusCodes.errAppDeployed.Code,
 			Description: "App is already deployed",
+		},
+		{
+			Name:        m.statusCodes.errAppNotInit.Name,
+			Code:        m.statusCodes.errAppNotInit.Code,
+			Description: "App hasn't bootstrapped",
 		},
 	}
 

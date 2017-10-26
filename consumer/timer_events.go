@@ -314,32 +314,35 @@ func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string, bootstrap boo
 			for _, vb := range vbsOwned {
 				currTimer := c.vbProcessingStats.getVbStat(vb, "currently_processed_non_doc_timer").(string)
 
-				cts := strings.Split(currTimer, "::")[1]
-				ts, err := time.Parse(tsLayout, cts)
-				if err != nil {
-					logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
-					continue
-				}
-
-				if ts.After(time.Now()) {
-					continue
-				}
-
-				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getCronTimerCallback, c, currTimer, &val, true, &isNoEnt)
-
-				if !isNoEnt {
-					logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val)
-					data, err := json.Marshal(&val)
+				ctsSplit := strings.Split(currTimer, "::")
+				if len(ctsSplit) > 1 {
+					cts := ctsSplit[1]
+					ts, err := time.Parse(tsLayout, cts)
 					if err != nil {
-						logging.Errorf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v, err: %v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val, err)
+						logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
+						continue
 					}
-					c.nonDocTimerEntryCh <- timerMsg{payload: string(data), msgCount: len(val.CronTimers)}
-					c.gocbMetaBucket.Remove(currTimer, 0)
+
+					if ts.After(time.Now()) {
+						continue
+					}
+
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getCronTimerCallback, c, currTimer, &val, true, &isNoEnt)
+
+					if !isNoEnt {
+						logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val)
+						data, err := json.Marshal(&val)
+						if err != nil {
+							logging.Errorf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v, err: %v",
+								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val, err)
+						}
+						c.nonDocTimerEntryCh <- timerMsg{payload: string(data), msgCount: len(val.CronTimers)}
+						c.gocbMetaBucket.Remove(currTimer, 0)
+					}
+					c.updateNonDocTimerStats(vb)
 				}
-				c.updateNonDocTimerStats(vb)
 			}
 		}
 	}

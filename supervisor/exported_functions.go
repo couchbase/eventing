@@ -3,6 +3,7 @@ package supervisor
 import (
 	"fmt"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 )
 
@@ -138,4 +139,25 @@ func (s *SuperSupervisor) SignalStartDebugger(appName string) {
 func (s *SuperSupervisor) SignalStopDebugger(appName string) {
 	p := s.runningProducers[appName]
 	p.SignalStopDebugger()
+}
+
+// GetAppState returns current state of app
+func (s *SuperSupervisor) GetAppState(appName string) int8 {
+	switch s.appDeploymentStatus[appName] {
+	case true:
+		switch s.appProcessingStatus[appName] {
+		case true:
+			return common.AppStateEnabled
+		case false:
+			return common.AppStateDisabled
+		}
+	case false:
+		switch s.appDeploymentStatus[appName] {
+		case true:
+			return common.AppStateUnexpected
+		case false:
+			return common.AppStateUndeployed
+		}
+	}
+	return common.AppState
 }
