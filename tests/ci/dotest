@@ -170,6 +170,8 @@ cd $WORKSPACE/goproj/src/github.com/couchbase/query
 git rev-parse HEAD > ~/query.good
 cd $WORKSPACE/goproj/src/github.com/couchbase/gometa
 git rev-parse HEAD > ~/gometa.good
+cd $WORKSPACE/forestdb
+git rev-parse HEAD > ~/forestdb.good
 cd $WORKSPACE/ns_server
 git rev-parse HEAD > ~/ns_server.good
 cd $WORKSPACE/couchdb
