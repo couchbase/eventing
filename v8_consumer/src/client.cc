@@ -49,7 +49,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
       *thr_map;
 
-  LOG(logError) << "Event: " << static_cast<int16_t>(parsed_header->event)
+  LOG(logTrace) << "Event: " << static_cast<int16_t>(parsed_header->event)
                 << " Opcode: " << static_cast<int16_t>(parsed_header->opcode)
                 << '\n';
 
@@ -142,7 +142,12 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           if ((i > 0) && (lstats.str().length() > 1)) {
             lstats << ",";
           }
-          lstats << "\"" << i << "\":" << agg_hgram[i];
+
+          if (i == 0) {
+              lstats << "\"" << HIST_FROM << "\":" << agg_hgram[i];
+          } else {
+              lstats << "\"" << i * HIST_WIDTH << "\":" << agg_hgram[i];
+          }
         }
 
         if (i == agg_hgram.size() - 1) {

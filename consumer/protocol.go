@@ -136,7 +136,7 @@ func makeThrMapHeader() []byte {
 }
 
 func makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte) {
-	logging.Infof("makeHeader event: %v opcode: %v", event, opcode)
+	logging.Tracef("makeHeader event: %v opcode: %v", event, opcode)
 
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
