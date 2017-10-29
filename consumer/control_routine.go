@@ -85,13 +85,13 @@ func (c *Consumer) controlRoutine() {
 			if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
 				c.vbOwnershipGiveUpRoutineCount = int(val.(float64))
 			} else {
-				c.vbOwnershipGiveUpRoutineCount = 3
+				c.vbOwnershipGiveUpRoutineCount = 1
 			}
 
 			if val, ok := settings["vb_ownership_takeover_routine_count"]; ok {
 				c.vbOwnershipTakeoverRoutineCount = int(val.(float64))
 			} else {
-				c.vbOwnershipTakeoverRoutineCount = 3
+				c.vbOwnershipTakeoverRoutineCount = 1
 			}
 
 		case <-c.restartVbDcpStreamTicker.C:

@@ -93,6 +93,10 @@ func (c *Consumer) processEvents() {
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
 						continue
 					}
+
+					logging.Tracef("CRDP[%s:%s:%s:%d] Key: %s decoded cas: %v dcp cas: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), cas, e.Cas)
+
 					// Send mutation to V8 CPP worker _only_ when DcpEvent.Cas != Cas field in xattr
 					if cas != e.Cas {
 						e.Value = e.Value[4+xattrLen:]
@@ -107,9 +111,12 @@ func (c *Consumer) processEvents() {
 						retryTimerStore1:
 							err := c.storeTimerEvent(e.VBucket, e.Seqno, e.Expiry, string(e.Key), &xMeta)
 							if err == errPlasmaHandleMissing {
+								logging.Tracef("CRDP[%s:%s:%s:%d] Key: %s vb: %v Plasma handle missing(retryTimerStore1)",
+									c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket)
 								time.Sleep(time.Second)
 								goto retryTimerStore1
 							}
+							c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", e.Seqno)
 
 						}
 					} else {
@@ -119,6 +126,8 @@ func (c *Consumer) processEvents() {
 					retryTimerStore2:
 						err := c.storeTimerEvent(e.VBucket, e.Seqno, e.Expiry, string(e.Key), &xMeta)
 						if err == errPlasmaHandleMissing {
+							logging.Tracef("CRDP[%s:%s:%s:%d] Key: %s vb: %v Plasma handle missing(retryTimerStore2)",
+								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket)
 							time.Sleep(time.Second)
 							goto retryTimerStore2
 						}
@@ -232,29 +241,9 @@ func (c *Consumer) processEvents() {
 				// For (a) plasma related FD cleanup signalling is already done in vbucket give up
 				// routine. Handling case for (b) below.
 
-				c.timerRWMutex.RLock()
-				vbEntry, ok := c.timerProcessingVbsWorkerMap[e.VBucket]
-				c.timerRWMutex.RUnlock()
-				if ok {
-					logging.Debugf("CRPE[%s:%s:%s:%d] vb: %v stopping plasma processing",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
-
-					vbEntry.signalProcessTimerPlasmaCloseCh <- e.VBucket
-					<-c.signalProcessTimerPlasmaCloseAckCh
-					logging.Verbosef("CRPE[%s:%s:%s:%d] vb: %v Got ack from timer processing routine, about clean up of plasma.Writer instance",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
-
-					c.signalStoreTimerPlasmaCloseCh <- e.VBucket
-					<-c.signalStoreTimerPlasmaCloseAckCh
-					logging.Verbosef("CRPE[%s:%s:%s:%d] vb: %v Sent msg to timer storage routine, about clean up of plasma.Writer instance",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
-
-					c.vbPlasmaStore.PersistAll()
-
-					c.timerRWMutex.Lock()
-					delete(c.timerProcessingVbsWorkerMap, e.VBucket)
-					c.timerRWMutex.Unlock()
-				}
+				c.timerRWMutex.Lock()
+				delete(c.timerProcessingVbsWorkerMap, e.VBucket)
+				c.timerRWMutex.Unlock()
 
 				//Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))

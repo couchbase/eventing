@@ -150,21 +150,6 @@ func (r *timerProcessingWorker) processTimerEvents() {
 		select {
 		case <-r.stopCh:
 			return
-		case vb := <-r.signalProcessTimerPlasmaCloseCh:
-			// Rebalance takeover routine will send signal on this channel to signify
-			// stopping of any plasma.Writer instance for a specific vbucket
-			r.c.plasmaReaderRWMutex.Lock()
-			_, ok := r.c.vbPlasmaReader[vb]
-			if ok {
-				delete(r.c.vbPlasmaReader, vb)
-			}
-
-			r.c.plasmaReaderRWMutex.Unlock()
-
-			// sends ack message back to rebalance takeover routine, so that it could
-			// safely call Close() on vb specific plasma store
-			r.c.signalProcessTimerPlasmaCloseAckCh <- vb
-			continue
 		case <-r.timerProcessingTicker.C:
 		}
 
@@ -338,8 +323,10 @@ func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string, bootstrap boo
 							logging.Errorf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v, err: %v",
 								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val, err)
 						}
-						c.nonDocTimerEntryCh <- timerMsg{payload: string(data), msgCount: len(val.CronTimers)}
-						c.gocbMetaBucket.Remove(currTimer, 0)
+						if len(val.CronTimers) > 0 {
+							c.nonDocTimerEntryCh <- timerMsg{payload: string(data), msgCount: len(val.CronTimers)}
+							c.gocbMetaBucket.Remove(currTimer, 0)
+						}
 					}
 					c.updateNonDocTimerStats(vb)
 				}
