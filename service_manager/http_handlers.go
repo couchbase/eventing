@@ -15,6 +15,7 @@ import (
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/cbauthimpl"
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -146,6 +147,19 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
+	if !m.checkIfDeployed(appName) {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+		fmt.Fprintf(w, "App: %v not deployed", appName)
+		return
+	}
+
+	appState := m.superSup.GetAppState(appName)
+	if appState != common.AppStateDisabled {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotUndeployed.Code))
+		fmt.Fprintf(w, "Skipping delete request from primary store for app: %v as it hasn't been undeployed", appName)
+		return
+	}
+
 	appList := util.ListChildren(metakvAppsPath)
 	for _, app := range appList {
 		if app == appName {
@@ -170,9 +184,6 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
 func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) {
@@ -183,6 +194,20 @@ func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) 
 
 	values := r.URL.Query()
 	appName := values["name"][0]
+
+	if !m.checkIfDeployed(appName) {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+		fmt.Fprintf(w, "App: %v not deployed", appName)
+		return
+	}
+
+	appState := m.superSup.GetAppState(appName)
+	if appState != common.AppStateDisabled {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotUndeployed.Code))
+		fmt.Fprintf(w, "Skipping delete request from temp store for app: %v as it hasn't been undeployed", appName)
+		return
+	}
+
 	tempAppList := util.ListChildren(metakvTempAppsPath)
 
 	for _, tempAppName := range tempAppList {
@@ -200,9 +225,6 @@ func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotFoundTs.Code))
-	fmt.Fprintf(w, "App not found in temp store : %v", appName)
 }
 
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {

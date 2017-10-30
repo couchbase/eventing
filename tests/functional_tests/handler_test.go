@@ -1,6 +1,7 @@
 package eventing
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -140,4 +141,30 @@ func TestCronTimerN1QLOp(t *testing.T) {
 	deleteFunction(filename)
 	bucketFlush("default")
 	bucketFlush("hello-world")
+}
+
+func TestDeployUndeployLoop(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	filename := "bucket_op_with_doc_timer.js"
+
+	for i := 0; i < 5; i++ {
+		createAndDeployFunction(filename)
+
+		pumpBucketOps(itemCount, false, 0, false)
+		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+		if itemCount != eventCount {
+			t.Error("For", "DeployUndeployLoop",
+				"expected", itemCount,
+				"got", eventCount,
+			)
+		}
+
+		fmt.Println("Undeploying app:", filename)
+		undeployFunction(filename)
+		bucketFlush("default")
+		bucketFlush("hello-world")
+		time.Sleep(5 * time.Second)
+	}
+
+	deleteFunction(filename)
 }

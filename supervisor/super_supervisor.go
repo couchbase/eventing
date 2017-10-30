@@ -258,6 +258,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)
 					}
 
+					delete(s.runningProducers, appName)
 				}
 			}
 		}
@@ -353,10 +354,6 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 			switch msg.cmd {
 			case cmdAppDelete:
 				logging.Infof("SSUP[%d] Deleting app: %s", len(s.runningProducers), appName)
-				// Signal all producer to signal all running consumers to purge all checkpoint
-				// blobs in metadata bucket
-
-				delete(s.runningProducers, appName)
 
 				// Spawning another routine to process cleanup of plasma store, otherwise
 				// it would block (re)deploy of new lambdas
