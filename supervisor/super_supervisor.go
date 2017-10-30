@@ -128,7 +128,20 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 
 // SettingsChangeCallback is registered as callback from metakv observe calls on event handler settings path
 func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev interface{}) error {
-	logging.Infof("SSUP[%d] SettingsChangeCallback: path => %s value => %s", len(s.runningProducers), path, string(value))
+	sValue := make(map[string]interface{})
+	err := json.Unmarshal(value, &sValue)
+	if err != nil {
+		logging.Errorf("SSUP[%d] Failed to unmarshal settings received, err: %v",
+			len(s.runningProducers), err)
+		return err
+	}
+
+	// Avoid printing rbac user credentials in log
+	sValue["rbacuser"] = "****"
+	sValue["rbacpass"] = "****"
+	sValue["rbacrole"] = "****"
+
+	logging.Infof("SSUP[%d] SettingsChangeCallback: path => %s value => %#v", len(s.runningProducers), path, sValue)
 
 	if value != nil {
 		splitRes := strings.Split(path, "/")
@@ -139,11 +152,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 		}
 
 		settings := make(map[string]interface{})
-		err := json.Unmarshal(value, &settings)
-		if err != nil {
-			logging.Errorf("SSUP[%d] App: %s Failed to unmarshal settings received, err: %v",
-				len(s.runningProducers), appName, err)
-		}
+		json.Unmarshal(value, &settings)
 
 		processingStatus := settings["processing_status"].(bool)
 		deploymentStatus := settings["deployment_status"].(bool)

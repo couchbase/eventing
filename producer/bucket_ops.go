@@ -2,10 +2,8 @@ package producer
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 )
 
@@ -20,9 +18,6 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 			p.appName, p.LenRunningConsumers(), connStr, err)
 		return err
 	}
-
-	var user, password string
-	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, p, p.KvHostPorts()[0], &user, &password)
 
 	err = cluster.Authenticate(gocb.PasswordAuthenticator{
 		Username: p.rbacUser,
