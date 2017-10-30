@@ -101,6 +101,9 @@ class ConnectionPool;
 class V8Worker;
 
 extern bool enable_recursive_mutation;
+extern std::atomic<std::int64_t> bucket_op_exception_count;
+extern std::atomic<std::int64_t> n1ql_op_exception_count;
+extern std::atomic<std::int64_t> timeout_count;
 
 class V8Worker {
 public:
@@ -125,6 +128,7 @@ public:
           if (isolate_) {
             LOG(logTrace) << "Task took: " << ns.count()
                           << "ns, terminating it's execution" << '\n';
+            timeout_count++;
             v8::V8::TerminateExecution(isolate_);
           }
         }

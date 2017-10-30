@@ -141,3 +141,9 @@ func (c *Consumer) GetLatencyStats() map[string]uint64 {
 	c.sendGetLatencyStats(false)
 	return c.latencyStats
 }
+
+// GetFailureStats returns failure stats for event handlers from cpp world
+func (c *Consumer) GetFailureStats() map[string]uint64 {
+	c.sendGetFailureStats(false)
+	return c.failureStats
+}

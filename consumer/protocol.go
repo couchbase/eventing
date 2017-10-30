@@ -45,6 +45,7 @@ const (
 	v8WorkerSourceMap
 	v8WorkerHandlerCode
 	v8WorkerLatencyStats
+	v8WorkerFailureStats
 )
 
 const (
@@ -72,6 +73,7 @@ const (
 	handlerCode
 	logMessage
 	latencyStats
+	failureStats
 )
 
 type message struct {
@@ -340,6 +342,12 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			err := json.Unmarshal([]byte(msg), &c.latencyStats)
 			if err != nil {
 				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal latency stats, msg: %s err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+		case failureStats:
+			err := json.Unmarshal([]byte(msg), &c.failureStats)
+			if err != nil {
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal failure stats, msg: %s err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		}

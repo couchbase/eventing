@@ -44,6 +44,21 @@ func (p *Producer) GetLatencyStats() map[string]uint64 {
 	return latencyStats
 }
 
+// GetFailureStats returns failure stats aggregated from Eventing.Consumer instances
+func (p *Producer) GetFailureStats() map[string]uint64 {
+	failureStats := make(map[string]uint64)
+	for _, c := range p.runningConsumers {
+		cfStats := c.GetFailureStats()
+		for k, v := range cfStats {
+			if _, ok := failureStats[k]; !ok {
+				failureStats[k] = 0
+			}
+			failureStats[k] += v
+		}
+	}
+	return failureStats
+}
+
 // GetAppCode returns handler code for the current app
 func (p *Producer) GetAppCode() string {
 	return p.app.AppCode

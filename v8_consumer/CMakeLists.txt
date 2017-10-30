@@ -37,7 +37,6 @@ SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc P
 SET(EVENTING_SOURCES
     src/client.cc
     src/commands.cc
-    src/message.cc
     src/v8worker.cc
     src/assert.cc
     src/bucket.cc

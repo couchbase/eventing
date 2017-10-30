@@ -36,6 +36,10 @@
 
 bool enable_recursive_mutation = false;
 
+std::atomic<std::int64_t> bucket_op_exception_count = {0};
+std::atomic<std::int64_t> n1ql_op_exception_count = {0};
+std::atomic<std::int64_t> timeout_count = {0};
+
 N1QL *n1ql_handle;
 JsException V8Worker::exception;
 

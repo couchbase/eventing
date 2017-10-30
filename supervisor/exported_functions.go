@@ -94,6 +94,15 @@ func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
 	return nil
 }
 
+// GetFailureStats returns aggregated failure stats from Eventing.Producer instance
+func (s *SuperSupervisor) GetFailureStats(appName string) map[string]uint64 {
+	logging.Infof("SSUP[%d] GetFailureStats request for app: %v", len(s.runningProducers), appName)
+	if p, ok := s.runningProducers[appName]; ok {
+		return p.GetFailureStats()
+	}
+	return nil
+}
+
 // GetSeqsProcessed returns vbucket specific sequence nos processed so far
 func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
 	logging.Infof("SSUP[%d] GetSeqsProcessed request for app: %v", len(s.runningProducers), appName)
