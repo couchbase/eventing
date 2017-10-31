@@ -40,7 +40,6 @@ std::atomic<std::int64_t> bucket_op_exception_count = {0};
 std::atomic<std::int64_t> n1ql_op_exception_count = {0};
 std::atomic<std::int64_t> timeout_count = {0};
 
-N1QL *n1ql_handle;
 JsException V8Worker::exception;
 
 enum RETURN_CODE {
@@ -360,7 +359,8 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
       std::string((const char *)js_transpiler) + '\n' +
       std::string((const char *)js_source_map);
 
-  n1ql_handle = new N1QL(conn_pool);
+  n1ql_handle = new N1QL(conn_pool, isolate_);
+  isolate_->SetData(3, n1ql_handle);
 
   Transpiler transpiler(transpiler_js_src);
   script_to_execute =

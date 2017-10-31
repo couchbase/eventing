@@ -133,7 +133,8 @@ ApplicationModel.prototype.getDefaultModel = function() {
             lcb_inst_capacity: 5,
             deadline_timeout: 2,
             execution_timeout: 1,
-            description: ''
+            description: '',
+            cpp_worker_thread_count: 2
         }
     }
 };
@@ -172,6 +173,7 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.settings.timer_worker_pool_size = 3;
     this.settings.deadline_timeout = 2;
     this.settings.execution_timeout = 1;
+    this.settings.cpp_worker_thread_count = 2;
 };
 
 // Prettifies the JavaScript code.
