@@ -209,7 +209,7 @@ retryVerifyBucketOp:
 	}
 	rCount++
 	time.Sleep(time.Second * 5)
-	fmt.Println("Sleeping for 5 sec before checking item count again, curr count:", itemCount)
+	fmt.Printf("Sleeping for 5 sec before checking item count again, expected count: %v curr count: %v\n", count, itemCount)
 	goto retryVerifyBucketOp
 }
 

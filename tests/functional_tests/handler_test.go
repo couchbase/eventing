@@ -12,8 +12,8 @@ func init() {
 
 func TestOnUpdateBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	filename := "bucket_op_on_update.js"
-	createAndDeployFunction(filename)
+	handler := "bucket_op_on_update.js"
+	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 0, false)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -23,16 +23,16 @@ func TestOnUpdateBucketOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	undeployFunction(filename)
-	deleteFunction(filename)
+	undeployFunction(handler)
+	deleteFunction(handler)
 	bucketFlush("default")
 	bucketFlush("hello-world")
 }
 
 func TestOnUpdateN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	filename := "n1ql_insert_on_update.js"
-	createAndDeployFunction(filename)
+	handler := "n1ql_insert_on_update.js"
+	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 0, false)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -42,16 +42,16 @@ func TestOnUpdateN1QLOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	undeployFunction(filename)
-	deleteFunction(filename)
+	undeployFunction(handler)
+	deleteFunction(handler)
 	bucketFlush("default")
 	bucketFlush("hello-world")
 }
 
 func TestOnDeleteBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	filename := "bucket_op_on_delete.js"
-	createAndDeployFunction(filename)
+	handler := "bucket_op_on_delete.js"
+	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 1, true)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -61,16 +61,16 @@ func TestOnDeleteBucketOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	undeployFunction(filename)
-	deleteFunction(filename)
+	undeployFunction(handler)
+	deleteFunction(handler)
 	bucketFlush("default")
 	bucketFlush("hello-world")
 }
 
 func TestDocTimerBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	filename := "bucket_op_with_doc_timer.js"
-	createAndDeployFunction(filename)
+	handler := "bucket_op_with_doc_timer.js"
+	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 0, false)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -80,16 +80,16 @@ func TestDocTimerBucketOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	undeployFunction(filename)
-	deleteFunction(filename)
+	undeployFunction(handler)
+	deleteFunction(handler)
 	bucketFlush("default")
 	bucketFlush("hello-world")
 }
 
 func TestDocTimerN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	filename := "n1ql_insert_with_doc_timer.js"
-	createAndDeployFunction(filename)
+	handler := "n1ql_insert_with_doc_timer.js"
+	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 0, false)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -99,16 +99,16 @@ func TestDocTimerN1QLOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	undeployFunction(filename)
-	deleteFunction(filename)
+	undeployFunction(handler)
+	deleteFunction(handler)
 	bucketFlush("default")
 	bucketFlush("hello-world")
 }
 
 func TestCronTimerBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	filename := "bucket_op_with_cron_timer.js"
-	createAndDeployFunction(filename)
+	handler := "bucket_op_with_cron_timer.js"
+	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 0, false)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -118,16 +118,16 @@ func TestCronTimerBucketOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	undeployFunction(filename)
-	deleteFunction(filename)
+	undeployFunction(handler)
+	deleteFunction(handler)
 	bucketFlush("default")
 	bucketFlush("hello-world")
 }
 
 func TestCronTimerN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	filename := "n1ql_insert_with_cron_timer.js"
-	createAndDeployFunction(filename)
+	handler := "n1ql_insert_with_cron_timer.js"
+	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 0, false)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -137,18 +137,18 @@ func TestCronTimerN1QLOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	undeployFunction(filename)
-	deleteFunction(filename)
+	undeployFunction(handler)
+	deleteFunction(handler)
 	bucketFlush("default")
 	bucketFlush("hello-world")
 }
 
 func TestDeployUndeployLoop(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	filename := "bucket_op_with_doc_timer.js"
+	handler := "bucket_op_with_doc_timer.js"
 
 	for i := 0; i < 5; i++ {
-		createAndDeployFunction(filename)
+		createAndDeployFunction(handler)
 
 		pumpBucketOps(itemCount, false, 0, false)
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -159,12 +159,38 @@ func TestDeployUndeployLoop(t *testing.T) {
 			)
 		}
 
-		fmt.Println("Undeploying app:", filename)
-		undeployFunction(filename)
+		fmt.Println("Undeploying app:", handler)
+		undeployFunction(handler)
 		bucketFlush("default")
 		bucketFlush("hello-world")
 		time.Sleep(5 * time.Second)
 	}
 
-	deleteFunction(filename)
+	deleteFunction(handler)
+}
+
+func TestMultipleHandlers(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler1 := "bucket_op_on_update.js"
+	handler2 := "n1ql_insert_with_doc_timer.js"
+
+	createAndDeployFunction(handler1)
+	createAndDeployFunction(handler2)
+
+	pumpBucketOps(itemCount, false, 0, false)
+	eventCount := verifyBucketOps(itemCount*2, statsLookupRetryCounter*2)
+	if itemCount*2 != eventCount {
+		t.Error("For", "MultipleHandlers",
+			"expected", itemCount*2,
+			"got", eventCount,
+		)
+	}
+	undeployFunction(handler1)
+	undeployFunction(handler2)
+
+	deleteFunction(handler1)
+	deleteFunction(handler2)
+
+	bucketFlush("default")
+	bucketFlush("hello-world")
 }
