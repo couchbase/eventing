@@ -147,14 +147,21 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	if !m.checkIfDeployed(appName) {
+	checkIfDeployed := false
+	for _, app := range util.ListChildren(metakvAppsPath) {
+		if app == appName {
+			checkIfDeployed = true
+		}
+	}
+
+	if !checkIfDeployed {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 		fmt.Fprintf(w, "App: %v not deployed", appName)
 		return
 	}
 
 	appState := m.superSup.GetAppState(appName)
-	if appState != common.AppStateDisabled {
+	if appState != common.AppStateUndeployed {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotUndeployed.Code))
 		fmt.Fprintf(w, "Skipping delete request from primary store for app: %v as it hasn't been undeployed", appName)
 		return
@@ -195,14 +202,21 @@ func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) 
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	if !m.checkIfDeployed(appName) {
+	checkIfDeployed := false
+	for _, app := range util.ListChildren(metakvTempAppsPath) {
+		if app == appName {
+			checkIfDeployed = true
+		}
+	}
+
+	if !checkIfDeployed {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 		fmt.Fprintf(w, "App: %v not deployed", appName)
 		return
 	}
 
 	appState := m.superSup.GetAppState(appName)
-	if appState != common.AppStateDisabled {
+	if appState != common.AppStateUndeployed {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotUndeployed.Code))
 		fmt.Fprintf(w, "Skipping delete request from temp store for app: %v as it hasn't been undeployed", appName)
 		return
