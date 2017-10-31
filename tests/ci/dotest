@@ -47,7 +47,7 @@ error_email() {
   if [ ! -f ~/.cigreen ]; then return; fi
   rm ~/.cigreen
 
-  if test "`find ~ -maxdepth 1 -name .cinotify -mtime -1d`"; then return; fi
+  if test "`find ~ -maxdepth 1 -name .cinotify -mmin -1440`"; then return; fi
   touch ~/.cinotify
 
   if [ "$WATCHERS" = "" ]; then return; fi
@@ -73,7 +73,6 @@ echo "Testing mode: $MODE"
 
 stop_cluster
 rm -f $WORKSPACE/logs.tar.* $WORKSPACE/test.log $WORKSPACE/run.log /tmp/core-*
-find ~/testdata/* -mtime +1 -exec rm {} \; 1>/dev/null 2>&1
 warmed="never"
 > $WORKSPACE/test.log
 
