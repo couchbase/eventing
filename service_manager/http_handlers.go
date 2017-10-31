@@ -605,6 +605,10 @@ func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	} else {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errStatusesNotFound.Code))
+		fmt.Fprintf(w, "App: %v Missing processing or deployment statuses or both in supplied settings", appName)
+		return
 	}
 
 	err = util.MetakvSet(path, data, nil)

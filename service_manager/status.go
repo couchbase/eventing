@@ -48,6 +48,7 @@ type statusCodes struct {
 	errAppDeployed      statusBase
 	errAppNotInit       statusBase
 	errAppNotUndeployed statusBase
+	errStatusesNotFound statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
@@ -75,6 +76,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errAppDeployed:      statusBase{"ERR_APP_ALREADY_DEPLOYED", 20},
 		errAppNotInit:       statusBase{"ERR_APP_NOT_BOOTSTRAPPED", 21},
 		errAppNotUndeployed: statusBase{"ERR_APP_NOT_UNDEPLOYED", 22},
+		errStatusesNotFound: statusBase{"ERR_PROCESSING_OR_DEPLOYMENT_STATUS_NOT_FOUND", 23},
 	}
 
 	errors := []errorPayload{
@@ -190,6 +192,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errAppNotUndeployed.Name,
 			Code:        m.statusCodes.errAppNotUndeployed.Code,
 			Description: "App hasn't been undeployed",
+		},
+		{
+			Name:        m.statusCodes.errStatusesNotFound.Name,
+			Code:        m.statusCodes.errStatusesNotFound.Code,
+			Description: "Processing or deployment status or both missing from supplied settings",
 		},
 	}
 
