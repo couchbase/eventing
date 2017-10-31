@@ -43,11 +43,28 @@ collect_logs() {
   tar -C $WORKSPACE --transform "s/^/logs-$phase-/" -uf $WORKSPACE/logs.tar run.log 1>/dev/null 2>&1
 }
 
+error_email() {
+  if [ ! -f ~/.cigreen ]; then return; fi
+  rm ~/.cigreen
+
+  if test "`find ~ -maxdepth 1 -name .cinotify -mtime -1d`"; then return; fi
+  touch ~/.cinotify
+
+  if [ "$WATCHERS" = "" ]; then return; fi
+  cat /var/www/eventing-current.html | \
+     sendemail \
+       -s west.smtp.mx.exch029.serverdata.net:25 \
+       -f 'Eventing CI <community_admin@couchbase.com>' \
+       -t $WATCHERS \
+       -u 'Eventing CI just broke'
+}
+
 error_exit() {
   echo "</pre><h4>Testing Failed: $1</h4><pre>"
   echo "$2"
   collect_logs
   stop_cluster
+  error_email
   exit 2
 }
 
@@ -187,5 +204,6 @@ git rev-parse HEAD > ~/testrunner.good
 cd $WORKSPACE/kv_engine
 git rev-parse HEAD > ~/kv_engine.good
 
+touch ~/.cigreen
 exit 0
 
