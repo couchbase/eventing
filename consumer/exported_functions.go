@@ -147,3 +147,12 @@ func (c *Consumer) GetFailureStats() map[string]uint64 {
 	c.sendGetFailureStats(false)
 	return c.failureStats
 }
+
+// Pid returns the process id of CPP V8 worker
+func (c *Consumer) Pid() int {
+	pid, ok := c.osPid.Load().(int)
+	if ok {
+		return pid
+	}
+	return 0
+}

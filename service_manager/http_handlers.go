@@ -903,3 +903,31 @@ func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Reques
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
+
+func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	if m.checkIfDeployed(appName) {
+		workerPidMapping := m.superSup.GetEventingConsumerPids(appName)
+
+		data, err := json.Marshal(&workerPidMapping)
+		if err != nil {
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+			fmt.Fprintf(w, "Failed to marshal consumer pids, err: %v", err)
+			return
+		}
+
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%v", string(data))
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+	fmt.Fprintf(w, "App: %v not deployed", appName)
+}

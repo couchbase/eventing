@@ -253,3 +253,14 @@ func (p *Producer) GetDcpEventsRemainingToProcess() uint64 {
 
 	return remainingEvents
 }
+
+// GetEventingConsumerPids returns map of Eventing.Consumer worker name and it's os pid
+func (p *Producer) GetEventingConsumerPids() map[string]int {
+	workerPidMapping := make(map[string]int)
+
+	for _, consumer := range p.runningConsumers {
+		workerPidMapping[consumer.ConsumerName()] = consumer.Pid()
+	}
+
+	return workerPidMapping
+}

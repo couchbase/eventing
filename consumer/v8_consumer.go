@@ -304,15 +304,6 @@ func (c *Consumer) String() string {
 		c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed))
 }
 
-// Pid returns the process id of CPP V8 worker
-func (c *Consumer) Pid() int {
-	pid, ok := c.osPid.Load().(int)
-	if ok {
-		return pid
-	}
-	return 0
-}
-
 // NotifyClusterChange is called by producer handle to signify each
 // consumer instance about StartTopologyChange rpc call from cbauth service.Manager
 func (c *Consumer) NotifyClusterChange() {

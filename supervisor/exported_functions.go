@@ -191,3 +191,14 @@ func (s *SuperSupervisor) GetDcpEventsRemainingToProcess(appName string) uint64 
 		len(s.runningProducers), appName)
 	return 0
 }
+
+// GetEventingConsumerPids returns map of Eventing.Consumer worker name and it's os pid
+func (s *SuperSupervisor) GetEventingConsumerPids(appName string) map[string]int {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.GetEventingConsumerPids()
+	}
+	logging.Errorf("SSUP[%d] Eventing consumer pid request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+		len(s.runningProducers), appName)
+	return nil
+}

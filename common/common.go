@@ -41,6 +41,7 @@ type EventingProducer interface {
 	GetAppCode() string
 	GetDcpEventsRemainingToProcess() uint64
 	GetDebuggerURL() string
+	GetEventingConsumerPids() map[string]int
 	GetEventProcessingStats() map[string]uint64
 	GetFailureStats() map[string]uint64
 	GetHandlerCode() string
@@ -94,6 +95,7 @@ type EventingConsumer interface {
 	NotifyClusterChange()
 	NotifyRebalanceStop()
 	NotifySettingsChange()
+	Pid() int
 	RebalanceTaskProgress() *RebalanceProgress
 	Serve()
 	SetConnHandle(net.Conn)
@@ -120,6 +122,7 @@ type EventingSuperSup interface {
 	GetDcpEventsRemainingToProcess(appName string) uint64
 	GetDebuggerURL(appName string) string
 	GetDeployedApps() map[string]string
+	GetEventingConsumerPids(appName string) map[string]int
 	GetFailureStats(appName string) map[string]uint64
 	GetHandlerCode(appName string) string
 	GetLatencyStats(appName string) map[string]uint64

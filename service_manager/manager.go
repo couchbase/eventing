@@ -80,6 +80,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getApplication/", m.fetchAppSetup)
 	http.HandleFunc("/getAppTempStore/", m.fetchAppTempStore)
 	http.HandleFunc("/getAggEventsPSec", m.getAggEventsProcessedPSec)
+	http.HandleFunc("/getConsumerPids", m.getEventingConsumerPids)
 	http.HandleFunc("/getDcpEventsRemaining", m.getDcpEventsRemaining)
 	http.HandleFunc("/getDeployedApps", m.getDeployedApps)
 	http.HandleFunc("/getEventProcessingStats", m.getEventProcessingStats)
