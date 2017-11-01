@@ -44,6 +44,21 @@ func (p *Producer) GetLatencyStats() map[string]uint64 {
 	return latencyStats
 }
 
+// GetFailureStats returns failure stats aggregated from Eventing.Consumer instances
+func (p *Producer) GetFailureStats() map[string]uint64 {
+	failureStats := make(map[string]uint64)
+	for _, c := range p.runningConsumers {
+		cfStats := c.GetFailureStats()
+		for k, v := range cfStats {
+			if _, ok := failureStats[k]; !ok {
+				failureStats[k] = 0
+			}
+			failureStats[k] += v
+		}
+	}
+	return failureStats
+}
+
 // GetAppCode returns handler code for the current app
 func (p *Producer) GetAppCode() string {
 	return p.app.AppCode
@@ -189,7 +204,7 @@ func (p *Producer) SignalCheckpointBlobCleanup() {
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, dInstAddrKey)
 
 	logging.Infof("PRDR[%s:%d] Purged all owned checkpoint & debugger blobs from metadata bucket: %s",
-		p.appName, p.LenRunningConsumers(), p.metadataBucketHandle.Name)
+		p.appName, p.LenRunningConsumers(), p.metadataBucketHandle.Name())
 }
 
 // VbEventingNodeAssignMap returns the vbucket to evening node mapping
@@ -214,4 +229,16 @@ func (p *Producer) RbacUser() string {
 // RbacPass returns the rbac password supplied as part of app settings
 func (p *Producer) RbacPass() string {
 	return p.rbacPass
+}
+
+// PauseProducer pauses the execution of Eventing.Producer and corresponding Eventing.Consumer instances
+func (p *Producer) PauseProducer() {
+	p.pauseProducerCh <- struct{}{}
+}
+
+// StopProducer cleans up resource handles
+func (p *Producer) StopProducer() {
+	p.stopProducerCh <- struct{}{}
+	p.metadataBucketHandle.Close()
+	p.workerSupervisor.Stop()
 }

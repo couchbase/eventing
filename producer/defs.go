@@ -72,6 +72,7 @@ type Producer struct {
 	metakvAppHostPortsPath string
 	nsServerPort           string
 	nsServerHostPort       string
+	pauseProducerCh        chan struct{}
 	persistAllTicker       *time.Ticker
 	tcpPort                string
 	stopProducerCh         chan struct{}

@@ -6,6 +6,7 @@ cat > ~/.cienv <<EOF
     export RELEASE=5.0.0
     export MANIFEST="couchbase-server/spock.xml"
     export MODE="test"
+    #export WATCHERS="somebody@couchbase.com nobody@couchbase.com"
     #export PEGGED=3277
 EOF
 fi

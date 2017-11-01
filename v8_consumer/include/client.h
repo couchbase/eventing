@@ -7,7 +7,6 @@ extern void(assert)(int);
 #include <cassert>
 #endif
 
-#include "message.h"
 #include "v8worker.h"
 
 #include <map>
@@ -49,8 +48,6 @@ public:
   void OnConnect(uv_connect_t *conn, int status);
   void OnRead(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf);
   void OnWrite(uv_write_t *req, int status);
-
-  void WriteMessage(Message *msg);
 
   void ParseValidChunk(uv_stream_t *stream, int nread, const char *buf);
 
@@ -104,7 +101,6 @@ private:
   bool msg_priority;
 
   std::vector<char> read_buffer;
-  MessagePool outgoing_queue;
 };
 
 #endif

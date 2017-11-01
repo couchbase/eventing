@@ -45,6 +45,9 @@ type statusCodes struct {
 	errSrcMbSame        statusBase
 	errInvalidExt       statusBase
 	errGetVbSeqs        statusBase
+	errAppDeployed      statusBase
+	errAppNotInit       statusBase
+	errAppNotUndeployed statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
@@ -69,6 +72,9 @@ func (m *ServiceMgr) initErrCodes() {
 		errSrcMbSame:        statusBase{"ERR_SRC_MB_SAME", 17},
 		errInvalidExt:       statusBase{"ERR_INVALID_EXT", 18},
 		errGetVbSeqs:        statusBase{"ERR_GET_VB_SEQS", 19},
+		errAppDeployed:      statusBase{"ERR_APP_ALREADY_DEPLOYED", 20},
+		errAppNotInit:       statusBase{"ERR_APP_NOT_BOOTSTRAPPED", 21},
+		errAppNotUndeployed: statusBase{"ERR_APP_NOT_UNDEPLOYED", 22},
 	}
 
 	errors := []errorPayload{
@@ -169,6 +175,21 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errGetVbSeqs.Name,
 			Code:        m.statusCodes.errGetVbSeqs.Code,
 			Description: "Failed to fetch vb sequence processed so far",
+		},
+		{
+			Name:        m.statusCodes.errAppDeployed.Name,
+			Code:        m.statusCodes.errAppDeployed.Code,
+			Description: "App is already deployed",
+		},
+		{
+			Name:        m.statusCodes.errAppNotInit.Name,
+			Code:        m.statusCodes.errAppNotInit.Code,
+			Description: "App hasn't bootstrapped",
+		},
+		{
+			Name:        m.statusCodes.errAppNotUndeployed.Name,
+			Code:        m.statusCodes.errAppNotUndeployed.Code,
+			Description: "App hasn't been undeployed",
 		},
 	}
 

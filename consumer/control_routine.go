@@ -76,7 +76,7 @@ func (c *Consumer) controlRoutine() {
 			c.timerRWMutex.RUnlock()
 
 			c.nonDocTimerStopCh <- struct{}{}
-			go c.processNonDocTimerEvents()
+			go c.processNonDocTimerEvents("", "", false)
 
 			if val, ok := settings["deadline_timeout"]; ok {
 				c.socketTimeout = time.Duration(val.(float64)) * time.Second
@@ -85,13 +85,13 @@ func (c *Consumer) controlRoutine() {
 			if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
 				c.vbOwnershipGiveUpRoutineCount = int(val.(float64))
 			} else {
-				c.vbOwnershipGiveUpRoutineCount = 3
+				c.vbOwnershipGiveUpRoutineCount = 1
 			}
 
 			if val, ok := settings["vb_ownership_takeover_routine_count"]; ok {
 				c.vbOwnershipTakeoverRoutineCount = int(val.(float64))
 			} else {
-				c.vbOwnershipTakeoverRoutineCount = 3
+				c.vbOwnershipTakeoverRoutineCount = 1
 			}
 
 		case <-c.restartVbDcpStreamTicker.C:

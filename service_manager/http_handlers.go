@@ -15,6 +15,7 @@ import (
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/cbauthimpl"
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -146,6 +147,19 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
+	if !m.checkIfDeployed(appName) {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+		fmt.Fprintf(w, "App: %v not deployed", appName)
+		return
+	}
+
+	appState := m.superSup.GetAppState(appName)
+	if appState != common.AppStateDisabled {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotUndeployed.Code))
+		fmt.Fprintf(w, "Skipping delete request from primary store for app: %v as it hasn't been undeployed", appName)
+		return
+	}
+
 	appList := util.ListChildren(metakvAppsPath)
 	for _, app := range appList {
 		if app == appName {
@@ -170,9 +184,6 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
 func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) {
@@ -183,6 +194,20 @@ func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) 
 
 	values := r.URL.Query()
 	appName := values["name"][0]
+
+	if !m.checkIfDeployed(appName) {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+		fmt.Fprintf(w, "App: %v not deployed", appName)
+		return
+	}
+
+	appState := m.superSup.GetAppState(appName)
+	if appState != common.AppStateDisabled {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotUndeployed.Code))
+		fmt.Fprintf(w, "Skipping delete request from temp store for app: %v as it hasn't been undeployed", appName)
+		return
+	}
+
 	tempAppList := util.ListChildren(metakvTempAppsPath)
 
 	for _, tempAppName := range tempAppList {
@@ -200,9 +225,6 @@ func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotFoundTs.Code))
-	fmt.Fprintf(w, "App not found in temp store : %v", appName)
 }
 
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
@@ -468,6 +490,34 @@ func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
+func (m *ServiceMgr) getFailureStats(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
+	params := r.URL.Query()
+	appName := params["name"][0]
+
+	if m.checkIfDeployed(appName) {
+		fStats := m.superSup.GetFailureStats(appName)
+
+		data, err := json.Marshal(fStats)
+		if err != nil {
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+			fmt.Fprintf(w, "Failed to unmarshal failure stats, err: %v\n", err)
+			return
+		}
+
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", string(data))
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+	fmt.Fprintf(w, "App: %v not deployed", appName)
+}
+
 func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
 	appName := params["name"][0]
@@ -508,6 +558,39 @@ func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
 		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
 		return
+	}
+
+	var settings map[string]interface{}
+	err = json.Unmarshal(data, &settings)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		fmt.Fprintf(w, "Failed to unmarshal setting supplied, err: %v", err)
+		return
+	}
+
+	deployedApps := m.superSup.GetDeployedApps()
+
+	processingStatus, pOk := settings["processing_status"].(bool)
+	deploymentStatus, dOk := settings["deployment_status"].(bool)
+
+	if pOk && dOk {
+		// Check for disable processing
+		if deploymentStatus == true && processingStatus == false {
+			if _, ok := deployedApps[appName]; !ok {
+				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotInit.Code))
+				fmt.Fprintf(w, "App: %v not bootstrapped, discarding request to disable processing for it", appName)
+				return
+			}
+		}
+
+		// Check for undeploy
+		if deploymentStatus == false && processingStatus == false {
+			if _, ok := deployedApps[appName]; !ok {
+				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotInit.Code))
+				fmt.Fprintf(w, "App: %v not bootstrapped, discarding request to undeploy it", appName)
+				return
+			}
+		}
 	}
 
 	err = util.MetakvSet(path, data, nil)
@@ -668,6 +751,12 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 
 	values := r.URL.Query()
 	appName := values["name"][0]
+
+	if m.checkIfDeployed(appName) {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppDeployed.Code))
+		fmt.Fprintf(w, "App with same name is already deployed, skipping save request")
+		return
+	}
 
 	content, err := ioutil.ReadAll(r.Body)
 	if err != nil {

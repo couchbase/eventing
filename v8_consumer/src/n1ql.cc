@@ -171,6 +171,7 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
   } else {
     if (resp->rc != LCB_SUCCESS) {
       auto errors = n1ql_handle->ExtractErrorMsg(resp->row, isolate);
+      n1ql_op_exception_count++;
       V8Worker::exception.Throw(instance, resp->rc, errors);
     }
 
@@ -200,6 +201,7 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
   } else {
     if (resp->rc != LCB_SUCCESS) {
       auto errors = n1ql_handle->ExtractErrorMsg(resp->row, q_handler.isolate);
+      n1ql_op_exception_count++;
       V8Worker::exception.Throw(instance, resp->rc, errors);
     }
 

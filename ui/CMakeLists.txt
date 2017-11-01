@@ -13,9 +13,7 @@ file(COPY "${PROJECT_BINARY_DIR}/ui/pluggable-ui-eventing.cluster_run.json"
 # third party files
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/estools/escodegen.min.js
            ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/estools/esprima.min.js
-           ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ace/ace.js
-           ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ace/ui-ace.min.js
-           ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ace/ext-language_tools.js
+           ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ace/
         DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/eventing-ui/lib)
 
 # install all files including third party

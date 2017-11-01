@@ -22,8 +22,6 @@ func newVbProcessingStats(appName string) vbStats {
 		vbsts[i].stats["plasma_last_seq_no_stored"] = uint64(0)
 		vbsts[i].stats["plasma_last_seq_no_persisted"] = uint64(0)
 
-		// Below stats will be updated by plasma reader routines, which
-		// will process timer events
 		vbsts[i].stats["currently_processed_doc_id_timer"] = time.Now().UTC().Format(time.RFC3339)
 		vbsts[i].stats["currently_processed_non_doc_timer"] = fmt.Sprintf("%s::%s", appName, time.Now().UTC().Format(time.RFC3339))
 		vbsts[i].stats["last_processed_doc_id_timer_event"] = ""

@@ -12,10 +12,23 @@
 #include "../include/function_templates.h"
 
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+
+  auto context = isolate->GetCurrentContext();
+  auto JSON = context->Global()->Get(v8Str(isolate, "JSON"))->ToObject();
+  auto JSON_stringify =
+      v8::Local<v8::Function>::Cast(JSON->Get(v8Str(isolate, "stringify")));
+
   std::string log_msg;
-  for (int i = 0; i < args.Length(); i++) {
-    log_msg += JSONStringify(args.GetIsolate(), args[i]);
-    log_msg += ' ';
+  v8::Local<v8::Value> json_args[1];
+  for (auto i = 0; i < args.Length(); i++) {
+    json_args[0] = args[i];
+    auto result = JSON_stringify->Call(context->Global(), 1, json_args);
+    v8::String::Utf8Value utf8_value(result);
+
+    log_msg += *utf8_value;
+    log_msg += " ";
   }
 
   LOG(logDebug) << log_msg << '\n';

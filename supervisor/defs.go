@@ -59,8 +59,8 @@ type SuperSupervisor struct {
 
 	appRWMutex *sync.RWMutex
 
-	// Captures if the app is enabled or not
-	appStatus map[string]bool // Access controlled by appRWMutex
+	appDeploymentStatus map[string]bool // Access controlled by appRWMutex
+	appProcessingStatus map[string]bool // Access controlled by appRWMutex
 
 	// Captures list of deployed apps and their last deployment time
 	deployedApps map[string]string

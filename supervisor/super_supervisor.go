@@ -22,7 +22,8 @@ import (
 // NewSuperSupervisor creates the super_supervisor handle
 func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid string) *SuperSupervisor {
 	s := &SuperSupervisor{
-		appStatus:                    make(map[string]bool),
+		appDeploymentStatus:          make(map[string]bool),
+		appProcessingStatus:          make(map[string]bool),
 		CancelCh:                     make(chan struct{}, 1),
 		deployedApps:                 make(map[string]string),
 		eventingAdminPort:            eventingAdminPort,
@@ -88,14 +89,19 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 		}
 
 		s.appRWMutex.Lock()
-		if _, ok := s.appStatus[appName]; !ok {
-			s.appStatus[appName] = false
+		if _, ok := s.appDeploymentStatus[appName]; !ok {
+			s.appDeploymentStatus[appName] = false
+		}
+
+		if _, ok := s.appProcessingStatus[appName]; !ok {
+			s.appProcessingStatus[appName] = false
 		}
 
 		if processingStatus, ok := settings["processing_status"].(bool); ok {
-			if s.appStatus[appName] == false && processingStatus {
+			if s.appProcessingStatus[appName] == false && processingStatus {
 				s.supCmdCh <- msg
-				s.appStatus[appName] = true
+				s.appProcessingStatus[appName] = true
+				s.appDeploymentStatus[appName] = true
 			}
 		}
 		s.appRWMutex.Unlock()
@@ -110,11 +116,11 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 			cmd: cmdAppDelete,
 		}
 
-		if !s.appStatus[appName] {
+		if !s.appDeploymentStatus[appName] && !s.appProcessingStatus[appName] {
 			s.supCmdCh <- msg
 		} else {
-			logging.Errorf("SSUP[%d] App: %s, got request to delete the app but app isn't un-deployed. Ignoring delete request",
-				len(s.runningProducers), appName)
+			logging.Errorf("SSUP[%d] App: %s deployment state: %v processing state: %v, got request to delete the app. Ignoring delete request",
+				len(s.runningProducers), appName, s.appDeploymentStatus[appName], s.appProcessingStatus[appName])
 		}
 	}
 	return nil
@@ -122,7 +128,20 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 
 // SettingsChangeCallback is registered as callback from metakv observe calls on event handler settings path
 func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev interface{}) error {
-	logging.Infof("SSUP[%d] SettingsChangeCallback: path => %s value => %s", len(s.runningProducers), path, string(value))
+	sValue := make(map[string]interface{})
+	err := json.Unmarshal(value, &sValue)
+	if err != nil {
+		logging.Errorf("SSUP[%d] Failed to unmarshal settings received, err: %v",
+			len(s.runningProducers), err)
+		return err
+	}
+
+	// Avoid printing rbac user credentials in log
+	sValue["rbacuser"] = "****"
+	sValue["rbacpass"] = "****"
+	sValue["rbacrole"] = "****"
+
+	logging.Infof("SSUP[%d] SettingsChangeCallback: path => %s value => %#v", len(s.runningProducers), path, sValue)
 
 	if value != nil {
 		splitRes := strings.Split(path, "/")
@@ -133,63 +152,114 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 		}
 
 		settings := make(map[string]interface{})
-		err := json.Unmarshal(value, &settings)
-		if err != nil {
-			logging.Errorf("SSUP[%d] App: %s Failed to unmarshal settings received, err: %v",
-				len(s.runningProducers), appName, err)
-		}
+		json.Unmarshal(value, &settings)
 
 		processingStatus := settings["processing_status"].(bool)
+		deploymentStatus := settings["deployment_status"].(bool)
 
 		s.appRWMutex.Lock()
-		if _, ok := s.appStatus[appName]; !ok {
-			s.appStatus[appName] = false
+		if _, ok := s.appDeploymentStatus[appName]; !ok {
+			s.appDeploymentStatus[appName] = false
 		}
 
-		switch s.appStatus[appName] {
+		if _, ok := s.appProcessingStatus[appName]; !ok {
+			s.appProcessingStatus[appName] = false
+		}
+
+		logging.Infof("SSUP[%d] App: %s, current state of app: %v requested status for deployment: %v processing: %v",
+			len(s.runningProducers), appName, s.GetAppState(appName), deploymentStatus, processingStatus)
+
+		/*
+			State 1(Deployment status = False, Processing status = False)
+			State 2 (Deployment status = True, Processing status = True)
+			State 3 (Deployment status = True,  Processing status = False)
+
+			Possible state transitions:
+
+			S1 <==> S2 <==> S3 ==> S1
+		*/
+
+		switch deploymentStatus {
 		case true:
+
 			switch processingStatus {
 			case true:
-				logging.Infof("SSUP[%d] App: %s already enabled. Passing settings change message to Eventing.Consumer",
-					len(s.runningProducers), appName)
 
-				s.supCmdCh <- msg
+				state := s.GetAppState(appName)
+
+				if state == common.AppStateUndeployed || state == common.AppStateDisabled {
+
+					if state == common.AppStateDisabled {
+						if p, ok := s.runningProducers[appName]; ok {
+							p.StopProducer()
+						}
+					}
+
+					s.spawnApp(appName)
+
+					s.appDeploymentStatus[appName] = deploymentStatus
+					s.appProcessingStatus[appName] = processingStatus
+
+					if producer, ok := s.runningProducers[appName]; ok {
+						producer.SignalBootstrapFinish()
+						s.deployedApps[appName] = time.Now().String()
+					}
+				} else {
+					s.supCmdCh <- msg
+				}
 
 			case false:
-				logging.Infof("SSUP[%d] App: %s enabled, settings change requesting for disabling processing for it",
-					len(s.runningProducers), appName)
-				delete(s.deployedApps, appName)
 
-				if p, ok := s.runningProducers[appName]; ok {
-					logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
-					p.NotifyInit()
+				state := s.GetAppState(appName)
 
-					p.SignalCheckpointBlobCleanup()
-					s.superSup.Remove(s.producerSupervisorTokenMap[p])
-					delete(s.producerSupervisorTokenMap, p)
+				if state == common.AppStateEnabled {
+					s.appDeploymentStatus[appName] = deploymentStatus
+					s.appProcessingStatus[appName] = processingStatus
 
-					p.NotifySupervisor()
-					logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)
+					if p, ok := s.runningProducers[appName]; ok {
+						logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
+						p.NotifyInit()
+
+						p.PauseProducer()
+						p.NotifySupervisor()
+						logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)
+					}
 				}
-				s.appStatus[appName] = false
 			}
 
 		case false:
+
 			switch processingStatus {
 			case true:
-				logging.Infof("SSUP[%d] App: %s disabled currently, settings change requesting to enable processing for it",
-					len(s.runningProducers), appName)
-
-				s.spawnApp(appName)
-				s.appStatus[appName] = true
-				if producer, ok := s.runningProducers[appName]; ok {
-					producer.SignalBootstrapFinish()
-					s.deployedApps[appName] = time.Now().String()
-				}
+				logging.Infof("SSUP[%d] App: %v Unexpected status requested", len(s.runningProducers), appName)
 
 			case false:
-				logging.Infof("SSUP[%d] App: %s disabled currently, settings change requesting for disabling it again. Ignoring",
-					len(s.runningProducers), appName)
+
+				state := s.GetAppState(appName)
+
+				if state == common.AppStateEnabled || state == common.AppStateDisabled {
+
+					s.appDeploymentStatus[appName] = deploymentStatus
+					s.appProcessingStatus[appName] = processingStatus
+
+					logging.Infof("SSUP[%d] App: %s enabled, settings change requesting undeployment",
+						len(s.runningProducers), appName)
+					delete(s.deployedApps, appName)
+
+					if p, ok := s.runningProducers[appName]; ok {
+						logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
+						p.NotifyInit()
+
+						p.SignalCheckpointBlobCleanup()
+						s.superSup.Remove(s.producerSupervisorTokenMap[p])
+						delete(s.producerSupervisorTokenMap, p)
+
+						p.NotifySupervisor()
+						logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)
+					}
+
+					delete(s.runningProducers, appName)
+				}
 			}
 		}
 
@@ -284,14 +354,6 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 			switch msg.cmd {
 			case cmdAppDelete:
 				logging.Infof("SSUP[%d] Deleting app: %s", len(s.runningProducers), appName)
-				// Signal all producer to signal all running consumers to purge all checkpoint
-				// blobs in metadata bucket
-				appProducer, ok := s.runningProducers[appName]
-				if ok {
-					appProducer.SignalCheckpointBlobCleanup()
-				}
-
-				s.superSup.Remove(s.producerSupervisorTokenMap[appProducer])
 
 				// Spawning another routine to process cleanup of plasma store, otherwise
 				// it would block (re)deploy of new lambdas

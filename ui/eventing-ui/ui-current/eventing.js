@@ -5,7 +5,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             var self = this;
 
             self.errorState = !ApplicationService.status.isErrorCodesLoaded();
-            self.showSuccessAlert = false;
+            self.showErrorAlert = self.showSuccessAlert = false;
             self.serverNodes = serverNodes;
             self.isEventingRunning = isEventingRunning;
             self.appList = ApplicationService.local.getAllApps();
@@ -19,8 +19,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 var appClone = app.clone();
                 appClone.settings.processing_status = !appClone.settings.processing_status;
 
-                ApplicationService.tempStore.saveApp(appClone)
+                ApplicationService.primaryStore.getDeployedApps()
                     .then(function(response) {
+                        // Check if the app is deployed completely before toggling the processing state.
+                        if (!(appClone.appname in response.data)) {
+                            showErrorAlert(`Function "${appClone.appname}" may be undergoing bootstrap. Please try later.`);
+                            return $q.reject(`Unable to pause/run "${appClone.appname}". Possibly, bootstrap in progress`);
+                        }
+
+                        return ApplicationService.tempStore.saveApp(appClone);
+                    }).then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
                         if (responseCode) {
                             return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
@@ -101,7 +109,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         app.settings.processing_status = appClone.settings.processing_status;
 
                         // Show an alert upon successful deployment.
-                        showSuccessAlert(app.appname + ' deployed successfully!');
+                        showSuccessAlert(`${app.appname} deployed successfully!`);
                     })
                     .catch(function(errResponse) {
                         console.error(errResponse);
@@ -116,6 +124,15 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         scope: scope
                     }).result
                     .then(function(response) {
+                        return ApplicationService.primaryStore.getDeployedApps();
+                    })
+                    .then(function(response) {
+                        // Check if the app is deployed completely before trying to undeploy.
+                        if (!(appClone.appname in response.data)) {
+                            showErrorAlert(`Function "${appClone.appname}" may be undergoing bootstrap. Please try later.`);
+                            return $q.reject(`Unable to undeploy "${appClone.appname}". Possibly, bootstrap in progress`);
+                        }
+
                         // Set app to 'undeployed & disabled' state and save.
                         appClone.settings.deployment_status = false;
                         appClone.settings.processing_status = false;
@@ -148,7 +165,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         console.log(response.data);
                         app.settings.deployment_status = appClone.settings.deployment_status;
                         app.settings.processing_status = appClone.settings.processing_status;
-                        showSuccessAlert(app.appname + ' undeployed successfully!');
+                        showSuccessAlert(`${app.appname} undeployed successfully!`);
                     })
                     .catch(function(errResponse) {
                         console.error(errResponse);
@@ -204,7 +221,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         // application from primary store during undeploy.
 
                         ApplicationService.local.deleteApp(appName);
-                        showSuccessAlert(appName + ' deleted successfully!');
+                        showSuccessAlert(`${appName} deleted successfully!`);
                     })
                     .catch(function(errResponse) {
                         console.error(errResponse);
@@ -213,10 +230,19 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             // Utility function to show success alert.
             function showSuccessAlert(message) {
-                self.alertMessage = message;
+                self.successMessage = message;
                 self.showSuccessAlert = true;
                 $timeout(function() {
                     self.showSuccessAlert = false;
+                }, 4000);
+            }
+
+            // Utility function to show error alert.
+            function showErrorAlert(message) {
+                self.errorMessage = message;
+                self.showErrorAlert = true;
+                $timeout(function() {
+                    self.showErrorAlert = false;
                 }, 4000);
             }
         }
@@ -238,6 +264,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 function(ApplicationService) {
                                     // Getting the list of buckets from server.
                                     return ApplicationService.server.getLatestBuckets();
+                                }
+                            ],
+                            savedApps: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.tempStore.getAllApps();
                                 }
                             ]
                         }
@@ -328,13 +359,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for creating an application.
-    .controller('CreateCtrl', ['FormValidationService', 'bucketsResolve',
-        function(FormValidationService, bucketsResolve) {
+    .controller('CreateCtrl', ['FormValidationService', 'bucketsResolve', 'savedApps',
+        function(FormValidationService, bucketsResolve, savedApps) {
             var self = this;
             self.isDialog = true;
 
             self.sourceBuckets = bucketsResolve;
             self.metadataBuckets = bucketsResolve.reverse();
+            self.savedApps = savedApps.getApplications();
 
             self.bindings = [];
 
@@ -349,8 +381,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for settings.
-    .controller('SettingsCtrl', ['$q', '$uibModal', '$state', '$timeout', '$scope', '$stateParams', 'ApplicationService', 'FormValidationService', 'bucketsResolve',
-        function($q, $uibModal, $state, $timeout, $scope, $stateParams, ApplicationService, FormValidationService, bucketsResolve) {
+    .controller('SettingsCtrl', ['$q', '$uibModal', '$state', '$timeout', '$scope', '$stateParams', 'ApplicationService', 'FormValidationService', 'bucketsResolve', 'savedApps',
+        function($q, $uibModal, $state, $timeout, $scope, $stateParams, ApplicationService, FormValidationService, bucketsResolve, savedApps) {
             var self = this,
                 appModel = ApplicationService.local.getAppByName($stateParams.appName);
 
@@ -370,6 +402,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.metadataBuckets = bucketsResolve.reverse();
             self.sourceBucket = appModel.depcfg.source_bucket;
             self.metadataBucket = appModel.depcfg.metadata_bucket;
+            self.savedApps = savedApps;
 
             // Need to pass a deep copy or the changes will be stored locally till refresh.
             $scope.appModel = JSON.parse(JSON.stringify(appModel));
@@ -434,7 +467,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             };
 
             function showSuccessAlert(message) {
-                self.alertMessage = message;
+                self.successMessage = message;
                 self.showSuccessAlert = true;
                 $timeout(function() {
                     self.showSuccessAlert = false;
@@ -596,7 +629,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             };
 
             function showSuccessAlert(message) {
-                self.alertMessage = message;
+                self.successMessage = message;
                 self.showSuccessAlert = true;
                 $timeout(function() {
                     self.showSuccessAlert = false;
@@ -738,6 +771,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     },
                     deleteApp: function(appName) {
                         return $http.get('/_p/event/deleteApplication/?name=' + appName);
+                    },
+                    getDeployedApps: function() {
+                        return $http.get('/_p/event/getDeployedApps');
                     }
                 },
                 debug: {
@@ -891,12 +927,18 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
                     }
 
+                    // Check whether the appname exists in the list of apps.
+                    if (form.appname.$viewValue) {
+                        form.appname.$error.appExists = form.appname.$viewValue in formCtrl.savedApps;
+                    }
+
                     // Need to check where rbacpass is empty manually and update state.
                     // Don't know why AngularJS is giving wrong state for this field.
                     // Disabling this field as it may be deprecated.
                     form.rbacpass.$error.required = form.rbacpass.$modelValue === '';
 
                     return form.appname.$error.required ||
+                        form.appname.$error.appExists ||
                         // Disabling RBAC username and password checks.
                         form.rbacuser.$error.required ||
                         form.rbacpass.$error.required ||
@@ -967,6 +1009,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             function(ApplicationService) {
                                 // Getting the list of buckets.
                                 return ApplicationService.server.getLatestBuckets();
+                            }
+                        ],
+                        savedApps: ['ApplicationService',
+                            function(ApplicationService) {
+                                return ApplicationService.tempStore.getAllApps();
                             }
                         ]
                     }

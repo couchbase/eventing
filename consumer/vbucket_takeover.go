@@ -1,10 +1,8 @@
 package consumer
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -97,53 +95,9 @@ func (c *Consumer) vbGiveUpRoutine() {
 					}
 					c.RUnlock()
 
+					// Chan used to signal rebalance stop, which should stop plasma iteration
 					sig := make(chan struct{}, 1)
-					go func(c *Consumer, i int, vb uint16, sig chan struct{}) {
-						r := c.vbPlasmaStore.NewReader()
-						w := c.vbPlasmaStore.NewWriter()
-						snapshot := c.vbPlasmaStore.NewSnapshot()
-						defer snapshot.Close()
-
-						itr, err := r.NewSnapshotIterator(snapshot)
-						if err != nil {
-							logging.Errorf("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v Failed to create snapshot, err: %v",
-								c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
-						}
-
-						vbPlasmaDir := fmt.Sprintf("%v/reb_%v_%v_timer.data", c.eventingDir, vb, c.app.AppName)
-						vbRebPlasmaStore, err := c.openPlasmaStore(vbPlasmaDir)
-						if err != nil {
-							logging.Errorf("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v Failed to create temporary plasma instance during rebalance, err: %v",
-								c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
-							return
-						}
-
-						defer vbRebPlasmaStore.Close()
-						defer vbRebPlasmaStore.PersistAll()
-
-						rebPlasmaWriter := vbRebPlasmaStore.NewWriter()
-
-						for itr.SeekFirst(); itr.Valid(); itr.Next() {
-							keyPrefix := []byte(fmt.Sprintf("vb_%v", vb))
-
-							if bytes.Compare(itr.Key(), keyPrefix) > 0 {
-								val, err := w.LookupKV(itr.Key())
-								if err != nil {
-									logging.Errorf("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v key: %s failed lookup, err: %v",
-										c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb, string(itr.Key()), err)
-									continue
-								}
-
-								err = rebPlasmaWriter.InsertKV(itr.Key(), val)
-								if err != nil {
-									logging.Errorf("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v key: %s failed to insert, err: %v",
-										c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb, string(itr.Key()), err)
-									continue
-								}
-							}
-						}
-
-					}(c, i, vb, sig)
+					c.createTempPlasmaStore(i, vb, sig)
 
 					c.vbTimerProcessingWorkerAssign(false)
 
@@ -174,6 +128,8 @@ func (c *Consumer) vbGiveUpRoutine() {
 						if vbBlob.DCPStreamStatus != dcpStreamRunning {
 							time.Sleep(retryVbMetaStateCheckInterval)
 							goto retryVbMetaStateCheck
+						} else {
+							c.purgePlasmaRecords(vb, i)
 						}
 					}
 					logging.Debugf("CRVT[%s:%s:giveup_r_%d:%s:%d] Gracefully exited vb ownership give-up routine, last vb handled: %v",
@@ -385,8 +341,12 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		util.Retry(util.NewFixedBackoff(time.Second), aggUUIDCallback, c, &addrUUIDMap)
 		addr = addrUUIDMap[previousNodeUUID]
 
-		remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
-			strings.Split(timerAddrs[addr][previousAssignedWorker], ":")[3])
+		if _, aOk := timerAddrs[addr]; aOk {
+			if _, pOk := timerAddrs[addr][previousAssignedWorker]; pOk {
+				remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
+					strings.Split(timerAddrs[addr][previousAssignedWorker], ":")[3])
+			}
+		}
 	} else {
 		remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
 			strings.Split(timerAddrs[previousVBOwner][previousAssignedWorker], ":")[3])
@@ -416,46 +376,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, sTimerDir, dTimerDir, remoteConsumerAddr)
 
-		pStore, err := c.openPlasmaStore(dTimerDir)
-		if err != nil {
-			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to create plasma instance for plasma data dir: %v received, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, dTimerDir, err)
-		}
-		plasmaStoreWriter := c.vbPlasmaStore.NewWriter()
-
-		r := pStore.NewReader()
-		w := pStore.NewWriter()
-		snapshot := pStore.NewSnapshot()
-
-		defer os.RemoveAll(dTimerDir)
-		defer pStore.Close()
-		defer snapshot.Close()
-
-		itr, err := r.NewSnapshotIterator(snapshot)
-		if err != nil {
-			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to create snapshot, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
-		}
-
-		for itr.SeekFirst(); itr.Valid(); itr.Next() {
-
-			val, err := w.LookupKV(itr.Key())
-			if err != nil {
-				logging.Errorf("CRVT[%s:%s:%s:%d] key: %v Failed to lookup, err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), itr.Key(), err)
-				continue
-			} else {
-				logging.Infof("CRVT[%s:%s:%s:%d] key: %v Lookup value: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), itr.Key(), val)
-			}
-
-			err = plasmaStoreWriter.InsertKV(itr.Key(), val)
-			if err != nil {
-				logging.Errorf("CRVT[%s:%s:%s:%d] key: %v Failed to insert, err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), itr.Key(), err)
-				continue
-			}
-		}
+		c.copyPlasmaRecords(vb, dTimerDir)
 
 	} else {
 		logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",

@@ -43,13 +43,13 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   int worker_index;
   int64_t latency_buckets;
   std::vector<int64_t> agg_hgram, worker_hgram;
-  std::ostringstream lstats;
+  std::ostringstream lstats, fstats;
 
   const flatbuf::payload::Payload *payload;
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
       *thr_map;
 
-  LOG(logError) << "Event: " << static_cast<int16_t>(parsed_header->event)
+  LOG(logTrace) << "Event: " << static_cast<int16_t>(parsed_header->event)
                 << " Opcode: " << static_cast<int16_t>(parsed_header->opcode)
                 << '\n';
 
@@ -142,7 +142,12 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           if ((i > 0) && (lstats.str().length() > 1)) {
             lstats << ",";
           }
-          lstats << "\"" << i << "\":" << agg_hgram[i];
+
+          if (i == 0) {
+            lstats << "\"" << HIST_FROM << "\":" << agg_hgram[i];
+          } else {
+            lstats << "\"" << i * HIST_WIDTH << "\":" << agg_hgram[i];
+          }
         }
 
         if (i == agg_hgram.size() - 1) {
@@ -150,9 +155,22 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
         }
       }
       resp_msg->msg.assign(lstats.str());
-      LOG(logInfo) << "Latency stats dump - " << resp_msg->msg << '\n';
+      LOG(logInfo) << "Latency stats dump: " << resp_msg->msg << '\n';
       resp_msg->msg_type = mV8_Worker_Config;
       resp_msg->opcode = oLatencyStats;
+      msg_priority = true;
+      break;
+    case oGetFailureStats:
+      fstats.str(std::string());
+      fstats << "{\"bucket_op_exception_count\":";
+      fstats << bucket_op_exception_count << ", \"n1ql_op_exception_count\":";
+      fstats << n1ql_op_exception_count << ", \"timeout_count\":";
+      fstats << timeout_count << "}";
+
+      resp_msg->msg.assign(fstats.str());
+      LOG(logInfo) << "Failure stats dump: " << resp_msg->msg << '\n';
+      resp_msg->msg_type = mV8_Worker_Config;
+      resp_msg->opcode = oFailureStats;
       msg_priority = true;
       break;
     case oVersion:
@@ -529,13 +547,6 @@ void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
     next_message.clear();
     uv_read_stop(stream);
   }
-}
-
-void AppWorker::WriteMessage(Message *msg) {
-  uv_write(outgoing_queue.write_bufs.GetNewWriteBuf(), conn_handle,
-           msg->GetBuf(), 1, [](uv_write_t *req, int status) {
-             AppWorker::GetAppWorker()->OnWrite(req, status);
-           });
 }
 
 void AppWorker::OnWrite(uv_write_t *req, int status) {

@@ -107,8 +107,6 @@ var getMemcachedServiceAuth = func(args ...interface{}) error {
 	*user, *pass, err = cbauth.GetMemcachedServiceAuth(kvHostPort)
 	if err != nil {
 		logging.Errorf("PRCO[%s:%d] Failed to get rbac auth details, err: %v", p.appName, p.LenRunningConsumers(), err)
-	} else {
-		logging.Infof("Producer - rbac creds, user: %v password: %v", *user, *pass)
 	}
 	return err
 }

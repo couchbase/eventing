@@ -150,21 +150,6 @@ func (r *timerProcessingWorker) processTimerEvents() {
 		select {
 		case <-r.stopCh:
 			return
-		case vb := <-r.signalProcessTimerPlasmaCloseCh:
-			// Rebalance takeover routine will send signal on this channel to signify
-			// stopping of any plasma.Writer instance for a specific vbucket
-			r.c.plasmaReaderRWMutex.Lock()
-			_, ok := r.c.vbPlasmaReader[vb]
-			if ok {
-				delete(r.c.vbPlasmaReader, vb)
-			}
-
-			r.c.plasmaReaderRWMutex.Unlock()
-
-			// sends ack message back to rebalance takeover routine, so that it could
-			// safely call Close() on vb specific plasma store
-			r.c.signalProcessTimerPlasmaCloseAckCh <- vb
-			continue
 		case <-r.timerProcessingTicker.C:
 		}
 
@@ -275,11 +260,8 @@ func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateS
 	}
 }
 
-func (c *Consumer) processNonDocTimerEvents() {
+func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string, bootstrap bool) {
 	c.nonDocTimerProcessingTicker = time.NewTicker(c.timerProcessingTickInterval)
-
-	currTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Format(time.RFC3339))
-	nextTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Add(time.Second).Format(time.RFC3339))
 
 	vbsOwned := c.getVbsOwned()
 
@@ -291,14 +273,14 @@ func (c *Consumer) processNonDocTimerEvents() {
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-		if vbBlob.CurrentProcessedDocIDTimer == "" {
-			c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", currTimer)
+		if vbBlob.CurrentProcessedDocIDTimer == "" && bootstrap {
+			c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", cTimer)
 		} else {
 			c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", vbBlob.CurrentProcessedNonDocTimer)
 		}
 
-		if vbBlob.NextDocIDTimerToProcess == "" {
-			c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", nextTimer)
+		if vbBlob.NextDocIDTimerToProcess == "" && bootstrap {
+			c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", nTimer)
 		} else {
 			c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", vbBlob.NextNonDocTimerToProcess)
 		}
@@ -317,32 +299,37 @@ func (c *Consumer) processNonDocTimerEvents() {
 			for _, vb := range vbsOwned {
 				currTimer := c.vbProcessingStats.getVbStat(vb, "currently_processed_non_doc_timer").(string)
 
-				cts := strings.Split(currTimer, "::")[1]
-				ts, err := time.Parse(tsLayout, cts)
-				if err != nil {
-					logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
-					continue
-				}
-
-				if ts.After(time.Now()) {
-					continue
-				}
-
-				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getCronTimerCallback, c, currTimer, &val, true, &isNoEnt)
-
-				if !isNoEnt {
-					logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val)
-					data, err := json.Marshal(&val)
+				ctsSplit := strings.Split(currTimer, "::")
+				if len(ctsSplit) > 1 {
+					cts := ctsSplit[1]
+					ts, err := time.Parse(tsLayout, cts)
 					if err != nil {
-						logging.Errorf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v, err: %v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val, err)
+						logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
+						continue
 					}
-					c.nonDocTimerEntryCh <- timerMsg{payload: string(data), msgCount: len(val.CronTimers)}
-					c.gocbMetaBucket.Remove(currTimer, 0)
+
+					if ts.After(time.Now()) {
+						continue
+					}
+
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getCronTimerCallback, c, currTimer, &val, true, &isNoEnt)
+
+					if !isNoEnt {
+						logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val)
+						data, err := json.Marshal(&val)
+						if err != nil {
+							logging.Errorf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v, err: %v",
+								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val, err)
+						}
+						if len(val.CronTimers) > 0 {
+							c.nonDocTimerEntryCh <- timerMsg{payload: string(data), msgCount: len(val.CronTimers)}
+							c.gocbMetaBucket.Remove(currTimer, 0)
+						}
+					}
+					c.updateNonDocTimerStats(vb)
 				}
-				c.updateNonDocTimerStats(vb)
 			}
 		}
 	}
