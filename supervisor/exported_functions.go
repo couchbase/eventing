@@ -140,14 +140,24 @@ func (s *SuperSupervisor) RestPort() string {
 
 // SignalStartDebugger kicks off V8 Debugger for a specific deployed lambda
 func (s *SuperSupervisor) SignalStartDebugger(appName string) {
-	p := s.runningProducers[appName]
-	p.SignalStartDebugger()
+	p, ok := s.runningProducers[appName]
+	if ok {
+		p.SignalStartDebugger()
+	} else {
+		logging.Errorf("SSUP[%d] StartDebugger request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+			len(s.runningProducers), appName)
+	}
 }
 
 // SignalStopDebugger stops V8 Debugger for a specific deployed lambda
 func (s *SuperSupervisor) SignalStopDebugger(appName string) {
-	p := s.runningProducers[appName]
-	p.SignalStopDebugger()
+	p, ok := s.runningProducers[appName]
+	if ok {
+		p.SignalStopDebugger()
+	} else {
+		logging.Errorf("SSUP[%d] StopDebugger request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+			len(s.runningProducers), appName)
+	}
 }
 
 // GetAppState returns current state of app
@@ -169,4 +179,15 @@ func (s *SuperSupervisor) GetAppState(appName string) int8 {
 		}
 	}
 	return common.AppState
+}
+
+// GetDcpEventsRemainingToProcess returns remaining dcp events to process
+func (s *SuperSupervisor) GetDcpEventsRemainingToProcess(appName string) uint64 {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.GetDcpEventsRemainingToProcess()
+	}
+	logging.Errorf("SSUP[%d] Events remaining request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+		len(s.runningProducers), appName)
+	return 0
 }

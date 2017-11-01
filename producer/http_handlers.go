@@ -65,17 +65,6 @@ func (p *Producer) TimerTransferHostPortAddrs() map[string]string {
 	return hostPortAddrs
 }
 
-// DcpEventsRemainingToProcess writes remaining dcp events to process
-func (p *Producer) DcpEventsRemainingToProcess(w http.ResponseWriter, r *http.Request) {
-	var remainingEvents uint64
-
-	for _, consumer := range p.runningConsumers {
-		remainingEvents += consumer.DcpEventsRemainingToProcess()
-	}
-
-	fmt.Fprintf(w, "%v", remainingEvents)
-}
-
 // GetSettings dumps the event handler specific config
 func (p *Producer) GetSettings(w http.ResponseWriter, r *http.Request) {
 	encodedSettings, err := json.Marshal(p.app.Settings)

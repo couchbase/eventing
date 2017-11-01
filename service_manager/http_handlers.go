@@ -883,3 +883,23 @@ func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
 
 	w.Write(m.statusPayload)
 }
+
+func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	if m.checkIfDeployed(appName) {
+		eventsRemaining := m.superSup.GetDcpEventsRemainingToProcess(appName)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%v", eventsRemaining)
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+	fmt.Fprintf(w, "App: %v not deployed", appName)
+}

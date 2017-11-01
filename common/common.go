@@ -39,10 +39,11 @@ type EventingProducer interface {
 	CleanupDeadConsumer(consumer EventingConsumer)
 	ClearEventStats()
 	GetAppCode() string
-	GetEventProcessingStats() map[string]uint64
-	GetHandlerCode() string
+	GetDcpEventsRemainingToProcess() uint64
 	GetDebuggerURL() string
+	GetEventProcessingStats() map[string]uint64
 	GetFailureStats() map[string]uint64
+	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
 	GetNsServerPort() string
 	GetSeqsProcessed() map[int]int64
@@ -116,6 +117,7 @@ type EventingSuperSup interface {
 	GetEventProcessingStats(appName string) map[string]uint64
 	GetAppCode(appName string) string
 	GetAppState(appName string) int8
+	GetDcpEventsRemainingToProcess(appName string) uint64
 	GetDebuggerURL(appName string) string
 	GetDeployedApps() map[string]string
 	GetFailureStats(appName string) map[string]uint64

@@ -242,3 +242,14 @@ func (p *Producer) StopProducer() {
 	p.metadataBucketHandle.Close()
 	p.workerSupervisor.Stop()
 }
+
+// GetDcpEventsRemainingToProcess returns remaining dcp events to process
+func (p *Producer) GetDcpEventsRemainingToProcess() uint64 {
+	var remainingEvents uint64
+
+	for _, consumer := range p.runningConsumers {
+		remainingEvents += consumer.DcpEventsRemainingToProcess()
+	}
+
+	return remainingEvents
+}
