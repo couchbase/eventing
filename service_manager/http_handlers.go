@@ -460,6 +460,33 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 	w.Write(buf)
 }
 
+// Reports aggregated event processing stats from all producers
+func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
+	params := r.URL.Query()
+	appName := params["name"][0]
+
+	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+
+	pStats, err := util.GetEventProcessingStats("/getEventProcessingStats?name="+appName, m.eventingNodeAddrs)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to get event processing stats, err: %v", err)
+		return
+	}
+
+	buf, err := json.Marshal(pStats)
+	if err != nil {
+		logging.Errorf("Failed to unmarshal event processing stats from all producers, err: %v", err)
+		return
+	}
+
+	fmt.Fprintf(w, "%s", string(buf))
+}
+
 // Reports aggregated rebalance progress from all producers
 func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 

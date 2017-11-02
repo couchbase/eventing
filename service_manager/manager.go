@@ -76,6 +76,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getErrorCodes", m.getErrCodes)
 	http.HandleFunc("/deleteApplication/", m.deleteApplication)
 	http.HandleFunc("/deleteAppTempStore/", m.deleteAppTempStore)
+	http.HandleFunc("/getAggEventProcessingStats", m.getAggEventProcessingStats)
 	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
 	http.HandleFunc("/getApplication/", m.fetchAppSetup)
 	http.HandleFunc("/getAppTempStore/", m.fetchAppTempStore)
