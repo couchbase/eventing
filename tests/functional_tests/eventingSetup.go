@@ -135,11 +135,23 @@ func createFunction(deploymentStatus, processingStatus bool, id, cppThreadCount,
 	return encodedData, nil
 }
 
-func undeployFunction(appName string) {
+func setSettings(appName string, deploymentStatus, processingStatus bool) {
 	settings := make(map[string]interface{})
 
-	settings["processing_status"] = false
-	settings["deployment_status"] = false
+	settings["processing_status"] = processingStatus
+	settings["deployment_status"] = deploymentStatus
+
+	settings["cleanup_timers"] = false
+	settings["dcp_stream_boundary"] = "everything"
+	settings["log_level"] = "INFO"
+	settings["tick_duration"] = 5000
+	settings["worker_count"] = 3
+	settings["timer_worker_pool_size"] = 1
+	settings["sock_batch_size"] = 1
+	settings["skip_timer_threshold"] = 86400
+
+	settings["rbacuser"] = rbacuser
+	settings["rbacpass"] = rbacpass
 
 	data, err := json.Marshal(&settings)
 	if err != nil {
