@@ -23,8 +23,25 @@
 
 #include "log.h"
 
+#define DATA_SLOT 0
 #define EXCEPTION_STR_SIZE 20
 #define MAXPATHLEN 256
+
+class N1QL;
+class V8Worker;
+class JsException;
+// Struct for storing isolate data
+struct Data {
+  N1QL *n1ql_handle;
+  V8Worker *v8worker;
+  lcb_t cb_instance;
+  lcb_t meta_cb_instance;
+  JsException *js_exception;
+};
+
+inline Data *UnwrapData(v8::Isolate *isolate) {
+  return reinterpret_cast<Data *>(isolate->GetData(DATA_SLOT));
+}
 
 int WinSprintf(char **strp, const char *fmt, ...);
 

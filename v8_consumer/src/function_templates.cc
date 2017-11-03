@@ -118,9 +118,7 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   LOG(logTrace) << "cron timer value:" << value << '\n';
 
-  lcb_t *meta_cb_instance =
-      reinterpret_cast<lcb_t *>(args.GetIsolate()->GetData(2));
-
+  auto meta_cb_instance = UnwrapData(isolate)->meta_cb_instance;
   Result res;
   lcb_CMDSUBDOC mcmd = {0};
   LCB_CMD_SET_KEY(&mcmd, timer_entry.c_str(), timer_entry.length());
@@ -145,16 +143,17 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
 
   int retry_counter = 0;
-  lcb_error_t rc = lcb_subdoc3(*meta_cb_instance, &res, &mcmd);
+  lcb_error_t rc = lcb_subdoc3(meta_cb_instance, &res, &mcmd);
   if (rc != LCB_SUCCESS && retry_counter <= LCB_OP_RETRY_COUNTER) {
-    rc = lcb_subdoc3(*meta_cb_instance, &res, &mcmd);
+    rc = lcb_subdoc3(meta_cb_instance, &res, &mcmd);
     retry_counter++;
   }
-  lcb_wait(*meta_cb_instance);
+  lcb_wait(meta_cb_instance);
 
   if (res.rc != LCB_SUCCESS) {
     non_doc_timer_create_failure++;
-    V8Worker::exception.Throw(*meta_cb_instance, res.rc);
+    auto js_exception = UnwrapData(isolate)->js_exception;
+    js_exception->Throw(meta_cb_instance, res.rc);
     return;
   }
 }
@@ -214,9 +213,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
                 << " doc_id:" << doc_id << " start_ts:" << timer_entry << '\n';
 
   while (true) {
-    lcb_t *cb_instance =
-        reinterpret_cast<lcb_t *>(args.GetIsolate()->GetData(1));
-
+    auto cb_instance = UnwrapData(isolate)->cb_instance;
     lcb_CMDSUBDOC gcmd = {0};
     LCB_CMD_SET_KEY(&gcmd, doc_id.c_str(), doc_id.size());
 
@@ -235,8 +232,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     gcmd.specs = gspecs.data();
     gcmd.nspecs = gspecs.size();
-    lcb_subdoc3(*cb_instance, &res, &gcmd);
-    lcb_wait(*cb_instance);
+    lcb_subdoc3(cb_instance, &res, &gcmd);
+    lcb_wait(cb_instance);
 
     if (res.rc != LCB_SUCCESS) {
       LOG(logError)
@@ -290,7 +287,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     mcmd.specs = specs.data();
     mcmd.nspecs = specs.size();
 
-    lcb_error_t rc = lcb_subdoc3(*cb_instance, &res, &mcmd);
+    lcb_error_t rc = lcb_subdoc3(cb_instance, &res, &mcmd);
     if (rc != LCB_SUCCESS) {
       LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
                     << doc_id << " return code:" << rc
@@ -298,10 +295,11 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       return;
     }
 
-    lcb_wait(*cb_instance);
+    lcb_wait(cb_instance);
     if (res.rc != LCB_SUCCESS) {
       doc_timer_create_failure++;
-      V8Worker::exception.Throw(*cb_instance, res.rc);
+      auto js_exception = UnwrapData(isolate)->js_exception;
+      js_exception->Throw(cb_instance, res.rc);
       return;
     }
 

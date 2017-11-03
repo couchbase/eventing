@@ -48,9 +48,6 @@ std::atomic<std::int64_t> on_delete_failure = {0};
 std::atomic<std::int64_t> non_doc_timer_create_failure = {0};
 std::atomic<std::int64_t> doc_timer_create_failure = {0};
 
-N1QL *n1ql_handle;
-JsException V8Worker::exception;
-
 enum RETURN_CODE {
   kSuccess = 0,
   kFailedToCompileJs,
@@ -184,8 +181,10 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::HandleScope handle_scope(isolate_);
 
+  isolate_->SetData(DATA_SLOT, &data);
   isolate_->SetCaptureStackTraceForUncaughtExceptions(true);
-  isolate_->SetData(0, this);
+  data.v8worker = this;
+
   v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(GetIsolate());
 
   v8::TryCatch try_catch;
@@ -212,7 +211,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   v8::Local<v8::Context> context = v8::Context::New(GetIsolate(), NULL, global);
   context_.Reset(GetIsolate(), context);
-  exception = JsException(isolate_);
+  js_exception = new JsException(isolate_);
+  data.js_exception = js_exception;
 
   app_name_ = h_config->app_name;
   execute_start_time = Time::now();
@@ -285,6 +285,7 @@ V8Worker::~V8Worker() {
   if (processing_thr.joinable()) {
     processing_thr.join();
   }
+
   context_.Reset();
   on_update_.Reset();
   on_delete_.Reset();
@@ -292,6 +293,7 @@ V8Worker::~V8Worker() {
   delete n1ql_handle;
   delete settings;
   delete histogram;
+  delete js_exception;
 }
 
 // Re-compile and execute handler code for debugger
@@ -369,7 +371,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
       std::string((const char *)js_source_map);
 
   n1ql_handle = new N1QL(conn_pool, isolate_);
-  isolate_->SetData(3, n1ql_handle);
+  UnwrapData(isolate_)->n1ql_handle = n1ql_handle;
 
   Transpiler transpiler(transpiler_js_src);
   script_to_execute =
@@ -446,8 +448,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
                           sdmutate_callback);
     lcb_install_callback3(cb_instance, LCB_CALLBACK_SDLOOKUP,
                           sdlookup_callback);
-
-    this->GetIsolate()->SetData(1, (void *)(&cb_instance));
+    UnwrapData(isolate_)->cb_instance = cb_instance;
 
     crst.version = 3;
     crst.v.v3.connstr = meta_connstr.c_str();
@@ -464,7 +465,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
                           sdmutate_callback);
     lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDLOOKUP,
                           sdlookup_callback);
-    this->GetIsolate()->SetData(2, (void *)(&meta_cb_instance));
+    UnwrapData(isolate_)->meta_cb_instance = meta_cb_instance;
   }
 
   // Spawning terminator thread to monitor the wall clock time for execution of

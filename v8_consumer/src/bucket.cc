@@ -203,7 +203,8 @@ void Bucket::BucketGet(v8::Local<v8::Name> name,
   // Throw an exception in JavaScript if the bucket get call failed.
   if (result.rc != LCB_SUCCESS) {
     bucket_op_exception_count++;
-    V8Worker::exception.Throw(*bucket_lcb_obj_ptr, result.rc);
+    auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
+    js_exception->Throw(*bucket_lcb_obj_ptr, result.rc);
     return;
   }
 
@@ -352,7 +353,8 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
   // Throw an exception in JavaScript if the bucket set call failed.
   if (sres.rc != LCB_SUCCESS) {
     bucket_op_exception_count++;
-    V8Worker::exception.Throw(*bucket_lcb_obj_ptr, sres.rc);
+    auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
+    js_exception->Throw(*bucket_lcb_obj_ptr, sres.rc);
     return;
   }
 
@@ -381,7 +383,8 @@ void Bucket::BucketDelete(v8::Local<v8::Name> name,
   // Throw an exception in JavaScript if the bucket delete call failed.
   if (result.rc != LCB_SUCCESS) {
     bucket_op_exception_count++;
-    V8Worker::exception.Throw(*bucket_lcb_obj_ptr, result.rc);
+    auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
+    js_exception->Throw(*bucket_lcb_obj_ptr, result.rc);
     return;
   }
 

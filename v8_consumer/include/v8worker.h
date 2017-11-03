@@ -201,9 +201,10 @@ public:
   Queue<worker_msg_t> *worker_queue;
 
   ConnectionPool *conn_pool;
-  static JsException exception;
+  JsException *js_exception;
 
   Histogram *histogram;
+  Data data;
 
 private:
   std::string connstr;
