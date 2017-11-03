@@ -221,7 +221,6 @@ retryVerifyBucketOp:
 	}
 	rCount++
 	time.Sleep(time.Second * 5)
-	fmt.Printf("Sleeping for 5 sec before checking item count again, expected count: %v curr count: %v\n", count, itemCount)
 	goto retryVerifyBucketOp
 }
 
@@ -268,4 +267,12 @@ func getBucketItemCount() (int, error) {
 func bucketFlush(bucketName string) {
 	flushEndpoint := fmt.Sprintf("http://127.0.0.1:9000/pools/default/buckets/%s/controller/doFlush", bucketName)
 	postToEventindEndpoint(flushEndpoint, nil)
+}
+
+func flushFunctionAndBucket(handler string) {
+	setSettings(handler, false, false)
+	deleteFunction(handler)
+
+	bucketFlush("default")
+	bucketFlush("hello-world")
 }

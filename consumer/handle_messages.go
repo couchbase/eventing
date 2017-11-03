@@ -216,7 +216,7 @@ func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 		Payload: timerPayload,
 	}
 
-	util.Retry(util.NewFixedBackoff(5*time.Second), sendMsgCallback, c, msg, uint16(0), uint64(0), false, sendToDebugger, false)
+	c.sendMessage(msg, 0, 0, false, sendToDebugger, false)
 }
 
 func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
@@ -229,7 +229,7 @@ func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
 		Payload: timerPayload,
 	}
 
-	util.Retry(util.NewFixedBackoff(5*time.Second), sendMsgCallback, c, msg, uint16(0), uint64(0), false, sendToDebugger, false)
+	c.sendMessage(msg, 0, 0, false, sendToDebugger, false)
 }
 
 func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
@@ -275,7 +275,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 		Payload: dcpPayload,
 	}
 
-	util.Retry(util.NewFixedBackoff(5*time.Second), sendMsgCallback, c, msg, e.VBucket, e.Seqno, true, sendToDebugger, false)
+	c.sendMessage(msg, e.VBucket, e.Seqno, true, sendToDebugger, false)
 }
 
 var sendMsgCallback = func(args ...interface{}) error {

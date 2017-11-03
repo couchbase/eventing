@@ -116,11 +116,8 @@ func (r *timerProcessingWorker) getVbsOwned() []uint16 {
 	return r.vbsAssigned
 }
 
-func (r *timerProcessingWorker) processTimerEvents() {
+func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string, bootstrap bool) {
 	vbsOwned := r.getVbsOwned()
-
-	currTimer := time.Now().UTC().Format(time.RFC3339)
-	nextTimer := time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
 	for _, vb := range vbsOwned {
 		vbKey := fmt.Sprintf("%s_vb_%s", r.c.app.AppName, strconv.Itoa(int(vb)))
@@ -130,14 +127,14 @@ func (r *timerProcessingWorker) processTimerEvents() {
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, r.c, vbKey, &vbBlob, &cas, false)
 
-		if vbBlob.CurrentProcessedDocIDTimer == "" {
-			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", currTimer)
+		if vbBlob.CurrentProcessedDocIDTimer == "" && bootstrap {
+			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", cTimer)
 		} else {
 			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer)
 		}
 
-		if vbBlob.NextDocIDTimerToProcess == "" {
-			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", nextTimer)
+		if vbBlob.NextDocIDTimerToProcess == "" && bootstrap {
+			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", nTimer)
 		} else {
 			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess)
 		}

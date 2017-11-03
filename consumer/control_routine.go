@@ -71,7 +71,7 @@ func (c *Consumer) controlRoutine() {
 
 			c.timerRWMutex.RLock()
 			for _, r := range c.timerProcessingRunningWorkers {
-				go r.processTimerEvents()
+				go r.processTimerEvents("", "", false)
 			}
 			c.timerRWMutex.RUnlock()
 

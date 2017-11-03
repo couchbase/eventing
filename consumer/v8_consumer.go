@@ -183,7 +183,7 @@ func (c *Consumer) Serve() {
 
 	// doc_id timer events
 	for _, r := range c.timerProcessingRunningWorkers {
-		go r.processTimerEvents()
+		go r.processTimerEvents(currTimer, nextTimer, true)
 	}
 
 	// non doc_id timer events

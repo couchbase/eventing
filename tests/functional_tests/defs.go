@@ -30,7 +30,7 @@ const (
 )
 
 const (
-	itemCount               = 10000
+	itemCount               = 5000
 	statsLookupRetryCounter = 30
 )
 

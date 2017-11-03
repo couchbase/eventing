@@ -15,6 +15,7 @@ func init() {
 func TestOnUpdateBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_update.js"
+	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
@@ -25,15 +26,14 @@ func TestOnUpdateBucketOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	setSettings(handler, false, false)
-	deleteFunction(handler)
-	bucketFlush("default")
-	bucketFlush("hello-world")
+
+	flushFunctionAndBucket(handler)
 }
 
 func TestOnUpdateN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "n1ql_insert_on_update.js"
+	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
@@ -44,15 +44,14 @@ func TestOnUpdateN1QLOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	setSettings(handler, false, false)
-	deleteFunction(handler)
-	bucketFlush("default")
-	bucketFlush("hello-world")
+
+	flushFunctionAndBucket(handler)
 }
 
 func TestOnDeleteBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_delete.js"
+	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 1, true, 0)
@@ -63,15 +62,14 @@ func TestOnDeleteBucketOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	setSettings(handler, false, false)
-	deleteFunction(handler)
-	bucketFlush("default")
-	bucketFlush("hello-world")
+
+	flushFunctionAndBucket(handler)
 }
 
 func TestDocTimerBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_with_doc_timer.js"
+	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
@@ -82,15 +80,14 @@ func TestDocTimerBucketOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	setSettings(handler, false, false)
-	deleteFunction(handler)
-	bucketFlush("default")
-	bucketFlush("hello-world")
+
+	flushFunctionAndBucket(handler)
 }
 
 func TestDocTimerN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "n1ql_insert_with_doc_timer.js"
+	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
@@ -101,15 +98,14 @@ func TestDocTimerN1QLOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	setSettings(handler, false, false)
-	deleteFunction(handler)
-	bucketFlush("default")
-	bucketFlush("hello-world")
+
+	flushFunctionAndBucket(handler)
 }
 
 func TestCronTimerBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_with_cron_timer.js"
+	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
@@ -120,15 +116,14 @@ func TestCronTimerBucketOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	setSettings(handler, false, false)
-	deleteFunction(handler)
-	bucketFlush("default")
-	bucketFlush("hello-world")
+
+	flushFunctionAndBucket(handler)
 }
 
 func TestCronTimerN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "n1ql_insert_with_cron_timer.js"
+	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler)
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
@@ -139,15 +134,14 @@ func TestCronTimerN1QLOp(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	setSettings(handler, false, false)
-	deleteFunction(handler)
-	bucketFlush("default")
-	bucketFlush("hello-world")
+
+	flushFunctionAndBucket(handler)
 }
 
 func TestDeployUndeployLoop(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_with_doc_timer.js"
+	flushFunctionAndBucket(handler)
 
 	for i := 0; i < 5; i++ {
 		createAndDeployFunction(handler)
@@ -176,6 +170,9 @@ func TestMultipleHandlers(t *testing.T) {
 	handler1 := "bucket_op_on_update.js"
 	handler2 := "n1ql_insert_with_doc_timer.js"
 
+	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(handler2)
+
 	createAndDeployFunction(handler1)
 	createAndDeployFunction(handler2)
 
@@ -187,14 +184,9 @@ func TestMultipleHandlers(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-	setSettings(handler1, false, false)
-	setSettings(handler2, false, false)
 
-	deleteFunction(handler1)
-	deleteFunction(handler2)
-
-	bucketFlush("default")
-	bucketFlush("hello-world")
+	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(handler2)
 }
 
 func TestPauseResumeLoop(t *testing.T) {
@@ -202,6 +194,7 @@ func TestPauseResumeLoop(t *testing.T) {
 
 	handler := "bucket_op_on_update.js"
 
+	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler)
 
 	for i := 0; i < 5; i++ {
@@ -221,9 +214,6 @@ func TestPauseResumeLoop(t *testing.T) {
 		fmt.Printf("Pausing the app: %s\n\n", handler)
 		setSettings(handler, true, false)
 	}
-	setSettings(handler, false, false)
-	deleteFunction(handler)
 
-	bucketFlush("default")
-	bucketFlush("hello-world")
+	flushFunctionAndBucket(handler)
 }
