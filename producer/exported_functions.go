@@ -44,6 +44,21 @@ func (p *Producer) GetLatencyStats() map[string]uint64 {
 	return latencyStats
 }
 
+// GetExecutionStats returns execution stats aggregated from Eventing.Consumer instances
+func (p *Producer) GetExecutionStats() map[string]uint64 {
+	executionStats := make(map[string]uint64)
+	for _, c := range p.runningConsumers {
+		ceStats := c.GetExecutionStats()
+		for k, v := range ceStats {
+			if _, ok := executionStats[k]; !ok {
+				executionStats[k] = 0
+			}
+			executionStats[k] += v
+		}
+	}
+	return executionStats
+}
+
 // GetFailureStats returns failure stats aggregated from Eventing.Consumer instances
 func (p *Producer) GetFailureStats() map[string]uint64 {
 	failureStats := make(map[string]uint64)

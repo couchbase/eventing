@@ -34,6 +34,7 @@ enum v8_worker_opcode {
   oGetHandlerCode,
   oGetLatencyStats,
   oGetFailureStats,
+  oGetExecutionStats,
   oVersion,
   V8_Worker_Opcode_Unknown
 };
@@ -71,6 +72,7 @@ enum v8_worker_config_opcode {
   oLogMessage,
   oLatencyStats,
   oFailureStats,
+  oExecutionStats,
   V8_Worker_Config_Opcode_Unknown
 };
 

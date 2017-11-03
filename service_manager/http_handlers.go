@@ -531,6 +531,34 @@ func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
+func (m *ServiceMgr) getExecutionStats(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
+	params := r.URL.Query()
+	appName := params["name"][0]
+
+	if m.checkIfDeployed(appName) {
+		eStats := m.superSup.GetExecutionStats(appName)
+
+		data, err := json.Marshal(eStats)
+		if err != nil {
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+			fmt.Fprintf(w, "Failed to unmarshal execution stats, err: %v\n", err)
+			return
+		}
+
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", string(data))
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+	fmt.Fprintf(w, "App: %v not deployed", appName)
+}
+
 func (m *ServiceMgr) getFailureStats(w http.ResponseWriter, r *http.Request) {
 	_, valid := m.validateAuth(w, r)
 	if !valid {

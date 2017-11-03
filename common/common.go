@@ -43,6 +43,7 @@ type EventingProducer interface {
 	GetDebuggerURL() string
 	GetEventingConsumerPids() map[string]int
 	GetEventProcessingStats() map[string]uint64
+	GetExecutionStats() map[string]uint64
 	GetFailureStats() map[string]uint64
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
@@ -84,6 +85,7 @@ type EventingConsumer interface {
 	EventingNodeUUIDs() []string
 	EventsProcessedPSec() *EventProcessingStats
 	GetEventProcessingStats() map[string]uint64
+	GetExecutionStats() map[string]uint64
 	GetFailureStats() map[string]uint64
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
@@ -123,6 +125,7 @@ type EventingSuperSup interface {
 	GetDebuggerURL(appName string) string
 	GetDeployedApps() map[string]string
 	GetEventingConsumerPids(appName string) map[string]int
+	GetExecutionStats(appName string) map[string]uint64
 	GetFailureStats(appName string) map[string]uint64
 	GetHandlerCode(appName string) string
 	GetLatencyStats(appName string) map[string]uint64

@@ -106,6 +106,11 @@ extern std::atomic<std::int64_t> bucket_op_exception_count;
 extern std::atomic<std::int64_t> n1ql_op_exception_count;
 extern std::atomic<std::int64_t> timeout_count;
 
+extern std::atomic<std::int64_t> on_update_success;
+extern std::atomic<std::int64_t> on_update_failure;
+extern std::atomic<std::int64_t> on_delete_success;
+extern std::atomic<std::int64_t> on_delete_failure;
+
 class V8Worker {
 public:
   V8Worker(v8::Platform *platform, handler_config_t *config,

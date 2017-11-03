@@ -44,6 +44,8 @@ v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
     return oGetLatencyStats;
   if (opcode == 8)
     return oGetFailureStats;
+  if (opcode == 9)
+    return oGetExecutionStats;
   return V8_Worker_Opcode_Unknown;
 }
 

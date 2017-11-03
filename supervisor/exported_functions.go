@@ -94,6 +94,15 @@ func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
 	return nil
 }
 
+// GetExecutionStats returns aggregated failure stats from Eventing.Producer instance
+func (s *SuperSupervisor) GetExecutionStats(appName string) map[string]uint64 {
+	logging.Infof("SSUP[%d] GetExecutionStats request for app: %v", len(s.runningProducers), appName)
+	if p, ok := s.runningProducers[appName]; ok {
+		return p.GetExecutionStats()
+	}
+	return nil
+}
+
 // GetFailureStats returns aggregated failure stats from Eventing.Producer instance
 func (s *SuperSupervisor) GetFailureStats(appName string) map[string]uint64 {
 	logging.Infof("SSUP[%d] GetFailureStats request for app: %v", len(s.runningProducers), appName)

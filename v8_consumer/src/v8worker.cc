@@ -40,6 +40,12 @@ std::atomic<std::int64_t> bucket_op_exception_count = {0};
 std::atomic<std::int64_t> n1ql_op_exception_count = {0};
 std::atomic<std::int64_t> timeout_count = {0};
 
+std::atomic<std::int64_t> on_update_success = {0};
+std::atomic<std::int64_t> on_update_failure = {0};
+std::atomic<std::int64_t> on_delete_success = {0};
+std::atomic<std::int64_t> on_delete_failure = {0};
+
+N1QL *n1ql_handle;
 JsException V8Worker::exception;
 
 enum RETURN_CODE {
@@ -588,6 +594,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
 
   if (on_update_.IsEmpty()) {
     UpdateHistogram(start_time);
+    on_update_failure++;
     return kOnUpdateCallFail;
   }
 
@@ -636,9 +643,11 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
       LOG(logDebug) << "Exception message: "
                     << ExceptionString(GetIsolate(), &try_catch) << '\n';
       UpdateHistogram(start_time);
+      on_update_failure++;
       return kOnUpdateCallFail;
     }
 
+    on_update_success++;
     UpdateHistogram(start_time);
     return kSuccess;
   }
@@ -653,6 +662,7 @@ int V8Worker::SendDelete(std::string meta) {
 
   if (on_delete_.IsEmpty()) {
     UpdateHistogram(start_time);
+    on_delete_failure++;
     return kOnDeleteCallFail;
   }
 
@@ -690,10 +700,12 @@ int V8Worker::SendDelete(std::string meta) {
       LOG(logError) << "Exception message"
                     << ExceptionString(GetIsolate(), &try_catch) << '\n';
       UpdateHistogram(start_time);
+      on_delete_failure++;
       return kOnDeleteCallFail;
     }
 
     UpdateHistogram(start_time);
+    on_delete_success++;
     return kSuccess;
   }
 }
