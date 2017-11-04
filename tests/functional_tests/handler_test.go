@@ -140,7 +140,7 @@ func TestCronTimerN1QLOp(t *testing.T) {
 
 func TestDeployUndeployLoop(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "bucket_op_with_doc_timer.js"
+	handler := "bucket_op_on_update.js"
 	flushFunctionAndBucket(handler)
 
 	for i := 0; i < 5; i++ {
@@ -168,7 +168,7 @@ func TestDeployUndeployLoop(t *testing.T) {
 func TestMultipleHandlers(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler1 := "bucket_op_on_update.js"
-	handler2 := "n1ql_insert_with_doc_timer.js"
+	handler2 := "n1ql_insert_on_update.js"
 
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)

@@ -179,7 +179,9 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << on_update_success << ", \"on_update_failure\":";
       estats << on_update_failure << ", \"on_delete_success\":";
       estats << on_delete_success << ", \"on_delete_failure\":";
-      estats << on_delete_failure << "}";
+      estats << on_delete_failure << ", \"non_doc_timer_create_failure\":";
+      estats << non_doc_timer_create_failure << ", \"doc_timer_create_failure\":";
+      estats << doc_timer_create_failure << "}";
 
       resp_msg->msg.assign(estats.str());
       LOG(logInfo) << "Execution stats dump: " << resp_msg->msg << '\n';

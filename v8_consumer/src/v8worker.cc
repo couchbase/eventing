@@ -45,6 +45,9 @@ std::atomic<std::int64_t> on_update_failure = {0};
 std::atomic<std::int64_t> on_delete_success = {0};
 std::atomic<std::int64_t> on_delete_failure = {0};
 
+std::atomic<std::int64_t> non_doc_timer_create_failure = {0};
+std::atomic<std::int64_t> doc_timer_create_failure = {0};
+
 N1QL *n1ql_handle;
 JsException V8Worker::exception;
 

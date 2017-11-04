@@ -164,7 +164,7 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string, bootst
 			// Make sure time processing isn't going ahead of system clock
 			ts, err := time.Parse(tsLayout, currTimer)
 			if err != nil {
-				logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
+				logging.Errorf("CRTE[%s:%s:%s:%d] Doc timer vb: %d failed to parse currtime: %v err: %v",
 					r.c.app.AppName, r.c.workerName, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
 				continue
 			}
@@ -301,7 +301,7 @@ func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string, bootstrap boo
 					cts := ctsSplit[1]
 					ts, err := time.Parse(tsLayout, cts)
 					if err != nil {
-						logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
+						logging.Errorf("CRTE[%s:%s:%s:%d] Cron timer vb: %d failed to parse currtime: %v err: %v",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
 						continue
 					}

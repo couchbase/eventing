@@ -112,7 +112,7 @@ func createFunction(deploymentStatus, processingStatus bool, id, cppThreadCount,
 	settings["timer_worker_pool_size"] = 1
 	settings["deadline_timeout"] = 3
 	settings["execution_timeout"] = 1
-	settings["log_level"] = "TRACE"
+	settings["log_level"] = "INFO"
 	settings["dcp_stream_boundary"] = "everything"
 	settings["cleanup_timers"] = false
 	settings["rbacrole"] = "admin"

@@ -173,8 +173,11 @@ func (c *Consumer) Serve() {
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName, c.eventingAdminPort)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
-	currTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Format(time.RFC3339))
-	nextTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Add(time.Second).Format(time.RFC3339))
+	cronCurrTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Format(time.RFC3339))
+	cronNextTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Add(time.Second).Format(time.RFC3339))
+
+	docCurrTimer := time.Now().UTC().Format(time.RFC3339)
+	docNextTimer := time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
 	c.startDcp(dcpConfig, flogs)
 
@@ -183,11 +186,11 @@ func (c *Consumer) Serve() {
 
 	// doc_id timer events
 	for _, r := range c.timerProcessingRunningWorkers {
-		go r.processTimerEvents(currTimer, nextTimer, true)
+		go r.processTimerEvents(docCurrTimer, docNextTimer, true)
 	}
 
 	// non doc_id timer events
-	go c.processNonDocTimerEvents(currTimer, nextTimer, true)
+	go c.processNonDocTimerEvents(cronCurrTimer, cronNextTimer, true)
 
 	// V8 Debugger polling routine
 	go c.pollForDebuggerStart()

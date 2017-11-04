@@ -111,6 +111,9 @@ extern std::atomic<std::int64_t> on_update_failure;
 extern std::atomic<std::int64_t> on_delete_success;
 extern std::atomic<std::int64_t> on_delete_failure;
 
+extern std::atomic<std::int64_t> non_doc_timer_create_failure;
+extern std::atomic<std::int64_t> doc_timer_create_failure;
+
 class V8Worker {
 public:
   V8Worker(v8::Platform *platform, handler_config_t *config,

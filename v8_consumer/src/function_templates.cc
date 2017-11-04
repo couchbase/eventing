@@ -102,7 +102,7 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_entry.append(ConvertToISO8601(start_ts));
   timer_entry.append("Z");
   LOG(logTrace) << "Request to register cron timer, callback_func:" << cb_func
-                << "start_ts : " << timer_entry << '\n';
+                << " start_ts : " << timer_entry << '\n';
 
   // Store blob in KV store, blob structure:
   // {
@@ -144,10 +144,16 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   mcmd.nspecs = specs.size();
   mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
 
-  lcb_subdoc3(*meta_cb_instance, &res, &mcmd);
+  int retry_counter = 0;
+  lcb_error_t rc = lcb_subdoc3(*meta_cb_instance, &res, &mcmd);
+  if (rc != LCB_SUCCESS && retry_counter <= LCB_OP_RETRY_COUNTER) {
+    rc = lcb_subdoc3(*meta_cb_instance, &res, &mcmd);
+    retry_counter++;
+  }
   lcb_wait(*meta_cb_instance);
 
   if (res.rc != LCB_SUCCESS) {
+    non_doc_timer_create_failure++;
     V8Worker::exception.Throw(*meta_cb_instance, res.rc);
     return;
   }
@@ -236,6 +242,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       LOG(logError)
           << "Failed to while performing lookup for fulldoc and exptime"
           << lcb_strerror(NULL, res.rc) << '\n';
+      doc_timer_create_failure++;
       return;
     }
 
@@ -293,6 +300,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     lcb_wait(*cb_instance);
     if (res.rc != LCB_SUCCESS) {
+      doc_timer_create_failure++;
       V8Worker::exception.Throw(*cb_instance, res.rc);
       return;
     }
