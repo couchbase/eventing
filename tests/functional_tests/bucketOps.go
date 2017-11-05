@@ -12,7 +12,7 @@ type user struct {
 	Interests []string `json:"interests"`
 }
 
-func pumpBucketOps(count int, loop bool, expiry int, delete bool) {
+func pumpBucketOps(count int, loop bool, expiry int, delete bool, startIndex int) {
 	cluster, _ := gocb.Connect("couchbase://127.0.0.1:12000")
 	cluster.Authenticate(gocb.PasswordAuthenticator{
 		Username: rbacuser,
@@ -23,6 +23,7 @@ func pumpBucketOps(count int, loop bool, expiry int, delete bool) {
 		fmt.Println("Bucket open, err:", err)
 		return
 	}
+	defer bucket.Close()
 
 	u := user{
 		Email:     "kingarthur@couchbase.com",
@@ -31,11 +32,11 @@ func pumpBucketOps(count int, loop bool, expiry int, delete bool) {
 
 retriggerBucketOp:
 	for i := 0; i < count; i++ {
-		u.ID = i
-		bucket.Upsert(fmt.Sprintf("doc_id_%d", i), u, uint32(expiry))
-		if loop {
-			goto retriggerBucketOp
-		}
+		u.ID = i + startIndex
+		bucket.Upsert(fmt.Sprintf("doc_id_%d", i+startIndex), u, uint32(expiry))
+	}
+	if loop {
+		goto retriggerBucketOp
 	}
 
 	if delete {

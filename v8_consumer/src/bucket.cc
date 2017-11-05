@@ -187,7 +187,8 @@ void Bucket::BucketGet(v8::Local<v8::Name> name,
   if (name->IsSymbol())
     return;
 
-  std::string key = ObjectToString(v8::Local<v8::String>::Cast(name));
+  v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
+  std::string key(*utf8_key);
 
   lcb_t *bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
 
@@ -222,7 +223,8 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
   if (name->IsSymbol())
     return;
 
-  std::string key = ObjectToString(v8::Local<v8::String>::Cast(name));
+  v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
+  std::string key(*utf8_key);
   std::string value = JSONStringify(info.GetIsolate(), value_obj);
 
   LOG(logTrace) << "Set call Key: " << key << " Value: " << value
@@ -362,7 +364,8 @@ void Bucket::BucketDelete(v8::Local<v8::Name> name,
   if (name->IsSymbol())
     return;
 
-  std::string key = ObjectToString(v8::Local<v8::String>::Cast(name));
+  v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
+  std::string key(*utf8_key);
 
   lcb_t *bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
 

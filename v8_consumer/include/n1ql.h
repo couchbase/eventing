@@ -65,10 +65,15 @@ struct QueryHandler {
   std::string hash;
   std::string query;
   lcb_t instance = nullptr;
-  v8::Isolate *isolate = nullptr;
   IterQueryHandler *iter_handler = nullptr;
   BlockingQueryHandler *block_handler = nullptr;
   std::list<std::string> *pos_params = nullptr;
+};
+
+// Data type for cookie to be used during row callback execution.
+struct HandlerCookie {
+  v8::Isolate *isolate = nullptr;
+  lcb_N1QLHANDLE handle = nullptr;
 };
 
 // Pool of lcb instances and routines for pool management.
@@ -92,7 +97,8 @@ public:
 };
 
 // Data structure for maintaining the operations.
-// Each stack element is hashed, providing a two-way access.
+// Each stack element is hashed, providing access through both the ADTs - Stack
+// and HashMap.
 class HashedStack {
   std::stack<QueryHandler> qstack;
   std::map<std::string, QueryHandler *> qmap;
@@ -109,6 +115,7 @@ public:
 
 class N1QL {
 private:
+  v8::Isolate *isolate;
   ConnectionPool *inst_pool;
   // Callback for each row.
   template <typename>
@@ -116,10 +123,10 @@ private:
                           const lcb_RESPN1QL *resp);
 
 public:
-  N1QL(ConnectionPool *inst_pool) : inst_pool(inst_pool) {}
+  N1QL(ConnectionPool *inst_pool, v8::Isolate *isolate)
+      : isolate(isolate), inst_pool(inst_pool) {}
   HashedStack qhandler_stack;
-  std::vector<std::string> ExtractErrorMsg(const char *metadata,
-                                           v8::Isolate *isolate);
+  std::vector<std::string> ExtractErrorMsg(const char *metadata);
   // Schedules operations for execution.
   template <typename> void ExecQuery(QueryHandler &q_handler);
   ~N1QL() {}
@@ -157,7 +164,7 @@ template <typename HandlerType, typename ResultType>
 void AddQueryMetadata(HandlerType handler, v8::Isolate *isolate,
                       ResultType &result);
 
-std::string AppendStackIndex(int obj_hash);
+std::string AppendStackIndex(int obj_hash, v8::Isolate *isolate);
 bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args, std::string key);
 std::string SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args);
 std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args);

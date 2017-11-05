@@ -94,6 +94,15 @@ func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
 	return nil
 }
 
+// GetExecutionStats returns aggregated failure stats from Eventing.Producer instance
+func (s *SuperSupervisor) GetExecutionStats(appName string) map[string]uint64 {
+	logging.Infof("SSUP[%d] GetExecutionStats request for app: %v", len(s.runningProducers), appName)
+	if p, ok := s.runningProducers[appName]; ok {
+		return p.GetExecutionStats()
+	}
+	return nil
+}
+
 // GetFailureStats returns aggregated failure stats from Eventing.Producer instance
 func (s *SuperSupervisor) GetFailureStats(appName string) map[string]uint64 {
 	logging.Infof("SSUP[%d] GetFailureStats request for app: %v", len(s.runningProducers), appName)
@@ -140,14 +149,24 @@ func (s *SuperSupervisor) RestPort() string {
 
 // SignalStartDebugger kicks off V8 Debugger for a specific deployed lambda
 func (s *SuperSupervisor) SignalStartDebugger(appName string) {
-	p := s.runningProducers[appName]
-	p.SignalStartDebugger()
+	p, ok := s.runningProducers[appName]
+	if ok {
+		p.SignalStartDebugger()
+	} else {
+		logging.Errorf("SSUP[%d] StartDebugger request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+			len(s.runningProducers), appName)
+	}
 }
 
 // SignalStopDebugger stops V8 Debugger for a specific deployed lambda
 func (s *SuperSupervisor) SignalStopDebugger(appName string) {
-	p := s.runningProducers[appName]
-	p.SignalStopDebugger()
+	p, ok := s.runningProducers[appName]
+	if ok {
+		p.SignalStopDebugger()
+	} else {
+		logging.Errorf("SSUP[%d] StopDebugger request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+			len(s.runningProducers), appName)
+	}
 }
 
 // GetAppState returns current state of app
@@ -169,4 +188,26 @@ func (s *SuperSupervisor) GetAppState(appName string) int8 {
 		}
 	}
 	return common.AppState
+}
+
+// GetDcpEventsRemainingToProcess returns remaining dcp events to process
+func (s *SuperSupervisor) GetDcpEventsRemainingToProcess(appName string) uint64 {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.GetDcpEventsRemainingToProcess()
+	}
+	logging.Errorf("SSUP[%d] Events remaining request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+		len(s.runningProducers), appName)
+	return 0
+}
+
+// GetEventingConsumerPids returns map of Eventing.Consumer worker name and it's os pid
+func (s *SuperSupervisor) GetEventingConsumerPids(appName string) map[string]int {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.GetEventingConsumerPids()
+	}
+	logging.Errorf("SSUP[%d] Eventing consumer pid request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+		len(s.runningProducers), appName)
+	return nil
 }

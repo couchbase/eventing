@@ -385,6 +385,47 @@ func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) (map[string]string, erro
 	return addrUUIDMap, nil
 }
 
+func GetEventProcessingStats(urlSuffix string, nodeAddrs []string) (map[string]int64, error) {
+	pStats := make(map[string]int64)
+
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
+
+	for _, nodeAddr := range nodeAddrs {
+		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(url)
+		if err != nil {
+			logging.Errorf("UTIL Failed to gather event processing stats from url: %s, err: %v", url, err)
+			return nil, err
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("UTIL Failed to read response body for event processing stats from url: %s, err: %v", url, err)
+			return nil, err
+		}
+
+		var nodePStats map[string]int64
+		err = json.Unmarshal(buf, &nodePStats)
+		if err != nil {
+			logging.Errorf("UTIL Failed to unmarshal event processing stats from url: %s, err: %v", url, err)
+			return nil, err
+		}
+
+		for k, v := range nodePStats {
+			if _, ok := pStats[k]; !ok {
+				pStats[k] = 0
+			}
+			pStats[k] += v
+		}
+	}
+
+	return pStats, nil
+}
+
 func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, error) {
 	aggProgress := &cm.RebalanceProgress{}
 

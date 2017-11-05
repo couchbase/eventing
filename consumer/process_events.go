@@ -169,7 +169,6 @@ func (c *Consumer) processEvents() {
 					c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", c.ConsumerName())
 					c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", c.HostPortAddr())
 					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
-					c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", uint64(0))
 					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
 
 					vbFlog := &vbFlogEntry{streamReqRetry: false, statusCode: e.Status}
@@ -305,7 +304,6 @@ func (c *Consumer) processEvents() {
 
 				c.RLock()
 				countMsg, dcpOpCount, tStamp := util.SprintDCPCounts(c.dcpMessagesProcessed)
-				c.RUnlock()
 
 				diff := tStamp.Sub(c.opsTimestamp)
 
@@ -326,6 +324,7 @@ func (c *Consumer) processEvents() {
 
 				c.opsTimestamp = tStamp
 				c.dcpOpsProcessed = dcpOpCount
+				c.RUnlock()
 			}
 
 		case <-c.signalStopDebuggerCh:

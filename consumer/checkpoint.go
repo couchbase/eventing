@@ -13,13 +13,26 @@ import (
 func (c *Consumer) doLastSeqNoCheckpoint() {
 	c.checkpointTicker = time.NewTicker(c.checkpointInterval)
 
+	var vbBlob vbucketKVBlob
+	var cas gocb.Cas
+	var isNoEnt bool
+
+	for vbno := range c.vbProcessingStats {
+		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
+		if !isNoEnt {
+
+			if c.NodeUUID() == vbBlob.NodeUUID && vbBlob.DCPStreamStatus == dcpStreamRunning {
+				c.vbProcessingStats.updateVbStat(vbno, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
+			}
+		}
+	}
+
 	for {
 		select {
 		case <-c.checkpointTicker.C:
 
 			util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
-
-			var vbBlob vbucketKVBlob
 
 			for vbno := range c.vbProcessingStats {
 
@@ -28,9 +41,6 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					c.NodeUUID() == c.vbProcessingStats.getVbStat(vbno, "node_uuid") {
 
 					vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
-
-					var cas gocb.Cas
-					var isNoEnt bool
 
 					// Metadata blob doesn't exist probably the app is deployed for the first time.
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)

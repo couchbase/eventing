@@ -43,7 +43,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   int worker_index;
   int64_t latency_buckets;
   std::vector<int64_t> agg_hgram, worker_hgram;
-  std::ostringstream lstats, fstats;
+  std::ostringstream lstats, estats, fstats;
 
   const flatbuf::payload::Payload *payload;
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
@@ -171,6 +171,20 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       LOG(logInfo) << "Failure stats dump: " << resp_msg->msg << '\n';
       resp_msg->msg_type = mV8_Worker_Config;
       resp_msg->opcode = oFailureStats;
+      msg_priority = true;
+      break;
+    case oGetExecutionStats:
+      estats.str(std::string());
+      estats << "{\"on_update_success\":";
+      estats << on_update_success << ", \"on_update_failure\":";
+      estats << on_update_failure << ", \"on_delete_success\":";
+      estats << on_delete_success << ", \"on_delete_failure\":";
+      estats << on_delete_failure << "}";
+
+      resp_msg->msg.assign(estats.str());
+      LOG(logInfo) << "Execution stats dump: " << resp_msg->msg << '\n';
+      resp_msg->msg_type = mV8_Worker_Config;
+      resp_msg->opcode = oExecutionStats;
       msg_priority = true;
       break;
     case oVersion:

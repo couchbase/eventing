@@ -43,7 +43,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		cppWorkerThrCount:                  cppWorkerThrCount,
 		crcTable:                           crc32.MakeTable(crc32.Castagnoli),
 		connMutex:                          &sync.RWMutex{},
-		dcpFeedCancelChs:                   make([]chan struct{}, 0),
+		dcpFeedCancelChs:                   make([]chan struct{}, 1),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,
 		debuggerStarted:                    false,
@@ -87,7 +87,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		socketTimeout:                      socketTimeout,
 		socketWriteBatchSize:               sockWriteBatchSize,
 		statsTicker:                        time.NewTicker(statsTickInterval),
-		stopControlRoutineCh:               make(chan struct{}),
+		stopControlRoutineCh:               make(chan struct{}, 1),
 		stopPlasmaPersistCh:                make(chan struct{}, 1),
 		stopVbOwnerGiveupCh:                make(chan struct{}, 1),
 		stopVbOwnerTakeoverCh:              make(chan struct{}, 1),
@@ -302,15 +302,6 @@ func (c *Consumer) String() string {
 	return fmt.Sprintf("consumer => app: %s name: %v tcpPort: %s ospid: %d"+
 		" dcpEventProcessed: %s v8EventProcessed: %s", c.app.AppName, c.ConsumerName(),
 		c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed))
-}
-
-// Pid returns the process id of CPP V8 worker
-func (c *Consumer) Pid() int {
-	pid, ok := c.osPid.Load().(int)
-	if ok {
-		return pid
-	}
-	return 0
 }
 
 // NotifyClusterChange is called by producer handle to signify each

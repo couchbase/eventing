@@ -142,8 +142,23 @@ func (c *Consumer) GetLatencyStats() map[string]uint64 {
 	return c.latencyStats
 }
 
+// GetExecutionStats returns OnUpdate/OnDelete success/failure stats for event handlers from cpp world
+func (c *Consumer) GetExecutionStats() map[string]uint64 {
+	c.sendGetExecutionStats(false)
+	return c.executionStats
+}
+
 // GetFailureStats returns failure stats for event handlers from cpp world
 func (c *Consumer) GetFailureStats() map[string]uint64 {
 	c.sendGetFailureStats(false)
 	return c.failureStats
+}
+
+// Pid returns the process id of CPP V8 worker
+func (c *Consumer) Pid() int {
+	pid, ok := c.osPid.Load().(int)
+	if ok {
+		return pid
+	}
+	return 0
 }

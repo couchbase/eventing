@@ -147,14 +147,21 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	if !m.checkIfDeployed(appName) {
+	checkIfDeployed := false
+	for _, app := range util.ListChildren(metakvAppsPath) {
+		if app == appName {
+			checkIfDeployed = true
+		}
+	}
+
+	if !checkIfDeployed {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 		fmt.Fprintf(w, "App: %v not deployed", appName)
 		return
 	}
 
 	appState := m.superSup.GetAppState(appName)
-	if appState != common.AppStateDisabled {
+	if appState != common.AppStateUndeployed {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotUndeployed.Code))
 		fmt.Fprintf(w, "Skipping delete request from primary store for app: %v as it hasn't been undeployed", appName)
 		return
@@ -195,14 +202,21 @@ func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) 
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	if !m.checkIfDeployed(appName) {
+	checkIfDeployed := false
+	for _, app := range util.ListChildren(metakvTempAppsPath) {
+		if app == appName {
+			checkIfDeployed = true
+		}
+	}
+
+	if !checkIfDeployed {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 		fmt.Fprintf(w, "App: %v not deployed", appName)
 		return
 	}
 
 	appState := m.superSup.GetAppState(appName)
-	if appState != common.AppStateDisabled {
+	if appState != common.AppStateUndeployed {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotUndeployed.Code))
 		fmt.Fprintf(w, "Skipping delete request from temp store for app: %v as it hasn't been undeployed", appName)
 		return
@@ -446,6 +460,33 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 	w.Write(buf)
 }
 
+// Reports aggregated event processing stats from all producers
+func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
+	params := r.URL.Query()
+	appName := params["name"][0]
+
+	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+
+	pStats, err := util.GetEventProcessingStats("/getEventProcessingStats?name="+appName, m.eventingNodeAddrs)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to get event processing stats, err: %v", err)
+		return
+	}
+
+	buf, err := json.Marshal(pStats)
+	if err != nil {
+		logging.Errorf("Failed to unmarshal event processing stats from all producers, err: %v", err)
+		return
+	}
+
+	fmt.Fprintf(w, "%s", string(buf))
+}
+
 // Reports aggregated rebalance progress from all producers
 func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 
@@ -478,6 +519,34 @@ func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 			fmt.Fprintf(w, "Failed to unmarshal latency stats, err: %v\n", err)
+			return
+		}
+
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", string(data))
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+	fmt.Fprintf(w, "App: %v not deployed", appName)
+}
+
+func (m *ServiceMgr) getExecutionStats(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
+	params := r.URL.Query()
+	appName := params["name"][0]
+
+	if m.checkIfDeployed(appName) {
+		eStats := m.superSup.GetExecutionStats(appName)
+
+		data, err := json.Marshal(eStats)
+		if err != nil {
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+			fmt.Fprintf(w, "Failed to unmarshal execution stats, err: %v\n", err)
 			return
 		}
 
@@ -591,6 +660,10 @@ func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	} else {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errStatusesNotFound.Code))
+		fmt.Fprintf(w, "App: %v Missing processing or deployment statuses or both in supplied settings", appName)
+		return
 	}
 
 	err = util.MetakvSet(path, data, nil)
@@ -864,4 +937,52 @@ func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Write(m.statusPayload)
+}
+
+func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	if m.checkIfDeployed(appName) {
+		eventsRemaining := m.superSup.GetDcpEventsRemainingToProcess(appName)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%v", eventsRemaining)
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+	fmt.Fprintf(w, "App: %v not deployed", appName)
+}
+
+func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Request) {
+	_, valid := m.validateAuth(w, r)
+	if !valid {
+		return
+	}
+
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	if m.checkIfDeployed(appName) {
+		workerPidMapping := m.superSup.GetEventingConsumerPids(appName)
+
+		data, err := json.Marshal(&workerPidMapping)
+		if err != nil {
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+			fmt.Fprintf(w, "Failed to marshal consumer pids, err: %v", err)
+			return
+		}
+
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%v", string(data))
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
+	fmt.Fprintf(w, "App: %v not deployed", appName)
 }

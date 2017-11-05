@@ -49,6 +49,10 @@ func (c *Consumer) DcpEventsRemainingToProcess() uint64 {
 		totalEvents += seqNos[int(vbno)]
 	}
 
+	if eventsProcessed > totalEvents {
+		return 0
+	}
+
 	return totalEvents - eventsProcessed
 }
 

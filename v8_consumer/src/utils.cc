@@ -48,11 +48,6 @@ v8::Local<v8::String> v8Str(v8::Isolate *isolate, const char *str) {
       .ToLocalChecked();
 }
 
-std::string ObjectToString(v8::Local<v8::Value> value) {
-  v8::String::Utf8Value utf8_value(value);
-  return std::string(*utf8_value);
-}
-
 std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
   v8::HandleScope handle_scope(isolate);
 
@@ -68,7 +63,10 @@ std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
   v8::Local<v8::Value> args[1];
   args[0] = {object};
   result = JSON_stringify->Call(context->Global(), 1, args);
-  return ObjectToString(result);
+
+  v8::String::Utf8Value utf8_result(result);
+  std::string stringified_obj(*utf8_result);
+  return stringified_obj;
 }
 
 lcb_t *UnwrapLcbInstance(v8::Local<v8::Object> obj) {

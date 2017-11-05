@@ -46,6 +46,7 @@ const (
 	v8WorkerHandlerCode
 	v8WorkerLatencyStats
 	v8WorkerFailureStats
+	v8WorkerExecutionStats
 )
 
 const (
@@ -74,6 +75,7 @@ const (
 	logMessage
 	latencyStats
 	failureStats
+	executionStats
 )
 
 type message struct {
@@ -329,6 +331,7 @@ func (c *Consumer) parseWorkerResponse(m []byte, start int) {
 }
 
 func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
+
 	switch msgType {
 	case respV8WorkerConfig:
 		switch opcode {
@@ -348,6 +351,12 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			err := json.Unmarshal([]byte(msg), &c.failureStats)
 			if err != nil {
 				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal failure stats, msg: %s err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+		case executionStats:
+			err := json.Unmarshal([]byte(msg), &c.executionStats)
+			if err != nil {
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal execution stats, msg: %s err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		}

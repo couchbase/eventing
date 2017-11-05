@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -67,6 +68,8 @@ func makeRequest(requestType string, payload *strings.Reader, url string) error 
 }
 
 func initSetup() {
+	os.RemoveAll("/tmp/index")
+
 retryNodePath:
 	err := initNodePaths()
 	if err != nil {

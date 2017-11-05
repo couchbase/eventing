@@ -44,6 +44,21 @@ func (p *Producer) GetLatencyStats() map[string]uint64 {
 	return latencyStats
 }
 
+// GetExecutionStats returns execution stats aggregated from Eventing.Consumer instances
+func (p *Producer) GetExecutionStats() map[string]uint64 {
+	executionStats := make(map[string]uint64)
+	for _, c := range p.runningConsumers {
+		ceStats := c.GetExecutionStats()
+		for k, v := range ceStats {
+			if _, ok := executionStats[k]; !ok {
+				executionStats[k] = 0
+			}
+			executionStats[k] += v
+		}
+	}
+	return executionStats
+}
+
 // GetFailureStats returns failure stats aggregated from Eventing.Consumer instances
 func (p *Producer) GetFailureStats() map[string]uint64 {
 	failureStats := make(map[string]uint64)
@@ -241,4 +256,26 @@ func (p *Producer) StopProducer() {
 	p.stopProducerCh <- struct{}{}
 	p.metadataBucketHandle.Close()
 	p.workerSupervisor.Stop()
+}
+
+// GetDcpEventsRemainingToProcess returns remaining dcp events to process
+func (p *Producer) GetDcpEventsRemainingToProcess() uint64 {
+	var remainingEvents uint64
+
+	for _, consumer := range p.runningConsumers {
+		remainingEvents += consumer.DcpEventsRemainingToProcess()
+	}
+
+	return remainingEvents
+}
+
+// GetEventingConsumerPids returns map of Eventing.Consumer worker name and it's os pid
+func (p *Producer) GetEventingConsumerPids() map[string]int {
+	workerPidMapping := make(map[string]int)
+
+	for _, consumer := range p.runningConsumers {
+		workerPidMapping[consumer.ConsumerName()] = consumer.Pid()
+	}
+
+	return workerPidMapping
 }

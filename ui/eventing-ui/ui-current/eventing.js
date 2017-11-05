@@ -154,15 +154,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
 
                         console.log(response.data);
-                        return ApplicationService.primaryStore.deleteApp(appClone.appname);
-                    })
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
-                        }
-
-                        console.log(response.data);
                         app.settings.deployment_status = appClone.settings.deployment_status;
                         app.settings.processing_status = appClone.settings.processing_status;
                         showSuccessAlert(`${app.appname} undeployed successfully!`);

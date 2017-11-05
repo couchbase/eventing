@@ -20,12 +20,6 @@
 
 #include "../include/n1ql.h"
 
-template v8::Local<v8::Value> ToLocal(const v8::MaybeLocal<v8::Value> &handle);
-template v8::Local<v8::Map> ToLocal(const v8::MaybeLocal<v8::Map> &handle);
-
-// Reference to the query engine instantiated by v8worker.
-extern N1QL *n1ql_handle;
-
 ConnectionPool::ConnectionPool(int capacity, std::string cb_kv_endpoint,
                                std::string cb_source_bucket,
                                std::string rbac_user, std::string rbac_pass)
@@ -92,6 +86,7 @@ ConnectionPool::~ConnectionPool() {
     if (instance) {
       lcb_destroy(instance);
     }
+
     instances.pop();
   }
 }
@@ -108,8 +103,7 @@ void HashedStack::Pop() {
 }
 
 // Extracts error messages from the metadata JSON.
-std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata,
-                                               v8::Isolate *isolate) {
+std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata) {
   v8::HandleScope handle_scope(isolate);
 
   std::vector<std::string> errors;
@@ -139,8 +133,10 @@ std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata,
 template <>
 void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
                                          const lcb_RESPN1QL *resp) {
+  auto cookie = (HandlerCookie *)lcb_get_cookie(instance);
+  v8::Isolate *isolate = cookie->isolate;
+  auto n1ql_handle = reinterpret_cast<N1QL *>(isolate->GetData(3));
   QueryHandler q_handler = n1ql_handle->qhandler_stack.Top();
-  v8::Isolate *isolate = q_handler.isolate;
   v8::HandleScope handle_scope(isolate);
 
   if (!(resp->rflags & LCB_RESP_F_FINAL)) {
@@ -160,17 +156,15 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
     v8::TryCatch tryCatch(isolate);
     callback->Call(callback, 1, args);
     if (tryCatch.HasCaught()) {
-      // Cancel the query if an exception was thrown and
-      // re-throw the exception.
-      lcb_N1QLHANDLE *handle = (lcb_N1QLHANDLE *)lcb_get_cookie(instance);
-      lcb_n1ql_cancel(instance, *handle);
+      // Cancel the query if an exception was thrown and re-throw the exception.
+      lcb_n1ql_cancel(instance, cookie->handle);
       tryCatch.ReThrow();
     }
 
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS) {
-      auto errors = n1ql_handle->ExtractErrorMsg(resp->row, isolate);
+      auto errors = n1ql_handle->ExtractErrorMsg(resp->row);
       n1ql_op_exception_count++;
       V8Worker::exception.Throw(instance, resp->rc, errors);
     }
@@ -183,6 +177,9 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
 template <>
 void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
                                              const lcb_RESPN1QL *resp) {
+  auto cookie = (HandlerCookie *)lcb_get_cookie(instance);
+  v8::Isolate *isolate = cookie->isolate;
+  auto n1ql_handle = reinterpret_cast<N1QL *>(isolate->GetData(3));
   QueryHandler q_handler = n1ql_handle->qhandler_stack.Top();
 
   if (!(resp->rflags & LCB_RESP_F_FINAL)) {
@@ -200,7 +197,7 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS) {
-      auto errors = n1ql_handle->ExtractErrorMsg(resp->row, q_handler.isolate);
+      auto errors = n1ql_handle->ExtractErrorMsg(resp->row);
       n1ql_op_exception_count++;
       V8Worker::exception.Throw(instance, resp->rc, errors);
     }
@@ -213,7 +210,7 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   q_handler.instance = inst_pool->GetResource();
 
   // Schedule the data to support query.
-  n1ql_handle->qhandler_stack.Push(q_handler);
+  qhandler_stack.Push(q_handler);
 
   lcb_t &instance = q_handler.instance;
   lcb_error_t err;
@@ -237,7 +234,6 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   }
 
   lcb_n1p_mkcmd(n1ql_params, &cmd);
-
   err = lcb_n1ql_query(instance, nullptr, &cmd);
   if (err != LCB_SUCCESS) {
     ConnectionPool::Error(instance, "unable to query", err);
@@ -245,15 +241,17 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
 
   lcb_n1p_free(n1ql_params);
 
-  // Set the N1QL handle as cookie for instance - allow for query
-  // cancellation.
-  lcb_set_cookie(instance, &handle);
+  // Add the N1QL handle as cookie - allow for query cancellation.
+  HandlerCookie cookie;
+  cookie.isolate = isolate;
+  cookie.handle = handle;
+  lcb_set_cookie(instance, &cookie);
   // Run the query.
   lcb_wait(instance);
 
   // Resource clean-up.
   lcb_set_cookie(instance, nullptr);
-  n1ql_handle->qhandler_stack.Pop();
+  qhandler_stack.Pop();
   inst_pool->Restore(instance);
 }
 
@@ -298,9 +296,9 @@ void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     q_handler.hash = hash;
     q_handler.query = *query_string;
     q_handler.pos_params = &pos_params;
-    q_handler.isolate = args.GetIsolate();
     q_handler.iter_handler = &iter_handler;
 
+    auto n1ql_handle = reinterpret_cast<N1QL *>(isolate->GetData(3));
     n1ql_handle->ExecQuery<IterQueryHandler>(q_handler);
 
     // Add query metadata.
@@ -325,11 +323,12 @@ void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     // IterFunction.
     std::string hash = GetUniqueHash(args);
 
+    auto n1ql_handle = reinterpret_cast<N1QL *>(isolate->GetData(3));
     // Cancel the query corresponding to the unique hash.
     QueryHandler *q_handler = n1ql_handle->qhandler_stack.Get(hash);
     lcb_t instance = q_handler->instance;
-    lcb_N1QLHANDLE *handle = (lcb_N1QLHANDLE *)lcb_get_cookie(instance);
-    lcb_n1ql_cancel(instance, *handle);
+    auto cookie = (HandlerCookie *)lcb_get_cookie(instance);
+    lcb_n1ql_cancel(instance, cookie->handle);
 
     // Bubble up the message sent from JavaScript.
     SetReturnValue(args, handle_scope.Escape(arg));
@@ -358,9 +357,9 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     q_handler.hash = hash;
     q_handler.query = *query_string;
     q_handler.pos_params = &pos_params;
-    q_handler.isolate = args.GetIsolate();
     q_handler.block_handler = &block_handler;
 
+    auto n1ql_handle = reinterpret_cast<N1QL *>(isolate->GetData(3));
     n1ql_handle->ExecQuery<BlockingQueryHandler>(q_handler);
 
     std::vector<std::string> &rows = block_handler.rows;
@@ -382,8 +381,8 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 // Add return_obj as a private field on iterator.
-void SetReturnValue(const v8::FunctionCallbackInfo<v8::Value> &args,
-                    v8::Local<v8::Object> return_obj) {
+inline void SetReturnValue(const v8::FunctionCallbackInfo<v8::Value> &args,
+                           v8::Local<v8::Object> return_obj) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -451,7 +450,8 @@ void AddQueryMetadata(HandlerType handler, v8::Isolate *isolate,
   }
 }
 
-std::string AppendStackIndex(int obj_hash) {
+inline std::string AppendStackIndex(int obj_hash, v8::Isolate *isolate) {
+  auto n1ql_handle = reinterpret_cast<N1QL *>(isolate->GetData(3));
   std::string index_hash = std::to_string(obj_hash) + '|';
   index_hash += std::to_string(n1ql_handle->qhandler_stack.Size());
 
@@ -460,8 +460,9 @@ std::string AppendStackIndex(int obj_hash) {
 
 // Every N1qlQuery instance of JavaScript is associated with a private stack.
 // This maintains the uniqueness of the hash of instances.
-void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
-                    std::string base_hash_str, std::string unique_hash_str) {
+inline void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
+                           std::string base_hash_str,
+                           std::string unique_hash_str) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -489,7 +490,7 @@ void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
 }
 
 // Pop the unique hash associated with the N1qlQuery instance.
-void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
+inline void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -519,7 +520,8 @@ void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 // Retrieve the unique hash associated with the N1qlQuery instance.
-std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
+inline std::string
+GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -553,7 +555,8 @@ std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 // Generates and sets a unique hash to a N1qlQuery instance.
-std::string SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
+inline std::string
+SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -566,13 +569,14 @@ std::string SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
   // If the base hash exists, then generate unique hash and push it onto
   // stack.
   if (exists) {
-    std::string unique_hash = AppendStackIndex(args.This()->GetIdentityHash());
+    auto unique_hash =
+        AppendStackIndex(args.This()->GetIdentityHash(), isolate);
     PushScopeStack(args, base_hash, unique_hash);
 
     return unique_hash;
   } else {
     // Otherwise, base hash is itself unique.
-    base_hash = AppendStackIndex(args.This()->GetIdentityHash());
+    base_hash = AppendStackIndex(args.This()->GetIdentityHash(), isolate);
     auto hash = v8::String::NewFromUtf8(isolate, base_hash.c_str());
     args.This()->SetPrivate(context, key, hash);
     PushScopeStack(args, base_hash, base_hash);
@@ -582,8 +586,8 @@ std::string SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 // Returns base hash from the field.
-std::string GetBaseHash(const v8::FunctionCallbackInfo<v8::Value> &args,
-                        bool &exists) {
+inline std::string GetBaseHash(const v8::FunctionCallbackInfo<v8::Value> &args,
+                               bool &exists) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -602,8 +606,8 @@ std::string GetBaseHash(const v8::FunctionCallbackInfo<v8::Value> &args,
 }
 
 // Check if a key is present in private field.
-bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args,
-            std::string key_str) {
+inline bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args,
+                   std::string key_str) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -613,7 +617,6 @@ bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args,
   v8::Maybe<bool> has_key = args.This()->HasPrivate(context, key);
 
   // Checking for FromJust would crash the v8 process if has_key is empty
-  // -
   // https://v8.paulfryzel.com/docs/master/classv8_1_1_maybe.html#a6c35f4870a5b5049d09ba5f13c67ede9
   bool result;
   try {

@@ -110,3 +110,22 @@ var getMemcachedServiceAuth = func(args ...interface{}) error {
 	}
 	return err
 }
+
+var metakvGetCallback = func(args ...interface{}) error {
+	p := args[0].(*Producer)
+	path := args[1].(string)
+	cfgData := args[2].(*[]byte)
+
+	var err error
+	*cfgData, err = util.MetakvGet(path)
+	if err != nil {
+		logging.Errorf("PRCO[%s:%d] Failed to lookup path: %v from metakv, err: %v", p.appName, p.LenRunningConsumers(), path, err)
+		return err
+	}
+	if len(*cfgData) == 0 {
+		logging.Errorf("PRCO[%s:%d] Looked up path: %v from metakv, but got empty value", p.appName, p.LenRunningConsumers(), path)
+		return fmt.Errorf("Empty value from metakv lookup")
+	}
+
+	return nil
+}
