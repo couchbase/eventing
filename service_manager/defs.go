@@ -23,6 +23,11 @@ const (
 	rebalanceProgressUpdateTickInterval = time.Duration(3000) * time.Millisecond
 )
 
+const (
+	EventingPermissionRead  = "cluster.admin!read"
+	EventingPermissionWrite = "cluster.admin!write"
+)
+
 const headerKey = "status"
 
 const (
