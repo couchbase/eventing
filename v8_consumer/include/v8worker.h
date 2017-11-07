@@ -59,6 +59,14 @@ typedef std::chrono::nanoseconds nsecs;
 #define HIST_TILL 1000 * 1000 * 10
 #define HIST_WIDTH 1000
 
+#define LCB_OP_RETRY_INTERVAL 100 // in milliseconds
+#define LCB_OP_RETRY_COUNTER 3
+#define NUM_VBUCKETS 1024
+
+using atomic_ptr_t = std::shared_ptr<std::atomic<int64_t>>;
+// Used for checkpointing of vbucket seq nos
+typedef std::map<int64_t, atomic_ptr_t> vb_seq_map_t;
+
 // Header frame structure for messages from Go world
 typedef struct header_s {
   uint8_t event;
@@ -80,6 +88,7 @@ typedef struct worker_msg_s {
 } worker_msg_t;
 
 typedef struct server_settings_s {
+  int checkpoint_interval;
   std::string eventing_dir;
   std::string eventing_port;
   std::string host_addr;
@@ -146,6 +155,7 @@ public:
   }
 
   int V8WorkerLoad(std::string source_s);
+  void Checkpoint();
   void RouteMessage();
 
   const char *V8WorkerLastException();
@@ -196,8 +206,9 @@ public:
 
   Time::time_point execute_start_time;
 
-  std::thread *terminator_thr;
+  std::thread checkpointing_thr;
   std::thread processing_thr;
+  std::thread *terminator_thr;
   Queue<worker_msg_t> *worker_queue;
 
   ConnectionPool *conn_pool;
@@ -210,6 +221,8 @@ private:
   std::string connstr;
   std::string meta_connstr;
   std::string src_path;
+
+  vb_seq_map_t vb_seq;
 
   bool ExecuteScript(v8::Local<v8::String> script);
   std::list<Bucket *> bucket_handles;

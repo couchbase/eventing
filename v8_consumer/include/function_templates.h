@@ -24,8 +24,6 @@
 #include "utils.h"
 #include "v8worker.h"
 
-#define LCB_OP_RETRY_INTERVAL 100 // in milliseconds
-#define LCB_OP_RETRY_COUNTER 3    // Number of times to retry lcb operations
 #define CONSOLE_LOG_MAX_ARITY 20
 
 struct Result {

@@ -17,17 +17,6 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 	var cas gocb.Cas
 	var isNoEnt bool
 
-	for vbno := range c.vbProcessingStats {
-		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
-		if !isNoEnt {
-
-			if c.NodeUUID() == vbBlob.NodeUUID && vbBlob.DCPStreamStatus == dcpStreamRunning {
-				c.vbProcessingStats.updateVbStat(vbno, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
-			}
-		}
-	}
-
 	for {
 		select {
 		case <-c.checkpointTicker.C:
@@ -83,7 +72,6 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbuck
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
 	vbBlob.DCPStreamStatus = c.vbProcessingStats.getVbStat(vbno, "dcp_stream_status").(string)
 	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
-	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
 	vbBlob.NodeUUID = c.NodeUUID()
 	vbBlob.VBId = vbno
 

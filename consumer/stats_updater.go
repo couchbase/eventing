@@ -11,7 +11,6 @@ func newVbProcessingStats(appName string) vbStats {
 		vbsts[i] = &vbStat{
 			stats: make(map[string]interface{}),
 		}
-		vbsts[i].stats["last_processed_seq_no"] = uint64(0)
 		vbsts[i].stats["dcp_stream_status"] = dcpStreamStopped
 		vbsts[i].stats["assigned_worker"] = ""
 		vbsts[i].stats["requesting_worker"] = ""

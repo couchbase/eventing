@@ -267,10 +267,6 @@ type Consumer struct {
 	// socketWriteBatchSize controls the batch size
 	socketWriteBatchSize int
 	sendMsgBuffer        bytes.Buffer
-	// Stores the vbucket seqnos for socket write batch
-	// Upon reading message back from CPP world, vbProcessingStats will be
-	// updated for all vbuckets in that batch
-	writeBatchSeqnoMap map[uint16]uint64 // Access controlled by default lock
 
 	// host:port handle for current eventing node
 	hostPortAddr string

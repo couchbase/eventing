@@ -20,7 +20,7 @@ func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) error {
 		Header: header,
 	}
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
 }
 
 func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) error {
@@ -40,7 +40,7 @@ func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) error {
 	}
 	c.v8WorkerMessagesProcessed["THR_COUNT"]++
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
 }
 
 func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebugger bool) error {
@@ -63,7 +63,7 @@ func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebu
 	}
 	c.v8WorkerMessagesProcessed["THR_MAP"]++
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
 }
 
 func (c *Consumer) sendDebuggerStart() error {
@@ -79,7 +79,7 @@ func (c *Consumer) sendDebuggerStart() error {
 	}
 	c.v8WorkerMessagesProcessed["DEBUG_START"]++
 
-	return c.sendMessage(msg, 0, 0, false, true, true)
+	return c.sendMessage(msg, 0, 0, true, true)
 }
 
 func (c *Consumer) sendDebuggerStop() error {
@@ -95,7 +95,7 @@ func (c *Consumer) sendDebuggerStop() error {
 	}
 	c.v8WorkerMessagesProcessed["DEBUG_STOP"]++
 
-	return c.sendMessage(msg, 0, 0, false, true, true)
+	return c.sendMessage(msg, 0, 0, true, true)
 }
 
 func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool) error {
@@ -112,7 +112,7 @@ func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool) error {
 	}
 	c.v8WorkerMessagesProcessed["V8_INIT"]++
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
 }
 
 func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) error {
@@ -128,7 +128,7 @@ func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) error {
 	}
 	c.v8WorkerMessagesProcessed["V8_LOAD"]++
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
 }
 
 func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) error {
@@ -143,7 +143,7 @@ func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) error {
 	}
 	c.v8WorkerMessagesProcessed["LATENCY_STATS"]++
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
 }
 
 func (c *Consumer) sendGetFailureStats(sendToDebugger bool) error {
@@ -158,7 +158,7 @@ func (c *Consumer) sendGetFailureStats(sendToDebugger bool) error {
 	}
 	c.v8WorkerMessagesProcessed["FAILURE_STATS"]++
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
 }
 
 func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) error {
@@ -173,7 +173,7 @@ func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) error {
 	}
 	c.v8WorkerMessagesProcessed["EXECUTION_STATS"]++
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
 }
 
 func (c *Consumer) sendGetSourceMap(sendToDebugger bool) error {
@@ -188,7 +188,7 @@ func (c *Consumer) sendGetSourceMap(sendToDebugger bool) error {
 	}
 	c.v8WorkerMessagesProcessed["SOURCE_MAP"]++
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
 }
 
 func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) error {
@@ -203,7 +203,7 @@ func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) error {
 	}
 	c.v8WorkerMessagesProcessed["HANDLER_CODE"]++
 
-	return c.sendMessage(msg, 0, 0, false, sendToDebugger, true)
+	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
 }
 
 func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
@@ -216,7 +216,7 @@ func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 		Payload: timerPayload,
 	}
 
-	c.sendMessage(msg, 0, 0, false, sendToDebugger, false)
+	c.sendMessage(msg, 0, 0, sendToDebugger, false)
 }
 
 func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
@@ -229,7 +229,7 @@ func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
 		Payload: timerPayload,
 	}
 
-	c.sendMessage(msg, 0, 0, false, sendToDebugger, false)
+	c.sendMessage(msg, 0, 0, sendToDebugger, false)
 }
 
 func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
@@ -275,7 +275,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 		Payload: dcpPayload,
 	}
 
-	c.sendMessage(msg, e.VBucket, e.Seqno, true, sendToDebugger, false)
+	c.sendMessage(msg, e.VBucket, e.Seqno, sendToDebugger, false)
 }
 
 var sendMsgCallback = func(args ...interface{}) error {
@@ -283,15 +283,14 @@ var sendMsgCallback = func(args ...interface{}) error {
 	msg := args[1].(*message)
 	vb := args[2].(uint16)
 	seqno := args[3].(uint64)
-	shouldCheckpoint := args[4].(bool)
-	sendToDebugger := args[5].(bool)
-	prioritise := args[6].(bool)
+	sendToDebugger := args[4].(bool)
+	prioritise := args[5].(bool)
 
-	err := c.sendMessage(msg, vb, seqno, shouldCheckpoint, sendToDebugger, prioritise)
+	err := c.sendMessage(msg, vb, seqno, sendToDebugger, prioritise)
 	return err
 }
 
-func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldCheckpoint bool, sendToDebugger bool, prioritise bool) error {
+func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, sendToDebugger bool, prioritise bool) error {
 	// Protocol encoding format:
 	//<headerSize><payloadSize><Header><Payload>
 
@@ -330,14 +329,6 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 	}
 
 	c.sendMsgCounter++
-	if shouldCheckpoint {
-		c.Lock()
-		if _, ok := c.writeBatchSeqnoMap[vb]; !ok {
-			c.writeBatchSeqnoMap[vb] = seqno
-		}
-		c.writeBatchSeqnoMap[vb] = seqno
-		c.Unlock()
-	}
 
 	if c.sendMsgCounter >= c.socketWriteBatchSize || prioritise {
 		c.connMutex.Lock()
@@ -382,21 +373,6 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, shouldChec
 		if sendToDebugger && err == nil {
 			c.sendMsgToDebugger = true
 		}
-
-		c.RLock()
-		if len(c.writeBatchSeqnoMap) > 0 {
-			logging.Tracef("CRHM[%s:%s:%s:%d] WriteBatchSeqNo dump: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.writeBatchSeqnoMap)
-		}
-
-		for vb, seqno := range c.writeBatchSeqnoMap {
-			c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", seqno)
-		}
-		c.RUnlock()
-
-		c.Lock()
-		c.writeBatchSeqnoMap = make(map[uint16]uint64)
-		c.Unlock()
 	}
 
 	return nil

@@ -1,9 +1,12 @@
 package consumer
 
 import (
+	"fmt"
+
 	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/shared"
+	"github.com/couchbase/eventing/util"
 )
 
 // RebalanceTaskProgress reports progress to producer
@@ -43,9 +46,14 @@ func (c *Consumer) DcpEventsRemainingToProcess() uint64 {
 		return 0
 	}
 
-	var eventsProcessed, totalEvents uint64
+	var eventsProcessed, seqNo, totalEvents uint64
+	subdocPath := "last_processed_seq_no"
+
 	for _, vbno := range vbsTohandle {
-		eventsProcessed += c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
+		vbKey := fmt.Sprintf("%s_vb_%d", c.app.AppName, vbno)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getMetaOpCallback, c, vbKey, &seqNo, subdocPath)
+
+		eventsProcessed += seqNo
 		totalEvents += seqNos[int(vbno)]
 	}
 

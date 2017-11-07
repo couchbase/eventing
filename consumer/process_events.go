@@ -116,7 +116,6 @@ func (c *Consumer) processEvents() {
 								time.Sleep(time.Second)
 								goto retryTimerStore1
 							}
-							c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", e.Seqno)
 
 						}
 					} else {
@@ -132,7 +131,6 @@ func (c *Consumer) processEvents() {
 							goto retryTimerStore2
 						}
 
-						c.vbProcessingStats.updateVbStat(e.VBucket, "last_processed_seq_no", e.Seqno)
 					}
 				}
 
@@ -522,7 +520,6 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
 	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
-	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
 	vbBlob.NodeUUID = ""
 	vbBlob.PreviousAssignedWorker = c.ConsumerName()
 	vbBlob.PreviousEventingDir = c.eventingDir

@@ -71,6 +71,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       handler_config->enable_recursive_mutation =
           payload->enable_recursive_mutation();
 
+      server_settings->checkpoint_interval = payload->checkpoint_interval();
       server_settings->eventing_dir.assign(payload->eventing_dir()->str());
       server_settings->eventing_port.assign(
           payload->curr_eventing_port()->str());
@@ -180,7 +181,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << on_update_failure << ", \"on_delete_success\":";
       estats << on_delete_success << ", \"on_delete_failure\":";
       estats << on_delete_failure << ", \"non_doc_timer_create_failure\":";
-      estats << non_doc_timer_create_failure << ", \"doc_timer_create_failure\":";
+      estats << non_doc_timer_create_failure
+             << ", \"doc_timer_create_failure\":";
       estats << doc_timer_create_failure << "}";
 
       resp_msg->msg.assign(estats.str());

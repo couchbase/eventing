@@ -243,7 +243,7 @@ func makeDcpPayload(key, value []byte) []byte {
 }
 
 func makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg, rbacUser, rbacPass string,
-	capacity, executionTimeout int, enableRecursiveMutation bool) []byte {
+	capacity, executionTimeout, checkpointInterval int, enableRecursiveMutation bool) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
 
@@ -271,6 +271,7 @@ func makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort,
 	payload.PayloadAddRbacPass(builder, rPass)
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))
+	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))
 	payload.PayloadAddEnableRecursiveMutation(builder, buf[0])
 
 	msgPos := payload.PayloadEnd(builder)

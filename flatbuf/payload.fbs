@@ -14,6 +14,7 @@ table Payload {
   enable_v8_debugger:bool;
   execution_timeout:int; // Execution timeout for handler code execution
   lcb_inst_capacity:int; // Nested iterator related fields
+  checkpoint_interval:int; // Controls how frequently checkpoint will be updated in metadata bucket
 
   // Server settings
   curr_host:string;

@@ -172,6 +172,10 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   histogram = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
 
+  for (int i = 0; i < NUM_VBUCKETS; i++) {
+    vb_seq[i] = atomic_ptr_t(new std::atomic<int64_t>(0));
+  }
+
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
@@ -277,11 +281,15 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   this->worker_queue = new Queue<worker_msg_t>();
 
-  std::thread th(&V8Worker::RouteMessage, this);
-  processing_thr = std::move(th);
+  std::thread r_thr(&V8Worker::RouteMessage, this);
+  processing_thr = std::move(r_thr);
 }
 
 V8Worker::~V8Worker() {
+  if (checkpointing_thr.joinable()) {
+    checkpointing_thr.join();
+  }
+
   if (processing_thr.joinable()) {
     processing_thr.join();
   }
@@ -449,24 +457,27 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     lcb_install_callback3(cb_instance, LCB_CALLBACK_SDLOOKUP,
                           sdlookup_callback);
     UnwrapData(isolate_)->cb_instance = cb_instance;
-
-    crst.version = 3;
-    crst.v.v3.connstr = meta_connstr.c_str();
-    crst.v.v3.type = LCB_TYPE_BUCKET;
-    crst.v.v3.passwd = settings->rbac_pass.c_str();
-
-    lcb_create(&meta_cb_instance, &crst);
-    lcb_connect(meta_cb_instance);
-    lcb_wait(meta_cb_instance);
-
-    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_GET, get_callback);
-    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_STORE, set_callback);
-    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDMUTATE,
-                          sdmutate_callback);
-    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDLOOKUP,
-                          sdlookup_callback);
-    UnwrapData(isolate_)->meta_cb_instance = meta_cb_instance;
   }
+
+  lcb_create_st crst;
+  memset(&crst, 0, sizeof crst);
+
+  crst.version = 3;
+  crst.v.v3.connstr = meta_connstr.c_str();
+  crst.v.v3.type = LCB_TYPE_BUCKET;
+  crst.v.v3.passwd = settings->rbac_pass.c_str();
+
+  lcb_create(&meta_cb_instance, &crst);
+  lcb_connect(meta_cb_instance);
+  lcb_wait(meta_cb_instance);
+
+  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_GET, get_callback);
+  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_STORE, set_callback);
+  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDMUTATE,
+                        sdmutate_callback);
+  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDLOOKUP,
+                        sdlookup_callback);
+  UnwrapData(isolate_)->meta_cb_instance = meta_cb_instance;
 
   // Spawning terminator thread to monitor the wall clock time for execution of
   // javascript code isn't going beyond max_task_duration. Passing reference to
@@ -476,7 +487,59 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   // operator() for V8Worker class
   terminator_thr = new std::thread(std::ref(*this));
 
+  std::thread c_thr(&V8Worker::Checkpoint, this);
+  checkpointing_thr = std::move(c_thr);
+
   return kSuccess;
+}
+
+void V8Worker::Checkpoint() {
+  const auto checkpoint_interval =
+      std::chrono::milliseconds(settings->checkpoint_interval);
+  const auto sleep_duration = std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL);
+  std::string seq_no_path("last_processed_seq_no");
+
+  while (true) {
+    for (int i = 0; i < NUM_VBUCKETS; i++) {
+      auto seq = vb_seq[i].get()->load(std::memory_order_seq_cst);
+      if (seq > 0) {
+        std::stringstream vb_key;
+        vb_key << appName << "_vb_" << i;
+
+        lcb_CMDSUBDOC cmd = {0};
+        LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());
+
+        lcb_SDSPEC seq_spec = {0};
+        seq_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+        seq_spec.options = LCB_SDSPEC_F_MKINTERMEDIATES;
+
+        LCB_SDSPEC_SET_PATH(&seq_spec, seq_no_path.c_str(),
+                            seq_no_path.length());
+        auto seq_str = std::to_string(seq);
+        LCB_SDSPEC_SET_VALUE(&seq_spec, seq_str.c_str(), seq_str.length());
+
+        cmd.specs = &seq_spec;
+        cmd.nspecs = 1;
+
+        Result cres;
+        int retry_count = 0;
+        lcb_subdoc3(meta_cb_instance, &cres, &cmd);
+        lcb_wait(meta_cb_instance);
+        while (cres.rc != LCB_SUCCESS && retry_count < LCB_OP_RETRY_COUNTER) {
+          retry_count++;
+          std::this_thread::sleep_for(sleep_duration);
+          lcb_subdoc3(meta_cb_instance, &cres, &cmd);
+          lcb_wait(meta_cb_instance);
+        }
+
+        // Reset the seq no of checkpointed vb to 0
+        if (cres.rc == LCB_SUCCESS) {
+          vb_seq[i].get()->compare_exchange_strong(seq, 0);
+        }
+      }
+    }
+    std::this_thread::sleep_for(checkpoint_interval);
+  }
 }
 
 void V8Worker::RouteMessage() {
@@ -620,6 +683,19 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   args[1] =
       v8::JSON::Parse(v8::String::NewFromUtf8(GetIsolate(), meta.c_str()));
 
+  // Look for vbucket and corresponding seq no in metadata
+  auto meta_fields = args[1]->ToObject(context).ToLocalChecked();
+  auto seq_str = v8Str(GetIsolate(), "seq");
+  auto vb_str = v8Str(GetIsolate(), "vb");
+
+  auto seq_val = meta_fields->Get(seq_str);
+  auto vb_val = meta_fields->Get(vb_str);
+
+  if (seq_val->IsNumber() && vb_val->IsNumber()) {
+    vb_seq[vb_val->ToInteger()->Value()].get()->store(
+        seq_val->ToInteger()->Value(), std::memory_order_seq_cst);
+  }
+
   if (try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
     LOG(logError) << "Last exception: " << last_exception << '\n';
@@ -679,6 +755,19 @@ int V8Worker::SendDelete(std::string meta) {
   v8::Local<v8::Value> args[1];
   args[0] =
       v8::JSON::Parse(v8::String::NewFromUtf8(GetIsolate(), meta.c_str()));
+
+  // Look for vbucket and corresponding seq no in metadata
+  auto meta_fields = args[0]->ToObject(context).ToLocalChecked();
+  auto seq_str = v8Str(GetIsolate(), "seq");
+  auto vb_str = v8Str(GetIsolate(), "vb");
+
+  auto seq_val = meta_fields->Get(seq_str);
+  auto vb_val = meta_fields->Get(vb_str);
+
+  if (seq_val->IsNumber() && vb_val->IsNumber()) {
+    vb_seq[vb_val->ToInteger()->Value()].get()->store(
+        seq_val->ToInteger()->Value(), std::memory_order_seq_cst);
+  }
 
   assert(!try_catch.HasCaught());
 
