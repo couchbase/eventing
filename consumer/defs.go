@@ -102,6 +102,8 @@ const (
 	retryVbMetaStateCheckInterval = time.Duration(1000) * time.Millisecond
 
 	retryInterval = time.Duration(1000) * time.Millisecond
+
+	socketWriteTimerInterval = time.Duration(5000) * time.Millisecond
 )
 
 const (
@@ -265,8 +267,11 @@ type Consumer struct {
 	sendMsgCounter int
 	// For performance reasons, Golang writes dcp events to tcp socket in batches
 	// socketWriteBatchSize controls the batch size
-	socketWriteBatchSize int
-	sendMsgBuffer        bytes.Buffer
+	socketWriteBatchSize     int
+	sendMsgBuffer            bytes.Buffer
+	socketWriteTicker        *time.Ticker
+	socketWriteLoopStopCh    chan struct{}
+	socketWriteLoopStopAckCh chan struct{}
 
 	// host:port handle for current eventing node
 	hostPortAddr string
@@ -322,6 +327,7 @@ type Consumer struct {
 	debugTCPPort string
 	tcpPort      string
 
+	msgToCppWorkerCh          chan *msgToTransmit
 	signalDebuggerConnectedCh chan struct{}
 
 	// Tracks DCP Opcodes processed per consumer
@@ -444,4 +450,12 @@ type cronTimer struct {
 type timerMsg struct {
 	payload  string
 	msgCount int
+}
+
+type msgToTransmit struct {
+	msg            *message
+	vb             uint16
+	seqno          uint64
+	sendToDebugger bool
+	prioritize     bool
 }

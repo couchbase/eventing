@@ -12,11 +12,29 @@ func init() {
 	initSetup()
 }
 
-func TestOnUpdateBucketOp(t *testing.T) {
+func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_update.js"
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler)
+	createAndDeployFunction(handler, &commonSettings{})
+
+	pumpBucketOps(itemCount, false, 0, false, 0)
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "OnUpdateBucketOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	flushFunctionAndBucket(handler)
+}
+
+func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "bucket_op_on_update.js"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, &commonSettings{4, 77, 3})
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -34,7 +52,7 @@ func TestOnUpdateN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "n1ql_insert_on_update.js"
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler)
+	createAndDeployFunction(handler, &commonSettings{})
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -52,7 +70,7 @@ func TestOnDeleteBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_delete.js"
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler)
+	createAndDeployFunction(handler, &commonSettings{})
 
 	pumpBucketOps(itemCount, false, 1, true, 0)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -70,7 +88,7 @@ func TestDocTimerBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_with_doc_timer.js"
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler)
+	createAndDeployFunction(handler, &commonSettings{})
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -88,7 +106,7 @@ func TestDocTimerN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "n1ql_insert_with_doc_timer.js"
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler)
+	createAndDeployFunction(handler, &commonSettings{})
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -106,7 +124,7 @@ func TestCronTimerBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_with_cron_timer.js"
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler)
+	createAndDeployFunction(handler, &commonSettings{})
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -124,7 +142,7 @@ func TestCronTimerN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "n1ql_insert_with_cron_timer.js"
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler)
+	createAndDeployFunction(handler, &commonSettings{})
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -138,13 +156,13 @@ func TestCronTimerN1QLOp(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-func TestDeployUndeployLoop(t *testing.T) {
+func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_update.js"
 	flushFunctionAndBucket(handler)
 
 	for i := 0; i < 5; i++ {
-		createAndDeployFunction(handler)
+		createAndDeployFunction(handler, &commonSettings{})
 
 		pumpBucketOps(itemCount, false, 0, false, 0)
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -156,7 +174,34 @@ func TestDeployUndeployLoop(t *testing.T) {
 		}
 
 		fmt.Println("Undeploying app:", handler)
-		setSettings(handler, false, false)
+		setSettings(handler, false, false, &commonSettings{})
+		bucketFlush("default")
+		bucketFlush("hello-world")
+		time.Sleep(5 * time.Second)
+	}
+
+	deleteFunction(handler)
+}
+
+func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "bucket_op_on_update.js"
+	flushFunctionAndBucket(handler)
+
+	for i := 0; i < 5; i++ {
+		createAndDeployFunction(handler, &commonSettings{4, 77, 3})
+
+		pumpBucketOps(itemCount, false, 0, false, 0)
+		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+		if itemCount != eventCount {
+			t.Error("For", "DeployUndeployLoop",
+				"expected", itemCount,
+				"got", eventCount,
+			)
+		}
+
+		fmt.Println("Undeploying app:", handler)
+		setSettings(handler, false, false, &commonSettings{})
 		bucketFlush("default")
 		bucketFlush("hello-world")
 		time.Sleep(5 * time.Second)
@@ -173,8 +218,8 @@ func TestMultipleHandlers(t *testing.T) {
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)
 
-	createAndDeployFunction(handler1)
-	createAndDeployFunction(handler2)
+	createAndDeployFunction(handler1, &commonSettings{})
+	createAndDeployFunction(handler2, &commonSettings{})
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
 	eventCount := verifyBucketOps(itemCount*2, statsLookupRetryCounter*2)
@@ -189,17 +234,17 @@ func TestMultipleHandlers(t *testing.T) {
 	flushFunctionAndBucket(handler2)
 }
 
-func TestPauseResumeLoop(t *testing.T) {
+func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	handler := "bucket_op_on_update.js"
 
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler)
+	createAndDeployFunction(handler, &commonSettings{})
 
 	for i := 0; i < 5; i++ {
 		if i > 0 {
-			setSettings(handler, true, true)
+			setSettings(handler, true, true, &commonSettings{})
 		}
 
 		pumpBucketOps(itemCount, false, 0, false, itemCount*i)
@@ -212,7 +257,36 @@ func TestPauseResumeLoop(t *testing.T) {
 		}
 
 		fmt.Printf("Pausing the app: %s\n\n", handler)
-		setSettings(handler, true, false)
+		setSettings(handler, true, false, &commonSettings{})
+	}
+
+	flushFunctionAndBucket(handler)
+}
+
+func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
+	time.Sleep(5 * time.Second)
+
+	handler := "bucket_op_on_update.js"
+
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, &commonSettings{4, 77, 4})
+
+	for i := 0; i < 5; i++ {
+		if i > 0 {
+			setSettings(handler, true, true, &commonSettings{4, 77, 4})
+		}
+
+		pumpBucketOps(itemCount, false, 0, false, itemCount*i)
+		eventCount := verifyBucketOps(itemCount*(i+1), statsLookupRetryCounter)
+		if itemCount*(i+1) != eventCount {
+			t.Error("For", "PauseAndResumeLoop",
+				"expected", itemCount*(i+1),
+				"got", eventCount,
+			)
+		}
+
+		fmt.Printf("Pausing the app: %s\n\n", handler)
+		setSettings(handler, true, false, &commonSettings{})
 	}
 
 	flushFunctionAndBucket(handler)

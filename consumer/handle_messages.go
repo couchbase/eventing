@@ -13,17 +13,23 @@ import (
 	"github.com/couchbase/eventing/util"
 )
 
-func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) error {
+func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) {
 	header := makeLogLevelHeader(logLevel)
 
-	msg := &message{
-		Header: header,
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
 	}
 
-	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
+	c.msgToCppWorkerCh <- m
 }
 
-func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) error {
+func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) {
 	var header []byte
 	if sendToDebugger {
 		header = makeThrCountHeader(strconv.Itoa(thrCount))
@@ -31,19 +37,25 @@ func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) error {
 		header = makeThrCountHeader(strconv.Itoa(c.cppWorkerThrCount))
 	}
 
-	msg := &message{
-		Header: header,
-	}
-
 	if _, ok := c.v8WorkerMessagesProcessed["THR_COUNT"]; !ok {
 		c.v8WorkerMessagesProcessed["THR_COUNT"] = 0
 	}
 	c.v8WorkerMessagesProcessed["THR_COUNT"]++
 
-	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+	}
+
+	c.msgToCppWorkerCh <- m
 }
 
-func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebugger bool) error {
+func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebugger bool) {
 	header := makeThrMapHeader()
 
 	var payload []byte
@@ -53,157 +65,217 @@ func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebu
 		payload = makeThrMapPayload(c.cppThrPartitionMap, cppWorkerPartitionCount)
 	}
 
-	msg := &message{
-		Header:  header,
-		Payload: payload,
-	}
-
 	if _, ok := c.v8WorkerMessagesProcessed["THR_MAP"]; !ok {
 		c.v8WorkerMessagesProcessed["THR_MAP"] = 0
 	}
 	c.v8WorkerMessagesProcessed["THR_MAP"]++
 
-	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
+	m := &msgToTransmit{
+		msg: &message{
+			Header:  header,
+			Payload: payload,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+	}
+
+	c.msgToCppWorkerCh <- m
 }
 
-func (c *Consumer) sendDebuggerStart() error {
+func (c *Consumer) sendDebuggerStart() {
 
 	header := makeV8DebuggerStartHeader()
-
-	msg := &message{
-		Header: header,
-	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_START"]; !ok {
 		c.v8WorkerMessagesProcessed["DEBUG_START"] = 0
 	}
 	c.v8WorkerMessagesProcessed["DEBUG_START"]++
 
-	return c.sendMessage(msg, 0, 0, true, true)
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: true,
+		prioritize:     true,
+	}
+
+	c.msgToCppWorkerCh <- m
 }
 
-func (c *Consumer) sendDebuggerStop() error {
+func (c *Consumer) sendDebuggerStop() {
 
 	header := makeV8DebuggerStopHeader()
-
-	msg := &message{
-		Header: header,
-	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_STOP"]; !ok {
 		c.v8WorkerMessagesProcessed["DEBUG_STOP"] = 0
 	}
 	c.v8WorkerMessagesProcessed["DEBUG_STOP"]++
 
-	return c.sendMessage(msg, 0, 0, true, true)
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: true,
+		prioritize:     true,
+	}
+
+	c.msgToCppWorkerCh <- m
 }
 
-func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool) error {
+func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool) {
 
 	header := makeV8InitOpcodeHeader()
-
-	msg := &message{
-		Header:  header,
-		Payload: payload,
-	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["V8_INIT"]; !ok {
 		c.v8WorkerMessagesProcessed["V8_INIT"] = 0
 	}
 	c.v8WorkerMessagesProcessed["V8_INIT"]++
 
-	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
+	m := &msgToTransmit{
+		msg: &message{
+			Header:  header,
+			Payload: payload,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+	}
+
+	c.msgToCppWorkerCh <- m
 }
 
-func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) error {
+func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) {
 
 	header := makeV8LoadOpcodeHeader(appCode)
-
-	msg := &message{
-		Header: header,
-	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["V8_LOAD"]; !ok {
 		c.v8WorkerMessagesProcessed["V8_LOAD"] = 0
 	}
 	c.v8WorkerMessagesProcessed["V8_LOAD"]++
 
-	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+	}
+
+	c.msgToCppWorkerCh <- m
 }
 
-func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) error {
+func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) {
 	header := makeHeader(v8WorkerEvent, v8WorkerLatencyStats, 0, "")
-
-	msg := &message{
-		Header: header,
-	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["LATENCY_STATS"]; !ok {
 		c.v8WorkerMessagesProcessed["LATENCY_STATS"] = 0
 	}
 	c.v8WorkerMessagesProcessed["LATENCY_STATS"]++
 
-	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+	}
+
+	c.msgToCppWorkerCh <- m
 }
 
-func (c *Consumer) sendGetFailureStats(sendToDebugger bool) error {
+func (c *Consumer) sendGetFailureStats(sendToDebugger bool) {
 	header := makeHeader(v8WorkerEvent, v8WorkerFailureStats, 0, "")
-
-	msg := &message{
-		Header: header,
-	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["FAILURE_STATS"]; !ok {
 		c.v8WorkerMessagesProcessed["FAILURE_STATS"] = 0
 	}
 	c.v8WorkerMessagesProcessed["FAILURE_STATS"]++
 
-	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+	}
+
+	c.msgToCppWorkerCh <- m
 }
 
-func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) error {
+func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) {
 	header := makeHeader(v8WorkerEvent, v8WorkerExecutionStats, 0, "")
-
-	msg := &message{
-		Header: header,
-	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["EXECUTION_STATS"]; !ok {
 		c.v8WorkerMessagesProcessed["EXECUTION_STATS"] = 0
 	}
 	c.v8WorkerMessagesProcessed["EXECUTION_STATS"]++
 
-	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+	}
+
+	c.msgToCppWorkerCh <- m
 }
 
-func (c *Consumer) sendGetSourceMap(sendToDebugger bool) error {
+func (c *Consumer) sendGetSourceMap(sendToDebugger bool) {
 	header := makeHeader(v8WorkerEvent, v8WorkerSourceMap, 0, "")
-
-	msg := &message{
-		Header: header,
-	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["SOURCE_MAP"]; !ok {
 		c.v8WorkerMessagesProcessed["SOURCE_MAP"] = 0
 	}
 	c.v8WorkerMessagesProcessed["SOURCE_MAP"]++
 
-	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+	}
+
+	c.msgToCppWorkerCh <- m
 }
 
-func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) error {
+func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) {
 	header := makeHeader(v8WorkerEvent, v8WorkerHandlerCode, 0, "")
-
-	msg := &message{
-		Header: header,
-	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["HANDLER_CODE"]; !ok {
 		c.v8WorkerMessagesProcessed["HANDLER_CODE"] = 0
 	}
 	c.v8WorkerMessagesProcessed["HANDLER_CODE"]++
 
-	return c.sendMessage(msg, 0, 0, sendToDebugger, true)
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+	}
+
+	c.msgToCppWorkerCh <- m
 }
 
 func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
@@ -211,12 +283,19 @@ func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 	timerHeader := makeDocTimerEventHeader(partition)
 	timerPayload := makeDocTimerPayload(e.DocID, e.CallbackFn)
 
-	msg := &message{
-		Header:  timerHeader,
-		Payload: timerPayload,
+	m := &msgToTransmit{
+		msg: &message{
+			Header:  timerHeader,
+			Payload: timerPayload,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: sendToDebugger,
+		prioritize:     false,
 	}
 
-	c.sendMessage(msg, 0, 0, sendToDebugger, false)
+	c.msgToCppWorkerCh <- m
+
 }
 
 func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
@@ -224,12 +303,18 @@ func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
 	timerHeader := makeNonDocTimerEventHeader(partition)
 	timerPayload := makeNonDocTimerPayload(payload)
 
-	msg := &message{
-		Header:  timerHeader,
-		Payload: timerPayload,
+	m := &msgToTransmit{
+		msg: &message{
+			Header:  timerHeader,
+			Payload: timerPayload,
+		},
+		vb:             0,
+		seqno:          0,
+		sendToDebugger: sendToDebugger,
+		prioritize:     false,
 	}
 
-	c.sendMessage(msg, 0, 0, sendToDebugger, false)
+	c.msgToCppWorkerCh <- m
 }
 
 func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
@@ -270,24 +355,61 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	}
 
 	dcpPayload := makeDcpPayload(e.Key, e.Value)
-	msg := &message{
-		Header:  dcpHeader,
-		Payload: dcpPayload,
+
+	msg := &msgToTransmit{
+		msg: &message{
+			Header:  dcpHeader,
+			Payload: dcpPayload,
+		},
+		vb:             e.VBucket,
+		seqno:          e.Seqno,
+		sendToDebugger: sendToDebugger,
+		prioritize:     false,
 	}
 
-	c.sendMessage(msg, e.VBucket, e.Seqno, sendToDebugger, false)
+	c.msgToCppWorkerCh <- msg
 }
 
-var sendMsgCallback = func(args ...interface{}) error {
-	c := args[0].(*Consumer)
-	msg := args[1].(*message)
-	vb := args[2].(uint16)
-	seqno := args[3].(uint64)
-	sendToDebugger := args[4].(bool)
-	prioritise := args[5].(bool)
+func (c *Consumer) sendMessageLoop() {
 
-	err := c.sendMessage(msg, vb, seqno, sendToDebugger, prioritise)
-	return err
+	// Flush any entry in stop channel. Entry could have come in as part of bootstrap
+	select {
+	case <-c.socketWriteLoopStopCh:
+	default:
+	}
+	c.socketWriteLoopStopAckCh = make(chan struct{}, 1)
+
+	for {
+		select {
+		case m := <-c.msgToCppWorkerCh:
+			c.sendMessage(m.msg, m.vb, m.seqno, m.sendToDebugger, m.prioritize)
+		case <-c.socketWriteTicker.C:
+			logging.Infof("c.sendMsgCounter: %v", c.sendMsgCounter)
+			if c.sendMsgCounter > 0 {
+				c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
+
+				err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
+				if err != nil {
+					logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+					c.client.Stop()
+				}
+
+				// Reset the sendMessage buffer and message counter
+				c.sendMsgBuffer.Reset()
+				c.sendMsgCounter = 0
+
+				if err = c.readMessage(false); err != nil {
+					logging.Errorf("CRHM[%s:%s:%s:%d] Read message: Closing conn: %v",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.conn)
+					c.client.Stop()
+				}
+			}
+		case <-c.socketWriteLoopStopCh:
+			c.socketWriteLoopStopAckCh <- struct{}{}
+			return
+		}
+	}
 }
 
 func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, sendToDebugger bool, prioritise bool) error {
@@ -341,6 +463,7 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, sendToDebu
 			if err != nil {
 				logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+				c.client.Stop()
 				return err
 			}
 		} else if c.debugConn != nil {

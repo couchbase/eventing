@@ -59,6 +59,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
 		lcbInstCapacity:                    lcbInstCapacity,
 		logLevel:                           logLevel,
+		msgToCppWorkerCh:                   make(chan *msgToTransmit, 1),
 		nonDocTimerEntryCh:                 make(chan timerMsg, timerChanSize),
 		nonDocTimerStopCh:                  make(chan struct{}, 1),
 		opsTimestamp:                       time.Now(),
@@ -86,6 +87,9 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		skipTimerThreshold:                 skipTimerThreshold,
 		socketTimeout:                      socketTimeout,
 		socketWriteBatchSize:               sockWriteBatchSize,
+		socketWriteLoopStopAckCh:           make(chan struct{}, 1),
+		socketWriteLoopStopCh:              make(chan struct{}, 1),
+		socketWriteTicker:                  time.NewTicker(socketWriteTimerInterval),
 		statsTicker:                        time.NewTicker(statsTickInterval),
 		stopControlRoutineCh:               make(chan struct{}, 1),
 		stopPlasmaPersistCh:                make(chan struct{}, 1),
@@ -120,6 +124,9 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 
 // Serve acts as init routine for consumer handle
 func (c *Consumer) Serve() {
+	// Insert an entry to sendMessage loop control channel to signify a normal bootstrap
+	c.socketWriteLoopStopAckCh <- struct{}{}
+
 	c.stopConsumerCh = make(chan struct{}, 1)
 	c.stopCheckpointingCh = make(chan struct{}, 1)
 
@@ -270,6 +277,10 @@ func (c *Consumer) Stop() {
 	for k := range c.timerProcessingWorkerSignalCh {
 		k.stopCh <- struct{}{}
 	}
+
+	c.socketWriteLoopStopCh <- struct{}{}
+	<-c.socketWriteLoopStopAckCh
+	c.socketWriteTicker.Stop()
 
 	c.stopCheckpointingCh <- struct{}{}
 	c.nonDocTimerStopCh <- struct{}{}

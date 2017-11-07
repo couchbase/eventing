@@ -103,6 +103,10 @@ func (c *Consumer) SetConnHandle(conn net.Conn) {
 	c.conn = conn
 	logging.Infof("V8CR[%s:%s:%s:%d] Setting conn handle: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.conn)
+
+	c.socketWriteLoopStopCh <- struct{}{}
+	<-c.socketWriteLoopStopAckCh
+	go c.sendMessageLoop()
 }
 
 // SignalBootstrapFinish is leveraged by Eventing.Producer instance to know
