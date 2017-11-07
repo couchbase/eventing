@@ -187,6 +187,10 @@ func (c *Consumer) vbsStateUpdate() {
 	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 
+	if len(c.vbsRemainingToGiveUp) == 0 && len(c.vbsRemainingToOwn) == 0 {
+		return
+	}
+
 	vbsts := c.vbProcessingStats.copyVbStats()
 
 	go c.vbGiveUpRoutine(vbsts)
