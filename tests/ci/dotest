@@ -34,11 +34,10 @@ start_cluster() {
               ok_run=1 && break
       sleep 3
     done
-    test "$ok_run" || continue
     sleep 30
+    test "$ok_run" && break
   done
   test "$ok_run" || error_exit "Server startup failed even after 3 tries"
-  sleep 30
 }
 
 stop_cluster() {
