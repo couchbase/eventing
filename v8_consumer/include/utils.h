@@ -46,6 +46,7 @@ inline Data *UnwrapData(v8::Isolate *isolate) {
 int WinSprintf(char **strp, const char *fmt, ...);
 
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const char *str);
+v8::Local<v8::String> v8Str(v8::Isolate *isolate, const std::string &str);
 std::string ObjectToString(v8::Local<v8::Value> value);
 
 std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object);

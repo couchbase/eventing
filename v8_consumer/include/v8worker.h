@@ -167,6 +167,7 @@ public:
   int SendDelete(std::string meta);
   void SendDocTimer(std::string doc_id, std::string callback_fn);
   void SendCronTimer(std::string cron_cb_fns);
+  std::string CompileHandler(std::string handler);
 
   void StartDebugger();
   void StopDebugger();

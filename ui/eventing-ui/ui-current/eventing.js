@@ -112,6 +112,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         showSuccessAlert(`${app.appname} deployed successfully!`);
                     })
                     .catch(function(errResponse) {
+                        // TODO : Get appropriate compilation info
+                        // app.compilationInfo = {"language":"JavaScript","compileSuccess":false,"index":95,"lineNumber":5,"columnNumber":16,"description":"Unexpected token ILLEGAL"};
                         console.error(errResponse);
                     });
             }
@@ -493,6 +495,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.debugDisabled = !(app.settings.deployment_status && app.settings.processing_status);
 
             $scope.aceLoaded = function(editor) {
+                var Range = ace.require('ace/range').Range;
                 // Current line highlight would overlap on the nav bar in compressed mode.
                 // Hence, we need to disable it.
                 editor.setOption("highlightActiveLine", false);
@@ -501,10 +504,34 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 // TODO : Figure out how to add N1QL grammar to ace editor.
                 editor.getSession().setUseWorker(false);
 
+                // If the compilation wasn't successful, show error info in UI.
+                if (app.compilationInfo && !app.compilationInfo.compileSuccess) {
+                    var line = app.compilationInfo.lineNumber;
+                    var col = app.compilationInfo.columnNumber;
+
+                    editor.session.addMarker(new Range(line, col, line, col + 1), "functions-editor-info", "text");
+                    editor.getSession().setAnnotations([{
+                        row: line,
+                        column: col,
+                        text: app.compilationInfo.description,
+                        type: "error"
+                    }]);
+                }
+
                 editor.on('focus', function(event) {
                     if (self.editorDisabled) {
                         showWarningAlert('Undeploy the application to edit!');
                     }
+
+                    // Optimistic that the user has seen the errors, remove markers and annotations
+                    var session = editor.getSession(),
+                        markers = session.$backMarkers;
+                    for (var i in markers) {
+                        session.removeMarker(markers[i].id);
+                    }
+
+                    delete app.compilationInfo;
+                    session.clearAnnotations();
                 });
 
                 // Make the ace editor responsive to changes in browser dimensions.

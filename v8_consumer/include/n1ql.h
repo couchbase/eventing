@@ -47,7 +47,42 @@ enum op_code {
   kKeywordUpsert
 };
 
-enum lex_op_code { kJsify, kUniLineN1QL };
+enum lex_op_code { kJsify, kUniLineN1QL, kCommentN1QL };
+
+// Insertion types for CommentN1QL
+enum class insert_type { kN1QLBegin, kN1QLEnd };
+
+// Keeps track of the type of literal inserted during CommentN1QL
+struct InsertedCharsInfo {
+  InsertedCharsInfo(insert_type type)
+      : type(type), type_len(0), line_no(0), index(0) {}
+
+  insert_type type;
+  int type_len;
+  int32_t line_no;
+  int32_t index;
+};
+
+// Represents position of each char in the source code
+struct Pos {
+  Pos() : line_no(0), col_no(0), index(0) {}
+
+  int32_t line_no;
+  int32_t col_no;
+  int32_t index;
+};
+
+// Represents compilation status
+struct CompilationInfo {
+  CompilationInfo() : compile_success(false), index(0), line_no(0), col_no(0) {}
+
+  std::string language;
+  bool compile_success;
+  int32_t index;
+  int32_t line_no;
+  int32_t col_no;
+  std::string description;
+};
 
 // Data type for managing iterators.
 struct IterQueryHandler {
@@ -109,6 +144,7 @@ public:
   void Pop();
   QueryHandler Top() { return qstack.top(); }
   QueryHandler *Get(std::string index_hash) { return qmap[index_hash]; }
+  // TODO : Need to deduce return type
   int Size() { return static_cast<int>(qstack.size()); }
   ~HashedStack() {}
 };
@@ -137,21 +173,45 @@ class Transpiler {
   v8::Local<v8::Context> context;
 
 public:
-  Transpiler(std::string transpiler_src);
-  v8::Local<v8::Value> ExecTranspiler(std::string function,
+  Transpiler(const std::string &transpiler_src);
+  v8::Local<v8::Value> ExecTranspiler(const std::string &function,
                                       v8::Local<v8::Value> args[],
-                                      int args_len);
-  std::string Transpile(std::string user_code, std::string filename,
-                        std::string src_map_name, std::string host_addr,
-                        std::string eventing_port);
-  std::string JsFormat(std::string user_code);
-  std::string GetSourceMap(std::string user_code, std::string filename);
-  bool IsTimerCalled(std::string user_code);
+                                      const int &args_len);
+  CompilationInfo Compile(const std::string &plain_js);
+  std::string Transpile(const std::string &handler_code,
+                        const std::string &src_filename,
+                        const std::string &src_map_name,
+                        const std::string &host_addr,
+                        const std::string &eventing_port);
+  std::string JsFormat(const std::string &handler_code);
+  std::string GetSourceMap(const std::string &handler_code,
+                           const std::string &src_filename);
+  bool IsTimerCalled(const std::string &handler_code);
+  static void LogCompilationInfo(const CompilationInfo &info);
   ~Transpiler() {}
+
+private:
+  void RectifyCompilationInfo(CompilationInfo &info,
+                              const std::list<InsertedCharsInfo> &n1ql_pos);
+  CompilationInfo
+  ComposeErrorInfo(int code, const Pos &last_pos,
+                   const std::list<InsertedCharsInfo> &ins_list);
+  CompilationInfo
+  ComposeCompilationInfo(v8::Local<v8::Value> &compiler_result,
+                         const std::list<InsertedCharsInfo> &ins_list);
+  std::string ComposeDescription(int code);
 };
 
-int Jsify(const char *, std::string *);
-int UniLineN1QL(const char *input, std::string *output);
+int Jsify(const char *input, std::string *output, Pos *last_pos_out);
+int UniLineN1QL(const char *input, std::string *output, Pos *last_pos_out);
+int CommentN1QL(const char *input, std::string *output,
+                std::list<InsertedCharsInfo> *pos_out, Pos *last_pos_out);
+
+void HandleStrStart(int state);
+void HandleStrStop(int state);
+bool IsEsc();
+void UpdatePos(insert_type type);
+void UpdatePos(Pos *pos);
 
 void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
