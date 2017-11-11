@@ -67,7 +67,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 
 // EventHandlerLoadCallback is registered as callback from metakv observe calls on event handlers path
 func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, rev interface{}) error {
-	logging.Infof("SSUP[%d] EventHandlerLoadCallback: path => %s encoded value size => %v\n", len(s.runningProducers), path, len(value))
+	logging.Infof("SSUP[%d] EventHandlerLoadCallback: path => %s encoded value size => %v", len(s.runningProducers), path, len(value))
 
 	if value != nil {
 		splitRes := strings.Split(path, "/")

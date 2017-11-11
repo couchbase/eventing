@@ -257,8 +257,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << h_config->app_name << " curr_host: " << settings->host_addr
                << " curr_eventing_port: " << settings->eventing_port
                << " kv_host_port: " << settings->kv_host_port
-               << " rbac_user: " << settings->rbac_user
-               << " rbac_pass: " << settings->rbac_pass
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
                << " enable_recursive_mutation: " << enable_recursive_mutation

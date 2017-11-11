@@ -970,6 +970,7 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	path := metakvAppsPath + appName
 	err = util.MetakvSet(path, appContent, nil)
 	if err != nil {
+		logging.Errorf("App: %v failed to write to metakv, err: %v", appName, err)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSaveAppPs.Code))
 		fmt.Fprintf(w, "Failed to write app config to metakv, err: %v", err)
 		return

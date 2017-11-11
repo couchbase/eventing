@@ -53,7 +53,7 @@ func postToEventindEndpoint(url string, payload []byte) {
 	fmt.Println(string(body))
 }
 
-func createAndDeployFunction(hFileName string, settings *commonSettings) {
+func createAndDeployFunction(appName, hFileName string, settings *commonSettings) {
 	content, err := getHandlerCode(hFileName)
 	if err != nil {
 		fmt.Println("Get handler code, err:", err)
@@ -65,7 +65,6 @@ func createAndDeployFunction(hFileName string, settings *commonSettings) {
 	var bnames []string
 	bnames = append(bnames, "hello-world")
 
-	appName := hFileName
 	data, err := createFunction(true, true, 0, settings, aliases,
 		bnames, appName, content, "eventing", "default")
 	if err != nil {

@@ -384,7 +384,6 @@ func (c *Consumer) sendMessageLoop() {
 		case m := <-c.msgToCppWorkerCh:
 			c.sendMessage(m.msg, m.vb, m.seqno, m.sendToDebugger, m.prioritize)
 		case <-c.socketWriteTicker.C:
-			logging.Infof("c.sendMsgCounter: %v", c.sendMsgCounter)
 			if c.sendMsgCounter > 0 {
 				c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
 
