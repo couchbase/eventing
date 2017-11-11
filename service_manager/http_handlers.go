@@ -798,6 +798,39 @@ func (m *ServiceMgr) saveAppSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var app application
+	err = json.Unmarshal(data, &app)
+	if err != nil {
+		errString := fmt.Sprintf("App: %s, Failed to unmarshal payload", appName)
+		logging.Errorf("%s, err: %v", errString, err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errUnmarshalPld.Code))
+		fmt.Fprintf(w, "%s\n", errString)
+		return
+	}
+
+	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
+	cinfo, err := util.ClusterInfoCache(m.auth, nsServerEndpoint)
+	if err != nil {
+		logging.Errorf("Failed to initialise cluster info cache, err: %v", err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errConnectNsServer.Code))
+		fmt.Fprintf(w, "Failed to connect to cluster manager")
+		return
+	}
+
+	isMemcached, err := cinfo.IsMemcached(app.DeploymentConfig.SourceBucket)
+	if err != nil {
+		logging.Errorf("Failed to check bucket type using cluster info cache, err: %v", err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errBucketTypeCheck.Code))
+		fmt.Fprintf(w, "Failed to check if source bucket is memcached")
+		return
+	}
+
+	if isMemcached {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMemcachedBucket.Code))
+		fmt.Fprintf(w, "Source bucket is memcached, should be either couchbase or ephemeral")
+		return
+	}
+
 	err = util.MetakvSet(path, data, nil)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSaveAppTs.Code))
@@ -846,6 +879,29 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	if app.DeploymentConfig.SourceBucket == app.DeploymentConfig.MetadataBucket {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSrcMbSame.Code))
 		fmt.Fprintf(w, "Source bucket same as metadata bucket")
+		return
+	}
+
+	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
+	cinfo, err := util.ClusterInfoCache(m.auth, nsServerEndpoint)
+	if err != nil {
+		logging.Errorf("Failed to initialise cluster info cache, err: %v", err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errConnectNsServer.Code))
+		fmt.Fprintf(w, "Failed to connect to cluster manager")
+		return
+	}
+
+	isMemcached, err := cinfo.IsMemcached(app.DeploymentConfig.SourceBucket)
+	if err != nil {
+		logging.Errorf("Failed to check bucket type using cluster info cache, err: %v", err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errBucketTypeCheck.Code))
+		fmt.Fprintf(w, "Failed to check if source bucket is memcached")
+		return
+	}
+
+	if isMemcached {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMemcachedBucket.Code))
+		fmt.Fprintf(w, "Source bucket is memcached, should be either couchbase or ephemeral")
 		return
 	}
 

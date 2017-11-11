@@ -49,7 +49,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 
 	config, _ := util.NewConfig(nil)
 	config.Set("uuid", s.uuid)
-	config.Set("eventing_admin_http_port", s.adminPort.HttpPort)
+	config.Set("eventing_admin_http_port", s.adminPort.HTTPPort)
 	config.Set("eventing_admin_ssl_port", s.adminPort.SslPort)
 	config.Set("eventing_admin_ssl_cert", s.adminPort.CertFile)
 	config.Set("eventing_admin_ssl_key", s.adminPort.KeyFile)
@@ -299,7 +299,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
-	p := producer.NewProducer(appName, s.adminPort.HttpPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
+	p := producer.NewProducer(appName, s.adminPort.HTTPPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
 		s.restPort, s.uuid, s)
 
 	token := s.superSup.Add(p)

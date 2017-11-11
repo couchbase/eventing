@@ -24,7 +24,9 @@ const (
 )
 
 const (
-	EventingPermissionRead  = "cluster.admin!read"
+	// EventingPermissionRead needed for reading app stats/settings/handlers
+	EventingPermissionRead = "cluster.admin!read"
+	// EventingPermissionWrite needed for writing/updating app settings/handlers
 	EventingPermissionWrite = "cluster.admin!write"
 )
 
@@ -40,7 +42,7 @@ type ServiceMgr struct {
 	auth              string
 	config            util.ConfigHolder
 	eventingNodeAddrs []string
-	adminHttpPort     string
+	adminHTTPPort     string
 	adminSSLPort      string
 	certFile          string
 	keyFile           string

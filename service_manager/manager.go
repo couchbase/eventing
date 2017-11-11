@@ -51,7 +51,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 
 func (m *ServiceMgr) initService() {
 	cfg := m.config.Load()
-	m.adminHttpPort = cfg["eventing_admin_http_port"].(string)
+	m.adminHTTPPort = cfg["eventing_admin_http_port"].(string)
 	m.adminSSLPort = cfg["eventing_admin_ssl_port"].(string)
 	m.certFile = cfg["eventing_admin_ssl_cert"].(string)
 	m.keyFile = cfg["eventing_admin_ssl_key"].(string)
@@ -59,7 +59,7 @@ func (m *ServiceMgr) initService() {
 	m.uuid = cfg["uuid"].(string)
 	m.initErrCodes()
 
-	logging.Infof("ServiceMgr::initService adminHttpPort: %v", m.adminHttpPort)
+	logging.Infof("ServiceMgr::initService adminHTTPPort: %v", m.adminHTTPPort)
 	logging.Infof("ServiceMgr::initService adminSSLPort: %v", m.adminSSLPort)
 	logging.Infof("ServiceMgr::initService certFile: %v", m.certFile)
 	logging.Infof("ServiceMgr::initService keyFile: %v", m.keyFile)
@@ -115,7 +115,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/uuid", m.getNodeUUID)
 
 	go func() {
-		addr := net.JoinHostPort("", m.adminHttpPort)
+		addr := net.JoinHostPort("", m.adminHTTPPort)
 		logging.Infof("Admin HTTP server started: %v", addr)
 		err := http.ListenAndServe(addr, nil)
 		logging.Fatalf("Error in Admin HTTP Server: %v", err)
@@ -123,8 +123,8 @@ func (m *ServiceMgr) initService() {
 
 	if m.adminSSLPort != "" {
 		sslAddr := net.JoinHostPort("", m.adminSSLPort)
-		var reload bool = false
-		var sslsrv *http.Server = nil
+		reload := false
+		var sslsrv *http.Server
 		refresh := func() error {
 			if sslsrv != nil {
 				reload = true

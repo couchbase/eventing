@@ -49,6 +49,9 @@ type statusCodes struct {
 	errAppNotInit       statusBase
 	errAppNotUndeployed statusBase
 	errStatusesNotFound statusBase
+	errConnectNsServer  statusBase
+	errBucketTypeCheck  statusBase
+	errMemcachedBucket  statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
@@ -77,6 +80,9 @@ func (m *ServiceMgr) initErrCodes() {
 		errAppNotInit:       statusBase{"ERR_APP_NOT_BOOTSTRAPPED", 21},
 		errAppNotUndeployed: statusBase{"ERR_APP_NOT_UNDEPLOYED", 22},
 		errStatusesNotFound: statusBase{"ERR_PROCESSING_OR_DEPLOYMENT_STATUS_NOT_FOUND", 23},
+		errConnectNsServer:  statusBase{"ERR_CONNECT_TO_NS_SERVER", 24},
+		errBucketTypeCheck:  statusBase{"ERR_BUCKET_TYPE_CHECK", 25},
+		errMemcachedBucket:  statusBase{"ERR_SOURCE_BUCKET_MEMCACHED", 26},
 	}
 
 	errors := []errorPayload{
@@ -197,6 +203,21 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errStatusesNotFound.Name,
 			Code:        m.statusCodes.errStatusesNotFound.Code,
 			Description: "Processing or deployment status or both missing from supplied settings",
+		},
+		{
+			Name:        m.statusCodes.errConnectNsServer.Name,
+			Code:        m.statusCodes.errConnectNsServer.Code,
+			Description: "Failed to connect to cluster manager",
+		},
+		{
+			Name:        m.statusCodes.errBucketTypeCheck.Name,
+			Code:        m.statusCodes.errBucketTypeCheck.Code,
+			Description: "Failed to check type of source bucket",
+		},
+		{
+			Name:        m.statusCodes.errMemcachedBucket.Name,
+			Code:        m.statusCodes.errMemcachedBucket.Code,
+			Description: "Source bucket can't be of type memcached",
 		},
 	}
 

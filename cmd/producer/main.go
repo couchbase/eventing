@@ -19,7 +19,7 @@ func main() {
 	}
 
 	adminPort := supervisor.AdminPortConfig{
-		HttpPort: flags.adminHttpPort,
+		HTTPPort: flags.adminHTTPPort,
 		SslPort:  flags.adminSSLPort,
 		CertFile: flags.sslCertFile,
 		KeyFile:  flags.sslKeyFile,

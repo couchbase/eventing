@@ -45,8 +45,9 @@ type supCmdMsg struct {
 	ctx string
 }
 
+// AdminPortConfig captures settings supplied by cluster manager
 type AdminPortConfig struct {
-	HttpPort string
+	HTTPPort string
 	SslPort  string
 	CertFile string
 	KeyFile  string
