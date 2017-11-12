@@ -81,67 +81,67 @@ type message struct {
 	Payload []byte
 }
 
-func makeDocTimerEventHeader(partition int16) []byte {
-	return makeHeader(timerEvent, docTimer, partition, "")
+func (c *Consumer) makeDocTimerEventHeader(partition int16) []byte {
+	return c.makeHeader(timerEvent, docTimer, partition, "")
 }
 
-func makeNonDocTimerEventHeader(partition int16) []byte {
-	return makeHeader(timerEvent, nonDocTimer, partition, "")
+func (c *Consumer) makeNonDocTimerEventHeader(partition int16) []byte {
+	return c.makeHeader(timerEvent, nonDocTimer, partition, "")
 }
 
-func makeDcpMutationHeader(partition int16, mutationMeta string) []byte {
-	return makeDcpHeader(dcpMutation, partition, mutationMeta)
+func (c *Consumer) makeDcpMutationHeader(partition int16, mutationMeta string) []byte {
+	return c.makeDcpHeader(dcpMutation, partition, mutationMeta)
 }
 
-func makeDcpDeletionHeader(partition int16, deletionMeta string) []byte {
-	return makeDcpHeader(dcpDeletion, partition, deletionMeta)
+func (c *Consumer) makeDcpDeletionHeader(partition int16, deletionMeta string) []byte {
+	return c.makeDcpHeader(dcpDeletion, partition, deletionMeta)
 }
 
-func makeDcpHeader(opcode int8, partition int16, meta string) []byte {
-	return makeHeader(dcpEvent, opcode, partition, meta)
+func (c *Consumer) makeDcpHeader(opcode int8, partition int16, meta string) []byte {
+	return c.makeHeader(dcpEvent, opcode, partition, meta)
 }
 
-func makeV8DebuggerStartHeader() []byte {
-	return makeV8DebuggerHeader(startDebug, "")
+func (c *Consumer) makeV8DebuggerStartHeader() []byte {
+	return c.makeV8DebuggerHeader(startDebug, "")
 }
 
-func makeV8DebuggerStopHeader() []byte {
-	return makeV8DebuggerHeader(stopDebug, "")
+func (c *Consumer) makeV8DebuggerStopHeader() []byte {
+	return c.makeV8DebuggerHeader(stopDebug, "")
 }
 
-func makeV8DebuggerHeader(opcode int8, meta string) []byte {
-	return makeHeader(debuggerEvent, opcode, 0, meta)
+func (c *Consumer) makeV8DebuggerHeader(opcode int8, meta string) []byte {
+	return c.makeHeader(debuggerEvent, opcode, 0, meta)
 }
 
-func makeV8InitOpcodeHeader() []byte {
-	return makeV8EventHeader(v8WorkerInit, "")
+func (c *Consumer) makeV8InitOpcodeHeader() []byte {
+	return c.makeV8EventHeader(v8WorkerInit, "")
 }
 
-func makeV8LoadOpcodeHeader(appCode string) []byte {
-	return makeV8EventHeader(v8WorkerLoad, appCode)
+func (c *Consumer) makeV8LoadOpcodeHeader(appCode string) []byte {
+	return c.makeV8EventHeader(v8WorkerLoad, appCode)
 }
 
-func makeV8EventHeader(opcode int8, meta string) []byte {
-	return makeHeader(v8WorkerEvent, opcode, 0, meta)
+func (c *Consumer) makeV8EventHeader(opcode int8, meta string) []byte {
+	return c.makeHeader(v8WorkerEvent, opcode, 0, meta)
 }
 
-func makeLogLevelHeader(meta string) []byte {
-	return makeHeader(appWorkerSetting, logLevel, 0, meta)
+func (c *Consumer) makeLogLevelHeader(meta string) []byte {
+	return c.makeHeader(appWorkerSetting, logLevel, 0, meta)
 }
 
-func makeThrCountHeader(meta string) []byte {
-	return makeHeader(appWorkerSetting, workerThreadCount, 0, meta)
+func (c *Consumer) makeThrCountHeader(meta string) []byte {
+	return c.makeHeader(appWorkerSetting, workerThreadCount, 0, meta)
 }
 
-func makeThrMapHeader() []byte {
-	return makeHeader(appWorkerSetting, workerThreadPartitionMap, 0, "")
+func (c *Consumer) makeThrMapHeader() []byte {
+	return c.makeHeader(appWorkerSetting, workerThreadPartitionMap, 0, "")
 }
 
-func makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte) {
+func (c *Consumer) makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte) {
 	logging.Tracef("makeHeader event: %v opcode: %v", event, opcode)
 
 	builder := flatbuffers.NewBuilder(0)
-	builder.Reset()
+
 	metadata := builder.CreateString(meta)
 
 	header.HeaderStart(builder)
@@ -153,13 +153,13 @@ func makeHeader(event int8, opcode int8, partition int16, meta string) (encodedH
 
 	headerPos := header.HeaderEnd(builder)
 	builder.Finish(headerPos)
-	encodedHeader = builder.Bytes[builder.Head():]
-	return builder.Bytes[builder.Head():]
+
+	encodedHeader = builder.FinishedBytes()
+	return
 }
 
-func makeThrMapPayload(thrMap map[int][]uint16, partitionCount int) []byte {
+func (c *Consumer) makeThrMapPayload(thrMap map[int][]uint16, partitionCount int) (encodedPayload []byte) {
 	builder := flatbuffers.NewBuilder(0)
-	builder.Reset()
 
 	tMaps := make([]flatbuffers.UOffsetT, 0)
 
@@ -191,12 +191,13 @@ func makeThrMapPayload(thrMap map[int][]uint16, partitionCount int) []byte {
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
 
-	return builder.Bytes[builder.Head():]
+	encodedPayload = builder.FinishedBytes()
+	return
 }
 
-func makeDocTimerPayload(docID, callbackFn string) []byte {
+func (c *Consumer) makeDocTimerPayload(docID, callbackFn string) (encodedPayload []byte) {
 	builder := flatbuffers.NewBuilder(0)
-	builder.Reset()
+
 	docIDPos := builder.CreateString(docID)
 	callbackFnPos := builder.CreateString(callbackFn)
 
@@ -207,12 +208,14 @@ func makeDocTimerPayload(docID, callbackFn string) []byte {
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
-	return builder.Bytes[builder.Head():]
+
+	encodedPayload = builder.FinishedBytes()
+	return
 }
 
-func makeNonDocTimerPayload(data string) []byte {
+func (c *Consumer) makeNonDocTimerPayload(data string) (encodedPayload []byte) {
 	builder := flatbuffers.NewBuilder(0)
-	builder.Reset()
+
 	pPos := builder.CreateString(data)
 
 	payload.PayloadStart(builder)
@@ -221,12 +224,14 @@ func makeNonDocTimerPayload(data string) []byte {
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
-	return builder.Bytes[builder.Head():]
+
+	encodedPayload = builder.FinishedBytes()
+	return
 }
 
-func makeDcpPayload(key, value []byte) []byte {
+func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte) {
 	builder := flatbuffers.NewBuilder(0)
-	builder.Reset()
+
 	keyPos := builder.CreateByteString(key)
 	valPos := builder.CreateByteString(value)
 
@@ -237,13 +242,14 @@ func makeDcpPayload(key, value []byte) []byte {
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
-	return builder.Bytes[builder.Head():]
+
+	encodedPayload = builder.FinishedBytes()
+	return
 }
 
-func makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg, rbacUser, rbacPass string,
-	capacity, executionTimeout, checkpointInterval int, enableRecursiveMutation bool) []byte {
+func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg, rbacUser, rbacPass string,
+	capacity, executionTimeout, checkpointInterval int, enableRecursiveMutation bool) (encodedPayload []byte) {
 	builder := flatbuffers.NewBuilder(0)
-	builder.Reset()
 
 	app := builder.CreateString(appName)
 	ch := builder.CreateString(currHost)
@@ -274,7 +280,9 @@ func makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort,
 
 	msgPos := payload.PayloadEnd(builder)
 	builder.Finish(msgPos)
-	return builder.Bytes[builder.Head():]
+
+	encodedPayload = builder.FinishedBytes()
+	return
 }
 
 func readHeader(buf []byte) int8 {

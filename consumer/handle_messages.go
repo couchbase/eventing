@@ -15,7 +15,7 @@ import (
 )
 
 func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) {
-	header := makeLogLevelHeader(logLevel)
+	header := c.makeLogLevelHeader(logLevel)
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -31,9 +31,9 @@ func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) {
 func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) {
 	var header []byte
 	if sendToDebugger {
-		header = makeThrCountHeader(strconv.Itoa(thrCount))
+		header = c.makeThrCountHeader(strconv.Itoa(thrCount))
 	} else {
-		header = makeThrCountHeader(strconv.Itoa(c.cppWorkerThrCount))
+		header = c.makeThrCountHeader(strconv.Itoa(c.cppWorkerThrCount))
 	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["THR_COUNT"]; !ok {
@@ -53,13 +53,13 @@ func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) {
 }
 
 func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebugger bool) {
-	header := makeThrMapHeader()
+	header := c.makeThrMapHeader()
 
 	var payload []byte
 	if sendToDebugger {
-		payload = makeThrMapPayload(thrPartitionMap, cppWorkerPartitionCount)
+		payload = c.makeThrMapPayload(thrPartitionMap, cppWorkerPartitionCount)
 	} else {
-		payload = makeThrMapPayload(c.cppThrPartitionMap, cppWorkerPartitionCount)
+		payload = c.makeThrMapPayload(c.cppThrPartitionMap, cppWorkerPartitionCount)
 	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["THR_MAP"]; !ok {
@@ -81,7 +81,7 @@ func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebu
 
 func (c *Consumer) sendDebuggerStart() {
 
-	header := makeV8DebuggerStartHeader()
+	header := c.makeV8DebuggerStartHeader()
 
 	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_START"]; !ok {
 		c.v8WorkerMessagesProcessed["DEBUG_START"] = 0
@@ -101,7 +101,7 @@ func (c *Consumer) sendDebuggerStart() {
 
 func (c *Consumer) sendDebuggerStop() {
 
-	header := makeV8DebuggerStopHeader()
+	header := c.makeV8DebuggerStopHeader()
 
 	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_STOP"]; !ok {
 		c.v8WorkerMessagesProcessed["DEBUG_STOP"] = 0
@@ -121,7 +121,7 @@ func (c *Consumer) sendDebuggerStop() {
 
 func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool) {
 
-	header := makeV8InitOpcodeHeader()
+	header := c.makeV8InitOpcodeHeader()
 
 	if _, ok := c.v8WorkerMessagesProcessed["V8_INIT"]; !ok {
 		c.v8WorkerMessagesProcessed["V8_INIT"] = 0
@@ -142,7 +142,7 @@ func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool) {
 
 func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) {
 
-	header := makeV8LoadOpcodeHeader(appCode)
+	header := c.makeV8LoadOpcodeHeader(appCode)
 
 	if _, ok := c.v8WorkerMessagesProcessed["V8_LOAD"]; !ok {
 		c.v8WorkerMessagesProcessed["V8_LOAD"] = 0
@@ -161,7 +161,7 @@ func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) {
 }
 
 func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) {
-	header := makeHeader(v8WorkerEvent, v8WorkerLatencyStats, 0, "")
+	header := c.makeHeader(v8WorkerEvent, v8WorkerLatencyStats, 0, "")
 
 	if _, ok := c.v8WorkerMessagesProcessed["LATENCY_STATS"]; !ok {
 		c.v8WorkerMessagesProcessed["LATENCY_STATS"] = 0
@@ -180,7 +180,7 @@ func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) {
 }
 
 func (c *Consumer) sendGetFailureStats(sendToDebugger bool) {
-	header := makeHeader(v8WorkerEvent, v8WorkerFailureStats, 0, "")
+	header := c.makeHeader(v8WorkerEvent, v8WorkerFailureStats, 0, "")
 
 	if _, ok := c.v8WorkerMessagesProcessed["FAILURE_STATS"]; !ok {
 		c.v8WorkerMessagesProcessed["FAILURE_STATS"] = 0
@@ -199,7 +199,7 @@ func (c *Consumer) sendGetFailureStats(sendToDebugger bool) {
 }
 
 func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) {
-	header := makeHeader(v8WorkerEvent, v8WorkerExecutionStats, 0, "")
+	header := c.makeHeader(v8WorkerEvent, v8WorkerExecutionStats, 0, "")
 
 	if _, ok := c.v8WorkerMessagesProcessed["EXECUTION_STATS"]; !ok {
 		c.v8WorkerMessagesProcessed["EXECUTION_STATS"] = 0
@@ -218,7 +218,7 @@ func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) {
 }
 
 func (c *Consumer) sendGetSourceMap(sendToDebugger bool) {
-	header := makeHeader(v8WorkerEvent, v8WorkerSourceMap, 0, "")
+	header := c.makeHeader(v8WorkerEvent, v8WorkerSourceMap, 0, "")
 
 	if _, ok := c.v8WorkerMessagesProcessed["SOURCE_MAP"]; !ok {
 		c.v8WorkerMessagesProcessed["SOURCE_MAP"] = 0
@@ -237,7 +237,7 @@ func (c *Consumer) sendGetSourceMap(sendToDebugger bool) {
 }
 
 func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) {
-	header := makeHeader(v8WorkerEvent, v8WorkerHandlerCode, 0, "")
+	header := c.makeHeader(v8WorkerEvent, v8WorkerHandlerCode, 0, "")
 
 	if _, ok := c.v8WorkerMessagesProcessed["HANDLER_CODE"]; !ok {
 		c.v8WorkerMessagesProcessed["HANDLER_CODE"] = 0
@@ -257,8 +257,8 @@ func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) {
 
 func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 	partition := int16(util.VbucketByKey([]byte(e.DocID), cppWorkerPartitionCount))
-	timerHeader := makeDocTimerEventHeader(partition)
-	timerPayload := makeDocTimerPayload(e.DocID, e.CallbackFn)
+	timerHeader := c.makeDocTimerEventHeader(partition)
+	timerPayload := c.makeDocTimerPayload(e.DocID, e.CallbackFn)
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -275,8 +275,8 @@ func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 
 func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
 	partition := int16(util.VbucketByKey([]byte(payload), cppWorkerPartitionCount))
-	timerHeader := makeNonDocTimerEventHeader(partition)
-	timerPayload := makeNonDocTimerPayload(payload)
+	timerHeader := c.makeNonDocTimerEventHeader(partition)
+	timerPayload := c.makeNonDocTimerPayload(payload)
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -320,14 +320,14 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 
 	var dcpHeader []byte
 	if e.Opcode == mcd.DCP_MUTATION {
-		dcpHeader = makeDcpMutationHeader(partition, string(metadata))
+		dcpHeader = c.makeDcpMutationHeader(partition, string(metadata))
 	}
 
 	if e.Opcode == mcd.DCP_DELETION {
-		dcpHeader = makeDcpDeletionHeader(partition, string(metadata))
+		dcpHeader = c.makeDcpDeletionHeader(partition, string(metadata))
 	}
 
-	dcpPayload := makeDcpPayload(e.Key, e.Value)
+	dcpPayload := c.makeDcpPayload(e.Key, e.Value)
 
 	msg := &msgToTransmit{
 		msg: &message{
