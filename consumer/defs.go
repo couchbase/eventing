@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"hash/crc32"
@@ -268,7 +269,11 @@ type Consumer struct {
 	// For performance reasons, Golang writes dcp events to tcp socket in batches
 	// socketWriteBatchSize controls the batch size
 	socketWriteBatchSize     int
+	readMsgBuffer            bytes.Buffer
 	sendMsgBuffer            bytes.Buffer
+	sockReader               *bufio.Reader
+	socketReadLoopStopCh     chan struct{}
+	socketReadLoopStopAckCh  chan struct{}
 	socketWriteTicker        *time.Ticker
 	socketWriteLoopStopCh    chan struct{}
 	socketWriteLoopStopAckCh chan struct{}
@@ -454,8 +459,6 @@ type timerMsg struct {
 
 type msgToTransmit struct {
 	msg            *message
-	vb             uint16
-	seqno          uint64
 	sendToDebugger bool
 	prioritize     bool
 }

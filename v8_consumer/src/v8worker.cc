@@ -34,6 +34,7 @@
 
 #define BUFSIZE 100
 
+bool debugger_started = false;
 bool enable_recursive_mutation = false;
 
 std::atomic<std::int64_t> bucket_op_exception_count = {0};
@@ -163,6 +164,15 @@ void sdlookup_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   }
 }
 
+void startDebuggerFlag(bool started) {
+  LOG(logInfo) << "debugger_started flag: " << debugger_started << '\n';
+  debugger_started = started;
+
+  // Disable logging when inspector is running
+  if (started) {
+    setLogLevel(logSilent);
+  }
+}
 void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
 
 V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
@@ -230,7 +240,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       config->component_configs.begin();
 
   Bucket *bucket_handle = nullptr;
-  debugger_started = false;
   execute_flag = false;
   shutdown_terminator = false;
   max_task_duration = SECS_TO_NS * h_config->execution_timeout;
@@ -913,7 +922,7 @@ void V8Worker::StartDebugger() {
   }
 
   LOG(logInfo) << "Starting Debugger" << '\n';
-  debugger_started = true;
+  startDebuggerFlag(true);
   agent = new inspector::Agent(settings->host_addr, settings->eventing_dir +
                                                         "/" + app_name_ +
                                                         "_frontend.url");
@@ -922,7 +931,7 @@ void V8Worker::StartDebugger() {
 void V8Worker::StopDebugger() {
   if (debugger_started) {
     LOG(logInfo) << "Stopping Debugger" << '\n';
-    debugger_started = false;
+    startDebuggerFlag(false);
     agent->Stop();
     delete agent;
   } else {

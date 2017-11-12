@@ -230,6 +230,10 @@ func TestMultipleHandlers(t *testing.T) {
 		)
 	}
 
+	// Pause the apps
+	setSettings(handler1, true, false, &commonSettings{})
+	setSettings(handler2, true, false, &commonSettings{})
+
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)
 }

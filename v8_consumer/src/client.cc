@@ -156,7 +156,6 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
         }
       }
       resp_msg->msg.assign(lstats.str());
-      LOG(logInfo) << "Latency stats dump: " << resp_msg->msg << '\n';
       resp_msg->msg_type = mV8_Worker_Config;
       resp_msg->opcode = oLatencyStats;
       msg_priority = true;
@@ -169,7 +168,6 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       fstats << timeout_count << "}";
 
       resp_msg->msg.assign(fstats.str());
-      LOG(logInfo) << "Failure stats dump: " << resp_msg->msg << '\n';
       resp_msg->msg_type = mV8_Worker_Config;
       resp_msg->opcode = oFailureStats;
       msg_priority = true;
@@ -186,7 +184,6 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << doc_timer_create_failure << "}";
 
       resp_msg->msg.assign(estats.str());
-      LOG(logInfo) << "Execution stats dump: " << resp_msg->msg << '\n';
       resp_msg->msg_type = mV8_Worker_Config;
       resp_msg->opcode = oExecutionStats;
       msg_priority = true;
@@ -475,18 +472,13 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             // Reset the message priority flag
             msg_priority = false;
 
-            // Flatbuffer encoding for writing responses to Go world
-            flatbuffers::FlatBufferBuilder builder;
             if (!resp_msg->msg.empty()) {
+              flatbuffers::FlatBufferBuilder builder;
+
               auto msg_offset = builder.CreateString(resp_msg->msg.c_str());
               auto r = flatbuf::response::CreateResponse(
                   builder, resp_msg->msg_type, resp_msg->opcode, msg_offset);
               builder.Finish(r);
-
-              // Reset the values
-              resp_msg->msg.clear();
-              resp_msg->msg_type = 0;
-              resp_msg->opcode = 0;
 
               int s = builder.GetSize();
               char *size = (char *)&s;
@@ -507,34 +499,44 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
                        [](uv_write_t *req_msg, int status) {
                          AppWorker::GetAppWorker()->OnWrite(req_msg, status);
                        });
+
+              // Reset the values
+              resp_msg->msg.clear();
+              resp_msg->msg_type = 0;
+              resp_msg->opcode = 0;
+
             }
 
-            auto msg_offset = builder.CreateString(FlushLog());
-            auto r = flatbuf::response::CreateResponse(
-                builder, mV8_Worker_Config, oLogMessage, msg_offset);
-            builder.Finish(r);
+            flatbuffers::FlatBufferBuilder builder;
+            std::string response_to_source(FlushLog());
 
-            int s = builder.GetSize();
-            char *size = (char *)&s;
+            if (response_to_source.length() > 0) {
+              auto msg_offset = builder.CreateString(response_to_source);
+              auto r = flatbuf::response::CreateResponse(
+                  builder, mV8_Worker_Config, oLogMessage, msg_offset);
+              builder.Finish(r);
 
-            // Write size of payload to socket
-            write_req_t *req_size = new (write_req_t);
-            req_size->buf = uv_buf_init(size, sizeof(uint32_t));
-            uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
-                     [](uv_write_t *req_size, int status) {
-                       AppWorker::GetAppWorker()->OnWrite(req_size, status);
-                     });
+              int s = builder.GetSize();
+              char *size = (char *)&s;
 
-            // Write payload to socket
-            write_req_t *req_msg = new (write_req_t);
-            std::string msg((const char *)builder.GetBufferPointer(),
-                            builder.GetSize());
-            msg += '\r';
-            req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
-            uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
-                     [](uv_write_t *req_msg, int status) {
-                       AppWorker::GetAppWorker()->OnWrite(req_msg, status);
-                     });
+              // Write size of payload to socket
+              write_req_t *req_size = new (write_req_t);
+              req_size->buf = uv_buf_init(size, sizeof(uint32_t));
+              uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
+                       [](uv_write_t *req_size, int status) {
+                         AppWorker::GetAppWorker()->OnWrite(req_size, status);
+                       });
+
+              // Write payload to socket
+              write_req_t *req_msg = new (write_req_t);
+              std::string msg((const char *)builder.GetBufferPointer(),
+                              builder.GetSize());
+              req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
+              uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
+                       [](uv_write_t *req_msg, int status) {
+                         AppWorker::GetAppWorker()->OnWrite(req_msg, status);
+                       });
+            }
 
             messages_processed_counter = 0;
           }

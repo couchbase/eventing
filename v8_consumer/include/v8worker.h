@@ -110,6 +110,8 @@ class N1QL;
 class ConnectionPool;
 class V8Worker;
 
+extern bool debugger_started;
+
 extern bool enable_recursive_mutation;
 extern std::atomic<std::int64_t> bucket_op_exception_count;
 extern std::atomic<std::int64_t> n1ql_op_exception_count;
@@ -202,7 +204,6 @@ public:
 
   volatile bool execute_flag;
   volatile bool shutdown_terminator;
-  volatile bool debugger_started;
 
   Time::time_point execute_start_time;
 

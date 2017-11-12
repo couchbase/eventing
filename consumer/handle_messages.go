@@ -1,9 +1,10 @@
 package consumer
 
 import (
-	"bufio"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
+	"io"
 	"strconv"
 	"time"
 
@@ -20,8 +21,6 @@ func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) {
 		msg: &message{
 			Header: header,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
 	}
@@ -46,8 +45,6 @@ func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) {
 		msg: &message{
 			Header: header,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
 	}
@@ -75,8 +72,6 @@ func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebu
 			Header:  header,
 			Payload: payload,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
 	}
@@ -97,8 +92,6 @@ func (c *Consumer) sendDebuggerStart() {
 		msg: &message{
 			Header: header,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: true,
 		prioritize:     true,
 	}
@@ -119,8 +112,6 @@ func (c *Consumer) sendDebuggerStop() {
 		msg: &message{
 			Header: header,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: true,
 		prioritize:     true,
 	}
@@ -142,8 +133,6 @@ func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool) {
 			Header:  header,
 			Payload: payload,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
 	}
@@ -164,8 +153,6 @@ func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) {
 		msg: &message{
 			Header: header,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
 	}
@@ -185,8 +172,6 @@ func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) {
 		msg: &message{
 			Header: header,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
 	}
@@ -206,8 +191,6 @@ func (c *Consumer) sendGetFailureStats(sendToDebugger bool) {
 		msg: &message{
 			Header: header,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
 	}
@@ -227,8 +210,6 @@ func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) {
 		msg: &message{
 			Header: header,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
 	}
@@ -248,8 +229,6 @@ func (c *Consumer) sendGetSourceMap(sendToDebugger bool) {
 		msg: &message{
 			Header: header,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
 	}
@@ -269,8 +248,6 @@ func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) {
 		msg: &message{
 			Header: header,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
 	}
@@ -288,8 +265,6 @@ func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 			Header:  timerHeader,
 			Payload: timerPayload,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: sendToDebugger,
 		prioritize:     false,
 	}
@@ -308,8 +283,6 @@ func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
 			Header:  timerHeader,
 			Payload: timerPayload,
 		},
-		vb:             0,
-		seqno:          0,
 		sendToDebugger: sendToDebugger,
 		prioritize:     false,
 	}
@@ -361,8 +334,6 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 			Header:  dcpHeader,
 			Payload: dcpPayload,
 		},
-		vb:             e.VBucket,
-		seqno:          e.Seqno,
 		sendToDebugger: sendToDebugger,
 		prioritize:     false,
 	}
@@ -382,7 +353,7 @@ func (c *Consumer) sendMessageLoop() {
 	for {
 		select {
 		case m := <-c.msgToCppWorkerCh:
-			c.sendMessage(m.msg, m.vb, m.seqno, m.sendToDebugger, m.prioritize)
+			c.sendMessage(m.msg, m.sendToDebugger, m.prioritize)
 		case <-c.socketWriteTicker.C:
 			if c.sendMsgCounter > 0 {
 				c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
@@ -397,12 +368,6 @@ func (c *Consumer) sendMessageLoop() {
 				// Reset the sendMessage buffer and message counter
 				c.sendMsgBuffer.Reset()
 				c.sendMsgCounter = 0
-
-				if err = c.readMessage(false); err != nil {
-					logging.Errorf("CRHM[%s:%s:%s:%d] Read message: Closing conn: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.conn)
-					c.client.Stop()
-				}
 			}
 		case <-c.socketWriteLoopStopCh:
 			c.socketWriteLoopStopAckCh <- struct{}{}
@@ -411,7 +376,7 @@ func (c *Consumer) sendMessageLoop() {
 	}
 }
 
-func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, sendToDebugger bool, prioritise bool) error {
+func (c *Consumer) sendMessage(msg *message, sendToDebugger bool, prioritise bool) error {
 	// Protocol encoding format:
 	//<headerSize><payloadSize><Header><Payload>
 
@@ -451,7 +416,7 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, sendToDebu
 
 	c.sendMsgCounter++
 
-	if c.sendMsgCounter >= c.socketWriteBatchSize || prioritise {
+	if c.sendMsgCounter >= c.socketWriteBatchSize || prioritise || sendToDebugger {
 		c.connMutex.Lock()
 		defer c.connMutex.Unlock()
 
@@ -479,56 +444,62 @@ func (c *Consumer) sendMessage(msg *message, vb uint16, seqno uint64, sendToDebu
 		// Reset the sendMessage buffer and message counter
 		c.sendMsgBuffer.Reset()
 		c.sendMsgCounter = 0
-
-		var err error
-		if !sendToDebugger && c.conn != nil {
-			if err = c.readMessage(sendToDebugger); err != nil {
-				logging.Errorf("CRHM[%s:%s:%s:%d] Read message: Closing conn: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.conn)
-				c.client.Stop()
-				return err
-			}
-		} else {
-			err = c.readMessage(sendToDebugger)
-		}
-
-		if sendToDebugger && err == nil {
-			c.sendMsgToDebugger = true
-		}
 	}
 
 	return nil
 }
 
-func (c *Consumer) readMessage(readFromDebugger bool) error {
-	if !readFromDebugger && c.conn != nil {
-		c.conn.SetReadDeadline(time.Now().Add(c.socketTimeout))
+func (c *Consumer) readMessageLoop() {
 
-		msg, err := bufio.NewReader(c.conn).ReadBytes('\r')
+	for {
+		buffer := make([]byte, 4096)
+		bytesRead, err := c.sockReader.Read(buffer)
+
+		if err == io.EOF || bytesRead == 0 {
+			fmt.Printf("Exiting for loop, which is reading from socket, err: %v\n", err)
+			c.client.Stop()
+			break
+		}
 		if err != nil {
 			logging.Errorf("CRHM[%s:%s:%s:%d] Read from client socket failed, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-		} else {
-			if len(msg) > 1 {
-				c.parseWorkerResponse(msg[:len(msg)-1], 0)
-			}
+			c.client.Stop()
+			return
 		}
-		return err
-	}
 
-	if c.debugConn != nil {
-		msg, err := bufio.NewReader(c.debugConn).ReadBytes('\r')
-		if err != nil {
-			logging.Errorf("CRHM[%s:%s:%s:%d] Read from debug enabled worker socket failed, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-			c.sendMsgToDebugger = false
-		} else {
-			if len(msg) > 1 {
-				c.parseWorkerResponse(msg[:len(msg)-1], 0)
-			}
+		if bytesRead < len(buffer) {
+			buffer = buffer[:bytesRead]
 		}
-		return err
-	}
 
-	return nil
+		if bytesRead >= headerFragmentSize || c.readMsgBuffer.Len() >= headerFragmentSize {
+
+		parseMessage:
+			if c.readMsgBuffer.Len() > 0 {
+				buffer = append(c.readMsgBuffer.Bytes(), buffer...)
+				c.readMsgBuffer.Reset()
+			}
+
+			headerSize := binary.LittleEndian.Uint32(buffer[:headerFragmentSize])
+
+			if len(buffer) >= int(headerFragmentSize+headerSize) {
+
+				c.parseWorkerResponse(buffer[headerFragmentSize : headerFragmentSize+headerSize])
+				buffer = buffer[headerFragmentSize+headerSize:]
+
+				c.readMsgBuffer.Write(buffer)
+
+				if c.readMsgBuffer.Len() > headerFragmentSize {
+					buffer = buffer[:0]
+					goto parseMessage
+				}
+			} else {
+				c.readMsgBuffer.Write(buffer)
+				buffer = buffer[:0]
+			}
+
+		} else {
+			c.readMsgBuffer.Write(buffer)
+			buffer = buffer[:0]
+		}
+	}
 }
