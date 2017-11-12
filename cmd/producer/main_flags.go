@@ -12,12 +12,15 @@ import (
 // Flags encapsulates different command-line parameters "eventing"
 // executable exposes
 type Flags struct {
-	eventingAdminPort string
-	eventingDir       string
-	kvPort            string
-	restPort          string
-	help              bool
-	uuid              string
+	adminHTTPPort string
+	adminSSLPort  string
+	sslCertFile   string
+	sslKeyFile    string
+	eventingDir   string
+	kvPort        string
+	restPort      string
+	help          bool
+	uuid          string
 }
 
 var flags Flags
@@ -49,9 +52,21 @@ func initFlags(flags *Flags) map[string][]string {
 		flagKinds[names[0]] = kind
 	}
 
-	s(&flags.eventingAdminPort,
-		[]string{"adminport", "event"}, "EVENTING_PORT", "25000",
-		"Port eventing admin service is running on, default being 25000")
+	s(&flags.adminHTTPPort,
+		[]string{"adminport", "event"}, "EVENTING_PORT", "8096",
+		"Port eventing admin service is running on, default being 8096")
+
+	s(&flags.adminSSLPort,
+		[]string{"adminsslport"}, "EVENTING_SSLPORT", "",
+		"Port eventing admin SSL service is running on, default being none")
+
+	s(&flags.sslCertFile,
+		[]string{"certfile"}, "EVENTING_CERTFILE", "",
+		"Certificate file for eventing admin service, default being none")
+
+	s(&flags.sslKeyFile,
+		[]string{"keyfile"}, "EVENTING_KEYFILE", "",
+		"Key file for eventing admin service, default being none")
 
 	s(&flags.eventingDir,
 		[]string{"dir"}, "EVENTING_DIR", "",

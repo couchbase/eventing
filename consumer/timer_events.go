@@ -116,11 +116,8 @@ func (r *timerProcessingWorker) getVbsOwned() []uint16 {
 	return r.vbsAssigned
 }
 
-func (r *timerProcessingWorker) processTimerEvents() {
+func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string, bootstrap bool) {
 	vbsOwned := r.getVbsOwned()
-
-	currTimer := time.Now().UTC().Format(time.RFC3339)
-	nextTimer := time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
 	for _, vb := range vbsOwned {
 		vbKey := fmt.Sprintf("%s_vb_%s", r.c.app.AppName, strconv.Itoa(int(vb)))
@@ -130,14 +127,14 @@ func (r *timerProcessingWorker) processTimerEvents() {
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, r.c, vbKey, &vbBlob, &cas, false)
 
-		if vbBlob.CurrentProcessedDocIDTimer == "" {
-			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", currTimer)
+		if vbBlob.CurrentProcessedDocIDTimer == "" && bootstrap {
+			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", cTimer)
 		} else {
 			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer)
 		}
 
-		if vbBlob.NextDocIDTimerToProcess == "" {
-			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", nextTimer)
+		if vbBlob.NextDocIDTimerToProcess == "" && bootstrap {
+			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", nTimer)
 		} else {
 			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess)
 		}
@@ -167,7 +164,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 			// Make sure time processing isn't going ahead of system clock
 			ts, err := time.Parse(tsLayout, currTimer)
 			if err != nil {
-				logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
+				logging.Errorf("CRTE[%s:%s:%s:%d] Doc timer vb: %d failed to parse currtime: %v err: %v",
 					r.c.app.AppName, r.c.workerName, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
 				continue
 			}
@@ -304,7 +301,7 @@ func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string, bootstrap boo
 					cts := ctsSplit[1]
 					ts, err := time.Parse(tsLayout, cts)
 					if err != nil {
-						logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse currtime: %v err: %v",
+						logging.Errorf("CRTE[%s:%s:%s:%d] Cron timer vb: %d failed to parse currtime: %v err: %v",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
 						continue
 					}

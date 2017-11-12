@@ -29,8 +29,8 @@ func (c *Consumer) createTempPlasmaStore(i int, vb uint16, sig chan struct{}) {
 		return
 	}
 
-	logging.Infof("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v created temp plasma instance during rebalance",
-		c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb)
+	logging.Infof("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v tempPlasmaDir: %v created temp plasma instance during rebalance",
+		c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb, vbPlasmaDir)
 
 	defer vbRebPlasmaStore.Close()
 	defer vbRebPlasmaStore.PersistAll()

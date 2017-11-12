@@ -1,6 +1,8 @@
 package consumer
 
 import (
+	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/plasma"
 )
 
@@ -18,4 +20,24 @@ func (c *Consumer) openPlasmaStore(vbPlasmaDir string) (*plasma.Plasma, error) {
 		return nil, err
 	}
 	return vbPlasmaStore, nil
+}
+
+var downloadDirCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+	client := args[1].(*timer.Client)
+	timerDir := args[2].(string)
+	sTimerDir := args[3].(string)
+	dTimerDir := args[4].(string)
+	remoteConsumerAddr := args[5].(string)
+	vb := args[6].(uint16)
+
+	err := client.DownloadDir(timerDir, c.eventingDir)
+	if err != nil {
+		logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to download timer dir from node: %v src: %v dst: %v err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir, err)
+
+		return errFailedRPCDownloadDir
+	}
+
+	return nil
 }

@@ -1,11 +1,9 @@
 package consumer
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
-	"runtime/debug"
 
 	"github.com/couchbase/eventing/gen/flatbuf/header"
 	"github.com/couchbase/eventing/gen/flatbuf/payload"
@@ -243,7 +241,7 @@ func makeDcpPayload(key, value []byte) []byte {
 }
 
 func makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg, rbacUser, rbacPass string,
-	capacity, executionTimeout int, enableRecursiveMutation bool) []byte {
+	capacity, executionTimeout, checkpointInterval int, enableRecursiveMutation bool) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	builder.Reset()
 
@@ -271,6 +269,7 @@ func makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort,
 	payload.PayloadAddRbacPass(builder, rPass)
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))
+	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))
 	payload.PayloadAddEnableRecursiveMutation(builder, buf[0])
 
 	msgPos := payload.PayloadEnd(builder)
@@ -299,35 +298,14 @@ func readPayload(buf []byte) {
 	log.Printf("ReadPayload => key: %s val: %s\n", key, val)
 }
 
-func (c *Consumer) parseWorkerResponse(m []byte, start int) {
-	defer func() {
-		if r := recover(); r != nil {
-			trace := debug.Stack()
-			logging.Errorf("CRDP[%s:%s:%s:%d] parseWorkerResponse: panic and recover, %v stack trace: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
-		}
-	}()
+func (c *Consumer) parseWorkerResponse(msg []byte) {
+	r := response.GetRootAsResponse(msg, 0)
 
-	msg := m[start:]
+	msgType := r.MsgType()
+	opcode := r.Opcode()
+	message := string(r.Msg())
 
-	if len(msg) > headerFragmentSize {
-		size := binary.LittleEndian.Uint32(msg[0:headerFragmentSize])
-
-		if len(msg) >= int(headerFragmentSize+size) && size > 0 {
-
-			r := response.GetRootAsResponse(msg[headerFragmentSize:headerFragmentSize+size], 0)
-
-			msgType := r.MsgType()
-			opcode := r.Opcode()
-			message := string(r.Msg())
-
-			c.routeResponse(msgType, opcode, message)
-
-			if len(msg) > 2*headerFragmentSize+int(size) {
-				c.parseWorkerResponse(msg, int(size)+headerFragmentSize)
-			}
-		}
-	}
+	c.routeResponse(msgType, opcode, message)
 }
 
 func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {

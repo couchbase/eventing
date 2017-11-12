@@ -40,7 +40,7 @@ func (c *Consumer) reclaimVbOwnership(vb uint16) error {
 }
 
 // Vbucket ownership give-up routine
-func (c *Consumer) vbGiveUpRoutine() {
+func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 
 	if len(c.vbsRemainingToGiveUp) == 0 {
 		logging.Tracef("CRVT[%s:%s:%s:%d] No vbuckets remaining to give up",
@@ -65,7 +65,7 @@ func (c *Consumer) vbGiveUpRoutine() {
 	wg.Add(c.vbOwnershipGiveUpRoutineCount)
 
 	for i := 0; i < c.vbOwnershipGiveUpRoutineCount; i++ {
-		go func(c *Consumer, i int, vbsRemainingToGiveUp []uint16, signalPlasmaClosedCh chan uint16, wg *sync.WaitGroup) {
+		go func(c *Consumer, i int, vbsRemainingToGiveUp []uint16, signalPlasmaClosedCh chan uint16, wg *sync.WaitGroup, vbsts vbStats) {
 
 			defer wg.Done()
 
@@ -76,13 +76,14 @@ func (c *Consumer) vbGiveUpRoutine() {
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-				logging.Tracef("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v uuid: %v vbStat uuid: %v consumer name: %v",
+				logging.Tracef("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v uuid: %v vbStat uuid: %v owner node: %v consumer name: %v",
 					c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb, c.NodeUUID(),
-					c.vbProcessingStats.getVbStat(vb, "node_uuid"),
-					c.vbProcessingStats.getVbStat(vb, "assigned_worker"))
+					vbsts.getVbStat(vb, "node_uuid"),
+					vbsts.getVbStat(vb, "current_vb_owner"),
+					vbsts.getVbStat(vb, "assigned_worker"))
 
-				if c.vbProcessingStats.getVbStat(vb, "node_uuid") == c.NodeUUID() &&
-					c.vbProcessingStats.getVbStat(vb, "assigned_worker") == c.ConsumerName() {
+				if vbsts.getVbStat(vb, "node_uuid") == c.NodeUUID() &&
+					vbsts.getVbStat(vb, "assigned_worker") == c.ConsumerName() {
 
 					// TODO: Retry loop for dcp close stream as it could fail and additional verification checks
 					// Additional check needed to verify if vbBlob.NewOwner is the expected owner
@@ -137,7 +138,7 @@ func (c *Consumer) vbGiveUpRoutine() {
 				}
 			}
 
-		}(c, i, vbsDistribution[i], signalPlasmaClosedChs[i], &wg)
+		}(c, i, vbsDistribution[i], signalPlasmaClosedChs[i], &wg, vbsts)
 	}
 
 	wg.Add(1)
@@ -186,7 +187,13 @@ func (c *Consumer) vbsStateUpdate() {
 	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 
-	go c.vbGiveUpRoutine()
+	if len(c.vbsRemainingToGiveUp) == 0 && len(c.vbsRemainingToOwn) == 0 {
+		return
+	}
+
+	vbsts := c.vbProcessingStats.copyVbStats()
+
+	go c.vbGiveUpRoutine(vbsts)
 
 	logging.Tracef("CRVT[%s:%s:%s:%d] Before vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(),
@@ -317,7 +324,6 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
 	c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", vbBlob.DCPStreamStatus)
-	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
 	c.vbProcessingStats.updateVbStat(vb, "node_uuid", vbBlob.NodeUUID)
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateVbOwnerAndStartStreamCallback, c, vbKey, vbBlob)
@@ -367,12 +373,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	dTimerDir := fmt.Sprintf("%v/reb_%v_%v_timer.data", c.eventingDir, vb, c.app.AppName)
 
 	if previousEventingDir != c.eventingDir && c.NodeUUID() != previousNodeUUID {
-		if err := client.DownloadDir(timerDir, c.eventingDir); err != nil {
-			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed to download timer dir from node: %v src: %v dst: %v err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir, err)
-
-			return errFailedRPCDownloadDir
-		}
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval*5), downloadDirCallback, c, client, timerDir, sTimerDir, dTimerDir, remoteConsumerAddr, vb)
 		logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, sTimerDir, dTimerDir, remoteConsumerAddr)
 
@@ -403,7 +404,6 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
 	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
-	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vb, "last_processed_seq_no").(uint64)
 	vbBlob.PreviousAssignedWorker = c.ConsumerName()
 	vbBlob.PreviousEventingDir = c.eventingDir
 	vbBlob.PreviousNodeUUID = c.NodeUUID()

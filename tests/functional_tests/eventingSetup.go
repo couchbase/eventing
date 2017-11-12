@@ -53,7 +53,7 @@ func postToEventindEndpoint(url string, payload []byte) {
 	fmt.Println(string(body))
 }
 
-func createAndDeployFunction(hFileName string) {
+func createAndDeployFunction(appName, hFileName string, settings *commonSettings) {
 	content, err := getHandlerCode(hFileName)
 	if err != nil {
 		fmt.Println("Get handler code, err:", err)
@@ -65,8 +65,8 @@ func createAndDeployFunction(hFileName string) {
 	var bnames []string
 	bnames = append(bnames, "hello-world")
 
-	appName := hFileName
-	data, err := createFunction(true, true, 0, 1, 1, 3, aliases, bnames, appName, content, "eventing", "default")
+	data, err := createFunction(true, true, 0, settings, aliases,
+		bnames, appName, content, "eventing", "default")
 	if err != nil {
 		fmt.Println("Create function, err:", err)
 		return
@@ -76,7 +76,7 @@ func createAndDeployFunction(hFileName string) {
 	postToMainStore(appName, data)
 }
 
-func createFunction(deploymentStatus, processingStatus bool, id, cppThreadCount, sockBatchSize, workerCount int,
+func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSettings,
 	bucketAliases, bucketNames []string, appName, handlerCode, metadataBucket, sourceBucket string) ([]byte, error) {
 
 	var aliases []bucket
@@ -103,16 +103,32 @@ func createFunction(deploymentStatus, processingStatus bool, id, cppThreadCount,
 	settings := make(map[string]interface{})
 
 	settings["checkpoint_interval"] = 10000
-	settings["cpp_worker_thread_count"] = cppThreadCount
-	settings["sock_batch_size"] = sockBatchSize
-	settings["worker_count"] = workerCount
+
+	if s.thrCount == 0 {
+		settings["cpp_worker_thread_count"] = cppthrCount
+	} else {
+		settings["cpp_worker_thread_count"] = s.thrCount
+	}
+
+	if s.batchSize == 0 {
+		settings["sock_batch_size"] = sockBatchSize
+	} else {
+		settings["sock_batch_size"] = s.batchSize
+	}
+
+	if s.workerCount == 0 {
+		settings["worker_count"] = workerCount
+	} else {
+		settings["worker_count"] = s.workerCount
+	}
+
 	settings["skip_timer_threshold"] = 86400
 	settings["tick_duration"] = 5000
 	settings["timer_processing_tick_interval"] = 500
 	settings["timer_worker_pool_size"] = 1
 	settings["deadline_timeout"] = 3
 	settings["execution_timeout"] = 1
-	settings["log_level"] = "TRACE"
+	settings["log_level"] = "INFO"
 	settings["dcp_stream_boundary"] = "everything"
 	settings["cleanup_timers"] = false
 	settings["rbacrole"] = "admin"
@@ -135,7 +151,7 @@ func createFunction(deploymentStatus, processingStatus bool, id, cppThreadCount,
 	return encodedData, nil
 }
 
-func setSettings(appName string, deploymentStatus, processingStatus bool) {
+func setSettings(appName string, deploymentStatus, processingStatus bool, s *commonSettings) {
 	settings := make(map[string]interface{})
 
 	settings["processing_status"] = processingStatus
@@ -145,9 +161,26 @@ func setSettings(appName string, deploymentStatus, processingStatus bool) {
 	settings["dcp_stream_boundary"] = "everything"
 	settings["log_level"] = "INFO"
 	settings["tick_duration"] = 5000
-	settings["worker_count"] = 3
+
+	if s.thrCount == 0 {
+		settings["cpp_worker_thread_count"] = cppthrCount
+	} else {
+		settings["cpp_worker_thread_count"] = s.thrCount
+	}
+
+	if s.workerCount == 0 {
+		settings["worker_count"] = workerCount
+	} else {
+		settings["worker_count"] = s.workerCount
+	}
+
+	if s.batchSize == 0 {
+		settings["sock_batch_size"] = sockBatchSize
+	} else {
+		settings["sock_batch_size"] = s.batchSize
+	}
+
 	settings["timer_worker_pool_size"] = 1
-	settings["sock_batch_size"] = 1
 	settings["skip_timer_threshold"] = 86400
 
 	settings["rbacuser"] = rbacuser
@@ -221,7 +254,6 @@ retryVerifyBucketOp:
 	}
 	rCount++
 	time.Sleep(time.Second * 5)
-	fmt.Printf("Sleeping for 5 sec before checking item count again, expected count: %v curr count: %v\n", count, itemCount)
 	goto retryVerifyBucketOp
 }
 
@@ -268,4 +300,12 @@ func getBucketItemCount() (int, error) {
 func bucketFlush(bucketName string) {
 	flushEndpoint := fmt.Sprintf("http://127.0.0.1:9000/pools/default/buckets/%s/controller/doFlush", bucketName)
 	postToEventindEndpoint(flushEndpoint, nil)
+}
+
+func flushFunctionAndBucket(handler string) {
+	setSettings(handler, false, false, &commonSettings{})
+	deleteFunction(handler)
+
+	bucketFlush("default")
+	bucketFlush("hello-world")
 }

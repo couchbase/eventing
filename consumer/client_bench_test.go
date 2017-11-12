@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -68,7 +69,7 @@ func BenchmarkOnDelete(b *testing.B) {
 }
 
 func init() {
-	cfgData, _ := ioutil.ReadFile("../cmd/producer/apps/credit_score")
+	cfgData, _ := ioutil.ReadFile("../cmd/producer/apps/test_app1")
 	config := cfg.GetRootAsConfig(cfgData, 0)
 	appCode := string(config.AppCode())
 
@@ -76,14 +77,20 @@ func init() {
 	port := strings.Split(listener.Addr().String(), ":")[1]
 
 	c = &Consumer{}
-	c.vbProcessingStats = newVbProcessingStats("credit_score")
+	c.vbProcessingStats = newVbProcessingStats("test_app1")
 	c.app = &common.AppConfig{}
 	c.socketWriteBatchSize = 100
-	c.writeBatchSeqnoMap = make(map[uint16]uint64)
+	c.ipcType = "af_inet"
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
-	c.socketTimeout = 5 * time.Second
+	c.socketTimeout = 1 * time.Second
 	c.executionTimeout = 1
 	c.cppWorkerThrCount = 1
+	c.connMutex = &sync.RWMutex{}
+	c.socketWriteTicker = time.NewTicker(1 * time.Second)
+	c.socketWriteLoopStopAckCh = make(chan struct{}, 1)
+	c.socketWriteLoopStopCh = make(chan struct{}, 1)
+	c.socketWriteLoopStopAckCh <- struct{}{}
+	c.msgToCppWorkerCh = make(chan *msgToTransmit, 1)
 
 	client := newClient(c, "credit_score", port, "worker_0", "25000")
 	go client.Serve()
@@ -98,7 +105,9 @@ func init() {
 	c.sendWorkerThrCount(0, false)
 
 	payload := makeV8InitPayload("credit_score", "localhost", "/tmp", "25000", "localhost:12000", string(cfgData),
-		"eventing", "asdasd", 5, 1, false)
+		"eventing", "asdasd", 5, 1, 1000, false)
 	c.sendInitV8Worker(payload, false)
 	c.sendLoadV8Worker(appCode, false)
+	c.sendGetSourceMap(false)
+	c.sendGetHandlerCode(false)
 }

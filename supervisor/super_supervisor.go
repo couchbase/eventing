@@ -20,13 +20,13 @@ import (
 )
 
 // NewSuperSupervisor creates the super_supervisor handle
-func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid string) *SuperSupervisor {
+func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid string) *SuperSupervisor {
 	s := &SuperSupervisor{
 		appDeploymentStatus:          make(map[string]bool),
 		appProcessingStatus:          make(map[string]bool),
 		CancelCh:                     make(chan struct{}, 1),
 		deployedApps:                 make(map[string]string),
-		eventingAdminPort:            eventingAdminPort,
+		adminPort:                    adminPort,
 		eventingDir:                  eventingDir,
 		kvPort:                       kvPort,
 		plasmaCloseSignalMap:         make(map[uint16]int),
@@ -49,7 +49,10 @@ func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid s
 
 	config, _ := util.NewConfig(nil)
 	config.Set("uuid", s.uuid)
-	config.Set("eventing_admin_port", s.eventingAdminPort)
+	config.Set("eventing_admin_http_port", s.adminPort.HTTPPort)
+	config.Set("eventing_admin_ssl_port", s.adminPort.SslPort)
+	config.Set("eventing_admin_ssl_cert", s.adminPort.CertFile)
+	config.Set("eventing_admin_ssl_key", s.adminPort.KeyFile)
 	config.Set("eventing_dir", s.eventingDir)
 	config.Set("rest_port", s.restPort)
 
@@ -64,7 +67,7 @@ func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid s
 
 // EventHandlerLoadCallback is registered as callback from metakv observe calls on event handlers path
 func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, rev interface{}) error {
-	logging.Infof("SSUP[%d] EventHandlerLoadCallback: path => %s encoded value size => %v\n", len(s.runningProducers), path, len(value))
+	logging.Infof("SSUP[%d] EventHandlerLoadCallback: path => %s encoded value size => %v", len(s.runningProducers), path, len(value))
 
 	if value != nil {
 		splitRes := strings.Split(path, "/")
@@ -296,7 +299,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
-	p := producer.NewProducer(appName, s.eventingAdminPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
+	p := producer.NewProducer(appName, s.adminPort.HTTPPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
 		s.restPort, s.uuid, s)
 
 	token := s.superSup.Add(p)

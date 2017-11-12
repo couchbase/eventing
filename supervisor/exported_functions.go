@@ -72,7 +72,6 @@ func (s *SuperSupervisor) GetDebuggerURL(appName string) string {
 
 // GetDeployedApps returns list of deployed apps and their last deployment time
 func (s *SuperSupervisor) GetDeployedApps() map[string]string {
-	logging.Infof("SSUP[%d] GetDeployedApps request", len(s.runningProducers))
 	return s.deployedApps
 }
 

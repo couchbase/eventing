@@ -71,7 +71,7 @@ func (c *Consumer) controlRoutine() {
 
 			c.timerRWMutex.RLock()
 			for _, r := range c.timerProcessingRunningWorkers {
-				go r.processTimerEvents()
+				go r.processTimerEvents("", "", false)
 			}
 			c.timerRWMutex.RUnlock()
 
@@ -98,6 +98,17 @@ func (c *Consumer) controlRoutine() {
 
 		retryVbsRemainingToRestream:
 			vbsToRestream := c.vbsRemainingToRestream
+
+			// Verify if the app is deployed or not before trying to reopen vbucket DCP streams
+			// for the ones which recently have returned STREAMENND. QE frequently does flush
+			// on source bucket right after undeploy
+			deployedApps := c.superSup.GetDeployedApps()
+			if _, ok := deployedApps[c.app.AppName]; !ok {
+				c.vbsRemainingToRestream = make([]uint16, 0)
+				logging.Infof("CRCR[%s:%s:%s:%d] Discarding request to restream vbs: %v as the app has been undeployed",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsToRestream)
+				continue
+			}
 
 			if len(vbsToRestream) == 0 {
 				continue

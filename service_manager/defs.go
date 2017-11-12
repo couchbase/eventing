@@ -23,6 +23,13 @@ const (
 	rebalanceProgressUpdateTickInterval = time.Duration(3000) * time.Millisecond
 )
 
+const (
+	// EventingPermissionRead needed for reading app stats/settings/handlers
+	EventingPermissionRead = "cluster.admin!read"
+	// EventingPermissionWrite needed for writing/updating app settings/handlers
+	EventingPermissionWrite = "cluster.admin!write"
+)
+
 const headerKey = "status"
 
 const (
@@ -35,7 +42,10 @@ type ServiceMgr struct {
 	auth              string
 	config            util.ConfigHolder
 	eventingNodeAddrs []string
-	eventingAdminPort string
+	adminHTTPPort     string
+	adminSSLPort      string
+	certFile          string
+	keyFile           string
 	failoverNotif     bool
 	mu                *sync.RWMutex
 	uuid              string

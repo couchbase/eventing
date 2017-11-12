@@ -1,12 +1,15 @@
 package servicemanager
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	_ "net/http/pprof" // For debugging
 	"sync"
 	"time"
 
+	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
@@ -42,18 +45,24 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 	mgr.servers = append(mgr.servers, mgr.nodeInfo.NodeID)
 	mgr.waiters = make(waiters)
 
-	go mgr.initService()
+	mgr.initService()
 	return mgr
 }
 
 func (m *ServiceMgr) initService() {
 	cfg := m.config.Load()
-	m.eventingAdminPort = cfg["eventing_admin_port"].(string)
+	m.adminHTTPPort = cfg["eventing_admin_http_port"].(string)
+	m.adminSSLPort = cfg["eventing_admin_ssl_port"].(string)
+	m.certFile = cfg["eventing_admin_ssl_cert"].(string)
+	m.keyFile = cfg["eventing_admin_ssl_key"].(string)
 	m.restPort = cfg["rest_port"].(string)
 	m.uuid = cfg["uuid"].(string)
 	m.initErrCodes()
 
-	logging.Infof("ServiceMgr::initService eventingAdminPort: %s", m.eventingAdminPort)
+	logging.Infof("ServiceMgr::initService adminHTTPPort: %v", m.adminHTTPPort)
+	logging.Infof("ServiceMgr::initService adminSSLPort: %v", m.adminSSLPort)
+	logging.Infof("ServiceMgr::initService certFile: %v", m.certFile)
+	logging.Infof("ServiceMgr::initService keyFile: %v", m.keyFile)
 
 	util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, m)
 
@@ -105,7 +114,57 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getAggTimerHostPortAddrs", m.getAggTimerHostPortAddrs)
 	http.HandleFunc("/uuid", m.getNodeUUID)
 
-	logging.Fatalf("%v", http.ListenAndServe(":"+m.eventingAdminPort, nil))
+	go func() {
+		addr := net.JoinHostPort("", m.adminHTTPPort)
+		logging.Infof("Admin HTTP server started: %v", addr)
+		err := http.ListenAndServe(addr, nil)
+		logging.Fatalf("Error in Admin HTTP Server: %v", err)
+	}()
+
+	if m.adminSSLPort != "" {
+		sslAddr := net.JoinHostPort("", m.adminSSLPort)
+		reload := false
+		var sslsrv *http.Server
+		refresh := func() error {
+			if sslsrv != nil {
+				reload = true
+				sslsrv.Shutdown(nil)
+			}
+			return nil
+		}
+		go func() {
+			for {
+				err := cbauth.RegisterCertRefreshCallback(refresh)
+				if err == nil {
+					break
+				}
+				logging.Errorf("Unable to register for cert refresh, will retry: %v", err)
+				time.Sleep(10 * time.Second)
+			}
+			for {
+				// allow only strong ssl as this is an internal API and interop is not a concern
+				sslsrv = &http.Server{
+					Addr:         sslAddr,
+					TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
+					TLSConfig: &tls.Config{
+						CipherSuites:             []uint16{tls.TLS_RSA_WITH_AES_256_CBC_SHA},
+						MinVersion:               tls.VersionTLS12,
+						PreferServerCipherSuites: true,
+						// ClientAuth:            tls.RequireAndVerifyClientCert,
+					},
+				}
+				logging.Infof("Admin SSL server started: %v", sslAddr)
+				reload = false
+				err := sslsrv.ListenAndServeTLS(m.certFile, m.keyFile)
+				if reload {
+					logging.Warnf("SSL certificate change: %v", err)
+				} else {
+					logging.Errorf("Error in SSL Server: %v", err)
+					return
+				}
+			}
+		}()
+	}
 }
 
 func (m *ServiceMgr) registerWithServer() error {

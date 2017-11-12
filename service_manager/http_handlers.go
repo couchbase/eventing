@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/cbauth/cbauthimpl"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
@@ -22,31 +21,25 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-func (m *ServiceMgr) isAuthValid(r *http.Request) (cbauth.Creds, bool, error) {
+func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
 	creds, err := cbauth.AuthWebCreds(r)
-	if err != nil {
-		if strings.Contains(err.Error(), cbauthimpl.ErrNoAuth.Error()) {
-			return nil, false, nil
-		}
-		return nil, false, err
-	}
-
-	return creds, true, nil
-}
-
-func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request) (cbauth.Creds, bool) {
-	creds, valid, err := m.isAuthValid(r)
-	if err != nil {
-		logging.Errorf("Failed to validate auth, err: %v", err)
-	} else if valid == false {
+	if err != nil || creds == nil {
+		logging.Warnf("Cannot authenticate request, rejecting")
 		w.WriteHeader(401)
+		return false
 	}
-	return creds, valid
+	allowed, err := creds.IsAllowed(perm)
+	if err != nil || !allowed {
+		logging.Warnf("Cannot authorize request, rejecting")
+		w.WriteHeader(403)
+		return false
+	}
+	return true
 }
 
 func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 	logging.Infof("Got request to clear event stats from host: %v", r.Host)
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
 	if !valid {
 		return
 	}
@@ -56,7 +49,7 @@ func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 
 func (m *ServiceMgr) startTracer(w http.ResponseWriter, r *http.Request) {
 	logging.Infof("Got request to start tracing")
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
 	if !valid {
 		return
 	}
@@ -81,7 +74,7 @@ func (m *ServiceMgr) startTracer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) stopTracer(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
 	if !valid {
 		return
 	}
@@ -139,7 +132,7 @@ func (m *ServiceMgr) getSourceMap(appName string) string {
 }
 
 func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
 	if !valid {
 		return
 	}
@@ -194,7 +187,7 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
 	if !valid {
 		return
 	}
@@ -242,7 +235,7 @@ func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) 
 }
 
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
 	if !valid {
 		return
 	}
@@ -284,7 +277,7 @@ func (m *ServiceMgr) getLocalDebuggerURL(w http.ResponseWriter, r *http.Request)
 }
 
 func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
 	if !valid {
 		return
 	}
@@ -306,7 +299,7 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
 	if !valid {
 		return
 	}
@@ -462,7 +455,7 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 
 // Reports aggregated event processing stats from all producers
 func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionRead)
 	if !valid {
 		return
 	}
@@ -504,7 +497,7 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 }
 
 func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionRead)
 	if !valid {
 		return
 	}
@@ -532,7 +525,7 @@ func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getExecutionStats(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionRead)
 	if !valid {
 		return
 	}
@@ -560,7 +553,7 @@ func (m *ServiceMgr) getExecutionStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getFailureStats(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionRead)
 	if !valid {
 		return
 	}
@@ -613,7 +606,7 @@ func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
 	if !valid {
 		return
 	}
@@ -678,7 +671,7 @@ func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionRead)
 	if !valid {
 		return
 	}
@@ -752,7 +745,7 @@ func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) fetchAppTempStore(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionRead)
 	if !valid {
 		return
 	}
@@ -787,7 +780,7 @@ func (m *ServiceMgr) fetchAppTempStore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) saveAppSetup(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
 	if !valid {
 		return
 	}
@@ -805,6 +798,39 @@ func (m *ServiceMgr) saveAppSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var app application
+	err = json.Unmarshal(data, &app)
+	if err != nil {
+		errString := fmt.Sprintf("App: %s, Failed to unmarshal payload", appName)
+		logging.Errorf("%s, err: %v", errString, err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errUnmarshalPld.Code))
+		fmt.Fprintf(w, "%s\n", errString)
+		return
+	}
+
+	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
+	cinfo, err := util.ClusterInfoCache(m.auth, nsServerEndpoint)
+	if err != nil {
+		logging.Errorf("Failed to initialise cluster info cache, err: %v", err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errConnectNsServer.Code))
+		fmt.Fprintf(w, "Failed to connect to cluster manager")
+		return
+	}
+
+	isMemcached, err := cinfo.IsMemcached(app.DeploymentConfig.SourceBucket)
+	if err != nil {
+		logging.Errorf("Failed to check bucket type using cluster info cache, err: %v", err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errBucketTypeCheck.Code))
+		fmt.Fprintf(w, "Failed to check if source bucket is memcached")
+		return
+	}
+
+	if isMemcached {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMemcachedBucket.Code))
+		fmt.Fprintf(w, "Source bucket is memcached, should be either couchbase or ephemeral")
+		return
+	}
+
 	err = util.MetakvSet(path, data, nil)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSaveAppTs.Code))
@@ -817,7 +843,7 @@ func (m *ServiceMgr) saveAppSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
 	if !valid {
 		return
 	}
@@ -853,6 +879,29 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	if app.DeploymentConfig.SourceBucket == app.DeploymentConfig.MetadataBucket {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSrcMbSame.Code))
 		fmt.Fprintf(w, "Source bucket same as metadata bucket")
+		return
+	}
+
+	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
+	cinfo, err := util.ClusterInfoCache(m.auth, nsServerEndpoint)
+	if err != nil {
+		logging.Errorf("Failed to initialise cluster info cache, err: %v", err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errConnectNsServer.Code))
+		fmt.Fprintf(w, "Failed to connect to cluster manager")
+		return
+	}
+
+	isMemcached, err := cinfo.IsMemcached(app.DeploymentConfig.SourceBucket)
+	if err != nil {
+		logging.Errorf("Failed to check bucket type using cluster info cache, err: %v", err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errBucketTypeCheck.Code))
+		fmt.Fprintf(w, "Failed to check if source bucket is memcached")
+		return
+	}
+
+	if isMemcached {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMemcachedBucket.Code))
+		fmt.Fprintf(w, "Source bucket is memcached, should be either couchbase or ephemeral")
 		return
 	}
 
@@ -921,6 +970,7 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	path := metakvAppsPath + appName
 	err = util.MetakvSet(path, appContent, nil)
 	if err != nil {
+		logging.Errorf("App: %v failed to write to metakv, err: %v", appName, err)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSaveAppPs.Code))
 		fmt.Fprintf(w, "Failed to write app config to metakv, err: %v", err)
 		return
@@ -931,7 +981,7 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionRead)
 	if !valid {
 		return
 	}
@@ -940,7 +990,7 @@ func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionRead)
 	if !valid {
 		return
 	}
@@ -960,7 +1010,7 @@ func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Reques
 }
 
 func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Request) {
-	_, valid := m.validateAuth(w, r)
+	valid := m.validateAuth(w, r, EventingPermissionRead)
 	if !valid {
 		return
 	}

@@ -43,7 +43,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		cppWorkerThrCount:                  cppWorkerThrCount,
 		crcTable:                           crc32.MakeTable(crc32.Castagnoli),
 		connMutex:                          &sync.RWMutex{},
-		dcpFeedCancelChs:                   make([]chan struct{}, 1),
+		dcpFeedCancelChs:                   make([]chan struct{}, 0),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,
 		debuggerStarted:                    false,
@@ -59,6 +59,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
 		lcbInstCapacity:                    lcbInstCapacity,
 		logLevel:                           logLevel,
+		msgToCppWorkerCh:                   make(chan *msgToTransmit, 1),
 		nonDocTimerEntryCh:                 make(chan timerMsg, timerChanSize),
 		nonDocTimerStopCh:                  make(chan struct{}, 1),
 		opsTimestamp:                       time.Now(),
@@ -86,6 +87,9 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		skipTimerThreshold:                 skipTimerThreshold,
 		socketTimeout:                      socketTimeout,
 		socketWriteBatchSize:               sockWriteBatchSize,
+		socketWriteLoopStopAckCh:           make(chan struct{}, 1),
+		socketWriteLoopStopCh:              make(chan struct{}, 1),
+		socketWriteTicker:                  time.NewTicker(socketWriteTimerInterval),
 		statsTicker:                        time.NewTicker(statsTickInterval),
 		stopControlRoutineCh:               make(chan struct{}, 1),
 		stopPlasmaPersistCh:                make(chan struct{}, 1),
@@ -113,7 +117,6 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		vbsRemainingToOwn:               make([]uint16, 0),
 		vbsRemainingToRestream:          make([]uint16, 0),
 		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
-		writeBatchSeqnoMap:              make(map[uint16]uint64),
 	}
 
 	return consumer
@@ -121,6 +124,9 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 
 // Serve acts as init routine for consumer handle
 func (c *Consumer) Serve() {
+	// Insert an entry to sendMessage loop control channel to signify a normal bootstrap
+	c.socketWriteLoopStopAckCh <- struct{}{}
+
 	c.stopConsumerCh = make(chan struct{}, 1)
 	c.stopCheckpointingCh = make(chan struct{}, 1)
 
@@ -173,8 +179,11 @@ func (c *Consumer) Serve() {
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName, c.eventingAdminPort)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
-	currTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Format(time.RFC3339))
-	nextTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Add(time.Second).Format(time.RFC3339))
+	cronCurrTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Format(time.RFC3339))
+	cronNextTimer := fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Add(time.Second).Format(time.RFC3339))
+
+	docCurrTimer := time.Now().UTC().Format(time.RFC3339)
+	docNextTimer := time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
 	c.startDcp(dcpConfig, flogs)
 
@@ -183,11 +192,11 @@ func (c *Consumer) Serve() {
 
 	// doc_id timer events
 	for _, r := range c.timerProcessingRunningWorkers {
-		go r.processTimerEvents()
+		go r.processTimerEvents(docCurrTimer, docNextTimer, true)
 	}
 
 	// non doc_id timer events
-	go c.processNonDocTimerEvents(currTimer, nextTimer, true)
+	go c.processNonDocTimerEvents(cronCurrTimer, cronNextTimer, true)
 
 	// V8 Debugger polling routine
 	go c.pollForDebuggerStart()
@@ -221,7 +230,7 @@ func (c *Consumer) HandleV8Worker() {
 
 	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
 		c.producer.KvHostPorts()[0], c.producer.CfgData(), c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity,
-		c.executionTimeout, c.enableRecursiveMutation)
+		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)), c.enableRecursiveMutation)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 
@@ -268,6 +277,10 @@ func (c *Consumer) Stop() {
 	for k := range c.timerProcessingWorkerSignalCh {
 		k.stopCh <- struct{}{}
 	}
+
+	c.socketWriteLoopStopCh <- struct{}{}
+	<-c.socketWriteLoopStopAckCh
+	c.socketWriteTicker.Stop()
 
 	c.stopCheckpointingCh <- struct{}{}
 	c.nonDocTimerStopCh <- struct{}{}

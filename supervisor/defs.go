@@ -45,17 +45,25 @@ type supCmdMsg struct {
 	ctx string
 }
 
+// AdminPortConfig captures settings supplied by cluster manager
+type AdminPortConfig struct {
+	HTTPPort string
+	SslPort  string
+	CertFile string
+	KeyFile  string
+}
+
 // SuperSupervisor is responsible for managing/supervising all producer instances
 type SuperSupervisor struct {
-	auth              string
-	CancelCh          chan struct{}
-	eventingAdminPort string
-	eventingDir       string
-	kvPort            string
-	restPort          string
-	superSup          *suptree.Supervisor
-	supCmdCh          chan supCmdMsg
-	uuid              string
+	auth        string
+	CancelCh    chan struct{}
+	adminPort   AdminPortConfig
+	eventingDir string
+	kvPort      string
+	restPort    string
+	superSup    *suptree.Supervisor
+	supCmdCh    chan supCmdMsg
+	uuid        string
 
 	appRWMutex *sync.RWMutex
 

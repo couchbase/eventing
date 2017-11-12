@@ -30,8 +30,12 @@ const (
 )
 
 const (
-	itemCount               = 10000
+	itemCount               = 5000
 	statsLookupRetryCounter = 30
+
+	cppthrCount   = 1
+	sockBatchSize = 1
+	workerCount   = 3
 )
 
 const (
@@ -64,4 +68,10 @@ type depCfg struct {
 type bucket struct {
 	Alias      string `json:"alias"`
 	BucketName string `json:"bucket_name"`
+}
+
+type commonSettings struct {
+	thrCount    int
+	batchSize   int
+	workerCount int
 }

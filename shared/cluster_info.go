@@ -344,6 +344,15 @@ func (c *ClusterInfoCache) IsEphemeral(bucket string) (bool, error) {
 	return strings.EqualFold(b.Type, "ephemeral"), nil
 }
 
+func (c *ClusterInfoCache) IsMemcached(bucket string) (bool, error) {
+	b, err := c.pool.GetBucket(bucket)
+	if err != nil {
+		return false, err
+	}
+	defer b.Close()
+	return strings.EqualFold(b.Type, "memcached"), nil
+}
+
 func (c *ClusterInfoCache) GetCurrentNode() NodeId {
 	for i, node := range c.nodes {
 		if node.ThisNode {
