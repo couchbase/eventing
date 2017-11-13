@@ -338,12 +338,12 @@ AppWorker::AppWorker() : conn_handle(nullptr), main_loop_running(false) {
 AppWorker::~AppWorker() { uv_loop_close(&main_loop); }
 
 void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
-                        const std::string &worker_id, int batch_size,
+                        const std::string &worker_id, int bsize,
                         std::string uds_sock_path) {
   uv_pipe_init(&main_loop, &uds_sock, 0);
 
   app_name = appname;
-  batch_size = batch_size;
+  batch_size = bsize;
   messages_processed_counter = 0;
 
   LOG(logInfo) << "Starting worker with uds for appname:" << appname
@@ -362,13 +362,12 @@ void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
 }
 
 void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
-                            const std::string &worker_id, int batch_size,
-                            int port) {
+                            const std::string &worker_id, int bsize, int port) {
   uv_tcp_init(&main_loop, &tcp_sock);
   uv_ip4_addr(addr.c_str(), port, &server_sock);
 
   app_name = appname;
-  batch_size = batch_size;
+  batch_size = bsize;
   messages_processed_counter = 0;
 
   LOG(logInfo) << "Starting worker for appname:" << appname
@@ -480,7 +479,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
                   builder, resp_msg->msg_type, resp_msg->opcode, msg_offset);
               builder.Finish(r);
 
-              int s = builder.GetSize();
+              uint32_t s = builder.GetSize();
               char *size = (char *)&s;
 
               write_req_t *req_size = new (write_req_t);
@@ -504,7 +503,6 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
               resp_msg->msg.clear();
               resp_msg->msg_type = 0;
               resp_msg->opcode = 0;
-
             }
 
             flatbuffers::FlatBufferBuilder builder;
@@ -516,7 +514,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
                   builder, mV8_Worker_Config, oLogMessage, msg_offset);
               builder.Finish(r);
 
-              int s = builder.GetSize();
+              uint32_t s = builder.GetSize();
               char *size = (char *)&s;
 
               // Write size of payload to socket
