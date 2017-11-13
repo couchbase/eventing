@@ -7,8 +7,8 @@ import (
 
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 func newRebalancer(eventingAdminPort string, change service.TopologyChange,
@@ -93,6 +93,10 @@ func (r *rebalancer) gatherProgress() {
 
 				logging.Infof("ServiceMgr::rebalancer::gatherProgress total vbs to shuffle: %v vbs remaining to shuffle: %v",
 					aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle)
+
+				if p.VbsRemainingToShuffle > aggProgress.VbsRemainingToShuffle {
+					aggProgress.VbsRemainingToShuffle = p.VbsRemainingToShuffle
+				}
 
 				progress = 1.0 - (float64(p.VbsRemainingToShuffle))/float64(aggProgress.VbsRemainingToShuffle)
 			}
