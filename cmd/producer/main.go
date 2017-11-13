@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth/metakv"
+	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/supervisor"
 )
@@ -17,6 +18,8 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
+
+	audit.Init(flags.restPort)
 
 	adminPort := supervisor.AdminPortConfig{
 		HTTPPort: flags.adminHTTPPort,

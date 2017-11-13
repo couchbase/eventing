@@ -466,7 +466,7 @@ func (p *Producer) GetDebuggerURL() string {
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, dInstAddrKey, debuggerInstBlob)
 
-	debugURL := util.GetDebuggerURL("/debugUrl", debuggerInstBlob.HostPortAddr, p.appName)
+	debugURL := util.GetDebuggerURL("/getLocalDebugUrl", debuggerInstBlob.HostPortAddr, p.appName)
 
 	return debugURL
 }

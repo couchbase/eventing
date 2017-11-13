@@ -9,7 +9,7 @@
 # or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-PROJECT (eventing-consumer)
+PROJECT(eventing-consumer)
 
 INCLUDE (FindCouchbaseJemalloc)
 INCLUDE (FindCouchbaseLibuv)
@@ -32,6 +32,10 @@ INCLUDE_DIRECTORIES(AFTER
                      ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT")
+
+IF(BUILD_ENTERPRISE)
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DENTERPRISE")
+ENDIF()
 
 SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc PROPERTIES GENERATED TRUE)
 

@@ -24,10 +24,7 @@ const (
 )
 
 const (
-	// EventingPermissionRead needed for reading app stats/settings/handlers
-	EventingPermissionRead = "cluster.admin!read"
-	// EventingPermissionWrite needed for writing/updating app settings/handlers
-	EventingPermissionWrite = "cluster.admin!write"
+	EventingPermissionManage = "cluster.eventing.functions!manage"
 )
 
 const headerKey = "status"
