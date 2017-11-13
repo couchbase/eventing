@@ -854,7 +854,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             .then(function(response) {
                                 var buckets = [];
                                 for (var bucket of response.data) {
-                                    buckets.push(bucket.name);
+                                    if (bucket.bucketType !== 'memcached') {
+                                        buckets.push(bucket.name);
+                                    }
                                 }
 
                                 return buckets;
