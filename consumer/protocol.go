@@ -81,66 +81,66 @@ type message struct {
 	Payload []byte
 }
 
-func (c *Consumer) makeDocTimerEventHeader(partition int16) []byte {
+func (c *Consumer) makeDocTimerEventHeader(partition int16) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(timerEvent, docTimer, partition, "")
 }
 
-func (c *Consumer) makeNonDocTimerEventHeader(partition int16) []byte {
+func (c *Consumer) makeNonDocTimerEventHeader(partition int16) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(timerEvent, nonDocTimer, partition, "")
 }
 
-func (c *Consumer) makeDcpMutationHeader(partition int16, mutationMeta string) []byte {
+func (c *Consumer) makeDcpMutationHeader(partition int16, mutationMeta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeDcpHeader(dcpMutation, partition, mutationMeta)
 }
 
-func (c *Consumer) makeDcpDeletionHeader(partition int16, deletionMeta string) []byte {
+func (c *Consumer) makeDcpDeletionHeader(partition int16, deletionMeta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeDcpHeader(dcpDeletion, partition, deletionMeta)
 }
 
-func (c *Consumer) makeDcpHeader(opcode int8, partition int16, meta string) []byte {
+func (c *Consumer) makeDcpHeader(opcode int8, partition int16, meta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(dcpEvent, opcode, partition, meta)
 }
 
-func (c *Consumer) makeV8DebuggerStartHeader() []byte {
+func (c *Consumer) makeV8DebuggerStartHeader() ([]byte, *flatbuffers.Builder) {
 	return c.makeV8DebuggerHeader(startDebug, "")
 }
 
-func (c *Consumer) makeV8DebuggerStopHeader() []byte {
+func (c *Consumer) makeV8DebuggerStopHeader() ([]byte, *flatbuffers.Builder) {
 	return c.makeV8DebuggerHeader(stopDebug, "")
 }
 
-func (c *Consumer) makeV8DebuggerHeader(opcode int8, meta string) []byte {
+func (c *Consumer) makeV8DebuggerHeader(opcode int8, meta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(debuggerEvent, opcode, 0, meta)
 }
 
-func (c *Consumer) makeV8InitOpcodeHeader() []byte {
+func (c *Consumer) makeV8InitOpcodeHeader() ([]byte, *flatbuffers.Builder) {
 	return c.makeV8EventHeader(v8WorkerInit, "")
 }
 
-func (c *Consumer) makeV8LoadOpcodeHeader(appCode string) []byte {
+func (c *Consumer) makeV8LoadOpcodeHeader(appCode string) ([]byte, *flatbuffers.Builder) {
 	return c.makeV8EventHeader(v8WorkerLoad, appCode)
 }
 
-func (c *Consumer) makeV8EventHeader(opcode int8, meta string) []byte {
+func (c *Consumer) makeV8EventHeader(opcode int8, meta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(v8WorkerEvent, opcode, 0, meta)
 }
 
-func (c *Consumer) makeLogLevelHeader(meta string) []byte {
+func (c *Consumer) makeLogLevelHeader(meta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(appWorkerSetting, logLevel, 0, meta)
 }
 
-func (c *Consumer) makeThrCountHeader(meta string) []byte {
+func (c *Consumer) makeThrCountHeader(meta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(appWorkerSetting, workerThreadCount, 0, meta)
 }
 
-func (c *Consumer) makeThrMapHeader() []byte {
+func (c *Consumer) makeThrMapHeader() ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(appWorkerSetting, workerThreadPartitionMap, 0, "")
 }
 
-func (c *Consumer) makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte) {
+func (c *Consumer) makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte, builder *flatbuffers.Builder) {
 	logging.Tracef("makeHeader event: %v opcode: %v", event, opcode)
 
-	builder := flatbuffers.NewBuilder(0)
+	builder = c.getBuilder()
 
 	metadata := builder.CreateString(meta)
 
@@ -158,8 +158,8 @@ func (c *Consumer) makeHeader(event int8, opcode int8, partition int16, meta str
 	return
 }
 
-func (c *Consumer) makeThrMapPayload(thrMap map[int][]uint16, partitionCount int) (encodedPayload []byte) {
-	builder := flatbuffers.NewBuilder(0)
+func (c *Consumer) makeThrMapPayload(thrMap map[int][]uint16, partitionCount int) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	builder = c.getBuilder()
 
 	tMaps := make([]flatbuffers.UOffsetT, 0)
 
@@ -195,8 +195,8 @@ func (c *Consumer) makeThrMapPayload(thrMap map[int][]uint16, partitionCount int
 	return
 }
 
-func (c *Consumer) makeDocTimerPayload(docID, callbackFn string) (encodedPayload []byte) {
-	builder := flatbuffers.NewBuilder(0)
+func (c *Consumer) makeDocTimerPayload(docID, callbackFn string) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	builder = c.getBuilder()
 
 	docIDPos := builder.CreateString(docID)
 	callbackFnPos := builder.CreateString(callbackFn)
@@ -213,8 +213,8 @@ func (c *Consumer) makeDocTimerPayload(docID, callbackFn string) (encodedPayload
 	return
 }
 
-func (c *Consumer) makeNonDocTimerPayload(data string) (encodedPayload []byte) {
-	builder := flatbuffers.NewBuilder(0)
+func (c *Consumer) makeNonDocTimerPayload(data string) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	builder = c.getBuilder()
 
 	pPos := builder.CreateString(data)
 
@@ -229,8 +229,8 @@ func (c *Consumer) makeNonDocTimerPayload(data string) (encodedPayload []byte) {
 	return
 }
 
-func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte) {
-	builder := flatbuffers.NewBuilder(0)
+func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	builder = c.getBuilder()
 
 	keyPos := builder.CreateByteString(key)
 	valPos := builder.CreateByteString(value)
@@ -248,8 +248,8 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte) {
 }
 
 func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg, rbacUser, rbacPass string,
-	capacity, executionTimeout, checkpointInterval int, enableRecursiveMutation bool) (encodedPayload []byte) {
-	builder := flatbuffers.NewBuilder(0)
+	capacity, executionTimeout, checkpointInterval int, enableRecursiveMutation bool) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	builder = c.getBuilder()
 
 	app := builder.CreateString(appName)
 	ch := builder.CreateString(currHost)

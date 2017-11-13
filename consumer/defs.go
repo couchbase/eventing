@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/plasma"
+	"github.com/google/flatbuffers/go"
 )
 
 const (
@@ -161,9 +162,10 @@ type dcpMetadata struct {
 
 // Consumer is responsible interacting with c++ v8 worker over local tcp port
 type Consumer struct {
-	app    *common.AppConfig
-	bucket string
-	uuid   string
+	app         *common.AppConfig
+	bucket      string
+	builderPool *sync.Pool
+	uuid        string
 
 	connMutex *sync.RWMutex
 	conn      net.Conn // Access controlled by connMutex
@@ -332,7 +334,6 @@ type Consumer struct {
 	debugTCPPort string
 	tcpPort      string
 
-	msgToCppWorkerCh          chan *msgToTransmit
 	signalDebuggerConnectedCh chan struct{}
 
 	// Tracks DCP Opcodes processed per consumer
@@ -461,4 +462,6 @@ type msgToTransmit struct {
 	msg            *message
 	sendToDebugger bool
 	prioritize     bool
+	headerBuilder  *flatbuffers.Builder
+	payloadBuilder *flatbuffers.Builder
 }
