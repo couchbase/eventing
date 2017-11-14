@@ -328,18 +328,24 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 		case logMessage:
 			fmt.Printf("%s", msg)
 		case latencyStats:
+			c.statsRWMutex.Lock()
+			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.latencyStats)
 			if err != nil {
 				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal latency stats, msg: %s err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case failureStats:
+			c.statsRWMutex.Lock()
+			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.failureStats)
 			if err != nil {
 				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal failure stats, msg: %s err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case executionStats:
+			c.statsRWMutex.Lock()
+			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.executionStats)
 			if err != nil {
 				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal execution stats, msg: %s err: %v",

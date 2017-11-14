@@ -87,10 +87,13 @@ func init() {
 	c.executionTimeout = 1
 	c.cppWorkerThrCount = 1
 	c.connMutex = &sync.RWMutex{}
+	c.msgProcessedRWMutex = &sync.RWMutex{}
+	c.statsRWMutex = &sync.RWMutex{}
 	c.socketWriteTicker = time.NewTicker(1 * time.Second)
 	c.socketWriteLoopStopAckCh = make(chan struct{}, 1)
 	c.socketWriteLoopStopCh = make(chan struct{}, 1)
 	c.socketWriteLoopStopAckCh <- struct{}{}
+	c.sendMsgBufferRWMutex = &sync.RWMutex{}
 
 	c.builderPool = &sync.Pool{
 		New: func() interface{} {

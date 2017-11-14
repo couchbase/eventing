@@ -195,9 +195,10 @@ type Consumer struct {
 	isRebalanceOngoing     bool
 	ipcType                string                        // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
-	executionStats         map[string]uint64
-	failureStats           map[string]uint64
-	latencyStats           map[string]uint64
+	executionStats         map[string]uint64             // Access controlled by statsRWMutex
+	failureStats           map[string]uint64             // Access controlled by statsRWMutex
+	latencyStats           map[string]uint64             // Access controlled by statsRWMutex
+	statsRWMutex           *sync.RWMutex
 	hostDcpFeedRWMutex     *sync.RWMutex
 	kvVbMap                map[uint16]string // Access controlled by default lock
 	logLevel               string
@@ -273,6 +274,7 @@ type Consumer struct {
 	socketWriteBatchSize     int
 	readMsgBuffer            bytes.Buffer
 	sendMsgBuffer            bytes.Buffer
+	sendMsgBufferRWMutex     *sync.RWMutex
 	sockReader               *bufio.Reader
 	socketReadLoopStopCh     chan struct{}
 	socketReadLoopStopAckCh  chan struct{}
@@ -336,11 +338,12 @@ type Consumer struct {
 
 	signalDebuggerConnectedCh chan struct{}
 
+	msgProcessedRWMutex *sync.RWMutex
 	// Tracks DCP Opcodes processed per consumer
-	dcpMessagesProcessed map[mcd.CommandCode]uint64 // Access controlled by default lock
+	dcpMessagesProcessed map[mcd.CommandCode]uint64 // Access controlled by msgProcessedRWMutex
 
 	// Tracks V8 Opcodes processed per consumer
-	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by default lock
+	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by msgProcessedRWMutex
 
 	doctimerMessagesProcessed  uint64
 	crontimerMessagesProcessed uint64

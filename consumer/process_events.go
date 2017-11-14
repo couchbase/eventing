@@ -35,12 +35,12 @@ func (c *Consumer) processEvents() {
 				return
 			}
 
-			c.Lock()
+			c.msgProcessedRWMutex.Lock()
 			if _, ok := c.dcpMessagesProcessed[e.Opcode]; !ok {
 				c.dcpMessagesProcessed[e.Opcode] = 0
 			}
 			c.dcpMessagesProcessed[e.Opcode]++
-			c.Unlock()
+			c.msgProcessedRWMutex.Unlock()
 
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
@@ -300,7 +300,7 @@ func (c *Consumer) processEvents() {
 			vbsOwned := c.getCurrentlyOwnedVbs()
 			if len(vbsOwned) > 0 {
 
-				c.RLock()
+				c.msgProcessedRWMutex.RLock()
 				countMsg, dcpOpCount, tStamp := util.SprintDCPCounts(c.dcpMessagesProcessed)
 
 				diff := tStamp.Sub(c.opsTimestamp)
@@ -322,7 +322,7 @@ func (c *Consumer) processEvents() {
 
 				c.opsTimestamp = tStamp
 				c.dcpOpsProcessed = dcpOpCount
-				c.RUnlock()
+				c.msgProcessedRWMutex.RUnlock()
 			}
 
 		case <-c.signalStopDebuggerCh:
