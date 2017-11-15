@@ -237,13 +237,17 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     lcb_subdoc3(cb_instance, &res, &gcmd);
     lcb_wait(cb_instance);
 
-    if (res.rc != LCB_SUCCESS) {
+    auto sleep_duration = LCB_OP_RETRY_INTERVAL;
+    while (res.rc != LCB_SUCCESS) {
+      doc_timer_create_failure++;
       LOG(logError)
           << "Failed to while performing lookup for fulldoc and exptime"
           << " doc key:" << doc_id << " rc: " << lcb_strerror(NULL, res.rc)
           << '\n';
-      doc_timer_create_failure++;
-      return;
+      std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
+      sleep_duration *= 1.5;
+      lcb_subdoc3(cb_instance, &res, &gcmd);
+      lcb_wait(cb_instance);
     }
 
     uint32_t d = crc32c(0, res.value.c_str(), res.value.length());
@@ -300,28 +304,26 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       return;
     }
 
-    if (res.rc != LCB_SUCCESS) {
+    sleep_duration = LCB_OP_RETRY_INTERVAL;
+    while (res.rc != LCB_SUCCESS && res.rc != LCB_KEY_EEXISTS) {
       doc_timer_create_failure++;
-      auto js_exception = UnwrapData(isolate)->js_exception;
-      js_exception->Throw(cb_instance, res.rc);
-      return;
+      LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
+                    << doc_id << " return code:" << res.rc
+                    << " msg:" << lcb_strerror(NULL, res.rc) << '\n';
+      std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
+      sleep_duration *= 1.5;
+      lcb_subdoc3(cb_instance, &res, &mcmd);
+      lcb_wait(cb_instance);
     }
 
     if (res.rc == LCB_SUCCESS) {
-      LOG(logTrace) << "Stored doc_id timer_entry: " << timer_entry
-                    << " for doc_id: " << doc_id << '\n';
-      return;
-    } else if (res.rc == LCB_KEY_EEXISTS) {
+        return;
+    }
+
+    if (res.rc == LCB_KEY_EEXISTS) {
       LOG(logTrace) << "CAS Mismatch for " << doc_id << ". Retrying" << '\n';
       std::this_thread::sleep_for(
           std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
-      break;
-    } else {
-      LOG(logTrace) << "Couldn't store xattr update as part of doc_id based "
-                       "timer for doc_id:"
-                    << doc_id << " return code: " << res.rc
-                    << " msg: " << lcb_strerror(NULL, res.rc) << '\n';
-      return;
     }
   }
 }
