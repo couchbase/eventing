@@ -351,6 +351,16 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
   }
 }
 
+std::string GetTranspilerSrc() {
+  std::string transpiler_js_src =
+      std::string((const char *)js_esprima) + '\n' +
+      std::string((const char *)js_escodegen) + '\n' +
+      std::string((const char *)js_estraverse) + '\n' +
+      std::string((const char *)js_transpiler) + '\n' +
+      std::string((const char *)js_source_map);
+  return transpiler_js_src;
+}
+
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   LOG(logInfo) << "Eventing dir: " << settings->eventing_dir << '\n';
   v8::Locker locker(GetIsolate());
@@ -362,7 +372,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
   v8::TryCatch try_catch;
   std::string plain_js;
-  int code = UniLineN1QL(script_to_execute.c_str(), &plain_js);
+  int code = UniLineN1QL(script_to_execute.c_str(), &plain_js, nullptr);
   LOG(logTrace) << "code after Unilining N1QL: " << plain_js << '\n';
   if (code != kOK) {
     LOG(logError) << "failed to uniline N1QL: " << code << '\n';
@@ -371,24 +381,17 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
   handler_code_ = plain_js;
 
-  code = Jsify(script_to_execute.c_str(), &plain_js);
+  code = Jsify(script_to_execute.c_str(), &plain_js, nullptr);
   LOG(logTrace) << "jsified code: " << plain_js << '\n';
   if (code != kOK) {
     LOG(logError) << "failed to jsify: " << code << '\n';
     return code;
   }
 
-  std::string transpiler_js_src =
-      std::string((const char *)js_esprima) + '\n' +
-      std::string((const char *)js_escodegen) + '\n' +
-      std::string((const char *)js_estraverse) + '\n' +
-      std::string((const char *)js_transpiler) + '\n' +
-      std::string((const char *)js_source_map);
-
   n1ql_handle = new N1QL(conn_pool, isolate_);
   UnwrapData(isolate_)->n1ql_handle = n1ql_handle;
 
-  Transpiler transpiler(transpiler_js_src);
+  Transpiler transpiler(GetTranspilerSrc());
   script_to_execute =
       transpiler.Transpile(plain_js, app_name_ + ".js", app_name_ + ".map.json",
                            settings->host_addr, settings->eventing_port) +
@@ -952,6 +955,35 @@ void V8Worker::Enqueue(header_t *h, message_t *p) {
                 << " partition: " << h->partition
                 << " metadata: " << h->metadata << '\n';
   worker_queue->push(msg);
+}
+
+std::string V8Worker::CompileHandler(std::string handler) {
+  try {
+    Transpiler transpiler(GetTranspilerSrc());
+    auto info = transpiler.Compile(handler);
+    Transpiler::LogCompilationInfo(info);
+
+    v8::HandleScope handle_scoe(isolate_);
+
+    auto info_obj = v8::Object::New(isolate_);
+    info_obj->Set(v8Str(isolate_, "language"), v8Str(isolate_, info.language));
+    info_obj->Set(v8Str(isolate_, "compileSuccess"),
+                  v8::Boolean::New(isolate_, info.compile_success));
+    info_obj->Set(v8Str(isolate_, "index"),
+                  v8::Int32::New(isolate_, info.index));
+    info_obj->Set(v8Str(isolate_, "lineNumber"),
+                  v8::Int32::New(isolate_, info.line_no));
+    info_obj->Set(v8Str(isolate_, "columnNumber"),
+                  v8::Int32::New(isolate_, info.col_no));
+    info_obj->Set(v8Str(isolate_, "description"),
+                  v8Str(isolate_, info.description));
+
+    return JSONStringify(isolate_, info_obj);
+  } catch (const char *e) {
+    LOG(logError) << e << '\n';
+  }
+
+  return "";
 }
 
 const char *V8Worker::V8WorkerLastException() { return last_exception.c_str(); }

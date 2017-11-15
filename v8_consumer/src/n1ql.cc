@@ -214,7 +214,7 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   // Schedule the data to support query.
   qhandler_stack.Push(q_handler);
 
-  auto &instance = q_handler.instance;
+  lcb_t &instance = q_handler.instance;
   lcb_error_t err;
   lcb_CMDN1QL cmd = {0};
   lcb_N1QLHANDLE handle = nullptr;
@@ -383,6 +383,7 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 // Add return_obj as a private field on iterator.
+// TODO : check if it's safe to turn return_obj into a const reference
 inline void SetReturnValue(const v8::FunctionCallbackInfo<v8::Value> &args,
                            v8::Local<v8::Object> return_obj) {
   auto isolate = args.GetIsolate();
@@ -452,7 +453,7 @@ void AddQueryMetadata(HandlerType handler, v8::Isolate *isolate,
   }
 }
 
-inline std::string AppendStackIndex(int obj_hash, v8::Isolate *isolate) {
+std::string AppendStackIndex(int obj_hash, v8::Isolate *isolate) {
   auto n1ql_handle = UnwrapData(isolate)->n1ql_handle;
   std::string index_hash = std::to_string(obj_hash) + "|";
   index_hash += std::to_string(n1ql_handle->qhandler_stack.Size());
@@ -462,9 +463,8 @@ inline std::string AppendStackIndex(int obj_hash, v8::Isolate *isolate) {
 
 // Every N1qlQuery instance of JavaScript is associated with a private stack.
 // This maintains the uniqueness of the hash of instances.
-inline void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
-                           std::string base_hash_str,
-                           std::string unique_hash_str) {
+void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
+                    std::string base_hash_str, std::string unique_hash_str) {
   auto isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -491,7 +491,7 @@ inline void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
 }
 
 // Pop the unique hash associated with the N1qlQuery instance.
-inline void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
+void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -505,8 +505,7 @@ inline void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
         isolate, v8::String::NewFromUtf8(isolate, base_hash.c_str()));
     exists = HasKey(args, base_hash);
 
-    // If the base hash exists, then pop the unique hash from top of
-    // stack.
+    // If the base hash exists, then pop the unique hash from top of stack.
     if (exists) {
       auto stack = ToLocal(args.This()->GetPrivate(context, hash_key));
       auto scope_stack = v8::Local<v8::Map>::Cast(stack);
@@ -521,8 +520,7 @@ inline void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 // Retrieve the unique hash associated with the N1qlQuery instance.
-inline std::string
-GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
+std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -556,8 +554,7 @@ GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 // Generates and sets a unique hash to a N1qlQuery instance.
-inline std::string
-SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
+std::string SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -587,8 +584,8 @@ SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 // Returns base hash from the field.
-inline std::string GetBaseHash(const v8::FunctionCallbackInfo<v8::Value> &args,
-                               bool &exists) {
+std::string GetBaseHash(const v8::FunctionCallbackInfo<v8::Value> &args,
+                        bool &exists) {
   auto isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -607,8 +604,8 @@ inline std::string GetBaseHash(const v8::FunctionCallbackInfo<v8::Value> &args,
 }
 
 // Check if a key is present in private field.
-inline bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args,
-                   std::string key_str) {
+bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args,
+            std::string key_str) {
   auto isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();

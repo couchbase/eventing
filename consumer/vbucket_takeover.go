@@ -141,45 +141,6 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 		}(c, i, vbsDistribution[i], signalPlasmaClosedChs[i], &wg, vbsts)
 	}
 
-	wg.Add(1)
-
-	go func(c *Consumer, signalPlasmaClosedChs []chan uint16, wg *sync.WaitGroup) {
-		defer wg.Done()
-
-		vbsToGiveUpMap := make(map[uint16]struct{})
-		for _, vb := range c.vbsRemainingToGiveUp {
-			vbsToGiveUpMap[vb] = struct{}{}
-		}
-
-		for {
-			c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
-			if len(c.vbsRemainingToGiveUp) == 0 {
-				return
-			}
-
-			select {
-			case vb := <-c.signalPlasmaClosedCh:
-
-				if _, ok := vbsToGiveUpMap[vb]; ok {
-					logging.Tracef("CRVT[%s:%s:%s:%d] vb: %v Broadcasting to all vb ownership give up routines",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
-
-					for _, ch := range signalPlasmaClosedChs {
-						ch <- vb
-					}
-				} else {
-					logging.Tracef("CRVT[%s:%s:%s:%d] vb: %v Skipping broadcast to all vb ownership give up routines, as worker instance didn't own that vb earlier",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
-				}
-			}
-
-			c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
-			if len(c.vbsRemainingToGiveUp) == 0 {
-				return
-			}
-		}
-	}(c, signalPlasmaClosedChs, &wg)
-
 	wg.Wait()
 }
 
@@ -188,6 +149,8 @@ func (c *Consumer) vbsStateUpdate() {
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 
 	if len(c.vbsRemainingToGiveUp) == 0 && len(c.vbsRemainingToOwn) == 0 {
+		// reset the flag
+		c.isRebalanceOngoing = false
 		return
 	}
 

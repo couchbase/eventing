@@ -12,10 +12,11 @@ import (
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"github.com/google/flatbuffers/go"
 )
 
 func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) {
-	header := makeLogLevelHeader(logLevel)
+	header, hBuilder := c.makeLogLevelHeader(logLevel)
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -23,23 +24,27 @@ func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) {
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
+		headerBuilder:  hBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) {
 	var header []byte
+	var hBuilder *flatbuffers.Builder
 	if sendToDebugger {
-		header = makeThrCountHeader(strconv.Itoa(thrCount))
+		header, hBuilder = c.makeThrCountHeader(strconv.Itoa(thrCount))
 	} else {
-		header = makeThrCountHeader(strconv.Itoa(c.cppWorkerThrCount))
+		header, hBuilder = c.makeThrCountHeader(strconv.Itoa(c.cppWorkerThrCount))
 	}
 
+	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["THR_COUNT"]; !ok {
 		c.v8WorkerMessagesProcessed["THR_COUNT"] = 0
 	}
 	c.v8WorkerMessagesProcessed["THR_COUNT"]++
+	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -47,25 +52,29 @@ func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) {
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
+		headerBuilder:  hBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebugger bool) {
-	header := makeThrMapHeader()
+	header, hBuilder := c.makeThrMapHeader()
 
 	var payload []byte
+	var pBuilder *flatbuffers.Builder
 	if sendToDebugger {
-		payload = makeThrMapPayload(thrPartitionMap, cppWorkerPartitionCount)
+		payload, pBuilder = c.makeThrMapPayload(thrPartitionMap, cppWorkerPartitionCount)
 	} else {
-		payload = makeThrMapPayload(c.cppThrPartitionMap, cppWorkerPartitionCount)
+		payload, pBuilder = c.makeThrMapPayload(c.cppThrPartitionMap, cppWorkerPartitionCount)
 	}
 
+	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["THR_MAP"]; !ok {
 		c.v8WorkerMessagesProcessed["THR_MAP"] = 0
 	}
 	c.v8WorkerMessagesProcessed["THR_MAP"]++
+	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -74,19 +83,23 @@ func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebu
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
+		headerBuilder:  hBuilder,
+		payloadBuilder: pBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendDebuggerStart() {
 
-	header := makeV8DebuggerStartHeader()
+	header, hBuilder := c.makeV8DebuggerStartHeader()
 
+	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_START"]; !ok {
 		c.v8WorkerMessagesProcessed["DEBUG_START"] = 0
 	}
 	c.v8WorkerMessagesProcessed["DEBUG_START"]++
+	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -94,19 +107,22 @@ func (c *Consumer) sendDebuggerStart() {
 		},
 		sendToDebugger: true,
 		prioritize:     true,
+		headerBuilder:  hBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendDebuggerStop() {
 
-	header := makeV8DebuggerStopHeader()
+	header, hBuilder := c.makeV8DebuggerStopHeader()
 
+	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_STOP"]; !ok {
 		c.v8WorkerMessagesProcessed["DEBUG_STOP"] = 0
 	}
 	c.v8WorkerMessagesProcessed["DEBUG_STOP"]++
+	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -114,19 +130,22 @@ func (c *Consumer) sendDebuggerStop() {
 		},
 		sendToDebugger: true,
 		prioritize:     true,
+		headerBuilder:  hBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
-func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool) {
+func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool, pBuilder *flatbuffers.Builder) {
 
-	header := makeV8InitOpcodeHeader()
+	header, hBuilder := c.makeV8InitOpcodeHeader()
 
+	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["V8_INIT"]; !ok {
 		c.v8WorkerMessagesProcessed["V8_INIT"] = 0
 	}
 	c.v8WorkerMessagesProcessed["V8_INIT"]++
+	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -135,19 +154,23 @@ func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool) {
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
+		headerBuilder:  hBuilder,
+		payloadBuilder: pBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) {
 
-	header := makeV8LoadOpcodeHeader(appCode)
+	header, hBuilder := c.makeV8LoadOpcodeHeader(appCode)
 
+	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["V8_LOAD"]; !ok {
 		c.v8WorkerMessagesProcessed["V8_LOAD"] = 0
 	}
 	c.v8WorkerMessagesProcessed["V8_LOAD"]++
+	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -155,18 +178,21 @@ func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) {
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
+		headerBuilder:  hBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) {
-	header := makeHeader(v8WorkerEvent, v8WorkerLatencyStats, 0, "")
+	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerLatencyStats, 0, "")
 
+	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["LATENCY_STATS"]; !ok {
 		c.v8WorkerMessagesProcessed["LATENCY_STATS"] = 0
 	}
 	c.v8WorkerMessagesProcessed["LATENCY_STATS"]++
+	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -174,18 +200,21 @@ func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) {
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
+		headerBuilder:  hBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendGetFailureStats(sendToDebugger bool) {
-	header := makeHeader(v8WorkerEvent, v8WorkerFailureStats, 0, "")
+	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerFailureStats, 0, "")
 
+	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["FAILURE_STATS"]; !ok {
 		c.v8WorkerMessagesProcessed["FAILURE_STATS"] = 0
 	}
 	c.v8WorkerMessagesProcessed["FAILURE_STATS"]++
+	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -193,18 +222,21 @@ func (c *Consumer) sendGetFailureStats(sendToDebugger bool) {
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
+		headerBuilder:  hBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) {
-	header := makeHeader(v8WorkerEvent, v8WorkerExecutionStats, 0, "")
+	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerExecutionStats, 0, "")
 
+	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["EXECUTION_STATS"]; !ok {
 		c.v8WorkerMessagesProcessed["EXECUTION_STATS"] = 0
 	}
 	c.v8WorkerMessagesProcessed["EXECUTION_STATS"]++
+	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -212,18 +244,21 @@ func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) {
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
+		headerBuilder:  hBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendGetSourceMap(sendToDebugger bool) {
-	header := makeHeader(v8WorkerEvent, v8WorkerSourceMap, 0, "")
+	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerSourceMap, 0, "")
 
+	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["SOURCE_MAP"]; !ok {
 		c.v8WorkerMessagesProcessed["SOURCE_MAP"] = 0
 	}
 	c.v8WorkerMessagesProcessed["SOURCE_MAP"]++
+	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -231,18 +266,21 @@ func (c *Consumer) sendGetSourceMap(sendToDebugger bool) {
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
+		headerBuilder:  hBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) {
-	header := makeHeader(v8WorkerEvent, v8WorkerHandlerCode, 0, "")
+	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerHandlerCode, 0, "")
 
+	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["HANDLER_CODE"]; !ok {
 		c.v8WorkerMessagesProcessed["HANDLER_CODE"] = 0
 	}
 	c.v8WorkerMessagesProcessed["HANDLER_CODE"]++
+	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -250,15 +288,16 @@ func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) {
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
+		headerBuilder:  hBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 	partition := int16(util.VbucketByKey([]byte(e.DocID), cppWorkerPartitionCount))
-	timerHeader := makeDocTimerEventHeader(partition)
-	timerPayload := makeDocTimerPayload(e.DocID, e.CallbackFn)
+	timerHeader, hBuilder := c.makeDocTimerEventHeader(partition)
+	timerPayload, pBuilder := c.makeDocTimerPayload(e.DocID, e.CallbackFn)
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -267,16 +306,17 @@ func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     false,
+		headerBuilder:  hBuilder,
+		payloadBuilder: pBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
-
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
 	partition := int16(util.VbucketByKey([]byte(payload), cppWorkerPartitionCount))
-	timerHeader := makeNonDocTimerEventHeader(partition)
-	timerPayload := makeNonDocTimerPayload(payload)
+	timerHeader, hBuilder := c.makeNonDocTimerEventHeader(partition)
+	timerPayload, pBuilder := c.makeNonDocTimerPayload(payload)
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -285,9 +325,11 @@ func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     false,
+		headerBuilder:  hBuilder,
+		payloadBuilder: pBuilder,
 	}
 
-	c.msgToCppWorkerCh <- m
+	c.sendMessage(m)
 }
 
 func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
@@ -319,15 +361,16 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	partition := int16(util.VbucketByKey(e.Key, cppWorkerPartitionCount))
 
 	var dcpHeader []byte
+	var hBuilder *flatbuffers.Builder
 	if e.Opcode == mcd.DCP_MUTATION {
-		dcpHeader = makeDcpMutationHeader(partition, string(metadata))
+		dcpHeader, hBuilder = c.makeDcpMutationHeader(partition, string(metadata))
 	}
 
 	if e.Opcode == mcd.DCP_DELETION {
-		dcpHeader = makeDcpDeletionHeader(partition, string(metadata))
+		dcpHeader, hBuilder = c.makeDcpDeletionHeader(partition, string(metadata))
 	}
 
-	dcpPayload := makeDcpPayload(e.Key, e.Value)
+	dcpPayload, pBuilder := c.makeDcpPayload(e.Key, e.Value)
 
 	msg := &msgToTransmit{
 		msg: &message{
@@ -336,9 +379,11 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     false,
+		headerBuilder:  hBuilder,
+		payloadBuilder: pBuilder,
 	}
 
-	c.msgToCppWorkerCh <- msg
+	c.sendMessage(msg)
 }
 
 func (c *Consumer) sendMessageLoop() {
@@ -352,11 +397,11 @@ func (c *Consumer) sendMessageLoop() {
 
 	for {
 		select {
-		case m := <-c.msgToCppWorkerCh:
-			c.sendMessage(m.msg, m.sendToDebugger, m.prioritize)
 		case <-c.socketWriteTicker.C:
-			if c.sendMsgCounter > 0 {
+			if c.sendMsgCounter > 0 && c.conn != nil {
 				c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
+
+				c.sendMsgBufferRWMutex.Lock()
 
 				err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
 				if err != nil {
@@ -368,6 +413,7 @@ func (c *Consumer) sendMessageLoop() {
 				// Reset the sendMessage buffer and message counter
 				c.sendMsgBuffer.Reset()
 				c.sendMsgCounter = 0
+				c.sendMsgBufferRWMutex.Unlock()
 			}
 		case <-c.socketWriteLoopStopCh:
 			c.socketWriteLoopStopAckCh <- struct{}{}
@@ -376,7 +422,16 @@ func (c *Consumer) sendMessageLoop() {
 	}
 }
 
-func (c *Consumer) sendMessage(msg *message, sendToDebugger bool, prioritise bool) error {
+func (c *Consumer) sendMessage(m *msgToTransmit) error {
+	defer func() {
+		if m.headerBuilder != nil {
+			c.putBuilder(m.headerBuilder)
+		}
+		if m.payloadBuilder != nil {
+			c.putBuilder(m.payloadBuilder)
+		}
+	}()
+
 	// Protocol encoding format:
 	//<headerSize><payloadSize><Header><Payload>
 
@@ -386,28 +441,30 @@ func (c *Consumer) sendMessage(msg *message, sendToDebugger bool, prioritise boo
 	// 	ReadPayload(msg.Payload)
 	// }
 
-	err := binary.Write(&c.sendMsgBuffer, binary.LittleEndian, uint32(len(msg.Header)))
+	c.sendMsgBufferRWMutex.Lock()
+	defer c.sendMsgBufferRWMutex.Unlock()
+	err := binary.Write(&c.sendMsgBuffer, binary.LittleEndian, uint32(len(m.msg.Header)))
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing header size, err : %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 		return err
 	}
 
-	err = binary.Write(&c.sendMsgBuffer, binary.LittleEndian, uint32(len(msg.Payload)))
+	err = binary.Write(&c.sendMsgBuffer, binary.LittleEndian, uint32(len(m.msg.Payload)))
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing payload size, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 		return err
 	}
 
-	err = binary.Write(&c.sendMsgBuffer, binary.LittleEndian, msg.Header)
+	err = binary.Write(&c.sendMsgBuffer, binary.LittleEndian, m.msg.Header)
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing encoded header, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 		return err
 	}
 
-	err = binary.Write(&c.sendMsgBuffer, binary.LittleEndian, msg.Payload)
+	err = binary.Write(&c.sendMsgBuffer, binary.LittleEndian, m.msg.Payload)
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing encoded payload, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
@@ -416,11 +473,11 @@ func (c *Consumer) sendMessage(msg *message, sendToDebugger bool, prioritise boo
 
 	c.sendMsgCounter++
 
-	if c.sendMsgCounter >= c.socketWriteBatchSize || prioritise || sendToDebugger {
+	if c.sendMsgCounter >= c.socketWriteBatchSize || m.prioritize || m.sendToDebugger {
 		c.connMutex.Lock()
 		defer c.connMutex.Unlock()
 
-		if !sendToDebugger && c.conn != nil {
+		if !m.sendToDebugger && c.conn != nil {
 			c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
 
 			err = binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())

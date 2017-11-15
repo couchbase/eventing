@@ -21,7 +21,7 @@ func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
 	pumpBucketOps(itemCount, false, 0, false, 0)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "OnUpdateBucketOp",
+		t.Error("For", "OnUpdateBucketOpDefaultSettings",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -39,7 +39,7 @@ func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 	pumpBucketOps(itemCount, false, 0, false, 0)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "OnUpdateBucketOp",
+		t.Error("For", "OnUpdateBucketOpNonDefaultSettings",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -167,7 +167,7 @@ func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 		pumpBucketOps(itemCount, false, 0, false, 0)
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 		if itemCount != eventCount {
-			t.Error("For", "DeployUndeployLoop",
+			t.Error("For", "DeployUndeployLoopDefaultSettings",
 				"expected", itemCount,
 				"got", eventCount,
 			)
@@ -194,7 +194,7 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 		pumpBucketOps(itemCount, false, 0, false, 0)
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 		if itemCount != eventCount {
-			t.Error("For", "DeployUndeployLoop",
+			t.Error("For", "DeployUndeployLoopNonDefaultSettings",
 				"expected", itemCount,
 				"got", eventCount,
 			)
@@ -254,7 +254,7 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 		pumpBucketOps(itemCount, false, 0, false, itemCount*i)
 		eventCount := verifyBucketOps(itemCount*(i+1), statsLookupRetryCounter)
 		if itemCount*(i+1) != eventCount {
-			t.Error("For", "PauseAndResumeLoop",
+			t.Error("For", "PauseAndResumeLoopDefaultSettings",
 				"expected", itemCount*(i+1),
 				"got", eventCount,
 			)
@@ -283,7 +283,7 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 		pumpBucketOps(itemCount, false, 0, false, itemCount*i)
 		eventCount := verifyBucketOps(itemCount*(i+1), statsLookupRetryCounter)
 		if itemCount*(i+1) != eventCount {
-			t.Error("For", "PauseAndResumeLoop",
+			t.Error("For", "PauseAndResumeLoopNonDefaultSettings",
 				"expected", itemCount*(i+1),
 				"got", eventCount,
 			)
@@ -307,7 +307,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	pumpBucketOps(itemCount, false, 0, false, 0)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "DeployUndeployLoop",
+		t.Error("For", "CommentUnCommentOnDelete",
 			"expected", itemCount,
 			"got", eventCount,
 		)

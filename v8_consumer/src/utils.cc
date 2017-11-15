@@ -48,16 +48,19 @@ v8::Local<v8::String> v8Str(v8::Isolate *isolate, const char *str) {
       .ToLocalChecked();
 }
 
+v8::Local<v8::String> v8Str(v8::Isolate *isolate, const std::string &str) {
+  return v8::String::NewFromUtf8(isolate, str.c_str(), v8::NewStringType::kNormal).ToLocalChecked();
+}
+
 std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
   v8::HandleScope handle_scope(isolate);
 
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
   v8::Local<v8::Object> global = context->Global();
 
-  v8::Local<v8::Object> JSON =
-      global->Get(v8::String::NewFromUtf8(isolate, "JSON"))->ToObject();
-  v8::Local<v8::Function> JSON_stringify = v8::Local<v8::Function>::Cast(
-      JSON->Get(v8::String::NewFromUtf8(isolate, "stringify")));
+  auto JSON = global->Get(v8Str(isolate, "JSON"))->ToObject();
+  auto JSON_stringify =
+      v8::Local<v8::Function>::Cast(JSON->Get(v8Str(isolate, "stringify")));
 
   v8::Local<v8::Value> result;
   v8::Local<v8::Value> args[1];

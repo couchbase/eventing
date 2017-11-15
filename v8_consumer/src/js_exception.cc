@@ -112,6 +112,6 @@ void JsException::Throw(lcb_t instance, lcb_error_t error,
 }
 
 JsException::~JsException() {
-  this->code.Reset();
-  this->desc.Reset();
+  code.Reset();
+  desc.Reset();
 }

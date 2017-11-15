@@ -14,7 +14,7 @@ import (
 
 // ClearEventStats flushes event processing stats
 func (c *Consumer) ClearEventStats() {
-	c.Lock()
+	c.msgProcessedRWMutex.Lock()
 	c.dcpMessagesProcessed = make(map[mcd.CommandCode]uint64)
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
 	c.doctimerMessagesProcessed = 0
@@ -22,7 +22,7 @@ func (c *Consumer) ClearEventStats() {
 	c.plasmaDeleteCounter = 0
 	c.plasmaInsertCounter = 0
 	c.plasmaLookupCounter = 0
-	c.Unlock()
+	c.msgProcessedRWMutex.Unlock()
 }
 
 // ConsumerName returns consumer name e.q <event_handler_name>_worker_1
@@ -38,7 +38,7 @@ func (c *Consumer) EventingNodeUUIDs() []string {
 // GetEventProcessingStats exposes dcp/timer processing stats
 func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	stats := make(map[string]uint64)
-	c.RLock()
+	c.msgProcessedRWMutex.RLock()
 	for opcode, value := range c.dcpMessagesProcessed {
 		stats[mcd.CommandNames[opcode]] = value
 	}
@@ -50,7 +50,7 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["CRON_TIMER_EVENTS"] = c.crontimerMessagesProcessed
 	}
 
-	c.RUnlock()
+	c.msgProcessedRWMutex.RUnlock()
 
 	return stats
 }
@@ -147,18 +147,24 @@ func (c *Consumer) UpdateEventingNodesUUIDs(uuids []string) {
 // GetLatencyStats returns latency stats for event handlers from from cpp world
 func (c *Consumer) GetLatencyStats() map[string]uint64 {
 	c.sendGetLatencyStats(false)
+	c.statsRWMutex.RLock()
+	defer c.statsRWMutex.RUnlock()
 	return c.latencyStats
 }
 
 // GetExecutionStats returns OnUpdate/OnDelete success/failure stats for event handlers from cpp world
 func (c *Consumer) GetExecutionStats() map[string]uint64 {
 	c.sendGetExecutionStats(false)
+	c.statsRWMutex.RLock()
+	defer c.statsRWMutex.RUnlock()
 	return c.executionStats
 }
 
 // GetFailureStats returns failure stats for event handlers from cpp world
 func (c *Consumer) GetFailureStats() map[string]uint64 {
 	c.sendGetFailureStats(false)
+	c.statsRWMutex.RLock()
+	defer c.statsRWMutex.RUnlock()
 	return c.failureStats
 }
 

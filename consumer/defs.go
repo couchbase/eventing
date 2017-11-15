@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/plasma"
+	"github.com/google/flatbuffers/go"
 )
 
 const (
@@ -161,9 +162,10 @@ type dcpMetadata struct {
 
 // Consumer is responsible interacting with c++ v8 worker over local tcp port
 type Consumer struct {
-	app    *common.AppConfig
-	bucket string
-	uuid   string
+	app         *common.AppConfig
+	bucket      string
+	builderPool *sync.Pool
+	uuid        string
 
 	connMutex *sync.RWMutex
 	conn      net.Conn // Access controlled by connMutex
@@ -193,9 +195,10 @@ type Consumer struct {
 	isRebalanceOngoing     bool
 	ipcType                string                        // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
-	executionStats         map[string]uint64
-	failureStats           map[string]uint64
-	latencyStats           map[string]uint64
+	executionStats         map[string]uint64             // Access controlled by statsRWMutex
+	failureStats           map[string]uint64             // Access controlled by statsRWMutex
+	latencyStats           map[string]uint64             // Access controlled by statsRWMutex
+	statsRWMutex           *sync.RWMutex
 	hostDcpFeedRWMutex     *sync.RWMutex
 	kvVbMap                map[uint16]string // Access controlled by default lock
 	logLevel               string
@@ -271,6 +274,7 @@ type Consumer struct {
 	socketWriteBatchSize     int
 	readMsgBuffer            bytes.Buffer
 	sendMsgBuffer            bytes.Buffer
+	sendMsgBufferRWMutex     *sync.RWMutex
 	sockReader               *bufio.Reader
 	socketReadLoopStopCh     chan struct{}
 	socketReadLoopStopAckCh  chan struct{}
@@ -332,14 +336,14 @@ type Consumer struct {
 	debugTCPPort string
 	tcpPort      string
 
-	msgToCppWorkerCh          chan *msgToTransmit
 	signalDebuggerConnectedCh chan struct{}
 
+	msgProcessedRWMutex *sync.RWMutex
 	// Tracks DCP Opcodes processed per consumer
-	dcpMessagesProcessed map[mcd.CommandCode]uint64 // Access controlled by default lock
+	dcpMessagesProcessed map[mcd.CommandCode]uint64 // Access controlled by msgProcessedRWMutex
 
 	// Tracks V8 Opcodes processed per consumer
-	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by default lock
+	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by msgProcessedRWMutex
 
 	doctimerMessagesProcessed  uint64
 	crontimerMessagesProcessed uint64
@@ -461,4 +465,6 @@ type msgToTransmit struct {
 	msg            *message
 	sendToDebugger bool
 	prioritize     bool
+	headerBuilder  *flatbuffers.Builder
+	payloadBuilder *flatbuffers.Builder
 }
