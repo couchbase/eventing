@@ -1,4 +1,0 @@
-TestCronTimerBucketOp
-TestDeployUndeployLoop
-TestDocTimerN1QLOp
-TestMultipleHandlers
