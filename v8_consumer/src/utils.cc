@@ -49,7 +49,9 @@ v8::Local<v8::String> v8Str(v8::Isolate *isolate, const char *str) {
 }
 
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const std::string &str) {
-  return v8::String::NewFromUtf8(isolate, str.c_str(), v8::NewStringType::kNormal).ToLocalChecked();
+  return v8::String::NewFromUtf8(isolate, str.c_str(),
+                                 v8::NewStringType::kNormal)
+      .ToLocalChecked();
 }
 
 std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
