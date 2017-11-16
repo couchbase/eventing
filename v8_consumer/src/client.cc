@@ -8,6 +8,12 @@
 #include <string>
 #include <typeinfo>
 
+#if defined(BREAKPAD_FOUND) && defined(__linux__)
+#include "client/linux/handler/exception_handler.h"
+#elif defined(BREAKPAD_FOUND) && defined(_WIN32)
+#include "client/windows/handler/exception_handler.h"
+#endif
+
 static char const *global_program_name;
 int messages_processed(0);
 
@@ -584,12 +590,21 @@ AppWorker *AppWorker::GetAppWorker() {
   return &worker;
 }
 
+#if defined(BREAKPAD_FOUND)
+static bool dumpCallback(const google_breakpad::MinidumpDescriptor &descriptor,
+                         void *context, bool succeeded) {
+  std::cerr << std::endl << "=== Minidump location " << descriptor.path() << "===" << std::endl;
+  return succeeded;
+}
+#endif
+
+
 int main(int argc, char **argv) {
   global_program_name = argv[0];
 
   if (argc < 6) {
-    std::cerr << "Need at least 5 arguments: appname, ipc_type, port, "
-                 "worker_id, batch_size"
+    std::cerr << "Need at least 6 arguments: appname, ipc_type, port, "
+                 "worker_id, batch_size, diag_dir"
               << '\n';
     return 2;
   }
@@ -612,6 +627,12 @@ int main(int argc, char **argv) {
 
   std::string worker_id(argv[4]);
   int batch_size = atoi(argv[5]);
+  std::string diag_dir(argv[6]);
+
+#if defined(BREAKPAD_FOUND)
+  google_breakpad::MinidumpDescriptor descriptor(diag_dir.c_str());
+  google_breakpad::ExceptionHandler eh(descriptor, NULL, dumpCallback, NULL, true, -1);
+#endif
 
   setAppName(appname);
   setWorkerID(worker_id);

@@ -61,6 +61,7 @@ type Producer struct {
 	cleanupTimers          bool
 	cfgData                string
 	cppWorkerThrCount      int // No. of worker threads per CPP worker process
+	diagDir                string
 	eventingAdminPort      string
 	eventingDir            string
 	kvPort                 string

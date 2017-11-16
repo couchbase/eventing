@@ -175,6 +175,7 @@ type Consumer struct {
 	crcTable           *crc32.Table
 	debugConn          net.Conn // Interface to support communication between Go and C++ worker spawned for debugging
 	debugListener      net.Listener
+	diagDir            string // Location that will house minidumps from from crashed cpp workers
 	handlerCode        string // Handler code for V8 Debugger
 	sourceMap          string // source map to assist with V8 Debugger
 	sendMsgToDebugger  bool

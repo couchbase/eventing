@@ -20,13 +20,14 @@ import (
 )
 
 // NewSuperSupervisor creates the super_supervisor handle
-func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid string) *SuperSupervisor {
+func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string) *SuperSupervisor {
 	s := &SuperSupervisor{
 		appDeploymentStatus:          make(map[string]bool),
 		appProcessingStatus:          make(map[string]bool),
 		CancelCh:                     make(chan struct{}, 1),
 		deployedApps:                 make(map[string]string),
 		adminPort:                    adminPort,
+		diagDir:                      diagDir,
 		eventingDir:                  eventingDir,
 		kvPort:                       kvPort,
 		plasmaCloseSignalMap:         make(map[uint16]int),
@@ -305,7 +306,7 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
 	p := producer.NewProducer(appName, s.adminPort.HTTPPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
-		s.restPort, s.uuid, s)
+		s.restPort, s.uuid, s.diagDir, s)
 
 	token := s.superSup.Add(p)
 	s.mu.Lock()

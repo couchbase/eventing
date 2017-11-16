@@ -29,7 +29,11 @@ func newDebugClient(c *Consumer, appName, eventingPort, ipcType, tcpPort, worker
 
 func (c *debugClient) Serve() {
 	c.cmd = exec.Command("eventing-consumer", c.appName, c.ipcType, c.debugTCPPort,
-		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.eventingPort, "debug")
+		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.consumerHandle.diagDir,
+		c.eventingPort, "debug") // these two parameter are not read, for tagging
+
+	c.cmd.Stderr = os.Stderr
+	c.cmd.Stdout = os.Stdout
 
 	err := c.cmd.Start()
 	if err != nil {
@@ -40,7 +44,11 @@ func (c *debugClient) Serve() {
 			c.appName, c.workerName, c.debugTCPPort, c.osPid)
 	}
 
-	c.cmd.Wait()
+	err = c.cmd.Wait()
+	if err != nil {
+		logging.Warnf("CRCL[%s:%s:%s:%d] Exiting c++ debug worker with error: %v",
+		c.appName, c.workerName, c.debugTCPPort, c.osPid, err)
+	}
 
 	logging.Debugf("CRDCL[%s:%s:%s:%d] Exiting C++ worker spawned for debugger",
 		c.appName, c.workerName, c.debugTCPPort, c.osPid)

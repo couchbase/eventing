@@ -30,7 +30,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 	bucket, eventingAdminPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
-	socketTimeout time.Duration) *Consumer {
+	socketTimeout time.Duration, diagDir string) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -49,6 +49,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,
 		debuggerStarted:                    false,
+		diagDir:                            diagDir,
 		docTimerEntryCh:                    make(chan *byTimerEntry, timerChanSize),
 		enableRecursiveMutation:            enableRecursiveMutation,
 		eventingAdminPort:                  eventingAdminPort,
