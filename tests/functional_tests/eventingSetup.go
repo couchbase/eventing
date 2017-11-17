@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -308,4 +310,53 @@ func flushFunctionAndBucket(handler string) {
 
 	bucketFlush("default")
 	bucketFlush("hello-world")
+}
+
+func dumpStats(handler string) {
+	makeStatsRequest("processing stats from Go process", processingStatURL+handler, true)
+	for i := 0; i < 2; i++ {
+		var printRes bool
+		if i > 0 {
+			printRes = true
+		}
+		makeStatsRequest("execution stats from CPP worker", executionStatsURL+handler, printRes)
+		makeStatsRequest("latency stats from CPP worker", failureStatsURL+handler, printRes)
+		makeStatsRequest("failure stats from CPP worker", latencyStatsURL+handler, printRes)
+	}
+}
+
+func makeStatsRequest(context, url string, printRes bool) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Printf("Made request to url: %v err: %v\n", url, err)
+		return
+	}
+
+	req.SetBasicAuth(username, password)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Println("Delete resp:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if printRes {
+		fmt.Printf("%v::%v\n", context, string(body))
+	}
+}
+
+func eventingConsumerPidsAlive() (bool, int) {
+	ps := exec.Command("pgrep", "eventing-consumer")
+
+	output, _ := ps.Output()
+	ps.Output()
+	res := strings.Split(string(output), "\n")
+
+	if len(res) > 1 {
+		return true, len(res) - 1
+	}
+
+	return false, 0
 }

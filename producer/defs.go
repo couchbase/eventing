@@ -27,7 +27,7 @@ const (
 
 	numVbuckets = 1024
 
-	supervisorTimeout = 60
+	supervisorTimeout = 60 * time.Second
 
 	// KV blob suffixes to assist in choose right consumer instance
 	// for instantiating V8 Debugger instance

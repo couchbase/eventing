@@ -201,7 +201,7 @@ var getOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	if err == gocb.ErrShutdown {
+	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
 	}
 
@@ -262,7 +262,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	doc.UpsertEx("plasma_last_persisted_seq_no", vbBlob.PlasmaPersistedSeqNo, gocb.SubdocFlagCreatePath)
 
 	_, err := doc.Execute()
-	if err == gocb.ErrShutdown {
+	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
 	}
 

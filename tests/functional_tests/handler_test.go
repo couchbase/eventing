@@ -384,3 +384,29 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 
 	deleteFunction(handler)
 }
+
+func TestCPPWorkerCleanup(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "bucket_op_on_update.js"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{1, 100, 16})
+
+	pumpBucketOps(itemCount, false, 0, false, 0)
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "CPPWorkerCleanup",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	pidsAlive, count := eventingConsumerPidsAlive()
+	if pidsAlive {
+		t.Error("For", "CPPWorkerCleanup",
+			"expected", 0, "eventing-consumer",
+			"got", count)
+	}
+
+	dumpStats(handler)
+	flushFunctionAndBucket(handler)
+}

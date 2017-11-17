@@ -207,6 +207,8 @@ func (c *Consumer) Serve() {
 	// non doc_id timer events
 	go c.processNonDocTimerEvents(cronCurrTimer, cronNextTimer, true)
 
+	go c.doLastSeqNoCheckpoint()
+
 	// V8 Debugger polling routine
 	go c.pollForDebuggerStart()
 
@@ -250,8 +252,6 @@ func (c *Consumer) HandleV8Worker() {
 	c.sendGetSourceMap(false)
 	c.sendGetHandlerCode(false)
 
-	go c.doLastSeqNoCheckpoint()
-
 	go c.processEvents()
 
 }
@@ -272,8 +272,6 @@ func (c *Consumer) Stop() {
 	c.cbBucket.Close()
 	c.gocbBucket.Close()
 	c.gocbMetaBucket.Close()
-
-	c.producer.CleanupDeadConsumer(c)
 
 	c.consumerSup.Remove(c.timerTransferSupToken)
 	c.consumerSup.Remove(c.clientSupToken)
