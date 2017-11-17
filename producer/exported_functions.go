@@ -2,6 +2,7 @@ package producer
 
 import (
 	"fmt"
+	"os"
 	"sync/atomic"
 	"unsafe"
 
@@ -256,6 +257,10 @@ func (p *Producer) StopProducer() {
 	p.stopProducerCh <- struct{}{}
 	p.metadataBucketHandle.Close()
 	p.workerSupervisor.Stop()
+
+	if p.vbPlasmaStore != nil {
+		p.vbPlasmaStore.Close()
+	}
 }
 
 // GetDcpEventsRemainingToProcess returns remaining dcp events to process
@@ -278,4 +283,16 @@ func (p *Producer) GetEventingConsumerPids() map[string]int {
 	}
 
 	return workerPidMapping
+}
+
+// PurgePlasmaRecords cleans up the plasma data store housing doc id timer related data
+// Given plasma records are for a specific app, we could simply purge the store from disk
+func (p *Producer) PurgePlasmaRecords() {
+	vbPlasmaDir := fmt.Sprintf("%v/%v_timer.data", p.eventingDir, p.app.AppName)
+
+	err := os.RemoveAll(vbPlasmaDir)
+	if err != nil {
+		logging.Errorf("PRDR[%s:%d] Got err: %v while trying to purge timer records",
+			p.appName, p.LenRunningConsumers(), err)
+	}
 }

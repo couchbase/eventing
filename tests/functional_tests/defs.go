@@ -5,9 +5,13 @@ const (
 	deployURL          = "http://localhost:9000/_p/event/setApplication/?name="
 	tempStoreURL       = "http://localhost:9000/_p/event/saveAppTempStore/?name="
 	settingsURL        = "http://localhost:9000/_p/event/setSettings/?name="
-	processingStatURL  = "http://localhost:9300/getEventProcessingStats?name="
 	deleteTempStoreURL = "http://127.0.0.1:9000/_p/event/deleteAppTempStore/?name="
 	deletePrimStoreURL = "http://127.0.0.1:9000/_p/event/deleteApplication/?name="
+
+	processingStatURL = "http://localhost:9300/getEventProcessingStats?name="
+	executionStatsURL = "http://localhost:9300/getExecutionStats?name="
+	failureStatsURL   = "http://localhost:9300/getLatencyStats?name="
+	latencyStatsURL   = "http://localhost:9300/getFailureStats?name="
 )
 
 const (
