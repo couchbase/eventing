@@ -124,6 +124,12 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["worker_count"] = s.workerCount
 	}
 
+	if s.lcbInstCap == 0 {
+		settings["lcb_inst_capacity"] = lcbCap
+	} else {
+		settings["lcb_inst_capacity"] = s.lcbInstCap
+	}
+
 	settings["skip_timer_threshold"] = 86400
 	settings["tick_duration"] = 5000
 	settings["timer_processing_tick_interval"] = 500
@@ -139,7 +145,6 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
 	settings["enable_recursive_mutation"] = false
-	settings["lcb_inst_capacity"] = 5
 	settings["description"] = "Sample app"
 
 	app.Settings = settings
@@ -180,6 +185,12 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 		settings["sock_batch_size"] = sockBatchSize
 	} else {
 		settings["sock_batch_size"] = s.batchSize
+	}
+
+	if s.lcbInstCap == 0 {
+		settings["lcb_inst_capacity"] = lcbCap
+	} else {
+		settings["lcb_inst_capacity"] = s.lcbInstCap
 	}
 
 	settings["timer_worker_pool_size"] = 1

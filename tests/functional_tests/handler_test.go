@@ -35,7 +35,7 @@ func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_update.js"
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{4, 77, 3})
+	createAndDeployFunction(handler, handler, &commonSettings{4, 77, 3, 5})
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -226,7 +226,7 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 	flushFunctionAndBucket(handler)
 
 	for i := 0; i < 5; i++ {
-		createAndDeployFunction(handler, handler, &commonSettings{4, 77, 3})
+		createAndDeployFunction(handler, handler, &commonSettings{4, 77, 3, 5})
 
 		pumpBucketOps(itemCount, false, 0, false, 0)
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -315,11 +315,11 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 	handler := "bucket_op_on_update.js"
 
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{4, 77, 4})
+	createAndDeployFunction(handler, handler, &commonSettings{4, 77, 4, 5})
 
 	for i := 0; i < 5; i++ {
 		if i > 0 {
-			setSettings(handler, true, true, &commonSettings{4, 77, 4})
+			setSettings(handler, true, true, &commonSettings{4, 77, 4, 5})
 		}
 
 		pumpBucketOps(itemCount, false, 0, false, itemCount*i)
@@ -389,7 +389,7 @@ func TestCPPWorkerCleanup(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_update.js"
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{1, 100, 16})
+	createAndDeployFunction(handler, handler, &commonSettings{1, 100, 16, 5})
 
 	pumpBucketOps(itemCount, false, 0, false, 0)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -408,5 +408,105 @@ func TestCPPWorkerCleanup(t *testing.T) {
 	}
 
 	dumpStats(handler)
+	flushFunctionAndBucket(handler)
+}
+
+func TestN1QLLabelledBreak(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "n1ql_labelled_break.js"
+
+	fireQuery("DROP PRIMARY INDEX on default;")
+	flushFunctionAndBucket(handler)
+
+	setIndexStorageMode()
+	fireQuery("CREATE PRIMARY INDEX on default;")
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(itemCount, false, 0, false, 0)
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "N1QLLabelledBreak",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats(handler)
+	fireQuery("DROP PRIMARY INDEX on default;")
+	flushFunctionAndBucket(handler)
+}
+
+func TestN1QLUnlabelledBreak(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "n1ql_unlabelled_break.js"
+
+	fireQuery("DROP PRIMARY INDEX on default;")
+	flushFunctionAndBucket(handler)
+
+	setIndexStorageMode()
+	fireQuery("CREATE PRIMARY INDEX on default;")
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(itemCount, false, 0, false, 0)
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "N1QLUnlabelledBreak",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats(handler)
+	fireQuery("DROP PRIMARY INDEX on default;")
+	flushFunctionAndBucket(handler)
+}
+
+func TestN1QLThrowStatement(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "n1ql_throw_statement.js"
+
+	fireQuery("DROP PRIMARY INDEX on default;")
+	flushFunctionAndBucket(handler)
+
+	setIndexStorageMode()
+	fireQuery("CREATE PRIMARY INDEX on default;")
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(itemCount, false, 0, false, 0)
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "N1QLThrowStatement",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats(handler)
+	fireQuery("DROP PRIMARY INDEX on default;")
+	flushFunctionAndBucket(handler)
+}
+
+func TestN1QLNestedForLoop(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "n1ql_nested_for_loops.js"
+
+	fireQuery("DROP PRIMARY INDEX on default;")
+	flushFunctionAndBucket(handler)
+
+	setIndexStorageMode()
+	fireQuery("CREATE PRIMARY INDEX on default;")
+	createAndDeployFunction(handler, handler, &commonSettings{1, 1, 3, 6})
+
+	pumpBucketOps(itemCount, false, 0, false, 0)
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "N1QLNestedForLoop",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats(handler)
+	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
 }

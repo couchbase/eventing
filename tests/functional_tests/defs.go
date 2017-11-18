@@ -2,16 +2,16 @@ package eventing
 
 const (
 	handlerCodeDir     = "hcode/"
-	deployURL          = "http://localhost:9000/_p/event/setApplication/?name="
-	tempStoreURL       = "http://localhost:9000/_p/event/saveAppTempStore/?name="
-	settingsURL        = "http://localhost:9000/_p/event/setSettings/?name="
+	deployURL          = "http://127.0.0.1:9000/_p/event/setApplication/?name="
+	tempStoreURL       = "http://127.0.0.1:9000/_p/event/saveAppTempStore/?name="
+	settingsURL        = "http://127.0.0.1:9000/_p/event/setSettings/?name="
 	deleteTempStoreURL = "http://127.0.0.1:9000/_p/event/deleteAppTempStore/?name="
 	deletePrimStoreURL = "http://127.0.0.1:9000/_p/event/deleteApplication/?name="
 
-	processingStatURL = "http://localhost:9300/getEventProcessingStats?name="
-	executionStatsURL = "http://localhost:9300/getExecutionStats?name="
-	failureStatsURL   = "http://localhost:9300/getLatencyStats?name="
-	latencyStatsURL   = "http://localhost:9300/getFailureStats?name="
+	processingStatURL = "http://127.0.0.1:9300/getEventProcessingStats?name="
+	executionStatsURL = "http://127.0.0.1:9300/getExecutionStats?name="
+	failureStatsURL   = "http://127.0.0.1:9300/getLatencyStats?name="
+	latencyStatsURL   = "http://127.0.0.1:9300/getFailureStats?name="
 )
 
 const (
@@ -23,6 +23,8 @@ const (
 	bucketSetupURL      = "http://127.0.0.1:9000/pools/default/buckets"
 	rbacSetupURL        = "http://127.0.0.1:9000/settings/rbac/users/local"
 	bucketStatsURL      = "http://127.0.0.1:9000/pools/default/buckets/hello-world/"
+	indexerURL          = "http://127.0.0.1:9000/settings/indexes"
+	queryURL            = "http://127.0.0.1:9499/query/service"
 )
 
 const (
@@ -35,9 +37,10 @@ const (
 
 const (
 	itemCount               = 5000
-	statsLookupRetryCounter = 30
+	statsLookupRetryCounter = 50
 
 	cppthrCount   = 1
+	lcbCap        = 5
 	sockBatchSize = 1
 	workerCount   = 3
 )
@@ -78,4 +81,5 @@ type commonSettings struct {
 	thrCount    int
 	batchSize   int
 	workerCount int
+	lcbInstCap  int
 }
