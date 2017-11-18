@@ -152,7 +152,8 @@ type Producer struct {
 	// vbucket to eventing node assignment
 	vbEventingNodeAssignMap map[uint16]string
 
-	vbPlasmaStore *plasma.Plasma
+	plasmaMemQuota int64
+	vbPlasmaStore  *plasma.Plasma
 
 	// copy of KV vbmap, needed while opening up dcp feed
 	kvVbMap map[uint16]string
