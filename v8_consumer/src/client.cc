@@ -165,7 +165,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       fstats << "{\"bucket_op_exception_count\":";
       fstats << bucket_op_exception_count << ", \"n1ql_op_exception_count\":";
       fstats << n1ql_op_exception_count << ", \"timeout_count\":";
-      fstats << timeout_count << "}";
+      fstats << timeout_count << ", \"checkpoint_failure_count\":";
+      fstats << checkpoint_failure_count << "}";
 
       resp_msg->msg.assign(fstats.str());
       resp_msg->msg_type = mV8_Worker_Config;

@@ -62,6 +62,7 @@ type EventingProducer interface {
 	NsServerHostPort() string
 	NsServerNodeCount() int
 	PauseProducer()
+	PurgePlasmaRecords()
 	RbacUser() string
 	RbacPass() string
 	SignalBootstrapFinish()

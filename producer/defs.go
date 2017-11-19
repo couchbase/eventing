@@ -27,7 +27,7 @@ const (
 
 	numVbuckets = 1024
 
-	supervisorTimeout = 60
+	supervisorTimeout = 60 * time.Second
 
 	// KV blob suffixes to assist in choose right consumer instance
 	// for instantiating V8 Debugger instance
@@ -152,7 +152,8 @@ type Producer struct {
 	// vbucket to eventing node assignment
 	vbEventingNodeAssignMap map[uint16]string
 
-	vbPlasmaStore *plasma.Plasma
+	plasmaMemQuota int64
+	vbPlasmaStore  *plasma.Plasma
 
 	// copy of KV vbmap, needed while opening up dcp feed
 	kvVbMap map[uint16]string

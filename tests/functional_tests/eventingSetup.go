@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -122,6 +124,12 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["worker_count"] = s.workerCount
 	}
 
+	if s.lcbInstCap == 0 {
+		settings["lcb_inst_capacity"] = lcbCap
+	} else {
+		settings["lcb_inst_capacity"] = s.lcbInstCap
+	}
+
 	settings["skip_timer_threshold"] = 86400
 	settings["tick_duration"] = 5000
 	settings["timer_processing_tick_interval"] = 500
@@ -137,7 +145,6 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
 	settings["enable_recursive_mutation"] = false
-	settings["lcb_inst_capacity"] = 5
 	settings["description"] = "Sample app"
 
 	app.Settings = settings
@@ -178,6 +185,12 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 		settings["sock_batch_size"] = sockBatchSize
 	} else {
 		settings["sock_batch_size"] = s.batchSize
+	}
+
+	if s.lcbInstCap == 0 {
+		settings["lcb_inst_capacity"] = lcbCap
+	} else {
+		settings["lcb_inst_capacity"] = s.lcbInstCap
 	}
 
 	settings["timer_worker_pool_size"] = 1
@@ -308,4 +321,53 @@ func flushFunctionAndBucket(handler string) {
 
 	bucketFlush("default")
 	bucketFlush("hello-world")
+}
+
+func dumpStats(handler string) {
+	makeStatsRequest("processing stats from Go process", processingStatURL+handler, true)
+	for i := 0; i < 2; i++ {
+		var printRes bool
+		if i > 0 {
+			printRes = true
+		}
+		makeStatsRequest("execution stats from CPP worker", executionStatsURL+handler, printRes)
+		makeStatsRequest("latency stats from CPP worker", failureStatsURL+handler, printRes)
+		makeStatsRequest("failure stats from CPP worker", latencyStatsURL+handler, printRes)
+	}
+}
+
+func makeStatsRequest(context, url string, printRes bool) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Printf("Made request to url: %v err: %v\n", url, err)
+		return
+	}
+
+	req.SetBasicAuth(username, password)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Println("Delete resp:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if printRes {
+		fmt.Printf("%v::%v\n", context, string(body))
+	}
+}
+
+func eventingConsumerPidsAlive() (bool, int) {
+	ps := exec.Command("pgrep", "eventing-consumer")
+
+	output, _ := ps.Output()
+	ps.Output()
+	res := strings.Split(string(output), "\n")
+
+	if len(res) > 1 {
+		return true, len(res) - 1
+	}
+
+	return false, 0
 }

@@ -21,6 +21,9 @@ func (p *Producer) openPlasmaStore() error {
 	if err != nil {
 		return err
 	}
+
+	plasma.SetMemoryQuota(p.plasmaMemQuota)
+
 	return nil
 }
 

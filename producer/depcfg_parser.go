@@ -115,6 +115,12 @@ func (p *Producer) parseDepcfg() error {
 		p.cppWorkerThrCount = 1
 	}
 
+	if val, ok := settings["memory_quota"]; ok {
+		p.plasmaMemQuota = int64(val.(float64))
+	} else {
+		p.plasmaMemQuota = 268435456 // 256 MB
+	}
+
 	p.app.Settings = settings
 
 	logLevel := settings["log_level"].(string)

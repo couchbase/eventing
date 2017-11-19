@@ -116,6 +116,7 @@ extern bool enable_recursive_mutation;
 extern std::atomic<std::int64_t> bucket_op_exception_count;
 extern std::atomic<std::int64_t> n1ql_op_exception_count;
 extern std::atomic<std::int64_t> timeout_count;
+extern std::atomic<std::int16_t> checkpoint_failure_count;
 
 extern std::atomic<std::int64_t> on_update_success;
 extern std::atomic<std::int64_t> on_update_failure;
@@ -192,6 +193,9 @@ public:
   // lcb instances to source and metadata buckets
   lcb_t cb_instance;
   lcb_t meta_cb_instance;
+  lcb_t checkpoint_cb_instance; // Separate instance for checkpointing which
+                                // writes to metadata bucket. Avoiding sharing
+                                // of lcb instance
 
   std::string app_name_;
   std::string handler_code_;

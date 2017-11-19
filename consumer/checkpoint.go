@@ -20,6 +20,12 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 	for {
 		select {
 		case <-c.checkpointTicker.C:
+			deployedApps := c.superSup.GetDeployedApps()
+			if _, ok := deployedApps[c.app.AppName]; !ok {
+				logging.Infof("CRCH[%s:%s:%s:%d] Returning from checkpoint ticker routine",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+				return
+			}
 
 			util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 

@@ -40,6 +40,7 @@ bool enable_recursive_mutation = false;
 std::atomic<std::int64_t> bucket_op_exception_count = {0};
 std::atomic<std::int64_t> n1ql_op_exception_count = {0};
 std::atomic<std::int64_t> timeout_count = {0};
+std::atomic<std::int16_t> checkpoint_failure_count = {0};
 
 std::atomic<std::int64_t> on_update_success = {0};
 std::atomic<std::int64_t> on_update_failure = {0};
@@ -445,6 +446,8 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     }
   }
 
+  lcb_U32 lcb_timeout = 2500000; // 2.5s
+
   if (transpiler.IsTimerCalled(script_to_execute)) {
     LOG(logDebug) << "Timer is called" << '\n';
 
@@ -466,10 +469,33 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
                           sdmutate_callback);
     lcb_install_callback3(cb_instance, LCB_CALLBACK_SDLOOKUP,
                           sdlookup_callback);
+    lcb_cntl(cb_instance, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
     UnwrapData(isolate_)->cb_instance = cb_instance;
+
+    memset(&crst, 0, sizeof crst);
+
+    crst.version = 3;
+    crst.v.v3.connstr = meta_connstr.c_str();
+    crst.v.v3.type = LCB_TYPE_BUCKET;
+    crst.v.v3.passwd = settings->rbac_pass.c_str();
+
+    lcb_create(&meta_cb_instance, &crst);
+    lcb_connect(meta_cb_instance);
+    lcb_wait(meta_cb_instance);
+
+    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_GET, get_callback);
+    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_STORE, set_callback);
+    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDMUTATE,
+                          sdmutate_callback);
+    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDLOOKUP,
+                          sdlookup_callback);
+    lcb_cntl(meta_cb_instance, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
+
+    UnwrapData(isolate_)->meta_cb_instance = meta_cb_instance;
   }
 
   lcb_create_st crst;
+
   memset(&crst, 0, sizeof crst);
 
   crst.version = 3;
@@ -477,17 +503,19 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   crst.v.v3.type = LCB_TYPE_BUCKET;
   crst.v.v3.passwd = settings->rbac_pass.c_str();
 
-  lcb_create(&meta_cb_instance, &crst);
-  lcb_connect(meta_cb_instance);
-  lcb_wait(meta_cb_instance);
+  lcb_create(&checkpoint_cb_instance, &crst);
+  lcb_connect(checkpoint_cb_instance);
+  lcb_wait(checkpoint_cb_instance);
 
-  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_GET, get_callback);
-  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_STORE, set_callback);
-  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDMUTATE,
+  lcb_install_callback3(checkpoint_cb_instance, LCB_CALLBACK_GET, get_callback);
+  lcb_install_callback3(checkpoint_cb_instance, LCB_CALLBACK_STORE,
+                        set_callback);
+  lcb_install_callback3(checkpoint_cb_instance, LCB_CALLBACK_SDMUTATE,
                         sdmutate_callback);
-  lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDLOOKUP,
+  lcb_install_callback3(checkpoint_cb_instance, LCB_CALLBACK_SDLOOKUP,
                         sdlookup_callback);
-  UnwrapData(isolate_)->meta_cb_instance = meta_cb_instance;
+  lcb_cntl(checkpoint_cb_instance, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT,
+           &lcb_timeout);
 
   // Spawning terminator thread to monitor the wall clock time for execution of
   // javascript code isn't going beyond max_task_duration. Passing reference to
@@ -506,7 +534,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 void V8Worker::Checkpoint() {
   const auto checkpoint_interval =
       std::chrono::milliseconds(settings->checkpoint_interval);
-  const auto sleep_duration = std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL);
   std::string seq_no_path("last_processed_seq_no");
 
   while (true) {
@@ -532,14 +559,17 @@ void V8Worker::Checkpoint() {
         cmd.nspecs = 1;
 
         Result cres;
-        int retry_count = 0;
-        lcb_subdoc3(meta_cb_instance, &cres, &cmd);
-        lcb_wait(meta_cb_instance);
-        while (cres.rc != LCB_SUCCESS && retry_count < LCB_OP_RETRY_COUNTER) {
-          retry_count++;
-          std::this_thread::sleep_for(sleep_duration);
-          lcb_subdoc3(meta_cb_instance, &cres, &cmd);
-          lcb_wait(meta_cb_instance);
+        lcb_subdoc3(checkpoint_cb_instance, &cres, &cmd);
+        lcb_wait(checkpoint_cb_instance);
+
+        auto sleep_duration = LCB_OP_RETRY_INTERVAL;
+        while (cres.rc != LCB_SUCCESS) {
+          checkpoint_failure_count++;
+          std::this_thread::sleep_for(
+              std::chrono::milliseconds(sleep_duration));
+          sleep_duration *= 1.5;
+          lcb_subdoc3(checkpoint_cb_instance, &cres, &cmd);
+          lcb_wait(checkpoint_cb_instance);
         }
 
         // Reset the seq no of checkpointed vb to 0

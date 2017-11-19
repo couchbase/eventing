@@ -31,7 +31,6 @@ func (c *Consumer) processEvents() {
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.bucket)
 
 				c.stopCheckpointingCh <- struct{}{}
-				c.producer.CleanupDeadConsumer(c)
 				return
 			}
 
@@ -276,7 +275,6 @@ func (c *Consumer) processEvents() {
 				logging.Infof("CRDP[%s:%s:%s:%d] Closing doc timer chan", c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 				c.stopCheckpointingCh <- struct{}{}
-				c.producer.CleanupDeadConsumer(c)
 				return
 			}
 
@@ -288,7 +286,6 @@ func (c *Consumer) processEvents() {
 				logging.Infof("CRDP[%s:%s:%s:%d] Closing non_doc timer chan", c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 				c.stopCheckpointingCh <- struct{}{}
-				c.producer.CleanupDeadConsumer(c)
 				return
 			}
 
@@ -340,7 +337,6 @@ func (c *Consumer) processEvents() {
 
 			logging.Errorf("CRDP[%s:%s:%s:%d] Socket belonging to V8 consumer died",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
-			c.producer.CleanupDeadConsumer(c)
 			return
 		}
 	}

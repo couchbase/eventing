@@ -44,6 +44,16 @@ func createRbacUser() error {
 	return makeRequest("PUT", payload, fmt.Sprintf("%s/%s", rbacSetupURL, rbacuser))
 }
 
+func setIndexStorageMode() error {
+	payload := strings.NewReader(fmt.Sprintf("logLevel=info&maxRollbackPoints=5&storageMode=memory_optimized"))
+	return makeRequest("POST", payload, indexerURL)
+}
+
+func fireQuery(query string) error {
+	payload := strings.NewReader(fmt.Sprintf("statement=%s", query))
+	return makeRequest("POST", payload, queryURL)
+}
+
 func makeRequest(requestType string, payload *strings.Reader, url string) error {
 	req, err := http.NewRequest(requestType, url, payload)
 	if err != nil {
@@ -103,7 +113,7 @@ retryClusterCredsSetup:
 	}
 
 retryQuotaSetup:
-	err = quotaSetup(300, 300)
+	err = quotaSetup(600, 600)
 	if err != nil {
 		fmt.Println("Quota setup", err)
 		time.Sleep(time.Second)
@@ -116,7 +126,7 @@ retryQuotaSetup:
 	buckets = append(buckets, "hello-world")
 
 	for _, bucket := range buckets {
-		err = createBucket(bucket, 100)
+		err = createBucket(bucket, 200)
 		if err != nil {
 			fmt.Println("Create bucket:", err)
 			return

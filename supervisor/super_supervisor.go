@@ -254,6 +254,11 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						p.NotifyInit()
 
 						p.SignalCheckpointBlobCleanup()
+
+						logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
+						p.PurgePlasmaRecords()
+						logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
+
 						s.superSup.Remove(s.producerSupervisorTokenMap[p])
 						delete(s.producerSupervisorTokenMap, p)
 
@@ -369,9 +374,6 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 					s.assignVbucketsToOwn(addrs, currNodeAddr)
 
-					logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
-
-					logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
 				}(s)
 
 			case cmdAppLoad:

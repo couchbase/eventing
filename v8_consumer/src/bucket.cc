@@ -107,6 +107,9 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_SDMUTATE,
                         sdmutate_callback);
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_REMOVE, del_callback);
+
+  lcb_U32 lcb_timeout = 2500000; // 2.5s
+  lcb_cntl(bucket_lcb_obj, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
 }
 
 Bucket::~Bucket() {
