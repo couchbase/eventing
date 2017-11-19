@@ -3,6 +3,7 @@ package producer
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -118,13 +119,33 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["memory_quota"]; ok {
 		p.plasmaMemQuota = int64(val.(float64))
 	} else {
-		p.plasmaMemQuota = 268435456 // 256 MB
+		p.plasmaMemQuota = 1024 * 1024 * 256
 	}
 
 	if val, ok := settings["xattr_doc_timer_entry_prune_threshold"]; ok {
 		p.xattrEntryPruneThreshold = int(val.(float64))
 	} else {
 		p.xattrEntryPruneThreshold = 100
+	}
+
+	if val, ok := settings["app_log_dir"]; ok {
+		os.MkdirAll(val.(string), 0755)
+		p.appLogPath = fmt.Sprintf("%s/%s", val.(string), p.appName)
+	} else {
+		os.MkdirAll(p.eventingDir, 0755)
+		p.appLogPath = fmt.Sprintf("%s/%s.log", p.eventingDir, p.appName)
+	}
+
+	if val, ok := settings["app_log_max_size"]; ok {
+		p.appLogMaxSize = int64(val.(float64))
+	} else {
+		p.appLogMaxSize = 1024 * 1024 * 10
+	}
+
+	if val, ok := settings["app_log_max_files"]; ok {
+		p.appLogMaxFiles = int(val.(float64))
+	} else {
+		p.appLogMaxFiles = 10
 	}
 
 	p.app.Settings = settings

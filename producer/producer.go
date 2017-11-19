@@ -57,6 +57,12 @@ func (p *Producer) Serve() {
 		return
 	}
 
+	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles)
+	if err != nil {
+		logging.Fatalf("PRDR[%s:%d] Failure to open application log writer handle, err: %v", p.appName, p.LenRunningConsumers(), err)
+		return
+	}
+
 	err = p.vbEventingNodeAssign()
 	if err != nil {
 		logging.Fatalf("PRDR[%s:%d] Failure while assigning vbuckets to workers, err: %v", p.appName, p.LenRunningConsumers(), err)
@@ -228,6 +234,7 @@ func (p *Producer) Stop() {
 	p.signalStopPersistAllCh <- struct{}{}
 	p.ProducerListener.Close()
 
+	p.appLogWriter.Close()
 	p.vbPlasmaStore.Close()
 }
 

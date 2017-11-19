@@ -76,6 +76,7 @@ type EventingProducer interface {
 	TimerTransferHostPortAddrs() map[string]string
 	VbEventingNodeAssignMap() map[uint16]string
 	WorkerVbMap() map[string][]uint16
+	WriteAppLog(log string)
 }
 
 // EventingConsumer interface to export functions from eventing_consumer

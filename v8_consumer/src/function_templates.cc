@@ -31,7 +31,7 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
     log_msg += " ";
   }
 
-  LOG(logDebug) << log_msg << '\n';
+  APP_LOG(logDebug) << log_msg << '\n';
 }
 
 // console.log for debugger - also logs to eventing.log

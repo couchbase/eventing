@@ -70,7 +70,8 @@ const (
 	respV8WorkerConfigOpcode int8 = iota
 	sourceMap
 	handlerCode
-	logMessage
+	appLogMessage
+	sysLogMessage
 	latencyStats
 	failureStats
 	executionStats
@@ -138,8 +139,6 @@ func (c *Consumer) makeThrMapHeader() ([]byte, *flatbuffers.Builder) {
 }
 
 func (c *Consumer) makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte, builder *flatbuffers.Builder) {
-	logging.Tracef("makeHeader event: %v opcode: %v", event, opcode)
-
 	builder = c.getBuilder()
 
 	metadata := builder.CreateString(meta)
@@ -325,7 +324,9 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			c.sourceMap = msg
 		case handlerCode:
 			c.handlerCode = msg
-		case logMessage:
+		case appLogMessage:
+			c.producer.WriteAppLog(msg)
+		case sysLogMessage:
 			fmt.Printf("%s", msg)
 		case latencyStats:
 			c.statsRWMutex.Lock()

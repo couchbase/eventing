@@ -1,6 +1,7 @@
 package producer
 
 import (
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -80,6 +81,12 @@ type Producer struct {
 	superSup               common.EventingSuperSup
 	uuid                   string
 	workerCount            int
+
+	// app log related configs
+	appLogPath     string
+	appLogMaxSize  int64
+	appLogMaxFiles int
+	appLogWriter   io.WriteCloser
 
 	rbacUser string
 	rbacPass string
