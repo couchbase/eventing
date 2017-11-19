@@ -173,6 +173,7 @@ type Consumer struct {
 	cppThrPartitionMap map[int][]uint16
 	cppWorkerThrCount  int // No. of worker threads per CPP worker process
 	crcTable           *crc32.Table
+	curlTimeout        int64    // curl operation timeout in ms
 	debugConn          net.Conn // Interface to support communication between Go and C++ worker spawned for debugging
 	debugListener      net.Listener
 	diagDir            string // Location that will house minidumps from from crashed cpp workers

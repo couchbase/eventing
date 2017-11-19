@@ -204,6 +204,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   v8::TryCatch try_catch;
 
+  global->Set(v8::String::NewFromUtf8(GetIsolate(), "curl"),
+              v8::FunctionTemplate::New(GetIsolate(), Curl));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "log"),
               v8::FunctionTemplate::New(GetIsolate(), Log));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "docTimer"),
@@ -270,7 +272,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
                << " enable_recursive_mutation: " << enable_recursive_mutation
-               << '\n';
+               << " curl_timeout: " << curl_timeout << '\n';
 
   connstr = "couchbase://" + settings->kv_host_port + "/" +
             cb_source_bucket.c_str() + "?username=" + settings->rbac_user +
@@ -444,6 +446,12 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
         }
       }
     }
+  }
+
+  curl_global_init(CURL_GLOBAL_ALL);
+  CURL *curl = curl_easy_init();
+  if (curl) {
+    UnwrapData(isolate_)->curl_handle = curl;
   }
 
   lcb_U32 lcb_timeout = 2500000; // 2.5s

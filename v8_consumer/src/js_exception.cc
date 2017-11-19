@@ -56,6 +56,23 @@ void JsException::CopyMembers(JsException &&exc_obj) {
   name.Reset(isolate, v8::String::NewFromUtf8(isolate, name_str));
 }
 
+// Composes exception message for curl related errors
+void JsException::Throw(CURLcode res) {
+  v8::HandleScope handle_scope(isolate);
+
+  auto code_name = code.Get(isolate);
+  auto desc_name = desc.Get(isolate);
+
+  auto code_value = v8::Number::New(isolate, static_cast<int>(res));
+  auto desc_value = v8::String::NewFromUtf8(isolate, curl_easy_strerror(res));
+
+  auto exception = v8::Object::New(isolate);
+  exception->Set(code_name, code_value);
+  exception->Set(desc_name, desc_value);
+
+  isolate->ThrowException(exception);
+}
+
 // Extracts the error message, composes an exception object and throws.
 void JsException::Throw(lcb_t instance, lcb_error_t error) {
   v8::HandleScope handle_scope(isolate);

@@ -61,7 +61,8 @@ type Producer struct {
 	bucket                 string
 	cleanupTimers          bool
 	cfgData                string
-	cppWorkerThrCount      int // No. of worker threads per CPP worker process
+	cppWorkerThrCount      int   // No. of worker threads per CPP worker process
+	curlTimeout            int64 // curl operation timeout in ms
 	diagDir                string
 	eventingAdminPort      string
 	eventingDir            string

@@ -45,7 +45,8 @@ inline std::ostringstream &AppLogger(LogLevel level = logInfo) {
   std::string ts = cts;
 
   std::lock_guard<std::mutex> lock(log_mutex);
-  app_log_os << ts.substr(0, ts.length() - 2) << ":" << ts.substr(ts.length() - 2);
+  app_log_os << ts.substr(0, ts.length() - 2) << ":"
+             << ts.substr(ts.length() - 2);
   app_log_os << " " << LevelToString(level) << " ";
   app_log_os << "VWCP [" << appName << ":" << workerID << "] ";
   return app_log_os;
@@ -59,7 +60,8 @@ inline std::ostringstream &SysLogger(LogLevel level = logInfo) {
   std::string ts = cts;
 
   std::lock_guard<std::mutex> lock(log_mutex);
-  sys_log_os << ts.substr(0, ts.length() - 2) << ":" << ts.substr(ts.length() - 2);
+  sys_log_os << ts.substr(0, ts.length() - 2) << ":"
+             << ts.substr(ts.length() - 2);
   sys_log_os << " " << LevelToString(level) << " ";
   sys_log_os << "VWCP [" << appName << ":" << workerID << "] ";
   return sys_log_os;

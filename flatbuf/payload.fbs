@@ -9,6 +9,7 @@ table Payload {
 
   // Handler config
   app_name:string;
+  curl_timeout:long;
   depcfg:string;
   enable_recursive_mutation:bool;
   enable_v8_debugger:bool;

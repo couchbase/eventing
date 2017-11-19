@@ -148,6 +148,12 @@ func (p *Producer) parseDepcfg() error {
 		p.appLogMaxFiles = 10
 	}
 
+	if val, ok := settings["curl_timeout"]; ok {
+		p.curlTimeout = int64(val.(float64))
+	} else {
+		p.curlTimeout = int64(500)
+	}
+
 	p.app.Settings = settings
 
 	logLevel := settings["log_level"].(string)

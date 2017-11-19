@@ -15,6 +15,8 @@
 #include <unistd.h>
 #include <vector>
 
+#include <curl/curl.h>
+
 #include <libplatform/libplatform.h>
 #include <v8.h>
 
@@ -32,6 +34,7 @@ class V8Worker;
 class JsException;
 // Struct for storing isolate data
 struct Data {
+  CURL *curl_handle;
   N1QL *n1ql_handle;
   V8Worker *v8worker;
   lcb_t cb_instance;
