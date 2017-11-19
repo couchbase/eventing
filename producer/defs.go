@@ -128,6 +128,10 @@ type Producer struct {
 	consumerListeners []net.Listener
 	ProducerListener  net.Listener
 
+	// Threshold post which eventing will try to prune stale xattr records related to
+	// doc timer from KV document in source bucket
+	xattrEntryPruneThreshold int
+
 	// For performance reasons, Golang writes dcp events to tcp socket in batches
 	// socketWriteBatchSize controls the batch size
 	socketWriteBatchSize int

@@ -121,6 +121,12 @@ func (p *Producer) parseDepcfg() error {
 		p.plasmaMemQuota = 268435456 // 256 MB
 	}
 
+	if val, ok := settings["xattr_doc_timer_entry_prune_threshold"]; ok {
+		p.xattrEntryPruneThreshold = int(val.(float64))
+	} else {
+		p.xattrEntryPruneThreshold = 100
+	}
+
 	p.app.Settings = settings
 
 	logLevel := settings["log_level"].(string)

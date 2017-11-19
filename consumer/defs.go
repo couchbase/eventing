@@ -209,6 +209,8 @@ type Consumer struct {
 	vbsRemainingToGiveUp   []uint16
 	vbsRemainingToRestream []uint16
 
+	xattrEntryPruneThreshold int
+
 	// Routines to control parallel vbucket ownership transfer
 	// during rebalance
 	vbOwnershipGiveUpRoutineCount   int

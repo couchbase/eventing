@@ -24,8 +24,9 @@ import (
 
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
-	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize, timerProcessingPoolSize int,
-	cppWorkerThrCount, vbOwnershipGiveUpRoutineCount, vbOwnershipTakeoverRoutineCount int,
+	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize int,
+	timerProcessingPoolSize, cppWorkerThrCount, vbOwnershipGiveUpRoutineCount int,
+	vbOwnershipTakeoverRoutineCount, xattrEntryPruneThreshold int,
 	bucket, eventingAdminPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
@@ -120,6 +121,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		vbsRemainingToOwn:               make([]uint16, 0),
 		vbsRemainingToRestream:          make([]uint16, 0),
 		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
+		xattrEntryPruneThreshold:        xattrEntryPruneThreshold,
 	}
 
 	consumer.builderPool = &sync.Pool{

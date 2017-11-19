@@ -497,7 +497,9 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 		}
 	}
 
-	if entriesToPrune > 0 {
+	// Prune entries related to doc timer from xattr only when entries to purge is
+	// beyond threshold(default being 100)
+	if entriesToPrune > c.xattrEntryPruneThreshold {
 		// Cleaning up timer event entry record which point to time in past
 		docF := c.gocbBucket.MutateIn(key, 0, expiry)
 		docF.UpsertEx(xattrTimerPath, timersToKeep, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath)
