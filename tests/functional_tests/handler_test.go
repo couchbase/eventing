@@ -356,7 +356,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats(appName)
 	fmt.Println("Undeploying app:", appName)
 	setSettings(appName, false, false, &commonSettings{})
 
@@ -374,15 +374,12 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats(appName)
 	fmt.Println("Undeploying app:", appName)
 	setSettings(appName, false, false, &commonSettings{})
 
-	bucketFlush("default")
-	bucketFlush("hello-world")
 	time.Sleep(5 * time.Second)
-
-	deleteFunction(handler)
+	flushFunctionAndBucket(handler)
 }
 
 func TestCPPWorkerCleanup(t *testing.T) {
@@ -411,7 +408,7 @@ func TestCPPWorkerCleanup(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-func TestN1QLLabelledBreak(t *testing.T) {
+/*func TestN1QLLabelledBreak(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "n1ql_labelled_break.js"
 
@@ -434,7 +431,7 @@ func TestN1QLLabelledBreak(t *testing.T) {
 	dumpStats(handler)
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
-}
+}*/
 
 func TestN1QLUnlabelledBreak(t *testing.T) {
 	time.Sleep(time.Second * 5)
