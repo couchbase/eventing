@@ -51,7 +51,9 @@ func (c *client) Serve() {
 	defer c.consumerHandle.connMutex.Unlock()
 
 	if c.consumerHandle != nil {
-		c.consumerHandle.conn.Close()
+		if c.consumerHandle.conn != nil {
+			c.consumerHandle.conn.Close()
+		}
 	}
 	c.consumerHandle.conn = nil
 }

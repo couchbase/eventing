@@ -104,6 +104,7 @@ typedef struct handler_config_s {
   int execution_timeout;
   int lcb_inst_capacity;
   bool enable_recursive_mutation;
+  bool skip_lcb_bootstrap;
 } handler_config_t;
 
 class Bucket;

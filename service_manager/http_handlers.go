@@ -15,6 +15,7 @@ import (
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -949,6 +950,21 @@ func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	builder.Finish(config)
 
 	appContent := builder.FinishedBytes()
+
+	c := &consumer.Consumer{}
+	info, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName)
+	if err != nil || !info.CompileSuccess {
+		res, mErr := json.Marshal(&info)
+		if mErr != nil {
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+			fmt.Fprintf(w, "App: %s Failed to marshal compilation status, err: %v", appName, mErr)
+			return
+		}
+
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errHandlerCompile.Code))
+		fmt.Fprintf(w, "%v\n", string(res))
+		return
+	}
 
 	settingsPath := metakvAppSettingsPath + appName
 	settings := app.Settings

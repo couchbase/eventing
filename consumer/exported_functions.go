@@ -4,12 +4,19 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"os"
+	"os/exec"
+	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
+	"github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"github.com/google/flatbuffers/go"
 )
 
 // ClearEventStats flushes event processing stats
@@ -102,7 +109,7 @@ func (c *Consumer) SetConnHandle(conn net.Conn) {
 	defer c.connMutex.Unlock()
 
 	c.conn = conn
-	logging.Infof("V8CR[%s:%s:%s:%d] Setting conn handle: %v",
+	logging.Infof("CREF[%s:%s:%s:%d] Setting conn handle: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.conn)
 
 	c.sockReader = bufio.NewReader(c.conn)
@@ -116,7 +123,7 @@ func (c *Consumer) SetConnHandle(conn net.Conn) {
 // SignalBootstrapFinish is leveraged by Eventing.Producer instance to know
 // if corresponding Eventing.Consumer instance has finished bootstrap
 func (c *Consumer) SignalBootstrapFinish() {
-	logging.Infof("V8CR[%s:%s:%s:%d] Got request to signal bootstrap status",
+	logging.Infof("CREF[%s:%s:%s:%d] Got request to signal bootstrap status",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 	<-c.signalBootstrapFinishCh
@@ -175,4 +182,107 @@ func (c *Consumer) Pid() int {
 		return pid
 	}
 	return 0
+}
+
+// SpawnCompilationWorker bring up a CPP worker to compile the user supplied handler code
+func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName string) (*common.CompileStatus, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		logging.Errorf("CREF[%s:%s:%s:%d] Compilation worker: Failed to listen on tcp port, err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		return nil, err
+	}
+
+	connectedCh := make(chan struct{}, 1)
+	c.initConsumer(appName)
+
+	go func(listener net.Listener, connectedCh chan struct{}) {
+
+		var err error
+		c.conn, err = listener.Accept()
+		if err != nil {
+			logging.Errorf("CREF[%s:%s:%s:%d] Compilation worker: Error on accept, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+			return
+		}
+
+		logging.Infof("CREF[%s:%s:%s:%d] Compilation worker: got connection: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.conn)
+
+		connectedCh <- struct{}{}
+	}(listener, connectedCh)
+
+	c.tcpPort = strings.Split(listener.Addr().String(), ":")[1]
+	var pid int
+
+	go func(pid int, appName string) {
+		cmd := exec.Command("eventing-consumer", appName, "af_inet", c.tcpPort,
+			fmt.Sprintf("worker_%s", appName), "1", "8096")
+
+		err := cmd.Start()
+		if err != nil {
+			logging.Errorf("CREF[%s:%s:%s:%d] Failed to spawn compilation worker, err: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		} else {
+			pid = cmd.Process.Pid
+			logging.Infof("CREF[%s:%s:%s:%d] compilation worker launched",
+				c.app.AppName, c.workerName, c.tcpPort, pid)
+		}
+
+		cmd.Wait()
+
+	}(pid, appName)
+	<-connectedCh
+	c.sockReader = bufio.NewReader(c.conn)
+
+	c.sendWorkerThrCount(1, false)
+
+	// Framing bare minimum V8 worker init payload
+	payload, pBuilder := c.makeV8InitPayload(appName, "127.0.0.1", "", "",
+		"", appContent, "", "", 5, 1, 10*1000, true, true, 500)
+
+	c.sendInitV8Worker(payload, false, pBuilder)
+
+	c.sendCompileRequest(appCode)
+
+	go c.readMessageLoop()
+
+	for c.compileInfo == nil {
+		time.Sleep(1 * time.Second)
+	}
+
+	c.conn.Close()
+	listener.Close()
+
+	if pid > 1 {
+		ps, err := os.FindProcess(pid)
+		if err == nil {
+			ps.Kill()
+		}
+	}
+
+	return c.compileInfo, nil
+}
+
+func (c *Consumer) initConsumer(appName string) {
+	c.executionTimeout = 10000
+	c.lcbInstCapacity = 1
+	c.socketWriteBatchSize = 1
+	c.cppWorkerThrCount = 1
+	c.curlTimeout = 1000
+	c.ipcType = "af_inet"
+
+	c.connMutex = &sync.RWMutex{}
+	c.msgProcessedRWMutex = &sync.RWMutex{}
+	c.sendMsgBufferRWMutex = &sync.RWMutex{}
+	c.app = &common.AppConfig{AppName: appName}
+	c.socketTimeout = 1 * time.Second
+
+	c.v8WorkerMessagesProcessed = make(map[string]uint64)
+
+	c.builderPool = &sync.Pool{
+		New: func() interface{} {
+			return flatbuffers.NewBuilder(0)
+		},
+	}
 }

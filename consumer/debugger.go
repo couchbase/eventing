@@ -47,7 +47,7 @@ func (c *debugClient) Serve() {
 	err = c.cmd.Wait()
 	if err != nil {
 		logging.Warnf("CRCL[%s:%s:%s:%d] Exiting c++ debug worker with error: %v",
-		c.appName, c.workerName, c.debugTCPPort, c.osPid, err)
+			c.appName, c.workerName, c.debugTCPPort, c.osPid, err)
 	}
 
 	logging.Debugf("CRDCL[%s:%s:%s:%d] Exiting C++ worker spawned for debugger",
@@ -239,7 +239,7 @@ func (c *Consumer) startDebuggerServer() {
 
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
 		c.producer.KvHostPorts()[0], c.producer.CfgData(), c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity,
-		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)), c.enableRecursiveMutation,
+		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)), c.enableRecursiveMutation, false,
 		c.curlTimeout)
 	logging.Debugf("CRSD[%s:%s:%s:%d] Debug enabled V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.debugTCPPort, c.Pid(), c.enableRecursiveMutation)

@@ -53,8 +53,8 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 	}
 
 	if len(vbsOwned) == 0 {
-		logging.Verbosef("CRTE[%s:%s:%s:%d] Timer processing worker vbucket assignment, no vbucket owned by consumer",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+		logging.Verbosef("CRTE[%s:%s:%s:%d] IniWorkers: %v Timer processing worker vbucket assignment, no vbucket owned by consumer",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), initWorkers)
 		return
 	}
 

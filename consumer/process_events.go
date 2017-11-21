@@ -418,7 +418,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 		defer func() {
 			if r := recover(); r != nil {
 				trace := debug.Stack()
-				logging.Errorf("CRDP[%s:%s:%s:%d] addToAggChan: panic and recover, %v stack trace: %v",
+				logging.Errorf("CRDP[%s:%s:%s:%d] addToAggChan: recover %v stack trace: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 			}
 		}()

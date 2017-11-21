@@ -41,7 +41,7 @@ std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
 
 void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                          message_t *parsed_message) {
-  std::string key, val, doc_id, callback_fn, doc_ids_cb_fns;
+  std::string key, val, doc_id, callback_fn, doc_ids_cb_fns, compile_resp;
   v8::Platform *platform;
   server_settings_t *server_settings;
   handler_config_t *handler_config;
@@ -77,6 +77,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
       handler_config->enable_recursive_mutation =
           payload->enable_recursive_mutation();
+      handler_config->skip_lcb_bootstrap = payload->skip_lcb_bootstrap();
 
       server_settings->checkpoint_interval = payload->checkpoint_interval();
       server_settings->eventing_dir.assign(payload->eventing_dir()->str());
@@ -194,6 +195,15 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       resp_msg->msg.assign(estats.str());
       resp_msg->msg_type = mV8_Worker_Config;
       resp_msg->opcode = oExecutionStats;
+      msg_priority = true;
+      break;
+    case oGetCompileInfo:
+      LOG(logDebug) << "Compiling app code:" << parsed_header->metadata << '\n';
+      compile_resp = workers[0]->CompileHandler(parsed_header->metadata);
+
+      resp_msg->msg.assign(compile_resp);
+      resp_msg->msg_type = mV8_Worker_Config;
+      resp_msg->opcode = oCompileInfo;
       msg_priority = true;
       break;
     case oVersion:
@@ -627,11 +637,12 @@ AppWorker *AppWorker::GetAppWorker() {
 #if defined(BREAKPAD_FOUND)
 static bool dumpCallback(const google_breakpad::MinidumpDescriptor &descriptor,
                          void *context, bool succeeded) {
-  std::cerr << std::endl << "=== Minidump location " << descriptor.path() << "===" << std::endl;
+  std::cerr << std::endl
+            << "=== Minidump location " << descriptor.path()
+            << "===" << std::endl;
   return succeeded;
 }
 #endif
-
 
 int main(int argc, char **argv) {
   global_program_name = argv[0];
@@ -665,7 +676,8 @@ int main(int argc, char **argv) {
 
 #if defined(BREAKPAD_FOUND)
   google_breakpad::MinidumpDescriptor descriptor(diag_dir.c_str());
-  google_breakpad::ExceptionHandler eh(descriptor, NULL, dumpCallback, NULL, true, -1);
+  google_breakpad::ExceptionHandler eh(descriptor, NULL, dumpCallback, NULL,
+                                       true, -1);
 #endif
 
   setAppName(appname);

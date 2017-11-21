@@ -13,14 +13,14 @@
 #include "../include/n1ql.h"
 #include "v8.h"
 
-Transpiler::Transpiler(const std::string &transpiler_src) {
-  isolate = v8::Isolate::GetCurrent();
-  v8::EscapableHandleScope handle_scope(isolate);
-  v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate);
+Transpiler::Transpiler(v8::Isolate *isolate_, const std::string &transpiler_src)
+    : isolate(isolate_) {
+  v8::EscapableHandleScope handle_scope(isolate_);
+  v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate_);
 
-  context = v8::Context::New(isolate, NULL, global);
+  context = v8::Context::New(isolate_, NULL, global);
   v8::Context::Scope context_scope(context);
-  auto source = v8Str(isolate, transpiler_src.c_str());
+  auto source = v8Str(isolate_, transpiler_src.c_str());
   auto script = v8::Script::Compile(context, source).ToLocalChecked();
   script->Run(context).ToLocalChecked();
 

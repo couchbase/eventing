@@ -27,6 +27,9 @@ func (c *Consumer) controlRoutine() {
 
 		case <-c.signalSettingsChangeCh:
 
+			logging.Infof("CRCR[%s:%s:%s:%d] Got notification for settings change",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+
 			settingsPath := metakvAppSettingsPath + c.app.AppName
 			sData, err := util.MetakvGet(settingsPath)
 			if err != nil {
@@ -100,7 +103,7 @@ func (c *Consumer) controlRoutine() {
 			vbsToRestream := c.vbsRemainingToRestream
 
 			// Verify if the app is deployed or not before trying to reopen vbucket DCP streams
-			// for the ones which recently have returned STREAMENND. QE frequently does flush
+			// for the ones which recently have returned STREAMEND. QE frequently does flush
 			// on source bucket right after undeploy
 			deployedApps := c.superSup.GetDeployedApps()
 			if _, ok := deployedApps[c.app.AppName]; !ok {
