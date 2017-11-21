@@ -125,3 +125,7 @@ type bucket struct {
 	Alias      string `json:"alias"`
 	BucketName string `json:"bucket_name"`
 }
+
+type backlogStat struct {
+	DcpBacklog uint64 `json:"dcp_backlog"`
+}

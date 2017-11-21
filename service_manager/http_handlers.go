@@ -1000,8 +1000,10 @@ func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Reques
 
 	if m.checkIfDeployed(appName) {
 		eventsRemaining := m.superSup.GetDcpEventsRemainingToProcess(appName)
+		resp := backlogStat{DcpBacklog: eventsRemaining}
+		data, _ := json.Marshal(&resp)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%v", eventsRemaining)
+		fmt.Fprintf(w, "%v", string(data))
 		return
 	}
 

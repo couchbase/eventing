@@ -29,4 +29,4 @@ GoInstall (TARGET eventing-producer PACKAGE github.com/couchbase/eventing/cmd/pr
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION})
 
-ADD_DEPENDENCIES(eventing-producer generated)
+ADD_DEPENDENCIES(eventing-producer generated cbq-engine indexer)
