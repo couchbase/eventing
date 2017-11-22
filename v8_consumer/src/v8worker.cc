@@ -439,8 +439,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
     for (; bucket_handle != bucket_handles.end(); bucket_handle++) {
       if (*bucket_handle) {
-        std::map<std::string, std::string> data_bucket;
-        if (!(*bucket_handle)->Initialize(this, &data_bucket)) {
+        if (!(*bucket_handle)->Initialize(this)) {
           LOG(logError) << "Error initializing bucket handle" << '\n';
           return kFailedInitBucketHandle;
         }
