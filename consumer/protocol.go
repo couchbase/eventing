@@ -77,6 +77,7 @@ const (
 	failureStats
 	executionStats
 	compileInfo
+	queueSize
 )
 
 type message struct {
@@ -368,6 +369,12 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			err := json.Unmarshal([]byte(msg), &c.compileInfo)
 			if err != nil {
 				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal compilation stats, msg: %s err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+		case queueSize:
+			err := json.Unmarshal([]byte(msg), &c.cppWorkerAggQueueSize)
+			if err != nil {
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal agg queue size, msg: %s err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		}

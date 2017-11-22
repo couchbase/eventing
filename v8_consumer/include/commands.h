@@ -76,6 +76,7 @@ enum v8_worker_config_opcode {
   oFailureStats,
   oExecutionStats,
   oCompileInfo,
+  oQueueSize,
   V8_Worker_Config_Opcode_Unknown
 };
 

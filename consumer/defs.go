@@ -170,6 +170,12 @@ type Consumer struct {
 	connMutex *sync.RWMutex
 	conn      net.Conn // Access controlled by connMutex
 
+	// Captures aggregate of items in queue maintained for each V8Worker instance.
+	// Within a single CPP worker process, the number of V8Worker instance is equal
+	// to number of worker threads spawned
+	cppWorkerAggQueueSize *cppQueueSize
+	workerQueueCap        int64
+
 	cppThrPartitionMap map[int][]uint16
 	cppWorkerThrCount  int // No. of worker threads per CPP worker process
 	crcTable           *crc32.Table
@@ -472,4 +478,8 @@ type msgToTransmit struct {
 	prioritize     bool
 	headerBuilder  *flatbuffers.Builder
 	payloadBuilder *flatbuffers.Builder
+}
+
+type cppQueueSize struct {
+	AggQueueSize int64 `json:"agg_queue_size"`
 }

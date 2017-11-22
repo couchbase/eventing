@@ -77,6 +77,7 @@ type Producer struct {
 	nsServerHostPort       string
 	pauseProducerCh        chan struct{}
 	persistAllTicker       *time.Ticker
+	workerQueueCap         int64
 	tcpPort                string
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup

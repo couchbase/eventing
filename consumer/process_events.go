@@ -24,6 +24,16 @@ func (c *Consumer) processEvents() {
 	var timerMsgCounter uint64
 
 	for {
+
+		if c.cppWorkerAggQueueSize != nil {
+			if c.workerQueueCap < c.cppWorkerAggQueueSize.AggQueueSize {
+				logging.Infof("CRDP[%s:%s:%s:%d] Throttling events to cpp worker, aggregate queue size: %v cap: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.cppWorkerAggQueueSize.AggQueueSize,
+					c.workerQueueCap)
+				time.Sleep(1 * time.Second)
+			}
+		}
+
 		select {
 		case e, ok := <-c.aggDCPFeed:
 			if ok == false {

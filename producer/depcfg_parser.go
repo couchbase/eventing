@@ -119,7 +119,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["memory_quota"]; ok {
 		p.plasmaMemQuota = int64(val.(float64))
 	} else {
-		p.plasmaMemQuota = 1024 * 1024 * 256
+		p.plasmaMemQuota = 256 // in MB
 	}
 
 	if val, ok := settings["xattr_doc_timer_entry_prune_threshold"]; ok {
@@ -152,6 +152,12 @@ func (p *Producer) parseDepcfg() error {
 		p.curlTimeout = int64(val.(float64))
 	} else {
 		p.curlTimeout = int64(500)
+	}
+
+	if val, ok := settings["worker_queue_cap"]; ok {
+		p.workerQueueCap = int64(val.(float64))
+	} else {
+		p.workerQueueCap = int64(1000 * 1000)
 	}
 
 	p.app.Settings = settings

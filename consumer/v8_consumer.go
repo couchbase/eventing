@@ -26,7 +26,7 @@ import (
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
 	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize int,
 	timerProcessingPoolSize, cppWorkerThrCount, vbOwnershipGiveUpRoutineCount int,
-	curlTimeout int64, vbOwnershipTakeoverRoutineCount, xattrEntryPruneThreshold int,
+	curlTimeout int64, vbOwnershipTakeoverRoutineCount, xattrEntryPruneThreshold int, workerQueueCap int64,
 	bucket, eventingAdminPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
@@ -123,6 +123,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		vbsRemainingToOwn:               make([]uint16, 0),
 		vbsRemainingToRestream:          make([]uint16, 0),
 		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
+		workerQueueCap:                  workerQueueCap,
 		xattrEntryPruneThreshold:        xattrEntryPruneThreshold,
 	}
 

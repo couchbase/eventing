@@ -178,6 +178,7 @@ public:
                     int args_len);
 
   void Enqueue(header_t *header, message_t *payload);
+  int64_t QueueSize();
 
   void V8WorkerDispose();
   void V8WorkerTerminateExecution();

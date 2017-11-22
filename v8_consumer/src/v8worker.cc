@@ -593,6 +593,8 @@ void V8Worker::Checkpoint() {
   }
 }
 
+int64_t V8Worker::QueueSize() { return worker_queue->count(); }
+
 void V8Worker::RouteMessage() {
   const flatbuf::payload::Payload *payload;
   std::string key, val, doc_id, callback_fn, cron_cb_fns, metadata;
