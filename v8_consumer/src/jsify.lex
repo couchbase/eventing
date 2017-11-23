@@ -12,7 +12,7 @@
 
 	#include <list>
 	#include <algorithm>
-	#include "n1ql.h"
+ 	#include "n1ql.h"
 
 	lex_op_code lex_op;
 	int pos_type_len[2];
@@ -108,8 +108,6 @@
 			js_code += ";";
 		} else if(lex_op == kCommentN1QL) {
 			js_code += "*/$;";
-			// TODO : Before updating insertions, need to mangle the multiline comment tokens '/* and '*/' that are present in
-			// the N1QL queries as comment matching in JavaScript follows greedy matching
 			UpdatePos(insert_type::kN1QLEnd);
 		}
 	}
@@ -120,7 +118,13 @@
 			js_code += "\\";
 		}
 
-		js_code += std::string(yytext);
+		if(lex_op == kCommentN1QL) {
+			// For kCommentN1QL, instead of appending the character read, we substitute a '*'
+			// This is done because it will be ambiguous to JavaScript parser if it sees comment in N1QL query.
+			js_code += "*";
+		} else {
+			js_code += std::string(yytext);
+		}
 	}
 <N1QL>\n {
 		if(lex_op == kCommentN1QL) {
@@ -175,12 +179,14 @@ int CommentN1QL(const char *input, std::string *output, std::list<InsertedCharsI
 	return TransformSource(input, output, last_pos_out);
 }
 
+// Update line number, column number and index based on the current value of js_code
 void UpdatePos(Pos *pos) {
 	pos->line_no = std::count(js_code.begin(), js_code.end(), '\n') + 1;
 	for(auto c = js_code.crbegin(); (c != js_code.crend()) && (*c != '\n'); ++c) {
 		++pos->col_no;
 	}
 
+ // To make col_no atleast 1
 	++pos->col_no;
 	pos->index = std::max(static_cast<decltype(js_code.length())>(0), js_code.length() - 1);
 }
