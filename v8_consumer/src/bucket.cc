@@ -26,6 +26,7 @@
 
 #include "../include/bucket.h"
 
+// lcb related callbacks
 static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
   const lcb_RESPGET *resp = reinterpret_cast<const lcb_RESPGET *>(rb);
   Result *result = reinterpret_cast<Result *>(rb->cookie);
@@ -73,18 +74,12 @@ static void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
 }
 
 Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
-               const char *alias, std::string rbac_user,
-               std::string rbac_pass) {
+               const char *alias, std::string rbac_user, std::string rbac_pass)
+    : bucket_name(bname), endpoint(ep), bucket_alias(alias), worker(w) {
   isolate_ = w->GetIsolate();
   context_.Reset(isolate_, w->context_);
 
-  bucket_name.assign(bname);
-  endpoint.assign(ep);
-  bucket_alias.assign(alias);
-
-  worker = w;
-
-  std::string connstr = "couchbase://" + GetEndPoint() + "/" + GetBucketName() +
+  std::string connstr = "couchbase://" + endpoint + "/" + bucket_name +
                         "?username=" + rbac_user + "&select_bucket=true";
 
   LOG(logInfo) << "Bucket: connstr " << connstr << '\n';
@@ -117,79 +112,63 @@ Bucket::~Bucket() {
   context_.Reset();
 }
 
-bool Bucket::Initialize(V8Worker *w,
-                        std::map<std::string, std::string> *bucket) {
+bool Bucket::Initialize(V8Worker *w) {
+  v8::HandleScope handle_scope(isolate_);
 
-  v8::HandleScope handle_scope(GetIsolate());
-
-  v8::Local<v8::Context> context =
-      v8::Local<v8::Context>::New(GetIsolate(), w->context_);
-  context_.Reset(GetIsolate(), context);
-
+  auto context = v8::Local<v8::Context>::New(isolate_, w->context_);
+  context_.Reset(isolate_, context);
   v8::Context::Scope context_scope(context);
 
-  if (!InstallMaps(bucket))
+  if (!InstallMaps()) {
     return false;
+  }
 
   return true;
 }
 
-v8::Local<v8::Object>
-Bucket::WrapBucketMap(std::map<std::string, std::string> *obj) {
-
-  v8::EscapableHandleScope handle_scope(GetIsolate());
+// Associates the lcb instance with the bucket object and returns it
+v8::Local<v8::Object> Bucket::WrapBucketMap() {
+  v8::EscapableHandleScope handle_scope(isolate_);
 
   if (bucket_map_template_.IsEmpty()) {
-    v8::Local<v8::ObjectTemplate> raw_template =
-        MakeBucketMapTemplate(GetIsolate());
-    bucket_map_template_.Reset(GetIsolate(), raw_template);
+    auto raw_template = MakeBucketMapTemplate();
+    bucket_map_template_.Reset(isolate_, raw_template);
   }
 
-  v8::Local<v8::ObjectTemplate> templ =
-      v8::Local<v8::ObjectTemplate>::New(GetIsolate(), bucket_map_template_);
+  auto templ =
+      v8::Local<v8::ObjectTemplate>::New(isolate_, bucket_map_template_);
+  auto context = context_.Get(isolate_);
+  auto result = templ->NewInstance(context).ToLocalChecked();
+  auto bucket_lcb_obj_ptr = v8::External::New(isolate_, &bucket_lcb_obj);
 
-  v8::Local<v8::Object> result =
-      templ->NewInstance(GetIsolate()->GetCurrentContext()).ToLocalChecked();
-
-  v8::Local<v8::External> map_ptr = v8::External::New(GetIsolate(), obj);
-
-  v8::Local<v8::External> bucket_lcb_obj_ptr =
-      v8::External::New(GetIsolate(), &bucket_lcb_obj);
-
-  result->SetInternalField(0, map_ptr);
-  result->SetInternalField(1, bucket_lcb_obj_ptr);
-
+  result->SetInternalField(0, bucket_lcb_obj_ptr);
   return handle_scope.Escape(result);
 }
 
-bool Bucket::InstallMaps(std::map<std::string, std::string> *bucket) {
+// Adds the bucket object as a global variable in JavaScript
+bool Bucket::InstallMaps() {
+  v8::HandleScope handle_scope(isolate_);
 
-  v8::HandleScope handle_scope(GetIsolate());
-
-  v8::Local<v8::Object> bucket_obj = WrapBucketMap(bucket);
-
-  v8::Local<v8::Context> context =
-      v8::Local<v8::Context>::New(GetIsolate(), context_);
+  auto bucket_obj = WrapBucketMap();
+  auto context = v8::Local<v8::Context>::New(isolate_, context_);
 
   LOG(logInfo) << "Registering handler for bucket_alias: " << bucket_alias
                << " bucket_name: " << bucket_name << '\n';
-  // Set the options object as a property on the global object.
-  context->Global()
-      ->Set(context,
-            v8::String::NewFromUtf8(GetIsolate(), bucket_alias.c_str(),
-                                    v8::NewStringType::kNormal)
-                .ToLocalChecked(),
-            bucket_obj)
-      .FromJust();
 
-  return true;
+  return context->Global()->Set(v8Str(isolate_, bucket_alias.c_str()),
+                                bucket_obj);
 }
 
-void Bucket::BucketGet(v8::Local<v8::Name> name,
-                       const v8::PropertyCallbackInfo<v8::Value> &info) {
-  if (name->IsSymbol())
+// Performs the lcb related calls when bucket object is accessed
+template <>
+void Bucket::BucketGet<v8::Local<v8::Name>>(
+    const v8::Local<v8::Name> &name,
+    const v8::PropertyCallbackInfo<v8::Value> &info) {
+  if (name->IsSymbol()) {
     return;
+  }
 
+  auto isolate = info.GetIsolate();
   v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
   std::string key(*utf8_key);
 
@@ -206,7 +185,7 @@ void Bucket::BucketGet(v8::Local<v8::Name> name,
   // Throw an exception in JavaScript if the bucket get call failed.
   if (result.rc != LCB_SUCCESS) {
     bucket_op_exception_count++;
-    auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
+    auto js_exception = UnwrapData(isolate)->js_exception;
     js_exception->Throw(*bucket_lcb_obj_ptr, result.rc);
     return;
   }
@@ -215,15 +194,15 @@ void Bucket::BucketGet(v8::Local<v8::Name> name,
                 << '\n';
 
   const std::string &value = result.value;
-  info.GetReturnValue().Set(
-      v8::JSON::Parse(v8::String::NewFromUtf8(info.GetIsolate(), value.c_str(),
-                                              v8::NewStringType::kNormal,
-                                              static_cast<int>(value.length()))
-                          .ToLocalChecked()));
+  auto value_json = v8::JSON::Parse(v8Str(isolate, value.c_str()));
+  info.GetReturnValue().Set(value_json);
 }
 
-void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
-                       const v8::PropertyCallbackInfo<v8::Value> &info) {
+// Performs the lcb related calls when bucket object is accessed
+template <>
+void Bucket::BucketSet<v8::Local<v8::Name>>(
+    const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
+    const v8::PropertyCallbackInfo<v8::Value> &info) {
   if (name->IsSymbol())
     return;
 
@@ -364,8 +343,11 @@ void Bucket::BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj,
   info.GetReturnValue().Set(value_obj);
 }
 
-void Bucket::BucketDelete(v8::Local<v8::Name> name,
-                          const v8::PropertyCallbackInfo<v8::Boolean> &info) {
+// Performs the lcb related calls when bucket object is accessed
+template <>
+void Bucket::BucketDelete<v8::Local<v8::Name>>(
+    v8::Local<v8::Name> name,
+    const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   if (name->IsSymbol())
     return;
 
@@ -394,15 +376,62 @@ void Bucket::BucketDelete(v8::Local<v8::Name> name,
   info.GetReturnValue().Set(true);
 }
 
-v8::Local<v8::ObjectTemplate>
-Bucket::MakeBucketMapTemplate(v8::Isolate *isolate) {
+// Registers the necessary callbacks to the bucket object in JavaScript
+v8::Local<v8::ObjectTemplate> Bucket::MakeBucketMapTemplate() {
+  v8::EscapableHandleScope handle_scope(isolate_);
 
-  v8::EscapableHandleScope handle_scope(isolate);
-
-  v8::Local<v8::ObjectTemplate> result = v8::ObjectTemplate::New(isolate);
-  result->SetInternalFieldCount(2);
-  result->SetHandler(v8::NamedPropertyHandlerConfiguration(BucketGet, BucketSet,
-                                                           NULL, BucketDelete));
-
+  v8::Local<v8::ObjectTemplate> result = v8::ObjectTemplate::New(isolate_);
+  // We will store lcb_instance associated with this bucket object in the
+  // internal field
+  result->SetInternalFieldCount(1);
+  // Register corresponding callbacks for alphanumeric accesses on bucket object
+  result->SetHandler(v8::NamedPropertyHandlerConfiguration(
+      BucketGetDelegate, BucketSetDelegate, nullptr, BucketDeleteDelegate));
+  // Register corresponding callbacks for numeric accesses on bucket object
+  result->SetIndexedPropertyHandler(
+      v8::IndexedPropertyGetterCallback(BucketGetDelegate),
+      v8::IndexedPropertySetterCallback(BucketSetDelegate), nullptr,
+      v8::IndexedPropertyDeleterCallback(BucketDeleteDelegate));
   return handle_scope.Escape(result);
+}
+
+// Delegates to the appropriate type of handler
+template <typename T>
+void Bucket::BucketGetDelegate(
+    T name, const v8::PropertyCallbackInfo<v8::Value> &info) {
+  BucketGet<T>(name, info);
+}
+
+template <typename T>
+void Bucket::BucketSetDelegate(
+    T key, v8::Local<v8::Value> value,
+    const v8::PropertyCallbackInfo<v8::Value> &info) {
+  BucketSet<T>(key, value, info);
+}
+
+template <typename T>
+void Bucket::BucketDeleteDelegate(
+    T key, const v8::PropertyCallbackInfo<v8::Boolean> &info) {
+  BucketDelete<T>(key, info);
+}
+
+// Specialized templates to forward the delegate to the overload doing the
+// acutal work
+template <>
+void Bucket::BucketGet<uint32_t>(
+    uint32_t key, const v8::PropertyCallbackInfo<v8::Value> &info) {
+  BucketGet<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), info);
+}
+
+template <>
+void Bucket::BucketSet<uint32_t>(
+    uint32_t key, const v8::Local<v8::Value> &value,
+    const v8::PropertyCallbackInfo<v8::Value> &info) {
+  BucketSet<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), value, info);
+}
+
+template <typename>
+void Bucket::BucketDelete(uint32_t key,
+                          const v8::PropertyCallbackInfo<v8::Boolean> &info) {
+  BucketDelete<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), info);
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth/metakv"
+	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/supervisor"
 )
@@ -18,6 +19,8 @@ func main() {
 		os.Exit(2)
 	}
 
+	audit.Init(flags.restPort)
+
 	adminPort := supervisor.AdminPortConfig{
 		HTTPPort: flags.adminHTTPPort,
 		SslPort:  flags.adminSSLPort,
@@ -25,7 +28,7 @@ func main() {
 		KeyFile:  flags.sslKeyFile,
 	}
 
-	s := supervisor.NewSuperSupervisor(adminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid)
+	s := supervisor.NewSuperSupervisor(adminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid, flags.diagDir)
 
 	// For app reloads
 	go func(s *supervisor.SuperSupervisor) {

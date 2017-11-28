@@ -74,7 +74,8 @@
             </button>
             <button
               ng-click="$event.stopPropagation();"
-              ui-sref="app.admin.eventing.handler({appName:app.appname})">
+              ui-sref="app.admin.eventing.handler({appName:app.appname})"
+              ng-disabled="summaryCtrl.disableEditButton">
             Edit JavaScript
             </button>
           </div>

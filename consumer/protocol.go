@@ -45,6 +45,7 @@ const (
 	v8WorkerLatencyStats
 	v8WorkerFailureStats
 	v8WorkerExecutionStats
+	v8WorkerCompile
 )
 
 const (
@@ -70,10 +71,13 @@ const (
 	respV8WorkerConfigOpcode int8 = iota
 	sourceMap
 	handlerCode
-	logMessage
+	appLogMessage
+	sysLogMessage
 	latencyStats
 	failureStats
 	executionStats
+	compileInfo
+	queueSize
 )
 
 type message struct {
@@ -117,6 +121,10 @@ func (c *Consumer) makeV8InitOpcodeHeader() ([]byte, *flatbuffers.Builder) {
 	return c.makeV8EventHeader(v8WorkerInit, "")
 }
 
+func (c *Consumer) makeV8CompileOpcodeHeader(appCode string) ([]byte, *flatbuffers.Builder) {
+	return c.makeV8EventHeader(v8WorkerCompile, appCode)
+}
+
 func (c *Consumer) makeV8LoadOpcodeHeader(appCode string) ([]byte, *flatbuffers.Builder) {
 	return c.makeV8EventHeader(v8WorkerLoad, appCode)
 }
@@ -138,8 +146,6 @@ func (c *Consumer) makeThrMapHeader() ([]byte, *flatbuffers.Builder) {
 }
 
 func (c *Consumer) makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte, builder *flatbuffers.Builder) {
-	logging.Tracef("makeHeader event: %v opcode: %v", event, opcode)
-
 	builder = c.getBuilder()
 
 	metadata := builder.CreateString(meta)
@@ -248,7 +254,8 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 }
 
 func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg, rbacUser, rbacPass string,
-	capacity, executionTimeout, checkpointInterval int, enableRecursiveMutation bool) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	capacity, executionTimeout, checkpointInterval int, enableRecursiveMutation, skipLcbBootstrap bool,
+	curlTimeout int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
 	app := builder.CreateString(appName)
@@ -260,8 +267,11 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 	rUser := builder.CreateString(rbacUser)
 	rPass := builder.CreateString(rbacPass)
 
-	buf := make([]byte, 1)
-	flatbuffers.WriteBool(buf, enableRecursiveMutation)
+	rec := make([]byte, 1)
+	flatbuffers.WriteBool(rec, enableRecursiveMutation)
+
+	lcb := make([]byte, 1)
+	flatbuffers.WriteBool(lcb, skipLcbBootstrap)
 
 	payload.PayloadStart(builder)
 
@@ -276,7 +286,9 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))
 	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))
-	payload.PayloadAddEnableRecursiveMutation(builder, buf[0])
+	payload.PayloadAddCurlTimeout(builder, curlTimeout)
+	payload.PayloadAddEnableRecursiveMutation(builder, rec[0])
+	payload.PayloadAddSkipLcbBootstrap(builder, lcb[0])
 
 	msgPos := payload.PayloadEnd(builder)
 	builder.Finish(msgPos)
@@ -325,7 +337,9 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			c.sourceMap = msg
 		case handlerCode:
 			c.handlerCode = msg
-		case logMessage:
+		case appLogMessage:
+			c.producer.WriteAppLog(msg)
+		case sysLogMessage:
 			fmt.Printf("%s", msg)
 		case latencyStats:
 			c.statsRWMutex.Lock()
@@ -349,6 +363,18 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			err := json.Unmarshal([]byte(msg), &c.executionStats)
 			if err != nil {
 				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal execution stats, msg: %s err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+		case compileInfo:
+			err := json.Unmarshal([]byte(msg), &c.compileInfo)
+			if err != nil {
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal compilation stats, msg: %s err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+		case queueSize:
+			err := json.Unmarshal([]byte(msg), &c.cppWorkerAggQueueSize)
+			if err != nil {
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal agg queue size, msg: %s err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		}

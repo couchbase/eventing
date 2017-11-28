@@ -99,10 +99,12 @@ typedef struct server_settings_s {
 
 typedef struct handler_config_s {
   std::string app_name;
+  long curl_timeout;
   std::string dep_cfg;
   int execution_timeout;
   int lcb_inst_capacity;
   bool enable_recursive_mutation;
+  bool skip_lcb_bootstrap;
 } handler_config_t;
 
 class Bucket;
@@ -125,6 +127,8 @@ extern std::atomic<std::int64_t> on_delete_failure;
 
 extern std::atomic<std::int64_t> non_doc_timer_create_failure;
 extern std::atomic<std::int64_t> doc_timer_create_failure;
+
+extern std::atomic<std::int64_t> messages_processed_counter;
 
 class V8Worker {
 public:
@@ -176,6 +180,7 @@ public:
                     int args_len);
 
   void Enqueue(header_t *header, message_t *payload);
+  int64_t QueueSize();
 
   void V8WorkerDispose();
   void V8WorkerTerminateExecution();

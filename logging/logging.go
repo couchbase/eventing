@@ -172,7 +172,7 @@ func Profile(port string, endpoints ...string) string {
 	}
 	var buf bytes.Buffer
 	for _, endpoint := range endpoints {
-		addr := fmt.Sprintf("http://localhost:%s/debug/pprof/%s?debug=1", port, endpoint)
+		addr := fmt.Sprintf("http://127.0.0.1:%s/debug/pprof/%s?debug=1", port, endpoint)
 		resp, err := http.Get(addr)
 		if err != nil {
 			continue

@@ -21,7 +21,11 @@ func newClient(consumer *Consumer, appName, tcpPort, workerName, eventingAdminPo
 
 func (c *client) Serve() {
 	c.cmd = exec.Command("eventing-consumer", c.appName, c.consumerHandle.ipcType, c.tcpPort,
-		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.eventingPort)
+		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.consumerHandle.diagDir,
+		c.eventingPort) // this parameter is not read, for tagging
+
+	c.cmd.Stderr = os.Stderr
+	c.cmd.Stdout = os.Stdout
 
 	err := c.cmd.Start()
 	if err != nil {
@@ -34,16 +38,22 @@ func (c *client) Serve() {
 	}
 	c.consumerHandle.osPid.Store(c.osPid)
 
-	c.cmd.Wait()
+	err = c.cmd.Wait()
+	if err != nil {
+		logging.Warnf("CRCL[%s:%s:%s:%d] Exiting c++ worker with error: %v",
+		c.appName, c.workerName, c.tcpPort, c.osPid, err)
+	}
 
-	logging.Debugf("CRCL[%s:%s:%s:%d] Exiting c++ worker init routine",
+	logging.Debugf("CRCL[%s:%s:%s:%d] Exiting c++ worker routine",
 		c.appName, c.workerName, c.tcpPort, c.osPid)
 
 	c.consumerHandle.connMutex.Lock()
 	defer c.consumerHandle.connMutex.Unlock()
 
 	if c.consumerHandle != nil {
-		c.consumerHandle.conn.Close()
+		if c.consumerHandle.conn != nil {
+			c.consumerHandle.conn.Close()
+		}
 	}
 	c.consumerHandle.conn = nil
 }

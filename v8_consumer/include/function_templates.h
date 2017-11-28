@@ -26,6 +26,8 @@
 
 #define CONSOLE_LOG_MAX_ARITY 20
 
+extern long curl_timeout;
+
 struct Result {
   lcb_CAS cas;
   lcb_error_t rc;
@@ -34,6 +36,13 @@ struct Result {
 
   Result() : cas(0), rc(LCB_SUCCESS) {}
 };
+
+struct CurlResult {
+  char *memory;
+  size_t size;
+};
+
+void Curl(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args);
 void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args);

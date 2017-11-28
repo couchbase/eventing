@@ -28,7 +28,8 @@ extern std::string workerID;
 inline std::string NowTime();
 static std::string LevelToString(LogLevel level);
 
-extern std::ostringstream os;
+extern std::ostringstream app_log_os;
+extern std::ostringstream sys_log_os;
 
 extern void setAppName(std::string appName);
 extern void setLogLevel(LogLevel level);
@@ -36,7 +37,7 @@ extern void setWorkerID(std::string ID);
 
 extern std::mutex log_mutex;
 
-inline std::ostringstream &Logger(LogLevel level = logInfo) {
+inline std::ostringstream &AppLogger(LogLevel level = logInfo) {
   time_t ctm;
   std::time(&ctm);
   char cts[128];
@@ -44,15 +45,39 @@ inline std::ostringstream &Logger(LogLevel level = logInfo) {
   std::string ts = cts;
 
   std::lock_guard<std::mutex> lock(log_mutex);
-  os << ts.substr(0, ts.length() - 2) << ":" << ts.substr(ts.length() - 2);
-  os << " " << LevelToString(level) << " ";
-  os << "VWCP [" << appName << ":" << workerID << "] ";
-  return os;
+  app_log_os << ts.substr(0, ts.length() - 2) << ":"
+             << ts.substr(ts.length() - 2);
+  app_log_os << " " << LevelToString(level) << " ";
+  app_log_os << "VWCP [" << appName << ":" << workerID << "] ";
+  return app_log_os;
 }
 
-inline std::string FlushLog() {
-  std::string str = os.str();
-  os.str(std::string());
+inline std::ostringstream &SysLogger(LogLevel level = logInfo) {
+  time_t ctm;
+  std::time(&ctm);
+  char cts[128];
+  std::strftime(cts, sizeof(cts), "%Y-%m-%dT%H:%M:%S%z", std::localtime(&ctm));
+  std::string ts = cts;
+
+  std::lock_guard<std::mutex> lock(log_mutex);
+  sys_log_os << ts.substr(0, ts.length() - 2) << ":"
+             << ts.substr(ts.length() - 2);
+  sys_log_os << " " << LevelToString(level) << " ";
+  sys_log_os << "VWCP [" << appName << ":" << workerID << "] ";
+  return sys_log_os;
+}
+
+inline std::string AppFlushLog() {
+  std::lock_guard<std::mutex> lock(log_mutex);
+  std::string str = app_log_os.str();
+  app_log_os.str(std::string());
+  return str;
+}
+
+inline std::string SysFlushLog() {
+  std::lock_guard<std::mutex> lock(log_mutex);
+  std::string str = sys_log_os.str();
+  sys_log_os.str(std::string());
   return str;
 }
 
@@ -83,6 +108,12 @@ inline LogLevel LevelFromString(const std::string &level) {
   if (level > desiredLogLevel)                                                 \
     ;                                                                          \
   else                                                                         \
-    Logger(level)
+    SysLogger(level)
+
+#define APP_LOG(level)                                                         \
+  if (level > desiredLogLevel)                                                 \
+    ;                                                                          \
+  else                                                                         \
+    AppLogger(level)
 
 #endif
