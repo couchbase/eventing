@@ -30,7 +30,7 @@ func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logging.Infof("Got request to start tracing")
-	audit.AuditLog(auditevent.StartTracing, r, nil)
+	audit.Log(auditevent.StartTracing, r, nil)
 
 	os.Remove(m.uuid + "_trace.out")
 
@@ -56,7 +56,7 @@ func (m *ServiceMgr) stopTracing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	audit.AuditLog(auditevent.StopTracing, r, nil)
+	audit.Log(auditevent.StopTracing, r, nil)
 	logging.Infof("Got request to stop tracing")
 	m.stopTracerCh <- struct{}{}
 }
@@ -108,7 +108,7 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 	appName := values["name"][0]
 
 	logging.Infof("Deleting application %v from primary store", appName)
-	audit.AuditLog(auditevent.DeleteFunction, r, appName)
+	audit.Log(auditevent.DeleteFunction, r, appName)
 
 	checkIfDeployed := false
 	for _, app := range util.ListChildren(metakvAppsPath) {
@@ -162,7 +162,7 @@ func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) 
 	}
 
 	logging.Infof("Deleting drafts")
-	audit.AuditLog(auditevent.DeleteDrafts, r, nil)
+	audit.Log(auditevent.DeleteDrafts, r, nil)
 
 	values := r.URL.Query()
 	appName := values["name"][0]
@@ -260,7 +260,7 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 	appName := values["name"][0]
 
 	logging.Infof("App: %v got request to start V8 debugger", appName)
-	audit.AuditLog(auditevent.StartDebug, r, appName)
+	audit.Log(auditevent.StartDebug, r, appName)
 
 	if m.checkIfDeployed(appName) {
 		m.superSup.SignalStartDebugger(appName)
@@ -282,7 +282,7 @@ func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 	appName := values["name"][0]
 
 	logging.Infof("App: %v got request to stop V8 debugger", appName)
-	audit.AuditLog(auditevent.StopDebug, r, appName)
+	audit.Log(auditevent.StopDebug, r, appName)
 
 	if m.checkIfDeployed(appName) {
 		m.superSup.SignalStopDebugger(appName)
@@ -417,7 +417,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logging.Infof("Listing deployed applications")
-	audit.AuditLog(auditevent.ListDeployed, r, nil)
+	audit.Log(auditevent.ListDeployed, r, nil)
 
 	deployedApps := m.superSup.GetDeployedApps()
 
@@ -616,7 +616,7 @@ func (m *ServiceMgr) setSettings(w http.ResponseWriter, r *http.Request) {
 	appName := params["name"][0]
 
 	logging.Infof("Set settings for app %v", appName)
-	audit.AuditLog(auditevent.SetSettings, r, appName)
+	audit.Log(auditevent.SetSettings, r, appName)
 
 	path := metakvAppSettingsPath + appName
 	data, err := ioutil.ReadAll(r.Body)
@@ -680,7 +680,7 @@ func (m *ServiceMgr) getApplication(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logging.Infof("Getting all applications in primary store")
-	audit.AuditLog(auditevent.FetchFunctions, r, nil)
+	audit.Log(auditevent.FetchFunctions, r, nil)
 
 	appList := util.ListChildren(metakvAppsPath)
 	respData := make([]application, len(appList))
@@ -756,7 +756,7 @@ func (m *ServiceMgr) getAppTempStore(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logging.Infof("Fetching function draft definitions")
-	audit.AuditLog(auditevent.FetchDrafts, r, nil)
+	audit.Log(auditevent.FetchDrafts, r, nil)
 
 	tempAppList := util.ListChildren(metakvTempAppsPath)
 	respData := make([]application, len(tempAppList))
@@ -796,7 +796,7 @@ func (m *ServiceMgr) saveAppTempStore(w http.ResponseWriter, r *http.Request) {
 	appName := params["name"][0]
 
 	logging.Infof("Got request to save handler into temporary store: %v", appName)
-	audit.AuditLog(auditevent.SaveDraft, r, appName)
+	audit.Log(auditevent.SaveDraft, r, appName)
 
 	path := metakvTempAppsPath + appName
 	data, err := ioutil.ReadAll(r.Body)
@@ -859,7 +859,7 @@ func (m *ServiceMgr) setApplication(w http.ResponseWriter, r *http.Request) {
 	appName := values["name"][0]
 
 	logging.Infof("Saving application %v to primary store", appName)
-	audit.AuditLog(auditevent.CreateFunction, r, appName)
+	audit.Log(auditevent.CreateFunction, r, appName)
 
 	if m.checkIfDeployed(appName) {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppDeployed.Code))

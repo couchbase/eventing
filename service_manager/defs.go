@@ -24,6 +24,7 @@ const (
 )
 
 const (
+	// EventingPermissionManage for auditing
 	EventingPermissionManage = "cluster.eventing.functions!manage"
 )
 
