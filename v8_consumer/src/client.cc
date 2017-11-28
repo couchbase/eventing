@@ -482,8 +482,6 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
           header_t *pheader = parsed_header.release();
           RouteMessageWithResponse(pheader, pmessage);
 
-          messages_processed_counter++;
-
           if (messages_processed_counter >= batch_size || msg_priority) {
 
             // Reset the message priority flag

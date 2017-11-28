@@ -50,6 +50,8 @@ std::atomic<std::int64_t> on_delete_failure = {0};
 std::atomic<std::int64_t> non_doc_timer_create_failure = {0};
 std::atomic<std::int64_t> doc_timer_create_failure = {0};
 
+std::atomic<std::int64_t> messages_processed_counter = {0};
+
 enum RETURN_CODE {
   kSuccess = 0,
   kFailedToCompileJs,
@@ -664,6 +666,8 @@ void V8Worker::RouteMessage() {
 
     delete msg.header;
     delete msg.payload;
+
+    messages_processed_counter++;
   }
 }
 
