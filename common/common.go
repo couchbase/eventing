@@ -76,7 +76,6 @@ type EventingProducer interface {
 	TimerTransferHostPortAddrs() map[string]string
 	VbEventingNodeAssignMap() map[uint16]string
 	WorkerVbMap() map[string][]uint16
-	WriteAppLog(log string)
 }
 
 // EventingConsumer interface to export functions from eventing_consumer
@@ -108,7 +107,6 @@ type EventingConsumer interface {
 	SignalPlasmaClosed(vb uint16)
 	SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma)
 	SignalStopDebugger()
-	SpawnCompilationWorker(appcode, appContent, appName string) (*CompileStatus, error)
 	Stop()
 	String() string
 	TimerTransferHostPortAddr() string
@@ -175,13 +173,4 @@ type DebuggerInstanceAddrBlob struct {
 	ConsumerName string `json:"consumer_name"`
 	HostPortAddr string `json:"host_port_addr"`
 	NodeUUID     string `json:"uuid"`
-}
-
-type CompileStatus struct {
-	Language       string `json:"language"`
-	CompileSuccess bool   `json:"compile_success"`
-	Index          int    `json:"index"`
-	Line           int    `json:"line_number"`
-	Column         int    `json:"column_number"`
-	Description    string `json:"description"`
 }

@@ -20,12 +20,11 @@ import (
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
-func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
+func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid string,
 	superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                appName,
 		bootstrapFinishCh:      make(chan struct{}, 1),
-		diagDir:                diagDir,
 		eventingAdminPort:      eventingAdminPort,
 		eventingDir:            eventingDir,
 		eventingNodeUUIDs:      make([]string, 0),
@@ -54,12 +53,6 @@ func (p *Producer) Serve() {
 	err := p.parseDepcfg()
 	if err != nil {
 		logging.Fatalf("PRDR[%s:%d] Failure parsing depcfg, err: %v", p.appName, p.LenRunningConsumers(), err)
-		return
-	}
-
-	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles)
-	if err != nil {
-		logging.Fatalf("PRDR[%s:%d] Failure to open application log writer handle, err: %v", p.appName, p.LenRunningConsumers(), err)
 		return
 	}
 
@@ -234,7 +227,6 @@ func (p *Producer) Stop() {
 	p.signalStopPersistAllCh <- struct{}{}
 	p.ProducerListener.Close()
 
-	p.appLogWriter.Close()
 	p.vbPlasmaStore.Close()
 }
 
@@ -294,10 +286,9 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
 		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold, p.socketWriteBatchSize,
 		p.timerWorkerPoolSize, p.cppWorkerThrCount, p.vbOwnershipGiveUpRoutineCount,
-		p.curlTimeout, p.vbOwnershipTakeoverRoutineCount, p.xattrEntryPruneThreshold, p.workerQueueCap,
-		p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
+		p.vbOwnershipTakeoverRoutineCount, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
 		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStore,
-		p.socketTimeout, p.diagDir)
+		p.socketTimeout)
 
 	p.Lock()
 	p.consumerListeners = append(p.consumerListeners, listener)
@@ -466,7 +457,7 @@ func (p *Producer) GetDebuggerURL() string {
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, dInstAddrKey, debuggerInstBlob)
 
-	debugURL := util.GetDebuggerURL("/getLocalDebugUrl", debuggerInstBlob.HostPortAddr, p.appName)
+	debugURL := util.GetDebuggerURL("/debugUrl", debuggerInstBlob.HostPortAddr, p.appName)
 
 	return debugURL
 }

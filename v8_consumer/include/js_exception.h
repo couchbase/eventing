@@ -12,7 +12,6 @@
 #ifndef JS_EXCEPTION_H
 #define JS_EXCEPTION_H
 
-#include <curl/curl.h>
 #include <libcouchbase/couchbase.h>
 #include <string>
 #include <v8.h>
@@ -30,7 +29,7 @@ private:
   v8::Persistent<v8::String> name;
   v8::Persistent<v8::String> desc;
 
-  std::string ExtractErrorName(const std::string &error);
+  std::string ExtractErrorName(std::string error);
   void CopyMembers(JsException &&exc_obj);
 
 public:
@@ -41,11 +40,9 @@ public:
   // Need to overload '=' as we have members of v8::Persistent type.
   JsException &operator=(JsException &&exc_obj);
 
-  void Throw(CURLcode res);
   void Throw(lcb_t instance, lcb_error_t error);
   void Throw(lcb_t instance, lcb_error_t error,
              std::vector<std::string> error_msgs);
-  void Throw(const std::string &message);
 
   ~JsException();
 };

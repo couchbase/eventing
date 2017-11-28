@@ -21,7 +21,6 @@ type Flags struct {
 	restPort      string
 	help          bool
 	uuid          string
-	diagDir       string
 }
 
 var flags Flags
@@ -68,9 +67,6 @@ func initFlags(flags *Flags) map[string][]string {
 	s(&flags.sslKeyFile,
 		[]string{"keyfile"}, "EVENTING_KEYFILE", "",
 		"Key file for eventing admin service, default being none")
-	s(&flags.diagDir,
-		[]string{"diagdir"}, "DIAGNOSTIC_DIR", os.TempDir(),
-		"Location where diagnostic information like minidumps will be written")
 
 	s(&flags.eventingDir,
 		[]string{"dir"}, "EVENTING_DIR", "",

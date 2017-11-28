@@ -107,16 +107,17 @@ std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata) {
   v8::HandleScope handle_scope(isolate);
 
   std::vector<std::string> errors;
-  auto metadata_v8str = v8Str(isolate, metadata);
+  auto metadata_v8str = v8::String::NewFromUtf8(isolate, metadata);
   auto metadata_obj = v8::JSON::Parse(metadata_v8str).As<v8::Object>();
 
   if (!metadata_obj.IsEmpty()) {
-    auto errors_v8val = metadata_obj->Get(v8Str(isolate, "errors"));
+    auto errors_v8val =
+        metadata_obj->Get(v8::String::NewFromUtf8(isolate, "errors"));
     auto errors_v8arr = errors_v8val.As<v8::Array>();
 
     for (uint32_t i = 0; i < errors_v8arr->Length(); ++i) {
       auto error = errors_v8arr->Get(i).As<v8::Object>();
-      auto msg_v8str = error->Get(v8Str(isolate, "msg"));
+      auto msg_v8str = error->Get(v8::String::NewFromUtf8(isolate, "msg"));
       v8::String::Utf8Value msg(msg_v8str);
       errors.push_back(*msg);
     }
@@ -148,7 +149,7 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
 #endif
 
     v8::Local<v8::Value> args[1];
-    args[0] = v8::JSON::Parse(v8Str(isolate, row_str));
+    args[0] = v8::JSON::Parse(v8::String::NewFromUtf8(isolate, row_str));
 
     // Execute the function callback passed in JavaScript.
     auto callback = q_handler.iter_handler->callback;
@@ -265,7 +266,7 @@ ExtractPosParams(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto pos_params = options->Get(v8Str(isolate, "posParams")).As<v8::Array>();
   std::list<std::string> pos_params_l;
 
-  for (decltype(pos_params->Length()) i = 0; i < pos_params->Length(); ++i) {
+  for (auto i = 0; i < pos_params->Length(); ++i) {
     v8::String::Utf8Value param(pos_params->Get(i));
     pos_params_l.push_back(*param);
   }
@@ -309,10 +310,7 @@ void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     PopScopeStack(args);
   } catch (const char *e) {
-    LOG(logError) << e << '\n';
-    ++n1ql_op_exception_count;
-    auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->Throw(e);
+    LOG(logError) << "Failed to set unique hash: " << e << '\n';
   }
 }
 
@@ -337,9 +335,7 @@ void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     // Bubble up the message sent from JavaScript.
     SetReturnValue(args, handle_scope.Escape(arg));
   } catch (const char *e) {
-    LOG(logError) << e << '\n';
-    auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->Throw(e);
+    LOG(logError) << "Failed to get unique hash: " << e << '\n';
   }
 }
 
@@ -373,7 +369,8 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     // Populate the result array with the rows of the result.
     for (std::string::size_type i = 0; i < rows.size(); ++i) {
-      auto json_row = v8::JSON::Parse(v8Str(isolate, rows[i].c_str()));
+      auto json_row =
+          v8::JSON::Parse(v8::String::NewFromUtf8(isolate, rows[i].c_str()));
       result_array->Set(static_cast<uint32_t>(i), json_row);
     }
 
@@ -381,10 +378,7 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     args.GetReturnValue().Set(result_array);
   } catch (const char *e) {
-    LOG(logError) << e << '\n';
-    ++n1ql_op_exception_count;
-    auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->Throw(e);
+    LOG(logError) << "Failed to set unique hash: " << e << '\n';
   }
 }
 
@@ -400,14 +394,15 @@ inline void SetReturnValue(const v8::FunctionCallbackInfo<v8::Value> &args,
   const std::vector<std::string> props({"code", "args", "data"});
 
   for (std::string::size_type i = 0; i < props.size(); ++i) {
-    auto key = v8Str(isolate, props[i].c_str());
+    auto key = v8::String::NewFromUtf8(isolate, props[i].c_str());
     auto value = return_obj->Get(key);
     auto private_key = v8::Private::ForApi(isolate, key);
     args.This()->SetPrivate(context, private_key, value);
   }
 
   // We also save return_obj iteself as a JavaScript object.
-  auto key = v8::Private::ForApi(isolate, v8Str(isolate, "return_value"));
+  auto key = v8::Private::ForApi(
+      isolate, v8::String::NewFromUtf8(isolate, "return_value"));
   args.This()->SetPrivate(context, key, return_obj);
 }
 
@@ -418,19 +413,20 @@ void GetReturnValueFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto context = isolate->GetCurrentContext();
 
   // Get return_obj from private field.
-  auto key = v8::Private::ForApi(isolate, v8Str(isolate, "return_value"));
+  auto key = v8::Private::ForApi(
+      isolate, v8::String::NewFromUtf8(isolate, "return_value"));
   auto return_value = ToLocal(args.This()->GetPrivate(context, key));
 
   auto do_concat = v8::Local<v8::Boolean>::Cast(args[0]);
   // Concatenate 'code' and 'args' fields if [bool] is true.
   // Else, return the return_obj as it is.
   if (do_concat->Value()) {
-    auto code_key = v8Str(isolate, "code");
+    auto code_key = v8::String::NewFromUtf8(isolate, "code");
     auto code_private_key = v8::Private::ForApi(isolate, code_key);
     auto code_value =
         ToLocal(args.This()->GetPrivate(context, code_private_key));
 
-    auto args_key = v8Str(isolate, "args");
+    auto args_key = v8::String::NewFromUtf8(isolate, "args");
     auto args_private_key = v8::Private::ForApi(isolate, args_key);
     auto args_value =
         ToLocal(args.This()->GetPrivate(context, args_private_key));
@@ -449,8 +445,8 @@ void AddQueryMetadata(HandlerType handler, v8::Isolate *isolate,
                       ResultType &result) {
   if (handler.metadata.length() > 0) {
     // Query metadata.
-    auto metadata_key = v8Str(isolate, "metadata");
-    auto metadata = v8Str(isolate, handler.metadata);
+    auto metadata_key = v8::String::NewFromUtf8(isolate, "metadata");
+    auto metadata = v8::String::NewFromUtf8(isolate, handler.metadata.c_str());
     auto metadata_json = v8::JSON::Parse(metadata);
 
     result->Set(metadata_key, metadata_json);
@@ -473,9 +469,9 @@ void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
 
-  auto base_hash =
-      v8::Private::ForApi(isolate, v8Str(isolate, base_hash_str.c_str()));
-  auto unique_hash = v8Str(isolate, unique_hash_str.c_str());
+  auto base_hash = v8::Private::ForApi(
+      isolate, v8::String::NewFromUtf8(isolate, base_hash_str.c_str()));
+  auto unique_hash = v8::String::NewFromUtf8(isolate, unique_hash_str.c_str());
   bool exists = HasKey(args, base_hash_str);
 
   // If a base hash exists, then get the stack and push the unique hash
@@ -485,9 +481,6 @@ void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
     auto scope_stack = v8::Local<v8::Map>::Cast(stack);
     auto result = scope_stack->Set(
         context, v8::Number::New(isolate, scope_stack->Size()), unique_hash);
-    if (result.IsEmpty()) {
-      throw "Unable to set scope stack";
-    }
   } else {
     // Otherwise, create a new stack and push the base hash onto it.
     auto scope_stack = v8::Map::New(isolate);
@@ -508,7 +501,8 @@ void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto base_hash = GetBaseHash(args, exists);
 
   if (exists) {
-    auto hash_key = v8::Private::ForApi(isolate, v8Str(isolate, base_hash));
+    auto hash_key = v8::Private::ForApi(
+        isolate, v8::String::NewFromUtf8(isolate, base_hash.c_str()));
     exists = HasKey(args, base_hash);
 
     // If the base hash exists, then pop the unique hash from top of stack.
@@ -517,14 +511,11 @@ void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
       auto scope_stack = v8::Local<v8::Map>::Cast(stack);
       auto result = scope_stack->Delete(
           context, v8::Number::New(isolate, scope_stack->Size() - 1));
-      if (result.IsNothing()) {
-        throw "Unable to delete from scope stack";
-      }
     } else {
-      throw "Scope stack not set";
+      throw "scope stack not set";
     }
   } else {
-    throw "Base hash not set";
+    throw "base hash not set";
   }
 }
 
@@ -539,8 +530,8 @@ std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto base_hash_str = GetBaseHash(args, exists);
 
   if (exists) {
-    auto base_hash =
-        v8::Private::ForApi(isolate, v8Str(isolate, base_hash_str));
+    auto base_hash = v8::Private::ForApi(
+        isolate, v8::String::NewFromUtf8(isolate, base_hash_str.c_str()));
     exists = HasKey(args, base_hash_str);
 
     // If the base hash exists, then return the unique hash from top
@@ -553,10 +544,10 @@ std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
       v8::String::Utf8Value hash(top_value);
       return *hash;
     } else {
-      throw "Scope stack not set";
+      throw "scope stack not set";
     }
   } else {
-    throw "Base hash not set";
+    throw "base hash not set";
   }
 
   return "";
@@ -570,6 +561,8 @@ std::string SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   bool exists;
   auto base_hash = GetBaseHash(args, exists);
+  auto key =
+      v8::Private::ForApi(isolate, v8::String::NewFromUtf8(isolate, "hash"));
 
   // If the base hash exists, then generate unique hash and push it onto
   // stack.
@@ -582,8 +575,7 @@ std::string SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
   } else {
     // Otherwise, base hash is itself unique.
     base_hash = AppendStackIndex(args.This()->GetIdentityHash(), isolate);
-    auto hash = v8Str(isolate, base_hash.c_str());
-    auto key = v8::Private::ForApi(isolate, v8Str(isolate, "hash"));
+    auto hash = v8::String::NewFromUtf8(isolate, base_hash.c_str());
     args.This()->SetPrivate(context, key, hash);
     PushScopeStack(args, base_hash, base_hash);
 
@@ -600,10 +592,12 @@ std::string GetBaseHash(const v8::FunctionCallbackInfo<v8::Value> &args,
 
   exists = HasKey(args, "hash");
   if (exists) {
-    auto key = v8::Private::ForApi(isolate, v8Str(isolate, "hash"));
+    auto key =
+        v8::Private::ForApi(isolate, v8::String::NewFromUtf8(isolate, "hash"));
     auto value = ToLocal(args.This()->GetPrivate(context, key));
     v8::String::Utf8Value value_str(value);
-    return *value_str;
+
+    return ToCString(value_str);
   }
 
   return "";
@@ -616,16 +610,20 @@ bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args,
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
 
-  auto key = v8::Private::ForApi(isolate, v8Str(isolate, key_str));
+  auto key = v8::Private::ForApi(
+      isolate, v8::String::NewFromUtf8(isolate, key_str.c_str()));
   v8::Maybe<bool> has_key = args.This()->HasPrivate(context, key);
 
   // Checking for FromJust would crash the v8 process if has_key is empty
   // https://v8.paulfryzel.com/docs/master/classv8_1_1_maybe.html#a6c35f4870a5b5049d09ba5f13c67ede9
-  if (has_key.IsNothing()) {
-    throw "Key was empty";
+  bool result;
+  try {
+    result = !has_key.IsNothing() && has_key.IsJust() && has_key.FromJust();
+  } catch (...) {
+    LOG(logError) << "Key was empty " << '\n';
   }
 
-  return !has_key.IsNothing() && has_key.IsJust() && has_key.FromJust();
+  return result;
 }
 
 // Utility method to convert a MaybeLocal handle to a local handle.

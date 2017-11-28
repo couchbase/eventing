@@ -21,21 +21,6 @@ GoInstall(
   GOVERSION "1.8.3"
 )
 
-GoInstall(
-  TARGET convertaudit
-  PACKAGE github.com/couchbase/eventing/gen/convertaudit
-  GOPATH "${PROJECT_SOURCE_DIR}/../../../.."
-  GOVERSION "1.8.3"
-)
-
-ADD_CUSTOM_COMMAND(
-        OUTPUT auditevent/events.go
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertaudit
-        ARGS ../audit/audit_descriptor.json auditevent/events.go
-        DEPENDS ../audit/audit_descriptor.json
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Coverting ../audit/audit_descriptor.json to auditevent/events.go"
-)
 ADD_CUSTOM_COMMAND(
         OUTPUT js/builtin.h
         COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
@@ -149,7 +134,6 @@ ADD_CUSTOM_TARGET(generated DEPENDS
         flatbuf/response_generated.h flatbuf/response/Response.go
         flatbuf/cfg_schema_generated.h flatbuf/cfg_schema/Cfg_schema.go
         parser/jsify.cc
-        auditevent/events.go
 )
 
-ADD_DEPENDENCIES(generated convertjs convertaudit)
+ADD_DEPENDENCIES(generated convertjs)

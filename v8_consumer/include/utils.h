@@ -15,8 +15,6 @@
 #include <unistd.h>
 #include <vector>
 
-#include <curl/curl.h>
-
 #include <libplatform/libplatform.h>
 #include <v8.h>
 
@@ -34,7 +32,6 @@ class V8Worker;
 class JsException;
 // Struct for storing isolate data
 struct Data {
-  CURL *curl_handle;
   N1QL *n1ql_handle;
   V8Worker *v8worker;
   lcb_t cb_instance;
@@ -50,7 +47,6 @@ int WinSprintf(char **strp, const char *fmt, ...);
 
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const char *str);
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const std::string &str);
-v8::Local<v8::Name> v8Name(v8::Isolate *isolate, uint32_t key);
 std::string ObjectToString(v8::Local<v8::Value> value);
 
 std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object);

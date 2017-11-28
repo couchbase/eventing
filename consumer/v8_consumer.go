@@ -24,13 +24,12 @@ import (
 
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
-	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize int,
-	timerProcessingPoolSize, cppWorkerThrCount, vbOwnershipGiveUpRoutineCount int,
-	curlTimeout int64, vbOwnershipTakeoverRoutineCount, xattrEntryPruneThreshold int, workerQueueCap int64,
+	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize, timerProcessingPoolSize int,
+	cppWorkerThrCount, vbOwnershipGiveUpRoutineCount, vbOwnershipTakeoverRoutineCount int,
 	bucket, eventingAdminPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
-	socketTimeout time.Duration, diagDir string) *Consumer {
+	socketTimeout time.Duration) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -44,13 +43,11 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		cppThrPartitionMap:                 make(map[int][]uint16),
 		cppWorkerThrCount:                  cppWorkerThrCount,
 		crcTable:                           crc32.MakeTable(crc32.Castagnoli),
-		curlTimeout:                        curlTimeout,
 		connMutex:                          &sync.RWMutex{},
 		dcpFeedCancelChs:                   make([]chan struct{}, 0),
 		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:                  streamBoundary,
 		debuggerStarted:                    false,
-		diagDir:                            diagDir,
 		docTimerEntryCh:                    make(chan *byTimerEntry, timerChanSize),
 		enableRecursiveMutation:            enableRecursiveMutation,
 		eventingAdminPort:                  eventingAdminPort,
@@ -123,8 +120,6 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		vbsRemainingToOwn:               make([]uint16, 0),
 		vbsRemainingToRestream:          make([]uint16, 0),
 		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
-		workerQueueCap:                  workerQueueCap,
-		xattrEntryPruneThreshold:        xattrEntryPruneThreshold,
 	}
 
 	consumer.builderPool = &sync.Pool{
@@ -246,8 +241,7 @@ func (c *Consumer) HandleV8Worker() {
 
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
 		c.producer.KvHostPorts()[0], c.producer.CfgData(), c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity,
-		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)), c.enableRecursiveMutation, false,
-		c.curlTimeout)
+		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)), c.enableRecursiveMutation)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 
@@ -267,7 +261,7 @@ func (c *Consumer) Stop() {
 	defer func() {
 		if r := recover(); r != nil {
 			trace := debug.Stack()
-			logging.Errorf("V8CR[%s:%s:%s:%d] Consumer stop routine, recover %v stack trace: %v",
+			logging.Errorf("V8CR[%s:%s:%s:%d] Consumer stop routine, panic and recover, %v stack trace: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()
@@ -381,7 +375,7 @@ func (c *Consumer) SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma) {
 	defer func() {
 		if r := recover(); r != nil {
 			trace := debug.Stack()
-			logging.Errorf("V8CR[%s:%s:%s:%d] vb: %v SignalPlasmaTransferFinish: recover %v, stack trace: %v",
+			logging.Errorf("V8CR[%s:%s:%s:%d] vb: %v SignalPlasmaTransferFinish: panic and recover, %v, stack trace: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, r, string(trace))
 		}
 	}()

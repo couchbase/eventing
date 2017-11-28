@@ -173,7 +173,7 @@ class Transpiler {
   v8::Local<v8::Context> context;
 
 public:
-  Transpiler(v8::Isolate *isolate, const std::string &transpiler_src);
+  Transpiler(const std::string &transpiler_src);
   v8::Local<v8::Value> ExecTranspiler(const std::string &function,
                                       v8::Local<v8::Value> args[],
                                       const int &args_len);

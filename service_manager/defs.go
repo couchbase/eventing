@@ -24,7 +24,10 @@ const (
 )
 
 const (
-	EventingPermissionManage = "cluster.eventing.functions!manage"
+	// EventingPermissionRead needed for reading app stats/settings/handlers
+	EventingPermissionRead = "cluster.admin!read"
+	// EventingPermissionWrite needed for writing/updating app settings/handlers
+	EventingPermissionWrite = "cluster.admin!write"
 )
 
 const headerKey = "status"
@@ -121,8 +124,4 @@ type depCfg struct {
 type bucket struct {
 	Alias      string `json:"alias"`
 	BucketName string `json:"bucket_name"`
-}
-
-type backlogStat struct {
-	DcpBacklog uint64 `json:"dcp_backlog"`
 }

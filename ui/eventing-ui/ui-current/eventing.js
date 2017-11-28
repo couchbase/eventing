@@ -9,7 +9,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.serverNodes = serverNodes;
             self.isEventingRunning = isEventingRunning;
             self.appList = ApplicationService.local.getAllApps();
-            self.disableEditButton = false;
 
             self.isAppListEmpty = function() {
                 return Object.keys(self.appList).length === 0;
@@ -28,20 +27,20 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             return $q.reject(`Unable to pause/run "${appClone.appname}". Possibly, bootstrap in progress`);
                         }
 
-                        return ApplicationService.primaryStore.saveSettings(appClone);
+                        return ApplicationService.tempStore.saveApp(appClone);
                     }).then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
                         if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
                         }
 
                         console.log(response.data);
-                        return ApplicationService.tempStore.saveApp(appClone);
+                        return ApplicationService.primaryStore.saveSettings(appClone);
                     })
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
                         if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
                         }
 
                         console.log(response.data);
@@ -85,23 +84,21 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         // Set app to 'deployed & enabled' state and save.
                         appClone.settings.deployment_status = true;
                         appClone.settings.processing_status = true;
-                        // Disable edit button till we get the compilation info
-                        self.disableEditButton = true;
-                        return ApplicationService.primaryStore.deployApp(appClone);
-                    })
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
-                        }
-
-                        console.log(response.data);
                         return ApplicationService.tempStore.saveApp(appClone);
                     })
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
                         if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
+
+                        console.log(response.data);
+                        return ApplicationService.primaryStore.deployApp(appClone);
+                    })
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
                         }
 
                         console.log(response.data);
@@ -110,21 +107,13 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         app.settings.cleanup_timers = appClone.settings.cleanup_timers;
                         app.settings.deployment_status = appClone.settings.deployment_status;
                         app.settings.processing_status = appClone.settings.processing_status;
-                        // Enable edit button as we got compilation info
-                        self.disableEditButton = false;
 
                         // Show an alert upon successful deployment.
                         showSuccessAlert(`${app.appname} deployed successfully!`);
                     })
                     .catch(function(errResponse) {
-                        if (errResponse.error) {
-                            var info = errResponse.error.details;
-                            app.compilationInfo = info;
-                            showErrorAlert(`Deployment failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
-                        }
-
-                        // Enable edit button as we got compilation info
-                        self.disableEditButton = false;
+                        // TODO : Get appropriate compilation info
+                        // app.compilationInfo = {"language":"JavaScript","compileSuccess":false,"index":95,"lineNumber":5,"columnNumber":16,"description":"Unexpected token ILLEGAL"};
                         console.error(errResponse);
                     });
             }
@@ -149,21 +138,21 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         // Set app to 'undeployed & disabled' state and save.
                         appClone.settings.deployment_status = false;
                         appClone.settings.processing_status = false;
-                        return ApplicationService.primaryStore.saveSettings(appClone);
-                    })
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
-                        }
-
-                        console.log(response.data);
                         return ApplicationService.tempStore.saveApp(appClone);
                     })
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
                         if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
+                        }
+
+                        console.log(response.data);
+                        return ApplicationService.primaryStore.saveSettings(appClone);
+                    })
+                    .then(function(response) {
+                        var responseCode = ApplicationService.status.getResponseCode(response);
+                        if (responseCode) {
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
                         }
 
                         console.log(response.data);
@@ -209,18 +198,21 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         scope: $scope
                     }).result
                     .then(function(response) {
-                        return ApplicationService.tempStore.deleteApp(appName);
+                        return ApplicationService.tempStore.deleteApp(appName)
                     })
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
                         if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
                         }
 
-                        return ApplicationService.primaryStore.deleteApp(appName);
+                        return ApplicationService.primaryStore.deleteApp(appName)
                     })
                     .then(function(response) {
-                        // Delete the local copy of the app in the browser
+                        // No need to check if app was deleted successfully from
+                        // primary store since we would have deleted the
+                        // application from primary store during undeploy.
+
                         ApplicationService.local.deleteApp(appName);
                         showSuccessAlert(`${appName} deleted successfully!`);
                     })
@@ -297,8 +289,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
                         if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
                         }
+
+                        return ApplicationService.tempStore.saveApp(creationScope.appModel);
                     })
                     .catch(function(errResponse) { // Upon cancel.
                         console.error(errResponse);
@@ -424,20 +418,20 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 // Deadline timeout must be greater than execution timeout.
                 $scope.appModel.settings.deadline_timeout = $scope.appModel.settings.execution_timeout + 2;
 
-                ApplicationService.primaryStore.saveSettings($scope.appModel)
+                ApplicationService.tempStore.saveApp($scope.appModel)
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
                         if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
                         }
 
                         console.log(response.data);
-                        return ApplicationService.tempStore.saveApp($scope.appModel);
+                        return ApplicationService.primaryStore.saveSettings($scope.appModel);
                     })
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
                         if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
+                            return $q.reject(ApplicationService.status.getErroMsg(responseCode, response.data));
                         }
 
                         console.log('Settings saved:', response.data);
@@ -501,8 +495,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.debugDisabled = !(app.settings.deployment_status && app.settings.processing_status);
 
             $scope.aceLoaded = function(editor) {
-                var markers = [],
-                    Range = ace.require('ace/range').Range;
+                var Range = ace.require('ace/range').Range;
                 // Current line highlight would overlap on the nav bar in compressed mode.
                 // Hence, we need to disable it.
                 editor.setOption("highlightActiveLine", false);
@@ -512,12 +505,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 editor.getSession().setUseWorker(false);
 
                 // If the compilation wasn't successful, show error info in UI.
-                if (app.compilationInfo && !app.compilationInfo.compile_success) {
-                    var line = app.compilationInfo.line_number - 1,
-                        col = app.compilationInfo.column_number - 1;
+                if (app.compilationInfo && !app.compilationInfo.compileSuccess) {
+                    var line = app.compilationInfo.lineNumber;
+                    var col = app.compilationInfo.columnNumber;
 
-                    var markerId = editor.session.addMarker(new Range(line, col, line, col + 1), "functions-editor-info", "text");
-                    markers.push(markerId);
+                    editor.session.addMarker(new Range(line, col, line, col + 1), "functions-editor-info", "text");
                     editor.getSession().setAnnotations([{
                         row: line,
                         column: col,
@@ -530,6 +522,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     if (self.editorDisabled) {
                         showWarningAlert('Undeploy the application to edit!');
                     }
+
+                    // Optimistic that the user has seen the errors, remove markers and annotations
+                    var session = editor.getSession(),
+                        markers = session.$backMarkers;
+                    for (var i in markers) {
+                        session.removeMarker(markers[i].id);
+                    }
+
+                    delete app.compilationInfo;
+                    session.clearAnnotations();
                 });
 
                 // Make the ace editor responsive to changes in browser dimensions.
@@ -541,17 +543,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                 $(window).resize(resizeEditor);
                 resizeEditor();
-
-                self.aceEditor = {
-                    clearMarkersAndAnnotations: function() {
-                        var session = editor.getSession();
-                        for (var m of markers) {
-                            session.removeMarker(m);
-                        }
-
-                        markers = [];
-                    }
-                };
             };
 
             $scope.aceChanged = function(e) {
@@ -568,11 +559,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                         self.disableCancelButton = self.disableSaveButton = true;
                         self.disableDeployButton = false;
-
-                        // Optimistic that the user has fixed the errors
-                        // If not the errors will anyway show up when he deploys again
-                        self.aceEditor.clearMarkersAndAnnotations();
-                        delete app.compilationInfo;
                         console.log(response.data);
                     })
                     .catch(function(errResponse) {
@@ -598,7 +584,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         .then(function(response) {
                             var responseCode = ApplicationService.status.getResponseCode(response);
                             if (responseCode) {
-                                var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
+                                var errMsg = ApplicationService.status.getErroMsg(responseCode, response.data);
                                 return $q.reject(errMsg);
                             }
 
@@ -611,7 +597,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                     .then(function(response) {
                                         var responseCode = ApplicationService.status.getResponseCode(response);
                                         if (responseCode) {
-                                            var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
+                                            var errMsg = ApplicationService.status.getErroMsg(responseCode, response.data);
                                             return $q.reject(errMsg);
                                         }
 
@@ -646,7 +632,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
                         if (responseCode) {
-                            var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
+                            var errMsg = ApplicationService.status.getErroMsg(responseCode, response.data);
                             return $q.reject(errMsg);
                         }
 
@@ -853,7 +839,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     isErrorCodesLoaded: function() {
                         return errHandler;
                     },
-                    getErrorMsg: function(errCode, details) {
+                    getErroMsg: function(errCode, details) {
                         return errHandler.createErrorMsg(errCode, details);
                     },
                     getResponseCode: function(response) {

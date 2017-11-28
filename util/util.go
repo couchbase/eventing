@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io/ioutil"
-	"net/url"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,7 +19,6 @@ import (
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/shared"
-	"github.com/couchbase/eventing/util/shttp"
 	"github.com/couchbase/gomemcached"
 )
 
@@ -249,23 +248,10 @@ func ClusterInfoCache(auth, hostaddress string) (*shared.ClusterInfoCache, error
 	return cinfo, nil
 }
 
-// Write to the admin console
-func Console(clusterAddr string, format string, v ...interface{}) error {
-	msg := fmt.Sprintf(format, v...)
-	values := url.Values{"message": {msg}, "logLevel": {"info"}, "component": {"indexing"}}
-
-	if !strings.HasPrefix(clusterAddr, "http://") {
-		clusterAddr = "http://" + clusterAddr
-	}
-	clusterAddr += "/_log"
-
-	_, err := shttp.PostForm(clusterAddr, values)
-
-	return err
-}
-
 func GetProcessedPSec(urlSuffix, nodeAddr string) (string, error) {
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
 
 	url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
 
@@ -286,7 +272,9 @@ func GetProcessedPSec(urlSuffix, nodeAddr string) (string, error) {
 }
 
 func GetAggProcessedPSec(urlSuffix string, nodeAddrs []string) (string, error) {
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
 
 	var aggPStats cm.EventProcessingStats
 
@@ -330,7 +318,9 @@ func GetAggProcessedPSec(urlSuffix string, nodeAddrs []string) (string, error) {
 
 func StopDebugger(urlSuffix, nodeAddr, appName string) {
 	url := fmt.Sprintf("http://%s/stopDebugger/?name=%s", nodeAddr, appName)
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
 
 	_, err := netClient.Get(url)
 	if err != nil {
@@ -348,7 +338,9 @@ func GetDebuggerURL(urlSuffix, nodeAddr, appName string) string {
 
 	url := fmt.Sprintf("http://%s/%s/?name=%s", nodeAddr, urlSuffix, appName)
 
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
 
 	res, err := netClient.Get(url)
 	if err != nil {
@@ -368,7 +360,9 @@ func GetDebuggerURL(urlSuffix, nodeAddr, appName string) string {
 func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) (map[string]string, error) {
 	addrUUIDMap := make(map[string]string)
 
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
 
 	for _, nodeAddr := range nodeAddrs {
 		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
@@ -394,7 +388,9 @@ func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) (map[string]string, erro
 func GetEventProcessingStats(urlSuffix string, nodeAddrs []string) (map[string]int64, error) {
 	pStats := make(map[string]int64)
 
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
 
 	for _, nodeAddr := range nodeAddrs {
 		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
@@ -433,7 +429,9 @@ func GetEventProcessingStats(urlSuffix string, nodeAddrs []string) (map[string]i
 func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, error) {
 	aggProgress := &cm.RebalanceProgress{}
 
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
 
 	for _, nodeAddr := range nodeAddrs {
 		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
@@ -466,7 +464,9 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, e
 }
 
 func GetAggTimerHostPortAddrs(appName, eventingAdminPort, urlSuffix string) (map[string]map[string]string, error) {
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
 
 	url := fmt.Sprintf("http://127.0.0.1:%s/%s?name=%s", eventingAdminPort, urlSuffix, appName)
 
@@ -494,7 +494,9 @@ func GetAggTimerHostPortAddrs(appName, eventingAdminPort, urlSuffix string) (map
 func GetTimerHostPortAddrs(urlSuffix string, nodeAddrs []string) (string, error) {
 	hostPortAddrs := make(map[string]map[string]string)
 
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := &http.Client{
+		Timeout: HTTPRequestTimeout,
+	}
 
 	for _, nodeAddr := range nodeAddrs {
 		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)

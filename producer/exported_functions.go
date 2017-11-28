@@ -296,8 +296,3 @@ func (p *Producer) PurgePlasmaRecords() {
 			p.appName, p.LenRunningConsumers(), err)
 	}
 }
-
-// WriteAppLog dumps the application specific log message to configured file
-func (p *Producer) WriteAppLog(log string) {
-	fmt.Fprintf(p.appLogWriter, "%s", log)
-}

@@ -25,13 +25,6 @@ function ErrorHandler(errCodes) {
         };
     }
 }
-ErrorHandler.prototype.getErrorName = function(errCode) {
-    if (errCode in this.errors) {
-        return this.errors[errCode];
-    }
-
-    throw `${errCode} not received as part of handshake`;
-};
 
 // Creates and returns an ErrorMessage instance.
 ErrorHandler.prototype.createErrorMsg = function(errCode, details) {

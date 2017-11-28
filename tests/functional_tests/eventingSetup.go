@@ -135,7 +135,7 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	settings["timer_processing_tick_interval"] = 500
 	settings["timer_worker_pool_size"] = 1
 	settings["deadline_timeout"] = 3
-	settings["execution_timeout"] = 2
+	settings["execution_timeout"] = 1
 	settings["log_level"] = "INFO"
 	settings["dcp_stream_boundary"] = "everything"
 	settings["cleanup_timers"] = false

@@ -31,56 +31,32 @@ public:
          std::string rbac_user, std::string rbac_pass);
   ~Bucket();
 
-  bool Initialize(V8Worker *w);
+  virtual bool Initialize(V8Worker *w,
+                          std::map<std::string, std::string> *bucket);
+
+  v8::Isolate *GetIsolate() { return isolate_; }
+  std::string GetBucketName() { return bucket_name; }
+  std::string GetEndPoint() { return endpoint; }
 
   v8::Global<v8::ObjectTemplate> bucket_map_template_;
+
   lcb_t bucket_lcb_obj;
 
 private:
-  bool InstallMaps();
-  v8::Local<v8::ObjectTemplate> MakeBucketMapTemplate();
+  bool InstallMaps(std::map<std::string, std::string> *bucket);
 
-  // Delegate is used to multiplex alphanumeric and numeric accesses on bucket
-  // object in JavaScript
-  template <typename T>
-  static void
-  BucketGetDelegate(T key, const v8::PropertyCallbackInfo<v8::Value> &info);
-  template <typename T>
-  static void
-  BucketSetDelegate(T key, v8::Local<v8::Value> value,
-                    const v8::PropertyCallbackInfo<v8::Value> &info);
-  template <typename T>
-  static void
-  BucketDeleteDelegate(T key,
-                       const v8::PropertyCallbackInfo<v8::Boolean> &info);
+  static v8::Local<v8::ObjectTemplate>
+  MakeBucketMapTemplate(v8::Isolate *isolate);
 
-  // Specialization functions which will receive the delegate
-  // Only one overload performs the actual work of making lcb calls
-  // The other overload simply forwards the delegate to the one doing the actual
-  // work
-  template <typename>
-  static void BucketGet(const v8::Local<v8::Name> &key,
+  static void BucketGet(v8::Local<v8::Name> name,
                         const v8::PropertyCallbackInfo<v8::Value> &info);
-  template <typename>
-  static void BucketGet(uint32_t key,
+  static void BucketSet(v8::Local<v8::Name> name, v8::Local<v8::Value> value,
                         const v8::PropertyCallbackInfo<v8::Value> &info);
-
-  template <typename>
-  static void BucketSet(const v8::Local<v8::Name> &key,
-                        const v8::Local<v8::Value> &value,
-                        const v8::PropertyCallbackInfo<v8::Value> &info);
-  template <typename>
-  static void BucketSet(uint32_t key, const v8::Local<v8::Value> &value,
-                        const v8::PropertyCallbackInfo<v8::Value> &info);
-
-  template <typename>
-  static void BucketDelete(v8::Local<v8::Name> key,
-                           const v8::PropertyCallbackInfo<v8::Boolean> &info);
-  template <typename>
-  static void BucketDelete(uint32_t key,
+  static void BucketDelete(v8::Local<v8::Name> name,
                            const v8::PropertyCallbackInfo<v8::Boolean> &info);
 
-  v8::Local<v8::Object> WrapBucketMap();
+  v8::Local<v8::Object>
+  WrapBucketMap(std::map<std::string, std::string> *bucket);
 
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;

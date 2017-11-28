@@ -1,7 +1,6 @@
 package producer
 
 import (
-	"io"
 	"net"
 	"sync"
 	"time"
@@ -61,9 +60,7 @@ type Producer struct {
 	bucket                 string
 	cleanupTimers          bool
 	cfgData                string
-	cppWorkerThrCount      int   // No. of worker threads per CPP worker process
-	curlTimeout            int64 // curl operation timeout in ms
-	diagDir                string
+	cppWorkerThrCount      int // No. of worker threads per CPP worker process
 	eventingAdminPort      string
 	eventingDir            string
 	kvPort                 string
@@ -77,18 +74,11 @@ type Producer struct {
 	nsServerHostPort       string
 	pauseProducerCh        chan struct{}
 	persistAllTicker       *time.Ticker
-	workerQueueCap         int64
 	tcpPort                string
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
 	uuid                   string
 	workerCount            int
-
-	// app log related configs
-	appLogPath     string
-	appLogMaxSize  int64
-	appLogMaxFiles int
-	appLogWriter   io.WriteCloser
 
 	rbacUser string
 	rbacPass string
@@ -137,10 +127,6 @@ type Producer struct {
 
 	consumerListeners []net.Listener
 	ProducerListener  net.Listener
-
-	// Threshold post which eventing will try to prune stale xattr records related to
-	// doc timer from KV document in source bucket
-	xattrEntryPruneThreshold int
 
 	// For performance reasons, Golang writes dcp events to tcp socket in batches
 	// socketWriteBatchSize controls the batch size

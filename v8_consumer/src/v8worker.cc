@@ -50,8 +50,6 @@ std::atomic<std::int64_t> on_delete_failure = {0};
 std::atomic<std::int64_t> non_doc_timer_create_failure = {0};
 std::atomic<std::int64_t> doc_timer_create_failure = {0};
 
-std::atomic<std::int64_t> messages_processed_counter = {0};
-
 enum RETURN_CODE {
   kSuccess = 0,
   kFailedToCompileJs,
@@ -206,8 +204,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   v8::TryCatch try_catch;
 
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "curl"),
-              v8::FunctionTemplate::New(GetIsolate(), Curl));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "log"),
               v8::FunctionTemplate::New(GetIsolate(), Log));
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "docTimer"),
@@ -249,22 +245,20 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   shutdown_terminator = false;
   max_task_duration = SECS_TO_NS * h_config->execution_timeout;
 
-  if (!h_config->skip_lcb_bootstrap) {
-    for (; it != config->component_configs.end(); it++) {
-      if (it->first == "buckets") {
-        std::map<std::string, std::vector<std::string>>::iterator bucket =
-            config->component_configs["buckets"].begin();
-        for (; bucket != config->component_configs["buckets"].end(); bucket++) {
-          std::string bucket_alias = bucket->first;
-          std::string bucket_name =
-              config->component_configs["buckets"][bucket_alias][0];
+  for (; it != config->component_configs.end(); it++) {
+    if (it->first == "buckets") {
+      std::map<std::string, std::vector<std::string>>::iterator bucket =
+          config->component_configs["buckets"].begin();
+      for (; bucket != config->component_configs["buckets"].end(); bucket++) {
+        std::string bucket_alias = bucket->first;
+        std::string bucket_name =
+            config->component_configs["buckets"][bucket_alias][0];
 
-          bucket_handle = new Bucket(
-              this, bucket_name.c_str(), settings->kv_host_port.c_str(),
-              bucket_alias.c_str(), settings->rbac_user, settings->rbac_pass);
+        bucket_handle = new Bucket(
+            this, bucket_name.c_str(), settings->kv_host_port.c_str(),
+            bucket_alias.c_str(), settings->rbac_user, settings->rbac_pass);
 
-          bucket_handles.push_back(bucket_handle);
-        }
+        bucket_handles.push_back(bucket_handle);
       }
     }
   }
@@ -276,7 +270,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
                << " enable_recursive_mutation: " << enable_recursive_mutation
-               << " curl_timeout: " << curl_timeout << '\n';
+               << '\n';
 
   connstr = "couchbase://" + settings->kv_host_port + "/" +
             cb_source_bucket.c_str() + "?username=" + settings->rbac_user +
@@ -286,11 +280,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                  config->metadata_bucket.c_str() +
                  "?username=" + settings->rbac_user + "&select_bucket=true";
 
-  if (!h_config->skip_lcb_bootstrap) {
-    conn_pool = new ConnectionPool(h_config->lcb_inst_capacity,
-                                   settings->kv_host_port, cb_source_bucket,
-                                   settings->rbac_user, settings->rbac_pass);
-  }
+  conn_pool = new ConnectionPool(h_config->lcb_inst_capacity,
+                                 settings->kv_host_port, cb_source_bucket,
+                                 settings->rbac_user, settings->rbac_pass);
   src_path = settings->eventing_dir + "/" + app_name_ + ".t.js";
 
   delete config;
@@ -400,7 +392,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   n1ql_handle = new N1QL(conn_pool, isolate_);
   UnwrapData(isolate_)->n1ql_handle = n1ql_handle;
 
-  Transpiler transpiler(GetIsolate(), GetTranspilerSrc());
+  Transpiler transpiler(GetTranspilerSrc());
   script_to_execute =
       transpiler.Transpile(plain_js, app_name_ + ".js", app_name_ + ".map.json",
                            settings->host_addr, settings->eventing_port) +
@@ -445,18 +437,13 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
     for (; bucket_handle != bucket_handles.end(); bucket_handle++) {
       if (*bucket_handle) {
-        if (!(*bucket_handle)->Initialize(this)) {
+        std::map<std::string, std::string> data_bucket;
+        if (!(*bucket_handle)->Initialize(this, &data_bucket)) {
           LOG(logError) << "Error initializing bucket handle" << '\n';
           return kFailedInitBucketHandle;
         }
       }
     }
-  }
-
-  curl_global_init(CURL_GLOBAL_ALL);
-  CURL *curl = curl_easy_init();
-  if (curl) {
-    UnwrapData(isolate_)->curl_handle = curl;
   }
 
   lcb_U32 lcb_timeout = 2500000; // 2.5s
@@ -595,8 +582,6 @@ void V8Worker::Checkpoint() {
   }
 }
 
-int64_t V8Worker::QueueSize() { return worker_queue->count(); }
-
 void V8Worker::RouteMessage() {
   const flatbuf::payload::Payload *payload;
   std::string key, val, doc_id, callback_fn, cron_cb_fns, metadata;
@@ -666,8 +651,6 @@ void V8Worker::RouteMessage() {
 
     delete msg.header;
     delete msg.payload;
-
-    messages_processed_counter++;
   }
 }
 
@@ -1005,15 +988,8 @@ void V8Worker::Enqueue(header_t *h, message_t *p) {
 }
 
 std::string V8Worker::CompileHandler(std::string handler) {
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
-
-  auto context = context_.Get(isolate_);
-  v8::Context::Scope context_scope(context);
-
   try {
-    Transpiler transpiler(GetIsolate(), GetTranspilerSrc());
+    Transpiler transpiler(GetTranspilerSrc());
     auto info = transpiler.Compile(handler);
     Transpiler::LogCompilationInfo(info);
 
@@ -1021,13 +997,13 @@ std::string V8Worker::CompileHandler(std::string handler) {
 
     auto info_obj = v8::Object::New(isolate_);
     info_obj->Set(v8Str(isolate_, "language"), v8Str(isolate_, info.language));
-    info_obj->Set(v8Str(isolate_, "compile_success"),
+    info_obj->Set(v8Str(isolate_, "compileSuccess"),
                   v8::Boolean::New(isolate_, info.compile_success));
     info_obj->Set(v8Str(isolate_, "index"),
                   v8::Int32::New(isolate_, info.index));
-    info_obj->Set(v8Str(isolate_, "line_number"),
+    info_obj->Set(v8Str(isolate_, "lineNumber"),
                   v8::Int32::New(isolate_, info.line_no));
-    info_obj->Set(v8Str(isolate_, "column_number"),
+    info_obj->Set(v8Str(isolate_, "columnNumber"),
                   v8::Int32::New(isolate_, info.col_no));
     info_obj->Set(v8Str(isolate_, "description"),
                   v8Str(isolate_, info.description));

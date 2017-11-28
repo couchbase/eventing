@@ -64,7 +64,6 @@ type SuperSupervisor struct {
 	superSup    *suptree.Supervisor
 	supCmdCh    chan supCmdMsg
 	uuid        string
-	diagDir     string
 
 	appRWMutex *sync.RWMutex
 

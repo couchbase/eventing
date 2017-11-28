@@ -52,8 +52,6 @@ type statusCodes struct {
 	errConnectNsServer  statusBase
 	errBucketTypeCheck  statusBase
 	errMemcachedBucket  statusBase
-	errHandlerCompile   statusBase
-	errRbacCreds        statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
@@ -85,8 +83,6 @@ func (m *ServiceMgr) initErrCodes() {
 		errConnectNsServer:  statusBase{"ERR_CONNECT_TO_NS_SERVER", 24},
 		errBucketTypeCheck:  statusBase{"ERR_BUCKET_TYPE_CHECK", 25},
 		errMemcachedBucket:  statusBase{"ERR_SOURCE_BUCKET_MEMCACHED", 26},
-		errHandlerCompile:   statusBase{"ERR_HANDLER_COMPILATION", 27},
-		errRbacCreds:        statusBase{"ERR_INSUFFICIENT_RBAC_CREDS", 28},
 	}
 
 	errors := []errorPayload{
@@ -222,16 +218,6 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errMemcachedBucket.Name,
 			Code:        m.statusCodes.errMemcachedBucket.Code,
 			Description: "Source bucket can't be of type memcached",
-		},
-		{
-			Name:        m.statusCodes.errHandlerCompile.Name,
-			Code:        m.statusCodes.errHandlerCompile.Code,
-			Description: "Handler compilation failed",
-		},
-		{
-			Name:        m.statusCodes.errRbacCreds.Name,
-			Code:        m.statusCodes.errRbacCreds.Code,
-			Description: "RBAC username/password missing",
 		},
 	}
 

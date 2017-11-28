@@ -44,29 +44,14 @@ int WinSprintf(char **strp, const char *fmt, ...) {
 #endif
 
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const char *str) {
-  v8::EscapableHandleScope handle_scope(isolate);
-
-  auto v8_str =
-      v8::String::NewFromUtf8(isolate, str, v8::NewStringType::kNormal)
-          .ToLocalChecked();
-  return handle_scope.Escape(v8_str);
+  return v8::String::NewFromUtf8(isolate, str, v8::NewStringType::kNormal)
+      .ToLocalChecked();
 }
 
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const std::string &str) {
-  v8::EscapableHandleScope handle_scope(isolate);
-
-  auto v8_str =
-      v8::String::NewFromUtf8(isolate, str.c_str(), v8::NewStringType::kNormal)
-          .ToLocalChecked();
-  return handle_scope.Escape(v8_str);
-}
-
-v8::Local<v8::Name> v8Name(v8::Isolate *isolate, uint32_t key) {
-  v8::EscapableHandleScope handle_scope(isolate);
-
-  auto key_v8_str = v8Str(isolate, std::to_string(key));
-  v8::Local<v8::Name> key_name(key_v8_str);
-  return handle_scope.Escape(key_name);
+  return v8::String::NewFromUtf8(isolate, str.c_str(),
+                                 v8::NewStringType::kNormal)
+      .ToLocalChecked();
 }
 
 std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
@@ -91,7 +76,7 @@ std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
 
 lcb_t *UnwrapLcbInstance(v8::Local<v8::Object> obj) {
   v8::Local<v8::External> field =
-      v8::Local<v8::External>::Cast(obj->GetInternalField(0));
+      v8::Local<v8::External>::Cast(obj->GetInternalField(1));
   void *ptr = field->Value();
   return static_cast<lcb_t *>(ptr);
 }

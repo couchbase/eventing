@@ -14,23 +14,45 @@ import (
 	"strings"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/consumer"
-	"github.com/couchbase/eventing/gen/auditevent"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
+	creds, err := cbauth.AuthWebCreds(r)
+	if err != nil || creds == nil {
+		logging.Warnf("Cannot authenticate request, rejecting")
+		w.WriteHeader(401)
+		return false
+	}
+	allowed, err := creds.IsAllowed(perm)
+	if err != nil || !allowed {
+		logging.Warnf("Cannot authorize request, rejecting")
+		w.WriteHeader(403)
+		return false
+	}
+	return true
+}
+
+func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
+	logging.Infof("Got request to clear event stats from host: %v", r.Host)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
+	if !valid {
 		return
 	}
 
+	m.superSup.ClearEventStats()
+}
+
+func (m *ServiceMgr) startTracer(w http.ResponseWriter, r *http.Request) {
 	logging.Infof("Got request to start tracing")
-	audit.AuditLog(auditevent.StartTracing, r, nil)
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
+	if !valid {
+		return
+	}
 
 	os.Remove(m.uuid + "_trace.out")
 
@@ -51,26 +73,20 @@ func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
 	trace.Stop()
 }
 
-func (m *ServiceMgr) stopTracing(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+func (m *ServiceMgr) stopTracer(w http.ResponseWriter, r *http.Request) {
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
+	if !valid {
 		return
 	}
 
-	audit.AuditLog(auditevent.StopTracing, r, nil)
-	logging.Infof("Got request to stop tracing")
 	m.stopTracerCh <- struct{}{}
 }
 
 func (m *ServiceMgr) getNodeUUID(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-	logging.Debugf("Got request to fetch UUID from host %v", r.Host)
 	fmt.Fprintf(w, "%v", m.uuid)
 }
 
 func (m *ServiceMgr) debugging(w http.ResponseWriter, r *http.Request) {
-	logging.Debugf("Got debugging fetch %v", r.URL)
 	jsFile := path.Base(r.URL.Path)
 	if strings.HasSuffix(jsFile, srcCodeExt) {
 		appName := jsFile[:len(jsFile)-len(srcCodeExt)]
@@ -99,16 +115,30 @@ func (m *ServiceMgr) debugging(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (m *ServiceMgr) getHandler(appName string) string {
+	if m.checkIfDeployed(appName) {
+		return m.superSup.GetHandlerCode(appName)
+	}
+
+	return ""
+}
+
+func (m *ServiceMgr) getSourceMap(appName string) string {
+	if m.checkIfDeployed(appName) {
+		return m.superSup.GetSourceMap(appName)
+	}
+
+	return ""
+}
+
 func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
+	if !valid {
 		return
 	}
 
 	values := r.URL.Query()
 	appName := values["name"][0]
-
-	logging.Infof("Deleting application %v from primary store", appName)
-	audit.AuditLog(auditevent.DeleteFunction, r, appName)
 
 	checkIfDeployed := false
 	for _, app := range util.ListChildren(metakvAppsPath) {
@@ -157,12 +187,10 @@ func (m *ServiceMgr) deleteApplication(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
+	if !valid {
 		return
 	}
-
-	logging.Infof("Deleting drafts")
-	audit.AuditLog(auditevent.DeleteDrafts, r, nil)
 
 	values := r.URL.Query()
 	appName := values["name"][0]
@@ -207,7 +235,8 @@ func (m *ServiceMgr) deleteAppTempStore(w http.ResponseWriter, r *http.Request) 
 }
 
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
+	if !valid {
 		return
 	}
 
@@ -227,11 +256,7 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
-func (m *ServiceMgr) getLocalDebugURL(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
+func (m *ServiceMgr) getLocalDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -252,7 +277,8 @@ func (m *ServiceMgr) getLocalDebugURL(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
+	if !valid {
 		return
 	}
 
@@ -260,7 +286,6 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 	appName := values["name"][0]
 
 	logging.Infof("App: %v got request to start V8 debugger", appName)
-	audit.AuditLog(auditevent.StartDebug, r, appName)
 
 	if m.checkIfDeployed(appName) {
 		m.superSup.SignalStartDebugger(appName)
@@ -274,7 +299,8 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
+	if !valid {
 		return
 	}
 
@@ -282,7 +308,6 @@ func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 	appName := values["name"][0]
 
 	logging.Infof("App: %v got request to stop V8 debugger", appName)
-	audit.AuditLog(auditevent.StopDebug, r, appName)
 
 	if m.checkIfDeployed(appName) {
 		m.superSup.SignalStopDebugger(appName)
@@ -296,13 +321,8 @@ func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getTimerHostPortAddrs(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
 	values := r.URL.Query()
 	appName := values["name"][0]
-	logging.Infof("App: %v got request for timer host port address", appName)
 
 	data, err := m.superSup.AppTimerTransferHostPortAddrs(appName)
 	if err == nil {
@@ -317,15 +337,9 @@ func (m *ServiceMgr) getTimerHostPortAddrs(w http.ResponseWriter, r *http.Reques
 	fmt.Fprintf(w, "")
 }
 
-func (m *ServiceMgr) getAggEventsPSec(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
+func (m *ServiceMgr) getAggEventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
-
-	logging.Debugf("Reading aggregate events processed per second for %v", appName)
 
 	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
 
@@ -338,11 +352,17 @@ func (m *ServiceMgr) getAggEventsPSec(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%v", pStats)
 }
 
-func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
+func (m *ServiceMgr) checkIfDeployed(appName string) bool {
+	deployedApps := m.superSup.DeployedAppList()
+	for _, app := range deployedApps {
+		if app == appName {
+			return true
+		}
 	}
+	return false
+}
 
+func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -366,10 +386,6 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 }
 
 func (m *ServiceMgr) getEventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -392,10 +408,6 @@ func (m *ServiceMgr) getEventsProcessedPSec(w http.ResponseWriter, r *http.Reque
 }
 
 func (m *ServiceMgr) getAggTimerHostPortAddrs(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -412,13 +424,6 @@ func (m *ServiceMgr) getAggTimerHostPortAddrs(w http.ResponseWriter, r *http.Req
 
 // Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
 func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
-	logging.Infof("Listing deployed applications")
-	audit.AuditLog(auditevent.ListDeployed, r, nil)
-
 	deployedApps := m.superSup.GetDeployedApps()
 
 	buf, err := json.Marshal(deployedApps)
@@ -435,10 +440,6 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 
 // Reports progress across all producers on current node
 func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
 	producerHostPortAddrs := m.superSup.ProducerHostPortAddrs()
 
 	progress, _ := util.GetProgress("/getRebalanceStatus", producerHostPortAddrs)
@@ -454,7 +455,8 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 
 // Reports aggregated event processing stats from all producers
 func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	valid := m.validateAuth(w, r, EventingPermissionRead)
+	if !valid {
 		return
 	}
 
@@ -480,9 +482,6 @@ func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.R
 
 // Reports aggregated rebalance progress from all producers
 func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
 
 	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
 
@@ -498,7 +497,8 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 }
 
 func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	valid := m.validateAuth(w, r, EventingPermissionRead)
+	if !valid {
 		return
 	}
 
@@ -525,7 +525,8 @@ func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getExecutionStats(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	valid := m.validateAuth(w, r, EventingPermissionRead)
+	if !valid {
 		return
 	}
 
@@ -552,7 +553,8 @@ func (m *ServiceMgr) getExecutionStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getFailureStats(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	valid := m.validateAuth(w, r, EventingPermissionRead)
+	if !valid {
 		return
 	}
 
@@ -579,10 +581,6 @@ func (m *ServiceMgr) getFailureStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
 	params := r.URL.Query()
 	appName := params["name"][0]
 
@@ -607,16 +605,14 @@ func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (m *ServiceMgr) setSettings(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+func (m *ServiceMgr) storeAppSettings(w http.ResponseWriter, r *http.Request) {
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
+	if !valid {
 		return
 	}
 
 	params := r.URL.Query()
 	appName := params["name"][0]
-
-	logging.Infof("Set settings for app %v", appName)
-	audit.AuditLog(auditevent.SetSettings, r, appName)
 
 	path := metakvAppSettingsPath + appName
 	data, err := ioutil.ReadAll(r.Body)
@@ -674,13 +670,11 @@ func (m *ServiceMgr) setSettings(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "stored settings for app: %v", appName)
 }
 
-func (m *ServiceMgr) getApplication(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+func (m *ServiceMgr) fetchAppSetup(w http.ResponseWriter, r *http.Request) {
+	valid := m.validateAuth(w, r, EventingPermissionRead)
+	if !valid {
 		return
 	}
-
-	logging.Infof("Getting all applications in primary store")
-	audit.AuditLog(auditevent.FetchFunctions, r, nil)
 
 	appList := util.ListChildren(metakvAppsPath)
 	respData := make([]application, len(appList))
@@ -750,13 +744,11 @@ func (m *ServiceMgr) getApplication(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s\n", data)
 }
 
-func (m *ServiceMgr) getAppTempStore(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+func (m *ServiceMgr) fetchAppTempStore(w http.ResponseWriter, r *http.Request) {
+	valid := m.validateAuth(w, r, EventingPermissionRead)
+	if !valid {
 		return
 	}
-
-	logging.Infof("Fetching function draft definitions")
-	audit.AuditLog(auditevent.FetchDrafts, r, nil)
 
 	tempAppList := util.ListChildren(metakvTempAppsPath)
 	respData := make([]application, len(tempAppList))
@@ -787,16 +779,16 @@ func (m *ServiceMgr) getAppTempStore(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s\n", data)
 }
 
-func (m *ServiceMgr) saveAppTempStore(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+func (m *ServiceMgr) saveAppSetup(w http.ResponseWriter, r *http.Request) {
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
+	if !valid {
 		return
 	}
 
 	params := r.URL.Query()
 	appName := params["name"][0]
 
-	logging.Infof("Got request to save handler into temporary store: %v", appName)
-	audit.AuditLog(auditevent.SaveDraft, r, appName)
+	logging.Infof("Got request to save handlers for: %v", appName)
 
 	path := metakvTempAppsPath + appName
 	data, err := ioutil.ReadAll(r.Body)
@@ -850,16 +842,14 @@ func (m *ServiceMgr) saveAppTempStore(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Stored handlers for app: %v", appName)
 }
 
-func (m *ServiceMgr) setApplication(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+func (m *ServiceMgr) storeAppSetup(w http.ResponseWriter, r *http.Request) {
+	valid := m.validateAuth(w, r, EventingPermissionWrite)
+	if !valid {
 		return
 	}
 
 	values := r.URL.Query()
 	appName := values["name"][0]
-
-	logging.Infof("Saving application %v to primary store", appName)
-	audit.AuditLog(auditevent.CreateFunction, r, appName)
 
 	if m.checkIfDeployed(appName) {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppDeployed.Code))
@@ -960,21 +950,6 @@ func (m *ServiceMgr) setApplication(w http.ResponseWriter, r *http.Request) {
 
 	appContent := builder.FinishedBytes()
 
-	c := &consumer.Consumer{}
-	info, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName)
-	if err != nil || !info.CompileSuccess {
-		res, mErr := json.Marshal(&info)
-		if mErr != nil {
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-			fmt.Fprintf(w, "App: %s Failed to marshal compilation status, err: %v", appName, mErr)
-			return
-		}
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errHandlerCompile.Code))
-		fmt.Fprintf(w, "%v\n", string(res))
-		return
-	}
-
 	settingsPath := metakvAppSettingsPath + appName
 	settings := app.Settings
 
@@ -1006,7 +981,8 @@ func (m *ServiceMgr) setApplication(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	valid := m.validateAuth(w, r, EventingPermissionRead)
+	if !valid {
 		return
 	}
 
@@ -1014,7 +990,8 @@ func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	valid := m.validateAuth(w, r, EventingPermissionRead)
+	if !valid {
 		return
 	}
 
@@ -1023,10 +1000,8 @@ func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Reques
 
 	if m.checkIfDeployed(appName) {
 		eventsRemaining := m.superSup.GetDcpEventsRemainingToProcess(appName)
-		resp := backlogStat{DcpBacklog: eventsRemaining}
-		data, _ := json.Marshal(&resp)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%v", string(data))
+		fmt.Fprintf(w, "%v", eventsRemaining)
 		return
 	}
 
@@ -1035,7 +1010,8 @@ func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Reques
 }
 
 func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	valid := m.validateAuth(w, r, EventingPermissionRead)
+	if !valid {
 		return
 	}
 
@@ -1059,56 +1035,4 @@ func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Requ
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 	fmt.Fprintf(w, "App: %v not deployed", appName)
-}
-
-func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
-	creds, err := cbauth.AuthWebCreds(r)
-	if err != nil || creds == nil {
-		logging.Warnf("Cannot authenticate request to %v", r.URL)
-		w.WriteHeader(401)
-		return false
-	}
-	allowed, err := creds.IsAllowed(perm)
-	if err != nil || !allowed {
-		logging.Warnf("Cannot authorize request to %v", r.URL)
-		w.WriteHeader(403)
-		return false
-	}
-	logging.Debugf("Allowing access to %v", r.URL)
-	return true
-}
-
-func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
-	logging.Infof("Got request to clear event stats from host: %v", r.Host)
-	m.superSup.ClearEventStats()
-}
-
-func (m *ServiceMgr) getHandler(appName string) string {
-	if m.checkIfDeployed(appName) {
-		return m.superSup.GetHandlerCode(appName)
-	}
-
-	return ""
-}
-
-func (m *ServiceMgr) getSourceMap(appName string) string {
-	if m.checkIfDeployed(appName) {
-		return m.superSup.GetSourceMap(appName)
-	}
-
-	return ""
-}
-
-func (m *ServiceMgr) checkIfDeployed(appName string) bool {
-	deployedApps := m.superSup.DeployedAppList()
-	for _, app := range deployedApps {
-		if app == appName {
-			return true
-		}
-	}
-	return false
 }

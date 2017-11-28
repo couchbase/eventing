@@ -35,7 +35,6 @@ enum v8_worker_opcode {
   oGetLatencyStats,
   oGetFailureStats,
   oGetExecutionStats,
-  oGetCompileInfo,
   oVersion,
   V8_Worker_Opcode_Unknown
 };
@@ -70,13 +69,10 @@ enum v8_worker_config_opcode {
   oConfigOpcode,
   oSourceMap,
   oHandlerCode,
-  oAppLogMessage,
-  oSysLogMessage,
+  oLogMessage,
   oLatencyStats,
   oFailureStats,
   oExecutionStats,
-  oCompileInfo,
-  oQueueSize,
   V8_Worker_Config_Opcode_Unknown
 };
 

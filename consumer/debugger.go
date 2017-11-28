@@ -29,11 +29,7 @@ func newDebugClient(c *Consumer, appName, eventingPort, ipcType, tcpPort, worker
 
 func (c *debugClient) Serve() {
 	c.cmd = exec.Command("eventing-consumer", c.appName, c.ipcType, c.debugTCPPort,
-		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.consumerHandle.diagDir,
-		c.eventingPort, "debug") // these two parameter are not read, for tagging
-
-	c.cmd.Stderr = os.Stderr
-	c.cmd.Stdout = os.Stdout
+		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.eventingPort, "debug")
 
 	err := c.cmd.Start()
 	if err != nil {
@@ -44,11 +40,7 @@ func (c *debugClient) Serve() {
 			c.appName, c.workerName, c.debugTCPPort, c.osPid)
 	}
 
-	err = c.cmd.Wait()
-	if err != nil {
-		logging.Warnf("CRCL[%s:%s:%s:%d] Exiting c++ debug worker with error: %v",
-			c.appName, c.workerName, c.debugTCPPort, c.osPid, err)
-	}
+	c.cmd.Wait()
 
 	logging.Debugf("CRDCL[%s:%s:%s:%d] Exiting C++ worker spawned for debugger",
 		c.appName, c.workerName, c.debugTCPPort, c.osPid)
@@ -239,8 +231,7 @@ func (c *Consumer) startDebuggerServer() {
 
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
 		c.producer.KvHostPorts()[0], c.producer.CfgData(), c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity,
-		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)), c.enableRecursiveMutation, false,
-		c.curlTimeout)
+		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)), c.enableRecursiveMutation)
 	logging.Debugf("CRSD[%s:%s:%s:%d] Debug enabled V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.debugTCPPort, c.Pid(), c.enableRecursiveMutation)
 

@@ -170,19 +170,11 @@ type Consumer struct {
 	connMutex *sync.RWMutex
 	conn      net.Conn // Access controlled by connMutex
 
-	// Captures aggregate of items in queue maintained for each V8Worker instance.
-	// Within a single CPP worker process, the number of V8Worker instance is equal
-	// to number of worker threads spawned
-	cppWorkerAggQueueSize *cppQueueSize
-	workerQueueCap        int64
-
 	cppThrPartitionMap map[int][]uint16
 	cppWorkerThrCount  int // No. of worker threads per CPP worker process
 	crcTable           *crc32.Table
-	curlTimeout        int64    // curl operation timeout in ms
 	debugConn          net.Conn // Interface to support communication between Go and C++ worker spawned for debugging
 	debugListener      net.Listener
-	diagDir            string // Location that will house minidumps from from crashed cpp workers
 	handlerCode        string // Handler code for V8 Debugger
 	sourceMap          string // source map to assist with V8 Debugger
 	sendMsgToDebugger  bool
@@ -206,7 +198,6 @@ type Consumer struct {
 	executionStats         map[string]uint64             // Access controlled by statsRWMutex
 	failureStats           map[string]uint64             // Access controlled by statsRWMutex
 	latencyStats           map[string]uint64             // Access controlled by statsRWMutex
-	compileInfo            *common.CompileStatus
 	statsRWMutex           *sync.RWMutex
 	hostDcpFeedRWMutex     *sync.RWMutex
 	kvVbMap                map[uint16]string // Access controlled by default lock
@@ -217,8 +208,6 @@ type Consumer struct {
 	vbsRemainingToOwn      []uint16
 	vbsRemainingToGiveUp   []uint16
 	vbsRemainingToRestream []uint16
-
-	xattrEntryPruneThreshold int
 
 	// Routines to control parallel vbucket ownership transfer
 	// during rebalance
@@ -478,8 +467,4 @@ type msgToTransmit struct {
 	prioritize     bool
 	headerBuilder  *flatbuffers.Builder
 	payloadBuilder *flatbuffers.Builder
-}
-
-type cppQueueSize struct {
-	AggQueueSize int64 `json:"agg_queue_size"`
 }

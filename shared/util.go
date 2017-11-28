@@ -687,6 +687,30 @@ func ComputeAvg(lastAvg, lastValue, currValue int64) int64 {
 	return (diff + lastAvg) / 2
 }
 
+// Write to the admin console
+func Console(clusterAddr string, format string, v ...interface{}) error {
+	msg := fmt.Sprintf(format, v...)
+	values := url.Values{"message": {msg}, "logLevel": {"info"}, "component": {"indexing"}}
+	reader := strings.NewReader(values.Encode())
+
+	if !strings.HasPrefix(clusterAddr, "http://") {
+		clusterAddr = "http://" + clusterAddr
+	}
+	clusterAddr += "/_log"
+
+	req, err := http.NewRequest("POST", clusterAddr, reader)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	cbauth.SetRequestAuthVia(req, nil)
+
+	client := http.Client{Timeout: time.Duration(10 * time.Second)}
+	_, err = client.Do(req)
+
+	return err
+}
+
 func CopyFile(dest, source string) (err error) {
 	var sf, df *os.File
 
