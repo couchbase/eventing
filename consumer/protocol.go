@@ -2,7 +2,6 @@ package consumer
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 
 	"github.com/couchbase/eventing/gen/flatbuf/header"
@@ -339,8 +338,6 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			c.handlerCode = msg
 		case appLogMessage:
 			c.producer.WriteAppLog(msg)
-		case sysLogMessage:
-			fmt.Printf("%s", msg)
 		case latencyStats:
 			c.statsRWMutex.Lock()
 			defer c.statsRWMutex.Unlock()

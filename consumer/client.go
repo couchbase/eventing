@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -25,9 +26,17 @@ func (c *client) Serve() {
 		c.eventingPort) // this parameter is not read, for tagging
 
 	c.cmd.Stderr = os.Stderr
-	c.cmd.Stdout = os.Stdout
 
-	err := c.cmd.Start()
+	out, err := c.cmd.StdoutPipe()
+	if err != nil {
+		logging.Errorf("CRCL[%s:%s:%s:%d] Failed to open stdout pipe, err: %v",
+			c.appName, c.workerName, c.tcpPort, c.osPid, err)
+		return
+	}
+
+	defer out.Close()
+
+	err = c.cmd.Start()
 	if err != nil {
 		logging.Errorf("CRCL[%s:%s:%s:%d] Failed to spawn worker, err: %v",
 			c.appName, c.workerName, c.tcpPort, c.osPid, err)
@@ -38,10 +47,24 @@ func (c *client) Serve() {
 	}
 	c.consumerHandle.osPid.Store(c.osPid)
 
+	bufOut := bufio.NewReader(out)
+
+	go func(bufOut *bufio.Reader) {
+		for {
+			msg, _, err := bufOut.ReadLine()
+			if err != nil {
+				logging.Infof("CRCL[%s:%s:%s:%d] Failed to read from stdout pipe, err: %v",
+					c.appName, c.workerName, c.tcpPort, c.osPid, err)
+				return
+			}
+			logging.Infof("%s", string(msg))
+		}
+	}(bufOut)
+
 	err = c.cmd.Wait()
 	if err != nil {
 		logging.Warnf("CRCL[%s:%s:%s:%d] Exiting c++ worker with error: %v",
-		c.appName, c.workerName, c.tcpPort, c.osPid, err)
+			c.appName, c.workerName, c.tcpPort, c.osPid, err)
 	}
 
 	logging.Debugf("CRCL[%s:%s:%s:%d] Exiting c++ worker routine",
