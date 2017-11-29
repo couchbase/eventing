@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -21,9 +22,21 @@ func newClient(consumer *Consumer, appName, tcpPort, workerName, eventingAdminPo
 
 func (c *client) Serve() {
 	c.cmd = exec.Command("eventing-consumer", c.appName, c.consumerHandle.ipcType, c.tcpPort,
-		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.eventingPort)
+		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.consumerHandle.diagDir,
+		c.eventingPort) // this parameter is not read, for tagging
 
-	err := c.cmd.Start()
+	c.cmd.Stderr = os.Stderr
+
+	out, err := c.cmd.StdoutPipe()
+	if err != nil {
+		logging.Errorf("CRCL[%s:%s:%s:%d] Failed to open stdout pipe, err: %v",
+			c.appName, c.workerName, c.tcpPort, c.osPid, err)
+		return
+	}
+
+	defer out.Close()
+
+	err = c.cmd.Start()
 	if err != nil {
 		logging.Errorf("CRCL[%s:%s:%s:%d] Failed to spawn worker, err: %v",
 			c.appName, c.workerName, c.tcpPort, c.osPid, err)
@@ -34,16 +47,36 @@ func (c *client) Serve() {
 	}
 	c.consumerHandle.osPid.Store(c.osPid)
 
-	c.cmd.Wait()
+	bufOut := bufio.NewReader(out)
 
-	logging.Debugf("CRCL[%s:%s:%s:%d] Exiting c++ worker init routine",
+	go func(bufOut *bufio.Reader) {
+		for {
+			msg, _, err := bufOut.ReadLine()
+			if err != nil {
+				logging.Infof("CRCL[%s:%s:%s:%d] Failed to read from stdout pipe, err: %v",
+					c.appName, c.workerName, c.tcpPort, c.osPid, err)
+				return
+			}
+			logging.Infof("%s", string(msg))
+		}
+	}(bufOut)
+
+	err = c.cmd.Wait()
+	if err != nil {
+		logging.Warnf("CRCL[%s:%s:%s:%d] Exiting c++ worker with error: %v",
+			c.appName, c.workerName, c.tcpPort, c.osPid, err)
+	}
+
+	logging.Debugf("CRCL[%s:%s:%s:%d] Exiting c++ worker routine",
 		c.appName, c.workerName, c.tcpPort, c.osPid)
 
 	c.consumerHandle.connMutex.Lock()
 	defer c.consumerHandle.connMutex.Unlock()
 
 	if c.consumerHandle != nil {
-		c.consumerHandle.conn.Close()
+		if c.consumerHandle.conn != nil {
+			c.consumerHandle.conn.Close()
+		}
 	}
 	c.consumerHandle.conn = nil
 }
