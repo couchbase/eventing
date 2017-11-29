@@ -92,7 +92,6 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 		}
 
 		s.appRWMutex.Lock()
-		defer s.appRWMutex.Unlock()
 		if _, ok := s.appDeploymentStatus[appName]; !ok {
 			s.appDeploymentStatus[appName] = false
 		}
@@ -101,35 +100,14 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 			s.appProcessingStatus[appName] = false
 		}
 
-		val, ok := settings["processing_status"]
-		if !ok {
-			logging.Errorf("SSUP[%d] Missing processing_status", len(s.runningProducers))
-			return nil
+		if processingStatus, ok := settings["processing_status"].(bool); ok {
+			if s.appProcessingStatus[appName] == false && processingStatus {
+				s.supCmdCh <- msg
+				s.appProcessingStatus[appName] = true
+				s.appDeploymentStatus[appName] = true
+			}
 		}
-
-		processingStatus, ok := val.(bool)
-		if !ok {
-			logging.Errorf("SSUP[%d] Supplied processing_status unexpected", len(s.runningProducers))
-			return nil
-		}
-
-		val, ok = settings["deployment_status"]
-		if !ok {
-			logging.Errorf("SSUP[%d] Missing deployment_status", len(s.runningProducers))
-			return nil
-		}
-
-		_, ok = val.(bool)
-		if !ok {
-			logging.Errorf("SSUP[%d] Supplied deployment_status unexpected", len(s.runningProducers))
-			return nil
-		}
-
-		if s.appProcessingStatus[appName] == false && processingStatus {
-			s.supCmdCh <- msg
-			s.appProcessingStatus[appName] = true
-			s.appDeploymentStatus[appName] = true
-		}
+		s.appRWMutex.Unlock()
 
 	} else {
 
@@ -179,32 +157,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 		settings := make(map[string]interface{})
 		json.Unmarshal(value, &settings)
 
-		val, ok := settings["processing_status"]
-		if !ok {
-			logging.Errorf("SSUP[%d] Missing processing_status", len(s.runningProducers))
-			return nil
-		}
-
-		processingStatus, ok := val.(bool)
-		if !ok {
-			logging.Errorf("SSUP[%d] Supplied processing_status unexpected", len(s.runningProducers))
-			return nil
-		}
-
-		val, ok = settings["deployment_status"]
-		if !ok {
-			logging.Errorf("SSUP[%d] Missing deployment_status", len(s.runningProducers))
-			return nil
-		}
-
-		deploymentStatus, ok := val.(bool)
-		if !ok {
-			logging.Errorf("SSUP[%d] Supplied deployment_status unexpected", len(s.runningProducers))
-			return nil
-		}
+		processingStatus := settings["processing_status"].(bool)
+		deploymentStatus := settings["deployment_status"].(bool)
 
 		s.appRWMutex.Lock()
-		defer s.appRWMutex.Unlock()
 		if _, ok := s.appDeploymentStatus[appName]; !ok {
 			s.appDeploymentStatus[appName] = false
 		}
@@ -314,6 +270,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 				}
 			}
 		}
+
+		s.appRWMutex.Unlock()
 
 	}
 	return nil

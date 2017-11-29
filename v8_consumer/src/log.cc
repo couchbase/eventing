@@ -14,7 +14,7 @@
 #include <iostream>
 #include <sstream>
 
-std::ostringstream app_log_os;
+std::ostringstream os;
 
 std::string appName = "";
 LogLevel desiredLogLevel = LogLevel(0);
