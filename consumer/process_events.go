@@ -122,7 +122,7 @@ func (c *Consumer) processEvents() {
 							if err == errPlasmaHandleMissing {
 								logging.Tracef("CRDP[%s:%s:%s:%d] Key: %s vb: %v Plasma handle missing(retryTimerStore1)",
 									c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket)
-								time.Sleep(time.Second)
+								time.Sleep(time.Millisecond * 5)
 								goto retryTimerStore1
 							}
 
@@ -136,7 +136,7 @@ func (c *Consumer) processEvents() {
 						if err == errPlasmaHandleMissing {
 							logging.Tracef("CRDP[%s:%s:%s:%d] Key: %s vb: %v Plasma handle missing(retryTimerStore2)",
 								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket)
-							time.Sleep(time.Second)
+							time.Sleep(time.Millisecond * 5)
 							goto retryTimerStore2
 						}
 
@@ -607,7 +607,7 @@ loop:
 	vbFlog := <-c.vbFlogChan
 
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
-		logging.Debugf("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+		logging.Tracef("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
 
 		c.plasmaReaderRWMutex.Lock()
 		c.plasmaStoreRWMutex.Lock()
