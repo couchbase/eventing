@@ -11,6 +11,8 @@
 
 #include "../include/function_templates.h"
 
+long curl_timeout = 500L; // Default curl timeout of 500ms
+
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
@@ -31,7 +33,7 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
     log_msg += " ";
   }
 
-  LOG(logDebug) << log_msg << '\n';
+  APP_LOG(logDebug) << log_msg << '\n';
 }
 
 // console.log for debugger - also logs to eventing.log
@@ -317,7 +319,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     }
 
     if (res.rc == LCB_SUCCESS) {
-        return;
+      return;
     }
 
     if (res.rc == LCB_KEY_EEXISTS) {
@@ -325,5 +327,174 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       std::this_thread::sleep_for(
           std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
     }
+  }
+}
+
+size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb,
+                           void *userp) {
+  size_t realsize = size * nmemb;
+  struct CurlResult *mem = static_cast<struct CurlResult *>(userp);
+
+  mem->memory =
+      static_cast<char *>(realloc(mem->memory, mem->size + realsize + 1));
+  if (mem->memory == NULL) {
+    LOG(logError) << "not enough memory (realloc returned NULL)" << '\n';
+    return 0;
+  }
+
+  memcpy(&(mem->memory[mem->size]), contents, realsize);
+  mem->size += realsize;
+  mem->memory[mem->size] = 0;
+
+  return realsize;
+}
+
+void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+
+  std::string auth, data, http_method, mime_type, url, url_suffix;
+  struct curl_slist *headers = nullptr;
+  v8::String::Utf8Value u(args[0]);
+
+  url.assign(*u);
+
+  auto context = isolate->GetCurrentContext();
+  auto options = args[1]->ToObject(context).ToLocalChecked();
+  auto option_names = options->GetOwnPropertyNames();
+
+  for (int i = 0; i < static_cast<int>(option_names->Length()); i++) {
+    auto key = option_names->Get(i);
+    auto value = options->Get(key);
+
+    if (key->IsString()) {
+      v8::String::Utf8Value utf8_key(key);
+
+      if ((strcmp(*utf8_key, "method") == 0) && value->IsString()) {
+
+        v8::String::Utf8Value method(value);
+        http_method.assign(*method);
+
+      } else if ((strcmp(*utf8_key, "auth") == 0) && value->IsString()) {
+
+        v8::String::Utf8Value creds(value);
+        auto creds_vec = split(*creds, ':');
+        if (creds_vec.size() == 2) {
+          auth.assign(*creds);
+        } else {
+          LOG(logError) << "Credentials vector size: " << creds_vec.size()
+                        << std::endl;
+        }
+
+      } else if (strcmp(*utf8_key, "data") == 0) {
+        if (value->IsString()) {
+
+          v8::String::Utf8Value payload(value);
+          data.assign(*payload);
+
+          headers = curl_slist_append(
+              headers, "Content-Type: application/x-www-form-urlencoded");
+
+        } else if (value->IsObject()) {
+
+          data.assign(JSONStringify(args.GetIsolate(), value));
+          headers =
+              curl_slist_append(headers, "Content-Type: application/json");
+        }
+      } else if (strcmp(*utf8_key, "parameters") == 0) {
+
+        auto paramaters = value->ToObject(context).ToLocalChecked();
+        auto parameter_fields = paramaters.As<v8::Array>();
+
+        for (int j = 0; j < static_cast<int>(parameter_fields->Length()); j++) {
+          auto param = parameter_fields->Get(j).As<v8::Object>();
+
+          if (param->IsString()) {
+            v8::String::Utf8Value param_str(param);
+            if (j > 0) {
+              url_suffix += "&" + std::string(*param_str);
+            } else {
+              url_suffix += "?" + std::string(*param_str);
+            }
+          }
+        }
+      } else if (strcmp(*utf8_key, "headers") == 0) {
+        if (value->IsString()) {
+          v8::String::Utf8Value m(value);
+          mime_type.assign(*m);
+        }
+      }
+    }
+  }
+
+  url += url_suffix;
+
+  LOG(logTrace) << "method: " << http_method << " auth:" << auth
+                << " data: " << data << " url: " << url << '\n';
+
+  if (http_method.empty()) {
+    http_method.assign("GET");
+  }
+
+  CURLcode res;
+  CURL *curl = UnwrapData(isolate)->curl_handle;
+
+  if ((strcmp(http_method.c_str(), "GET") == 0 ||
+       strcmp(http_method.c_str(), "POST") == 0) &&
+      curl) {
+
+    // Initialize common bootstrap code
+    struct CurlResult chunk;
+    chunk.memory = static_cast<char *>(malloc(1));
+    chunk.size = 0;
+
+    curl_easy_reset(curl);
+
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+
+    if (!auth.empty()) {
+      curl_easy_setopt(curl, CURLOPT_HTTPAUTH, (long)CURLAUTH_ANY);
+      curl_easy_setopt(curl, CURLOPT_USERPWD, auth.c_str());
+    }
+
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPIDLE, 120L); // Idle time of 120s
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPINTVL, 60L); // probe interval of 60s
+
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, curl_timeout);
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "couchbase-eventing/1.0");
+
+    if (strcmp(http_method.c_str(), "GET") == 0) {
+
+      res = curl_easy_perform(curl);
+
+    } else {
+
+      if (mime_type.empty()) {
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+      } else {
+        curl_slist_free_all(headers);
+        headers = curl_slist_append(headers, mime_type.c_str());
+      }
+
+      curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data.c_str());
+      curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)data.size());
+
+      res = curl_easy_perform(curl);
+      curl_slist_free_all(headers);
+    }
+
+    LOG(logTrace) << "Response code from curl call: " << static_cast<int>(res)
+                  << '\n';
+    if (res != CURLE_OK) {
+      auto js_exception = UnwrapData(isolate)->js_exception;
+      js_exception->Throw(res);
+      return;
+    }
+
+    args.GetReturnValue().Set(v8::JSON::Parse(
+        v8::String::NewFromUtf8(args.GetIsolate(), chunk.memory)));
   }
 }

@@ -3,6 +3,7 @@ package producer
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -60,19 +61,68 @@ func (p *Producer) parseDepcfg() error {
 		return uErr
 	}
 
-	p.cleanupTimers = settings["cleanup_timers"].(bool)
-	p.dcpStreamBoundary = common.DcpStreamBoundary(settings["dcp_stream_boundary"].(string))
-	p.logLevel = settings["log_level"].(string)
-	p.statsTickDuration = time.Duration(settings["tick_duration"].(float64))
-	p.workerCount = int(settings["worker_count"].(float64))
-	p.timerWorkerPoolSize = int(settings["timer_worker_pool_size"].(float64))
-	p.socketWriteBatchSize = int(settings["sock_batch_size"].(float64))
-	p.skipTimerThreshold = int(settings["skip_timer_threshold"].(float64))
+	if val, ok := settings["cleanup_timers"]; !ok {
+		p.cleanupTimers = false
+	} else {
+		p.cleanupTimers = val.(bool)
+	}
 
-	p.rbacUser = settings["rbacuser"].(string)
-	p.rbacPass = settings["rbacpass"].(string)
+	if val, ok := settings["dcp_stream_boundary"]; !ok {
+		p.dcpStreamBoundary = common.DcpStreamBoundary("everything")
+	} else {
+		p.dcpStreamBoundary = common.DcpStreamBoundary(val.(string))
+	}
 
-	// TODO: Remove if exists checking once UI starts to pass below fields
+	if val, ok := settings["log_level"]; !ok {
+		p.logLevel = "INFO"
+	} else {
+		p.logLevel = val.(string)
+	}
+
+	if val, ok := settings["tick_duration"]; !ok {
+		p.statsTickDuration = time.Duration(5000)
+	} else {
+		p.statsTickDuration = time.Duration(val.(float64))
+	}
+
+	if val, ok := settings["worker_count"]; !ok {
+		p.workerCount = 3
+	} else {
+		p.workerCount = int(val.(float64))
+	}
+
+	if val, ok := settings["timer_worker_pool_size"]; !ok {
+		p.timerWorkerPoolSize = 3
+	} else {
+		p.timerWorkerPoolSize = int(val.(float64))
+	}
+
+	if val, ok := settings["sock_batch_size"]; !ok {
+		p.socketWriteBatchSize = 100
+	} else {
+		p.socketWriteBatchSize = int(val.(float64))
+	}
+
+	if val, ok := settings["skip_timer_threshold"]; !ok {
+		p.skipTimerThreshold = 86400
+	} else {
+		p.skipTimerThreshold = int(val.(float64))
+	}
+
+	val, ok := settings["rbacuser"]
+	if !ok {
+		logging.Errorf("DCFG[%s] RBAC username not supplied", p.appName)
+		return fmt.Errorf("rbac username missing")
+	}
+	p.rbacUser = val.(string)
+
+	val, ok = settings["rbacpass"]
+	if !ok {
+		logging.Errorf("DCFG[%s] RBAC password not supplied", p.appName)
+		return fmt.Errorf("rbac password missing")
+	}
+	p.rbacPass = val.(string)
+
 	if val, ok := settings["lcb_inst_capacity"]; ok {
 		p.lcbInstCapacity = int(val.(float64))
 	} else {
@@ -118,7 +168,45 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["memory_quota"]; ok {
 		p.plasmaMemQuota = int64(val.(float64))
 	} else {
-		p.plasmaMemQuota = 268435456 // 256 MB
+		p.plasmaMemQuota = 256 // in MB
+	}
+
+	if val, ok := settings["xattr_doc_timer_entry_prune_threshold"]; ok {
+		p.xattrEntryPruneThreshold = int(val.(float64))
+	} else {
+		p.xattrEntryPruneThreshold = 100
+	}
+
+	if val, ok := settings["app_log_dir"]; ok {
+		os.MkdirAll(val.(string), 0755)
+		p.appLogPath = fmt.Sprintf("%s/%s", val.(string), p.appName)
+	} else {
+		os.MkdirAll(p.eventingDir, 0755)
+		p.appLogPath = fmt.Sprintf("%s/%s.log", p.eventingDir, p.appName)
+	}
+
+	if val, ok := settings["app_log_max_size"]; ok {
+		p.appLogMaxSize = int64(val.(float64))
+	} else {
+		p.appLogMaxSize = 1024 * 1024 * 10
+	}
+
+	if val, ok := settings["app_log_max_files"]; ok {
+		p.appLogMaxFiles = int(val.(float64))
+	} else {
+		p.appLogMaxFiles = 10
+	}
+
+	if val, ok := settings["curl_timeout"]; ok {
+		p.curlTimeout = int64(val.(float64))
+	} else {
+		p.curlTimeout = int64(500)
+	}
+
+	if val, ok := settings["worker_queue_cap"]; ok {
+		p.workerQueueCap = int64(val.(float64))
+	} else {
+		p.workerQueueCap = int64(1000 * 1000)
 	}
 
 	p.app.Settings = settings

@@ -90,10 +90,6 @@ private:
   // batch_size controls the size of it
   int batch_size;
 
-  // Tracks counter for dcp events processed so far and writes to
-  // socket when counter reaches batch_size;
-  int messages_processed_counter;
-
   // Captures the config message that will be written by C++ worker
   // to the tcp socket in order to communicate message to Go world
   resp_msg_t *resp_msg;

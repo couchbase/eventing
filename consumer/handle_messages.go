@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -156,6 +157,28 @@ func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool, pBuilde
 		prioritize:     true,
 		headerBuilder:  hBuilder,
 		payloadBuilder: pBuilder,
+	}
+
+	c.sendMessage(m)
+}
+
+func (c *Consumer) sendCompileRequest(appCode string) {
+	header, hBuilder := c.makeV8CompileOpcodeHeader(appCode)
+
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.v8WorkerMessagesProcessed["V8_COMPILE"]; !ok {
+		c.v8WorkerMessagesProcessed["V8_COMPILE"] = 0
+	}
+	c.v8WorkerMessagesProcessed["V8_COMPILE"]++
+	c.msgProcessedRWMutex.Unlock()
+
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		sendToDebugger: false,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
 	}
 
 	c.sendMessage(m)
@@ -387,6 +410,13 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 }
 
 func (c *Consumer) sendMessageLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			trace := debug.Stack()
+			logging.Errorf("CRHM[%s:%s:%s:%d] sendMessageLoop recover, %v stack trace: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
+		}
+	}()
 
 	// Flush any entry in stop channel. Entry could have come in as part of bootstrap
 	select {
@@ -507,14 +537,23 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 }
 
 func (c *Consumer) readMessageLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			trace := debug.Stack()
+			logging.Errorf("CRHM[%s:%s:%s:%d] readMessageLoop recover, %v stack trace: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
+		}
+	}()
 
 	for {
 		buffer := make([]byte, 4096)
 		bytesRead, err := c.sockReader.Read(buffer)
 
 		if err == io.EOF || bytesRead == 0 {
-			fmt.Printf("Exiting for loop, which is reading from socket, err: %v\n", err)
-			c.client.Stop()
+			if c.client != nil {
+				fmt.Printf("Exiting for loop, which is reading from socket, err: %v\n", err)
+				c.client.Stop()
+			}
 			break
 		}
 		if err != nil {

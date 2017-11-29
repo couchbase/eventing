@@ -1,0 +1,18 @@
+diff --git a/auditd/etc/module_descriptors.json b/auditd/etc/module_descriptors.json
+index e665967b0..9a170eb10 100644
+--- a/auditd/etc/module_descriptors.json
++++ b/auditd/etc/module_descriptors.json
+@@ -38,6 +38,12 @@
+                                "startid" :28672,
+                                "file" : "goproj/src/github.com/couchbase/query/etc/audit_descriptor.json"
+                               }
+-               }
++               },
++               {
++                "eventing" :  {
++                               "startid" : 32768,
++                               "file" : "goproj/src/github.com/couchbase/eventing/audit/audit_descriptor.json"
++                              }
++                }
+              ]
+ }
