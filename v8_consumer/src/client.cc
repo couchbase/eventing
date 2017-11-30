@@ -57,7 +57,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
   LOG(logTrace) << "Event: " << static_cast<int16_t>(parsed_header->event)
                 << " Opcode: " << static_cast<int16_t>(parsed_header->opcode)
-                << '\n';
+                << std::endl;
 
   switch (getEvent(parsed_header->event)) {
   case eV8_Worker:
@@ -88,7 +88,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       server_settings->rbac_pass.assign(payload->rbac_pass()->str());
       server_settings->rbac_user.assign(payload->rbac_user()->str());
 
-      LOG(logDebug) << "Loading app:" << app_name << '\n';
+      LOG(logDebug) << "Loading app:" << app_name << std::endl;
 
       v8::V8::InitializeICU();
       platform = v8::platform::CreateDefaultPlatform();
@@ -98,7 +98,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       for (int16_t i = 0; i < thr_count; i++) {
         V8Worker *w = new V8Worker(platform, handler_config, server_settings);
 
-        LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << '\n';
+        LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
         workers[i] = w;
       }
 
@@ -107,12 +107,13 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority = true;
       break;
     case oLoad:
-      LOG(logDebug) << "Loading app code:" << parsed_header->metadata << '\n';
+      LOG(logDebug) << "Loading app code:" << parsed_header->metadata
+                    << std::endl;
       for (int16_t i = 0; i < thr_count; i++) {
         workers[i]->V8WorkerLoad(parsed_header->metadata);
 
         LOG(logInfo) << "Load index: " << i << " V8Worker: " << workers[i]
-                     << '\n';
+                     << std::endl;
       }
       msg_priority = true;
       break;
@@ -198,7 +199,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority = true;
       break;
     case oGetCompileInfo:
-      LOG(logDebug) << "Compiling app code:" << parsed_header->metadata << '\n';
+      LOG(logDebug) << "Compiling app code:" << parsed_header->metadata
+                    << std::endl;
       compile_resp = workers[0]->CompileHandler(parsed_header->metadata);
 
       resp_msg->msg.assign(compile_resp);
@@ -208,7 +210,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       break;
     case oVersion:
     default:
-      LOG(logError) << "worker_opcode_unknown encountered" << '\n';
+      LOG(logError) << "worker_opcode_unknown encountered" << std::endl;
       break;
     }
     break;
@@ -231,7 +233,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       }
       break;
     default:
-      LOG(logError) << "dcp_opcode_unknown encountered" << '\n';
+      LOG(logError) << "dcp_opcode_unknown encountered" << std::endl;
       break;
     }
     break;
@@ -258,7 +260,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oGet:
     case oPost:
     default:
-      LOG(logError) << "http_opcode_unknown encountered" << '\n';
+      LOG(logError) << "http_opcode_unknown encountered" << std::endl;
       break;
     }
     break;
@@ -267,12 +269,12 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oLogLevel:
       setLogLevel(LevelFromString(parsed_header->metadata));
       LOG(logInfo) << "Configured log level: " << parsed_header->metadata
-                   << '\n';
+                   << std::endl;
       msg_priority = true;
       break;
     case oWorkerThreadCount:
       LOG(logInfo) << "Worker thread count: " << parsed_header->metadata
-                   << '\n';
+                   << std::endl;
       thr_count = int16_t(std::stoi(parsed_header->metadata));
       msg_priority = true;
       break;
@@ -282,7 +284,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       thr_map = payload->thr_map();
       partition_count = payload->partitionCount();
       LOG(logInfo) << "Request for worker thread map, size: " << thr_map->size()
-                   << " partition_count: " << partition_count << '\n';
+                   << " partition_count: " << partition_count << std::endl;
 
       for (unsigned int i = 0; i < thr_map->size(); i++) {
         int16_t thread_id = thr_map->Get(i)->threadID();
@@ -320,7 +322,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     }
     break;
   default:
-    LOG(logError) << "Unknown command" << '\n';
+    LOG(logError) << "Unknown command" << std::endl;
     break;
   }
 }
@@ -366,7 +368,7 @@ void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
 
   LOG(logInfo) << "Starting worker with uds for appname:" << appname
                << " worker_id:" << worker_id << " batch_size:" << batch_size
-               << " uds_path:" << uds_sock_path << '\n';
+               << " uds_path:" << uds_sock_path << std::endl;
 
   uv_pipe_connect(&conn, &uds_sock, uds_sock_path.c_str(),
                   [](uv_connect_t *conn, int status) {
@@ -390,7 +392,7 @@ void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
 
   LOG(logInfo) << "Starting worker for appname:" << appname
                << " worker_id:" << worker_id << " batch_size:" << batch_size
-               << " port:" << port << '\n';
+               << " port:" << port << std::endl;
 
   uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
                  [](uv_connect_t *conn, int status) {
@@ -405,7 +407,7 @@ void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
 
 void AppWorker::OnConnect(uv_connect_t *conn, int status) {
   if (status == 0) {
-    LOG(logInfo) << "Client connected" << '\n';
+    LOG(logInfo) << "Client connected" << std::endl;
 
     uv_read_start(conn->handle, alloc_buffer,
                   [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
@@ -415,7 +417,7 @@ void AppWorker::OnConnect(uv_connect_t *conn, int status) {
     conn_handle = conn->handle;
   } else {
     LOG(logError) << "Connection failed with error:" << uv_strerror(status)
-                  << '\n';
+                  << std::endl;
   }
 }
 
@@ -472,7 +474,8 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
           encoded_header_size, encoded_payload_size, chunk_to_parse);
       LOG(logDebug) << "header_size:" << encoded_header_size << " payload_size "
                     << encoded_payload_size
-                    << " messages processed: " << messages_processed << '\n';
+                    << " messages processed: " << messages_processed
+                    << std::endl;
 
       if (parsed_message) {
         message_t *pmessage = parsed_message.release();
@@ -608,14 +611,15 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
 void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
                        const uv_buf_t *buf) {
-  LOG(logDebug) << "OnRead callback triggered, nread " << nread << '\n';
+  LOG(logDebug) << "OnRead callback triggered, nread " << nread << std::endl;
   if (nread > 0) {
     AppWorker::GetAppWorker()->ParseValidChunk(stream, nread, buf->base);
   } else if (nread == 0) {
     next_message.clear();
   } else {
     if (nread != UV_EOF) {
-      LOG(logError) << "Read error, err code: " << uv_err_name(nread) << '\n';
+      LOG(logError) << "Read error, err code: " << uv_err_name(nread)
+                    << std::endl;
     }
     AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message.length(),
                                                next_message.c_str());
@@ -626,7 +630,7 @@ void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
 
 void AppWorker::OnWrite(uv_write_t *req, int status) {
   if (status) {
-    LOG(logError) << "Write error, err: " << uv_strerror(status) << '\n';
+    LOG(logError) << "Write error, err: " << uv_strerror(status) << std::endl;
   }
 
   write_req_t *wr = (write_req_t *)req;
@@ -645,20 +649,17 @@ static bool dumpCallback(const google_breakpad::MinidumpDescriptor &descriptor,
                          void *context, bool succeeded) {
   std::cerr << std::endl
             << "=== Minidump location: " << descriptor.path()
-            << " Status: " << succeeded << " ==="
-            << std::endl;
+            << " Status: " << succeeded << " ===" << std::endl;
   return succeeded;
 }
 #elif defined(BREAKPAD_FOUND) && defined(_WIN32)
-static bool dumpCallback(const wchar_t* dump_path, const wchar_t* minidump_id,
-                         void* context, EXCEPTION_POINTERS* exinfo,
-                         MDRawAssertionInfo* assertion, bool succeeded) {
+static bool dumpCallback(const wchar_t *dump_path, const wchar_t *minidump_id,
+                         void *context, EXCEPTION_POINTERS *exinfo,
+                         MDRawAssertionInfo *assertion, bool succeeded) {
   std::wcerr << std::endl
-             << "=== Minidump location: " << dump_path
-             << " ID: " << minidump_id
-             << " Status: " << succeeded << " ==="
-             << std::endl;
-    return succeeded;
+             << "=== Minidump location: " << dump_path << " ID: " << minidump_id
+             << " Status: " << succeeded << " ===" << std::endl;
+  return succeeded;
 }
 #endif
 
@@ -668,7 +669,7 @@ int main(int argc, char **argv) {
   if (argc < 6) {
     std::cerr << "Need at least 6 arguments: appname, ipc_type, port, "
                  "worker_id, batch_size, diag_dir"
-              << '\n';
+              << std::endl;
     return 2;
   }
 
@@ -694,10 +695,12 @@ int main(int argc, char **argv) {
 
 #if defined(BREAKPAD_FOUND) && defined(__linux__)
   google_breakpad::MinidumpDescriptor descriptor(diag_dir.c_str());
-  google_breakpad::ExceptionHandler eh(descriptor, NULL, dumpCallback, NULL, true, -1);
+  google_breakpad::ExceptionHandler eh(descriptor, NULL, dumpCallback, NULL,
+                                       true, -1);
 #elif defined(BREAKPAD_FOUND) && defined(_WIN32)
   std::wstring descriptor(diag_dir.begin(), diag_dir.end());
-  google_breakpad::ExceptionHandler eh(descriptor, NULL, dumpCallback, NULL, true);
+  google_breakpad::ExceptionHandler eh(descriptor, NULL, dumpCallback, NULL,
+                                       true);
 #endif
 
   setAppName(appname);

@@ -148,11 +148,11 @@ public:
 
         LOG(logTrace) << "ns.count(): " << ns.count()
                       << "ns, max_task_duration: " << max_task_duration << "ns"
-                      << '\n';
+                      << std::endl;
         if (ns.count() > max_task_duration) {
           if (isolate_) {
             LOG(logTrace) << "Task took: " << ns.count()
-                          << "ns, terminating it's execution" << '\n';
+                          << "ns, terminating it's execution" << std::endl;
             timeout_count++;
             v8::V8::TerminateExecution(isolate_);
             execute_flag = false;

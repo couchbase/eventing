@@ -103,7 +103,8 @@ void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     break;
   default:
     LOG(logTrace) << "LCB_CALLBACK_GET: Operation failed, "
-                  << lcb_strerror(NULL, rb->rc) << " rc:" << rb->rc << '\n';
+                  << lcb_strerror(NULL, rb->rc) << " rc:" << rb->rc
+                  << std::endl;
     break;
   }
 }
@@ -168,7 +169,7 @@ void sdlookup_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
 }
 
 void startDebuggerFlag(bool started) {
-  LOG(logInfo) << "debugger_started flag: " << debugger_started << '\n';
+  LOG(logInfo) << "debugger_started flag: " << debugger_started << std::endl;
   debugger_started = started;
 
   // Disable logging when inspector is running
@@ -225,7 +226,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   if (try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Last exception: " << last_exception << '\n';
+    LOG(logError) << "Last exception: " << last_exception << std::endl;
   }
 
   v8::Local<v8::Context> context = v8::Context::New(GetIsolate(), NULL, global);
@@ -276,7 +277,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
                << " enable_recursive_mutation: " << enable_recursive_mutation
-               << " curl_timeout: " << curl_timeout << '\n';
+               << " curl_timeout: " << curl_timeout << std::endl;
 
   connstr = "couchbase://" + settings->kv_host_port + "/" +
             cb_source_bucket.c_str() + "?username=" + settings->rbac_user +
@@ -371,7 +372,7 @@ std::string GetTranspilerSrc() {
 }
 
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
-  LOG(logInfo) << "Eventing dir: " << settings->eventing_dir << '\n';
+  LOG(logInfo) << "Eventing dir: " << settings->eventing_dir << std::endl;
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
@@ -382,18 +383,18 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::TryCatch try_catch;
   std::string plain_js;
   int code = UniLineN1QL(script_to_execute.c_str(), &plain_js, nullptr);
-  LOG(logTrace) << "code after Unilining N1QL: " << plain_js << '\n';
+  LOG(logTrace) << "code after Unilining N1QL: " << plain_js << std::endl;
   if (code != kOK) {
-    LOG(logError) << "failed to uniline N1QL: " << code << '\n';
+    LOG(logError) << "failed to uniline N1QL: " << code << std::endl;
     return code;
   }
 
   handler_code_ = plain_js;
 
   code = Jsify(script_to_execute.c_str(), &plain_js, nullptr);
-  LOG(logTrace) << "jsified code: " << plain_js << '\n';
+  LOG(logTrace) << "jsified code: " << plain_js << std::endl;
   if (code != kOK) {
-    LOG(logError) << "failed to jsify: " << code << '\n';
+    LOG(logError) << "failed to jsify: " << code << std::endl;
     return code;
   }
 
@@ -407,13 +408,13 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
       '\n';
   script_to_execute += std::string((const char *)js_builtin) + '\n';
   source_map_ = transpiler.GetSourceMap(plain_js, app_name_ + ".js");
-  LOG(logTrace) << "source map:" << source_map_ << '\n';
+  LOG(logTrace) << "source map:" << source_map_ << std::endl;
 
   v8::Local<v8::String> source =
       v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());
 
   script_to_execute_ = script_to_execute;
-  LOG(logTrace) << "script to execute: " << script_to_execute << '\n';
+  LOG(logTrace) << "script to execute: " << script_to_execute << std::endl;
 
   if (!ExecuteScript(source))
     return kFailedToCompileJs;
@@ -446,7 +447,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     for (; bucket_handle != bucket_handles.end(); bucket_handle++) {
       if (*bucket_handle) {
         if (!(*bucket_handle)->Initialize(this)) {
-          LOG(logError) << "Error initializing bucket handle" << '\n';
+          LOG(logError) << "Error initializing bucket handle" << std::endl;
           return kFailedInitBucketHandle;
         }
       }
@@ -462,7 +463,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   lcb_U32 lcb_timeout = 2500000; // 2.5s
 
   if (transpiler.IsTimerCalled(script_to_execute)) {
-    LOG(logDebug) << "Timer is called" << '\n';
+    LOG(logDebug) << "Timer is called" << std::endl;
 
     lcb_create_st crst;
     memset(&crst, 0, sizeof crst);
@@ -610,7 +611,7 @@ void V8Worker::RouteMessage() {
     LOG(logTrace) << " event: " << static_cast<int16_t>(msg.header->event)
                   << " opcode: " << static_cast<int16_t>(msg.header->opcode)
                   << " metadata: " << msg.header->metadata
-                  << " partition: " << msg.header->partition << '\n';
+                  << " partition: " << msg.header->partition << std::endl;
 
     switch (getEvent(msg.header->event)) {
     case eDCP:
@@ -685,7 +686,7 @@ bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
            .ToLocal(&compiled_script)) {
     assert(try_catch.HasCaught());
     last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Exception logged:" << last_exception << '\n';
+    LOG(logError) << "Exception logged:" << last_exception << std::endl;
     // The script failed to compile; bail out.
     return false;
   }
@@ -694,7 +695,7 @@ bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
   if (!compiled_script->Run(context).ToLocal(&result)) {
     assert(try_catch.HasCaught());
     last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Exception logged:" << last_exception << '\n';
+    LOG(logError) << "Exception logged:" << last_exception << std::endl;
     // Running the script failed; bail out.
     return false;
   }
@@ -726,7 +727,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   v8::Context::Scope context_scope(context);
 
   LOG(logTrace) << "value: " << value << " meta: " << meta
-                << " doc_type: " << doc_type << '\n';
+                << " doc_type: " << doc_type << std::endl;
   v8::TryCatch try_catch(GetIsolate());
 
   v8::Handle<v8::Value> args[2];
@@ -755,7 +756,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
 
   if (try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Last exception: " << last_exception << '\n';
+    LOG(logError) << "Last exception: " << last_exception << std::endl;
   }
 
   if (debugger_started) {
@@ -778,7 +779,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
 
     if (try_catch.HasCaught()) {
       LOG(logDebug) << "Exception message: "
-                    << ExceptionString(GetIsolate(), &try_catch) << '\n';
+                    << ExceptionString(GetIsolate(), &try_catch) << std::endl;
       UpdateHistogram(start_time);
       on_update_failure++;
       return kOnUpdateCallFail;
@@ -806,7 +807,7 @@ int V8Worker::SendDelete(std::string meta) {
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  LOG(logTrace) << " meta: " << meta << '\n';
+  LOG(logTrace) << " meta: " << meta << std::endl;
   v8::TryCatch try_catch(GetIsolate());
 
   v8::Local<v8::Value> args[1];
@@ -848,7 +849,7 @@ int V8Worker::SendDelete(std::string meta) {
 
     if (try_catch.HasCaught()) {
       LOG(logError) << "Exception message"
-                    << ExceptionString(GetIsolate(), &try_catch) << '\n';
+                    << ExceptionString(GetIsolate(), &try_catch) << std::endl;
       UpdateHistogram(start_time);
       on_delete_failure++;
       return kOnDeleteCallFail;
@@ -869,7 +870,7 @@ void V8Worker::SendCronTimer(std::string cron_cb_fns) {
                   ]
     ,"version":"vulcan"}
  */
-  LOG(logTrace) << "cron timers: " << cron_cb_fns << '\n';
+  LOG(logTrace) << "cron timers: " << cron_cb_fns << std::endl;
 
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
@@ -934,7 +935,7 @@ void V8Worker::SendDocTimer(std::string doc_id, std::string callback_fn) {
   v8::HandleScope handle_scope(GetIsolate());
 
   LOG(logTrace) << "Got timer event, doc_id:" << doc_id
-                << " callback_fn:" << callback_fn << '\n';
+                << " callback_fn:" << callback_fn << std::endl;
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
@@ -967,11 +968,11 @@ void V8Worker::SendDocTimer(std::string doc_id, std::string callback_fn) {
 
 void V8Worker::StartDebugger() {
   if (debugger_started) {
-    LOG(logError) << "Debugger already started" << '\n';
+    LOG(logError) << "Debugger already started" << std::endl;
     return;
   }
 
-  LOG(logInfo) << "Starting Debugger" << '\n';
+  LOG(logInfo) << "Starting Debugger" << std::endl;
   startDebuggerFlag(true);
   agent = new inspector::Agent(settings->host_addr, settings->eventing_dir +
                                                         "/" + app_name_ +
@@ -980,12 +981,12 @@ void V8Worker::StartDebugger() {
 
 void V8Worker::StopDebugger() {
   if (debugger_started) {
-    LOG(logInfo) << "Stopping Debugger" << '\n';
+    LOG(logInfo) << "Stopping Debugger" << std::endl;
     startDebuggerFlag(false);
     agent->Stop();
     delete agent;
   } else {
-    LOG(logError) << "Debugger wasn't started" << '\n';
+    LOG(logError) << "Debugger wasn't started" << std::endl;
   }
 }
 
@@ -1000,7 +1001,7 @@ void V8Worker::Enqueue(header_t *h, message_t *p) {
   LOG(logTrace) << "Inserting event: " << static_cast<int16_t>(h->event)
                 << " opcode: " << static_cast<int16_t>(h->opcode)
                 << " partition: " << h->partition
-                << " metadata: " << h->metadata << '\n';
+                << " metadata: " << h->metadata << std::endl;
   worker_queue->push(msg);
 }
 
@@ -1034,7 +1035,7 @@ std::string V8Worker::CompileHandler(std::string handler) {
 
     return JSONStringify(isolate_, info_obj);
   } catch (const char *e) {
-    LOG(logError) << e << '\n';
+    LOG(logError) << e << std::endl;
   }
 
   return "";
