@@ -109,22 +109,24 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		timerProcessingVbsWorkerMap:        make(map[uint16]*timerProcessingWorker),
 		timerProcessingRunningWorkers:      make([]*timerProcessingWorker, 0),
 		timerProcessingWorkerSignalCh:      make(map[*timerProcessingWorker]chan struct{}),
-		uuid:         uuid,
-		vbDcpFeedMap: make(map[uint16]*couchbase.DcpFeed),
-		vbFlogChan:   make(chan *vbFlogEntry),
-		vbnos:        vbnos,
-		vbOwnershipGiveUpRoutineCount:   vbOwnershipGiveUpRoutineCount,
-		vbOwnershipTakeoverRoutineCount: vbOwnershipTakeoverRoutineCount,
-		vbPlasmaStore:                   vbPlasmaStore,
-		vbPlasmaReader:                  make(map[uint16]*plasma.Writer),
-		vbPlasmaWriter:                  make(map[uint16]*plasma.Writer),
-		vbProcessingStats:               newVbProcessingStats(app.AppName),
-		vbsRemainingToGiveUp:            make([]uint16, 0),
-		vbsRemainingToOwn:               make([]uint16, 0),
-		vbsRemainingToRestream:          make([]uint16, 0),
-		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
-		workerQueueCap:                  workerQueueCap,
-		xattrEntryPruneThreshold:        xattrEntryPruneThreshold,
+		updateCPPStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
+		uuid:                               uuid,
+		vbDcpFeedMap:                       make(map[uint16]*couchbase.DcpFeed),
+		vbFlogChan:                         make(chan *vbFlogEntry),
+		vbnos:                              vbnos,
+		updateCPPStatsStopCh:               make(chan struct{}, 1),
+		vbOwnershipGiveUpRoutineCount:      vbOwnershipGiveUpRoutineCount,
+		vbOwnershipTakeoverRoutineCount:    vbOwnershipTakeoverRoutineCount,
+		vbPlasmaStore:                      vbPlasmaStore,
+		vbPlasmaReader:                     make(map[uint16]*plasma.Writer),
+		vbPlasmaWriter:                     make(map[uint16]*plasma.Writer),
+		vbProcessingStats:                  newVbProcessingStats(app.AppName),
+		vbsRemainingToGiveUp:               make([]uint16, 0),
+		vbsRemainingToOwn:                  make([]uint16, 0),
+		vbsRemainingToRestream:             make([]uint16, 0),
+		workerName:                         fmt.Sprintf("worker_%s_%d", app.AppName, index),
+		workerQueueCap:                     workerQueueCap,
+		xattrEntryPruneThreshold:           xattrEntryPruneThreshold,
 	}
 
 	consumer.builderPool = &sync.Pool{
@@ -212,6 +214,8 @@ func (c *Consumer) Serve() {
 	// non doc_id timer events
 	go c.processNonDocTimerEvents(cronCurrTimer, cronNextTimer, true)
 
+	go c.updateCPPWorkerStats()
+
 	go c.doLastSeqNoCheckpoint()
 
 	// V8 Debugger polling routine
@@ -294,6 +298,9 @@ func (c *Consumer) Stop() {
 	c.socketWriteLoopStopCh <- struct{}{}
 	<-c.socketWriteLoopStopAckCh
 	c.socketWriteTicker.Stop()
+
+	c.updateCPPStatsTicker.Stop()
+	c.updateCPPStatsStopCh <- struct{}{}
 
 	c.stopCheckpointingCh <- struct{}{}
 	c.nonDocTimerStopCh <- struct{}{}

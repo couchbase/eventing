@@ -68,3 +68,17 @@ func (vbs vbStats) copyVbStats() vbStats {
 	}
 	return vbsts
 }
+
+func (c *Consumer) updateCPPWorkerStats() {
+	for {
+		select {
+		case <-c.updateCPPStatsTicker.C:
+			c.sendGetFailureStats(false)
+			c.sendGetExecutionStats(false)
+			c.sendGetLatencyStats(false)
+
+		case <-c.updateCPPStatsStopCh:
+			return
+		}
+	}
+}

@@ -106,6 +106,8 @@ const (
 	retryInterval = time.Duration(1000) * time.Millisecond
 
 	socketWriteTimerInterval = time.Duration(5000) * time.Millisecond
+
+	updateCPPStatsTickInterval = time.Duration(5000) * time.Millisecond
 )
 
 const (
@@ -375,6 +377,9 @@ type Consumer struct {
 	checkpointTicker         *time.Ticker
 	restartVbDcpStreamTicker *time.Ticker
 	statsTicker              *time.Ticker
+
+	updateCPPStatsTicker *time.Ticker
+	updateCPPStatsStopCh chan struct{}
 }
 
 type timerProcessingWorker struct {

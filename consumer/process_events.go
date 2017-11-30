@@ -327,6 +327,16 @@ func (c *Consumer) processEvents() {
 					c.doctimerMessagesProcessed, c.crontimerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned),
 					c.plasmaInsertCounter, c.plasmaDeleteCounter, c.plasmaLookupCounter)
 
+				c.statsRWMutex.Lock()
+				estats, eErr := json.Marshal(&c.executionStats)
+				fstats, fErr := json.Marshal(&c.failureStats)
+				c.statsRWMutex.Unlock()
+
+				if eErr == nil && fErr == nil {
+					logging.Infof("CRDP[%s:%s:%s:%d] CPP worker stats. Failure stats: %s execution stats: %s",
+						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(fstats), string(estats))
+				}
+
 				c.opsTimestamp = tStamp
 				c.dcpOpsProcessed = dcpOpCount
 				c.msgProcessedRWMutex.RUnlock()
