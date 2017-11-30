@@ -136,7 +136,7 @@ public:
            server_settings_t *settings);
   ~V8Worker();
 
-  void operator()() const {
+  void operator()() {
     if (debugger_started)
       return;
     while (!shutdown_terminator) {
@@ -155,6 +155,7 @@ public:
                           << "ns, terminating it's execution" << '\n';
             timeout_count++;
             v8::V8::TerminateExecution(isolate_);
+            execute_flag = false;
           }
         }
       }

@@ -240,6 +240,11 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     lcb_wait(cb_instance);
 
     auto sleep_duration = LCB_OP_RETRY_INTERVAL;
+    if (res.rc == LCB_KEY_ENOENT) {
+      doc_timer_create_failure++;
+      return;
+    }
+
     while (res.rc != LCB_SUCCESS) {
       doc_timer_create_failure++;
       LOG(logError)
@@ -298,6 +303,11 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     lcb_subdoc3(cb_instance, &res, &mcmd);
     lcb_wait(cb_instance);
+    if (res.rc == LCB_KEY_ENOENT) {
+      doc_timer_create_failure++;
+      return;
+    }
+
     if (res.rc != LCB_SUCCESS) {
       doc_timer_create_failure++;
       LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
