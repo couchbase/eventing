@@ -1,4 +1,5 @@
 #include "../include/client.h"
+#include "../include/breakpad.h"
 
 #include <chrono>
 #include <ctime>
@@ -7,12 +8,6 @@
 #include <sstream>
 #include <string>
 #include <typeinfo>
-
-#if defined(BREAKPAD_FOUND) && defined(__linux__)
-#include "client/linux/handler/exception_handler.h"
-#elif defined(BREAKPAD_FOUND) && defined(_WIN32)
-#include "client/windows/handler/exception_handler.h"
-#endif
 
 static char const *global_program_name;
 int messages_processed(0);
@@ -644,25 +639,6 @@ AppWorker *AppWorker::GetAppWorker() {
   return &worker;
 }
 
-#if defined(BREAKPAD_FOUND) && defined(__linux__)
-static bool dumpCallback(const google_breakpad::MinidumpDescriptor &descriptor,
-                         void *context, bool succeeded) {
-  std::cerr << std::endl
-            << "=== Minidump location: " << descriptor.path()
-            << " Status: " << succeeded << " ===" << std::endl;
-  return succeeded;
-}
-#elif defined(BREAKPAD_FOUND) && defined(_WIN32)
-static bool dumpCallback(const wchar_t *dump_path, const wchar_t *minidump_id,
-                         void *context, EXCEPTION_POINTERS *exinfo,
-                         MDRawAssertionInfo *assertion, bool succeeded) {
-  std::wcerr << std::endl
-             << "=== Minidump location: " << dump_path << " ID: " << minidump_id
-             << " Status: " << succeeded << " ===" << std::endl;
-  return succeeded;
-}
-#endif
-
 int main(int argc, char **argv) {
   global_program_name = argv[0];
 
@@ -693,15 +669,7 @@ int main(int argc, char **argv) {
   int batch_size = atoi(argv[5]);
   std::string diag_dir(argv[6]);
 
-#if defined(BREAKPAD_FOUND) && defined(__linux__)
-  google_breakpad::MinidumpDescriptor descriptor(diag_dir.c_str());
-  google_breakpad::ExceptionHandler eh(descriptor, NULL, dumpCallback, NULL,
-                                       true, -1);
-#elif defined(BREAKPAD_FOUND) && defined(_WIN32)
-  std::wstring descriptor(diag_dir.begin(), diag_dir.end());
-  google_breakpad::ExceptionHandler eh(descriptor, NULL, dumpCallback, NULL,
-                                       true);
-#endif
+  setupBreakpad(diag_dir);
 
   setAppName(appname);
   setWorkerID(worker_id);
