@@ -114,7 +114,8 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/stopTracing", m.stopTracing)
 	http.HandleFunc("/uuid", m.getNodeUUID)
 
-	http.HandleFunc("/functions/", m.functionsHandler)
+	http.HandleFunc("/functions", m.functionsHandler)
+	http.HandleFunc("/stats", m.statsHandler)
 
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)

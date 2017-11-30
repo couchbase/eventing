@@ -1221,3 +1221,47 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, "{\"error\":\"Request not authorized\"}")
+		return
+	}
+
+	// Check whether type=full is present in query
+	fullStats := false
+	if typeParam := r.URL.Query().Get("type"); typeParam != "" {
+		fullStats = typeParam == "full"
+	}
+
+	statsList := make([]map[string]interface{}, 0)
+	for _, app := range m.getTempStore("") {
+		if m.checkIfDeployed(app.Name) {
+			stats := make(map[string]interface{})
+			stats["function_name"] = app.Name
+			stats["latency_stats"] = m.superSup.GetLatencyStats(app.Name)
+			stats["execution_stats"] = m.superSup.GetExecutionStats(app.Name)
+			stats["event_processing_stats"] = m.superSup.GetEventProcessingStats(app.Name)
+			stats["failure_stats"] = m.superSup.GetFailureStats(app.Name)
+			stats["worker_pids"] = m.superSup.GetEventingConsumerPids(app.Name)
+			stats["events_remaining"] = backlogStat{DcpBacklog: m.superSup.GetDcpEventsRemainingToProcess(app.Name)}
+			if fullStats {
+				stats["seqs_processed"] = m.superSup.GetSeqsProcessed(app.Name)
+			}
+
+			statsList = append(statsList, stats)
+		}
+	}
+
+	response, err := json.Marshal(statsList)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "{\"error\":\"Failed to marshal response for stats, err: %v\"}", err)
+		return
+	}
+
+	fmt.Fprintf(w, "%s", string(response))
+	return
+}
