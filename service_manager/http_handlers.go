@@ -111,11 +111,12 @@ func (m *ServiceMgr) deletePrimaryStoreHandler(w http.ResponseWriter, r *http.Re
 
 	logging.Infof("Deleting application %v from primary store", appName)
 	audit.Log(auditevent.DeleteFunction, r, appName)
-	m.deletePrimaryStore(w, appName)
+	m.deletePrimaryStore(appName)
 }
 
 // Deletes application from primary store and returns the appropriate success/error code
-func (m *ServiceMgr) deletePrimaryStore(w http.ResponseWriter, appName string) int {
+func (m *ServiceMgr) deletePrimaryStore(appName string) (info *runtimeInfo) {
+	info = &runtimeInfo{}
 	checkIfDeployed := false
 	for _, app := range util.ListChildren(metakvAppsPath) {
 		if app == appName {
@@ -124,16 +125,16 @@ func (m *ServiceMgr) deletePrimaryStore(w http.ResponseWriter, appName string) i
 	}
 
 	if !checkIfDeployed {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-		fmt.Fprintf(w, "App: %v not deployed", appName)
-		return m.statusCodes.errAppNotDeployed.Code
+		info.Code = m.statusCodes.errAppNotDeployed.Code
+		info.Info = fmt.Sprintf("App: %v not deployed", appName)
+		return
 	}
 
 	appState := m.superSup.GetAppState(appName)
 	if appState != common.AppStateUndeployed {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotUndeployed.Code))
-		fmt.Fprintf(w, "Skipping delete request from primary store for app: %v as it hasn't been undeployed", appName)
-		return m.statusCodes.errAppNotUndeployed.Code
+		info.Code = m.statusCodes.errAppNotUndeployed.Code
+		info.Info = fmt.Sprintf("Skipping delete request from primary store for app: %v as it hasn't been undeployed", appName)
+		return
 	}
 
 	appList := util.ListChildren(metakvAppsPath)
@@ -142,26 +143,29 @@ func (m *ServiceMgr) deletePrimaryStore(w http.ResponseWriter, appName string) i
 			settingsPath := metakvAppSettingsPath + appName
 			err := util.MetaKvDelete(settingsPath, nil)
 			if err != nil {
-				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errDelAppSettingsPs.Code))
-				fmt.Fprintf(w, "Failed to delete setting for app: %v, err: %v", appName, err)
-				return m.statusCodes.errDelAppSettingsPs.Code
+				info.Code = m.statusCodes.errDelAppSettingsPs.Code
+				info.Info = fmt.Sprintf("Failed to delete setting for app: %v, err: %v", appName, err)
+				return
 			}
 
 			appsPath := metakvAppsPath + appName
 			err = util.MetaKvDelete(appsPath, nil)
 			if err != nil {
-				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errDelAppPs.Code))
-				fmt.Fprintf(w, "Failed to delete app definition for app: %v, err: %v", appName, err)
-				return m.statusCodes.errDelAppPs.Code
+				info.Code = m.statusCodes.errDelAppPs.Code
+				info.Info = fmt.Sprintf("Failed to delete app definition for app: %v, err: %v", appName, err)
+				return
 			}
 
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-			fmt.Fprintf(w, "Deleting app: %v in the background", appName)
-			return m.statusCodes.ok.Code
+			info.Code = m.statusCodes.ok.Code
+			info.Info = fmt.Sprintf("Deleting app: %v in the background", appName)
+			return
 		}
 	}
 
-	return m.statusCodes.ok.Code
+	// TODO : This must be changed to app not deployed / found
+	info.Code = m.statusCodes.ok.Code
+	info.Info = fmt.Sprintf("Deleting app: %v in the background", appName)
+	return
 }
 
 func (m *ServiceMgr) deleteTempStoreHandler(w http.ResponseWriter, r *http.Request) {
@@ -169,16 +173,18 @@ func (m *ServiceMgr) deleteTempStoreHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	logging.Infof("Deleting drafts")
-	audit.Log(auditevent.DeleteDrafts, r, nil)
-
 	values := r.URL.Query()
 	appName := values["name"][0]
-	m.deleteTempStore(w, appName)
+
+	logging.Infof("Deleting drafts")
+	audit.Log(auditevent.DeleteDrafts, r, appName)
+
+	m.deleteTempStore(appName)
 }
 
 // Deletes application from temporary store and returns the appropriate success/error code
-func (m *ServiceMgr) deleteTempStore(w http.ResponseWriter, appName string) int {
+func (m *ServiceMgr) deleteTempStore(appName string) (info *runtimeInfo) {
+	info = &runtimeInfo{}
 	checkIfDeployed := false
 	for _, app := range util.ListChildren(metakvTempAppsPath) {
 		if app == appName {
@@ -187,16 +193,16 @@ func (m *ServiceMgr) deleteTempStore(w http.ResponseWriter, appName string) int 
 	}
 
 	if !checkIfDeployed {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-		fmt.Fprintf(w, "App: %v not deployed", appName)
-		return m.statusCodes.errAppNotDeployed.Code
+		info.Code = m.statusCodes.errAppNotDeployed.Code
+		info.Info = fmt.Sprintf("App: %v not deployed", appName)
+		return
 	}
 
 	appState := m.superSup.GetAppState(appName)
 	if appState != common.AppStateUndeployed {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotUndeployed.Code))
-		fmt.Fprintf(w, "Skipping delete request from temp store for app: %v as it hasn't been undeployed", appName)
-		return m.statusCodes.errAppNotUndeployed.Code
+		info.Code = m.statusCodes.errAppNotUndeployed.Code
+		info.Info = fmt.Sprintf("Skipping delete request from temp store for app: %v as it hasn't been undeployed", appName)
+		return
 	}
 
 	tempAppList := util.ListChildren(metakvTempAppsPath)
@@ -206,18 +212,20 @@ func (m *ServiceMgr) deleteTempStore(w http.ResponseWriter, appName string) int 
 			path := metakvTempAppsPath + tempAppName
 			err := util.MetaKvDelete(path, nil)
 			if err != nil {
-				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errDelAppTs.Code))
-				fmt.Fprintf(w, "Failed to delete from temp store for %v, err: %v", appName, err)
-				return m.statusCodes.errDelAppTs.Code
+				info.Code = m.statusCodes.errDelAppTs.Code
+				info.Info = fmt.Sprintf("Failed to delete from temp store for %v, err: %v", appName, err)
+				return
 			}
 
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-			fmt.Fprintf(w, "Deleting app: %v in the background", appName)
-			return m.statusCodes.ok.Code
+			info.Code = m.statusCodes.ok.Code
+			info.Info = fmt.Sprintf("Deleting app: %v in the background", appName)
+			return
 		}
 	}
 
-	return m.statusCodes.ok.Code
+	info.Code = m.statusCodes.ok.Code
+	info.Info = fmt.Sprintf("Deleting app: %v in the background", appName)
+	return
 }
 
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
@@ -766,17 +774,20 @@ func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Reque
 
 func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, "{\"error\":\"Request not authorized\"}")
 		return
 	}
 
 	logging.Infof("Fetching function draft definitions")
 	audit.Log(auditevent.FetchDrafts, r, nil)
-	respData := m.getTempStore("")
+	respData := m.getTempStoreAll()
 
 	data, err := json.Marshal(respData)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, "Failed to marshal response for getAppTempStore, err: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "{\"error\":\"Failed to marshal response for stats, err: %v\"}", err)
 		return
 	}
 
@@ -786,28 +797,47 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 
 // Gets the application from temp store
 // If appName is empty, it returns all the applications
-func (m *ServiceMgr) getTempStore(appName string) []application {
+func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtimeInfo) {
+	info = &runtimeInfo{}
+
+	for _, name := range util.ListChildren(metakvTempAppsPath) {
+		path := metakvTempAppsPath + name
+		data, err := util.MetakvGet(path)
+		if err == nil {
+			uErr := json.Unmarshal(data, &app)
+			if uErr != nil {
+				logging.Errorf("Failed to unmarshal data from metakv, err: %v", uErr)
+				continue
+			}
+
+			if app.Name == appName {
+				info.Code = m.statusCodes.ok.Code
+				return
+			}
+		}
+	}
+
+	info.Code = m.statusCodes.errAppNotFoundTs.Code
+	info.Info = fmt.Sprintf("Function %s not found", appName)
+	return
+}
+
+func (m *ServiceMgr) getTempStoreAll() []application {
 	tempAppList := util.ListChildren(metakvTempAppsPath)
 	applications := make([]application, len(tempAppList))
 
 	for i, name := range tempAppList {
-		if appName == "" || appName == name {
-			path := metakvTempAppsPath + name
-			data, err := util.MetakvGet(path)
-			if err == nil {
-				var app application
-				uErr := json.Unmarshal(data, &app)
-				if uErr != nil {
-					logging.Errorf("Failed to unmarshal data from metakv, err: %v", uErr)
-					continue
-				}
-
-				applications[i] = app
+		path := metakvTempAppsPath + name
+		data, err := util.MetakvGet(path)
+		if err == nil {
+			var app application
+			uErr := json.Unmarshal(data, &app)
+			if uErr != nil {
+				logging.Errorf("Failed to unmarshal data from metakv, err: %v", uErr)
+				continue
 			}
 
-			if appName != "" {
-				break
-			}
+			applications[i] = app
 		}
 	}
 
@@ -842,46 +872,52 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	m.saveTempStore(w, app, data)
+	m.saveTempStore(app)
 }
 
 // Saves application to temp store
-func (m *ServiceMgr) saveTempStore(w http.ResponseWriter, app application, data []byte) int {
+func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
+	info = &runtimeInfo{}
 	appName := app.Name
 	path := metakvTempAppsPath + appName
 	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
 	cinfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
 	if err != nil {
-		logging.Errorf("Failed to initialise cluster info cache, err: %v", err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errConnectNsServer.Code))
-		fmt.Fprintf(w, "Failed to connect to cluster manager")
-		return m.statusCodes.errConnectNsServer.Code
+		info.Code = m.statusCodes.errConnectNsServer.Code
+		info.Info = fmt.Sprintf("Failed to initialise cluster info cache, err: %v", err)
+		return
 	}
 
 	isMemcached, err := cinfo.IsMemcached(app.DeploymentConfig.SourceBucket)
 	if err != nil {
-		logging.Errorf("Failed to check bucket type using cluster info cache, err: %v", err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errBucketTypeCheck.Code))
-		fmt.Fprintf(w, "Failed to check if source bucket is memcached")
-		return m.statusCodes.errBucketTypeCheck.Code
+		info.Code = m.statusCodes.errBucketTypeCheck.Code
+		info.Info = fmt.Sprintf("Failed to check bucket type using cluster info cache, err: %v", err)
+		return
 	}
 
 	if isMemcached {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMemcachedBucket.Code))
-		fmt.Fprintf(w, "Source bucket is memcached, should be either couchbase or ephemeral")
-		return m.statusCodes.errMemcachedBucket.Code
+		info.Code = m.statusCodes.errMemcachedBucket.Code
+		info.Info = "Source bucket is memcached, should be either couchbase or ephemeral"
+		return
+	}
+
+	data, err := json.Marshal(app)
+	if err != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("Failed to marshal data as JSON to save in temp store, err : %v", err)
+		return
 	}
 
 	err = util.MetakvSet(path, data, nil)
 	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSaveAppTs.Code))
-		fmt.Fprintf(w, "Failed to store handlers for app: %v err: %v", appName, err)
-		return m.statusCodes.errSaveAppTs.Code
+		info.Code = m.statusCodes.errSaveAppTs.Code
+		info.Info = fmt.Sprintf("Failed to store handlers for app: %v err: %v", appName, err)
+		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "Stored handlers for app: %v", appName)
-	return m.statusCodes.ok.Code
+	info.Code = m.statusCodes.ok.Code
+	info.Info = fmt.Sprintf("Stored handlers for app: %v", appName)
+	return
 }
 
 func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Request) {
@@ -914,45 +950,45 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	m.savePrimaryStore(w, app)
+	m.savePrimaryStore(app)
 }
 
 // Saves application to metakv and returns appropriate success/error code
-func (m *ServiceMgr) savePrimaryStore(w http.ResponseWriter, app application) int {
+func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	appName := app.Name
+	info = &runtimeInfo{}
+
 	if m.checkIfDeployed(appName) {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppDeployed.Code))
-		fmt.Fprintf(w, "App with same name is already deployed, skipping save request")
-		return m.statusCodes.errAppDeployed.Code
+		info.Code = m.statusCodes.errAppDeployed.Code
+		info.Info = fmt.Sprintf("App with same name %s is already deployed, skipping save request", appName)
+		return
 	}
 
 	if app.DeploymentConfig.SourceBucket == app.DeploymentConfig.MetadataBucket {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSrcMbSame.Code))
-		fmt.Fprintf(w, "Source bucket same as metadata bucket")
-		return m.statusCodes.errSrcMbSame.Code
+		info.Code = m.statusCodes.errSrcMbSame.Code
+		info.Info = fmt.Sprintf("Source bucket same as metadata bucket. source_bucket : %s metadata_bucket : %s", app.DeploymentConfig.SourceBucket, app.DeploymentConfig.MetadataBucket)
+		return
 	}
 
 	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
 	cinfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
 	if err != nil {
-		logging.Errorf("Failed to initialise cluster info cache, err: %v", err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errConnectNsServer.Code))
-		fmt.Fprintf(w, "Failed to connect to cluster manager")
-		return m.statusCodes.errConnectNsServer.Code
+		info.Code = m.statusCodes.errConnectNsServer.Code
+		info.Info = fmt.Sprintf("Failed to initialise cluster info cache, err: %v", err)
+		return
 	}
 
 	isMemcached, err := cinfo.IsMemcached(app.DeploymentConfig.SourceBucket)
 	if err != nil {
-		logging.Errorf("Failed to check bucket type using cluster info cache, err: %v", err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errBucketTypeCheck.Code))
-		fmt.Fprintf(w, "Failed to check if source bucket is memcached")
-		return m.statusCodes.errBucketTypeCheck.Code
+		info.Code = m.statusCodes.errBucketTypeCheck.Code
+		info.Info = fmt.Sprintf("Failed to check bucket type using cluster info cache, err: %v", err)
+		return
 	}
 
 	if isMemcached {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMemcachedBucket.Code))
-		fmt.Fprintf(w, "Source bucket is memcached, should be either couchbase or ephemeral")
-		return m.statusCodes.errMemcachedBucket.Code
+		info.Code = m.statusCodes.errMemcachedBucket.Code
+		info.Info = "Source bucket is memcached, should be either couchbase or ephemeral"
+		return
 	}
 
 	builder := flatbuffers.NewBuilder(0)
@@ -1001,18 +1037,18 @@ func (m *ServiceMgr) savePrimaryStore(w http.ResponseWriter, app application) in
 	appContent := builder.FinishedBytes()
 
 	c := &consumer.Consumer{}
-	info, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName)
-	if err != nil || !info.CompileSuccess {
-		res, mErr := json.Marshal(&info)
+	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName)
+	if err != nil || !compilationInfo.CompileSuccess {
+		res, mErr := json.Marshal(&compilationInfo)
 		if mErr != nil {
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-			fmt.Fprintf(w, "App: %s Failed to marshal compilation status, err: %v", appName, mErr)
-			return m.statusCodes.errMarshalResp.Code
+			info.Code = m.statusCodes.errMarshalResp.Code
+			info.Info = fmt.Sprintf("App: %s Failed to marshal compilation status, err: %v", appName, mErr)
+			return
 		}
 
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errHandlerCompile.Code))
-		fmt.Fprintf(w, "%v\n", string(res))
-		return m.statusCodes.errHandlerCompile.Code
+		info.Code = m.statusCodes.errHandlerCompile.Code
+		info.Info = fmt.Sprintf("%v\n", string(res))
+		return
 	}
 
 	settingsPath := metakvAppSettingsPath + appName
@@ -1020,30 +1056,29 @@ func (m *ServiceMgr) savePrimaryStore(w http.ResponseWriter, app application) in
 
 	mData, mErr := json.Marshal(&settings)
 	if mErr != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, "App: %s Failed to marshal settings, err: %v", appName, mErr)
-		return m.statusCodes.errMarshalResp.Code
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("App: %s Failed to marshal settings, err: %v", appName, mErr)
+		return
 	}
 
 	mkvErr := util.MetakvSet(settingsPath, mData, nil)
 	if mkvErr != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSetSettingsPs.Code))
-		fmt.Fprintf(w, "App: %s Failed to store updated settings in metakv, err: %v", appName, mkvErr)
-		return m.statusCodes.errSetSettingsPs.Code
+		info.Code = m.statusCodes.errSetSettingsPs.Code
+		info.Info = fmt.Sprintf("App: %s Failed to store updated settings in metakv, err: %v", appName, mkvErr)
+		return
 	}
 
 	path := metakvAppsPath + appName
 	err = util.MetakvSet(path, appContent, nil)
 	if err != nil {
-		logging.Errorf("App: %v failed to write to metakv, err: %v", appName, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSaveAppPs.Code))
-		fmt.Fprintf(w, "Failed to write app config to metakv, err: %v", err)
-		return m.statusCodes.errSaveAppPs.Code
+		info.Code = m.statusCodes.errSaveAppPs.Code
+		info.Info = fmt.Sprintf("App: %v failed to write to metakv, err: %v", appName, err)
+		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "Stored application config in metakv")
-	return m.statusCodes.ok.Code
+	info.Code = m.statusCodes.ok.Code
+	info.Info = "Stored application config in metakv"
+	return
 }
 
 func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
@@ -1153,6 +1188,30 @@ func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 	return false
 }
 
+func (m *ServiceMgr) unmarshalApp(r *http.Request) (app application, info *runtimeInfo) {
+	info = &runtimeInfo{}
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
+		logging.Errorf(info.Info)
+		return
+	}
+
+	err = json.Unmarshal(data, &app)
+	if err != nil {
+		info.Code = m.statusCodes.errUnmarshalPld.Code
+		info.Info = fmt.Sprintf("Failed to unmarshal payload err: %v", err)
+		logging.Errorf(info.Info)
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	info.Info = "OK"
+	return
+}
+
 // Unmarshals list of application and returns application objects
 func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) []application {
 	data, err := ioutil.ReadAll(r.Body)
@@ -1175,15 +1234,103 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) []
 	return appList
 }
 
-func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
-	functions := regexp.MustCompile("^/api/v1/functions/?$")
-	functionsSettings := regexp.MustCompile("^/api/v1/functions/settings/?$")
-	functionsName := regexp.MustCompile("^/api/v1/functions/(.+)/?$")
-	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.+)/settings/?$")
+func (m *ServiceMgr) rootHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, "{\"error\":\"Request not authorized\"}")
+		return
+	}
 
-	if match := functionsSettings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+	functions := regexp.MustCompile("^/api/v1/functions/?$")
+	settings := regexp.MustCompile("^/api/v1/settings/?$")
+	functionsName := regexp.MustCompile("^/api/v1/functions/(.+[^/])/?$") // Match is agnostic of trailing '/'
+	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.+[^/])/settings/?$")
+
+	if match := settings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 	} else if match := functionsNameSettings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 	} else if match := functionsName.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		appName := match[1]
+		switch r.Method {
+		case "GET":
+			logging.Infof("Fetching function draft definitions for %s", appName)
+			audit.Log(auditevent.FetchDrafts, r, appName)
+
+			app, info := m.getTempStore(appName)
+			if info.Code != m.statusCodes.ok.Code {
+				w.WriteHeader(http.StatusNotFound)
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			response, err := json.Marshal(app)
+			if err != nil {
+				runtimeInfo := &runtimeInfo{}
+				runtimeInfo.Code = m.statusCodes.errMarshalResp.Code
+				runtimeInfo.Info = fmt.Sprintf("Failed to marshal app, err : %v", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				m.sendErrorInfo(w, runtimeInfo)
+				return
+			}
+
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+			fmt.Fprintf(w, "%s", string(response))
+			break
+
+		case "POST":
+			app, runtimeInfo := m.unmarshalApp(r)
+			if runtimeInfo.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, runtimeInfo)
+				return
+			}
+
+			// Reject the request if there is a mismatch of app name in URL and body
+			if app.Name != appName {
+				runtimeInfo.Code = m.statusCodes.errAppNameMismatch.Code
+				runtimeInfo.Info = fmt.Sprintf("Function name in the URL (%s) and body (%s) must be same", appName, app.Name)
+				w.WriteHeader(http.StatusBadRequest)
+				m.sendErrorInfo(w, runtimeInfo)
+				return
+			}
+
+			logging.Infof("Saving application %v to primary store", appName)
+			audit.Log(auditevent.CreateFunction, r, appName)
+
+			// Save to temp store only if saving to primary store succeeds
+			if runtimeInfo := m.savePrimaryStore(app); runtimeInfo.Code == m.statusCodes.ok.Code {
+				logging.Infof("Got request to save handler into temporary store: %v", appName)
+				audit.Log(auditevent.SaveDraft, r, appName)
+
+				if runtimeInfo := m.saveTempStore(app); runtimeInfo.Code != m.statusCodes.ok.Code {
+					m.sendErrorInfo(w, runtimeInfo)
+					return
+				}
+			} else {
+				m.sendErrorInfo(w, runtimeInfo)
+			}
+			break
+
+		case "DELETE":
+			logging.Infof("Deleting application %v from primary store", appName)
+			audit.Log(auditevent.DeleteFunction, r, appName)
+
+			runtimeInfo := m.deletePrimaryStore(appName)
+			// Delete the application from temp store only if app does not exist in primary store
+			// or if the deletion succeeds on primary store
+			if runtimeInfo.Code == m.statusCodes.errAppNotDeployed.Code || runtimeInfo.Code == m.statusCodes.ok.Code {
+				logging.Infof("Deleting drafts")
+				audit.Log(auditevent.DeleteDrafts, r, appName)
+
+				if runtimeInfo := m.deleteTempStore(appName); runtimeInfo.Code != m.statusCodes.ok.Code {
+					m.sendErrorInfo(w, runtimeInfo)
+					return
+				}
+			} else {
+				m.sendErrorInfo(w, runtimeInfo)
+			}
+			break
+		}
+
 	} else if match := functions.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		switch r.Method {
 		case "GET":
@@ -1191,33 +1338,49 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			break
 
 		case "POST":
+			runtimeInfoList := []*runtimeInfo{}
 			appList := m.unmarshalAppList(w, r)
 			for _, app := range appList {
-				data, err := json.Marshal(app)
-				if err != nil {
-					w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-					fmt.Fprintf(w, "Failed to marshal response, err: %v", err)
-					return
-				}
+				logging.Infof("Saving application %v to primary store", app.Name)
+				audit.Log(auditevent.CreateFunction, r, app.Name)
 
 				// Save to temp store only if saving to primary store succeeds
-				if m.savePrimaryStore(w, app) == m.statusCodes.ok.Code {
-					m.saveTempStore(w, app, data)
+				if runtimeInfo := m.savePrimaryStore(app); runtimeInfo.Code == m.statusCodes.ok.Code {
+					logging.Infof("Got request to save handler into temporary store: %v", app.Name)
+					audit.Log(auditevent.SaveDraft, r, app.Name)
+
+					runtimeInfo := m.saveTempStore(app)
+					runtimeInfoList = append(runtimeInfoList, runtimeInfo)
+				} else {
+					runtimeInfoList = append(runtimeInfoList, runtimeInfo)
 				}
 			}
+
+			m.sendRuntimeInfoList(w, runtimeInfoList)
 			break
 
 		case "DELETE":
-			for _, app := range m.getTempStore("") {
-				code := m.deletePrimaryStore(w, app.Name)
+			runtimeInfoList := []*runtimeInfo{}
+			for _, app := range m.getTempStoreAll() {
+				logging.Infof("Deleting application %v from primary store", app.Name)
+				audit.Log(auditevent.DeleteFunction, r, app.Name)
+
+				runtimeInfo := m.deletePrimaryStore(app.Name)
 				// Delete the application from temp store only if app does not exist in primary store
 				// or if the deletion succeeds on primary store
-				if code == m.statusCodes.errAppNotDeployed.Code || code == m.statusCodes.ok.Code {
-					m.deleteTempStore(w, app.Name)
+				if runtimeInfo.Code == m.statusCodes.errAppNotDeployed.Code || runtimeInfo.Code == m.statusCodes.ok.Code {
+					logging.Infof("Deleting drafts")
+					audit.Log(auditevent.DeleteDrafts, r, app.Name)
+
+					runtimeInfo := m.deleteTempStore(app.Name)
+					runtimeInfoList = append(runtimeInfoList, runtimeInfo)
+				} else {
+					runtimeInfoList = append(runtimeInfoList, runtimeInfo)
 				}
 			}
-			break
 
+			m.sendRuntimeInfoList(w, runtimeInfoList)
+			break
 		}
 	}
 }
@@ -1237,7 +1400,7 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	statsList := make([]stats, 0)
-	for _, app := range m.getTempStore("") {
+	for _, app := range m.getTempStoreAll() {
 		if m.checkIfDeployed(app.Name) {
 			stats := stats{}
 			stats.EventProcessingStats = m.superSup.GetEventProcessingStats(app.Name)

@@ -22,6 +22,12 @@ type errorPayload struct {
 	Code        int      `json:"code"`
 	Description string   `json:"description"`
 	Attributes  []string `json:"attributes"`
+	RuntimeInfo string   `json:"runtime_info"`
+}
+
+type runtimeInfo struct {
+	Code int    `json:"code"`
+	Info string `json:"info"`
 }
 
 type statusCodes struct {
@@ -54,6 +60,7 @@ type statusCodes struct {
 	errMemcachedBucket  statusBase
 	errHandlerCompile   statusBase
 	errRbacCreds        statusBase
+	errAppNameMismatch  statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
@@ -87,6 +94,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errMemcachedBucket:  statusBase{"ERR_SOURCE_BUCKET_MEMCACHED", 26},
 		errHandlerCompile:   statusBase{"ERR_HANDLER_COMPILATION", 27},
 		errRbacCreds:        statusBase{"ERR_INSUFFICIENT_RBAC_CREDS", 28},
+		errAppNameMismatch:  statusBase{"ERR_APPNAME_MISMATCH", 29},
 	}
 
 	errors := []errorPayload{
@@ -233,6 +241,16 @@ func (m *ServiceMgr) initErrCodes() {
 			Code:        m.statusCodes.errRbacCreds.Code,
 			Description: "RBAC username/password missing",
 		},
+		{
+			Name:        m.statusCodes.errAppNameMismatch.Name,
+			Code:        m.statusCodes.errAppNameMismatch.Code,
+			Description: "Function names must be same",
+		},
+	}
+
+	m.errorCodes = make(map[int]errorPayload)
+	for _, err := range errors {
+		m.errorCodes[err.Code] = err
 	}
 
 	statusPayload := statusPayload{

@@ -116,8 +116,8 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/uuid", m.getNodeUUID)
 
 	// Public REST APIs
-	http.HandleFunc("/api/v1/functions", m.functionsHandler)
 	http.HandleFunc("/api/v1/stats", m.statsHandler)
+	http.HandleFunc("/", m.rootHandler)
 
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)
