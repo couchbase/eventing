@@ -81,6 +81,7 @@ func (m *ServiceMgr) initService() {
 	// TODO: Rest endpoints are growing big, need to document in source code purpose of each
 	// Eventually it would work as documentation.
 
+	// Internal REST APIs
 	http.HandleFunc("/clearEventStats", m.clearEventStats)
 	http.HandleFunc("/deleteApplication/", m.deletePrimaryStoreHandler)
 	http.HandleFunc("/deleteAppTempStore/", m.deleteTempStoreHandler)
@@ -114,8 +115,9 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/stopTracing", m.stopTracing)
 	http.HandleFunc("/uuid", m.getNodeUUID)
 
-	http.HandleFunc("/functions", m.functionsHandler)
-	http.HandleFunc("/stats", m.statsHandler)
+	// Public REST APIs
+	http.HandleFunc("/api/v1/functions", m.functionsHandler)
+	http.HandleFunc("/api/v1/stats", m.statsHandler)
 
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)

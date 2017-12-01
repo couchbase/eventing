@@ -1176,10 +1176,10 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) []
 }
 
 func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
-	functions := regexp.MustCompile("^/functions/?$")
-	functionsSettings := regexp.MustCompile("^/functions/settings/?$")
-	functionsName := regexp.MustCompile("^/functions/(.+)/?$")
-	functionsNameSettings := regexp.MustCompile("^/functions/(.+)/settings/?$")
+	functions := regexp.MustCompile("^/api/v1/functions/?$")
+	functionsSettings := regexp.MustCompile("^/api/v1/functions/settings/?$")
+	functionsName := regexp.MustCompile("^/api/v1/functions/(.+)/?$")
+	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.+)/settings/?$")
 
 	if match := functionsSettings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 	} else if match := functionsNameSettings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
@@ -1236,19 +1236,19 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 		fullStats = typeParam == "full"
 	}
 
-	statsList := make([]map[string]interface{}, 0)
+	statsList := make([]stats, 0)
 	for _, app := range m.getTempStore("") {
 		if m.checkIfDeployed(app.Name) {
-			stats := make(map[string]interface{})
-			stats["function_name"] = app.Name
-			stats["latency_stats"] = m.superSup.GetLatencyStats(app.Name)
-			stats["execution_stats"] = m.superSup.GetExecutionStats(app.Name)
-			stats["event_processing_stats"] = m.superSup.GetEventProcessingStats(app.Name)
-			stats["failure_stats"] = m.superSup.GetFailureStats(app.Name)
-			stats["worker_pids"] = m.superSup.GetEventingConsumerPids(app.Name)
-			stats["events_remaining"] = backlogStat{DcpBacklog: m.superSup.GetDcpEventsRemainingToProcess(app.Name)}
+			stats := stats{}
+			stats.FunctionName = app.Name
+			stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
+			stats.ExecutionStats = m.superSup.GetExecutionStats(app.Name)
+			stats.EventProcessingStats = m.superSup.GetEventProcessingStats(app.Name)
+			stats.FailureStats = m.superSup.GetFailureStats(app.Name)
+			stats.WorkerPids = m.superSup.GetEventingConsumerPids(app.Name)
+			stats.EventsRemaining = backlogStat{DcpBacklog: m.superSup.GetDcpEventsRemainingToProcess(app.Name)}
 			if fullStats {
-				stats["seqs_processed"] = m.superSup.GetSeqsProcessed(app.Name)
+				stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
 			}
 
 			statsList = append(statsList, stats)

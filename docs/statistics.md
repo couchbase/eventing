@@ -4,9 +4,9 @@ stats are local to the node, and suitable for further aggregation across nodes o
 
 The following endpoint could be used to get the stats:
 ```shell
-curl http://user:pass@localhost:8096/stats
+curl http://user:pass@localhost:8096/api/v1/stats?type=full
 ```
-This will return the stats regardings events processing, events remaining, execution, failure, latency, worker PIDs.
+This will return the stats regardings events processing, events remaining, execution, failure, latency, worker PIDs and seq processed.
 ```json
 [
  {
@@ -44,14 +44,13 @@ This will return the stats regardings events processing, events remaining, execu
      "worker_h1_0": 28558,
      "worker_h1_1": 28559,
      "worker_h1_2": 28560
-   }
+   },
+   "seqs_processed":{"0":0,"1":0, ...}
  }
 ]
 ```
-In order to get the seq processed, provide type=full as a parameter in the URL. seq processed will be provided for each function in the response.
-```shell
-curl http://user:pass@localhost:8096/stats?type=full
-```
+> Omitting the parameter `type=full` will exclude seqs_processed from the response.
+
 The above stats could be individually obtained through the following endpoints:
 ```shell
 curl http://user:pass@localhost:8096/getExecutionStats?name=function_name
