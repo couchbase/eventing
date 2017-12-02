@@ -1,4 +1,4 @@
-function OnDelete(doc) {
-    log('document', doc);
-    dst_bucket[doc.id] = 'hello world'
+function OnDelete(meta) {
+    log('metadata', meta);
+    dst_bucket[meta.id] = 'hello world'
 }

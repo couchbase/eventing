@@ -112,7 +112,7 @@ export PATH=$PATH:$GOROOT/bin
 echo "</pre><h4>Functional tests</h4><pre>"
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
 go get -t ./... 1>/dev/null 2>&1
-GOMAXPROCS=16 go test -timeout 2h -v 2>&1 | tee -a $WORKSPACE/test.log
+GOMAXPROCS=16 go test -timeout 2h -tags handler -v 2>&1 | tee -a $WORKSPACE/test.log
 collect_logs
 stop_cluster
 
