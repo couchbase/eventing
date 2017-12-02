@@ -343,13 +343,13 @@ var addOwnershipHistorySRCallback = func(args ...interface{}) error {
 	doc.UpsertEx("vb_uuid", vbBlob.VBuuid, gocb.SubdocFlagCreatePath)
 
 	_, err := doc.Execute()
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing ownership entry app post STREAMREQ, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
-	}
-
-	if err == gocb.ErrShutdown {
-		return nil
 	}
 
 	return err
@@ -364,13 +364,13 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 	doc.ArrayAppend("ownership_history", ownershipEntry, true)
 
 	_, err := doc.Execute()
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing ownership entry app post STREAMEND, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
-	}
-
-	if err == gocb.ErrShutdown {
-		return nil
 	}
 
 	return err

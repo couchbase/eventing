@@ -83,6 +83,7 @@ type EventingProducer interface {
 type EventingConsumer interface {
 	ClearEventStats()
 	ConsumerName() string
+	CreateTempPlasmaStore(vb uint16) error
 	DcpEventsRemainingToProcess() uint64
 	EventingNodeUUIDs() []string
 	EventsProcessedPSec() *EventProcessingStats
@@ -100,6 +101,7 @@ type EventingConsumer interface {
 	NotifyRebalanceStop()
 	NotifySettingsChange()
 	Pid() int
+	PurgePlasmaRecords(vb uint16) error
 	RebalanceTaskProgress() *RebalanceProgress
 	Serve()
 	SetConnHandle(net.Conn)

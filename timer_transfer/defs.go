@@ -65,6 +65,7 @@ type Response struct {
 type FileRequest struct {
 	Filename string
 	UUID     string
+	Vbucket  uint16
 }
 
 // GetRequest to request specific file block

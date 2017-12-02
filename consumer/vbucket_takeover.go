@@ -76,6 +76,12 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
+				if vbBlob.NodeUUID != c.NodeUUID() && vbBlob.DCPStreamStatus == dcpStreamRunning {
+					logging.Tracef("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v dcp stream already stopped, skipping give up phase",
+						c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb)
+					continue
+				}
+
 				logging.Tracef("CRVT[%s:%s:giveup_r_%d:%s:%d] vb: %v uuid: %v vbStat uuid: %v owner node: %v consumer name: %v",
 					c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb, c.NodeUUID(),
 					vbsts.getVbStat(vb, "node_uuid"),
@@ -95,10 +101,6 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 							c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
 					}
 					c.RUnlock()
-
-					// Chan used to signal rebalance stop, which should stop plasma iteration
-					sig := make(chan struct{}, 1)
-					c.createTempPlasmaStore(i, vb, sig)
 
 					c.vbTimerProcessingWorkerAssign(false)
 
@@ -129,15 +131,12 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 						if vbBlob.DCPStreamStatus != dcpStreamRunning {
 							time.Sleep(retryVbMetaStateCheckInterval)
 							goto retryVbMetaStateCheck
-						} else {
-							c.purgePlasmaRecords(vb, i)
 						}
+						logging.Debugf("CRVT[%s:%s:giveup_r_%d:%s:%d] Gracefully exited vb ownership give-up routine, last vb handled: %v",
+							c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb)
 					}
-					logging.Debugf("CRVT[%s:%s:giveup_r_%d:%s:%d] Gracefully exited vb ownership give-up routine, last vb handled: %v",
-						c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb)
 				}
 			}
-
 		}(c, i, vbsDistribution[i], signalPlasmaClosedChs[i], &wg, vbsts)
 	}
 
@@ -345,7 +344,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	} else {
 		logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir)
-		_, err := client.RemoveDir(timerDir)
+		_, err := client.RemoveDir(vb, timerDir)
 		if err != nil {
 			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed in removeDir rpc call, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
