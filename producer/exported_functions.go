@@ -1,6 +1,7 @@
 package producer
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"sync/atomic"
@@ -300,4 +301,16 @@ func (p *Producer) PurgePlasmaRecords() {
 // WriteAppLog dumps the application specific log message to configured file
 func (p *Producer) WriteAppLog(log string) {
 	fmt.Fprintf(p.appLogWriter, "%s", log)
+}
+
+// GetPlasmaStats returns internal stats from plasma
+func (p *Producer) GetPlasmaStats() ([]byte, error) {
+	stats := p.vbPlasmaStore.GetStats()
+
+	data, err := json.Marshal(&stats)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }

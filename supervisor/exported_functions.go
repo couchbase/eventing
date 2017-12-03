@@ -210,3 +210,13 @@ func (s *SuperSupervisor) GetEventingConsumerPids(appName string) map[string]int
 		len(s.runningProducers), appName)
 	return nil
 }
+
+// GetPlasmaStats returns internal stats from plasma
+func (s *SuperSupervisor) GetPlasmaStats(appName string) ([]byte, error) {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.GetPlasmaStats()
+	}
+
+	return nil, fmt.Errorf("Eventing.Producer isn't alive")
+}

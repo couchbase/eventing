@@ -592,6 +592,31 @@ func (m *ServiceMgr) getFailureStats(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
+func (m *ServiceMgr) getPlasmaStats(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	params := r.URL.Query()
+	appName := params["name"][0]
+
+	if m.checkIfDeployed(appName) {
+		data, err := m.superSup.GetPlasmaStats(appName)
+
+		if err != nil {
+			fmt.Fprintf(w, "{\"error\":\"Error while fetching plasma stats, err: %v\"}", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Fprintf(w, "%s", string(data))
+		return
+	}
+
+	w.WriteHeader(http.StatusInternalServerError)
+	fmt.Fprintf(w, "{\"error\":\"App: %s not deployed\"}", appName)
+}
+
 func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return

@@ -48,6 +48,7 @@ type EventingProducer interface {
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
 	GetNsServerPort() string
+	GetPlasmaStats() ([]byte, error)
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
@@ -134,6 +135,7 @@ type EventingSuperSup interface {
 	GetFailureStats(appName string) map[string]uint64
 	GetHandlerCode(appName string) string
 	GetLatencyStats(appName string) map[string]uint64
+	GetPlasmaStats(appName string) ([]byte, error)
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)
