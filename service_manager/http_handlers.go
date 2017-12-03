@@ -592,31 +592,6 @@ func (m *ServiceMgr) getFailureStats(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
-func (m *ServiceMgr) getPlasmaStats(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
-	params := r.URL.Query()
-	appName := params["name"][0]
-
-	if m.checkIfDeployed(appName) {
-		data, err := m.superSup.GetPlasmaStats(appName)
-
-		if err != nil {
-			fmt.Fprintf(w, "{\"error\":\"Error while fetching plasma stats, err: %v\"}", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		fmt.Fprintf(w, "%s", string(data))
-		return
-	}
-
-	w.WriteHeader(http.StatusInternalServerError)
-	fmt.Fprintf(w, "{\"error\":\"App: %s not deployed\"}", appName)
-}
-
 func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
@@ -1265,13 +1240,20 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	for _, app := range m.getTempStore("") {
 		if m.checkIfDeployed(app.Name) {
 			stats := stats{}
+			stats.EventProcessingStats = m.superSup.GetEventProcessingStats(app.Name)
+			stats.EventsRemaining = backlogStat{DcpBacklog: m.superSup.GetDcpEventsRemainingToProcess(app.Name)}
+			stats.ExecutionStats = m.superSup.GetExecutionStats(app.Name)
+			stats.FailureStats = m.superSup.GetFailureStats(app.Name)
 			stats.FunctionName = app.Name
 			stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
-			stats.ExecutionStats = m.superSup.GetExecutionStats(app.Name)
-			stats.EventProcessingStats = m.superSup.GetEventProcessingStats(app.Name)
-			stats.FailureStats = m.superSup.GetFailureStats(app.Name)
+			stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
+
+			plasmaStats, err := m.superSup.GetPlasmaStats(app.Name)
+			if err == nil {
+				stats.PlasmaStats = plasmaStats
+			}
+
 			stats.WorkerPids = m.superSup.GetEventingConsumerPids(app.Name)
-			stats.EventsRemaining = backlogStat{DcpBacklog: m.superSup.GetDcpEventsRemainingToProcess(app.Name)}
 			if fullStats {
 				stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
 			}

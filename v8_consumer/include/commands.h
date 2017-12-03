@@ -36,6 +36,7 @@ enum v8_worker_opcode {
   oGetFailureStats,
   oGetExecutionStats,
   oGetCompileInfo,
+  oGetLcbExceptions,
   oVersion,
   V8_Worker_Opcode_Unknown
 };
@@ -77,6 +78,7 @@ enum v8_worker_config_opcode {
   oExecutionStats,
   oCompileInfo,
   oQueueSize,
+  oLcbExceptions,
   V8_Worker_Config_Opcode_Unknown
 };
 

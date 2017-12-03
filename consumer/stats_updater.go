@@ -76,6 +76,7 @@ func (c *Consumer) updateCPPWorkerStats() {
 			c.sendGetFailureStats(false)
 			c.sendGetExecutionStats(false)
 			c.sendGetLatencyStats(false)
+			c.sendGetLcbExceptionStats(false)
 
 		case <-c.updateCPPStatsStopCh:
 			return

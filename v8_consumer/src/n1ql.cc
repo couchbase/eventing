@@ -163,6 +163,8 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS) {
+      auto w = UnwrapData(isolate)->v8worker;
+      w->AddLcbException(static_cast<int>(resp->rc));
       auto errors = n1ql_handle->ExtractErrorMsg(resp->row);
       n1ql_op_exception_count++;
       auto js_exception = UnwrapData(isolate)->js_exception;
@@ -197,6 +199,8 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS) {
+      auto w = UnwrapData(isolate)->v8worker;
+      w->AddLcbException(static_cast<int>(resp->rc));
       auto errors = n1ql_handle->ExtractErrorMsg(resp->row);
       n1ql_op_exception_count++;
       auto js_exception = UnwrapData(isolate)->js_exception;

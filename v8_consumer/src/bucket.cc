@@ -184,6 +184,8 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
 
   // Throw an exception in JavaScript if the bucket get call failed.
   if (result.rc != LCB_SUCCESS) {
+    auto w = UnwrapData(info.GetIsolate())->v8worker;
+    w->AddLcbException(static_cast<int>(result.rc));
     bucket_op_exception_count++;
     auto js_exception = UnwrapData(isolate)->js_exception;
     js_exception->Throw(*bucket_lcb_obj_ptr, result.rc);
@@ -334,6 +336,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
   // Throw an exception in JavaScript if the bucket set call failed.
   if (sres.rc != LCB_SUCCESS) {
+    auto w = UnwrapData(info.GetIsolate())->v8worker;
+    w->AddLcbException(static_cast<int>(sres.rc));
     bucket_op_exception_count++;
     auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
     js_exception->Throw(*bucket_lcb_obj_ptr, sres.rc);
@@ -367,6 +371,8 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
 
   // Throw an exception in JavaScript if the bucket delete call failed.
   if (result.rc != LCB_SUCCESS) {
+    auto w = UnwrapData(info.GetIsolate())->v8worker;
+    w->AddLcbException(static_cast<int>(result.rc));
     bucket_op_exception_count++;
     auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
     js_exception->Throw(*bucket_lcb_obj_ptr, result.rc);

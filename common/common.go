@@ -47,8 +47,9 @@ type EventingProducer interface {
 	GetFailureStats() map[string]uint64
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
+	GetLcbExceptionsStats() map[string]uint64
 	GetNsServerPort() string
-	GetPlasmaStats() ([]byte, error)
+	GetPlasmaStats() (map[string]interface{}, error)
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
@@ -93,6 +94,7 @@ type EventingConsumer interface {
 	GetFailureStats() map[string]uint64
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
+	GetLcbExceptionsStats() map[string]uint64
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
 	HandleV8Worker()
@@ -135,7 +137,8 @@ type EventingSuperSup interface {
 	GetFailureStats(appName string) map[string]uint64
 	GetHandlerCode(appName string) string
 	GetLatencyStats(appName string) map[string]uint64
-	GetPlasmaStats(appName string) ([]byte, error)
+	GetLcbExceptionsStats(appName string) map[string]uint64
+	GetPlasmaStats(appName string) (map[string]interface{}, error)
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)

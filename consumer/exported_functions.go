@@ -184,6 +184,14 @@ func (c *Consumer) Pid() int {
 	return 0
 }
 
+// GetLcbExceptionsStats returns libcouchbase exception stats from CPP workers
+func (c *Consumer) GetLcbExceptionsStats() map[string]uint64 {
+	c.sendGetLcbExceptionStats(false)
+	c.statsRWMutex.RLock()
+	defer c.statsRWMutex.RUnlock()
+	return c.lcbExceptionStats
+}
+
 // SpawnCompilationWorker bring up a CPP worker to compile the user supplied handler code
 func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName string) (*common.CompileStatus, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

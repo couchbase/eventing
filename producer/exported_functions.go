@@ -76,6 +76,21 @@ func (p *Producer) GetFailureStats() map[string]uint64 {
 	return failureStats
 }
 
+// GetLcbExceptionsStats returns libcouchbase exception stats from CPP workers
+func (p *Producer) GetLcbExceptionsStats() map[string]uint64 {
+	exceptionStats := make(map[string]uint64)
+	for _, c := range p.runningConsumers {
+		leStats := c.GetLcbExceptionsStats()
+		for k, v := range leStats {
+			if _, ok := exceptionStats[k]; !ok {
+				exceptionStats[k] = 0
+			}
+			exceptionStats[k] += v
+		}
+	}
+	return exceptionStats
+}
+
 // GetAppCode returns handler code for the current app
 func (p *Producer) GetAppCode() string {
 	return p.app.AppCode
@@ -304,7 +319,7 @@ func (p *Producer) WriteAppLog(log string) {
 }
 
 // GetPlasmaStats returns internal stats from plasma
-func (p *Producer) GetPlasmaStats() ([]byte, error) {
+func (p *Producer) GetPlasmaStats() (map[string]interface{}, error) {
 	stats := p.vbPlasmaStore.GetStats()
 
 	data, err := json.Marshal(&stats)
@@ -312,5 +327,11 @@ func (p *Producer) GetPlasmaStats() ([]byte, error) {
 		return nil, err
 	}
 
-	return data, nil
+	var res map[string]interface{}
+	err = json.Unmarshal(data, &res)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }

@@ -45,6 +45,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   int64_t latency_buckets;
   std::vector<int64_t> agg_hgram, worker_hgram;
   std::ostringstream lstats, estats, fstats;
+  std::map<int, int64_t> agg_lcb_exceptions;
+  std::string::size_type i = 0;
 
   const flatbuf::payload::Payload *payload;
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
@@ -201,6 +203,37 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       resp_msg->msg.assign(compile_resp);
       resp_msg->msg_type = mV8_Worker_Config;
       resp_msg->opcode = oCompileInfo;
+      msg_priority = true;
+      break;
+    case oGetLcbExceptions:
+      for (const auto &w : workers) {
+        w.second->ListLcbExceptions(agg_lcb_exceptions);
+      }
+
+      estats.str(std::string());
+      i = 0;
+
+      for (auto const &entry : agg_lcb_exceptions) {
+        if (i == 0) {
+          estats << "{";
+        }
+
+        if ((i > 0) && (estats.str().length() > 1)) {
+          estats << ",";
+        }
+
+        estats << "\"" << entry.first << "\":" << entry.second;
+
+        if (i == agg_lcb_exceptions.size() - 1) {
+          estats << "}";
+        }
+
+        i++;
+      }
+
+      resp_msg->msg.assign(estats.str());
+      resp_msg->msg_type = mV8_Worker_Config;
+      resp_msg->opcode = oLcbExceptions;
       msg_priority = true;
       break;
     case oVersion:

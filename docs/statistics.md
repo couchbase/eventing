@@ -45,6 +45,10 @@ This will return the stats regardings events processing, events remaining, execu
      "worker_h1_1": 28559,
      "worker_h1_2": 28560
    },
+   "lcb_exception_stats": {
+     "13": 200
+   },
+   "plasma_stats": {"AllocSz": 96, ...},
    "seqs_processed":{"0":0,"1":0, ...}
  }
 ]

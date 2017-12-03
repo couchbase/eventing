@@ -102,7 +102,6 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getExecutionStats", m.getExecutionStats)
 	http.HandleFunc("/getFailureStats", m.getFailureStats)
 	http.HandleFunc("/getLatencyStats", m.getLatencyStats)
-	http.HandleFunc("/getPlasmaStats", m.getPlasmaStats)
 	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
 	http.HandleFunc("/getSeqsProcessed", m.getSeqsProcessed)
 	http.HandleFunc("/getTimerHostPortAddrs", m.getTimerHostPortAddrs)

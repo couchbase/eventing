@@ -703,6 +703,28 @@ bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
   return true;
 }
 
+void V8Worker::AddLcbException(int err_code) {
+  std::lock_guard<std::mutex> lock(lcb_exception_mtx);
+
+  if (lcb_exceptions.find(err_code) == lcb_exceptions.end()) {
+    lcb_exceptions[err_code] = 0;
+  }
+
+  lcb_exceptions[err_code]++;
+}
+
+void V8Worker::ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions) {
+  std::lock_guard<std::mutex> lock(lcb_exception_mtx);
+
+  for (auto const &entry : lcb_exceptions) {
+    if (agg_lcb_exceptions.find(entry.first) == agg_lcb_exceptions.end()) {
+      agg_lcb_exceptions[entry.first] = 0;
+    }
+
+    agg_lcb_exceptions[entry.first] += entry.second;
+  }
+}
+
 void V8Worker::UpdateHistogram(Time::time_point start_time) {
   Time::time_point t = Time::now();
   nsecs ns = std::chrono::duration_cast<nsecs>(t - start_time);

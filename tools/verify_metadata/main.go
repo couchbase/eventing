@@ -26,6 +26,11 @@ func init() {
 }
 
 func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run main.go dis|dump")
+		return
+	}
+
 	switch os.Args[1] {
 	case "dump":
 		metaStateDump()

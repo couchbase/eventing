@@ -48,6 +48,8 @@ v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
     return oGetExecutionStats;
   if (opcode == 10)
     return oGetCompileInfo;
+  if (opcode == 11)
+    return oGetLcbExceptions;
   return V8_Worker_Opcode_Unknown;
 }
 
