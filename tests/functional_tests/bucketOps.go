@@ -2,6 +2,7 @@ package eventing
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/couchbase/gocb"
 )
@@ -12,7 +13,7 @@ type user struct {
 	Interests []string `json:"interests"`
 }
 
-func pumpBucketOps(count int, loop bool, expiry int, delete bool, startIndex int) {
+func pumpBucketOps(count int, expiry int, delete bool, startIndex int, rate *rateLimit) {
 	cluster, _ := gocb.Connect("couchbase://127.0.0.1:12000")
 	cluster.Authenticate(gocb.PasswordAuthenticator{
 		Username: rbacuser,
@@ -30,18 +31,40 @@ func pumpBucketOps(count int, loop bool, expiry int, delete bool, startIndex int
 		Interests: []string{"Holy Grail", "African Swallows"},
 	}
 
-retriggerBucketOp:
-	for i := 0; i < count; i++ {
-		u.ID = i + startIndex
-		bucket.Upsert(fmt.Sprintf("doc_id_%d", i+startIndex), u, uint32(expiry))
-	}
-	if loop {
-		goto retriggerBucketOp
-	}
-
-	if delete {
+	if !rate.limit {
 		for i := 0; i < count; i++ {
-			bucket.Remove(fmt.Sprintf("doc_id_%d", i), 0)
+			u.ID = i + startIndex
+			bucket.Upsert(fmt.Sprintf("doc_id_%d", i+startIndex), u, uint32(expiry))
+		}
+
+		if delete {
+			for i := 0; i < count; i++ {
+				bucket.Remove(fmt.Sprintf("doc_id_%d", i), 0)
+			}
+		}
+	} else {
+		ticker := time.NewTicker(time.Second / time.Duration(rate.opsPSec))
+		i := 0
+		for {
+			select {
+			case <-ticker.C:
+				u.ID = i + startIndex
+				bucket.Upsert(fmt.Sprintf("doc_id_%d", i+startIndex), u, uint32(expiry))
+				i++
+
+				if i == rate.count {
+					if !rate.loop {
+						ticker.Stop()
+						return
+					}
+					i = 0
+					continue
+				}
+
+			case <-rate.stopCh:
+				ticker.Stop()
+				return
+			}
 		}
 	}
 }

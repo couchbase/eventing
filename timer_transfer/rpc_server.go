@@ -22,7 +22,7 @@ func (r *RPC) Open(req FileRequest, res *Response) error {
 
 	file, err := os.Open(path)
 	if err != nil {
-		logging.Errorf("TTRC[%s:%s] RPC.Open failed to open requested file: %v, err: %v",
+		logging.Errorf("RPC::Open [%s:%s] Failed to open requested file: %v, err: %v",
 			r.server.AppName, r.server.WorkerName, path, err)
 		return err
 	}
@@ -30,7 +30,7 @@ func (r *RPC) Open(req FileRequest, res *Response) error {
 	res.ID = r.session.Add(file)
 	res.Result = true
 
-	logging.Debugf("TTRC[%s:%s] RPC.Open file: %v sessionID: %v ",
+	logging.Debugf("RPC::Open [%s:%s] File: %v sessionID: %v ",
 		r.server.AppName, r.server.WorkerName, path, res.ID)
 
 	return nil
@@ -38,17 +38,24 @@ func (r *RPC) Open(req FileRequest, res *Response) error {
 
 // Stat returns requested file's stats
 func (r *RPC) Stat(req FileRequest, res *StatsResponse) error {
+	logging.Debugf("RPC::Stat [%s:%s] Got request: %v", r.server.AppName, r.server.WorkerName, req)
+
 	if !r.checkIfUUIDIsExpected(req.UUID) {
 		return errUnexpectedNodeUUID
 	}
 
 	path := filepath.Join(r.server.EventingDir, req.Filename)
 
-	var info os.FileInfo
-	var err error
+	err := r.server.consumer.CreateTempPlasmaStore(req.Vbucket)
+	if err != nil {
+		logging.Errorf("RPC::Stat [%s:%s] Failed to create temporary plasma store, err: %v",
+			r.server.AppName, r.server.WorkerName, err)
+		return err
+	}
 
-	if info, err = os.Stat(path); os.IsNotExist(err) {
-		logging.Errorf("TTRC[%s:%s] RPC.Stat failed to get stats for file: %v, err: %v",
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		logging.Errorf("RPC::Stat [%s:%s] Failed to get stats for file: %v, err: %v",
 			r.server.AppName, r.server.WorkerName, path, err)
 		return err
 	}
@@ -59,14 +66,13 @@ func (r *RPC) Stat(req FileRequest, res *StatsResponse) error {
 		r.setupStatsResponse(info, path, res)
 	}
 
-	logging.Debugf("TTRC[%s:%s] RPC.Stat file: %v res: %v ",
-		r.server.AppName, r.server.WorkerName, path, res)
-
 	return nil
 }
 
 // CreateArchive creates an archive for requested dirname
 func (r *RPC) CreateArchive(req FileRequest, res *StatsResponse) error {
+	logging.Debugf("RPC::CreateArchive [%s:%s] Got request: %v", r.server.AppName, r.server.WorkerName, req)
+
 	if !r.checkIfUUIDIsExpected(req.UUID) {
 		return errUnexpectedNodeUUID
 	}
@@ -91,7 +97,7 @@ func (r *RPC) CreateArchive(req FileRequest, res *StatsResponse) error {
 
 	var arInfo os.FileInfo
 	if arInfo, err = os.Stat(archivePath); os.IsNotExist(err) {
-		logging.Errorf("TTRC[%s:%s] RPC.Stat failed to get stats for file: %v, err: %v",
+		logging.Errorf("RPC::CreateArchive [%s:%s] Failed to get stats for file: %v, err: %v",
 			r.server.AppName, r.server.WorkerName, archivePath, err)
 		return err
 	}
@@ -102,22 +108,21 @@ func (r *RPC) CreateArchive(req FileRequest, res *StatsResponse) error {
 		r.setupStatsResponse(arInfo, archivePath, res)
 	}
 
-	logging.Debugf("TTRC[%s:%s] RPC.CreateArchive dir: %v res: %v ",
-		r.server.AppName, r.server.WorkerName, path, res)
-
 	return nil
 }
 
 // RemoveArchive erases the archive that was previously created by
 // CreateArchive RPC call from client
 func (r *RPC) RemoveArchive(req FileRequest, res *Response) error {
+	logging.Debugf("RPC::RemoveArchive [%s:%s] Got request: %v", r.server.AppName, r.server.WorkerName, req)
+
 	if !r.checkIfUUIDIsExpected(req.UUID) {
 		return errUnexpectedNodeUUID
 	}
 
 	path := filepath.Join(r.server.EventingDir, req.Filename)
 
-	logging.Debugf("TTRC[%s:%s] RPC.RemoveArchive Request to clean up archive: %v",
+	logging.Debugf("RPC::RemoveArchive [%s:%s] Request to clean up archive: %v",
 		r.server.AppName, r.server.WorkerName, path)
 
 	return os.Remove(path)
@@ -125,16 +130,20 @@ func (r *RPC) RemoveArchive(req FileRequest, res *Response) error {
 
 // RemoveDir cleans up dir on client request
 func (r *RPC) RemoveDir(req FileRequest, res *Response) error {
+	logging.Debugf("RPC::RemoveDir [%s:%s] Got request: %v", r.server.AppName, r.server.WorkerName, req)
+
 	if !r.checkIfUUIDIsExpected(req.UUID) {
 		return errUnexpectedNodeUUID
 	}
 
-	path := filepath.Join(r.server.EventingDir, req.Filename)
+	err := r.server.consumer.PurgePlasmaRecords(req.Vbucket)
+	if err != nil {
+		logging.Debugf("RPC::RemoveDir [%s:%s] Failed to purge plasma records from source node, err: %v",
+			r.server.AppName, r.server.WorkerName, err)
+		return err
+	}
 
-	logging.Debugf("TTRC[%s:%s] RPC.RemoveDir Request to clean up dir: %v",
-		r.server.AppName, r.server.WorkerName, path)
-
-	return os.RemoveAll(path)
+	return nil
 }
 
 // Close closes specific SessionID
@@ -144,7 +153,7 @@ func (r *RPC) Close(req Request, res *Response) error {
 	r.session.Delete(req.ID)
 	res.Result = true
 
-	logging.Debugf("TTRC[%s:%s] RPC.Close closing session: %v file: %v",
+	logging.Debugf("RPC::Close [%s:%s] Closing session: %v file: %v",
 		r.server.AppName, r.server.WorkerName, req.ID, file.Name())
 
 	return nil
@@ -158,7 +167,7 @@ func (r *RPC) Read(req ReadRequest, res *ReadResponse) error {
 
 	file := r.session.Get(req.ID)
 	if file == nil {
-		logging.Errorf("TTRC[%s:%s] RPC.Read SessionID: %v not found",
+		logging.Errorf("RPC::Read [%s:%s] SessionID: %v not found",
 			r.server.AppName, r.server.WorkerName, req.ID)
 		return fmt.Errorf("SessionID not found")
 	}
@@ -166,7 +175,7 @@ func (r *RPC) Read(req ReadRequest, res *ReadResponse) error {
 	res.Data = make([]byte, req.Size)
 	n, err := file.Read(res.Data)
 	if err != nil && err != io.EOF {
-		logging.Errorf("TTRC[%s:%s] RPC.Read Failed to read %v bytes from file: %v, err: %v",
+		logging.Errorf("RPC::Read [%s:%s] Failed to read %v bytes from file: %v, err: %v",
 			r.server.AppName, r.server.WorkerName, req.Size, file.Name(), err)
 		return err
 	}
@@ -178,7 +187,7 @@ func (r *RPC) Read(req ReadRequest, res *ReadResponse) error {
 	res.Size = n
 	res.Data = res.Data[:res.Size]
 
-	logging.Debugf("TTRC[%s:%s] RPC.Read SessionID: %v read: %v bytes",
+	logging.Debugf("RPC::Read [%s:%s] SessionID: %v read: %v bytes",
 		r.server.AppName, r.server.WorkerName, req.ID, res.Size)
 
 	return nil
@@ -192,7 +201,7 @@ func (r *RPC) ReadAt(req ReadRequest, res *ReadResponse) error {
 
 	file := r.session.Get(req.ID)
 	if file == nil {
-		logging.Errorf("TTRC[%s:%s] RPC.ReadAt SessionID: %v not found",
+		logging.Errorf("RPC::ReadAt [%s:%s] SessionID: %v not found",
 			r.server.AppName, r.server.WorkerName, req.ID)
 		return fmt.Errorf("SessionID not found")
 	}
@@ -200,7 +209,7 @@ func (r *RPC) ReadAt(req ReadRequest, res *ReadResponse) error {
 	res.Data = make([]byte, req.Size)
 	n, err := file.ReadAt(res.Data, req.Offset)
 	if err != nil && err != io.EOF {
-		logging.Errorf("TTRC[%s:%s] RPC.ReadAt Failed to read %v bytes(offset: %v) from file: %v, err: %v",
+		logging.Errorf("RPC::ReadAt [%s:%s] Failed to read %v bytes(offset: %v) from file: %v, err: %v",
 			r.server.AppName, r.server.WorkerName, req.Size, req.Offset, file.Name(), err)
 		return err
 	}
@@ -212,7 +221,7 @@ func (r *RPC) ReadAt(req ReadRequest, res *ReadResponse) error {
 	res.Size = n
 	res.Data = res.Data[:n]
 
-	logging.Debugf("TTRC[%s:%s] RPC.ReadAt SessionID: %v read: %v bytes(offset: %v)",
+	logging.Debugf("RPC::ReadAt [%s:%s] SessionID: %v read: %v bytes(offset: %v)",
 		r.server.AppName, r.server.WorkerName, req.ID, res.Size, req.Offset)
 
 	return nil
@@ -226,7 +235,7 @@ func (r *StatsResponse) IsDir() bool {
 func (r *RPC) setupStatsResponse(info os.FileInfo, path string, res *StatsResponse) {
 	checksum, err := ComputeMD5(path)
 	if err != nil {
-		logging.Errorf("TTRC[%s:%s] RPC.Stat failed to get MD5 checksum for file: %v, err: %v",
+		logging.Errorf("RPC::setupStatsResponse [%s:%s] Failed to get MD5 checksum for file: %v, err: %v",
 			r.server.AppName, r.server.WorkerName, path, err)
 	} else {
 		res.Checksum = checksum

@@ -128,12 +128,12 @@ bool Transpiler::IsTimerCalled(const std::string &handler_code) {
 void Transpiler::LogCompilationInfo(const CompilationInfo &info) {
   if (info.compile_success) {
     LOG(logInfo) << "Compilation successful."
-                 << " Language: " << info.language << '\n';
+                 << " Language: " << info.language << std::endl;
   } else {
     LOG(logInfo) << "Syntax error. Language: " << info.language
                  << " Index: " << info.index << " Line number: " << info.line_no
                  << " Column number: " << info.col_no
-                 << " Description: " << info.description << '\n';
+                 << " Description: " << info.description << std::endl;
   }
 }
 

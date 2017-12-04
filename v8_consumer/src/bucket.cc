@@ -33,7 +33,7 @@ static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
 
   LOG(logTrace) << "Bucket: LCB_GET callback, res: "
                 << lcb_strerror(NULL, rb->rc) << rb->rc << " cas " << rb->cas
-                << '\n';
+                << std::endl;
 
   result->rc = resp->rc;
   result->value.clear();
@@ -42,7 +42,7 @@ static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
     result->value.assign(reinterpret_cast<const char *>(resp->value),
                          static_cast<int>(resp->nvalue));
     LOG(logTrace) << "Value: " << result->value << " flags: " << resp->itmflags
-                  << '\n';
+                  << std::endl;
   }
 }
 
@@ -55,7 +55,7 @@ static void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
 
   LOG(logTrace) << "Bucket: LCB_STORE callback "
                 << lcb_strerror(instance, result->rc) << " cas " << resp->cas
-                << '\n';
+                << std::endl;
 }
 
 static void sdmutate_callback(lcb_t, int cbtype, const lcb_RESPBASE *rb) {
@@ -63,7 +63,7 @@ static void sdmutate_callback(lcb_t, int cbtype, const lcb_RESPBASE *rb) {
   result->rc = rb->rc;
 
   LOG(logTrace) << "Bucket: LCB_SDMUTATE callback "
-                << lcb_strerror(NULL, result->rc) << '\n';
+                << lcb_strerror(NULL, result->rc) << std::endl;
 }
 
 static void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
@@ -82,7 +82,7 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
   std::string connstr = "couchbase://" + endpoint + "/" + bucket_name +
                         "?username=" + rbac_user + "&select_bucket=true";
 
-  LOG(logInfo) << "Bucket: connstr " << connstr << '\n';
+  LOG(logInfo) << "Bucket: connstr " << connstr << std::endl;
 
   // lcb related setup
   lcb_create_st crst;
@@ -153,7 +153,7 @@ bool Bucket::InstallMaps() {
   auto context = v8::Local<v8::Context>::New(isolate_, context_);
 
   LOG(logInfo) << "Registering handler for bucket_alias: " << bucket_alias
-               << " bucket_name: " << bucket_name << '\n';
+               << " bucket_name: " << bucket_name << std::endl;
 
   return context->Global()->Set(v8Str(isolate_, bucket_alias.c_str()),
                                 bucket_obj);
@@ -184,6 +184,8 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
 
   // Throw an exception in JavaScript if the bucket get call failed.
   if (result.rc != LCB_SUCCESS) {
+    auto w = UnwrapData(info.GetIsolate())->v8worker;
+    w->AddLcbException(static_cast<int>(result.rc));
     bucket_op_exception_count++;
     auto js_exception = UnwrapData(isolate)->js_exception;
     js_exception->Throw(*bucket_lcb_obj_ptr, result.rc);
@@ -191,7 +193,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   }
 
   LOG(logTrace) << "Get call result Key: " << key << " Value: " << result.value
-                << '\n';
+                << std::endl;
 
   const std::string &value = result.value;
   auto value_json = v8::JSON::Parse(v8Str(isolate, value.c_str()));
@@ -212,7 +214,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
   LOG(logTrace) << "Set call Key: " << key << " Value: " << value
                 << " enable_recursive_mutation: " << enable_recursive_mutation
-                << '\n';
+                << std::endl;
 
   lcb_t *bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
   Result sres;
@@ -220,7 +222,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
   if (!enable_recursive_mutation) {
     LOG(logTrace) << "Adding macro in xattr to avoid retriggering of handler "
                      "from recursive mutation, enable_recursive_mutation: "
-                  << enable_recursive_mutation << '\n';
+                  << enable_recursive_mutation << std::endl;
 
     while (true) {
       Result gres;
@@ -236,14 +238,14 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
         LOG(logTrace)
             << "Key: " << key
             << " doesn't exist in bucket where mutation has to be written"
-            << '\n';
+            << std::endl;
         break;
       case LCB_SUCCESS:
         break;
       default:
         LOG(logTrace) << "Failed to fetch full doc: " << key
                       << " to calculate digest, res: "
-                      << lcb_strerror(NULL, gres.rc) << '\n';
+                      << lcb_strerror(NULL, gres.rc) << std::endl;
         return;
       }
 
@@ -252,7 +254,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
         uint32_t d = crc32c(0, gres.value.c_str(), gres.value.length());
         digest.assign(std::to_string(d));
         LOG(logTrace) << "key: " << key << " digest: " << digest
-                      << " value: " << gres.value << '\n';
+                      << " value: " << gres.value << std::endl;
       }
 
       lcb_CMDSUBDOC mcmd = {0};
@@ -300,17 +302,17 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
       switch (sres.rc) {
       case LCB_SUCCESS:
-        LOG(logTrace) << "Successfully wrote doc:" << key << '\n';
+        LOG(logTrace) << "Successfully wrote doc:" << key << std::endl;
         info.GetReturnValue().Set(value_obj);
         return;
       case LCB_KEY_EEXISTS:
-        LOG(logTrace) << "CAS mismatch for doc:" << key << '\n';
+        LOG(logTrace) << "CAS mismatch for doc:" << key << std::endl;
         std::this_thread::sleep_for(
             std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
         break;
       default:
         LOG(logTrace) << "Encountered error:" << lcb_strerror(NULL, sres.rc)
-                      << " for key:" << key << '\n';
+                      << " for key:" << key << std::endl;
         info.GetReturnValue().Set(value_obj);
         return;
       }
@@ -318,7 +320,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
   } else {
     LOG(logTrace)
         << "Performing recursive mutation, enable_recursive_mutation: "
-        << enable_recursive_mutation << '\n';
+        << enable_recursive_mutation << std::endl;
 
     lcb_CMDSTORE scmd = {0};
     LCB_CMD_SET_KEY(&scmd, key.c_str(), key.length());
@@ -334,6 +336,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
   // Throw an exception in JavaScript if the bucket set call failed.
   if (sres.rc != LCB_SUCCESS) {
+    auto w = UnwrapData(info.GetIsolate())->v8worker;
+    w->AddLcbException(static_cast<int>(sres.rc));
     bucket_op_exception_count++;
     auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
     js_exception->Throw(*bucket_lcb_obj_ptr, sres.rc);
@@ -367,6 +371,8 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
 
   // Throw an exception in JavaScript if the bucket delete call failed.
   if (result.rc != LCB_SUCCESS) {
+    auto w = UnwrapData(info.GetIsolate())->v8worker;
+    w->AddLcbException(static_cast<int>(result.rc));
     bucket_op_exception_count++;
     auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
     js_exception->Throw(*bucket_lcb_obj_ptr, result.rc);

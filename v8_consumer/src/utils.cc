@@ -110,7 +110,7 @@ const char *ToCString(const v8::String::Utf8Value &value) {
 
 bool ToCBool(const v8::Local<v8::Boolean> &value) {
   if (value.IsEmpty()) {
-    LOG(logError) << "Failed to convert to bool" << '\n';
+    LOG(logError) << "Failed to convert to bool" << std::endl;
   }
 
   return value->Value();
@@ -154,15 +154,16 @@ bool isFuncReference(const v8::FunctionCallbackInfo<v8::Value> &args, int i) {
 
       if (timer_func_ref->IsUndefined()) {
         LOG(logError) << *func_name << " is not defined in global scope"
-                      << '\n';
+                      << std::endl;
         return false;
       }
     } else {
-      LOG(logError) << "Invalid arg: Anonymous function is not allowed" << '\n';
+      LOG(logError) << "Invalid arg: Anonymous function is not allowed"
+                    << std::endl;
       return false;
     }
   } else {
-    LOG(logError) << "Invalid arg: Function reference expected" << '\n';
+    LOG(logError) << "Invalid arg: Function reference expected" << std::endl;
     return false;
   }
 

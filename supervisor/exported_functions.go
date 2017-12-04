@@ -111,6 +111,16 @@ func (s *SuperSupervisor) GetFailureStats(appName string) map[string]uint64 {
 	return nil
 }
 
+// GetLcbExceptionsStats returns libcouchbase exception stats from CPP workers
+func (s *SuperSupervisor) GetLcbExceptionsStats(appName string) map[string]uint64 {
+	logging.Infof("SSUP[%d] GetLcbExceptionStats request for app: %v", len(s.runningProducers), appName)
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.GetLcbExceptionsStats()
+	}
+	return nil
+}
+
 // GetSeqsProcessed returns vbucket specific sequence nos processed so far
 func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
 	logging.Infof("SSUP[%d] GetSeqsProcessed request for app: %v", len(s.runningProducers), appName)
@@ -209,4 +219,14 @@ func (s *SuperSupervisor) GetEventingConsumerPids(appName string) map[string]int
 	logging.Errorf("SSUP[%d] Eventing consumer pid request for app: %v didn't go through as Eventing.Producer instance isn't alive",
 		len(s.runningProducers), appName)
 	return nil
+}
+
+// GetPlasmaStats returns internal stats from plasma
+func (s *SuperSupervisor) GetPlasmaStats(appName string) (map[string]interface{}, error) {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.GetPlasmaStats()
+	}
+
+	return nil, fmt.Errorf("Eventing.Producer isn't alive")
 }

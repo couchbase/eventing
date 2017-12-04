@@ -70,7 +70,11 @@ func (r *rebalancer) gatherProgress() {
 	for {
 		select {
 		case <-progressTicker.C:
-			p, _ := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
+			p, err := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
+			if err != nil {
+				logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to get aggregate rebalance progress, err: %v", err)
+				continue
+			}
 
 			var progress float64
 

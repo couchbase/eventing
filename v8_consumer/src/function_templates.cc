@@ -33,7 +33,7 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
     log_msg += " ";
   }
 
-  APP_LOG(logDebug) << log_msg << '\n';
+  APP_LOG(logDebug) << log_msg << std::endl;
 }
 
 // console.log for debugger - also logs to eventing.log
@@ -72,7 +72,7 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if (args.Length() != 3) {
     LOG(logError) << "Cron timer needs 3 args: <callback_func> <payload> "
                      "<timeWhenToKickOff>"
-                  << '\n';
+                  << std::endl;
     return;
   }
 
@@ -95,7 +95,7 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if (atoi(start_ts.c_str()) <= 0) {
     LOG(logError)
         << "Skipping cron timer callback setup, invalid start timestamp"
-        << '\n';
+        << std::endl;
     return;
   }
 
@@ -104,7 +104,7 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_entry.append(ConvertToISO8601(start_ts));
   timer_entry.append("Z");
   LOG(logTrace) << "Request to register cron timer, callback_func:" << cb_func
-                << " start_ts : " << timer_entry << '\n';
+                << " start_ts : " << timer_entry << std::endl;
 
   // Store blob in KV store, blob structure:
   // {
@@ -118,7 +118,7 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   value.append(opaque);
   value.append("}");
 
-  LOG(logTrace) << "cron timer value:" << value << '\n';
+  LOG(logTrace) << "cron timer value:" << value << std::endl;
 
   auto meta_cb_instance = UnwrapData(isolate)->meta_cb_instance;
   Result res;
@@ -186,7 +186,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   // setting up timer callback for it
   if (atoi(start_ts.c_str()) == 0) {
     LOG(logError) << "Skipping timer callback setup for doc_id:" << doc_id
-                  << ", won't expire" << '\n';
+                  << ", won't expire" << std::endl;
     return;
   }
 
@@ -214,7 +214,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_entry += "\"";
   timer_entry.insert(0, 1, '"');
   LOG(logTrace) << "Request to register doc timer, callback_func:" << cb_func
-                << " doc_id:" << doc_id << " start_ts:" << timer_entry << '\n';
+                << " doc_id:" << doc_id << " start_ts:" << timer_entry
+                << std::endl;
 
   while (true) {
     auto cb_instance = UnwrapData(isolate)->cb_instance;
@@ -240,12 +241,17 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     lcb_wait(cb_instance);
 
     auto sleep_duration = LCB_OP_RETRY_INTERVAL;
+    if (res.rc == LCB_KEY_ENOENT) {
+      doc_timer_create_failure++;
+      return;
+    }
+
     while (res.rc != LCB_SUCCESS) {
       doc_timer_create_failure++;
       LOG(logError)
           << "Failed to while performing lookup for fulldoc and exptime"
           << " doc key:" << doc_id << " rc: " << lcb_strerror(NULL, res.rc)
-          << '\n';
+          << std::endl;
       std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
       sleep_duration *= 1.5;
       lcb_subdoc3(cb_instance, &res, &gcmd);
@@ -257,7 +263,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     LOG(logTrace) << "CreateDocTimer cas: " << res.cas
                   << " exptime: " << res.exptime << " digest: " << digest
-                  << '\n';
+                  << std::endl;
 
     lcb_CMDSUBDOC mcmd = {0};
     lcb_SDSPEC digest_spec, xattr_spec, tspec = {0};
@@ -298,11 +304,16 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     lcb_subdoc3(cb_instance, &res, &mcmd);
     lcb_wait(cb_instance);
+    if (res.rc == LCB_KEY_ENOENT) {
+      doc_timer_create_failure++;
+      return;
+    }
+
     if (res.rc != LCB_SUCCESS) {
       doc_timer_create_failure++;
       LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
                     << doc_id << " return code:" << res.rc
-                    << " msg:" << lcb_strerror(NULL, res.rc) << '\n';
+                    << " msg:" << lcb_strerror(NULL, res.rc) << std::endl;
       return;
     }
 
@@ -311,7 +322,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       doc_timer_create_failure++;
       LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
                     << doc_id << " return code:" << res.rc
-                    << " msg:" << lcb_strerror(NULL, res.rc) << '\n';
+                    << " msg:" << lcb_strerror(NULL, res.rc) << std::endl;
       std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
       sleep_duration *= 1.5;
       lcb_subdoc3(cb_instance, &res, &mcmd);
@@ -323,7 +334,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     }
 
     if (res.rc == LCB_KEY_EEXISTS) {
-      LOG(logTrace) << "CAS Mismatch for " << doc_id << ". Retrying" << '\n';
+      LOG(logTrace) << "CAS Mismatch for " << doc_id << ". Retrying"
+                    << std::endl;
       std::this_thread::sleep_for(
           std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
     }
@@ -338,7 +350,7 @@ size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb,
   mem->memory =
       static_cast<char *>(realloc(mem->memory, mem->size + realsize + 1));
   if (mem->memory == NULL) {
-    LOG(logError) << "not enough memory (realloc returned NULL)" << '\n';
+    LOG(logError) << "not enough memory (realloc returned NULL)" << std::endl;
     return 0;
   }
 
@@ -430,7 +442,7 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   url += url_suffix;
 
   LOG(logTrace) << "method: " << http_method << " auth:" << auth
-                << " data: " << data << " url: " << url << '\n';
+                << " data: " << data << " url: " << url << std::endl;
 
   if (http_method.empty()) {
     http_method.assign("GET");
@@ -487,7 +499,7 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
     }
 
     LOG(logTrace) << "Response code from curl call: " << static_cast<int>(res)
-                  << '\n';
+                  << std::endl;
     if (res != CURLE_OK) {
       auto js_exception = UnwrapData(isolate)->js_exception;
       js_exception->Throw(res);

@@ -47,7 +47,9 @@ type EventingProducer interface {
 	GetFailureStats() map[string]uint64
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
+	GetLcbExceptionsStats() map[string]uint64
 	GetNsServerPort() string
+	GetPlasmaStats() (map[string]interface{}, error)
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
 	IsEventingNodeAlive(eventingHostPortAddr string) bool
@@ -83,6 +85,7 @@ type EventingProducer interface {
 type EventingConsumer interface {
 	ClearEventStats()
 	ConsumerName() string
+	CreateTempPlasmaStore(vb uint16) error
 	DcpEventsRemainingToProcess() uint64
 	EventingNodeUUIDs() []string
 	EventsProcessedPSec() *EventProcessingStats
@@ -91,6 +94,7 @@ type EventingConsumer interface {
 	GetFailureStats() map[string]uint64
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
+	GetLcbExceptionsStats() map[string]uint64
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
 	HandleV8Worker()
@@ -100,6 +104,7 @@ type EventingConsumer interface {
 	NotifyRebalanceStop()
 	NotifySettingsChange()
 	Pid() int
+	PurgePlasmaRecords(vb uint16) error
 	RebalanceTaskProgress() *RebalanceProgress
 	Serve()
 	SetConnHandle(net.Conn)
@@ -132,6 +137,8 @@ type EventingSuperSup interface {
 	GetFailureStats(appName string) map[string]uint64
 	GetHandlerCode(appName string) string
 	GetLatencyStats(appName string) map[string]uint64
+	GetLcbExceptionsStats(appName string) map[string]uint64
+	GetPlasmaStats(appName string) (map[string]interface{}, error)
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)

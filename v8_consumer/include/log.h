@@ -52,7 +52,8 @@ inline std::ostringstream &AppLogger(LogLevel level = logInfo) {
     app_log_os << " " << LevelToString(level) << " ";
     app_log_os << "VWCP [" << appName << ":" << workerID << "] ";
   } catch (const std::bad_alloc &e) {
-    std::cout << "Allocation failed while logging application logs" << '\n';
+    std::cout << "Allocation failed while logging application logs"
+              << std::endl;
   }
   return app_log_os;
 }

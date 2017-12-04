@@ -81,15 +81,16 @@ func (m *ServiceMgr) initService() {
 	// TODO: Rest endpoints are growing big, need to document in source code purpose of each
 	// Eventually it would work as documentation.
 
+	// Internal REST APIs
 	http.HandleFunc("/clearEventStats", m.clearEventStats)
-	http.HandleFunc("/deleteApplication/", m.deleteApplication)
-	http.HandleFunc("/deleteAppTempStore/", m.deleteAppTempStore)
+	http.HandleFunc("/deleteApplication/", m.deletePrimaryStoreHandler)
+	http.HandleFunc("/deleteAppTempStore/", m.deleteTempStoreHandler)
 	http.HandleFunc("/debugging/", m.debugging)
 	http.HandleFunc("/getAggEventProcessingStats", m.getAggEventProcessingStats)
 	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
 	http.HandleFunc("/getAggTimerHostPortAddrs", m.getAggTimerHostPortAddrs)
-	http.HandleFunc("/getApplication/", m.getApplication)
-	http.HandleFunc("/getAppTempStore/", m.getAppTempStore)
+	http.HandleFunc("/getApplication/", m.getPrimaryStoreHandler)
+	http.HandleFunc("/getAppTempStore/", m.getTempStoreHandler)
 	http.HandleFunc("/getAggEventsPSec", m.getAggEventsPSec)
 	http.HandleFunc("/getConsumerPids", m.getEventingConsumerPids)
 	http.HandleFunc("/getDcpEventsRemaining", m.getDcpEventsRemaining)
@@ -105,14 +106,18 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getSeqsProcessed", m.getSeqsProcessed)
 	http.HandleFunc("/getTimerHostPortAddrs", m.getTimerHostPortAddrs)
 	http.HandleFunc("/getLocalDebugUrl/", m.getLocalDebugURL)
-	http.HandleFunc("/saveAppTempStore/", m.saveAppTempStore)
-	http.HandleFunc("/setApplication/", m.setApplication)
+	http.HandleFunc("/saveAppTempStore/", m.saveTempStoreHandler)
+	http.HandleFunc("/setApplication/", m.savePrimaryStoreHandler)
 	http.HandleFunc("/setSettings/", m.setSettings)
 	http.HandleFunc("/startDebugger/", m.startDebugger)
 	http.HandleFunc("/startTracing", m.startTracing)
 	http.HandleFunc("/stopDebugger/", m.stopDebugger)
 	http.HandleFunc("/stopTracing", m.stopTracing)
 	http.HandleFunc("/uuid", m.getNodeUUID)
+
+	// Public REST APIs
+	http.HandleFunc("/api/v1/functions", m.functionsHandler)
+	http.HandleFunc("/api/v1/stats", m.statsHandler)
 
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)

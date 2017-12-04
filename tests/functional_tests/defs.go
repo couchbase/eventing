@@ -28,6 +28,13 @@ const (
 )
 
 const (
+	addNodeURL   = "http://127.0.0.1:9000/controller/addNode"
+	poolsURL     = "http://127.0.0.1:9000/pools/default"
+	rebalanceURL = "http://127.0.0.1:9000/controller/rebalance"
+	taskURL      = "http://127.0.0.1:9000/pools/default/tasks"
+)
+
+const (
 	username = "Administrator"
 	password = "asdasd"
 
@@ -82,4 +89,12 @@ type commonSettings struct {
 	batchSize   int
 	workerCount int
 	lcbInstCap  int
+}
+
+type rateLimit struct {
+	limit   bool
+	opsPSec int
+	count   int
+	stopCh  chan struct{}
+	loop    bool
 }

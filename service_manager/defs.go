@@ -24,6 +24,7 @@ const (
 )
 
 const (
+	// EventingPermissionManage for auditing
 	EventingPermissionManage = "cluster.eventing.functions!manage"
 )
 
@@ -125,4 +126,17 @@ type bucket struct {
 
 type backlogStat struct {
 	DcpBacklog uint64 `json:"dcp_backlog"`
+}
+
+type stats struct {
+	EventProcessingStats interface{} `json:"event_processing_stats"`
+	EventsRemaining      interface{} `json:"events_remaining"`
+	ExecutionStats       interface{} `json:"execution_stats"`
+	FailureStats         interface{} `json:"failure_stats"`
+	FunctionName         interface{} `json:"function_name"`
+	LatencyStats         interface{} `json:"latency_stats"`
+	LcbExceptionStats    interface{} `json:"lcb_exception_stats"`
+	PlasmaStats          interface{} `json:"plasma_stats"`
+	SeqsProcessed        interface{} `json:"seqs_processed"`
+	WorkerPids           interface{} `json:"worker_pids"`
 }

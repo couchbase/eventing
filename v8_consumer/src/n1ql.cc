@@ -77,7 +77,7 @@ lcb_t ConnectionPool::GetResource() {
 }
 
 void ConnectionPool::Error(lcb_t instance, const char *msg, lcb_error_t err) {
-  LOG(logError) << err << " " << lcb_strerror(instance, err) << '\n';
+  LOG(logError) << err << " " << lcb_strerror(instance, err) << std::endl;
 }
 
 ConnectionPool::~ConnectionPool() {
@@ -122,7 +122,7 @@ std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata) {
     }
   } else {
     LOG(logError) << "Error parsing JSON while extracting N1QL error message"
-                  << '\n';
+                  << std::endl;
   }
 
   return errors;
@@ -163,6 +163,8 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS) {
+      auto w = UnwrapData(isolate)->v8worker;
+      w->AddLcbException(static_cast<int>(resp->rc));
       auto errors = n1ql_handle->ExtractErrorMsg(resp->row);
       n1ql_op_exception_count++;
       auto js_exception = UnwrapData(isolate)->js_exception;
@@ -197,6 +199,8 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS) {
+      auto w = UnwrapData(isolate)->v8worker;
+      w->AddLcbException(static_cast<int>(resp->rc));
       auto errors = n1ql_handle->ExtractErrorMsg(resp->row);
       n1ql_op_exception_count++;
       auto js_exception = UnwrapData(isolate)->js_exception;
@@ -309,7 +313,7 @@ void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     PopScopeStack(args);
   } catch (const char *e) {
-    LOG(logError) << e << '\n';
+    LOG(logError) << e << std::endl;
     ++n1ql_op_exception_count;
     auto js_exception = UnwrapData(isolate)->js_exception;
     js_exception->Throw(e);
@@ -337,7 +341,7 @@ void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     // Bubble up the message sent from JavaScript.
     SetReturnValue(args, handle_scope.Escape(arg));
   } catch (const char *e) {
-    LOG(logError) << e << '\n';
+    LOG(logError) << e << std::endl;
     auto js_exception = UnwrapData(isolate)->js_exception;
     js_exception->Throw(e);
   }
@@ -381,7 +385,7 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     args.GetReturnValue().Set(result_array);
   } catch (const char *e) {
-    LOG(logError) << e << '\n';
+    LOG(logError) << e << std::endl;
     ++n1ql_op_exception_count;
     auto js_exception = UnwrapData(isolate)->js_exception;
     js_exception->Throw(e);
@@ -640,7 +644,7 @@ template <typename T> v8::Local<T> ToLocal(const v8::MaybeLocal<T> &handle) {
   v8::Local<T> value;
   auto result = handle.ToLocal(&value);
   if (!result) {
-    LOG(logError) << "handle.ToLocal failed" << '\n';
+    LOG(logError) << "handle.ToLocal failed" << std::endl;
   }
 
   return handle_scope.Escape(value);

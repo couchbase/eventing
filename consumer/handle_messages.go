@@ -273,6 +273,28 @@ func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
+func (c *Consumer) sendGetLcbExceptionStats(sendToDebugger bool) {
+	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerLcbExceptions, 0, "")
+
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]; !ok {
+		c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"] = 0
+	}
+	c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]++
+	c.msgProcessedRWMutex.Unlock()
+
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(m)
+}
+
 func (c *Consumer) sendGetSourceMap(sendToDebugger bool) {
 	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerSourceMap, 0, "")
 

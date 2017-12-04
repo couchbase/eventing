@@ -106,6 +106,8 @@ const (
 	retryInterval = time.Duration(1000) * time.Millisecond
 
 	socketWriteTimerInterval = time.Duration(5000) * time.Millisecond
+
+	updateCPPStatsTickInterval = time.Duration(5000) * time.Millisecond
 )
 
 const (
@@ -206,6 +208,7 @@ type Consumer struct {
 	executionStats         map[string]uint64             // Access controlled by statsRWMutex
 	failureStats           map[string]uint64             // Access controlled by statsRWMutex
 	latencyStats           map[string]uint64             // Access controlled by statsRWMutex
+	lcbExceptionStats      map[string]uint64             // Access controlled by statsRWMutex
 	compileInfo            *common.CompileStatus
 	statsRWMutex           *sync.RWMutex
 	hostDcpFeedRWMutex     *sync.RWMutex
@@ -375,6 +378,9 @@ type Consumer struct {
 	checkpointTicker         *time.Ticker
 	restartVbDcpStreamTicker *time.Ticker
 	statsTicker              *time.Ticker
+
+	updateCPPStatsTicker *time.Ticker
+	updateCPPStatsStopCh chan struct{}
 }
 
 type timerProcessingWorker struct {

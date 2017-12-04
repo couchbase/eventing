@@ -115,20 +115,20 @@ class V8Worker;
 extern bool debugger_started;
 
 extern bool enable_recursive_mutation;
-extern std::atomic<std::int64_t> bucket_op_exception_count;
-extern std::atomic<std::int64_t> n1ql_op_exception_count;
-extern std::atomic<std::int64_t> timeout_count;
-extern std::atomic<std::int16_t> checkpoint_failure_count;
+extern std::atomic<int64_t> bucket_op_exception_count;
+extern std::atomic<int64_t> n1ql_op_exception_count;
+extern std::atomic<int64_t> timeout_count;
+extern std::atomic<int16_t> checkpoint_failure_count;
 
-extern std::atomic<std::int64_t> on_update_success;
-extern std::atomic<std::int64_t> on_update_failure;
-extern std::atomic<std::int64_t> on_delete_success;
-extern std::atomic<std::int64_t> on_delete_failure;
+extern std::atomic<int64_t> on_update_success;
+extern std::atomic<int64_t> on_update_failure;
+extern std::atomic<int64_t> on_delete_success;
+extern std::atomic<int64_t> on_delete_failure;
 
-extern std::atomic<std::int64_t> non_doc_timer_create_failure;
-extern std::atomic<std::int64_t> doc_timer_create_failure;
+extern std::atomic<int64_t> non_doc_timer_create_failure;
+extern std::atomic<int64_t> doc_timer_create_failure;
 
-extern std::atomic<std::int64_t> messages_processed_counter;
+extern std::atomic<int64_t> messages_processed_counter;
 
 class V8Worker {
 public:
@@ -136,7 +136,7 @@ public:
            server_settings_t *settings);
   ~V8Worker();
 
-  void operator()() const {
+  void operator()() {
     if (debugger_started)
       return;
     while (!shutdown_terminator) {
@@ -148,13 +148,14 @@ public:
 
         LOG(logTrace) << "ns.count(): " << ns.count()
                       << "ns, max_task_duration: " << max_task_duration << "ns"
-                      << '\n';
+                      << std::endl;
         if (ns.count() > max_task_duration) {
           if (isolate_) {
             LOG(logTrace) << "Task took: " << ns.count()
-                          << "ns, terminating it's execution" << '\n';
+                          << "ns, terminating it's execution" << std::endl;
             timeout_count++;
             v8::V8::TerminateExecution(isolate_);
+            execute_flag = false;
           }
         }
       }
@@ -184,6 +185,9 @@ public:
 
   void V8WorkerDispose();
   void V8WorkerTerminateExecution();
+
+  void AddLcbException(int err_code);
+  void ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions);
 
   void UpdateHistogram(Time::time_point t);
 
@@ -224,6 +228,9 @@ public:
 
   ConnectionPool *conn_pool;
   JsException *js_exception;
+
+  std::mutex lcb_exception_mtx;
+  std::map<int, int64_t> lcb_exceptions;
 
   Histogram *histogram;
   Data data;

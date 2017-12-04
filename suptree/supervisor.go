@@ -37,6 +37,7 @@ type serviceWithName struct {
 	name    string
 }
 
+// Supervisor contruct
 type Supervisor struct {
 	Name string
 	id   supervisorID
@@ -79,6 +80,7 @@ type Supervisor struct {
 //  * FailureBackoff:    15 seconds
 //  * Timeout:           10 seconds
 
+// Spec for supervisor that's respected for re-spawning supervised routines that have crashed
 type Spec struct {
 	Log              func(string)
 	FailureDecay     float64
@@ -493,7 +495,6 @@ func (s *Supervisor) Services() []Service {
 
 	if s.sendControl(ls) {
 		return <-ls.c
-	} else {
-		return nil
 	}
+	return nil
 }

@@ -25,7 +25,7 @@ func NewRPCClient(consumer common.EventingConsumer, addr, appName, registeredNam
 func (c *Client) DialPath(path string) error {
 	client, err := rpc.DialHTTPPath("tcp", c.Addr, path)
 	if err != nil {
-		logging.Errorf("TTCL[%s:%s] Addr: %v Path: %v Client.Dial failed, err: %v",
+		logging.Errorf("Client::DialPath [%s:%s] Addr: %v Path: %v Client.Dial failed, err: %v",
 			c.AppName, c.registeredName, c.Addr, path, err)
 		return err
 	}
@@ -46,10 +46,14 @@ func (c *Client) Open(filename string) (SessionID, error) {
 }
 
 // Stat return os.FileInfo stats
-func (c *Client) Stat(filename string) (*StatsResponse, error) {
+func (c *Client) Stat(vb uint16, filename string) (*StatsResponse, error) {
+	logging.Debugf("Client::Stat [%s:%s] Addr: %s Filename: %v vb: %v", c.AppName, c.registeredName, c.Addr, filename, vb)
+
 	var res StatsResponse
 	if err := c.rpcClient.Call(c.registeredName+".Stat",
-		FileRequest{Filename: filename, UUID: c.uuid()}, &res); err != nil {
+		FileRequest{Filename: filename, UUID: c.uuid(), Vbucket: vb}, &res); err != nil {
+		logging.Errorf("Client::Stat [%s:%s] Addr: %s Filename: %s vb: %v RPC.Stat failed, err: %v",
+			c.AppName, c.registeredName, c.Addr, filename, vb, err)
 		return nil, err
 	}
 
@@ -58,9 +62,13 @@ func (c *Client) Stat(filename string) (*StatsResponse, error) {
 
 // CreateArchive allows to download dir from RPC Server
 func (c *Client) CreateArchive(filename string) (*StatsResponse, error) {
+	logging.Debugf("Client::CreateArchive [%s:%s] Addr: %s Filename: %v", c.AppName, c.registeredName, c.Addr, filename)
+
 	var res StatsResponse
 	if err := c.rpcClient.Call(c.registeredName+".CreateArchive",
 		FileRequest{Filename: filename, UUID: c.uuid()}, &res); err != nil {
+		logging.Errorf("Client::CreateArchive [%s:%s] Addr: %v Filename: %s RPC.CreateArchive failed, err: %v",
+			c.AppName, c.registeredName, c.Addr, filename, err)
 		return nil, err
 	}
 
@@ -69,9 +77,13 @@ func (c *Client) CreateArchive(filename string) (*StatsResponse, error) {
 
 // RemoveArchive requests server to remove an archive that was create for transferring a dir from server
 func (c *Client) RemoveArchive(filename string) (*Response, error) {
+	logging.Debugf("Client::RemoveArchive [%s:%s] Addr: %s Filename: %v", c.AppName, c.registeredName, c.Addr, filename)
+
 	var res Response
 	if err := c.rpcClient.Call(c.registeredName+".RemoveArchive",
 		FileRequest{Filename: filename, UUID: c.uuid()}, &res); err != nil {
+		logging.Errorf("Client::RemoveArchive [%s:%s] Addr: %v Filename: %v RPC.RemoveArchive failed, err: %v",
+			c.AppName, c.registeredName, c.Addr, filename, err)
 		return nil, err
 	}
 
@@ -79,10 +91,14 @@ func (c *Client) RemoveArchive(filename string) (*Response, error) {
 }
 
 // RemoveDir requests RPC server to clean up a directory that has been successfully transferred
-func (c *Client) RemoveDir(dirname string) (*Response, error) {
+func (c *Client) RemoveDir(vb uint16, dirname string) (*Response, error) {
+	logging.Debugf("Client::RemoveDir [%s:%s] Addr: %s Dirname: %v vb: %v", c.AppName, c.registeredName, c.Addr, dirname, vb)
+
 	var res Response
 	if err := c.rpcClient.Call(c.registeredName+".RemoveDir",
-		FileRequest{Filename: dirname, UUID: c.uuid()}, &res); err != nil {
+		FileRequest{Filename: dirname, UUID: c.uuid(), Vbucket: vb}, &res); err != nil {
+		logging.Errorf("Client::RemoveDir [%s:%s] Addr: %v Dirname: %v RPC.RemoveDir failed, err: %v",
+			c.AppName, c.registeredName, c.Addr, dirname, err)
 		return nil, err
 	}
 
@@ -136,7 +152,9 @@ func (c *Client) CloseSession(sessionID SessionID) error {
 
 // DownloadAt downloads a file from RPC server from specific blockID
 func (c *Client) DownloadAt(filename, saveLocation string, blockID int) error {
-	info, err := c.Stat(filename)
+	logging.Debugf("Client::DownloadAt [%s:%s] Addr: %v Filename: %s", c.AppName, c.registeredName, c.Addr, filename)
+
+	info, err := c.Stat(0, filename)
 	if err != nil {
 		return err
 	}
@@ -155,39 +173,54 @@ func (c *Client) DownloadAt(filename, saveLocation string, blockID int) error {
 
 // DownloadDir downloads a dir from RPC server. On source, Dir compressed
 // into an archive and then sent to RPC Client, which extracts the archive
-func (c *Client) DownloadDir(dirname, saveLocation string) error {
-	info, err := c.Stat(dirname)
+func (c *Client) DownloadDir(vb uint16, dirname, saveLocation string) error {
+	logging.Debugf("Client::DownloadDir [%s:%s] vb: %v Addr: %s Dirname: %s saveLocation: %s",
+		c.AppName, c.registeredName, vb, c.Addr, dirname, saveLocation)
+
+	info, err := c.Stat(vb, dirname)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	info, err = c.CreateArchive(dirname)
 	if err != nil {
+		logging.Debugf("Client::DownloadDir [%s:%s] vb: %v CreateArchive err: %v",
+			c.AppName, c.registeredName, vb, err)
 		return err
 	}
 
 	err = c.writeToFile(info, dirname+".zip", saveLocation, 0)
 	if err != nil {
+		logging.Debugf("Client::DownloadDir [%s:%s] vb: %v writeToFile err: %v",
+			c.AppName, c.registeredName, vb, err)
 		return err
 	}
 
 	err = Unarchive(saveLocation+"/"+dirname+".zip", saveLocation+"/"+dirname)
 	if err != nil {
+		logging.Debugf("Client::DownloadDir [%s:%s] vb: %v Unarchive err: %v",
+			c.AppName, c.registeredName, vb, err)
 		return err
 	}
 
 	_, err = c.RemoveArchive(dirname + ".zip")
 	if err != nil {
+		logging.Debugf("Client::DownloadDir [%s:%s] vb: %v RemoveArchive err: %v",
+			c.AppName, c.registeredName, vb, err)
 		return err
 	}
 
 	err = os.Remove(saveLocation + "/" + dirname + ".zip")
 	if err != nil {
+		logging.Debugf("Client::DownloadDir [%s:%s] vb: %v Remove err: %v",
+			c.AppName, c.registeredName, vb, err)
 		return err
 	}
 
-	_, err = c.RemoveDir(dirname)
+	_, err = c.RemoveDir(vb, dirname)
 	if err != nil {
+		logging.Debugf("Client::DownloadDir [%s:%s] vb: %v RemoveDir err: %v",
+			c.AppName, c.registeredName, vb, err)
 		return err
 	}
 
@@ -207,39 +240,36 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 		blocks++
 	}
 
-	logging.Debugf("TTCL[%s:%s:%s] Filename: %v, downloading in %v blocks", c.AppName, c.Addr, c.registeredName, filename, blocks)
+	logging.Debugf("Client::writeToFile [%s:%s:%s] Filename: %v, downloading in %v blocks",
+		c.AppName, c.Addr, c.registeredName, filename, blocks)
 
-	err := os.Remove(path)
-	if err != nil {
-		logging.Errorf("TTCL[%s:%s] Filename: %v os.Remove call, err: %v",
-			c.AppName, c.registeredName, path, err)
-	}
+	os.RemoveAll(path)
 
 	// TODO: Setup uid/gid that works cross platform
-	err = os.MkdirAll(saveLocation, 0755)
+	err := os.MkdirAll(saveLocation, 0755)
 	if err != nil {
-		logging.Errorf("TTCL[%s:%s:%s] Failed os.MkdirAll dir: %v, err: %v",
+		logging.Errorf("Client::writeToFile [%s:%s:%s] Failed os.MkdirAll dir: %v, err: %v",
 			c.AppName, c.Addr, c.registeredName, saveLocation, err)
 		return err
 	}
 
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, info.Mode)
 	if err != nil {
-		logging.Errorf("TTCL[%s:%s:%s] Filename: %v failed to OpenFile, err: %v", c.AppName, c.Addr, c.registeredName, path, err)
+		logging.Errorf("Client::writeToFile [%s:%s:%s] Filename: %v failed to OpenFile, err: %v", c.AppName, c.Addr, c.registeredName, path, err)
 		return err
 	}
 	defer file.Close()
 
 	sessionID, err := c.Open(filename)
 	if err != nil {
-		logging.Errorf("TTCL[%s:%s:%s] Filename: %v failed to open filename, err: %v", c.AppName, c.Addr, c.registeredName, path, err)
+		logging.Errorf("Client::writeToFile [%s:%s:%s] Filename: %v failed to open filename, err: %v", c.AppName, c.Addr, c.registeredName, path, err)
 		return err
 	}
 
 	for bID := blockID; bID < blocks; bID++ {
 		buf, rErr := c.GetBlock(sessionID, bID)
 		if rErr != nil && rErr != io.EOF {
-			logging.Errorf("TTCL[%s:%s:%s] Filename: %v failed to in GetBlock call, err: %v",
+			logging.Errorf("Client::writeToFile [%s:%s:%s] Filename: %v failed to in GetBlock call, err: %v",
 				c.AppName, c.Addr, c.registeredName, filename, err)
 			return rErr
 		}
@@ -249,7 +279,7 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 		}
 
 		if bID%((blocks-blockID)/100+1) == 0 {
-			logging.Debugf("TTCL[%s:%s:%s] Downloading %v [%v/%v] blocks",
+			logging.Debugf("Client::writeToFile [%s:%s:%s] Downloading %v [%v/%v] blocks",
 				c.AppName, c.Addr, c.registeredName, filename, bID-blockID+1, blocks-blockID)
 		}
 
@@ -260,24 +290,24 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 
 	checksum, err := ComputeMD5(path)
 	if err != nil {
-		logging.Errorf("TTCL[%s:%s:%s] Filename: %v failed to get MD5 checksum, err: %v",
+		logging.Errorf("Client::writeToFile [%s:%s:%s] Filename: %v failed to get MD5 checksum, err: %v",
 			c.AppName, c.Addr, c.registeredName, filename, err)
 		goto retryDownload
 	}
 
 	if checksum != info.Checksum {
-		logging.Errorf("TTCL[%s:%s:%s] Filename: %v checksum verification failed. From server: %v on client: %v",
+		logging.Errorf("Client::writeToFile [%s:%s:%s] Filename: %v checksum verification failed. From server: %v on client: %v",
 			c.AppName, c.Addr, c.registeredName, filename, info.Checksum, checksum)
 		goto retryDownload
 	}
 
-	logging.Debugf("TTCL[%s:%s:%s] Filename: %v download completed ", c.AppName, c.Addr, c.registeredName, filename)
+	logging.Debugf("Client::writeToFile [%s:%s:%s] Filename: %v download completed ", c.AppName, c.Addr, c.registeredName, filename)
 	c.CloseSession(sessionID)
 
 	return nil
 
 retryDownload:
-	logging.Errorf("TTCL[%s:%s:%s] Filename: %v Going to re-request from server over new session, closing previous session: %v",
+	logging.Errorf("Client::writeToFile [%s:%s:%s] Filename: %v Going to re-request from server over new session, closing previous session: %v",
 		c.AppName, c.Addr, c.registeredName, filename, sessionID)
 	c.CloseSession(sessionID)
 	c.Download(filename, saveLocation)

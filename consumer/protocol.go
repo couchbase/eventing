@@ -45,6 +45,7 @@ const (
 	v8WorkerFailureStats
 	v8WorkerExecutionStats
 	v8WorkerCompile
+	v8WorkerLcbExceptions
 )
 
 const (
@@ -77,6 +78,7 @@ const (
 	executionStats
 	compileInfo
 	queueSize
+	lcbExceptions
 )
 
 type message struct {
@@ -372,6 +374,14 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			err := json.Unmarshal([]byte(msg), &c.cppWorkerAggQueueSize)
 			if err != nil {
 				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal agg queue size, msg: %s err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+		case lcbExceptions:
+			c.statsRWMutex.Lock()
+			defer c.statsRWMutex.Unlock()
+			err := json.Unmarshal([]byte(msg), &c.lcbExceptionStats)
+			if err != nil {
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal lcb exception stats, msg: %s err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		}

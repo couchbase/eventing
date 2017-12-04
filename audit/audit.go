@@ -40,7 +40,7 @@ func Init(restPort string) error {
 	return nil
 }
 
-func AuditLog(event auditevent.AuditEvent, req *http.Request, context interface{}) error {
+func Log(event auditevent.AuditEvent, req *http.Request, context interface{}) error {
 	logging.Tracef("Audit event %v with context %v on request %v", event, context, req)
 	entry := AuditEntry{
 		GenericFields: util.GetAuditBasicFields(req),
