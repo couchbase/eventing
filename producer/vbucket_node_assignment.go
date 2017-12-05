@@ -20,27 +20,28 @@ func (p *Producer) vbEventingNodeAssign() error {
 
 	util.Retry(util.NewFixedBackoff(time.Second), getNsServerNodesAddressesOpCallback, p)
 
-	eventingNodeAddrs := p.getEventingNodeAddrs()
-	if len(eventingNodeAddrs) <= 0 {
+	// Would include eventing nodes that are about to be ejected out of the cluster
+	onlineEventingNodes := p.getEventingNodeAddrs()
+	if len(onlineEventingNodes) <= 0 {
 		return fmt.Errorf("%v", errorUnexpectedEventingNodeCount)
 	}
-	sort.Strings(eventingNodeAddrs)
 
 	// In-case of eventing node(s) removal, ns_server would reflect those node(s) within
 	// eventing MDS service. Hence comparing node uuids received from prepareTopologyChange
 	// call to uuids published by eventing nodes
-	addrUUIDMap, err := util.GetNodeUUIDs("/uuid", eventingNodeAddrs)
+	addrUUIDMap, err := util.GetNodeUUIDs("/uuid", onlineEventingNodes)
 	if err != nil {
 		logging.Errorf("VBNA[%s:%d] Failed to get eventing node uuids, err: %v",
 			p.appName, p.LenRunningConsumers(), err)
 		return err
 	}
-	eventingNodeUUIDs := make([]string, 0)
 
-	for uuid := range addrUUIDMap {
-		eventingNodeUUIDs = append(eventingNodeUUIDs, uuid)
+	// Only includes nodes that supposed to be part of cluster post StartTopologyChange call
+	eventingNodeAddrs := make([]string, 0)
+	for _, uuid := range p.eventingNodeUUIDs {
+		eventingNodeAddrs = append(eventingNodeAddrs, addrUUIDMap[uuid])
 	}
-	p.eventingNodeUUIDs = eventingNodeUUIDs
+	sort.Strings(eventingNodeAddrs)
 
 	logging.Debugf("VBNA[%s:%d] EventingNodeUUIDs: %v eventingNodeAddrs: %v",
 		p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, eventingNodeAddrs)
