@@ -1,4 +1,4 @@
-package shared
+package util
 
 import (
 	"errors"
@@ -24,14 +24,12 @@ var (
 var ServiceAddrMap map[string]string
 
 const (
-	INDEX_ADMIN_SERVICE = "indexAdmin"
-	INDEX_SCAN_SERVICE  = "indexScan"
-	INDEX_HTTP_SERVICE  = "indexHttp"
+	EVENTING_ADMIN_SERVICE = "eventingAdminPort"
+	EVENTING_SSL_SERVICE   = "eventingSSL"
 )
 
 const CLUSTER_INFO_INIT_RETRIES = 5
 const CLUSTER_INFO_VALIDATION_RETRIES = 10
-
 const BUCKET_UUID_NIL = ""
 
 // Helper object for fetching cluster information
@@ -60,27 +58,17 @@ type ClusterInfoCache struct {
 
 type NodeId int
 
-func NewClusterInfoCache(clusterUrl string, pool string) (*ClusterInfoCache, error) {
-	c := &ClusterInfoCache{
-		url:        clusterUrl,
-		poolName:   pool,
-		retries:    CLUSTER_INFO_INIT_RETRIES,
-		node2group: make(map[NodeId]string),
-	}
-
-	return c, nil
-}
-
-func FetchNewClusterInfoCache(clusterUrl string, pool string) (*ClusterInfoCache, error) {
-
+func FetchNewClusterInfoCache(clusterUrl string) (*ClusterInfoCache, error) {
 	url, err := ClusterAuthUrl(clusterUrl)
 	if err != nil {
 		return nil, err
 	}
 
-	c, err := NewClusterInfoCache(url, pool)
-	if err != nil {
-		return nil, err
+	c := &ClusterInfoCache{
+		url:        url,
+		poolName:   "default",
+		retries:    CLUSTER_INFO_INIT_RETRIES,
+		node2group: make(map[NodeId]string),
 	}
 
 	if ServiceAddrMap != nil {
@@ -235,11 +223,7 @@ func (c *ClusterInfoCache) fetchServerGroups() error {
 }
 
 func (c *ClusterInfoCache) GetClusterVersion() uint64 {
-	if c.version < 5 {
-		return INDEXER_45_VERSION
-	}
-
-	return INDEXER_50_VERSION
+	return c.version
 }
 
 func (c *ClusterInfoCache) GetServerGroup(nid NodeId) string {
@@ -257,10 +241,10 @@ func (c *ClusterInfoCache) GetNodesByServiceType(srvc string) (nids []NodeId) {
 	return
 }
 
-func (c *ClusterInfoCache) GetActiveIndexerNodes() (nodes []couchbase.Node) {
+func (c *ClusterInfoCache) GetActiveEventingNodes() (nodes []couchbase.Node) {
 	for _, n := range c.nodes {
 		for _, s := range n.Services {
-			if s == "index" {
+			if s == "eventing" {
 				nodes = append(nodes, n)
 			}
 		}
@@ -269,10 +253,10 @@ func (c *ClusterInfoCache) GetActiveIndexerNodes() (nodes []couchbase.Node) {
 	return
 }
 
-func (c *ClusterInfoCache) GetFailedIndexerNodes() (nodes []couchbase.Node) {
+func (c *ClusterInfoCache) GetFailedEventingNodes() (nodes []couchbase.Node) {
 	for _, n := range c.failedNodes {
 		for _, s := range n.Services {
-			if s == "index" {
+			if s == "eventing" {
 				nodes = append(nodes, n)
 			}
 		}
@@ -281,10 +265,10 @@ func (c *ClusterInfoCache) GetFailedIndexerNodes() (nodes []couchbase.Node) {
 	return
 }
 
-func (c *ClusterInfoCache) GetNewIndexerNodes() (nodes []couchbase.Node) {
+func (c *ClusterInfoCache) GetNewEventingNodes() (nodes []couchbase.Node) {
 	for _, n := range c.addNodes {
 		for _, s := range n.Services {
-			if s == "index" {
+			if s == "eventing" {
 				nodes = append(nodes, n)
 			}
 		}

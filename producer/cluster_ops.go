@@ -8,18 +8,17 @@ import (
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/shared"
 	"github.com/couchbase/eventing/util"
 )
 
 var getClusterInfoCacheOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
-	cinfo := args[1].(**shared.ClusterInfoCache)
+	cinfo := args[1].(**util.ClusterInfoCache)
 
 	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
 
 	var err error
-	*cinfo, err = util.ClusterInfoCache(p.auth, hostAddress)
+	*cinfo, err = util.FetchNewClusterInfoCache(hostAddress)
 	if err != nil {
 		logging.Errorf("PRCO[%s:%d] Failed to get CIC handle while trying to get kv vbmap, err: %v",
 			p.appName, p.LenRunningConsumers(), err)

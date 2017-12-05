@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/shared"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -144,7 +143,7 @@ func (p *Producer) initWorkerVbMap() {
 
 func (p *Producer) getKvVbMap() {
 
-	var cinfo *shared.ClusterInfoCache
+	var cinfo *util.ClusterInfoCache
 
 	util.Retry(util.NewFixedBackoff(time.Second), getClusterInfoCacheOpCallback, p, &cinfo)
 
@@ -161,7 +160,7 @@ func (p *Producer) getKvVbMap() {
 
 		vbs, err := cinfo.GetVBuckets(kvaddr, p.bucket)
 		if err != nil {
-			logging.Errorf("VBNA[%s:%d] Failed to get vbuckets for given kv shared.NodeId, err: %v", p.appName, p.LenRunningConsumers(), err)
+			logging.Errorf("VBNA[%s:%d] Failed to get vbuckets for given kv util.NodeId, err: %v", p.appName, p.LenRunningConsumers(), err)
 			continue
 		}
 

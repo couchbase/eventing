@@ -850,7 +850,7 @@ func (m *ServiceMgr) saveTempStore(w http.ResponseWriter, app application, data 
 	appName := app.Name
 	path := metakvTempAppsPath + appName
 	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
-	cinfo, err := util.ClusterInfoCache(m.auth, nsServerEndpoint)
+	cinfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
 	if err != nil {
 		logging.Errorf("Failed to initialise cluster info cache, err: %v", err)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errConnectNsServer.Code))
@@ -933,7 +933,7 @@ func (m *ServiceMgr) savePrimaryStore(w http.ResponseWriter, app application) in
 	}
 
 	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
-	cinfo, err := util.ClusterInfoCache(m.auth, nsServerEndpoint)
+	cinfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
 	if err != nil {
 		logging.Errorf("Failed to initialise cluster info cache, err: %v", err)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errConnectNsServer.Code))

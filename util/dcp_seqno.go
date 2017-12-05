@@ -1,4 +1,4 @@
-package shared
+package util
 
 import "sync"
 import "time"
@@ -6,7 +6,6 @@ import "fmt"
 import "sort"
 import "errors"
 
-import "github.com/couchbase/eventing/stats"
 import "github.com/couchbase/eventing/dcp"
 import "github.com/couchbase/eventing/dcp/transport/client"
 import "github.com/couchbase/eventing/logging"
@@ -62,10 +61,9 @@ func (ch *vbSeqnosRequest) Response() ([]uint64, error) {
 
 // Bucket level seqnos reader for the cluster
 type vbSeqnosReader struct {
-	bucket     string
-	kvfeeds    map[string]*kvConn
-	requestCh  chan vbSeqnosRequest
-	seqsTiming stats.TimingStat
+	bucket    string
+	kvfeeds   map[string]*kvConn
+	requestCh chan vbSeqnosRequest
 }
 
 func newVbSeqnosReader(bucket string, kvfeeds map[string]*kvConn) *vbSeqnosReader {
@@ -74,8 +72,6 @@ func newVbSeqnosReader(bucket string, kvfeeds map[string]*kvConn) *vbSeqnosReade
 		kvfeeds:   kvfeeds,
 		requestCh: make(chan vbSeqnosRequest, seqsReqChanSize),
 	}
-
-	r.seqsTiming.Init()
 
 	go r.Routine()
 	return r
@@ -103,13 +99,11 @@ func (r *vbSeqnosReader) GetSeqnos() (seqs []uint64, err error) {
 func (r *vbSeqnosReader) Routine() {
 	for req := range r.requestCh {
 		l := len(r.requestCh)
-		t0 := time.Now()
 		seqnos, err := CollectSeqnos(r.kvfeeds)
 		response := &vbSeqnosResponse{
 			seqnos: seqnos,
 			err:    err,
 		}
-		r.seqsTiming.Put(time.Since(t0))
 		if err != nil {
 			dcp_buckets_seqnos.rw.Lock()
 			dcp_buckets_seqnos.errors[r.bucket] = err
@@ -221,16 +215,6 @@ func delDBSbucket(bucketn string, checkErr bool) {
 
 		delete(dcp_buckets_seqnos.errors, bucketn)
 	}
-}
-
-func BucketSeqsTiming(bucket string) *stats.TimingStat {
-	dcp_buckets_seqnos.rw.RLock()
-	defer dcp_buckets_seqnos.rw.RUnlock()
-	if reader, ok := dcp_buckets_seqnos.readerMap[bucket]; ok {
-		return &reader.seqsTiming
-	}
-
-	return nil
 }
 
 // BucketSeqnos return list of {{vbno,seqno}..} for all vbuckets.

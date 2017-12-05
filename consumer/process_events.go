@@ -15,7 +15,6 @@ import (
 	"github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/shared"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 )
@@ -369,7 +368,7 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-	vbSeqnos, err := shared.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+	vbSeqnos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil && c.dcpStreamBoundary != common.DcpEverything {
 		logging.Errorf("CRDP[%s:%s:%s:%d] Failed to fetch vb seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 		return
