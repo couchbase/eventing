@@ -10,6 +10,7 @@ This will return the stats regardings events processing, events remaining, execu
 ```json
 [
  {
+   "function_name": "stock-tracker",
    "event_processing_stats": {
      "DCP_DELETION": 14,
      "DCP_MUTATION": 1,
@@ -35,7 +36,6 @@ This will return the stats regardings events processing, events remaining, execu
      "n1ql_op_exception_count": 0,
      "timeout_count": 0
    },
-   "function_name": "stock-tracker",
    "latency_stats": {
      "100": 12,
      "1000": 3
@@ -53,7 +53,7 @@ This will return the stats regardings events processing, events remaining, execu
  }
 ]
 ```
-> Omitting the parameter `type=full` will exclude seqs_processed from the response.
+> Omitting the parameter `type=full` will exclude seqs_processed and plasma_stats from the response.
 
 The above stats could be individually obtained through the following endpoints:
 ```shell

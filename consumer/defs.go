@@ -193,6 +193,7 @@ type Consumer struct {
 	cbBucket               *couchbase.Bucket
 	checkpointInterval     time.Duration
 	cleanupTimers          bool
+	dcpEventsRemaining     uint64
 	dcpFeedCancelChs       []chan struct{}
 	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
 	eventingAdminPort      string
@@ -210,6 +211,7 @@ type Consumer struct {
 	latencyStats           map[string]uint64             // Access controlled by statsRWMutex
 	lcbExceptionStats      map[string]uint64             // Access controlled by statsRWMutex
 	compileInfo            *common.CompileStatus
+	seqsNoProcessed        map[int]int64 // Access controlled by statsRWMutex
 	statsRWMutex           *sync.RWMutex
 	hostDcpFeedRWMutex     *sync.RWMutex
 	kvVbMap                map[uint16]string // Access controlled by default lock
@@ -379,8 +381,8 @@ type Consumer struct {
 	restartVbDcpStreamTicker *time.Ticker
 	statsTicker              *time.Ticker
 
-	updateCPPStatsTicker *time.Ticker
-	updateCPPStatsStopCh chan struct{}
+	updateStatsTicker *time.Ticker
+	updateStatsStopCh chan struct{}
 }
 
 type timerProcessingWorker struct {

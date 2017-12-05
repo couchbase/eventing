@@ -36,14 +36,13 @@ func (c *Consumer) EventsProcessedPSec() *cm.EventProcessingStats {
 	return pStats
 }
 
-// DcpEventsRemainingToProcess reports dcp events remaining to producer
-func (c *Consumer) DcpEventsRemainingToProcess() uint64 {
+func (c *Consumer) dcpEventsRemainingToProcess() {
 	vbsTohandle := c.vbsToHandle()
 
 	seqNos, err := shared.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil {
 		logging.Errorf("CRVT[%s:%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-		return 0
+		c.dcpEventsRemaining = 0
 	}
 
 	var eventsProcessed, seqNo, totalEvents uint64
@@ -58,10 +57,15 @@ func (c *Consumer) DcpEventsRemainingToProcess() uint64 {
 	}
 
 	if eventsProcessed > totalEvents {
-		return 0
+		c.dcpEventsRemaining = 0
 	}
 
-	return totalEvents - eventsProcessed
+	c.dcpEventsRemaining = totalEvents - eventsProcessed
+}
+
+// DcpEventsRemainingToProcess reports cached value for dcp events remaining to producer
+func (c *Consumer) DcpEventsRemainingToProcess() uint64 {
+	return c.dcpEventsRemaining
 }
 
 // VbProcessingStats exposes consumer vb metadata to producer

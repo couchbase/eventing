@@ -339,16 +339,15 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, sTimerDir, dTimerDir, remoteConsumerAddr)
 
-		c.copyPlasmaRecords(vb, dTimerDir)
+		err := c.copyPlasmaRecords(vb, dTimerDir)
+		if err != nil {
+			logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Encountered error: %v, while trying to copy over plasma contents from temp plasma store",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+		}
 
 	} else {
 		logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir)
-		_, err := client.RemoveDir(vb, timerDir)
-		if err != nil {
-			logging.Errorf("CRVT[%s:%s:%s:%d] vb: %v Failed in removeDir rpc call, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
-		}
 	}
 
 	if shouldStartStream {

@@ -75,6 +75,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		sendMsgBufferRWMutex:               &sync.RWMutex{},
 		sendMsgCounter:                     0,
 		sendMsgToDebugger:                  false,
+		seqsNoProcessed:                    make(map[int]int64),
 		signalBootstrapFinishCh:            make(chan struct{}, 1),
 		signalConnectedCh:                  make(chan struct{}, 1),
 		signalDebugBlobDebugStopCh:         make(chan struct{}, 1),
@@ -109,12 +110,12 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		timerProcessingVbsWorkerMap:        make(map[uint16]*timerProcessingWorker),
 		timerProcessingRunningWorkers:      make([]*timerProcessingWorker, 0),
 		timerProcessingWorkerSignalCh:      make(map[*timerProcessingWorker]chan struct{}),
-		updateCPPStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
+		updateStatsTicker:                  time.NewTicker(updateCPPStatsTickInterval),
 		uuid:                               uuid,
 		vbDcpFeedMap:                       make(map[uint16]*couchbase.DcpFeed),
 		vbFlogChan:                         make(chan *vbFlogEntry),
 		vbnos:                              vbnos,
-		updateCPPStatsStopCh:               make(chan struct{}, 1),
+		updateStatsStopCh:                  make(chan struct{}, 1),
 		vbOwnershipGiveUpRoutineCount:      vbOwnershipGiveUpRoutineCount,
 		vbOwnershipTakeoverRoutineCount:    vbOwnershipTakeoverRoutineCount,
 		vbPlasmaStore:                      vbPlasmaStore,
@@ -133,6 +134,10 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		New: func() interface{} {
 			return flatbuffers.NewBuilder(0)
 		},
+	}
+
+	for i := 0; i < numVbuckets; i++ {
+		consumer.seqsNoProcessed[i] = 0
 	}
 
 	return consumer
@@ -214,7 +219,7 @@ func (c *Consumer) Serve() {
 	// non doc_id timer events
 	go c.processNonDocTimerEvents(cronCurrTimer, cronNextTimer, true)
 
-	go c.updateCPPWorkerStats()
+	go c.updateWorkerStats()
 
 	go c.doLastSeqNoCheckpoint()
 
@@ -299,8 +304,8 @@ func (c *Consumer) Stop() {
 	<-c.socketWriteLoopStopAckCh
 	c.socketWriteTicker.Stop()
 
-	c.updateCPPStatsTicker.Stop()
-	c.updateCPPStatsStopCh <- struct{}{}
+	c.updateStatsTicker.Stop()
+	c.updateStatsStopCh <- struct{}{}
 
 	c.stopCheckpointingCh <- struct{}{}
 	c.nonDocTimerStopCh <- struct{}{}

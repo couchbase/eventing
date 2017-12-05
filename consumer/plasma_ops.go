@@ -1,15 +1,12 @@
 package consumer
 
 import (
-	"os"
-
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/plasma"
 )
 
 func (c *Consumer) openPlasmaStore(vbPlasmaDir string) (*plasma.Plasma, error) {
-	os.RemoveAll(vbPlasmaDir)
 
 	cfg := plasma.DefaultConfig()
 	cfg.File = vbPlasmaDir
@@ -17,6 +14,7 @@ func (c *Consumer) openPlasmaStore(vbPlasmaDir string) (*plasma.Plasma, error) {
 	cfg.MaxDeltaChainLen = maxDeltaChainLen
 	cfg.MaxPageItems = maxPageItems
 	cfg.MinPageItems = minPageItems
+	cfg.UseMemoryMgmt = true
 
 	vbPlasmaStore, err := plasma.New(cfg)
 	if err != nil {

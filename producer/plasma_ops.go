@@ -15,6 +15,7 @@ func (p *Producer) openPlasmaStore() error {
 	cfg.MaxDeltaChainLen = maxDeltaChainLen
 	cfg.MaxPageItems = maxPageItems
 	cfg.MinPageItems = minPageItems
+	cfg.UseMemoryMgmt = true
 
 	var err error
 	p.vbPlasmaStore, err = plasma.New(cfg)
