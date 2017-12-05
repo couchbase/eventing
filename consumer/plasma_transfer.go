@@ -26,6 +26,7 @@ func (c *Consumer) CreateTempPlasmaStore(vb uint16) error {
 
 	vbPlasmaDir := fmt.Sprintf("%v/reb_%v_%v_timer.data", c.eventingDir, vb, c.app.AppName)
 
+	os.RemoveAll(vbPlasmaDir)
 	vbRebPlasmaStore, err := c.openPlasmaStore(vbPlasmaDir)
 	if err != nil {
 		logging.Errorf("Consumer::CreateTempPlasmaStore [%s:%d] vb: %v Failed to create temporary plasma instance during rebalance, err: %v",
@@ -44,7 +45,7 @@ func (c *Consumer) CreateTempPlasmaStore(vb uint16) error {
 	for itr.SeekFirst(); itr.Valid(); itr.Next() {
 		keyPrefix := []byte(fmt.Sprintf("vb_%v::", vb))
 
-		if bytes.Compare(itr.Key(), keyPrefix) > 0 {
+		if bytes.Compare(itr.Key()[0:len(keyPrefix)], keyPrefix) == 0 {
 			val, err := w.LookupKV(itr.Key())
 			if err != nil && err != plasma.ErrItemNoValue {
 				logging.Tracef("Consumer::CreateTempPlasmaStore [%s:%d] vb: %v key: %s failed to lookup, err: %v",
@@ -62,6 +63,7 @@ func (c *Consumer) CreateTempPlasmaStore(vb uint16) error {
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -92,7 +94,7 @@ func (c *Consumer) PurgePlasmaRecords(vb uint16) error {
 	for itr.SeekFirst(); itr.Valid(); itr.Next() {
 		keyPrefix := []byte(fmt.Sprintf("vb_%v::", vb))
 
-		if bytes.Compare(itr.Key(), keyPrefix) > 0 {
+		if bytes.Compare(itr.Key()[0:len(keyPrefix)], keyPrefix) == 0 {
 			_, err := w.LookupKV(itr.Key())
 			if err != nil && err != plasma.ErrItemNoValue {
 				logging.Errorf("Consumer::PurgePlasmaRecords [%s:%d] vb: %v key: %s failed lookup, err: %v",
@@ -101,7 +103,7 @@ func (c *Consumer) PurgePlasmaRecords(vb uint16) error {
 			}
 
 			err = w.DeleteKV(itr.Key())
-			if err != nil {
+			if err == nil {
 				logging.Tracef("Consumer::PurgePlasmaRecords [%s:%d] vb: %v deleted key: %s  from source plasma",
 					c.workerName, c.Pid(), vb, string(itr.Key()))
 			}
@@ -112,6 +114,8 @@ func (c *Consumer) PurgePlasmaRecords(vb uint16) error {
 }
 
 func (c *Consumer) copyPlasmaRecords(vb uint16, dTimerDir string) error {
+	logging.Tracef("Consumer::copyPlasmaRecords [%s:%d] vb: %v dTimerDir: %v", c.workerName, c.Pid(), vb, dTimerDir)
+
 	pStore, err := c.openPlasmaStore(dTimerDir)
 	if err != nil {
 		logging.Errorf("Consumer::copyPlasmaRecords [%s:%d] vb: %v Failed to create plasma instance for plasma data dir: %v received, err: %v",
