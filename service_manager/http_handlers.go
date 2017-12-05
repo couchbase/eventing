@@ -1248,13 +1248,13 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 			stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
 			stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
 
-			plasmaStats, err := m.superSup.GetPlasmaStats(app.Name)
-			if err == nil {
-				stats.PlasmaStats = plasmaStats
-			}
-
 			stats.WorkerPids = m.superSup.GetEventingConsumerPids(app.Name)
 			if fullStats {
+				plasmaStats, err := m.superSup.GetPlasmaStats(app.Name)
+				if err == nil {
+					stats.PlasmaStats = plasmaStats
+				}
+
 				stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
 			}
 

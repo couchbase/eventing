@@ -67,17 +67,28 @@ func (c *Consumer) GetHandlerCode() string {
 	return c.handlerCode
 }
 
-// GetSeqsProcessed returns vbucket specific sequence nos processed so far
-func (c *Consumer) GetSeqsProcessed() map[int]int64 {
-	seqNoProcessed := make(map[int]int64)
-
+func (c *Consumer) getSeqsProcessed() {
 	var seqNo int64
 	subdocPath := "last_processed_seq_no"
 
 	for vb := 0; vb < numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s_vb_%d", c.app.AppName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getMetaOpCallback, c, vbKey, &seqNo, subdocPath)
-		seqNoProcessed[vb] = seqNo
+
+		c.statsRWMutex.Lock()
+		c.seqsNoProcessed[vb] = seqNo
+		c.statsRWMutex.Unlock()
+	}
+}
+
+// GetSeqsProcessed returns vbucket specific sequence nos processed so far
+func (c *Consumer) GetSeqsProcessed() map[int]int64 {
+	c.statsRWMutex.Lock()
+	defer c.statsRWMutex.Unlock()
+
+	seqNoProcessed := make(map[int]int64)
+	for k, v := range c.seqsNoProcessed {
+		seqNoProcessed[k] = v
 	}
 
 	return seqNoProcessed
@@ -156,7 +167,14 @@ func (c *Consumer) GetLatencyStats() map[string]uint64 {
 	c.sendGetLatencyStats(false)
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
-	return c.latencyStats
+
+	latencyStats := make(map[string]uint64)
+
+	for k, v := range c.latencyStats {
+		latencyStats[k] = v
+	}
+
+	return latencyStats
 }
 
 // GetExecutionStats returns OnUpdate/OnDelete success/failure stats for event handlers from cpp world
@@ -164,7 +182,14 @@ func (c *Consumer) GetExecutionStats() map[string]uint64 {
 	c.sendGetExecutionStats(false)
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
-	return c.executionStats
+
+	executionStats := make(map[string]uint64)
+
+	for k, v := range c.executionStats {
+		executionStats[k] = v
+	}
+
+	return executionStats
 }
 
 // GetFailureStats returns failure stats for event handlers from cpp world
@@ -172,7 +197,13 @@ func (c *Consumer) GetFailureStats() map[string]uint64 {
 	c.sendGetFailureStats(false)
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
-	return c.failureStats
+	failureStats := make(map[string]uint64)
+
+	for k, v := range c.failureStats {
+		failureStats[k] = v
+	}
+
+	return failureStats
 }
 
 // Pid returns the process id of CPP V8 worker
@@ -189,7 +220,13 @@ func (c *Consumer) GetLcbExceptionsStats() map[string]uint64 {
 	c.sendGetLcbExceptionStats(false)
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
-	return c.lcbExceptionStats
+	lcbExceptionStats := make(map[string]uint64)
+
+	for k, v := range c.lcbExceptionStats {
+		lcbExceptionStats[k] = v
+	}
+
+	return lcbExceptionStats
 }
 
 // SpawnCompilationWorker bring up a CPP worker to compile the user supplied handler code
