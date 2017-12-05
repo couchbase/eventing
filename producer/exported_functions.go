@@ -320,6 +320,10 @@ func (p *Producer) WriteAppLog(log string) {
 
 // GetPlasmaStats returns internal stats from plasma
 func (p *Producer) GetPlasmaStats() (map[string]interface{}, error) {
+	if p.vbPlasmaStore == nil {
+		return nil, fmt.Errorf("Plasma store not initialized")
+	}
+
 	stats := p.vbPlasmaStore.GetStats()
 
 	data, err := json.Marshal(&stats)
