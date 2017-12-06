@@ -324,19 +324,13 @@ func flushFunctionAndBucket(handler string) {
 }
 
 func dumpStats(handler string) {
-	makeStatsRequest("processing stats from Go process", processingStatURL+handler, true)
-	for i := 0; i < 2; i++ {
-		var printRes bool
-		if i > 0 {
-			printRes = true
-		}
-		makeStatsRequest("execution stats from CPP worker", executionStatsURL+handler, printRes)
-		makeStatsRequest("latency stats from CPP worker", failureStatsURL+handler, printRes)
-		makeStatsRequest("failure stats from CPP worker", latencyStatsURL+handler, printRes)
-	}
+	makeStatsRequest("processing stats from Go process", processingStatURL+handler)
+	makeStatsRequest("execution stats from CPP worker", executionStatsURL+handler)
+	makeStatsRequest("latency stats from CPP worker", failureStatsURL+handler)
+	makeStatsRequest("failure stats from CPP worker", latencyStatsURL+handler)
 }
 
-func makeStatsRequest(context, url string, printRes bool) {
+func makeStatsRequest(context, url string) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		fmt.Printf("Made request to url: %v err: %v\n", url, err)
@@ -353,9 +347,7 @@ func makeStatsRequest(context, url string, printRes bool) {
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
-	if printRes {
-		fmt.Printf("%v::%v\n", context, string(body))
-	}
+	fmt.Printf("%v::%v\n", context, string(body))
 }
 
 func eventingConsumerPidsAlive() (bool, int) {
