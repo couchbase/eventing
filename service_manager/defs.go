@@ -13,6 +13,7 @@ const (
 	metakvEventingPath       = "/eventing/"
 	metakvAppsPath           = metakvEventingPath + "apps/"
 	metakvAppSettingsPath    = metakvEventingPath + "settings/"
+	metakvConfigPath         = metakvEventingPath + "config/" // Will store global settings - metadata bucket and memory quota here
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	metakvRebalanceProgress  = metakvEventingPath + "rebalanceProgress/"
 	metakvTempAppsPath       = metakvEventingPath + "tempApps/"

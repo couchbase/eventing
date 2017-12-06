@@ -629,7 +629,7 @@ func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (m *ServiceMgr) setSettings(w http.ResponseWriter, r *http.Request) {
+func (m *ServiceMgr) setSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
 	}
@@ -640,7 +640,6 @@ func (m *ServiceMgr) setSettings(w http.ResponseWriter, r *http.Request) {
 	logging.Infof("Set settings for app %v", appName)
 	audit.Log(auditevent.SetSettings, r, appName)
 
-	path := metakvAppSettingsPath + appName
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
@@ -648,25 +647,46 @@ func (m *ServiceMgr) setSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	runtimeInfo := m.setSettings(appName, data)
+	if runtimeInfo.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, runtimeInfo)
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+}
+
+func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+
 	var settings map[string]interface{}
-	err = json.Unmarshal(data, &settings)
+	err := json.Unmarshal(data, &settings)
 	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, "Failed to unmarshal setting supplied, err: %v", err)
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("Failed to unmarshal setting supplied, err: %v", err)
 		return
 	}
 
+	// Get the app from temp store and update its settings with those provided
+	app, info := m.getTempStore(appName)
+	if info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	for setting := range settings {
+		app.Settings[setting] = settings[setting]
+	}
+
+	// State validation - app must be in deployed state
+	processingStatus, pOk := app.Settings["processing_status"].(bool)
+	deploymentStatus, dOk := app.Settings["deployment_status"].(bool)
+
 	deployedApps := m.superSup.GetDeployedApps()
-
-	processingStatus, pOk := settings["processing_status"].(bool)
-	deploymentStatus, dOk := settings["deployment_status"].(bool)
-
 	if pOk && dOk {
 		// Check for disable processing
 		if deploymentStatus == true && processingStatus == false {
 			if _, ok := deployedApps[appName]; !ok {
-				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotInit.Code))
-				fmt.Fprintf(w, "App: %v not bootstrapped, discarding request to disable processing for it", appName)
+				info.Code = m.statusCodes.errAppNotInit.Code
+				info.Info = fmt.Sprintf("App: %v not bootstrapped, discarding request to disable processing for it", appName)
 				return
 			}
 		}
@@ -674,26 +694,40 @@ func (m *ServiceMgr) setSettings(w http.ResponseWriter, r *http.Request) {
 		// Check for undeploy
 		if deploymentStatus == false && processingStatus == false {
 			if _, ok := deployedApps[appName]; !ok {
-				w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotInit.Code))
-				fmt.Fprintf(w, "App: %v not bootstrapped, discarding request to undeploy it", appName)
+				info.Code = m.statusCodes.errAppNotInit.Code
+				info.Info = fmt.Sprintf("App: %v not bootstrapped, discarding request to undeploy it", appName)
 				return
 			}
 		}
 	} else {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errStatusesNotFound.Code))
-		fmt.Fprintf(w, "App: %v Missing processing or deployment statuses or both in supplied settings", appName)
+		info.Code = m.statusCodes.errStatusesNotFound.Code
+		info.Info = fmt.Sprintf("App: %v Missing processing or deployment statuses or both in supplied settings", appName)
 		return
 	}
 
+	data, err = json.Marshal(app.Settings)
+	if err != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("Failed to marshal settings as JSON, err : %v", err)
+		return
+	}
+
+	path := metakvAppSettingsPath + appName
 	err = util.MetakvSet(path, data, nil)
 	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errSetSettingsPs.Code))
-		fmt.Fprintf(w, "Failed to store setting for app: %v, err: %v", appName, err)
+		info.Code = m.statusCodes.errSetSettingsPs.Code
+		info.Info = fmt.Sprintf("Failed to store setting for app: %v, err: %v", appName, err)
 		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "stored settings for app: %v", appName)
+	// Write the updated app along with its settings back to temp store
+	if info = m.saveTempStore(app); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	info.Info = fmt.Sprintf("stored settings for app: %v", appName)
+	return
 }
 
 func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Request) {
@@ -795,8 +829,6 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	fmt.Fprintf(w, "%s\n", data)
 }
 
-// Gets the application from temp store
-// If appName is empty, it returns all the applications
 func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtimeInfo) {
 	info = &runtimeInfo{}
 
@@ -1249,6 +1281,27 @@ func (m *ServiceMgr) rootHandler(w http.ResponseWriter, r *http.Request) {
 
 	if match := settings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 	} else if match := functionsNameSettings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		appName := match[1]
+		switch r.Method {
+		case "POST":
+			logging.Infof("Set settings for app %v", appName)
+			audit.Log(auditevent.SetSettings, r, appName)
+
+			runtimeInfo := &runtimeInfo{}
+			data, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				runtimeInfo.Code = m.statusCodes.errReadReq.Code
+				runtimeInfo.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				m.sendErrorInfo(w, runtimeInfo)
+				return
+			}
+
+			if runtimeInfo = m.setSettings(appName, data); runtimeInfo.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, runtimeInfo)
+			}
+			break
+		}
 	} else if match := functionsName.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		appName := match[1]
 		switch r.Method {

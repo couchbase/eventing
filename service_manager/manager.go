@@ -108,7 +108,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getLocalDebugUrl/", m.getLocalDebugURL)
 	http.HandleFunc("/saveAppTempStore/", m.saveTempStoreHandler)
 	http.HandleFunc("/setApplication/", m.savePrimaryStoreHandler)
-	http.HandleFunc("/setSettings/", m.setSettings)
+	http.HandleFunc("/setSettings/", m.setSettingsHandler)
 	http.HandleFunc("/startDebugger/", m.startDebugger)
 	http.HandleFunc("/startTracing", m.startTracing)
 	http.HandleFunc("/stopDebugger/", m.stopDebugger)
