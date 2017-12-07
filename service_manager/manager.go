@@ -129,14 +129,16 @@ func (m *ServiceMgr) initService() {
 	if m.adminSSLPort != "" {
 		sslAddr := net.JoinHostPort("", m.adminSSLPort)
 		reload := false
-		var sslsrv *http.Server
+		var tlslsnr *net.Listener = nil
+
 		refresh := func() error {
-			if sslsrv != nil {
+			if tlslsnr != nil {
 				reload = true
-				sslsrv.Shutdown(nil)
+				(*tlslsnr).Close()
 			}
 			return nil
 		}
+
 		go func() {
 			for {
 				err := cbauth.RegisterCertRefreshCallback(refresh)
@@ -147,20 +149,34 @@ func (m *ServiceMgr) initService() {
 				time.Sleep(10 * time.Second)
 			}
 			for {
+				cert, err := tls.LoadX509KeyPair(m.certFile, m.keyFile)
+				if err != nil {
+					logging.Errorf("Error in loading SSL certificate: %v", err)
+					return
+				}
 				// allow only strong ssl as this is an internal API and interop is not a concern
-				sslsrv = &http.Server{
+				sslsrv := &http.Server{
 					Addr:         sslAddr,
 					TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
 					TLSConfig: &tls.Config{
+						Certificates:             []tls.Certificate{cert},
 						CipherSuites:             []uint16{tls.TLS_RSA_WITH_AES_256_CBC_SHA},
 						MinVersion:               tls.VersionTLS12,
 						PreferServerCipherSuites: true,
 						// ClientAuth:            tls.RequireAndVerifyClientCert,
 					},
 				}
-				logging.Infof("Admin SSL server started: %v", sslAddr)
+				// replace below with ListenAndServeTLS on moving to go1.8
+				lsnr, err := net.Listen("tcp", sslAddr)
+				if err != nil {
+					logging.Errorf("Error in listenting to SSL port: %v", err)
+					return
+				}
+				val := tls.NewListener(lsnr, sslsrv.TLSConfig)
+				tlslsnr = &val
 				reload = false
-				err := sslsrv.ListenAndServeTLS(m.certFile, m.keyFile)
+				logging.Infof("SSL server started: %v", sslAddr)
+				err = http.Serve(*tlslsnr, nil)
 				if reload {
 					logging.Warnf("SSL certificate change: %v", err)
 				} else {

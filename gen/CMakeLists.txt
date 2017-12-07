@@ -14,18 +14,22 @@ INCLUDE (FindCouchbaseFlatbuffers)
 
 FIND_PACKAGE(FLEX REQUIRED)
 
+IF(NOT DEFINED GOVERSION)
+  MESSAGE(FATAL_ERROR "GOVERSION must be defined")
+ENDIF()
+
 GoInstall(
   TARGET convertjs
   PACKAGE github.com/couchbase/eventing/gen/convertjs
   GOPATH "${PROJECT_SOURCE_DIR}/../../../.."
-  GOVERSION "1.8.3"
+  GOVERSION ${GOVERSION}
 )
 
 GoInstall(
   TARGET convertaudit
   PACKAGE github.com/couchbase/eventing/gen/convertaudit
   GOPATH "${PROJECT_SOURCE_DIR}/../../../.."
-  GOVERSION "1.8.3"
+  GOVERSION ${GOVERSION}
 )
 
 ADD_CUSTOM_COMMAND(
