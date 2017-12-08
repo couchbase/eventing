@@ -104,10 +104,9 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 
 					c.vbTimerProcessingWorkerAssign(false)
 
-					c.updateCheckpoint(vbKey, vb, &vbBlob)
-
 					// Check if another node has taken up ownership of vbucket for which
-					// ownership was given up above
+					// ownership was given up above. Metadata is updated about ownership give up only after
+					// DCP_STREAMMEND is received from DCP producer
 				retryVbMetaStateCheck:
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
@@ -128,7 +127,13 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 						return
 
 					default:
-						if vbBlob.DCPStreamStatus != dcpStreamRunning {
+
+						// Retry looking up metadata for vbucket whose ownership has been given up if:
+						// (a) DCP stream status isn't running
+						// (b) If NodeUUI and AssignedWorker are still mapping to Eventing.Consumer instance that just gave up the
+						//     ownership of that vbucket(could happen because metadata is only updated only when actual DCP_STREAMEND
+						//     is received)
+						if vbBlob.DCPStreamStatus != dcpStreamRunning || (vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName()) {
 							time.Sleep(retryVbMetaStateCheckInterval)
 							goto retryVbMetaStateCheck
 						}
@@ -227,7 +232,12 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 	switch vbBlob.DCPStreamStatus {
 	case dcpStreamRunning:
 
-		if c.HostPortAddr() != vbBlob.CurrentVBOwner &&
+		logging.Tracef("CRVT[%s:%s:%s:%d] vb: %v dcp stream status: %v curr owner: %v worker: %v UUID consumer: %v from metadata: %v check if current node should own vb: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus,
+			vbBlob.CurrentVBOwner, vbBlob.AssignedWorker, c.NodeUUID(),
+			vbBlob.NodeUUID, c.checkIfCurrentNodeShouldOwnVb(vb))
+
+		if c.NodeUUID() != vbBlob.NodeUUID &&
 			!c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner) && c.checkIfCurrentNodeShouldOwnVb(vb) {
 
 			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker != c.ConsumerName() {
