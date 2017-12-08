@@ -13,7 +13,7 @@ static bool dumpCallback(const google_breakpad::MinidumpDescriptor& descriptor,
     return succeeded;
 }
 void* setupBreakpad(const std::string& diagdir) {
-    if (diagdir.length() < 1) return;
+    if (diagdir.length() < 1) return nullptr;
     google_breakpad::MinidumpDescriptor descriptor(diagdir.c_str());
     void* exceptionHandler = new google_breakpad::ExceptionHandler(
             descriptor,
@@ -40,7 +40,7 @@ static bool dumpCallback(const wchar_t* dump_path,
     return succeeded;
 }
 void* setupBreakpad(const std::string& diagdir) {
-    if (diagdir.length() < 1) return;
+    if (diagdir.length() < 1) return nullptr;
     std::wstring path(diagdir.begin(), diagdir.end());
     MINIDUMP_TYPE dumptype = static_cast<MINIDUMP_TYPE>(
             MiniDumpWithFullMemory | MiniDumpWithProcessThreadData |
