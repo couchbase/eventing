@@ -129,7 +129,7 @@ func (m *ServiceMgr) initService() {
 	if m.adminSSLPort != "" {
 		sslAddr := net.JoinHostPort("", m.adminSSLPort)
 		reload := false
-		var tlslsnr *net.Listener = nil
+		var tlslsnr *net.Listener
 
 		refresh := func() error {
 			if tlslsnr != nil {

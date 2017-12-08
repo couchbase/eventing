@@ -53,7 +53,7 @@ This will return the stats regardings events processing, events remaining, execu
  }
 ]
 ```
-> Omitting the parameter `type=full` will exclude seqs_processed and plasma_stats from the response.
+> Omitting the parameter `type=full` will exclude seqs_processed, latency_stats and plasma_stats from the response.
 
 The above stats could be individually obtained through the following endpoints:
 ```shell
