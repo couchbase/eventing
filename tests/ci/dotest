@@ -124,9 +124,9 @@ cd $WORKSPACE/testrunner
 collect_logs
 
 # Rebalance tests
-# if [ "$mode" = "full" ]; then
-# (timeout 2h make test-eventing-sanity-tests 2>&1 | ts) | tee -a $WORKSPACE/test.log
-# fi
+if [ "$mode" = "full" ]; then
+  GOMAXPROCS=16 go test -timeout 2h -tags rebalance  -v 2>&1 | tee -a $WORKSPACE/test.log
+fi
 
 # Verify results
 > /tmp/fail.log
