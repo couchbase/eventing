@@ -172,11 +172,6 @@ func (c *Consumer) processEvents() {
 
 				if e.Status == mcd.SUCCESS {
 
-					c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", c.ConsumerName())
-					c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", c.HostPortAddr())
-					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
-					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
-
 					vbFlog := &vbFlogEntry{streamReqRetry: false, statusCode: e.Status}
 
 					var vbBlob vbucketKVBlob
@@ -211,6 +206,11 @@ func (c *Consumer) processEvents() {
 					}
 
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySRCallback, c, vbKey, &vbBlob, &entry)
+
+					c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", c.ConsumerName())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", c.HostPortAddr())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
+					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
 
 					c.vbFlogChan <- vbFlog
 					continue
@@ -550,13 +550,13 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySECallback, c, vbKey, &entry)
 
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateCheckpointCallback, c, vbKey, &vbBlob)
+
 	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
 	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
 	c.vbProcessingStats.updateVbStat(vbno, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateCheckpointCallback, c, vbKey, &vbBlob)
 }
 
 func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) error {

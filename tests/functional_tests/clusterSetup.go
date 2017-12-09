@@ -251,6 +251,8 @@ func getDeployedApps() (map[string]string, error) {
 
 func metaStateDump() {
 
+	fireQuery("CREATE PRIMARY INDEX on eventing;")
+
 	fmt.Println()
 	fmt.Println("VB distribution across eventing nodes and their workers::")
 	fmt.Println()
