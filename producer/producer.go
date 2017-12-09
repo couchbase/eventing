@@ -263,7 +263,9 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	// For windows use tcp socket based communication
 	// For linux/macos use unix domain sockets
 	// https://github.com/golang/go/issues/6895 - uds pathname limited to 108 chars
-	udsSockPath := fmt.Sprintf("%s/%s.sock", os.TempDir(), workerName)
+
+	// Adding host port in uds path in order to make it across different nodes on a cluster_run setup
+	udsSockPath := fmt.Sprintf("%s/%s_%s.sock", os.TempDir(), p.nsServerHostPort, workerName)
 
 	if runtime.GOOS == "windows" || len(udsSockPath) > udsSockPathLimit {
 		listener, err = net.Listen("tcp", "127.0.0.1:0")

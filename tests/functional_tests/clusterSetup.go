@@ -299,7 +299,8 @@ func metaStateDump() {
 	fmt.Printf("\nDCP Stream statuses:\n")
 	for k := range dcpStreamStatusMap {
 		sort.Ints(dcpStreamStatusMap[k])
-		fmt.Printf("\tstream status: %s\n\tlen: %d\n\tvb list dump: %#v\n", k, len(dcpStreamStatusMap[k]), dcpStreamStatusMap[k])
+		fmt.Printf("\tstream status: %s\n\tlen: %d\n\tvb list dump: %v\n",
+			k, len(dcpStreamStatusMap[k]), condense(dcpStreamStatusMap[k]))
 	}
 
 	fmt.Printf("\nvbucket curr owner:\n")
@@ -308,8 +309,8 @@ func metaStateDump() {
 		fmt.Printf("\tNode UUID: %s\n", nodeUUIDMap[k1])
 		for k2 := range vbucketEventingNodeMap[k1] {
 			sort.Ints(vbucketEventingNodeMap[k1][k2])
-			fmt.Printf("\tworkerID: %s\n\tlen: %d\n\tv: %v\n", k2, len(vbucketEventingNodeMap[k1][k2]),
-				vbucketEventingNodeMap[k1][k2])
+			fmt.Printf("\tworkerID: %s\n\tlen: %d\n\tv: %v\n",
+				k2, len(vbucketEventingNodeMap[k1][k2]), condense(vbucketEventingNodeMap[k1][k2]))
 		}
 	}
 	fmt.Println()
@@ -411,4 +412,43 @@ retryQuotaSetup:
 		fmt.Println("Create rbac user:", err)
 		return
 	}
+}
+
+func condense(vbs []int) string {
+	if len(vbs) == 0 {
+		return "[]"
+	}
+
+	startVb := vbs[0]
+	res := fmt.Sprintf("[%d", startVb)
+	prevVb := startVb
+
+	for i := 1; i < len(vbs); {
+		if vbs[i] == startVb+1 {
+			startVb++
+		} else {
+
+			if prevVb != startVb {
+				res = fmt.Sprintf("%s-%d, %d", res, startVb, vbs[i])
+			} else {
+				res = fmt.Sprintf("%s, %d", res, vbs[i])
+			}
+			startVb = vbs[i]
+			prevVb = startVb
+		}
+
+		if i == len(vbs)-1 {
+			if prevVb == vbs[i] {
+				res = fmt.Sprintf("%s]", res)
+				return res
+			}
+
+			res = fmt.Sprintf("%s-%d]", res, vbs[i])
+			return res
+		}
+
+		i++
+	}
+
+	return res
 }

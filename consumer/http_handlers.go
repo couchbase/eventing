@@ -42,6 +42,7 @@ func (c *Consumer) dcpEventsRemainingToProcess() {
 	if err != nil {
 		logging.Errorf("CRVT[%s:%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 		c.dcpEventsRemaining = 0
+		return
 	}
 
 	var eventsProcessed, seqNo, totalEvents uint64
