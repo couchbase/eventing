@@ -411,15 +411,15 @@ func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 
 	time.Sleep(5 * time.Second)
 
-	// rl := &rateLimit{
-	// 	limit:   true,
-	// 	opsPSec: 100,
-	// 	count:   100000,
-	// 	stopCh:  make(chan struct{}, 1),
-	// 	loop:    true,
-	// }
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: 100,
+		count:   100000,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
 
-	// go pumpBucketOps(itemCount, 0, false, 0, rl)
+	go pumpBucketOps(itemCount, 0, false, 0, rl)
 
 	waitForDeployToFinish(handler1)
 	waitForDeployToFinish(handler2)
@@ -437,7 +437,7 @@ func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 	// addAllNodesOneByOne("eventing")
 	// removeAllNodesOneByOne()
 
-	// rl.stopCh <- struct{}{}
+	rl.stopCh <- struct{}{}
 
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)

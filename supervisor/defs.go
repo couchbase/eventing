@@ -59,6 +59,7 @@ type SuperSupervisor struct {
 	CancelCh    chan struct{}
 	adminPort   AdminPortConfig
 	eventingDir string
+	keepNodes   []string
 	kvPort      string
 	restPort    string
 	superSup    *suptree.Supervisor
