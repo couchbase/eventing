@@ -42,7 +42,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   handler_config_t *handler_config;
 
   int worker_index;
-  int64_t latency_buckets;
+  int64_t latency_buckets, agg_queue_size;
   std::vector<int64_t> agg_hgram, worker_hgram;
   std::ostringstream lstats, estats, fstats;
   std::map<int, int64_t> agg_lcb_exceptions;
@@ -188,7 +188,17 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << on_delete_failure << ", \"non_doc_timer_create_failure\":";
       estats << non_doc_timer_create_failure
              << ", \"doc_timer_create_failure\":";
-      estats << doc_timer_create_failure << "}";
+      estats << doc_timer_create_failure;
+
+      if (workers.size() >= 1) {
+        agg_queue_size = 0;
+        for (const auto &w : workers) {
+          agg_queue_size += w.second->QueueSize();
+        }
+
+        estats << ", \"agg_queue_size\":" << agg_queue_size;
+      }
+      estats << "}";
 
       resp_msg->msg.assign(estats.str());
       resp_msg->msg_type = mV8_Worker_Config;
