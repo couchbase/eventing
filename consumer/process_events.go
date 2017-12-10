@@ -116,29 +116,27 @@ func (c *Consumer) processEvents() {
 								go c.sendDcpEvent(e, c.sendMsgToDebugger)
 							}
 						} else {
-						retryTimerStore1:
-							err := c.storeTimerEvent(e.VBucket, e.Seqno, e.Expiry, string(e.Key), &xMeta)
-							if err == errPlasmaHandleMissing {
-								logging.Tracef("CRDP[%s:%s:%s:%d] Key: %s vb: %v Plasma handle missing(retryTimerStore1)",
-									c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket)
-								time.Sleep(time.Millisecond * 5)
-								goto retryTimerStore1
+							pEntry := &plasmaStoreEntry{
+								vb:     e.VBucket,
+								seqNo:  e.Seqno,
+								expiry: e.Expiry,
+								key:    string(e.Key),
+								xMeta:  &xMeta,
 							}
-
+							c.plasmaStoreCh <- pEntry
 						}
 					} else {
 						logging.Debugf("CRPO[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v, xmeta: %#v",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, xMeta)
 
-					retryTimerStore2:
-						err := c.storeTimerEvent(e.VBucket, e.Seqno, e.Expiry, string(e.Key), &xMeta)
-						if err == errPlasmaHandleMissing {
-							logging.Tracef("CRDP[%s:%s:%s:%d] Key: %s vb: %v Plasma handle missing(retryTimerStore2)",
-								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket)
-							time.Sleep(time.Millisecond * 5)
-							goto retryTimerStore2
+						pEntry := &plasmaStoreEntry{
+							vb:     e.VBucket,
+							seqNo:  e.Seqno,
+							expiry: e.Expiry,
+							key:    string(e.Key),
+							xMeta:  &xMeta,
 						}
-
+						c.plasmaStoreCh <- pEntry
 					}
 				}
 
@@ -354,7 +352,7 @@ func (c *Consumer) processEvents() {
 
 		case <-c.stopConsumerCh:
 
-			logging.Errorf("CRDP[%s:%s:%s:%d] Socket belonging to V8 consumer died",
+			logging.Infof("CRDP[%s:%s:%s:%d] Exiting processEvents routine",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 			return
 		}

@@ -237,6 +237,12 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 			vbBlob.CurrentVBOwner, vbBlob.AssignedWorker, c.NodeUUID(),
 			vbBlob.NodeUUID, c.checkIfCurrentNodeShouldOwnVb(vb))
 
+		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
+			logging.Verbosef("CRVT[%s:%s:%s:%d] vb: %v current consumer and eventing node has already opened dcp stream, skipping",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
+			return nil
+		}
+
 		if c.NodeUUID() != vbBlob.NodeUUID &&
 			!c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner) && c.checkIfCurrentNodeShouldOwnVb(vb) {
 

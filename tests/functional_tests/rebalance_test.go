@@ -17,15 +17,15 @@ func init() {
 func TestEventingRebNoKVOpsWithoutHandlerOneByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
-	addAllEventingNodesOneByOne()
-	removeAllEventingNodesOneByOne()
+	addAllNodesOneByOne("eventing")
+	removeAllNodesOneByOne()
 }
 
 func TestEventingRebNoKVOpsWithoutHandlerAllAtOnce(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
-	addAllEventingNodesAllAtOnce()
-	removeAllEventingNodesAllAtOnce()
+	addAllNodesAtOnce("eventing")
+	removeAllNodesAtOnce()
 }
 
 func TestEventingRebKVOpsWithoutHandlerOneByOne(t *testing.T) {
@@ -41,8 +41,8 @@ func TestEventingRebKVOpsWithoutHandlerOneByOne(t *testing.T) {
 
 	go pumpBucketOps(itemCount, 0, false, 0, rl)
 
-	addAllEventingNodesOneByOne()
-	removeAllEventingNodesOneByOne()
+	addAllNodesOneByOne("eventing")
+	removeAllNodesOneByOne()
 
 	rl.stopCh <- struct{}{}
 }
@@ -60,8 +60,8 @@ func TestEventingRebKVOpsWithoutHandlerAllAtOnce(t *testing.T) {
 
 	go pumpBucketOps(itemCount, 0, false, 0, rl)
 
-	addAllEventingNodesAllAtOnce()
-	removeAllEventingNodesAllAtOnce()
+	addAllNodesAtOnce("eventing")
+	removeAllNodesAtOnce()
 
 	rl.stopCh <- struct{}{}
 }
@@ -77,8 +77,8 @@ func TestEventingRebNoKVOpsNoopOneByOne(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addAllEventingNodesOneByOne()
-	removeAllEventingNodesOneByOne()
+	addAllNodesOneByOne("eventing")
+	removeAllNodesOneByOne()
 
 	flushFunctionAndBucket(handler)
 }
@@ -94,8 +94,8 @@ func TestEventingRebNoKVOpsNoopAllAtOnce(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addAllEventingNodesAllAtOnce()
-	removeAllEventingNodesAllAtOnce()
+	addAllNodesAtOnce("eventing")
+	removeAllNodesAtOnce()
 
 	flushFunctionAndBucket(handler)
 }
@@ -123,8 +123,8 @@ func TestEventingRebKVOpsNoopOneByOne(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addAllEventingNodesOneByOne()
-	removeAllEventingNodesOneByOne()
+	addAllNodesOneByOne("eventing")
+	removeAllNodesOneByOne()
 
 	rl.stopCh <- struct{}{}
 
@@ -154,8 +154,8 @@ func TestEventingRebKVOpsNoopAllAtOnce(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addAllEventingNodesAllAtOnce()
-	removeAllEventingNodesAllAtOnce()
+	addAllNodesAtOnce("eventing")
+	removeAllNodesAtOnce()
 
 	rl.stopCh <- struct{}{}
 
@@ -185,8 +185,8 @@ func TestEventingRebKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addAllEventingNodesOneByOne()
-	removeAllEventingNodesOneByOne()
+	addAllNodesOneByOne("eventing")
+	removeAllNodesOneByOne()
 
 	rl.stopCh <- struct{}{}
 
@@ -216,8 +216,8 @@ func TestEventingRebKVOpsOnUpdateBucketOpAllAtOnce(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addAllEventingNodesAllAtOnce()
-	removeAllEventingNodesAllAtOnce()
+	addAllNodesAtOnce("eventing")
+	removeAllNodesAtOnce()
 
 	rl.stopCh <- struct{}{}
 
@@ -247,15 +247,34 @@ func TestEventingRebKVOpsOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addAllEventingNodesOneByOne()
-	removeAllEventingNodesOneByOne()
+	addAllNodesOneByOne("eventing")
+	removeAllNodesOneByOne()
 
 	rl.stopCh <- struct{}{}
 
 	flushFunctionAndBucket(handler)
 }
 
-func TestEventingRebKVOpsOnUpdateDocTimer(t *testing.T) {
+func TestEventingRebKVOpsOnUpdateDocTimerOnyByOne(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_with_doc_timer.js"
+
+	flushFunctionAndBucket(handler)
+	time.Sleep(5 * time.Second)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+
+	addAllNodesOneByOne("eventing")
+	removeAllNodesOneByOne()
+
+	flushFunctionAndBucket(handler)
+}
+
+func TestEventingRebContinousKVOpsOnUpdateDocTimerOnyByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_doc_timer.js"
 
@@ -278,8 +297,8 @@ func TestEventingRebKVOpsOnUpdateDocTimer(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addAllEventingNodesOneByOne()
-	removeAllEventingNodesOneByOne()
+	addAllNodesOneByOne("eventing")
+	removeAllNodesOneByOne()
 
 	rl.stopCh <- struct{}{}
 
@@ -310,48 +329,79 @@ func TestEventingRebKVOpsOnUpdateDocTimerNonDefaultSettings(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addAllEventingNodesOneByOne()
-	removeAllEventingNodesOneByOne()
+	addAllNodesOneByOne("eventing")
+	removeAllNodesOneByOne()
 
 	rl.stopCh <- struct{}{}
 
 	flushFunctionAndBucket(handler)
 }
 
-func addAllEventingNodesAllAtOnce() {
-	addNodeFromRest("127.0.0.1:9001", "eventing")
-	addNodeFromRest("127.0.0.1:9002", "eventing")
-	addNodeFromRest("127.0.0.1:9003", "eventing")
+func TestKVRebalanceOnUpdateBucketOpOneByOne(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update.js"
+
+	flushFunctionAndBucket(handler)
+	time.Sleep(5 * time.Second)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: 100,
+		count:   100000,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(itemCount, 0, false, 0, rl)
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	addAllNodesOneByOne("data")
+	removeAllNodesOneByOne()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}
+
+func addAllNodesAtOnce(role string) {
+	addNodeFromRest("127.0.0.1:9001", role)
+	addNodeFromRest("127.0.0.1:9002", role)
+	addNodeFromRest("127.0.0.1:9003", role)
 
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 }
 
-func addAllEventingNodesOneByOne() {
-	addNodeFromRest("127.0.0.1:9001", "eventing")
+func addAllNodesOneByOne(role string) {
+	addNodeFromRest("127.0.0.1:9001", role)
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "eventing")
+	addNodeFromRest("127.0.0.1:9002", role)
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9003", "eventing")
+	addNodeFromRest("127.0.0.1:9003", role)
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 }
 
-func removeAllEventingNodesAllAtOnce() {
+func removeAllNodesAtOnce() {
 	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002", "127.0.0.1:9003"})
 	waitForRebalanceFinish()
 	metaStateDump()
 }
 
-func removeAllEventingNodesOneByOne() {
+func removeAllNodesOneByOne() {
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
