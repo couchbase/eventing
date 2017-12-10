@@ -216,16 +216,6 @@ func (m *ServiceMgr) prepareRebalance(change service.TopologyChange) error {
 
 func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 
-	if isSingleNodeRebal(change) && !m.failoverNotif {
-		if change.KeepNodes[0].NodeInfo.NodeID == m.nodeInfo.NodeID {
-			logging.Infof("ServiceMgr::startRebalance - only node in the cluster")
-			m.updateRebalanceProgressLocked(1.0)
-		} else {
-			return fmt.Errorf("node receiving start request isn't part of the cluster")
-		}
-		return nil
-	}
-
 	// Reset the failoverNotif flag, which got set to signify failover action on the cluster
 	if m.failoverNotif {
 		m.failoverNotif = false
@@ -239,14 +229,14 @@ func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 	// Garbage collect old Rebalance Tokens
 	err := util.RecursiveDelete(metakvRebalanceTokenPath)
 	if err != nil {
-		logging.Errorf("SMRB ServiceMgr::StartTopologyChange Failed to garbage collect old rebalance token(s) from metakv, err: %v", err)
+		logging.Errorf("ServiceMgr::startRebalance Failed to garbage collect old rebalance token(s) from metakv, err: %v", err)
 		return err
 	}
 
 	path := metakvRebalanceTokenPath + change.ID
 	err = util.MetakvSet(path, []byte(change.ID), nil)
 	if err != nil {
-		logging.Errorf("SMRB ServiceMgr::StartTopologyChange Failed to store rebalance token in metakv, err: %v", err)
+		logging.Errorf("ServiceMgr::startRebalance Failed to store rebalance token in metakv, err: %v", err)
 		return err
 	}
 
@@ -382,7 +372,7 @@ func (m *ServiceMgr) cancelRunningRebalanceTaskLocked(task *service.Task) error 
 	path := metakvRebalanceTokenPath + task.ID
 	err := util.MetakvSet(path, []byte(stopRebalance), nil)
 	if err != nil {
-		logging.Errorf("SMRB Failed to update rebalance token: %v in metakv as part of stop running rebalance, err: %v",
+		logging.Errorf("ServiceMgr::cancelRunningRebalanceTaskLocked Failed to update rebalance token: %v in metakv as part of stop running rebalance, err: %v",
 			task.ID, err)
 		return err
 	}

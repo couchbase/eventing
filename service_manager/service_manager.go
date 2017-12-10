@@ -10,13 +10,13 @@ import (
 
 // GetNodeInfo callback for cbauth service.Manager
 func (m *ServiceMgr) GetNodeInfo() (*service.NodeInfo, error) {
-	logging.Debugf("SMRB ServiceMgr::GetNodeInfo s.nodeInfo: %#v", m.nodeInfo)
+	logging.Debugf("ServiceMgr::GetNodeInfo s.nodeInfo: %#v", m.nodeInfo)
 	return m.nodeInfo, nil
 }
 
 // Shutdown callback for cbauth service.Manager
 func (m *ServiceMgr) Shutdown() error {
-	logging.Debugf("SMRB ServiceMgr::Shutdown")
+	logging.Debugf("ServiceMgr::Shutdown")
 
 	os.Exit(0)
 
@@ -25,7 +25,7 @@ func (m *ServiceMgr) Shutdown() error {
 
 // GetTaskList callback for cbauth service.Manager
 func (m *ServiceMgr) GetTaskList(rev service.Revision, cancel service.Cancel) (*service.TaskList, error) {
-	logging.Debugf("SMRB ServiceMgr::GetTaskList rev: %#v", rev)
+	logging.Debugf("ServiceMgr::GetTaskList rev: %#v", rev)
 
 	state, err := m.wait(rev, cancel)
 	if err != nil {
@@ -33,7 +33,7 @@ func (m *ServiceMgr) GetTaskList(rev service.Revision, cancel service.Cancel) (*
 	}
 
 	taskList := stateToTaskList(state)
-	logging.Debugf("SMRB ServiceMgr::GetTaskList tasklist: %#v", taskList)
+	logging.Debugf("ServiceMgr::GetTaskList tasklist: %#v", taskList)
 
 	return taskList, nil
 }
@@ -43,7 +43,7 @@ func (m *ServiceMgr) CancelTask(id string, rev service.Revision) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	logging.Debugf("SMRB ServiceMgr::CancelTask id: %#v rev: %#v", id, rev)
+	logging.Debugf("ServiceMgr::CancelTask id: %#v rev: %#v", id, rev)
 
 	tasks := stateToTaskList(m.state).Tasks
 	task := (*service.Task)(nil)
@@ -74,7 +74,7 @@ func (m *ServiceMgr) CancelTask(id string, rev service.Revision) error {
 
 // GetCurrentTopology callback for cbauth service.Manager
 func (m *ServiceMgr) GetCurrentTopology(rev service.Revision, cancel service.Cancel) (*service.Topology, error) {
-	logging.Debugf("SMRB ServiceMgr::GetCurrentTopology rev: %#v", rev)
+	logging.Debugf("ServiceMgr::GetCurrentTopology rev: %#v", rev)
 
 	state, err := m.wait(rev, cancel)
 	if err != nil {
@@ -93,7 +93,7 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	logging.Debugf("SMRB ServiceMgr::PrepareTopologyChange change: %#v", change)
+	logging.Debugf("ServiceMgr::PrepareTopologyChange change: %#v", change)
 
 	var keepNodeUUIDs []string
 
@@ -101,7 +101,7 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 		keepNodeUUIDs = append(keepNodeUUIDs, string(node.NodeInfo.NodeID))
 	}
 
-	logging.Infof("SMRB ServiceMgr::PrepareTopologyChange keepNodeUUIDs: %v", keepNodeUUIDs)
+	logging.Infof("ServiceMgr::PrepareTopologyChange keepNodeUUIDs: %v", keepNodeUUIDs)
 
 	m.updateStateLocked(func(s *state) {
 		m.rebalanceID = change.ID
@@ -117,10 +117,10 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	logging.Debugf("SMRB ServiceMgr::StartTopologyChange change: %#v", change)
+	logging.Debugf("ServiceMgr::StartTopologyChange change: %#v", change)
 
 	if m.state.rebalanceID != change.ID || m.rebalancer != nil {
-		logging.Errorf("SMRB ServiceMgr::StartTopologyChange returning errConflict, rebalanceID: %v change id: %v rebalancer dump: %#v",
+		logging.Errorf("ServiceMgr::StartTopologyChange returning errConflict, rebalanceID: %v change id: %v rebalancer dump: %#v",
 			m.state.rebalanceID, change.ID, m.rebalancer)
 		return service.ErrConflict
 	}
@@ -128,7 +128,7 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 	if change.CurrentTopologyRev != nil {
 		haveRev := decodeRev(change.CurrentTopologyRev)
 		if haveRev != m.state.rev {
-			logging.Errorf("SMRB ServiceMgr::StartTopologyChange returning errConflict, state rev: %v haveRev: %v",
+			logging.Errorf("ServiceMgr::StartTopologyChange returning errConflict, state rev: %v haveRev: %v",
 				m.state.rev, haveRev)
 			return service.ErrConflict
 		}
