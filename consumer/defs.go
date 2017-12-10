@@ -370,6 +370,7 @@ type Consumer struct {
 	plasmaInsertCounter uint64
 	plasmaDeleteCounter uint64
 	plasmaLookupCounter uint64
+	timersInPastCounter uint64
 
 	// capture dcp operation stats, granularity of these stats depend on statsTickInterval
 	dcpOpsProcessed     uint64

@@ -441,6 +441,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 		if !ts.After(time.Now()) {
 			logging.Debugf("CRTE[%s:%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, ts)
+			c.timersInPastCounter++
 			entriesToPrune++
 			continue
 		}

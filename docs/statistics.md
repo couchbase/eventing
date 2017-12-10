@@ -17,7 +17,8 @@ This will return the stats regardings events processing, events remaining, execu
      "DCP_SNAPSHOT": 15,
      "DCP_STREAMREQ": 1024,
      "DOC_TIMER_EVENTS": 121,
-     "CRON_TIMER_EVENTS": 231
+     "CRON_TIMER_EVENTS": 231,
+     "TIMERS_IN_PAST": 4
    },
    "events_remaining": {
      "dcp_backlog": 33
