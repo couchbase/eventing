@@ -32,6 +32,10 @@ func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeIn
 		return
 	}
 
+	if runtimeInfo.Code != m.statusCodes.ok.Code {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+
 	w.Header().Add(headerKey, strconv.Itoa(errInfo.Code))
 	fmt.Fprintf(w, string(response))
 }

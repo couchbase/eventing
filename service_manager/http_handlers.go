@@ -904,7 +904,8 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	m.saveTempStore(app)
+	info := m.saveTempStore(app)
+	m.sendErrorInfo(w, info)
 }
 
 // Saves application to temp store
@@ -913,10 +914,25 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 	appName := app.Name
 	path := metakvTempAppsPath + appName
 	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
+
 	cinfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
 	if err != nil {
 		info.Code = m.statusCodes.errConnectNsServer.Code
 		info.Info = fmt.Sprintf("Failed to initialise cluster info cache, err: %v", err)
+		return
+	}
+
+	uuid := cinfo.GetBucketUUID(app.DeploymentConfig.SourceBucket)
+	if uuid == "" {
+		info.Code = m.statusCodes.errSrcBucketMissing.Code
+		info.Info = fmt.Sprintf("Supplied source bucket: %v doesn't exist", app.DeploymentConfig.SourceBucket)
+		return
+	}
+
+	uuid = cinfo.GetBucketUUID(app.DeploymentConfig.MetadataBucket)
+	if uuid == "" {
+		info.Code = m.statusCodes.errMetaBucketMissing.Code
+		info.Info = fmt.Sprintf("Supplied metadata bucket: %v doesn't exist", app.DeploymentConfig.MetadataBucket)
 		return
 	}
 
@@ -982,7 +998,8 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	m.savePrimaryStore(app)
+	info := m.savePrimaryStore(app)
+	m.sendErrorInfo(w, info)
 }
 
 // Saves application to metakv and returns appropriate success/error code
@@ -1007,6 +1024,20 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	if err != nil {
 		info.Code = m.statusCodes.errConnectNsServer.Code
 		info.Info = fmt.Sprintf("Failed to initialise cluster info cache, err: %v", err)
+		return
+	}
+
+	uuid := cinfo.GetBucketUUID(app.DeploymentConfig.SourceBucket)
+	if uuid == "" {
+		info.Code = m.statusCodes.errSrcBucketMissing.Code
+		info.Info = fmt.Sprintf("Supplied source bucket: %v doesn't exist", app.DeploymentConfig.SourceBucket)
+		return
+	}
+
+	uuid = cinfo.GetBucketUUID(app.DeploymentConfig.MetadataBucket)
+	if uuid == "" {
+		info.Code = m.statusCodes.errMetaBucketMissing.Code
+		info.Info = fmt.Sprintf("Supplied metadata bucket: %v doesn't exist", app.DeploymentConfig.MetadataBucket)
 		return
 	}
 
