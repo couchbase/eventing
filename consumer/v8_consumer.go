@@ -228,8 +228,6 @@ func (c *Consumer) Serve() {
 	// V8 Debugger polling routine
 	go c.pollForDebuggerStart()
 
-	go c.storeTimerEventLoop()
-
 	c.signalBootstrapFinishCh <- struct{}{}
 
 	c.controlRoutine()
@@ -270,6 +268,8 @@ func (c *Consumer) HandleV8Worker() {
 
 	c.sendGetSourceMap(false)
 	c.sendGetHandlerCode(false)
+
+	go c.storeTimerEventLoop()
 
 	go c.processEvents()
 
