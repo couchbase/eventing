@@ -25,16 +25,22 @@ func (c *client) Serve() {
 		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.consumerHandle.diagDir,
 		c.eventingPort) // this parameter is not read, for tagging
 
-	c.cmd.Stderr = os.Stderr
-
-	out, err := c.cmd.StdoutPipe()
+	outPipe, err := c.cmd.StdoutPipe()
 	if err != nil {
 		logging.Errorf("CRCL[%s:%s:%s:%d] Failed to open stdout pipe, err: %v",
 			c.appName, c.workerName, c.tcpPort, c.osPid, err)
 		return
 	}
 
-	defer out.Close()
+	errPipe, err := c.cmd.StderrPipe()
+	if err != nil {
+		logging.Errorf("CRCL[%s:%s:%s:%d] Failed to open stderr pipe, err: %v",
+			c.appName, c.workerName, c.tcpPort, c.osPid, err)
+		return
+	}
+
+	defer outPipe.Close()
+	defer errPipe.Close()
 
 	err = c.cmd.Start()
 	if err != nil {
@@ -47,7 +53,8 @@ func (c *client) Serve() {
 	}
 	c.consumerHandle.osPid.Store(c.osPid)
 
-	bufOut := bufio.NewReader(out)
+	bufOut := bufio.NewReader(outPipe)
+	bufErr := bufio.NewReader(errPipe)
 
 	go func(bufOut *bufio.Reader) {
 		for {
@@ -60,6 +67,18 @@ func (c *client) Serve() {
 			logging.Infof("%s", string(msg))
 		}
 	}(bufOut)
+
+	go func(bufErr *bufio.Reader) {
+		for {
+			msg, _, err := bufErr.ReadLine()
+			if err != nil {
+				logging.Infof("CRCL[%s:%s:%s:%d] Failed to read from stderr pipe, err: %v",
+					c.appName, c.workerName, c.tcpPort, c.osPid, err)
+				return
+			}
+			c.consumerHandle.producer.WriteAppLog(string(msg))
+		}
+	}(bufErr)
 
 	err = c.cmd.Wait()
 	if err != nil {

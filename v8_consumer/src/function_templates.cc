@@ -33,7 +33,7 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
     log_msg += " ";
   }
 
-  APP_LOG(logDebug) << log_msg << std::endl;
+  std::cerr << log_msg << std::endl;
 }
 
 // console.log for debugger - also logs to eventing.log
