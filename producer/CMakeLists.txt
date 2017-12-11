@@ -5,7 +5,7 @@ INCLUDE (FindCouchbaseJemalloc)
 
 SET(LDFLAGS)
 IF(APPLE)
-  SET (LDFLAGS "-extldflags '-Wl,-rpath,@executable_path/../lib'")
+  SET (LDFLAGS "-s -extldflags '-Wl,-rpath,@executable_path/../lib'")
 ENDIF()
 IF(WIN32)
    SET (LDFLAGS "${LDFLAGS} -linkmode internal")
