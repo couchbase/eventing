@@ -328,13 +328,8 @@ func (p *Producer) GetPlasmaStats() (map[string]interface{}, error) {
 
 	stats := p.vbPlasmaStore.GetStats()
 
-	data, err := json.Marshal(&stats)
-	if err != nil {
-		return nil, err
-	}
-
 	var res map[string]interface{}
-	err = json.Unmarshal(data, &res)
+	err := json.Unmarshal([]byte(stats.String()), &res)
 	if err != nil {
 		return nil, err
 	}
