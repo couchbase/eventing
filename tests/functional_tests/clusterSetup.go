@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
+	"sort"
 	"strings"
 	"time"
 )
@@ -57,14 +59,97 @@ func fireQuery(query string) ([]byte, error) {
 	return makeRequest("POST", payload, queryURL)
 }
 
-func addNode(hostname, role string) ([]byte, error) {
+func addNode(hostname, role string) {
+	buildDir := os.Getenv(cbBuildEnvString)
+	if buildDir == "" {
+		fmt.Printf("Please set the CB build dir env flag: %s\n", cbBuildEnvString)
+		return
+	}
+	cbCliPath := buildDir + "/install/bin/couchbase-cli"
+
+	fmt.Printf("Adding node: %s role: %s to the cluster\n", hostname, role)
+
+	cmd := exec.Command(cbCliPath, "server-add", "-c", "127.0.0.1:9000", "-u", username,
+		"-p", password, "--server-add-username", username, "--server-add-password", password,
+		"--services", role, "--server-add", hostname)
+
+	err := cmd.Start()
+	if err != nil {
+		fmt.Println("Failed to add node to cluster, err", err)
+		return
+	}
+
+	err = cmd.Wait()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+}
+
+func rebalance() {
+	buildDir := os.Getenv(cbBuildEnvString)
+	if buildDir == "" {
+		fmt.Printf("Please set the CB build dir env flag: %s\n", cbBuildEnvString)
+		return
+	}
+	cbCliPath := buildDir + "/install/bin/couchbase-cli"
+
+	fmt.Println("Starting up rebalance")
+
+	cmd := exec.Command(cbCliPath, "rebalance", "-c", "127.0.0.1:9000", "-u", username, "-p", password)
+
+	err := cmd.Start()
+	if err != nil {
+		fmt.Println("Failed to start rebalance for the cluster, err", err)
+		return
+	}
+}
+
+func removeNode(hostname string) {
+	buildDir := os.Getenv(cbBuildEnvString)
+	if buildDir == "" {
+		fmt.Printf("Please set the CB build dir env flag: %s\n", cbBuildEnvString)
+		return
+	}
+	cbCliPath := buildDir + "/install/bin/couchbase-cli"
+
+	fmt.Printf("Removing node: %s from the cluster\n", hostname)
+
+	cmd := exec.Command(cbCliPath, "rebalance", "-c", "127.0.0.1:9000", "-u", username,
+		"-p", password, "--server-remove", hostname)
+
+	err := cmd.Start()
+	if err != nil {
+		fmt.Println("Failed to add node to cluster, err", err)
+		return
+	}
+
+	err = cmd.Wait()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+}
+
+func addNodeFromRest(hostname, role string) ([]byte, error) {
 	fmt.Printf("Adding node: %s with role: %s to the cluster\n", hostname, role)
 	payload := strings.NewReader(fmt.Sprintf("hostname=%s&user=%s&password=%s&services=%s",
 		url.QueryEscape(hostname), username, password, role))
 	return makeRequest("POST", payload, addNodeURL)
 }
 
-func rebalance() ([]byte, error) {
+func rebalanceFromRest(nodesToRemove []string) {
+	if len(nodesToRemove) > 0 {
+		fmt.Printf("Removing node(s): %v from the cluster\n", nodesToRemove)
+	}
+
+	knownNodes, removeNodes := otpNodes(nodesToRemove)
+	payload := strings.NewReader(fmt.Sprintf("knownNodes=%s&ejectedNodes=%s",
+		url.QueryEscape(knownNodes), url.QueryEscape(removeNodes)))
+	makeRequest("POST", payload, rebalanceURL)
+}
+
+func otpNodes(removeNodes []string) (string, string) {
 	defer func() {
 		recover()
 	}()
@@ -78,7 +163,7 @@ func rebalance() ([]byte, error) {
 	}
 
 	nodes := res["nodes"].([]interface{})
-	var knownNodes string
+	var ejectNodes, knownNodes string
 
 	for i, v := range nodes {
 		node := v.(map[string]interface{})
@@ -86,12 +171,18 @@ func rebalance() ([]byte, error) {
 		if i < len(nodes)-1 {
 			knownNodes += ","
 		}
+
+		for j, ev := range removeNodes {
+			if ev == node["hostname"].(string) {
+				ejectNodes += node["otpNode"].(string)
+				if j < len(removeNodes)-1 {
+					ejectNodes += ","
+				}
+			}
+		}
 	}
 
-	payload := strings.NewReader(fmt.Sprintf("knownNodes=%s&ejectedNodes=", url.QueryEscape(knownNodes)))
-	makeRequest("POST", payload, rebalanceURL)
-
-	return nil, nil
+	return knownNodes, ejectNodes
 }
 
 func waitForRebalanceFinish() {
@@ -125,10 +216,118 @@ func waitForRebalanceFinish() {
 					return
 				}
 			}
-
 		}
 	}
+}
 
+func waitForDeployToFinish(appName string) {
+	for {
+		time.Sleep(5 * time.Second)
+		log.Printf("Waiting for app: %v to get deployed\n", appName)
+
+		deployedApps, err := getDeployedApps()
+		if err != nil {
+			continue
+		}
+
+		if _, exists := deployedApps[appName]; exists {
+			return
+		}
+	}
+}
+
+func getDeployedApps() (map[string]string, error) {
+	r, err := makeRequest("GET", strings.NewReader(""), deployedAppsURL)
+
+	var res map[string]string
+	err = json.Unmarshal(r, &res)
+	if err != nil {
+		fmt.Println("deployed apps fetch error", err)
+		return nil, err
+	}
+
+	return res, nil
+}
+
+func metaStateDump() {
+
+	fireQuery("CREATE PRIMARY INDEX on eventing;")
+
+	fmt.Println()
+	fmt.Println("VB distribution across eventing nodes and their workers::")
+	fmt.Println()
+
+	vbucketEventingNodeMap := make(map[string]map[string][]int)
+	nodeUUIDMap := make(map[string]string)
+	dcpStreamStatusMap := make(map[string][]int)
+
+	res, err := fireQuery("select current_vb_owner, vb_id, assigned_worker, node_uuid, dcp_stream_status from eventing where vb_id IS NOT NULL;")
+	if err == nil {
+		n1qlResp, nErr := parseN1qlResponse(res)
+		if nErr == nil {
+			rows, ok := n1qlResp["results"].([]interface{})
+			if ok {
+				for i := range rows {
+					row := rows[i].(map[string]interface{})
+
+					vbucket := int(row["vb_id"].(float64))
+					currentOwner := row["current_vb_owner"].(string)
+					workerID := row["assigned_worker"].(string)
+					ownerUUID := row["node_uuid"].(string)
+					dcpStreamStatus := row["dcp_stream_status"].(string)
+
+					nodeUUIDMap[currentOwner] = ownerUUID
+
+					if _, ok := vbucketEventingNodeMap[currentOwner]; !ok && currentOwner != "" {
+						vbucketEventingNodeMap[currentOwner] = make(map[string][]int)
+						vbucketEventingNodeMap[currentOwner][workerID] = make([]int, 0)
+					}
+
+					if _, ok := dcpStreamStatusMap[dcpStreamStatus]; !ok && dcpStreamStatus != "" {
+						dcpStreamStatusMap[dcpStreamStatus] = make([]int, 0)
+					}
+
+					dcpStreamStatusMap[dcpStreamStatus] = append(
+						dcpStreamStatusMap[dcpStreamStatus], vbucket)
+
+					if currentOwner != "" && workerID != "" {
+						vbucketEventingNodeMap[currentOwner][workerID] = append(
+							vbucketEventingNodeMap[currentOwner][workerID], vbucket)
+					}
+				}
+			}
+		}
+	}
+	fmt.Printf("\nDCP Stream statuses:\n")
+	for k := range dcpStreamStatusMap {
+		sort.Ints(dcpStreamStatusMap[k])
+		fmt.Printf("\tstream status: %s\n\tlen: %d\n\tvb list dump: %v\n",
+			k, len(dcpStreamStatusMap[k]), condense(dcpStreamStatusMap[k]))
+	}
+
+	fmt.Printf("\nvbucket curr owner:\n")
+	for k1 := range vbucketEventingNodeMap {
+		fmt.Printf("Producer node: %s", k1)
+		fmt.Printf("\tNode UUID: %s\n", nodeUUIDMap[k1])
+		for k2 := range vbucketEventingNodeMap[k1] {
+			sort.Ints(vbucketEventingNodeMap[k1][k2])
+			fmt.Printf("\tworkerID: %s\n\tlen: %d\n\tv: %v\n",
+				k2, len(vbucketEventingNodeMap[k1][k2]), condense(vbucketEventingNodeMap[k1][k2]))
+		}
+	}
+	fmt.Println()
+	fmt.Println()
+}
+
+func parseN1qlResponse(res []byte) (map[string]interface{}, error) {
+	var n1qlResp map[string]interface{}
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	nErr := json.Unmarshal(res, &n1qlResp)
+	if nErr == nil {
+		return n1qlResp, nil
+	}
+
+	return nil, nErr
 }
 
 func makeRequest(requestType string, payload *strings.Reader, url string) ([]byte, error) {
@@ -215,4 +414,43 @@ retryQuotaSetup:
 		fmt.Println("Create rbac user:", err)
 		return
 	}
+}
+
+func condense(vbs []int) string {
+	if len(vbs) == 0 {
+		return "[]"
+	}
+
+	startVb := vbs[0]
+	res := fmt.Sprintf("[%d", startVb)
+	prevVb := startVb
+
+	for i := 1; i < len(vbs); {
+		if vbs[i] == startVb+1 {
+			startVb++
+		} else {
+
+			if prevVb != startVb {
+				res = fmt.Sprintf("%s-%d, %d", res, startVb, vbs[i])
+			} else {
+				res = fmt.Sprintf("%s, %d", res, vbs[i])
+			}
+			startVb = vbs[i]
+			prevVb = startVb
+		}
+
+		if i == len(vbs)-1 {
+			if prevVb == vbs[i] {
+				res = fmt.Sprintf("%s]", res)
+				return res
+			}
+
+			res = fmt.Sprintf("%s-%d]", res, vbs[i])
+			return res
+		}
+
+		i++
+	}
+
+	return res
 }

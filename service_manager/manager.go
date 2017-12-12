@@ -108,7 +108,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getLocalDebugUrl/", m.getLocalDebugURL)
 	http.HandleFunc("/saveAppTempStore/", m.saveTempStoreHandler)
 	http.HandleFunc("/setApplication/", m.savePrimaryStoreHandler)
-	http.HandleFunc("/setSettings/", m.setSettings)
+	http.HandleFunc("/setSettings/", m.setSettingsHandler)
 	http.HandleFunc("/startDebugger/", m.startDebugger)
 	http.HandleFunc("/startTracing", m.startTracing)
 	http.HandleFunc("/stopDebugger/", m.stopDebugger)
@@ -116,8 +116,8 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/uuid", m.getNodeUUID)
 
 	// Public REST APIs
-	http.HandleFunc("/api/v1/functions", m.functionsHandler)
 	http.HandleFunc("/api/v1/stats", m.statsHandler)
+	http.HandleFunc("/", m.rootHandler)
 
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)
@@ -129,14 +129,16 @@ func (m *ServiceMgr) initService() {
 	if m.adminSSLPort != "" {
 		sslAddr := net.JoinHostPort("", m.adminSSLPort)
 		reload := false
-		var sslsrv *http.Server
+		var tlslsnr *net.Listener
+
 		refresh := func() error {
-			if sslsrv != nil {
+			if tlslsnr != nil {
 				reload = true
-				sslsrv.Shutdown(nil)
+				(*tlslsnr).Close()
 			}
 			return nil
 		}
+
 		go func() {
 			for {
 				err := cbauth.RegisterCertRefreshCallback(refresh)
@@ -147,20 +149,34 @@ func (m *ServiceMgr) initService() {
 				time.Sleep(10 * time.Second)
 			}
 			for {
+				cert, err := tls.LoadX509KeyPair(m.certFile, m.keyFile)
+				if err != nil {
+					logging.Errorf("Error in loading SSL certificate: %v", err)
+					return
+				}
 				// allow only strong ssl as this is an internal API and interop is not a concern
-				sslsrv = &http.Server{
+				sslsrv := &http.Server{
 					Addr:         sslAddr,
 					TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
 					TLSConfig: &tls.Config{
+						Certificates:             []tls.Certificate{cert},
 						CipherSuites:             []uint16{tls.TLS_RSA_WITH_AES_256_CBC_SHA},
 						MinVersion:               tls.VersionTLS12,
 						PreferServerCipherSuites: true,
 						// ClientAuth:            tls.RequireAndVerifyClientCert,
 					},
 				}
-				logging.Infof("Admin SSL server started: %v", sslAddr)
+				// replace below with ListenAndServeTLS on moving to go1.8
+				lsnr, err := net.Listen("tcp", sslAddr)
+				if err != nil {
+					logging.Errorf("Error in listenting to SSL port: %v", err)
+					return
+				}
+				val := tls.NewListener(lsnr, sslsrv.TLSConfig)
+				tlslsnr = &val
 				reload = false
-				err := sslsrv.ListenAndServeTLS(m.certFile, m.keyFile)
+				logging.Infof("SSL server started: %v", sslAddr)
+				err = http.Serve(*tlslsnr, nil)
 				if reload {
 					logging.Warnf("SSL certificate change: %v", err)
 				} else {
@@ -200,16 +216,6 @@ func (m *ServiceMgr) prepareRebalance(change service.TopologyChange) error {
 
 func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 
-	if isSingleNodeRebal(change) && !m.failoverNotif {
-		if change.KeepNodes[0].NodeInfo.NodeID == m.nodeInfo.NodeID {
-			logging.Infof("ServiceMgr::startRebalance - only node in the cluster")
-			m.updateRebalanceProgressLocked(1.0)
-		} else {
-			return fmt.Errorf("node receiving start request isn't part of the cluster")
-		}
-		return nil
-	}
-
 	// Reset the failoverNotif flag, which got set to signify failover action on the cluster
 	if m.failoverNotif {
 		m.failoverNotif = false
@@ -223,14 +229,14 @@ func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 	// Garbage collect old Rebalance Tokens
 	err := util.RecursiveDelete(metakvRebalanceTokenPath)
 	if err != nil {
-		logging.Errorf("SMRB ServiceMgr::StartTopologyChange Failed to garbage collect old rebalance token(s) from metakv, err: %v", err)
+		logging.Errorf("ServiceMgr::startRebalance Failed to garbage collect old rebalance token(s) from metakv, err: %v", err)
 		return err
 	}
 
 	path := metakvRebalanceTokenPath + change.ID
 	err = util.MetakvSet(path, []byte(change.ID), nil)
 	if err != nil {
-		logging.Errorf("SMRB ServiceMgr::StartTopologyChange Failed to store rebalance token in metakv, err: %v", err)
+		logging.Errorf("ServiceMgr::startRebalance Failed to store rebalance token in metakv, err: %v", err)
 		return err
 	}
 
@@ -366,7 +372,7 @@ func (m *ServiceMgr) cancelRunningRebalanceTaskLocked(task *service.Task) error 
 	path := metakvRebalanceTokenPath + task.ID
 	err := util.MetakvSet(path, []byte(stopRebalance), nil)
 	if err != nil {
-		logging.Errorf("SMRB Failed to update rebalance token: %v in metakv as part of stop running rebalance, err: %v",
+		logging.Errorf("ServiceMgr::cancelRunningRebalanceTaskLocked Failed to update rebalance token: %v in metakv as part of stop running rebalance, err: %v",
 			task.ID, err)
 		return err
 	}

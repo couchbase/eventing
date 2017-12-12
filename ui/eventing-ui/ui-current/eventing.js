@@ -117,10 +117,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         showSuccessAlert(`${app.appname} deployed successfully!`);
                     })
                     .catch(function(errResponse) {
-                        if (errResponse.error) {
-                            var info = errResponse.error.details;
+                        if (errResponse.data && (errResponse.data.name === 'ERR_HANDLER_COMPILATION')) {
+                            var info = JSON.parse(errResponse.data.runtime_info);
                             app.compilationInfo = info;
                             showErrorAlert(`Deployment failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
+                        } else {
+                            showErrorAlert(`Deployment failed: ${errResponse.data.runtime_info}`);
                         }
 
                         // Enable edit button as we got compilation info

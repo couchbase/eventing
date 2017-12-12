@@ -15,6 +15,7 @@ func (c *Consumer) openPlasmaStore(vbPlasmaDir string) (*plasma.Plasma, error) {
 	cfg.MaxPageItems = maxPageItems
 	cfg.MinPageItems = minPageItems
 	cfg.UseMemoryMgmt = true
+	cfg.AutoSwapper = true
 
 	vbPlasmaStore, err := plasma.New(cfg)
 	if err != nil {

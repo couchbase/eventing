@@ -42,7 +42,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   handler_config_t *handler_config;
 
   int worker_index;
-  int64_t latency_buckets;
+  int64_t latency_buckets, agg_queue_size;
   std::vector<int64_t> agg_hgram, worker_hgram;
   std::ostringstream lstats, estats, fstats;
   std::map<int, int64_t> agg_lcb_exceptions;
@@ -188,7 +188,17 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << on_delete_failure << ", \"non_doc_timer_create_failure\":";
       estats << non_doc_timer_create_failure
              << ", \"doc_timer_create_failure\":";
-      estats << doc_timer_create_failure << "}";
+      estats << doc_timer_create_failure;
+
+      if (workers.size() >= 1) {
+        agg_queue_size = 0;
+        for (const auto &w : workers) {
+          agg_queue_size += w.second->QueueSize();
+        }
+
+        estats << ", \"agg_queue_size\":" << agg_queue_size;
+      }
+      estats << "}";
 
       resp_msg->msg.assign(estats.str());
       resp_msg->msg_type = mV8_Worker_Config;
@@ -568,38 +578,6 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
               auto msg_offset = builder.CreateString(queue_stats.str());
               auto r = flatbuf::response::CreateResponse(
                   builder, mV8_Worker_Config, oQueueSize, msg_offset);
-              builder.Finish(r);
-
-              uint32_t s = builder.GetSize();
-              char *size = (char *)&s;
-
-              // Write size of payload to socket
-              write_req_t *req_size = new (write_req_t);
-              req_size->buf = uv_buf_init(size, sizeof(uint32_t));
-              uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
-                       [](uv_write_t *req_size, int status) {
-                         AppWorker::GetAppWorker()->OnWrite(req_size, status);
-                       });
-
-              // Write payload to socket
-              write_req_t *req_msg = new (write_req_t);
-              std::string msg((const char *)builder.GetBufferPointer(),
-                              builder.GetSize());
-              req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
-              uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
-                       [](uv_write_t *req_msg, int status) {
-                         AppWorker::GetAppWorker()->OnWrite(req_msg, status);
-                       });
-            }
-
-            std::string app_log(AppFlushLog());
-
-            // Flush app logs
-            if (app_log.length() > 0) {
-              flatbuffers::FlatBufferBuilder builder;
-              auto msg_offset = builder.CreateString(app_log);
-              auto r = flatbuf::response::CreateResponse(
-                  builder, mV8_Worker_Config, oAppLogMessage, msg_offset);
               builder.Finish(r);
 
               uint32_t s = builder.GetSize();

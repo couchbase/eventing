@@ -29,6 +29,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		adminPort:                    adminPort,
 		diagDir:                      diagDir,
 		eventingDir:                  eventingDir,
+		keepNodes:                    make([]string, 0),
 		kvPort:                       kvPort,
 		plasmaCloseSignalMap:         make(map[uint16]int),
 		producerSupervisorTokenMap:   make(map[common.EventingProducer]suptree.ServiceToken),
@@ -58,6 +59,8 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	config.Set("rest_port", s.restPort)
 
 	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s)
+
+	s.keepNodes = append(s.keepNodes, uuid)
 
 	var user, password string
 	util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, s, &user, &password)
@@ -381,14 +384,8 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 		http.Serve(p.ProducerListener, h)
 	}(p, s, appName, metakvAppHostPortsPath)
 
-	// Presently there are 3 observe callbacks registered against metakv:
-	// MetakvAppsPath, MetakvAppSettingsPath and MetaKvRebalanceTokenPath
-	// There isn't any ordering for execution of these callbacks. As a result,
-	// when a new eventing node is added to cluster or when a new app handler
-	// is deployed - it might not be aware of eventing nodes that are existing.
-	// (case when callback against MetakvAppsPath is triggered and callback for
-	// MetaKvRebalanceTokenPath is delayed). Hence mimicking rebalance trigger on
-	// app spawn
+	p.NotifyPrepareTopologyChange(s.keepNodes)
+
 	topologyChangeMsg := &common.TopologyChangeMsg{}
 	topologyChangeMsg.CType = common.StartRebalanceCType
 	p.NotifyTopologyChange(topologyChangeMsg)
@@ -490,6 +487,7 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
 	for _, producer := range s.runningProducers {
 		logging.Infof("SSUP[%d] NotifyPrepareTopologyChange to producer %p, keepNodes => %v", len(s.runningProducers), producer, keepNodes)
-		producer.NotifyPrepareTopologyChange(keepNodes)
+		s.keepNodes = keepNodes
+		producer.NotifyPrepareTopologyChange(s.keepNodes)
 	}
 }

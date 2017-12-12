@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/couchbase/eventing/common"
@@ -315,7 +316,8 @@ func (p *Producer) PurgePlasmaRecords() {
 
 // WriteAppLog dumps the application specific log message to configured file
 func (p *Producer) WriteAppLog(log string) {
-	fmt.Fprintf(p.appLogWriter, "%s", log)
+	ts := time.Now().Format("2006-01-02T15:04:05.000-07:00")
+	fmt.Fprintf(p.appLogWriter, "%s [INFO] %s\n", ts, log)
 }
 
 // GetPlasmaStats returns internal stats from plasma
@@ -326,13 +328,8 @@ func (p *Producer) GetPlasmaStats() (map[string]interface{}, error) {
 
 	stats := p.vbPlasmaStore.GetStats()
 
-	data, err := json.Marshal(&stats)
-	if err != nil {
-		return nil, err
-	}
-
 	var res map[string]interface{}
-	err = json.Unmarshal(data, &res)
+	err := json.Unmarshal([]byte(stats.String()), &res)
 	if err != nil {
 		return nil, err
 	}

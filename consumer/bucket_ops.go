@@ -7,7 +7,6 @@ import (
 
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/shared"
 	"github.com/couchbase/eventing/util"
 	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
@@ -102,7 +101,7 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	hostPortAddr := fmt.Sprintf("127.0.0.1:%s", c.producer.GetNsServerPort())
 
 	var err error
-	*b, err = shared.ConnectBucket(hostPortAddr, "default", c.bucket)
+	*b, err = util.ConnectBucket(hostPortAddr, "default", c.bucket)
 	if err != nil {
 		logging.Errorf("CRBO[%s:%d] Connect to bucket: %s failed, err: %v",
 			c.app.AppName, c.producer.LenRunningConsumers(), c.bucket, err)

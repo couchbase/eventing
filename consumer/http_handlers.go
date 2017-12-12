@@ -5,7 +5,6 @@ import (
 
 	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/shared"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -39,10 +38,11 @@ func (c *Consumer) EventsProcessedPSec() *cm.EventProcessingStats {
 func (c *Consumer) dcpEventsRemainingToProcess() {
 	vbsTohandle := c.vbsToHandle()
 
-	seqNos, err := shared.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+	seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil {
 		logging.Errorf("CRVT[%s:%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 		c.dcpEventsRemaining = 0
+		return
 	}
 
 	var eventsProcessed, seqNo, totalEvents uint64

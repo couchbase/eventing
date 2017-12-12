@@ -22,71 +22,83 @@ type errorPayload struct {
 	Code        int      `json:"code"`
 	Description string   `json:"description"`
 	Attributes  []string `json:"attributes"`
+	RuntimeInfo string   `json:"runtime_info"`
+}
+
+type runtimeInfo struct {
+	Code int    `json:"code"`
+	Info string `json:"info"`
 }
 
 type statusCodes struct {
-	ok                  statusBase
-	errDelAppPs         statusBase
-	errDelAppTs         statusBase
-	errGetAppPs         statusBase
-	getAppTs            statusBase
-	errSaveAppPs        statusBase
-	errSaveAppTs        statusBase
-	errSetSettingsPs    statusBase
-	startDbg            statusBase
-	stopDbg             statusBase
-	getDbgURL           statusBase
-	errDelAppSettingsPs statusBase
-	errAppNotDeployed   statusBase
-	errAppNotFoundTs    statusBase
-	errMarshalResp      statusBase
-	errReadReq          statusBase
-	errUnmarshalPld     statusBase
-	errSrcMbSame        statusBase
-	errInvalidExt       statusBase
-	errGetVbSeqs        statusBase
-	errAppDeployed      statusBase
-	errAppNotInit       statusBase
-	errAppNotUndeployed statusBase
-	errStatusesNotFound statusBase
-	errConnectNsServer  statusBase
-	errBucketTypeCheck  statusBase
-	errMemcachedBucket  statusBase
-	errHandlerCompile   statusBase
-	errRbacCreds        statusBase
+	ok                   statusBase
+	errDelAppPs          statusBase
+	errDelAppTs          statusBase
+	errGetAppPs          statusBase
+	getAppTs             statusBase
+	errSaveAppPs         statusBase
+	errSaveAppTs         statusBase
+	errSetSettingsPs     statusBase
+	startDbg             statusBase
+	stopDbg              statusBase
+	getDbgURL            statusBase
+	errDelAppSettingsPs  statusBase
+	errAppNotDeployed    statusBase
+	errAppNotFoundTs     statusBase
+	errMarshalResp       statusBase
+	errReadReq           statusBase
+	errUnmarshalPld      statusBase
+	errSrcMbSame         statusBase
+	errInvalidExt        statusBase
+	errGetVbSeqs         statusBase
+	errAppDeployed       statusBase
+	errAppNotInit        statusBase
+	errAppNotUndeployed  statusBase
+	errStatusesNotFound  statusBase
+	errConnectNsServer   statusBase
+	errBucketTypeCheck   statusBase
+	errMemcachedBucket   statusBase
+	errHandlerCompile    statusBase
+	errRbacCreds         statusBase
+	errAppNameMismatch   statusBase
+	errSrcBucketMissing  statusBase
+	errMetaBucketMissing statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
 	m.statusCodes = statusCodes{
-		ok:                  statusBase{"OK", 0},
-		errDelAppPs:         statusBase{"ERR_DEL_APP_PS", 1},
-		errDelAppTs:         statusBase{"ERR_DEL_APP_TS", 2},
-		errGetAppPs:         statusBase{"ERR_GET_APP_PS", 3},
-		getAppTs:            statusBase{"ERR_GET_APP_TS", 4},
-		errSaveAppPs:        statusBase{"ERR_SAVE_APP_PS", 5},
-		errSaveAppTs:        statusBase{"ERR_SAVE_APP_TS", 6},
-		errSetSettingsPs:    statusBase{"ERR_SET_SETTINGS_PS", 7},
-		startDbg:            statusBase{"ERR_START_DBG", 8},
-		stopDbg:             statusBase{"ERR_STOP_DBG", 9},
-		getDbgURL:           statusBase{"ERR_GET_DBG_URL", 10},
-		errDelAppSettingsPs: statusBase{"ERR_DEL_APP_SETTINGS_PS", 11},
-		errAppNotDeployed:   statusBase{"ERR_APP_NOT_DEPLOYED", 12},
-		errAppNotFoundTs:    statusBase{"ERR_APP_NOT_FOUND_TS", 13},
-		errMarshalResp:      statusBase{"ERR_MARSHAL_RESP", 14},
-		errReadReq:          statusBase{"ERR_READ_REQ", 15},
-		errUnmarshalPld:     statusBase{"ERR_UNMARSHAL_PLD", 16},
-		errSrcMbSame:        statusBase{"ERR_SRC_MB_SAME", 17},
-		errInvalidExt:       statusBase{"ERR_INVALID_EXT", 18},
-		errGetVbSeqs:        statusBase{"ERR_GET_VB_SEQS", 19},
-		errAppDeployed:      statusBase{"ERR_APP_ALREADY_DEPLOYED", 20},
-		errAppNotInit:       statusBase{"ERR_APP_NOT_BOOTSTRAPPED", 21},
-		errAppNotUndeployed: statusBase{"ERR_APP_NOT_UNDEPLOYED", 22},
-		errStatusesNotFound: statusBase{"ERR_PROCESSING_OR_DEPLOYMENT_STATUS_NOT_FOUND", 23},
-		errConnectNsServer:  statusBase{"ERR_CONNECT_TO_NS_SERVER", 24},
-		errBucketTypeCheck:  statusBase{"ERR_BUCKET_TYPE_CHECK", 25},
-		errMemcachedBucket:  statusBase{"ERR_SOURCE_BUCKET_MEMCACHED", 26},
-		errHandlerCompile:   statusBase{"ERR_HANDLER_COMPILATION", 27},
-		errRbacCreds:        statusBase{"ERR_INSUFFICIENT_RBAC_CREDS", 28},
+		ok:                   statusBase{"OK", 0},
+		errDelAppPs:          statusBase{"ERR_DEL_APP_PS", 1},
+		errDelAppTs:          statusBase{"ERR_DEL_APP_TS", 2},
+		errGetAppPs:          statusBase{"ERR_GET_APP_PS", 3},
+		getAppTs:             statusBase{"ERR_GET_APP_TS", 4},
+		errSaveAppPs:         statusBase{"ERR_SAVE_APP_PS", 5},
+		errSaveAppTs:         statusBase{"ERR_SAVE_APP_TS", 6},
+		errSetSettingsPs:     statusBase{"ERR_SET_SETTINGS_PS", 7},
+		startDbg:             statusBase{"ERR_START_DBG", 8},
+		stopDbg:              statusBase{"ERR_STOP_DBG", 9},
+		getDbgURL:            statusBase{"ERR_GET_DBG_URL", 10},
+		errDelAppSettingsPs:  statusBase{"ERR_DEL_APP_SETTINGS_PS", 11},
+		errAppNotDeployed:    statusBase{"ERR_APP_NOT_DEPLOYED", 12},
+		errAppNotFoundTs:     statusBase{"ERR_APP_NOT_FOUND_TS", 13},
+		errMarshalResp:       statusBase{"ERR_MARSHAL_RESP", 14},
+		errReadReq:           statusBase{"ERR_READ_REQ", 15},
+		errUnmarshalPld:      statusBase{"ERR_UNMARSHAL_PLD", 16},
+		errSrcMbSame:         statusBase{"ERR_SRC_MB_SAME", 17},
+		errInvalidExt:        statusBase{"ERR_INVALID_EXT", 18},
+		errGetVbSeqs:         statusBase{"ERR_GET_VB_SEQS", 19},
+		errAppDeployed:       statusBase{"ERR_APP_ALREADY_DEPLOYED", 20},
+		errAppNotInit:        statusBase{"ERR_APP_NOT_BOOTSTRAPPED", 21},
+		errAppNotUndeployed:  statusBase{"ERR_APP_NOT_UNDEPLOYED", 22},
+		errStatusesNotFound:  statusBase{"ERR_PROCESSING_OR_DEPLOYMENT_STATUS_NOT_FOUND", 23},
+		errConnectNsServer:   statusBase{"ERR_CONNECT_TO_NS_SERVER", 24},
+		errBucketTypeCheck:   statusBase{"ERR_BUCKET_TYPE_CHECK", 25},
+		errMemcachedBucket:   statusBase{"ERR_SOURCE_BUCKET_MEMCACHED", 26},
+		errHandlerCompile:    statusBase{"ERR_HANDLER_COMPILATION", 27},
+		errRbacCreds:         statusBase{"ERR_INSUFFICIENT_RBAC_CREDS", 28},
+		errAppNameMismatch:   statusBase{"ERR_APPNAME_MISMATCH", 29},
+		errSrcBucketMissing:  statusBase{"ERR_SRC_BUCKET_MISSING", 30},
+		errMetaBucketMissing: statusBase{"ERR_METADATA_BUCKET_MISSING", 31},
 	}
 
 	errors := []errorPayload{
@@ -233,6 +245,26 @@ func (m *ServiceMgr) initErrCodes() {
 			Code:        m.statusCodes.errRbacCreds.Code,
 			Description: "RBAC username/password missing",
 		},
+		{
+			Name:        m.statusCodes.errAppNameMismatch.Name,
+			Code:        m.statusCodes.errAppNameMismatch.Code,
+			Description: "Function names must be same",
+		},
+		{
+			Name:        m.statusCodes.errSrcBucketMissing.Name,
+			Code:        m.statusCodes.errSrcBucketMissing.Code,
+			Description: "Source bucket missing",
+		},
+		{
+			Name:        m.statusCodes.errMetaBucketMissing.Name,
+			Code:        m.statusCodes.errMetaBucketMissing.Code,
+			Description: "Metadata bucket missing",
+		},
+	}
+
+	m.errorCodes = make(map[int]errorPayload)
+	for _, err := range errors {
+		m.errorCodes[err.Code] = err
 	}
 
 	statusPayload := statusPayload{

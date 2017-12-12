@@ -134,7 +134,15 @@ ApplicationModel.prototype.getDefaultModel = function() {
             deadline_timeout: 2,
             execution_timeout: 1,
             description: '',
-            cpp_worker_thread_count: 2
+            cpp_worker_thread_count: 2,
+            vb_ownership_giveup_routine_count: 3,
+            vb_ownership_takeover_routine_count: 3,
+            memory_quota: 256,
+            xattr_doc_timer_entry_prune_threshold: 100,
+            app_log_max_size: 1024 * 1024 * 10,
+            app_log_max_files: 10,
+            curl_timeout: 500,
+            worker_queue_cap: 1000 * 1000
         }
     }
 };

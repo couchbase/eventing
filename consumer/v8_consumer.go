@@ -69,7 +69,9 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		opsTimestamp:                       time.Now(),
 		persistAllTicker:                   time.NewTicker(persistAllTickInterval),
 		plasmaReaderRWMutex:                &sync.RWMutex{},
+		plasmaStoreCh:                      make(chan *plasmaStoreEntry, timerChanSize),
 		plasmaStoreRWMutex:                 &sync.RWMutex{},
+		plasmaStoreStopCh:                  make(chan struct{}, 1),
 		producer:                           p,
 		restartVbDcpStreamTicker:           time.NewTicker(restartVbDcpStreamTickInterval),
 		sendMsgBufferRWMutex:               &sync.RWMutex{},
@@ -267,6 +269,8 @@ func (c *Consumer) HandleV8Worker() {
 	c.sendGetSourceMap(false)
 	c.sendGetHandlerCode(false)
 
+	go c.storeTimerEventLoop()
+
 	go c.processEvents()
 
 }
@@ -307,6 +311,7 @@ func (c *Consumer) Stop() {
 	c.updateStatsTicker.Stop()
 	c.updateStatsStopCh <- struct{}{}
 
+	c.plasmaStoreStopCh <- struct{}{}
 	c.stopCheckpointingCh <- struct{}{}
 	c.nonDocTimerStopCh <- struct{}{}
 	c.stopControlRoutineCh <- struct{}{}

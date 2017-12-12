@@ -245,6 +245,8 @@ type Consumer struct {
 	vbPlasmaWriter      map[uint16]*plasma.Writer // Access controlled by plasmaStoreRWMutex
 	vbPlasmaReader      map[uint16]*plasma.Writer // Access controlled by plasmaReaderRWMutex
 
+	plasmaStoreCh                      chan *plasmaStoreEntry
+	plasmaStoreStopCh                  chan struct{}
 	signalStoreTimerPlasmaCloseCh      chan uint16
 	signalProcessTimerPlasmaCloseAckCh chan uint16
 	signalStoreTimerPlasmaCloseAckCh   chan uint16
@@ -368,6 +370,7 @@ type Consumer struct {
 	plasmaInsertCounter uint64
 	plasmaDeleteCounter uint64
 	plasmaLookupCounter uint64
+	timersInPastCounter uint64
 
 	// capture dcp operation stats, granularity of these stats depend on statsTickInterval
 	dcpOpsProcessed     uint64
@@ -490,4 +493,12 @@ type msgToTransmit struct {
 
 type cppQueueSize struct {
 	AggQueueSize int64 `json:"agg_queue_size"`
+}
+
+type plasmaStoreEntry struct {
+	vb     uint16
+	seqNo  uint64
+	expiry uint32
+	key    string
+	xMeta  *xattrMetadata
 }

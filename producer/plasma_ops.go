@@ -16,6 +16,7 @@ func (p *Producer) openPlasmaStore() error {
 	cfg.MaxPageItems = maxPageItems
 	cfg.MinPageItems = minPageItems
 	cfg.UseMemoryMgmt = true
+	cfg.AutoSwapper = true
 
 	var err error
 	p.vbPlasmaStore, err = plasma.New(cfg)

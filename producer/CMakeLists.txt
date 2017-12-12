@@ -5,13 +5,15 @@ INCLUDE (FindCouchbaseJemalloc)
 
 SET(LDFLAGS)
 IF(APPLE)
-  SET (LDFLAGS "-extldflags '-Wl,-rpath,@executable_path/../lib'")
+  SET (LDFLAGS "-s -extldflags '-Wl,-rpath,@executable_path/../lib'")
 ENDIF()
 IF(WIN32)
    SET (LDFLAGS "${LDFLAGS} -linkmode internal")
 ENDIF()
 
-SET(GOVERSION 1.8.3)
+IF(NOT DEFINED GOVERSION)
+  MESSAGE(FATAL_ERROR "GOVERSION must be defined")
+ENDIF()
 
 SET(TAGS "jemalloc")
 IF(BUILD_ENTERPRISE)

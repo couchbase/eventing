@@ -2,8 +2,6 @@
 #include <iostream>
 #include <string>
 
-static void* exceptionHandler;
-
 #if defined(BREAKPAD_FOUND) && defined(__linux__)
 #include "client/linux/handler/exception_handler.h"
 static bool dumpCallback(const google_breakpad::MinidumpDescriptor& descriptor,
@@ -14,16 +12,17 @@ static bool dumpCallback(const google_breakpad::MinidumpDescriptor& descriptor,
               << " Status: " << succeeded << " ==" << std::endl;
     return succeeded;
 }
-void setupBreakpad(const std::string& diagdir) {
-    if (diagdir.length() < 1) return;
+void* setupBreakpad(const std::string& diagdir) {
+    if (diagdir.length() < 1) return nullptr;
     google_breakpad::MinidumpDescriptor descriptor(diagdir.c_str());
-    exceptionHandler = new google_breakpad::ExceptionHandler(
+    void* exceptionHandler = new google_breakpad::ExceptionHandler(
             descriptor,
             NULL,
             dumpCallback,
             NULL,
             true,
             -1);
+    return exceptionHandler;
 }
 
 #elif defined(BREAKPAD_FOUND) && defined(_WIN32)
@@ -40,13 +39,13 @@ static bool dumpCallback(const wchar_t* dump_path,
                << " ==" << std::endl;
     return succeeded;
 }
-void setupBreakpad(const std::string& diagdir) {
-    if (diagdir.length() < 1) return;
+void* setupBreakpad(const std::string& diagdir) {
+    if (diagdir.length() < 1) return nullptr;
     std::wstring path(diagdir.begin(), diagdir.end());
     MINIDUMP_TYPE dumptype = static_cast<MINIDUMP_TYPE>(
             MiniDumpWithFullMemory | MiniDumpWithProcessThreadData |
             MiniDumpWithHandleData);
-    exceptionHandler = new google_breakpad::ExceptionHandler(
+    void* exceptionHandler = new google_breakpad::ExceptionHandler(
             path,
             nullptr,
             dumpCallback,
@@ -55,9 +54,11 @@ void setupBreakpad(const std::string& diagdir) {
             dumptype,
             (wchar_t*) nullptr,
             nullptr);
+    return exceptionHandler;
 }
 
 #else
-void setupBreakpad(const std::string& diagdir) {
+void* setupBreakpad(const std::string& diagdir) {
+        return nullptr;
 }
 #endif

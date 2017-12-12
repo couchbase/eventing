@@ -10,6 +10,7 @@
 // permissions and limitations under the License.
 
 #include "../include/utils.h"
+#include "../include/js_exception.h"
 
 #if defined(WIN32) || defined(_WIN32)
 int Wvasprintf(char **strp, const char *fmt, va_list ap) {
@@ -142,6 +143,7 @@ std::string ConvertToISO8601(std::string timestamp) {
 bool isFuncReference(const v8::FunctionCallbackInfo<v8::Value> &args, int i) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
+  auto js_exception = UnwrapData(isolate)->js_exception;
 
   if (args[i]->IsFunction()) {
     v8::Local<v8::Function> func_ref = args[i].As<v8::Function>();
@@ -153,17 +155,22 @@ bool isFuncReference(const v8::FunctionCallbackInfo<v8::Value> &args, int i) {
           context->Global()->Get(func_ref->GetName()).As<v8::Function>();
 
       if (timer_func_ref->IsUndefined()) {
-        LOG(logError) << *func_name << " is not defined in global scope"
-                      << std::endl;
+        auto exception_msg =
+            std::string(*func_name) + " is not defined in global scope";
+        js_exception->Throw(exception_msg);
+        LOG(logError) << exception_msg << std::endl;
         return false;
       }
     } else {
-      LOG(logError) << "Invalid arg: Anonymous function is not allowed"
-                    << std::endl;
+      auto exception_msg = "Invalid arg: Anonymous function is not allowed";
+      js_exception->Throw(exception_msg);
+      LOG(logError) << exception_msg << std::endl;
       return false;
     }
   } else {
-    LOG(logError) << "Invalid arg: Function reference expected" << std::endl;
+    auto exception_msg = "Invalid arg: Function reference expected";
+    js_exception->Throw(exception_msg);
+    LOG(logError) << exception_msg << std::endl;
     return false;
   }
 
@@ -182,8 +189,8 @@ std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch) {
   v8::Handle<v8::Message> message = try_catch->Message();
 
   if (message.IsEmpty()) {
-    // V8 didn't provide any extra information about this error; just
-    // print the exception.
+    // V8 didn't provide any extra information about this error;
+    // just print the exception.
     out.append(exception_string);
     out.append("\n");
   } else {

@@ -29,6 +29,7 @@ func (c *Consumer) ClearEventStats() {
 	c.plasmaDeleteCounter = 0
 	c.plasmaInsertCounter = 0
 	c.plasmaLookupCounter = 0
+	c.timersInPastCounter = 0
 	c.msgProcessedRWMutex.Unlock()
 }
 
@@ -55,6 +56,10 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 
 	if c.crontimerMessagesProcessed > 0 {
 		stats["CRON_TIMER_EVENTS"] = c.crontimerMessagesProcessed
+	}
+
+	if c.timersInPastCounter > 0 {
+		stats["TIMERS_IN_PAST"] = c.timersInPastCounter
 	}
 
 	c.msgProcessedRWMutex.RUnlock()

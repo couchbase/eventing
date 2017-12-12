@@ -96,38 +96,51 @@ stop_cluster
 rm -f $WORKSPACE/logs.tar.* $WORKSPACE/test.log $WORKSPACE/run.log /tmp/core-*
 > $WORKSPACE/test.log
 
-# Functional tests
-export phase=functional
+# Below tests need a cluster running
 start_cluster
+
 export GOTRACEBACK=crash
 ulimit -c 2097152
 sudo bash -c "echo /tmp/core-%e.$TS.%p > /proc/sys/kernel/core_pattern"
 perl -pi -e 's/num_files, 10/num_files, 50/' $WORKSPACE/install/etc/couchbase/static_config
-cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/producer
+cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/
 gover="`grep -A20 'SET(GOVERSION ' CMakeLists.txt  | grep GOVERSION | head -1 | sed 's/^.*\([0-9]\.[0-9].[0-9]\).*$/\1/'`"
 mkdir -p "$WORKSPACE/go"
 export GOROOT=$HOME/.cbdepscache/exploded/x86_64/go-$gover/go
 export GOPATH=$WORKSPACE/go:$WORKSPACE/godeps:$WORKSPACE/goproj
 export PATH=$PATH:$GOROOT/bin
-echo "</pre><h4>Functional tests</h4><pre>"
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
 go get -t ./... 1>/dev/null 2>&1
-GOMAXPROCS=16 go test -timeout 2h -tags handler -v 2>&1 | tee -a $WORKSPACE/test.log
-collect_logs
+
+# Functional tests
+export phase=functional
+if [[ "$MODE" == *"$phase"* ]]; then
+  echo "</pre><h4>${phase^} tests</h4><pre>"
+  cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
+  GOMAXPROCS=16 go test -timeout 2h -tags handler -v 2>&1 | tee -a $WORKSPACE/test.log
+  collect_logs
+fi
+
+# Rebalance tests
+export phase=rebalance
+if [[ "$MODE" == *"$phase"* ]]; then
+  echo "</pre><h4>${phase^} tests</h4><pre>"
+  cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
+  GOMAXPROCS=16 go test -timeout 2h -tags rebalance  -v 2>&1 | tee -a $WORKSPACE/test.log
+  collect_logs
+fi
+
+# Below tests start their own cluster, so stop ours
 stop_cluster
 
 # Integration tests
-echo "</pre><h4>Integration tests</h4><pre>"
 export phase=integration
-cd $WORKSPACE/testrunner
-(timeout 2h make test-eventing-sanity-tests 2>&1 | ts) | tee -a $WORKSPACE/test.log
-collect_logs
-
-# Test the base
-# echo "</pre><h4>Simple Test</h4><pre>"
-# export phase=sanity
-# cd $WORKSPACE/testrunner
-# (timeout 1h make simple-test 2>&1 | ts) | tee -a $WORKSPACE/test.log | egrep 'pass|fail|summary|ok$'
+if [[ "$MODE" == *"$phase"* ]]; then
+  echo "</pre><h4>${phase^} tests</h4><pre>"
+  cd $WORKSPACE/testrunner
+  (timeout 2h make test-eventing-sanity-tests 2>&1 | ts) | tee -a $WORKSPACE/test.log
+  collect_logs
+fi
 
 # Verify results
 > /tmp/fail.log

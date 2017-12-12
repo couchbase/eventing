@@ -7,6 +7,7 @@ const (
 	settingsURL        = "http://127.0.0.1:9000/_p/event/setSettings/?name="
 	deleteTempStoreURL = "http://127.0.0.1:9000/_p/event/deleteAppTempStore/?name="
 	deletePrimStoreURL = "http://127.0.0.1:9000/_p/event/deleteApplication/?name="
+	deployedAppsURL    = "http://127.0.0.1:9300/getDeployedApps"
 
 	processingStatURL = "http://127.0.0.1:9300/getEventProcessingStats?name="
 	executionStatsURL = "http://127.0.0.1:9300/getExecutionStats?name="
@@ -40,6 +41,8 @@ const (
 
 	rbacuser = "eventing"
 	rbacpass = "asdasd"
+
+	cbBuildEnvString = "CB_BUILD_DIR"
 )
 
 const (

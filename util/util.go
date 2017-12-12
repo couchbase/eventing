@@ -18,8 +18,6 @@ import (
 	cm "github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/shared"
-	"github.com/couchbase/eventing/util/shttp"
 	"github.com/couchbase/gomemcached"
 )
 
@@ -114,7 +112,7 @@ func SprintV8Counts(counts map[string]uint64) string {
 }
 
 func NsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
-	cinfo, err := ClusterInfoCache(auth, hostaddress)
+	cinfo, err := FetchNewClusterInfoCache(hostaddress)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +131,7 @@ func NsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
 }
 
 func KVNodesAddresses(auth, hostaddress string) ([]string, error) {
-	cinfo, err := ClusterInfoCache(auth, hostaddress)
+	cinfo, err := FetchNewClusterInfoCache(hostaddress)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +150,7 @@ func KVNodesAddresses(auth, hostaddress string) ([]string, error) {
 }
 
 func EventingNodesAddresses(auth, hostaddress string) ([]string, error) {
-	cinfo, err := ClusterInfoCache(auth, hostaddress)
+	cinfo, err := FetchNewClusterInfoCache(hostaddress)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +173,7 @@ func EventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 }
 
 func CurrentEventingNodeAddress(auth, hostaddress string) (string, error) {
-	cinfo, err := ClusterInfoCache(auth, hostaddress)
+	cinfo, err := FetchNewClusterInfoCache(hostaddress)
 	if err != nil {
 		return "", err
 	}
@@ -190,7 +188,7 @@ func CurrentEventingNodeAddress(auth, hostaddress string) (string, error) {
 }
 
 func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
-	cinfo, err := ClusterInfoCache(auth, hostaddress)
+	cinfo, err := FetchNewClusterInfoCache(hostaddress)
 	if err != nil {
 		return "", err
 	}
@@ -204,7 +202,7 @@ func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
 }
 
 func KVVbMap(auth, bucket, hostaddress string) (map[uint16]string, error) {
-	cinfo, err := ClusterInfoCache(auth, hostaddress)
+	cinfo, err := FetchNewClusterInfoCache(hostaddress)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +220,7 @@ func KVVbMap(auth, bucket, hostaddress string) (map[uint16]string, error) {
 
 		vbs, err := cinfo.GetVBuckets(kvAddr, bucket)
 		if err != nil {
-			logging.Errorf("UTIL Failed to get vbuckets for given kv shared.NodeId, err: %v", err)
+			logging.Errorf("UTIL Failed to get vbuckets for given kv util.NodeId, err: %v", err)
 			return nil, err
 		}
 
@@ -232,21 +230,6 @@ func KVVbMap(auth, bucket, hostaddress string) (map[uint16]string, error) {
 	}
 
 	return kvVbMap, nil
-}
-
-func ClusterInfoCache(auth, hostaddress string) (*shared.ClusterInfoCache, error) {
-	clusterURL := fmt.Sprintf("http://%s@%s", auth, hostaddress)
-
-	cinfo, err := shared.NewClusterInfoCache(clusterURL, "default")
-	if err != nil {
-		return nil, err
-	}
-
-	if err := cinfo.Fetch(); err != nil {
-		return nil, err
-	}
-
-	return cinfo, nil
 }
 
 // Write to the admin console
@@ -259,13 +242,13 @@ func Console(clusterAddr string, format string, v ...interface{}) error {
 	}
 	clusterAddr += "/_log"
 
-	_, err := shttp.PostForm(clusterAddr, values)
+	_, err := PostForm(clusterAddr, values)
 
 	return err
 }
 
 func GetProcessedPSec(urlSuffix, nodeAddr string) (string, error) {
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := NewClient(HTTPRequestTimeout)
 
 	url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
 
@@ -286,7 +269,7 @@ func GetProcessedPSec(urlSuffix, nodeAddr string) (string, error) {
 }
 
 func GetAggProcessedPSec(urlSuffix string, nodeAddrs []string) (string, error) {
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := NewClient(HTTPRequestTimeout)
 
 	var aggPStats cm.EventProcessingStats
 
@@ -330,7 +313,7 @@ func GetAggProcessedPSec(urlSuffix string, nodeAddrs []string) (string, error) {
 
 func StopDebugger(urlSuffix, nodeAddr, appName string) {
 	url := fmt.Sprintf("http://%s/stopDebugger/?name=%s", nodeAddr, appName)
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := NewClient(HTTPRequestTimeout)
 
 	_, err := netClient.Get(url)
 	if err != nil {
@@ -348,7 +331,7 @@ func GetDebuggerURL(urlSuffix, nodeAddr, appName string) string {
 
 	url := fmt.Sprintf("http://%s/%s/?name=%s", nodeAddr, urlSuffix, appName)
 
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := NewClient(HTTPRequestTimeout)
 
 	res, err := netClient.Get(url)
 	if err != nil {
@@ -368,7 +351,7 @@ func GetDebuggerURL(urlSuffix, nodeAddr, appName string) string {
 func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) (map[string]string, error) {
 	addrUUIDMap := make(map[string]string)
 
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := NewClient(HTTPRequestTimeout)
 
 	for _, nodeAddr := range nodeAddrs {
 		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
@@ -394,7 +377,7 @@ func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) (map[string]string, erro
 func GetEventProcessingStats(urlSuffix string, nodeAddrs []string) (map[string]int64, error) {
 	pStats := make(map[string]int64)
 
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := NewClient(HTTPRequestTimeout)
 
 	for _, nodeAddr := range nodeAddrs {
 		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
@@ -433,7 +416,7 @@ func GetEventProcessingStats(urlSuffix string, nodeAddrs []string) (map[string]i
 func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, error) {
 	aggProgress := &cm.RebalanceProgress{}
 
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := NewClient(HTTPRequestTimeout)
 
 	for _, nodeAddr := range nodeAddrs {
 		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
@@ -466,7 +449,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, e
 }
 
 func GetAggTimerHostPortAddrs(appName, eventingAdminPort, urlSuffix string) (map[string]map[string]string, error) {
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := NewClient(HTTPRequestTimeout)
 
 	url := fmt.Sprintf("http://127.0.0.1:%s/%s?name=%s", eventingAdminPort, urlSuffix, appName)
 
@@ -494,7 +477,7 @@ func GetAggTimerHostPortAddrs(appName, eventingAdminPort, urlSuffix string) (map
 func GetTimerHostPortAddrs(urlSuffix string, nodeAddrs []string) (string, error) {
 	hostPortAddrs := make(map[string]map[string]string)
 
-	netClient := shttp.NewClient(HTTPRequestTimeout)
+	netClient := NewClient(HTTPRequestTimeout)
 
 	for _, nodeAddr := range nodeAddrs {
 		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)

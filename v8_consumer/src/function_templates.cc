@@ -33,7 +33,7 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
     log_msg += " ";
   }
 
-  APP_LOG(logDebug) << log_msg << std::endl;
+  std::cerr << log_msg << std::endl;
 }
 
 // console.log for debugger - also logs to eventing.log
@@ -248,10 +248,10 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     while (res.rc != LCB_SUCCESS) {
       doc_timer_create_failure++;
-      LOG(logError)
-          << "Failed to while performing lookup for fulldoc and exptime"
-          << " doc key:" << doc_id << " rc: " << lcb_strerror(NULL, res.rc)
-          << std::endl;
+      LOG(logError) << "Failed to while performing lookup for fulldoc "
+                       "and exptime"
+                    << " doc key:" << doc_id
+                    << " rc: " << lcb_strerror(NULL, res.rc) << std::endl;
       std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
       sleep_duration *= 1.5;
       lcb_subdoc3(cb_instance, &res, &gcmd);
@@ -383,12 +383,10 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
       v8::String::Utf8Value utf8_key(key);
 
       if ((strcmp(*utf8_key, "method") == 0) && value->IsString()) {
-
         v8::String::Utf8Value method(value);
         http_method.assign(*method);
 
       } else if ((strcmp(*utf8_key, "auth") == 0) && value->IsString()) {
-
         v8::String::Utf8Value creds(value);
         auto creds_vec = split(*creds, ':');
         if (creds_vec.size() == 2) {
@@ -400,7 +398,6 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
       } else if (strcmp(*utf8_key, "data") == 0) {
         if (value->IsString()) {
-
           v8::String::Utf8Value payload(value);
           data.assign(*payload);
 
@@ -408,13 +405,11 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
               headers, "Content-Type: application/x-www-form-urlencoded");
 
         } else if (value->IsObject()) {
-
           data.assign(JSONStringify(args.GetIsolate(), value));
           headers =
               curl_slist_append(headers, "Content-Type: application/json");
         }
       } else if (strcmp(*utf8_key, "parameters") == 0) {
-
         auto paramaters = value->ToObject(context).ToLocalChecked();
         auto parameter_fields = paramaters.As<v8::Array>();
 
@@ -454,7 +449,6 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if ((strcmp(http_method.c_str(), "GET") == 0 ||
        strcmp(http_method.c_str(), "POST") == 0) &&
       curl) {
-
     // Initialize common bootstrap code
     struct CurlResult chunk;
     chunk.memory = static_cast<char *>(malloc(1));
@@ -479,11 +473,9 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "couchbase-eventing/1.0");
 
     if (strcmp(http_method.c_str(), "GET") == 0) {
-
       res = curl_easy_perform(curl);
 
     } else {
-
       if (mime_type.empty()) {
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
       } else {

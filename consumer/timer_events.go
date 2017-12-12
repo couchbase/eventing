@@ -380,6 +380,29 @@ func (c *Consumer) updateTimerStats(vb uint16) {
 		nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
 }
 
+func (c *Consumer) storeTimerEventLoop() {
+	for {
+		select {
+		case e, ok := <-c.plasmaStoreCh:
+			if !ok {
+				return
+			}
+
+		retryTimerStore:
+			err := c.storeTimerEvent(e.vb, e.seqNo, e.expiry, e.key, e.xMeta)
+			if err == errPlasmaHandleMissing {
+				logging.Tracef("CRTE[%s:%s:%s:%d] Key: %s vb: %v Plasma handle missing",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.key, e.vb)
+				time.Sleep(time.Millisecond * 5)
+				goto retryTimerStore
+			}
+
+		case <-c.plasmaStoreStopCh:
+			return
+		}
+	}
+}
+
 func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key string, xMeta *xattrMetadata) error {
 
 	// Steps:
@@ -418,6 +441,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 		if !ts.After(time.Now()) {
 			logging.Debugf("CRTE[%s:%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, ts)
+			c.timersInPastCounter++
 			entriesToPrune++
 			continue
 		}

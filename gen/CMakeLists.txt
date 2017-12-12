@@ -14,18 +14,39 @@ INCLUDE (FindCouchbaseFlatbuffers)
 
 FIND_PACKAGE(FLEX REQUIRED)
 
+SET(LDFLAGS)
+IF(APPLE)
+  SET (LDFLAGS "-s -extldflags '-Wl,-rpath,@executable_path/../lib'")
+ENDIF()
+IF(WIN32)
+   SET (LDFLAGS "${LDFLAGS} -linkmode internal")
+ENDIF()
+
+IF(NOT DEFINED GOVERSION)
+  MESSAGE(FATAL_ERROR "GOVERSION must be defined")
+ENDIF()
+
+SET(TAGS "jemalloc")
+IF(BUILD_ENTERPRISE)
+  SET(TAGS "${TAGS} enterprise")
+ENDIF()
+
 GoInstall(
   TARGET convertjs
   PACKAGE github.com/couchbase/eventing/gen/convertjs
   GOPATH "${PROJECT_SOURCE_DIR}/../../../.."
-  GOVERSION "1.8.3"
+  GOTAGS "${TAGS}"
+  LDFLAGS "${LDFLAGS}"
+  GOVERSION ${GOVERSION}
 )
 
 GoInstall(
   TARGET convertaudit
   PACKAGE github.com/couchbase/eventing/gen/convertaudit
   GOPATH "${PROJECT_SOURCE_DIR}/../../../.."
-  GOVERSION "1.8.3"
+  GOTAGS "${TAGS}"
+  LDFLAGS "${LDFLAGS}"
+  GOVERSION ${GOVERSION}
 )
 
 ADD_CUSTOM_COMMAND(

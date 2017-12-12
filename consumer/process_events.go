@@ -15,7 +15,6 @@ import (
 	"github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/shared"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 )
@@ -117,29 +116,27 @@ func (c *Consumer) processEvents() {
 								go c.sendDcpEvent(e, c.sendMsgToDebugger)
 							}
 						} else {
-						retryTimerStore1:
-							err := c.storeTimerEvent(e.VBucket, e.Seqno, e.Expiry, string(e.Key), &xMeta)
-							if err == errPlasmaHandleMissing {
-								logging.Tracef("CRDP[%s:%s:%s:%d] Key: %s vb: %v Plasma handle missing(retryTimerStore1)",
-									c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket)
-								time.Sleep(time.Millisecond * 5)
-								goto retryTimerStore1
+							pEntry := &plasmaStoreEntry{
+								vb:     e.VBucket,
+								seqNo:  e.Seqno,
+								expiry: e.Expiry,
+								key:    string(e.Key),
+								xMeta:  &xMeta,
 							}
-
+							c.plasmaStoreCh <- pEntry
 						}
 					} else {
 						logging.Debugf("CRPO[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v, xmeta: %#v",
 							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, xMeta)
 
-					retryTimerStore2:
-						err := c.storeTimerEvent(e.VBucket, e.Seqno, e.Expiry, string(e.Key), &xMeta)
-						if err == errPlasmaHandleMissing {
-							logging.Tracef("CRDP[%s:%s:%s:%d] Key: %s vb: %v Plasma handle missing(retryTimerStore2)",
-								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket)
-							time.Sleep(time.Millisecond * 5)
-							goto retryTimerStore2
+						pEntry := &plasmaStoreEntry{
+							vb:     e.VBucket,
+							seqNo:  e.Seqno,
+							expiry: e.Expiry,
+							key:    string(e.Key),
+							xMeta:  &xMeta,
 						}
-
+						c.plasmaStoreCh <- pEntry
 					}
 				}
 
@@ -172,11 +169,6 @@ func (c *Consumer) processEvents() {
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
 
 				if e.Status == mcd.SUCCESS {
-
-					c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", c.ConsumerName())
-					c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", c.HostPortAddr())
-					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
-					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
 
 					vbFlog := &vbFlogEntry{streamReqRetry: false, statusCode: e.Status}
 
@@ -212,6 +204,11 @@ func (c *Consumer) processEvents() {
 					}
 
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySRCallback, c, vbKey, &vbBlob, &entry)
+
+					c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", c.ConsumerName())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", c.HostPortAddr())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
+					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
 
 					c.vbFlogChan <- vbFlog
 					continue
@@ -355,7 +352,7 @@ func (c *Consumer) processEvents() {
 
 		case <-c.stopConsumerCh:
 
-			logging.Errorf("CRDP[%s:%s:%s:%d] Socket belonging to V8 consumer died",
+			logging.Infof("CRDP[%s:%s:%s:%d] Exiting processEvents routine",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
@@ -369,7 +366,7 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-	vbSeqnos, err := shared.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+	vbSeqnos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil && c.dcpStreamBoundary != common.DcpEverything {
 		logging.Errorf("CRDP[%s:%s:%s:%d] Failed to fetch vb seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 		return
@@ -551,13 +548,13 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySECallback, c, vbKey, &entry)
 
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateCheckpointCallback, c, vbKey, &vbBlob)
+
 	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
 	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
 	c.vbProcessingStats.updateVbStat(vbno, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateCheckpointCallback, c, vbKey, &vbBlob)
 }
 
 func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) error {

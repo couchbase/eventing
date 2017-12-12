@@ -20,8 +20,6 @@ std::string appName = "";
 LogLevel desiredLogLevel = LogLevel(0);
 std::string workerID = "";
 
-std::mutex log_mutex;
-
 void setAppName(std::string app) { appName = app; }
 
 void setLogLevel(LogLevel level) { desiredLogLevel = level; }

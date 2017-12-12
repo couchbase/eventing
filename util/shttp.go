@@ -1,4 +1,4 @@
-package shttp
+package util
 
 import (
 	"github.com/couchbase/cbauth"
