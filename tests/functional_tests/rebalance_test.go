@@ -929,7 +929,7 @@ func TestKVSwapRebalanceWithMultipleHandlers(t *testing.T) {
 
 func addAllNodesAtOnce(role string) {
 	addNodeFromRest("127.0.0.1:9001", role)
-	addNodeFromRest("127.0.0.1:9002", role)
+	// addNodeFromRest("127.0.0.1:9002", role)
 	// addNodeFromRest("127.0.0.1:9003", role)
 
 	rebalanceFromRest([]string{""})
@@ -943,10 +943,10 @@ func addAllNodesOneByOne(role string) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", role)
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
+	// addNodeFromRest("127.0.0.1:9002", role)
+	// rebalanceFromRest([]string{""})
+	// waitForRebalanceFinish()
+	// metaStateDump()
 
 	// addNodeFromRest("127.0.0.1:9003", role)
 	// rebalanceFromRest([]string{""})
