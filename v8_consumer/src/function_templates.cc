@@ -78,7 +78,7 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   std::string cb_func;
   if (isFuncReference(args, 0)) {
-    v8::Local<v8::Function> func_ref = args[0].As<v8::Function>();
+    auto func_ref = args[0].As<v8::Function>();
     v8::String::Utf8Value func_name(func_ref->GetName());
     cb_func.assign(std::string(*func_name));
   } else {
@@ -87,17 +87,22 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   std::string opaque(JSONStringify(args.GetIsolate(), args[1]));
 
-  v8::String::Utf8Value ts(args[2]);
-
-  std::string start_ts, timer_entry, value;
-  start_ts.assign(std::string(*ts));
-
-  if (atoi(start_ts.c_str()) <= 0) {
+  v8::Local<v8::Value> ts_v8_val(args[2]);
+  auto actual_ts = ts_v8_val->ToInteger()->Value();
+  if (actual_ts <= 0) {
     LOG(logError)
         << "Skipping cron timer callback setup, invalid start timestamp"
         << std::endl;
     return;
   }
+
+  std::string start_ts, timer_entry, value;
+
+  // Add a fuzz of (0, 30) to the actual timestamp
+  auto fuzz_ts = actual_ts + rand() % 30;
+  start_ts.assign(std::to_string(fuzz_ts));
+  LOG(logInfo) << "Actual timestamp: " << actual_ts
+               << "\tFuzz timestamp: " << fuzz_ts << std::endl;
 
   timer_entry.assign(appName);
   timer_entry.append("::");
@@ -108,12 +113,15 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   // Store blob in KV store, blob structure:
   // {
-  //    "callback_func": CallbackFunc,
+  //    "callback_func": "CallbackFunc",
+  //	"actual_timestamp": "app_name::yyyy-mm-ddThh:mm:ddZ"
   //    "payload": opaque
   // }
 
   value.assign("{\"callback_func\": \"");
   value.append(cb_func);
+  value.append("\", \"actual_timestamp\": \"");
+  value.append(ConvertToISO8601(std::to_string(fuzz_ts)));
   value.append("\", \"payload\": ");
   value.append(opaque);
   value.append("}");

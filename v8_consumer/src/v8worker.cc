@@ -182,8 +182,9 @@ void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
 V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    server_settings_t *server_settings)
     : settings(server_settings), platform_(platform) {
-  enableRecursiveMutation(h_config->enable_recursive_mutation);
+  srand(static_cast<unsigned>(time(nullptr)));
 
+  enableRecursiveMutation(h_config->enable_recursive_mutation);
   histogram = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
 
   for (int i = 0; i < NUM_VBUCKETS; i++) {

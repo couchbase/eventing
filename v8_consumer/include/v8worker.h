@@ -17,8 +17,10 @@
 #include <cstdio>
 #include <list>
 #include <map>
+#include <stdlib.h>
 #include <string>
 #include <thread>
+#include <time.h>
 
 #include <libplatform/libplatform.h>
 #include <v8-debug.h>
