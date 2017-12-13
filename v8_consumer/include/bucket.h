@@ -36,6 +36,9 @@ public:
 
 private:
   bool InstallMaps();
+  static void HandleBucketOpFailure(v8::Isolate *isolate,
+                                    lcb_t bucket_lcb_obj_ptr,
+                                    lcb_error_t error);
   v8::Local<v8::ObjectTemplate> MakeBucketMapTemplate();
 
   // Delegate is used to multiplex alphanumeric and numeric accesses on bucket

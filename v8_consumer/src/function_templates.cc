@@ -70,7 +70,7 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::HandleScope handle_scope(isolate);
 
   if (args.Length() != 3) {
-    LOG(logError) << "Cron timer needs 3 args: <callback_func> <payload> "
+    LOG(logError) << "Cron timer: Need 3 args: <callback_func> <payload> "
                      "<timeWhenToKickOff>"
                   << std::endl;
     return;
@@ -90,9 +90,9 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Local<v8::Value> ts_v8_val(args[2]);
   auto actual_ts = ts_v8_val->ToInteger()->Value();
   if (actual_ts <= 0) {
-    LOG(logError)
-        << "Skipping cron timer callback setup, invalid start timestamp"
-        << std::endl;
+    LOG(logError) << "Cron timer: Skipping cron timer callback setup, invalid "
+                     "start timestamp"
+                  << std::endl;
     return;
   }
 
@@ -104,15 +104,15 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto fuzz_ts = actual_ts + rand() % fuzz_offset;
 
   start_ts.assign(std::to_string(fuzz_ts));
-  LOG(logTrace) << "Actual timestamp: " << actual_ts
+  LOG(logTrace) << "Cron timer: Actual timestamp: " << actual_ts
                 << " Fuzz timestamp: " << fuzz_ts << std::endl;
 
   timer_entry.assign(appName);
   timer_entry.append("::");
   timer_entry.append(ConvertToISO8601(start_ts));
   timer_entry.append("Z");
-  LOG(logTrace) << "Request to register cron timer, callback_func:" << cb_func
-                << " start_ts : " << timer_entry << std::endl;
+  LOG(logTrace) << "Cron timer: Request to register cron timer, callback_func:"
+                << cb_func << " start_ts : " << timer_entry << std::endl;
 
   // Store blob in KV store, blob structure:
   // {
@@ -150,8 +150,17 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     td_cmd.nspecs = 1;
 
     LCB_SDSPEC_SET_PATH(&ctd_spec, counter.c_str(), counter.length());
-    lcb_subdoc3(meta_cb_instance, &cres, &td_cmd);
-    lcb_wait(meta_cb_instance);
+    auto err = lcb_subdoc3(meta_cb_instance, &cres, &td_cmd);
+    if (err != LCB_SUCCESS) {
+      LOG(logError) << "CronTimer: Unable to set subdoc op to get counter"
+                    << std::endl;
+    }
+
+    err = lcb_wait(meta_cb_instance);
+    if (err != LCB_SUCCESS) {
+      LOG(logError) << "CronTimer: Unable to schedule subdoc op to get counter"
+                    << std::endl;
+    }
 
     if (cres.rc == LCB_SUCCESS) {
       int entry_count = std::stoi(cres.value);
@@ -198,15 +207,25 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   mcmd.nspecs = specs.size();
   mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
 
-  lcb_subdoc3(meta_cb_instance, &res, &mcmd);
-  lcb_wait(meta_cb_instance);
+  auto err = lcb_subdoc3(meta_cb_instance, &res, &mcmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "CronTimer: Unable to set subdoc op to store timer"
+                  << std::endl;
+  }
+
+  err = lcb_wait(meta_cb_instance);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "CronTimer: Unable to schedule subdoc op to store timer"
+                  << std::endl;
+  }
 
   auto sleep_duration = LCB_OP_RETRY_INTERVAL;
   while (res.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "Retrying... Cron timer create failure for doc:"
+    LOG(logTrace) << "Cron timer: (Retry) Create failure for doc:"
                   << timer_entry << " payload: " << R(opaque)
-                  << " lcb rc:" << lcb_strerror(nullptr, res.rc)
+                  << " lcb rc:" << lcb_strerror(meta_cb_instance, res.rc)
                   << " sleep_duration: " << sleep_duration * 1000 << std::endl;
+
     std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
     sleep_duration *= 1.5;
 
@@ -214,8 +233,19 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       sleep_duration = 5000;
     }
 
-    lcb_subdoc3(meta_cb_instance, &res, &mcmd);
-    lcb_wait(meta_cb_instance);
+    err = lcb_subdoc3(meta_cb_instance, &res, &mcmd);
+    if (err != LCB_SUCCESS) {
+      LOG(logError)
+          << "CronTimer: (Retry) Unable to set subdoc op to store timer"
+          << std::endl;
+    }
+
+    err = lcb_wait(meta_cb_instance);
+    if (err != LCB_SUCCESS) {
+      LOG(logError)
+          << "CronTimer: (Retry) Unable to schedule subdoc op to store timer"
+          << std::endl;
+    }
   }
 }
 
@@ -242,8 +272,11 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   // If the doc not supposed to expire, skip
   // setting up timer callback for it
   if (atoi(start_ts.c_str()) == 0) {
-    LOG(logError) << "Skipping timer callback setup for doc_id:" << R(doc_id)
-                  << ", won't expire" << std::endl;
+    LOG(logError) << "DocTimer: Skipping timer callback setup for doc_id:"
+                  << R(doc_id) << ", won't expire" << std::endl;
+    ++doc_timer_create_failure;
+    auto js_exception = UnwrapData(isolate)->js_exception;
+    js_exception->Throw("Timer won't expire");
     return;
   }
 
@@ -270,9 +303,9 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_entry += cb_func;
   timer_entry += "\"";
   timer_entry.insert(0, 1, '"');
-  LOG(logTrace) << "Request to register doc timer, callback_func:" << cb_func
-                << " doc_id:" << R(doc_id) << " start_ts:" << timer_entry
-                << std::endl;
+  LOG(logTrace) << "DocTimer: Request to register doc timer, callback_func:"
+                << cb_func << " doc_id:" << R(doc_id)
+                << " start_ts:" << timer_entry << std::endl;
 
   while (true) {
     auto cb_instance = UnwrapData(isolate)->cb_instance;
@@ -311,21 +344,31 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     gcmd.specs = gspecs.data();
     gcmd.nspecs = gspecs.size();
-    lcb_subdoc3(cb_instance, &res, &gcmd);
-    lcb_wait(cb_instance);
+    auto err = lcb_subdoc3(cb_instance, &res, &gcmd);
+    if (err != LCB_SUCCESS) {
+      LOG(logError) << "DocTimer: Unable to set subdoc op to get timer doc"
+                    << std::endl;
+    }
+
+    err = lcb_wait(cb_instance);
+    if (err != LCB_SUCCESS) {
+      LOG(logError) << "DocTimer: Unable to schedule subdoc op to get timer doc"
+                    << std::endl;
+    }
 
     auto sleep_duration = LCB_OP_RETRY_INTERVAL;
     if (res.rc == LCB_KEY_ENOENT) {
-      doc_timer_create_failure++;
+      HandleDocTimerFailure(isolate, cb_instance, res.rc);
       return;
     }
 
     while (res.rc != LCB_SUCCESS) {
-      LOG(logError)
-          << "Retrying... Failed to while performing lookup for fulldoc "
-             "and exptime"
-          << " doc key:" << R(doc_id)
-          << " rc: " << lcb_strerror(nullptr, res.rc) << std::endl;
+      LOG(logError) << "DocTimer: (Retry) Failed while performing lookup for "
+                       "fulldoc and exptime"
+                    << " doc key:" << R(doc_id)
+                    << " rc: " << lcb_strerror(cb_instance, res.rc)
+                    << std::endl;
+
       std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
       sleep_duration *= 1.5;
 
@@ -333,14 +376,25 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
         sleep_duration = 5000;
       }
 
-      lcb_subdoc3(cb_instance, &res, &gcmd);
-      lcb_wait(cb_instance);
+      err = lcb_subdoc3(cb_instance, &res, &gcmd);
+      if (err != LCB_SUCCESS) {
+        LOG(logError)
+            << "DocTimer: (Retry) Unable to set subdoc op to get timer doc"
+            << std::endl;
+      }
+
+      err = lcb_wait(cb_instance);
+      if (err != LCB_SUCCESS) {
+        LOG(logError)
+            << "DocTimer: (Retry) Unable to schedule subdoc op to get timer doc"
+            << std::endl;
+      }
     }
 
     uint32_t d = crc32c(0, res.value.c_str(), res.value.length());
     std::string digest = std::to_string(d);
 
-    LOG(logTrace) << "CreateDocTimer cas: " << res.cas
+    LOG(logTrace) << "DocTimer: CreateDocTimer cas: " << res.cas
                   << " exptime: " << res.exptime << " digest: " << digest
                   << std::endl;
 
@@ -381,27 +435,40 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     mcmd.specs = specs.data();
     mcmd.nspecs = specs.size();
 
-    lcb_subdoc3(cb_instance, &res, &mcmd);
-    lcb_wait(cb_instance);
+    err = lcb_subdoc3(cb_instance, &res, &mcmd);
+    if (err != LCB_SUCCESS) {
+      LOG(logError) << "DocTimer: Unable to set subdoc op to create timer"
+                    << std::endl;
+    }
+
+    err = lcb_wait(cb_instance);
+    if (err != LCB_SUCCESS) {
+      LOG(logError) << "DocTimer: Unable to schedule subdoc op to create timer"
+                    << std::endl;
+    }
+
     if (res.rc == LCB_KEY_ENOENT) {
-      doc_timer_create_failure++;
+      HandleDocTimerFailure(isolate, cb_instance, res.rc);
       return;
     }
 
     if (res.rc != LCB_SUCCESS) {
-      doc_timer_create_failure++;
-      LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
-                    << R(doc_id) << " return code:" << res.rc
-                    << " msg:" << lcb_strerror(nullptr, res.rc) << std::endl;
+      HandleDocTimerFailure(isolate, cb_instance, res.rc);
+      LOG(logError)
+          << "DocTimer: Failed to update timer related xattr fields for doc_id:"
+          << R(doc_id) << " return code:" << res.rc
+          << " msg:" << lcb_strerror(cb_instance, res.rc) << std::endl;
       return;
     }
 
     sleep_duration = LCB_OP_RETRY_INTERVAL;
     while (res.rc != LCB_SUCCESS && res.rc != LCB_KEY_EEXISTS) {
-      LOG(logError) << "Retrying... Failed to update timer related xattr "
+      LOG(logError) << "DocTimer: (Retry) Failed to update timer related xattr "
                        "fields for doc_id:"
                     << R(doc_id) << " return code:" << res.rc
-                    << " msg:" << lcb_strerror(nullptr, res.rc) << std::endl;
+                    << " msg:" << lcb_strerror(cb_instance, res.rc)
+                    << std::endl;
+
       std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
       sleep_duration *= 1.5;
 
@@ -409,8 +476,19 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
         sleep_duration = 5000;
       }
 
-      lcb_subdoc3(cb_instance, &res, &mcmd);
-      lcb_wait(cb_instance);
+      err = lcb_subdoc3(cb_instance, &res, &mcmd);
+      if (err != LCB_SUCCESS) {
+        LOG(logError)
+            << "DocTimer: (Retry) Unable to set subdoc op to create timer"
+            << std::endl;
+      }
+
+      err = lcb_wait(cb_instance);
+      if (err != LCB_SUCCESS) {
+        LOG(logError)
+            << "DocTimer: (Retry) Unable to schedule subdoc op to create timer"
+            << std::endl;
+      }
     }
 
     if (res.rc == LCB_SUCCESS) {
@@ -418,8 +496,9 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     }
 
     if (res.rc == LCB_KEY_EEXISTS) {
-      LOG(logTrace) << "CAS Mismatch for " << R(doc_id) << ". Retrying"
-                    << std::endl;
+      LOG(logTrace) << "DocTimer: CAS Mismatch for " << R(doc_id)
+                    << ". Retrying" << std::endl;
+
       std::this_thread::sleep_for(
           std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
     }
@@ -585,4 +664,15 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
     args.GetReturnValue().Set(v8::JSON::Parse(
         v8::String::NewFromUtf8(args.GetIsolate(), chunk.memory)));
   }
+}
+
+void HandleDocTimerFailure(v8::Isolate *isolate, lcb_t instance,
+                           lcb_error_t error) {
+  auto isolate_data = UnwrapData(isolate);
+  auto w = isolate_data->v8worker;
+  w->AddLcbException(error);
+  ++doc_timer_create_failure;
+
+  auto js_exception = isolate_data->js_exception;
+  js_exception->Throw(instance, error);
 }
