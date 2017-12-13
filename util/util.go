@@ -220,8 +220,8 @@ func KVVbMap(auth, bucket, hostaddress string) (map[uint16]string, error) {
 
 		vbs, err := cinfo.GetVBuckets(kvAddr, bucket)
 		if err != nil {
-			logging.Errorf("UTIL Failed to get vbuckets for given kv util.NodeId, err: %v", err)
-			return nil, err
+			logging.Errorf("UTIL Failed to get vbuckets for given kv: %v, err: %v", kvAddr, err)
+			continue
 		}
 
 		for i := 0; i < len(vbs); i++ {
@@ -424,21 +424,21 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, e
 		res, err := netClient.Get(url)
 		if err != nil {
 			logging.Errorf("UTIL Failed to gather task status from url: %s, err: %v", url, err)
-			return nil, err
+			continue
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
-			return nil, err
+			continue
 		}
 
 		var progress cm.RebalanceProgress
 		err = json.Unmarshal(buf, &progress)
 		if err != nil {
 			logging.Errorf("UTIL Failed to unmarshal progress from url: %s, err: %v", url, err)
-			return nil, err
+			continue
 		}
 
 		aggProgress.VbsRemainingToShuffle += progress.VbsRemainingToShuffle

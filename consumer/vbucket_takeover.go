@@ -104,6 +104,9 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 
 					c.vbTimerProcessingWorkerAssign(false)
 
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+					c.updateCheckpoint(vbKey, vb, &vbBlob)
+
 					// Check if another node has taken up ownership of vbucket for which
 					// ownership was given up above. Metadata is updated about ownership give up only after
 					// DCP_STREAMMEND is received from DCP producer
