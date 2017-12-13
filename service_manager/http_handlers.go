@@ -1297,7 +1297,11 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) []
 	return appList
 }
 
-func (m *ServiceMgr) rootHandler(w http.ResponseWriter, r *http.Request) {
+func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
+	// settings := regexp.MustCompile("^/api/v1/settings/?$")
+}
+
+func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -1306,12 +1310,10 @@ func (m *ServiceMgr) rootHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	functions := regexp.MustCompile("^/api/v1/functions/?$")
-	settings := regexp.MustCompile("^/api/v1/settings/?$")
 	functionsName := regexp.MustCompile("^/api/v1/functions/(.+[^/])/?$") // Match is agnostic of trailing '/'
 	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.+[^/])/settings/?$")
 
-	if match := settings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
-	} else if match := functionsNameSettings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+	if match := functionsNameSettings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		appName := match[1]
 		switch r.Method {
 		case "POST":
