@@ -63,6 +63,7 @@ type statusCodes struct {
 	errAppNameMismatch   statusBase
 	errSrcBucketMissing  statusBase
 	errMetaBucketMissing statusBase
+	errNoEventingNodes   statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
@@ -99,6 +100,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errAppNameMismatch:   statusBase{"ERR_APPNAME_MISMATCH", 29},
 		errSrcBucketMissing:  statusBase{"ERR_SRC_BUCKET_MISSING", 30},
 		errMetaBucketMissing: statusBase{"ERR_METADATA_BUCKET_MISSING", 31},
+		errNoEventingNodes:   statusBase{"ERR_NO_EVENTING_NODES_FOUND", 32},
 	}
 
 	errors := []errorPayload{
@@ -259,6 +261,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errMetaBucketMissing.Name,
 			Code:        m.statusCodes.errMetaBucketMissing.Code,
 			Description: "Metadata bucket missing",
+		},
+		{
+			Name:        m.statusCodes.errNoEventingNodes.Name,
+			Code:        m.statusCodes.errNoEventingNodes.Code,
+			Description: "No eventing reported from cluster manager",
 		},
 	}
 

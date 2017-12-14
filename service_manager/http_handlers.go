@@ -6,14 +6,12 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"runtime/trace"
-	"time"
-
 	"path"
+	"regexp"
+	"runtime/trace"
 	"strconv"
 	"strings"
-
-	"regexp"
+	"time"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/audit"
@@ -432,16 +430,60 @@ func (m *ServiceMgr) getAggTimerHostPortAddrs(w http.ResponseWriter, r *http.Req
 	fmt.Fprintf(w, "%v", addrs)
 }
 
+var getDeployedAppsCallback = func(args ...interface{}) error {
+	m := args[0].(*ServiceMgr)
+	aggDeployedApps := args[1].(*map[string]map[string]string)
+
+	var err error
+	*aggDeployedApps, err = util.GetDeployedApps("/getLocallyDeployedApps", m.eventingNodeAddrs)
+	if err != nil {
+		logging.Errorf("Failed to get deployed apps, err: %v", err)
+		return err
+	}
+
+	logging.Infof("Cluster wide deployed app status: %v", aggDeployedApps)
+
+	return nil
+}
+
 // Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
 func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
 	}
 
-	logging.Infof("Listing deployed applications")
 	audit.Log(auditevent.ListDeployed, r, nil)
 
-	deployedApps := m.superSup.GetDeployedApps()
+	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+
+	aggDeployedApps := make(map[string]map[string]string)
+	util.Retry(util.NewFixedBackoff(time.Second), getDeployedAppsCallback, m, &aggDeployedApps)
+
+	appDeployedNodesCounter := make(map[string]int)
+
+	for _, apps := range aggDeployedApps {
+		for app := range apps {
+			if _, ok := appDeployedNodesCounter[app]; !ok {
+				appDeployedNodesCounter[app] = 0
+			}
+
+			appDeployedNodesCounter[app]++
+		}
+	}
+
+	numEventingNodes := len(m.eventingNodeAddrs)
+	if numEventingNodes <= 0 {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errNoEventingNodes.Code))
+		fmt.Fprintf(w, "")
+		return
+	}
+
+	deployedApps := make(map[string]string)
+	for app, numNodesDeployed := range appDeployedNodesCounter {
+		if numNodesDeployed == numEventingNodes {
+			deployedApps[app] = ""
+		}
+	}
 
 	buf, err := json.Marshal(deployedApps)
 	if err != nil {
@@ -452,6 +494,24 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", string(buf))
+}
+
+func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	logging.Infof("Listing locally deployed applications")
+	deployedApps := m.superSup.GetDeployedApps()
+
+	buf, err := json.Marshal(deployedApps)
+	if err != nil {
+		logging.Errorf("Failed to marshal list of deployed apps, err: %v", err)
+		fmt.Fprintf(w, "")
+		return
+	}
+
 	fmt.Fprintf(w, "%s", string(buf))
 }
 

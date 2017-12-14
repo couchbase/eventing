@@ -514,6 +514,41 @@ func GetTimerHostPortAddrs(urlSuffix string, nodeAddrs []string) (string, error)
 	return string(buf), nil
 }
 
+func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {
+	deployedApps := make(map[string]map[string]string)
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	for _, nodeAddr := range nodeAddrs {
+		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(url)
+		if err != nil {
+			logging.Errorf("UTIL Failed to get deployed apps from url: %s, err: %v", url, err)
+			return nil, err
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+			return nil, err
+		}
+
+		var locallyDeployedApps map[string]string
+		err = json.Unmarshal(buf, &locallyDeployedApps)
+		if err != nil {
+			logging.Errorf("UTIL Failed to unmarshal deployed apps from url: %s, err: %v", url, err)
+			return nil, err
+		}
+
+		deployedApps[nodeAddr] = make(map[string]string)
+		deployedApps[nodeAddr] = locallyDeployedApps
+	}
+
+	return deployedApps, nil
+}
+
 func ListChildren(path string) []string {
 	entries, err := metakv.ListAllChildren(path)
 	if err != nil {
