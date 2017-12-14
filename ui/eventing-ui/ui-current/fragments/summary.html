@@ -30,53 +30,53 @@
           <span class="cbui-table-cell cbui-tablerow-title">{{appname}}</span>
           <span class="cbui-table-cell row flex-left">
             <div class="fix-width-1 margin-right-3">
-              <span class="icon fa-fw" ng-class="app.getDeploymentStatus() == 'deployed' ? 'fa-check green-3':'fa-warning orange-1'"></span>
+              <span class="icon fa-fw"
+                    ng-class="app.getDeploymentStatus() == 'deployed' ? 'fa-check green-3':'fa-warning orange-1'"></span>
               {{app.getDeploymentStatus()}}
             </div>
             <span>
-            <span class="icon fa-fw" ng-class="app.getProcessingStatus() == 'running' ? 'fa-check green-3':'fa-warning orange-1'"></span>
+            <span class="icon fa-fw"
+                  ng-class="app.getProcessingStatus() == 'running' ? 'fa-check green-3':'fa-warning orange-1'"></span>
             {{app.getProcessingStatus()}}
             </span>
           </span>
           <span class="cbui-table-cell text-right">
-          <a
-            ui-sref="app.admin.eventing.settings({appName:app.appname})"
-            ng-click="$event.stopPropagation();">
+          <a ng-click="$event.stopPropagation();summaryCtrl.openSettings(appname);">
           Settings
           </a>
           </span>
         </div>
         <div class="cbui-tablerow-expanded"
-          ng-if="app.actionsVisible">
+             ng-if="app.actionsVisible">
           <p class="width-6">{{app.settings.description}}</p>
           <div class="width-12 text-right">
             <button
               class="outline"
               ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
               ng-disabled="app.settings.processing_status || app.settings.deployment_status">
-            Delete
+              Delete
             </button>
             <button
               class="outline"
               ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname)">
-            Export
+              Export
             </button>
             <button
               class="outline"
               ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
-            {{app.getDeploymentStatus(true)}}
+              {{app.getDeploymentStatus(true)}}
             </button>
             <button
               class="outline"
               ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)"
               ng-disabled="!app.settings.deployment_status">
-            {{app.getProcessingStatus(true)}}
+              {{app.getProcessingStatus(true)}}
             </button>
             <button
               ng-click="$event.stopPropagation();"
               ui-sref="app.admin.eventing.handler({appName:app.appname})"
               ng-disabled="summaryCtrl.disableEditButton">
-            Edit JavaScript
+              Edit JavaScript
             </button>
           </div>
         </div>
