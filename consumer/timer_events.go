@@ -116,7 +116,7 @@ func (r *timerProcessingWorker) getVbsOwned() []uint16 {
 	return r.vbsAssigned
 }
 
-func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string, bootstrap bool) {
+func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 	vbsOwned := r.getVbsOwned()
 
 	for _, vb := range vbsOwned {
@@ -127,14 +127,22 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string, bootst
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, r.c, vbKey, &vbBlob, &cas, false)
 
-		if vbBlob.CurrentProcessedDocIDTimer == "" && bootstrap {
-			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", cTimer)
+		if vbBlob.CurrentProcessedDocIDTimer == "" {
+			if cTimer == "" {
+				r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", r.c.docCurrTimer)
+			} else {
+				r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", cTimer)
+			}
 		} else {
 			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer)
 		}
 
-		if vbBlob.NextDocIDTimerToProcess == "" && bootstrap {
-			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", nTimer)
+		if vbBlob.NextDocIDTimerToProcess == "" {
+			if nTimer == "" {
+				r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", r.c.docNextTimer)
+			} else {
+				r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", nTimer)
+			}
 		} else {
 			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess)
 		}
@@ -257,7 +265,7 @@ func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateS
 	}
 }
 
-func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string, bootstrap bool) {
+func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string) {
 	c.nonDocTimerProcessingTicker = time.NewTicker(c.timerProcessingTickInterval)
 
 	vbsOwned := c.getVbsOwned()
@@ -270,14 +278,22 @@ func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string, bootstrap boo
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-		if vbBlob.CurrentProcessedDocIDTimer == "" && bootstrap {
-			c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", cTimer)
+		if vbBlob.CurrentProcessedNonDocTimer == "" {
+			if cTimer == "" {
+				c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", c.cronCurrTimer)
+			} else {
+				c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", cTimer)
+			}
 		} else {
 			c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", vbBlob.CurrentProcessedNonDocTimer)
 		}
 
-		if vbBlob.NextDocIDTimerToProcess == "" && bootstrap {
-			c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", nTimer)
+		if vbBlob.NextNonDocTimerToProcess == "" {
+			if nTimer == "" {
+				c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", c.cronNextTimer)
+			} else {
+				c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", nTimer)
+			}
 		} else {
 			c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", vbBlob.NextNonDocTimerToProcess)
 		}

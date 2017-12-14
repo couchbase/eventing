@@ -235,6 +235,11 @@ type Consumer struct {
 	// N1QL Transpiler related nested iterator config params
 	lcbInstCapacity int
 
+	cronCurrTimer string
+	cronNextTimer string
+	docCurrTimer  string
+	docNextTimer  string
+
 	docTimerEntryCh    chan *byTimerEntry
 	nonDocTimerEntryCh chan timerMsg
 	// Plasma DGM store handle to store timer entries at per vbucket level
