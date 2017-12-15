@@ -25,7 +25,7 @@ const (
 	EventingAdminService = "eventingAdminPort"
 	DataService          = "kv"
 	MgmtService          = "mgmt"
-	HTTPRequestTimeout   = time.Duration(1000) * time.Millisecond
+	HTTPRequestTimeout   = time.Duration(5000) * time.Millisecond
 )
 
 type Uint16Slice []uint16
