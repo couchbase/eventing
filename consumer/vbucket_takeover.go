@@ -104,6 +104,9 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 
 					c.vbTimerProcessingWorkerAssign(false)
 
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+					c.updateCheckpoint(vbKey, vb, &vbBlob)
+
 					// Check if another node has taken up ownership of vbucket for which
 					// ownership was given up above. Metadata is updated about ownership give up only after
 					// DCP_STREAMMEND is received from DCP producer
@@ -193,7 +196,7 @@ retryStreamUpdate:
 				logging.Tracef("CRVT[%s:%s:takeover_r_%d:%s:%d] vb: %v triggering vbTakeover",
 					c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), vb)
 
-				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), vbTakeoverCallback, c, vb)
+				util.Retry(util.NewFixedBackoff(vbTakeoverRetryInterval), vbTakeoverCallback, c, vb)
 				c.vbTimerProcessingWorkerAssign(false)
 			}
 
@@ -381,19 +384,19 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
 	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
+	vbBlob.NodeUUID = ""
 	vbBlob.PreviousAssignedWorker = c.ConsumerName()
 	vbBlob.PreviousEventingDir = c.eventingDir
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
 	vbBlob.PreviousVBOwner = c.HostPortAddr()
-	vbBlob.NodeUUID = ""
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateCheckpointCallback, c, vbKey, vbBlob)
 
+	c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
 	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
 	c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vb, "node_uuid", vbBlob.NodeUUID)
-	c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
 
 	logging.Tracef("CRDP[%s:%s:%s:%d] vb: %v Stopped dcp stream, updated checkpoint blob in bucket",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)

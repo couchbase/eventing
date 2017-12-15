@@ -485,9 +485,14 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 // NotifyPrepareTopologyChange notifies each producer instance running on current eventing nodes
 // about keepNodes supplied by ns_server
 func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
+	if len(keepNodes) == 0 {
+		logging.Errorf("SSUP[%d] NotifyPrepareTopologyChange 0 eventing nodes supplied as keepNodes", len(s.runningProducers))
+	} else {
+		s.keepNodes = keepNodes
+	}
+
 	for _, producer := range s.runningProducers {
 		logging.Infof("SSUP[%d] NotifyPrepareTopologyChange to producer %p, keepNodes => %v", len(s.runningProducers), producer, keepNodes)
-		s.keepNodes = keepNodes
 		producer.NotifyPrepareTopologyChange(s.keepNodes)
 	}
 }

@@ -74,12 +74,12 @@ func (c *Consumer) controlRoutine() {
 
 			c.timerRWMutex.RLock()
 			for _, r := range c.timerProcessingRunningWorkers {
-				go r.processTimerEvents("", "", false)
+				go r.processTimerEvents("", "")
 			}
 			c.timerRWMutex.RUnlock()
 
 			c.nonDocTimerStopCh <- struct{}{}
-			go c.processNonDocTimerEvents("", "", false)
+			go c.processNonDocTimerEvents("", "")
 
 			if val, ok := settings["deadline_timeout"]; ok {
 				c.socketTimeout = time.Duration(val.(float64)) * time.Second

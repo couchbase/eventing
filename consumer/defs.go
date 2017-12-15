@@ -101,7 +101,9 @@ const (
 
 	retryVbsStateUpdateInterval = time.Duration(5000) * time.Millisecond
 
-	retryVbMetaStateCheckInterval = time.Duration(1000) * time.Millisecond
+	retryVbMetaStateCheckInterval = time.Duration(100) * time.Millisecond
+
+	vbTakeoverRetryInterval = time.Duration(100) * time.Millisecond
 
 	retryInterval = time.Duration(1000) * time.Millisecond
 
@@ -232,6 +234,11 @@ type Consumer struct {
 
 	// N1QL Transpiler related nested iterator config params
 	lcbInstCapacity int
+
+	cronCurrTimer string
+	cronNextTimer string
+	docCurrTimer  string
+	docNextTimer  string
 
 	docTimerEntryCh    chan *byTimerEntry
 	nonDocTimerEntryCh chan timerMsg

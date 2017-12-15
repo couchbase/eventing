@@ -102,6 +102,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getExecutionStats", m.getExecutionStats)
 	http.HandleFunc("/getFailureStats", m.getFailureStats)
 	http.HandleFunc("/getLatencyStats", m.getLatencyStats)
+	http.HandleFunc("/getLocallyDeployedApps", m.getLocallyDeployedApps)
 	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
 	http.HandleFunc("/getSeqsProcessed", m.getSeqsProcessed)
 	http.HandleFunc("/getTimerHostPortAddrs", m.getTimerHostPortAddrs)
@@ -117,7 +118,9 @@ func (m *ServiceMgr) initService() {
 
 	// Public REST APIs
 	http.HandleFunc("/api/v1/stats", m.statsHandler)
-	http.HandleFunc("/", m.rootHandler)
+	http.HandleFunc("/api/v1/config", m.configHandler)
+	http.HandleFunc("/api/v1/functions", m.functionsHandler)
+	http.HandleFunc("/api/v1/functions/", m.functionsHandler)
 
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)

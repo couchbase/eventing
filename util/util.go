@@ -25,7 +25,7 @@ const (
 	EventingAdminService = "eventingAdminPort"
 	DataService          = "kv"
 	MgmtService          = "mgmt"
-	HTTPRequestTimeout   = time.Duration(1000) * time.Millisecond
+	HTTPRequestTimeout   = time.Duration(5000) * time.Millisecond
 )
 
 type Uint16Slice []uint16
@@ -220,8 +220,8 @@ func KVVbMap(auth, bucket, hostaddress string) (map[uint16]string, error) {
 
 		vbs, err := cinfo.GetVBuckets(kvAddr, bucket)
 		if err != nil {
-			logging.Errorf("UTIL Failed to get vbuckets for given kv util.NodeId, err: %v", err)
-			return nil, err
+			logging.Errorf("UTIL Failed to get vbuckets for given kv: %v, err: %v", kvAddr, err)
+			continue
 		}
 
 		for i := 0; i < len(vbs); i++ {
@@ -424,21 +424,21 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, e
 		res, err := netClient.Get(url)
 		if err != nil {
 			logging.Errorf("UTIL Failed to gather task status from url: %s, err: %v", url, err)
-			return nil, err
+			continue
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
-			return nil, err
+			continue
 		}
 
 		var progress cm.RebalanceProgress
 		err = json.Unmarshal(buf, &progress)
 		if err != nil {
 			logging.Errorf("UTIL Failed to unmarshal progress from url: %s, err: %v", url, err)
-			return nil, err
+			continue
 		}
 
 		aggProgress.VbsRemainingToShuffle += progress.VbsRemainingToShuffle
@@ -512,6 +512,41 @@ func GetTimerHostPortAddrs(urlSuffix string, nodeAddrs []string) (string, error)
 	}
 
 	return string(buf), nil
+}
+
+func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {
+	deployedApps := make(map[string]map[string]string)
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	for _, nodeAddr := range nodeAddrs {
+		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(url)
+		if err != nil {
+			logging.Errorf("UTIL Failed to get deployed apps from url: %s, err: %v", url, err)
+			return nil, err
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+			return nil, err
+		}
+
+		var locallyDeployedApps map[string]string
+		err = json.Unmarshal(buf, &locallyDeployedApps)
+		if err != nil {
+			logging.Errorf("UTIL Failed to unmarshal deployed apps from url: %s, err: %v", url, err)
+			return nil, err
+		}
+
+		deployedApps[nodeAddr] = make(map[string]string)
+		deployedApps[nodeAddr] = locallyDeployedApps
+	}
+
+	return deployedApps, nil
 }
 
 func ListChildren(path string) []string {

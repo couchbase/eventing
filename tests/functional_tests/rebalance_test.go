@@ -478,6 +478,132 @@ func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 	flushFunctionAndBucket(handler2)
 }*/
 
+// Swap rebalance operations for eventing role
+func TestEventingSwapRebalanceOnUpdateBucketOp(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update.js"
+
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: 100,
+		count:   100000,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(itemCount, 0, false, 0, rl)
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9001", "eventing")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9002", "eventing")
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}
+
+func TestEventingSwapRebalanceOnUpdateDocTimer(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_with_doc_timer.js"
+
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: 100,
+		count:   100000,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(itemCount, 0, false, 0, rl)
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9001", "eventing")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9002", "eventing")
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}
+
+func TestEventingSwapRebalanceMultipleHandlers(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler1 := "bucket_op_on_update.js"
+	handler2 := "bucket_op_with_doc_timer.js"
+
+	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(handler2)
+	createAndDeployFunction(handler1, handler1, &commonSettings{})
+	createAndDeployFunction(handler2, handler2, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: 100,
+		count:   100000,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(itemCount, 0, false, 0, rl)
+
+	waitForDeployToFinish(handler1)
+	waitForDeployToFinish(handler2)
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9001", "eventing")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9002", "eventing")
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(handler2)
+}
+
 func TestKVRebalanceOnUpdateBucketOpOneByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update.js"
@@ -635,10 +761,176 @@ func TestKVRebalanceOnUpdateDocTimerOneByOne(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }*/
 
+func TestKVRebalanceWithMultipleHandlers(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler1 := "bucket_op_on_update.js"
+	handler2 := "bucket_op_with_doc_timer.js"
+
+	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(handler2)
+	createAndDeployFunction(handler1, handler1, &commonSettings{})
+	createAndDeployFunction(handler2, handler2, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: 100,
+		count:   100000,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(itemCount, 0, false, 0, rl)
+
+	waitForDeployToFinish(handler1)
+	waitForDeployToFinish(handler2)
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9001", "kv")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(handler2)
+}
+
+func TestKVSwapRebalanceOnUpdateBucketOp(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update.js"
+
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: 100,
+		count:   100000,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(itemCount, 0, false, 0, rl)
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9001", "kv")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9002", "kv")
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(handler)
+}
+
+func TestKVSwapRebalanceOnUpdateDocTimer(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_with_doc_timer.js"
+
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: 100,
+		count:   100000,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(itemCount, 0, false, 0, rl)
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9001", "kv")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9002", "kv")
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}
+
+func TestKVSwapRebalanceWithMultipleHandlers(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler1 := "bucket_op_on_update.js"
+	handler2 := "bucket_op_with_doc_timer.js"
+
+	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(handler2)
+	createAndDeployFunction(handler1, handler1, &commonSettings{})
+	createAndDeployFunction(handler2, handler2, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: 100,
+		count:   100000,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(itemCount, 0, false, 0, rl)
+
+	waitForDeployToFinish(handler1)
+	waitForDeployToFinish(handler2)
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9001", "kv")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9002", "kv")
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(handler2)
+}
+
 func addAllNodesAtOnce(role string) {
 	addNodeFromRest("127.0.0.1:9001", role)
-	addNodeFromRest("127.0.0.1:9002", role)
-	addNodeFromRest("127.0.0.1:9003", role)
+	// addNodeFromRest("127.0.0.1:9002", role)
+	// addNodeFromRest("127.0.0.1:9003", role)
 
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
@@ -651,15 +943,15 @@ func addAllNodesOneByOne(role string) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", role)
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
+	// addNodeFromRest("127.0.0.1:9002", role)
+	// rebalanceFromRest([]string{""})
+	// waitForRebalanceFinish()
+	// metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9003", role)
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
+	// addNodeFromRest("127.0.0.1:9003", role)
+	// rebalanceFromRest([]string{""})
+	// waitForRebalanceFinish()
+	// metaStateDump()
 }
 
 func removeAllNodesAtOnce() {

@@ -12,8 +12,8 @@ import (
 const (
 	metakvEventingPath       = "/eventing/"
 	metakvAppsPath           = metakvEventingPath + "apps/"
-	metakvAppSettingsPath    = metakvEventingPath + "settings/"
-	metakvConfigPath         = metakvEventingPath + "config/" // Will store global settings - metadata bucket and memory quota here
+	metakvAppSettingsPath    = metakvEventingPath + "settings/" // function settings
+	metakvConfigPath         = metakvEventingPath + "config/"   // global settings
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	metakvRebalanceProgress  = metakvEventingPath + "rebalanceProgress/"
 	metakvTempAppsPath       = metakvEventingPath + "tempApps/"

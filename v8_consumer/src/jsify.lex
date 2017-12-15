@@ -81,6 +81,7 @@
 [dD][rR][oO][pP][ \t\n][ \t\n]?	|
 [eE][xX][eE][cC][uU][tT][eE][ \t\n][ \t\n]?	|
 [eE][xX][pP][lL][aA][iI][nN][ \t\n][ \t\n]?	|
+[fF][rR][oO][mM][ \t\n][ \t\n]?	|
 [gG][rR][aA][nN][tT][ \t\n][ \t\n]?	|
 [iI][nN][fF][eE][rR][ \t\n][ \t\n]?	|
 [iI][nN][sS][eE][rR][tT][ \t\n][ \t\n]?	|
