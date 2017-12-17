@@ -144,7 +144,7 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	settings["rbacpass"] = "asdasd"
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
-	settings["enable_recursive_mutation"] = false
+	settings["enable_recursive_mutation"] = true
 	settings["description"] = "Sample app"
 
 	app.Settings = settings
@@ -261,7 +261,7 @@ retryVerifyBucketOp:
 		return itemCount
 	}
 
-	itemCount, _ = getBucketItemCount()
+	itemCount, _ = getBucketItemCount(dstBucket)
 	if itemCount == count {
 		return itemCount
 	}
@@ -270,8 +270,39 @@ retryVerifyBucketOp:
 	goto retryVerifyBucketOp
 }
 
-func getBucketItemCount() (int, error) {
-	req, err := http.NewRequest("GET", bucketStatsURL, nil)
+func compareSrcAndDstItemCount(retryCount int) bool {
+	rCount := 1
+
+retrySrcItemCount:
+	if rCount >= retryCount {
+		return false
+	}
+
+	srcCount, err := getBucketItemCount(srcBucket)
+	if err != nil {
+		time.Sleep(3 * time.Second)
+		goto retrySrcItemCount
+	}
+
+retryDstItemCount:
+	dstCount, err := getBucketItemCount(dstBucket)
+	if err != nil {
+		time.Sleep(3 * time.Second)
+		goto retryDstItemCount
+	}
+
+	if dstCount != srcCount {
+		fmt.Printf("src bucket count: %d dst bucket count: %d\n", srcCount, dstCount)
+		rCount++
+		time.Sleep(5 * time.Second)
+	}
+
+	return true
+}
+
+func getBucketItemCount(bucketName string) (int, error) {
+	bStatsURL := bucketStatsURL + bucketName + "/"
+	req, err := http.NewRequest("GET", bStatsURL, nil)
 	if err != nil {
 		fmt.Println("Bucket stats get request:", err)
 		return 0, err

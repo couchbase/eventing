@@ -49,7 +49,11 @@ func pumpBucketOps(count int, expiry int, delete bool, startIndex int, rate *rat
 			select {
 			case <-ticker.C:
 				u.ID = i + startIndex
-				bucket.Upsert(fmt.Sprintf("doc_id_%d", i+startIndex), u, uint32(expiry))
+				if delete {
+					bucket.Remove(fmt.Sprintf("doc_id_%d", u.ID), 0)
+				} else {
+					bucket.Upsert(fmt.Sprintf("doc_id_%d", i+startIndex), u, uint32(expiry))
+				}
 				i++
 
 				if i == rate.count {
