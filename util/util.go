@@ -413,10 +413,12 @@ func GetEventProcessingStats(urlSuffix string, nodeAddrs []string) (map[string]i
 	return pStats, nil
 }
 
-func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, error) {
+func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, map[string]error) {
 	aggProgress := &cm.RebalanceProgress{}
 
 	netClient := NewClient(HTTPRequestTimeout)
+
+	errMap := make(map[string]error)
 
 	for _, nodeAddr := range nodeAddrs {
 		url := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
@@ -424,6 +426,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, e
 		res, err := netClient.Get(url)
 		if err != nil {
 			logging.Errorf("UTIL Failed to gather task status from url: %s, err: %v", url, err)
+			errMap[nodeAddr] = err
 			continue
 		}
 		defer res.Body.Close()
@@ -431,6 +434,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, e
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+			errMap[nodeAddr] = err
 			continue
 		}
 
@@ -438,6 +442,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, e
 		err = json.Unmarshal(buf, &progress)
 		if err != nil {
 			logging.Errorf("UTIL Failed to unmarshal progress from url: %s, err: %v", url, err)
+			errMap[nodeAddr] = err
 			continue
 		}
 
@@ -445,7 +450,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, e
 		aggProgress.VbsOwnedPerPlan += progress.VbsOwnedPerPlan
 	}
 
-	return aggProgress, nil
+	return aggProgress, errMap
 }
 
 func GetAggTimerHostPortAddrs(appName, eventingAdminPort, urlSuffix string) (map[string]map[string]string, error) {
