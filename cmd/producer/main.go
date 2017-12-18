@@ -1,8 +1,6 @@
 package main
 
 import (
-	"flag"
-	"os"
 	"time"
 
 	"github.com/couchbase/cbauth/metakv"
@@ -12,12 +10,7 @@ import (
 )
 
 func main() {
-	flag.Parse()
-
-	if flags.help {
-		flag.Usage()
-		os.Exit(2)
-	}
+	initFlags()
 
 	audit.Init(flags.restPort)
 
