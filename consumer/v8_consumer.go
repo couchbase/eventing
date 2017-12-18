@@ -30,7 +30,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 	bucket, eventingAdminPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
-	socketTimeout time.Duration, diagDir string) *Consumer {
+	socketTimeout time.Duration, diagDir string, numVbuckets int) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -66,6 +66,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		msgProcessedRWMutex:                &sync.RWMutex{},
 		nonDocTimerEntryCh:                 make(chan timerMsg, timerChanSize),
 		nonDocTimerStopCh:                  make(chan struct{}, 1),
+		numVbuckets:                        numVbuckets,
 		opsTimestamp:                       time.Now(),
 		persistAllTicker:                   time.NewTicker(persistAllTickInterval),
 		plasmaReaderRWMutex:                &sync.RWMutex{},
@@ -123,7 +124,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		vbPlasmaStore:                      vbPlasmaStore,
 		vbPlasmaReader:                     make(map[uint16]*plasma.Writer),
 		vbPlasmaWriter:                     make(map[uint16]*plasma.Writer),
-		vbProcessingStats:                  newVbProcessingStats(app.AppName),
+		vbProcessingStats:                  newVbProcessingStats(app.AppName, uint16(numVbuckets)),
 		vbsRemainingToGiveUp:               make([]uint16, 0),
 		vbsRemainingToOwn:                  make([]uint16, 0),
 		vbsRemainingToRestream:             make([]uint16, 0),

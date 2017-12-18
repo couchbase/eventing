@@ -27,8 +27,6 @@ const (
 
 	dataService = "kv"
 
-	numVbuckets = 1024
-
 	supervisorTimeout = 60 * time.Second
 
 	// KV blob suffixes to assist in choose right consumer instance
@@ -76,6 +74,7 @@ type Producer struct {
 	metakvAppHostPortsPath string
 	nsServerPort           string
 	nsServerHostPort       string
+	numVbuckets            int
 	pauseProducerCh        chan struct{}
 	persistAllTicker       *time.Ticker
 	workerQueueCap         int64

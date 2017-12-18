@@ -66,7 +66,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			worker := &timerProcessingWorker{
 				c:  c,
 				id: i,
-				signalProcessTimerPlasmaCloseCh: make(chan uint16, numVbuckets),
+				signalProcessTimerPlasmaCloseCh: make(chan uint16, c.numVbuckets),
 				stopCh:                make(chan struct{}, 1),
 				timerProcessingTicker: time.NewTicker(c.timerProcessingTickInterval),
 			}
@@ -360,7 +360,7 @@ func (c *Consumer) updateNonDocTimerStats(vb uint16) {
 	}
 
 	nextTimerTs := fmt.Sprintf("%s::%s", c.app.AppName, nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
-	for util.VbucketByKey([]byte(nextTimerTs), numVbuckets) != vb {
+	for util.VbucketByKey([]byte(nextTimerTs), c.numVbuckets) != vb {
 		nextTimer = nextTimer.UTC().Add(time.Second)
 		nextTimerTs = fmt.Sprintf("%s::%s", c.app.AppName, nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
 	}

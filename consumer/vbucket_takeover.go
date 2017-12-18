@@ -57,7 +57,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 
 	signalPlasmaClosedChs := make([]chan uint16, 0)
 	for i := 0; i < c.vbOwnershipGiveUpRoutineCount; i++ {
-		ch := make(chan uint16, numVbuckets)
+		ch := make(chan uint16, c.numVbuckets)
 		signalPlasmaClosedChs = append(signalPlasmaClosedChs, ch)
 	}
 
@@ -161,7 +161,7 @@ func (c *Consumer) vbsStateUpdate() {
 		return
 	}
 
-	vbsts := c.vbProcessingStats.copyVbStats()
+	vbsts := c.vbProcessingStats.copyVbStats(uint16(c.numVbuckets))
 
 	go c.vbGiveUpRoutine(vbsts)
 

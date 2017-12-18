@@ -646,7 +646,7 @@ loop:
 func (c *Consumer) getCurrentlyOwnedVbs() []uint16 {
 	var vbsOwned []uint16
 
-	for vb := 0; vb < numVbuckets; vb++ {
+	for vb := 0; vb < c.numVbuckets; vb++ {
 		if c.vbProcessingStats.getVbStat(uint16(vb), "assigned_worker") == c.ConsumerName() &&
 			c.vbProcessingStats.getVbStat(uint16(vb), "node_uuid") == c.NodeUUID() {
 

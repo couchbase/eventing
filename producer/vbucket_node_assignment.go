@@ -46,7 +46,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 	logging.Debugf("VBNA[%s:%d] EventingNodeUUIDs: %v eventingNodeAddrs: %v",
 		p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, eventingNodeAddrs)
 
-	vbucketsPerNode := numVbuckets / len(eventingNodeAddrs)
+	vbucketsPerNode := p.numVbuckets / len(eventingNodeAddrs)
 	var vbNo int
 	var startVb uint16
 
@@ -60,7 +60,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 		vbNo += vbucketsPerNode
 	}
 
-	remainingVbs := numVbuckets - vbNo
+	remainingVbs := p.numVbuckets - vbNo
 	if remainingVbs > 0 {
 		for i := 0; i < remainingVbs; i++ {
 			vbCountPerNode[i] = vbCountPerNode[i] + 1

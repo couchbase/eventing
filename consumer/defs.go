@@ -50,8 +50,6 @@ const (
 )
 
 const (
-	numVbuckets = 1024
-
 	udsSockPathLimit = 100
 
 	// KV blob suffixes to assist in choose right consumer instance
@@ -219,6 +217,7 @@ type Consumer struct {
 	logLevel               string
 	superSup               common.EventingSuperSup
 	vbDcpEventsRemaining   map[int]int64 // Access controlled by statsRWMutex
+	numVbuckets            int
 	vbDcpFeedMap           map[uint16]*couchbase.DcpFeed
 	vbnos                  []uint16
 	vbsRemainingToOwn      []uint16

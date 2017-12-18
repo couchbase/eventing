@@ -78,7 +78,7 @@ func init() {
 	port := strings.Split(listener.Addr().String(), ":")[1]
 
 	c = &Consumer{}
-	c.vbProcessingStats = newVbProcessingStats("test_app1")
+	c.vbProcessingStats = newVbProcessingStats("test_app1", c.numVbuckets)
 	c.app = &common.AppConfig{}
 	c.socketWriteBatchSize = 100
 	c.ipcType = "af_inet"

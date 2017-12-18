@@ -51,11 +51,6 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 	}
 
 	p.eventingNodeUUIDs = append(p.eventingNodeUUIDs, uuid)
-
-	for i := 0; i < numVbuckets; i++ {
-		p.seqsNoProcessed[i] = 0
-	}
-
 	return p
 }
 
@@ -65,6 +60,19 @@ func (p *Producer) Serve() {
 	if err != nil {
 		logging.Fatalf("PRDR[%s:%d] Failure parsing depcfg, err: %v", p.appName, p.LenRunningConsumers(), err)
 		return
+	}
+
+	hostPortAddr := fmt.Sprintf("127.0.0.1:%s", p.GetNsServerPort())
+	p.numVbuckets, err = util.NumVbuckets(hostPortAddr, p.bucket)
+	if err != nil {
+		logging.Fatalf("PRDR[%s:%d] Failure to fetch vbucket count, err: %v", p.appName, p.LenRunningConsumers(), err)
+		return
+	}
+
+	logging.Infof("PRDR[%s:%d] number of vbuckets for %v: %v", p.appName, p.LenRunningConsumers(), p.bucket, p.numVbuckets)
+
+	for i := 0; i < p.numVbuckets; i++ {
+		p.seqsNoProcessed[i] = 0
 	}
 
 	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles)
@@ -313,7 +321,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.curlTimeout, p.vbOwnershipTakeoverRoutineCount, p.xattrEntryPruneThreshold, p.workerQueueCap,
 		p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
 		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStore,
-		p.socketTimeout, p.diagDir)
+		p.socketTimeout, p.diagDir, p.numVbuckets)
 
 	p.Lock()
 	p.consumerListeners = append(p.consumerListeners, listener)

@@ -216,7 +216,7 @@ func (p *Producer) SignalBootstrapFinish() {
 // SignalCheckpointBlobCleanup cleans up eventing app related blobs from metadata bucket
 func (p *Producer) SignalCheckpointBlobCleanup() {
 
-	for vb := 0; vb < numVbuckets; vb++ {
+	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, vbKey)
 	}
@@ -370,7 +370,7 @@ func (p *Producer) vbDistributionStats() {
 	vbNodeMap := make(map[string]map[string][]uint16)
 	vbBlob := make(map[string]interface{})
 
-	for vb := 0; vb < numVbuckets; vb++ {
+	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
 
@@ -435,7 +435,7 @@ func (p *Producer) PlannerStats() []*common.PlannerNodeVbMapping {
 func (p *Producer) getSeqsProcessed() {
 	vbBlob := make(map[string]interface{})
 
-	for vb := 0; vb < numVbuckets; vb++ {
+	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
 
