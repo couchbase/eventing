@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os/exec"
 	"strings"
@@ -273,6 +274,8 @@ retryVerifyBucketOp:
 func compareSrcAndDstItemCount(retryCount int) bool {
 	rCount := 1
 
+	log.SetFlags(log.LstdFlags)
+
 retrySrcItemCount:
 	if rCount >= retryCount {
 		return false
@@ -292,7 +295,7 @@ retryDstItemCount:
 	}
 
 	if dstCount != srcCount {
-		fmt.Printf("src bucket count: %d dst bucket count: %d\n", srcCount, dstCount)
+		log.Printf("src bucket count: %d dst bucket count: %d\n", srcCount, dstCount)
 		rCount++
 		time.Sleep(5 * time.Second)
 	}
