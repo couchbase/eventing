@@ -1,6 +1,11 @@
 package eventing
 
 const (
+	srcBucket = "default"
+	dstBucket = "hello-world"
+)
+
+const (
 	handlerCodeDir     = "hcode/"
 	deployURL          = "http://127.0.0.1:9000/_p/event/setApplication/?name="
 	tempStoreURL       = "http://127.0.0.1:9000/_p/event/saveAppTempStore/?name="
@@ -23,7 +28,7 @@ const (
 	quotaSetupURL       = "http://127.0.0.1:9000/pools/default"
 	bucketSetupURL      = "http://127.0.0.1:9000/pools/default/buckets"
 	rbacSetupURL        = "http://127.0.0.1:9000/settings/rbac/users/local"
-	bucketStatsURL      = "http://127.0.0.1:9000/pools/default/buckets/hello-world/"
+	bucketStatsURL      = "http://127.0.0.1:9000/pools/default/buckets/"
 	indexerURL          = "http://127.0.0.1:9000/settings/indexes"
 	queryURL            = "http://127.0.0.1:9499/query/service"
 )
@@ -53,6 +58,11 @@ const (
 	lcbCap        = 5
 	sockBatchSize = 1
 	workerCount   = 3
+)
+
+const (
+	rlItemCount = 100000
+	rlOpsPSec   = 100
 )
 
 const (

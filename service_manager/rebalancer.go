@@ -46,9 +46,9 @@ func (r *rebalancer) gatherProgress() {
 
 	<-progressTicker.C
 	// Store the initial state of rebalance progress in metakv
-	initProgress, err := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
-	if err != nil {
-		logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to capture cluster wide state of vbs to shuffle as part of rebalance. Retrying")
+	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
+	if len(errMap) > 0 {
+		logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to capture cluster wide state of vbs to shuffle as part of rebalance, errMap dump: %v", errMap)
 		return
 	}
 
@@ -70,9 +70,9 @@ func (r *rebalancer) gatherProgress() {
 	for {
 		select {
 		case <-progressTicker.C:
-			p, err := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
-			if err != nil {
-				logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to get aggregate rebalance progress, err: %v", err)
+			p, errMap := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
+			if len(errMap) != 0 {
+				logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to get aggregate rebalance progress, errMap: %v", errMap)
 				continue
 			}
 
