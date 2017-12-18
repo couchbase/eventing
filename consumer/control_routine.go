@@ -19,6 +19,9 @@ func (c *Consumer) controlRoutine() {
 
 			util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
+			c.stopVbOwnerGiveupCh = make(chan struct{}, c.vbOwnershipGiveUpRoutineCount)
+			c.stopVbOwnerTakeoverCh = make(chan struct{}, c.vbOwnershipTakeoverRoutineCount)
+
 			logging.Infof("CRCR[%s:%s:%s:%d] Got notification that cluster state has changed(could also trigger on app deploy)",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
@@ -118,6 +121,13 @@ func (c *Consumer) controlRoutine() {
 			}
 
 			if len(vbsToRestream) == 0 {
+				continue
+			}
+
+			if !c.isRebalanceOngoing {
+				logging.Infof("CRCR[%s:%s:%s:%d] Discarding request to restream vbs: %v as rebalance has been stopped",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsToRestream)
+				c.vbsRemainingToRestream = make([]uint16, 0)
 				continue
 			}
 

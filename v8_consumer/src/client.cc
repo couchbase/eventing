@@ -510,10 +510,6 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
       std::unique_ptr<message_t> parsed_message = ParseServerMessage(
           encoded_header_size, encoded_payload_size, chunk_to_parse);
-      LOG(logDebug) << "header_size:" << encoded_header_size << " payload_size "
-                    << encoded_payload_size
-                    << " messages processed: " << messages_processed
-                    << std::endl;
 
       if (parsed_message) {
         message_t *pmessage = parsed_message.release();
@@ -617,7 +613,6 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
 void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
                        const uv_buf_t *buf) {
-  LOG(logDebug) << "OnRead callback triggered, nread " << nread << std::endl;
   if (nread > 0) {
     AppWorker::GetAppWorker()->ParseValidChunk(stream, nread, buf->base);
   } else if (nread == 0) {

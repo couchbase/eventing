@@ -102,8 +102,8 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		statsTicker:                        time.NewTicker(statsTickInterval),
 		stopControlRoutineCh:               make(chan struct{}, 1),
 		stopPlasmaPersistCh:                make(chan struct{}, 1),
-		stopVbOwnerGiveupCh:                make(chan struct{}, 1),
-		stopVbOwnerTakeoverCh:              make(chan struct{}, 1),
+		stopVbOwnerGiveupCh:                make(chan struct{}, vbOwnershipGiveUpRoutineCount),
+		stopVbOwnerTakeoverCh:              make(chan struct{}, vbOwnershipTakeoverRoutineCount),
 		superSup:                           s,
 		tcpPort:                            tcpPort,
 		timerRWMutex:                       &sync.RWMutex{},
@@ -365,6 +365,8 @@ func (c *Consumer) NotifyClusterChange() {
 func (c *Consumer) NotifyRebalanceStop() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about rebalance stop",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+
+	c.isRebalanceOngoing = false
 
 	for i := 0; i < c.vbOwnershipGiveUpRoutineCount; i++ {
 		c.stopVbOwnerGiveupCh <- struct{}{}

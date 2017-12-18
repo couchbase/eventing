@@ -345,3 +345,53 @@ func TestKVSwapRebalanceWithMultipleHandlers(t *testing.T) {
 }
 
 /** Multiple handlers cases end **/
+
+/** KV Rebalance stop and start **/
+func TestKVRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update.js"
+
+	flushFunctionAndBucket(handler)
+	time.Sleep(5 * time.Second)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: rlOpsPSec,
+		count:   rlItemCount,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9001", "kv")
+	rebalanceFromRest([]string{""})
+	time.Sleep(20 * time.Second)
+	rebalanceStop()
+	metaStateDump()
+
+	time.Sleep(10 * time.Second)
+
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9002", "kv")
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}

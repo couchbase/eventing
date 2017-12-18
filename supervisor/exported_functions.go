@@ -86,7 +86,6 @@ func (s *SuperSupervisor) GetHandlerCode(appName string) string {
 
 // GetLatencyStats dumps stats from cpp world
 func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
-	logging.Infof("SSUP[%d] GetLatencyStats request for app: %v", len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetLatencyStats()
 	}
@@ -95,7 +94,6 @@ func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
 
 // GetExecutionStats returns aggregated failure stats from Eventing.Producer instance
 func (s *SuperSupervisor) GetExecutionStats(appName string) map[string]uint64 {
-	logging.Infof("SSUP[%d] GetExecutionStats request for app: %v", len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetExecutionStats()
 	}
@@ -104,7 +102,6 @@ func (s *SuperSupervisor) GetExecutionStats(appName string) map[string]uint64 {
 
 // GetFailureStats returns aggregated failure stats from Eventing.Producer instance
 func (s *SuperSupervisor) GetFailureStats(appName string) map[string]uint64 {
-	logging.Infof("SSUP[%d] GetFailureStats request for app: %v", len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetFailureStats()
 	}
@@ -113,7 +110,6 @@ func (s *SuperSupervisor) GetFailureStats(appName string) map[string]uint64 {
 
 // GetLcbExceptionsStats returns libcouchbase exception stats from CPP workers
 func (s *SuperSupervisor) GetLcbExceptionsStats(appName string) map[string]uint64 {
-	logging.Infof("SSUP[%d] GetLcbExceptionStats request for app: %v", len(s.runningProducers), appName)
 	p, ok := s.runningProducers[appName]
 	if ok {
 		return p.GetLcbExceptionsStats()
@@ -123,7 +119,6 @@ func (s *SuperSupervisor) GetLcbExceptionsStats(appName string) map[string]uint6
 
 // GetSeqsProcessed returns vbucket specific sequence nos processed so far
 func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
-	logging.Infof("SSUP[%d] GetSeqsProcessed request for app: %v", len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetSeqsProcessed()
 	}

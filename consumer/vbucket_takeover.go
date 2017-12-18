@@ -215,18 +215,22 @@ retryStreamUpdate:
 
 	wg.Wait()
 
-	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
-	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
+	c.stopVbOwnerTakeoverCh = make(chan struct{}, c.vbOwnershipTakeoverRoutineCount)
 
-	logging.Tracef("CRVT[%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
-		c.workerName, c.tcpPort, c.Pid(),
-		util.Condense(c.vbsRemainingToOwn), util.Condense(vbsRemainingToGiveUp))
+	if c.isRebalanceOngoing {
+		c.vbsRemainingToOwn = c.getVbRemainingToOwn()
+		vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
 
-	// Retry logic in-case previous attempt to own/start dcp stream didn't succeed
-	// because some other node has already opened(or hasn't closed) the vb dcp stream
-	if len(c.vbsRemainingToOwn) > 0 {
-		time.Sleep(dcpStreamRequestRetryInterval)
-		goto retryStreamUpdate
+		logging.Tracef("CRVT[%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
+			c.workerName, c.tcpPort, c.Pid(),
+			util.Condense(c.vbsRemainingToOwn), util.Condense(vbsRemainingToGiveUp))
+
+		// Retry logic in-case previous attempt to own/start dcp stream didn't succeed
+		// because some other node has already opened(or hasn't closed) the vb dcp stream
+		if len(c.vbsRemainingToOwn) > 0 {
+			time.Sleep(dcpStreamRequestRetryInterval)
+			goto retryStreamUpdate
+		}
 	}
 
 	// reset the flag

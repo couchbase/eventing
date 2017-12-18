@@ -326,7 +326,6 @@ func (m *ServiceMgr) getTimerHostPortAddrs(w http.ResponseWriter, r *http.Reques
 
 	values := r.URL.Query()
 	appName := values["name"][0]
-	logging.Infof("App: %v got request for timer host port address", appName)
 
 	data, err := m.superSup.AppTimerTransferHostPortAddrs(appName)
 	if err == nil {
@@ -506,7 +505,6 @@ func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	logging.Infof("Listing locally deployed applications")
 	deployedApps := m.superSup.GetDeployedApps()
 
 	buf, err := json.Marshal(deployedApps)
@@ -918,7 +916,6 @@ func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtim
 }
 
 func (m *ServiceMgr) getTempStoreAll() []application {
-	logging.Infof("Listing drafts for all apps")
 	tempAppList := util.ListChildren(metakvTempAppsPath)
 	applications := make([]application, len(tempAppList))
 

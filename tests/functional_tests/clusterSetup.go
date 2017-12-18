@@ -67,7 +67,7 @@ func addNode(hostname, role string) {
 	}
 	cbCliPath := buildDir + "/install/bin/couchbase-cli"
 
-	fmt.Printf("Adding node: %s role: %s to the cluster\n", hostname, role)
+	log.Printf("Adding node: %s role: %s to the cluster\n", hostname, role)
 
 	cmd := exec.Command(cbCliPath, "server-add", "-c", "127.0.0.1:9000", "-u", username,
 		"-p", password, "--server-add-username", username, "--server-add-password", password,
@@ -94,13 +94,39 @@ func rebalance() {
 	}
 	cbCliPath := buildDir + "/install/bin/couchbase-cli"
 
-	fmt.Println("Starting up rebalance")
+	log.Println("Starting up rebalance")
 
 	cmd := exec.Command(cbCliPath, "rebalance", "-c", "127.0.0.1:9000", "-u", username, "-p", password)
 
 	err := cmd.Start()
 	if err != nil {
 		fmt.Println("Failed to start rebalance for the cluster, err", err)
+		return
+	}
+}
+
+func rebalanceStop() {
+	buildDir := os.Getenv(cbBuildEnvString)
+	if buildDir == "" {
+		fmt.Printf("Please set the CB build dir env flag: %s\n", cbBuildEnvString)
+		return
+	}
+	cbCliPath := buildDir + "/install/bin/couchbase-cli"
+
+	log.Println("Stopping rebalance")
+
+	cmd := exec.Command(cbCliPath, "rebalance-stop", "-c", "127.0.0.1:9000", "-u", username,
+		"-p", password)
+
+	err := cmd.Start()
+	if err != nil {
+		fmt.Println("Failed to stop rebalance, err", err)
+		return
+	}
+
+	err = cmd.Wait()
+	if err != nil {
+		fmt.Println(err)
 		return
 	}
 }
@@ -113,7 +139,7 @@ func removeNode(hostname string) {
 	}
 	cbCliPath := buildDir + "/install/bin/couchbase-cli"
 
-	fmt.Printf("Removing node: %s from the cluster\n", hostname)
+	log.Printf("Removing node: %s from the cluster\n", hostname)
 
 	cmd := exec.Command(cbCliPath, "rebalance", "-c", "127.0.0.1:9000", "-u", username,
 		"-p", password, "--server-remove", hostname)
@@ -132,7 +158,7 @@ func removeNode(hostname string) {
 }
 
 func addNodeFromRest(hostname, role string) ([]byte, error) {
-	fmt.Printf("Adding node: %s with role: %s to the cluster\n", hostname, role)
+	log.Printf("Adding node: %s with role: %s to the cluster\n", hostname, role)
 	payload := strings.NewReader(fmt.Sprintf("hostname=%s&user=%s&password=%s&services=%s",
 		url.QueryEscape(hostname), username, password, role))
 	return makeRequest("POST", payload, addNodeURL)
@@ -140,7 +166,7 @@ func addNodeFromRest(hostname, role string) ([]byte, error) {
 
 func rebalanceFromRest(nodesToRemove []string) {
 	if len(nodesToRemove) > 0 {
-		fmt.Printf("Removing node(s): %v from the cluster\n", nodesToRemove)
+		log.Printf("Removing node(s): %v from the cluster\n", nodesToRemove)
 	}
 
 	knownNodes, removeNodes := otpNodes(nodesToRemove)
@@ -212,7 +238,7 @@ func waitForRebalanceFinish() {
 
 				if rebalanceRunning && task["type"].(string) == "rebalance" && task["status"].(string) == "notRunning" {
 					t.Stop()
-					log.Println("Rebalance progress: 100%")
+					log.Println("Rebalance progress: 100")
 					return
 				}
 			}
