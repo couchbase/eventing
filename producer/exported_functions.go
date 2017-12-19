@@ -336,3 +336,77 @@ func (p *Producer) GetPlasmaStats() (map[string]interface{}, error) {
 
 	return res, nil
 }
+
+// VbDistributionStats dumps the state of vbucket distribution per metadata bucket
+func (p *Producer) VbDistributionStats() map[string]map[string]string {
+	p.statsRWMutex.RLock()
+	defer p.statsRWMutex.RUnlock()
+
+	vbEventingNodeMap := make(map[string]map[string]string)
+	for node, nodeMap := range p.vbEventingNodeMap {
+
+		if _, ok := vbEventingNodeMap[node]; !ok {
+			vbEventingNodeMap[node] = make(map[string]string)
+		}
+
+		for workerID, vbsOwned := range nodeMap {
+			vbEventingNodeMap[node][workerID] = vbsOwned
+		}
+	}
+	return vbEventingNodeMap
+}
+
+func (p *Producer) vbDistributionStats() {
+	vbNodeMap := make(map[string]map[string][]uint16)
+	vbBlob := make(map[string]interface{})
+
+	for vb := 0; vb < numVbuckets; vb++ {
+		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
+
+		vbucket := uint16(vbBlob["vb_id"].(float64))
+		currentOwner := vbBlob["current_vb_owner"].(string)
+		workerID := vbBlob["assigned_worker"].(string)
+
+		if _, ok := vbNodeMap[currentOwner]; !ok && currentOwner != "" {
+			vbNodeMap[currentOwner] = make(map[string][]uint16)
+			vbNodeMap[currentOwner][workerID] = make([]uint16, 0)
+		}
+
+		if currentOwner != "" && workerID != "" {
+			vbNodeMap[currentOwner][workerID] = append(
+				vbNodeMap[currentOwner][workerID], vbucket)
+		}
+
+	}
+
+	p.statsRWMutex.Lock()
+	defer p.statsRWMutex.Unlock()
+	// Concise representation of vb mapping for eventing nodes
+	p.vbEventingNodeMap = make(map[string]map[string]string)
+
+	for node, nodeMap := range vbNodeMap {
+		if _, ok := p.vbEventingNodeMap[node]; !ok {
+			p.vbEventingNodeMap[node] = make(map[string]string)
+		}
+
+		for workerID, vbsOwned := range nodeMap {
+			p.vbEventingNodeMap[node][workerID] = util.Condense(vbsOwned)
+		}
+	}
+}
+
+// PlannerStats returns vbucket distribution as per planner running on local eventing
+// node for a given app
+func (p *Producer) PlannerStats() []*common.PlannerNodeVbMapping {
+	p.statsRWMutex.Lock()
+	defer p.statsRWMutex.Unlock()
+
+	plannerNodeMappings := make([]*common.PlannerNodeVbMapping, 0)
+
+	for _, mapping := range p.plannerNodeMappings {
+		plannerNodeMappings = append(plannerNodeMappings, mapping)
+	}
+
+	return plannerNodeMappings
+}

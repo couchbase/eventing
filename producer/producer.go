@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -39,8 +40,11 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 		pauseProducerCh:        make(chan struct{}, 1),
 		persistAllTicker:       time.NewTicker(persistAllTickInterval),
 		signalStopPersistAllCh: make(chan struct{}, 1),
+		statsRWMutex:           &sync.RWMutex{},
 		superSup:               superSup,
 		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
+		updateStatsTicker:      time.NewTicker(updateStatsTickInterval),
+		updateStatsStopCh:      make(chan struct{}, 1),
 		uuid:                   uuid,
 		workerNameConsumerMap: make(map[string]common.EventingConsumer),
 	}
@@ -117,6 +121,8 @@ func (p *Producer) Serve() {
 	go p.persistPlasma()
 
 	p.bootstrapFinishCh <- struct{}{}
+
+	go p.updateStats()
 
 	// Inserting twice because producer can be stopped either because of pause/undeploy
 	for i := 0; i < 2; i++ {
@@ -236,6 +242,8 @@ func (p *Producer) Stop() {
 
 	p.appLogWriter.Close()
 	p.vbPlasmaStore.Close()
+
+	p.updateStatsStopCh <- struct{}{}
 }
 
 // Implement fmt.Stringer interface for better debugging in case
@@ -471,4 +479,15 @@ func (p *Producer) GetDebuggerURL() string {
 	debugURL := util.GetDebuggerURL("/getLocalDebugUrl", debuggerInstBlob.HostPortAddr, p.appName)
 
 	return debugURL
+}
+
+func (p *Producer) updateStats() {
+	for {
+		select {
+		case <-p.updateStatsTicker.C:
+			p.vbDistributionStats()
+		case <-p.updateStatsStopCh:
+			return
+		}
+	}
 }

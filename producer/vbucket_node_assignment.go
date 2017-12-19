@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -66,10 +67,21 @@ func (p *Producer) vbEventingNodeAssign() error {
 		}
 	}
 
+	p.statsRWMutex.Lock()
+	defer p.statsRWMutex.Unlock()
+	p.plannerNodeMappings = make([]*common.PlannerNodeVbMapping, 0)
+
 	for i, v := range vbCountPerNode {
 
 		logging.Debugf("VBNA[%s:%d] EventingNodeUUIDs: %v Eventing node index: %d eventing node addr: %v startVb: %v vbs count: %v",
 			p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, i, eventingNodeAddrs[i], startVb, v)
+
+		nodeMapping := &common.PlannerNodeVbMapping{
+			Hostname: eventingNodeAddrs[i],
+			StartVb:  int(startVb),
+			VbsCount: v,
+		}
+		p.plannerNodeMappings = append(p.plannerNodeMappings, nodeMapping)
 
 		for j := 0; j < v; j++ {
 			p.vbEventingNodeAssignMap[startVb] = eventingNodeAddrs[i]

@@ -230,3 +230,24 @@ func (s *SuperSupervisor) GetPlasmaStats(appName string) (map[string]interface{}
 
 	return nil, fmt.Errorf("Eventing.Producer isn't alive")
 }
+
+// VbDistributionStats returns vbucket distribution across eventing nodes per metadata bucket
+func (s *SuperSupervisor) VbDistributionStats(appName string) map[string]map[string]string {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.VbDistributionStats()
+	}
+
+	return nil
+}
+
+// PlannerStats returns vbucket distribution as per planner running on local eventing
+// node for a given app
+func (s *SuperSupervisor) PlannerStats(appName string) []*common.PlannerNodeVbMapping {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.PlannerStats()
+	}
+
+	return nil
+}

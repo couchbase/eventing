@@ -138,7 +138,9 @@ type stats struct {
 	FunctionName         interface{} `json:"function_name"`
 	LatencyStats         interface{} `json:"latency_stats,omitempty"`
 	LcbExceptionStats    interface{} `json:"lcb_exception_stats,omitempty"`
+	PlannerStats         interface{} `json:"planner_stats,omitempty"`
 	PlasmaStats          interface{} `json:"plasma_stats,omitempty"`
 	SeqsProcessed        interface{} `json:"seqs_processed,omitempty"`
+	VbDistributionStats  interface{} `json:"vb_distribution_stats,omitempty"`
 	WorkerPids           interface{} `json:"worker_pids,omitempty"`
 }

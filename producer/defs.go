@@ -19,8 +19,9 @@ const (
 )
 
 const (
-	bucketOpRetryInterval  = time.Duration(1000) * time.Millisecond
-	persistAllTickInterval = time.Duration(5000) * time.Millisecond
+	bucketOpRetryInterval   = time.Duration(1000) * time.Millisecond
+	persistAllTickInterval  = time.Duration(5000) * time.Millisecond
+	updateStatsTickInterval = time.Duration(5000) * time.Millisecond
 
 	udsSockPathLimit = 100
 
@@ -180,6 +181,15 @@ type Producer struct {
 
 	// time.Ticker duration for dumping consumer stats
 	statsTickDuration time.Duration
+
+	statsRWMutex *sync.RWMutex
+
+	plannerNodeMappings []*common.PlannerNodeVbMapping // access controlled by statsRWMutex
+	updateStatsTicker   *time.Ticker
+	updateStatsStopCh   chan struct{}
+
+	// Captures vbucket assignment to different eventing nodes
+	vbEventingNodeMap map[string]map[string]string // access controlled by statsRWMutex
 
 	// Map keeping track of vbuckets assigned to each worker(consumer)
 	workerVbucketMap map[string][]uint16

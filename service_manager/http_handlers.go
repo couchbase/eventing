@@ -1557,6 +1557,9 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 			stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
 
 			stats.WorkerPids = m.superSup.GetEventingConsumerPids(app.Name)
+			stats.PlannerStats = m.superSup.PlannerStats(app.Name)
+			stats.VbDistributionStats = m.superSup.VbDistributionStats(app.Name)
+
 			if fullStats {
 				stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
 

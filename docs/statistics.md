@@ -50,6 +50,32 @@ This will return the stats regardings events processing, events remaining, execu
    "lcb_exception_stats": {
      "13": 200
    },
+   "planner_stats": [
+    {
+      "host_name": "127.0.0.1:9301",
+      "start_vb": 0,
+      "vb_count": 512
+    },
+    {
+      "host_name": "192.168.0.14:9300",
+      "start_vb": 512,
+      "vb_count": 512
+    }
+   ],
+   "vb_distribution_stats": {
+      "127.0.0.1:9300": {
+      "worker_h1_2": "[854-1023]"
+    },
+    "127.0.0.1:9301": {
+      "worker_h1_0": "[0-170]",
+      "worker_h1_1": "[171-341]",
+      "worker_h1_2": "[342-511]"
+    },
+    "192.168.0.14:9300": {
+      "worker_h1_0": "[512-682]",
+      "worker_h1_1": "[683-853]"
+    }
+   },
    "plasma_stats": {"AllocSz": 96, ...},
    "seqs_processed":{"0":0,"1":0, ...}
  }
