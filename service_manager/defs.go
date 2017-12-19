@@ -12,8 +12,8 @@ import (
 const (
 	metakvEventingPath       = "/eventing/"
 	metakvAppsPath           = metakvEventingPath + "apps/"
-	metakvAppSettingsPath    = metakvEventingPath + "settings/" // function settings
-	metakvConfigPath         = metakvEventingPath + "config/"   // global settings
+	metakvAppSettingsPath    = metakvEventingPath + "settings/"       // function settings
+	metakvConfigPath         = metakvEventingPath + "config/settings" // global settings
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	metakvRebalanceProgress  = metakvEventingPath + "rebalanceProgress/"
 	metakvTempAppsPath       = metakvEventingPath + "tempApps/"
@@ -144,4 +144,9 @@ type stats struct {
 	VbDcpEventsRemaining interface{} `json:"dcp_event_backlog_per_vb,omitempty"`
 	VbDistributionStats  interface{} `json:"vb_distribution_stats,omitempty"`
 	WorkerPids           interface{} `json:"worker_pids,omitempty"`
+}
+
+type config struct {
+	RamQuota       int    `json:"ram_quota"`
+	MetadataBucket string `json:"metadata_bucket"`
 }

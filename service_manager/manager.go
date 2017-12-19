@@ -119,6 +119,7 @@ func (m *ServiceMgr) initService() {
 	// Public REST APIs
 	http.HandleFunc("/api/v1/stats", m.statsHandler)
 	http.HandleFunc("/api/v1/config", m.configHandler)
+	http.HandleFunc("/api/v1/config/", m.configHandler)
 	http.HandleFunc("/api/v1/functions", m.functionsHandler)
 	http.HandleFunc("/api/v1/functions/", m.functionsHandler)
 

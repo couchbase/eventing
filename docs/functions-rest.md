@@ -3,14 +3,14 @@ In 5.1, responses returned by below functions are opaque and should not be edite
 
 ## Create a function
 `POST` `/api/v1/functions/<name>`
-Note: Function name in body must match function name on URL. Function definition includes its current settings.
+> Function name in body must match function name on URL. Function definition includes its current settings.
 
 ## Create several functions
 `POST` `/api/v1/functions`
 
 ## Get a function
 `GET` `/api/v1/functions/<name>`
-Note: Function definition includes its settings
+> Function definition includes its settings
 
 ## Get all functions
 `GET` `/api/v1/functions`
@@ -26,11 +26,20 @@ Note: Function definition includes its settings
 
 ## Modify a function's settings
 `POST` `/api/v1/functions/<name>/settings`
-Note: Settings provided are merged, and so unspecified elements retain their prior values.
+> Settings provided are merged, and so unspecified elements retain their prior values.
 
 ## Get eventing global config
 `GET` `/api/v1/config`
 
 ## Manipulate eventing global config
 `POST` `/api/v1/config`
-Note: Config provided is merged, and so unspecified elements retain their prior values.
+> Config provided is merged, and so unspecified elements retain their prior values.
+
+```json
+{
+ "ram_quota": 4,
+ "metadata_bucket": "metadata"
+}
+```
+
+> The unit for ram_quota is MB.

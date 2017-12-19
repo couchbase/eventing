@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"bytes"
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/common"
@@ -1263,13 +1264,13 @@ func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm s
 	creds, err := cbauth.AuthWebCreds(r)
 	if err != nil || creds == nil {
 		logging.Warnf("Cannot authenticate request to %v", r.URL)
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		return false
 	}
 	allowed, err := creds.IsAllowed(perm)
 	if err != nil || !allowed {
 		logging.Warnf("Cannot authorize request to %v", r.URL)
-		w.WriteHeader(403)
+		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
 	logging.Debugf("Allowing access to %v", r.URL)
@@ -1357,14 +1358,103 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) []
 	return appList
 }
 
+func (m *ServiceMgr) getConfig() (c config, info *runtimeInfo) {
+	info = &runtimeInfo{}
+	data, err := util.MetakvGet(metakvConfigPath)
+	if err != nil {
+		info.Code = m.statusCodes.errGetConfig.Code
+		info.Info = fmt.Sprintf("Failed to get config, err: %v", err)
+		return
+	}
+
+	if !bytes.Equal(data, nil) {
+		err = json.Unmarshal(data, &c)
+		if err != nil {
+			info.Code = m.statusCodes.errUnmarshalPld.Code
+			info.Info = fmt.Sprintf("Failed to unmarshal payload from metakv, err: %v", err)
+			return
+		}
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) saveConfig(c config) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+
+	data, err := json.Marshal(c)
+	if err != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("Failed to marshal config, err: %v", err)
+		return
+	}
+
+	err = util.MetakvSet(metakvConfigPath, data, nil)
+	if err != nil {
+		info.Code = m.statusCodes.errSaveConfig.Code
+		info.Info = fmt.Sprintf("Failed to store config to meta kv, err: %v", err)
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
-	// settings := regexp.MustCompile("^/api/v1/settings/?$")
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		fmt.Fprintln(w, "{\"error\":\"Request not authorized\"}")
+		return
+	}
+
+	info := &runtimeInfo{}
+
+	switch r.Method {
+	case "GET":
+		c, info := m.getConfig()
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		response, err := json.Marshal(c)
+		if err != nil {
+			info.Code = m.statusCodes.errMarshalResp.Code
+			info.Info = fmt.Sprintf("Failed to marshal config, err : %v", err)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		fmt.Fprintf(w, "%s", string(response))
+
+	case "POST":
+		data, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			info.Code = m.statusCodes.errReadReq.Code
+			info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		var c config
+		err = json.Unmarshal(data, &c)
+		if err != nil {
+			info.Code = m.statusCodes.errUnmarshalPld.Code
+			info.Info = fmt.Sprintf("Failed to unmarshal config from metakv, err: %v", err)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if info = m.saveConfig(c); info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+		}
+	}
 }
 
 func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintln(w, "{\"error\":\"Request not authorized\"}")
 		return
 	}
@@ -1372,6 +1462,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	functions := regexp.MustCompile("^/api/v1/functions/?$")
 	functionsName := regexp.MustCompile("^/api/v1/functions/(.+[^/])/?$") // Match is agnostic of trailing '/'
 	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.+[^/])/settings/?$")
+	info := &runtimeInfo{}
 
 	if match := functionsNameSettings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		appName := match[1]
@@ -1380,20 +1471,18 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			logging.Infof("Set settings for app %v", appName)
 			audit.Log(auditevent.SetSettings, r, appName)
 
-			runtimeInfo := &runtimeInfo{}
 			data, err := ioutil.ReadAll(r.Body)
 			if err != nil {
-				runtimeInfo.Code = m.statusCodes.errReadReq.Code
-				runtimeInfo.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
+				info.Code = m.statusCodes.errReadReq.Code
+				info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
 				w.WriteHeader(http.StatusInternalServerError)
-				m.sendErrorInfo(w, runtimeInfo)
+				m.sendErrorInfo(w, info)
 				return
 			}
 
-			if runtimeInfo = m.setSettings(appName, data); runtimeInfo.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, runtimeInfo)
+			if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
 			}
-			break
 		}
 	} else if match := functionsName.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		appName := match[1]
@@ -1411,31 +1500,28 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 			response, err := json.Marshal(app)
 			if err != nil {
-				runtimeInfo := &runtimeInfo{}
-				runtimeInfo.Code = m.statusCodes.errMarshalResp.Code
-				runtimeInfo.Info = fmt.Sprintf("Failed to marshal app, err : %v", err)
-				w.WriteHeader(http.StatusInternalServerError)
-				m.sendErrorInfo(w, runtimeInfo)
+				info.Code = m.statusCodes.errMarshalResp.Code
+				info.Info = fmt.Sprintf("Failed to marshal app, err : %v", err)
+				m.sendErrorInfo(w, info)
 				return
 			}
 
 			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 			fmt.Fprintf(w, "%s", string(response))
-			break
 
 		case "POST":
-			app, runtimeInfo := m.unmarshalApp(r)
-			if runtimeInfo.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, runtimeInfo)
+			app, info := m.unmarshalApp(r)
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
 				return
 			}
 
 			// Reject the request if there is a mismatch of app name in URL and body
 			if app.Name != appName {
-				runtimeInfo.Code = m.statusCodes.errAppNameMismatch.Code
-				runtimeInfo.Info = fmt.Sprintf("Function name in the URL (%s) and body (%s) must be same", appName, app.Name)
+				info.Code = m.statusCodes.errAppNameMismatch.Code
+				info.Info = fmt.Sprintf("Function name in the URL (%s) and body (%s) must be same", appName, app.Name)
 				w.WriteHeader(http.StatusBadRequest)
-				m.sendErrorInfo(w, runtimeInfo)
+				m.sendErrorInfo(w, info)
 				return
 			}
 
@@ -1454,16 +1540,15 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				m.sendErrorInfo(w, runtimeInfo)
 			}
-			break
 
 		case "DELETE":
 			logging.Infof("Deleting application %v from primary store", appName)
 			audit.Log(auditevent.DeleteFunction, r, appName)
 
-			runtimeInfo := m.deletePrimaryStore(appName)
+			info := m.deletePrimaryStore(appName)
 			// Delete the application from temp store only if app does not exist in primary store
 			// or if the deletion succeeds on primary store
-			if runtimeInfo.Code == m.statusCodes.errAppNotDeployed.Code || runtimeInfo.Code == m.statusCodes.ok.Code {
+			if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
 				logging.Infof("Deleting drafts")
 				audit.Log(auditevent.DeleteDrafts, r, appName)
 
@@ -1472,61 +1557,57 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			} else {
-				m.sendErrorInfo(w, runtimeInfo)
+				m.sendErrorInfo(w, info)
 			}
-			break
 		}
 
 	} else if match := functions.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		switch r.Method {
 		case "GET":
 			m.getTempStoreHandler(w, r)
-			break
 
 		case "POST":
-			runtimeInfoList := []*runtimeInfo{}
+			infoList := []*runtimeInfo{}
 			appList := m.unmarshalAppList(w, r)
 			for _, app := range appList {
 				logging.Infof("Saving application %v to primary store", app.Name)
 				audit.Log(auditevent.CreateFunction, r, app.Name)
 
 				// Save to temp store only if saving to primary store succeeds
-				if runtimeInfo := m.savePrimaryStore(app); runtimeInfo.Code == m.statusCodes.ok.Code {
+				if info := m.savePrimaryStore(app); info.Code == m.statusCodes.ok.Code {
 					logging.Infof("Got request to save handler into temporary store: %v", app.Name)
 					audit.Log(auditevent.SaveDraft, r, app.Name)
 
-					runtimeInfo := m.saveTempStore(app)
-					runtimeInfoList = append(runtimeInfoList, runtimeInfo)
+					info := m.saveTempStore(app)
+					infoList = append(infoList, info)
 				} else {
-					runtimeInfoList = append(runtimeInfoList, runtimeInfo)
+					infoList = append(infoList, info)
 				}
 			}
 
-			m.sendRuntimeInfoList(w, runtimeInfoList)
-			break
+			m.sendRuntimeInfoList(w, infoList)
 
 		case "DELETE":
-			runtimeInfoList := []*runtimeInfo{}
+			infoList := []*runtimeInfo{}
 			for _, app := range m.getTempStoreAll() {
 				logging.Infof("Deleting application %v from primary store", app.Name)
 				audit.Log(auditevent.DeleteFunction, r, app.Name)
 
-				runtimeInfo := m.deletePrimaryStore(app.Name)
+				info := m.deletePrimaryStore(app.Name)
 				// Delete the application from temp store only if app does not exist in primary store
 				// or if the deletion succeeds on primary store
-				if runtimeInfo.Code == m.statusCodes.errAppNotDeployed.Code || runtimeInfo.Code == m.statusCodes.ok.Code {
+				if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
 					logging.Infof("Deleting drafts")
 					audit.Log(auditevent.DeleteDrafts, r, app.Name)
 
-					runtimeInfo := m.deleteTempStore(app.Name)
-					runtimeInfoList = append(runtimeInfoList, runtimeInfo)
+					info := m.deleteTempStore(app.Name)
+					infoList = append(infoList, info)
 				} else {
-					runtimeInfoList = append(runtimeInfoList, runtimeInfo)
+					infoList = append(infoList, info)
 				}
 			}
 
-			m.sendRuntimeInfoList(w, runtimeInfoList)
-			break
+			m.sendRuntimeInfoList(w, infoList)
 		}
 	}
 }
@@ -1534,7 +1615,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintln(w, "{\"error\":\"Request not authorized\"}")
 		return
 	}
