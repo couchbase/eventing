@@ -286,13 +286,13 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	doc.UpsertEx("previous_vb_owner", vbBlob.PreviousVBOwner, gocb.SubdocFlagCreatePath)
 
 	_, err := doc.Execute()
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing checkpoint update post dcp stop stream, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
-	}
-
-	if err == gocb.ErrShutdown {
-		return nil
 	}
 
 	return err
@@ -309,13 +309,13 @@ var updateVbOwnerAndStartStreamCallback = func(args ...interface{}) error {
 	doc.UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath)
 
 	_, err := doc.Execute()
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing checkpoint update before dcp stream start, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
-	}
-
-	if err == gocb.ErrShutdown {
-		return nil
 	}
 
 	return err

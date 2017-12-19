@@ -429,7 +429,9 @@ func (p *Producer) getSeqsProcessed() {
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
 
 		p.statsRWMutex.Lock()
-		p.seqsNoProcessed[vb] = int64(vbBlob["last_processed_seq_no"].(float64))
+		if _, ok := vbBlob["last_processed_seq_no"]; ok {
+			p.seqsNoProcessed[vb] = int64(vbBlob["last_processed_seq_no"].(float64))
+		}
 		p.statsRWMutex.Unlock()
 	}
 }
