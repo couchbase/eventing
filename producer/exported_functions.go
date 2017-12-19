@@ -129,15 +129,6 @@ func (p *Producer) GetNsServerPort() string {
 	return p.nsServerPort
 }
 
-// GetSeqsProcessed returns vbucket specific sequence nos processed so far
-func (p *Producer) GetSeqsProcessed() map[int]int64 {
-	if len(p.runningConsumers) > 0 {
-		return p.runningConsumers[0].GetSeqsProcessed()
-	}
-	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
-	return nil
-}
-
 // GetSourceMap return source map to assist V8 Debugger
 func (p *Producer) GetSourceMap() string {
 	if len(p.runningConsumers) > 0 {
@@ -409,4 +400,30 @@ func (p *Producer) PlannerStats() []*common.PlannerNodeVbMapping {
 	}
 
 	return plannerNodeMappings
+}
+
+func (p *Producer) getSeqsProcessed() {
+	vbBlob := make(map[string]interface{})
+
+	for vb := 0; vb < numVbuckets; vb++ {
+		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
+
+		p.statsRWMutex.Lock()
+		p.seqsNoProcessed[vb] = int64(vbBlob["last_processed_seq_no"].(float64))
+		p.statsRWMutex.Unlock()
+	}
+}
+
+// GetSeqsProcessed returns vbucket specific sequence nos processed so far
+func (p *Producer) GetSeqsProcessed() map[int]int64 {
+	p.statsRWMutex.Lock()
+	defer p.statsRWMutex.Unlock()
+
+	seqNoProcessed := make(map[int]int64)
+	for k, v := range p.seqsNoProcessed {
+		seqNoProcessed[k] = v
+	}
+
+	return seqNoProcessed
 }

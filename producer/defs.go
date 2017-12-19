@@ -185,6 +185,7 @@ type Producer struct {
 	statsRWMutex *sync.RWMutex
 
 	plannerNodeMappings []*common.PlannerNodeVbMapping // access controlled by statsRWMutex
+	seqsNoProcessed     map[int]int64                  // Access controlled by statsRWMutex
 	updateStatsTicker   *time.Ticker
 	updateStatsStopCh   chan struct{}
 

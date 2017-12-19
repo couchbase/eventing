@@ -213,7 +213,6 @@ type Consumer struct {
 	latencyStats           map[string]uint64             // Access controlled by statsRWMutex
 	lcbExceptionStats      map[string]uint64             // Access controlled by statsRWMutex
 	compileInfo            *common.CompileStatus
-	seqsNoProcessed        map[int]int64 // Access controlled by statsRWMutex
 	statsRWMutex           *sync.RWMutex
 	hostDcpFeedRWMutex     *sync.RWMutex
 	kvVbMap                map[uint16]string // Access controlled by default lock

@@ -74,7 +74,6 @@ func (c *Consumer) updateWorkerStats() {
 		select {
 		case <-c.updateStatsTicker.C:
 			c.dcpEventsRemainingToProcess()
-			c.getSeqsProcessed()
 			c.sendGetExecutionStats(false)
 			c.sendGetFailureStats(false)
 			c.sendGetLatencyStats(false)

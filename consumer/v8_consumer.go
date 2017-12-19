@@ -77,7 +77,6 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		sendMsgBufferRWMutex:               &sync.RWMutex{},
 		sendMsgCounter:                     0,
 		sendMsgToDebugger:                  false,
-		seqsNoProcessed:                    make(map[int]int64),
 		signalBootstrapFinishCh:            make(chan struct{}, 1),
 		signalConnectedCh:                  make(chan struct{}, 1),
 		signalDebugBlobDebugStopCh:         make(chan struct{}, 1),
@@ -136,10 +135,6 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		New: func() interface{} {
 			return flatbuffers.NewBuilder(0)
 		},
-	}
-
-	for i := 0; i < numVbuckets; i++ {
-		consumer.seqsNoProcessed[i] = 0
 	}
 
 	return consumer

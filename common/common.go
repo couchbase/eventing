@@ -97,7 +97,6 @@ type EventingConsumer interface {
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
-	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
 	HandleV8Worker()
 	HostPortAddr() string

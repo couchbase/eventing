@@ -39,6 +39,7 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 		nsServerPort:           nsServerPort,
 		pauseProducerCh:        make(chan struct{}, 1),
 		persistAllTicker:       time.NewTicker(persistAllTickInterval),
+		seqsNoProcessed:        make(map[int]int64),
 		signalStopPersistAllCh: make(chan struct{}, 1),
 		statsRWMutex:           &sync.RWMutex{},
 		superSup:               superSup,
@@ -50,6 +51,11 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 	}
 
 	p.eventingNodeUUIDs = append(p.eventingNodeUUIDs, uuid)
+
+	for i := 0; i < numVbuckets; i++ {
+		p.seqsNoProcessed[i] = 0
+	}
+
 	return p
 }
 
@@ -486,6 +492,7 @@ func (p *Producer) updateStats() {
 		select {
 		case <-p.updateStatsTicker.C:
 			p.vbDistributionStats()
+			p.getSeqsProcessed()
 		case <-p.updateStatsStopCh:
 			return
 		}
