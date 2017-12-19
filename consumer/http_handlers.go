@@ -37,6 +37,13 @@ func (c *Consumer) EventsProcessedPSec() *cm.EventProcessingStats {
 
 func (c *Consumer) dcpEventsRemainingToProcess() {
 	vbsTohandle := c.vbsToHandle()
+	if len(vbsTohandle) <= 0 {
+		return
+	}
+
+	c.statsRWMutex.Lock()
+	c.statsRWMutex.Unlock()
+	c.vbDcpEventsRemaining = make(map[int]int64)
 
 	seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil {
@@ -52,6 +59,12 @@ func (c *Consumer) dcpEventsRemainingToProcess() {
 		vbKey := fmt.Sprintf("%s_vb_%d", c.app.AppName, vbno)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getMetaOpCallback, c, vbKey, &seqNo, subdocPath)
 
+		if seqNos[int(vbno)] > seqNo {
+			c.statsRWMutex.Lock()
+			c.vbDcpEventsRemaining[int(vbno)] = int64(seqNos[int(vbno)] - seqNo)
+			c.statsRWMutex.Unlock()
+		}
+
 		eventsProcessed += seqNo
 		totalEvents += seqNos[int(vbno)]
 	}
@@ -66,6 +79,19 @@ func (c *Consumer) dcpEventsRemainingToProcess() {
 // DcpEventsRemainingToProcess reports cached value for dcp events remaining to producer
 func (c *Consumer) DcpEventsRemainingToProcess() uint64 {
 	return c.dcpEventsRemaining
+}
+
+// VbDcpEventsRemainingToProcess reports cached dcp events remaining broken down to vbucket level
+func (c *Consumer) VbDcpEventsRemainingToProcess() map[int]int64 {
+	c.statsRWMutex.RLock()
+	defer c.statsRWMutex.RUnlock()
+	vbDcpEventsRemaining := make(map[int]int64)
+
+	for vb, count := range c.vbDcpEventsRemaining {
+		vbDcpEventsRemaining[vb] = count
+	}
+
+	return vbDcpEventsRemaining
 }
 
 // VbProcessingStats exposes consumer vb metadata to producer

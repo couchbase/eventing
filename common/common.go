@@ -77,6 +77,7 @@ type EventingProducer interface {
 	StopProducer()
 	String() string
 	TimerTransferHostPortAddrs() map[string]string
+	VbDcpEventsRemainingToProcess() map[int]int64
 	VbDistributionStats() map[string]map[string]string
 	VbEventingNodeAssignMap() map[uint16]string
 	WorkerVbMap() map[string][]uint16
@@ -119,6 +120,7 @@ type EventingConsumer interface {
 	String() string
 	TimerTransferHostPortAddr() string
 	UpdateEventingNodesUUIDs(uuids []string)
+	VbDcpEventsRemainingToProcess() map[int]int64
 	VbProcessingStats() map[uint16]map[string]interface{}
 }
 
@@ -148,6 +150,7 @@ type EventingSuperSup interface {
 	RestPort() string
 	SignalStartDebugger(appName string)
 	SignalStopDebugger(appName string)
+	VbDcpEventsRemainingToProcess(appName string) map[int]int64
 	VbDistributionStats(appName string) map[string]map[string]string
 }
 

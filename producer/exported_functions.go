@@ -282,6 +282,25 @@ func (p *Producer) GetDcpEventsRemainingToProcess() uint64 {
 	return remainingEvents
 }
 
+// VbDcpEventsRemainingToProcess returns remaining dcp events to process per vbucket
+func (p *Producer) VbDcpEventsRemainingToProcess() map[int]int64 {
+	vbDcpEventsRemaining := make(map[int]int64)
+
+	for _, consumer := range p.runningConsumers {
+		eventsRemaining := consumer.VbDcpEventsRemainingToProcess()
+		for vb, count := range eventsRemaining {
+
+			if _, ok := vbDcpEventsRemaining[vb]; !ok {
+				vbDcpEventsRemaining[vb] = 0
+			}
+
+			vbDcpEventsRemaining[vb] += count
+		}
+	}
+
+	return vbDcpEventsRemaining
+}
+
 // GetEventingConsumerPids returns map of Eventing.Consumer worker name and it's os pid
 func (p *Producer) GetEventingConsumerPids() map[string]int {
 	workerPidMapping := make(map[string]int)

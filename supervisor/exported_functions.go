@@ -210,6 +210,17 @@ func (s *SuperSupervisor) GetDcpEventsRemainingToProcess(appName string) uint64 
 	return 0
 }
 
+// VbDcpEventsRemainingToProcess returns remaining dcp events to process
+func (s *SuperSupervisor) VbDcpEventsRemainingToProcess(appName string) map[int]int64 {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.VbDcpEventsRemainingToProcess()
+	}
+	logging.Errorf("SSUP[%d] Events per vb remaining request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+		len(s.runningProducers), appName)
+	return nil
+}
+
 // GetEventingConsumerPids returns map of Eventing.Consumer worker name and it's os pid
 func (s *SuperSupervisor) GetEventingConsumerPids(appName string) map[string]int {
 	p, ok := s.runningProducers[appName]

@@ -117,6 +117,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		vbFlogChan:                         make(chan *vbFlogEntry),
 		vbnos:                              vbnos,
 		updateStatsStopCh:                  make(chan struct{}, 1),
+		vbDcpEventsRemaining:               make(map[int]int64),
 		vbOwnershipGiveUpRoutineCount:      vbOwnershipGiveUpRoutineCount,
 		vbOwnershipTakeoverRoutineCount:    vbOwnershipTakeoverRoutineCount,
 		vbPlasmaStore:                      vbPlasmaStore,

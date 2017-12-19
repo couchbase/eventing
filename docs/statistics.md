@@ -76,12 +76,13 @@ This will return the stats regardings events processing, events remaining, execu
       "worker_h1_1": "[683-853]"
     }
    },
+   "dcp_event_backlog_per_vb": {"0":1, ...},
    "plasma_stats": {"AllocSz": 96, ...},
    "seqs_processed":{"0":0,"1":0, ...}
  }
 ]
 ```
-> Omitting the parameter `type=full` will exclude seqs_processed, latency_stats and plasma_stats from the response.
+> Omitting the parameter `type=full` will exclude `dcp_event_backlog_per_vb`, `latency_stats`, `plasma_stats` and `seqs_processed` from the response.
 
 The above stats could be individually obtained through the following endpoints:
 ```shell

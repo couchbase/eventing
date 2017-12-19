@@ -218,6 +218,7 @@ type Consumer struct {
 	kvVbMap                map[uint16]string // Access controlled by default lock
 	logLevel               string
 	superSup               common.EventingSuperSup
+	vbDcpEventsRemaining   map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap           map[uint16]*couchbase.DcpFeed
 	vbnos                  []uint16
 	vbsRemainingToOwn      []uint16
