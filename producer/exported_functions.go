@@ -374,8 +374,19 @@ func (p *Producer) vbDistributionStats() {
 		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
 
+		if _, ok := vbBlob["vb_id"]; !ok {
+			continue
+		}
 		vbucket := uint16(vbBlob["vb_id"].(float64))
+
+		if _, ok := vbBlob["current_vb_owner"]; !ok {
+			continue
+		}
 		currentOwner := vbBlob["current_vb_owner"].(string)
+
+		if _, ok := vbBlob["assigned_worker"]; !ok {
+			continue
+		}
 		workerID := vbBlob["assigned_worker"].(string)
 
 		if _, ok := vbNodeMap[currentOwner]; !ok && currentOwner != "" {
