@@ -196,10 +196,17 @@ func (c *Consumer) processEvents() {
 					vbBlob.NodeUUID = c.uuid
 					vbBlob.VBuuid = vbuuid
 
+					var startSeqNo uint64
+					var ok bool
+					if _, ok = c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64); ok {
+						startSeqNo = uint64(c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64))
+					}
+
 					entry := OwnershipEntry{
 						AssignedWorker: c.ConsumerName(),
 						CurrentVBOwner: c.HostPortAddr(),
 						Operation:      dcpStreamRunning,
+						StartSeqNo:     startSeqNo,
 						Timestamp:      time.Now().String(),
 					}
 
@@ -422,9 +429,7 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 		} else {
 
 			if vbBlob.NodeUUID == c.NodeUUID() {
-				start = vbBlob.LastSeqNoProcessed
-
-				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+				c.dcpRequestStreamHandle(vbno, &vbBlob, vbBlob.LastSeqNoProcessed)
 			}
 		}
 	}

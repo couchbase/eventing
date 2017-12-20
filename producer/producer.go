@@ -337,7 +337,6 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.appName, p.LenRunningConsumers(), err)
 				return
 			}
 

@@ -370,6 +370,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	}
 
 	if shouldStartStream {
+		c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
 		return c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
 	}
 
