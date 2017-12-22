@@ -271,6 +271,7 @@ type Consumer struct {
 	debuggerState                  int8
 	debuggerStarted                bool
 
+	fuzzOffset                    int
 	nonDocTimerProcessingTicker   *time.Ticker
 	nonDocTimerStopCh             chan struct{}
 	skipTimerThreshold            int

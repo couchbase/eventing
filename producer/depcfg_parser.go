@@ -159,6 +159,12 @@ func (p *Producer) parseDepcfg() error {
 		p.executionTimeout = 1
 	}
 
+	if val, ok := settings["fuzz_offset"]; ok {
+		p.fuzzOffset = int(val.(float64))
+	} else {
+		p.fuzzOffset = 30
+	}
+
 	if val, ok := settings["cpp_worker_thread_count"]; ok {
 		p.cppWorkerThrCount = int(val.(float64))
 	} else {

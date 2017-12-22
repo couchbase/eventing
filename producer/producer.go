@@ -321,7 +321,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.curlTimeout, p.vbOwnershipTakeoverRoutineCount, p.xattrEntryPruneThreshold, p.workerQueueCap,
 		p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
 		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStore,
-		p.socketTimeout, p.diagDir, p.numVbuckets)
+		p.socketTimeout, p.diagDir, p.numVbuckets, p.fuzzOffset)
 
 	p.Lock()
 	p.consumerListeners = append(p.consumerListeners, listener)

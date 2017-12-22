@@ -71,11 +71,11 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       handler_config->curl_timeout = long(payload->curl_timeout());
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();
+      handler_config->fuzz_offset = payload->fuzz_offset();
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
       handler_config->enable_recursive_mutation =
           payload->enable_recursive_mutation();
       handler_config->skip_lcb_bootstrap = payload->skip_lcb_bootstrap();
-
       server_settings->checkpoint_interval = payload->checkpoint_interval();
       server_settings->eventing_dir.assign(payload->eventing_dir()->str());
       server_settings->eventing_port.assign(

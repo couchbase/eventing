@@ -98,11 +98,14 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   std::string start_ts, timer_entry, value;
 
-  // Add a fuzz of (0, 30) to the actual timestamp
-  auto fuzz_ts = actual_ts + rand() % 30;
+  // Add a fuzz of (0, fuzz_offset) to the actual timestamp
+  auto fuzz_offset = UnwrapData(isolate)->fuzz_offset;
+  fuzz_offset = fuzz_offset <= 0 ? 1 : fuzz_offset;
+  auto fuzz_ts = actual_ts + rand() % fuzz_offset;
+
   start_ts.assign(std::to_string(fuzz_ts));
-  LOG(logInfo) << "Actual timestamp: " << actual_ts
-               << "\tFuzz timestamp: " << fuzz_ts << std::endl;
+  LOG(logTrace) << "Actual timestamp: " << actual_ts
+                << " Fuzz timestamp: " << fuzz_ts << std::endl;
 
   timer_entry.assign(appName);
   timer_entry.append("::");
@@ -114,15 +117,15 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   // Store blob in KV store, blob structure:
   // {
   //    "callback_func": "CallbackFunc",
-  //	"actual_timestamp": "app_name::yyyy-mm-ddThh:mm:ddZ"
+  //	"actual_timestamp": "yyyy-mm-ddThh:mm:ddZ"
   //    "payload": opaque
   // }
 
-  value.assign("{\"callback_func\": \"");
+  value.assign(R"({"callback_func": ")");
   value.append(cb_func);
-  value.append("\", \"actual_timestamp\": \"");
+  value.append(R"(", "actual_timestamp": ")");
   value.append(ConvertToISO8601(std::to_string(fuzz_ts)));
-  value.append("\", \"payload\": ");
+  value.append(R"(", "payload": )");
   value.append(opaque);
   value.append("}");
 

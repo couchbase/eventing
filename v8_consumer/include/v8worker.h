@@ -104,6 +104,7 @@ typedef struct handler_config_s {
   long curl_timeout;
   std::string dep_cfg;
   int execution_timeout;
+  int fuzz_offset;
   int lcb_inst_capacity;
   bool enable_recursive_mutation;
   bool skip_lcb_bootstrap;

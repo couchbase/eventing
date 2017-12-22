@@ -129,6 +129,11 @@ type Producer struct {
 	// Timer event processing worker count per Eventing.Consumer instance
 	timerWorkerPoolSize int
 
+	// Needed by cron timers
+	// A random number (0 - fuzzOffset) will be added to the epoch time at which the callback function
+	// was supposed to be called
+	fuzzOffset int
+
 	// stats gathered from ClusterInfo
 	localAddress      string
 	eventingNodeAddrs []string

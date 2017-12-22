@@ -114,7 +114,7 @@ func init() {
 	c.sendWorkerThrCount(0, false)
 
 	payload, pBuilder := c.makeV8InitPayload("credit_score", "localhost", "/tmp", "25000", "localhost:12000", string(cfgData),
-		"eventing", "asdasd", 5, 1, 1000, false)
+		"eventing", "asdasd", 5, 1, 30, 1000, false)
 	c.sendInitV8Worker(payload, false, pBuilder)
 	c.sendLoadV8Worker(appCode, false)
 	c.sendGetSourceMap(false)
