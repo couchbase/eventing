@@ -1,4 +1,4 @@
-// +build all rebalance
+// +build all rebalance eventing_reb_wh
 
 package eventing
 

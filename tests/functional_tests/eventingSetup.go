@@ -300,6 +300,8 @@ retryDstItemCount:
 		time.Sleep(5 * time.Second)
 	}
 
+	log.Printf("src & dst bucket item count matched up. src bucket count: %d dst bucket count: %d\n", srcCount, dstCount)
+
 	return true
 }
 

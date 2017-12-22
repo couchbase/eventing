@@ -1,4 +1,4 @@
-// +build all rebalance
+// +build all rebalance kv_reb
 
 package eventing
 
@@ -6,6 +6,13 @@ import (
 	"testing"
 	"time"
 )
+
+func init() {
+	initSetup()
+	setIndexStorageMode()
+	time.Sleep(5 * time.Second)
+	fireQuery("CREATE PRIMARY INDEX on eventing;")
+}
 
 /** OnUpdate Bucket op cases start **/
 func TestKVRebOnUpdateBucketOpOneByOne(t *testing.T) {

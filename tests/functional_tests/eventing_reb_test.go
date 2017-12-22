@@ -1,4 +1,4 @@
-// +build all rebalance
+// +build all rebalance eventing_reb
 
 package eventing
 
@@ -6,6 +6,13 @@ import (
 	"testing"
 	"time"
 )
+
+func init() {
+	initSetup()
+	setIndexStorageMode()
+	time.Sleep(5 * time.Second)
+	fireQuery("CREATE PRIMARY INDEX on eventing;")
+}
 
 /** NOOP cases start **/
 func TestEventingRebNoKVOpsNoopOneByOne(t *testing.T) {
