@@ -152,3 +152,7 @@ type config struct {
 	RAMQuota       int    `json:"ram_quota"`
 	MetadataBucket string `json:"metadata_bucket"`
 }
+
+type configResponse struct {
+	Restart bool `json:"restart"`
+}

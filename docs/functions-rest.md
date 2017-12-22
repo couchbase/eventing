@@ -41,5 +41,11 @@ In 5.1, responses returned by below functions are opaque and should not be edite
  "metadata_bucket": "metadata"
 }
 ```
-
-> The unit for ram_quota is MB.
+Response
+```json
+{
+ "restart": false
+}
+```
+> 1. The unit for ram_quota is MB.
+> 2. The response for the POST request indicates whether the eventing process must be restarted for changes to take effect.

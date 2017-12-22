@@ -1454,6 +1454,17 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 		if info = m.saveConfig(c); info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
 		}
+
+		response := configResponse{false}
+		data, err = json.Marshal(response)
+		if err != nil {
+			info.Code = m.statusCodes.errMarshalResp.Code
+			info.Info = fmt.Sprintf("Failed to marshal response, err: %v", err)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		fmt.Fprintf(w, "%s", string(data))
 	}
 }
 
