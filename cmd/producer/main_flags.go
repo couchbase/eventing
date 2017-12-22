@@ -21,6 +21,7 @@ type Flags struct {
 	uuid          string
 	diagDir       string
 	ipv6          bool
+	numVbuckets   int
 }
 
 var flags Flags
@@ -68,6 +69,10 @@ func initFlags() {
 	fset.BoolVar(&flags.ipv6,
 		"ipv6", false,
 		"Enable ipv6 mode")
+
+	fset.IntVar(&flags.numVbuckets,
+		"vbuckets", 1024,
+		"Number of vbuckets configured in Couchbase")
 
 	fset.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
