@@ -12,8 +12,9 @@ import (
 const (
 	metakvEventingPath       = "/eventing/"
 	metakvAppsPath           = metakvEventingPath + "apps/"
-	metakvAppSettingsPath    = metakvEventingPath + "settings/"       // function settings
-	metakvConfigPath         = metakvEventingPath + "config/settings" // global settings
+	metakvAppSettingsPath    = metakvEventingPath + "settings/"        // function settings
+	metakvConfigKeepNodes    = metakvEventingPath + "config/keepNodes" // Store list of eventing keepNodes
+	metakvConfigPath         = metakvEventingPath + "config/settings"  // global settings
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	metakvRebalanceProgress  = metakvEventingPath + "rebalanceProgress/"
 	metakvTempAppsPath       = metakvEventingPath + "tempApps/"
@@ -44,6 +45,7 @@ type ServiceMgr struct {
 	adminHTTPPort     string
 	adminSSLPort      string
 	certFile          string
+	keepNodeUUIDs     []string
 	keyFile           string
 	failoverNotif     bool
 	mu                *sync.RWMutex
@@ -147,6 +149,6 @@ type stats struct {
 }
 
 type config struct {
-	RamQuota       int    `json:"ram_quota"`
+	RAMQuota       int    `json:"ram_quota"`
 	MetadataBucket string `json:"metadata_bucket"`
 }

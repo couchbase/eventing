@@ -1,6 +1,7 @@
 package producer
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
@@ -34,6 +35,25 @@ func (p *Producer) vbEventingNodeAssign() error {
 		logging.Errorf("VBNA[%s:%d] Failed to get eventing node uuids, err: %v",
 			p.appName, p.LenRunningConsumers(), err)
 		return err
+	}
+
+	// This will kick off post eventing-producer bootstrap in cases where it's killed and then
+	// re-spawned by babysitter. Reads from metakv the list of keep nodes
+	// from metakv, which were written on last StartTopologyChange RPC call
+	if len(p.eventingNodeUUIDs) == 1 && p.eventingNodeUUIDs[0] == p.uuid {
+		var data []byte
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), metakvGetCallback, p, metakvConfigKeepNodes, &data)
+
+		var keepNodes []string
+		err := json.Unmarshal(data, &keepNodes)
+		if err != nil {
+			logging.Errorf("VBNA[%s:%d] Failed to unmarshal keep nodes received from metakv, err: %v",
+				p.appName, p.LenRunningConsumers(), err)
+		} else {
+			logging.Infof("VBNA[%s:%d] Updating Eventing keep nodes uuids. Previous: %v current: %v",
+				p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, keepNodes)
+			p.eventingNodeUUIDs = append([]string(nil), keepNodes...)
+		}
 	}
 
 	// Only includes nodes that supposed to be part of cluster post StartTopologyChange call

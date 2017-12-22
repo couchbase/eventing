@@ -3,9 +3,11 @@ package servicemanager
 import (
 	"bytes"
 	"os"
+	"time"
 
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 // GetNodeInfo callback for cbauth service.Manager
@@ -95,19 +97,19 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 
 	logging.Debugf("ServiceMgr::PrepareTopologyChange change: %#v", change)
 
-	var keepNodeUUIDs []string
+	m.keepNodeUUIDs = make([]string, 0)
 
 	for _, node := range change.KeepNodes {
-		keepNodeUUIDs = append(keepNodeUUIDs, string(node.NodeInfo.NodeID))
+		m.keepNodeUUIDs = append(m.keepNodeUUIDs, string(node.NodeInfo.NodeID))
 	}
 
-	logging.Infof("ServiceMgr::PrepareTopologyChange keepNodeUUIDs: %v", keepNodeUUIDs)
+	logging.Infof("ServiceMgr::PrepareTopologyChange keepNodeUUIDs: %v", m.keepNodeUUIDs)
 
 	m.updateStateLocked(func(s *state) {
 		m.rebalanceID = change.ID
 	})
 
-	m.superSup.NotifyPrepareTopologyChange(keepNodeUUIDs)
+	m.superSup.NotifyPrepareTopologyChange(m.keepNodeUUIDs)
 
 	return nil
 }
@@ -133,6 +135,8 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 			return service.ErrConflict
 		}
 	}
+
+	util.Retry(util.NewFixedBackoff(time.Second), storeKeepNodesCallback, m.keepNodeUUIDs)
 
 	ctx := &rebalanceContext{
 		rev:    0,
