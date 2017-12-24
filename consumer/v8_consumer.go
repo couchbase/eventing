@@ -128,6 +128,8 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		vbsRemainingToGiveUp:               make([]uint16, 0),
 		vbsRemainingToOwn:                  make([]uint16, 0),
 		vbsRemainingToRestream:             make([]uint16, 0),
+		vbsStreamClosed:                    make(map[uint16]bool),
+		vbsStreamClosedRWMutex:             &sync.RWMutex{},
 		workerName:                         fmt.Sprintf("worker_%s_%d", app.AppName, index),
 		workerQueueCap:                     workerQueueCap,
 		xattrEntryPruneThreshold:           xattrEntryPruneThreshold,

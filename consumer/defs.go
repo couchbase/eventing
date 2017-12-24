@@ -223,6 +223,8 @@ type Consumer struct {
 	vbsRemainingToOwn      []uint16
 	vbsRemainingToGiveUp   []uint16
 	vbsRemainingToRestream []uint16
+	vbsStreamClosed        map[uint16]bool // Access controlled by vbsStreamClosedRWMutex
+	vbsStreamClosedRWMutex *sync.RWMutex
 
 	xattrEntryPruneThreshold int
 

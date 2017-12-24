@@ -270,8 +270,17 @@ func (c *Consumer) processEvents() {
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
 
-				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
-				c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
+				c.vbsStreamClosedRWMutex.Lock()
+				_, cUpdated := c.vbsStreamClosed[e.VBucket]
+				if !cUpdated {
+					c.vbsStreamClosed[e.VBucket] = true
+				}
+				c.vbsStreamClosedRWMutex.Unlock()
+
+				if !cUpdated {
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+					c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
+				}
 
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 					logging.Debugf("CRVT[%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
@@ -527,10 +536,10 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() {
 	}
 }
 
-func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
+func (c *Consumer) clearUpOnwershipInfoFromMeta(vb uint16) {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
-	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 	vbBlob.AssignedDocIDTimerWorker = ""
@@ -551,15 +560,24 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 		Timestamp:      time.Now().String(),
 	}
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySECallback, c, vbKey, &entry)
+	c.vbsStreamClosedRWMutex.Lock()
+	_, cUpdated := c.vbsStreamClosed[vb]
+	if !cUpdated {
+		c.vbsStreamClosed[vb] = true
+	}
+	c.vbsStreamClosedRWMutex.Unlock()
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateCheckpointCallback, c, vbKey, &vbBlob)
+	if !cUpdated {
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySECallback, c, vbKey, &entry)
 
-	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
-	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
-	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
-	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
-	c.vbProcessingStats.updateVbStat(vbno, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateCheckpointCallback, c, vbKey, &vbBlob)
+	}
+
+	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
+	c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", vbBlob.CurrentVBOwner)
+	c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", vbBlob.DCPStreamStatus)
+	c.vbProcessingStats.updateVbStat(vb, "node_uuid", vbBlob.NodeUUID)
+	c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
 }
 
 func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) error {

@@ -94,6 +94,14 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 					// TODO: Retry loop for dcp close stream as it could fail and additional verification checks
 					// Additional check needed to verify if vbBlob.NewOwner is the expected owner
 					// as per the vbEventingNodesAssignMap
+
+					c.vbsStreamClosedRWMutex.Lock()
+					_, cUpdated := c.vbsStreamClosed[vb]
+					if !cUpdated {
+						c.vbsStreamClosed[vb] = true
+					}
+					c.vbsStreamClosedRWMutex.Unlock()
+
 					c.RLock()
 					err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
 					if err != nil {
@@ -101,6 +109,11 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 							c.workerName, i, c.tcpPort, c.Pid(), vb, err)
 					}
 					c.RUnlock()
+
+					if !cUpdated {
+						util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+						c.updateCheckpoint(vbKey, vb, &vbBlob)
+					}
 
 					c.vbTimerProcessingWorkerAssign(false)
 
@@ -262,6 +275,10 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
 			}
 			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+		}
+
+		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker != c.ConsumerName() {
+			return errVbOwnedByAnotherWorker
 		}
 
 		return errVbOwnedByAnotherNode

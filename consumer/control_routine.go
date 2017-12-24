@@ -22,6 +22,10 @@ func (c *Consumer) controlRoutine() {
 			logging.Infof("CRCR[%s:%s:%s:%d] Got notification that cluster state has changed(could also trigger on app deploy)",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
+			c.vbsStreamClosedRWMutex.Lock()
+			c.vbsStreamClosed = make(map[uint16]bool)
+			c.vbsStreamClosedRWMutex.Unlock()
+
 			c.isRebalanceOngoing = true
 			go c.vbsStateUpdate()
 
