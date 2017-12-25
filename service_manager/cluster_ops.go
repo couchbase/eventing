@@ -62,3 +62,19 @@ var storeKeepNodesCallback = func(args ...interface{}) error {
 
 	return nil
 }
+
+var stopRebalanceCallback = func(args ...interface{}) error {
+	r := args[0].(*rebalancer)
+
+	logging.Errorf("SMCO Updating metakv to signify rebalance cancellation")
+
+	path := metakvRebalanceTokenPath + r.change.ID
+	err := util.MetakvSet(path, []byte(stopRebalance), nil)
+	if err != nil {
+		logging.Errorf("SMCO Failed to update rebalance token: %v in metakv as part of cancelling rebalance, err: %v",
+			r.change.ID, err)
+		return err
+	}
+
+	return nil
+}

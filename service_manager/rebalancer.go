@@ -48,22 +48,25 @@ func (r *rebalancer) gatherProgress() {
 	// Store the initial state of rebalance progress in metakv
 	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
 	if len(errMap) > 0 {
-		logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to capture cluster wide state of vbs to shuffle as part of rebalance, errMap dump: %v", errMap)
+		logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide state of vbs to shuffle as part of rebalance, errMap dump: %v", errMap)
+		util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
 		return
 	}
 
-	logging.Infof("ServiceMgr::rebalancer::gatherProgress initProgress dump: %v", initProgress)
+	logging.Infof("rebalancer::gatherProgress initProgress dump: %v", initProgress)
 
 	buf, err := json.Marshal(initProgress)
 	if err != nil {
-		logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to marshal rebalance progress. Retrying")
+		logging.Errorf("rebalancer::gatherProgress Failed to marshal rebalance progress. Retrying")
+		util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
 		return
 	}
 
 	progressPath := fmt.Sprintf("%sprogress", metakvRebalanceProgress)
 	err = util.MetakvSet(progressPath, buf, nil)
 	if err != nil {
-		logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to write rebalance init progress to metakv. Retrying")
+		logging.Errorf("rebalancer::gatherProgress Failed to write rebalance init progress to metakv. Retrying")
+		util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
 		return
 	}
 
@@ -72,7 +75,7 @@ func (r *rebalancer) gatherProgress() {
 		case <-progressTicker.C:
 			p, errMap := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
 			if len(errMap) != 0 {
-				logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to get aggregate rebalance progress, errMap: %v", errMap)
+				logging.Errorf("rebalancer::gatherProgress Failed to get aggregate rebalance progress, errMap: %v", errMap)
 				continue
 			}
 
@@ -85,17 +88,17 @@ func (r *rebalancer) gatherProgress() {
 
 				buf, err = util.MetakvGet(progressPath)
 				if err != nil {
-					logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to read rebalance init progress from metakv")
+					logging.Errorf("rebalancer::gatherProgress Failed to read rebalance init progress from metakv")
 					continue
 				}
 
 				err = json.Unmarshal(buf, &aggProgress)
 				if err != nil {
-					logging.Errorf("ServiceMgr::rebalancer::gatherProgress Failed to unmarshal rebalance init progress")
+					logging.Errorf("rebalancer::gatherProgress Failed to unmarshal rebalance init progress")
 					continue
 				}
 
-				logging.Infof("ServiceMgr::rebalancer::gatherProgress total vbs to shuffle: %v vbs remaining to shuffle: %v",
+				logging.Infof("rebalancer::gatherProgress total vbs to shuffle: %v vbs remaining to shuffle: %v",
 					aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle)
 
 				if p.VbsRemainingToShuffle > aggProgress.VbsRemainingToShuffle {
