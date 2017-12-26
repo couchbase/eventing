@@ -8,15 +8,6 @@ import (
 	"time"
 )
 
-func init() {
-	initSetup()
-	setIndexStorageMode()
-	time.Sleep(5 * time.Second)
-	fireQuery("CREATE PRIMARY INDEX on eventing;")
-
-	log.SetFlags(log.LstdFlags)
-}
-
 // Tests mimicking testrunner functional tests
 func TestEventingRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	time.Sleep(5 * time.Second)

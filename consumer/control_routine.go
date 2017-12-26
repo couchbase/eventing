@@ -116,7 +116,7 @@ func (c *Consumer) controlRoutine() {
 			if _, ok := deployedApps[c.app.AppName]; !ok {
 				c.vbsRemainingToRestream = make([]uint16, 0)
 				logging.Infof("CRCR[%s:%s:%s:%d] Discarding request to restream vbs: %v as the app has been undeployed",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsToRestream)
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
 				continue
 			}
 
@@ -126,14 +126,14 @@ func (c *Consumer) controlRoutine() {
 
 			if !c.isRebalanceOngoing {
 				logging.Infof("CRCR[%s:%s:%s:%d] Discarding request to restream vbs: %v as rebalance has been stopped",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsToRestream)
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
 				c.vbsRemainingToRestream = make([]uint16, 0)
 				continue
 			}
 
 			sort.Sort(util.Uint16Slice(vbsToRestream))
 			logging.Verbosef("CRCR[%s:%s:%s:%d] vbsToRestream len: %v dump: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsToRestream), vbsToRestream)
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsToRestream), util.Condense(vbsToRestream))
 
 			var vbsFailedToStartStream []uint16
 
@@ -171,7 +171,7 @@ func (c *Consumer) controlRoutine() {
 
 			if vbsRemainingToRestream > 0 {
 				logging.Verbosef("CRCR[%s:%s:%s:%d] Retrying vbsToRestream, remaining len: %v dump: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsRemainingToRestream, diff)
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsRemainingToRestream, util.Condense(diff))
 				goto retryVbsRemainingToRestream
 			}
 

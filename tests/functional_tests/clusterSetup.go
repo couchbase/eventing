@@ -157,10 +157,37 @@ func removeNode(hostname string) {
 	}
 }
 
-func addNodeFromRest(hostname, role string) ([]byte, error) {
-	log.Printf("Adding node: %s with role: %s to the cluster\n", hostname, role)
+func failover(hostname string) {
+	buildDir := os.Getenv(cbBuildEnvString)
+	if buildDir == "" {
+		fmt.Printf("Please set the CB build dir env flag: %s\n", cbBuildEnvString)
+		return
+	}
+	cbCliPath := buildDir + "/install/bin/couchbase-cli"
+
+	log.Println("Starting up rebalance")
+
+	cmd := exec.Command(cbCliPath, "failover", "-c", "127.0.0.1:9000", "-u", username, "-p", password, "--force", "--server-failover=", hostname)
+
+	err := cmd.Start()
+	if err != nil {
+		fmt.Println("Failed to start rebalance for the cluster, err", err)
+		return
+	}
+}
+
+func failoverFromRest(nodesToRemove []string) {
+	log.Printf("Failing over: %v\n", nodesToRemove)
+
+	_, removeNodes := otpNodes(nodesToRemove)
+	payload := strings.NewReader(fmt.Sprintf("otpNode=%s", url.QueryEscape(removeNodes)))
+	makeRequest("POST", payload, failoverURL)
+}
+
+func addNodeFromRest(hostname, roles string) ([]byte, error) {
+	log.Printf("Adding node: %s with role: %s to the cluster\n", hostname, roles)
 	payload := strings.NewReader(fmt.Sprintf("hostname=%s&user=%s&password=%s&services=%s",
-		url.QueryEscape(hostname), username, password, role))
+		url.QueryEscape(hostname), username, password, url.QueryEscape(roles)))
 	return makeRequest("POST", payload, addNodeURL)
 }
 

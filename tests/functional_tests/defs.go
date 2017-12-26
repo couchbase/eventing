@@ -25,6 +25,7 @@ const (
 	nodeRenameURL       = "http://127.0.0.1:9000/node/controller/rename"
 	clusterSetupURL     = "http://127.0.0.1:9000/node/controller/setupServices"
 	clusterCredSetupURL = "http://127.0.0.1:9000/settings/web"
+	failoverURL         = "http://127.0.0.1:9000/controller/failOver"
 	quotaSetupURL       = "http://127.0.0.1:9000/pools/default"
 	bucketSetupURL      = "http://127.0.0.1:9000/pools/default/buckets"
 	rbacSetupURL        = "http://127.0.0.1:9000/settings/rbac/users/local"

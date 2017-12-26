@@ -7,13 +7,6 @@ import (
 	"time"
 )
 
-func init() {
-	initSetup()
-	setIndexStorageMode()
-	time.Sleep(5 * time.Second)
-	fireQuery("CREATE PRIMARY INDEX on eventing;")
-}
-
 func TestEventingRebNoKVOpsWithoutHandlerOneByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
 

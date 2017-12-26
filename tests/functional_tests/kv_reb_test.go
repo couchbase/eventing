@@ -7,13 +7,6 @@ import (
 	"time"
 )
 
-func init() {
-	initSetup()
-	setIndexStorageMode()
-	time.Sleep(5 * time.Second)
-	fireQuery("CREATE PRIMARY INDEX on eventing;")
-}
-
 /** OnUpdate Bucket op cases start **/
 func TestKVRebOnUpdateBucketOpOneByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
@@ -377,6 +370,57 @@ func TestKVRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 	metaStateDump()
 
 	time.Sleep(10 * time.Second)
+
+	metaStateDump()
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9002", "kv")
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}
+
+func TestKVFailoverOnUpdateBucketOp(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update.js"
+
+	flushFunctionAndBucket(handler)
+	time.Sleep(5 * time.Second)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: rlOpsPSec,
+		count:   rlItemCount,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9001", "kv")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	failoverFromRest([]string{"127.0.0.1:9001"})
+	time.Sleep(10 * time.Second)
+	metaStateDump()
 
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
