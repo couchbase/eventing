@@ -264,11 +264,40 @@ retryVerifyBucketOp:
 
 	itemCount, _ = getBucketItemCount(dstBucket)
 	if itemCount == count {
+		log.Printf("src & dst bucket item count matched up. src bucket count: %d dst bucket count: %d\n", count, itemCount)
 		return itemCount
 	}
 	rCount++
 	time.Sleep(time.Second * 5)
 	goto retryVerifyBucketOp
+}
+
+func verifyBucketItemCount(rl *rateLimit, retryCount int) {
+	rCount := 1
+
+	log.SetFlags(log.LstdFlags)
+
+retrySrcItemCount:
+	if rCount >= retryCount {
+		log.Printf("Failed to have: %v items in source bucket, even after %v retries\n",
+			rl.count, retryCount)
+		return
+	}
+
+	srcCount, err := getBucketItemCount(srcBucket)
+	if err != nil {
+		time.Sleep(3 * time.Second)
+		goto retrySrcItemCount
+	}
+
+	if srcCount != rl.count {
+		time.Sleep(3 * time.Second)
+		goto retrySrcItemCount
+	}
+
+	if srcCount == rl.count {
+		rl.stopCh <- struct{}{}
+	}
 }
 
 func compareSrcAndDstItemCount(retryCount int) bool {

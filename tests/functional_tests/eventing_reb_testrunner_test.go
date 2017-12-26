@@ -45,22 +45,27 @@ func TestEventingRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) 
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
-	rl.stopCh <- struct{}{}
+
+	verifyBucketItemCount(rl, statsLookupRetryCounter)
 
 	log.Println("Comparing item count post create/update operations")
-	res := compareSrcAndDstItemCount(statsLookupRetryCounter)
-	if !res {
+	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
+	if rl.count != eventCount {
 		t.Error("For", "TestEventingRebInWhenExistingEventingNodeProcessingMutations",
+			"expected", rl.count,
+			"got", eventCount,
 			"UpdateOp")
 	}
 
 	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
-	time.Sleep(10 * time.Second)
 
 	log.Println("Comparing item count post delete operations")
-	res = compareSrcAndDstItemCount(statsLookupRetryCounter)
-	if !res {
+
+	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
+	if eventCount != 0 {
 		t.Error("For", "TestEventingRebInWhenExistingEventingNodeProcessingMutations",
+			"expected", 0,
+			"got", eventCount,
 			"DeleteOp")
 	}
 
@@ -93,22 +98,26 @@ func TestEventingRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T)
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
-	rl.stopCh <- struct{}{}
+
+	verifyBucketItemCount(rl, statsLookupRetryCounter)
 
 	log.Println("Comparing item count post create/update operations")
-	res := compareSrcAndDstItemCount(statsLookupRetryCounter)
-	if !res {
+	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
+	if rl.count != eventCount {
 		t.Error("For", "TestEventingRebOutWhenExistingEventingNodeProcessingMutations",
+			"expected", rl.count,
+			"got", eventCount,
 			"UpdateOp")
 	}
 
 	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
-	time.Sleep(10 * time.Second)
 
 	log.Println("Comparing item count post delete operations")
-	res = compareSrcAndDstItemCount(statsLookupRetryCounter)
-	if !res {
+	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
+	if eventCount != 0 {
 		t.Error("For", "TestEventingRebOutWhenExistingEventingNodeProcessingMutations",
+			"expected", 0,
+			"got", eventCount,
 			"DeleteOp")
 	}
 
@@ -148,21 +157,25 @@ func TestEventingSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rl.stopCh <- struct{}{}
+	verifyBucketItemCount(rl, statsLookupRetryCounter)
+
 	log.Println("Comparing item count post create/update operations")
-	res := compareSrcAndDstItemCount(statsLookupRetryCounter)
-	if !res {
+	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
+	if rl.count != eventCount {
 		t.Error("For", "TestEventingSwapRebWhenExistingEventingNodeProcessingMutations",
+			"expected", rl.count,
+			"got", eventCount,
 			"UpdateOp")
 	}
 
 	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
-	time.Sleep(10 * time.Second)
 
 	log.Println("Comparing item count post delete operations")
-	res = compareSrcAndDstItemCount(statsLookupRetryCounter)
-	if !res {
+	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
+	if eventCount != 0 {
 		t.Error("For", "TestEventingSwapRebWhenExistingEventingNodeProcessingMutations",
+			"expected", 0,
+			"got", eventCount,
 			"DeleteOp")
 	}
 
@@ -196,22 +209,24 @@ func TestKVRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
-	rl.stopCh <- struct{}{}
+	verifyBucketItemCount(rl, statsLookupRetryCounter)
 
 	log.Println("Comparing item count post create/update operations")
-	res := compareSrcAndDstItemCount(statsLookupRetryCounter)
-	if !res {
-		t.Error("For", "TestKVRebInWhenExistingEventingNodeProcessingMutations",
+	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
+	if rl.count != eventCount {
+		t.Error("For", "TestEventingSwapRebWhenExistingEventingNodeProcessingMutations",
+			"expected", rl.count,
+			"got", eventCount,
 			"UpdateOp")
 	}
 
 	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
-	time.Sleep(10 * time.Second)
 
-	log.Println("Comparing item count post delete operations")
-	res = compareSrcAndDstItemCount(statsLookupRetryCounter)
-	if !res {
+	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
+	if eventCount != 0 {
 		t.Error("For", "TestKVRebInWhenExistingEventingNodeProcessingMutations",
+			"expected", 0,
+			"got", eventCount,
 			"DeleteOp")
 	}
 
@@ -244,22 +259,25 @@ func TestKVRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
-	rl.stopCh <- struct{}{}
+
+	verifyBucketItemCount(rl, statsLookupRetryCounter)
 
 	log.Println("Comparing item count post create/update operations")
-	res := compareSrcAndDstItemCount(statsLookupRetryCounter)
-	if !res {
+	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
+	if rl.count != eventCount {
 		t.Error("For", "TestKVRebOutWhenExistingEventingNodeProcessingMutations",
+			"expected", rl.count,
+			"got", eventCount,
 			"UpdateOp")
 	}
 
 	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
-	time.Sleep(10 * time.Second)
 
-	log.Println("Comparing item count post delete operations")
-	res = compareSrcAndDstItemCount(statsLookupRetryCounter)
-	if !res {
+	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
+	if eventCount != 0 {
 		t.Error("For", "TestKVRebOutWhenExistingEventingNodeProcessingMutations",
+			"expected", 0,
+			"got", eventCount,
 			"DeleteOp")
 	}
 
@@ -299,21 +317,25 @@ func TestKVSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rl.stopCh <- struct{}{}
+	verifyBucketItemCount(rl, statsLookupRetryCounter)
+
 	log.Println("Comparing item count post create/update operations")
-	res := compareSrcAndDstItemCount(statsLookupRetryCounter)
-	if !res {
+	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
+	if rl.count != eventCount {
 		t.Error("For", "TestKVSwapRebWhenExistingEventingNodeProcessingMutations",
+			"expected", rl.count,
+			"got", eventCount,
 			"UpdateOp")
 	}
 
 	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
-	time.Sleep(10 * time.Second)
 
 	log.Println("Comparing item count post delete operations")
-	res = compareSrcAndDstItemCount(statsLookupRetryCounter)
-	if !res {
+	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
+	if eventCount != 0 {
 		t.Error("For", "TestKVSwapRebWhenExistingEventingNodeProcessingMutations",
+			"expected", 0,
+			"got", eventCount,
 			"DeleteOp")
 	}
 
