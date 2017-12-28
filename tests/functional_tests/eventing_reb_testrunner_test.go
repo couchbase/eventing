@@ -20,7 +20,7 @@ func TestEventingRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) 
 
 	rl := &rateLimit{
 		limit:   true,
-		opsPSec: rlOpsPSec,
+		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
 		loop:    true,
@@ -78,7 +78,7 @@ func TestEventingRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T)
 
 	rl := &rateLimit{
 		limit:   true,
-		opsPSec: rlOpsPSec,
+		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
 		loop:    true,
@@ -126,7 +126,7 @@ func TestEventingSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T
 
 	rl := &rateLimit{
 		limit:   true,
-		opsPSec: rlOpsPSec,
+		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
 		loop:    true,
@@ -184,7 +184,7 @@ func TestKVRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 
 	rl := &rateLimit{
 		limit:   true,
-		opsPSec: rlOpsPSec,
+		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
 		loop:    true,
@@ -239,7 +239,7 @@ func TestKVRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 
 	rl := &rateLimit{
 		limit:   true,
-		opsPSec: rlOpsPSec,
+		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
 		loop:    true,
@@ -286,7 +286,7 @@ func TestKVSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 
 	rl := &rateLimit{
 		limit:   true,
-		opsPSec: rlOpsPSec,
+		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
 		loop:    true,
