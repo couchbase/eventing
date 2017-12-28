@@ -217,6 +217,10 @@ func (c *Consumer) processEvents() {
 					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
 					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
 
+					c.vbsStreamRRWMutex.Lock()
+					delete(c.vbStreamRequested, e.VBucket)
+					c.vbsStreamRRWMutex.Unlock()
+
 					c.vbFlogChan <- vbFlog
 					continue
 				}
@@ -242,7 +246,7 @@ func (c *Consumer) processEvents() {
 				// which will allow vbTakeOver background routine to start up new stream from
 				// new KV node, where the vbucket has been migrated
 
-				logging.Debugf("CRVT[%s:%s:%d] vb: %v, got STREAMEND", c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+				logging.Debugf("CRPE[%s:%s:%d] vb: %v, got STREAMEND", c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
 				// Different scenarios where DCP_STREAMEND could be triggered:
 				// (a) vb give up as part of eventing rebalance
@@ -283,7 +287,7 @@ func (c *Consumer) processEvents() {
 				}
 
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
-					logging.Debugf("CRVT[%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
+					logging.Debugf("CRPE[%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
 						c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 					c.Lock()
 					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, e.VBucket)

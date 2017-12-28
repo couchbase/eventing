@@ -8,29 +8,8 @@ import (
 	"time"
 
 	cm "github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
-
-// RebalanceStatus assists in reporting back progress to ns_server via cbauth_service
-func (p *Producer) RebalanceStatus(w http.ResponseWriter, r *http.Request) {
-	producerLevelProgress := &cm.RebalanceProgress{}
-
-	for _, consumer := range p.runningConsumers {
-		consumerProgress := consumer.RebalanceTaskProgress()
-
-		producerLevelProgress.VbsRemainingToShuffle += consumerProgress.VbsRemainingToShuffle
-		producerLevelProgress.VbsOwnedPerPlan += consumerProgress.VbsOwnedPerPlan
-	}
-
-	progress, err := json.Marshal(producerLevelProgress)
-	if err != nil {
-		logging.Errorf("PRHH[%s] Failed to encode producer level rebalance progress, err: %v", p.appName, err)
-		return
-	}
-
-	w.Write(progress)
-}
 
 // EventsProcessedPSec reports back aggregate of events processed/sec from all running consumers
 func (p *Producer) EventsProcessedPSec(w http.ResponseWriter, r *http.Request) {

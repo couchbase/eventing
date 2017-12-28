@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"bytes"
+
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/common"
@@ -523,9 +524,20 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	producerHostPortAddrs := m.superSup.ProducerHostPortAddrs()
+	progress := &common.RebalanceProgress{}
 
-	progress, _ := util.GetProgress("/getRebalanceStatus", producerHostPortAddrs)
+	appList := util.ListChildren(metakvAppsPath)
+
+	for _, appName := range appList {
+		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
+		// if it occurs
+		appProgress, err := m.superSup.RebalanceTaskProgress(appName)
+		logging.Infof("Rebalance progress from node with rest port: %v progress: %v", m.restPort, appProgress)
+		if err == nil {
+			progress.VbsOwnedPerPlan += appProgress.VbsOwnedPerPlan
+			progress.VbsRemainingToShuffle += appProgress.VbsRemainingToShuffle
+		}
+	}
 
 	buf, err := json.Marshal(progress)
 	if err != nil {

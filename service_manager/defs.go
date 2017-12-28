@@ -87,6 +87,8 @@ type rebalancer struct {
 	done chan struct{}
 
 	adminPort string
+
+	keepNodes []string
 }
 
 type rebalanceContext struct {

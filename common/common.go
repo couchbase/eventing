@@ -68,6 +68,7 @@ type EventingProducer interface {
 	PurgePlasmaRecords()
 	RbacUser() string
 	RbacPass() string
+	RebalanceTaskProgress() *RebalanceProgress
 	SignalBootstrapFinish()
 	SignalCheckpointBlobCleanup()
 	SignalStartDebugger()
@@ -147,6 +148,7 @@ type EventingSuperSup interface {
 	NotifyPrepareTopologyChange(keepNodes []string)
 	PlannerStats(appName string) []*PlannerNodeVbMapping
 	ProducerHostPortAddrs() []string
+	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
 	RestPort() string
 	SignalStartDebugger(appName string)
 	SignalStopDebugger(appName string)

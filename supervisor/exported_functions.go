@@ -257,3 +257,14 @@ func (s *SuperSupervisor) PlannerStats(appName string) []*common.PlannerNodeVbMa
 
 	return nil
 }
+
+// RebalanceTaskProgress reports vbuckets remaining to be transferred as per planner
+// during the course of rebalance
+func (s *SuperSupervisor) RebalanceTaskProgress(appName string) (*common.RebalanceProgress, error) {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.RebalanceTaskProgress(), nil
+	}
+
+	return nil, fmt.Errorf("Eventing.Producer isn't alive")
+}

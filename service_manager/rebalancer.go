@@ -12,7 +12,7 @@ import (
 )
 
 func newRebalancer(eventingAdminPort string, change service.TopologyChange,
-	done doneCallback, progress progressCallback) *rebalancer {
+	done doneCallback, progress progressCallback, keepNodes []string) *rebalancer {
 
 	r := &rebalancer{
 		cb:     callbacks{done, progress},
@@ -22,6 +22,7 @@ func newRebalancer(eventingAdminPort string, change service.TopologyChange,
 		done: make(chan struct{}),
 
 		adminPort: eventingAdminPort,
+		keepNodes: keepNodes,
 	}
 
 	go r.doRebalance()
@@ -47,10 +48,14 @@ func (r *rebalancer) gatherProgress() {
 	<-progressTicker.C
 	// Store the initial state of rebalance progress in metakv
 	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
-	if len(errMap) > 0 {
-		logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide state of vbs to shuffle as part of rebalance, errMap dump: %v", errMap)
+	if len(errMap) == len(r.keepNodes) {
+		logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress from all nodes, initProgress: %v errMap dump: %v",
+			initProgress, errMap)
 		util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
 		return
+	} else if len(errMap) > 0 {
+		logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress, initProgress: %v errMap dump: %v",
+			initProgress, errMap)
 	}
 
 	logging.Infof("rebalancer::gatherProgress initProgress dump: %v", initProgress)

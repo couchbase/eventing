@@ -213,6 +213,7 @@ type Consumer struct {
 	compileInfo            *common.CompileStatus
 	statsRWMutex           *sync.RWMutex
 	hostDcpFeedRWMutex     *sync.RWMutex
+	kvNodes                []string
 	kvVbMap                map[uint16]string // Access controlled by default lock
 	logLevel               string
 	superSup               common.EventingSuperSup
@@ -225,6 +226,8 @@ type Consumer struct {
 	vbsRemainingToRestream []uint16
 	vbsStreamClosed        map[uint16]bool // Access controlled by vbsStreamClosedRWMutex
 	vbsStreamClosedRWMutex *sync.RWMutex
+	vbStreamRequested      map[uint16]struct{} // Access controlled by vbsStreamRRWMutex
+	vbsStreamRRWMutex      *sync.RWMutex
 
 	xattrEntryPruneThreshold int
 

@@ -316,9 +316,19 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 
 func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob, shouldStartStream bool) error {
 
+	c.vbsStreamRRWMutex.Lock()
+	if _, ok := c.vbStreamRequested[vb]; !ok {
+		c.vbStreamRequested[vb] = struct{}{}
+	} else {
+		c.vbsStreamRRWMutex.Unlock()
+		return nil
+	}
+	c.vbsStreamRRWMutex.Unlock()
+
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
 	vbBlob.DCPStreamStatus = dcpStreamRunning
+	vbBlob.NodeUUID = c.uuid
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateVbOwnerAndStartStreamCallback, c, vbKey, vbBlob)
 
@@ -444,8 +454,9 @@ func (c *Consumer) getConsumerForGivenVbucket(vb uint16) string {
 }
 
 func (c *Consumer) checkIfVbAlreadyOwnedByCurrConsumer(vb uint16) bool {
-	if c.vbProcessingStats.getVbStat(vb, "current_vb_owner") == c.HostPortAddr() &&
-		c.vbProcessingStats.getVbStat(vb, "assigned_worker") == c.ConsumerName() {
+	if c.vbProcessingStats.getVbStat(vb, "node_uuid") == c.uuid &&
+		c.vbProcessingStats.getVbStat(vb, "assigned_worker") == c.ConsumerName() &&
+		c.vbProcessingStats.getVbStat(vb, "dcp_stream_status") == dcpStreamRunning {
 		return true
 	}
 

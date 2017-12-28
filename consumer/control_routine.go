@@ -137,27 +137,36 @@ func (c *Consumer) controlRoutine() {
 
 			var vbsFailedToStartStream []uint16
 
-			for _, vbno := range vbsToRestream {
-				if c.checkIfVbAlreadyOwnedByCurrConsumer(vbno) {
+			for _, vb := range vbsToRestream {
+				if c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+					continue
+				}
+
+				// During Eventing+KV swap rebalance:
+				// STREAMEND received because of outgoing KV node adds up entries in vbsToRestream,
+				// but when eventing node receives rebalance notification it may not need to restream those
+				// vbuckets as per the planner's output. Hence additional checking to verify if the worker
+				// should own the vbucket stream
+				if !c.checkIfCurrentConsumerShouldOwnVb(vb) {
 					continue
 				}
 
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
-				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 
-				logging.Debugf("CRCR[%s:%s:%s:%d] vbno: %v, reclaiming it back by restarting dcp stream",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+				logging.Debugf("CRCR[%s:%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-				err := c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, true)
+				err := c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
 				if err != nil {
-					vbsFailedToStartStream = append(vbsFailedToStartStream, vbno)
+					vbsFailedToStartStream = append(vbsFailedToStartStream, vb)
 				}
 			}
 
 			logging.Debugf("CRCR[%s:%s:%s:%d] vbsFailedToStartStream => len: %v dump: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsFailedToStartStream), vbsFailedToStartStream)
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsFailedToStartStream), util.Condense(vbsFailedToStartStream))
 
 			vbsToRestream = util.VbsSliceDiff(vbsFailedToStartStream, vbsToRestream)
 

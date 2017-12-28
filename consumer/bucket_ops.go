@@ -3,7 +3,6 @@ package consumer
 import (
 	"fmt"
 	"runtime/debug"
-	"time"
 
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
@@ -27,7 +26,7 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 var gocbConnectBucketCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 
-	connStr := fmt.Sprintf("couchbase://%s", c.producer.KvHostPorts()[0])
+	connStr := fmt.Sprintf("couchbase://%s", c.kvNodes[0])
 
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
@@ -35,9 +34,6 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
-
-	var user, password string
-	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, c.producer.KvHostPorts()[0], &user, &password)
 
 	err = cluster.Authenticate(gocb.PasswordAuthenticator{
 		Username: c.producer.RbacUser(),
@@ -62,7 +58,7 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 
-	connStr := fmt.Sprintf("couchbase://%s", c.producer.KvHostPorts()[0])
+	connStr := fmt.Sprintf("couchbase://%s", c.kvNodes[0])
 
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
@@ -70,9 +66,6 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
-
-	var user, password string
-	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, c.producer.KvHostPorts()[0], &user, &password)
 
 	err = cluster.Authenticate(gocb.PasswordAuthenticator{
 		Username: c.producer.RbacUser(),
@@ -370,24 +363,6 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 	return err
 }
 
-var connectBucketOpCallback = func(args ...interface{}) error {
-	c := args[0].(*Consumer)
-	conn := args[1].(*cbbucket.Client)
-	connStr := args[2].(string)
-
-	var user, password string
-	util.Retry(util.NewFixedBackoff(time.Second), getMemcachedServiceAuth, c.producer.KvHostPorts()[0], &user, &password)
-
-	var err error
-	*conn, err = cbbucket.ConnectWithAuthCreds(connStr, user, password)
-
-	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to bootstrap conn to source cluster, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
-	}
-	return err
-}
-
 var poolGetBucketOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	conn := args[1].(*cbbucket.Client)
@@ -429,8 +404,8 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 		feedName, uint32(0), includeXATTRs, []string{kvHostPort}, 0xABCD, dcpConfig)
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
+		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed for bucket: %v from kv node: %v, err: %v",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort, err)
 		return err
 	}
 

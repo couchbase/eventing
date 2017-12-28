@@ -459,3 +459,18 @@ func (p *Producer) GetSeqsProcessed() map[int]int64 {
 
 	return seqNoProcessed
 }
+
+// RebalanceTaskProgress reports vbuckets remaining to be transferred as per planner
+// during the course of rebalance
+func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
+	producerLevelProgress := &common.RebalanceProgress{}
+
+	for _, consumer := range p.runningConsumers {
+		consumerProgress := consumer.RebalanceTaskProgress()
+
+		producerLevelProgress.VbsRemainingToShuffle += consumerProgress.VbsRemainingToShuffle
+		producerLevelProgress.VbsOwnedPerPlan += consumerProgress.VbsOwnedPerPlan
+	}
+
+	return producerLevelProgress
+}
