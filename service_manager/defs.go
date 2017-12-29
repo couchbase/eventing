@@ -12,8 +12,9 @@ import (
 const (
 	metakvEventingPath       = "/eventing/"
 	metakvAppsPath           = metakvEventingPath + "apps/"
-	metakvAppSettingsPath    = metakvEventingPath + "settings/" // function settings
-	metakvConfigPath         = metakvEventingPath + "config/"   // global settings
+	metakvAppSettingsPath    = metakvEventingPath + "settings/"        // function settings
+	metakvConfigKeepNodes    = metakvEventingPath + "config/keepNodes" // Store list of eventing keepNodes
+	metakvConfigPath         = metakvEventingPath + "config/settings"  // global settings
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	metakvRebalanceProgress  = metakvEventingPath + "rebalanceProgress/"
 	metakvTempAppsPath       = metakvEventingPath + "tempApps/"
@@ -44,6 +45,7 @@ type ServiceMgr struct {
 	adminHTTPPort     string
 	adminSSLPort      string
 	certFile          string
+	keepNodeUUIDs     []string
 	keyFile           string
 	failoverNotif     bool
 	mu                *sync.RWMutex
@@ -85,6 +87,8 @@ type rebalancer struct {
 	done chan struct{}
 
 	adminPort string
+
+	keepNodes []string
 }
 
 type rebalanceContext struct {
@@ -138,7 +142,19 @@ type stats struct {
 	FunctionName         interface{} `json:"function_name"`
 	LatencyStats         interface{} `json:"latency_stats,omitempty"`
 	LcbExceptionStats    interface{} `json:"lcb_exception_stats,omitempty"`
+	PlannerStats         interface{} `json:"planner_stats,omitempty"`
 	PlasmaStats          interface{} `json:"plasma_stats,omitempty"`
 	SeqsProcessed        interface{} `json:"seqs_processed,omitempty"`
+	VbDcpEventsRemaining interface{} `json:"dcp_event_backlog_per_vb,omitempty"`
+	VbDistributionStats  interface{} `json:"vb_distribution_stats,omitempty"`
 	WorkerPids           interface{} `json:"worker_pids,omitempty"`
+}
+
+type config struct {
+	RAMQuota       int    `json:"ram_quota"`
+	MetadataBucket string `json:"metadata_bucket"`
+}
+
+type configResponse struct {
+	Restart bool `json:"restart"`
 }

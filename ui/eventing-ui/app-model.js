@@ -142,9 +142,10 @@ ApplicationModel.prototype.getDefaultModel = function() {
             app_log_max_size: 1024 * 1024 * 10,
             app_log_max_files: 10,
             curl_timeout: 500,
-            worker_queue_cap: 1000 * 1000
+            worker_queue_cap: 1000 * 1000,
+            fuzz_offset: 30
         }
-    }
+    };
 };
 
 // Fills the Missing parameters in the model with default values.

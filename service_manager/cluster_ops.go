@@ -1,11 +1,12 @@
 package servicemanager
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
@@ -39,5 +40,41 @@ var getHTTPServiceAuth = func(args ...interface{}) error {
 	}
 
 	m.auth = fmt.Sprintf("%s:%s", user, password)
+	return nil
+}
+
+var storeKeepNodesCallback = func(args ...interface{}) error {
+	keepNodeUUIDs := args[0].([]string)
+
+	data, err := json.Marshal(&keepNodeUUIDs)
+	if err != nil {
+		logging.Errorf("SMCO Failed to marshal keepNodes: %v, err: %v",
+			keepNodeUUIDs, err)
+		return err
+	}
+
+	err = util.MetakvSet(metakvConfigKeepNodes, data, nil)
+	if err != nil {
+		logging.Errorf("SMCO Failed to store keep nodes UUIDs: %v in metakv, err: %v",
+			keepNodeUUIDs, err)
+		return err
+	}
+
+	return nil
+}
+
+var stopRebalanceCallback = func(args ...interface{}) error {
+	r := args[0].(*rebalancer)
+
+	logging.Errorf("SMCO Updating metakv to signify rebalance cancellation")
+
+	path := metakvRebalanceTokenPath + r.change.ID
+	err := util.MetakvSet(path, []byte(stopRebalance), nil)
+	if err != nil {
+		logging.Errorf("SMCO Failed to update rebalance token: %v in metakv as part of cancelling rebalance, err: %v",
+			r.change.ID, err)
+		return err
+	}
+
 	return nil
 }

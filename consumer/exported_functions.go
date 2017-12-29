@@ -15,7 +15,6 @@ import (
 	"github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
 )
 
@@ -70,33 +69,6 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 // GetHandlerCode returns handler code to assist V8 debugger
 func (c *Consumer) GetHandlerCode() string {
 	return c.handlerCode
-}
-
-func (c *Consumer) getSeqsProcessed() {
-	var seqNo int64
-	subdocPath := "last_processed_seq_no"
-
-	for vb := 0; vb < numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s_vb_%d", c.app.AppName, vb)
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getMetaOpCallback, c, vbKey, &seqNo, subdocPath)
-
-		c.statsRWMutex.Lock()
-		c.seqsNoProcessed[vb] = seqNo
-		c.statsRWMutex.Unlock()
-	}
-}
-
-// GetSeqsProcessed returns vbucket specific sequence nos processed so far
-func (c *Consumer) GetSeqsProcessed() map[int]int64 {
-	c.statsRWMutex.Lock()
-	defer c.statsRWMutex.Unlock()
-
-	seqNoProcessed := make(map[int]int64)
-	for k, v := range c.seqsNoProcessed {
-		seqNoProcessed[k] = v
-	}
-
-	return seqNoProcessed
 }
 
 // GetSourceMap returns source map to assist V8 debugger
@@ -289,7 +261,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName string) (
 
 	// Framing bare minimum V8 worker init payload
 	payload, pBuilder := c.makeV8InitPayload(appName, "127.0.0.1", "", "",
-		"", appContent, "", "", 5, 1, 10*1000, true, true, 500)
+		"", appContent, "", "", 5, 1, 30, 10*1000, true, true, 500)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 

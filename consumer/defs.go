@@ -50,8 +50,6 @@ const (
 )
 
 const (
-	numVbuckets = 1024
-
 	udsSockPathLimit = 100
 
 	// KV blob suffixes to assist in choose right consumer instance
@@ -213,17 +211,23 @@ type Consumer struct {
 	latencyStats           map[string]uint64             // Access controlled by statsRWMutex
 	lcbExceptionStats      map[string]uint64             // Access controlled by statsRWMutex
 	compileInfo            *common.CompileStatus
-	seqsNoProcessed        map[int]int64 // Access controlled by statsRWMutex
 	statsRWMutex           *sync.RWMutex
 	hostDcpFeedRWMutex     *sync.RWMutex
+	kvNodes                []string
 	kvVbMap                map[uint16]string // Access controlled by default lock
 	logLevel               string
 	superSup               common.EventingSuperSup
+	vbDcpEventsRemaining   map[int]int64 // Access controlled by statsRWMutex
+	numVbuckets            int
 	vbDcpFeedMap           map[uint16]*couchbase.DcpFeed
 	vbnos                  []uint16
 	vbsRemainingToOwn      []uint16
 	vbsRemainingToGiveUp   []uint16
 	vbsRemainingToRestream []uint16
+	vbsStreamClosed        map[uint16]bool // Access controlled by vbsStreamClosedRWMutex
+	vbsStreamClosedRWMutex *sync.RWMutex
+	vbStreamRequested      map[uint16]struct{} // Access controlled by vbsStreamRRWMutex
+	vbsStreamRRWMutex      *sync.RWMutex
 
 	xattrEntryPruneThreshold int
 
@@ -270,6 +274,7 @@ type Consumer struct {
 	debuggerState                  int8
 	debuggerStarted                bool
 
+	fuzzOffset                    int
 	nonDocTimerProcessingTicker   *time.Ticker
 	nonDocTimerStopCh             chan struct{}
 	skipTimerThreshold            int
@@ -472,6 +477,7 @@ type OwnershipEntry struct {
 	AssignedWorker string `json:"assigned_worker"`
 	CurrentVBOwner string `json:"current_vb_owner"`
 	Operation      string `json:"operation"`
+	StartSeqNo     uint64 `json:"start_seq_no"`
 	Timestamp      string `json:"timestamp"`
 }
 

@@ -19,8 +19,15 @@ func (c *Consumer) controlRoutine() {
 
 			util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
+			c.stopVbOwnerGiveupCh = make(chan struct{}, c.vbOwnershipGiveUpRoutineCount)
+			c.stopVbOwnerTakeoverCh = make(chan struct{}, c.vbOwnershipTakeoverRoutineCount)
+
 			logging.Infof("CRCR[%s:%s:%s:%d] Got notification that cluster state has changed(could also trigger on app deploy)",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+
+			c.vbsStreamClosedRWMutex.Lock()
+			c.vbsStreamClosed = make(map[uint16]bool)
+			c.vbsStreamClosedRWMutex.Unlock()
 
 			c.isRebalanceOngoing = true
 			go c.vbsStateUpdate()
@@ -109,7 +116,7 @@ func (c *Consumer) controlRoutine() {
 			if _, ok := deployedApps[c.app.AppName]; !ok {
 				c.vbsRemainingToRestream = make([]uint16, 0)
 				logging.Infof("CRCR[%s:%s:%s:%d] Discarding request to restream vbs: %v as the app has been undeployed",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsToRestream)
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
 				continue
 			}
 
@@ -117,33 +124,49 @@ func (c *Consumer) controlRoutine() {
 				continue
 			}
 
+			if !c.isRebalanceOngoing {
+				logging.Infof("CRCR[%s:%s:%s:%d] Discarding request to restream vbs: %v as rebalance has been stopped",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
+				c.vbsRemainingToRestream = make([]uint16, 0)
+				continue
+			}
+
 			sort.Sort(util.Uint16Slice(vbsToRestream))
 			logging.Verbosef("CRCR[%s:%s:%s:%d] vbsToRestream len: %v dump: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsToRestream), vbsToRestream)
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsToRestream), util.Condense(vbsToRestream))
 
 			var vbsFailedToStartStream []uint16
 
-			for _, vbno := range vbsToRestream {
-				if c.checkIfVbAlreadyOwnedByCurrConsumer(vbno) {
+			for _, vb := range vbsToRestream {
+				if c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+					continue
+				}
+
+				// During Eventing+KV swap rebalance:
+				// STREAMEND received because of outgoing KV node adds up entries in vbsToRestream,
+				// but when eventing node receives rebalance notification it may not need to restream those
+				// vbuckets as per the planner's output. Hence additional checking to verify if the worker
+				// should own the vbucket stream
+				if !c.checkIfCurrentConsumerShouldOwnVb(vb) {
 					continue
 				}
 
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
-				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 
-				logging.Debugf("CRCR[%s:%s:%s:%d] vbno: %v, reclaiming it back by restarting dcp stream",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+				logging.Debugf("CRCR[%s:%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-				err := c.updateVbOwnerAndStartDCPStream(vbKey, vbno, &vbBlob, true)
+				err := c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
 				if err != nil {
-					vbsFailedToStartStream = append(vbsFailedToStartStream, vbno)
+					vbsFailedToStartStream = append(vbsFailedToStartStream, vb)
 				}
 			}
 
 			logging.Debugf("CRCR[%s:%s:%s:%d] vbsFailedToStartStream => len: %v dump: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsFailedToStartStream), vbsFailedToStartStream)
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsFailedToStartStream), util.Condense(vbsFailedToStartStream))
 
 			vbsToRestream = util.VbsSliceDiff(vbsFailedToStartStream, vbsToRestream)
 
@@ -157,7 +180,7 @@ func (c *Consumer) controlRoutine() {
 
 			if vbsRemainingToRestream > 0 {
 				logging.Verbosef("CRCR[%s:%s:%s:%d] Retrying vbsToRestream, remaining len: %v dump: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsRemainingToRestream, diff)
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsRemainingToRestream, util.Condense(diff))
 				goto retryVbsRemainingToRestream
 			}
 

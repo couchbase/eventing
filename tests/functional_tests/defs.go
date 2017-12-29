@@ -25,6 +25,7 @@ const (
 	nodeRenameURL       = "http://127.0.0.1:9000/node/controller/rename"
 	clusterSetupURL     = "http://127.0.0.1:9000/node/controller/setupServices"
 	clusterCredSetupURL = "http://127.0.0.1:9000/settings/web"
+	failoverURL         = "http://127.0.0.1:9000/controller/failOver"
 	quotaSetupURL       = "http://127.0.0.1:9000/pools/default"
 	bucketSetupURL      = "http://127.0.0.1:9000/pools/default/buckets"
 	rbacSetupURL        = "http://127.0.0.1:9000/settings/rbac/users/local"
@@ -47,12 +48,12 @@ const (
 	rbacuser = "eventing"
 	rbacpass = "asdasd"
 
-	cbBuildEnvString = "CB_BUILD_DIR"
+	cbBuildEnvString = "WORKSPACE"
 )
 
 const (
 	itemCount               = 5000
-	statsLookupRetryCounter = 70
+	statsLookupRetryCounter = 100
 
 	cppthrCount   = 1
 	lcbCap        = 5

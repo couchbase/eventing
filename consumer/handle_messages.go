@@ -3,7 +3,6 @@ package consumer
 import (
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"io"
 	"runtime/debug"
 	"strconv"
@@ -573,7 +572,6 @@ func (c *Consumer) readMessageLoop() {
 
 		if err == io.EOF || bytesRead == 0 {
 			if c.client != nil {
-				fmt.Printf("Exiting for loop, which is reading from socket, err: %v\n", err)
 				c.client.Stop()
 			}
 			break

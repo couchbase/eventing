@@ -182,8 +182,9 @@ void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
 V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    server_settings_t *server_settings)
     : settings(server_settings), platform_(platform) {
-  enableRecursiveMutation(h_config->enable_recursive_mutation);
+  srand(static_cast<unsigned>(time(nullptr)));
 
+  enableRecursiveMutation(h_config->enable_recursive_mutation);
   histogram = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
 
   for (int i = 0; i < NUM_VBUCKETS; i++) {
@@ -233,6 +234,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   context_.Reset(GetIsolate(), context);
   js_exception = new JsException(isolate_);
   data.js_exception = js_exception;
+  data.fuzz_offset = h_config->fuzz_offset;
 
   app_name_ = h_config->app_name;
   execute_start_time = Time::now();
@@ -276,6 +278,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " kv_host_port: " << settings->kv_host_port
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
+               << " fuzz offset: " << h_config->fuzz_offset
                << " enable_recursive_mutation: " << enable_recursive_mutation
                << " curl_timeout: " << curl_timeout << std::endl;
 

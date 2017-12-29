@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -38,9 +39,13 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 		nsServerPort:           nsServerPort,
 		pauseProducerCh:        make(chan struct{}, 1),
 		persistAllTicker:       time.NewTicker(persistAllTickInterval),
+		seqsNoProcessed:        make(map[int]int64),
 		signalStopPersistAllCh: make(chan struct{}, 1),
+		statsRWMutex:           &sync.RWMutex{},
 		superSup:               superSup,
 		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
+		updateStatsTicker:      time.NewTicker(updateStatsTickInterval),
+		updateStatsStopCh:      make(chan struct{}, 1),
 		uuid:                   uuid,
 		workerNameConsumerMap: make(map[string]common.EventingConsumer),
 	}
@@ -55,6 +60,19 @@ func (p *Producer) Serve() {
 	if err != nil {
 		logging.Fatalf("PRDR[%s:%d] Failure parsing depcfg, err: %v", p.appName, p.LenRunningConsumers(), err)
 		return
+	}
+
+	hostPortAddr := fmt.Sprintf("127.0.0.1:%s", p.GetNsServerPort())
+	p.numVbuckets, err = util.NumVbuckets(hostPortAddr, p.bucket)
+	if err != nil {
+		logging.Fatalf("PRDR[%s:%d] Failure to fetch vbucket count, err: %v", p.appName, p.LenRunningConsumers(), err)
+		return
+	}
+
+	logging.Infof("PRDR[%s:%d] number of vbuckets for %v: %v", p.appName, p.LenRunningConsumers(), p.bucket, p.numVbuckets)
+
+	for i := 0; i < p.numVbuckets; i++ {
+		p.seqsNoProcessed[i] = 0
 	}
 
 	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles)
@@ -117,6 +135,8 @@ func (p *Producer) Serve() {
 	go p.persistPlasma()
 
 	p.bootstrapFinishCh <- struct{}{}
+
+	go p.updateStats()
 
 	// Inserting twice because producer can be stopped either because of pause/undeploy
 	for i := 0; i < 2; i++ {
@@ -236,6 +256,8 @@ func (p *Producer) Stop() {
 
 	p.appLogWriter.Close()
 	p.vbPlasmaStore.Close()
+
+	p.updateStatsStopCh <- struct{}{}
 }
 
 // Implement fmt.Stringer interface for better debugging in case
@@ -299,7 +321,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.curlTimeout, p.vbOwnershipTakeoverRoutineCount, p.xattrEntryPruneThreshold, p.workerQueueCap,
 		p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
 		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStore,
-		p.socketTimeout, p.diagDir)
+		p.socketTimeout, p.diagDir, p.numVbuckets, p.fuzzOffset)
 
 	p.Lock()
 	p.consumerListeners = append(p.consumerListeners, listener)
@@ -315,7 +337,6 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.appName, p.LenRunningConsumers(), err)
 				return
 			}
 
@@ -471,4 +492,16 @@ func (p *Producer) GetDebuggerURL() string {
 	debugURL := util.GetDebuggerURL("/getLocalDebugUrl", debuggerInstBlob.HostPortAddr, p.appName)
 
 	return debugURL
+}
+
+func (p *Producer) updateStats() {
+	for {
+		select {
+		case <-p.updateStatsTicker.C:
+			p.vbDistributionStats()
+			p.getSeqsProcessed()
+		case <-p.updateStatsStopCh:
+			return
+		}
+	}
 }

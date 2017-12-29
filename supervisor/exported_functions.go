@@ -86,7 +86,6 @@ func (s *SuperSupervisor) GetHandlerCode(appName string) string {
 
 // GetLatencyStats dumps stats from cpp world
 func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
-	logging.Infof("SSUP[%d] GetLatencyStats request for app: %v", len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetLatencyStats()
 	}
@@ -95,7 +94,6 @@ func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
 
 // GetExecutionStats returns aggregated failure stats from Eventing.Producer instance
 func (s *SuperSupervisor) GetExecutionStats(appName string) map[string]uint64 {
-	logging.Infof("SSUP[%d] GetExecutionStats request for app: %v", len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetExecutionStats()
 	}
@@ -104,7 +102,6 @@ func (s *SuperSupervisor) GetExecutionStats(appName string) map[string]uint64 {
 
 // GetFailureStats returns aggregated failure stats from Eventing.Producer instance
 func (s *SuperSupervisor) GetFailureStats(appName string) map[string]uint64 {
-	logging.Infof("SSUP[%d] GetFailureStats request for app: %v", len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetFailureStats()
 	}
@@ -113,7 +110,6 @@ func (s *SuperSupervisor) GetFailureStats(appName string) map[string]uint64 {
 
 // GetLcbExceptionsStats returns libcouchbase exception stats from CPP workers
 func (s *SuperSupervisor) GetLcbExceptionsStats(appName string) map[string]uint64 {
-	logging.Infof("SSUP[%d] GetLcbExceptionStats request for app: %v", len(s.runningProducers), appName)
 	p, ok := s.runningProducers[appName]
 	if ok {
 		return p.GetLcbExceptionsStats()
@@ -123,7 +119,6 @@ func (s *SuperSupervisor) GetLcbExceptionsStats(appName string) map[string]uint6
 
 // GetSeqsProcessed returns vbucket specific sequence nos processed so far
 func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
-	logging.Infof("SSUP[%d] GetSeqsProcessed request for app: %v", len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetSeqsProcessed()
 	}
@@ -210,6 +205,17 @@ func (s *SuperSupervisor) GetDcpEventsRemainingToProcess(appName string) uint64 
 	return 0
 }
 
+// VbDcpEventsRemainingToProcess returns remaining dcp events to process
+func (s *SuperSupervisor) VbDcpEventsRemainingToProcess(appName string) map[int]int64 {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.VbDcpEventsRemainingToProcess()
+	}
+	logging.Errorf("SSUP[%d] Events per vb remaining request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+		len(s.runningProducers), appName)
+	return nil
+}
+
 // GetEventingConsumerPids returns map of Eventing.Consumer worker name and it's os pid
 func (s *SuperSupervisor) GetEventingConsumerPids(appName string) map[string]int {
 	p, ok := s.runningProducers[appName]
@@ -226,6 +232,38 @@ func (s *SuperSupervisor) GetPlasmaStats(appName string) (map[string]interface{}
 	p, ok := s.runningProducers[appName]
 	if ok {
 		return p.GetPlasmaStats()
+	}
+
+	return nil, fmt.Errorf("Eventing.Producer isn't alive")
+}
+
+// VbDistributionStats returns vbucket distribution across eventing nodes per metadata bucket
+func (s *SuperSupervisor) VbDistributionStats(appName string) map[string]map[string]string {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.VbDistributionStats()
+	}
+
+	return nil
+}
+
+// PlannerStats returns vbucket distribution as per planner running on local eventing
+// node for a given app
+func (s *SuperSupervisor) PlannerStats(appName string) []*common.PlannerNodeVbMapping {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.PlannerStats()
+	}
+
+	return nil
+}
+
+// RebalanceTaskProgress reports vbuckets remaining to be transferred as per planner
+// during the course of rebalance
+func (s *SuperSupervisor) RebalanceTaskProgress(appName string) (*common.RebalanceProgress, error) {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.RebalanceTaskProgress(), nil
 	}
 
 	return nil, fmt.Errorf("Eventing.Producer isn't alive")

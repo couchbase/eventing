@@ -129,15 +129,6 @@ func (p *Producer) GetNsServerPort() string {
 	return p.nsServerPort
 }
 
-// GetSeqsProcessed returns vbucket specific sequence nos processed so far
-func (p *Producer) GetSeqsProcessed() map[int]int64 {
-	if len(p.runningConsumers) > 0 {
-		return p.runningConsumers[0].GetSeqsProcessed()
-	}
-	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
-	return nil
-}
-
 // GetSourceMap return source map to assist V8 Debugger
 func (p *Producer) GetSourceMap() string {
 	if len(p.runningConsumers) > 0 {
@@ -225,7 +216,7 @@ func (p *Producer) SignalBootstrapFinish() {
 // SignalCheckpointBlobCleanup cleans up eventing app related blobs from metadata bucket
 func (p *Producer) SignalCheckpointBlobCleanup() {
 
-	for vb := 0; vb < numVbuckets; vb++ {
+	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, vbKey)
 	}
@@ -291,6 +282,25 @@ func (p *Producer) GetDcpEventsRemainingToProcess() uint64 {
 	return remainingEvents
 }
 
+// VbDcpEventsRemainingToProcess returns remaining dcp events to process per vbucket
+func (p *Producer) VbDcpEventsRemainingToProcess() map[int]int64 {
+	vbDcpEventsRemaining := make(map[int]int64)
+
+	for _, consumer := range p.runningConsumers {
+		eventsRemaining := consumer.VbDcpEventsRemainingToProcess()
+		for vb, count := range eventsRemaining {
+
+			if _, ok := vbDcpEventsRemaining[vb]; !ok {
+				vbDcpEventsRemaining[vb] = 0
+			}
+
+			vbDcpEventsRemaining[vb] += count
+		}
+	}
+
+	return vbDcpEventsRemaining
+}
+
 // GetEventingConsumerPids returns map of Eventing.Consumer worker name and it's os pid
 func (p *Producer) GetEventingConsumerPids() map[string]int {
 	workerPidMapping := make(map[string]int)
@@ -335,4 +345,132 @@ func (p *Producer) GetPlasmaStats() (map[string]interface{}, error) {
 	}
 
 	return res, nil
+}
+
+// VbDistributionStats dumps the state of vbucket distribution per metadata bucket
+func (p *Producer) VbDistributionStats() map[string]map[string]string {
+	p.statsRWMutex.RLock()
+	defer p.statsRWMutex.RUnlock()
+
+	vbEventingNodeMap := make(map[string]map[string]string)
+	for node, nodeMap := range p.vbEventingNodeMap {
+
+		if _, ok := vbEventingNodeMap[node]; !ok {
+			vbEventingNodeMap[node] = make(map[string]string)
+		}
+
+		for workerID, vbsOwned := range nodeMap {
+			vbEventingNodeMap[node][workerID] = vbsOwned
+		}
+	}
+	return vbEventingNodeMap
+}
+
+func (p *Producer) vbDistributionStats() {
+	vbNodeMap := make(map[string]map[string][]uint16)
+	vbBlob := make(map[string]interface{})
+
+	for vb := 0; vb < p.numVbuckets; vb++ {
+		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
+
+		if _, ok := vbBlob["vb_id"]; !ok {
+			continue
+		}
+		vbucket := uint16(vbBlob["vb_id"].(float64))
+
+		if _, ok := vbBlob["current_vb_owner"]; !ok {
+			continue
+		}
+		currentOwner := vbBlob["current_vb_owner"].(string)
+
+		if _, ok := vbBlob["assigned_worker"]; !ok {
+			continue
+		}
+		workerID := vbBlob["assigned_worker"].(string)
+
+		if _, ok := vbNodeMap[currentOwner]; !ok && currentOwner != "" {
+			vbNodeMap[currentOwner] = make(map[string][]uint16)
+			vbNodeMap[currentOwner][workerID] = make([]uint16, 0)
+		}
+
+		if currentOwner != "" && workerID != "" {
+			vbNodeMap[currentOwner][workerID] = append(
+				vbNodeMap[currentOwner][workerID], vbucket)
+		}
+
+	}
+
+	p.statsRWMutex.Lock()
+	defer p.statsRWMutex.Unlock()
+	// Concise representation of vb mapping for eventing nodes
+	p.vbEventingNodeMap = make(map[string]map[string]string)
+
+	for node, nodeMap := range vbNodeMap {
+		if _, ok := p.vbEventingNodeMap[node]; !ok {
+			p.vbEventingNodeMap[node] = make(map[string]string)
+		}
+
+		for workerID, vbsOwned := range nodeMap {
+			p.vbEventingNodeMap[node][workerID] = util.Condense(vbsOwned)
+		}
+	}
+}
+
+// PlannerStats returns vbucket distribution as per planner running on local eventing
+// node for a given app
+func (p *Producer) PlannerStats() []*common.PlannerNodeVbMapping {
+	p.statsRWMutex.Lock()
+	defer p.statsRWMutex.Unlock()
+
+	plannerNodeMappings := make([]*common.PlannerNodeVbMapping, 0)
+
+	for _, mapping := range p.plannerNodeMappings {
+		plannerNodeMappings = append(plannerNodeMappings, mapping)
+	}
+
+	return plannerNodeMappings
+}
+
+func (p *Producer) getSeqsProcessed() {
+	vbBlob := make(map[string]interface{})
+
+	for vb := 0; vb < p.numVbuckets; vb++ {
+		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
+
+		p.statsRWMutex.Lock()
+		if _, ok := vbBlob["last_processed_seq_no"]; ok {
+			p.seqsNoProcessed[vb] = int64(vbBlob["last_processed_seq_no"].(float64))
+		}
+		p.statsRWMutex.Unlock()
+	}
+}
+
+// GetSeqsProcessed returns vbucket specific sequence nos processed so far
+func (p *Producer) GetSeqsProcessed() map[int]int64 {
+	p.statsRWMutex.Lock()
+	defer p.statsRWMutex.Unlock()
+
+	seqNoProcessed := make(map[int]int64)
+	for k, v := range p.seqsNoProcessed {
+		seqNoProcessed[k] = v
+	}
+
+	return seqNoProcessed
+}
+
+// RebalanceTaskProgress reports vbuckets remaining to be transferred as per planner
+// during the course of rebalance
+func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
+	producerLevelProgress := &common.RebalanceProgress{}
+
+	for _, consumer := range p.runningConsumers {
+		consumerProgress := consumer.RebalanceTaskProgress()
+
+		producerLevelProgress.VbsRemainingToShuffle += consumerProgress.VbsRemainingToShuffle
+		producerLevelProgress.VbsOwnedPerPlan += consumerProgress.VbsOwnedPerPlan
+	}
+
+	return producerLevelProgress
 }

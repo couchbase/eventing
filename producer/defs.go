@@ -16,17 +16,17 @@ const (
 	metakvEventingPath    = "/eventing/"
 	metakvAppsPath        = metakvEventingPath + "apps/"
 	metakvAppSettingsPath = metakvEventingPath + "settings/"
+	metakvConfigKeepNodes = metakvEventingPath + "config/keepNodes" // Store list of eventing keepNodes
 )
 
 const (
-	bucketOpRetryInterval  = time.Duration(1000) * time.Millisecond
-	persistAllTickInterval = time.Duration(5000) * time.Millisecond
+	bucketOpRetryInterval   = time.Duration(1000) * time.Millisecond
+	persistAllTickInterval  = time.Duration(5000) * time.Millisecond
+	updateStatsTickInterval = time.Duration(5000) * time.Millisecond
 
 	udsSockPathLimit = 100
 
 	dataService = "kv"
-
-	numVbuckets = 1024
 
 	supervisorTimeout = 60 * time.Second
 
@@ -75,6 +75,7 @@ type Producer struct {
 	metakvAppHostPortsPath string
 	nsServerPort           string
 	nsServerHostPort       string
+	numVbuckets            int
 	pauseProducerCh        chan struct{}
 	persistAllTicker       *time.Ticker
 	workerQueueCap         int64
@@ -128,6 +129,11 @@ type Producer struct {
 	// Timer event processing worker count per Eventing.Consumer instance
 	timerWorkerPoolSize int
 
+	// Needed by cron timers
+	// A random number (0 - fuzzOffset) will be added to the epoch time at which the callback function
+	// was supposed to be called
+	fuzzOffset int
+
 	// stats gathered from ClusterInfo
 	localAddress      string
 	eventingNodeAddrs []string
@@ -180,6 +186,16 @@ type Producer struct {
 
 	// time.Ticker duration for dumping consumer stats
 	statsTickDuration time.Duration
+
+	statsRWMutex *sync.RWMutex
+
+	plannerNodeMappings []*common.PlannerNodeVbMapping // access controlled by statsRWMutex
+	seqsNoProcessed     map[int]int64                  // Access controlled by statsRWMutex
+	updateStatsTicker   *time.Ticker
+	updateStatsStopCh   chan struct{}
+
+	// Captures vbucket assignment to different eventing nodes
+	vbEventingNodeMap map[string]map[string]string // access controlled by statsRWMutex
 
 	// Map keeping track of vbuckets assigned to each worker(consumer)
 	workerVbucketMap map[string][]uint16

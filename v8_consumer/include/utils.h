@@ -40,6 +40,7 @@ struct Data {
   lcb_t cb_instance;
   lcb_t meta_cb_instance;
   JsException *js_exception;
+  int fuzz_offset;
 };
 
 inline Data *UnwrapData(v8::Isolate *isolate) {

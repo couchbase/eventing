@@ -26,8 +26,8 @@ func (c *Consumer) processEvents() {
 
 		if c.cppWorkerAggQueueSize != nil {
 			if c.workerQueueCap < c.cppWorkerAggQueueSize.AggQueueSize {
-				logging.Infof("CRDP[%s:%s:%s:%d] Throttling events to cpp worker, aggregate queue size: %v cap: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.cppWorkerAggQueueSize.AggQueueSize,
+				logging.Infof("CRDP[%s:%s:%d] Throttling events to cpp worker, aggregate queue size: %v cap: %v",
+					c.workerName, c.tcpPort, c.Pid(), c.cppWorkerAggQueueSize.AggQueueSize,
 					c.workerQueueCap)
 				time.Sleep(1 * time.Second)
 			}
@@ -36,8 +36,8 @@ func (c *Consumer) processEvents() {
 		select {
 		case e, ok := <-c.aggDCPFeed:
 			if ok == false {
-				logging.Infof("CRDP[%s:%s:%s:%d] Closing DCP feed for bucket %q",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.bucket)
+				logging.Infof("CRDP[%s:%s:%d] Closing DCP feed for bucket %q",
+					c.workerName, c.tcpPort, c.Pid(), c.bucket)
 
 				c.stopCheckpointingCh <- struct{}{}
 				return
@@ -87,23 +87,23 @@ func (c *Consumer) processEvents() {
 					var xMeta xattrMetadata
 					err := json.Unmarshal(xattrVal, &xMeta)
 					if err != nil {
-						logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v xattrVal: %v err: %v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), string(xattrVal), err)
+						logging.Errorf("CRDP[%s:%s:%d] Key: %v xattrVal: %v err: %v",
+							c.workerName, c.tcpPort, c.Pid(), string(e.Key), string(xattrVal), err)
 						continue
 					}
 
-					logging.Tracef("CRDP[%s:%s:%s:%d] Key: %s xmeta dump: %#v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), xMeta)
+					logging.Tracef("CRDP[%s:%s:%d] Key: %s xmeta dump: %#v",
+						c.workerName, c.tcpPort, c.Pid(), string(e.Key), xMeta)
 
 					cas, err := util.ConvertBigEndianToUint64([]byte(xMeta.Cas))
 					if err != nil {
-						logging.Errorf("CRDP[%s:%s:%s:%d] Key: %v Failed to convert cas string from kv to uint64, err: %v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
+						logging.Errorf("CRDP[%s:%s:%d] Key: %v Failed to convert cas string from kv to uint64, err: %v",
+							c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
 						continue
 					}
 
-					logging.Tracef("CRDP[%s:%s:%s:%d] Key: %s decoded cas: %v dcp cas: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), cas, e.Cas)
+					logging.Tracef("CRDP[%s:%s:%d] Key: %s decoded cas: %v dcp cas: %v",
+						c.workerName, c.tcpPort, c.Pid(), string(e.Key), cas, e.Cas)
 
 					// Send mutation to V8 CPP worker _only_ when DcpEvent.Cas != Cas field in xattr
 					if cas != e.Cas {
@@ -126,8 +126,8 @@ func (c *Consumer) processEvents() {
 							c.plasmaStoreCh <- pEntry
 						}
 					} else {
-						logging.Debugf("CRPO[%s:%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v, xmeta: %#v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, xMeta)
+						logging.Debugf("CRPO[%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v, xmeta: %#v",
+							c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, xMeta)
 
 						pEntry := &plasmaStoreEntry{
 							vb:     e.VBucket,
@@ -165,8 +165,8 @@ func (c *Consumer) processEvents() {
 
 			case mcd.DCP_STREAMREQ:
 
-				logging.Debugf("CRDP[%s:%s:%s:%d] vb: %d status: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
+				logging.Debugf("CRDP[%s:%s:%d] vb: %d status: %v",
+					c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
 
 				if e.Status == mcd.SUCCESS {
 
@@ -181,8 +181,8 @@ func (c *Consumer) processEvents() {
 
 					vbuuid, seqNo, err := e.FailoverLog.Latest()
 					if err != nil {
-						logging.Errorf("CRDP[%s:%s:%s:%d] Failure to get latest failover log vb: %d err: %v, not updating metadata",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket, err)
+						logging.Errorf("CRDP[%s:%s:%d] Failure to get latest failover log vb: %d err: %v, not updating metadata",
+							c.workerName, c.tcpPort, c.Pid(), e.VBucket, err)
 						c.vbFlogChan <- vbFlog
 						continue
 					}
@@ -196,10 +196,17 @@ func (c *Consumer) processEvents() {
 					vbBlob.NodeUUID = c.uuid
 					vbBlob.VBuuid = vbuuid
 
+					var startSeqNo uint64
+					var ok bool
+					if _, ok = c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64); ok {
+						startSeqNo = uint64(c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64))
+					}
+
 					entry := OwnershipEntry{
 						AssignedWorker: c.ConsumerName(),
 						CurrentVBOwner: c.HostPortAddr(),
 						Operation:      dcpStreamRunning,
+						StartSeqNo:     startSeqNo,
 						Timestamp:      time.Now().String(),
 					}
 
@@ -209,6 +216,10 @@ func (c *Consumer) processEvents() {
 					c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", c.HostPortAddr())
 					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
 					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
+
+					c.vbsStreamRRWMutex.Lock()
+					delete(c.vbStreamRequested, e.VBucket)
+					c.vbsStreamRRWMutex.Unlock()
 
 					c.vbFlogChan <- vbFlog
 					continue
@@ -235,7 +246,7 @@ func (c *Consumer) processEvents() {
 				// which will allow vbTakeOver background routine to start up new stream from
 				// new KV node, where the vbucket has been migrated
 
-				logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v, got STREAMEND", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+				logging.Debugf("CRPE[%s:%s:%d] vb: %v, got STREAMEND", c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
 				// Different scenarios where DCP_STREAMEND could be triggered:
 				// (a) vb give up as part of eventing rebalance
@@ -250,10 +261,6 @@ func (c *Consumer) processEvents() {
 
 				//Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
-				var vbBlob vbucketKVBlob
-				var cas gocb.Cas
-
-				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 				entry := OwnershipEntry{
 					AssignedWorker: c.ConsumerName(),
@@ -264,11 +271,24 @@ func (c *Consumer) processEvents() {
 
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySECallback, c, vbKey, &entry)
 
-				c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
+				var vbBlob vbucketKVBlob
+				var cas gocb.Cas
+
+				c.vbsStreamClosedRWMutex.Lock()
+				_, cUpdated := c.vbsStreamClosed[e.VBucket]
+				if !cUpdated {
+					c.vbsStreamClosed[e.VBucket] = true
+				}
+				c.vbsStreamClosedRWMutex.Unlock()
+
+				if !cUpdated {
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+					c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
+				}
 
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
-					logging.Debugf("CRVT[%s:%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+					logging.Debugf("CRPE[%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
+						c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 					c.Lock()
 					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, e.VBucket)
 					c.Unlock()
@@ -279,7 +299,7 @@ func (c *Consumer) processEvents() {
 
 		case e, ok := <-c.docTimerEntryCh:
 			if ok == false {
-				logging.Infof("CRDP[%s:%s:%s:%d] Closing doc timer chan", c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+				logging.Infof("CRDP[%s:%s:%d] Closing doc timer chan", c.workerName, c.tcpPort, c.Pid())
 
 				c.stopCheckpointingCh <- struct{}{}
 				return
@@ -290,7 +310,7 @@ func (c *Consumer) processEvents() {
 
 		case e, ok := <-c.nonDocTimerEntryCh:
 			if ok == false {
-				logging.Infof("CRDP[%s:%s:%s:%d] Closing non_doc timer chan", c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+				logging.Infof("CRDP[%s:%s:%d] Closing non_doc timer chan", c.workerName, c.tcpPort, c.Pid())
 
 				c.stopCheckpointingCh <- struct{}{}
 				return
@@ -319,8 +339,8 @@ func (c *Consumer) processEvents() {
 					c.timerMessagesProcessedPSec = int(timerOpsDiff) / seconds
 				}
 
-				logging.Infof("CRDP[%s:%s:%s:%d] DCP events: %s V8 events: %s Timer events: Doc: %v Cron: %v, vbs owned len: %d vbs owned: %v Plasma stats: Insert: %v Delete: %v Lookup: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
+				logging.Infof("CRDP[%s:%s:%d] DCP events: %s V8 events: %s Timer events: Doc: %v Cron: %v, vbs owned len: %d vbs owned: %v Plasma stats: Insert: %v Delete: %v Lookup: %v",
+					c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
 					c.doctimerMessagesProcessed, c.crontimerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned),
 					c.plasmaInsertCounter, c.plasmaDeleteCounter, c.plasmaLookupCounter)
 
@@ -330,8 +350,8 @@ func (c *Consumer) processEvents() {
 				c.statsRWMutex.Unlock()
 
 				if eErr == nil && fErr == nil {
-					logging.Infof("CRDP[%s:%s:%s:%d] CPP worker stats. Failure stats: %s execution stats: %s",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(fstats), string(estats))
+					logging.Infof("CRDP[%s:%s:%d] CPP worker stats. Failure stats: %s execution stats: %s",
+						c.workerName, c.tcpPort, c.Pid(), string(fstats), string(estats))
 				}
 
 				c.opsTimestamp = tStamp
@@ -352,8 +372,8 @@ func (c *Consumer) processEvents() {
 
 		case <-c.stopConsumerCh:
 
-			logging.Infof("CRDP[%s:%s:%s:%d] Exiting processEvents routine",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+			logging.Infof("CRDP[%s:%s:%d] Exiting processEvents routine",
+				c.workerName, c.tcpPort, c.Pid())
 			return
 		}
 	}
@@ -361,19 +381,19 @@ func (c *Consumer) processEvents() {
 
 func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.FailoverLog) {
 
-	logging.Infof("CRDP[%s:%s:%s:%d] no. of vbs owned: %d",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
+	logging.Infof("CRDP[%s:%s:%d] no. of vbs owned: %d",
+		c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
 	vbSeqnos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil && c.dcpStreamBoundary != common.DcpEverything {
-		logging.Errorf("CRDP[%s:%s:%s:%d] Failed to fetch vb seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		logging.Errorf("CRDP[%s:%s:%d] Failed to fetch vb seqnos, err: %v", c.workerName, c.tcpPort, c.Pid(), err)
 		return
 	}
 
-	logging.Debugf("CRDP[%s:%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
+	logging.Debugf("CRDP[%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
+		c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
 
 	for vbno, flog := range flogs {
 
@@ -422,9 +442,7 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 		} else {
 
 			if vbBlob.NodeUUID == c.NodeUUID() {
-				start = vbBlob.LastSeqNoProcessed
-
-				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+				c.dcpRequestStreamHandle(vbno, &vbBlob, vbBlob.LastSeqNoProcessed)
 			}
 		}
 	}
@@ -435,8 +453,8 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 		defer func() {
 			if r := recover(); r != nil {
 				trace := debug.Stack()
-				logging.Errorf("CRDP[%s:%s:%s:%d] addToAggChan: recover %v stack trace: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
+				logging.Errorf("CRDP[%s:%s:%d] addToAggChan: recover %v stack trace: %v",
+					c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 			}
 		}()
 
@@ -453,8 +471,8 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 					}
 					c.hostDcpFeedRWMutex.RUnlock()
 
-					logging.Infof("CRDP[%s:%s:%s:%d] Closing dcp feed: %v for bucket: %s",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), c.bucket)
+					logging.Infof("CRDP[%s:%s:%d] Closing dcp feed: %v for bucket: %s",
+						c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), c.bucket)
 					c.hostDcpFeedRWMutex.Lock()
 					delete(c.kvHostDcpFeedMap, kvAddr)
 					c.hostDcpFeedRWMutex.Unlock()
@@ -463,8 +481,8 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 				}
 
 				if e.Opcode == mcd.DCP_STREAMEND || e.Opcode == mcd.DCP_STREAMREQ {
-					logging.Debugf("CRDP[%s:%s:%s:%d] addToAggChan dcpFeed name: %v vb: %v Opcode: %v Status: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), e.VBucket, e.Opcode, e.Status)
+					logging.Debugf("CRDP[%s:%s:%d] addToAggChan dcpFeed name: %v vb: %v Opcode: %v Status: %v",
+						c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), e.VBucket, e.Opcode, e.Status)
 				}
 
 				c.aggDCPFeed <- e
@@ -522,10 +540,10 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() {
 	}
 }
 
-func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
+func (c *Consumer) clearUpOnwershipInfoFromMeta(vb uint16) {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
-	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 	vbBlob.AssignedDocIDTimerWorker = ""
@@ -546,15 +564,24 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vbno uint16) {
 		Timestamp:      time.Now().String(),
 	}
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySECallback, c, vbKey, &entry)
+	c.vbsStreamClosedRWMutex.Lock()
+	_, cUpdated := c.vbsStreamClosed[vb]
+	if !cUpdated {
+		c.vbsStreamClosed[vb] = true
+	}
+	c.vbsStreamClosedRWMutex.Unlock()
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateCheckpointCallback, c, vbKey, &vbBlob)
+	if !cUpdated {
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySECallback, c, vbKey, &entry)
 
-	c.vbProcessingStats.updateVbStat(vbno, "assigned_worker", vbBlob.AssignedWorker)
-	c.vbProcessingStats.updateVbStat(vbno, "current_vb_owner", vbBlob.CurrentVBOwner)
-	c.vbProcessingStats.updateVbStat(vbno, "dcp_stream_status", vbBlob.DCPStreamStatus)
-	c.vbProcessingStats.updateVbStat(vbno, "node_uuid", vbBlob.NodeUUID)
-	c.vbProcessingStats.updateVbStat(vbno, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateCheckpointCallback, c, vbKey, &vbBlob)
+	}
+
+	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
+	c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", vbBlob.CurrentVBOwner)
+	c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", vbBlob.DCPStreamStatus)
+	c.vbProcessingStats.updateVbStat(vb, "node_uuid", vbBlob.NodeUUID)
+	c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
 }
 
 func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) error {
@@ -579,8 +606,8 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
 		c.addToAggChan(dcpFeed, cancelCh)
 
-		logging.Debugf("CRDP[%s:%s:%s:%d] vb: %d kvAddr: %v Started up new dcpFeed",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr)
+		logging.Debugf("CRDP[%s:%s:%d] vb: %d kvAddr: %v Started up new dcpFeed",
+			c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr)
 	}
 	c.hostDcpFeedRWMutex.Unlock()
 
@@ -593,13 +620,13 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 
 	snapStart, snapEnd := start, start
 
-	logging.Debugf("CRDP[%s:%s:%s:%d] vb: %d DCP stream start vbKvAddr: %v vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd)
+	logging.Debugf("CRDP[%s:%s:%d] vb: %d DCP stream start vbKvAddr: %v vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+		c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd)
 
 	err := dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 	if err != nil {
-		logging.Errorf("CRDP[%s:%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, dcpFeed.DcpFeedName(), err)
+		logging.Errorf("CRDP[%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
+			c.workerName, c.tcpPort, c.Pid(), vbno, dcpFeed.DcpFeedName(), err)
 		if c.checkIfCurrentConsumerShouldOwnVb(vbno) {
 			c.Lock()
 			c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbno)
@@ -614,7 +641,7 @@ loop:
 	vbFlog := <-c.vbFlogChan
 
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
-		logging.Tracef("CRDP[%s:%s:%s:%d] vb: %d DCP Stream created", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+		logging.Tracef("CRDP[%s:%s:%d] vb: %d DCP Stream created", c.workerName, c.tcpPort, c.Pid(), vbno)
 
 		c.plasmaReaderRWMutex.Lock()
 		c.plasmaStoreRWMutex.Lock()
@@ -629,13 +656,13 @@ loop:
 	if vbFlog.streamReqRetry && vbFlog.vb == vbno {
 
 		if vbFlog.statusCode == mcd.ROLLBACK {
-			logging.Infof("CRDP[%s:%s:%s:%d] vb: %d vbuuid: %d Rollback requested by DCP, previous startseq: %d rollback startseq: %d",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, vbFlog.seqNo)
+			logging.Infof("CRDP[%s:%s:%d] vb: %d vbuuid: %d Rollback requested by DCP, previous startseq: %d rollback startseq: %d",
+				c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, vbFlog.seqNo)
 			start, snapStart, snapEnd = vbFlog.seqNo, vbFlog.seqNo, vbFlog.seqNo
 		}
 
-		logging.Infof("CRDP[%s:%s:%s:%d] Retrying DCP stream start vb: %d vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
+		logging.Infof("CRDP[%s:%s:%d] Retrying DCP stream start vb: %d vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+			c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
 		dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 		goto loop
 	}
@@ -646,7 +673,7 @@ loop:
 func (c *Consumer) getCurrentlyOwnedVbs() []uint16 {
 	var vbsOwned []uint16
 
-	for vb := 0; vb < numVbuckets; vb++ {
+	for vb := 0; vb < c.numVbuckets; vb++ {
 		if c.vbProcessingStats.getVbStat(uint16(vb), "assigned_worker") == c.ConsumerName() &&
 			c.vbProcessingStats.getVbStat(uint16(vb), "node_uuid") == c.NodeUUID() {
 

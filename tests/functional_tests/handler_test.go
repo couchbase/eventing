@@ -8,10 +8,6 @@ import (
 	"time"
 )
 
-func init() {
-	initSetup()
-}
-
 func TestN1QLLabelledBreak(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "n1ql_labelled_break.js"

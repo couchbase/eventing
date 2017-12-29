@@ -64,6 +64,8 @@ type statusCodes struct {
 	errSrcBucketMissing  statusBase
 	errMetaBucketMissing statusBase
 	errNoEventingNodes   statusBase
+	errSaveConfig        statusBase
+	errGetConfig         statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
@@ -101,6 +103,8 @@ func (m *ServiceMgr) initErrCodes() {
 		errSrcBucketMissing:  statusBase{"ERR_SRC_BUCKET_MISSING", 30},
 		errMetaBucketMissing: statusBase{"ERR_METADATA_BUCKET_MISSING", 31},
 		errNoEventingNodes:   statusBase{"ERR_NO_EVENTING_NODES_FOUND", 32},
+		errSaveConfig:        statusBase{"ERR_SAVE_CONFIG", 33},
+		errGetConfig:         statusBase{"ERR_GET_CONFIG", 34},
 	}
 
 	errors := []errorPayload{
@@ -266,6 +270,16 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errNoEventingNodes.Name,
 			Code:        m.statusCodes.errNoEventingNodes.Code,
 			Description: "No eventing reported from cluster manager",
+		},
+		{
+			Name:        m.statusCodes.errSaveConfig.Name,
+			Code:        m.statusCodes.errSaveConfig.Code,
+			Description: "Failed to save config to metakv",
+		},
+		{
+			Name:        m.statusCodes.errGetConfig.Name,
+			Code:        m.statusCodes.errGetConfig.Code,
+			Description: "Failed to get config from metakv",
 		},
 	}
 

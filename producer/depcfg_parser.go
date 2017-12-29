@@ -159,6 +159,12 @@ func (p *Producer) parseDepcfg() error {
 		p.executionTimeout = 1
 	}
 
+	if val, ok := settings["fuzz_offset"]; ok {
+		p.fuzzOffset = int(val.(float64))
+	} else {
+		p.fuzzOffset = 30
+	}
+
 	if val, ok := settings["cpp_worker_thread_count"]; ok {
 		p.cppWorkerThrCount = int(val.(float64))
 	} else {
@@ -221,21 +227,14 @@ func (p *Producer) parseDepcfg() error {
 		return fmt.Errorf("%v", errorUnexpectedWorkerCount)
 	}
 
-	hostaddr := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
+	p.nsServerHostPort = fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
 
-	localAddress, err := util.LocalEventingServiceHost(p.auth, hostaddr)
-	if err != nil {
-		logging.Errorf("DCFG[%s] Failed to get address for local eventing node, err :%v", p.appName, err)
-		return err
-	}
-
-	p.kvHostPorts, err = util.KVNodesAddresses(p.auth, hostaddr)
+	var err error
+	p.kvHostPorts, err = util.KVNodesAddresses(p.auth, p.nsServerHostPort)
 	if err != nil {
 		logging.Errorf("DCFG[%s] Failed to get list of kv nodes in the cluster, err: %v", p.appName, err)
 		return err
 	}
-
-	p.nsServerHostPort = fmt.Sprintf("%s:%s", localAddress, p.nsServerPort)
 
 	return nil
 }

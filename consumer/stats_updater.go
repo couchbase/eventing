@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func newVbProcessingStats(appName string) vbStats {
+func newVbProcessingStats(appName string, numVbuckets uint16) vbStats {
 	vbsts := make(vbStats, numVbuckets)
 	for i := uint16(0); i < numVbuckets; i++ {
 		vbsts[i] = &vbStat{
@@ -45,7 +45,7 @@ func (vbs vbStats) updateVbStat(vb uint16, statName string, val interface{}) {
 	vbstat.stats[statName] = val
 }
 
-func (vbs vbStats) copyVbStats() vbStats {
+func (vbs vbStats) copyVbStats(numVbuckets uint16) vbStats {
 	vbsts := make(vbStats, numVbuckets)
 	for i := uint16(0); i < numVbuckets; i++ {
 		vbsts[i] = &vbStat{
@@ -74,7 +74,6 @@ func (c *Consumer) updateWorkerStats() {
 		select {
 		case <-c.updateStatsTicker.C:
 			c.dcpEventsRemainingToProcess()
-			c.getSeqsProcessed()
 			c.sendGetExecutionStats(false)
 			c.sendGetFailureStats(false)
 			c.sendGetLatencyStats(false)

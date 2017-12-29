@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os/exec"
 	"strings"
@@ -263,6 +264,7 @@ retryVerifyBucketOp:
 
 	itemCount, _ = getBucketItemCount(dstBucket)
 	if itemCount == count {
+		log.Printf("src & dst bucket item count matched up. src bucket count: %d dst bucket count: %d\n", count, itemCount)
 		return itemCount
 	}
 	rCount++
@@ -270,8 +272,40 @@ retryVerifyBucketOp:
 	goto retryVerifyBucketOp
 }
 
+func verifyBucketItemCount(rl *rateLimit, retryCount int) {
+	rCount := 1
+
+	log.SetFlags(log.LstdFlags)
+
+retrySrcItemCount:
+	if rCount >= retryCount {
+		log.Printf("Failed to have: %v items in source bucket, even after %v retries\n",
+			rl.count, retryCount)
+		return
+	}
+
+	srcCount, err := getBucketItemCount(srcBucket)
+	if err != nil {
+		time.Sleep(3 * time.Second)
+		goto retrySrcItemCount
+	}
+
+	if srcCount != rl.count {
+		log.Printf("Waiting for src bucket item count to get to: %v curr count: %v\n",
+			rl.count, srcCount)
+		time.Sleep(3 * time.Second)
+		goto retrySrcItemCount
+	}
+
+	if srcCount == rl.count {
+		rl.stopCh <- struct{}{}
+	}
+}
+
 func compareSrcAndDstItemCount(retryCount int) bool {
 	rCount := 1
+
+	log.SetFlags(log.LstdFlags)
 
 retrySrcItemCount:
 	if rCount >= retryCount {
@@ -292,10 +326,12 @@ retryDstItemCount:
 	}
 
 	if dstCount != srcCount {
-		fmt.Printf("src bucket count: %d dst bucket count: %d\n", srcCount, dstCount)
+		log.Printf("src bucket count: %d dst bucket count: %d\n", srcCount, dstCount)
 		rCount++
 		time.Sleep(5 * time.Second)
 	}
+
+	log.Printf("src & dst bucket item count matched up. src bucket count: %d dst bucket count: %d\n", srcCount, dstCount)
 
 	return true
 }

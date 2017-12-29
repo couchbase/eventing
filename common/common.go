@@ -64,9 +64,11 @@ type EventingProducer interface {
 	NsServerHostPort() string
 	NsServerNodeCount() int
 	PauseProducer()
+	PlannerStats() []*PlannerNodeVbMapping
 	PurgePlasmaRecords()
 	RbacUser() string
 	RbacPass() string
+	RebalanceTaskProgress() *RebalanceProgress
 	SignalBootstrapFinish()
 	SignalCheckpointBlobCleanup()
 	SignalStartDebugger()
@@ -76,6 +78,8 @@ type EventingProducer interface {
 	StopProducer()
 	String() string
 	TimerTransferHostPortAddrs() map[string]string
+	VbDcpEventsRemainingToProcess() map[int]int64
+	VbDistributionStats() map[string]map[string]string
 	VbEventingNodeAssignMap() map[uint16]string
 	WorkerVbMap() map[string][]uint16
 	WriteAppLog(log string)
@@ -95,7 +99,6 @@ type EventingConsumer interface {
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
-	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
 	HandleV8Worker()
 	HostPortAddr() string
@@ -118,6 +121,7 @@ type EventingConsumer interface {
 	String() string
 	TimerTransferHostPortAddr() string
 	UpdateEventingNodesUUIDs(uuids []string)
+	VbDcpEventsRemainingToProcess() map[int]int64
 	VbProcessingStats() map[uint16]map[string]interface{}
 }
 
@@ -142,10 +146,14 @@ type EventingSuperSup interface {
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)
+	PlannerStats(appName string) []*PlannerNodeVbMapping
 	ProducerHostPortAddrs() []string
+	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
 	RestPort() string
 	SignalStartDebugger(appName string)
 	SignalStopDebugger(appName string)
+	VbDcpEventsRemainingToProcess(appName string) map[int]int64
+	VbDistributionStats(appName string) map[string]map[string]string
 }
 
 type EventingServiceMgr interface {
@@ -191,4 +199,12 @@ type CompileStatus struct {
 	Line           int    `json:"line_number"`
 	Column         int    `json:"column_number"`
 	Description    string `json:"description"`
+}
+
+// PlannerNodeVbMapping captures the vbucket distribution across all
+// eventing nodes as per planner
+type PlannerNodeVbMapping struct {
+	Hostname string `json:"host_name"`
+	StartVb  int    `json:"start_vb"`
+	VbsCount int    `json:"vb_count"`
 }

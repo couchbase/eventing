@@ -145,6 +145,30 @@
        "user" : {"source" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
+   },
+   {
+     "id" : 32780,
+     "name" : "Fetch Config",
+     "description" : "Get config for eventing",
+     "sync" : false,
+     "enabled" : true,
+     "mandatory_fields" : {
+       "timestamp" : "",
+       "user" : {"source" : "", "user" : ""}
+      },
+      "optional_fields" : {"context" : ""}
+   },
+   {
+     "id" : 32781,
+     "name" : "Save Config",
+     "description" : "Save config for eventing",
+     "sync" : false,
+     "enabled" : true,
+     "mandatory_fields" : {
+       "timestamp" : "",
+       "user" : {"source" : "", "user" : ""}
+      },
+      "optional_fields" : {"context" : ""}
    }
   ]
 }

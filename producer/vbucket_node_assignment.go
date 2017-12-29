@@ -1,10 +1,12 @@
 package producer
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -35,6 +37,25 @@ func (p *Producer) vbEventingNodeAssign() error {
 		return err
 	}
 
+	// This will kick off post eventing-producer bootstrap in cases where it's killed and then
+	// re-spawned by babysitter. Reads from metakv the list of keep nodes
+	// from metakv, which were written on last StartTopologyChange RPC call
+	if len(p.eventingNodeUUIDs) == 1 && p.eventingNodeUUIDs[0] == p.uuid {
+		var data []byte
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), metakvGetCallback, p, metakvConfigKeepNodes, &data)
+
+		var keepNodes []string
+		err := json.Unmarshal(data, &keepNodes)
+		if err != nil {
+			logging.Errorf("VBNA[%s:%d] Failed to unmarshal keep nodes received from metakv, err: %v",
+				p.appName, p.LenRunningConsumers(), err)
+		} else {
+			logging.Infof("VBNA[%s:%d] Updating Eventing keep nodes uuids. Previous: %v current: %v",
+				p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, keepNodes)
+			p.eventingNodeUUIDs = append([]string(nil), keepNodes...)
+		}
+	}
+
 	// Only includes nodes that supposed to be part of cluster post StartTopologyChange call
 	eventingNodeAddrs := make([]string, 0)
 	for _, uuid := range p.eventingNodeUUIDs {
@@ -45,7 +66,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 	logging.Debugf("VBNA[%s:%d] EventingNodeUUIDs: %v eventingNodeAddrs: %v",
 		p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, eventingNodeAddrs)
 
-	vbucketsPerNode := numVbuckets / len(eventingNodeAddrs)
+	vbucketsPerNode := p.numVbuckets / len(eventingNodeAddrs)
 	var vbNo int
 	var startVb uint16
 
@@ -59,17 +80,28 @@ func (p *Producer) vbEventingNodeAssign() error {
 		vbNo += vbucketsPerNode
 	}
 
-	remainingVbs := numVbuckets - vbNo
+	remainingVbs := p.numVbuckets - vbNo
 	if remainingVbs > 0 {
 		for i := 0; i < remainingVbs; i++ {
 			vbCountPerNode[i] = vbCountPerNode[i] + 1
 		}
 	}
 
+	p.statsRWMutex.Lock()
+	defer p.statsRWMutex.Unlock()
+	p.plannerNodeMappings = make([]*common.PlannerNodeVbMapping, 0)
+
 	for i, v := range vbCountPerNode {
 
 		logging.Debugf("VBNA[%s:%d] EventingNodeUUIDs: %v Eventing node index: %d eventing node addr: %v startVb: %v vbs count: %v",
 			p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, i, eventingNodeAddrs[i], startVb, v)
+
+		nodeMapping := &common.PlannerNodeVbMapping{
+			Hostname: eventingNodeAddrs[i],
+			StartVb:  int(startVb),
+			VbsCount: v,
+		}
+		p.plannerNodeMappings = append(p.plannerNodeMappings, nodeMapping)
 
 		for j := 0; j < v; j++ {
 			p.vbEventingNodeAssignMap[startVb] = eventingNodeAddrs[i]

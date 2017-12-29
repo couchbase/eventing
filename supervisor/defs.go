@@ -29,8 +29,8 @@ const (
 	maxDeltaChainLen = 30
 	maxPageItems     = 100
 	minPageItems     = 10
-	numVbuckets      = 1024
 	numTimerVbMoves  = 10
+	numVbuckets      = 1024
 )
 
 const (

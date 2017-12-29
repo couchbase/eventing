@@ -375,7 +375,6 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 
 		h.HandleFunc("/getEventsPSec", p.EventsProcessedPSec)
 		h.HandleFunc("/getNodeMap", p.GetNodeMap)
-		h.HandleFunc("/getRebalanceStatus", p.RebalanceStatus)
 		h.HandleFunc("/getSettings", p.GetSettings)
 		h.HandleFunc("/getVbStats", p.GetConsumerVbProcessingStats)
 		h.HandleFunc("/getWorkerMap", p.GetWorkerMap)
