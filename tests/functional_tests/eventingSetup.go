@@ -291,6 +291,8 @@ retrySrcItemCount:
 	}
 
 	if srcCount != rl.count {
+		log.Printf("Waiting for src bucket item count to get to: %v curr count: %v\n",
+			rl.count, srcCount)
 		time.Sleep(3 * time.Second)
 		goto retrySrcItemCount
 	}

@@ -48,7 +48,7 @@ const (
 	rbacuser = "eventing"
 	rbacpass = "asdasd"
 
-	cbBuildEnvString = "CB_BUILD_DIR"
+	cbBuildEnvString = "WORKSPACE"
 )
 
 const (
