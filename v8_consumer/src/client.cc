@@ -655,6 +655,8 @@ int main(int argc, char **argv) {
     return 2;
   }
 
+  srand(static_cast<unsigned>(time(nullptr)));
+
   if (isSSE42Supported()) {
     initCrcTable();
   }

@@ -3,10 +3,12 @@ In 5.1, responses returned by below functions are opaque and should not be edite
 
 ## Create a function
 `POST` `/api/v1/functions/<name>`
-> Function name in body must match function name on URL. Function definition includes its current settings.
+> 1. Function name in body must match function name on URL. Function definition includes its current settings.
+> 2. Multiple functions can not have the same name. An error will be reported in such a case.
 
 ## Create several functions
 `POST` `/api/v1/functions`
+> Multiple functions can not have the same name. An error will be reported in such a case.
 
 ## Get a function
 `GET` `/api/v1/functions/<name>`
