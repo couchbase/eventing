@@ -31,6 +31,8 @@
 class N1QL;
 class V8Worker;
 class JsException;
+class Transpiler;
+
 // Struct for storing isolate data
 struct Data {
   CURL *curl_handle;
@@ -38,6 +40,7 @@ struct Data {
   V8Worker *v8worker;
   JsException *js_exception;
   Communicator *comm;
+  Transpiler *transpiler;
 
   int fuzz_offset;
   int cron_timers_per_doc;
@@ -71,7 +74,7 @@ const char *ToCString(const v8::String::Utf8Value &value);
 bool ToCBool(const v8::Local<v8::Boolean> &value);
 
 std::string ConvertToISO8601(std::string timestamp);
-
+std::string GetTranspilerSrc();
 bool isFuncReference(const v8::FunctionCallbackInfo<v8::Value> &args, int i);
 std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch);
 

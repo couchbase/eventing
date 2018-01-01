@@ -514,6 +514,28 @@ func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Reque
 	fmt.Fprintf(w, "%s", string(buf))
 }
 
+func (m *ServiceMgr) getNamedParamsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		return
+	}
+
+	query := string(data)
+	info := util.GetNamedParams(query)
+	response, err := json.Marshal(info)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", response)
+
+}
+
 // Reports progress across all producers on current node
 func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
@@ -1170,7 +1192,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	appContent := builder.FinishedBytes()
 
 	c := &consumer.Consumer{}
-	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName)
+	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName, m.adminHTTPPort)
 	if err != nil || !compilationInfo.CompileSuccess {
 		res, mErr := json.Marshal(&compilationInfo)
 		if mErr != nil {
@@ -1389,6 +1411,27 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) []
 	}
 
 	return appList
+}
+
+func (m *ServiceMgr) parseQueryHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		return
+	}
+
+	query := string(data)
+	info := util.Parse(query)
+	response, err := json.Marshal(info)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", response)
 }
 
 func (m *ServiceMgr) getConfig() (c config, info *runtimeInfo) {

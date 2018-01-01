@@ -9,22 +9,10 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include "bucket.h"
+
 #define LCB_NO_DEPR_CXX_CTORS
 #undef NDEBUG
-
-#include <cstdio>
-#include <cstring>
-#include <fstream>
-#include <iostream>
-#include <map>
-#include <sstream>
-#include <string>
-#include <vector>
-
-#include <libplatform/libplatform.h>
-#include <v8.h>
-
-#include "../include/bucket.h"
 
 // lcb related callbacks
 static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
@@ -448,8 +436,8 @@ void Bucket::BucketSet<uint32_t>(
   BucketSet<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), value, info);
 }
 
-template <typename>
-void Bucket::BucketDelete(uint32_t key,
+template <>
+void Bucket::BucketDelete<uint32_t>(uint32_t key,
                           const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   BucketDelete<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), info);
 }

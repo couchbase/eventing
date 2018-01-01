@@ -116,7 +116,7 @@ type EventingConsumer interface {
 	SignalBootstrapFinish()
 	SignalConnected()
 	SignalStopDebugger()
-	SpawnCompilationWorker(appcode, appContent, appName string) (*CompileStatus, error)
+	SpawnCompilationWorker(appcode, appContent, appName, eventingPort string) (*CompileStatus, error)
 	Stop()
 	String() string
 	TimerTransferHostPortAddr() string

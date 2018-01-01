@@ -9,29 +9,11 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
-#include <fstream>
-#include <mutex>
-#include <regex>
-#include <sstream>
-#include <thread>
-#include <typeinfo>
-#include <vector>
-
-#include "../include/bucket.h"
-#include "../include/comm.h"
-#include "../include/n1ql.h"
-#include "../include/parse_deployment.h"
-
+#include "v8worker.h"
 #include "../../gen/js/builtin.h"
-#include "../../gen/js/escodegen.h"
-#include "../../gen/js/esprima.h"
-#include "../../gen/js/estraverse.h"
-#include "../../gen/js/source-map.h"
-#include "../../gen/js/transpiler.h"
+#include "bucket.h"
+#include "parse_deployment.h"
+#include "utils.h"
 
 #define BUFSIZE 100
 
@@ -245,6 +227,12 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   isolate_->SetCaptureStackTraceForUncaughtExceptions(true);
   data.v8worker = this;
 
+  curl_global_init(CURL_GLOBAL_ALL);
+  CURL *curl = curl_easy_init();
+  if (curl) {
+    UnwrapData(isolate_)->curl_handle = curl;
+  }
+
   // TODO : Remove the rbac user and pass once RBAC issue is resolved
   data.rbac_user = server_settings->rbac_user;
   data.rbac_pass = server_settings->rbac_pass;
@@ -280,7 +268,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   js_exception = new JsException(isolate_);
   data.js_exception = js_exception;
   data.cron_timers_per_doc = h_config->cron_timers_per_doc;
-  data.comm = new Communicator(settings->eventing_port, isolate_);
+  data.comm = new Communicator(server_settings->host_addr,
+                               server_settings->eventing_port, isolate_);
+  data.transpiler = new Transpiler(isolate_, GetTranspilerSrc());
   data.fuzz_offset = h_config->fuzz_offset;
 
   app_name_ = h_config->app_name;
@@ -359,7 +349,9 @@ V8Worker::~V8Worker() {
 
   auto data = UnwrapData(isolate_);
   delete data->comm;
+  delete data->transpiler;
 
+  curl_global_cleanup();
   context_.Reset();
   on_update_.Reset();
   on_delete_.Reset();
@@ -410,16 +402,6 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
   }
 }
 
-std::string GetTranspilerSrc() {
-  std::string transpiler_js_src =
-      std::string((const char *)js_esprima) + '\n' +
-      std::string((const char *)js_escodegen) + '\n' +
-      std::string((const char *)js_estraverse) + '\n' +
-      std::string((const char *)js_transpiler) + '\n' +
-      std::string((const char *)js_source_map);
-  return transpiler_js_src;
-}
-
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   LOG(logInfo) << "Eventing dir: " << settings->eventing_dir << std::endl;
   v8::Locker locker(GetIsolate());
@@ -429,34 +411,37 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  v8::TryCatch try_catch;
-  std::string plain_js;
-  int code = UniLineN1QL(script_to_execute.c_str(), &plain_js, nullptr);
-  LOG(logTrace) << "code after Unilining N1QL: " << plain_js << std::endl;
-  if (code != kOK) {
-    LOG(logError) << "failed to uniline N1QL: " << code << std::endl;
-    return code;
+  auto uniline_info = UniLineN1QL(script_to_execute);
+  LOG(logTrace) << "code after Unilining N1QL: " << uniline_info.handler_code
+                << std::endl;
+  if (uniline_info.code != kOK) {
+    LOG(logError) << "failed to uniline N1QL: " << uniline_info.code
+                  << std::endl;
+    return uniline_info.code;
   }
 
-  handler_code_ = plain_js;
+  handler_code_ = uniline_info.handler_code;
 
-  code = Jsify(script_to_execute.c_str(), &plain_js, nullptr);
-  LOG(logTrace) << "jsified code: " << plain_js << std::endl;
-  if (code != kOK) {
-    LOG(logError) << "failed to jsify: " << code << std::endl;
-    return code;
+  auto jsify_info = Jsify(script_to_execute);
+  LOG(logTrace) << "jsified code: " << jsify_info.handler_code << std::endl;
+  if (jsify_info.code != kOK) {
+    LOG(logError) << "failed to jsify: " << jsify_info.handler_code
+                  << std::endl;
+    return jsify_info.code;
   }
 
   n1ql_handle = new N1QL(conn_pool, isolate_);
   UnwrapData(isolate_)->n1ql_handle = n1ql_handle;
 
-  Transpiler transpiler(GetIsolate(), GetTranspilerSrc());
+  auto transpiler = UnwrapData(isolate_)->transpiler;
   script_to_execute =
-      transpiler.Transpile(plain_js, app_name_ + ".js", app_name_ + ".map.json",
-                           settings->host_addr, settings->eventing_port) +
+      transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
+                            app_name_ + ".map.json", settings->host_addr,
+                            settings->eventing_port) +
       '\n';
   script_to_execute += std::string((const char *)js_builtin) + '\n';
-  source_map_ = transpiler.GetSourceMap(plain_js, app_name_ + ".js");
+  source_map_ =
+      transpiler->GetSourceMap(jsify_info.handler_code, app_name_ + ".js");
   LOG(logTrace) << "source map:" << source_map_ << std::endl;
 
   v8::Local<v8::String> source =
@@ -503,19 +488,14 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     }
   }
 
-  CURL *curl = curl_easy_init();
-  if (curl) {
-    UnwrapData(isolate_)->curl_handle = curl;
-  }
-
-  lcb_U32 lcb_timeout = 2500000; // 2.5s
-
   // TODO : Enable dynamic authentication when RBAC issue is resolved
   //  auto auth = lcbauth_new();
   //  lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
   //  lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
 
-  if (transpiler.IsTimerCalled(script_to_execute)) {
+  lcb_U32 lcb_timeout = 2500000; // 2.5s
+
+  if (transpiler->IsTimerCalled(script_to_execute)) {
     LOG(logDebug) << "Timer is called" << std::endl;
 
     lcb_create_st crst;
@@ -1095,11 +1075,9 @@ std::string V8Worker::CompileHandler(std::string handler) {
   v8::Context::Scope context_scope(context);
 
   try {
-    Transpiler transpiler(GetIsolate(), GetTranspilerSrc());
-    auto info = transpiler.Compile(handler);
+    auto transpiler = UnwrapData(isolate_)->transpiler;
+    auto info = transpiler->Compile(handler);
     Transpiler::LogCompilationInfo(info);
-
-    v8::HandleScope handle_scoe(isolate_);
 
     auto info_obj = v8::Object::New(isolate_);
     info_obj->Set(v8Str(isolate_, "language"), v8Str(isolate_, info.language));

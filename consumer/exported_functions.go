@@ -207,7 +207,7 @@ func (c *Consumer) GetLcbExceptionsStats() map[string]uint64 {
 }
 
 // SpawnCompilationWorker bring up a CPP worker to compile the user supplied handler code
-func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName string) (*common.CompileStatus, error) {
+func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventingPort string) (*common.CompileStatus, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		logging.Errorf("CREF[%s:%s:%s:%d] Compilation worker: Failed to listen on tcp port, err: %v",
@@ -241,7 +241,16 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName string) (
 		cmd := exec.Command("eventing-consumer", appName, "af_inet", c.tcpPort,
 			fmt.Sprintf("worker_%s", appName), "1", "8096")
 
-		err := cmd.Start()
+		outPipe, err := cmd.StdoutPipe()
+		if err != nil {
+			logging.Errorf("CREF[%s:%s:%s:%d] Failed to open stdout pipe, err: %v",
+				appName, c.workerName, c.tcpPort, c.osPid, err)
+			return
+		}
+
+		defer outPipe.Close()
+
+		err = cmd.Start()
 		if err != nil {
 			logging.Errorf("CREF[%s:%s:%s:%d] Failed to spawn compilation worker, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
@@ -250,6 +259,21 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName string) (
 			logging.Infof("CREF[%s:%s:%s:%d] compilation worker launched",
 				c.app.AppName, c.workerName, c.tcpPort, pid)
 		}
+
+		bufOut := bufio.NewReader(outPipe)
+
+		go func(bufOut *bufio.Reader) {
+			for {
+				msg, _, err := bufOut.ReadLine()
+				if err != nil {
+					logging.Errorf("CREF[%s:%s:%s:%d] Failed to read from stdout pipe, err: %v",
+						appName, c.workerName, c.tcpPort, c.osPid, err)
+					return
+				}
+
+				logging.Infof("%s", string(msg))
+			}
+		}(bufOut)
 
 		cmd.Wait()
 
@@ -261,9 +285,8 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName string) (
 
 	// Framing bare minimum V8 worker init payload
 	// TODO : Remove rbac user once RBAC issue is resolved
-	payload, pBuilder := c.makeV8InitPayload("", "", appName, "127.0.0.1", "", "",
-		"", appContent, 5, 10,
-		1, 30, 10*1000, true, true, 500)
+	payload, pBuilder := c.makeV8InitPayload("", "", appName, "127.0.0.1", "", eventingPort,
+		"", appContent, 5, 10, 1, 30, 10*1000, true, true, 500)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 

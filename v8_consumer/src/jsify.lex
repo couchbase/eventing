@@ -10,17 +10,19 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-	#include <list>
-	#include <algorithm>
-	#include "n1ql.h"
+    #include <list>
+    #include <algorithm>
+    #include "n1ql.h"
+    #include "utils.h"
 
-	lex_op_code lex_op;
-	int pos_type_len[2];
-	std::list<InsertedCharsInfo> *insertions;
-	// Contains the output plain JavaScript code.
-	std::string js_code;
-	// Storing the state for resuming on switch.
-	int previous_state;
+    lex_op_code lex_op;
+    int pos_type_len[2];
+    std::list<InsertedCharsInfo> *insertions;
+    ParseInfo parse_info;
+    // Contains the output plain JavaScript code.
+    std::string js_code, n1ql_query;
+    // Storing the state for resuming on switch.
+    int previous_state;
 %}
 %option nounput
 %x N1QL MLCMT SLCMT DSTR SSTR TSTR
@@ -93,44 +95,64 @@
 [uU][pP][dD][aA][tT][eE][ \t\n][ \t\n]?	|
 [uU][pP][sS][eE][rR][tT][ \t\n][ \t\n]?	{
 		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery('"+ std::string(yytext) + " ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		} else if(lex_op == kCommentN1QL) {
-			UpdatePos(insert_type::kN1QLBegin);
-			js_code += "/*" + std::string(yytext);
+
+		n1ql_query = std::string(yytext);
+
+		if(lex_op == kCommentN1QL) {
+				UpdatePos(insert_type::kN1QLBegin);
+		} else {
+				// The '\n' might be consumed by the regex above
+				// It's essential to replace it with a space as multi-line string with single-quotes isn't possible in JavaScript
+				ReplaceRecentChar(n1ql_query, '\n', ' ');
 		}
 	}
 <N1QL>";"	{
 		BEGIN INITIAL;
-		if(lex_op == kJsify) {
-			js_code += "');";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += ";";
-		} else if(lex_op == kCommentN1QL) {
-			js_code += "*/$;";
-			UpdatePos(insert_type::kN1QLEnd);
+
+		n1ql_query += ";";
+		switch(lex_op) {
+			case kJsify:
+				js_code += TranspileQuery(n1ql_query);
+        if(!parse_info.is_valid) {
+          return kN1QLParserError;
+        }
+				break;
+
+			case kUniLineN1QL:
+				js_code += n1ql_query;
+				break;
+
+			case kCommentN1QL: {
+                parse_info = ParseQuery(n1ql_query);
+                if(parse_info.is_valid) {
+                    // It's a valid N1QL query, transpile and add to code
+                    js_code += TranspileQuery(n1ql_query);
+                } else {
+                    // It's not a N1QL query, maybe it's a JS expression
+                    auto isolate = v8::Isolate::GetCurrent();
+                    auto transpiler = UnwrapData(isolate)->transpiler;
+                    if(!transpiler->IsJsExpression(n1ql_query)) {
+                        // Neither a N1QL query nor a JS expression
+                        return kN1QLParserError;
+                    }
+
+                    // It's a JS expression, no need to transpile
+                    js_code += n1ql_query;
+                }
+
+                    UpdatePos(insert_type::kN1QLEnd);
+                }
+				break;
 		}
 	}
 <N1QL>.	{
-		// Need to escape the escape character to preserve the raw-ness.
-		// Need to escape the single quotes as the N1QL query is going to be enclosed in a single quoted string.
-		if(yytext[0] == '\\' || (yytext[0] == '\'' && !IsEsc() && lex_op == kJsify)) {
-			js_code += "\\";
-		}
-
-		if(lex_op == kCommentN1QL) {
-			// For kCommentN1QL, instead of appending the character read, we substitute a '*'
-			// This is done because it will be ambiguous to JavaScript parser if it sees comment in N1QL query.
-			js_code += "*";
-		} else {
-			js_code += std::string(yytext);
-		}
+		n1ql_query += std::string(yytext);
 	}
 <N1QL>\n {
 		if(lex_op == kCommentN1QL) {
-			js_code += "\n";
+				n1ql_query += "\n";
+		} else {
+				n1ql_query += " ";
 		}
 	}
 <MLCMT,SLCMT,DSTR,SSTR,TSTR>.	{js_code += std::string(yytext);}
@@ -162,23 +184,32 @@ int TransformSource(const char* input, std::string *output, Pos *last_pos) {
 }
 
 // Converts N1QL embedded JS to native JS.
-int Jsify(const char* input, std::string *output, Pos *last_pos_out) {
+JsifyInfo Jsify(const std::string &input) {
 	lex_op = kJsify;
-	return TransformSource(input, output, last_pos_out);
+	JsifyInfo info;
+
+	info.code = TransformSource(input.c_str(), &info.handler_code, &info.last_pos);
+	return info;
 }
 
 // Unilines Multiline N1QL embeddings.
-int UniLineN1QL(const char *input, std::string *output, Pos *last_pos_out) {
+UniLineN1QLInfo UniLineN1QL(const std::string &input) {
 	lex_op = kUniLineN1QL;
-	return TransformSource(input, output, last_pos_out);
+	UniLineN1QLInfo info;
+
+	info.code = TransformSource(input.c_str(), &info.handler_code, &info.last_pos);
+	return info;
 }
 
 // Comments out N1QL statements and substitutes $ in its place
-int CommentN1QL(const char *input, std::string *output, std::list<InsertedCharsInfo> *insertions_out, Pos *last_pos_out) {
+CommentN1QLInfo CommentN1QL(const std::string &input) {
 	lex_op = kCommentN1QL;
-	insertions = insertions_out;
+	CommentN1QLInfo info;
 
-	return TransformSource(input, output, last_pos_out);
+	insertions = &info.insertions;
+	info.code = TransformSource(input.c_str(), &info.handler_code, &info.last_pos);
+	info.parse_info = parse_info;
+	return info;
 }
 
 // Update line number, column number and index based on the current value of js_code
@@ -244,7 +275,7 @@ void HandleStrStart(int state) {
 
 // Restores the previous state and adds the appropriate closing quote.
 void HandleStrStop(int state) {
-	if(!IsEsc()) {
+	if(!IsEsc(js_code)) {
 		BEGIN previous_state;
 	}
 
@@ -264,11 +295,11 @@ void HandleStrStop(int state) {
 }
 
 // Tests whether the quote character is escaped.
-bool IsEsc() {
+bool IsEsc(const std::string &str) {
 	auto escaped = false;
-	auto i = js_code.length();
+	auto i = str.length();
 	while(i-- > 0) {
-		if(js_code[i] != '\\') {
+		if(str[i] != '\\') {
 			break;
 		}
 
@@ -281,4 +312,50 @@ bool IsEsc() {
 // A default yywrap
 extern "C" int yywrap() {
 	return 1;
+}
+
+// Transpiles the given N1QL query into a JavaScript expression - "new N1qlQuery('...')"
+std::string TranspileQuery(const std::string &query) {
+	switch(lex_op) {
+		case kJsify: {
+            auto isolate = v8::Isolate::GetCurrent();
+            auto comm = UnwrapData(isolate)->comm;
+            auto transpiler = UnwrapData(isolate)->transpiler;
+
+            auto info = comm->GetNamedParams(query);
+            parse_info = info.p_info;
+            return transpiler->TranspileQuery(query, info.named_params);
+		}
+
+		case kCommentN1QL: {
+            // For kCommentN1QL, instead of appending the character read, we substitute a '*'
+            // This is done because it will be ambiguous to JavaScript parser if it sees comment in N1QL query.
+            std::string query_transpiled = "/*";
+            for(const auto &c: query) {
+                query_transpiled += (c == '\n' ? c : '*');
+            }
+
+            query_transpiled += "*/$;";
+            return query_transpiled;
+        }
+
+        default:
+    	    throw "Transpile Query not handled for this lex_op";
+    }
+}
+
+// Replaces the recent occurrence of char m in str with char n
+void ReplaceRecentChar(std::string &str, char m, char n) {
+	auto find = str.rfind(m);
+	if(find != std::string::npos) {
+		str[find] = n;
+	}
+}
+
+// Parse the N1QL query and return the parser result
+ParseInfo ParseQuery(const std::string &query) {
+    auto isolate = v8::Isolate::GetCurrent();
+    auto comm = UnwrapData(isolate)->comm;
+    auto info = comm->ParseQuery(query);
+    return info;
 }
