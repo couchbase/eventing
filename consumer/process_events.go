@@ -606,7 +606,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
 		c.addToAggChan(dcpFeed, cancelCh)
 
-		logging.Debugf("CRDP[%s:%s:%d] vb: %d kvAddr: %v Started up new dcpFeed",
+		logging.Debugf("CRDP[%s:%s:%d] vb: %d kvAddr: %v Started up new dcp feed",
 			c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr)
 	}
 	c.hostDcpFeedRWMutex.Unlock()
@@ -631,9 +631,13 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 			c.Lock()
 			c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbno)
 			c.Unlock()
-
-			c.clearUpOnwershipInfoFromMeta(vbno)
 		}
+
+		dcpFeed.Close()
+		c.hostDcpFeedRWMutex.Lock()
+		delete(c.kvHostDcpFeedMap, vbKvAddr)
+		c.hostDcpFeedRWMutex.Unlock()
+
 		return err
 	}
 
@@ -661,9 +665,14 @@ loop:
 			start, snapStart, snapEnd = vbFlog.seqNo, vbFlog.seqNo, vbFlog.seqNo
 		}
 
-		logging.Infof("CRDP[%s:%s:%d] Retrying DCP stream start vb: %d vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+		logging.Infof("CRDP[%s:%s:%d] vb: %v Retrying DCP stream start vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
 			c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
-		dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
+		err := dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
+		if err != nil {
+			logging.Errorf("CRDP[%s:%s:%d] vb: %v Retrying DCP stream start failed, err: %v",
+				c.workerName, c.tcpPort, c.Pid(), vbno, err)
+		}
+
 		goto loop
 	}
 

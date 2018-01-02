@@ -192,9 +192,13 @@ func (c *Consumer) vbsStateUpdate() {
 
 	go c.vbGiveUpRoutine(vbsts)
 
-	logging.Tracef("CRVT[%s:%s:%d] Before vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
+	vbsOwned := c.getCurrentlyOwnedVbs()
+	sort.Sort(util.Uint16Slice(vbsOwned))
+
+	logging.Tracef("CRVT[%s:%s:%d] Before vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v currently owned len: %v dump: %v",
 		c.workerName, c.tcpPort, c.Pid(),
-		util.Condense(c.vbsRemainingToOwn), util.Condense(c.vbsRemainingToGiveUp))
+		util.Condense(c.vbsRemainingToOwn), util.Condense(c.vbsRemainingToGiveUp),
+		len(vbsOwned), util.Condense(vbsOwned))
 
 retryStreamUpdate:
 	vbsDistribution := util.VbucketDistribution(c.vbsRemainingToOwn, c.vbOwnershipTakeoverRoutineCount)
@@ -338,23 +342,27 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	c.vbsStreamRRWMutex.Lock()
 	if _, ok := c.vbStreamRequested[vb]; !ok {
 		c.vbStreamRequested[vb] = struct{}{}
+		logging.Debugf("CRVT[%s:%s:%d] vb: %v Going to make DcpRequestStream call",
+			c.workerName, c.tcpPort, c.Pid(), vb)
 	} else {
 		c.vbsStreamRRWMutex.Unlock()
+		logging.Debugf("CRVT[%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
+			c.workerName, c.tcpPort, c.Pid(), vb)
 		return nil
 	}
 	c.vbsStreamRRWMutex.Unlock()
 
-	vbBlob.AssignedWorker = c.ConsumerName()
-	vbBlob.CurrentVBOwner = c.HostPortAddr()
-	vbBlob.DCPStreamStatus = dcpStreamRunning
-	vbBlob.NodeUUID = c.uuid
+	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
+	err := c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
+	if err != nil {
+		c.vbsStreamRRWMutex.Lock()
+		defer c.vbsStreamRRWMutex.Unlock()
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateVbOwnerAndStartStreamCallback, c, vbKey, vbBlob)
-
-	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
-	c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", vbBlob.CurrentVBOwner)
-	c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", vbBlob.DCPStreamStatus)
-	c.vbProcessingStats.updateVbStat(vb, "node_uuid", vbBlob.NodeUUID)
+		if _, ok := c.vbStreamRequested[vb]; ok {
+			delete(c.vbStreamRequested, vb)
+		}
+		return err
+	}
 
 	timerAddrs := make(map[string]map[string]string)
 
@@ -363,6 +371,10 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	previousEventingDir := vbBlob.PreviousEventingDir
 	previousNodeUUID := vbBlob.PreviousNodeUUID
 	previousVBOwner := vbBlob.PreviousVBOwner
+
+	logging.Debugf("CRVT[%s:%s:%d] vb: %v previous worker: %v timer dir: %v node uuid: %v vb owner: %v",
+		c.workerName, c.tcpPort, c.Pid(), vb, previousAssignedWorker, previousEventingDir,
+		previousNodeUUID, previousVBOwner)
 
 	var addr, remoteConsumerAddr string
 	var ok bool
@@ -409,15 +421,14 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		if err != nil {
 			logging.Debugf("CRVT[%s:%s:%d] vb: %v Encountered error: %v, while trying to copy over plasma contents from temp plasma store",
 				c.workerName, c.tcpPort, c.Pid(), vb, err)
+			return err
 		}
-
 	} else {
 		logging.Debugf("CRVT[%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
 			c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir)
 	}
 
-	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
-	return c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
+	return nil
 }
 
 func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBlob) {
