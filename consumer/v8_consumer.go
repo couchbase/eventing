@@ -107,6 +107,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		stopVbOwnerTakeoverCh:              make(chan struct{}, vbOwnershipTakeoverRoutineCount),
 		superSup:                           s,
 		tcpPort:                            tcpPort,
+		timerProcessingRWMutex:             &sync.RWMutex{},
 		timerRWMutex:                       &sync.RWMutex{},
 		timerProcessingTickInterval:        timerProcessingTickInterval,
 		timerProcessingWorkerCount:         timerProcessingPoolSize,

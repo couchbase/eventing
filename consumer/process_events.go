@@ -255,9 +255,9 @@ func (c *Consumer) processEvents() {
 				// For (a) plasma related FD cleanup signalling is already done in vbucket give up
 				// routine. Handling case for (b) below.
 
-				c.timerRWMutex.Lock()
+				c.timerProcessingRWMutex.Lock()
 				delete(c.timerProcessingVbsWorkerMap, e.VBucket)
-				c.timerRWMutex.Unlock()
+				c.timerProcessingRWMutex.Unlock()
 
 				//Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
