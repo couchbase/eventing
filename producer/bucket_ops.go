@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 )
 
@@ -19,10 +20,7 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	err = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: p.rbacUser,
-		Password: p.rbacPass,
-	})
+	err = cluster.Authenticate(&util.DynamicAuthenticator{})
 	if err != nil {
 		logging.Errorf("PRDR[%s:%d] GOCB Failed to authenticate to the cluster %s failed, err: %v",
 			p.appName, p.LenRunningConsumers(), connStr, err)

@@ -12,17 +12,16 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include <unistd.h>
-#include <vector>
-
 #include <curl/curl.h>
-
-#include <libplatform/libplatform.h>
-#include <v8.h>
-
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
+#include <libplatform/libplatform.h>
+#include <unistd.h>
+#include <unordered_map>
+#include <v8.h>
+#include <vector>
 
+#include "comm.h"
 #include "log.h"
 
 #define DATA_SLOT 0
@@ -37,11 +36,15 @@ struct Data {
   CURL *curl_handle;
   N1QL *n1ql_handle;
   V8Worker *v8worker;
+  JsException *js_exception;
+  Communicator *comm;
+
+  int fuzz_offset;
+  int cron_timers_per_doc;
   lcb_t cb_instance;
   lcb_t meta_cb_instance;
-  JsException *js_exception;
-  int cron_timers_per_doc;
-  int fuzz_offset;
+  std::unordered_map<std::string, std::string> username_store;
+  std::unordered_map<std::string, std::string> password_store;
 };
 
 inline Data *UnwrapData(v8::Isolate *isolate) {

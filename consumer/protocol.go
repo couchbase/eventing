@@ -254,7 +254,7 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 	return
 }
 
-func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg, rbacUser, rbacPass string,
+func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg string,
 	capacity, cronTimerPerDoc, executionTimeout, fuzzOffset, checkpointInterval int, enableRecursiveMutation, skipLcbBootstrap bool,
 	curlTimeout int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
@@ -265,8 +265,6 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 	ep := builder.CreateString(eventingPort)
 	dcfg := builder.CreateString(depCfg)
 	khp := builder.CreateString(kvHostPort)
-	rUser := builder.CreateString(rbacUser)
-	rPass := builder.CreateString(rbacPass)
 
 	rec := make([]byte, 1)
 	flatbuffers.WriteBool(rec, enableRecursiveMutation)
@@ -282,8 +280,6 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 	payload.PayloadAddCurrEventingPort(builder, ep)
 	payload.PayloadAddDepcfg(builder, dcfg)
 	payload.PayloadAddKvHostPort(builder, khp)
-	payload.PayloadAddRbacUser(builder, rUser)
-	payload.PayloadAddRbacPass(builder, rPass)
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
 	payload.PayloadAddCronTimersPerDoc(builder, int32(cronTimerPerDoc))
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))

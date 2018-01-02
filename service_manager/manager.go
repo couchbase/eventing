@@ -91,6 +91,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getAppTempStore/", m.getTempStoreHandler)
 	http.HandleFunc("/getAggEventsPSec", m.getAggEventsPSec)
 	http.HandleFunc("/getConsumerPids", m.getEventingConsumerPids)
+	http.HandleFunc("/getCreds", m.getCreds)
 	http.HandleFunc("/getDcpEventsRemaining", m.getDcpEventsRemaining)
 	http.HandleFunc("/getDebuggerUrl/", m.getDebuggerURL)
 	http.HandleFunc("/getDeployedApps", m.getDeployedApps)

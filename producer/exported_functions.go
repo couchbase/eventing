@@ -247,16 +247,6 @@ func (p *Producer) WorkerVbMap() map[string][]uint16 {
 	return p.workerVbucketMap
 }
 
-// RbacUser returns the rbac user supplied as part of app settings
-func (p *Producer) RbacUser() string {
-	return p.rbacUser
-}
-
-// RbacPass returns the rbac password supplied as part of app settings
-func (p *Producer) RbacPass() string {
-	return p.rbacPass
-}
-
 // PauseProducer pauses the execution of Eventing.Producer and corresponding Eventing.Consumer instances
 func (p *Producer) PauseProducer() {
 	p.pauseProducerCh <- struct{}{}

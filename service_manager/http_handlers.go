@@ -1269,6 +1269,30 @@ func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Requ
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
+func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
+		return
+	}
+
+	var username, password string
+	util.Retry(util.NewFixedBackoff(time.Second), util.GetCredsCallback, string(data), &username, &password)
+
+	creds := credsInfo{Username:username, Password:password}
+	response, err := json.Marshal(creds)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%v", string(response))
+}
+
 func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
 	creds, err := cbauth.AuthWebCreds(r)
 	if err != nil || creds == nil {

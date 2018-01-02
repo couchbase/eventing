@@ -79,40 +79,6 @@
           </span>
         </div>
         <br/>
-        <h3>RBAC Credentials</h3>
-        <div class="formrow">
-          <div class="cbui-table">
-            <div class="cbui-tablerow has-hover">
-              <span class="cbui-table-cell">
-              <label>RBAC username</label>
-              </span>
-              <span class="cbui-table-cell input-append">
-              <input type="text" name="rbacuser"
-                ng-model="appModel.settings.rbacuser"
-                placeholder="Username"
-                required/>
-              </span>
-            </div>
-            <div class="error field-error"
-              ng-show="formCtrl.createAppForm.rbacuser.$error.required && formCtrl.createAppForm.rbacuser.$dirty">
-              RBAC username cannot be empty
-            </div>
-            <div class="cbui-tablerow has-hover">
-              <span class="cbui-table-cell">
-              <label>RBAC password</label>
-              </span>
-              <span class="cbui-table-cell input-append">
-              <input type="password" name="rbacpass"
-                ng-model="appModel.settings.rbacpass"
-                placeholder="******"/>
-              </span>
-            </div>
-            <div class="error field-error"
-              ng-show="formCtrl.createAppForm.rbacpass.$error.required && formCtrl.createAppForm.rbacpass.$dirty">
-              RBAC password cannot be empty
-            </div>
-          </div>
-        </div>
         <div class="formrow">
           <span class="disclosure settings-heading"
             ng-class="{disclosed: showSettings}"

@@ -158,3 +158,8 @@ type config struct {
 type configResponse struct {
 	Restart bool `json:"restart"`
 }
+
+type credsInfo struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}

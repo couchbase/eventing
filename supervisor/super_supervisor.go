@@ -159,11 +159,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 		return err
 	}
 
-	// Avoid printing rbac user credentials in log
-	sValue["rbacuser"] = "****"
-	sValue["rbacpass"] = "****"
-	sValue["rbacrole"] = "****"
-
 	logging.Infof("SSUP[%d] SettingsChangeCallback: path => %s value => %#v", len(s.runningProducers), path, sValue)
 
 	if value != nil {

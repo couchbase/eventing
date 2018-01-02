@@ -261,7 +261,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName string) (
 
 	// Framing bare minimum V8 worker init payload
 	payload, pBuilder := c.makeV8InitPayload(appName, "127.0.0.1", "", "",
-		"", appContent, "", "", 5, 10,
+		"", appContent, 5, 10,
 		1, 30, 10*1000, true, true, 500)
 
 	c.sendInitV8Worker(payload, false, pBuilder)

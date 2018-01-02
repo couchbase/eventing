@@ -5,23 +5,9 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
-
-var getMemcachedServiceAuth = func(args ...interface{}) error {
-	kvHostPort := args[0].(string)
-	user := args[1].(*string)
-	pass := args[2].(*string)
-
-	var err error
-	*user, *pass, err = cbauth.GetMemcachedServiceAuth(kvHostPort)
-	if err != nil {
-		logging.Errorf("CRCO Failed to get rbac auth details, err: %v", err)
-	}
-	return err
-}
 
 var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)

@@ -14,10 +14,12 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/metakv"
 	cm "github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
 )
 
@@ -38,6 +40,9 @@ type Config map[string]interface{}
 
 type ConfigHolder struct {
 	ptr unsafe.Pointer
+}
+
+type DynamicAuthenticator struct {
 }
 
 func (h *ConfigHolder) Store(conf Config) {
@@ -830,4 +835,30 @@ func Condense(vbs []uint16) string {
 // VbucketByKey returns doc_id to vbucket mapping
 func VbucketByKey(key []byte, numVbuckets int) uint16 {
 	return uint16((crc32.ChecksumIEEE(key) >> 16) % uint32(numVbuckets))
+}
+
+var GetCredsCallback = func(args ...interface{}) error {
+	endpoint := args[0].(string)
+	username := args[1].(*string)
+	password := args[2].(*string)
+
+	var err error
+	*username, *password, err = cbauth.GetMemcachedServiceAuth(endpoint)
+	if err != nil {
+		logging.Errorf("UTIL Failed to get credentials for endpoint: %v, err: %v", endpoint, err)
+	}
+
+	return err
+}
+
+func (dynAuth *DynamicAuthenticator) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, error) {
+	logging.Infof("UTIL Authenticating endpoint: %s bucket: %s", req.Endpoint, req.Bucket)
+
+	var username, password string
+	Retry(NewFixedBackoff(time.Second), GetCredsCallback, req.Endpoint, &username, &password)
+
+	return []gocb.UserPassPair{{
+		Username: username,
+		Password: password,
+	}}, nil
 }

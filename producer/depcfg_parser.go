@@ -109,20 +109,6 @@ func (p *Producer) parseDepcfg() error {
 		p.skipTimerThreshold = int(val.(float64))
 	}
 
-	val, ok := settings["rbacuser"]
-	if !ok {
-		logging.Errorf("DCFG[%s] RBAC username not supplied", p.appName)
-		return fmt.Errorf("rbac username missing")
-	}
-	p.rbacUser = val.(string)
-
-	val, ok = settings["rbacpass"]
-	if !ok {
-		logging.Errorf("DCFG[%s] RBAC password not supplied", p.appName)
-		return fmt.Errorf("rbac password missing")
-	}
-	p.rbacPass = val.(string)
-
 	if val, ok := settings["lcb_inst_capacity"]; ok {
 		p.lcbInstCapacity = int(val.(float64))
 	} else {

@@ -94,9 +94,6 @@ type Producer struct {
 	maxPageItems           int
 	minPageItems           int
 
-	rbacUser string
-	rbacPass string
-
 	// Chan used to signal if Eventing.Producer has finished bootstrap
 	// i.e. started up all it's child routines
 	bootstrapFinishCh chan struct{}

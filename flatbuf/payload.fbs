@@ -27,8 +27,6 @@ table Payload {
   curr_eventing_port:string;
   eventing_dir:string;
   kv_host_port:string;
-  rbac_pass:string;
-  rbac_user:string;
 
   // DCP event related fields
   key:string; // dcp mutation key

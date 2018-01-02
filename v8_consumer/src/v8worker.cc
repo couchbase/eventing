@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "../include/bucket.h"
+#include "../include/comm.h"
 #include "../include/n1ql.h"
 #include "../include/parse_deployment.h"
 
@@ -61,6 +62,46 @@ enum RETURN_CODE {
   kOnUpdateCallFail,
   kOnDeleteCallFail
 };
+
+const char *GetUsername(void *cookie, const char *host, const char *port,
+                        const char *bucket) {
+  LOG(logInfo) << "Getting username for " << host << ":" << port << std::endl;
+
+  auto isolate = static_cast<v8::Isolate *>(cookie);
+  auto comm = UnwrapData(isolate)->comm;
+  auto endpoint = std::string(host) + ":" + std::string(port);
+  auto info = comm->GetCreds(endpoint);
+  if (info.is_error) {
+    LOG(logError) << "Failed to get username for " << host << ":" << port
+                  << " err: " << info.error << std::endl;
+  }
+
+  auto store = UnwrapData(isolate)->username_store;
+  // Storing the username in isolate's data as returning username directly could
+  // lead to a dangling pointer
+  store[endpoint] = info.username;
+
+  return store[endpoint].c_str();
+}
+
+const char *GetPassword(void *cookie, const char *host, const char *port,
+                        const char *bucket) {
+  LOG(logInfo) << "Getting password for " << host << ":" << port << std::endl;
+
+  auto isolate = static_cast<v8::Isolate *>(cookie);
+  auto comm = UnwrapData(isolate)->comm;
+  auto endpoint = std::string(host) + ":" + std::string(port);
+  auto info = comm->GetCreds(endpoint);
+  if (info.is_error) {
+    LOG(logError) << "Failed to get password for " << host << ":" << port
+                  << " err: " << info.error << std::endl;
+  }
+
+  auto store = UnwrapData(isolate)->password_store;
+  store[endpoint] = info.password;
+
+  return store[endpoint].c_str();
+}
 
 template <typename... Args>
 std::string string_sprintf(const char *format, Args... args) {
@@ -235,6 +276,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   js_exception = new JsException(isolate_);
   data.js_exception = js_exception;
   data.cron_timers_per_doc = h_config->cron_timers_per_doc;
+  data.comm = new Communicator(settings->eventing_port, isolate_);
   data.fuzz_offset = h_config->fuzz_offset;
 
   app_name_ = h_config->app_name;
@@ -260,9 +302,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
           std::string bucket_name =
               config->component_configs["buckets"][bucket_alias][0];
 
-          bucket_handle = new Bucket(
-              this, bucket_name.c_str(), settings->kv_host_port.c_str(),
-              bucket_alias.c_str(), settings->rbac_user, settings->rbac_pass);
+          bucket_handle =
+              new Bucket(this, bucket_name.c_str(),
+                         settings->kv_host_port.c_str(), bucket_alias.c_str());
 
           bucket_handles.push_back(bucket_handle);
         }
@@ -282,16 +324,14 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " curl_timeout: " << curl_timeout << std::endl;
 
   connstr = "couchbase://" + settings->kv_host_port + "/" + cb_source_bucket +
-            "?username=" + settings->rbac_user + "&select_bucket=true";
+            "?select_bucket=true";
 
   meta_connstr = "couchbase://" + settings->kv_host_port + "/" +
-                 config->metadata_bucket + "?username=" + settings->rbac_user +
-                 "&select_bucket=true";
+                 config->metadata_bucket + "?select_bucket=true";
 
   if (!h_config->skip_lcb_bootstrap) {
-    conn_pool = new ConnectionPool(h_config->lcb_inst_capacity,
-                                   settings->kv_host_port, cb_source_bucket,
-                                   settings->rbac_user, settings->rbac_pass);
+    conn_pool = new ConnectionPool(isolate_, h_config->lcb_inst_capacity,
+                                   settings->kv_host_port, cb_source_bucket);
   }
   src_path = settings->eventing_dir + "/" + app_name_ + ".t.js";
 
@@ -311,6 +351,9 @@ V8Worker::~V8Worker() {
   if (processing_thr.joinable()) {
     processing_thr.join();
   }
+
+  auto data = UnwrapData(isolate_);
+  delete data->comm;
 
   context_.Reset();
   on_update_.Reset();
@@ -455,13 +498,16 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     }
   }
 
-  curl_global_init(CURL_GLOBAL_ALL);
   CURL *curl = curl_easy_init();
   if (curl) {
     UnwrapData(isolate_)->curl_handle = curl;
   }
 
   lcb_U32 lcb_timeout = 2500000; // 2.5s
+
+  auto auth = lcbauth_new();
+  lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
+  lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
 
   if (transpiler.IsTimerCalled(script_to_execute)) {
     LOG(logDebug) << "Timer is called" << std::endl;
@@ -472,9 +518,9 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     crst.version = 3;
     crst.v.v3.connstr = connstr.c_str();
     crst.v.v3.type = LCB_TYPE_BUCKET;
-    crst.v.v3.passwd = settings->rbac_pass.c_str();
 
     lcb_create(&cb_instance, &crst);
+    lcb_set_auth(cb_instance, auth);
     lcb_connect(cb_instance);
     lcb_wait(cb_instance);
 
@@ -492,9 +538,9 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     crst.version = 3;
     crst.v.v3.connstr = meta_connstr.c_str();
     crst.v.v3.type = LCB_TYPE_BUCKET;
-    crst.v.v3.passwd = settings->rbac_pass.c_str();
 
     lcb_create(&meta_cb_instance, &crst);
+    lcb_set_auth(meta_cb_instance, auth);
     lcb_connect(meta_cb_instance);
     lcb_wait(meta_cb_instance);
 
@@ -516,9 +562,9 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   crst.version = 3;
   crst.v.v3.connstr = meta_connstr.c_str();
   crst.v.v3.type = LCB_TYPE_BUCKET;
-  crst.v.v3.passwd = settings->rbac_pass.c_str();
 
   lcb_create(&checkpoint_cb_instance, &crst);
+  lcb_set_auth(checkpoint_cb_instance, auth);
   lcb_connect(checkpoint_cb_instance);
   lcb_wait(checkpoint_cb_instance);
 

@@ -118,14 +118,14 @@ private:
   const int capacity;
   int inst_count;
   std::string conn_str;
-  std::string rbac_pass;
   std::queue<lcb_t> instances;
+  v8::Isolate *isolate;
+
   void AddResource();
 
 public:
-  ConnectionPool(int capacity, std::string cb_kv_endpoint,
-                 std::string cb_source_bucket, std::string rbac_user,
-                 std::string rbac_pass);
+  ConnectionPool(v8::Isolate *isolate, int capacity, std::string cb_kv_endpoint,
+                 std::string cb_source_bucket);
   void Restore(lcb_t instance) { instances.push(instance); }
   lcb_t GetResource();
   static void Error(lcb_t instance, const char *msg, lcb_error_t err);

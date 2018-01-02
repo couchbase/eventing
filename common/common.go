@@ -65,8 +65,6 @@ type EventingProducer interface {
 	PlannerStats() []*PlannerNodeVbMapping
 	PurgeAppLog()
 	PurgePlasmaRecords()
-	RbacUser() string
-	RbacPass() string
 	RebalanceTaskProgress() *RebalanceProgress
 	SignalBootstrapFinish()
 	SignalCheckpointBlobCleanup()
