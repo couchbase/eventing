@@ -77,8 +77,23 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 				if vbBlob.NodeUUID != c.NodeUUID() && vbBlob.DCPStreamStatus == dcpStreamRunning {
-					logging.Tracef("CRVT[%s:giveup_r_%d:%s:%d] vb: %v dcp stream already stopped, skipping give up phase",
-						c.workerName, i, c.tcpPort, c.Pid(), vb)
+					logging.Tracef("CRVT[%s:giveup_r_%d:%s:%d] vb: %v metadata  node uuid: %v dcp stream status: %v, skipping give up phase",
+						c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.NodeUUID, vbBlob.DCPStreamStatus)
+
+					c.RLock()
+					err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
+					if err != nil {
+						logging.Errorf("CRVT[%s:giveup_r_%d:%s:%d] vb: %v Failed to close dcp stream, err: %v",
+							c.workerName, i, c.tcpPort, c.Pid(), vb, err)
+					}
+					c.RUnlock()
+
+					c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", "")
+					c.vbProcessingStats.updateVbStat(vb, "assigned_worker", "")
+					c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", "")
+					c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", dcpStreamStopped)
+					c.vbProcessingStats.updateVbStat(vb, "node_uuid", "")
+
 					continue
 				}
 
@@ -240,7 +255,6 @@ retryStreamUpdate:
 func (c *Consumer) doVbTakeover(vb uint16) error {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
-	var shouldWait bool
 
 	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 
@@ -255,7 +269,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 			vbBlob.NodeUUID, c.checkIfCurrentNodeShouldOwnVb(vb))
 
 		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
-			logging.Verbosef("CRVT[%s:%s:%d] vb: %v current consumer and eventing node has already opened dcp stream, skipping",
+			logging.Verbosef("CRVT[%s:%s:%d] vb: %v current consumer and eventing node has already opened dcp stream. Stream status: %v, skipping",
 				c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
 			return nil
 		}
@@ -273,12 +287,12 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
 
-				logging.Verbosef("CRVT[%s:%s:%d] vb: %v vbblob stream status: %v starting dcp stream, should wait for timer data transfer: %v",
-					c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus, shouldWait)
+				logging.Verbosef("CRVT[%s:%s:%d] vb: %v vbblob stream status: %v starting dcp stream",
+					c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
 
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 			}
-			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 		}
 
 		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker != c.ConsumerName() {
@@ -289,10 +303,10 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 	case dcpStreamStopped, dcpStreamUninitialised:
 
-		logging.Verbosef("CRVT[%s:%s:%d] vb: %v vbblob stream status: %v, starting dcp stream, should wait for timer data transfer: %v",
-			c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus, shouldWait)
+		logging.Verbosef("CRVT[%s:%s:%d] vb: %v vbblob stream status: %v, starting dcp stream",
+			c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
 
-		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 
 	default:
 		return errUnexpectedVbStreamStatus
@@ -314,7 +328,7 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 	return false
 }
 
-func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob, shouldStartStream bool) error {
+func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob) error {
 
 	c.vbsStreamRRWMutex.Lock()
 	if _, ok := c.vbStreamRequested[vb]; !ok {
@@ -397,13 +411,8 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 			c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir)
 	}
 
-	if shouldStartStream {
-		c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
-		return c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
-	}
-
-	c.cleanupStaleDcpFeedHandles()
-	return nil
+	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
+	return c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
 }
 
 func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBlob) {

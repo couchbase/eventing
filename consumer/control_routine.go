@@ -159,7 +159,7 @@ func (c *Consumer) controlRoutine() {
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-				err := c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+				err := c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 				if err != nil {
 					vbsFailedToStartStream = append(vbsFailedToStartStream, vb)
 				}

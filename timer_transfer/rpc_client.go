@@ -301,7 +301,7 @@ func (c *Client) writeToFile(info *StatsResponse, filename, saveLocation string,
 		goto retryDownload
 	}
 
-	logging.Debugf("Client::writeToFile [%s:%s:%s] Filename: %v download completed ", c.AppName, c.Addr, c.registeredName, filename)
+	logging.Debugf("Client::writeToFile [%s:%s:%s] Filename: %v download completed", c.AppName, c.Addr, c.registeredName, filename)
 	c.CloseSession(sessionID)
 
 	return nil
