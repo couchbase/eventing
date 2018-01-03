@@ -212,7 +212,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["worker_queue_cap"]; ok {
 		p.workerQueueCap = int64(val.(float64))
 	} else {
-		p.workerQueueCap = int64(1000 * 1000)
+		p.workerQueueCap = int64(100 * 1000)
 	}
 
 	if val, ok := settings["cron_timers_per_doc"]; ok {

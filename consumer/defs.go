@@ -42,11 +42,12 @@ const (
 
 // plasma related constants
 const (
-	autoLssCleaning  = false
-	maxDeltaChainLen = 30
-	maxPageItems     = 100
-	minPageItems     = 10
-	useMemManagement = true
+	maxDeltaChainLen       = 200
+	maxPageItems           = 400
+	minPageItems           = 50
+	lssCleanerMaxThreshold = 70
+	lssCleanerThreshold    = 30
+	lssReadAheadSize       = 1024 * 1024
 )
 
 const (

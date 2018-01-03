@@ -303,12 +303,12 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 						p.SignalCheckpointBlobCleanup()
 
+						s.superSup.Remove(s.producerSupervisorTokenMap[p])
+						delete(s.producerSupervisorTokenMap, p)
+
 						logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
 						p.PurgePlasmaRecords()
 						logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
-
-						s.superSup.Remove(s.producerSupervisorTokenMap[p])
-						delete(s.producerSupervisorTokenMap, p)
 
 						p.NotifySupervisor()
 						logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)

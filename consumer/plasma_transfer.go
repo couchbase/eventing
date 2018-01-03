@@ -55,12 +55,15 @@ func (c *Consumer) CreateTempPlasmaStore(vb uint16) error {
 			logging.Tracef("Consumer::CreateTempPlasmaStore [%s:%d] vb: %v read key: %s from source plasma store",
 				c.workerName, c.Pid(), vb, string(itr.Key()))
 
+			rebPlasmaWriter.Begin()
 			err = rebPlasmaWriter.InsertKV(itr.Key(), val)
 			if err != nil {
+				rebPlasmaWriter.End()
 				logging.Errorf("Consumer::CreateTempPlasmaStore [%s:%d] vb: %v key: %s failed to insert, err: %v",
 					c.workerName, c.Pid(), vb, string(itr.Key()), err)
 				continue
 			}
+			rebPlasmaWriter.End()
 		}
 	}
 
@@ -102,11 +105,15 @@ func (c *Consumer) PurgePlasmaRecords(vb uint16) error {
 				continue
 			}
 
+			w.Begin()
 			err = w.DeleteKV(itr.Key())
 			if err == nil {
+				w.End()
 				logging.Tracef("Consumer::PurgePlasmaRecords [%s:%d] vb: %v deleted key: %s  from source plasma",
 					c.workerName, c.Pid(), vb, string(itr.Key()))
+				continue
 			}
+			w.End()
 		}
 	}
 
@@ -151,12 +158,15 @@ func (c *Consumer) copyPlasmaRecords(vb uint16, dTimerDir string) error {
 				c.workerName, c.Pid(), string(itr.Key()), string(val))
 		}
 
+		plasmaStoreWriter.Begin()
 		err = plasmaStoreWriter.InsertKV(itr.Key(), val)
 		if err != nil {
+			plasmaStoreWriter.End()
 			logging.Errorf("Consumer::copyPlasmaRecords [%s:%d] key: %v Failed to insert, err: %v",
 				c.workerName, c.Pid(), itr.Key(), err)
 			continue
 		}
+		plasmaStoreWriter.End()
 	}
 
 	return nil
