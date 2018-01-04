@@ -85,13 +85,15 @@ func (r *rebalancer) gatherProgress() {
 		select {
 		case <-progressTicker.C:
 			p, errMap := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
-			if len(errMap) == len(r.keepNodes) {
+			if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
 				logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress from all nodes, errMap dump: %v", errMap)
 
 				util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
 				r.cb.done(fmt.Errorf("Failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
 				progressTicker.Stop()
 				return
+			} else if len(errMap) > 0 {
+				continue
 			}
 
 			var progress float64
