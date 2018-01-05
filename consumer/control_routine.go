@@ -73,7 +73,6 @@ func (c *Consumer) controlRoutine() {
 
 			c.timerRWMutex.Lock()
 			c.timerProcessingWorkerSignalCh = make(map[*timerProcessingWorker]chan struct{})
-			c.timerProcessingRunningWorkers = make([]*timerProcessingWorker, 0)
 
 			// Spawning DocID based timer processing routines
 			c.vbTimerProcessingWorkerAssign(true)
