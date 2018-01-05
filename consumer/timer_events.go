@@ -53,7 +53,7 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 	}
 
 	if len(vbsOwned) == 0 {
-		logging.Verbosef("CRTE[%s:%s:%s:%d] IniWorkers: %v Timer processing worker vbucket assignment, no vbucket owned by consumer",
+		logging.Verbosef("CRTE[%s:%s:%s:%d] InitWorkers: %v Timer processing worker vbucket assignment, no vbucket owned by consumer",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), initWorkers)
 		return
 	}
@@ -72,9 +72,9 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			}
 
 			for _, vb := range vbs {
-				c.timerRWMutex.Lock()
+				c.timerProcessingRWMutex.Lock()
 				c.timerProcessingVbsWorkerMap[vb] = worker
-				c.timerRWMutex.Unlock()
+				c.timerProcessingRWMutex.Unlock()
 
 				c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", fmt.Sprintf("timer_%d", i))
 			}
@@ -96,15 +96,15 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), i,
 				util.Condense(c.timerProcessingRunningWorkers[i].vbsAssigned))
 
-			c.timerRWMutex.Lock()
-
 			for _, vb := range vbs {
+				c.timerProcessingRWMutex.Lock()
 				c.timerProcessingVbsWorkerMap[vb] = c.timerProcessingRunningWorkers[i]
+				c.timerProcessingRWMutex.Unlock()
+
 				c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", fmt.Sprintf("timer_%d", i))
 			}
 
 			c.timerProcessingRunningWorkers[i].vbsAssigned = vbs
-			c.timerRWMutex.Unlock()
 
 			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Timer routine vbs assigned len: %d dump: %v",
 				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), len(vbs), util.Condense(vbs))

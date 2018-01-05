@@ -25,6 +25,23 @@ func TestEventingRebNoKVOpsNoopOneByOne(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestEventingRebNoKVOpsNoopNonDefaultOneByOne(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "noop.js"
+
+	flushFunctionAndBucket(handler)
+	time.Sleep(5 * time.Second)
+	createAndDeployFunction(handler, handler, &commonSettings{1, 1, 1, 5})
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	addAllNodesOneByOne("eventing")
+	removeAllNodesOneByOne()
+
+	flushFunctionAndBucket(handler)
+}
+
 func TestEventingRebNoKVOpsNoopAllAtOnce(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "noop.js"

@@ -20,6 +20,7 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 		logging.Errorf("CRBO[%s:%s:%s:%d] vb: %v vbTakeover request, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
 	}
+
 	return err
 }
 
@@ -300,6 +301,7 @@ var updateVbOwnerAndStartStreamCallback = func(args ...interface{}) error {
 	doc.UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath)
 	doc.UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath)
 	doc.UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath)
+	doc.UpsertEx("node_uuid", vbBlob.NodeUUID, gocb.SubdocFlagCreatePath)
 
 	_, err := doc.Execute()
 	if err == gocb.ErrShutdown {
@@ -408,6 +410,8 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort, err)
 		return err
 	}
+	logging.Infof("CRBO[%s:%s:%s:%d] Started up dcp feed for bucket: %v from kv node: %v",
+		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort)
 
 	c.kvHostDcpFeedMap[kvHostPort] = dcpFeed
 

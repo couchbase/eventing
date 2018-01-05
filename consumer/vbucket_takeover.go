@@ -77,8 +77,23 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 				if vbBlob.NodeUUID != c.NodeUUID() && vbBlob.DCPStreamStatus == dcpStreamRunning {
-					logging.Tracef("CRVT[%s:giveup_r_%d:%s:%d] vb: %v dcp stream already stopped, skipping give up phase",
-						c.workerName, i, c.tcpPort, c.Pid(), vb)
+					logging.Tracef("CRVT[%s:giveup_r_%d:%s:%d] vb: %v metadata  node uuid: %v dcp stream status: %v, skipping give up phase",
+						c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.NodeUUID, vbBlob.DCPStreamStatus)
+
+					c.RLock()
+					err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
+					if err != nil {
+						logging.Errorf("CRVT[%s:giveup_r_%d:%s:%d] vb: %v Failed to close dcp stream, err: %v",
+							c.workerName, i, c.tcpPort, c.Pid(), vb, err)
+					}
+					c.RUnlock()
+
+					c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", "")
+					c.vbProcessingStats.updateVbStat(vb, "assigned_worker", "")
+					c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", "")
+					c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", dcpStreamStopped)
+					c.vbProcessingStats.updateVbStat(vb, "node_uuid", "")
+
 					continue
 				}
 
@@ -115,7 +130,9 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 						c.updateCheckpoint(vbKey, vb, &vbBlob)
 					}
 
+					c.timerRWMutex.Lock()
 					c.vbTimerProcessingWorkerAssign(false)
+					c.timerRWMutex.Unlock()
 
 					// Check if another node has taken up ownership of vbucket for which
 					// ownership was given up above. Metadata is updated about ownership give up only after
@@ -175,9 +192,13 @@ func (c *Consumer) vbsStateUpdate() {
 
 	go c.vbGiveUpRoutine(vbsts)
 
-	logging.Tracef("CRVT[%s:%s:%d] Before vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
+	vbsOwned := c.getCurrentlyOwnedVbs()
+	sort.Sort(util.Uint16Slice(vbsOwned))
+
+	logging.Tracef("CRVT[%s:%s:%d] Before vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v currently owned len: %v dump: %v",
 		c.workerName, c.tcpPort, c.Pid(),
-		util.Condense(c.vbsRemainingToOwn), util.Condense(c.vbsRemainingToGiveUp))
+		util.Condense(c.vbsRemainingToOwn), util.Condense(c.vbsRemainingToGiveUp),
+		len(vbsOwned), util.Condense(vbsOwned))
 
 retryStreamUpdate:
 	vbsDistribution := util.VbucketDistribution(c.vbsRemainingToOwn, c.vbOwnershipTakeoverRoutineCount)
@@ -207,7 +228,10 @@ retryStreamUpdate:
 					c.workerName, i, c.tcpPort, c.Pid(), vb)
 
 				util.Retry(util.NewFixedBackoff(vbTakeoverRetryInterval), vbTakeoverCallback, c, vb)
+
+				c.timerRWMutex.Lock()
 				c.vbTimerProcessingWorkerAssign(false)
+				c.timerRWMutex.Unlock()
 			}
 
 		}(c, i, vbsDistribution[i], &wg)
@@ -240,7 +264,6 @@ retryStreamUpdate:
 func (c *Consumer) doVbTakeover(vb uint16) error {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
-	var shouldWait bool
 
 	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
 
@@ -255,7 +278,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 			vbBlob.NodeUUID, c.checkIfCurrentNodeShouldOwnVb(vb))
 
 		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
-			logging.Verbosef("CRVT[%s:%s:%d] vb: %v current consumer and eventing node has already opened dcp stream, skipping",
+			logging.Verbosef("CRVT[%s:%s:%d] vb: %v current consumer and eventing node has already opened dcp stream. Stream status: %v, skipping",
 				c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
 			return nil
 		}
@@ -273,12 +296,12 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
 
-				logging.Verbosef("CRVT[%s:%s:%d] vb: %v vbblob stream status: %v starting dcp stream, should wait for timer data transfer: %v",
-					c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus, shouldWait)
+				logging.Verbosef("CRVT[%s:%s:%d] vb: %v vbblob stream status: %v starting dcp stream",
+					c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
 
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 			}
-			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 		}
 
 		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker != c.ConsumerName() {
@@ -289,10 +312,10 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 	case dcpStreamStopped, dcpStreamUninitialised:
 
-		logging.Verbosef("CRVT[%s:%s:%d] vb: %v vbblob stream status: %v, starting dcp stream, should wait for timer data transfer: %v",
-			c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus, shouldWait)
+		logging.Verbosef("CRVT[%s:%s:%d] vb: %v vbblob stream status: %v, starting dcp stream",
+			c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
 
-		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 
 	default:
 		return errUnexpectedVbStreamStatus
@@ -314,28 +337,32 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 	return false
 }
 
-func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob, shouldStartStream bool) error {
+func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob) error {
 
 	c.vbsStreamRRWMutex.Lock()
 	if _, ok := c.vbStreamRequested[vb]; !ok {
 		c.vbStreamRequested[vb] = struct{}{}
+		logging.Debugf("CRVT[%s:%s:%d] vb: %v Going to make DcpRequestStream call",
+			c.workerName, c.tcpPort, c.Pid(), vb)
 	} else {
 		c.vbsStreamRRWMutex.Unlock()
+		logging.Debugf("CRVT[%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
+			c.workerName, c.tcpPort, c.Pid(), vb)
 		return nil
 	}
 	c.vbsStreamRRWMutex.Unlock()
 
-	vbBlob.AssignedWorker = c.ConsumerName()
-	vbBlob.CurrentVBOwner = c.HostPortAddr()
-	vbBlob.DCPStreamStatus = dcpStreamRunning
-	vbBlob.NodeUUID = c.uuid
+	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
+	err := c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
+	if err != nil {
+		c.vbsStreamRRWMutex.Lock()
+		defer c.vbsStreamRRWMutex.Unlock()
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateVbOwnerAndStartStreamCallback, c, vbKey, vbBlob)
-
-	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
-	c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", vbBlob.CurrentVBOwner)
-	c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", vbBlob.DCPStreamStatus)
-	c.vbProcessingStats.updateVbStat(vb, "node_uuid", vbBlob.NodeUUID)
+		if _, ok := c.vbStreamRequested[vb]; ok {
+			delete(c.vbStreamRequested, vb)
+		}
+		return err
+	}
 
 	timerAddrs := make(map[string]map[string]string)
 
@@ -344,6 +371,10 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	previousEventingDir := vbBlob.PreviousEventingDir
 	previousNodeUUID := vbBlob.PreviousNodeUUID
 	previousVBOwner := vbBlob.PreviousVBOwner
+
+	logging.Debugf("CRVT[%s:%s:%d] vb: %v previous worker: %v timer dir: %v node uuid: %v vb owner: %v",
+		c.workerName, c.tcpPort, c.Pid(), vb, previousAssignedWorker, previousEventingDir,
+		previousNodeUUID, previousVBOwner)
 
 	var addr, remoteConsumerAddr string
 	var ok bool
@@ -390,19 +421,13 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		if err != nil {
 			logging.Debugf("CRVT[%s:%s:%d] vb: %v Encountered error: %v, while trying to copy over plasma contents from temp plasma store",
 				c.workerName, c.tcpPort, c.Pid(), vb, err)
+			return err
 		}
-
 	} else {
 		logging.Debugf("CRVT[%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
 			c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir)
 	}
 
-	if shouldStartStream {
-		c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
-		return c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
-	}
-
-	c.cleanupStaleDcpFeedHandles()
 	return nil
 }
 

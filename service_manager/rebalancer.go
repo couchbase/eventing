@@ -48,14 +48,20 @@ func (r *rebalancer) gatherProgress() {
 	<-progressTicker.C
 	// Store the initial state of rebalance progress in metakv
 	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
-	if len(errMap) == len(r.keepNodes) {
+	if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
 		logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress from all nodes, initProgress: %v errMap dump: %v",
 			initProgress, errMap)
+
 		util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
+		r.cb.done(fmt.Errorf("Failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
 		return
-	} else if len(errMap) > 0 {
+	} else if len(errMap) > 0 && len(r.keepNodes) > 1 {
 		logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress, initProgress: %v errMap dump: %v",
 			initProgress, errMap)
+	} else if len(errMap) == 1 && len(r.keepNodes) == 1 {
+		logging.Errorf("rebalancer::gatherProgress Failed to capture rebalance progress, initProgress: %v errMap dump: %v",
+			initProgress, errMap)
+		return
 	}
 
 	logging.Infof("rebalancer::gatherProgress initProgress dump: %v", initProgress)
@@ -79,8 +85,14 @@ func (r *rebalancer) gatherProgress() {
 		select {
 		case <-progressTicker.C:
 			p, errMap := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
-			if len(errMap) != 0 {
-				logging.Errorf("rebalancer::gatherProgress Failed to get aggregate rebalance progress, errMap: %v", errMap)
+			if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
+				logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress from all nodes, errMap dump: %v", errMap)
+
+				util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
+				r.cb.done(fmt.Errorf("Failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
+				progressTicker.Stop()
+				return
+			} else if len(errMap) > 0 {
 				continue
 			}
 

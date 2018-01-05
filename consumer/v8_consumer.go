@@ -107,6 +107,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		stopVbOwnerTakeoverCh:              make(chan struct{}, vbOwnershipTakeoverRoutineCount),
 		superSup:                           s,
 		tcpPort:                            tcpPort,
+		timerProcessingRWMutex:             &sync.RWMutex{},
 		timerRWMutex:                       &sync.RWMutex{},
 		timerProcessingTickInterval:        timerProcessingTickInterval,
 		timerProcessingWorkerCount:         timerProcessingPoolSize,
@@ -358,12 +359,7 @@ func (c *Consumer) NotifyClusterChange() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about cluster state change",
 		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid())
 
-	if !c.isRebalanceOngoing {
-		c.clusterStateChangeNotifCh <- struct{}{}
-	} else {
-		logging.Infof("V8CR[%s:%s:%s:%d] Skipping cluster state change notification to control routine because another rebalance is in ongoing",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid())
-	}
+	c.clusterStateChangeNotifCh <- struct{}{}
 }
 
 // NotifyRebalanceStop is called by producer to signal stopping of

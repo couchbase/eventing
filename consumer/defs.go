@@ -280,10 +280,11 @@ type Consumer struct {
 	skipTimerThreshold            int
 	socketTimeout                 time.Duration
 	timerProcessingTickInterval   time.Duration
-	timerProcessingVbsWorkerMap   map[uint16]*timerProcessingWorker        // Access controlled by timerRWMutex
+	timerProcessingVbsWorkerMap   map[uint16]*timerProcessingWorker        // Access controlled by timerProcessingRWMutex
 	timerProcessingRunningWorkers []*timerProcessingWorker                 // Access controlled by timerRWMutex
 	timerProcessingWorkerSignalCh map[*timerProcessingWorker]chan struct{} // Access controlled by timerRWMutex
 	timerProcessingWorkerCount    int
+	timerProcessingRWMutex        *sync.RWMutex
 	timerRWMutex                  *sync.RWMutex
 
 	// Instance of timer related data transferring routine, under
