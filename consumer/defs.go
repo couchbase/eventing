@@ -246,23 +246,12 @@ type Consumer struct {
 
 	docTimerEntryCh    chan *byTimerEntry
 	nonDocTimerEntryCh chan timerMsg
-	// Plasma DGM store handle to store timer entries at per vbucket level
-	persistAllTicker    *time.Ticker
-	stopPlasmaPersistCh chan struct{}
-	timerAddrs          map[string]map[string]string
-	plasmaReaderRWMutex *sync.RWMutex
-	plasmaStoreRWMutex  *sync.RWMutex
-	vbPlasmaStore       *plasma.Plasma
-	vbPlasmaWriter      map[uint16]*plasma.Writer // Access controlled by plasmaStoreRWMutex
-	vbPlasmaReader      map[uint16]*plasma.Writer // Access controlled by plasmaReaderRWMutex
 
-	plasmaStoreCh                      chan *plasmaStoreEntry
-	plasmaStoreStopCh                  chan struct{}
-	signalStoreTimerPlasmaCloseCh      chan uint16
-	signalProcessTimerPlasmaCloseAckCh chan uint16
-	signalStoreTimerPlasmaCloseAckCh   chan uint16
-	signalPlasmaClosedCh               chan uint16
-	signalPlasmaTransferFinishCh       chan *plasmaStoreMsg
+	timerAddrs    map[string]map[string]string
+	vbPlasmaStore *plasma.Plasma
+
+	plasmaStoreCh     chan *plasmaStoreEntry
+	plasmaStoreStopCh chan struct{}
 
 	// Signals V8 consumer to start V8 Debugger agent
 	signalStartDebuggerCh          chan struct{}

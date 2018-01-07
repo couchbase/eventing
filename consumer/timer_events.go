@@ -118,6 +118,7 @@ func (r *timerProcessingWorker) getVbsOwned() []uint16 {
 
 func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 	vbsOwned := r.getVbsOwned()
+	writer := r.c.vbPlasmaStore.NewWriter()
 
 	for _, vb := range vbsOwned {
 		vbKey := fmt.Sprintf("%s_vb_%s", r.c.app.AppName, strconv.Itoa(int(vb)))
@@ -162,12 +163,6 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 		for _, vb := range vbsOwned {
 			currTimer := r.c.vbProcessingStats.getVbStat(vb, "currently_processed_doc_id_timer").(string)
 
-			r.c.plasmaReaderRWMutex.RLock()
-			_, ok := r.c.vbPlasmaReader[vb]
-			r.c.plasmaReaderRWMutex.RUnlock()
-			if !ok {
-				continue
-			}
 
 			// Make sure time processing isn't going ahead of system clock
 			ts, err := time.Parse(tsLayout, currTimer)
@@ -190,12 +185,10 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 
 			byTimerKey := fmt.Sprintf("vb_%v::%s::%s", vb, r.c.app.AppName, currTimer)
 			// For memory management
-			r.c.plasmaReaderRWMutex.RLock()
-			token := r.c.vbPlasmaReader[vb].BeginTx()
+			token := writer.BeginTx()
 			r.c.plasmaLookupCounter++
-			v, err := r.c.vbPlasmaReader[vb].LookupKV([]byte(byTimerKey))
-			r.c.vbPlasmaReader[vb].EndTx(token)
-			r.c.plasmaReaderRWMutex.RUnlock()
+			v, err := writer.LookupKV([]byte(byTimerKey))
+			writer.EndTx(token)
 
 			if err != nil && err != plasma.ErrItemNotFound {
 				logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d Failed to lookup currTimer: %v err: %v",
@@ -215,23 +208,20 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 			// TODO: Update the last processed doc id timer, as eventing could crash in between
 			timerEvents := strings.Split(string(v), ",{")
 
-			r.c.processTimerEvent(currTimer, timerEvents[0], vb, false)
+			r.c.processTimerEvent(currTimer, timerEvents[0], vb, false, writer)
 
 			if len(timerEvents) > 1 {
 				for _, event := range timerEvents[1:] {
 					event := "{" + event
-					r.c.processTimerEvent(currTimer, event, vb, true)
+					r.c.processTimerEvent(currTimer, event, vb, true, writer)
 				}
 			}
 
 			r.c.vbProcessingStats.updateVbStat(vb, "last_processed_doc_id_timer_event", "")
 
-			r.c.plasmaReaderRWMutex.RLock()
-			token = r.c.vbPlasmaReader[vb].BeginTx()
-			err = r.c.vbPlasmaReader[vb].DeleteKV([]byte(byTimerKey))
-			r.c.vbPlasmaReader[vb].EndTx(token)
-			r.c.plasmaReaderRWMutex.RUnlock()
-
+			token = writer.BeginTx()
+			err = writer.DeleteKV([]byte(byTimerKey))
+			writer.EndTx(token)
 			if err != nil {
 				logging.Errorf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d key: %v Failed to delete from byTimer plasma handle, err: %v",
 					r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, byTimerKey, err)
@@ -240,7 +230,7 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 	}
 }
 
-func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateStats bool) {
+func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateStats bool, writer *plasma.Writer) {
 	var timer byTimerEntry
 	err := json.Unmarshal([]byte(event), &timer)
 	if err != nil {
@@ -250,10 +240,7 @@ func (c *Consumer) processTimerEvent(currTimer, event string, vb uint16, updateS
 		c.docTimerEntryCh <- &timer
 
 		key := fmt.Sprintf("vb_%v::%v::%v::%v::%v", vb, c.app.AppName, currTimer, timer.CallbackFn, timer.DocID)
-		c.plasmaReaderRWMutex.RLock()
-		c.plasmaDeleteCounter++
-		err = c.vbPlasmaReader[vb].DeleteKV([]byte(key))
-		c.plasmaReaderRWMutex.RUnlock()
+		err = writer.DeleteKV([]byte(key))
 		if err != nil {
 			logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, key, err)
@@ -397,6 +384,8 @@ func (c *Consumer) updateTimerStats(vb uint16) {
 }
 
 func (c *Consumer) storeTimerEventLoop() {
+	writer := c.vbPlasmaStore.NewWriter()
+
 	for {
 		select {
 		case e, ok := <-c.plasmaStoreCh:
@@ -405,7 +394,7 @@ func (c *Consumer) storeTimerEventLoop() {
 			}
 
 		retryTimerStore:
-			err := c.storeTimerEvent(e.vb, e.seqNo, e.expiry, e.key, e.xMeta)
+			err := c.storeTimerEvent(e.vb, e.seqNo, e.expiry, e.key, e.xMeta, writer)
 			if err == errPlasmaHandleMissing {
 				logging.Tracef("CRTE[%s:%s:%s:%d] Key: %s vb: %v Plasma handle missing",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.key, e.vb)
@@ -419,21 +408,12 @@ func (c *Consumer) storeTimerEventLoop() {
 	}
 }
 
-func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key string, xMeta *xattrMetadata) error {
+func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key string, xMeta *xattrMetadata, writer *plasma.Writer) error {
 
 	// Steps:
 	// Lookup in byId plasma handle
 	// If ENOENT, then insert KV pair in byId plasma handle
 	// then insert in byTimer plasma handle as well
-
-	c.plasmaStoreRWMutex.RLock()
-	plasmaWriterHandle, ok := c.vbPlasmaWriter[vb]
-	c.plasmaStoreRWMutex.RUnlock()
-	if !ok {
-		logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v, failed to find plasma handle associated to vb: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb)
-		return errPlasmaHandleMissing
-	}
 
 	entriesToPrune := 0
 	timersToKeep := make([]string, 0)
@@ -470,14 +450,14 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 		logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v doc-id timerKey: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerKey)
 
 		// Creating transaction for memory management
-		token := plasmaWriterHandle.BeginTx()
-		_, err = plasmaWriterHandle.LookupKV([]byte(timerKey))
-		plasmaWriterHandle.EndTx(token)
+		token := writer.BeginTx()
+		_, err = writer.LookupKV([]byte(timerKey))
+		writer.EndTx(token)
 
 		if err == plasma.ErrItemNotFound {
 
 			c.plasmaInsertCounter++
-			util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c, plasmaWriterHandle, timerKey, "", vb)
+			util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c, writer, timerKey, "", vb)
 
 			// Sample timer: <app_name>::<timestamp in GMT>::<callback_func>::<doc_id>
 			timerData := strings.Split(timer, "::")
@@ -487,9 +467,9 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 
 		retryPlasmaLookUp:
 
-			token = plasmaWriterHandle.BeginTx()
-			tv, tErr := plasmaWriterHandle.LookupKV([]byte(byTimerKey))
-			plasmaWriterHandle.EndTx(token)
+			token = writer.BeginTx()
+			tv, tErr := writer.LookupKV([]byte(byTimerKey))
+			writer.EndTx(token)
 
 			if tErr == plasma.ErrItemNotFound {
 				v := byTimerEntry{
@@ -505,7 +485,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 				}
 
 				util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
-					plasmaWriterHandle, byTimerKey, string(encodedVal), vb)
+					writer, byTimerKey, string(encodedVal), vb)
 
 			} else if tErr != nil {
 
@@ -529,7 +509,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 				timerVal := fmt.Sprintf("%v,%v", string(tv), string(encodedVal))
 
 				util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
-					plasmaWriterHandle, byTimerKey, timerVal, vb)
+					writer, byTimerKey, timerVal, vb)
 			}
 		} else if err != nil && err != plasma.ErrItemNoValue {
 			logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v plasmaWriterHandle returned, err: %v",
