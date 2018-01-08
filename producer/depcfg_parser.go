@@ -162,7 +162,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["fuzz_offset"]; ok {
 		p.fuzzOffset = int(val.(float64))
 	} else {
-		p.fuzzOffset = 30
+		p.fuzzOffset = 0
 	}
 
 	if val, ok := settings["cpp_worker_thread_count"]; ok {
@@ -213,6 +213,12 @@ func (p *Producer) parseDepcfg() error {
 		p.workerQueueCap = int64(val.(float64))
 	} else {
 		p.workerQueueCap = int64(1000 * 1000)
+	}
+
+	if val, ok := settings["cron_timers_per_doc"]; ok {
+		p.cronTimersPerDoc = int(val.(float64))
+	} else {
+		p.cronTimersPerDoc = 1000
 	}
 
 	p.app.Settings = settings

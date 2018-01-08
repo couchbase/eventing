@@ -18,7 +18,7 @@ Transpiler::Transpiler(v8::Isolate *isolate_, const std::string &transpiler_src)
   v8::EscapableHandleScope handle_scope(isolate_);
   v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate_);
 
-  context = v8::Context::New(isolate_, NULL, global);
+  context = v8::Context::New(isolate_, nullptr, global);
   v8::Context::Scope context_scope(context);
   auto source = v8Str(isolate_, transpiler_src.c_str());
   auto script = v8::Script::Compile(context, source).ToLocalChecked();

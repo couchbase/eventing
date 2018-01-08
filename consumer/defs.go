@@ -176,6 +176,7 @@ type Consumer struct {
 	// Within a single CPP worker process, the number of V8Worker instance is equal
 	// to number of worker threads spawned
 	cppWorkerAggQueueSize *cppQueueSize
+	cronTimersPerDoc      int
 	workerQueueCap        int64
 
 	cppThrPartitionMap map[int][]uint16

@@ -77,7 +77,7 @@ std::string string_sprintf(const char *format, Args... args) {
 
 void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   // lcb_get calls against metadata bucket is only triggered for timer lookups
-  const lcb_RESPGET *rg = reinterpret_cast<const lcb_RESPGET *>(rb);
+  auto rg = reinterpret_cast<const lcb_RESPGET *>(rb);
   const void *data = lcb_get_cookie(instance);
 
   std::string ts;
@@ -103,24 +103,24 @@ void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     break;
   default:
     LOG(logTrace) << "LCB_CALLBACK_GET: Operation failed, "
-                  << lcb_strerror(NULL, rb->rc) << " rc:" << rb->rc
+                  << lcb_strerror(nullptr, rb->rc) << " rc:" << rb->rc
                   << std::endl;
     break;
   }
 }
 
 void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  const lcb_RESPSTORE *rs = reinterpret_cast<const lcb_RESPSTORE *>(rb);
-  Result *result = reinterpret_cast<Result *>(rb->cookie);
+  auto rs = reinterpret_cast<const lcb_RESPSTORE *>(rb);
+  auto result = reinterpret_cast<Result *>(rb->cookie);
   result->rc = rs->rc;
 }
 
 void sdmutate_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  const lcb_RESPSUBDOC *resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
+  auto resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
   lcb_SDENTRY ent;
   size_t iter = 0;
 
-  Result *res = reinterpret_cast<Result *>(rb->cookie);
+  auto res = reinterpret_cast<Result *>(rb->cookie);
   res->rc = rb->rc;
 
   if (lcb_sdresult_next(resp, &ent, &iter)) {
@@ -131,15 +131,15 @@ void sdmutate_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
 }
 
 void sdlookup_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  Result *res = reinterpret_cast<Result *>(rb->cookie);
+  auto *res = reinterpret_cast<Result *>(rb->cookie);
   res->cas = rb->cas;
   res->rc = rb->rc;
 
   if (rb->rc == LCB_SUCCESS) {
-    const lcb_RESPGET *rg = reinterpret_cast<const lcb_RESPGET *>(rb);
+    auto rg = reinterpret_cast<const lcb_RESPGET *>(rb);
     res->value.assign(reinterpret_cast<const char *>(rg->value), rg->nvalue);
 
-    const lcb_RESPSUBDOC *resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
+    auto resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
     lcb_SDENTRY ent;
     size_t iter = 0;
     int index = 0;
@@ -148,6 +148,8 @@ void sdlookup_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
           "Status: 0x%x. Value: %.*s\n", ent.status,
           static_cast<int>(ent.nvalue),
           reinterpret_cast<const char *>(ent.value));
+      res->value.assign(reinterpret_cast<const char *>(ent.value),
+                        static_cast<int>(ent.nvalue));
 
       if (index == 0) {
         std::string exptime(reinterpret_cast<const char *>(ent.value));
@@ -228,10 +230,11 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
     LOG(logError) << "Last exception: " << last_exception << std::endl;
   }
 
-  v8::Local<v8::Context> context = v8::Context::New(GetIsolate(), NULL, global);
+  auto context = v8::Context::New(GetIsolate(), nullptr, global);
   context_.Reset(GetIsolate(), context);
   js_exception = new JsException(isolate_);
   data.js_exception = js_exception;
+  data.cron_timers_per_doc = h_config->cron_timers_per_doc;
   data.fuzz_offset = h_config->fuzz_offset;
 
   app_name_ = h_config->app_name;
@@ -241,9 +244,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   cb_source_bucket.assign(config->source_bucket);
 
-  std::map<std::string,
-           std::map<std::string, std::vector<std::string>>>::iterator it =
-      config->component_configs.begin();
+  auto it = config->component_configs.begin();
 
   Bucket *bucket_handle = nullptr;
   execute_flag = false;
@@ -253,8 +254,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   if (!h_config->skip_lcb_bootstrap) {
     for (; it != config->component_configs.end(); it++) {
       if (it->first == "buckets") {
-        std::map<std::string, std::vector<std::string>>::iterator bucket =
-            config->component_configs["buckets"].begin();
+        auto bucket = config->component_configs["buckets"].begin();
         for (; bucket != config->component_configs["buckets"].end(); bucket++) {
           std::string bucket_alias = bucket->first;
           std::string bucket_name =
@@ -272,6 +272,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: "
                << h_config->app_name << " curr_host: " << settings->host_addr
+               << " cron_timers_per_doc: " << h_config->cron_timers_per_doc
                << " curr_eventing_port: " << settings->eventing_port
                << " kv_host_port: " << settings->kv_host_port
                << " lcb_cap: " << h_config->lcb_inst_capacity
@@ -280,13 +281,12 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " enable_recursive_mutation: " << enable_recursive_mutation
                << " curl_timeout: " << curl_timeout << std::endl;
 
-  connstr = "couchbase://" + settings->kv_host_port + "/" +
-            cb_source_bucket.c_str() + "?username=" + settings->rbac_user +
-            "&select_bucket=true";
+  connstr = "couchbase://" + settings->kv_host_port + "/" + cb_source_bucket +
+            "?username=" + settings->rbac_user + "&select_bucket=true";
 
   meta_connstr = "couchbase://" + settings->kv_host_port + "/" +
-                 config->metadata_bucket.c_str() +
-                 "?username=" + settings->rbac_user + "&select_bucket=true";
+                 config->metadata_bucket + "?username=" + settings->rbac_user +
+                 "&select_bucket=true";
 
   if (!h_config->skip_lcb_bootstrap) {
     conn_pool = new ConnectionPool(h_config->lcb_inst_capacity,
@@ -443,7 +443,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   }
 
   if (bucket_handles.size() > 0) {
-    std::list<Bucket *>::iterator bucket_handle = bucket_handles.begin();
+    auto bucket_handle = bucket_handles.begin();
 
     for (; bucket_handle != bucket_handles.end(); bucket_handle++) {
       if (*bucket_handle) {

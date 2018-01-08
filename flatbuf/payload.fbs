@@ -9,6 +9,8 @@ table Payload {
 
   // Handler config
   app_name:string;
+  checkpoint_interval:int; // Controls how frequently checkpoint will be updated in metadata bucket
+  cron_timers_per_doc:int; // Cron timers to store per KV doc
   curl_timeout:long;
   depcfg:string;
   enable_recursive_mutation:bool;
@@ -16,7 +18,6 @@ table Payload {
   execution_timeout:int; // Execution timeout for handler code execution
   fuzz_offset:int; // Needed for cron timers.
   lcb_inst_capacity:int; // Nested iterator related fields
-  checkpoint_interval:int; // Controls how frequently checkpoint will be updated in metadata bucket
   skip_lcb_bootstrap:bool; // Control bootstrap of lcb handles.
                            // In some case we need to skip lcb connects i.e. while checking for
                            // compilation issues in supplied handler code.

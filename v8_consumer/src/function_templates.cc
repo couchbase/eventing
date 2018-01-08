@@ -117,21 +117,58 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   // Store blob in KV store, blob structure:
   // {
   //    "callback_func": "CallbackFunc",
-  //	"actual_timestamp": "yyyy-mm-ddThh:mm:ddZ"
   //    "payload": opaque
   // }
 
   value.assign(R"({"callback_func": ")");
   value.append(cb_func);
-  value.append(R"(", "actual_timestamp": ")");
-  value.append(ConvertToISO8601(std::to_string(fuzz_ts)));
   value.append(R"(", "payload": )");
   value.append(opaque);
   value.append("}");
 
-  LOG(logTrace) << "cron timer value:" << value << std::endl;
-
   auto meta_cb_instance = UnwrapData(isolate)->meta_cb_instance;
+  auto cron_timers_per_doc = UnwrapData(isolate)->cron_timers_per_doc;
+  Result cres;
+
+  std::string counter("counter");
+  std::string timer_entry_doc_id;
+
+  int doc_id_counter = 0;
+
+  while (true) {
+    timer_entry_doc_id.assign(timer_entry);
+    timer_entry_doc_id.append(std::to_string(doc_id_counter));
+
+    lcb_CMDSUBDOC td_cmd = {0};
+    LCB_CMD_SET_KEY(&td_cmd, timer_entry_doc_id.c_str(),
+                    timer_entry_doc_id.length());
+
+    lcb_SDSPEC ctd_spec = {0};
+    ctd_spec.sdcmd = LCB_SDCMD_GET;
+
+    td_cmd.specs = &ctd_spec;
+    td_cmd.nspecs = 1;
+
+    LCB_SDSPEC_SET_PATH(&ctd_spec, counter.c_str(), counter.length());
+    lcb_subdoc3(meta_cb_instance, &cres, &td_cmd);
+    lcb_wait(meta_cb_instance);
+
+    if (cres.rc == LCB_SUCCESS) {
+      int entry_count = std::stoi(cres.value);
+      if (entry_count >= cron_timers_per_doc) {
+        doc_id_counter++;
+        continue;
+      } else {
+        break;
+      }
+    } else if ((cres.rc == LCB_KEY_ENOENT) ||
+               (cres.rc == LCB_SUBDOC_PATH_ENOENT)) {
+      break;
+    }
+  }
+
+  timer_entry.assign(timer_entry_doc_id);
+
   Result res;
   lcb_CMDSUBDOC mcmd = {0};
   LCB_CMD_SET_KEY(&mcmd, timer_entry.c_str(), timer_entry.length());
@@ -144,6 +181,12 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   LCB_SDSPEC_SET_PATH(&cspec, "cron_timers", 11);
   LCB_SDSPEC_SET_VALUE(&cspec, value.c_str(), value.length());
   specs.push_back(cspec);
+
+  lcb_SDSPEC ctr_spec = {0};
+  ctr_spec.sdcmd = LCB_SDCMD_COUNTER;
+  LCB_SDSPEC_SET_PATH(&ctr_spec, counter.c_str(), counter.length());
+  LCB_SDSPEC_SET_VALUE(&ctr_spec, "1", 1);
+  specs.push_back(ctr_spec);
 
   lcb_SDSPEC dspec = {0};
   dspec.sdcmd = LCB_SDCMD_DICT_UPSERT;
@@ -163,7 +206,7 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     non_doc_timer_create_failure++;
     LOG(logInfo) << "Cron timer create failure for doc:" << timer_entry
                  << " payload: " << opaque
-                 << " lcb rc:" << lcb_strerror(NULL, res.rc)
+                 << " lcb rc:" << lcb_strerror(nullptr, res.rc)
                  << " entry id: " << non_doc_timer_create_failure
                  << " sleep_duration: " << sleep_duration * 10000 << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
@@ -262,7 +305,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       LOG(logError) << "Failed to while performing lookup for fulldoc "
                        "and exptime"
                     << " doc key:" << doc_id
-                    << " rc: " << lcb_strerror(NULL, res.rc) << std::endl;
+                    << " rc: " << lcb_strerror(nullptr, res.rc) << std::endl;
       std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
       sleep_duration *= 1.5;
       lcb_subdoc3(cb_instance, &res, &gcmd);
@@ -324,7 +367,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       doc_timer_create_failure++;
       LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
                     << doc_id << " return code:" << res.rc
-                    << " msg:" << lcb_strerror(NULL, res.rc) << std::endl;
+                    << " msg:" << lcb_strerror(nullptr, res.rc) << std::endl;
       return;
     }
 
@@ -333,7 +376,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       doc_timer_create_failure++;
       LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
                     << doc_id << " return code:" << res.rc
-                    << " msg:" << lcb_strerror(NULL, res.rc) << std::endl;
+                    << " msg:" << lcb_strerror(nullptr, res.rc) << std::endl;
       std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
       sleep_duration *= 1.5;
       lcb_subdoc3(cb_instance, &res, &mcmd);
@@ -360,7 +403,7 @@ size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb,
 
   mem->memory =
       static_cast<char *>(realloc(mem->memory, mem->size + realsize + 1));
-  if (mem->memory == NULL) {
+  if (mem->memory == nullptr) {
     LOG(logError) << "not enough memory (realloc returned NULL)" << std::endl;
     return 0;
   }

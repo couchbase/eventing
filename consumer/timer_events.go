@@ -313,19 +313,28 @@ func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string) {
 						continue
 					}
 
-					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getCronTimerCallback, c, currTimer, &val, true, &isNoEnt)
+					counter := 0
 
-					if !isNoEnt {
-						logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val)
-						data, err := json.Marshal(&val)
-						if err != nil {
-							logging.Errorf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v, err: %v",
-								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, val, err)
-						}
-						if len(val.CronTimers) > 0 {
-							c.nonDocTimerEntryCh <- timerMsg{payload: string(data), msgCount: len(val.CronTimers)}
-							c.gocbMetaBucket.Remove(currTimer, 0)
+					for {
+						timerDocID := fmt.Sprintf("%s%d", currTimer, counter)
+
+						util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getCronTimerCallback, c, timerDocID, &val, true, &isNoEnt)
+
+						if !isNoEnt {
+							counter++
+							logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v",
+								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerDocID, val)
+							data, err := json.Marshal(&val)
+							if err != nil {
+								logging.Errorf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v, err: %v",
+									c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerDocID, val, err)
+							}
+							if len(val.CronTimers) > 0 {
+								c.nonDocTimerEntryCh <- timerMsg{payload: string(data), msgCount: len(val.CronTimers)}
+								c.gocbMetaBucket.Remove(timerDocID, 0)
+							}
+						} else {
+							break
 						}
 					}
 					c.updateNonDocTimerStats(vb)

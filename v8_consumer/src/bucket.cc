@@ -32,7 +32,7 @@ static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
   Result *result = reinterpret_cast<Result *>(rb->cookie);
 
   LOG(logTrace) << "Bucket: LCB_GET callback, res: "
-                << lcb_strerror(NULL, rb->rc) << rb->rc << " cas " << rb->cas
+                << lcb_strerror(nullptr, rb->rc) << rb->rc << " cas " << rb->cas
                 << std::endl;
 
   result->rc = resp->rc;
@@ -63,7 +63,7 @@ static void sdmutate_callback(lcb_t, int cbtype, const lcb_RESPBASE *rb) {
   result->rc = rb->rc;
 
   LOG(logTrace) << "Bucket: LCB_SDMUTATE callback "
-                << lcb_strerror(NULL, result->rc) << std::endl;
+                << lcb_strerror(nullptr, result->rc) << std::endl;
 }
 
 static void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
@@ -245,7 +245,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       default:
         LOG(logTrace) << "Failed to fetch full doc: " << key
                       << " to calculate digest, res: "
-                      << lcb_strerror(NULL, gres.rc) << std::endl;
+                      << lcb_strerror(nullptr, gres.rc) << std::endl;
         return;
       }
 
@@ -311,7 +311,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
             std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
         break;
       default:
-        LOG(logTrace) << "Encountered error:" << lcb_strerror(NULL, sres.rc)
+        LOG(logTrace) << "Encountered error:" << lcb_strerror(nullptr, sres.rc)
                       << " for key:" << key << std::endl;
         info.GetReturnValue().Set(value_obj);
         return;

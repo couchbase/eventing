@@ -149,6 +149,7 @@ var getCronTimerCallback = func(args ...interface{}) error {
 	}
 
 	if err == gocb.ErrShutdown {
+		*isNoEnt = true
 		return nil
 	}
 

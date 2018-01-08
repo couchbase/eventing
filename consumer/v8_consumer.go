@@ -25,7 +25,7 @@ import (
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
 	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize int,
-	timerProcessingPoolSize, cppWorkerThrCount, vbOwnershipGiveUpRoutineCount int,
+	cronTimersPerDoc, timerProcessingPoolSize, cppWorkerThrCount, vbOwnershipGiveUpRoutineCount int,
 	curlTimeout int64, vbOwnershipTakeoverRoutineCount, xattrEntryPruneThreshold int, workerQueueCap int64,
 	bucket, eventingAdminPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
@@ -44,6 +44,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		cppThrPartitionMap:              make(map[int][]uint16),
 		cppWorkerThrCount:               cppWorkerThrCount,
 		crcTable:                        crc32.MakeTable(crc32.Castagnoli),
+		cronTimersPerDoc:                cronTimersPerDoc,
 		curlTimeout:                     curlTimeout,
 		connMutex:                       &sync.RWMutex{},
 		dcpFeedCancelChs:                make([]chan struct{}, 0),
@@ -252,8 +253,8 @@ func (c *Consumer) HandleV8Worker() {
 
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
 		c.kvNodes[0], c.producer.CfgData(), c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity,
-		c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)), c.enableRecursiveMutation, false,
-		c.curlTimeout)
+		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
+		c.enableRecursiveMutation, false, c.curlTimeout)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 
