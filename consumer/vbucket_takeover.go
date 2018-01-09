@@ -195,7 +195,7 @@ func (c *Consumer) vbsStateUpdate() {
 	vbsOwned := c.getCurrentlyOwnedVbs()
 	sort.Sort(util.Uint16Slice(vbsOwned))
 
-	logging.Tracef("CRVT[%s:%s:%d] Before vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v currently owned len: %v dump: %v",
+	logging.Tracef("CRVT[%s:%s:%d] Before vbTakeover, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v Owned len: %v dump: %v",
 		c.workerName, c.tcpPort, c.Pid(),
 		util.Condense(c.vbsRemainingToOwn), util.Condense(c.vbsRemainingToGiveUp),
 		len(vbsOwned), util.Condense(vbsOwned))

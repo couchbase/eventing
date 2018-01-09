@@ -255,7 +255,6 @@ func (p *Producer) Stop() {
 	p.ProducerListener.Close()
 
 	p.appLogWriter.Close()
-	p.vbPlasmaStore.Close()
 
 	p.updateStatsStopCh <- struct{}{}
 }

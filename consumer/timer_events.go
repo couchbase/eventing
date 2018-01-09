@@ -164,7 +164,6 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 		for _, vb := range vbsOwned {
 			currTimer := r.c.vbProcessingStats.getVbStat(vb, "currently_processed_doc_id_timer").(string)
 
-
 			// Make sure time processing isn't going ahead of system clock
 			ts, err := time.Parse(tsLayout, currTimer)
 			if err != nil {
