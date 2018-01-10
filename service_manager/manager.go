@@ -82,6 +82,7 @@ func (m *ServiceMgr) initService() {
 	// Eventually it would work as documentation.
 
 	// Internal REST APIs
+	http.HandleFunc("/cleanupEventing", m.cleanupEventing)
 	http.HandleFunc("/clearEventStats", m.clearEventStats)
 	http.HandleFunc("/deleteApplication/", m.deletePrimaryStoreHandler)
 	http.HandleFunc("/deleteAppTempStore/", m.deleteTempStoreHandler)

@@ -156,6 +156,8 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 	for {
 		select {
 		case <-r.stopCh:
+			logging.Infof("CRTE[%s:%s:%s:%d] Exiting timer processing worker id: %v",
+				r.c.app.AppName, r.c.workerName, r.c.tcpPort, r.c.Pid(), r.id)
 			return
 		case <-r.timerProcessingTicker.C:
 		}

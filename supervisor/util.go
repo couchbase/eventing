@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 func (s *SuperSupervisor) assignVbucketsToOwn(addrs []string, currNodeAddr string) {
@@ -56,5 +57,6 @@ func (s *SuperSupervisor) assignVbucketsToOwn(addrs []string, currNodeAddr strin
 		s.vbucketsToOwn = append(s.vbucketsToOwn, vb)
 	}
 
-	logging.Infof("SSUP[%d] currNodeAddr: %v vbucketsToOwn: %v", len(s.runningProducers), currNodeAddr, s.vbucketsToOwn)
+	logging.Infof("SSUP[%d] currNodeAddr: %v vbucketsToOwn len: %v dump: %v",
+		len(s.runningProducers), currNodeAddr, len(s.vbucketsToOwn), util.Condense(s.vbucketsToOwn))
 }

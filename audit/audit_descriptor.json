@@ -169,6 +169,18 @@
        "user" : {"source" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
+   },
+   {
+     "id" : 32782,
+     "name" : "Cleanup Eventing",
+     "description" : "Clears up app definitions and settings from metakv",
+     "sync" : false,
+     "enabled" : true,
+     "mandatory_fields" : {
+       "timestamp" : "",
+       "user" : {"source" : "", "user" : ""}
+     },
+     "optional_fields" : {"context" : ""}
    }
   ]
 }

@@ -284,6 +284,10 @@ func (c *Consumer) Stop() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Gracefully shutting down consumer routine",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
+	for k := range c.timerProcessingWorkerSignalCh {
+		k.stopCh <- struct{}{}
+	}
+
 	c.cbBucket.Close()
 	c.gocbBucket.Close()
 	c.gocbMetaBucket.Close()
@@ -295,10 +299,6 @@ func (c *Consumer) Stop() {
 	c.checkpointTicker.Stop()
 	c.restartVbDcpStreamTicker.Stop()
 	c.statsTicker.Stop()
-
-	for k := range c.timerProcessingWorkerSignalCh {
-		k.stopCh <- struct{}{}
-	}
 
 	c.socketWriteLoopStopCh <- struct{}{}
 	<-c.socketWriteLoopStopAckCh

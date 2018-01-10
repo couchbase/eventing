@@ -587,6 +587,10 @@ func MetaKvDelete(path string, rev interface{}) error {
 	return metakv.Delete(path, rev)
 }
 
+func MetakvRecursiveDelete(dirpath string) error {
+	return metakv.RecursiveDelete(dirpath)
+}
+
 func RecursiveDelete(dirpath string) error {
 	return metakv.RecursiveDelete(dirpath)
 }
