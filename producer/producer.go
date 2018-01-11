@@ -255,7 +255,6 @@ func (p *Producer) Stop() {
 	p.ProducerListener.Close()
 
 	p.appLogWriter.Close()
-	p.vbPlasmaStore.Close()
 
 	p.updateStatsStopCh <- struct{}{}
 }
@@ -317,9 +316,9 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
 		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold,
-		p.socketWriteBatchSize, p.timerWorkerPoolSize, p.cppWorkerThrCount, p.vbOwnershipGiveUpRoutineCount,
-		p.curlTimeout, p.vbOwnershipTakeoverRoutineCount, p.xattrEntryPruneThreshold, p.workerQueueCap,
-		p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
+		p.socketWriteBatchSize, p.cronTimersPerDoc, p.timerWorkerPoolSize, p.cppWorkerThrCount,
+		p.vbOwnershipGiveUpRoutineCount, p.curlTimeout, p.vbOwnershipTakeoverRoutineCount,
+		p.xattrEntryPruneThreshold, p.workerQueueCap, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
 		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStore,
 		p.socketTimeout, p.diagDir, p.numVbuckets, p.fuzzOffset)
 

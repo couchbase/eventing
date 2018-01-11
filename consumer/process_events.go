@@ -646,14 +646,6 @@ loop:
 
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
 		logging.Tracef("CRDP[%s:%s:%d] vb: %d DCP Stream created", c.workerName, c.tcpPort, c.Pid(), vbno)
-
-		c.plasmaReaderRWMutex.Lock()
-		c.plasmaStoreRWMutex.Lock()
-		c.vbPlasmaReader[vbno] = c.vbPlasmaStore.NewWriter()
-		c.vbPlasmaWriter[vbno] = c.vbPlasmaStore.NewWriter()
-		c.plasmaStoreRWMutex.Unlock()
-		c.plasmaReaderRWMutex.Unlock()
-
 		return nil
 	}
 

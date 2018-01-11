@@ -53,10 +53,6 @@ func (c *Consumer) controlRoutine() {
 				continue
 			}
 
-			c.stopCheckpointingCh <- struct{}{}
-			c.checkpointInterval = time.Duration(settings["checkpoint_interval"].(float64)) * time.Millisecond
-			go c.doLastSeqNoCheckpoint()
-
 			c.logLevel = settings["log_level"].(string)
 			logging.SetLogLevel(util.GetLogLevel(c.logLevel))
 			c.sendLogLevel(c.logLevel, false)
@@ -64,28 +60,6 @@ func (c *Consumer) controlRoutine() {
 			c.skipTimerThreshold = int(settings["skip_timer_threshold"].(float64))
 
 			c.timerProcessingTickInterval = time.Duration(settings["timer_processing_tick_interval"].(float64)) * time.Millisecond
-
-			c.timerRWMutex.RLock()
-			for k := range c.timerProcessingWorkerSignalCh {
-				k.stopCh <- struct{}{}
-			}
-			c.timerRWMutex.RUnlock()
-
-			c.timerRWMutex.Lock()
-			c.timerProcessingWorkerSignalCh = make(map[*timerProcessingWorker]chan struct{})
-
-			// Spawning DocID based timer processing routines
-			c.vbTimerProcessingWorkerAssign(true)
-			c.timerRWMutex.Unlock()
-
-			c.timerRWMutex.RLock()
-			for _, r := range c.timerProcessingRunningWorkers {
-				go r.processTimerEvents("", "")
-			}
-			c.timerRWMutex.RUnlock()
-
-			c.nonDocTimerStopCh <- struct{}{}
-			go c.processNonDocTimerEvents("", "")
 
 			if val, ok := settings["deadline_timeout"]; ok {
 				c.socketTimeout = time.Duration(val.(float64)) * time.Second
@@ -182,17 +156,6 @@ func (c *Consumer) controlRoutine() {
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsRemainingToRestream, util.Condense(diff))
 				goto retryVbsRemainingToRestream
 			}
-
-		case vb := <-c.signalStoreTimerPlasmaCloseCh:
-			// Rebalance takeover routine will send signal on this channel to signify
-			// stopping of any plasma.Writer instance for a specific vbucket
-			c.plasmaStoreRWMutex.Lock()
-			delete(c.vbPlasmaWriter, vb)
-			c.plasmaStoreRWMutex.Unlock()
-
-			// sends ack message back to rebalance takeover routine, so that it could
-			// safely call Close() on vb specific plasma store
-			c.signalStoreTimerPlasmaCloseAckCh <- vb
 
 		case <-c.stopControlRoutineCh:
 			return

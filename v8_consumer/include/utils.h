@@ -40,6 +40,7 @@ struct Data {
   lcb_t cb_instance;
   lcb_t meta_cb_instance;
   JsException *js_exception;
+  int cron_timers_per_doc;
   int fuzz_offset;
 };
 

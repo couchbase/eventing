@@ -34,12 +34,6 @@ const (
 	// for instantiating V8 Debugger instance
 	startDebuggerFlag    = "startDebugger"
 	debuggerInstanceAddr = "debuggerInstAddr"
-
-	// Plasma related constants
-	autoLssCleaning  = false
-	maxDeltaChainLen = 30
-	maxPageItems     = 100
-	minPageItems     = 10
 )
 
 type appStatus uint16
@@ -61,7 +55,8 @@ type Producer struct {
 	bucket                 string
 	cleanupTimers          bool
 	cfgData                string
-	cppWorkerThrCount      int   // No. of worker threads per CPP worker process
+	cppWorkerThrCount      int // No. of worker threads per CPP worker process
+	cronTimersPerDoc       int
 	curlTimeout            int64 // curl operation timeout in ms
 	diagDir                string
 	eventingAdminPort      string
@@ -90,6 +85,14 @@ type Producer struct {
 	appLogMaxSize  int64
 	appLogMaxFiles int
 	appLogWriter   io.WriteCloser
+
+	// Plasma configs
+	lssCleanerMaxThreshold int
+	lssCleanerThreshold    int
+	lssReadAheadSize       int64
+	maxDeltaChainLen       int
+	maxPageItems           int
+	minPageItems           int
 
 	rbacUser string
 	rbacPass string

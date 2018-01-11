@@ -42,11 +42,12 @@ const (
 
 // plasma related constants
 const (
-	autoLssCleaning  = false
-	maxDeltaChainLen = 30
-	maxPageItems     = 100
-	minPageItems     = 10
-	useMemManagement = true
+	maxDeltaChainLen       = 200
+	maxPageItems           = 400
+	minPageItems           = 50
+	lssCleanerMaxThreshold = 70
+	lssCleanerThreshold    = 30
+	lssReadAheadSize       = 1024 * 1024
 )
 
 const (
@@ -176,6 +177,7 @@ type Consumer struct {
 	// Within a single CPP worker process, the number of V8Worker instance is equal
 	// to number of worker threads spawned
 	cppWorkerAggQueueSize *cppQueueSize
+	cronTimersPerDoc      int
 	workerQueueCap        int64
 
 	cppThrPartitionMap map[int][]uint16
@@ -246,23 +248,12 @@ type Consumer struct {
 
 	docTimerEntryCh    chan *byTimerEntry
 	nonDocTimerEntryCh chan timerMsg
-	// Plasma DGM store handle to store timer entries at per vbucket level
-	persistAllTicker    *time.Ticker
-	stopPlasmaPersistCh chan struct{}
-	timerAddrs          map[string]map[string]string
-	plasmaReaderRWMutex *sync.RWMutex
-	plasmaStoreRWMutex  *sync.RWMutex
-	vbPlasmaStore       *plasma.Plasma
-	vbPlasmaWriter      map[uint16]*plasma.Writer // Access controlled by plasmaStoreRWMutex
-	vbPlasmaReader      map[uint16]*plasma.Writer // Access controlled by plasmaReaderRWMutex
 
-	plasmaStoreCh                      chan *plasmaStoreEntry
-	plasmaStoreStopCh                  chan struct{}
-	signalStoreTimerPlasmaCloseCh      chan uint16
-	signalProcessTimerPlasmaCloseAckCh chan uint16
-	signalStoreTimerPlasmaCloseAckCh   chan uint16
-	signalPlasmaClosedCh               chan uint16
-	signalPlasmaTransferFinishCh       chan *plasmaStoreMsg
+	timerAddrs    map[string]map[string]string
+	vbPlasmaStore *plasma.Plasma
+
+	plasmaStoreCh     chan *plasmaStoreEntry
+	plasmaStoreStopCh chan struct{}
 
 	// Signals V8 consumer to start V8 Debugger agent
 	signalStartDebuggerCh          chan struct{}

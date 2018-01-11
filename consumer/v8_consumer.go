@@ -25,7 +25,7 @@ import (
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
 	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize int,
-	timerProcessingPoolSize, cppWorkerThrCount, vbOwnershipGiveUpRoutineCount int,
+	cronTimersPerDoc, timerProcessingPoolSize, cppWorkerThrCount, vbOwnershipGiveUpRoutineCount int,
 	curlTimeout int64, vbOwnershipTakeoverRoutineCount, xattrEntryPruneThreshold int, workerQueueCap int64,
 	bucket, eventingAdminPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
@@ -34,109 +34,99 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
-		app:                                app,
-		aggDCPFeed:                         make(chan *memcached.DcpEvent, dcpGenChanSize),
-		bucket:                             bucket,
-		cbBucket:                           b,
-		checkpointInterval:                 checkpointInterval,
-		cleanupTimers:                      cleanupTimers,
-		clusterStateChangeNotifCh:          make(chan struct{}, ClusterChangeNotifChBufSize),
-		cppThrPartitionMap:                 make(map[int][]uint16),
-		cppWorkerThrCount:                  cppWorkerThrCount,
-		crcTable:                           crc32.MakeTable(crc32.Castagnoli),
-		curlTimeout:                        curlTimeout,
-		connMutex:                          &sync.RWMutex{},
-		dcpFeedCancelChs:                   make([]chan struct{}, 0),
-		dcpFeedVbMap:                       make(map[*couchbase.DcpFeed][]uint16),
-		dcpStreamBoundary:                  streamBoundary,
-		debuggerStarted:                    false,
-		diagDir:                            diagDir,
-		docTimerEntryCh:                    make(chan *byTimerEntry, timerChanSize),
-		enableRecursiveMutation:            enableRecursiveMutation,
-		eventingAdminPort:                  eventingAdminPort,
-		eventingDir:                        eventingDir,
-		eventingNodeUUIDs:                  eventingNodeUUIDs,
-		executionTimeout:                   executionTimeout,
-		fuzzOffset:                         fuzzOffset,
-		gracefulShutdownChan:               make(chan struct{}, 1),
-		ipcType:                            ipcType,
-		hostDcpFeedRWMutex:                 &sync.RWMutex{},
-		kvHostDcpFeedMap:                   make(map[string]*couchbase.DcpFeed),
-		lcbInstCapacity:                    lcbInstCapacity,
-		logLevel:                           logLevel,
-		msgProcessedRWMutex:                &sync.RWMutex{},
-		nonDocTimerEntryCh:                 make(chan timerMsg, timerChanSize),
-		nonDocTimerStopCh:                  make(chan struct{}, 1),
-		numVbuckets:                        numVbuckets,
-		opsTimestamp:                       time.Now(),
-		persistAllTicker:                   time.NewTicker(persistAllTickInterval),
-		plasmaReaderRWMutex:                &sync.RWMutex{},
-		plasmaStoreCh:                      make(chan *plasmaStoreEntry, timerChanSize),
-		plasmaStoreRWMutex:                 &sync.RWMutex{},
-		plasmaStoreStopCh:                  make(chan struct{}, 1),
-		producer:                           p,
-		restartVbDcpStreamTicker:           time.NewTicker(restartVbDcpStreamTickInterval),
-		sendMsgBufferRWMutex:               &sync.RWMutex{},
-		sendMsgCounter:                     0,
-		sendMsgToDebugger:                  false,
-		signalBootstrapFinishCh:            make(chan struct{}, 1),
-		signalConnectedCh:                  make(chan struct{}, 1),
-		signalDebugBlobDebugStopCh:         make(chan struct{}, 1),
-		signalInstBlobCasOpFinishCh:        make(chan struct{}, 1),
-		signalSettingsChangeCh:             make(chan struct{}, 1),
-		signalPlasmaClosedCh:               make(chan uint16, numVbuckets),
-		signalPlasmaTransferFinishCh:       make(chan *plasmaStoreMsg, numVbuckets),
-		signalProcessTimerPlasmaCloseAckCh: make(chan uint16, numVbuckets),
-		signalStartDebuggerCh:              make(chan struct{}, 1),
-		signalStopDebuggerCh:               make(chan struct{}, 1),
-		signalStopDebuggerRoutineCh:        make(chan struct{}, 1),
-		signalStoreTimerPlasmaCloseAckCh:   make(chan uint16, numVbuckets),
-		signalStoreTimerPlasmaCloseCh:      make(chan uint16, numVbuckets),
-		signalUpdateDebuggerInstBlobCh:     make(chan struct{}, 1),
-		skipTimerThreshold:                 skipTimerThreshold,
-		socketTimeout:                      socketTimeout,
-		socketWriteBatchSize:               sockWriteBatchSize,
-		socketWriteLoopStopAckCh:           make(chan struct{}, 1),
-		socketWriteLoopStopCh:              make(chan struct{}, 1),
-		socketWriteTicker:                  time.NewTicker(socketWriteTimerInterval),
-		statsRWMutex:                       &sync.RWMutex{},
-		statsTicker:                        time.NewTicker(statsTickInterval),
-		stopControlRoutineCh:               make(chan struct{}, 1),
-		stopPlasmaPersistCh:                make(chan struct{}, 1),
-		stopVbOwnerGiveupCh:                make(chan struct{}, vbOwnershipGiveUpRoutineCount),
-		stopVbOwnerTakeoverCh:              make(chan struct{}, vbOwnershipTakeoverRoutineCount),
-		superSup:                           s,
-		tcpPort:                            tcpPort,
-		timerProcessingRWMutex:             &sync.RWMutex{},
-		timerRWMutex:                       &sync.RWMutex{},
-		timerProcessingTickInterval:        timerProcessingTickInterval,
-		timerProcessingWorkerCount:         timerProcessingPoolSize,
-		timerProcessingVbsWorkerMap:        make(map[uint16]*timerProcessingWorker),
-		timerProcessingRunningWorkers:      make([]*timerProcessingWorker, 0),
-		timerProcessingWorkerSignalCh:      make(map[*timerProcessingWorker]chan struct{}),
-		updateStatsTicker:                  time.NewTicker(updateCPPStatsTickInterval),
-		uuid:                               uuid,
-		vbDcpFeedMap:                       make(map[uint16]*couchbase.DcpFeed),
-		vbFlogChan:                         make(chan *vbFlogEntry),
-		vbnos:                              vbnos,
-		updateStatsStopCh:                  make(chan struct{}, 1),
-		vbDcpEventsRemaining:               make(map[int]int64),
-		vbOwnershipGiveUpRoutineCount:      vbOwnershipGiveUpRoutineCount,
-		vbOwnershipTakeoverRoutineCount:    vbOwnershipTakeoverRoutineCount,
-		vbPlasmaStore:                      vbPlasmaStore,
-		vbPlasmaReader:                     make(map[uint16]*plasma.Writer),
-		vbPlasmaWriter:                     make(map[uint16]*plasma.Writer),
-		vbProcessingStats:                  newVbProcessingStats(app.AppName, uint16(numVbuckets)),
-		vbsRemainingToGiveUp:               make([]uint16, 0),
-		vbsRemainingToOwn:                  make([]uint16, 0),
-		vbsRemainingToRestream:             make([]uint16, 0),
-		vbsStreamClosed:                    make(map[uint16]bool),
-		vbsStreamClosedRWMutex:             &sync.RWMutex{},
-		vbStreamRequested:                  make(map[uint16]struct{}),
-		vbsStreamRRWMutex:                  &sync.RWMutex{},
-		workerName:                         fmt.Sprintf("worker_%s_%d", app.AppName, index),
-		workerQueueCap:                     workerQueueCap,
-		xattrEntryPruneThreshold:           xattrEntryPruneThreshold,
+		app:                             app,
+		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpGenChanSize),
+		bucket:                          bucket,
+		cbBucket:                        b,
+		checkpointInterval:              checkpointInterval,
+		cleanupTimers:                   cleanupTimers,
+		clusterStateChangeNotifCh:       make(chan struct{}, ClusterChangeNotifChBufSize),
+		cppThrPartitionMap:              make(map[int][]uint16),
+		cppWorkerThrCount:               cppWorkerThrCount,
+		crcTable:                        crc32.MakeTable(crc32.Castagnoli),
+		cronTimersPerDoc:                cronTimersPerDoc,
+		curlTimeout:                     curlTimeout,
+		connMutex:                       &sync.RWMutex{},
+		dcpFeedCancelChs:                make([]chan struct{}, 0),
+		dcpFeedVbMap:                    make(map[*couchbase.DcpFeed][]uint16),
+		dcpStreamBoundary:               streamBoundary,
+		debuggerStarted:                 false,
+		diagDir:                         diagDir,
+		docTimerEntryCh:                 make(chan *byTimerEntry, timerChanSize),
+		enableRecursiveMutation:         enableRecursiveMutation,
+		eventingAdminPort:               eventingAdminPort,
+		eventingDir:                     eventingDir,
+		eventingNodeUUIDs:               eventingNodeUUIDs,
+		executionTimeout:                executionTimeout,
+		fuzzOffset:                      fuzzOffset,
+		gracefulShutdownChan:            make(chan struct{}, 1),
+		ipcType:                         ipcType,
+		hostDcpFeedRWMutex:              &sync.RWMutex{},
+		kvHostDcpFeedMap:                make(map[string]*couchbase.DcpFeed),
+		lcbInstCapacity:                 lcbInstCapacity,
+		logLevel:                        logLevel,
+		msgProcessedRWMutex:             &sync.RWMutex{},
+		nonDocTimerEntryCh:              make(chan timerMsg, timerChanSize),
+		nonDocTimerStopCh:               make(chan struct{}, 1),
+		numVbuckets:                     numVbuckets,
+		opsTimestamp:                    time.Now(),
+		plasmaStoreCh:                   make(chan *plasmaStoreEntry, timerChanSize),
+		plasmaStoreStopCh:               make(chan struct{}, 1),
+		producer:                        p,
+		restartVbDcpStreamTicker:        time.NewTicker(restartVbDcpStreamTickInterval),
+		sendMsgBufferRWMutex:            &sync.RWMutex{},
+		sendMsgCounter:                  0,
+		sendMsgToDebugger:               false,
+		signalBootstrapFinishCh:         make(chan struct{}, 1),
+		signalConnectedCh:               make(chan struct{}, 1),
+		signalDebugBlobDebugStopCh:      make(chan struct{}, 1),
+		signalInstBlobCasOpFinishCh:     make(chan struct{}, 1),
+		signalSettingsChangeCh:          make(chan struct{}, 1),
+		signalStartDebuggerCh:           make(chan struct{}, 1),
+		signalStopDebuggerCh:            make(chan struct{}, 1),
+		signalStopDebuggerRoutineCh:     make(chan struct{}, 1),
+		signalUpdateDebuggerInstBlobCh:  make(chan struct{}, 1),
+		skipTimerThreshold:              skipTimerThreshold,
+		socketTimeout:                   socketTimeout,
+		socketWriteBatchSize:            sockWriteBatchSize,
+		socketWriteLoopStopAckCh:        make(chan struct{}, 1),
+		socketWriteLoopStopCh:           make(chan struct{}, 1),
+		socketWriteTicker:               time.NewTicker(socketWriteTimerInterval),
+		statsRWMutex:                    &sync.RWMutex{},
+		statsTicker:                     time.NewTicker(statsTickInterval),
+		stopControlRoutineCh:            make(chan struct{}, 1),
+		stopVbOwnerGiveupCh:             make(chan struct{}, vbOwnershipGiveUpRoutineCount),
+		stopVbOwnerTakeoverCh:           make(chan struct{}, vbOwnershipTakeoverRoutineCount),
+		superSup:                        s,
+		tcpPort:                         tcpPort,
+		timerProcessingRWMutex:          &sync.RWMutex{},
+		timerRWMutex:                    &sync.RWMutex{},
+		timerProcessingTickInterval:     timerProcessingTickInterval,
+		timerProcessingWorkerCount:      timerProcessingPoolSize,
+		timerProcessingVbsWorkerMap:     make(map[uint16]*timerProcessingWorker),
+		timerProcessingRunningWorkers:   make([]*timerProcessingWorker, 0),
+		timerProcessingWorkerSignalCh:   make(map[*timerProcessingWorker]chan struct{}),
+		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
+		uuid:                            uuid,
+		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),
+		vbFlogChan:                      make(chan *vbFlogEntry),
+		vbnos:                           vbnos,
+		updateStatsStopCh:               make(chan struct{}, 1),
+		vbDcpEventsRemaining:            make(map[int]int64),
+		vbOwnershipGiveUpRoutineCount:   vbOwnershipGiveUpRoutineCount,
+		vbOwnershipTakeoverRoutineCount: vbOwnershipTakeoverRoutineCount,
+		vbPlasmaStore:                   vbPlasmaStore,
+		vbProcessingStats:               newVbProcessingStats(app.AppName, uint16(numVbuckets)),
+		vbsRemainingToGiveUp:            make([]uint16, 0),
+		vbsRemainingToOwn:               make([]uint16, 0),
+		vbsRemainingToRestream:          make([]uint16, 0),
+		vbsStreamClosed:                 make(map[uint16]bool),
+		vbsStreamClosedRWMutex:          &sync.RWMutex{},
+		vbStreamRequested:               make(map[uint16]struct{}),
+		vbsStreamRRWMutex:               &sync.RWMutex{},
+		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
+		workerQueueCap:                  workerQueueCap,
+		xattrEntryPruneThreshold:        xattrEntryPruneThreshold,
 	}
 
 	consumer.builderPool = &sync.Pool{
@@ -263,8 +253,8 @@ func (c *Consumer) HandleV8Worker() {
 
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
 		c.kvNodes[0], c.producer.CfgData(), c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity,
-		c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)), c.enableRecursiveMutation, false,
-		c.curlTimeout)
+		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
+		c.enableRecursiveMutation, false, c.curlTimeout)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 
@@ -294,6 +284,10 @@ func (c *Consumer) Stop() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Gracefully shutting down consumer routine",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
+	for k := range c.timerProcessingWorkerSignalCh {
+		k.stopCh <- struct{}{}
+	}
+
 	c.cbBucket.Close()
 	c.gocbBucket.Close()
 	c.gocbMetaBucket.Close()
@@ -305,10 +299,6 @@ func (c *Consumer) Stop() {
 	c.checkpointTicker.Stop()
 	c.restartVbDcpStreamTicker.Stop()
 	c.statsTicker.Stop()
-
-	for k := range c.timerProcessingWorkerSignalCh {
-		k.stopCh <- struct{}{}
-	}
 
 	c.socketWriteLoopStopCh <- struct{}{}
 	<-c.socketWriteLoopStopAckCh
@@ -385,30 +375,6 @@ func (c *Consumer) NotifySettingsChange() {
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 	c.signalSettingsChangeCh <- struct{}{}
-}
-
-// SignalPlasmaClosed is used by producer instance to signal message from SuperSupervisor
-// to under consumer about Closed plasma store instance
-func (c *Consumer) SignalPlasmaClosed(vb uint16) {
-	logging.Infof("V8CR[%s:%s:%s:%d] vb: %v got signal from parent producer about plasma store instance close",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
-	c.signalPlasmaClosedCh <- vb
-}
-
-// SignalPlasmaTransferFinish is called by parent producer instance to signal consumer
-// about timer data transfer completion during rebalance
-func (c *Consumer) SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma) {
-	defer func() {
-		if r := recover(); r != nil {
-			trace := debug.Stack()
-			logging.Errorf("V8CR[%s:%s:%s:%d] vb: %v SignalPlasmaTransferFinish: recover %v, stack trace: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, r, string(trace))
-		}
-	}()
-
-	logging.Infof("V8CR[%s:%s:%s:%d] vb: %v got signal from parent producer about plasma timer data transfer finish",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
-	c.signalPlasmaTransferFinishCh <- &plasmaStoreMsg{vb, store}
 }
 
 // SignalStopDebugger signal C++ V8 consumer to stop Debugger Agent

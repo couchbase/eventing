@@ -101,6 +101,7 @@ typedef struct server_settings_s {
 
 typedef struct handler_config_s {
   std::string app_name;
+  int cron_timers_per_doc;
   long curl_timeout;
   std::string dep_cfg;
   int execution_timeout;

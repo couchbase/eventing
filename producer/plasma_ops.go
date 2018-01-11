@@ -11,12 +11,15 @@ func (p *Producer) openPlasmaStore() error {
 
 	cfg := plasma.DefaultConfig()
 	cfg.File = vbPlasmaDir
-	cfg.AutoLSSCleaning = autoLssCleaning
-	cfg.MaxDeltaChainLen = maxDeltaChainLen
-	cfg.MaxPageItems = maxPageItems
-	cfg.MinPageItems = minPageItems
+	cfg.MaxDeltaChainLen = p.maxDeltaChainLen
+	cfg.MaxPageItems = p.maxPageItems
+	cfg.MinPageItems = p.minPageItems
 	cfg.UseMemoryMgmt = true
 	cfg.AutoSwapper = true
+	cfg.EnableSnapshotSMR = false
+	cfg.LSSCleanerMaxThreshold = p.lssCleanerMaxThreshold
+	cfg.LSSCleanerThreshold = p.lssCleanerThreshold
+	cfg.LSSReadAheadSize = p.lssReadAheadSize
 
 	var err error
 	p.vbPlasmaStore, err = plasma.New(cfg)

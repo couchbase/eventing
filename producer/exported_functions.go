@@ -317,6 +317,7 @@ func (p *Producer) GetEventingConsumerPids() map[string]int {
 func (p *Producer) PurgePlasmaRecords() {
 	vbPlasmaDir := fmt.Sprintf("%v/%v_timer.data", p.eventingDir, p.app.AppName)
 
+	p.vbPlasmaStore.Close()
 	err := os.RemoveAll(vbPlasmaDir)
 	if err != nil {
 		logging.Errorf("PRDR[%s:%d] Got err: %v while trying to purge timer records",

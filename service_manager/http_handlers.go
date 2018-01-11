@@ -721,6 +721,7 @@ func (m *ServiceMgr) setSettingsHandler(w http.ResponseWriter, r *http.Request) 
 
 	if runtimeInfo := m.setSettings(appName, data); runtimeInfo.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, runtimeInfo)
+		return
 	}
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
@@ -1686,4 +1687,21 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	return
+}
+
+// Clears up all Eventing related artifacts from metakv, typically will be used for rebalance tests
+func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		fmt.Fprintln(w, "{\"error\":\"Request not authorized\"}")
+		return
+	}
+
+	audit.Log(auditevent.CleanupEventing, r, nil)
+
+	err := util.RecursiveDelete(metakvEventingPath)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "{\"error\":\"Failed to purge eventing artifacts from metakv, err: %v\"}", err)
+		return
+	}
 }

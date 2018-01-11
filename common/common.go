@@ -2,8 +2,6 @@ package common
 
 import (
 	"net"
-
-	"github.com/couchbase/plasma"
 )
 
 type DcpStreamBoundary string
@@ -113,8 +111,6 @@ type EventingConsumer interface {
 	SetConnHandle(net.Conn)
 	SignalBootstrapFinish()
 	SignalConnected()
-	SignalPlasmaClosed(vb uint16)
-	SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma)
 	SignalStopDebugger()
 	SpawnCompilationWorker(appcode, appContent, appName string) (*CompileStatus, error)
 	Stop()
