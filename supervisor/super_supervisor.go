@@ -292,7 +292,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						len(s.runningProducers), appName)
 					delete(s.deployedApps, appName)
 
-					s.cleanupProducer(appName)
+					s.cleanupProducer(appName, true)
 				}
 			}
 		}
@@ -391,13 +391,18 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 					s.assignVbucketsToOwn(addrs, currNodeAddr)
 
+					purgePlasmaStore := true
+					if s.appDeploymentStatus[appName] == false && s.appProcessingStatus[appName] == false {
+						purgePlasmaStore = false
+					}
+
 					s.appDeploymentStatus[appName] = false
 					s.appProcessingStatus[appName] = false
 
 					logging.Infof("SSUP[%d] App: %s Requested to delete app", len(s.runningProducers), appName)
 					delete(s.deployedApps, appName)
 
-					s.cleanupProducer(appName)
+					s.cleanupProducer(appName, purgePlasmaStore)
 
 					delete(s.appDeploymentStatus, appName)
 					delete(s.appProcessingStatus, appName)
@@ -484,7 +489,7 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
 	}
 }
 
-func (s *SuperSupervisor) cleanupProducer(appName string) {
+func (s *SuperSupervisor) cleanupProducer(appName string, purgePlasmaStore bool) {
 	if p, ok := s.runningProducers[appName]; ok {
 		logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
 		p.NotifyInit()
@@ -494,9 +499,11 @@ func (s *SuperSupervisor) cleanupProducer(appName string) {
 		s.superSup.Remove(s.producerSupervisorTokenMap[p])
 		delete(s.producerSupervisorTokenMap, p)
 
-		logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
-		p.PurgePlasmaRecords()
-		logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
+		if purgePlasmaStore {
+			logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
+			p.PurgePlasmaRecords()
+			logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
+		}
 
 		p.NotifySupervisor()
 		logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)
