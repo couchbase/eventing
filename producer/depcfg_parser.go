@@ -221,6 +221,42 @@ func (p *Producer) parseDepcfg() error {
 		p.cronTimersPerDoc = 1000
 	}
 
+	if val, ok := settings["max_delta_chain_len"]; ok {
+		p.maxDeltaChainLen = int(val.(float64))
+	} else {
+		p.maxDeltaChainLen = 200
+	}
+
+	if val, ok := settings["max_page_items"]; ok {
+		p.maxPageItems = int(val.(float64))
+	} else {
+		p.maxPageItems = 400
+	}
+
+	if val, ok := settings["min_page_items"]; ok {
+		p.minPageItems = int(val.(float64))
+	} else {
+		p.minPageItems = 50
+	}
+
+	if val, ok := settings["lss_cleaner_max_threshold"]; ok {
+		p.lssCleanerMaxThreshold = int(val.(float64))
+	} else {
+		p.lssCleanerMaxThreshold = 70
+	}
+
+	if val, ok := settings["lss_cleaner_threshold"]; ok {
+		p.lssCleanerThreshold = int(val.(float64))
+	} else {
+		p.lssCleanerThreshold = 30
+	}
+
+	if val, ok := settings["lss_read_ahead_size"]; ok {
+		p.lssReadAheadSize = int64(val.(float64))
+	} else {
+		p.lssReadAheadSize = 1024 * 1024
+	}
+
 	p.app.Settings = settings
 
 	logLevel := settings["log_level"].(string)

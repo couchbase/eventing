@@ -1,7 +1,6 @@
 package supervisor
 
 import (
-	// "bytes"
 	"encoding/json"
 	"fmt"
 	"net"
