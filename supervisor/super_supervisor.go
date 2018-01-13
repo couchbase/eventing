@@ -361,10 +361,6 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 	}(p, s, appName, metakvAppHostPortsPath)
 
 	p.NotifyPrepareTopologyChange(s.keepNodes)
-
-	topologyChangeMsg := &common.TopologyChangeMsg{}
-	topologyChangeMsg.CType = common.StartRebalanceCType
-	p.NotifyTopologyChange(topologyChangeMsg)
 }
 
 // HandleSupCmdMsg handles control commands like app (re)deploy, settings update

@@ -22,7 +22,7 @@ func (c *Consumer) controlRoutine() {
 			c.stopVbOwnerGiveupCh = make(chan struct{}, c.vbOwnershipGiveUpRoutineCount)
 			c.stopVbOwnerTakeoverCh = make(chan struct{}, c.vbOwnershipTakeoverRoutineCount)
 
-			logging.Infof("CRCR[%s:%s:%s:%d] Got notification that cluster state has changed(could also trigger on app deploy)",
+			logging.Infof("CRCR[%s:%s:%s:%d] Got notification that cluster state has changed",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
 			c.vbsStreamClosedRWMutex.Lock()

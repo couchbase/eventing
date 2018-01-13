@@ -145,13 +145,6 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 
 					select {
 					case <-c.stopVbOwnerGiveupCh:
-						// TODO: Reclaiming back of vb specific plasma store handles
-						roErr := c.reclaimVbOwnership(vb)
-						if roErr != nil {
-							logging.Errorf("CRVT[%s:giveup_r_%d:%s:%d] vb: %v reclaim of ownership failed, vbBlob dump: %#v",
-								c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob)
-						}
-
 						logging.Debugf("CRVT[%s:giveup_r_%d:%s:%d] Exiting vb ownership give-up routine, last vb handled: %v",
 							c.workerName, i, c.tcpPort, c.Pid(), vb)
 						return
@@ -218,8 +211,8 @@ retryStreamUpdate:
 			for _, vb := range vbsRemainingToOwn {
 				select {
 				case <-c.stopVbOwnerTakeoverCh:
-					logging.Debugf("CRVT[%s:takeover_r_%d:%s:%d] Exiting vb ownership takeover routine",
-						c.workerName, i, c.tcpPort, c.Pid())
+					logging.Debugf("CRVT[%s:takeover_r_%d:%s:%d] Exiting vb ownership takeover routine, next vb: %v",
+						c.workerName, i, c.tcpPort, c.Pid(), vb)
 					return
 				default:
 				}
