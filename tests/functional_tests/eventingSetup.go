@@ -384,6 +384,7 @@ func bucketFlush(bucketName string) {
 
 func flushFunctionAndBucket(handler string) {
 	setSettings(handler, false, false, &commonSettings{})
+	time.Sleep(5 * time.Second)
 	deleteFunction(handler)
 
 	bucketFlush("default")

@@ -291,7 +291,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						len(s.runningProducers), appName)
 					delete(s.deployedApps, appName)
 
-					s.cleanupProducer(appName, true)
+					s.cleanupProducer(appName)
 				}
 			}
 		}
@@ -390,21 +390,23 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 					s.assignVbucketsToOwn(addrs, currNodeAddr)
 
-					purgePlasmaStore := true
+					checkIfDeployed := true
 					if s.appDeploymentStatus[appName] == false && s.appProcessingStatus[appName] == false {
-						purgePlasmaStore = false
+						checkIfDeployed = false
 					}
 
-					s.appDeploymentStatus[appName] = false
-					s.appProcessingStatus[appName] = false
+					if checkIfDeployed {
+						s.appDeploymentStatus[appName] = false
+						s.appProcessingStatus[appName] = false
 
-					logging.Infof("SSUP[%d] App: %s Requested to delete app", len(s.runningProducers), appName)
-					delete(s.deployedApps, appName)
+						logging.Infof("SSUP[%d] App: %s Requested to delete app", len(s.runningProducers), appName)
+						delete(s.deployedApps, appName)
 
-					s.cleanupProducer(appName, purgePlasmaStore)
+						s.cleanupProducer(appName)
 
-					delete(s.appDeploymentStatus, appName)
-					delete(s.appProcessingStatus, appName)
+						delete(s.appDeploymentStatus, appName)
+						delete(s.appProcessingStatus, appName)
+					}
 				}(s)
 
 			case cmdAppLoad:
@@ -488,7 +490,7 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
 	}
 }
 
-func (s *SuperSupervisor) cleanupProducer(appName string, purgePlasmaStore bool) {
+func (s *SuperSupervisor) cleanupProducer(appName string) {
 	if p, ok := s.runningProducers[appName]; ok {
 		logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
 		p.NotifyInit()
@@ -498,11 +500,9 @@ func (s *SuperSupervisor) cleanupProducer(appName string, purgePlasmaStore bool)
 		s.superSup.Remove(s.producerSupervisorTokenMap[p])
 		delete(s.producerSupervisorTokenMap, p)
 
-		if purgePlasmaStore {
-			logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
-			p.PurgePlasmaRecords()
-			logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
-		}
+		logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
+		p.PurgePlasmaRecords()
+		logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
 
 		p.NotifySupervisor()
 		logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)

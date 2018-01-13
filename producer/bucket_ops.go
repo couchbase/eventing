@@ -78,8 +78,6 @@ var deleteOpCallback = func(args ...interface{}) error {
 			p.appName, p.LenRunningConsumers(), key, err)
 		return nil
 	} else if err == gocb.ErrShutdown {
-		logging.Errorf("PRDR[%s:%d] Key: %v bucket handle closed, err: %v",
-			p.appName, p.LenRunningConsumers(), key, err)
 		return nil
 	} else if err != nil {
 		logging.Errorf("PRDR[%s:%d] Bucket delete failed for key: %v, err: %v",
