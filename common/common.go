@@ -63,6 +63,7 @@ type EventingProducer interface {
 	NsServerNodeCount() int
 	PauseProducer()
 	PlannerStats() []*PlannerNodeVbMapping
+	PurgeAppLog()
 	PurgePlasmaRecords()
 	RbacUser() string
 	RbacPass() string

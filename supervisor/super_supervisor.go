@@ -500,6 +500,8 @@ func (s *SuperSupervisor) cleanupProducer(appName string) {
 		p.PurgePlasmaRecords()
 		logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
 
+		p.PurgeAppLog()
+
 		p.NotifySupervisor()
 		logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)
 	}

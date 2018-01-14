@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -474,4 +476,33 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 	}
 
 	return producerLevelProgress
+}
+
+// PurgeAppLog cleans up application log files
+func (p *Producer) PurgeAppLog() {
+	d, err := os.Open(p.eventingDir)
+	if err != nil {
+		logging.Errorf("PRDR[%s:%d] Failed to open eventingDir: %v while trying to purge app logs, err: %v",
+			p.appName, p.LenRunningConsumers(), p.eventingDir, err)
+		return
+	}
+	defer d.Close()
+
+	names, err := d.Readdirnames(-1)
+	if err != nil {
+		logging.Errorf("PRDR[%s:%d] Failed list contents of eventingDir: %v, err: %v",
+			p.appName, p.LenRunningConsumers(), p.eventingDir, err)
+		return
+	}
+
+	prefix := fmt.Sprintf("%s.log", p.app.AppName)
+	for _, name := range names {
+		if strings.HasPrefix(name, prefix) {
+			err = os.RemoveAll(filepath.Join(p.eventingDir, name))
+			if err != nil {
+				logging.Errorf("PRDR[%s:%d] Failed to remove app log: %v, err: %v",
+					p.appName, p.LenRunningConsumers(), name, err)
+			}
+		}
+	}
 }
