@@ -488,6 +488,8 @@ func (s *SuperSupervisor) cleanupProducer(appName string) {
 
 		p.SignalCheckpointBlobCleanup()
 
+		p.CleanupMetadataBucket()
+
 		s.superSup.Remove(s.producerSupervisorTokenMap[p])
 		delete(s.producerSupervisorTokenMap, p)
 

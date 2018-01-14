@@ -602,7 +602,7 @@ void V8Worker::Checkpoint() {
       auto seq = vb_seq[i].get()->load(std::memory_order_seq_cst);
       if (seq > 0) {
         std::stringstream vb_key;
-        vb_key << appName << "_vb_" << i;
+        vb_key << appName << "::vb::" << i;
 
         lcb_CMDSUBDOC cmd = {0};
         LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());

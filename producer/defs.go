@@ -43,6 +43,13 @@ const (
 	appDeployed
 )
 
+var dcpConfig = map[string]interface{}{
+	"genChanSize":    10000,
+	"dataChanSize":   10000,
+	"numConnections": 1,
+	"activeVbOnly":   true,
+}
+
 type startDebugBlob struct {
 	StartDebug bool `json:"start_debug"`
 }

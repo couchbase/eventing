@@ -3,10 +3,80 @@ package producer
 import (
 	"fmt"
 
+	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 )
+
+var commonConnectBucketOpCallback = func(args ...interface{}) error {
+	p := args[0].(*Producer)
+	b := args[1].(**couchbase.Bucket)
+
+	hostPortAddr := fmt.Sprintf("127.0.0.1:%s", p.GetNsServerPort())
+
+	var err error
+	*b, err = util.ConnectBucket(hostPortAddr, "default", p.metadatabucket)
+	if err != nil {
+		logging.Errorf("PRDR[%s:%d] Connect to bucket: %s failed, err: %v",
+			p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+	} else {
+		logging.Infof("PRDR[%s:%d] Connected to bucket: %s, handle stats: %v",
+			p.appName, p.LenRunningConsumers(), p.metadatabucket, (*b).BasicStats)
+	}
+
+	return err
+}
+
+var getFailoverLogOpCallback = func(args ...interface{}) error {
+	p := args[0].(*Producer)
+	b := args[1].(**couchbase.Bucket)
+	flogs := args[2].(*couchbase.FailoverLog)
+	dcpConfig := args[3].(map[string]interface{})
+	vbs := args[4].([]uint16)
+
+	var err error
+	*flogs, err = (*b).GetFailoverLogs(0xABCD, vbs, dcpConfig)
+	if err != nil {
+		logging.Errorf("PRDR[%s:%d] Failed to get failover logs, err: %v",
+			p.appName, p.LenRunningConsumers(), err)
+	}
+
+	return err
+}
+
+var startFeedCallback = func(args ...interface{}) error {
+	p := args[0].(*Producer)
+	b := args[1].(**couchbase.Bucket)
+	dcpFeed := args[2].(**couchbase.DcpFeed)
+	kvNodeAddrs := args[3].([]string)
+
+	feedName := couchbase.DcpFeedName("eventing:" + p.uuid + "_" + p.appName + "_undeploy")
+
+	var err error
+	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), 0, kvNodeAddrs, 0xABCD, dcpConfig)
+	if err != nil {
+		logging.Errorf("PRDR[%s:%d] Failed to start dcp feed for bucket: %v, err: %v",
+			p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+	}
+
+	return err
+}
+
+var dcpGetSeqNosCallback = func(args ...interface{}) error {
+	p := args[0].(*Producer)
+	dcpFeed := args[1].(**couchbase.DcpFeed)
+	vbSeqNos := args[2].(*map[uint16]uint64)
+
+	var err error
+	*vbSeqNos, err = (*dcpFeed).DcpGetSeqnos()
+	if err != nil {
+		logging.Errorf("PRDR[%s:%d] Failed to get dcp seqnos for metadata bucket: %v, err: %v",
+			p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+	}
+
+	return err
+}
 
 var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)

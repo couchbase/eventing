@@ -122,7 +122,7 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 	reader := r.c.vbPlasmaStore.NewReader()
 
 	for _, vb := range vbsOwned {
-		vbKey := fmt.Sprintf("%s_vb_%s", r.c.app.AppName, strconv.Itoa(int(vb)))
+		vbKey := fmt.Sprintf("%s::vb::%s", r.c.app.AppName, strconv.Itoa(int(vb)))
 
 		var vbBlob vbucketKVBlob
 		var cas gocb.Cas
@@ -241,7 +241,7 @@ func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string) {
 	vbsOwned := c.getVbsOwned()
 
 	for _, vb := range vbsOwned {
-		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
+		vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
 
 		var vbBlob vbucketKVBlob
 		var cas gocb.Cas

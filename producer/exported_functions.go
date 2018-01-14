@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/dcp"
+	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -219,7 +223,7 @@ func (p *Producer) SignalBootstrapFinish() {
 func (p *Producer) SignalCheckpointBlobCleanup() {
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
+		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, vbKey)
 	}
 
@@ -364,7 +368,7 @@ func (p *Producer) vbDistributionStats() {
 	vbBlob := make(map[string]interface{})
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
+		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
 
 		if _, ok := vbBlob["vb_id"]; !ok {
@@ -429,7 +433,7 @@ func (p *Producer) getSeqsProcessed() {
 	vbBlob := make(map[string]interface{})
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
+		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
 
 		p.statsRWMutex.Lock()
@@ -495,4 +499,114 @@ func (p *Producer) PurgeAppLog() {
 			}
 		}
 	}
+}
+
+// CleanupMetadataBucket clears up all application related artifacts from
+// metadata bucket post undeploy
+func (p *Producer) CleanupMetadataBucket() {
+	logPrefix := "Producer::CleanupMetadataBucket"
+
+	util.Retry(util.NewFixedBackoff(time.Second), getKVNodesAddressesOpCallback, p)
+
+	kvNodeAddrs := p.getKvNodeAddrs()
+
+	var b *couchbase.Bucket
+	var dcpFeed *couchbase.DcpFeed
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), commonConnectBucketOpCallback, p, &b)
+
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startFeedCallback, p, &b, &dcpFeed, kvNodeAddrs)
+	defer dcpFeed.Close()
+
+	logging.Infof("%s [%s:%d] Started up dcpFeed to cleanup artifacts from metadata bucket: %v",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket)
+
+	var itemCount int64
+	if val, ok := b.BasicStats["itemCount"]; ok {
+		itemCount = int64(val.(float64))
+	} else {
+		logging.Errorf("%s [%s:%d] Failed to get item count in metadata bucket: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket)
+		return
+	}
+
+	logging.Debugf("%s [%s:%d] Current item count in metadata bucket: %v is %d",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, itemCount)
+
+	var vbSeqNos map[uint16]uint64
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), dcpGetSeqNosCallback, p, &dcpFeed, &vbSeqNos)
+
+	vbs := make([]uint16, 0)
+	for vb := range vbSeqNos {
+		vbs = append(vbs, vb)
+	}
+
+	sort.Sort(util.Uint16Slice(vbs))
+
+	logging.Infof("%s [%s:%d] Going to start DCP streams from metadata bucket: %v, vbs len: %v dump: %v",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, len(vbs), util.Condense(vbs))
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func(b *couchbase.Bucket, dcpFeed *couchbase.DcpFeed, itemCount int64, wg *sync.WaitGroup) {
+		defer wg.Done()
+
+		var mutationCounter int64
+		prefix := fmt.Sprintf("%s::", p.appName)
+		vbBlobPrefix := fmt.Sprintf("%s::vb::", p.appName)
+
+		for {
+			select {
+			case e, ok := <-dcpFeed.C:
+				if ok == false {
+					return
+				}
+
+				switch e.Opcode {
+				case mcd.DCP_MUTATION:
+					docID := string(e.Key)
+					if strings.HasPrefix(docID, prefix) || strings.HasPrefix(docID, vbBlobPrefix) {
+						util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, docID)
+						mutationCounter++
+					}
+				case mcd.DCP_DELETION:
+					docID := string(e.Key)
+					if strings.HasPrefix(docID, prefix) || strings.HasPrefix(docID, vbBlobPrefix) {
+						mutationCounter++
+					}
+				default:
+				}
+
+				if mutationCounter == itemCount {
+					return
+				}
+			}
+		}
+	}(b, dcpFeed, itemCount, &wg)
+
+	var flogs couchbase.FailoverLog
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, p, &b, &flogs, dcpConfig, vbs)
+
+	start, snapStart, snapEnd := uint64(0), uint64(0), uint64(0xFFFFFFFFFFFFFFFF)
+	flags := uint32(0)
+	end := uint64(0xFFFFFFFFFFFFFFFF)
+
+	logging.Infof("%s [%s:%d] Going to start DCP streams from metadata bucket: %v, vbs len: %v dump: %v",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, len(vbs), util.Condense(vbs))
+
+	for vb, flog := range flogs {
+		vbuuid, _, _ := flog.Latest()
+
+		logging.Debugf("%s [%s:%d] vb: %v starting DCP feed",
+			logPrefix, p.appName, p.LenRunningConsumers(), vb)
+
+		opaque := uint16(vb)
+		err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
+		if err != nil {
+			logging.Errorf("%s [%s:%d] Failed to stream vb: %v",
+				logPrefix, p.appName, p.LenRunningConsumers(), vb)
+		}
+	}
+
+	wg.Wait()
 }

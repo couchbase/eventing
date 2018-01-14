@@ -56,7 +56,7 @@ func (c *Consumer) dcpEventsRemainingToProcess() {
 	subdocPath := "last_processed_seq_no"
 
 	for _, vbno := range vbsTohandle {
-		vbKey := fmt.Sprintf("%s_vb_%d", c.app.AppName, vbno)
+		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vbno)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getMetaOpCallback, c, vbKey, &seqNo, subdocPath)
 
 		if seqNos[int(vbno)] > seqNo {

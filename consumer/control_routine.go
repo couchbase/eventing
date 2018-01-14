@@ -126,7 +126,7 @@ func (c *Consumer) controlRoutine() {
 
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
-				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
+				vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
 
 				logging.Debugf("CRCR[%s:%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)

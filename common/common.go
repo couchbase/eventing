@@ -35,6 +35,7 @@ type EventingProducer interface {
 	Auth() string
 	CfgData() string
 	CleanupDeadConsumer(consumer EventingConsumer)
+	CleanupMetadataBucket()
 	ClearEventStats()
 	GetAppCode() string
 	GetDcpEventsRemainingToProcess() uint64
