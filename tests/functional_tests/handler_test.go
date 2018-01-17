@@ -290,7 +290,7 @@ func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 		setSettings(handler, false, false, &commonSettings{})
 		bucketFlush("default")
 		bucketFlush("hello-world")
-		time.Sleep(5 * time.Second)
+		time.Sleep(30 * time.Second)
 	}
 
 	deleteFunction(handler)
@@ -318,7 +318,7 @@ func TestDeployUndeployLoopDocTimer(t *testing.T) {
 		setSettings(handler, false, false, &commonSettings{})
 		bucketFlush("default")
 		bucketFlush("hello-world")
-		time.Sleep(5 * time.Second)
+		time.Sleep(30 * time.Second)
 	}
 
 	deleteFunction(handler)
@@ -346,7 +346,7 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 		setSettings(handler, false, false, &commonSettings{})
 		bucketFlush("default")
 		bucketFlush("hello-world")
-		time.Sleep(5 * time.Second)
+		time.Sleep(30 * time.Second)
 	}
 
 	deleteFunction(handler)
@@ -464,7 +464,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	fmt.Println("Undeploying app:", appName)
 	setSettings(appName, false, false, &commonSettings{})
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(30 * time.Second)
 
 	handler = "on_delete_bucket_op_uncomment.js"
 	createAndDeployFunction(appName, handler, &commonSettings{})
@@ -472,7 +472,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	pumpBucketOps(itemCount, 0, true, 0, &rateLimit{})
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
 	if eventCount != 0 {
-		t.Error("For", "DeployUndeployLoop",
+		t.Error("For", "CommentUnCommentOnDelete",
 			"expected", 0,
 			"got", eventCount,
 		)
@@ -500,6 +500,9 @@ func TestCPPWorkerCleanup(t *testing.T) {
 			"got", eventCount,
 		)
 	}
+
+	flushFunctionAndBucket(handler)
+	time.Sleep(30 * time.Second)
 
 	pidsAlive, count := eventingConsumerPidsAlive()
 	if pidsAlive {

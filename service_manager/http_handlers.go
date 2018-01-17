@@ -1282,7 +1282,7 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 	var username, password string
 	util.Retry(util.NewFixedBackoff(time.Second), util.GetCredsCallback, string(data), &username, &password)
 
-	creds := credsInfo{Username:username, Password:password}
+	creds := credsInfo{Username: username, Password: password}
 	response, err := json.Marshal(creds)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))

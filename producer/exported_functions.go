@@ -520,18 +520,6 @@ func (p *Producer) CleanupMetadataBucket() {
 	logging.Infof("%s [%s:%d] Started up dcpFeed to cleanup artifacts from metadata bucket: %v",
 		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket)
 
-	var itemCount int64
-	if val, ok := b.BasicStats["itemCount"]; ok {
-		itemCount = int64(val.(float64))
-	} else {
-		logging.Errorf("%s [%s:%d] Failed to get item count in metadata bucket: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket)
-		return
-	}
-
-	logging.Debugf("%s [%s:%d] Current item count in metadata bucket: %v is %d",
-		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, itemCount)
-
 	var vbSeqNos map[uint16]uint64
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), dcpGetSeqNosCallback, p, &dcpFeed, &vbSeqNos)
 
@@ -548,41 +536,45 @@ func (p *Producer) CleanupMetadataBucket() {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	go func(b *couchbase.Bucket, dcpFeed *couchbase.DcpFeed, itemCount int64, wg *sync.WaitGroup) {
+	rw := &sync.RWMutex{}
+	stopCh := make(chan struct{}, 1)
+	receivedVbSeqNos := make(map[uint16]uint64)
+
+	go func(b *couchbase.Bucket, dcpFeed *couchbase.DcpFeed, wg *sync.WaitGroup,
+		stopCh chan struct{}, receivedVbSeqNos map[uint16]uint64, rw *sync.RWMutex) {
+
 		defer wg.Done()
 
-		var mutationCounter int64
 		prefix := fmt.Sprintf("%s::", p.appName)
 		vbBlobPrefix := fmt.Sprintf("%s::vb::", p.appName)
 
 		for {
 			select {
+			case <-stopCh:
+				logging.Infof("%s [%s:%d] Exiting cron timer cleanup routine, mutations till high vb seqnos received",
+					logPrefix, p.appName, p.LenRunningConsumers())
+				return
+
 			case e, ok := <-dcpFeed.C:
 				if ok == false {
 					return
 				}
+
+				rw.Lock()
+				receivedVbSeqNos[e.VBucket] = e.Seqno
+				rw.Unlock()
 
 				switch e.Opcode {
 				case mcd.DCP_MUTATION:
 					docID := string(e.Key)
 					if strings.HasPrefix(docID, prefix) || strings.HasPrefix(docID, vbBlobPrefix) {
 						util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, docID)
-						mutationCounter++
-					}
-				case mcd.DCP_DELETION:
-					docID := string(e.Key)
-					if strings.HasPrefix(docID, prefix) || strings.HasPrefix(docID, vbBlobPrefix) {
-						mutationCounter++
 					}
 				default:
 				}
-
-				if mutationCounter == itemCount {
-					return
-				}
 			}
 		}
-	}(b, dcpFeed, itemCount, &wg)
+	}(b, dcpFeed, &wg, stopCh, receivedVbSeqNos, rw)
 
 	var flogs couchbase.FailoverLog
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, p, &b, &flogs, dcpConfig, vbs)
@@ -607,6 +599,47 @@ func (p *Producer) CleanupMetadataBucket() {
 				logPrefix, p.appName, p.LenRunningConsumers(), vb)
 		}
 	}
+
+	ticker := time.NewTicker(10 * time.Second)
+
+	wg.Add(1)
+
+	go func(wg *sync.WaitGroup, stopCh chan struct{}) {
+		defer wg.Done()
+
+		for {
+			select {
+			case <-ticker.C:
+				receivedVbs := make([]uint16, 0)
+				rw.RLock()
+				for vb := range receivedVbSeqNos {
+					receivedVbs = append(receivedVbs, vb)
+				}
+				rw.RUnlock()
+
+				if len(receivedVbs) < len(vbs) {
+					logging.Debugf("%s [%s:%d] len of receivedVbs: %v len of vbs: %v",
+						logPrefix, p.appName, p.LenRunningConsumers(), len(receivedVbs), len(vbs))
+					continue
+				}
+
+				rw.RLock()
+				for vb, seqNo := range vbSeqNos {
+					if receivedVbSeqNos[vb] < seqNo {
+						rw.RUnlock()
+						break
+					}
+				}
+				rw.RUnlock()
+
+				stopCh <- struct{}{}
+				logging.Infof("%s [%s:%d] Sent message on stop cron timer cleanup routine",
+					logPrefix, p.appName, p.LenRunningConsumers())
+				ticker.Stop()
+				return
+			}
+		}
+	}(&wg, stopCh)
 
 	wg.Wait()
 }

@@ -201,7 +201,7 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 				logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d timerEvent key: %v value: %v",
 					r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, string(itr.Key()), string(itr.Value()))
 
-				entries:=strings.Split(string(itr.Key()), "::")
+				entries := strings.Split(string(itr.Key()), "::")
 
 				// For some reason plasma iterator returned timer entries from future with
 				// correct set of start and end key prefix. Mitigating it via below workaround
