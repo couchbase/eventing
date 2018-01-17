@@ -32,11 +32,10 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 	b := args[1].(**couchbase.Bucket)
 	flogs := args[2].(*couchbase.FailoverLog)
-	dcpConfig := args[3].(map[string]interface{})
-	vbs := args[4].([]uint16)
+	vbs := args[3].([]uint16)
 
 	var err error
-	*flogs, err = (*b).GetFailoverLogs(0xABCD, vbs, dcpConfig)
+	*flogs, err = (*b).GetFailoverLogs(0xABCD, vbs, p.dcpConfig)
 	if err != nil {
 		logging.Errorf("PRDR[%s:%d] Failed to get failover logs, err: %v",
 			p.appName, p.LenRunningConsumers(), err)
@@ -54,7 +53,7 @@ var startFeedCallback = func(args ...interface{}) error {
 	feedName := couchbase.DcpFeedName("eventing:" + p.uuid + "_" + p.appName + "_undeploy")
 
 	var err error
-	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), 0, kvNodeAddrs, 0xABCD, dcpConfig)
+	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), 0, kvNodeAddrs, 0xABCD, p.dcpConfig)
 	if err != nil {
 		logging.Errorf("PRDR[%s:%d] Failed to start dcp feed for bucket: %v, err: %v",
 			p.appName, p.LenRunningConsumers(), p.metadatabucket, err)

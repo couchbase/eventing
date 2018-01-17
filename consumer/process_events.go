@@ -379,7 +379,7 @@ func (c *Consumer) processEvents() {
 	}
 }
 
-func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.FailoverLog) {
+func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 
 	logging.Infof("CRDP[%s:%s:%d] no. of vbs owned: %d",
 		c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
@@ -598,7 +598,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 	dcpFeed, ok := c.kvHostDcpFeedMap[vbKvAddr]
 	if !ok {
 		feedName := couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + vbKvAddr + "_" + c.workerName)
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, dcpConfig, vbKvAddr)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, vbKvAddr)
 
 		dcpFeed = c.kvHostDcpFeedMap[vbKvAddr]
 

@@ -378,10 +378,9 @@ var poolGetBucketOpCallback = func(args ...interface{}) error {
 var getFailoverLogOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	flogs := args[1].(*couchbase.FailoverLog)
-	dcpConfig := args[2].(map[string]interface{})
 
 	var err error
-	*flogs, err = c.cbBucket.GetFailoverLogs(0xABCD, c.vbnos, dcpConfig)
+	*flogs, err = c.cbBucket.GetFailoverLogs(0xABCD, c.vbnos, c.dcpConfig)
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to get failover logs, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
@@ -394,11 +393,10 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 var startDCPFeedOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	feedName := args[1].(couchbase.DcpFeedName)
-	dcpConfig := args[2].(map[string]interface{})
-	kvHostPort := args[3].(string)
+	kvHostPort := args[2].(string)
 
 	dcpFeed, err := c.cbBucket.StartDcpFeedOver(
-		feedName, uint32(0), includeXATTRs, []string{kvHostPort}, 0xABCD, dcpConfig)
+		feedName, uint32(0), includeXATTRs, []string{kvHostPort}, 0xABCD, c.dcpConfig)
 
 	if err != nil {
 		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed for bucket: %v from kv node: %v, err: %v",
@@ -445,7 +443,7 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 		// are made.
 		feedName := couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + kvHost + "_" + c.workerName + "_GetSeqNos")
 		feed, err := c.cbBucket.StartDcpFeedOver(
-			feedName, uint32(0), includeXATTRs, []string{kvHost}, 0xABCD, dcpConfig)
+			feedName, uint32(0), includeXATTRs, []string{kvHost}, 0xABCD, c.dcpConfig)
 		if err != nil {
 			logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed, err: %v",
 				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)

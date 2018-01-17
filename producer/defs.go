@@ -43,13 +43,6 @@ const (
 	appDeployed
 )
 
-var dcpConfig = map[string]interface{}{
-	"genChanSize":    10000,
-	"dataChanSize":   10000,
-	"numConnections": 1,
-	"activeVbOnly":   true,
-}
-
 type startDebugBlob struct {
 	StartDebug bool `json:"start_debug"`
 }
@@ -86,6 +79,9 @@ type Producer struct {
 	superSup               common.EventingSuperSup
 	uuid                   string
 	workerCount            int
+
+	// DCP config, as they need to be tunable
+	dcpConfig map[string]interface{}
 
 	// app log related configs
 	appLogPath     string

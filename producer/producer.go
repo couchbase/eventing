@@ -26,6 +26,7 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 	p := &Producer{
 		appName:                appName,
 		bootstrapFinishCh:      make(chan struct{}, 1),
+		dcpConfig:              make(map[string]interface{}),
 		diagDir:                diagDir,
 		eventingAdminPort:      eventingAdminPort,
 		eventingDir:            eventingDir,
@@ -319,8 +320,8 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.socketWriteBatchSize, p.cronTimersPerDoc, p.timerWorkerPoolSize, p.cppWorkerThrCount,
 		p.vbOwnershipGiveUpRoutineCount, p.curlTimeout, p.vbOwnershipTakeoverRoutineCount,
 		p.xattrEntryPruneThreshold, p.workerQueueCap, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
-		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStore,
-		p.socketTimeout, p.diagDir, p.numVbuckets, p.fuzzOffset)
+		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup,
+		p.vbPlasmaStore, p.socketTimeout, p.diagDir, p.numVbuckets, p.fuzzOffset)
 
 	p.Lock()
 	p.consumerListeners = append(p.consumerListeners, listener)

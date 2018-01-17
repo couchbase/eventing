@@ -577,7 +577,7 @@ func (p *Producer) CleanupMetadataBucket() {
 	}(b, dcpFeed, &wg, stopCh, receivedVbSeqNos, rw)
 
 	var flogs couchbase.FailoverLog
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, p, &b, &flogs, dcpConfig, vbs)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, p, &b, &flogs, vbs)
 
 	start, snapStart, snapEnd := uint64(0), uint64(0), uint64(0xFFFFFFFFFFFFFFFF)
 	flags := uint32(0)

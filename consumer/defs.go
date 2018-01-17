@@ -58,12 +58,6 @@ const (
 	startDebuggerFlag    = "startDebugger"
 	debuggerInstanceAddr = "debuggerInstAddr"
 
-	// DCP consumer related configs
-	dcpGenChanSize    = 10000
-	dcpDataChanSize   = 10000
-	dcpNumConnections = 1
-	timerChanSize     = 10000
-
 	// To decode messages from c++ world to Go
 	headerFragmentSize = 4
 
@@ -117,13 +111,6 @@ const (
 	dcpStreamStopped       = "stopped"
 	dcpStreamUninitialised = ""
 )
-
-var dcpConfig = map[string]interface{}{
-	"genChanSize":    dcpGenChanSize,
-	"dataChanSize":   dcpDataChanSize,
-	"numConnections": dcpNumConnections,
-	"activeVbOnly":   true,
-}
 
 var (
 	errPlasmaHandleMissing = errors.New("Failed to find plasma handle")
@@ -232,6 +219,9 @@ type Consumer struct {
 	vbsStreamRRWMutex      *sync.RWMutex
 
 	xattrEntryPruneThreshold int
+
+	// DCP config, as they need to be tunable
+	dcpConfig map[string]interface{}
 
 	// Routines to control parallel vbucket ownership transfer
 	// during rebalance

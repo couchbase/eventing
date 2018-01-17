@@ -243,6 +243,26 @@ func (p *Producer) parseDepcfg() error {
 		p.lssReadAheadSize = 1024 * 1024
 	}
 
+	if val, ok := settings["data_chan_size"]; ok {
+		p.dcpConfig["dataChanSize"] = int(val.(float64))
+	} else {
+		p.dcpConfig["dataChanSize"] = 10000
+	}
+
+	if val, ok := settings["dcp_gen_chan_size"]; ok {
+		p.dcpConfig["genChanSize"] = int(val.(float64))
+	} else {
+		p.dcpConfig["genChanSize"] = 10000
+	}
+
+	if val, ok := settings["dcp_num_connections"]; ok {
+		p.dcpConfig["numConnections"] = int(val.(float64))
+	} else {
+		p.dcpConfig["numConnections"] = 1
+	}
+
+	p.dcpConfig["activeVbOnly"] = true
+
 	p.app.Settings = settings
 
 	logLevel := settings["log_level"].(string)
