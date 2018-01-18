@@ -1718,10 +1718,6 @@ func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.CleanupEventing, r, nil)
 
-	err := util.RecursiveDelete(metakvAppsPath)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "{\"error\":\"Failed to purge eventing artifacts from metakv, err: %v\"}", err)
-		return
-	}
+	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvAppsPath)
+	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvTempAppsPath)
 }

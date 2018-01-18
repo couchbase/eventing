@@ -78,3 +78,14 @@ var stopRebalanceCallback = func(args ...interface{}) error {
 
 	return nil
 }
+
+var cleanupEventingMetaKvPath = func (args ...interface{}) error {
+	path := args[0].(string)
+
+	err := util.RecursiveDelete(path)
+	if err != nil {
+		logging.Errorf("Failed to purge eventing artifacts from path: %v, err: %v", path, err)
+	}
+
+	return err
+}
