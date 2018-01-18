@@ -643,3 +643,14 @@ func (p *Producer) CleanupMetadataBucket() {
 
 	wg.Wait()
 }
+
+// TODO : Remove these methods once RBAC issue is resolved
+// RbacUser returns the rbac user supplied as part of app settings
+func (p *Producer) RbacUser() string {
+	return p.rbacUser
+}
+
+// RbacPass returns the rbac password supplied as part of app settings
+func (p *Producer) RbacPass() string {
+	return p.rbacPass
+}

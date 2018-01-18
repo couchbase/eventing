@@ -95,6 +95,8 @@ typedef struct server_settings_s {
   std::string eventing_port;
   std::string host_addr;
   std::string kv_host_port;
+  std::string rbac_user;
+  std::string rbac_pass;
 } server_settings_t;
 
 typedef struct handler_config_s {

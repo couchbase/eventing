@@ -12,16 +12,11 @@
 #ifndef BUCKET_H
 #define BUCKET_H
 
-#include <map>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <vector>
-
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 #include <libcouchbase/subdoc.h>
+#include <string>
+#include <vector>
 
 #include "v8worker.h"
 

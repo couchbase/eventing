@@ -208,4 +208,8 @@ type Producer struct {
 	workerSupervisor *suptree.Supervisor
 
 	sync.RWMutex
+
+	// TODO : Remove rbacUser and rbacPass once the RBAC issue is resolved
+	rbacUser string
+	rbacPass string
 }

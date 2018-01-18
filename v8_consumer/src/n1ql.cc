@@ -25,8 +25,10 @@ ConnectionPool::ConnectionPool(v8::Isolate *isolate, int capacity,
                                std::string cb_source_bucket)
     : capacity(capacity), inst_count(0), isolate(isolate) {
 
+  // TODO : Remove rbac user once RBAC issue is resolved
+  auto rbac_user = UnwrapData(isolate)->rbac_user;
   conn_str = "couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket +
-             "?select_bucket=true";
+             "?username=" + rbac_user + "&select_bucket=true";
 }
 
 // Creates and adds one lcb instance into the pool.
@@ -39,17 +41,21 @@ void ConnectionPool::AddResource() {
   options.v.v3.connstr = conn_str.c_str();
   options.v.v3.type = LCB_TYPE_BUCKET;
 
+  // TODO : Remove rbac pass once RBAC issue is resolved
+  auto rbac_pass = UnwrapData(isolate)->rbac_pass;
+  options.v.v3.passwd = rbac_pass.c_str();
+
   lcb_t instance = nullptr;
   err = lcb_create(&instance, &options);
   if (err != LCB_SUCCESS) {
     Error(instance, "N1QL: unable to create lcb handle", err);
   }
 
-  auto auth = lcbauth_new();
-  // TODO : Need to handle the return values of the below calls
-  lcbauth_set_callbacks(auth, isolate, GetUsername, GetPassword);
-  lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
-  lcb_set_auth(instance, auth);
+  // TODO : Enable dynamic auth once RBAC issue is resolved
+  //  auto auth = lcbauth_new();
+  //  lcbauth_set_callbacks(auth, isolate, GetUsername, GetPassword);
+  //  lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
+  //  lcb_set_auth(instance, auth);
 
   err = lcb_connect(instance);
   if (err != LCB_SUCCESS) {

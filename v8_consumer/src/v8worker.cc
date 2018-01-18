@@ -245,6 +245,10 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   isolate_->SetCaptureStackTraceForUncaughtExceptions(true);
   data.v8worker = this;
 
+  // TODO : Remove the rbac user and pass once RBAC issue is resolved
+  data.rbac_user = server_settings->rbac_user;
+  data.rbac_pass = server_settings->rbac_pass;
+
   v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(GetIsolate());
 
   v8::TryCatch try_catch;
@@ -323,11 +327,12 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " enable_recursive_mutation: " << enable_recursive_mutation
                << " curl_timeout: " << curl_timeout << std::endl;
 
+  // TODO : Remove the rbac user and pass once RBAC issue is resolved
   connstr = "couchbase://" + settings->kv_host_port + "/" + cb_source_bucket +
-            "?select_bucket=true";
-
+            "?username=" + settings->rbac_user + "&select_bucket=true";
   meta_connstr = "couchbase://" + settings->kv_host_port + "/" +
-                 config->metadata_bucket + "?select_bucket=true";
+                 config->metadata_bucket + "?username=" + settings->rbac_user +
+                 "&select_bucket=true";
 
   if (!h_config->skip_lcb_bootstrap) {
     conn_pool = new ConnectionPool(isolate_, h_config->lcb_inst_capacity,
@@ -505,9 +510,10 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
   lcb_U32 lcb_timeout = 2500000; // 2.5s
 
-  auto auth = lcbauth_new();
-  lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
-  lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
+  // TODO : Enable dynamic authentication when RBAC issue is resolved
+  //  auto auth = lcbauth_new();
+  //  lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
+  //  lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
 
   if (transpiler.IsTimerCalled(script_to_execute)) {
     LOG(logDebug) << "Timer is called" << std::endl;
@@ -518,9 +524,11 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     crst.version = 3;
     crst.v.v3.connstr = connstr.c_str();
     crst.v.v3.type = LCB_TYPE_BUCKET;
+    crst.v.v3.passwd = settings->rbac_pass.c_str();
 
     lcb_create(&cb_instance, &crst);
-    lcb_set_auth(cb_instance, auth);
+    // TODO : Enable dynamic authentication when RBAC issue is resolved
+    //    lcb_set_auth(cb_instance, auth);
     lcb_connect(cb_instance);
     lcb_wait(cb_instance);
 
@@ -538,9 +546,11 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     crst.version = 3;
     crst.v.v3.connstr = meta_connstr.c_str();
     crst.v.v3.type = LCB_TYPE_BUCKET;
+    crst.v.v3.passwd = settings->rbac_pass.c_str();
 
     lcb_create(&meta_cb_instance, &crst);
-    lcb_set_auth(meta_cb_instance, auth);
+    // TODO : Enable dynamic authentication when RBAC issue is resolved
+    //    lcb_set_auth(meta_cb_instance, auth);
     lcb_connect(meta_cb_instance);
     lcb_wait(meta_cb_instance);
 
@@ -562,9 +572,11 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   crst.version = 3;
   crst.v.v3.connstr = meta_connstr.c_str();
   crst.v.v3.type = LCB_TYPE_BUCKET;
+  crst.v.v3.passwd = settings->rbac_pass.c_str();
 
   lcb_create(&checkpoint_cb_instance, &crst);
-  lcb_set_auth(checkpoint_cb_instance, auth);
+  // TODO : Enable dynamic authentication when RBAC issue is resolved
+  //  lcb_set_auth(checkpoint_cb_instance, auth);
   lcb_connect(checkpoint_cb_instance);
   lcb_wait(checkpoint_cb_instance);
 

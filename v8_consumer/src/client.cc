@@ -85,6 +85,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       server_settings->host_addr.assign(payload->curr_host()->str());
       server_settings->kv_host_port.assign(payload->kv_host_port()->str());
 
+      // TODO : Remove rbac user and pass once RBAC issue is resolved
+      server_settings->rbac_user.assign(payload->rbac_user()->str());
+      server_settings->rbac_pass.assign(payload->rbac_pass()->str());
+
       LOG(logDebug) << "Loading app:" << app_name << std::endl;
 
       v8::V8::InitializeICU();

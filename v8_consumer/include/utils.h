@@ -45,6 +45,10 @@ struct Data {
   lcb_t meta_cb_instance;
   std::unordered_map<std::string, std::string> username_store;
   std::unordered_map<std::string, std::string> password_store;
+
+  // TODO : Remove the rbac user and pass once RBAC issue is resolved
+  std::string rbac_user;
+  std::string rbac_pass;
 };
 
 inline Data *UnwrapData(v8::Isolate *isolate) {
