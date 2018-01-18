@@ -254,10 +254,15 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 	return
 }
 
-func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg, rbacUser, rbacPass string,
+// TODO : Remove rbac user once RBAC issue is resolved
+func (c *Consumer) makeV8InitPayload(rbacUsername, rbacPassword, appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg string,
 	capacity, cronTimerPerDoc, executionTimeout, fuzzOffset, checkpointInterval int, enableRecursiveMutation, skipLcbBootstrap bool,
 	curlTimeout int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
+
+	// TODO : Remove rbacUser and rbacPass once RBAC issue is resolved
+	rbacUser := builder.CreateString(rbacUsername)
+	rbacPass := builder.CreateString(rbacPassword)
 
 	app := builder.CreateString(appName)
 	ch := builder.CreateString(currHost)
@@ -265,8 +270,6 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 	ep := builder.CreateString(eventingPort)
 	dcfg := builder.CreateString(depCfg)
 	khp := builder.CreateString(kvHostPort)
-	rUser := builder.CreateString(rbacUser)
-	rPass := builder.CreateString(rbacPass)
 
 	rec := make([]byte, 1)
 	flatbuffers.WriteBool(rec, enableRecursiveMutation)
@@ -276,14 +279,16 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 
 	payload.PayloadStart(builder)
 
+	// TODO : Remove the below 2 payloads once RBAC issue is resolved
+	payload.PayloadAddRbacUser(builder, rbacUser)
+	payload.PayloadAddRbacPass(builder, rbacPass)
+
 	payload.PayloadAddAppName(builder, app)
 	payload.PayloadAddCurrHost(builder, ch)
 	payload.PayloadAddEventingDir(builder, ed)
 	payload.PayloadAddCurrEventingPort(builder, ep)
 	payload.PayloadAddDepcfg(builder, dcfg)
 	payload.PayloadAddKvHostPort(builder, khp)
-	payload.PayloadAddRbacUser(builder, rUser)
-	payload.PayloadAddRbacPass(builder, rPass)
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
 	payload.PayloadAddCronTimersPerDoc(builder, int32(cronTimerPerDoc))
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))

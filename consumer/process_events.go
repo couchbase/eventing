@@ -175,7 +175,7 @@ func (c *Consumer) processEvents() {
 					var vbBlob vbucketKVBlob
 					var cas gocb.Cas
 
-					vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
+					vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
 
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
@@ -260,7 +260,7 @@ func (c *Consumer) processEvents() {
 				c.timerProcessingRWMutex.Unlock()
 
 				//Store the latest state of vbucket processing stats in the metadata bucket
-				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
+				vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
 
 				entry := OwnershipEntry{
 					AssignedWorker: c.ConsumerName(),
@@ -379,7 +379,7 @@ func (c *Consumer) processEvents() {
 	}
 }
 
-func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.FailoverLog) {
+func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 
 	logging.Infof("CRDP[%s:%s:%d] no. of vbs owned: %d",
 		c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
@@ -399,7 +399,7 @@ func (c *Consumer) startDcp(dcpConfig map[string]interface{}, flogs couchbase.Fa
 
 		vbuuid, _, _ := flog.Latest()
 
-		vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vbno)))
+		vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vbno)))
 		var vbBlob vbucketKVBlob
 		var start uint64
 		var cas gocb.Cas
@@ -543,7 +543,7 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() {
 func (c *Consumer) clearUpOnwershipInfoFromMeta(vb uint16) {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
-	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
+	vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 	vbBlob.AssignedDocIDTimerWorker = ""
@@ -598,7 +598,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 	dcpFeed, ok := c.kvHostDcpFeedMap[vbKvAddr]
 	if !ok {
 		feedName := couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + vbKvAddr + "_" + c.workerName)
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, dcpConfig, vbKvAddr)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, vbKvAddr)
 
 		dcpFeed = c.kvHostDcpFeedMap[vbKvAddr]
 

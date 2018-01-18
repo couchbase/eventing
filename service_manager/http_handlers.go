@@ -253,10 +253,6 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getLocalDebugURL(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
 	values := r.URL.Query()
 	appName := values["name"][0]
 
@@ -1273,6 +1269,30 @@ func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Requ
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
+func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
+		return
+	}
+
+	var username, password string
+	util.Retry(util.NewFixedBackoff(time.Second), util.GetCredsCallback, string(data), &username, &password)
+
+	creds := credsInfo{Username: username, Password: password}
+	response, err := json.Marshal(creds)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%v", string(response))
+}
+
 func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
 	creds, err := cbauth.AuthWebCreds(r)
 	if err != nil || creds == nil {
@@ -1698,10 +1718,6 @@ func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.CleanupEventing, r, nil)
 
-	err := util.RecursiveDelete(metakvEventingPath)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "{\"error\":\"Failed to purge eventing artifacts from metakv, err: %v\"}", err)
-		return
-	}
+	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvAppsPath)
+	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvTempAppsPath)
 }

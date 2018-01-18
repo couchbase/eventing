@@ -74,13 +74,15 @@ static void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
 }
 
 Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
-               const char *alias, std::string rbac_user, std::string rbac_pass)
+               const char *alias)
     : bucket_name(bname), endpoint(ep), bucket_alias(alias), worker(w) {
   isolate_ = w->GetIsolate();
   context_.Reset(isolate_, w->context_);
 
-  std::string connstr = "couchbase://" + endpoint + "/" + bucket_name +
-                        "?username=" + rbac_user + "&select_bucket=true";
+  // TODO : Remove rbac user once RBAC issue is resolved
+  auto rbac_user = UnwrapData(isolate_)->rbac_user;
+  auto connstr = "couchbase://" + endpoint + "/" + bucket_name +
+                 "?username=" + rbac_user + "&select_bucket=true";
 
   LOG(logInfo) << "Bucket: connstr " << connstr << std::endl;
 
@@ -91,9 +93,19 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
   crst.version = 3;
   crst.v.v3.connstr = connstr.c_str();
   crst.v.v3.type = LCB_TYPE_BUCKET;
+
+  // TODO : Remove rbac pass once RBAC issue is resolved
+  auto rbac_pass = UnwrapData(isolate_)->rbac_pass;
   crst.v.v3.passwd = rbac_pass.c_str();
 
   lcb_create(&bucket_lcb_obj, &crst);
+
+  // TODO : Enable dynamic auth once RBAC issue is resolved
+  //  auto auth = lcbauth_new();
+  //  lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
+  //  lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
+  //  lcb_set_auth(bucket_lcb_obj, auth);
+
   lcb_connect(bucket_lcb_obj);
   lcb_wait(bucket_lcb_obj);
 

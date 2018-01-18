@@ -66,6 +66,7 @@ type statusCodes struct {
 	errNoEventingNodes   statusBase
 	errSaveConfig        statusBase
 	errGetConfig         statusBase
+	errGetCreds          statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
@@ -105,6 +106,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errNoEventingNodes:   statusBase{"ERR_NO_EVENTING_NODES_FOUND", 32},
 		errSaveConfig:        statusBase{"ERR_SAVE_CONFIG", 33},
 		errGetConfig:         statusBase{"ERR_GET_CONFIG", 34},
+		errGetCreds:          statusBase{"ERR_GET_CREDS", 35},
 	}
 
 	errors := []errorPayload{
@@ -280,6 +282,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errGetConfig.Name,
 			Code:        m.statusCodes.errGetConfig.Code,
 			Description: "Failed to get config from metakv",
+		},
+		{
+			Name:        m.statusCodes.errGetCreds.Name,
+			Code:        m.statusCodes.errGetCreds.Code,
+			Description: "Failed to get credentials from cbauth",
 		},
 	}
 

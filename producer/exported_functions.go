@@ -4,11 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/dcp"
+	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -217,7 +223,7 @@ func (p *Producer) SignalBootstrapFinish() {
 func (p *Producer) SignalCheckpointBlobCleanup() {
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
+		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, vbKey)
 	}
 
@@ -243,16 +249,6 @@ func (p *Producer) WorkerVbMap() map[string][]uint16 {
 	p.RLock()
 	defer p.RUnlock()
 	return p.workerVbucketMap
-}
-
-// RbacUser returns the rbac user supplied as part of app settings
-func (p *Producer) RbacUser() string {
-	return p.rbacUser
-}
-
-// RbacPass returns the rbac password supplied as part of app settings
-func (p *Producer) RbacPass() string {
-	return p.rbacPass
 }
 
 // PauseProducer pauses the execution of Eventing.Producer and corresponding Eventing.Consumer instances
@@ -372,7 +368,7 @@ func (p *Producer) vbDistributionStats() {
 	vbBlob := make(map[string]interface{})
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
+		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
 
 		if _, ok := vbBlob["vb_id"]; !ok {
@@ -437,7 +433,7 @@ func (p *Producer) getSeqsProcessed() {
 	vbBlob := make(map[string]interface{})
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
+		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
 
 		p.statsRWMutex.Lock()
@@ -474,4 +470,187 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 	}
 
 	return producerLevelProgress
+}
+
+// PurgeAppLog cleans up application log files
+func (p *Producer) PurgeAppLog() {
+	d, err := os.Open(p.eventingDir)
+	if err != nil {
+		logging.Errorf("PRDR[%s:%d] Failed to open eventingDir: %v while trying to purge app logs, err: %v",
+			p.appName, p.LenRunningConsumers(), p.eventingDir, err)
+		return
+	}
+	defer d.Close()
+
+	names, err := d.Readdirnames(-1)
+	if err != nil {
+		logging.Errorf("PRDR[%s:%d] Failed list contents of eventingDir: %v, err: %v",
+			p.appName, p.LenRunningConsumers(), p.eventingDir, err)
+		return
+	}
+
+	prefix := fmt.Sprintf("%s.log", p.app.AppName)
+	for _, name := range names {
+		if strings.HasPrefix(name, prefix) {
+			err = os.RemoveAll(filepath.Join(p.eventingDir, name))
+			if err != nil {
+				logging.Errorf("PRDR[%s:%d] Failed to remove app log: %v, err: %v",
+					p.appName, p.LenRunningConsumers(), name, err)
+			}
+		}
+	}
+}
+
+// CleanupMetadataBucket clears up all application related artifacts from
+// metadata bucket post undeploy
+func (p *Producer) CleanupMetadataBucket() {
+	logPrefix := "Producer::CleanupMetadataBucket"
+
+	util.Retry(util.NewFixedBackoff(time.Second), getKVNodesAddressesOpCallback, p)
+
+	kvNodeAddrs := p.getKvNodeAddrs()
+
+	var b *couchbase.Bucket
+	var dcpFeed *couchbase.DcpFeed
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), commonConnectBucketOpCallback, p, &b)
+
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startFeedCallback, p, &b, &dcpFeed, kvNodeAddrs)
+	defer dcpFeed.Close()
+
+	logging.Infof("%s [%s:%d] Started up dcpFeed to cleanup artifacts from metadata bucket: %v",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket)
+
+	var vbSeqNos map[uint16]uint64
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), dcpGetSeqNosCallback, p, &dcpFeed, &vbSeqNos)
+
+	vbs := make([]uint16, 0)
+	for vb := range vbSeqNos {
+		vbs = append(vbs, vb)
+	}
+
+	sort.Sort(util.Uint16Slice(vbs))
+
+	logging.Infof("%s [%s:%d] Going to start DCP streams from metadata bucket: %v, vbs len: %v dump: %v",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, len(vbs), util.Condense(vbs))
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	rw := &sync.RWMutex{}
+	stopCh := make(chan struct{}, 1)
+	receivedVbSeqNos := make(map[uint16]uint64)
+
+	go func(b *couchbase.Bucket, dcpFeed *couchbase.DcpFeed, wg *sync.WaitGroup,
+		stopCh chan struct{}, receivedVbSeqNos map[uint16]uint64, rw *sync.RWMutex) {
+
+		defer wg.Done()
+
+		prefix := fmt.Sprintf("%s::", p.appName)
+		vbBlobPrefix := fmt.Sprintf("%s::vb::", p.appName)
+
+		for {
+			select {
+			case <-stopCh:
+				logging.Infof("%s [%s:%d] Exiting cron timer cleanup routine, mutations till high vb seqnos received",
+					logPrefix, p.appName, p.LenRunningConsumers())
+				return
+
+			case e, ok := <-dcpFeed.C:
+				if ok == false {
+					return
+				}
+
+				rw.Lock()
+				receivedVbSeqNos[e.VBucket] = e.Seqno
+				rw.Unlock()
+
+				switch e.Opcode {
+				case mcd.DCP_MUTATION:
+					docID := string(e.Key)
+					if strings.HasPrefix(docID, prefix) || strings.HasPrefix(docID, vbBlobPrefix) {
+						util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, docID)
+					}
+				default:
+				}
+			}
+		}
+	}(b, dcpFeed, &wg, stopCh, receivedVbSeqNos, rw)
+
+	var flogs couchbase.FailoverLog
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, p, &b, &flogs, vbs)
+
+	start, snapStart, snapEnd := uint64(0), uint64(0), uint64(0xFFFFFFFFFFFFFFFF)
+	flags := uint32(0)
+	end := uint64(0xFFFFFFFFFFFFFFFF)
+
+	logging.Infof("%s [%s:%d] Going to start DCP streams from metadata bucket: %v, vbs len: %v dump: %v",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, len(vbs), util.Condense(vbs))
+
+	for vb, flog := range flogs {
+		vbuuid, _, _ := flog.Latest()
+
+		logging.Debugf("%s [%s:%d] vb: %v starting DCP feed",
+			logPrefix, p.appName, p.LenRunningConsumers(), vb)
+
+		opaque := uint16(vb)
+		err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
+		if err != nil {
+			logging.Errorf("%s [%s:%d] Failed to stream vb: %v",
+				logPrefix, p.appName, p.LenRunningConsumers(), vb)
+		}
+	}
+
+	ticker := time.NewTicker(10 * time.Second)
+
+	wg.Add(1)
+
+	go func(wg *sync.WaitGroup, stopCh chan struct{}) {
+		defer wg.Done()
+
+		for {
+			select {
+			case <-ticker.C:
+				receivedVbs := make([]uint16, 0)
+				rw.RLock()
+				for vb := range receivedVbSeqNos {
+					receivedVbs = append(receivedVbs, vb)
+				}
+				rw.RUnlock()
+
+				if len(receivedVbs) < len(vbs) {
+					logging.Debugf("%s [%s:%d] len of receivedVbs: %v len of vbs: %v",
+						logPrefix, p.appName, p.LenRunningConsumers(), len(receivedVbs), len(vbs))
+					continue
+				}
+
+				rw.RLock()
+				for vb, seqNo := range vbSeqNos {
+					if receivedVbSeqNos[vb] < seqNo {
+						rw.RUnlock()
+						break
+					}
+				}
+				rw.RUnlock()
+
+				stopCh <- struct{}{}
+				logging.Infof("%s [%s:%d] Sent message on stop cron timer cleanup routine",
+					logPrefix, p.appName, p.LenRunningConsumers())
+				ticker.Stop()
+				return
+			}
+		}
+	}(&wg, stopCh)
+
+	wg.Wait()
+}
+
+// TODO : Remove these methods once RBAC issue is resolved
+// RbacUser returns the rbac user supplied as part of app settings
+func (p *Producer) RbacUser() string {
+	return p.rbacUser
+}
+
+// RbacPass returns the rbac password supplied as part of app settings
+func (p *Producer) RbacPass() string {
+	return p.rbacPass
 }

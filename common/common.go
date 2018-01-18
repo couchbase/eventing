@@ -35,6 +35,7 @@ type EventingProducer interface {
 	Auth() string
 	CfgData() string
 	CleanupDeadConsumer(consumer EventingConsumer)
+	CleanupMetadataBucket()
 	ClearEventStats()
 	GetAppCode() string
 	GetDcpEventsRemainingToProcess() uint64
@@ -63,9 +64,8 @@ type EventingProducer interface {
 	NsServerNodeCount() int
 	PauseProducer()
 	PlannerStats() []*PlannerNodeVbMapping
+	PurgeAppLog()
 	PurgePlasmaRecords()
-	RbacUser() string
-	RbacPass() string
 	RebalanceTaskProgress() *RebalanceProgress
 	SignalBootstrapFinish()
 	SignalCheckpointBlobCleanup()
@@ -81,6 +81,10 @@ type EventingProducer interface {
 	VbEventingNodeAssignMap() map[uint16]string
 	WorkerVbMap() map[string][]uint16
 	WriteAppLog(log string)
+
+	// TODO : Remove this while removing RBAC
+	RbacUser() string
+	RbacPass() string
 }
 
 // EventingConsumer interface to export functions from eventing_consumer

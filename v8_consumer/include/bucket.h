@@ -12,23 +12,17 @@
 #ifndef BUCKET_H
 #define BUCKET_H
 
-#include <map>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <vector>
-
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 #include <libcouchbase/subdoc.h>
+#include <string>
+#include <vector>
 
 #include "v8worker.h"
 
 class Bucket {
 public:
-  Bucket(V8Worker *w, const char *bname, const char *ep, const char *alias,
-         std::string rbac_user, std::string rbac_pass);
+  Bucket(V8Worker *w, const char *bname, const char *ep, const char *alias);
   ~Bucket();
 
   bool Initialize(V8Worker *w);

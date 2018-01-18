@@ -159,11 +159,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 		return err
 	}
 
-	// Avoid printing rbac user credentials in log
-	sValue["rbacuser"] = "****"
-	sValue["rbacpass"] = "****"
-	sValue["rbacrole"] = "****"
-
 	logging.Infof("SSUP[%d] SettingsChangeCallback: path => %s value => %#v", len(s.runningProducers), path, sValue)
 
 	if value != nil {
@@ -291,7 +286,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						len(s.runningProducers), appName)
 					delete(s.deployedApps, appName)
 
-					s.cleanupProducer(appName, true)
+					s.cleanupProducer(appName)
 				}
 			}
 		}
@@ -361,10 +356,6 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 	}(p, s, appName, metakvAppHostPortsPath)
 
 	p.NotifyPrepareTopologyChange(s.keepNodes)
-
-	topologyChangeMsg := &common.TopologyChangeMsg{}
-	topologyChangeMsg.CType = common.StartRebalanceCType
-	p.NotifyTopologyChange(topologyChangeMsg)
 }
 
 // HandleSupCmdMsg handles control commands like app (re)deploy, settings update
@@ -390,21 +381,23 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 					s.assignVbucketsToOwn(addrs, currNodeAddr)
 
-					purgePlasmaStore := true
+					checkIfDeployed := true
 					if s.appDeploymentStatus[appName] == false && s.appProcessingStatus[appName] == false {
-						purgePlasmaStore = false
+						checkIfDeployed = false
 					}
 
-					s.appDeploymentStatus[appName] = false
-					s.appProcessingStatus[appName] = false
+					if checkIfDeployed {
+						s.appDeploymentStatus[appName] = false
+						s.appProcessingStatus[appName] = false
 
-					logging.Infof("SSUP[%d] App: %s Requested to delete app", len(s.runningProducers), appName)
-					delete(s.deployedApps, appName)
+						logging.Infof("SSUP[%d] App: %s Requested to delete app", len(s.runningProducers), appName)
+						delete(s.deployedApps, appName)
 
-					s.cleanupProducer(appName, purgePlasmaStore)
+						s.cleanupProducer(appName)
 
-					delete(s.appDeploymentStatus, appName)
-					delete(s.appProcessingStatus, appName)
+						delete(s.appDeploymentStatus, appName)
+						delete(s.appProcessingStatus, appName)
+					}
 				}(s)
 
 			case cmdAppLoad:
@@ -488,21 +481,23 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
 	}
 }
 
-func (s *SuperSupervisor) cleanupProducer(appName string, purgePlasmaStore bool) {
+func (s *SuperSupervisor) cleanupProducer(appName string) {
 	if p, ok := s.runningProducers[appName]; ok {
 		logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
 		p.NotifyInit()
 
 		p.SignalCheckpointBlobCleanup()
 
+		p.CleanupMetadataBucket()
+
 		s.superSup.Remove(s.producerSupervisorTokenMap[p])
 		delete(s.producerSupervisorTokenMap, p)
 
-		if purgePlasmaStore {
-			logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
-			p.PurgePlasmaRecords()
-			logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
-		}
+		logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
+		p.PurgePlasmaRecords()
+		logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
+
+		p.PurgeAppLog()
 
 		p.NotifySupervisor()
 		logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)

@@ -95,8 +95,8 @@ typedef struct server_settings_s {
   std::string eventing_port;
   std::string host_addr;
   std::string kv_host_port;
-  std::string rbac_pass;
   std::string rbac_user;
+  std::string rbac_pass;
 } server_settings_t;
 
 typedef struct handler_config_s {
@@ -254,5 +254,10 @@ private:
   v8::Platform *platform_;
   inspector::Agent *agent;
 };
+
+const char *GetUsername(void *cookie, const char *host, const char *port,
+                        const char *bucket);
+const char *GetPassword(void *cookie, const char *host, const char *port,
+                        const char *bucket);
 
 #endif

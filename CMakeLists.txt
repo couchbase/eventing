@@ -1,5 +1,5 @@
 PROJECT (eventing)
-SET(GOVERSION "1.7.3")
+SET(GOVERSION "1.7.6")
 ADD_SUBDIRECTORY(gen)
 ADD_SUBDIRECTORY(third_party/inspector)
 ADD_SUBDIRECTORY(v8_consumer)

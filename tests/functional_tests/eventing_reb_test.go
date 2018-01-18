@@ -605,9 +605,62 @@ func TestEventingRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 	rebalanceStop()
 	metaStateDump()
 
-	time.Sleep(10 * time.Second)
+	time.Sleep(30 * time.Second)
 
 	metaStateDump()
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9002", "eventing")
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}
+
+func TestEventingRebMultiStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update.js"
+
+	flushFunctionAndBucket(handler)
+	time.Sleep(5 * time.Second)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: rlOpsPSec,
+		count:   rlItemCount,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	for i := 0; i < 5; i++ {
+		addNodeFromRest("127.0.0.1:9001", "eventing")
+		rebalanceFromRest([]string{""})
+		time.Sleep(20 * time.Second)
+		rebalanceStop()
+		metaStateDump()
+
+		time.Sleep(10 * time.Second)
+
+		metaStateDump()
+	}
+
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()

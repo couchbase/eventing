@@ -80,6 +80,9 @@ type Producer struct {
 	uuid                   string
 	workerCount            int
 
+	// DCP config, as they need to be tunable
+	dcpConfig map[string]interface{}
+
 	// app log related configs
 	appLogPath     string
 	appLogMaxSize  int64
@@ -93,9 +96,6 @@ type Producer struct {
 	maxDeltaChainLen       int
 	maxPageItems           int
 	minPageItems           int
-
-	rbacUser string
-	rbacPass string
 
 	// Chan used to signal if Eventing.Producer has finished bootstrap
 	// i.e. started up all it's child routines
@@ -208,4 +208,8 @@ type Producer struct {
 	workerSupervisor *suptree.Supervisor
 
 	sync.RWMutex
+
+	// TODO : Remove rbacUser and rbacPass once the RBAC issue is resolved
+	rbacUser string
+	rbacPass string
 }

@@ -27,7 +27,7 @@ func (c *Consumer) reclaimVbOwnership(vb uint16) error {
 
 	c.doVbTakeover(vb)
 
-	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
+	vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 	if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
@@ -73,7 +73,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 			var cas gocb.Cas
 
 			for _, vb := range vbsRemainingToGiveUp {
-				vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
+				vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 				if vbBlob.NodeUUID != c.NodeUUID() && vbBlob.DCPStreamStatus == dcpStreamRunning {
@@ -145,13 +145,6 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 
 					select {
 					case <-c.stopVbOwnerGiveupCh:
-						// TODO: Reclaiming back of vb specific plasma store handles
-						roErr := c.reclaimVbOwnership(vb)
-						if roErr != nil {
-							logging.Errorf("CRVT[%s:giveup_r_%d:%s:%d] vb: %v reclaim of ownership failed, vbBlob dump: %#v",
-								c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob)
-						}
-
 						logging.Debugf("CRVT[%s:giveup_r_%d:%s:%d] Exiting vb ownership give-up routine, last vb handled: %v",
 							c.workerName, i, c.tcpPort, c.Pid(), vb)
 						return
@@ -218,8 +211,8 @@ retryStreamUpdate:
 			for _, vb := range vbsRemainingToOwn {
 				select {
 				case <-c.stopVbOwnerTakeoverCh:
-					logging.Debugf("CRVT[%s:takeover_r_%d:%s:%d] Exiting vb ownership takeover routine",
-						c.workerName, i, c.tcpPort, c.Pid())
+					logging.Debugf("CRVT[%s:takeover_r_%d:%s:%d] Exiting vb ownership takeover routine, next vb: %v",
+						c.workerName, i, c.tcpPort, c.Pid(), vb)
 					return
 				default:
 				}
@@ -265,7 +258,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
 
-	vbKey := fmt.Sprintf("%s_vb_%s", c.app.AppName, strconv.Itoa(int(vb)))
+	vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 

@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <ctime>
+#include <curl/curl.h>
 #include <iostream>
 #include <math.h>
 #include <sstream>
@@ -83,8 +84,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           payload->curr_eventing_port()->str());
       server_settings->host_addr.assign(payload->curr_host()->str());
       server_settings->kv_host_port.assign(payload->kv_host_port()->str());
-      server_settings->rbac_pass.assign(payload->rbac_pass()->str());
+
+      // TODO : Remove rbac user and pass once RBAC issue is resolved
       server_settings->rbac_user.assign(payload->rbac_user()->str());
+      server_settings->rbac_pass.assign(payload->rbac_pass()->str());
 
       LOG(logDebug) << "Loading app:" << app_name << std::endl;
 
@@ -680,6 +683,8 @@ int main(int argc, char **argv) {
 
   setupBreakpad(diag_dir);
 
+  curl_global_init(CURL_GLOBAL_ALL);
+
   setAppName(appname);
   setWorkerID(worker_id);
   AppWorker *worker = AppWorker::GetAppWorker();
@@ -689,4 +694,6 @@ int main(int argc, char **argv) {
   } else {
     worker->InitTcpSock(appname, "127.0.0.1", worker_id, batch_size, port);
   }
+
+  curl_global_cleanup();
 }

@@ -54,6 +54,7 @@ SET(EVENTING_SOURCES
     src/utils.cc
     src/function_templates.cc
     src/breakpad.cc
+    src/comm.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc)
 
 SET(EVENTING_LIBRARIES

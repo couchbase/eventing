@@ -28,14 +28,14 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 	cronTimersPerDoc, timerProcessingPoolSize, cppWorkerThrCount, vbOwnershipGiveUpRoutineCount int,
 	curlTimeout int64, vbOwnershipTakeoverRoutineCount, xattrEntryPruneThreshold int, workerQueueCap int64,
 	bucket, eventingAdminPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
-	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
+	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig, dcpConfig map[string]interface{},
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
 	socketTimeout time.Duration, diagDir string, numVbuckets, fuzzOffset int) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
 		app:                             app,
-		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpGenChanSize),
+		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpConfig["dataChanSize"].(int)),
 		bucket:                          bucket,
 		cbBucket:                        b,
 		checkpointInterval:              checkpointInterval,
@@ -47,12 +47,13 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		cronTimersPerDoc:                cronTimersPerDoc,
 		curlTimeout:                     curlTimeout,
 		connMutex:                       &sync.RWMutex{},
+		dcpConfig:                       dcpConfig,
 		dcpFeedCancelChs:                make([]chan struct{}, 0),
 		dcpFeedVbMap:                    make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:               streamBoundary,
 		debuggerStarted:                 false,
 		diagDir:                         diagDir,
-		docTimerEntryCh:                 make(chan *byTimerEntry, timerChanSize),
+		docTimerEntryCh:                 make(chan *byTimerEntry, dcpConfig["genChanSize"].(int)),
 		enableRecursiveMutation:         enableRecursiveMutation,
 		eventingAdminPort:               eventingAdminPort,
 		eventingDir:                     eventingDir,
@@ -66,11 +67,11 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		lcbInstCapacity:                 lcbInstCapacity,
 		logLevel:                        logLevel,
 		msgProcessedRWMutex:             &sync.RWMutex{},
-		nonDocTimerEntryCh:              make(chan timerMsg, timerChanSize),
+		nonDocTimerEntryCh:              make(chan timerMsg, dcpConfig["genChanSize"].(int)),
 		nonDocTimerStopCh:               make(chan struct{}, 1),
 		numVbuckets:                     numVbuckets,
 		opsTimestamp:                    time.Now(),
-		plasmaStoreCh:                   make(chan *plasmaStoreEntry, timerChanSize),
+		plasmaStoreCh:                   make(chan *plasmaStoreEntry, dcpConfig["genChanSize"].(int)),
 		plasmaStoreStopCh:               make(chan struct{}, 1),
 		producer:                        p,
 		restartVbDcpStreamTicker:        time.NewTicker(restartVbDcpStreamTickInterval),
@@ -167,7 +168,7 @@ func (c *Consumer) Serve() {
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), gocbConnectMetaBucketCallback, c)
 
 	var flogs couchbase.FailoverLog
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs, dcpConfig)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs)
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
 	logging.Infof("V8CR[%s:%s:%s:%d] vbnos len: %d",
@@ -186,7 +187,7 @@ func (c *Consumer) Serve() {
 		feedName = couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + kvHostPort + "_" + c.workerName)
 
 		c.hostDcpFeedRWMutex.Lock()
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, dcpConfig, kvHostPort)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, kvHostPort)
 
 		cancelCh := make(chan struct{}, 1)
 		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
@@ -204,7 +205,7 @@ func (c *Consumer) Serve() {
 	c.docCurrTimer = time.Now().UTC().Format(time.RFC3339)
 	c.docNextTimer = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
-	c.startDcp(dcpConfig, flogs)
+	c.startDcp(flogs)
 
 	// Initialises timer processing worker instances
 	c.vbTimerProcessingWorkerAssign(true)
@@ -251,8 +252,9 @@ func (c *Consumer) HandleV8Worker() {
 		currHost = "127.0.0.1"
 	}
 
-	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
-		c.kvNodes[0], c.producer.CfgData(), c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity,
+	// TODO : Remove rbac user once RBAC issue is resolved
+	payload, pBuilder := c.makeV8InitPayload(c.producer.RbacUser(), c.producer.RbacPass(), c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
+		c.kvNodes[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)
 	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",

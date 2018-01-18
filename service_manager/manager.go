@@ -78,9 +78,6 @@ func (m *ServiceMgr) initService() {
 		}
 	}(m)
 
-	// TODO: Rest endpoints are growing big, need to document in source code purpose of each
-	// Eventually it would work as documentation.
-
 	// Internal REST APIs
 	http.HandleFunc("/cleanupEventing", m.cleanupEventing)
 	http.HandleFunc("/clearEventStats", m.clearEventStats)
@@ -94,6 +91,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getAppTempStore/", m.getTempStoreHandler)
 	http.HandleFunc("/getAggEventsPSec", m.getAggEventsPSec)
 	http.HandleFunc("/getConsumerPids", m.getEventingConsumerPids)
+	http.HandleFunc("/getCreds", m.getCreds)
 	http.HandleFunc("/getDcpEventsRemaining", m.getDcpEventsRemaining)
 	http.HandleFunc("/getDebuggerUrl/", m.getDebuggerURL)
 	http.HandleFunc("/getDeployedApps", m.getDeployedApps)
