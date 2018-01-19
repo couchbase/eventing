@@ -40,6 +40,11 @@ typedef struct resp_msg_s {
   std::string msg;
 } resp_msg_t;
 
+typedef union {
+  sockaddr_in sock4;
+  sockaddr_in6 sock6;
+} sockaddr_in46;
+
 class AppWorker {
 public:
   static AppWorker *GetAppWorker();
@@ -74,7 +79,8 @@ private:
 
   uv_connect_t conn;
   uv_stream_t *conn_handle;
-  struct sockaddr_in server_sock;
+
+  sockaddr_in46 server_sock;
 
   bool main_loop_running;
   std::string app_name;

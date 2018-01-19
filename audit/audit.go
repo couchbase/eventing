@@ -15,23 +15,25 @@ package audit
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 
 	"github.com/couchbase/eventing/gen/auditevent"
 	"github.com/couchbase/eventing/logging"
-	util "github.com/couchbase/goutils/go-cbaudit"
+	"github.com/couchbase/eventing/util"
+	goadt "github.com/couchbase/goutils/go-cbaudit"
 )
 
 type AuditEntry struct {
-	util.GenericFields
+	goadt.GenericFields
 	Context string `json:"context"`
 }
 
-var auditService *util.AuditSvc
+var auditService *goadt.AuditSvc
 
 func Init(restPort string) error {
-	clusterURL := fmt.Sprintf("http://127.0.0.1:%s", restPort)
-	svc, err := util.NewAuditSvc(clusterURL)
+	clusterURL := "http://" + net.JoinHostPort(util.Localhost(), restPort)
+	svc, err := goadt.NewAuditSvc(clusterURL)
 	if err != nil {
 		logging.Errorf("Audit initialization failed: %v", err)
 		return err
@@ -43,7 +45,7 @@ func Init(restPort string) error {
 func Log(event auditevent.AuditEvent, req *http.Request, context interface{}) error {
 	logging.Tracef("Audit event %v with context %v on request %v", event, context, req)
 	entry := AuditEntry{
-		GenericFields: util.GetAuditBasicFields(req),
+		GenericFields: goadt.GetAuditBasicFields(req),
 		Context:       fmt.Sprintf("%v", context),
 	}
 	if auditService == nil {

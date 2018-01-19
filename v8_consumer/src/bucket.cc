@@ -10,6 +10,7 @@
 // permissions and limitations under the License.
 
 #include "bucket.h"
+#include "utils.h"
 
 #define LCB_NO_DEPR_CXX_CTORS
 #undef NDEBUG
@@ -71,6 +72,7 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
   auto rbac_user = UnwrapData(isolate_)->rbac_user;
   auto connstr = "couchbase://" + endpoint + "/" + bucket_name +
                  "?username=" + rbac_user + "&select_bucket=true";
+  if (IsIPv6()) connstr += "&ipv6=allow";
 
   LOG(logInfo) << "Bucket: connstr " << connstr << std::endl;
 
@@ -184,6 +186,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
 
   // Throw an exception in JavaScript if the bucket get call failed.
   if (result.rc != LCB_SUCCESS) {
+    LOG(logTrace) << "LCB_GET call failed: " << result.rc << std::endl;
     auto w = UnwrapData(info.GetIsolate())->v8worker;
     w->AddLcbException(static_cast<int>(result.rc));
     bucket_op_exception_count++;
@@ -336,6 +339,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
   // Throw an exception in JavaScript if the bucket set call failed.
   if (sres.rc != LCB_SUCCESS) {
+    LOG(logTrace) << "LCB_STORE call failed: " << sres.rc << std::endl;
     auto w = UnwrapData(info.GetIsolate())->v8worker;
     w->AddLcbException(static_cast<int>(sres.rc));
     bucket_op_exception_count++;
@@ -371,6 +375,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
 
   // Throw an exception in JavaScript if the bucket delete call failed.
   if (result.rc != LCB_SUCCESS) {
+    LOG(logTrace) << "LCB_REMOVE call failed: " << result.rc << std::endl;
     auto w = UnwrapData(info.GetIsolate())->v8worker;
     w->AddLcbException(static_cast<int>(result.rc));
     bucket_op_exception_count++;

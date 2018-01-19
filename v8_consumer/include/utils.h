@@ -83,4 +83,9 @@ std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch);
 
 std::vector<std::string> split(const std::string &s, char delimiter);
 
+std::string Localhost(bool isUrl);
+void SetIPv6(bool is6);
+bool IsIPv6();
+std::string JoinHostPort(const std::string &host, const std::string &port);
+
 #endif

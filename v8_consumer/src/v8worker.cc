@@ -46,14 +46,14 @@ enum RETURN_CODE {
 
 const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket) {
-  LOG(logInfo) << "Getting username for " << host << ":" << port << std::endl;
+  LOG(logInfo) << "Getting username for host " << host << " port " << port << std::endl;
 
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = std::string(host) + ":" + std::string(port);
+  auto endpoint = JoinHostPort(host, port);
   auto info = comm->GetCreds(endpoint);
   if (info.is_error) {
-    LOG(logError) << "Failed to get username for " << host << ":" << port
+    LOG(logError) << "Failed to get username for " << endpoint
                   << " err: " << info.error << std::endl;
   }
 
@@ -67,14 +67,14 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
 
 const char *GetPassword(void *cookie, const char *host, const char *port,
                         const char *bucket) {
-  LOG(logInfo) << "Getting password for " << host << ":" << port << std::endl;
+  LOG(logInfo) << "Getting password for host " << host << " port " << port << std::endl;
 
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = std::string(host) + ":" + std::string(port);
+  auto endpoint = JoinHostPort(host, port);
   auto info = comm->GetCreds(endpoint);
   if (info.is_error) {
-    LOG(logError) << "Failed to get password for " << host << ":" << port
+    LOG(logError) << "Failed to get password for " << endpoint
                   << " err: " << info.error << std::endl;
   }
 
@@ -324,6 +324,11 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                  config->metadata_bucket + "?username=" + settings->rbac_user +
                  "&select_bucket=true";
 
+  if (IsIPv6()) {
+    connstr += "&ipv6=allow";
+    meta_connstr += "&ipv6=allow";
+  }
+
   if (!h_config->skip_lcb_bootstrap) {
     conn_pool = new ConnectionPool(isolate_, h_config->lcb_inst_capacity,
                                    settings->kv_host_port, cb_source_bucket);
@@ -509,7 +514,10 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     lcb_create(&cb_instance, &crst);
     // TODO : Enable dynamic authentication when RBAC issue is resolved
     //    lcb_set_auth(cb_instance, auth);
-    lcb_connect(cb_instance);
+    LOG(logDebug) << "Timer is called" << std::endl;
+
+    lcb_error_t rc = lcb_connect(cb_instance);
+    LOG(logDebug) << "LCB_CONNECT to " << cb_instance << " returns " << rc << std::endl;
     lcb_wait(cb_instance);
 
     lcb_install_callback3(cb_instance, LCB_CALLBACK_GET, get_callback);

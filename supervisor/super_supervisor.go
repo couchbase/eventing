@@ -361,7 +361,7 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 
 	go func(p *producer.Producer, s *SuperSupervisor, appName, metakvAppHostPortsPath string) {
 		var err error
-		p.ProducerListener, err = net.Listen("tcp", "127.0.0.1:0")
+		p.ProducerListener, err = net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
 		if err != nil {
 			logging.Fatalf("SSUP[%d] Listen failed with error: %v", len(s.runningProducers), err)
 			return

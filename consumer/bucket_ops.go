@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"fmt"
+	"net"
 	"runtime/debug"
 
 	"github.com/couchbase/eventing/dcp"
@@ -27,7 +28,9 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 
 	connStr := fmt.Sprintf("couchbase://%s", c.kvNodes[0])
-
+	if util.IsIPv6() {
+		connStr += "?ipv6=allow"
+	}
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
 		logging.Errorf("CRBO[%s:%d] GOCB Connect to cluster %s failed, err: %v",
@@ -59,7 +62,9 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 
 	connStr := fmt.Sprintf("couchbase://%s", c.kvNodes[0])
-
+	if util.IsIPv6() {
+		connStr += "?ipv6=allow"
+	}
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
 		logging.Errorf("CRBO[%s:%d] GOCB Connect to cluster %s failed, err: %v",
@@ -91,7 +96,7 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	b := args[1].(**couchbase.Bucket)
 
-	hostPortAddr := fmt.Sprintf("127.0.0.1:%s", c.producer.GetNsServerPort())
+	hostPortAddr := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
 
 	var err error
 	*b, err = util.ConnectBucket(hostPortAddr, "default", c.bucket)

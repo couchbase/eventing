@@ -142,10 +142,9 @@ CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
 Communicator::Communicator(const std::string &host_ip,
                            const std::string &host_port, v8::Isolate *isolate)
     : isolate(isolate) {
-  parse_query_url = "http://" + host_ip + ":" + host_port + "/parseQuery";
-  get_creds_url = "http://" + host_ip + ":" + host_port + "/getCreds";
-  get_named_params_url =
-      "http://" + host_ip + ":" + host_port + "/getNamedParams";
+  parse_query_url = "http://" + JoinHostPort(host_ip, host_port) + "/parseQuery";
+  get_creds_url = "http://" + JoinHostPort(host_ip, host_port) + "/getCreds";
+  get_named_params_url = "http://" + JoinHostPort(host_ip, host_port) + "/getNamedParams";
 }
 
 std::string CURLClient::Decode(const std::string &encoded_str) {

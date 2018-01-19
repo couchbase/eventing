@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
 )
 
@@ -208,7 +208,7 @@ func (c *Consumer) GetLcbExceptionsStats() map[string]uint64 {
 
 // SpawnCompilationWorker bring up a CPP worker to compile the user supplied handler code
 func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventingPort string) (*common.CompileStatus, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
 	if err != nil {
 		logging.Errorf("CREF[%s:%s:%s:%d] Compilation worker: Failed to listen on tcp port, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
@@ -234,12 +234,18 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 		connectedCh <- struct{}{}
 	}(listener, connectedCh)
 
-	c.tcpPort = strings.Split(listener.Addr().String(), ":")[1]
-	var pid int
+	_, c.tcpPort, err = net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		logging.Errorf("CREF[%s:%s:%s:%d] Failed to parse address, err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+	}
 
-	go func(pid int, appName string) {
+	var pid int
+	go func() {
 		cmd := exec.Command("eventing-consumer", appName, "af_inet", c.tcpPort,
-			fmt.Sprintf("worker_%s", appName), "1", "8096")
+			fmt.Sprintf("worker_%s", appName), "1",
+			os.TempDir(), util.GetIPMode(),
+			"validate") // this parameter is not read, for tagging
 
 		outPipe, err := cmd.StdoutPipe()
 		if err != nil {
@@ -254,6 +260,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 		if err != nil {
 			logging.Errorf("CREF[%s:%s:%s:%d] Failed to spawn compilation worker, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+			return
 		} else {
 			pid = cmd.Process.Pid
 			logging.Infof("CREF[%s:%s:%s:%d] compilation worker launched",
@@ -275,9 +282,12 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			}
 		}(bufOut)
 
-		cmd.Wait()
+		err = cmd.Wait()
 
-	}(pid, appName)
+		logging.Infof("CREF[%s:%s:%s:%d] compilation worker exited with status %v",
+			c.app.AppName, c.workerName, c.tcpPort, pid, err)
+
+	}()
 	<-connectedCh
 	c.sockReader = bufio.NewReader(c.conn)
 
@@ -285,7 +295,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 	// Framing bare minimum V8 worker init payload
 	// TODO : Remove rbac user once RBAC issue is resolved
-	payload, pBuilder := c.makeV8InitPayload("", "", appName, "127.0.0.1", "", eventingPort,
+	payload, pBuilder := c.makeV8InitPayload("", "", appName, util.Localhost(), "", eventingPort,
 		"", appContent, 5, 10, 1, 30, 10*1000, true, true, 500)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
@@ -307,6 +317,9 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			ps.Kill()
 		}
 	}
+
+	logging.Infof("CREF[%s:%s:%s:%d] compilation status %v",
+		c.app.AppName, c.workerName, c.tcpPort, pid, c.compileInfo)
 
 	return c.compileInfo, nil
 }

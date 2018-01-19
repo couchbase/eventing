@@ -3,10 +3,10 @@ package consumer
 import (
 	"fmt"
 	"hash/crc32"
+	"net"
 	"os"
 	"runtime/debug"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -248,12 +248,14 @@ func (c *Consumer) HandleV8Worker() {
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-	var currHost string
+	currHost := util.Localhost()
 	h := c.HostPortAddr()
 	if h != "" {
-		currHost = strings.Split(h, ":")[0]
-	} else {
-		currHost = "127.0.0.1"
+		var err error
+		currHost, _, err = net.SplitHostPort(h)
+		if err != nil {
+			logging.Errorf("Unable to split hostport %v: %v", h, err)
+		}
 	}
 
 	// TODO : Remove rbac user once RBAC issue is resolved

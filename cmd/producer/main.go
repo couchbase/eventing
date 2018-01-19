@@ -7,10 +7,13 @@ import (
 	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/supervisor"
+	"github.com/couchbase/eventing/util"
 )
 
 func main() {
 	initFlags()
+
+	util.SetIPv6(flags.ipv6)
 
 	audit.Init(flags.restPort)
 

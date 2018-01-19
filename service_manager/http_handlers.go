@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -1007,7 +1008,7 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	appName := app.Name
 	path := metakvTempAppsPath + appName
-	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
 	logging.Infof("Saving handler to temporary store: %v", appName)
 
 	cinfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
@@ -1123,7 +1124,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
 	cinfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
 	if err != nil {
 		info.Code = m.statusCodes.errConnectNsServer.Code

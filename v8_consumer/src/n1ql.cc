@@ -10,6 +10,7 @@
 // permissions and limitations under the License.
 
 #include "n1ql.h"
+#include "utils.h"
 
 ConnectionPool::ConnectionPool(v8::Isolate *isolate, int capacity,
                                std::string cb_kv_endpoint,
@@ -20,6 +21,7 @@ ConnectionPool::ConnectionPool(v8::Isolate *isolate, int capacity,
   auto rbac_user = UnwrapData(isolate)->rbac_user;
   conn_str = "couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket +
              "?username=" + rbac_user + "&select_bucket=true";
+  if (IsIPv6()) conn_str += "&ipv6=allow";
 }
 
 // Creates and adds one lcb instance into the pool.

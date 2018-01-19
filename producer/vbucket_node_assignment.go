@@ -3,6 +3,7 @@ package producer
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"sort"
 	"time"
 
@@ -113,7 +114,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 
 func (p *Producer) initWorkerVbMap() {
 
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
+	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
 	eventingNodeAddr, err := util.CurrentEventingNodeAddress(p.auth, hostAddress)
 	if err != nil {

@@ -76,8 +76,9 @@ std::string Transpiler::Transpile(const std::string &handler_code,
   v8::String::Utf8Value utf8result(result);
 
   std::string src_transpiled = *utf8result;
-  src_transpiled += "\n//# sourceMappingURL=http://" + host_addr + ":" +
-                    eventing_port + "/debugging/" + src_map_name;
+  src_transpiled += "\n//# sourceMappingURL=http://"
+                   + JoinHostPort(host_addr, eventing_port)
+                   + "/debugging/" + src_map_name;
 
   return src_transpiled;
 }

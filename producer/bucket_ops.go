@@ -2,6 +2,7 @@ package producer
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
@@ -13,7 +14,7 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 	b := args[1].(**couchbase.Bucket)
 
-	hostPortAddr := fmt.Sprintf("127.0.0.1:%s", p.GetNsServerPort())
+	hostPortAddr := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
 
 	var err error
 	*b, err = util.ConnectBucket(hostPortAddr, "default", p.metadatabucket)
@@ -81,6 +82,9 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 
 	connStr := fmt.Sprintf("couchbase://%s", p.KvHostPorts()[0])
+	if util.IsIPv6() {
+		connStr += "?ipv6=allow"
+	}
 
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {

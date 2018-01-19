@@ -16,5 +16,6 @@ rm -rf "$top/build/gotmp"
 mkdir -p "$top/build/gotmp"
 cd cmd/producer
 set -e
-go build -ldflags '-extldflags "-Wl,-rpath,@executable_path/../lib"' -tags 'jemalloc enterprise' -o ~/install/bin/eventing-producer
+go build -ldflags '-s -extldflags "-Wl,-rpath,@executable_path/../lib"' -tags 'jemalloc enterprise' -o $top/install/bin/eventing-producer
+killall eventing-producer
 echo "Done"

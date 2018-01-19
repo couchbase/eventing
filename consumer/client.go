@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 func newClient(consumer *Consumer, appName, tcpPort, workerName, eventingAdminPort string) *client {
@@ -22,7 +23,8 @@ func newClient(consumer *Consumer, appName, tcpPort, workerName, eventingAdminPo
 
 func (c *client) Serve() {
 	c.cmd = exec.Command("eventing-consumer", c.appName, c.consumerHandle.ipcType, c.tcpPort,
-		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.consumerHandle.diagDir,
+		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
+		c.consumerHandle.diagDir, util.GetIPMode(),
 		c.eventingPort) // this parameter is not read, for tagging
 
 	outPipe, err := c.cmd.StdoutPipe()

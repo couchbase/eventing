@@ -75,7 +75,7 @@ func init() {
 	appCode := string(config.AppCode())
 
 	listener, _ := net.Listen("tcp", "127.0.0.1:20000")
-	port := strings.Split(listener.Addr().String(), ":")[1]
+	_, port, _ := net.SplitHostPort(listener.Addr().String())
 
 	c = &Consumer{}
 	c.vbProcessingStats = newVbProcessingStats("test_app1", c.numVbuckets)
