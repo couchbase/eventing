@@ -15,34 +15,28 @@ import (
 	"github.com/couchbase/eventing/service_manager"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/plasma"
 )
 
 // NewSuperSupervisor creates the super_supervisor handle
 func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string) *SuperSupervisor {
 	s := &SuperSupervisor{
-		appDeploymentStatus:          make(map[string]bool),
-		appProcessingStatus:          make(map[string]bool),
-		CancelCh:                     make(chan struct{}, 1),
-		deployedApps:                 make(map[string]string),
-		adminPort:                    adminPort,
-		diagDir:                      diagDir,
-		eventingDir:                  eventingDir,
-		keepNodes:                    make([]string, 0),
-		kvPort:                       kvPort,
-		plasmaCloseSignalMap:         make(map[uint16]int),
+		appDeploymentStatus: make(map[string]bool),
+		appProcessingStatus: make(map[string]bool),
+		CancelCh:            make(chan struct{}, 1),
+		cleanedUpAppMap:     make(map[string]struct{}),
+		deployedApps:        make(map[string]string),
+		adminPort:           adminPort,
+		diagDir:             diagDir,
+		eventingDir:         eventingDir,
+		keepNodes:           make([]string, 0),
+		kvPort:              kvPort,
 		producerSupervisorTokenMap:   make(map[common.EventingProducer]suptree.ServiceToken),
 		restPort:                     restPort,
 		runningProducers:             make(map[string]common.EventingProducer),
 		runningProducersHostPortAddr: make(map[string]string),
 		supCmdCh:                     make(chan supCmdMsg, 10),
 		superSup:                     suptree.NewSimple("super_supervisor"),
-		timerDataTransferReq:         make(map[uint16]struct{}),
-		timerDataTransferReqCh:       make(chan uint16, numTimerVbMoves),
-		plasmaRWMutex:                &sync.RWMutex{},
 		uuid:                         uuid,
-		vbPlasmaStoreMap:             make(map[uint16]*plasma.Plasma),
-		vbucketsToSkipPlasmaClose:    make(map[uint16]struct{}),
 	}
 	s.appRWMutex = &sync.RWMutex{}
 	s.mu = &sync.RWMutex{}
@@ -243,6 +237,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					if producer, ok := s.runningProducers[appName]; ok {
 						producer.SignalBootstrapFinish()
 						s.deployedApps[appName] = time.Now().String()
+
+						s.Lock()
+						delete(s.cleanedUpAppMap, appName)
+						s.Unlock()
 					}
 				} else {
 					s.supCmdCh <- msg
@@ -452,6 +450,10 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 				if producer, ok := s.runningProducers[appName]; ok {
 					producer.SignalBootstrapFinish()
 					s.deployedApps[appName] = time.Now().String()
+
+					s.Lock()
+					delete(s.cleanedUpAppMap, appName)
+					s.Unlock()
 				}
 
 			case cmdSettingsUpdate:
@@ -486,22 +488,31 @@ func (s *SuperSupervisor) cleanupProducer(appName string) {
 		logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
 		p.NotifyInit()
 
+		delete(s.runningProducers, appName)
+
 		p.SignalCheckpointBlobCleanup()
 
-		p.CleanupMetadataBucket()
+		s.Lock()
+		_, ok := s.cleanedUpAppMap[appName]
+		if !ok {
+			s.cleanedUpAppMap[appName] = struct{}{}
+		}
+		s.Unlock()
+
+		if !ok {
+			p.CleanupMetadataBucket()
+
+			logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
+			p.PurgePlasmaRecords()
+			logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
+		}
 
 		s.superSup.Remove(s.producerSupervisorTokenMap[p])
 		delete(s.producerSupervisorTokenMap, p)
-
-		logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
-		p.PurgePlasmaRecords()
-		logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
 
 		p.PurgeAppLog()
 
 		p.NotifySupervisor()
 		logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)
 	}
-
-	delete(s.runningProducers, appName)
 }
