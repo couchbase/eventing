@@ -5,7 +5,6 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/plasma"
 )
 
 const (
@@ -75,18 +74,12 @@ type SuperSupervisor struct {
 	// Captures list of deployed apps and their last deployment time
 	deployedApps map[string]string
 
+	cleanedUpAppMap              map[string]struct{} // Access controlled by default lock
 	mu                           *sync.RWMutex
-	plasmaCloseSignalMap         map[uint16]int // Access controlled by plasmaRWMutex
 	producerSupervisorTokenMap   map[common.EventingProducer]suptree.ServiceToken
 	runningProducers             map[string]common.EventingProducer
 	runningProducersHostPortAddr map[string]string
-	timerDataTransferReq         map[uint16]struct{} // Access controlled by default lock
-	timerDataTransferReqCh       chan uint16
-	vbPlasmaStoreMap             map[uint16]*plasma.Plasma // Access controlled by plasmaRWMutex
 	vbucketsToOwn                []uint16
-	vbucketsToSkipPlasmaClose    map[uint16]struct{} // Access controlled by default lock
-
-	plasmaRWMutex *sync.RWMutex
 
 	serviceMgr common.EventingServiceMgr
 	sync.RWMutex

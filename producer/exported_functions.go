@@ -530,9 +530,6 @@ func (p *Producer) CleanupMetadataBucket() {
 
 	sort.Sort(util.Uint16Slice(vbs))
 
-	logging.Infof("%s [%s:%d] Going to start DCP streams from metadata bucket: %v, vbs len: %v dump: %v",
-		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, len(vbs), util.Condense(vbs))
-
 	var wg sync.WaitGroup
 	wg.Add(1)
 
@@ -623,14 +620,20 @@ func (p *Producer) CleanupMetadataBucket() {
 					continue
 				}
 
+				receivedAllMutations := true
+
 				rw.RLock()
 				for vb, seqNo := range vbSeqNos {
 					if receivedVbSeqNos[vb] < seqNo {
-						rw.RUnlock()
+						receivedAllMutations = false
 						break
 					}
 				}
 				rw.RUnlock()
+
+				if !receivedAllMutations {
+					continue
+				}
 
 				stopCh <- struct{}{}
 				logging.Infof("%s [%s:%d] Sent message on stop cron timer cleanup routine",
@@ -644,8 +647,8 @@ func (p *Producer) CleanupMetadataBucket() {
 	wg.Wait()
 }
 
-// TODO : Remove these methods once RBAC issue is resolved
 // RbacUser returns the rbac user supplied as part of app settings
+// TODO : Remove these methods once RBAC issue is resolved
 func (p *Producer) RbacUser() string {
 	return p.rbacUser
 }
