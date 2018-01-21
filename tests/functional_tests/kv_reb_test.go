@@ -26,7 +26,7 @@ func TestKVRebOnUpdateBucketOpOneByOne(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -95,7 +95,7 @@ func TestKVSwapRebOnUpdateBucketOp(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -141,7 +141,7 @@ func TestKVRebOnUpdateDocTimerOneByOne(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -225,7 +225,7 @@ func TestKVSwapRebOnUpdateDocTimer(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -271,7 +271,7 @@ func TestKVRebalanceWithMultipleHandlers(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler1)
 	waitForDeployToFinish(handler2)
@@ -311,7 +311,7 @@ func TestKVSwapRebalanceWithMultipleHandlers(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler1)
 	waitForDeployToFinish(handler2)
@@ -358,7 +358,7 @@ func TestKVRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -408,7 +408,7 @@ func TestKVFailoverOnUpdateBucketOp(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()

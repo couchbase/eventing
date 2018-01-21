@@ -32,7 +32,7 @@ func TestEventingRebKVOpsWithoutHandlerOneByOne(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	addAllNodesOneByOne("eventing")
 	removeAllNodesOneByOne()
@@ -51,7 +51,7 @@ func TestEventingRebKVOpsWithoutHandlerAllAtOnce(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	addAllNodesAtOnce("eventing")
 	removeAllNodesAtOnce()

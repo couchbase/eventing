@@ -77,7 +77,7 @@ func TestEventingRebKVOpsNoopOneByOne(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -108,7 +108,7 @@ func TestEventingRebKVOpsNoopAllAtOnce(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -142,7 +142,7 @@ func TestEventingRebKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -173,7 +173,7 @@ func TestEventingRebKVOpsOnUpdateBucketOpAllAtOnce(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -204,7 +204,7 @@ func TestEventingRebKVOpsOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -233,7 +233,7 @@ func TestEventingSwapRebOnUpdateBucketOp(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -271,7 +271,7 @@ func TestEventingRebKVOpsOnUpdateDocTimerOnyByOne(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	pumpBucketOps(rlItemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
 
 	addAllNodesOneByOne("eventing")
 	removeAllNodesOneByOne()
@@ -297,7 +297,7 @@ func TestEventingRebContinousKVOpsOnUpdateDocTimerOnyByOne(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: lItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -329,7 +329,7 @@ func TestEventingRebKVOpsOnUpdateDocTimerNonDefaultSettings(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -360,7 +360,7 @@ func TestEventingRebContinousKVOpsOnUpdateCronTimerOnyByOne(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -391,7 +391,7 @@ func TestEventingRebContinousKVOpsOnUpdateCronTimerAllAtOnce(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -420,7 +420,7 @@ func TestEventingSwapRebOnUpdateDocTimer(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -467,7 +467,7 @@ func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler1)
 	waitForDeployToFinish(handler2)
@@ -547,7 +547,7 @@ func TestEventingSwapRebMultipleHandlers(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler1)
 	waitForDeployToFinish(handler2)
@@ -594,7 +594,7 @@ func TestEventingRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -644,7 +644,7 @@ func TestEventingRebMultiStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -697,7 +697,7 @@ func TestEventingFailoverOnUpdateBucketOp(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -747,7 +747,7 @@ func TestEventingKVRebalanceOnUpdateBucketOp(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()

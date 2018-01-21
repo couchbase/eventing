@@ -20,14 +20,16 @@ import (
 )
 
 func (c *Consumer) processEvents() {
+	logPrefix := "Consumer::processEvents"
+
 	var timerMsgCounter uint64
 
 	for {
 
 		if c.cppWorkerAggQueueSize != nil {
 			if c.workerQueueCap < c.cppWorkerAggQueueSize.AggQueueSize {
-				logging.Infof("CRDP[%s:%s:%d] Throttling events to cpp worker, aggregate queue size: %v cap: %v",
-					c.workerName, c.tcpPort, c.Pid(), c.cppWorkerAggQueueSize.AggQueueSize,
+				logging.Infof("%s [%s:%s:%d] Throttling events to cpp worker, aggregate queue size: %v cap: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppWorkerAggQueueSize.AggQueueSize,
 					c.workerQueueCap)
 				time.Sleep(1 * time.Second)
 			}
@@ -36,8 +38,8 @@ func (c *Consumer) processEvents() {
 		select {
 		case e, ok := <-c.aggDCPFeed:
 			if ok == false {
-				logging.Infof("CRDP[%s:%s:%d] Closing DCP feed for bucket %q",
-					c.workerName, c.tcpPort, c.Pid(), c.bucket)
+				logging.Infof("%s [%s:%s:%d] Closing DCP feed for bucket %q",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.bucket)
 
 				c.stopCheckpointingCh <- struct{}{}
 				return
@@ -52,6 +54,9 @@ func (c *Consumer) processEvents() {
 
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
+
+				logging.Tracef("%s [%s:%s:%d] Got DCP_MUTATION for key: %v datatype: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
 
 				if c.debuggerState == startDebug {
 
@@ -78,44 +83,81 @@ func (c *Consumer) processEvents() {
 						go c.sendDcpEvent(e, c.sendMsgToDebugger)
 					}
 				case dcpDatatypeJSONXattr:
-					xattrLen := binary.BigEndian.Uint32(e.Value[0:])
-					xattrData := e.Value[4 : 4+xattrLen-1]
+					totalXattrLen := binary.BigEndian.Uint32(e.Value[0:])
+					totalXattrData := e.Value[4 : 4+totalXattrLen-1]
 
-					xIndex := bytes.Index(xattrData, []byte(xattrPrefix))
-					xattrVal := xattrData[xIndex+len(xattrPrefix)+1:]
+					logging.Tracef("%s [%s:%s:%d] key: %v totalXattrLen: %v totalXattrData: %v",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), totalXattrLen, totalXattrData)
 
 					var xMeta xattrMetadata
-					err := json.Unmarshal(xattrVal, &xMeta)
-					if err != nil {
-						logging.Errorf("CRDP[%s:%s:%d] Key: %v xattrVal: %v err: %v",
-							c.workerName, c.tcpPort, c.Pid(), string(e.Key), string(xattrVal), err)
-						continue
+					var bytesDecoded uint32
+
+					// Try decoding all xattrs defined in io-vector encoding format
+					for bytesDecoded < totalXattrLen {
+						frameLength := binary.BigEndian.Uint32(totalXattrData)
+						bytesDecoded += 4
+						frameData := totalXattrData[4 : 4+frameLength-1]
+						bytesDecoded += frameLength
+						if bytesDecoded < totalXattrLen {
+							totalXattrData = totalXattrData[4+frameLength:]
+						}
+
+						if len(frameData) > len(xattrPrefix) {
+							if bytes.Compare(frameData[:len(xattrPrefix)], []byte(xattrPrefix)) == 0 {
+								toParse := frameData[len(xattrPrefix)+1:]
+
+								err := json.Unmarshal(toParse, &xMeta)
+								if err != nil {
+									continue
+								}
+							}
+						}
 					}
 
-					logging.Tracef("CRDP[%s:%s:%d] Key: %s xmeta dump: %#v",
-						c.workerName, c.tcpPort, c.Pid(), string(e.Key), xMeta)
+					logging.Tracef("%s [%s:%s:%d] Key: %s xmeta dump: %#v",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), xMeta)
 
-					cas, err := util.ConvertBigEndianToUint64([]byte(xMeta.Cas))
-					if err != nil {
-						logging.Errorf("CRDP[%s:%s:%d] Key: %v Failed to convert cas string from kv to uint64, err: %v",
-							c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
-						continue
-					}
+					// Validating for eventing xattr fields
+					if xMeta.Cas != "" && xMeta.Digest != 0 {
+						cas, err := util.ConvertBigEndianToUint64([]byte(xMeta.Cas))
+						if err != nil {
+							logging.Errorf("%s [%s:%s:%d] Key: %v failed to convert cas string from kv to uint64, err: %v",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
+							continue
+						}
 
-					logging.Tracef("CRDP[%s:%s:%d] Key: %s decoded cas: %v dcp cas: %v",
-						c.workerName, c.tcpPort, c.Pid(), string(e.Key), cas, e.Cas)
+						logging.Tracef("%s [%s:%s:%d] Key: %s decoded cas: %v dcp cas: %v",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), cas, e.Cas)
 
-					// Send mutation to V8 CPP worker _only_ when DcpEvent.Cas != Cas field in xattr
-					if cas != e.Cas {
-						e.Value = e.Value[4+xattrLen:]
+						// Send mutation to V8 CPP worker _only_ when DcpEvent.Cas != Cas field in xattr
+						if cas != e.Cas {
+							e.Value = e.Value[4+totalXattrLen:]
 
-						if crc32.Update(0, c.crcTable, e.Value) != xMeta.Digest {
-							if !c.sendMsgToDebugger {
-								c.sendDcpEvent(e, c.sendMsgToDebugger)
+							if crc32.Update(0, c.crcTable, e.Value) != xMeta.Digest {
+								if !c.sendMsgToDebugger {
+									logging.Tracef("%s [%s:%s:%d] Sending key: %v to be processed by JS handlers as cas & crc have mismatched",
+										logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+									c.sendDcpEvent(e, c.sendMsgToDebugger)
+								} else {
+									go c.sendDcpEvent(e, c.sendMsgToDebugger)
+								}
 							} else {
-								go c.sendDcpEvent(e, c.sendMsgToDebugger)
+								pEntry := &plasmaStoreEntry{
+									vb:     e.VBucket,
+									seqNo:  e.Seqno,
+									expiry: e.Expiry,
+									key:    string(e.Key),
+									xMeta:  &xMeta,
+								}
+
+								logging.Tracef("%s [%s:%s:%d] Sending key: %v to be stored in plasma",
+									logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+								c.plasmaStoreCh <- pEntry
 							}
 						} else {
+							logging.Tracef("%s [%s:%s:%d] Skipping recursive mutation for key: %v vb: %v, xmeta: %#v",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, xMeta)
+
 							pEntry := &plasmaStoreEntry{
 								vb:     e.VBucket,
 								seqNo:  e.Seqno,
@@ -126,17 +168,14 @@ func (c *Consumer) processEvents() {
 							c.plasmaStoreCh <- pEntry
 						}
 					} else {
-						logging.Debugf("CRPO[%s:%s:%d] Skipping recursive mutation for Key: %v vb: %v, xmeta: %#v",
-							c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, xMeta)
-
-						pEntry := &plasmaStoreEntry{
-							vb:     e.VBucket,
-							seqNo:  e.Seqno,
-							expiry: e.Expiry,
-							key:    string(e.Key),
-							xMeta:  &xMeta,
+						e.Value = e.Value[4+totalXattrLen:]
+						if !c.sendMsgToDebugger {
+							logging.Tracef("%s [%s:%s:%d] Sending key: %v to be processed by JS handlers because no eventing xattrs",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+							c.sendDcpEvent(e, c.sendMsgToDebugger)
+						} else {
+							go c.sendDcpEvent(e, c.sendMsgToDebugger)
 						}
-						c.plasmaStoreCh <- pEntry
 					}
 				}
 
@@ -165,8 +204,8 @@ func (c *Consumer) processEvents() {
 
 			case mcd.DCP_STREAMREQ:
 
-				logging.Debugf("CRDP[%s:%s:%d] vb: %d status: %v",
-					c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
+				logging.Debugf("%s [%s:%s:%d] vb: %d status: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
 
 				if e.Status == mcd.SUCCESS {
 
@@ -181,8 +220,8 @@ func (c *Consumer) processEvents() {
 
 					vbuuid, seqNo, err := e.FailoverLog.Latest()
 					if err != nil {
-						logging.Errorf("CRDP[%s:%s:%d] Failure to get latest failover log vb: %d err: %v, not updating metadata",
-							c.workerName, c.tcpPort, c.Pid(), e.VBucket, err)
+						logging.Errorf("%s [%s:%s:%d] Failure to get latest failover log vb: %d err: %v, not updating metadata",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, err)
 						c.vbFlogChan <- vbFlog
 						continue
 					}
@@ -246,7 +285,7 @@ func (c *Consumer) processEvents() {
 				// which will allow vbTakeOver background routine to start up new stream from
 				// new KV node, where the vbucket has been migrated
 
-				logging.Debugf("CRPE[%s:%s:%d] vb: %v, got STREAMEND", c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+				logging.Debugf("%s [%s:%s:%d] vb: %v, got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
 				// Different scenarios where DCP_STREAMEND could be triggered:
 				// (a) vb give up as part of eventing rebalance
@@ -287,8 +326,8 @@ func (c *Consumer) processEvents() {
 				}
 
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
-					logging.Debugf("CRPE[%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
-						c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+					logging.Debugf("%s [%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 					c.Lock()
 					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, e.VBucket)
 					c.Unlock()
@@ -299,7 +338,7 @@ func (c *Consumer) processEvents() {
 
 		case e, ok := <-c.docTimerEntryCh:
 			if ok == false {
-				logging.Infof("CRDP[%s:%s:%d] Closing doc timer chan", c.workerName, c.tcpPort, c.Pid())
+				logging.Infof("%s [%s:%s:%d] Closing doc timer chan", logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 				c.stopCheckpointingCh <- struct{}{}
 				return
@@ -310,7 +349,7 @@ func (c *Consumer) processEvents() {
 
 		case e, ok := <-c.nonDocTimerEntryCh:
 			if ok == false {
-				logging.Infof("CRDP[%s:%s:%d] Closing non_doc timer chan", c.workerName, c.tcpPort, c.Pid())
+				logging.Infof("%s [%s:%s:%d] Closing non_doc timer chan", logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 				c.stopCheckpointingCh <- struct{}{}
 				return
@@ -339,8 +378,8 @@ func (c *Consumer) processEvents() {
 					c.timerMessagesProcessedPSec = int(timerOpsDiff) / seconds
 				}
 
-				logging.Infof("CRDP[%s:%s:%d] DCP events: %s V8 events: %s Timer events: Doc: %v Cron: %v, vbs owned len: %d vbs owned: %v Plasma stats: Insert: %v Delete: %v Lookup: %v",
-					c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
+				logging.Infof("%s [%s:%s:%d] DCP events: %s V8 events: %s Timer events: Doc: %v Cron: %v, vbs owned len: %d vbs owned: %v Plasma stats: Insert: %v Delete: %v Lookup: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
 					c.doctimerMessagesProcessed, c.crontimerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned),
 					c.plasmaInsertCounter, c.plasmaDeleteCounter, c.plasmaLookupCounter)
 
@@ -350,8 +389,8 @@ func (c *Consumer) processEvents() {
 				c.statsRWMutex.Unlock()
 
 				if eErr == nil && fErr == nil {
-					logging.Infof("CRDP[%s:%s:%d] CPP worker stats. Failure stats: %s execution stats: %s",
-						c.workerName, c.tcpPort, c.Pid(), string(fstats), string(estats))
+					logging.Infof("%s [%s:%s:%d] CPP worker stats. Failure stats: %s execution stats: %s",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(fstats), string(estats))
 				}
 
 				c.opsTimestamp = tStamp
@@ -372,8 +411,8 @@ func (c *Consumer) processEvents() {
 
 		case <-c.stopConsumerCh:
 
-			logging.Infof("CRDP[%s:%s:%d] Exiting processEvents routine",
-				c.workerName, c.tcpPort, c.Pid())
+			logging.Infof("%s [%s:%s:%d] Exiting processEvents routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
 	}

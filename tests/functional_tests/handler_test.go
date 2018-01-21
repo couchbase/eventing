@@ -21,7 +21,7 @@ func TestN1QLLabelledBreak(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "N1QLLabelledBreak",
@@ -48,7 +48,7 @@ func TestN1QLUnlabelledBreak(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "N1QLUnlabelledBreak",
@@ -75,7 +75,7 @@ func TestN1QLThrowStatement(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "N1QLThrowStatement",
@@ -100,9 +100,9 @@ func TestN1QLNestedForLoop(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	fireQuery("CREATE PRIMARY INDEX on default;")
 	time.Sleep(time.Second * 5)
-	createAndDeployFunction(handler, handler, &commonSettings{1, 1, 3, 6})
+	createAndDeployFunction(handler, handler, &commonSettings{lcbInstCap: 6})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "N1QLNestedForLoop",
@@ -122,7 +122,7 @@ func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "OnUpdateBucketOpDefaultSettings",
@@ -139,9 +139,9 @@ func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_update.js"
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{4, 77, 3, 5})
+	createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "OnUpdateBucketOpNonDefaultSettings",
@@ -160,7 +160,7 @@ func TestOnUpdateN1QLOp(t *testing.T) {
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "OnUpdateN1QLOp",
@@ -179,7 +179,7 @@ func TestOnDeleteBucketOp(t *testing.T) {
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	pumpBucketOps(itemCount, 1, true, 0, &rateLimit{})
+	pumpBucketOps(opsType{expiry: 1, delete: true}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "OnDeleteBucketOp",
@@ -198,7 +198,7 @@ func TestDocTimerBucketOp(t *testing.T) {
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "DocTimerBucketOp",
@@ -217,7 +217,7 @@ func TestDocTimerN1QLOp(t *testing.T) {
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "DocTimerN1QLOp",
@@ -236,7 +236,7 @@ func TestCronTimerBucketOp(t *testing.T) {
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "CronTimerBucketOp",
@@ -255,7 +255,7 @@ func TestCronTimerN1QLOp(t *testing.T) {
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "CronTimerN1QLOp",
@@ -276,7 +276,7 @@ func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		createAndDeployFunction(handler, handler, &commonSettings{})
 
-		pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+		pumpBucketOps(opsType{}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 		if itemCount != eventCount {
 			t.Error("For", "DeployUndeployLoopDefaultSettings",
@@ -304,7 +304,7 @@ func TestDeployUndeployLoopDocTimer(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		createAndDeployFunction(handler, handler, &commonSettings{})
 
-		pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+		pumpBucketOps(opsType{}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 		if itemCount != eventCount {
 			t.Error("For", "DeployUndeployLoopDocTimer",
@@ -330,9 +330,9 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 	flushFunctionAndBucket(handler)
 
 	for i := 0; i < 5; i++ {
-		createAndDeployFunction(handler, handler, &commonSettings{4, 77, 3, 5})
+		createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77})
 
-		pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+		pumpBucketOps(opsType{}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 		if itemCount != eventCount {
 			t.Error("For", "DeployUndeployLoopNonDefaultSettings",
@@ -363,7 +363,7 @@ func TestMultipleHandlers(t *testing.T) {
 	createAndDeployFunction(handler1, handler1, &commonSettings{})
 	createAndDeployFunction(handler2, handler2, &commonSettings{})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount*2, statsLookupRetryCounter*2)
 	if itemCount*2 != eventCount {
 		t.Error("For", "MultipleHandlers",
@@ -396,7 +396,7 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 			setSettings(handler, true, true, &commonSettings{})
 		}
 
-		pumpBucketOps(itemCount, 0, false, itemCount*i, &rateLimit{})
+		pumpBucketOps(opsType{startIndex: itemCount * i}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount*(i+1), statsLookupRetryCounter)
 		if itemCount*(i+1) != eventCount {
 			t.Error("For", "PauseAndResumeLoopDefaultSettings",
@@ -419,14 +419,14 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 	handler := "bucket_op_on_update.js"
 
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{4, 77, 4, 5})
+	createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4})
 
 	for i := 0; i < 5; i++ {
 		if i > 0 {
-			setSettings(handler, true, true, &commonSettings{4, 77, 4, 5})
+			setSettings(handler, true, true, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4})
 		}
 
-		pumpBucketOps(itemCount, 0, false, itemCount*i, &rateLimit{})
+		pumpBucketOps(opsType{startIndex: itemCount * i}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount*(i+1), statsLookupRetryCounter)
 		if itemCount*(i+1) != eventCount {
 			t.Error("For", "PauseAndResumeLoopNonDefaultSettings",
@@ -451,7 +451,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 
 	createAndDeployFunction(appName, handler, &commonSettings{})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "CommentUnCommentOnDelete",
@@ -469,7 +469,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	handler = "on_delete_bucket_op_uncomment.js"
 	createAndDeployFunction(appName, handler, &commonSettings{})
 
-	pumpBucketOps(itemCount, 0, true, 0, &rateLimit{})
+	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
 	if eventCount != 0 {
 		t.Error("For", "CommentUnCommentOnDelete",
@@ -490,9 +490,9 @@ func TestCPPWorkerCleanup(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_update.js"
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{1, 100, 16, 5})
+	createAndDeployFunction(handler, handler, &commonSettings{batchSize: 100, workerCount: 16})
 
-	pumpBucketOps(itemCount, 0, false, 0, &rateLimit{})
+	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "CPPWorkerCleanup",
@@ -501,14 +501,26 @@ func TestCPPWorkerCleanup(t *testing.T) {
 		)
 	}
 
+	dumpStats(handler)
 	flushFunctionAndBucket(handler)
 	time.Sleep(30 * time.Second)
+}
 
-	pidsAlive, count := eventingConsumerPidsAlive()
-	if pidsAlive {
-		t.Error("For", "CPPWorkerCleanup",
-			"expected", 0, "eventing-consumer",
-			"got", count)
+func TestWithUserXattrs(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "on_delete_bucket_op_comment.js"
+	flushFunctionAndBucket(handler)
+	pumpBucketOps(opsType{}, &rateLimit{})
+	createAndDeployFunction(handler, handler, &commonSettings{streamBoundary: "from_now"})
+	waitForDeployToFinish(handler)
+
+	pumpBucketOps(opsType{writeXattrs: true}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "WithUserXattrs",
+			"expected", itemCount,
+			"got", eventCount,
+		)
 	}
 
 	dumpStats(handler)
