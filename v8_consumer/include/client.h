@@ -1,11 +1,6 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
-#include <chrono>
-#include <iostream>
-#include <math.h>
-#include <sstream>
-
 #ifndef STANDALONE_BUILD
 extern void(assert)(int);
 #else

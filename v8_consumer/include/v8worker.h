@@ -15,23 +15,19 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
-#include <fstream>
-#include <libcouchbase/api3.h>
-#include <libcouchbase/couchbase.h>
-#include <libplatform/libplatform.h>
 #include <list>
 #include <map>
-#include <regex>
-#include <sstream>
 #include <stdlib.h>
 #include <string>
 #include <thread>
 #include <time.h>
+
+#include <libplatform/libplatform.h>
 #include <v8-debug.h>
 #include <v8.h>
+
+#include <libcouchbase/api3.h>
+#include <libcouchbase/couchbase.h>
 
 #include "commands.h"
 #include "crc32c.h"

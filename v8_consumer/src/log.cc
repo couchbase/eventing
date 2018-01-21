@@ -9,7 +9,10 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "log.h"
+#include "../include/log.h"
+
+#include <iostream>
+#include <sstream>
 
 std::ostringstream app_log_os;
 

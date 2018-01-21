@@ -19,9 +19,9 @@ function N1qlQuery(query, options) {
     this.stopIter = stopIter;
     this.getReturnValue = getReturnValue;
 
-    // Stringify all the named parameters. This is necessary for libcouchbase C SDK.
-    for (var i in this.options.namedParams) {
-        var param = this.options.namedParams[i];
+    // Stringify all the positional parameters. This is necessary for libcouchbase C SDK.
+    for (var i in this.options.posParams) {
+        var param = this.options.posParams[i];
         switch (typeof param) {
             case 'boolean':
             case 'number':
@@ -29,7 +29,7 @@ function N1qlQuery(query, options) {
 
             case 'undefined':
                 // Mapping 'undefined' type of JavaScript to 'null' type.
-                this.options.namedParams[i] = null;
+                this.options.posParams[i] = null;
                 break;
 
             case 'object':
@@ -53,7 +53,7 @@ function N1qlQuery(query, options) {
                     quotesEscaped += c;
                 }
 
-                this.options.namedParams[i] = '"' + quotesEscaped + '"';
+                this.options.posParams[i] = '"' + quotesEscaped + '"';
                 break;
 
             default:

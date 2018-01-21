@@ -9,7 +9,7 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "function_templates.h"
+#include "../include/function_templates.h"
 
 long curl_timeout = 500L; // Default curl timeout of 500ms
 

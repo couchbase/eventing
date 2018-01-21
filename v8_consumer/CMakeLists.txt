@@ -41,7 +41,6 @@ SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc P
 
 SET(EVENTING_SOURCES
     src/client.cc
-    src/comm.cc
     src/commands.cc
     src/v8worker.cc
     src/assert.cc
@@ -55,6 +54,7 @@ SET(EVENTING_SOURCES
     src/utils.cc
     src/function_templates.cc
     src/breakpad.cc
+    src/comm.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc)
 
 SET(EVENTING_LIBRARIES
