@@ -9,7 +9,7 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "../include/commands.h"
+#include "commands.h"
 
 event_type getEvent(int8_t event) {
   if (event == 1)

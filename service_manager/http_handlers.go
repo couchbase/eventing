@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"regexp"
@@ -12,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
 	"bytes"
 
 	"github.com/couchbase/cbauth"
@@ -512,6 +512,31 @@ func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Reque
 	}
 
 	fmt.Fprintf(w, "%s", string(buf))
+}
+
+func (m *ServiceMgr) getNamedParamsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		return
+	}
+
+	query := string(data)
+	info := util.GetNamedParams(query)
+	response := url.Values{}
+
+	response.Add("is_valid", toStr(info.PInfo.IsValid))
+	response.Add("info", info.PInfo.Info)
+	response.Add("named_params_size", strconv.Itoa(len(info.NamedParams)))
+
+	for i, namedParam := range info.NamedParams {
+		response.Add(strconv.Itoa(i), namedParam)
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", response.Encode())
 }
 
 // Reports progress across all producers on current node
@@ -1170,7 +1195,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	appContent := builder.FinishedBytes()
 
 	c := &consumer.Consumer{}
-	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName)
+	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName, m.adminHTTPPort)
 	if err != nil || !compilationInfo.CompileSuccess {
 		res, mErr := json.Marshal(&compilationInfo)
 		if mErr != nil {
@@ -1389,6 +1414,26 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) []
 	}
 
 	return appList
+}
+
+func (m *ServiceMgr) parseQueryHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		return
+	}
+
+	query := string(data)
+	info := util.Parse(query)
+	response := url.Values{}
+
+	response.Add("is_valid", toStr(info.IsValid))
+	response.Add("info", info.Info)
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", response.Encode())
 }
 
 func (m *ServiceMgr) getConfig() (c config, info *runtimeInfo) {

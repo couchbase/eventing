@@ -9,8 +9,8 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "../include/js_exception.h"
-#include "../include/utils.h"
+#include "js_exception.h"
+#include "utils.h"
 
 JsException::JsException(v8::Isolate *isolate) : isolate(isolate) {
   code_str = "code";

@@ -9,14 +9,13 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "comm.h"
-#include "log.h"
 #include "utils.h"
 
 CURLClient::CURLClient() : headers(nullptr) { curl_handle = curl_easy_init(); }
 
 CURLClient::~CURLClient() { curl_easy_cleanup(curl_handle); }
 
+// Callback gets invoked for every chunk of body data that arrives
 size_t CURLClient::BodyCallback(void *buffer, size_t size, size_t nmemb,
                                 void *cookie) {
   auto realsize = size * nmemb;
@@ -26,6 +25,7 @@ size_t CURLClient::BodyCallback(void *buffer, size_t size, size_t nmemb,
   return realsize;
 }
 
+// Callback gets invoked for every header that arrives
 size_t CURLClient::HeaderCallback(char *buffer, size_t size, size_t nitems,
                                   void *cookie) {
   auto realsize = size * nitems;
@@ -139,9 +139,81 @@ CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
   return response;
 }
 
-Communicator::Communicator(const std::string &host_port, v8::Isolate *isolate)
+Communicator::Communicator(const std::string &host_ip,
+                           const std::string &host_port, v8::Isolate *isolate)
     : isolate(isolate) {
-  get_creds_url = "http://localhost:" + host_port + "/getCreds";
+  parse_query_url = "http://" + host_ip + ":" + host_port + "/parseQuery";
+  get_creds_url = "http://" + host_ip + ":" + host_port + "/getCreds";
+  get_named_params_url =
+      "http://" + host_ip + ":" + host_port + "/getNamedParams";
+}
+
+std::string CURLClient::Decode(const std::string &encoded_str) {
+  int n_decode;
+  auto decoded_str_ptr =
+      curl_easy_unescape(curl_handle, encoded_str.c_str(),
+                         static_cast<int>(encoded_str.length()), &n_decode);
+  std::string decoded_str(decoded_str_ptr, decoded_str_ptr + n_decode);
+  curl_free(decoded_str_ptr);
+  return decoded_str;
+}
+
+ExtractKVInfo CURLClient::ExtractKV(const std::string &encoded_str) {
+  ExtractKVInfo info;
+  info.is_valid = false;
+
+  std::istringstream tokenizer(encoded_str);
+  std::string item;
+  while (std::getline(tokenizer, item, '&')) {
+    auto i = item.find('=');
+    if (i == std::string::npos) {
+      info.msg = "Encoded string is not delimited by =";
+      return info;
+    }
+
+    auto key = Decode(item.substr(0, i));
+    auto value = item.substr(i + 1);
+    std::replace(value.begin(), value.end(), '+', ' ');
+    info.kv[key] = Decode(value);
+  }
+
+  info.is_valid = true;
+  return info;
+}
+
+NamedParamsInfo
+Communicator::ExtractNamedParams(const std::string &encoded_str) {
+  NamedParamsInfo info;
+  info.p_info.is_valid = false;
+
+  auto kv_info = curl.ExtractKV(encoded_str);
+  if (!kv_info.is_valid) {
+    info.p_info.info = kv_info.msg;
+    return info;
+  }
+
+  info.p_info.is_valid = std::stoi(kv_info.kv["is_valid"]) != 0;
+  info.p_info.info = kv_info.kv["info"];
+  for (int i = 0; i < std::stoi(kv_info.kv["named_params_size"]); ++i) {
+    info.named_params.emplace_back(kv_info.kv[std::to_string(i)]);
+  }
+
+  return info;
+}
+
+ParseInfo Communicator::ExtractParseInfo(const std::string &encoded_str) {
+  ParseInfo info;
+  info.is_valid = false;
+
+  auto kv_info = curl.ExtractKV(encoded_str);
+  if (!kv_info.is_valid) {
+    info.info = kv_info.msg;
+    return info;
+  }
+
+  info.is_valid = std::stoi(kv_info.kv["is_valid"]) != 0;
+  info.info = kv_info.kv["info"];
+  return info;
 }
 
 CredsInfo Communicator::GetCreds(const std::string &endpoint) {
@@ -150,7 +222,6 @@ CredsInfo Communicator::GetCreds(const std::string &endpoint) {
   auto context = v8::Context::New(isolate);
   v8::Context::Scope context_scope(context);
 
-  CURLClient curl;
   auto response =
       curl.HTTPPost({"Content-Type: text/plain"}, get_creds_url, endpoint);
 
@@ -177,4 +248,68 @@ CredsInfo Communicator::GetCreds(const std::string &endpoint) {
   info.username = *username_utf8;
   info.password = *password_utf8;
   return info;
+}
+
+ParseInfo Communicator::ParseQuery(const std::string &query) {
+  auto response =
+      curl.HTTPPost({"Content-Type: text/plain"}, parse_query_url, query);
+
+  ParseInfo info;
+  info.is_valid = false;
+  info.info = "Something went wrong while parsing the N1QL query";
+
+  if (response.is_error) {
+    LOG(logError)
+        << "Unable to parse N1QL query: Something went wrong with CURL lib: "
+        << response.response << std::endl;
+    return info;
+  }
+
+  if (response.headers.find("Status") == response.headers.end()) {
+    LOG(logError)
+        << "Unable to parse N1QL query: status code is missing in header:"
+        << response.response << std::endl;
+    return info;
+  }
+
+  int status = std::stoi(response.headers["Status"]);
+  if (status != 0) {
+    LOG(logError) << "Unable to parse N1QL query: non-zero status in header"
+                  << status << std::endl;
+    return info;
+  }
+
+  return ExtractParseInfo(response.response);
+}
+
+NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
+  auto response =
+      curl.HTTPPost({"Content-Type: text/plain"}, get_named_params_url, query);
+
+  NamedParamsInfo info;
+  info.p_info.is_valid = false;
+  info.p_info.info = "Something went wrong while extracting named parameters";
+
+  if (response.is_error) {
+    LOG(logError)
+        << "Unable to get named params: Something went wrong with CURL lib: "
+        << response.response << std::endl;
+    return info;
+  }
+
+  if (response.headers.find("Status") == response.headers.end()) {
+    LOG(logError)
+        << "Unable to get named params: status code is missing in header: "
+        << response.response << std::endl;
+    info.p_info.info = response.response;
+    return info;
+  }
+
+  if (std::stoi(response.headers["Status"]) != 0) {
+    LOG(logError) << "Unable to get named params: non-zero status in header: "
+                  << response.response << std::endl;
+    return info;
+  }
+
+  return ExtractNamedParams(response.response);
 }
