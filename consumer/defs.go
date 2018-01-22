@@ -236,7 +236,7 @@ type Consumer struct {
 	docCurrTimer  string
 	docNextTimer  string
 
-	docTimerEntryCh    chan *byTimerEntry
+	docTimerEntryCh    chan *byTimer
 	nonDocTimerEntryCh chan timerMsg
 
 	timerAddrs    map[string]map[string]string
@@ -260,6 +260,7 @@ type Consumer struct {
 	nonDocTimerStopCh             chan struct{}
 	skipTimerThreshold            int
 	socketTimeout                 time.Duration
+	timerCleanupStopCh            chan struct{}
 	timerProcessingTickInterval   time.Duration
 	timerProcessingVbsWorkerMap   map[uint16]*timerProcessingWorker        // Access controlled by timerProcessingRWMutex
 	timerProcessingRunningWorkers []*timerProcessingWorker                 // Access controlled by timerRWMutex
@@ -392,8 +393,18 @@ type timerProcessingWorker struct {
 }
 
 type byTimerEntry struct {
-	DocID      string
 	CallbackFn string
+	DocID      string
+}
+
+type byTimerEntryMeta struct {
+	partition int32
+	timestamp string
+}
+
+type byTimer struct {
+	entry *byTimerEntry
+	meta  *byTimerEntryMeta
 }
 
 // For V8 worker spawned for debugging purpose

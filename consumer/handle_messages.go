@@ -338,10 +338,10 @@ func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
-func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
-	partition := int16(util.VbucketByKey([]byte(e.DocID), cppWorkerPartitionCount))
+func (c *Consumer) sendDocTimerEvent(e *byTimer, sendToDebugger bool) {
+	partition := int16(util.VbucketByKey([]byte(e.entry.DocID), cppWorkerPartitionCount))
 	timerHeader, hBuilder := c.makeDocTimerEventHeader(partition)
-	timerPayload, pBuilder := c.makeDocTimerPayload(e.DocID, e.CallbackFn)
+	timerPayload, pBuilder := c.makeDocTimerPayload(e)
 
 	m := &msgToTransmit{
 		msg: &message{

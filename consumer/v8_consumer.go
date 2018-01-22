@@ -53,7 +53,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		dcpStreamBoundary:               streamBoundary,
 		debuggerStarted:                 false,
 		diagDir:                         diagDir,
-		docTimerEntryCh:                 make(chan *byTimerEntry, dcpConfig["genChanSize"].(int)),
+		docTimerEntryCh:                 make(chan *byTimer, dcpConfig["genChanSize"].(int)),
 		enableRecursiveMutation:         enableRecursiveMutation,
 		eventingAdminPort:               eventingAdminPort,
 		eventingDir:                     eventingDir,
@@ -100,6 +100,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		stopVbOwnerTakeoverCh:           make(chan struct{}, vbOwnershipTakeoverRoutineCount),
 		superSup:                        s,
 		tcpPort:                         tcpPort,
+		timerCleanupStopCh:              make(chan struct{}, 1),
 		timerProcessingRWMutex:          &sync.RWMutex{},
 		timerRWMutex:                    &sync.RWMutex{},
 		timerProcessingTickInterval:     timerProcessingTickInterval,
@@ -215,6 +216,8 @@ func (c *Consumer) Serve() {
 		go r.processTimerEvents(c.docCurrTimer, c.docNextTimer)
 	}
 
+	go c.cleanupProcessesedDocTimers()
+
 	// non doc_id timer events
 	go c.processNonDocTimerEvents(c.cronCurrTimer, c.cronNextTimer)
 
@@ -302,6 +305,7 @@ func (c *Consumer) Stop() {
 	c.restartVbDcpStreamTicker.Stop()
 	c.statsTicker.Stop()
 
+	c.timerCleanupStopCh <- struct{}{}
 	c.socketWriteLoopStopCh <- struct{}{}
 	<-c.socketWriteLoopStopAckCh
 	c.socketWriteTicker.Stop()

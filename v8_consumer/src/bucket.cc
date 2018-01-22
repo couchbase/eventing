@@ -247,10 +247,10 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
       switch (gres.rc) {
       case LCB_KEY_ENOENT:
-        LOG(logTrace)
-            << "Key: " << key
-            << " doesn't exist in bucket where mutation has to be written"
-            << std::endl;
+        LOG(logTrace) << "Key: " << key
+                      << " doesn't exist in bucket where mutation has "
+                         "to be written"
+                      << std::endl;
         break;
       case LCB_SUCCESS:
         break;
@@ -402,7 +402,8 @@ v8::Local<v8::ObjectTemplate> Bucket::MakeBucketMapTemplate() {
   // We will store lcb_instance associated with this bucket object in the
   // internal field
   result->SetInternalFieldCount(1);
-  // Register corresponding callbacks for alphanumeric accesses on bucket object
+  // Register corresponding callbacks for alphanumeric accesses on bucket
+  // object
   result->SetHandler(v8::NamedPropertyHandlerConfiguration(
       BucketGetDelegate, BucketSetDelegate, nullptr, BucketDeleteDelegate));
   // Register corresponding callbacks for numeric accesses on bucket object

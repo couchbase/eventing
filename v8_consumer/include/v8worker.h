@@ -175,7 +175,8 @@ public:
 
   int SendUpdate(std::string value, std::string meta, std::string doc_type);
   int SendDelete(std::string meta);
-  void SendDocTimer(std::string doc_id, std::string callback_fn);
+  void SendDocTimer(std::string callback_fn, std::string doc_id,
+                    std::string timer_ts, int32_t partition);
   void SendCronTimer(std::string cron_cb_fns);
   std::string CompileHandler(std::string handler);
 
@@ -243,6 +244,10 @@ private:
   std::string connstr;
   std::string meta_connstr;
   std::string src_path;
+
+  std::mutex doc_timer_mtx;
+  std::map<int, std::string>
+      doc_timer_checkpoint; // Access controlled by doc_timer_mtx
 
   vb_seq_map_t vb_seq;
 

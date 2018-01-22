@@ -202,16 +202,19 @@ func (c *Consumer) makeThrMapPayload(thrMap map[int][]uint16, partitionCount int
 	return
 }
 
-func (c *Consumer) makeDocTimerPayload(docID, callbackFn string) (encodedPayload []byte, builder *flatbuffers.Builder) {
+func (c *Consumer) makeDocTimerPayload(e *byTimer) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
-	docIDPos := builder.CreateString(docID)
-	callbackFnPos := builder.CreateString(callbackFn)
+	callbackFnPos := builder.CreateString(e.entry.CallbackFn)
+	docIDPos := builder.CreateString(e.entry.DocID)
+	docIDTsPos := builder.CreateString(e.meta.timestamp)
 
 	payload.PayloadStart(builder)
 
-	payload.PayloadAddDocId(builder, docIDPos)
 	payload.PayloadAddCallbackFn(builder, callbackFnPos)
+	payload.PayloadAddDocId(builder, docIDPos)
+	payload.PayloadAddTimerTs(builder, docIDTsPos)
+	payload.PayloadAddTimerPartition(builder, e.meta.partition)
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)

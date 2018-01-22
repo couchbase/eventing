@@ -50,8 +50,8 @@ private:
 
   // Specialization functions which will receive the delegate
   // Only one overload performs the actual work of making lcb calls
-  // The other overload simply forwards the delegate to the one doing the actual
-  // work
+  // The other overload simply forwards the delegate to the one doing the
+  // actual work
   template <typename>
   static void BucketGet(const v8::Local<v8::Name> &key,
                         const v8::PropertyCallbackInfo<v8::Value> &info);
