@@ -24,9 +24,16 @@ struct CURLResponse {
   std::unordered_map<std::string, std::string> headers;
 };
 
+struct DecodeKVInfo {
+  bool is_valid;
+  std::string msg;
+  std::string key;
+  std::string value;
+};
+
 struct CredsInfo {
-  bool is_error;
-  std::string error;
+  bool is_valid;
+  std::string msg;
   std::string username;
   std::string password;
 };
@@ -72,8 +79,7 @@ private:
 // Channel to communicate to eventing-producer through CURL
 class Communicator {
 public:
-  Communicator(const std::string &host_ip, const std::string &host_port,
-               v8::Isolate *isolate);
+  Communicator(const std::string &host_ip, const std::string &host_port);
 
   ParseInfo ParseQuery(const std::string &query);
   CredsInfo GetCreds(const std::string &endpoint);
@@ -81,13 +87,13 @@ public:
 
 private:
   NamedParamsInfo ExtractNamedParams(const std::string &encoded_str);
+  CredsInfo ExtractCredentials(const std::string &encoded_str);
   ParseInfo ExtractParseInfo(const std::string &encoded_str);
 
   CURLClient curl;
   std::string parse_query_url;
   std::string get_creds_url;
   std::string get_named_params_url;
-  v8::Isolate *isolate;
 };
 
 #endif

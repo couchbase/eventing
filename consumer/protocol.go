@@ -260,15 +260,10 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 	return
 }
 
-// TODO : Remove rbac user once RBAC issue is resolved
-func (c *Consumer) makeV8InitPayload(rbacUsername, rbacPassword, appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg string,
+func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg string,
 	capacity, cronTimerPerDoc, executionTimeout, fuzzOffset, checkpointInterval int, enableRecursiveMutation, skipLcbBootstrap bool,
 	curlTimeout int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
-
-	// TODO : Remove rbacUser and rbacPass once RBAC issue is resolved
-	rbacUser := builder.CreateString(rbacUsername)
-	rbacPass := builder.CreateString(rbacPassword)
 
 	app := builder.CreateString(appName)
 	ch := builder.CreateString(currHost)
@@ -284,10 +279,6 @@ func (c *Consumer) makeV8InitPayload(rbacUsername, rbacPassword, appName, currHo
 	flatbuffers.WriteBool(lcb, skipLcbBootstrap)
 
 	payload.PayloadStart(builder)
-
-	// TODO : Remove the below 2 payloads once RBAC issue is resolved
-	payload.PayloadAddRbacUser(builder, rbacUser)
-	payload.PayloadAddRbacPass(builder, rbacPass)
 
 	payload.PayloadAddAppName(builder, app)
 	payload.PayloadAddCurrHost(builder, ch)

@@ -88,10 +88,6 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       server_settings->host_addr.assign(payload->curr_host()->str());
       server_settings->kv_host_port.assign(payload->kv_host_port()->str());
 
-      // TODO : Remove rbac user and pass once RBAC issue is resolved
-      server_settings->rbac_user.assign(payload->rbac_user()->str());
-      server_settings->rbac_pass.assign(payload->rbac_pass()->str());
-
       LOG(logDebug) << "Loading app:" << app_name << std::endl;
 
       v8::V8::InitializeICU();
@@ -442,7 +438,7 @@ void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
                << " worker_id:" << worker_id << " batch_size:" << batch_size
                << " port:" << port << std::endl;
 
-  uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *) &server_sock,
+  uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
                  [](uv_connect_t *conn, int status) {
                    AppWorker::GetAppWorker()->OnConnect(conn, status);
                  });
@@ -698,7 +694,8 @@ int main(int argc, char **argv) {
   AppWorker *worker = AppWorker::GetAppWorker();
 
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
-    worker->InitUDS(appname, Localhost(false), worker_id, batch_size, uds_sock_path);
+    worker->InitUDS(appname, Localhost(false), worker_id, batch_size,
+                    uds_sock_path);
   } else {
     worker->InitTcpSock(appname, Localhost(false), worker_id, batch_size, port);
   }

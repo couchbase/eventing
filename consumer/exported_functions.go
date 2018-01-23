@@ -294,7 +294,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 	// Framing bare minimum V8 worker init payload
 	// TODO : Remove rbac user once RBAC issue is resolved
-	payload, pBuilder := c.makeV8InitPayload("", "", appName, util.Localhost(), "", eventingPort,
+	payload, pBuilder := c.makeV8InitPayload(appName, util.Localhost(), "", eventingPort,
 		"", appContent, 5, 10, 1, 30, 10*1000, true, true, 500)
 
 	c.sendInitV8Worker(payload, false, pBuilder)

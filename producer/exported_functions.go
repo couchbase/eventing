@@ -654,17 +654,6 @@ func (p *Producer) UpdatePlasmaMemoryQuota(quota int64) {
 	plasma.SetMemoryQuota(p.plasmaMemQuota * 1024 * 1024)
 }
 
-// RbacUser returns the rbac user supplied as part of app settings
-// TODO : Remove these methods once RBAC issue is resolved
-func (p *Producer) RbacUser() string {
-	return p.rbacUser
-}
-
-// RbacPass returns the rbac password supplied as part of app settings
-func (p *Producer) RbacPass() string {
-	return p.rbacPass
-}
-
 // TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
 func (p *Producer) TimerDebugStats() map[int]map[string]interface{} {
 	aggStats := make(map[int]map[string]interface{})

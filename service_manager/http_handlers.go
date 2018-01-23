@@ -1313,7 +1313,7 @@ func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Requ
 }
 
 func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -1325,15 +1325,12 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 	var username, password string
 	util.Retry(util.NewFixedBackoff(time.Second), util.GetCredsCallback, string(data), &username, &password)
 
-	creds := credsInfo{Username: username, Password: password}
-	response, err := json.Marshal(creds)
-	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		return
-	}
+	response := url.Values{}
+	response.Add("username", username)
+	response.Add("password", password)
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%v", string(response))
+	fmt.Fprintf(w, "%s", response.Encode())
 }
 
 func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {

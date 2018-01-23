@@ -38,10 +38,7 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	err = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: c.producer.RbacUser(),
-		Password: c.producer.RbacPass(),
-	})
+	err = cluster.Authenticate(&util.DynamicAuthenticator{})
 	if err != nil {
 		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
 			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
@@ -72,10 +69,7 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	err = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: c.producer.RbacUser(),
-		Password: c.producer.RbacPass(),
-	})
+	err = cluster.Authenticate(&util.DynamicAuthenticator{})
 	if err != nil {
 		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
 			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)

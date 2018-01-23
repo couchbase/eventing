@@ -43,6 +43,16 @@ size_t CURLClient::HeaderCallback(char *buffer, size_t size, size_t nitems,
   return realsize;
 }
 
+std::string CURLClient::Decode(const std::string &encoded_str) {
+  int n_decode;
+  auto decoded_str_ptr =
+      curl_easy_unescape(curl_handle, encoded_str.c_str(),
+                         static_cast<int>(encoded_str.length()), &n_decode);
+  std::string decoded_str(decoded_str_ptr, decoded_str_ptr + n_decode);
+  curl_free(decoded_str_ptr);
+  return decoded_str;
+}
+
 CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
                                   const std::string &url,
                                   const std::string &body) {
@@ -140,21 +150,12 @@ CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
 }
 
 Communicator::Communicator(const std::string &host_ip,
-                           const std::string &host_port, v8::Isolate *isolate)
-    : isolate(isolate) {
-  parse_query_url = "http://" + JoinHostPort(host_ip, host_port) + "/parseQuery";
+                           const std::string &host_port) {
+  parse_query_url =
+      "http://" + JoinHostPort(host_ip, host_port) + "/parseQuery";
   get_creds_url = "http://" + JoinHostPort(host_ip, host_port) + "/getCreds";
-  get_named_params_url = "http://" + JoinHostPort(host_ip, host_port) + "/getNamedParams";
-}
-
-std::string CURLClient::Decode(const std::string &encoded_str) {
-  int n_decode;
-  auto decoded_str_ptr =
-      curl_easy_unescape(curl_handle, encoded_str.c_str(),
-                         static_cast<int>(encoded_str.length()), &n_decode);
-  std::string decoded_str(decoded_str_ptr, decoded_str_ptr + n_decode);
-  curl_free(decoded_str_ptr);
-  return decoded_str;
+  get_named_params_url =
+      "http://" + JoinHostPort(host_ip, host_port) + "/getNamedParams";
 }
 
 ExtractKVInfo CURLClient::ExtractKV(const std::string &encoded_str) {
@@ -215,37 +216,19 @@ ParseInfo Communicator::ExtractParseInfo(const std::string &encoded_str) {
   return info;
 }
 
-CredsInfo Communicator::GetCreds(const std::string &endpoint) {
-  v8::HandleScope handle_scope(isolate);
-
-  auto context = v8::Context::New(isolate);
-  v8::Context::Scope context_scope(context);
-
-  auto response =
-      curl.HTTPPost({"Content-Type: text/plain"}, get_creds_url, endpoint);
-
+CredsInfo Communicator::ExtractCredentials(const std::string &encoded_str) {
   CredsInfo info;
-  info.is_error = response.is_error;
-  if (response.is_error) {
-    info.error = response.response;
+  info.is_valid = false;
+
+  auto kv_info = curl.ExtractKV(encoded_str);
+  if (!kv_info.is_valid) {
+    info.msg = kv_info.msg;
     return info;
   }
 
-  if (std::stoi(response.headers["Status"]) != 0) {
-    info.is_error = true;
-    info.error = response.response;
-    return info;
-  }
-
-  auto response_obj =
-      v8::JSON::Parse(v8Str(isolate, response.response))->ToObject();
-  auto username_v8_str = response_obj->Get(v8Str(isolate, "username"));
-  auto password_v8_str = response_obj->Get(v8Str(isolate, "password"));
-  v8::String::Utf8Value username_utf8(username_v8_str);
-  v8::String::Utf8Value password_utf8(password_v8_str);
-
-  info.username = *username_utf8;
-  info.password = *password_utf8;
+  info.is_valid = true;
+  info.username = kv_info.kv["username"];
+  info.password = kv_info.kv["password"];
   return info;
 }
 
@@ -300,7 +283,6 @@ NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
     LOG(logError)
         << "Unable to get named params: status code is missing in header: "
         << response.response << std::endl;
-    info.p_info.info = response.response;
     return info;
   }
 
@@ -311,4 +293,33 @@ NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
   }
 
   return ExtractNamedParams(response.response);
+}
+
+CredsInfo Communicator::GetCreds(const std::string &endpoint) {
+  auto response =
+      curl.HTTPPost({"Content-Type: text/plain"}, get_creds_url, endpoint);
+
+  CredsInfo info;
+  info.is_valid = false;
+
+  if (response.is_error) {
+    LOG(logError) << "Unable to get creds: Something went wrong with CURL lib: "
+                  << response.response << std::endl;
+    info.msg = response.response;
+    return info;
+  }
+
+  if (response.headers.find("Status") == response.headers.end()) {
+    LOG(logError) << "Unable to get creds: status code is missing in header: "
+                  << response.response << std::endl;
+    return info;
+  }
+
+  if (std::stoi(response.headers["Status"]) != 0) {
+    LOG(logError) << "Unable to get creds: non-zero status in header: "
+                  << response.response << std::endl;
+    return info;
+  }
+
+  return ExtractCredentials(response.response);
 }

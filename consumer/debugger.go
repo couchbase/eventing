@@ -245,8 +245,7 @@ func (c *Consumer) startDebuggerServer() {
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getKvNodesFromVbMap, c)
 
-	// TODO : Remove rbac user once RBAC issue is resolved
-	payload, pBuilder := c.makeV8InitPayload(c.producer.RbacUser(), c.producer.RbacPass(), c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
+	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
 		c.kvNodes[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)
