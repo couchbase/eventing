@@ -236,8 +236,8 @@ type Consumer struct {
 	docCurrTimer  string
 	docNextTimer  string
 
-	docTimerEntryCh    chan *byTimer
-	nonDocTimerEntryCh chan timerMsg
+	docTimerEntryCh  chan *byTimer
+	cronTimerEntryCh chan *timerMsg
 
 	timerAddrs    map[string]map[string]string
 	vbPlasmaStore *plasma.Plasma
@@ -256,8 +256,11 @@ type Consumer struct {
 	debuggerStarted                bool
 
 	fuzzOffset                    int
-	nonDocTimerProcessingTicker   *time.Ticker
-	nonDocTimerStopCh             chan struct{}
+	addCronTimerStopCh            chan struct{}
+	cleanupCronTimerCh            chan *cronTimerToCleanup
+	cleanupCronTimerStopCh        chan struct{}
+	cronTimerProcessingTicker     *time.Ticker
+	cronTimerStopCh               chan struct{}
 	skipTimerThreshold            int
 	socketTimeout                 time.Duration
 	timerCleanupStopCh            chan struct{}
@@ -458,11 +461,14 @@ type vbucketKVBlob struct {
 
 	AssignedDocIDTimerWorker     string `json:"doc_id_timer_processing_worker"`
 	CurrentProcessedDocIDTimer   string `json:"currently_processed_doc_id_timer"`
-	CurrentProcessedNonDocTimer  string `json:"currently_processed_non_doc_timer"`
 	LastProcessedDocIDTimerEvent string `json:"last_processed_doc_id_timer_event"`
 	NextDocIDTimerToProcess      string `json:"next_doc_id_timer_to_process"`
-	NextNonDocTimerToProcess     string `json:"next_non_doc_timer_to_process"`
-	PlasmaPersistedSeqNo         uint64 `json:"plasma_last_persisted_seq_no"`
+
+	CurrentProcessedCronTimer   string `json:"currently_processed_cron_timer"`
+	LastProcessedCronTimerEvent string `json:"last_processed_cron_timer_event"`
+	NextCronTimerToProcess      string `json:"next_cron_timer_to_process"`
+
+	PlasmaPersistedSeqNo uint64 `json:"plasma_last_persisted_seq_no"`
 }
 
 // OwnershipEntry captures the state of vbucket within the metadata blob
@@ -479,14 +485,21 @@ type cronTimerEntry struct {
 	Payload      string `json:"payload"`
 }
 
-type cronTimer struct {
+type cronTimers struct {
 	CronTimers []cronTimerEntry `json:"cron_timers"`
 	Version    string           `json:"version"`
 }
 
 type timerMsg struct {
-	payload  string
-	msgCount int
+	msgCount  int
+	payload   string
+	partition int32
+	timestamp string
+}
+
+type cronTimerToCleanup struct {
+	vb    uint16
+	docID string
 }
 
 type msgToTransmit struct {

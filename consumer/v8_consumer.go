@@ -34,6 +34,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
+		addCronTimerStopCh:              make(chan struct{}, 1),
 		app:                             app,
 		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpConfig["dataChanSize"].(int)),
 		bucket:                          bucket,
@@ -67,8 +68,10 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		lcbInstCapacity:                 lcbInstCapacity,
 		logLevel:                        logLevel,
 		msgProcessedRWMutex:             &sync.RWMutex{},
-		nonDocTimerEntryCh:              make(chan timerMsg, dcpConfig["genChanSize"].(int)),
-		nonDocTimerStopCh:               make(chan struct{}, 1),
+		cleanupCronTimerCh:              make(chan *cronTimerToCleanup, dcpConfig["genChanSize"].(int)),
+		cleanupCronTimerStopCh:          make(chan struct{}, 1),
+		cronTimerEntryCh:                make(chan *timerMsg, dcpConfig["genChanSize"].(int)),
+		cronTimerStopCh:                 make(chan struct{}, 1),
 		numVbuckets:                     numVbuckets,
 		opsTimestamp:                    time.Now(),
 		plasmaStoreCh:                   make(chan *plasmaStoreEntry, dcpConfig["genChanSize"].(int)),
@@ -218,8 +221,11 @@ func (c *Consumer) Serve() {
 
 	go c.cleanupProcessesedDocTimers()
 
-	// non doc_id timer events
-	go c.processNonDocTimerEvents(c.cronCurrTimer, c.cronNextTimer)
+	go c.processCronTimerEvents(c.cronCurrTimer, c.cronNextTimer)
+
+	go c.addCronTimersToCleanup()
+
+	go c.cleanupProcessedCronTimers()
 
 	go c.updateWorkerStats()
 
@@ -305,17 +311,19 @@ func (c *Consumer) Stop() {
 	c.restartVbDcpStreamTicker.Stop()
 	c.statsTicker.Stop()
 
-	c.timerCleanupStopCh <- struct{}{}
+	c.addCronTimerStopCh <- struct{}{}
+	c.cleanupCronTimerStopCh <- struct{}{}
 	c.socketWriteLoopStopCh <- struct{}{}
 	<-c.socketWriteLoopStopAckCh
 	c.socketWriteTicker.Stop()
+	c.timerCleanupStopCh <- struct{}{}
 
 	c.updateStatsTicker.Stop()
 	c.updateStatsStopCh <- struct{}{}
 
 	c.plasmaStoreStopCh <- struct{}{}
 	c.stopCheckpointingCh <- struct{}{}
-	c.nonDocTimerStopCh <- struct{}{}
+	c.cronTimerStopCh <- struct{}{}
 	c.stopControlRoutineCh <- struct{}{}
 	c.stopConsumerCh <- struct{}{}
 	c.signalStopDebuggerRoutineCh <- struct{}{}

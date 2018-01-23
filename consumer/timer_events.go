@@ -278,7 +278,6 @@ func (c *Consumer) cleanupProcessesedDocTimers() {
 				if err != nil {
 					continue
 				}
-				lastProcessedTs = lastProcessedTs.Add(time.Second)
 
 				snapshot := c.vbPlasmaStore.NewSnapshot()
 
@@ -328,13 +327,14 @@ func (c *Consumer) cleanupProcessesedDocTimers() {
 		case <-c.timerCleanupStopCh:
 			logging.Infof("%s [%s:%s:%d] Exiting doc timer cleanup routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			timerCleanupTicker.Stop()
 			return
 		}
 	}
 }
 
-func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string) {
-	c.nonDocTimerProcessingTicker = time.NewTicker(c.timerProcessingTickInterval)
+func (c *Consumer) processCronTimerEvents(cTimer, nTimer string) {
+	c.cronTimerProcessingTicker = time.NewTicker(c.timerProcessingTickInterval)
 
 	vbsOwned := c.getVbsOwned()
 
@@ -346,39 +346,39 @@ func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string) {
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-		if vbBlob.CurrentProcessedNonDocTimer == "" {
+		if vbBlob.CurrentProcessedCronTimer == "" {
 			if cTimer == "" {
-				c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", c.cronCurrTimer)
+				c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", c.cronCurrTimer)
 			} else {
-				c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", cTimer)
+				c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", cTimer)
 			}
 		} else {
-			c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", vbBlob.CurrentProcessedNonDocTimer)
+			c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", vbBlob.CurrentProcessedCronTimer)
 		}
 
-		if vbBlob.NextNonDocTimerToProcess == "" {
+		if vbBlob.NextCronTimerToProcess == "" {
 			if nTimer == "" {
-				c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", c.cronNextTimer)
+				c.vbProcessingStats.updateVbStat(vb, "next_cron_timer_to_process", c.cronNextTimer)
 			} else {
-				c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", nTimer)
+				c.vbProcessingStats.updateVbStat(vb, "next_cron_timer_to_process", nTimer)
 			}
 		} else {
-			c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", vbBlob.NextNonDocTimerToProcess)
+			c.vbProcessingStats.updateVbStat(vb, "next_cron_timer_to_process", vbBlob.NextCronTimerToProcess)
 		}
 	}
 
 	for {
 		select {
-		case <-c.nonDocTimerStopCh:
+		case <-c.cronTimerStopCh:
 			return
 
-		case <-c.nonDocTimerProcessingTicker.C:
-			var val cronTimer
+		case <-c.cronTimerProcessingTicker.C:
+			var val cronTimers
 			var isNoEnt bool
 
 			vbsOwned := c.getVbsOwned()
 			for _, vb := range vbsOwned {
-				currTimer := c.vbProcessingStats.getVbStat(vb, "currently_processed_non_doc_timer").(string)
+				currTimer := c.vbProcessingStats.getVbStat(vb, "currently_processed_cron_timer").(string)
 
 				ctsSplit := strings.Split(currTimer, "::")
 				if len(ctsSplit) > 1 {
@@ -410,24 +410,38 @@ func (c *Consumer) processNonDocTimerEvents(cTimer, nTimer string) {
 								logging.Errorf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v, err: %v",
 									c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerDocID, val, err)
 							}
+
+							// Going back a second to assist in checkpointing of cron timers in CPP workers and to
+							// avoid cleaning up of timers that map to current second and are yet to be processed
+							ts.Add(-time.Second)
+
 							if len(val.CronTimers) > 0 {
-								c.nonDocTimerEntryCh <- timerMsg{payload: string(data), msgCount: len(val.CronTimers)}
-								c.gocbMetaBucket.Remove(timerDocID, 0)
+								c.cronTimerEntryCh <- &timerMsg{
+									msgCount:  len(val.CronTimers),
+									partition: int32(vb),
+									payload:   string(data),
+									timestamp: ts.UTC().Format(time.RFC3339),
+								}
+
+								c.cleanupCronTimerCh <- &cronTimerToCleanup{
+									vb:    vb,
+									docID: timerDocID,
+								}
 							}
 						} else {
 							break
 						}
 					}
-					c.updateNonDocTimerStats(vb)
+					c.updateCronTimerStats(vb)
 				}
 			}
 		}
 	}
 }
 
-func (c *Consumer) updateNonDocTimerStats(vb uint16) {
-	timerTs := c.vbProcessingStats.getVbStat(vb, "next_non_doc_timer_to_process").(string)
-	c.vbProcessingStats.updateVbStat(vb, "currently_processed_non_doc_timer", timerTs)
+func (c *Consumer) updateCronTimerStats(vb uint16) {
+	timerTs := c.vbProcessingStats.getVbStat(vb, "next_cron_timer_to_process").(string)
+	c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", timerTs)
 
 	ts := strings.Split(timerTs, "::")[1]
 	nextTimer, err := time.Parse(tsLayout, ts)
@@ -442,7 +456,99 @@ func (c *Consumer) updateNonDocTimerStats(vb uint16) {
 		nextTimerTs = fmt.Sprintf("%s::%s", c.app.AppName, nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
 	}
 
-	c.vbProcessingStats.updateVbStat(vb, "next_non_doc_timer_to_process", nextTimerTs)
+	c.vbProcessingStats.updateVbStat(vb, "next_cron_timer_to_process", nextTimerTs)
+}
+
+func (c *Consumer) addCronTimersToCleanup() {
+	logPrefix := "Consumer::addCronTimersToCleanup"
+
+	for {
+		select {
+		case e, ok := <-c.cleanupCronTimerCh:
+			if ok == false {
+				logging.Infof("%s [%s:%s:%d] Exiting cron timer cleanup routine",
+					logPrefix, c.workerName, c.tcpPort, c.Pid())
+				return
+			}
+
+			cronTimerCleanupKey := fmt.Sprintf("%s::cron_timer::vb::%v", c.app.AppName, e.vb)
+			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), appendCronTimerCleanupCallback, c, cronTimerCleanupKey, e.docID)
+
+		case <-c.addCronTimerStopCh:
+			return
+		}
+	}
+}
+
+func (c *Consumer) cleanupProcessedCronTimers() {
+	logPrefix := "Consumer::cleanupProcessedCronTimers"
+
+	timerCleanupTicker := time.NewTicker(c.timerProcessingTickInterval * 10)
+
+	for {
+		select {
+		case <-timerCleanupTicker.C:
+			vbsOwned := c.getCurrentlyOwnedVbs()
+
+			for _, vb := range vbsOwned {
+
+				vbKey := fmt.Sprintf("%s::vb::%v", c.app.AppName, vb)
+
+				var vbBlob vbucketKVBlob
+				var cas gocb.Cas
+				var isNoEnt bool
+
+				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+
+				lastProcessedCronTimer := vbBlob.LastProcessedCronTimerEvent
+
+				if lastProcessedCronTimer != "" {
+
+					lastProcessedTs, err := time.Parse(tsLayout, lastProcessedCronTimer)
+					if err != nil {
+						continue
+					}
+
+					lastProcessedTs = lastProcessedTs.Add(time.Second)
+
+					cronTimerCleanupKey := fmt.Sprintf("%s::cron_timer::vb::%v", c.app.AppName, vb)
+
+					var cronTimerBlob []string
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, cronTimerCleanupKey, &cronTimerBlob, &cas, true, &isNoEnt)
+
+					for _, cleanupTsDocID := range cronTimerBlob {
+
+						// Sample cleanTsDocID: bucket_op_with_cron_timer.js::2018-01-24T06:23:47Z0
+						utcTimestamp := strings.Split(cleanupTsDocID, "::")
+
+						if len(utcTimestamp) == 2 {
+							cleanupTs, err := time.Parse(tsLayout, utcTimestamp[1][:len(tsLayout)])
+							if err != nil {
+								continue
+							}
+
+							logging.Tracef("%s [%s:%s:%d] vb: %d last processed cron timer timestamp: %v cleanup timestamp: %v",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, lastProcessedTs, cleanupTs)
+
+							if lastProcessedTs.After(cleanupTs) {
+								logging.Tracef("%s [%s:%s:%d] vb: %d Cleaning up doc: %v",
+									logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, cleanupTsDocID)
+								util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), removeDocIDCallback, c, cleanupTsDocID)
+								util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), removeIndexCallback, c, cronTimerCleanupKey, 0)
+							}
+						}
+					}
+				}
+
+			}
+
+		case <-c.cleanupCronTimerStopCh:
+			timerCleanupTicker.Stop()
+			logging.Infof("%s [%s:%s:%d] Exiting cron timer cleanup routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
+	}
 }
 
 func (c *Consumer) checkIfVbInOwned(vb uint16) bool {

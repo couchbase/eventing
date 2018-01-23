@@ -347,7 +347,7 @@ func (c *Consumer) processEvents() {
 			c.doctimerMessagesProcessed++
 			c.sendDocTimerEvent(e, c.sendMsgToDebugger)
 
-		case e, ok := <-c.nonDocTimerEntryCh:
+		case e, ok := <-c.cronTimerEntryCh:
 			if ok == false {
 				logging.Infof("%s [%s:%s:%d] Closing non_doc timer chan", logPrefix, c.workerName, c.tcpPort, c.Pid())
 
@@ -356,7 +356,7 @@ func (c *Consumer) processEvents() {
 			}
 
 			c.crontimerMessagesProcessed += uint64(e.msgCount)
-			c.sendNonDocTimerEvent(e.payload, c.sendMsgToDebugger)
+			c.sendCronTimerEvent(e, c.sendMsgToDebugger)
 
 		case <-c.statsTicker.C:
 

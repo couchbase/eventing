@@ -30,7 +30,7 @@ const (
 const (
 	timerOpcode int8 = iota
 	docTimer
-	nonDocTimer
+	cronTimer
 )
 
 const (
@@ -90,8 +90,8 @@ func (c *Consumer) makeDocTimerEventHeader(partition int16) ([]byte, *flatbuffer
 	return c.makeHeader(timerEvent, docTimer, partition, "")
 }
 
-func (c *Consumer) makeNonDocTimerEventHeader(partition int16) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(timerEvent, nonDocTimer, partition, "")
+func (c *Consumer) makeCronTimerEventHeader(partition int16) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(timerEvent, cronTimer, partition, "")
 }
 
 func (c *Consumer) makeDcpMutationHeader(partition int16, mutationMeta string) ([]byte, *flatbuffers.Builder) {
@@ -223,14 +223,17 @@ func (c *Consumer) makeDocTimerPayload(e *byTimer) (encodedPayload []byte, build
 	return
 }
 
-func (c *Consumer) makeNonDocTimerPayload(data string) (encodedPayload []byte, builder *flatbuffers.Builder) {
+func (c *Consumer) makeCronTimerPayload(e *timerMsg) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
-	pPos := builder.CreateString(data)
+	pPos := builder.CreateString(e.payload)
+	tPos := builder.CreateString(e.timestamp)
 
 	payload.PayloadStart(builder)
 
 	payload.PayloadAddDocIdsCallbackFns(builder, pPos)
+	payload.PayloadAddTimerTs(builder, tPos)
+	payload.PayloadAddTimerPartition(builder, e.partition)
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)

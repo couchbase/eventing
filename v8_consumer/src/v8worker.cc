@@ -666,20 +666,20 @@ void V8Worker::Checkpoint() {
       lcb_CMDSUBDOC cmd = {0};
       LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());
 
-      lcb_SDSPEC timer_spec = {0};
-      timer_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-      timer_spec.options = LCB_SDSPEC_F_MKINTERMEDIATES;
+      lcb_SDSPEC dtimer_spec = {0};
+      dtimer_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+      dtimer_spec.options = LCB_SDSPEC_F_MKINTERMEDIATES;
 
       // Prepend and append '"' to make value a valid json
       vbTimer.second.insert(0, 1, '"');
       vbTimer.second.append("\"");
 
-      LCB_SDSPEC_SET_PATH(&timer_spec, doc_timer_path.c_str(),
+      LCB_SDSPEC_SET_PATH(&dtimer_spec, doc_timer_path.c_str(),
                           doc_timer_path.length());
-      LCB_SDSPEC_SET_VALUE(&timer_spec, vbTimer.second.c_str(),
+      LCB_SDSPEC_SET_VALUE(&dtimer_spec, vbTimer.second.c_str(),
                            vbTimer.second.length());
 
-      cmd.specs = &timer_spec;
+      cmd.specs = &dtimer_spec;
       cmd.nspecs = 1;
 
       Result cres;
@@ -688,7 +688,8 @@ void V8Worker::Checkpoint() {
 
       if (cres.rc == LCB_SUCCESS) {
         doc_timer_mtx.lock();
-        if (vbTimer.second.compare(doc_timer_checkpoint[vbTimer.first]) == 0) {
+        if (vbTimer.second.compare(1, vbTimer.second.length() - 2,
+                                   doc_timer_checkpoint[vbTimer.first]) == 0) {
           doc_timer_checkpoint.erase(vbTimer.first);
         }
         doc_timer_mtx.unlock();
@@ -710,6 +711,67 @@ void V8Worker::Checkpoint() {
         lcb_wait(checkpoint_cb_instance);
       }
     }
+
+    std::string cron_timer_path("last_processed_cron_timer_event");
+
+    cron_timer_mtx.lock();
+    std::map<int, std::string> curr_ctimer_checkpoint(
+        cron_timer_checkpoint.begin(), cron_timer_checkpoint.end());
+    cron_timer_mtx.unlock();
+
+    for (auto &vbTimer : curr_ctimer_checkpoint) {
+      std::stringstream vb_key;
+      vb_key << appName << "::vb::" << vbTimer.first;
+
+      lcb_CMDSUBDOC cmd = {0};
+      LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());
+
+      lcb_SDSPEC ctimer_spec = {0};
+      ctimer_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+      ctimer_spec.options = LCB_SDSPEC_F_MKINTERMEDIATES;
+
+      // Prepend and append '"' to make value a valid json
+      vbTimer.second.insert(0, 1, '"');
+      vbTimer.second.append("\"");
+
+      LCB_SDSPEC_SET_PATH(&ctimer_spec, cron_timer_path.c_str(),
+                          cron_timer_path.length());
+      LCB_SDSPEC_SET_VALUE(&ctimer_spec, vbTimer.second.c_str(),
+                           vbTimer.second.length());
+
+      cmd.specs = &ctimer_spec;
+      cmd.nspecs = 1;
+
+      Result cres;
+      lcb_subdoc3(checkpoint_cb_instance, &cres, &cmd);
+      lcb_wait(checkpoint_cb_instance);
+
+      if (cres.rc == LCB_SUCCESS) {
+        cron_timer_mtx.lock();
+        if (vbTimer.second.compare(1, vbTimer.second.length() - 2,
+                                   cron_timer_checkpoint[vbTimer.first]) == 0) {
+          cron_timer_checkpoint.erase(vbTimer.first);
+        }
+        cron_timer_mtx.unlock();
+      }
+
+      auto sleep_duration = LCB_OP_RETRY_INTERVAL;
+
+      while (cres.rc != LCB_SUCCESS) {
+        checkpoint_failure_count++;
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
+        sleep_duration *= 1.5;
+
+        // Backoff capped at 5000ms
+        if (sleep_duration > 5000) {
+          sleep_duration = 5000;
+        };
+
+        lcb_subdoc3(checkpoint_cb_instance, &cres, &cmd);
+        lcb_wait(checkpoint_cb_instance);
+      }
+    }
+
     std::this_thread::sleep_for(checkpoint_interval);
   }
 }
@@ -764,7 +826,8 @@ void V8Worker::RouteMessage() {
         payload = flatbuf::payload::GetPayload(
             (const void *)msg.payload->payload.c_str());
         cron_cb_fns.assign(payload->doc_ids_callback_fns()->str());
-        this->SendCronTimer(cron_cb_fns);
+        timer_ts.assign(payload->timer_ts()->str());
+        this->SendCronTimer(cron_cb_fns, timer_ts, payload->timer_partition());
         break;
       default:
         break;
@@ -1003,7 +1066,8 @@ int V8Worker::SendDelete(std::string meta) {
   }
 }
 
-void V8Worker::SendCronTimer(std::string cron_cb_fns) {
+void V8Worker::SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
+                             int32_t partition) {
   /*
    {"cron_timers":[
                    {"callback_func":"timerCallback1", "payload": "doc_id1"},
@@ -1057,12 +1121,16 @@ void V8Worker::SendCronTimer(std::string cron_cb_fns) {
 
           agent->PauseOnNextJavascriptStatement("Break on start");
           if (DebugExecute(*fn, arg, 1)) {
+            std::lock_guard<std::mutex> lck(cron_timer_mtx);
+            cron_timer_checkpoint[partition] = timer_ts;
             return;
           }
         } else {
           execute_flag = true;
           execute_start_time = Time::now();
           fn_handle->Call(context->Global(), 1, arg);
+          std::lock_guard<std::mutex> lck(cron_timer_mtx);
+          cron_timer_checkpoint[partition] = timer_ts;
           execute_flag = false;
         }
       }
@@ -1185,12 +1253,4 @@ std::string V8Worker::CompileHandler(std::string handler) {
   }
 
   return "";
-}
-
-const char *V8Worker::V8WorkerLastException() { return last_exception.c_str(); }
-
-const char *V8Worker::V8WorkerVersion() { return v8::V8::GetVersion(); }
-
-void V8Worker::V8WorkerTerminateExecution() {
-  v8::V8::TerminateExecution(GetIsolate());
 }

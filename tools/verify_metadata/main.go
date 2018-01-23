@@ -40,7 +40,7 @@ func main() {
 }
 
 func metaStateDump() {
-	res, err := fireQuery("select vb_id as id, last_processed_seq_no as seq, currently_processed_doc_id_timer as tcp_doc, next_doc_id_timer_to_process as tcp_ndoc, last_processed_doc_id_timer_event as tcp_ldoc, currently_processed_non_doc_timer as ucp_cron, next_non_doc_timer_to_process as ucp_ncron from eventing where vb_id IS NOT NULL order by id")
+	res, err := fireQuery("select vb_id as id, last_processed_seq_no as seq, currently_processed_doc_id_timer as tcp_doc, next_doc_id_timer_to_process as tcp_ndoc, last_processed_doc_id_timer_event as tcp_ldoc, currently_processed_cron_timer as ucp_cron, next_cron_timer_to_process as ucp_ncron from eventing where vb_id IS NOT NULL order by id")
 	if err == nil {
 		n1qlResp, nErr := parseN1qlResponse(res)
 		if nErr == nil {
