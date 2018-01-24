@@ -168,7 +168,13 @@ echo
 
 # Note versions
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
-test "$GERRIT" = "" && git rev-parse HEAD > ~/eventing.good
+if [ "$GERRIT" != "" ]; then
+  if [ $GERRIT -gt 0 ]; then
+    echo "Not updating known good as Gerrit run"
+  fi
+else
+  git rev-parse HEAD > ~/eventing.good
+fi
 cd $WORKSPACE/goproj/src/github.com/couchbase/indexing
 git rev-parse HEAD > ~/indexing.good
 cd $WORKSPACE/goproj/src/github.com/couchbase/query

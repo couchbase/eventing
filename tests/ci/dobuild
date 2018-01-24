@@ -124,11 +124,13 @@ else
   echo "none"
 fi
 
-if [ "$GERRIT" != "" -a $GERRIT -gt 0 ]; then
-  cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
-  revspec=`git ls-remote -q http://review.couchbase.org/eventing refs/changes/*/$GERRIT/* | awk '{print $2}' | sort -n -t/ -k5 | tail -1`
-  echo Pulling in uncommitted change "http://review.couchbase.org/eventing $revspec"
-  git fetch -q http://review.couchbase.org/eventing $revspec && git cherry-pick FETCH_HEAD
+if [ "$GERRIT" != "" ]; then
+  if [ $GERRIT -gt 0 ]; then
+    cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
+    revspec=`git ls-remote -q http://review.couchbase.org/eventing refs/changes/*/$GERRIT/* | awk '{print $2}' | sort -n -t/ -k5 | tail -1`
+    echo Pulling in uncommitted change "http://review.couchbase.org/eventing $revspec"
+    git fetch -q http://review.couchbase.org/eventing $revspec && git cherry-pick FETCH_HEAD
+  fi
 fi
 
 cd $WORKSPACE/goproj/src/github.com/couchbase/query
