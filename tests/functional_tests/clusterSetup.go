@@ -284,6 +284,7 @@ func waitForDeployToFinish(appName string) {
 		}
 
 		if _, exists := deployedApps[appName]; exists {
+			log.Printf("App: %v got deployed\n", appName)
 			return
 		}
 	}

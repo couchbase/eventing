@@ -27,10 +27,10 @@ func TestTopologyEventingRebInWhenExistingEventingNodeProcessingMutations(t *tes
 		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
-		loop:    true,
+		loop:    false,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	addNodeFromRest("127.0.0.1:9002", "eventing,kv")
 	rebalanceFromRest([]string{""})
@@ -52,7 +52,7 @@ func TestTopologyEventingRebInWhenExistingEventingNodeProcessingMutations(t *tes
 			"UpdateOp")
 	}
 
-	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
 
 	log.Println("Comparing item count post delete operations")
 

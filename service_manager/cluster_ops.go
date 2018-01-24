@@ -79,7 +79,7 @@ var stopRebalanceCallback = func(args ...interface{}) error {
 	return nil
 }
 
-var cleanupEventingMetaKvPath = func (args ...interface{}) error {
+var cleanupEventingMetaKvPath = func(args ...interface{}) error {
 	path := args[0].(string)
 
 	err := util.RecursiveDelete(path)

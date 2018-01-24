@@ -13,7 +13,19 @@ type user struct {
 	Interests []string `json:"interests"`
 }
 
-func pumpBucketOps(count int, expiry int, delete bool, startIndex int, rate *rateLimit) {
+type opsType struct {
+	count       int
+	expiry      int
+	delete      bool
+	writeXattrs bool
+	startIndex  int
+}
+
+func pumpBucketOps(ops opsType, rate *rateLimit) {
+	if ops.count == 0 {
+		ops.count = itemCount
+	}
+
 	cluster, _ := gocb.Connect("couchbase://127.0.0.1:12000")
 	cluster.Authenticate(gocb.PasswordAuthenticator{
 		Username: rbacuser,
@@ -32,13 +44,20 @@ func pumpBucketOps(count int, expiry int, delete bool, startIndex int, rate *rat
 	}
 
 	if !rate.limit {
-		for i := 0; i < count; i++ {
-			u.ID = i + startIndex
-			bucket.Upsert(fmt.Sprintf("doc_id_%d", i+startIndex), u, uint32(expiry))
+		for i := 0; i < ops.count; i++ {
+			u.ID = i + ops.startIndex
+			if !ops.writeXattrs {
+				bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
+			} else {
+				bucket.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), 0, uint32(ops.expiry)).
+					UpsertEx("userxattr.test", "user xattr test value", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
+					UpsertEx("normalproperty", "normal property value", gocb.SubdocFlagNone).
+					Execute()
+			}
 		}
 
-		if delete {
-			for i := 0; i < count; i++ {
+		if ops.delete {
+			for i := 0; i < ops.count; i++ {
 				bucket.Remove(fmt.Sprintf("doc_id_%d", i), 0)
 			}
 		}
@@ -48,11 +67,18 @@ func pumpBucketOps(count int, expiry int, delete bool, startIndex int, rate *rat
 		for {
 			select {
 			case <-ticker.C:
-				u.ID = i + startIndex
-				if delete {
+				u.ID = i + ops.startIndex
+				if ops.delete {
 					bucket.Remove(fmt.Sprintf("doc_id_%d", u.ID), 0)
 				} else {
-					bucket.Upsert(fmt.Sprintf("doc_id_%d", i+startIndex), u, uint32(expiry))
+					if !ops.writeXattrs {
+						bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
+					} else {
+						bucket.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), 0, uint32(ops.expiry)).
+							UpsertEx("userxattr.test", "user xattr test value", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
+							UpsertEx("normalproperty", "normal property value", gocb.SubdocFlagNone).
+							Execute()
+					}
 				}
 				i++
 

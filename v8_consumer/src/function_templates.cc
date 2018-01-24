@@ -203,14 +203,17 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto sleep_duration = LCB_OP_RETRY_INTERVAL;
   while (res.rc != LCB_SUCCESS) {
-    non_doc_timer_create_failure++;
-    LOG(logInfo) << "Cron timer create failure for doc:" << timer_entry
+    LOG(logTrace) << "Retrying... Cron timer create failure for doc:" << timer_entry
                  << " payload: " << opaque
                  << " lcb rc:" << lcb_strerror(nullptr, res.rc)
-                 << " entry id: " << non_doc_timer_create_failure
-                 << " sleep_duration: " << sleep_duration * 10000 << std::endl;
+                 << " sleep_duration: " << sleep_duration * 1000 << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
     sleep_duration *= 1.5;
+
+    if (sleep_duration > 5000) {
+      sleep_duration = 5000;
+    }
+
     lcb_subdoc3(meta_cb_instance, &res, &mcmd);
     lcb_wait(meta_cb_instance);
   }
@@ -301,13 +304,17 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     }
 
     while (res.rc != LCB_SUCCESS) {
-      doc_timer_create_failure++;
-      LOG(logError) << "Failed to while performing lookup for fulldoc "
+      LOG(logError) << "Retrying... Failed to while performing lookup for fulldoc "
                        "and exptime"
                     << " doc key:" << doc_id
                     << " rc: " << lcb_strerror(nullptr, res.rc) << std::endl;
       std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
       sleep_duration *= 1.5;
+
+      if (sleep_duration > 5000) {
+        sleep_duration = 5000;
+      }
+
       lcb_subdoc3(cb_instance, &res, &gcmd);
       lcb_wait(cb_instance);
     }
@@ -373,12 +380,16 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     sleep_duration = LCB_OP_RETRY_INTERVAL;
     while (res.rc != LCB_SUCCESS && res.rc != LCB_KEY_EEXISTS) {
-      doc_timer_create_failure++;
-      LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
+      LOG(logError) << "Retrying... Failed to update timer related xattr fields for doc_id:"
                     << doc_id << " return code:" << res.rc
                     << " msg:" << lcb_strerror(nullptr, res.rc) << std::endl;
       std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
       sleep_duration *= 1.5;
+
+      if (sleep_duration > 5000) {
+        sleep_duration = 5000;
+      }
+
       lcb_subdoc3(cb_instance, &res, &mcmd);
       lcb_wait(cb_instance);
     }

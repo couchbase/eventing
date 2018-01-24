@@ -7,7 +7,6 @@ import (
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	cbbucket "github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
 )
 
@@ -122,7 +121,7 @@ var setOpCallback = func(args ...interface{}) error {
 var getCronTimerCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	key := args[1].(string)
-	val := args[2].(*cronTimer)
+	val := args[2].(*cronTimers)
 	checkEnoEnt := args[3].(bool)
 
 	var isNoEnt *bool
@@ -233,18 +232,16 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	vbKey := args[1].(string)
 	vbBlob := args[2].(*vbucketKVBlob)
 
-	doc := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0))
-	doc.UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath)
+	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+		UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath).
+		UpsertEx("doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker, gocb.SubdocFlagCreatePath).
+		UpsertEx("currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer, gocb.SubdocFlagCreatePath).
+		UpsertEx("currently_processed_cron_timer", vbBlob.CurrentProcessedCronTimer, gocb.SubdocFlagCreatePath).
+		UpsertEx("next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess, gocb.SubdocFlagCreatePath).
+		UpsertEx("next_cron_timer_to_process", vbBlob.NextCronTimerToProcess, gocb.SubdocFlagCreatePath).
+		UpsertEx("plasma_last_persisted_seq_no", vbBlob.PlasmaPersistedSeqNo, gocb.SubdocFlagCreatePath).
+		Execute()
 
-	doc.UpsertEx("doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("currently_processed_non_doc_timer", vbBlob.CurrentProcessedNonDocTimer, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("last_processed_doc_id_timer_event", vbBlob.LastProcessedDocIDTimerEvent, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("next_non_doc_timer_to_process", vbBlob.NextNonDocTimerToProcess, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("plasma_last_persisted_seq_no", vbBlob.PlasmaPersistedSeqNo, gocb.SubdocFlagCreatePath)
-
-	_, err := doc.Execute()
 	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
 	}
@@ -262,19 +259,19 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	vbKey := args[1].(string)
 	vbBlob := args[2].(*vbucketKVBlob)
 
-	doc := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0))
-	doc.UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("node_uuid", vbBlob.NodeUUID, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("previous_assigned_worker", vbBlob.PreviousAssignedWorker, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("previous_node_eventing_dir", vbBlob.PreviousEventingDir, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("previous_node_uuid", vbBlob.PreviousNodeUUID, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("previous_vb_owner", vbBlob.PreviousVBOwner, gocb.SubdocFlagCreatePath)
+	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
+		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath).
+		UpsertEx("doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid", vbBlob.NodeUUID, gocb.SubdocFlagCreatePath).
+		UpsertEx("previous_assigned_worker", vbBlob.PreviousAssignedWorker, gocb.SubdocFlagCreatePath).
+		UpsertEx("previous_node_eventing_dir", vbBlob.PreviousEventingDir, gocb.SubdocFlagCreatePath).
+		UpsertEx("previous_node_uuid", vbBlob.PreviousNodeUUID, gocb.SubdocFlagCreatePath).
+		UpsertEx("previous_vb_owner", vbBlob.PreviousVBOwner, gocb.SubdocFlagCreatePath).
+		Execute()
 
-	_, err := doc.Execute()
 	if err == gocb.ErrShutdown {
 		return nil
 	}
@@ -287,46 +284,22 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	return err
 }
 
-var updateVbOwnerAndStartStreamCallback = func(args ...interface{}) error {
-	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
-	vbBlob := args[2].(*vbucketKVBlob)
-
-	doc := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0))
-	doc.UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("node_uuid", vbBlob.NodeUUID, gocb.SubdocFlagCreatePath)
-
-	_, err := doc.Execute()
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
-	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing checkpoint update before dcp stream start, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
-	}
-
-	return err
-}
-
 var addOwnershipHistorySRCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
 	vbBlob := args[2].(*vbucketKVBlob)
 	ownershipEntry := args[3].(*OwnershipEntry)
 
-	doc := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0))
-	doc.ArrayAppend("ownership_history", ownershipEntry, true)
-	doc.UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("node_uuid", vbBlob.NodeUUID, gocb.SubdocFlagCreatePath)
-	doc.UpsertEx("vb_uuid", vbBlob.VBuuid, gocb.SubdocFlagCreatePath)
+	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+		ArrayAppend("ownership_history", ownershipEntry, true).
+		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
+		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid", vbBlob.NodeUUID, gocb.SubdocFlagCreatePath).
+		UpsertEx("vb_uuid", vbBlob.VBuuid, gocb.SubdocFlagCreatePath).
+		Execute()
 
-	_, err := doc.Execute()
 	if err == gocb.ErrShutdown {
 		return nil
 	}
@@ -344,10 +317,10 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 	vbKey := args[1].(string)
 	ownershipEntry := args[2].(*OwnershipEntry)
 
-	doc := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0))
-	doc.ArrayAppend("ownership_history", ownershipEntry, true)
+	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+		ArrayAppend("ownership_history", ownershipEntry, true).
+		Execute()
 
-	_, err := doc.Execute()
 	if err == gocb.ErrShutdown {
 		return nil
 	}
@@ -357,21 +330,6 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
 
-	return err
-}
-
-var poolGetBucketOpCallback = func(args ...interface{}) error {
-	c := args[0].(*Consumer)
-	conn := args[1].(*cbbucket.Client)
-	pool := args[2].(*cbbucket.Pool)
-	poolName := args[3].(string)
-
-	var err error
-	*pool, err = conn.GetPool(poolName)
-	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to get pool info, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
-	}
 	return err
 }
 
@@ -468,4 +426,73 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	}
 
 	return nil
+}
+
+var appendCronTimerCleanupCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+	docID := args[1].(string)
+	cronTimerDocID := args[2].(string)
+
+	_, err := c.gocbMetaBucket.MutateIn(docID, 0, uint32(0)).
+		ArrayAppend("", cronTimerDocID, true).
+		Execute()
+
+	if gocb.IsKeyNotFoundError(err) {
+		var data []interface{}
+		data = append(data, cronTimerDocID)
+		c.gocbMetaBucket.Insert(docID, data, 0)
+		return nil
+	}
+
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
+	if err != nil {
+		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while appending cron timers to cleanup, err: %v",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), docID, err)
+	}
+
+	return err
+}
+
+var removeDocIDCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+	key := args[1].(string)
+
+	_, err := c.gocbMetaBucket.Remove(key, 0)
+	if gocb.IsKeyNotFoundError(err) {
+		return nil
+	}
+
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
+	if err != nil {
+		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, failed to remove from metadata bucket, err: %v",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
+	}
+
+	return err
+}
+
+var removeIndexCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+	key := args[1].(string)
+	index := args[2].(int)
+
+	_, err := c.gocbMetaBucket.MutateIn(key, 0, 0).
+		Remove(fmt.Sprintf("[%d]", index)).
+		Execute()
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
+	if err != nil {
+		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, failed to remove from metadata bucket, err: %v",
+			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
+	}
+
+	return err
 }

@@ -26,7 +26,7 @@ func TestEventingRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) 
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	addNodeFromRest("127.0.0.1:9001", "eventing")
 	rebalanceFromRest([]string{""})
@@ -48,7 +48,7 @@ func TestEventingRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) 
 			"UpdateOp")
 	}
 
-	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
 
 	log.Println("Comparing item count post delete operations")
 
@@ -84,7 +84,7 @@ func TestEventingRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T)
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
@@ -101,7 +101,7 @@ func TestEventingRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T)
 			"UpdateOp")
 	}
 
-	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
 
 	log.Println("Comparing item count post delete operations")
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
@@ -132,7 +132,7 @@ func TestEventingSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	addNodeFromRest("127.0.0.1:9001", "eventing")
 	rebalanceFromRest([]string{""})
@@ -159,7 +159,7 @@ func TestEventingSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T
 			"UpdateOp")
 	}
 
-	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
 
 	log.Println("Comparing item count post delete operations")
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
@@ -190,7 +190,7 @@ func TestKVRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	addNodeFromRest("127.0.0.1:9001", "kv")
 	rebalanceFromRest([]string{""})
@@ -211,7 +211,7 @@ func TestKVRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 			"UpdateOp")
 	}
 
-	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
 
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
 	if eventCount != 0 {
@@ -245,7 +245,7 @@ func TestKVRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
@@ -262,7 +262,7 @@ func TestKVRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 			"UpdateOp")
 	}
 
-	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
 
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
 	if eventCount != 0 {
@@ -292,7 +292,7 @@ func TestKVSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	addNodeFromRest("127.0.0.1:9001", "kv")
 	rebalanceFromRest([]string{""})
@@ -319,7 +319,7 @@ func TestKVSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 			"UpdateOp")
 	}
 
-	pumpBucketOps(rlItemCount, 0, true, 0, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
 
 	log.Println("Comparing item count post delete operations")
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)

@@ -34,6 +34,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
+		addCronTimerStopCh:              make(chan struct{}, 1),
 		app:                             app,
 		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpConfig["dataChanSize"].(int)),
 		bucket:                          bucket,
@@ -53,7 +54,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		dcpStreamBoundary:               streamBoundary,
 		debuggerStarted:                 false,
 		diagDir:                         diagDir,
-		docTimerEntryCh:                 make(chan *byTimerEntry, dcpConfig["genChanSize"].(int)),
+		docTimerEntryCh:                 make(chan *byTimer, dcpConfig["genChanSize"].(int)),
 		enableRecursiveMutation:         enableRecursiveMutation,
 		eventingAdminPort:               eventingAdminPort,
 		eventingDir:                     eventingDir,
@@ -67,8 +68,10 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		lcbInstCapacity:                 lcbInstCapacity,
 		logLevel:                        logLevel,
 		msgProcessedRWMutex:             &sync.RWMutex{},
-		nonDocTimerEntryCh:              make(chan timerMsg, dcpConfig["genChanSize"].(int)),
-		nonDocTimerStopCh:               make(chan struct{}, 1),
+		cleanupCronTimerCh:              make(chan *cronTimerToCleanup, dcpConfig["genChanSize"].(int)),
+		cleanupCronTimerStopCh:          make(chan struct{}, 1),
+		cronTimerEntryCh:                make(chan *timerMsg, dcpConfig["genChanSize"].(int)),
+		cronTimerStopCh:                 make(chan struct{}, 1),
 		numVbuckets:                     numVbuckets,
 		opsTimestamp:                    time.Now(),
 		plasmaStoreCh:                   make(chan *plasmaStoreEntry, dcpConfig["genChanSize"].(int)),
@@ -100,6 +103,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		stopVbOwnerTakeoverCh:           make(chan struct{}, vbOwnershipTakeoverRoutineCount),
 		superSup:                        s,
 		tcpPort:                         tcpPort,
+		timerCleanupStopCh:              make(chan struct{}, 1),
 		timerProcessingRWMutex:          &sync.RWMutex{},
 		timerRWMutex:                    &sync.RWMutex{},
 		timerProcessingTickInterval:     timerProcessingTickInterval,
@@ -141,6 +145,8 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 
 // Serve acts as init routine for consumer handle
 func (c *Consumer) Serve() {
+	logPrefix := "Consumer::Serve"
+
 	// Insert an entry to sendMessage loop control channel to signify a normal bootstrap
 	c.socketWriteLoopStopAckCh <- struct{}{}
 
@@ -171,13 +177,13 @@ func (c *Consumer) Serve() {
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs)
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
-	logging.Infof("V8CR[%s:%s:%s:%d] vbnos len: %d",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
+	logging.Infof("%s [%s:%s:%d] vbnos len: %d",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-	logging.Infof("V8CR[%s:%s:%s:%d] Spawning worker corresponding to producer, node addr: %v",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr())
+	logging.Infof("%s [%s:%s:%d] Spawning worker corresponding to producer, node addr: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr())
 
 	var feedName couchbase.DcpFeedName
 
@@ -205,6 +211,9 @@ func (c *Consumer) Serve() {
 	c.docCurrTimer = time.Now().UTC().Format(time.RFC3339)
 	c.docNextTimer = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
+	logging.Infof("%s [%s:%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)
+
 	c.startDcp(flogs)
 
 	// Initialises timer processing worker instances
@@ -215,8 +224,13 @@ func (c *Consumer) Serve() {
 		go r.processTimerEvents(c.docCurrTimer, c.docNextTimer)
 	}
 
-	// non doc_id timer events
-	go c.processNonDocTimerEvents(c.cronCurrTimer, c.cronNextTimer)
+	go c.cleanupProcessesedDocTimers()
+
+	go c.processCronTimerEvents(c.cronCurrTimer, c.cronNextTimer)
+
+	go c.addCronTimersToCleanup()
+
+	go c.cleanupProcessedCronTimers()
 
 	go c.updateWorkerStats()
 
@@ -229,8 +243,8 @@ func (c *Consumer) Serve() {
 
 	c.controlRoutine()
 
-	logging.Debugf("V8CR[%s:%s:%s:%d] Exiting consumer init routine",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+	logging.Debugf("%s [%s:%s:%d] Exiting consumer init routine",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }
 
 // HandleV8Worker sets up CPP V8 worker post its bootstrap
@@ -302,16 +316,19 @@ func (c *Consumer) Stop() {
 	c.restartVbDcpStreamTicker.Stop()
 	c.statsTicker.Stop()
 
+	c.addCronTimerStopCh <- struct{}{}
+	c.cleanupCronTimerStopCh <- struct{}{}
 	c.socketWriteLoopStopCh <- struct{}{}
 	<-c.socketWriteLoopStopAckCh
 	c.socketWriteTicker.Stop()
+	c.timerCleanupStopCh <- struct{}{}
 
 	c.updateStatsTicker.Stop()
 	c.updateStatsStopCh <- struct{}{}
 
 	c.plasmaStoreStopCh <- struct{}{}
 	c.stopCheckpointingCh <- struct{}{}
-	c.nonDocTimerStopCh <- struct{}{}
+	c.cronTimerStopCh <- struct{}{}
 	c.stopControlRoutineCh <- struct{}{}
 	c.stopConsumerCh <- struct{}{}
 	c.signalStopDebuggerRoutineCh <- struct{}{}

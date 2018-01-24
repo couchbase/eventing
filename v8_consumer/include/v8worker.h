@@ -129,7 +129,6 @@ extern std::atomic<int64_t> on_update_failure;
 extern std::atomic<int64_t> on_delete_success;
 extern std::atomic<int64_t> on_delete_failure;
 
-extern std::atomic<int64_t> non_doc_timer_create_failure;
 extern std::atomic<int64_t> doc_timer_create_failure;
 
 extern std::atomic<int64_t> messages_processed_counter;
@@ -170,13 +169,12 @@ public:
   void Checkpoint();
   void RouteMessage();
 
-  const char *V8WorkerLastException();
-  const char *V8WorkerVersion();
-
   int SendUpdate(std::string value, std::string meta, std::string doc_type);
   int SendDelete(std::string meta);
-  void SendDocTimer(std::string doc_id, std::string callback_fn);
-  void SendCronTimer(std::string cron_cb_fns);
+  void SendDocTimer(std::string callback_fn, std::string doc_id,
+                    std::string timer_ts, int32_t partition);
+  void SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
+                     int32_t partition);
   std::string CompileHandler(std::string handler);
 
   void StartDebugger();
@@ -186,9 +184,6 @@ public:
 
   void Enqueue(header_t *header, message_t *payload);
   int64_t QueueSize();
-
-  void V8WorkerDispose();
-  void V8WorkerTerminateExecution();
 
   void AddLcbException(int err_code);
   void ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions);
@@ -243,6 +238,14 @@ private:
   std::string connstr;
   std::string meta_connstr;
   std::string src_path;
+
+  std::mutex doc_timer_mtx;
+  std::map<int, std::string>
+      doc_timer_checkpoint; // Access controlled by doc_timer_mtx
+
+  std::mutex cron_timer_mtx;
+  std::map<int, std::string>
+      cron_timer_checkpoint; // Access controlled by cron_timer_mtx
 
   vb_seq_map_t vb_seq;
 

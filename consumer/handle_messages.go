@@ -338,10 +338,10 @@ func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
-func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
-	partition := int16(util.VbucketByKey([]byte(e.DocID), cppWorkerPartitionCount))
+func (c *Consumer) sendDocTimerEvent(e *byTimer, sendToDebugger bool) {
+	partition := int16(util.VbucketByKey([]byte(e.entry.DocID), cppWorkerPartitionCount))
 	timerHeader, hBuilder := c.makeDocTimerEventHeader(partition)
-	timerPayload, pBuilder := c.makeDocTimerPayload(e.DocID, e.CallbackFn)
+	timerPayload, pBuilder := c.makeDocTimerPayload(e)
 
 	m := &msgToTransmit{
 		msg: &message{
@@ -357,10 +357,10 @@ func (c *Consumer) sendDocTimerEvent(e *byTimerEntry, sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
-func (c *Consumer) sendNonDocTimerEvent(payload string, sendToDebugger bool) {
-	partition := int16(util.VbucketByKey([]byte(payload), cppWorkerPartitionCount))
-	timerHeader, hBuilder := c.makeNonDocTimerEventHeader(partition)
-	timerPayload, pBuilder := c.makeNonDocTimerPayload(payload)
+func (c *Consumer) sendCronTimerEvent(e *timerMsg, sendToDebugger bool) {
+	partition := int16(util.VbucketByKey([]byte(e.payload), cppWorkerPartitionCount))
+	timerHeader, hBuilder := c.makeCronTimerEventHeader(partition)
+	timerPayload, pBuilder := c.makeCronTimerPayload(e)
 
 	m := &msgToTransmit{
 		msg: &message{

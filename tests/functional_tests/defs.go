@@ -99,10 +99,11 @@ type bucket struct {
 }
 
 type commonSettings struct {
-	thrCount    int
-	batchSize   int
-	workerCount int
-	lcbInstCap  int
+	thrCount       int
+	batchSize      int
+	workerCount    int
+	lcbInstCap     int
+	streamBoundary string
 }
 
 type rateLimit struct {

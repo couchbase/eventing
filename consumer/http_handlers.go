@@ -107,10 +107,10 @@ func (c *Consumer) VbProcessingStats() map[uint16]map[string]interface{} {
 		seqNo := c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no")
 		uuid := c.vbProcessingStats.getVbStat(vbno, "node_uuid")
 		currentProcDocIDTimer := c.vbProcessingStats.getVbStat(vbno, "currently_processed_doc_id_timer").(string)
-		currentProcNonDocIDTimer := c.vbProcessingStats.getVbStat(vbno, "currently_processed_non_doc_timer").(string)
+		currentProcCronTimer := c.vbProcessingStats.getVbStat(vbno, "currently_processed_cron_timer").(string)
 		lastProcDocIDTimer := c.vbProcessingStats.getVbStat(vbno, "last_processed_doc_id_timer_event").(string)
 		nextDocIDTimer := c.vbProcessingStats.getVbStat(vbno, "next_doc_id_timer_to_process").(string)
-		nextNonDocIDTimer := c.vbProcessingStats.getVbStat(vbno, "next_non_doc_timer_to_process").(string)
+		nextCronTimer := c.vbProcessingStats.getVbStat(vbno, "next_cron_timer_to_process").(string)
 		plasmaLastSeqNoPersist := c.vbProcessingStats.getVbStat(vbno, "plasma_last_seq_no_persisted").(uint64)
 
 		vbstats[vbno]["assigned_worker"] = assignedWorker
@@ -119,10 +119,10 @@ func (c *Consumer) VbProcessingStats() map[uint16]map[string]interface{} {
 		vbstats[vbno]["stream_status"] = streamStatus
 		vbstats[vbno]["seq_no"] = seqNo
 		vbstats[vbno]["currently_processed_doc_id_timer"] = currentProcDocIDTimer
-		vbstats[vbno]["currently_processed_non_doc_timer"] = currentProcNonDocIDTimer
+		vbstats[vbno]["currently_processed_cron_timer"] = currentProcCronTimer
 		vbstats[vbno]["last_processed_doc_id_timer_event"] = lastProcDocIDTimer
-		vbstats[vbno]["next_non_doc_timer_to_process"] = nextDocIDTimer
-		vbstats[vbno]["next_non_doc_timer_to_process"] = nextNonDocIDTimer
+		vbstats[vbno]["next_doc_id_timer_to_process"] = nextDocIDTimer
+		vbstats[vbno]["next_cron_timer_to_process"] = nextCronTimer
 		vbstats[vbno]["plasma_last_seq_no_persisted"] = plasmaLastSeqNoPersist
 	}
 
