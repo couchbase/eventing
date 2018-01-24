@@ -26,7 +26,6 @@ This will return the stats regardings events processing, events remaining, execu
    "execution_stats": {
      "agg_queue_size": 2,
      "doc_timer_create_failure": 0,
-     "non_doc_timer_create_failure": 0,
      "on_delete_failure": 0,
      "on_delete_success": 14,
      "on_update_failure": 0,
@@ -99,7 +98,6 @@ curl http://user:pass@localhost:8096/getExecutionStats?name=function_name
 {
   "agg_queue_size": 2,
   "doc_timer_create_failure": 0,
-  "non_doc_timer_create_failure": 0,
   "on_delete_failure": 5108,
   "on_delete_success": 6400893,
   "on_update_failure": 0,
@@ -111,7 +109,6 @@ Name|Datatype|Field|Descripton
 |:---|:---|:---|:---
 |Queue Size   | uint   | `agg_queue_size`   | Count of events that are queued on worker processes, waiting execution.   |
 Document Timer Creation Retries|uint|`doc_timer_create_failure`|Count of number of times document timers creations that were retried. Retry continues till script timeout.
-Cron Timer Creation Retries|uint|`non_doc_timer_create_failure`|Count of number of times cron timers creations that were retried. Retry continues till script timeout.
 OnDelete handler failures|uint|`on_delete_failure`|Count of number of delete handler executions that terminated with an uncaught execption.
 OnUpdate handler failures|uint|`on_update_failure`|Count of number of update handler executions that terminated with an uncaught execption.
 OnDelete handler successful invocations|uint|`on_delete_success`|Counter for number of times OnDelete handler was executed successfully.

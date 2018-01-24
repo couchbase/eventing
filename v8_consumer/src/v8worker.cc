@@ -48,7 +48,6 @@ std::atomic<std::int64_t> on_update_failure = {0};
 std::atomic<std::int64_t> on_delete_success = {0};
 std::atomic<std::int64_t> on_delete_failure = {0};
 
-std::atomic<std::int64_t> non_doc_timer_create_failure = {0};
 std::atomic<std::int64_t> doc_timer_create_failure = {0};
 
 std::atomic<std::int64_t> messages_processed_counter = {0};
@@ -641,6 +640,10 @@ void V8Worker::Checkpoint() {
           std::this_thread::sleep_for(
               std::chrono::milliseconds(sleep_duration));
           sleep_duration *= 1.5;
+
+            if (sleep_duration > 5000) {
+                sleep_duration = 5000;
+            }
           lcb_subdoc3(checkpoint_cb_instance, &cres, &cmd);
           lcb_wait(checkpoint_cb_instance);
         }
@@ -702,7 +705,6 @@ void V8Worker::Checkpoint() {
         std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
         sleep_duration *= 1.5;
 
-        // Backoff capped at 5000ms
         if (sleep_duration > 5000) {
           sleep_duration = 5000;
         };
@@ -762,7 +764,6 @@ void V8Worker::Checkpoint() {
         std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
         sleep_duration *= 1.5;
 
-        // Backoff capped at 5000ms
         if (sleep_duration > 5000) {
           sleep_duration = 5000;
         };

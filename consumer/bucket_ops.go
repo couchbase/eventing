@@ -441,6 +441,7 @@ var appendCronTimerCleanupCallback = func(args ...interface{}) error {
 		var data []interface{}
 		data = append(data, cronTimerDocID)
 		c.gocbMetaBucket.Insert(docID, data, 0)
+		return nil
 	}
 
 	if err == gocb.ErrShutdown {

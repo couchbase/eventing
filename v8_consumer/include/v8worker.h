@@ -129,7 +129,6 @@ extern std::atomic<int64_t> on_update_failure;
 extern std::atomic<int64_t> on_delete_success;
 extern std::atomic<int64_t> on_delete_failure;
 
-extern std::atomic<int64_t> non_doc_timer_create_failure;
 extern std::atomic<int64_t> doc_timer_create_failure;
 
 extern std::atomic<int64_t> messages_processed_counter;

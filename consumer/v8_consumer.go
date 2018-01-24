@@ -145,6 +145,8 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 
 // Serve acts as init routine for consumer handle
 func (c *Consumer) Serve() {
+	logPrefix := "Consumer::Serve"
+
 	// Insert an entry to sendMessage loop control channel to signify a normal bootstrap
 	c.socketWriteLoopStopAckCh <- struct{}{}
 
@@ -175,13 +177,13 @@ func (c *Consumer) Serve() {
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs)
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
-	logging.Infof("V8CR[%s:%s:%s:%d] vbnos len: %d",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
+	logging.Infof("%s [%s:%s:%d] vbnos len: %d",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-	logging.Infof("V8CR[%s:%s:%s:%d] Spawning worker corresponding to producer, node addr: %v",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr())
+	logging.Infof("%s [%s:%s:%d] Spawning worker corresponding to producer, node addr: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr())
 
 	var feedName couchbase.DcpFeedName
 
@@ -208,6 +210,9 @@ func (c *Consumer) Serve() {
 
 	c.docCurrTimer = time.Now().UTC().Format(time.RFC3339)
 	c.docNextTimer = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+
+	logging.Infof("%s [%s:%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)
 
 	c.startDcp(flogs)
 
@@ -238,8 +243,8 @@ func (c *Consumer) Serve() {
 
 	c.controlRoutine()
 
-	logging.Debugf("V8CR[%s:%s:%s:%d] Exiting consumer init routine",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+	logging.Debugf("%s [%s:%s:%d] Exiting consumer init routine",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }
 
 // HandleV8Worker sets up CPP V8 worker post its bootstrap
