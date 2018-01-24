@@ -168,7 +168,7 @@ echo
 
 # Note versions
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
-git rev-parse HEAD > ~/eventing.good
+test "$GERRIT" = "" && git rev-parse HEAD > ~/eventing.good
 cd $WORKSPACE/goproj/src/github.com/couchbase/indexing
 git rev-parse HEAD > ~/indexing.good
 cd $WORKSPACE/goproj/src/github.com/couchbase/query
