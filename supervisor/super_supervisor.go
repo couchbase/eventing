@@ -295,7 +295,9 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 // TopologyChangeNotifCallback is registered to notify any changes in MetaKvRebalanceTokenPath
 func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte, rev interface{}) error {
-	logging.Infof("SSUP[%d] TopologyChangeNotifCallback: path => %s value => %s\n", len(s.runningProducers), path, string(value))
+	logPrefix := "SuperSupervisor::TopologyChangeNotifCallback"
+
+	logging.Infof("%s [%d] path => %s value => %s", logPrefix, len(s.runningProducers), path, string(value))
 
 	topologyChangeMsg := &common.TopologyChangeMsg{}
 
@@ -308,10 +310,36 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			topologyChangeMsg.CType = common.StartRebalanceCType
 		}
 
-		for _, producer := range s.runningProducers {
-			producer.NotifyTopologyChange(topologyChangeMsg)
+		for _, eventingProducer := range s.runningProducers {
+			eventingProducer.NotifyTopologyChange(topologyChangeMsg)
 		}
 
+	}
+
+	return nil
+}
+
+func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "SuperSupervisor::GlobalConfigChangeCallback"
+
+	logging.Infof("%s [%d] path => %s value => %s", logPrefix, len(s.runningProducers), path, string(value))
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if value != nil {
+		var config eventingConfig
+		err := json.Unmarshal(value, &config)
+		if err != nil {
+			logging.Errorf("%s [%d] Failed to unmarshal supplied config, err: %v", logPrefix, len(s.runningProducers), err)
+			return nil
+		}
+
+		logging.Infof("%s [%d] Notifying Eventing.Producer instances to update plasma memory quota to %v",
+			logPrefix, len(s.runningProducers), config.RamQuota)
+
+		for _, eventingProducer := range s.runningProducers {
+			eventingProducer.UpdatePlasmaMemoryQuota(config.RamQuota)
+		}
 	}
 
 	return nil

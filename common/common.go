@@ -76,6 +76,7 @@ type EventingProducer interface {
 	StopProducer()
 	String() string
 	TimerTransferHostPortAddrs() map[string]string
+	UpdatePlasmaMemoryQuota(quota int64)
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbDistributionStats() map[string]map[string]string
 	VbEventingNodeAssignMap() map[uint16]string
