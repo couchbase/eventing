@@ -138,7 +138,7 @@ func (r *timerProcessingWorker) processTimerEvents() {
 			logPrefix, r.c.workerName, r.c.tcpPort, r.c.Pid(), r.id, vb, vbBlob.LastProcessedDocIDTimerEvent, r.c.docCurrTimer, r.c.docNextTimer)
 
 		if vbBlob.LastProcessedDocIDTimerEvent == "" {
-				r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", r.c.docCurrTimer)
+			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", r.c.docCurrTimer)
 			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", r.c.docNextTimer)
 		} else {
 			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", vbBlob.LastProcessedDocIDTimerEvent)
@@ -351,7 +351,7 @@ func (c *Consumer) processCronTimerEvents() {
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastProcessedCronTimerEvent, c.cronCurrTimer, c.cronNextTimer)
 
 		if vbBlob.LastProcessedCronTimerEvent == "" {
-				c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", c.cronCurrTimer)
+			c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", c.cronCurrTimer)
 			c.vbProcessingStats.updateVbStat(vb, "next_cron_timer_to_process", c.cronNextTimer)
 		} else {
 			c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", vbBlob.LastProcessedCronTimerEvent)

@@ -211,8 +211,6 @@ func (c *Consumer) Serve() {
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName, c.eventingAdminPort)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
-
-
 	c.startDcp(flogs)
 
 	// Initialises timer processing worker instances
