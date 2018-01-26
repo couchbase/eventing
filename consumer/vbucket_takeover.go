@@ -331,6 +331,30 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 }
 
 func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob) error {
+	c.vbsStreamRRWMutex.Lock()
+	if _, ok := c.vbStreamRequested[vb]; !ok {
+		c.vbStreamRequested[vb] = struct{}{}
+		logging.Debugf("CRVT[%s:%s:%d] vb: %v Going to make DcpRequestStream call",
+			c.workerName, c.tcpPort, c.Pid(), vb)
+	} else {
+		c.vbsStreamRRWMutex.Unlock()
+		logging.Debugf("CRVT[%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
+			c.workerName, c.tcpPort, c.Pid(), vb)
+		return nil
+	}
+	c.vbsStreamRRWMutex.Unlock()
+
+	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
+	err := c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
+	if err != nil {
+		c.vbsStreamRRWMutex.Lock()
+		defer c.vbsStreamRRWMutex.Unlock()
+
+		if _, ok := c.vbStreamRequested[vb]; ok {
+			delete(c.vbStreamRequested, vb)
+		}
+		return err
+	}
 
 	timerAddrs := make(map[string]map[string]string)
 
@@ -396,31 +420,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 			c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir)
 	}
 
-	c.vbsStreamRRWMutex.Lock()
-	if _, ok := c.vbStreamRequested[vb]; !ok {
-		c.vbStreamRequested[vb] = struct{}{}
-		logging.Debugf("CRVT[%s:%s:%d] vb: %v Going to make DcpRequestStream call",
-			c.workerName, c.tcpPort, c.Pid(), vb)
-	} else {
-		c.vbsStreamRRWMutex.Unlock()
-		logging.Debugf("CRVT[%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
-			c.workerName, c.tcpPort, c.Pid(), vb)
-		return nil
-	}
-	c.vbsStreamRRWMutex.Unlock()
-
-	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
-	err := c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
-	if err != nil {
-		c.vbsStreamRRWMutex.Lock()
-		defer c.vbsStreamRRWMutex.Unlock()
-
-		if _, ok := c.vbStreamRequested[vb]; ok {
-			delete(c.vbStreamRequested, vb)
-		}
-	}
-
-	return err
+	return nil
 }
 
 func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBlob) {

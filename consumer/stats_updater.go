@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -26,9 +25,9 @@ func newVbProcessingStats(appName string, numVbuckets uint16) vbStats {
 		vbsts[i].stats["last_processed_doc_id_timer_event"] = time.Now().UTC().Format(time.RFC3339)
 		vbsts[i].stats["next_doc_id_timer_to_process"] = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
-		vbsts[i].stats["next_cron_timer_to_process"] = fmt.Sprintf("%s::%s", appName, time.Now().UTC().Add(time.Second).Format(time.RFC3339))
-		vbsts[i].stats["currently_processed_cron_timer"] = fmt.Sprintf("%s::%s", appName, time.Now().UTC().Format(time.RFC3339))
-		vbsts[i].stats["last_processed_cron_timer_event"] = fmt.Sprintf("%s::%s", appName, time.Now().UTC().Format(time.RFC3339))
+		vbsts[i].stats["next_cron_timer_to_process"] = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+		vbsts[i].stats["currently_processed_cron_timer"] = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+		vbsts[i].stats["last_processed_cron_timer_event"] = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 	}
 	return vbsts
 }

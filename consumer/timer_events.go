@@ -15,6 +15,8 @@ import (
 )
 
 var plasmaInsertKV = func(args ...interface{}) error {
+	logPrefix := "Consumer::plasmaInsertKV"
+
 	c := args[0].(*Consumer)
 	w := args[1].(*plasma.Writer)
 	k := args[2].(string)
@@ -32,11 +34,11 @@ var plasmaInsertKV = func(args ...interface{}) error {
 
 	err = w.InsertKV([]byte(k), []byte(v))
 	if err != nil {
-		logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v vb: %v Failed to insert into plasma store, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), k, vb, err)
+		logging.Errorf("%s [%s:%s:%d] Key: %v vb: %v Failed to insert into plasma store, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, vb, err)
 	} else {
-		logging.Debugf("CRTE[%s:%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), k, v, vb, err)
+		logging.Debugf("%s [%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, v, vb, err)
 	}
 	w.End()
 
@@ -44,6 +46,8 @@ var plasmaInsertKV = func(args ...interface{}) error {
 }
 
 func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
+	logPrefix := "Consumer::vbTimerProcessingWorkerAssign"
+
 	var vbsOwned []uint16
 
 	if initWorkers {
@@ -53,8 +57,8 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 	}
 
 	if len(vbsOwned) == 0 {
-		logging.Verbosef("CRTE[%s:%s:%s:%d] InitWorkers: %v Timer processing worker vbucket assignment, no vbucket owned by consumer",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), initWorkers)
+		logging.Verbosef("%s [%s:%s:%d] InitWorkers: %v Timer processing worker vbucket assignment, no vbucket owned by consumer",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), initWorkers)
 		return
 	}
 
@@ -84,16 +88,16 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 			c.timerProcessingRunningWorkers = append(c.timerProcessingRunningWorkers, worker)
 			c.timerProcessingWorkerSignalCh[worker] = make(chan struct{}, 1)
 
-			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Initial Timer routine vbs assigned len: %d dump: %v",
-				c.app.AppName, c.workerName, worker.id, c.tcpPort, c.Pid(),
+			logging.Debugf("%s [%s:timer_%d:%s:%d] Initial Timer routine vbs assigned len: %d dump: %v",
+				logPrefix, c.workerName, worker.id, c.tcpPort, c.Pid(),
 				len(vbs), util.Condense(vbs))
 		}
 	} else {
 
 		for i, vbs := range vbsWorkerDistribution {
 
-			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Timer routine timerProcessingRunningWorkers[%v]: %v",
-				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), i,
+			logging.Debugf("%s [%s:timer_%d:%s:%d] Timer routine timerProcessingRunningWorkers[%v]: %v",
+				logPrefix, c.workerName, i, c.tcpPort, c.Pid(), i,
 				util.Condense(c.timerProcessingRunningWorkers[i].vbsAssigned))
 
 			for _, vb := range vbs {
@@ -106,8 +110,8 @@ func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
 
 			c.timerProcessingRunningWorkers[i].vbsAssigned = vbs
 
-			logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] Timer routine vbs assigned len: %d dump: %v",
-				c.app.AppName, c.workerName, i, c.tcpPort, c.Pid(), len(vbs), util.Condense(vbs))
+			logging.Debugf("%s [%s:timer_%d:%s:%d] Timer routine vbs assigned len: %d dump: %v",
+				logPrefix, c.workerName, i, c.tcpPort, c.Pid(), len(vbs), util.Condense(vbs))
 		}
 	}
 }
@@ -116,7 +120,7 @@ func (r *timerProcessingWorker) getVbsOwned() []uint16 {
 	return r.vbsAssigned
 }
 
-func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
+func (r *timerProcessingWorker) processTimerEvents() {
 	logPrefix := "timerProcessingWorker::processTimerEvents"
 
 	vbsOwned := r.getVbsOwned()
@@ -129,26 +133,15 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 		var cas gocb.Cas
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, r.c, vbKey, &vbBlob, &cas, false)
-		logging.Infof("%s [%s:%s:%d] Worker: %v LastProcessedDocIDTimer: %v cTimer: %v nTimer: %v",
-			logPrefix, r.c.workerName, r.c.tcpPort, r.c.Pid(), r.id, vbBlob.LastProcessedDocIDTimerEvent, cTimer, nTimer)
+
+		logging.Infof("%s [%s:%s:%d] Worker: %v vb: %v lastProcessedDocIDTimer: %v cTimer: %v nTimer: %v",
+			logPrefix, r.c.workerName, r.c.tcpPort, r.c.Pid(), r.id, vb, vbBlob.LastProcessedDocIDTimerEvent, r.c.docCurrTimer, r.c.docNextTimer)
 
 		if vbBlob.LastProcessedDocIDTimerEvent == "" {
-			if cTimer == "" {
 				r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", r.c.docCurrTimer)
-			} else {
-				r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", cTimer)
-			}
+			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", r.c.docNextTimer)
 		} else {
 			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", vbBlob.LastProcessedDocIDTimerEvent)
-		}
-
-		if vbBlob.LastProcessedDocIDTimerEvent == "" {
-			if nTimer == "" {
-				r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", r.c.docNextTimer)
-			} else {
-				r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", nTimer)
-			}
-		} else {
 			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", vbBlob.LastProcessedDocIDTimerEvent)
 		}
 
@@ -224,17 +217,19 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 			snapshot.Close()
 			itr.Close()
 
-			r.c.updateTimerStats(vb)
+			r.c.updateDocTimerStats(vb)
 		}
 	}
 }
 
 func (c *Consumer) processTimerEvent(currTs time.Time, event string, vb uint16) {
+	logPrefix := "Consumer::processTimerEvent"
+
 	var timerEntry byTimerEntry
 	err := json.Unmarshal([]byte(event), &timerEntry)
 	if err != nil {
-		logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d processTimerEvent Failed to unmarshal timerEvent: %v err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, event, err)
+		logging.Errorf("%s [%s:%s:%d] vb: %d processTimerEvent Failed to unmarshal timerEvent: %v err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, event, err)
 	} else {
 
 		// Going a second back in time. This way last doc timer checkpointing in CPP worker will be off by a second.
@@ -337,7 +332,9 @@ func (c *Consumer) cleanupProcessesedDocTimers() {
 	}
 }
 
-func (c *Consumer) processCronTimerEvents(cTimer, nTimer string) {
+func (c *Consumer) processCronTimerEvents() {
+	logPrefix := "Consumer::processCronTimerEvents"
+
 	c.cronTimerProcessingTicker = time.NewTicker(c.timerProcessingTickInterval)
 
 	vbsOwned := c.getVbsOwned()
@@ -350,24 +347,21 @@ func (c *Consumer) processCronTimerEvents(cTimer, nTimer string) {
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-		if vbBlob.CurrentProcessedCronTimer == "" {
-			if cTimer == "" {
+		logging.Infof("%s [%s:%s:%d] vb: %v lastProcessedCronTimerEvent: %v cTimer: %v nTimer: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastProcessedCronTimerEvent, c.cronCurrTimer, c.cronNextTimer)
+
+		if vbBlob.LastProcessedCronTimerEvent == "" {
 				c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", c.cronCurrTimer)
-			} else {
-				c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", cTimer)
-			}
+			c.vbProcessingStats.updateVbStat(vb, "next_cron_timer_to_process", c.cronNextTimer)
 		} else {
-			c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", vbBlob.CurrentProcessedCronTimer)
+			c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", vbBlob.LastProcessedCronTimerEvent)
+			c.vbProcessingStats.updateVbStat(vb, "next_cron_timer_to_process", vbBlob.LastProcessedCronTimerEvent)
 		}
 
-		if vbBlob.NextCronTimerToProcess == "" {
-			if nTimer == "" {
-				c.vbProcessingStats.updateVbStat(vb, "next_cron_timer_to_process", c.cronNextTimer)
-			} else {
-				c.vbProcessingStats.updateVbStat(vb, "next_cron_timer_to_process", nTimer)
-			}
-		} else {
-			c.vbProcessingStats.updateVbStat(vb, "next_cron_timer_to_process", vbBlob.NextCronTimerToProcess)
+		// Updating current and next timer stats couple of times to make sure only a single
+		// vbucket maps to a given a cron timer timestamp
+		for i := 0; i < 2; i++ {
+			c.updateCronTimerStats(vb)
 		}
 	}
 
@@ -377,87 +371,85 @@ func (c *Consumer) processCronTimerEvents(cTimer, nTimer string) {
 			return
 
 		case <-c.cronTimerProcessingTicker.C:
-			var val cronTimers
-			var isNoEnt bool
-
 			vbsOwned := c.getVbsOwned()
+
 			for _, vb := range vbsOwned {
 				currTimer := c.vbProcessingStats.getVbStat(vb, "currently_processed_cron_timer").(string)
 
-				ctsSplit := strings.Split(currTimer, "::")
-				if len(ctsSplit) > 1 {
-					cts := ctsSplit[1]
-					ts, err := time.Parse(tsLayout, cts)
-					if err != nil {
-						logging.Errorf("CRTE[%s:%s:%s:%d] Cron timer vb: %d failed to parse currtime: %v err: %v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
-						continue
-					}
-
-					if ts.After(time.Now()) {
-						continue
-					}
-
-					counter := 0
-
-					for {
-						timerDocID := fmt.Sprintf("%s%d", currTimer, counter)
-
-						util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getCronTimerCallback, c, timerDocID, &val, true, &isNoEnt)
-
-						if !isNoEnt {
-							counter++
-							logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v",
-								c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerDocID, val)
-							data, err := json.Marshal(&val)
-							if err != nil {
-								logging.Errorf("CRTE[%s:%s:%s:%d] vb: %v Cron timer key: %v val: %v, err: %v",
-									c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerDocID, val, err)
-							}
-
-							// Going back a second to assist in checkpointing of cron timers in CPP workers and to
-							// avoid cleaning up of timers that map to current second and are yet to be processed
-							ts.Add(-time.Second)
-
-							if len(val.CronTimers) > 0 {
-								c.cronTimerEntryCh <- &timerMsg{
-									msgCount:  len(val.CronTimers),
-									partition: int32(vb),
-									payload:   string(data),
-									timestamp: ts.UTC().Format(time.RFC3339),
-								}
-
-								c.cleanupCronTimerCh <- &cronTimerToCleanup{
-									vb:    vb,
-									docID: timerDocID,
-								}
-							}
-						} else {
-							break
-						}
-					}
-					c.updateCronTimerStats(vb)
+				ts, err := time.Parse(tsLayout, currTimer)
+				if err != nil {
+					logging.Errorf("%s [%s:%s:%d] Cron timer vb: %d failed to parse currtime: %v err: %v",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
+					continue
 				}
+
+				if ts.After(time.Now()) {
+					continue
+				}
+
+				counter := 0
+
+				for {
+					var val cronTimers
+					var isNoEnt bool
+
+					timerDocID := fmt.Sprintf("%s::%s%d", c.app.AppName, currTimer, counter)
+
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getCronTimerCallback, c, timerDocID, &val, true, &isNoEnt)
+
+					if !isNoEnt {
+						counter++
+						logging.Infof("%s [%s:%s:%d] vb: %v Cron timer key: %v count: %v val: %v",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerDocID, len(val.CronTimers), val)
+						data, err := json.Marshal(&val)
+						if err != nil {
+							logging.Errorf("%s [%s:%s:%d] vb: %v Cron timer key: %v err: %v",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerDocID, err)
+						}
+
+						// Going back a second to assist in checkpointing of cron timers in CPP workers and to
+						// avoid cleaning up of timers that map to current second and are yet to be processed
+						ts.Add(-time.Second)
+
+						if len(val.CronTimers) > 0 {
+							c.cronTimerEntryCh <- &timerMsg{
+								msgCount:  len(val.CronTimers),
+								partition: int32(vb),
+								payload:   string(data),
+								timestamp: ts.UTC().Format(time.RFC3339),
+							}
+
+							c.cleanupCronTimerCh <- &cronTimerToCleanup{
+								vb:    vb,
+								docID: timerDocID,
+							}
+						}
+					} else {
+						break
+					}
+				}
+				c.updateCronTimerStats(vb)
 			}
 		}
 	}
 }
 
 func (c *Consumer) updateCronTimerStats(vb uint16) {
+	logPrefix := "Consumer::updateCronTimerStats"
+
 	timerTs := c.vbProcessingStats.getVbStat(vb, "next_cron_timer_to_process").(string)
 	c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", timerTs)
 
-	ts := strings.Split(timerTs, "::")[1]
-	nextTimer, err := time.Parse(tsLayout, ts)
+	nextTimer, err := time.Parse(tsLayout, timerTs)
 	if err != nil {
-		logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerTs, err)
+		logging.Errorf("%s [%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerTs, err)
 	}
 
-	nextTimerTs := fmt.Sprintf("%s::%s", c.app.AppName, nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
+	nextTimerTs := nextTimer.UTC().Add(time.Second).Format(time.RFC3339)
 	for util.VbucketByKey([]byte(nextTimerTs), c.numVbuckets) != vb {
 		nextTimer = nextTimer.UTC().Add(time.Second)
-		nextTimerTs = fmt.Sprintf("%s::%s", c.app.AppName, nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
+		nextTimerTs = nextTimer.UTC().Add(time.Second).Format(time.RFC3339)
 	}
 
 	c.vbProcessingStats.updateVbStat(vb, "next_cron_timer_to_process", nextTimerTs)
@@ -513,7 +505,7 @@ func (c *Consumer) cleanupProcessedCronTimers() {
 						continue
 					}
 
-					lastProcessedTs = lastProcessedTs.Add(time.Second)
+					// lastProcessedTs = lastProcessedTs.Add(time.Second)
 
 					cronTimerCleanupKey := fmt.Sprintf("%s::cron_timer::vb::%v", c.app.AppName, vb)
 
@@ -530,9 +522,6 @@ func (c *Consumer) cleanupProcessedCronTimers() {
 							if err != nil {
 								continue
 							}
-
-							logging.Tracef("%s [%s:%s:%d] vb: %d last processed cron timer timestamp: %v cleanup timestamp: %v",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, lastProcessedTs, cleanupTs)
 
 							if lastProcessedTs.After(cleanupTs) {
 								logging.Tracef("%s [%s:%s:%d] vb: %d Cleaning up doc: %v",
@@ -568,7 +557,9 @@ func (c *Consumer) checkIfVbInOwned(vb uint16) bool {
 	return false
 }
 
-func (c *Consumer) updateTimerStats(vb uint16) {
+func (c *Consumer) updateDocTimerStats(vb uint16) {
+	logPrefix := "Consumer::updateDocTimerStats"
+
 	if !c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
 		return
 	}
@@ -578,8 +569,8 @@ func (c *Consumer) updateTimerStats(vb uint16) {
 
 	nextTimer, err := time.Parse(tsLayout, nTimerTs)
 	if err != nil {
-		logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, nTimerTs, err)
+		logging.Errorf("%s [%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, nTimerTs, err)
 	}
 
 	c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process",
@@ -596,14 +587,7 @@ func (c *Consumer) storeTimerEventLoop() {
 				return
 			}
 
-		retryTimerStore:
-			err := c.storeTimerEvent(e.vb, e.seqNo, e.expiry, e.key, e.xMeta, writer)
-			if err == errPlasmaHandleMissing {
-				logging.Tracef("CRTE[%s:%s:%s:%d] Key: %s vb: %v Plasma handle missing",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.key, e.vb)
-				time.Sleep(time.Millisecond * 5)
-				goto retryTimerStore
-			}
+			c.storeTimerEvent(e.vb, e.seqNo, e.expiry, e.key, e.xMeta, writer)
 
 		case <-c.plasmaStoreStopCh:
 			return
@@ -612,11 +596,7 @@ func (c *Consumer) storeTimerEventLoop() {
 }
 
 func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key string, xMeta *xattrMetadata, writer *plasma.Writer) error {
-
-	// Steps:
-	// Lookup in byId plasma handle
-	// If ENOENT, then insert KV pair in byId plasma handle
-	// then insert in byTimer plasma handle as well
+	logPrefix := "Consumer::storeTimerEvent"
 
 	entriesToPrune := 0
 	timersToKeep := make([]string, 0)
@@ -632,14 +612,14 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 		ts, err := time.Parse(tsLayout, t)
 
 		if err != nil {
-			logging.Errorf("CRTE[%s:%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timer, err)
+			logging.Errorf("%s [%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timer, err)
 			continue
 		}
 
 		if !ts.After(time.Now()) {
-			logging.Debugf("CRTE[%s:%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, ts)
+			logging.Debugf("%s [%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, ts)
 			c.timersInPastCounter++
 			entriesToPrune++
 			continue
@@ -658,13 +638,13 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 			CallbackFn: cbFunc,
 		}
 
-		logging.Debugf("CRTE[%s:%s:%s:%d] vb: %v doc-id timerKey: %v byTimerEntry: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, timerKey, v)
+		logging.Debugf("%s [%s:%s:%d] vb: %v doc-id timerKey: %v byTimerEntry: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerKey, v)
 
 		encodedVal, mErr := json.Marshal(&v)
 		if mErr != nil {
-			logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v JSON marshal failed, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), timerKey, err)
+			logging.Errorf("%s [%s:%s:%d] Key: %v JSON marshal failed, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), timerKey, err)
 			continue
 		}
 
@@ -685,11 +665,11 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 		_, err := docF.Execute()
 		if err == gocb.ErrKeyNotFound {
 		} else if err != nil {
-			logging.Errorf("CRTE[%s:%s:%s:%d] Key: %v vb: %v, Failed to prune timer records from past, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, err)
+			logging.Errorf("%s [%s:%s:%d] Key: %v vb: %v, Failed to prune timer records from past, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), key, vb, err)
 		} else {
-			logging.Debugf("CRTE[%s:%s:%s:%d] Key: %v vb: %v, timer records in xattr: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), key, vb, timersToKeep)
+			logging.Debugf("%s [%s:%s:%d] Key: %v vb: %v, timer records in xattr: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), key, vb, timersToKeep)
 		}
 	}
 
