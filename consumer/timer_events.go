@@ -117,6 +117,8 @@ func (r *timerProcessingWorker) getVbsOwned() []uint16 {
 }
 
 func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
+	logPrefix := "timerProcessingWorker::processTimerEvents"
+
 	vbsOwned := r.getVbsOwned()
 	reader := r.c.vbPlasmaStore.NewReader()
 
@@ -127,25 +129,27 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 		var cas gocb.Cas
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, r.c, vbKey, &vbBlob, &cas, false)
+		logging.Infof("%s [%s:%s:%d] Worker: %v LastProcessedDocIDTimer: %v cTimer: %v nTimer: %v",
+			logPrefix, r.c.workerName, r.c.tcpPort, r.c.Pid(), r.id, vbBlob.LastProcessedDocIDTimerEvent, cTimer, nTimer)
 
-		if vbBlob.CurrentProcessedDocIDTimer == "" {
+		if vbBlob.LastProcessedDocIDTimerEvent == "" {
 			if cTimer == "" {
 				r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", r.c.docCurrTimer)
 			} else {
 				r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", cTimer)
 			}
 		} else {
-			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer)
+			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", vbBlob.LastProcessedDocIDTimerEvent)
 		}
 
-		if vbBlob.NextDocIDTimerToProcess == "" {
+		if vbBlob.LastProcessedDocIDTimerEvent == "" {
 			if nTimer == "" {
 				r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", r.c.docNextTimer)
 			} else {
 				r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", nTimer)
 			}
 		} else {
-			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess)
+			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", vbBlob.LastProcessedDocIDTimerEvent)
 		}
 
 		r.c.vbProcessingStats.updateVbStat(vb, "last_processed_doc_id_timer_event", vbBlob.LastProcessedDocIDTimerEvent)
@@ -155,8 +159,8 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 	for {
 		select {
 		case <-r.stopCh:
-			logging.Infof("CRTE[%s:%s:%s:%d] Exiting timer processing worker id: %v",
-				r.c.app.AppName, r.c.workerName, r.c.tcpPort, r.c.Pid(), r.id)
+			logging.Infof("%s [%s:%s:%d] Exiting timer processing worker id: %v",
+				logPrefix, r.c.workerName, r.c.tcpPort, r.c.Pid(), r.id)
 			return
 		case <-r.timerProcessingTicker.C:
 		}
@@ -168,8 +172,8 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 			// Make sure time processing isn't going ahead of system clock
 			cts, err := time.Parse(tsLayout, currTimer)
 			if err != nil {
-				logging.Errorf("CRTE[%s:%s:%s:%d] Doc timer vb: %d failed to parse currtime: %v err: %v",
-					r.c.app.AppName, r.c.workerName, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
+				logging.Errorf("%s [%s:%s:%d] Doc timer vb: %d failed to parse currtime: %v err: %v",
+					logPrefix, r.c.workerName, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
 				continue
 			}
 
@@ -186,8 +190,8 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 
 			itr, err := reader.NewSnapshotIterator(snapshot)
 			if err != nil {
-				logging.Errorf("timerProcessingWorker::processTimerEvents [%s:%d] vb: %v Failed to create snapshot, err: %v",
-					r.c.workerName, r.c.Pid(), vb, err)
+				logging.Errorf("%s [%s:%s:%d] vb: %v Failed to create snapshot, err: %v",
+					logPrefix, r.c.workerName, r.c.tcpPort, r.c.Pid(), vb, err)
 				continue
 			}
 
@@ -197,8 +201,8 @@ func (r *timerProcessingWorker) processTimerEvents(cTimer, nTimer string) {
 			itr.SetEndKey([]byte(endKeyPrefix))
 
 			for itr.Seek([]byte(startKeyPrefix)); itr.Valid(); itr.Next() {
-				logging.Debugf("CRTE[%s:%s:timer_%d:%s:%d] vb: %d timerEvent key: %v value: %v",
-					r.c.app.AppName, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, string(itr.Key()), string(itr.Value()))
+				logging.Debugf("%s [%s:%s:timer_%d:%s:%d] vb: %d timerEvent key: %v value: %v",
+					logPrefix, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, string(itr.Key()), string(itr.Value()))
 
 				entries := strings.Split(string(itr.Key()), "::")
 
@@ -565,6 +569,9 @@ func (c *Consumer) checkIfVbInOwned(vb uint16) bool {
 }
 
 func (c *Consumer) updateTimerStats(vb uint16) {
+	if !c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+		return
+	}
 
 	nTimerTs := c.vbProcessingStats.getVbStat(vb, "next_doc_id_timer_to_process").(string)
 	c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", nTimerTs)

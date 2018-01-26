@@ -15,7 +15,7 @@ import (
 )
 
 func initNodePaths() ([]byte, error) {
-	payload := strings.NewReader(fmt.Sprintf("index_path=%s&data_path=%s", indexDir, dataDir))
+	payload := strings.NewReader(fmt.Sprintf("data_path=%s&index_path=", dataDir))
 	return makeRequest("POST", payload, initNodeURL)
 }
 

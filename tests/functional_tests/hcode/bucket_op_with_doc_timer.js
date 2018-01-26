@@ -5,3 +5,8 @@ function OnUpdate(doc,meta) {
 function timerCallback(docid, expiry) {
     dst_bucket[docid] = 'from timerCallback';
 }
+
+function OnDelete(meta) {
+    log('deleting document', meta.id);
+    delete dst_bucket[meta.id]; // DELETE operation
+}

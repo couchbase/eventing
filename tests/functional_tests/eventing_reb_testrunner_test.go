@@ -23,7 +23,7 @@ func TestEventingRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) 
 		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
-		loop:    true,
+		loop:    false,
 	}
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
@@ -48,7 +48,7 @@ func TestEventingRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) 
 			"UpdateOp")
 	}
 
-	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
 
 	log.Println("Comparing item count post delete operations")
 
@@ -81,7 +81,7 @@ func TestEventingRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T)
 		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
-		loop:    true,
+		loop:    false,
 	}
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
@@ -101,7 +101,7 @@ func TestEventingRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T)
 			"UpdateOp")
 	}
 
-	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
 
 	log.Println("Comparing item count post delete operations")
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
@@ -129,7 +129,7 @@ func TestEventingSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T
 		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
-		loop:    true,
+		loop:    false,
 	}
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
@@ -159,7 +159,7 @@ func TestEventingSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T
 			"UpdateOp")
 	}
 
-	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
 
 	log.Println("Comparing item count post delete operations")
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
@@ -187,7 +187,7 @@ func TestKVRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
-		loop:    true,
+		loop:    false,
 	}
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
@@ -211,7 +211,7 @@ func TestKVRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 			"UpdateOp")
 	}
 
-	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
 
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
 	if eventCount != 0 {
@@ -242,7 +242,7 @@ func TestKVRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
-		loop:    true,
+		loop:    false,
 	}
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
@@ -262,7 +262,7 @@ func TestKVRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 			"UpdateOp")
 	}
 
-	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
 
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
 	if eventCount != 0 {
@@ -289,7 +289,7 @@ func TestKVSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 		opsPSec: rlOpsPSec * 10,
 		count:   rlItemCount,
 		stopCh:  make(chan struct{}, 1),
-		loop:    true,
+		loop:    false,
 	}
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
@@ -319,7 +319,7 @@ func TestKVSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 			"UpdateOp")
 	}
 
-	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
+	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
 
 	log.Println("Comparing item count post delete operations")
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)

@@ -211,13 +211,13 @@ func (c *Consumer) Serve() {
 	c.docCurrTimer = time.Now().UTC().Format(time.RFC3339)
 	c.docNextTimer = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
-	logging.Infof("%s [%s:%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)
-
 	c.startDcp(flogs)
 
 	// Initialises timer processing worker instances
 	c.vbTimerProcessingWorkerAssign(true)
+
+	logging.Infof("%s [%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v running workers: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer, c.timerProcessingRunningWorkers)
 
 	// doc_id timer events
 	for _, r := range c.timerProcessingRunningWorkers {

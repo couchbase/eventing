@@ -648,6 +648,7 @@ func (p *Producer) CleanupMetadataBucket() {
 	wg.Wait()
 }
 
+// UpdatePlasmaMemoryQuota allows tuning of memory quota for timers
 func (p *Producer) UpdatePlasmaMemoryQuota(quota int64) {
 	p.plasmaMemQuota = quota
 	plasma.SetMemoryQuota(p.plasmaMemQuota * 1024 * 1024)

@@ -129,7 +129,7 @@ var getOpCallback = func(args ...interface{}) error {
 	if err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
-		logging.Errorf("PRDR[%s:%d] Bucket set failed for key: %v , err: %v", p.appName, p.LenRunningConsumers(), key, err)
+		logging.Errorf("PRDR[%s:%d] Bucket get failed for key: %v , err: %v", p.appName, p.LenRunningConsumers(), key, err)
 	}
 
 	return err

@@ -44,6 +44,14 @@ func pumpBucketOps(ops opsType, rate *rateLimit) {
 	}
 
 	if !rate.limit {
+		if ops.delete {
+			for i := 0; i < ops.count; i++ {
+				bucket.Remove(fmt.Sprintf("doc_id_%d", i), 0)
+			}
+
+			return
+		}
+
 		for i := 0; i < ops.count; i++ {
 			u.ID = i + ops.startIndex
 			if !ops.writeXattrs {
@@ -56,11 +64,6 @@ func pumpBucketOps(ops opsType, rate *rateLimit) {
 			}
 		}
 
-		if ops.delete {
-			for i := 0; i < ops.count; i++ {
-				bucket.Remove(fmt.Sprintf("doc_id_%d", i), 0)
-			}
-		}
 	} else {
 		ticker := time.NewTicker(time.Second / time.Duration(rate.opsPSec))
 		i := 0
