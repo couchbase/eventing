@@ -118,7 +118,7 @@ func (c *Consumer) processEvents() {
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), xMeta)
 
 					// Validating for eventing xattr fields
-					if xMeta.Cas != "" && xMeta.Digest != 0 {
+					if xMeta.Cas != "" {
 						cas, err := util.ConvertBigEndianToUint64([]byte(xMeta.Cas))
 						if err != nil {
 							logging.Errorf("%s [%s:%s:%d] Key: %v failed to convert cas string from kv to uint64, err: %v",
