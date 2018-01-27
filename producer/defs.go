@@ -15,7 +15,7 @@ import (
 const (
 	metakvEventingPath    = "/eventing/"
 	metakvAppsPath        = metakvEventingPath + "apps/"
-	metakvAppSettingsPath = metakvEventingPath + "settings/"
+	metakvAppSettingsPath = metakvEventingPath + "appsettings/"
 	metakvConfigKeepNodes = metakvEventingPath + "config/keepNodes" // Store list of eventing keepNodes
 )
 

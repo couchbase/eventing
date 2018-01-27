@@ -17,6 +17,7 @@ import (
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/plasma"
 )
 
 // Auth returns username:password combination for the cluster
@@ -645,6 +646,12 @@ func (p *Producer) CleanupMetadataBucket() {
 	}(&wg, stopCh)
 
 	wg.Wait()
+}
+
+// UpdatePlasmaMemoryQuota allows tuning of memory quota for timers
+func (p *Producer) UpdatePlasmaMemoryQuota(quota int64) {
+	p.plasmaMemQuota = quota
+	plasma.SetMemoryQuota(p.plasmaMemQuota * 1024 * 1024)
 }
 
 // RbacUser returns the rbac user supplied as part of app settings

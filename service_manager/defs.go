@@ -12,7 +12,7 @@ import (
 const (
 	metakvEventingPath       = "/eventing/"
 	metakvAppsPath           = metakvEventingPath + "apps/"
-	metakvAppSettingsPath    = metakvEventingPath + "settings/"        // function settings
+	metakvAppSettingsPath    = metakvEventingPath + "appsettings/"     // function settings
 	metakvConfigKeepNodes    = metakvEventingPath + "config/keepNodes" // Store list of eventing keepNodes
 	metakvConfigPath         = metakvEventingPath + "config/settings"  // global settings
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"

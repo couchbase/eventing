@@ -89,7 +89,10 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	err = cluster.Authenticate(&util.DynamicAuthenticator{})
+	err = cluster.Authenticate(gocb.PasswordAuthenticator{
+		Username: p.RbacUser(),
+		Password: p.RbacPass(),
+	})
 	if err != nil {
 		logging.Errorf("PRDR[%s:%d] GOCB Failed to authenticate to the cluster %s failed, err: %v",
 			p.appName, p.LenRunningConsumers(), connStr, err)
@@ -129,7 +132,7 @@ var getOpCallback = func(args ...interface{}) error {
 	if err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
-		logging.Errorf("PRDR[%s:%d] Bucket set failed for key: %v , err: %v", p.appName, p.LenRunningConsumers(), key, err)
+		logging.Errorf("PRDR[%s:%d] Bucket get failed for key: %v , err: %v", p.appName, p.LenRunningConsumers(), key, err)
 	}
 
 	return err

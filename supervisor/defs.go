@@ -14,8 +14,11 @@ const (
 	MetakvAppsPath = metakvEventingPath + "apps/"
 
 	// MetakvAppSettingsPath refers to path under metakv where app settings are stored
-	MetakvAppSettingsPath       = metakvEventingPath + "settings/"
+	MetakvAppSettingsPath       = metakvEventingPath + "appsettings/"
 	metakvProducerHostPortsPath = metakvEventingPath + "hostports/"
+
+	// MetakvClusterSettings houses global configs related to Eventing
+	MetakvClusterSettings = metakvEventingPath + "settings/"
 
 	// MetakvRebalanceTokenPath refers to path under metakv where rebalance tokens are stored
 	MetakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
@@ -83,4 +86,9 @@ type SuperSupervisor struct {
 
 	serviceMgr common.EventingServiceMgr
 	sync.RWMutex
+}
+
+type eventingConfig struct {
+	RamQuota       int64  `json:"ram_quota"`
+	MetadataBucket string `json:"metadata_bucket"`
 }

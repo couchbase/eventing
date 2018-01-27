@@ -35,7 +35,10 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	err = cluster.Authenticate(&util.DynamicAuthenticator{})
+	err = cluster.Authenticate(gocb.PasswordAuthenticator{
+		Username: c.producer.RbacUser(),
+		Password: c.producer.RbacPass(),
+	})
 	if err != nil {
 		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
 			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
@@ -64,7 +67,10 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	err = cluster.Authenticate(&util.DynamicAuthenticator{})
+	err = cluster.Authenticate(gocb.PasswordAuthenticator{
+		Username: c.producer.RbacUser(),
+		Password: c.producer.RbacPass(),
+	})
 	if err != nil {
 		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
 			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
@@ -132,7 +138,7 @@ var getCronTimerCallback = func(args ...interface{}) error {
 	_, err := c.gocbMetaBucket.Get(key, val)
 
 	if checkEnoEnt {
-		if err == gocb.ErrKeyNotFound {
+		if gocb.IsKeyNotFoundError(err) {
 			*isNoEnt = true
 			return nil
 		} else if err == nil {

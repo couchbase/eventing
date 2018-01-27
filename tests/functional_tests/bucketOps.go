@@ -61,6 +61,7 @@ func pumpBucketOps(ops opsType, rate *rateLimit) {
 				bucket.Remove(fmt.Sprintf("doc_id_%d", i), 0)
 			}
 		}
+
 	} else {
 		ticker := time.NewTicker(time.Second / time.Duration(rate.opsPSec))
 		i := 0

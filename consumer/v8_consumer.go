@@ -147,6 +147,12 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 func (c *Consumer) Serve() {
 	logPrefix := "Consumer::Serve"
 
+	c.cronCurrTimer = time.Now().Add(-time.Second * 10).UTC().Format(time.RFC3339)
+	c.cronNextTimer = time.Now().Add(-time.Second * 10).UTC().Format(time.RFC3339)
+
+	c.docCurrTimer = time.Now().UTC().Format(time.RFC3339)
+	c.docNextTimer = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+
 	// Insert an entry to sendMessage loop control channel to signify a normal bootstrap
 	c.socketWriteLoopStopAckCh <- struct{}{}
 
@@ -205,28 +211,22 @@ func (c *Consumer) Serve() {
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName, c.eventingAdminPort)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
-	c.cronCurrTimer = fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Format(time.RFC3339))
-	c.cronNextTimer = fmt.Sprintf("%s::%s", c.app.AppName, time.Now().UTC().Add(time.Second).Format(time.RFC3339))
-
-	c.docCurrTimer = time.Now().UTC().Format(time.RFC3339)
-	c.docNextTimer = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
-
-	logging.Infof("%s [%s:%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)
-
 	c.startDcp(flogs)
 
 	// Initialises timer processing worker instances
 	c.vbTimerProcessingWorkerAssign(true)
 
+	logging.Infof("%s [%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v running workers: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer, c.timerProcessingRunningWorkers)
+
 	// doc_id timer events
 	for _, r := range c.timerProcessingRunningWorkers {
-		go r.processTimerEvents(c.docCurrTimer, c.docNextTimer)
+		go r.processTimerEvents()
 	}
 
-	go c.cleanupProcessesedDocTimers()
+	go c.cleanupProcessedDocTimers()
 
-	go c.processCronTimerEvents(c.cronCurrTimer, c.cronNextTimer)
+	go c.processCronTimerEvents()
 
 	go c.addCronTimersToCleanup()
 

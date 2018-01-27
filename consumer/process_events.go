@@ -527,6 +527,8 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 				c.aggDCPFeed <- e
 
 			case <-cancelCh:
+				logging.Infof("CRDP[%s:%s:%d] Closing cancel message related to dcp feed: %v for bucket: %s",
+					c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), c.bucket)
 				return
 			}
 		}
