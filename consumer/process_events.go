@@ -453,8 +453,6 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 			vbBlob.VBId = vbno
 			vbBlob.AssignedWorker = c.ConsumerName()
 			vbBlob.CurrentVBOwner = c.HostPortAddr()
-			vbBlob.LastProcessedCronTimerEvent = time.Now().UTC().Format(time.RFC3339)
-			vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
 
 			// Assigning previous owner and worker to current consumer
 			vbBlob.PreviousAssignedWorker = c.ConsumerName()

@@ -250,7 +250,7 @@ func (c *Consumer) processTimerEvent(currTs time.Time, event string, vb uint16) 
 	}
 }
 
-func (c *Consumer) cleanupProcessesedDocTimers() {
+func (c *Consumer) cleanupProcessedDocTimers() {
 	logPrefix := "Consumer::cleanupProcessingDocTimers"
 
 	reader := c.vbPlasmaStore.NewReader()
@@ -399,8 +399,8 @@ func (c *Consumer) processCronTimerEvents() {
 
 					if !isNoEnt {
 						counter++
-						logging.Infof("%s [%s:%s:%d] vb: %v Cron timer key: %v count: %v val: %v",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerDocID, len(val.CronTimers), val)
+						logging.Tracef("%s [%s:%s:%d] vb: %v Cron timer key: %v count: %v",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerDocID, len(val.CronTimers))
 						data, err := json.Marshal(&val)
 						if err != nil {
 							logging.Errorf("%s [%s:%s:%d] vb: %v Cron timer key: %v err: %v",
@@ -430,6 +430,7 @@ func (c *Consumer) processCronTimerEvents() {
 				}
 				c.updateCronTimerStats(vb)
 			}
+
 		}
 	}
 }

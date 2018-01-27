@@ -224,7 +224,7 @@ func (c *Consumer) Serve() {
 		go r.processTimerEvents()
 	}
 
-	go c.cleanupProcessesedDocTimers()
+	go c.cleanupProcessedDocTimers()
 
 	go c.processCronTimerEvents()
 
