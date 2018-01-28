@@ -89,6 +89,6 @@ type SuperSupervisor struct {
 }
 
 type eventingConfig struct {
-	RamQuota       int64  `json:"ram_quota"`
+	RAMQuota       int64  `json:"ram_quota"`
 	MetadataBucket string `json:"metadata_bucket"`
 }

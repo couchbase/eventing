@@ -3,6 +3,7 @@ package consumer
 import (
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,6 +19,15 @@ var plasmaInsertKV = func(args ...interface{}) error {
 	logPrefix := "Consumer::plasmaInsertKV"
 
 	c := args[0].(*Consumer)
+
+	defer func() {
+		if r := recover(); r != nil {
+			trace := debug.Stack()
+			logging.Errorf("%s [%s:%s:%d] recover, %v stack trace: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
+		}
+	}()
+
 	w := args[1].(*plasma.Writer)
 	k := args[2].(string)
 	v := args[3].(string)
