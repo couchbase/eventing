@@ -47,7 +47,7 @@ var plasmaInsertKV = func(args ...interface{}) error {
 		logging.Errorf("%s [%s:%s:%d] Key: %v vb: %v Failed to insert into plasma store, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, vb, err)
 	} else {
-		logging.Debugf("%s [%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
+		logging.Tracef("%s [%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, v, vb, err)
 	}
 	w.End()
@@ -55,128 +55,55 @@ var plasmaInsertKV = func(args ...interface{}) error {
 	return err
 }
 
-func (c *Consumer) vbTimerProcessingWorkerAssign(initWorkers bool) {
-	logPrefix := "Consumer::vbTimerProcessingWorkerAssign"
-
-	var vbsOwned []uint16
-
-	if initWorkers {
-		vbsOwned = c.getVbsOwned()
-	} else {
-		vbsOwned = c.getCurrentlyOwnedVbs()
-	}
-
-	if len(vbsOwned) == 0 {
-		logging.Verbosef("%s [%s:%s:%d] InitWorkers: %v Timer processing worker vbucket assignment, no vbucket owned by consumer",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), initWorkers)
-		return
-	}
-
-	vbsWorkerDistribution := util.VbucketNodeAssignment(vbsOwned, c.timerProcessingWorkerCount)
-
-	if initWorkers {
-		for i, vbs := range vbsWorkerDistribution {
-
-			worker := &timerProcessingWorker{
-				c:  c,
-				id: i,
-				signalProcessTimerPlasmaCloseCh: make(chan uint16, c.numVbuckets),
-				stopCh:                make(chan struct{}, 1),
-				timerProcessingTicker: time.NewTicker(c.timerProcessingTickInterval),
-			}
-
-			for _, vb := range vbs {
-				c.timerProcessingRWMutex.Lock()
-				c.timerProcessingVbsWorkerMap[vb] = worker
-				c.timerProcessingRWMutex.Unlock()
-
-				c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", fmt.Sprintf("timer_%d", i))
-			}
-
-			worker.vbsAssigned = vbs
-
-			c.timerProcessingRunningWorkers = append(c.timerProcessingRunningWorkers, worker)
-			c.timerProcessingWorkerSignalCh[worker] = make(chan struct{}, 1)
-
-			logging.Debugf("%s [%s:timer_%d:%s:%d] Initial Timer routine vbs assigned len: %d dump: %v",
-				logPrefix, c.workerName, worker.id, c.tcpPort, c.Pid(),
-				len(vbs), util.Condense(vbs))
-		}
-	} else {
-
-		for i, vbs := range vbsWorkerDistribution {
-
-			logging.Debugf("%s [%s:timer_%d:%s:%d] Timer routine timerProcessingRunningWorkers[%v]: %v",
-				logPrefix, c.workerName, i, c.tcpPort, c.Pid(), i,
-				util.Condense(c.timerProcessingRunningWorkers[i].vbsAssigned))
-
-			for _, vb := range vbs {
-				c.timerProcessingRWMutex.Lock()
-				c.timerProcessingVbsWorkerMap[vb] = c.timerProcessingRunningWorkers[i]
-				c.timerProcessingRWMutex.Unlock()
-
-				c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", fmt.Sprintf("timer_%d", i))
-			}
-
-			c.timerProcessingRunningWorkers[i].vbsAssigned = vbs
-
-			logging.Debugf("%s [%s:timer_%d:%s:%d] Timer routine vbs assigned len: %d dump: %v",
-				logPrefix, c.workerName, i, c.tcpPort, c.Pid(), len(vbs), util.Condense(vbs))
-		}
-	}
-}
-
-func (r *timerProcessingWorker) getVbsOwned() []uint16 {
-	return r.vbsAssigned
-}
-
-func (r *timerProcessingWorker) processTimerEvents() {
+func (c *Consumer) processDocTimerEvents() {
 	logPrefix := "timerProcessingWorker::processTimerEvents"
 
-	vbsOwned := r.getVbsOwned()
-	reader := r.c.vbPlasmaStore.NewReader()
+	timerProcessingTicker := time.NewTicker(c.timerProcessingTickInterval)
+
+	vbsOwned := c.getCurrentlyOwnedVbs()
+	reader := c.vbPlasmaStore.NewReader()
 
 	for _, vb := range vbsOwned {
-		vbKey := fmt.Sprintf("%s::vb::%s", r.c.app.AppName, strconv.Itoa(int(vb)))
+		vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
 
 		var vbBlob vbucketKVBlob
 		var cas gocb.Cas
 
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, r.c, vbKey, &vbBlob, &cas, false)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-		logging.Infof("%s [%s:%s:%d] Worker: %v vb: %v lastProcessedDocIDTimer: %v cTimer: %v nTimer: %v",
-			logPrefix, r.c.workerName, r.c.tcpPort, r.c.Pid(), r.id, vb, vbBlob.LastProcessedDocIDTimerEvent, r.c.docCurrTimer, r.c.docNextTimer)
+		logging.Infof("%s [%s:%s:%d] vb: %v lastProcessedDocIDTimer: %v cTimer: %v nTimer: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastProcessedDocIDTimerEvent, c.docCurrTimer, c.docNextTimer)
 
 		if vbBlob.LastProcessedDocIDTimerEvent == "" {
-			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", r.c.docCurrTimer)
-			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", r.c.docNextTimer)
+			c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", c.docCurrTimer)
+			c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", c.docNextTimer)
 		} else {
-			r.c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", vbBlob.LastProcessedDocIDTimerEvent)
-			r.c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", vbBlob.LastProcessedDocIDTimerEvent)
+			c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", vbBlob.LastProcessedDocIDTimerEvent)
+			c.vbProcessingStats.updateVbStat(vb, "next_doc_id_timer_to_process", vbBlob.LastProcessedDocIDTimerEvent)
 		}
 
-		r.c.vbProcessingStats.updateVbStat(vb, "last_processed_doc_id_timer_event", vbBlob.LastProcessedDocIDTimerEvent)
-		r.c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_persisted", vbBlob.PlasmaPersistedSeqNo)
+		c.vbProcessingStats.updateVbStat(vb, "last_processed_doc_id_timer_event", vbBlob.LastProcessedDocIDTimerEvent)
+		c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_persisted", vbBlob.PlasmaPersistedSeqNo)
 	}
 
 	for {
 		select {
-		case <-r.stopCh:
-			logging.Infof("%s [%s:%s:%d] Exiting timer processing worker id: %v",
-				logPrefix, r.c.workerName, r.c.tcpPort, r.c.Pid(), r.id)
+		case <-c.docTimerProcessingStopCh:
+			logging.Infof("%s [%s:%s:%d] Exiting doc timer processing routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
-		case <-r.timerProcessingTicker.C:
+		case <-timerProcessingTicker.C:
 		}
 
-		vbsOwned = r.getVbsOwned()
+		vbsOwned = c.getCurrentlyOwnedVbs()
 		for _, vb := range vbsOwned {
-			currTimer := r.c.vbProcessingStats.getVbStat(vb, "currently_processed_doc_id_timer").(string)
+			currTimer := c.vbProcessingStats.getVbStat(vb, "currently_processed_doc_id_timer").(string)
 
 			// Make sure time processing isn't going ahead of system clock
 			cts, err := time.Parse(tsLayout, currTimer)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Doc timer vb: %d failed to parse currtime: %v err: %v",
-					logPrefix, r.c.workerName, r.c.tcpPort, r.c.Pid(), vb, currTimer, err)
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, currTimer, err)
 				continue
 			}
 
@@ -185,27 +112,27 @@ func (r *timerProcessingWorker) processTimerEvents() {
 			}
 
 			// Skipping firing of timer event delayed beyond threshold
-			if int(time.Since(cts).Seconds()) > r.c.skipTimerThreshold {
+			if int(time.Since(cts).Seconds()) > c.skipTimerThreshold {
 				continue
 			}
 
-			snapshot := r.c.vbPlasmaStore.NewSnapshot()
+			snapshot := c.vbPlasmaStore.NewSnapshot()
 
 			itr, err := reader.NewSnapshotIterator(snapshot)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] vb: %v Failed to create snapshot, err: %v",
-					logPrefix, r.c.workerName, r.c.tcpPort, r.c.Pid(), vb, err)
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 				continue
 			}
 
-			startKeyPrefix := fmt.Sprintf("vb_%v::%s::%s", vb, r.c.app.AppName, currTimer)
-			endKeyPrefix := fmt.Sprintf("vb_%v::%s::%s", vb, r.c.app.AppName, cts.Add(time.Second).Format(tsLayout))
+			startKeyPrefix := fmt.Sprintf("vb_%v::%s::%s", vb, c.app.AppName, currTimer)
+			endKeyPrefix := fmt.Sprintf("vb_%v::%s::%s", vb, c.app.AppName, cts.Add(time.Second).Format(tsLayout))
 
 			itr.SetEndKey([]byte(endKeyPrefix))
 
 			for itr.Seek([]byte(startKeyPrefix)); itr.Valid(); itr.Next() {
-				logging.Debugf("%s [%s:%s:timer_%d:%s:%d] vb: %d timerEvent key: %v value: %v",
-					logPrefix, r.c.workerName, r.id, r.c.tcpPort, r.c.Pid(), vb, string(itr.Key()), string(itr.Value()))
+				logging.Tracef("%s [%s:%s:%d] vb: %d timerEvent key: %v value: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, string(itr.Key()), string(itr.Value()))
 
 				entries := strings.Split(string(itr.Key()), "::")
 
@@ -221,13 +148,13 @@ func (r *timerProcessingWorker) processTimerEvents() {
 					if ts.After(time.Now()) {
 						continue
 					}
-					r.c.processTimerEvent(cts, string(itr.Value()), vb)
+					c.processTimerEvent(cts, string(itr.Value()), vb)
 				}
 			}
 			snapshot.Close()
 			itr.Close()
 
-			r.c.updateDocTimerStats(vb)
+			c.updateDocTimerStats(vb)
 		}
 	}
 }
@@ -629,7 +556,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 		}
 
 		if !ts.After(time.Now()) {
-			logging.Debugf("%s [%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
+			logging.Tracef("%s [%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, ts)
 			c.timersInPastCounter++
 			entriesToPrune++
@@ -649,7 +576,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 			CallbackFn: cbFunc,
 		}
 
-		logging.Debugf("%s [%s:%s:%d] vb: %v doc-id timerKey: %v byTimerEntry: %v",
+		logging.Tracef("%s [%s:%s:%d] vb: %v doc-id timerKey: %v byTimerEntry: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerKey, v)
 
 		encodedVal, mErr := json.Marshal(&v)
@@ -679,7 +606,7 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 			logging.Errorf("%s [%s:%s:%d] Key: %v vb: %v, Failed to prune timer records from past, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), key, vb, err)
 		} else {
-			logging.Debugf("%s [%s:%s:%d] Key: %v vb: %v, timer records in xattr: %v",
+			logging.Tracef("%s [%s:%s:%d] Key: %v vb: %v, timer records in xattr: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), key, vb, timersToKeep)
 		}
 	}

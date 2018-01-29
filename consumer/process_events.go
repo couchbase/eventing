@@ -287,17 +287,6 @@ func (c *Consumer) processEvents() {
 
 				logging.Debugf("%s [%s:%s:%d] vb: %v, got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
-				// Different scenarios where DCP_STREAMEND could be triggered:
-				// (a) vb give up as part of eventing rebalance
-				// (b) Existing KV node where vbucket mapped to isn't part of cluster any more(this will
-				//     trigger DCP_STREAMEND in bulk as the old KV node would have hosted multiple vbuckets)
-				// For (a) plasma related FD cleanup signalling is already done in vbucket give up
-				// routine. Handling case for (b) below.
-
-				c.timerProcessingRWMutex.Lock()
-				delete(c.timerProcessingVbsWorkerMap, e.VBucket)
-				c.timerProcessingRWMutex.Unlock()
-
 				//Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
 

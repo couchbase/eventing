@@ -1,6 +1,7 @@
 package servicemanager
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -13,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"bytes"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/audit"

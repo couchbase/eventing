@@ -317,7 +317,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
 		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold,
-		p.socketWriteBatchSize, p.cronTimersPerDoc, p.timerWorkerPoolSize, p.cppWorkerThrCount,
+		p.socketWriteBatchSize, p.cronTimersPerDoc, p.cppWorkerThrCount,
 		p.vbOwnershipGiveUpRoutineCount, p.curlTimeout, p.vbOwnershipTakeoverRoutineCount,
 		p.xattrEntryPruneThreshold, p.workerQueueCap, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
 		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup,

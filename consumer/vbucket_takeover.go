@@ -130,10 +130,6 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 						c.updateCheckpoint(vbKey, vb, &vbBlob)
 					}
 
-					c.timerRWMutex.Lock()
-					c.vbTimerProcessingWorkerAssign(false)
-					c.timerRWMutex.Unlock()
-
 					// Check if another node has taken up ownership of vbucket for which
 					// ownership was given up above. Metadata is updated about ownership give up only after
 					// DCP_STREAMMEND is received from DCP producer
@@ -221,10 +217,6 @@ retryStreamUpdate:
 					c.workerName, i, c.tcpPort, c.Pid(), vb)
 
 				util.Retry(util.NewFixedBackoff(vbTakeoverRetryInterval), vbTakeoverCallback, c, vb)
-
-				c.timerRWMutex.Lock()
-				c.vbTimerProcessingWorkerAssign(false)
-				c.timerRWMutex.Unlock()
 			}
 
 		}(c, i, vbsDistribution[i], &wg)

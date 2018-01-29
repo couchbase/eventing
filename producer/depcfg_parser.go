@@ -91,12 +91,6 @@ func (p *Producer) parseDepcfg() error {
 		p.workerCount = int(val.(float64))
 	}
 
-	if val, ok := settings["timer_worker_pool_size"]; !ok {
-		p.timerWorkerPoolSize = 3
-	} else {
-		p.timerWorkerPoolSize = int(val.(float64))
-	}
-
 	if val, ok := settings["sock_batch_size"]; !ok {
 		p.socketWriteBatchSize = 100
 	} else {
