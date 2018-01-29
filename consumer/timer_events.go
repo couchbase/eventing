@@ -91,6 +91,7 @@ func (c *Consumer) processDocTimerEvents() {
 		case <-c.docTimerProcessingStopCh:
 			logging.Infof("%s [%s:%s:%d] Exiting doc timer processing routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			timerProcessingTicker.Stop()
 			return
 		case <-timerProcessingTicker.C:
 		}
