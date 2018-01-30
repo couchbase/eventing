@@ -14,9 +14,6 @@ func newVbProcessingStats(appName string, numVbuckets uint16) vbStats {
 		vbsts[i].stats["assigned_worker"] = ""
 		vbsts[i].stats["requesting_worker"] = ""
 
-		// Stored in memory but not persisted to disk,
-		// persistence to disk takes place periodically. Below 4 stats
-		// will be updated by plasma writer routines
 		vbsts[i].stats["plasma_last_seq_no_stored"] = uint64(0)
 		vbsts[i].stats["plasma_last_seq_no_persisted"] = uint64(0)
 

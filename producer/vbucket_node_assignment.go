@@ -15,6 +15,10 @@ import (
 // Generates the vbucket to eventing node assignment, ideally generated map should
 // be consistent across all nodes
 func (p *Producer) vbEventingNodeAssign() error {
+	logPrefix := "Producer::vbEventingNodeAssign"
+
+	// Adding a sleep to mitigate stale values from metakv
+	time.Sleep(5 * time.Second)
 
 	util.Retry(util.NewFixedBackoff(time.Second), getKVNodesAddressesOpCallback, p)
 
@@ -33,8 +37,8 @@ func (p *Producer) vbEventingNodeAssign() error {
 	// call to uuids published by eventing nodes
 	addrUUIDMap, err := util.GetNodeUUIDs("/uuid", onlineEventingNodes)
 	if err != nil {
-		logging.Errorf("VBNA[%s:%d] Failed to get eventing node uuids, err: %v",
-			p.appName, p.LenRunningConsumers(), err)
+		logging.Errorf("%s [%s:%d] Failed to get eventing node uuids, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return err
 	}
 
@@ -48,12 +52,17 @@ func (p *Producer) vbEventingNodeAssign() error {
 		var keepNodes []string
 		err := json.Unmarshal(data, &keepNodes)
 		if err != nil {
-			logging.Errorf("VBNA[%s:%d] Failed to unmarshal keep nodes received from metakv, err: %v",
-				p.appName, p.LenRunningConsumers(), err)
+			logging.Errorf("%s [%s:%d] Failed to unmarshal keep nodes received from metakv, err: %v",
+				logPrefix, p.appName, p.LenRunningConsumers(), err)
 		} else {
-			logging.Infof("VBNA[%s:%d] Updating Eventing keep nodes uuids. Previous: %v current: %v",
-				p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, keepNodes)
-			p.eventingNodeUUIDs = append([]string(nil), keepNodes...)
+			if len(keepNodes) > 0 {
+				logging.Infof("%s [%s:%d] Updating Eventing keep nodes uuids. Previous: %v current: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, keepNodes)
+				p.eventingNodeUUIDs = append([]string(nil), keepNodes...)
+			} else {
+				logging.Errorf("%s [%s:%d] KeepNodes is empty: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), keepNodes)
+			}
 		}
 	}
 
@@ -64,8 +73,8 @@ func (p *Producer) vbEventingNodeAssign() error {
 	}
 	sort.Strings(eventingNodeAddrs)
 
-	logging.Debugf("VBNA[%s:%d] EventingNodeUUIDs: %v eventingNodeAddrs: %v",
-		p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, eventingNodeAddrs)
+	logging.Debugf("%s [%s:%d] EventingNodeUUIDs: %v eventingNodeAddrs: %v",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, eventingNodeAddrs)
 
 	vbucketsPerNode := p.numVbuckets / len(eventingNodeAddrs)
 	var vbNo int
@@ -94,8 +103,8 @@ func (p *Producer) vbEventingNodeAssign() error {
 
 	for i, v := range vbCountPerNode {
 
-		logging.Debugf("VBNA[%s:%d] EventingNodeUUIDs: %v Eventing node index: %d eventing node addr: %v startVb: %v vbs count: %v",
-			p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, i, eventingNodeAddrs[i], startVb, v)
+		logging.Debugf("%s [%s:%d] EventingNodeUUIDs: %v Eventing node index: %d eventing node addr: %v startVb: %v vbs count: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, i, eventingNodeAddrs[i], startVb, v)
 
 		nodeMapping := &common.PlannerNodeVbMapping{
 			Hostname: eventingNodeAddrs[i],
@@ -113,12 +122,14 @@ func (p *Producer) vbEventingNodeAssign() error {
 }
 
 func (p *Producer) initWorkerVbMap() {
+	logPrefix := "Producer::initWorkerVbMap"
 
 	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
 	eventingNodeAddr, err := util.CurrentEventingNodeAddress(p.auth, hostAddress)
 	if err != nil {
-		logging.Errorf("VBNA[%s:%d] Failed to get address for current eventing node, err: %v", p.appName, p.LenRunningConsumers(), err)
+		logging.Errorf("%s [%s:%d] Failed to get address for current eventing node, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
 	}
 
 	// vbuckets the current eventing node is responsible to handle
@@ -132,8 +143,8 @@ func (p *Producer) initWorkerVbMap() {
 
 	sort.Sort(util.Uint16Slice(vbucketsToHandle))
 
-	logging.Debugf("VBNA[%s:%d] eventingAddr: %v vbucketsToHandle, len: %d dump: %v",
-		p.appName, p.LenRunningConsumers(), eventingNodeAddr, len(vbucketsToHandle), util.Condense(vbucketsToHandle))
+	logging.Debugf("%s [%s:%d] eventingAddr: %v vbucketsToHandle, len: %d dump: %v",
+		logPrefix, p.appName, p.LenRunningConsumers(), eventingNodeAddr, len(vbucketsToHandle), util.Condense(vbucketsToHandle))
 
 	vbucketPerWorker := len(vbucketsToHandle) / p.workerCount
 	var startVbIndex int
@@ -167,14 +178,15 @@ func (p *Producer) initWorkerVbMap() {
 			startVbIndex++
 		}
 
-		logging.Debugf("VBNA[%s:%d] eventingAddr: %v worker name: %v assigned vbs len: %d dump: %v",
-			p.appName, p.LenRunningConsumers(), eventingNodeAddr, workerName,
+		logging.Debugf("%s [%s:%d] eventingAddr: %v worker name: %v assigned vbs len: %d dump: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), eventingNodeAddr, workerName,
 			len(p.workerVbucketMap[workerName]), util.Condense(p.workerVbucketMap[workerName]))
 	}
 
 }
 
 func (p *Producer) getKvVbMap() {
+	logPrefix := "Producer::getKvVbMap"
 
 	var cinfo *util.ClusterInfoCache
 
@@ -187,13 +199,15 @@ func (p *Producer) getKvVbMap() {
 	for _, kvaddr := range kvAddrs {
 		addr, err := cinfo.GetServiceAddress(kvaddr, dataService)
 		if err != nil {
-			logging.Errorf("VBNA[%s:%d] Failed to get address of KV host, err: %v", p.appName, p.LenRunningConsumers(), err)
+			logging.Errorf("%s [%s:%d] Failed to get address of KV host, err: %v",
+				logPrefix, p.appName, p.LenRunningConsumers(), err)
 			continue
 		}
 
 		vbs, err := cinfo.GetVBuckets(kvaddr, p.bucket)
 		if err != nil {
-			logging.Errorf("VBNA[%s:%d] Failed to get vbuckets for given kv util.NodeId, err: %v", p.appName, p.LenRunningConsumers(), err)
+			logging.Errorf("%s [%s:%d] Failed to get vbuckets for given kv util.NodeId, err: %v",
+				logPrefix, p.appName, p.LenRunningConsumers(), err)
 			continue
 		}
 
