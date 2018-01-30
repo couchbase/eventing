@@ -192,7 +192,7 @@ func TestEventingRebKVOpsOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 
 	flushFunctionAndBucket(handler)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{ batchSize: 77, thrCount: 4, workerCount:4, })
+	createAndDeployFunction(handler, handler, &commonSettings{batchSize: 77, thrCount: 4, workerCount: 4})
 
 	time.Sleep(5 * time.Second)
 
@@ -317,7 +317,7 @@ func TestEventingRebKVOpsOnUpdateDocTimerNonDefaultSettings(t *testing.T) {
 	flushFunctionAndBucket(handler)
 	time.Sleep(5 * time.Second)
 	createAndDeployFunction(handler, handler, &commonSettings{})
-	createAndDeployFunction(handler, handler, &commonSettings{workerCount:4, thrCount:4, batchSize:77})
+	createAndDeployFunction(handler, handler, &commonSettings{workerCount: 4, thrCount: 4, batchSize: 77})
 
 	time.Sleep(5 * time.Second)
 

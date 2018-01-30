@@ -65,10 +65,15 @@ func createAndDeployFunction(appName, hFileName string, settings *commonSettings
 
 	var aliases []string
 	aliases = append(aliases, "dst_bucket")
-	aliases = append(aliases, "src_bucket")
+
+	// Source bucket bindings disallowed
+	// aliases = append(aliases, "src_bucket")
+
 	var bnames []string
 	bnames = append(bnames, "hello-world")
-	bnames = append(bnames, "default")
+
+	// Source bucket bindings disallowed
+	// bnames = append(bnames, "default")
 
 	data, err := createFunction(true, true, 0, settings, aliases,
 		bnames, appName, content, "eventing", "default")

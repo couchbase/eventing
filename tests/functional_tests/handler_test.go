@@ -528,7 +528,8 @@ func TestWithUserXattrs(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-func TestSourceBucketMutations(t *testing.T) {
+// Disabling as for the time being source bucket mutations aren't allowed
+/* func TestSourceBucketMutations(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "source_bucket_update_op.js"
 	flushFunctionAndBucket(handler)
@@ -545,4 +546,4 @@ func TestSourceBucketMutations(t *testing.T) {
 
 	dumpStats(handler)
 	flushFunctionAndBucket(handler)
-}
+} */

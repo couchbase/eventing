@@ -1044,6 +1044,15 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 		return
 	}
 
+	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
+		if app.DeploymentConfig.Buckets[i].BucketName == app.DeploymentConfig.SourceBucket {
+			info.Code = m.statusCodes.errSourceBinding.Code
+			info.Info = "Bucket binding for source bucket disallowed"
+
+			return
+		}
+	}
+
 	data, err := json.Marshal(app)
 	if err != nil {
 		info.Code = m.statusCodes.errMarshalResp.Code
@@ -1154,6 +1163,14 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	var bNames []flatbuffers.UOffsetT
 
 	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
+
+		if app.DeploymentConfig.Buckets[i].BucketName == app.DeploymentConfig.SourceBucket {
+			info.Code = m.statusCodes.errSourceBinding.Code
+			info.Info = "Bucket binding for source bucket disallowed"
+
+			return
+		}
+
 		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
 		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
 
