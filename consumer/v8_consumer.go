@@ -273,7 +273,7 @@ func (c *Consumer) HandleV8Worker() {
 	c.sendGetSourceMap(false)
 	c.sendGetHandlerCode(false)
 
-	go c.storeTimerEventLoop()
+	go c.storeDocTimerEventLoop()
 
 	go c.processEvents()
 

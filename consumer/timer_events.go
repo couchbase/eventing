@@ -527,7 +527,7 @@ func (c *Consumer) updateDocTimerStats(vb uint16) {
 		nextTimer.UTC().Add(time.Second).Format(time.RFC3339))
 }
 
-func (c *Consumer) storeTimerEventLoop() {
+func (c *Consumer) storeDocTimerEventLoop() {
 	writer := c.vbPlasmaStore.NewWriter()
 
 	for {
@@ -537,7 +537,7 @@ func (c *Consumer) storeTimerEventLoop() {
 				return
 			}
 
-			c.storeDocTimerEvent(e.vb, e.seqNo, e.expiry, e.key, e.xMeta, writer)
+			c.storeDocTimerEvent(e, writer)
 
 		case <-c.plasmaStoreStopCh:
 			return
@@ -545,35 +545,34 @@ func (c *Consumer) storeTimerEventLoop() {
 	}
 }
 
-func (c *Consumer) storeDocTimerEvent(vb uint16, seqNo uint64, expiry uint32, key string, xMeta *xattrMetadata, writer *plasma.Writer) error {
+func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer) error {
 	logPrefix := "Consumer::storeTimerEvent"
 
 	entriesToPrune := 0
 	timersToKeep := make([]string, 0)
 
-	for _, timer := range xMeta.Timers {
-		app := strings.Split(timer, "::")[0]
+	for _, timer := range e.xMeta.Timers {
+		data := strings.Split(timer, "::")
+		app, timerTs, callbackFn := data[0], data[1], data[2]
+
 		if app != c.app.AppName {
 			continue
 		}
 
-		t := strings.Split(timer, "::")[1]
-
-		ts, err := time.Parse(tsLayout, t)
-
+		ts, err := time.Parse(tsLayout, timerTs)
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timer, err)
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, timer, err)
 			continue
 		}
 
 		if !ts.After(time.Now()) {
 			logging.Tracef("%s [%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, ts)
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, ts)
 			c.timersInPastCounter++
 
-			counter := c.vbProcessingStats.getVbStat(vb, "timers_in_past_counter").(uint64)
-			c.vbProcessingStats.updateVbStat(vb, "timers_in_past_counter", counter+1)
+			counter := c.vbProcessingStats.getVbStat(e.vb, "timers_in_past_counter").(uint64)
+			c.vbProcessingStats.updateVbStat(e.vb, "timers_in_past_counter", counter+1)
 
 			entriesToPrune++
 			continue
@@ -582,18 +581,15 @@ func (c *Consumer) storeDocTimerEvent(vb uint16, seqNo uint64, expiry uint32, ke
 		timersToKeep = append(timersToKeep, timer)
 
 		// Sample timer key: vb_<vb_no>::<app_name>::<timestamp in GMT>::<callback_func>::<doc_id>
-		timerKey := fmt.Sprintf("vb_%v::%v::%v", vb, timer, key)
-
-		timerData := strings.Split(timer, "::")
-		cbFunc := timerData[2]
+		timerKey := fmt.Sprintf("vb_%v::%v::%v", e.vb, timer, e.key)
 
 		v := byTimerEntry{
-			DocID:      key,
-			CallbackFn: cbFunc,
+			DocID:      e.key,
+			CallbackFn: callbackFn,
 		}
 
 		logging.Tracef("%s [%s:%s:%d] vb: %v doc-id timerKey: %v byTimerEntry: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerKey, v)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, timerKey, v)
 
 		encodedVal, mErr := json.Marshal(&v)
 		if mErr != nil {
@@ -604,7 +600,7 @@ func (c *Consumer) storeDocTimerEvent(vb uint16, seqNo uint64, expiry uint32, ke
 
 		c.plasmaInsertCounter++
 		util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
-			writer, timerKey, string(encodedVal), vb)
+			writer, timerKey, string(encodedVal), e.vb)
 
 	}
 
@@ -612,7 +608,7 @@ func (c *Consumer) storeDocTimerEvent(vb uint16, seqNo uint64, expiry uint32, ke
 	// beyond threshold(default being 100)
 	if entriesToPrune > c.xattrEntryPruneThreshold {
 		// Cleaning up timer event entry record which point to time in past
-		docF := c.gocbBucket.MutateIn(key, 0, expiry)
+		docF := c.gocbBucket.MutateIn(e.key, 0, e.expiry)
 		docF.UpsertEx(xattrTimerPath, timersToKeep, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath)
 		docF.UpsertEx(xattrCasPath, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath|gocb.SubdocFlagUseMacros)
 
@@ -620,13 +616,13 @@ func (c *Consumer) storeDocTimerEvent(vb uint16, seqNo uint64, expiry uint32, ke
 		if err == gocb.ErrKeyNotFound {
 		} else if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Key: %v vb: %v, Failed to prune timer records from past, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), key, vb, err)
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), e.key, e.vb, err)
 		} else {
 			logging.Tracef("%s [%s:%s:%d] Key: %v vb: %v, timer records in xattr: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), key, vb, timersToKeep)
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), e.key, e.vb, timersToKeep)
 		}
 	}
 
-	c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_stored", seqNo)
+	c.vbProcessingStats.updateVbStat(e.vb, "plasma_last_seq_no_stored", e.seqNo)
 	return nil
 }
