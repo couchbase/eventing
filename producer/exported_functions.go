@@ -666,14 +666,33 @@ func (p *Producer) RbacPass() string {
 }
 
 // TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
-func (p *Producer) TimerDebugStats() map[uint16]interface{} {
-	aggStats := make(map[uint16]interface{})
+func (p *Producer) TimerDebugStats() map[int]map[string]interface{} {
+	aggStats := make(map[int]map[string]interface{})
 
 	for _, consumer := range p.runningConsumers {
 		workerStats := consumer.TimerDebugStats()
 
 		for vb, stats := range workerStats {
-			aggStats[vb] = stats
+			if _, ok := aggStats[vb]; !ok {
+				aggStats[vb] = stats
+			} else {
+
+				copied_during_rebalance_counter := aggStats[vb]["copied_during_rebalance_counter"].(uint64) + stats["copied_during_rebalance_counter"].(uint64)
+				deleted_during_cleanup_counter := aggStats[vb]["deleted_during_cleanup_counter"].(uint64) + stats["deleted_during_cleanup_counter"].(uint64)
+				removed_during_rebalance_counter := aggStats[vb]["removed_during_rebalance_counter"].(uint64) + stats["removed_during_rebalance_counter"].(uint64)
+				sent_to_worker_counter := aggStats[vb]["sent_to_worker_counter"].(uint64) + stats["sent_to_worker_counter"].(uint64)
+				timer_create_counter := aggStats[vb]["timer_create_counter"].(uint64) + stats["timer_create_counter"].(uint64)
+				timers_in_past_counter := aggStats[vb]["timers_in_past_counter"].(uint64) + stats["timers_in_past_counter"].(uint64)
+				transferred_during_rebalance_counter := aggStats[vb]["transferred_during_rebalance_counter"].(uint64) + stats["transferred_during_rebalance_counter"].(uint64)
+
+				aggStats[vb]["copied_during_rebalance_counter"] = copied_during_rebalance_counter
+				aggStats[vb]["deleted_during_cleanup_counter"] = deleted_during_cleanup_counter
+				aggStats[vb]["removed_during_rebalance_counter"] = removed_during_rebalance_counter
+				aggStats[vb]["sent_to_worker_counter"] = sent_to_worker_counter
+				aggStats[vb]["timer_create_counter"] = timer_create_counter
+				aggStats[vb]["timers_in_past_counter"] = timers_in_past_counter
+				aggStats[vb]["transferred_during_rebalance_counter"] = transferred_during_rebalance_counter
+			}
 		}
 	}
 

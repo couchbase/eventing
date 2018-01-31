@@ -114,11 +114,11 @@ func (c *Consumer) PurgePlasmaRecords(vb uint16) error {
 			w.Begin()
 			err = w.DeleteKV(itr.Key())
 			if err == nil {
-				logging.Tracef("%s [%s:%d] vb: %v deleted key: %s  from source plasma",
-					logPrefix, c.workerName, c.Pid(), vb, string(itr.Key()))
-			} else {
 				counter := c.vbProcessingStats.getVbStat(vb, "removed_during_rebalance_counter").(uint64)
 				c.vbProcessingStats.updateVbStat(vb, "removed_during_rebalance_counter", counter+1)
+
+				logging.Tracef("%s [%s:%d] vb: %v deleted key: %s  from source plasma",
+					logPrefix, c.workerName, c.Pid(), vb, string(itr.Key()))
 			}
 			w.End()
 		}

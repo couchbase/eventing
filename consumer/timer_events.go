@@ -50,8 +50,6 @@ var plasmaInsertKV = func(args ...interface{}) error {
 		logging.Tracef("%s [%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, v, vb, err)
 
-		counter := c.vbProcessingStats.getVbStat(vb, "timer_create_counter").(uint64)
-		c.vbProcessingStats.updateVbStat(vb, "timer_create_counter", counter+1)
 	}
 	w.End()
 
@@ -601,6 +599,9 @@ func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer
 		c.plasmaInsertCounter++
 		util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
 			writer, timerKey, string(encodedVal), e.vb)
+
+		counter := c.vbProcessingStats.getVbStat(e.vb, "timer_create_counter").(uint64)
+		c.vbProcessingStats.updateVbStat(e.vb, "timer_create_counter", counter+1)
 
 	}
 
