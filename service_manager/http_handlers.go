@@ -1751,6 +1751,10 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 
 					stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
 					stats.VbDcpEventsRemaining = m.superSup.VbDcpEventsRemainingToProcess(app.Name)
+					debugStats, err := m.superSup.TimerDebugStats(app.Name)
+					if err == nil {
+						stats.DocTimerDebugStats = debugStats
+					}
 				}
 
 				statsList = append(statsList, stats)

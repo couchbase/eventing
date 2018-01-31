@@ -49,6 +49,9 @@ var plasmaInsertKV = func(args ...interface{}) error {
 	} else {
 		logging.Tracef("%s [%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, v, vb, err)
+
+		counter := c.vbProcessingStats.getVbStat(vb, "timer_create_counter").(uint64)
+		c.vbProcessingStats.updateVbStat(vb, "timer_create_counter", counter+1)
 	}
 	w.End()
 
@@ -185,6 +188,9 @@ func (c *Consumer) processTimerEvent(currTs time.Time, event string, vb uint16) 
 			meta:  timerMeta,
 		}
 		c.docTimerEntryCh <- timer
+
+		counter := c.vbProcessingStats.getVbStat(vb, "sent_to_worker_counter").(uint64)
+		c.vbProcessingStats.updateVbStat(vb, "sent_to_worker_counter", counter+1)
 	}
 }
 
@@ -210,6 +216,8 @@ func (c *Consumer) cleanupProcessedDocTimers() {
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 				lastProcessedDocTimer := vbBlob.LastProcessedDocIDTimerEvent
+
+				c.vbProcessingStats.updateVbStat(vb, "last_processed_doc_id_timer_event", vbBlob.LastProcessedDocIDTimerEvent)
 
 				lastProcessedTs, err := time.Parse(tsLayout, lastProcessedDocTimer)
 				if err != nil {
@@ -253,6 +261,9 @@ func (c *Consumer) cleanupProcessedDocTimers() {
 							if err != nil {
 								logging.Errorf("%s [%s:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
 									logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, string(itr.Key()), err)
+							} else {
+								counter := c.vbProcessingStats.getVbStat(vb, "deleted_during_cleanup_counter").(uint64)
+								c.vbProcessingStats.updateVbStat(vb, "deleted_during_cleanup_counter", counter+1)
 							}
 						}
 					}
@@ -526,7 +537,7 @@ func (c *Consumer) storeTimerEventLoop() {
 				return
 			}
 
-			c.storeTimerEvent(e.vb, e.seqNo, e.expiry, e.key, e.xMeta, writer)
+			c.storeDocTimerEvent(e.vb, e.seqNo, e.expiry, e.key, e.xMeta, writer)
 
 		case <-c.plasmaStoreStopCh:
 			return
@@ -534,7 +545,7 @@ func (c *Consumer) storeTimerEventLoop() {
 	}
 }
 
-func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key string, xMeta *xattrMetadata, writer *plasma.Writer) error {
+func (c *Consumer) storeDocTimerEvent(vb uint16, seqNo uint64, expiry uint32, key string, xMeta *xattrMetadata, writer *plasma.Writer) error {
 	logPrefix := "Consumer::storeTimerEvent"
 
 	entriesToPrune := 0
@@ -560,6 +571,10 @@ func (c *Consumer) storeTimerEvent(vb uint16, seqNo uint64, expiry uint32, key s
 			logging.Tracef("%s [%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, ts)
 			c.timersInPastCounter++
+
+			counter := c.vbProcessingStats.getVbStat(vb, "timers_in_past_counter").(uint64)
+			c.vbProcessingStats.updateVbStat(vb, "timers_in_past_counter", counter+1)
+
 			entriesToPrune++
 			continue
 		}

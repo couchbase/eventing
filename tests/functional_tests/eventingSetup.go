@@ -155,7 +155,7 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	settings["timer_processing_tick_interval"] = 500
 	settings["deadline_timeout"] = 3
 	settings["execution_timeout"] = 2
-	settings["log_level"] = "TRACE"
+	settings["log_level"] = "INFO"
 	settings["cron_timers_per_doc"] = 10000
 	settings["cleanup_timers"] = false
 	settings["rbacrole"] = "admin"
