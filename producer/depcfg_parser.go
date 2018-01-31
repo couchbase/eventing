@@ -3,6 +3,7 @@ package producer
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -89,12 +90,6 @@ func (p *Producer) parseDepcfg() error {
 		p.workerCount = 3
 	} else {
 		p.workerCount = int(val.(float64))
-	}
-
-	if val, ok := settings["timer_worker_pool_size"]; !ok {
-		p.timerWorkerPoolSize = 3
-	} else {
-		p.timerWorkerPoolSize = int(val.(float64))
 	}
 
 	if val, ok := settings["sock_batch_size"]; !ok {
@@ -290,7 +285,7 @@ func (p *Producer) parseDepcfg() error {
 		return fmt.Errorf("%v", errorUnexpectedWorkerCount)
 	}
 
-	p.nsServerHostPort = fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
+	p.nsServerHostPort = net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
 	var err error
 	p.kvHostPorts, err = util.KVNodesAddresses(p.auth, p.nsServerHostPort)

@@ -3,10 +3,10 @@ package consumer
 import (
 	"fmt"
 	"hash/crc32"
+	"net"
 	"os"
 	"runtime/debug"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -25,7 +25,7 @@ import (
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
 	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize int,
-	cronTimersPerDoc, timerProcessingPoolSize, cppWorkerThrCount, vbOwnershipGiveUpRoutineCount int,
+	cronTimersPerDoc, cppWorkerThrCount, vbOwnershipGiveUpRoutineCount int,
 	curlTimeout int64, vbOwnershipTakeoverRoutineCount, xattrEntryPruneThreshold int, workerQueueCap int64,
 	bucket, eventingAdminPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig, dcpConfig map[string]interface{},
@@ -40,14 +40,18 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		bucket:                          bucket,
 		cbBucket:                        b,
 		checkpointInterval:              checkpointInterval,
+		cleanupCronTimerCh:              make(chan *cronTimerToCleanup, dcpConfig["genChanSize"].(int)),
+		cleanupCronTimerStopCh:          make(chan struct{}, 1),
 		cleanupTimers:                   cleanupTimers,
 		clusterStateChangeNotifCh:       make(chan struct{}, ClusterChangeNotifChBufSize),
+		connMutex:                       &sync.RWMutex{},
 		cppThrPartitionMap:              make(map[int][]uint16),
 		cppWorkerThrCount:               cppWorkerThrCount,
 		crcTable:                        crc32.MakeTable(crc32.Castagnoli),
+		cronTimerEntryCh:                make(chan *timerMsg, dcpConfig["genChanSize"].(int)),
 		cronTimersPerDoc:                cronTimersPerDoc,
+		cronTimerStopCh:                 make(chan struct{}, 1),
 		curlTimeout:                     curlTimeout,
-		connMutex:                       &sync.RWMutex{},
 		dcpConfig:                       dcpConfig,
 		dcpFeedCancelChs:                make([]chan struct{}, 0),
 		dcpFeedVbMap:                    make(map[*couchbase.DcpFeed][]uint16),
@@ -55,6 +59,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		debuggerStarted:                 false,
 		diagDir:                         diagDir,
 		docTimerEntryCh:                 make(chan *byTimer, dcpConfig["genChanSize"].(int)),
+		docTimerProcessingStopCh:        make(chan struct{}, 1),
 		enableRecursiveMutation:         enableRecursiveMutation,
 		eventingAdminPort:               eventingAdminPort,
 		eventingDir:                     eventingDir,
@@ -68,10 +73,6 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		lcbInstCapacity:                 lcbInstCapacity,
 		logLevel:                        logLevel,
 		msgProcessedRWMutex:             &sync.RWMutex{},
-		cleanupCronTimerCh:              make(chan *cronTimerToCleanup, dcpConfig["genChanSize"].(int)),
-		cleanupCronTimerStopCh:          make(chan struct{}, 1),
-		cronTimerEntryCh:                make(chan *timerMsg, dcpConfig["genChanSize"].(int)),
-		cronTimerStopCh:                 make(chan struct{}, 1),
 		numVbuckets:                     numVbuckets,
 		opsTimestamp:                    time.Now(),
 		plasmaStoreCh:                   make(chan *plasmaStoreEntry, dcpConfig["genChanSize"].(int)),
@@ -104,13 +105,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		superSup:                        s,
 		tcpPort:                         tcpPort,
 		timerCleanupStopCh:              make(chan struct{}, 1),
-		timerProcessingRWMutex:          &sync.RWMutex{},
-		timerRWMutex:                    &sync.RWMutex{},
 		timerProcessingTickInterval:     timerProcessingTickInterval,
-		timerProcessingWorkerCount:      timerProcessingPoolSize,
-		timerProcessingVbsWorkerMap:     make(map[uint16]*timerProcessingWorker),
-		timerProcessingRunningWorkers:   make([]*timerProcessingWorker, 0),
-		timerProcessingWorkerSignalCh:   make(map[*timerProcessingWorker]chan struct{}),
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		uuid:                            uuid,
 		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),
@@ -213,16 +208,11 @@ func (c *Consumer) Serve() {
 
 	c.startDcp(flogs)
 
-	// Initialises timer processing worker instances
-	c.vbTimerProcessingWorkerAssign(true)
-
-	logging.Infof("%s [%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v running workers: %v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer, c.timerProcessingRunningWorkers)
+	logging.Infof("%s [%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)
 
 	// doc_id timer events
-	for _, r := range c.timerProcessingRunningWorkers {
-		go r.processTimerEvents()
-	}
+	go c.processDocTimerEvents()
 
 	go c.cleanupProcessedDocTimers()
 
@@ -258,12 +248,14 @@ func (c *Consumer) HandleV8Worker() {
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-	var currHost string
+	currHost := util.Localhost()
 	h := c.HostPortAddr()
 	if h != "" {
-		currHost = strings.Split(h, ":")[0]
-	} else {
-		currHost = "127.0.0.1"
+		var err error
+		currHost, _, err = net.SplitHostPort(h)
+		if err != nil {
+			logging.Errorf("Unable to split hostport %v: %v", h, err)
+		}
 	}
 
 	// TODO : Remove rbac user once RBAC issue is resolved
@@ -281,7 +273,7 @@ func (c *Consumer) HandleV8Worker() {
 	c.sendGetSourceMap(false)
 	c.sendGetHandlerCode(false)
 
-	go c.storeTimerEventLoop()
+	go c.storeDocTimerEventLoop()
 
 	go c.processEvents()
 
@@ -300,9 +292,7 @@ func (c *Consumer) Stop() {
 	logging.Infof("V8CR[%s:%s:%s:%d] Gracefully shutting down consumer routine",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 
-	for k := range c.timerProcessingWorkerSignalCh {
-		k.stopCh <- struct{}{}
-	}
+	c.docTimerProcessingStopCh <- struct{}{}
 
 	c.cbBucket.Close()
 	c.gocbBucket.Close()

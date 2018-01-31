@@ -3,6 +3,7 @@ package servicemanager
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/couchbase/cbauth/service"
@@ -47,7 +48,7 @@ func (r *rebalancer) gatherProgress() {
 
 	<-progressTicker.C
 	// Store the initial state of rebalance progress in metakv
-	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
+	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 	if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
 		logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress from all nodes, initProgress: %v errMap dump: %v",
 			initProgress, errMap)
@@ -84,7 +85,7 @@ func (r *rebalancer) gatherProgress() {
 	for {
 		select {
 		case <-progressTicker.C:
-			p, errMap := util.GetProgress("/getAggRebalanceProgress", []string{"127.0.0.1:" + r.adminPort})
+			p, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 			if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
 				logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress from all nodes, errMap dump: %v", errMap)
 

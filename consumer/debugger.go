@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"runtime"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -29,7 +28,8 @@ func newDebugClient(c *Consumer, appName, eventingPort, ipcType, tcpPort, worker
 
 func (c *debugClient) Serve() {
 	c.cmd = exec.Command("eventing-consumer", c.appName, c.ipcType, c.debugTCPPort,
-		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.consumerHandle.diagDir,
+		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
+		c.consumerHandle.diagDir, util.GetIPMode(),
 		c.eventingPort, "debug") // these two parameter are not read, for tagging
 
 	c.cmd.Stderr = os.Stderr
@@ -178,7 +178,12 @@ func (c *Consumer) startDebuggerServer() {
 		logging.Infof("CRSD[%s:%s:%s:%d] Start server on addr: %v for communication to C++ debugger",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.debugListener.Addr().String())
 
-		c.debugTCPPort = strings.Split(c.debugListener.Addr().String(), ":")[3]
+		_, c.debugTCPPort, err = net.SplitHostPort(c.debugListener.Addr().String())
+		if err != nil {
+			logging.Errorf("CRSD[%s:%s:%s:%d] Failed to parse assigned port in '%v', err: %v",
+				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), c.debugListener.Addr(), err)
+			return
+		}
 		ipcType = "af_inet"
 
 	} else {
@@ -229,12 +234,13 @@ func (c *Consumer) startDebuggerServer() {
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-	var currHost string
+	currHost := util.Localhost()
 	h := c.HostPortAddr()
 	if h != "" {
-		currHost = strings.Split(h, ":")[0]
-	} else {
-		currHost = "127.0.0.1"
+		currHost, _, err = net.SplitHostPort(h)
+		if err != nil {
+			logging.Errorf("Unable to split hostport %v: %v", h, err)
+		}
 	}
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getKvNodesFromVbMap, c)

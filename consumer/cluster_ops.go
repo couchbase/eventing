@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"fmt"
+	"net"
 	"sync/atomic"
 	"unsafe"
 
@@ -12,7 +13,7 @@ import (
 var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", c.producer.GetNsServerPort())
+	hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
 
 	eventingNodeAddrs, err := util.EventingNodesAddresses(c.producer.Auth(), hostAddress)
 	if err != nil {
@@ -31,7 +32,7 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 var getEventingNodeAddrOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", c.producer.GetNsServerPort())
+	hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
 
 	hostPortAddr, err := util.CurrentEventingNodeAddress(c.producer.Auth(), hostAddress)
 	if err != nil {
@@ -48,7 +49,7 @@ var getEventingNodeAddrOpCallback = func(args ...interface{}) error {
 var getKvVbMap = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", c.producer.GetNsServerPort())
+	hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
 
 	kvVbMap, err := util.KVVbMap(c.producer.Auth(), c.bucket, hostAddress)
 	if err != nil {
@@ -64,7 +65,7 @@ var getKvVbMap = func(args ...interface{}) error {
 var getKvNodesFromVbMap = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", c.producer.GetNsServerPort())
+	hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
 
 	kvVbMap, err := util.KVVbMap(c.producer.Auth(), c.bucket, hostAddress)
 	if err != nil {

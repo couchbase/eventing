@@ -236,6 +236,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 					if producer, ok := s.runningProducers[appName]; ok {
 						producer.SignalBootstrapFinish()
+						logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
 						s.deployedApps[appName] = time.Now().String()
 
 						s.Lock()
@@ -319,6 +320,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 	return nil
 }
 
+// GlobalConfigChangeCallback observes the metakv path where Eventing related global configs are written to
 func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, rev interface{}) error {
 	logPrefix := "SuperSupervisor::GlobalConfigChangeCallback"
 
@@ -334,11 +336,11 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, 
 			return nil
 		}
 
-		logging.Infof("%s [%d] Notifying Eventing.Producer instances to update plasma memory quota to %v",
-			logPrefix, len(s.runningProducers), config.RamQuota)
+		logging.Infof("%s [%d] Notifying Eventing.Producer instances to update plasma memory quota to %v MB",
+			logPrefix, len(s.runningProducers), config.RAMQuota)
 
 		for _, eventingProducer := range s.runningProducers {
-			eventingProducer.UpdatePlasmaMemoryQuota(config.RamQuota)
+			eventingProducer.UpdatePlasmaMemoryQuota(config.RAMQuota)
 		}
 	}
 
@@ -359,7 +361,7 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 
 	go func(p *producer.Producer, s *SuperSupervisor, appName, metakvAppHostPortsPath string) {
 		var err error
-		p.ProducerListener, err = net.Listen("tcp", "127.0.0.1:0")
+		p.ProducerListener, err = net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
 		if err != nil {
 			logging.Fatalf("SSUP[%d] Listen failed with error: %v", len(s.runningProducers), err)
 			return
@@ -477,6 +479,7 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 				if producer, ok := s.runningProducers[appName]; ok {
 					producer.SignalBootstrapFinish()
+					logging.Infof("SSUP[%d] Loading app: %s", len(s.runningProducers), appName)
 					s.deployedApps[appName] = time.Now().String()
 
 					s.Lock()

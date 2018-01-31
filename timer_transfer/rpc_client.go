@@ -13,12 +13,13 @@ import (
 
 // NewRPCClient returns new rpc client construct
 func NewRPCClient(consumer common.EventingConsumer, addr, appName, registeredName string) *Client {
-	return &Client{
+	c := &Client{
 		Addr:           addr,
 		AppName:        appName,
 		consumer:       consumer,
 		registeredName: registeredName,
 	}
+	return c
 }
 
 // DialPath connects to HTTP RPC server at specified network address and path

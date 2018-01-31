@@ -3,6 +3,7 @@ package producer
 import (
 	"errors"
 	"fmt"
+	"net"
 	"sync/atomic"
 	"unsafe"
 
@@ -15,7 +16,7 @@ var getClusterInfoCacheOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 	cinfo := args[1].(**util.ClusterInfoCache)
 
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
+	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
 	var err error
 	*cinfo, err = util.FetchNewClusterInfoCache(hostAddress)
@@ -30,7 +31,7 @@ var getClusterInfoCacheOpCallback = func(args ...interface{}) error {
 var getNsServerNodesAddressesOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
+	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
 	nsServerNodeAddrs, err := util.NsServerNodesAddresses(p.auth, hostAddress)
 	if err != nil {
@@ -47,7 +48,7 @@ var getNsServerNodesAddressesOpCallback = func(args ...interface{}) error {
 var getKVNodesAddressesOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
+	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
 	kvNodeAddrs, err := util.KVNodesAddresses(p.auth, hostAddress)
 	if err != nil {
@@ -64,7 +65,7 @@ var getKVNodesAddressesOpCallback = func(args ...interface{}) error {
 var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
+	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
 	eventingNodeAddrs, err := util.EventingNodesAddresses(p.auth, hostAddress)
 	if err != nil {
@@ -88,7 +89,7 @@ var getHTTPServiceAuth = func(args ...interface{}) error {
 	password := args[2].(*string)
 
 	var err error
-	clusterURL := fmt.Sprintf("127.0.0.1:%s", p.nsServerPort)
+	clusterURL := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 	*user, *password, err = cbauth.GetHTTPServiceAuth(clusterURL)
 	if err != nil {
 		logging.Errorf("PRCO[%s:%d] Failed to get cluster auth details, err: %v", p.appName, p.LenRunningConsumers(), err)

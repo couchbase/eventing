@@ -75,6 +75,7 @@ type EventingProducer interface {
 	Stop()
 	StopProducer()
 	String() string
+	TimerDebugStats() map[uint16]interface{}
 	TimerTransferHostPortAddrs() map[string]string
 	UpdatePlasmaMemoryQuota(quota int64)
 	VbDcpEventsRemainingToProcess() map[int]int64
@@ -117,9 +118,10 @@ type EventingConsumer interface {
 	SignalBootstrapFinish()
 	SignalConnected()
 	SignalStopDebugger()
-	SpawnCompilationWorker(appcode, appContent, appName string) (*CompileStatus, error)
+	SpawnCompilationWorker(appcode, appContent, appName, eventingPort string) (*CompileStatus, error)
 	Stop()
 	String() string
+	TimerDebugStats() map[uint16]map[string]interface{}
 	TimerTransferHostPortAddr() string
 	UpdateEventingNodesUUIDs(uuids []string)
 	VbDcpEventsRemainingToProcess() map[int]int64
@@ -152,6 +154,7 @@ type EventingSuperSup interface {
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
 	RestPort() string
 	SignalStartDebugger(appName string)
+	TimerDebugStats(appName string) (map[uint16]interface{}, error)
 	SignalStopDebugger(appName string)
 	VbDcpEventsRemainingToProcess(appName string) map[int]int64
 	VbDistributionStats(appName string) map[string]map[string]string

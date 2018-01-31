@@ -268,3 +268,13 @@ func (s *SuperSupervisor) RebalanceTaskProgress(appName string) (*common.Rebalan
 
 	return nil, fmt.Errorf("Eventing.Producer isn't alive")
 }
+
+// TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
+func (s *SuperSupervisor) TimerDebugStats(appName string) (map[uint16]interface{}, error) {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.TimerDebugStats(), nil
+	}
+
+	return nil, fmt.Errorf("Eventing.Producer isn't alive")
+}

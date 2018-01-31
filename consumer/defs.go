@@ -255,22 +255,17 @@ type Consumer struct {
 	debuggerState                  int8
 	debuggerStarted                bool
 
-	fuzzOffset                    int
-	addCronTimerStopCh            chan struct{}
-	cleanupCronTimerCh            chan *cronTimerToCleanup
-	cleanupCronTimerStopCh        chan struct{}
-	cronTimerProcessingTicker     *time.Ticker
-	cronTimerStopCh               chan struct{}
-	skipTimerThreshold            int
-	socketTimeout                 time.Duration
-	timerCleanupStopCh            chan struct{}
-	timerProcessingTickInterval   time.Duration
-	timerProcessingVbsWorkerMap   map[uint16]*timerProcessingWorker        // Access controlled by timerProcessingRWMutex
-	timerProcessingRunningWorkers []*timerProcessingWorker                 // Access controlled by timerRWMutex
-	timerProcessingWorkerSignalCh map[*timerProcessingWorker]chan struct{} // Access controlled by timerRWMutex
-	timerProcessingWorkerCount    int
-	timerProcessingRWMutex        *sync.RWMutex
-	timerRWMutex                  *sync.RWMutex
+	fuzzOffset                  int
+	addCronTimerStopCh          chan struct{}
+	cleanupCronTimerCh          chan *cronTimerToCleanup
+	cleanupCronTimerStopCh      chan struct{}
+	cronTimerProcessingTicker   *time.Ticker
+	cronTimerStopCh             chan struct{}
+	docTimerProcessingStopCh    chan struct{}
+	skipTimerThreshold          int
+	socketTimeout               time.Duration
+	timerCleanupStopCh          chan struct{}
+	timerProcessingTickInterval time.Duration
 
 	// Instance of timer related data transferring routine, under
 	// the supervision of consumer routine
@@ -384,15 +379,6 @@ type Consumer struct {
 
 	updateStatsTicker *time.Ticker
 	updateStatsStopCh chan struct{}
-}
-
-type timerProcessingWorker struct {
-	id                              int
-	c                               *Consumer
-	signalProcessTimerPlasmaCloseCh chan uint16
-	stopCh                          chan struct{}
-	timerProcessingTicker           *time.Ticker
-	vbsAssigned                     []uint16
 }
 
 type byTimerEntry struct {

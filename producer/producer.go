@@ -63,7 +63,7 @@ func (p *Producer) Serve() {
 		return
 	}
 
-	hostPortAddr := fmt.Sprintf("127.0.0.1:%s", p.GetNsServerPort())
+	hostPortAddr := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
 	p.numVbuckets, err = util.NumVbuckets(hostPortAddr, p.bucket)
 	if err != nil {
 		logging.Fatalf("PRDR[%s:%d] Failure to fetch vbucket count, err: %v", p.appName, p.LenRunningConsumers(), err)
@@ -290,12 +290,16 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	udsSockPath := fmt.Sprintf("%s/%s_%s.sock", os.TempDir(), p.nsServerHostPort, workerName)
 
 	if runtime.GOOS == "windows" || len(udsSockPath) > udsSockPathLimit {
-		listener, err = net.Listen("tcp", "127.0.0.1:0")
+		listener, err = net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
 		if err != nil {
 			logging.Errorf("PRDR[%s:%d] Failed to listen on tcp port, err: %v", p.appName, p.LenRunningConsumers(), err)
 		}
 
-		p.tcpPort = strings.Split(listener.Addr().String(), ":")[1]
+		_, p.tcpPort, err = net.SplitHostPort(listener.Addr().String())
+		if err != nil {
+			logging.Errorf("PRDR[%s:%d] Failed to parse tcp port, err: %v", p.appName, p.LenRunningConsumers(), err)
+		}
+
 		logging.Infof("PRDR[%s:%d] Started server on port: %s listener: %v", p.appName, p.LenRunningConsumers(), p.tcpPort, listener)
 
 		sockIdentifier = p.tcpPort
@@ -317,7 +321,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
 		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold,
-		p.socketWriteBatchSize, p.cronTimersPerDoc, p.timerWorkerPoolSize, p.cppWorkerThrCount,
+		p.socketWriteBatchSize, p.cronTimersPerDoc, p.cppWorkerThrCount,
 		p.vbOwnershipGiveUpRoutineCount, p.curlTimeout, p.vbOwnershipTakeoverRoutineCount,
 		p.xattrEntryPruneThreshold, p.workerQueueCap, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
 		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup,

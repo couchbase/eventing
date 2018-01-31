@@ -135,6 +135,7 @@ type backlogStat struct {
 }
 
 type stats struct {
+	DocTimerDebugStats   interface{} `json:"doc_timer_debug_stats,omitempty"`
 	EventProcessingStats interface{} `json:"event_processing_stats,omitempty"`
 	EventsRemaining      interface{} `json:"events_remaining,omitempty"`
 	ExecutionStats       interface{} `json:"execution_stats,omitempty"`

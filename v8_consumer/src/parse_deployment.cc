@@ -9,7 +9,7 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "../include/parse_deployment.h"
+#include "parse_deployment.h"
 
 deployment_config *ParseDeployment(const char *app_code) {
   deployment_config *config = new deployment_config();

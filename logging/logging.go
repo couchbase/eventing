@@ -6,8 +6,6 @@ import "fmt"
 import "strings"
 import "time"
 import "bytes"
-import "net/http"
-import "io/ioutil"
 import "runtime/debug"
 import l "log"
 
@@ -163,41 +161,6 @@ func (log *destination) SetLogLevel(to LogLevel) {
 // Get stack trace
 func (log *destination) StackTrace() string {
 	return log.getStackTrace(2, debug.Stack())
-}
-
-// Get profiling info
-func Profile(port string, endpoints ...string) string {
-	if strings.HasPrefix(port, ":") {
-		port = port[1:]
-	}
-	var buf bytes.Buffer
-	for _, endpoint := range endpoints {
-		addr := fmt.Sprintf("http://127.0.0.1:%s/debug/pprof/%s?debug=1", port, endpoint)
-		resp, err := http.Get(addr)
-		if err != nil {
-			continue
-		}
-		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			continue
-		}
-		buf.Write(body)
-	}
-	return buf.String()
-}
-
-// Dump profiling info periodically
-func PeriodicProfile(level LogLevel, port string, endpoints ...string) {
-	tick := time.NewTicker(5 * time.Minute)
-	go func() {
-		for {
-			select {
-			case <-tick.C:
-				SystemLogger.printf(level, "%v", Profile(port, endpoints...))
-			}
-		}
-	}()
 }
 
 // Run function only if output will be logged at debug level

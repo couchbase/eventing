@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
 )
 
@@ -207,8 +207,8 @@ func (c *Consumer) GetLcbExceptionsStats() map[string]uint64 {
 }
 
 // SpawnCompilationWorker bring up a CPP worker to compile the user supplied handler code
-func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName string) (*common.CompileStatus, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventingPort string) (*common.CompileStatus, error) {
+	listener, err := net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
 	if err != nil {
 		logging.Errorf("CREF[%s:%s:%s:%d] Compilation worker: Failed to listen on tcp port, err: %v",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
@@ -234,26 +234,60 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName string) (
 		connectedCh <- struct{}{}
 	}(listener, connectedCh)
 
-	c.tcpPort = strings.Split(listener.Addr().String(), ":")[1]
+	_, c.tcpPort, err = net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		logging.Errorf("CREF[%s:%s:%s:%d] Failed to parse address, err: %v",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+	}
+
 	var pid int
-
-	go func(pid int, appName string) {
+	go func() {
 		cmd := exec.Command("eventing-consumer", appName, "af_inet", c.tcpPort,
-			fmt.Sprintf("worker_%s", appName), "1", "8096")
+			fmt.Sprintf("worker_%s", appName), "1",
+			os.TempDir(), util.GetIPMode(),
+			"validate") // this parameter is not read, for tagging
 
-		err := cmd.Start()
+		outPipe, err := cmd.StdoutPipe()
+		if err != nil {
+			logging.Errorf("CREF[%s:%s:%s:%d] Failed to open stdout pipe, err: %v",
+				appName, c.workerName, c.tcpPort, c.Pid(), err)
+			return
+		}
+
+		defer outPipe.Close()
+
+		err = cmd.Start()
 		if err != nil {
 			logging.Errorf("CREF[%s:%s:%s:%d] Failed to spawn compilation worker, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+			return
 		} else {
 			pid = cmd.Process.Pid
 			logging.Infof("CREF[%s:%s:%s:%d] compilation worker launched",
 				c.app.AppName, c.workerName, c.tcpPort, pid)
 		}
 
-		cmd.Wait()
+		bufOut := bufio.NewReader(outPipe)
 
-	}(pid, appName)
+		go func(bufOut *bufio.Reader) {
+			for {
+				msg, _, err := bufOut.ReadLine()
+				if err != nil {
+					logging.Errorf("CREF[%s:%s:%s:%d] Failed to read from stdout pipe, err: %v",
+						appName, c.workerName, c.tcpPort, c.Pid(), err)
+					return
+				}
+
+				logging.Infof("%s", string(msg))
+			}
+		}(bufOut)
+
+		err = cmd.Wait()
+
+		logging.Infof("CREF[%s:%s:%s:%d] compilation worker exited with status %v",
+			c.app.AppName, c.workerName, c.tcpPort, pid, err)
+
+	}()
 	<-connectedCh
 	c.sockReader = bufio.NewReader(c.conn)
 
@@ -261,9 +295,8 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName string) (
 
 	// Framing bare minimum V8 worker init payload
 	// TODO : Remove rbac user once RBAC issue is resolved
-	payload, pBuilder := c.makeV8InitPayload("", "", appName, "127.0.0.1", "", "",
-		"", appContent, 5, 10,
-		1, 30, 10*1000, true, true, 500)
+	payload, pBuilder := c.makeV8InitPayload("", "", appName, util.Localhost(), "", eventingPort,
+		"", appContent, 5, 10, 1, 30, 10*1000, true, true, 500)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 
@@ -284,6 +317,9 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName string) (
 			ps.Kill()
 		}
 	}
+
+	logging.Infof("CREF[%s:%s:%s:%d] compilation status %v",
+		c.app.AppName, c.workerName, c.tcpPort, pid, c.compileInfo)
 
 	return c.compileInfo, nil
 }
@@ -309,4 +345,32 @@ func (c *Consumer) initConsumer(appName string) {
 			return flatbuffers.NewBuilder(0)
 		},
 	}
+}
+
+// TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
+func (c *Consumer) TimerDebugStats() map[uint16]map[string]interface{} {
+	stats := make(map[uint16]map[string]interface{})
+
+	vbsOwned := c.getCurrentlyOwnedVbs()
+
+	for _, vb := range vbsOwned {
+		if _, ok := stats[vb]; !ok {
+			stats[vb] = make(map[string]interface{})
+
+			stats[vb]["assigned_worker"] = c.vbProcessingStats.getVbStat(vb, "assigned_worker")
+			stats[vb]["copied_during_rebalance_counter"] = c.vbProcessingStats.getVbStat(vb, "copied_during_rebalance_counter")
+			stats[vb]["currently_processed_doc_id_timer"] = c.vbProcessingStats.getVbStat(vb, "currently_processed_doc_id_timer")
+			stats[vb]["deleted_during_cleanup_counter"] = c.vbProcessingStats.getVbStat(vb, "deleted_during_cleanup_counter")
+			stats[vb]["last_processed_doc_id_timer_event"] = c.vbProcessingStats.getVbStat(vb, "last_processed_doc_id_timer_event")
+			stats[vb]["next_doc_id_timer_to_process"] = c.vbProcessingStats.getVbStat(vb, "next_doc_id_timer_to_process")
+			stats[vb]["node_uuid"] = c.vbProcessingStats.getVbStat(vb, "node_uuid")
+			stats[vb]["removed_during_rebalance_counter"] = c.vbProcessingStats.getVbStat(vb, "removed_during_rebalance_counter")
+			stats[vb]["sent_to_worker_counter"] = c.vbProcessingStats.getVbStat(vb, "sent_to_worker_counter")
+			stats[vb]["timer_create_counter"] = c.vbProcessingStats.getVbStat(vb, "timer_create_counter")
+			stats[vb]["timers_in_past_counter"] = c.vbProcessingStats.getVbStat(vb, "timers_in_past_counter")
+			stats[vb]["transferred_during_rebalance_counter"] = c.vbProcessingStats.getVbStat(vb, "transferred_during_rebalance_counter")
+		}
+	}
+
+	return stats
 }

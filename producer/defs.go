@@ -129,9 +129,6 @@ type Producer struct {
 	// trigger is delayed, it's execution will be skipped
 	skipTimerThreshold int
 
-	// Timer event processing worker count per Eventing.Consumer instance
-	timerWorkerPoolSize int
-
 	// Needed by cron timers
 	// A random number (0 - fuzzOffset) will be added to the epoch time at which the callback function
 	// was supposed to be called

@@ -1,6 +1,11 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
+#include <chrono>
+#include <iostream>
+#include <math.h>
+#include <sstream>
+
 #ifndef STANDALONE_BUILD
 extern void(assert)(int);
 #else
@@ -34,6 +39,11 @@ typedef struct resp_msg_s {
   uint8_t opcode;
   std::string msg;
 } resp_msg_t;
+
+typedef union {
+  sockaddr_in sock4;
+  sockaddr_in6 sock6;
+} sockaddr_in46;
 
 class AppWorker {
 public:
@@ -69,7 +79,8 @@ private:
 
   uv_connect_t conn;
   uv_stream_t *conn_handle;
-  struct sockaddr_in server_sock;
+
+  sockaddr_in46 server_sock;
 
   bool main_loop_running;
   std::string app_name;

@@ -18,6 +18,7 @@ type opsType struct {
 	expiry      int
 	delete      bool
 	writeXattrs bool
+	xattrPrefix string
 	startIndex  int
 }
 
@@ -50,7 +51,7 @@ func pumpBucketOps(ops opsType, rate *rateLimit) {
 				bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
 			} else {
 				bucket.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), 0, uint32(ops.expiry)).
-					UpsertEx("userxattr.test", "user xattr test value", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
+					UpsertEx(fmt.Sprintf("test_%s", ops.xattrPrefix), "user xattr test value", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
 					UpsertEx("normalproperty", "normal property value", gocb.SubdocFlagNone).
 					Execute()
 			}
@@ -76,7 +77,7 @@ func pumpBucketOps(ops opsType, rate *rateLimit) {
 						bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
 					} else {
 						bucket.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), 0, uint32(ops.expiry)).
-							UpsertEx("userxattr.test", "user xattr test value", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
+							UpsertEx(fmt.Sprintf("test_%s", ops.xattrPrefix), "user xattr test value", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
 							UpsertEx("normalproperty", "normal property value", gocb.SubdocFlagNone).
 							Execute()
 					}

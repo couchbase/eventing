@@ -118,7 +118,7 @@ func (c *Consumer) processEvents() {
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), xMeta)
 
 					// Validating for eventing xattr fields
-					if xMeta.Cas != "" && xMeta.Digest != 0 {
+					if xMeta.Cas != "" {
 						cas, err := util.ConvertBigEndianToUint64([]byte(xMeta.Cas))
 						if err != nil {
 							logging.Errorf("%s [%s:%s:%d] Key: %v failed to convert cas string from kv to uint64, err: %v",
@@ -286,17 +286,6 @@ func (c *Consumer) processEvents() {
 				// new KV node, where the vbucket has been migrated
 
 				logging.Debugf("%s [%s:%s:%d] vb: %v, got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
-
-				// Different scenarios where DCP_STREAMEND could be triggered:
-				// (a) vb give up as part of eventing rebalance
-				// (b) Existing KV node where vbucket mapped to isn't part of cluster any more(this will
-				//     trigger DCP_STREAMEND in bulk as the old KV node would have hosted multiple vbuckets)
-				// For (a) plasma related FD cleanup signalling is already done in vbucket give up
-				// routine. Handling case for (b) below.
-
-				c.timerProcessingRWMutex.Lock()
-				delete(c.timerProcessingVbsWorkerMap, e.VBucket)
-				c.timerProcessingRWMutex.Unlock()
 
 				//Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))

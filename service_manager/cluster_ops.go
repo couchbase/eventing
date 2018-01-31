@@ -3,6 +3,7 @@ package servicemanager
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/logging"
@@ -12,7 +13,7 @@ import (
 var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 	m := args[0].(*ServiceMgr)
 
-	hostAddress := fmt.Sprintf("127.0.0.1:%s", m.restPort)
+	hostAddress := net.JoinHostPort(util.Localhost(), m.restPort)
 
 	eventingNodeAddrs, err := util.EventingNodesAddresses(m.auth, hostAddress)
 	if err != nil {
@@ -32,7 +33,7 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 var getHTTPServiceAuth = func(args ...interface{}) error {
 	m := args[0].(*ServiceMgr)
 
-	clusterURL := fmt.Sprintf("127.0.0.1:%s", m.restPort)
+	clusterURL := net.JoinHostPort(util.Localhost(), m.restPort)
 	user, password, err := cbauth.GetHTTPServiceAuth(clusterURL)
 	if err != nil {
 		logging.Errorf("SMCO Failed to get cluster auth details, err: %v", err)

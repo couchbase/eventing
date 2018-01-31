@@ -14,9 +14,6 @@ func newVbProcessingStats(appName string, numVbuckets uint16) vbStats {
 		vbsts[i].stats["assigned_worker"] = ""
 		vbsts[i].stats["requesting_worker"] = ""
 
-		// Stored in memory but not persisted to disk,
-		// persistence to disk takes place periodically. Below 4 stats
-		// will be updated by plasma writer routines
 		vbsts[i].stats["plasma_last_seq_no_stored"] = uint64(0)
 		vbsts[i].stats["plasma_last_seq_no_persisted"] = uint64(0)
 
@@ -28,6 +25,15 @@ func newVbProcessingStats(appName string, numVbuckets uint16) vbStats {
 		vbsts[i].stats["next_cron_timer_to_process"] = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 		vbsts[i].stats["currently_processed_cron_timer"] = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 		vbsts[i].stats["last_processed_cron_timer_event"] = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+
+		// Doc timer debug stats
+		vbsts[i].stats["copied_during_rebalance_counter"] = uint64(0)
+		vbsts[i].stats["deleted_during_cleanup_counter"] = uint64(0)
+		vbsts[i].stats["removed_during_rebalance_counter"] = uint64(0)
+		vbsts[i].stats["sent_to_worker_counter"] = uint64(0)
+		vbsts[i].stats["timer_create_counter"] = uint64(0)
+		vbsts[i].stats["timers_in_past_counter"] = uint64(0)
+		vbsts[i].stats["transferred_during_rebalance_counter"] = uint64(0)
 	}
 	return vbsts
 }

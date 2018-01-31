@@ -511,10 +511,11 @@ func TestWithUserXattrs(t *testing.T) {
 	handler := "on_delete_bucket_op_comment.js"
 	flushFunctionAndBucket(handler)
 	pumpBucketOps(opsType{}, &rateLimit{})
+	pumpBucketOps(opsType{writeXattrs: true, xattrPrefix: "_1"}, &rateLimit{})
 	createAndDeployFunction(handler, handler, &commonSettings{streamBoundary: "from_now"})
 	waitForDeployToFinish(handler)
 
-	pumpBucketOps(opsType{writeXattrs: true}, &rateLimit{})
+	pumpBucketOps(opsType{writeXattrs: true, xattrPrefix: "_2"}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "WithUserXattrs",
@@ -526,3 +527,23 @@ func TestWithUserXattrs(t *testing.T) {
 	dumpStats(handler)
 	flushFunctionAndBucket(handler)
 }
+
+// Disabling as for the time being source bucket mutations aren't allowed
+/* func TestSourceBucketMutations(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "source_bucket_update_op.js"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{recursiveBehavior: "disable"})
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifySourceBucketOps(itemCount*2, statsLookupRetryCounter)
+	if itemCount*2 != eventCount {
+		t.Error("For", "WithUserXattrs",
+			"expected", itemCount*2,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats(handler)
+	flushFunctionAndBucket(handler)
+} */

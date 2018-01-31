@@ -3,9 +3,9 @@ package consumer
 import (
 	"errors"
 	"fmt"
+	"net"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -130,10 +130,6 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 						c.updateCheckpoint(vbKey, vb, &vbBlob)
 					}
 
-					c.timerRWMutex.Lock()
-					c.vbTimerProcessingWorkerAssign(false)
-					c.timerRWMutex.Unlock()
-
 					// Check if another node has taken up ownership of vbucket for which
 					// ownership was given up above. Metadata is updated about ownership give up only after
 					// DCP_STREAMMEND is received from DCP producer
@@ -221,10 +217,6 @@ retryStreamUpdate:
 					c.workerName, i, c.tcpPort, c.Pid(), vb)
 
 				util.Retry(util.NewFixedBackoff(vbTakeoverRetryInterval), vbTakeoverCallback, c, vb)
-
-				c.timerRWMutex.Lock()
-				c.vbTimerProcessingWorkerAssign(false)
-				c.timerRWMutex.Unlock()
 			}
 
 		}(c, i, vbsDistribution[i], &wg)
@@ -381,13 +373,31 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 
 		if _, aOk := timerAddrs[addr]; aOk {
 			if _, pOk := timerAddrs[addr][previousAssignedWorker]; pOk {
-				remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
-					strings.Split(timerAddrs[addr][previousAssignedWorker], ":")[3])
+				host, _, err := net.SplitHostPort(previousVBOwner)
+				if err != nil {
+					logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to parse host address: %v, err: %v",
+						c.workerName, c.tcpPort, c.Pid(), vb, previousVBOwner, err)
+				}
+				_, port, err := net.SplitHostPort(timerAddrs[addr][previousAssignedWorker])
+				if err != nil {
+					logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to parse host port: %v, err: %v",
+						c.workerName, c.tcpPort, c.Pid(), vb, timerAddrs[addr][previousAssignedWorker], err)
+				}
+				remoteConsumerAddr = net.JoinHostPort(host, port)
 			}
 		}
 	} else {
-		remoteConsumerAddr = fmt.Sprintf("%v:%v", strings.Split(previousVBOwner, ":")[0],
-			strings.Split(timerAddrs[previousVBOwner][previousAssignedWorker], ":")[3])
+		host, _, err := net.SplitHostPort(previousVBOwner)
+		if err != nil {
+			logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to parse host address: %v, err: %v",
+				c.workerName, c.tcpPort, c.Pid(), vb, previousVBOwner, err)
+		}
+		_, port, err := net.SplitHostPort(timerAddrs[previousVBOwner][previousAssignedWorker])
+		if err != nil {
+			logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to parse host port: %v, err: %v",
+				c.workerName, c.tcpPort, c.Pid(), vb, timerAddrs[addr][previousAssignedWorker], err)
+		}
+		remoteConsumerAddr = net.JoinHostPort(host, port)
 	}
 
 	client := timer.NewRPCClient(c, remoteConsumerAddr, c.app.AppName, previousAssignedWorker)

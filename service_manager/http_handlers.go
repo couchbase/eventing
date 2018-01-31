@@ -1,10 +1,13 @@
 package servicemanager
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"regexp"
@@ -12,8 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"bytes"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/audit"
@@ -514,6 +515,31 @@ func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Reque
 	fmt.Fprintf(w, "%s", string(buf))
 }
 
+func (m *ServiceMgr) getNamedParamsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		return
+	}
+
+	query := string(data)
+	info := util.GetNamedParams(query)
+	response := url.Values{}
+
+	response.Add("is_valid", toStr(info.PInfo.IsValid))
+	response.Add("info", info.PInfo.Info)
+	response.Add("named_params_size", strconv.Itoa(len(info.NamedParams)))
+
+	for i, namedParam := range info.NamedParams {
+		response.Add(strconv.Itoa(i), namedParam)
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", response.Encode())
+}
+
 // Reports progress across all producers on current node
 func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
@@ -982,7 +1008,7 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	appName := app.Name
 	path := metakvTempAppsPath + appName
-	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
 	logging.Infof("Saving handler to temporary store: %v", appName)
 
 	cinfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
@@ -1017,6 +1043,15 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 		info.Code = m.statusCodes.errMemcachedBucket.Code
 		info.Info = "Source bucket is memcached, should be either couchbase or ephemeral"
 		return
+	}
+
+	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
+		if app.DeploymentConfig.Buckets[i].BucketName == app.DeploymentConfig.SourceBucket {
+			info.Code = m.statusCodes.errSourceBinding.Code
+			info.Info = "Bucket binding for source bucket disallowed"
+
+			return
+		}
 	}
 
 	data, err := json.Marshal(app)
@@ -1089,7 +1124,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	nsServerEndpoint := fmt.Sprintf("127.0.0.1:%s", m.restPort)
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
 	cinfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
 	if err != nil {
 		info.Code = m.statusCodes.errConnectNsServer.Code
@@ -1129,6 +1164,14 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	var bNames []flatbuffers.UOffsetT
 
 	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
+
+		if app.DeploymentConfig.Buckets[i].BucketName == app.DeploymentConfig.SourceBucket {
+			info.Code = m.statusCodes.errSourceBinding.Code
+			info.Info = "Bucket binding for source bucket disallowed"
+
+			return
+		}
+
 		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
 		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
 
@@ -1170,7 +1213,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	appContent := builder.FinishedBytes()
 
 	c := &consumer.Consumer{}
-	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName)
+	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName, m.adminHTTPPort)
 	if err != nil || !compilationInfo.CompileSuccess {
 		res, mErr := json.Marshal(&compilationInfo)
 		if mErr != nil {
@@ -1389,6 +1432,26 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) []
 	}
 
 	return appList
+}
+
+func (m *ServiceMgr) parseQueryHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		return
+	}
+
+	query := string(data)
+	info := util.Parse(query)
+	response := url.Values{}
+
+	response.Add("is_valid", toStr(info.IsValid))
+	response.Add("info", info.Info)
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", response.Encode())
 }
 
 func (m *ServiceMgr) getConfig() (c config, info *runtimeInfo) {
@@ -1688,6 +1751,10 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 
 					stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
 					stats.VbDcpEventsRemaining = m.superSup.VbDcpEventsRemainingToProcess(app.Name)
+					debugStats, err := m.superSup.TimerDebugStats(app.Name)
+					if err == nil {
+						stats.DocTimerDebugStats = debugStats
+					}
 				}
 
 				statsList = append(statsList, stats)
@@ -1720,4 +1787,5 @@ func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 
 	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvAppsPath)
 	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvTempAppsPath)
+	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvAppSettingsPath)
 }

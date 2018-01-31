@@ -12,13 +12,11 @@
 #ifndef FUNCTION_TEMPLATES_H
 #define FUNCTION_TEMPLATES_H
 
-#include <thread>
-
-#include <libplatform/libplatform.h>
-#include <v8.h>
-
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
+#include <libplatform/libplatform.h>
+#include <thread>
+#include <v8.h>
 
 #include "log.h"
 #include "utils.h"

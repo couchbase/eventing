@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/logging"
@@ -14,7 +15,7 @@ var getHTTPServiceAuth = func(args ...interface{}) error {
 	password := args[2].(*string)
 
 	var err error
-	clusterURL := fmt.Sprintf("127.0.0.1:%s", s.restPort)
+	clusterURL := net.JoinHostPort(util.Localhost(), s.restPort)
 	*user, *password, err = cbauth.GetHTTPServiceAuth(clusterURL)
 	if err != nil {
 		logging.Errorf("SSCO Failed to get cluster auth details, err: %v", err)
@@ -27,7 +28,7 @@ var getEventingNodeAddrsCallback = func(args ...interface{}) error {
 	addrs := args[1].(*[]string)
 
 	var err error
-	clusterURL := fmt.Sprintf("127.0.0.1:%s", s.restPort)
+	clusterURL := net.JoinHostPort(util.Localhost(), s.restPort)
 	*addrs, err = util.EventingNodesAddresses(s.auth, clusterURL)
 	if err != nil {
 		logging.Errorf("SSCO Failed to get addresses for nodes running eventing service, err: %v", err)
@@ -45,7 +46,7 @@ var getCurrentEventingNodeAddrCallback = func(args ...interface{}) error {
 	addr := args[1].(*string)
 
 	var err error
-	clusterURL := fmt.Sprintf("127.0.0.1:%s", s.restPort)
+	clusterURL := net.JoinHostPort(util.Localhost(), s.restPort)
 	*addr, err = util.CurrentEventingNodeAddress(s.auth, clusterURL)
 	if err != nil {
 		logging.Errorf("SSVA Failed to get address for current eventing node, err: %v", err)

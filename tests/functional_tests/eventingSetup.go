@@ -65,8 +65,15 @@ func createAndDeployFunction(appName, hFileName string, settings *commonSettings
 
 	var aliases []string
 	aliases = append(aliases, "dst_bucket")
+
+	// Source bucket bindings disallowed
+	// aliases = append(aliases, "src_bucket")
+
 	var bnames []string
 	bnames = append(bnames, "hello-world")
+
+	// Source bucket bindings disallowed
+	// bnames = append(bnames, "default")
 
 	data, err := createFunction(true, true, 0, settings, aliases,
 		bnames, appName, content, "eventing", "default")
@@ -137,20 +144,25 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["dcp_stream_boundary"] = s.streamBoundary
 	}
 
+	if s.recursiveBehavior == "disable" || s.recursiveBehavior == "" {
+		settings["enable_recursive_mutation"] = false
+	} else {
+		settings["enable_recursive_mutation"] = true
+	}
+
 	settings["skip_timer_threshold"] = 86400
 	settings["tick_duration"] = 5000
 	settings["timer_processing_tick_interval"] = 500
-	settings["timer_worker_pool_size"] = 1
 	settings["deadline_timeout"] = 3
 	settings["execution_timeout"] = 2
 	settings["log_level"] = "INFO"
+	settings["cron_timers_per_doc"] = 10000
 	settings["cleanup_timers"] = false
 	settings["rbacrole"] = "admin"
 	settings["rbacuser"] = "eventing"
 	settings["rbacpass"] = "asdasd"
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
-	settings["enable_recursive_mutation"] = true
 	settings["description"] = "Sample app"
 
 	app.Settings = settings
@@ -277,6 +289,25 @@ retryVerifyBucketOp:
 	goto retryVerifyBucketOp
 }
 
+func verifySourceBucketOps(count, retryCount int) int {
+	rCount := 1
+	var itemCount int
+
+retryVerifyBucketOp:
+	if rCount > retryCount {
+		return itemCount
+	}
+
+	itemCount, _ = getBucketItemCount(srcBucket)
+	if itemCount == count {
+		log.Printf("src & dst bucket item count matched up. src bucket count: %d dst bucket count: %d\n", count, itemCount)
+		return itemCount
+	}
+	rCount++
+	time.Sleep(time.Second * 5)
+	goto retryVerifyBucketOp
+}
+
 func verifyBucketItemCount(rl *rateLimit, retryCount int) {
 	rCount := 1
 
@@ -291,7 +322,7 @@ retrySrcItemCount:
 
 	srcCount, err := getBucketItemCount(srcBucket)
 	if err != nil {
-		time.Sleep(3 * time.Second)
+		time.Sleep(5 * time.Second)
 		goto retrySrcItemCount
 	}
 

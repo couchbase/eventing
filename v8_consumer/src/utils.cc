@@ -9,8 +9,18 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "../include/utils.h"
-#include "../include/js_exception.h"
+#include <regex>
+
+#include "utils.h"
+#include "js_exception.h"
+
+#include "../../gen/js/escodegen.h"
+#include "../../gen/js/esprima.h"
+#include "../../gen/js/estraverse.h"
+#include "../../gen/js/source-map.h"
+#include "../../gen/js/transpiler.h"
+
+static bool ipv6 = false;
 
 #if defined(WIN32) || defined(_WIN32)
 int Wvasprintf(char **strp, const char *fmt, va_list ap) {
@@ -249,4 +259,31 @@ std::vector<std::string> split(const std::string &s, char delim) {
   std::vector<std::string> elems;
   split(s, delim, elems);
   return elems;
+}
+
+std::string GetTranspilerSrc() {
+  std::string transpiler_js_src =
+      std::string((const char *)js_esprima) + '\n' +
+      std::string((const char *)js_escodegen) + '\n' +
+      std::string((const char *)js_estraverse) + '\n' +
+      std::string((const char *)js_transpiler) + '\n' +
+      std::string((const char *)js_source_map);
+  return transpiler_js_src;
+}
+
+void SetIPv6(bool is6) {
+  ipv6 = is6;
+}
+
+std::string Localhost(bool isUrl) {
+  return ipv6 ?  (isUrl ? "[::1]" : "::1") : "127.0.0.1";
+}
+
+bool IsIPv6() {
+  return ipv6;
+}
+
+std::string JoinHostPort(const std::string &host, const std::string &port) {
+  static std::regex ipv6re("^[0-9a-f:]*:[0-9a-f:]+$");
+  return std::regex_match(host, ipv6re) ? "["+host+"]:"+port : host+":"+port;
 }

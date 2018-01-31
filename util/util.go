@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io/ioutil"
+	"net"
 	"net/url"
 	"sort"
 	"strconv"
@@ -461,7 +462,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 func GetAggTimerHostPortAddrs(appName, eventingAdminPort, urlSuffix string) (map[string]map[string]string, error) {
 	netClient := NewClient(HTTPRequestTimeout)
 
-	url := fmt.Sprintf("http://127.0.0.1:%s/%s?name=%s", eventingAdminPort, urlSuffix, appName)
+	url := fmt.Sprintf("http://%s/%s?name=%s", net.JoinHostPort(Localhost(), eventingAdminPort), urlSuffix, appName)
 
 	res, err := netClient.Get(url)
 	if err != nil {

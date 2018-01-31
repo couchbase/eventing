@@ -664,3 +664,18 @@ func (p *Producer) RbacUser() string {
 func (p *Producer) RbacPass() string {
 	return p.rbacPass
 }
+
+// TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
+func (p *Producer) TimerDebugStats() map[uint16]interface{} {
+	aggStats := make(map[uint16]interface{})
+
+	for _, consumer := range p.runningConsumers {
+		workerStats := consumer.TimerDebugStats()
+
+		for vb, stats := range workerStats {
+			aggStats[vb] = stats
+		}
+	}
+
+	return aggStats
+}

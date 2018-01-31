@@ -555,7 +555,7 @@ func (c *ClusterInfoCache) validateCache() bool {
 		p := svc.Services["mgmt"]
 
 		if h == "" {
-			h = "127.0.0.1"
+			h = Localhost()
 		}
 
 		hp := net.JoinHostPort(h, fmt.Sprint(p))

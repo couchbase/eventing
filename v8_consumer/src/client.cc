@@ -1,14 +1,17 @@
-#include "../include/client.h"
-#include "../include/breakpad.h"
+// Copyright (c) 2017 Couchbase, Inc.
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//     http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an "AS IS"
+// BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied. See the License for the specific language governing
+// permissions and limitations under the License.
 
-#include <chrono>
-#include <ctime>
-#include <curl/curl.h>
-#include <iostream>
-#include <math.h>
-#include <sstream>
-#include <string>
-#include <typeinfo>
+#include "client.h"
+#include "breakpad.h"
+#include "utils.h"
 
 static char const *global_program_name;
 int messages_processed(0);
@@ -424,7 +427,12 @@ void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
 void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
                             const std::string &worker_id, int bsize, int port) {
   uv_tcp_init(&main_loop, &tcp_sock);
-  uv_ip4_addr(addr.c_str(), port, &server_sock);
+
+  if (IsIPv6()) {
+    uv_ip6_addr(addr.c_str(), port, &server_sock.sock6);
+  } else {
+    uv_ip4_addr(addr.c_str(), port, &server_sock.sock4);
+  }
 
   app_name = appname;
   batch_size = bsize;
@@ -434,7 +442,7 @@ void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
                << " worker_id:" << worker_id << " batch_size:" << batch_size
                << " port:" << port << std::endl;
 
-  uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
+  uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *) &server_sock,
                  [](uv_connect_t *conn, int status) {
                    AppWorker::GetAppWorker()->OnConnect(conn, status);
                  });
@@ -650,12 +658,14 @@ AppWorker *AppWorker::GetAppWorker() {
 int main(int argc, char **argv) {
   global_program_name = argv[0];
 
-  if (argc < 6) {
-    std::cerr << "Need at least 6 arguments: appname, ipc_type, port, "
-                 "worker_id, batch_size, diag_dir"
+  if (argc < 8) {
+    std::cerr << "Need at least 7 arguments: appname, ipc_type, port, "
+                 "worker_id, batch_size, diag_dir, ipv4/6"
               << std::endl;
     return 2;
   }
+
+  SetIPv6(std::string(argv[7]) == "ipv6");
 
   srand(static_cast<unsigned>(time(nullptr)));
 
@@ -688,9 +698,9 @@ int main(int argc, char **argv) {
   AppWorker *worker = AppWorker::GetAppWorker();
 
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
-    worker->InitUDS(appname, "127.0.0.1", worker_id, batch_size, uds_sock_path);
+    worker->InitUDS(appname, Localhost(false), worker_id, batch_size, uds_sock_path);
   } else {
-    worker->InitTcpSock(appname, "127.0.0.1", worker_id, batch_size, port);
+    worker->InitTcpSock(appname, Localhost(false), worker_id, batch_size, port);
   }
 
   curl_global_cleanup();
