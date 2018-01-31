@@ -114,14 +114,13 @@ ApplicationModel.prototype.getDefaultModel = function() {
             source_bucket: 'default'
         },
         settings: {
-            log_level: 'TRACE',
+            log_level: 'INFO',
             dcp_stream_boundary: 'everything',
-            sock_batch_size: 1,
+            sock_batch_size: 100,
             tick_duration: 5000,
             checkpoint_interval: 10000,
             worker_count: 3,
             cleanup_timers: false,
-            timer_worker_pool_size: 3,
             skip_timer_threshold: 86400,
             timer_processing_tick_interval: 500,
             rbacuser: 'eventing',
@@ -142,8 +141,8 @@ ApplicationModel.prototype.getDefaultModel = function() {
             app_log_max_size: 1024 * 1024 * 10,
             app_log_max_files: 10,
             curl_timeout: 500,
-            worker_queue_cap: 1000 * 1000,
-            fuzz_offset: 30
+            worker_queue_cap: 100 * 1000,
+            fuzz_offset: 0
         }
     };
 };
@@ -174,12 +173,11 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.depcfg = this.getDefaultModel().depcfg;
     this.settings = {};
     this.settings.checkpoint_interval = 10000;
-    this.settings.sock_batch_size = 1;
+    this.settings.sock_batch_size = 100;
     this.settings.worker_count = 3;
     this.settings.skip_timer_threshold = 86400;
     this.settings.tick_duration = 5000;
     this.settings.timer_processing_tick_interval = 500;
-    this.settings.timer_worker_pool_size = 3;
     this.settings.deadline_timeout = 2;
     this.settings.execution_timeout = 1;
     this.settings.cpp_worker_thread_count = 2;
