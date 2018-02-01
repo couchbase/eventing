@@ -261,11 +261,10 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			logging.Errorf("CREF[%s:%s:%s:%d] Failed to spawn compilation worker, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 			return
-		} else {
-			pid = cmd.Process.Pid
-			logging.Infof("CREF[%s:%s:%s:%d] compilation worker launched",
-				c.app.AppName, c.workerName, c.tcpPort, pid)
 		}
+		pid = cmd.Process.Pid
+		logging.Infof("CREF[%s:%s:%s:%d] compilation worker launched",
+			c.app.AppName, c.workerName, c.tcpPort, pid)
 
 		bufOut := bufio.NewReader(outPipe)
 
@@ -348,27 +347,25 @@ func (c *Consumer) initConsumer(appName string) {
 }
 
 // TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
-func (c *Consumer) TimerDebugStats() map[uint16]map[string]interface{} {
-	stats := make(map[uint16]map[string]interface{})
+func (c *Consumer) TimerDebugStats() map[int]map[string]interface{} {
+	stats := make(map[int]map[string]interface{})
 
-	vbsOwned := c.getCurrentlyOwnedVbs()
-
-	for _, vb := range vbsOwned {
+	for vb := 0; vb < c.numVbuckets; vb++ {
 		if _, ok := stats[vb]; !ok {
 			stats[vb] = make(map[string]interface{})
 
-			stats[vb]["assigned_worker"] = c.vbProcessingStats.getVbStat(vb, "assigned_worker")
-			stats[vb]["copied_during_rebalance_counter"] = c.vbProcessingStats.getVbStat(vb, "copied_during_rebalance_counter")
-			stats[vb]["currently_processed_doc_id_timer"] = c.vbProcessingStats.getVbStat(vb, "currently_processed_doc_id_timer")
-			stats[vb]["deleted_during_cleanup_counter"] = c.vbProcessingStats.getVbStat(vb, "deleted_during_cleanup_counter")
-			stats[vb]["last_processed_doc_id_timer_event"] = c.vbProcessingStats.getVbStat(vb, "last_processed_doc_id_timer_event")
-			stats[vb]["next_doc_id_timer_to_process"] = c.vbProcessingStats.getVbStat(vb, "next_doc_id_timer_to_process")
-			stats[vb]["node_uuid"] = c.vbProcessingStats.getVbStat(vb, "node_uuid")
-			stats[vb]["removed_during_rebalance_counter"] = c.vbProcessingStats.getVbStat(vb, "removed_during_rebalance_counter")
-			stats[vb]["sent_to_worker_counter"] = c.vbProcessingStats.getVbStat(vb, "sent_to_worker_counter")
-			stats[vb]["timer_create_counter"] = c.vbProcessingStats.getVbStat(vb, "timer_create_counter")
-			stats[vb]["timers_in_past_counter"] = c.vbProcessingStats.getVbStat(vb, "timers_in_past_counter")
-			stats[vb]["transferred_during_rebalance_counter"] = c.vbProcessingStats.getVbStat(vb, "transferred_during_rebalance_counter")
+			stats[vb]["assigned_worker"] = c.vbProcessingStats.getVbStat(uint16(vb), "assigned_worker")
+			stats[vb]["copied_during_rebalance_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "copied_during_rebalance_counter")
+			stats[vb]["currently_processed_doc_id_timer"] = c.vbProcessingStats.getVbStat(uint16(vb), "currently_processed_doc_id_timer")
+			stats[vb]["deleted_during_cleanup_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "deleted_during_cleanup_counter")
+			stats[vb]["last_processed_doc_id_timer_event"] = c.vbProcessingStats.getVbStat(uint16(vb), "last_processed_doc_id_timer_event")
+			stats[vb]["next_doc_id_timer_to_process"] = c.vbProcessingStats.getVbStat(uint16(vb), "next_doc_id_timer_to_process")
+			stats[vb]["node_uuid"] = c.vbProcessingStats.getVbStat(uint16(vb), "node_uuid")
+			stats[vb]["removed_during_rebalance_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "removed_during_rebalance_counter")
+			stats[vb]["sent_to_worker_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "sent_to_worker_counter")
+			stats[vb]["timer_create_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "timer_create_counter")
+			stats[vb]["timers_in_past_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "timers_in_past_counter")
+			stats[vb]["transferred_during_rebalance_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "transferred_during_rebalance_counter")
 		}
 	}
 

@@ -270,7 +270,7 @@ func (s *SuperSupervisor) RebalanceTaskProgress(appName string) (*common.Rebalan
 }
 
 // TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
-func (s *SuperSupervisor) TimerDebugStats(appName string) (map[uint16]interface{}, error) {
+func (s *SuperSupervisor) TimerDebugStats(appName string) (map[int]map[string]interface{}, error) {
 	p, ok := s.runningProducers[appName]
 	if ok {
 		return p.TimerDebugStats(), nil
