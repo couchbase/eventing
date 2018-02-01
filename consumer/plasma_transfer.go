@@ -54,8 +54,8 @@ func (c *Consumer) CreateTempPlasmaStore(vb uint16) error {
 					logPrefix, c.workerName, c.Pid(), vb, string(itr.Key()), err)
 				continue
 			}
-			logging.Tracef("Consumer::CreateTempPlasmaStore [%s:%d] vb: %v read key: %s from source plasma store",
-				c.workerName, c.Pid(), vb, string(itr.Key()))
+			logging.Tracef("%s [%s:%d] vb: %v read key: %s from source plasma store",
+				logPrefix, c.workerName, c.Pid(), vb, string(itr.Key()))
 
 			rebPlasmaWriter.Begin()
 			err = rebPlasmaWriter.InsertKV(itr.Key(), val)

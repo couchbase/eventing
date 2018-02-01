@@ -414,7 +414,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	sTimerDir := fmt.Sprintf("%v/reb_%v_%v_timer.data", previousEventingDir, vb, c.app.AppName)
 	dTimerDir := fmt.Sprintf("%v/reb_%v_%v_timer.data", c.eventingDir, vb, c.app.AppName)
 
-	if previousEventingDir != c.eventingDir && c.NodeUUID() != previousNodeUUID {
+	if c.NodeUUID() != previousNodeUUID {
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval*5), downloadDirCallback, c, client, timerDir, sTimerDir, dTimerDir, remoteConsumerAddr, vb)
 		logging.Debugf("CRVT[%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
 			c.workerName, c.tcpPort, c.Pid(), vb, sTimerDir, dTimerDir, remoteConsumerAddr)

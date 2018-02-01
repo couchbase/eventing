@@ -261,11 +261,10 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			logging.Errorf("CREF[%s:%s:%s:%d] Failed to spawn compilation worker, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 			return
-		} else {
-			pid = cmd.Process.Pid
-			logging.Infof("CREF[%s:%s:%s:%d] compilation worker launched",
-				c.app.AppName, c.workerName, c.tcpPort, pid)
 		}
+		pid = cmd.Process.Pid
+		logging.Infof("CREF[%s:%s:%s:%d] compilation worker launched",
+			c.app.AppName, c.workerName, c.tcpPort, pid)
 
 		bufOut := bufio.NewReader(outPipe)
 

@@ -602,7 +602,6 @@ func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer
 
 		counter := c.vbProcessingStats.getVbStat(e.vb, "timer_create_counter").(uint64)
 		c.vbProcessingStats.updateVbStat(e.vb, "timer_create_counter", counter+1)
-
 	}
 
 	// Prune entries related to doc timer from xattr only when entries to purge is
