@@ -97,7 +97,7 @@ func (c *Consumer) SetConnHandle(conn net.Conn) {
 	defer c.connMutex.Unlock()
 
 	c.conn = conn
-	logging.Infof("CREF[%s:%s:%s:%d] Setting conn handle: %v",
+	logging.Infof("CREF[%s:%s:%s:%d] Setting conn handle: %r",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.conn)
 
 	c.sockReader = bufio.NewReader(c.conn)
@@ -228,7 +228,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			return
 		}
 
-		logging.Infof("CREF[%s:%s:%s:%d] Compilation worker: got connection: %v",
+		logging.Infof("CREF[%s:%s:%s:%d] Compilation worker: got connection: %r",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.conn)
 
 		connectedCh <- struct{}{}

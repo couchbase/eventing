@@ -2,6 +2,7 @@ package servicemanager
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 
 // GetNodeInfo callback for cbauth service.Manager
 func (m *ServiceMgr) GetNodeInfo() (*service.NodeInfo, error) {
-	logging.Debugf("ServiceMgr::GetNodeInfo s.nodeInfo: %#v", m.nodeInfo)
+	logging.Debugf("ServiceMgr::GetNodeInfo s.nodeInfo: %r", fmt.Sprintf("%#v", m.nodeInfo))
 	return m.nodeInfo, nil
 }
 
@@ -76,7 +77,7 @@ func (m *ServiceMgr) CancelTask(id string, rev service.Revision) error {
 
 // GetCurrentTopology callback for cbauth service.Manager
 func (m *ServiceMgr) GetCurrentTopology(rev service.Revision, cancel service.Cancel) (*service.Topology, error) {
-	logging.Debugf("ServiceMgr::GetCurrentTopology rev: %#v", rev)
+	logging.Debugf("ServiceMgr::GetCurrentTopology rev: %r", fmt.Sprintf("%#v", rev))
 
 	state, err := m.wait(rev, cancel)
 	if err != nil {
@@ -84,7 +85,7 @@ func (m *ServiceMgr) GetCurrentTopology(rev service.Revision, cancel service.Can
 	}
 
 	topology := m.stateToTopology(state)
-	logging.Debugf("ServiceMgr::GetCurrentTopology topology: %#v", topology)
+	logging.Debugf("ServiceMgr::GetCurrentTopology topology: %r", fmt.Sprintf("%#v", topology))
 
 	return topology, nil
 
@@ -95,7 +96,7 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	logging.Debugf("ServiceMgr::PrepareTopologyChange change: %#v", change)
+	logging.Debugf("ServiceMgr::PrepareTopologyChange change: %r", fmt.Sprintf("%#v", change))
 
 	m.keepNodeUUIDs = make([]string, 0)
 
@@ -119,11 +120,11 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	logging.Debugf("ServiceMgr::StartTopologyChange change: %#v", change)
+	logging.Debugf("ServiceMgr::StartTopologyChange change: %r", fmt.Sprintf("%#v", change))
 
 	if m.state.rebalanceID != change.ID || m.rebalancer != nil {
-		logging.Errorf("ServiceMgr::StartTopologyChange returning errConflict, rebalanceID: %v change id: %v rebalancer dump: %#v",
-			m.state.rebalanceID, change.ID, m.rebalancer)
+		logging.Errorf("ServiceMgr::StartTopologyChange returning errConflict, rebalanceID: %v change id: %v rebalancer dump: %r",
+			m.state.rebalanceID, change.ID, fmt.Sprintf("%#v", m.rebalancer))
 		return service.ErrConflict
 	}
 

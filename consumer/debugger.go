@@ -136,8 +136,8 @@ func (c *Consumer) pollForDebuggerStart() {
 		checkDInstAddrBlob:
 			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, dInstAddrKey, dInstAddrBlob, &cas, false)
 
-			logging.Infof("CRPS[%s:%s:%s:%d] Debugger inst addr key: %s dump: %#v",
-				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, dInstAddrBlob)
+			logging.Infof("CRPS[%s:%s:%s:%d] Debugger inst addr key: %r dump: %r",
+				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, fmt.Sprintf("%#v", dInstAddrBlob))
 
 			if dInstAddrBlob.HostPortAddr == "" {
 
@@ -147,7 +147,7 @@ func (c *Consumer) pollForDebuggerStart() {
 
 				_, err := c.gocbMetaBucket.Replace(dInstAddrKey, dInstAddrBlob, gocb.Cas(cas), 0)
 				if err != nil {
-					logging.Errorf("CRPS[%s:%s:%s:%d] Bucket cas failed for debugger inst addr key: %s, err: %v",
+					logging.Errorf("CRPS[%s:%s:%s:%d] Bucket cas failed for debugger inst addr key: %r, err: %v",
 						c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, err)
 					goto checkDInstAddrBlob
 				} else {
@@ -175,7 +175,7 @@ func (c *Consumer) startDebuggerServer() {
 			return
 		}
 
-		logging.Infof("CRSD[%s:%s:%s:%d] Start server on addr: %v for communication to C++ debugger",
+		logging.Infof("CRSD[%s:%s:%s:%d] Start server on addr: %r for communication to C++ debugger",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.debugListener.Addr().String())
 
 		_, c.debugTCPPort, err = net.SplitHostPort(c.debugListener.Addr().String())

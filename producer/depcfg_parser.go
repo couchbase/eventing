@@ -263,8 +263,8 @@ func (p *Producer) parseDepcfg() error {
 	logLevel := settings["log_level"].(string)
 	logging.SetLogLevel(util.GetLogLevel(logLevel))
 
-	logging.Infof("DCFG[%s] Loaded app => wc: %v auth: %v bucket: %v statsTickD: %v",
-		p.appName, p.workerCount, p.auth, p.bucket, p.statsTickDuration)
+	logging.Infof("DCFG[%s] Loaded app => wc: %v bucket: %v statsTickD: %v",
+		p.appName, p.workerCount, p.bucket, p.statsTickDuration)
 
 	if p.workerCount <= 0 {
 		return fmt.Errorf("%v", errorUnexpectedWorkerCount)

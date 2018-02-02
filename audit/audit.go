@@ -43,18 +43,18 @@ func Init(restPort string) error {
 }
 
 func Log(event auditevent.AuditEvent, req *http.Request, context interface{}) error {
-	logging.Tracef("Audit event %v with context %v on request %v", event, context, req)
+	logging.Tracef("Audit event %r with context %r on request %r", event, context, req)
 	entry := AuditEntry{
 		GenericFields: goadt.GetAuditBasicFields(req),
 		Context:       fmt.Sprintf("%v", context),
 	}
 	if auditService == nil {
-		logging.Debugf("Audit event without audit service: %v", entry)
+		logging.Debugf("Audit event without audit service: %r", entry)
 		return nil
 	}
 	err := auditService.Write(uint32(event), entry)
 	if err != nil {
-		logging.Warnf("Audit event %v lost due to %v", entry, err)
+		logging.Warnf("Audit event %r lost due to %v", entry, err)
 		return err
 	}
 	return nil

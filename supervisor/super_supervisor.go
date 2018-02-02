@@ -153,7 +153,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 		return err
 	}
 
-	logging.Infof("SSUP[%d] SettingsChangeCallback: path => %s value => %#v", len(s.runningProducers), path, sValue)
+	logging.Infof("SSUP[%d] SettingsChangeCallback: path => %s value => %r", len(s.runningProducers), path, fmt.Sprintf("%#v", sValue))
 
 	if value != nil {
 		splitRes := strings.Split(path, "/")

@@ -46,7 +46,7 @@ enum RETURN_CODE {
 
 const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket) {
-  LOG(logInfo) << "Getting username for host " << host << " port " << port
+  LOG(logInfo) << "Getting username for host " << R(host) << " port " << port
                << std::endl;
 
   auto isolate = static_cast<v8::Isolate *>(cookie);
@@ -54,7 +54,7 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
   auto endpoint = JoinHostPort(host, port);
   auto info = comm->GetCreds(endpoint);
   if (!info.is_valid) {
-    LOG(logError) << "Failed to get username for " << host << ":" << port
+    LOG(logError) << "Failed to get username for " << R(host) << ":" << port
                   << " err: " << info.msg << std::endl;
   }
 
@@ -63,7 +63,7 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
 
 const char *GetPassword(void *cookie, const char *host, const char *port,
                         const char *bucket) {
-  LOG(logInfo) << "Getting password for host " << host << " port " << port
+  LOG(logInfo) << "Getting password for host " << R(host) << " port " << port
                << std::endl;
 
   auto isolate = static_cast<v8::Isolate *>(cookie);
@@ -71,24 +71,11 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
   auto endpoint = JoinHostPort(host, port);
   auto info = comm->GetCreds(endpoint);
   if (!info.is_valid) {
-    LOG(logError) << "Failed to get password for " << host << ":" << port
+    LOG(logError) << "Failed to get password for " << R(host) << ":" << port
                   << " err: " << info.msg << std::endl;
   }
 
   return strdup(info.password.c_str());
-}
-
-template <typename... Args>
-std::string string_sprintf(const char *format, Args... args) {
-  int length = std::snprintf(nullptr, 0, format, args...);
-  assert(length >= 0);
-
-  char *buf = new char[length + 1];
-  std::snprintf(buf, length + 1, format, args...);
-
-  std::string str(buf);
-  delete[] buf;
-  return str;
 }
 
 void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
@@ -114,8 +101,8 @@ void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     lcb_wait(instance);
     break;
   case LCB_SUCCESS:
-    LOG(logTrace) << string_sprintf("Value %.*s", static_cast<int>(rg->nvalue),
-                                    reinterpret_cast<const char *>(rg->value));
+    LOG(logTrace) << "NValue " << R(static_cast<int>(rg->nvalue))
+                  << "Value " << R(reinterpret_cast<const char *>(rg->value));
     break;
   default:
     LOG(logTrace) << "LCB_CALLBACK_GET: Operation failed, "
@@ -140,10 +127,10 @@ void sdmutate_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   res->rc = rb->rc;
 
   if (lcb_sdresult_next(resp, &ent, &iter)) {
-    LOG(logTrace) << string_sprintf(
-        "sdmutate key: %v Status: 0x%x. Value: %.*s\n", (char *)rb->key,
-        ent.status, static_cast<int>(ent.nvalue),
-        reinterpret_cast<const char *>(ent.value));
+    LOG(logTrace) << "sdmutate key: " << (char *)rb->key
+                  << " Status: " << ent.status
+                  << " NValue: " << R(static_cast<int>(ent.nvalue))
+                  << " Value: " << R(reinterpret_cast<const char *>(ent.value));
   }
 }
 
@@ -161,10 +148,9 @@ void sdlookup_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     size_t iter = 0;
     int index = 0;
     while (lcb_sdresult_next(resp, &ent, &iter)) {
-      LOG(logTrace) << string_sprintf(
-          "sdlookup Status: 0x%x. Value: %.*s\n", ent.status,
-          static_cast<int>(ent.nvalue),
-          reinterpret_cast<const char *>(ent.value));
+      LOG(logTrace) << "sdlookup Status: " << ent.status
+                    << "NValue: " << R(static_cast<int>(ent.nvalue))
+                    << "Value: " << R(reinterpret_cast<const char *>(ent.value));
       res->value.assign(reinterpret_cast<const char *>(ent.value),
                         static_cast<int>(ent.nvalue));
 
@@ -297,7 +283,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   }
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: "
-               << h_config->app_name << " curr_host: " << settings->host_addr
+               << h_config->app_name << " curr_host: " << R(settings->host_addr)
                << " cron_timers_per_doc: " << h_config->cron_timers_per_doc
                << " curr_eventing_port: " << settings->eventing_port
                << " kv_host_port: " << settings->kv_host_port
@@ -405,10 +391,10 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::Context::Scope context_scope(context);
 
   auto uniline_info = UniLineN1QL(script_to_execute);
-  LOG(logTrace) << "code after Unilining N1QL: " << uniline_info.handler_code
+  LOG(logTrace) << "code after Unilining N1QL: " << R(uniline_info.handler_code)
                 << std::endl;
   if (uniline_info.code != kOK) {
-    LOG(logError) << "failed to uniline N1QL: " << uniline_info.code
+    LOG(logError) << "failed to uniline N1QL: " << R(uniline_info.code)
                   << std::endl;
     return uniline_info.code;
   }
@@ -416,9 +402,9 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   handler_code_ = uniline_info.handler_code;
 
   auto jsify_info = Jsify(script_to_execute);
-  LOG(logTrace) << "jsified code: " << jsify_info.handler_code << std::endl;
+  LOG(logTrace) << "jsified code: " << R(jsify_info.handler_code) << std::endl;
   if (jsify_info.code != kOK) {
-    LOG(logError) << "failed to jsify: " << jsify_info.handler_code
+    LOG(logError) << "failed to jsify: " << R(jsify_info.handler_code)
                   << std::endl;
     return jsify_info.code;
   }
@@ -435,13 +421,13 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   script_to_execute += std::string((const char *)js_builtin) + '\n';
   source_map_ =
       transpiler->GetSourceMap(jsify_info.handler_code, app_name_ + ".js");
-  LOG(logTrace) << "source map:" << source_map_ << std::endl;
+  LOG(logTrace) << "source map:" << R(source_map_) << std::endl;
 
   v8::Local<v8::String> source =
       v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());
 
   script_to_execute_ = script_to_execute;
-  LOG(logTrace) << "script to execute: " << script_to_execute << std::endl;
+  LOG(logTrace) << "script to execute: " << R(script_to_execute) << std::endl;
 
   if (!ExecuteScript(source))
     return kFailedToCompileJs;
@@ -501,7 +487,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     lcb_create(&cb_instance, &crst);
     lcb_set_auth(cb_instance, auth);
     lcb_error_t rc = lcb_connect(cb_instance);
-    LOG(logDebug) << "LCB_CONNECT to " << cb_instance << " returns " << rc
+    LOG(logDebug) << "LCB_CONNECT to " << R(cb_instance) << " returns " << rc
                   << std::endl;
     lcb_wait(cb_instance);
 
@@ -762,7 +748,7 @@ void V8Worker::RouteMessage() {
 
     LOG(logTrace) << " event: " << static_cast<int16_t>(msg.header->event)
                   << " opcode: " << static_cast<int16_t>(msg.header->opcode)
-                  << " metadata: " << msg.header->metadata
+                  << " metadata: " << R(msg.header->metadata)
                   << " partition: " << msg.header->partition << std::endl;
 
     switch (getEvent(msg.header->event)) {
@@ -903,7 +889,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  LOG(logTrace) << "value: " << value << " meta: " << meta
+  LOG(logTrace) << "value: " << R(value) << " meta: " << R(meta)
                 << " doc_type: " << doc_type << std::endl;
   v8::TryCatch try_catch(GetIsolate());
 
@@ -984,7 +970,7 @@ int V8Worker::SendDelete(std::string meta) {
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  LOG(logTrace) << " meta: " << meta << std::endl;
+  LOG(logTrace) << " meta: " << R(meta) << std::endl;
   v8::TryCatch try_catch(GetIsolate());
 
   v8::Local<v8::Value> args[1];
@@ -1116,7 +1102,7 @@ void V8Worker::SendDocTimer(std::string callback_fn, std::string doc_id,
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
 
-  LOG(logTrace) << "Got timer event, doc_id:" << doc_id
+  LOG(logTrace) << "Got timer event, doc_id:" << R(doc_id)
                 << " callback_fn:" << callback_fn << std::endl;
 
   auto context = context_.Get(isolate_);
@@ -1187,7 +1173,7 @@ void V8Worker::Enqueue(header_t *h, message_t *p) {
   LOG(logTrace) << "Inserting event: " << static_cast<int16_t>(h->event)
                 << " opcode: " << static_cast<int16_t>(h->opcode)
                 << " partition: " << h->partition
-                << " metadata: " << h->metadata << std::endl;
+                << " metadata: " << R(h->metadata) << std::endl;
   worker_queue->push(msg);
 }
 

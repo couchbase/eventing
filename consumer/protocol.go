@@ -2,8 +2,6 @@ package consumer
 
 import (
 	"encoding/json"
-	"log"
-
 	"github.com/couchbase/eventing/gen/flatbuf/header"
 	"github.com/couchbase/eventing/gen/flatbuf/payload"
 	"github.com/couchbase/eventing/gen/flatbuf/response"
@@ -309,7 +307,7 @@ func readHeader(buf []byte) int8 {
 	opcode := headerPos.Opcode()
 	metadata := string(headerPos.Metadata())
 
-	log.Printf(" ReadHeader => event: %d opcode: %d meta: %s\n",
+	logging.Infof(" ReadHeader => event: %d opcode: %d meta: %r\n",
 		event, opcode, metadata)
 	return event
 }
@@ -320,7 +318,7 @@ func readPayload(buf []byte) {
 	key := string(payloadPos.Key())
 	val := string(payloadPos.Value())
 
-	log.Printf("ReadPayload => key: %s val: %s\n", key, val)
+	logging.Infof("ReadPayload => key: %r val: %r\n", key, val)
 }
 
 func (c *Consumer) parseWorkerResponse(msg []byte) {
@@ -347,7 +345,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.latencyStats)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal latency stats, msg: %s err: %v",
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal latency stats, msg: %r err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case failureStats:
@@ -355,7 +353,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.failureStats)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal failure stats, msg: %s err: %v",
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal failure stats, msg: %r err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case executionStats:
@@ -363,19 +361,19 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.executionStats)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal execution stats, msg: %s err: %v",
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal execution stats, msg: %r err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case compileInfo:
 			err := json.Unmarshal([]byte(msg), &c.compileInfo)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal compilation stats, msg: %s err: %v",
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal compilation stats, msg: %r err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case queueSize:
 			err := json.Unmarshal([]byte(msg), &c.cppWorkerAggQueueSize)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal agg queue size, msg: %s err: %v",
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal agg queue size, msg: %r err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case lcbExceptions:
@@ -383,7 +381,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.lcbExceptionStats)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal lcb exception stats, msg: %s err: %v",
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal lcb exception stats, msg: %r err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		}

@@ -30,7 +30,7 @@ static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
   if (resp->rc == LCB_SUCCESS) {
     result->value.assign(reinterpret_cast<const char *>(resp->value),
                          static_cast<int>(resp->nvalue));
-    LOG(logTrace) << "Value: " << result->value << " flags: " << resp->itmflags
+    LOG(logTrace) << "Value: " << R(result->value) << " flags: " << resp->itmflags
                   << std::endl;
   }
 }
@@ -74,7 +74,7 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
     connstr += "&ipv6=allow";
   }
 
-  LOG(logInfo) << "Bucket: connstr " << connstr << std::endl;
+  LOG(logInfo) << "Bucket: connstr " << R(connstr) << std::endl;
 
   // lcb related setup
   lcb_create_st crst;
@@ -190,7 +190,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
     return;
   }
 
-  LOG(logTrace) << "Get call result Key: " << key << " Value: " << result.value
+  LOG(logTrace) << "Get call result Key: " << R(key) << " Value: " << R(result.value)
                 << std::endl;
 
   const std::string &value = result.value;
@@ -210,7 +210,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
   std::string key(*utf8_key);
   std::string value = JSONStringify(info.GetIsolate(), value_obj);
 
-  LOG(logTrace) << "Set call Key: " << key << " Value: " << value
+  LOG(logTrace) << "Set call Key: " << R(key) << " Value: " << R(value)
                 << " enable_recursive_mutation: " << enable_recursive_mutation
                 << std::endl;
 
@@ -233,7 +233,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
       switch (gres.rc) {
       case LCB_KEY_ENOENT:
-        LOG(logTrace) << "Key: " << key
+        LOG(logTrace) << "Key: " << R(key)
                       << " doesn't exist in bucket where mutation has "
                          "to be written"
                       << std::endl;
@@ -241,7 +241,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       case LCB_SUCCESS:
         break;
       default:
-        LOG(logTrace) << "Failed to fetch full doc: " << key
+        LOG(logTrace) << "Failed to fetch full doc: " << R(key)
                       << " to calculate digest, res: "
                       << lcb_strerror(nullptr, gres.rc) << std::endl;
         return;
@@ -251,8 +251,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       if (gres.rc == LCB_SUCCESS) {
         uint32_t d = crc32c(0, gres.value.c_str(), gres.value.length());
         digest.assign(std::to_string(d));
-        LOG(logTrace) << "key: " << key << " digest: " << digest
-                      << " value: " << gres.value << std::endl;
+        LOG(logTrace) << "key: " << R(key) << " digest: " << digest
+                      << " value: " << R(gres.value) << std::endl;
       }
 
       lcb_CMDSUBDOC mcmd = {0};
@@ -300,17 +300,17 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
       switch (sres.rc) {
       case LCB_SUCCESS:
-        LOG(logTrace) << "Successfully wrote doc:" << key << std::endl;
+        LOG(logTrace) << "Successfully wrote doc:" << R(key) << std::endl;
         info.GetReturnValue().Set(value_obj);
         return;
       case LCB_KEY_EEXISTS:
-        LOG(logTrace) << "CAS mismatch for doc:" << key << std::endl;
+        LOG(logTrace) << "CAS mismatch for doc:" << R(key) << std::endl;
         std::this_thread::sleep_for(
             std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
         break;
       default:
         LOG(logTrace) << "Encountered error:" << lcb_strerror(nullptr, sres.rc)
-                      << " for key:" << key << std::endl;
+                      << " for key:" << R(key) << std::endl;
         info.GetReturnValue().Set(value_obj);
         return;
       }

@@ -107,7 +107,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority = true;
       break;
     case oLoad:
-      LOG(logDebug) << "Loading app code:" << parsed_header->metadata
+      LOG(logDebug) << "Loading app code:" << R(parsed_header->metadata)
                     << std::endl;
       for (int16_t i = 0; i < thr_count; i++) {
         workers[i]->V8WorkerLoad(parsed_header->metadata);
@@ -207,7 +207,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority = true;
       break;
     case oGetCompileInfo:
-      LOG(logDebug) << "Compiling app code:" << parsed_header->metadata
+      LOG(logDebug) << "Compiling app code:" << R(parsed_header->metadata)
                     << std::endl;
       compile_resp = workers[0]->CompileHandler(parsed_header->metadata);
 

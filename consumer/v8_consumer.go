@@ -183,7 +183,7 @@ func (c *Consumer) Serve() {
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-	logging.Infof("%s [%s:%s:%d] Spawning worker corresponding to producer, node addr: %v",
+	logging.Infof("%s [%s:%s:%d] Spawning worker corresponding to producer, node addr: %r",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr())
 
 	var feedName couchbase.DcpFeedName
@@ -254,7 +254,7 @@ func (c *Consumer) HandleV8Worker() {
 		var err error
 		currHost, _, err = net.SplitHostPort(h)
 		if err != nil {
-			logging.Errorf("Unable to split hostport %v: %v", h, err)
+			logging.Errorf("Unable to split hostport %r: %v", h, err)
 		}
 	}
 
@@ -283,7 +283,7 @@ func (c *Consumer) Stop() {
 	defer func() {
 		if r := recover(); r != nil {
 			trace := debug.Stack()
-			logging.Errorf("V8CR[%s:%s:%s:%d] Consumer stop routine, recover %v stack trace: %v",
+			logging.Errorf("V8CR[%s:%s:%s:%d] Consumer stop routine, recover %r stack trace: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()

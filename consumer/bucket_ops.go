@@ -33,14 +33,14 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 	}
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
-		logging.Errorf("CRBO[%s:%d] GOCB Connect to cluster %s failed, err: %v",
+		logging.Errorf("CRBO[%s:%d] GOCB Connect to cluster %r failed, err: %v",
 			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	err = cluster.Authenticate(&util.DynamicAuthenticator{})
 	if err != nil {
-		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
+		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %r, err: %v",
 			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
@@ -64,14 +64,14 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	}
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
-		logging.Errorf("CRBO[%s:%d] GOCB Connect to cluster %s failed, err: %v",
+		logging.Errorf("CRBO[%s:%d] GOCB Connect to cluster %r failed, err: %v",
 			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	err = cluster.Authenticate(&util.DynamicAuthenticator{})
 	if err != nil {
-		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
+		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %r, err: %v",
 			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
@@ -152,7 +152,7 @@ var getCronTimerCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for cron timer key: %s val: %v, err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for cron timer key: %r val: %r, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, val, err)
 	}
 
@@ -185,7 +185,7 @@ var getOpCallback = func(args ...interface{}) error {
 		} else if err == gocb.ErrShutdown {
 			return nil
 		} else if err != nil {
-			logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for key: %s, err: %v",
+			logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for key: %r, err: %v",
 				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 			return err
 		}
@@ -198,7 +198,7 @@ var getOpCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for key: %s, err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for key: %r, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
 
@@ -215,7 +215,7 @@ var getMetaOpCallback = func(args ...interface{}) error {
 	if err == nil {
 		cErr := res.Content(subdocPath, seqNo)
 		if cErr != nil {
-			logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s path: %s reading contents from subdoc path failed, err: %v",
+			logging.Errorf("CRBO[%s:%s:%s:%d] Key: %r path: %r reading contents from subdoc path failed, err: %v",
 				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, subdocPath, cErr)
 			return cErr
 		}
@@ -227,7 +227,7 @@ var getMetaOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s path: %s subdoc lookup failed, err: %v",
+	logging.Errorf("CRBO[%s:%s:%s:%d] Key: %r path: %r subdoc lookup failed, err: %v",
 		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, subdocPath, err)
 	return err
 }
@@ -252,7 +252,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing periodic checkpoint update, err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %r, subdoc operation failed while performing periodic checkpoint update, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
 
@@ -282,7 +282,7 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing checkpoint update post dcp stop stream, err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %r, subdoc operation failed while performing checkpoint update post dcp stop stream, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
 
@@ -310,7 +310,7 @@ var addOwnershipHistorySRCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing ownership entry app post STREAMREQ, err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %r, subdoc operation failed while performing ownership entry app post STREAMREQ, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
 
@@ -331,7 +331,7 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing ownership entry app post STREAMEND, err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %r, subdoc operation failed while performing ownership entry app post STREAMEND, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
 	}
 
@@ -362,11 +362,11 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 		feedName, uint32(0), includeXATTRs, []string{kvHostPort}, 0xABCD, c.dcpConfig)
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed for bucket: %v from kv node: %v, err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed for bucket: %v from kv node: %r, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort, err)
 		return err
 	}
-	logging.Infof("CRBO[%s:%s:%s:%d] Started up dcp feed for bucket: %v from kv node: %v",
+	logging.Infof("CRBO[%s:%s:%s:%d] Started up dcp feed for bucket: %v from kv node: %r",
 		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort)
 
 	c.kvHostDcpFeedMap[kvHostPort] = dcpFeed
@@ -380,7 +380,7 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	defer func() {
 		if r := recover(); r != nil {
 			trace := debug.Stack()
-			logging.Errorf("CRDP[%s:%s:%s:%d] populateDcpFeedVbEntriesCallback: recover %v, stack trace: %v",
+			logging.Errorf("CRDP[%s:%s:%s:%d] populateDcpFeedVbEntriesCallback: recover %r, stack trace: %r",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()
@@ -454,7 +454,7 @@ var appendCronTimerCleanupCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while appending cron timers to cleanup, err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %r, subdoc operation failed while appending cron timers to cleanup, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), docID, err)
 	}
 
@@ -475,7 +475,7 @@ var removeDocIDCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, failed to remove from metadata bucket, err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %r, failed to remove from metadata bucket, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
 	}
 
@@ -495,7 +495,7 @@ var removeIndexCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, failed to remove from metadata bucket, err: %v",
+		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %r, failed to remove from metadata bucket, err: %v",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
 	}
 

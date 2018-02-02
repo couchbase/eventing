@@ -243,14 +243,14 @@ ParseInfo Communicator::ParseQuery(const std::string &query) {
   if (response.is_error) {
     LOG(logError)
         << "Unable to parse N1QL query: Something went wrong with CURL lib: "
-        << response.response << std::endl;
+        << R(response.response) << std::endl;
     return info;
   }
 
   if (response.headers.find("Status") == response.headers.end()) {
     LOG(logError)
         << "Unable to parse N1QL query: status code is missing in header:"
-        << response.response << std::endl;
+        << R(response.response) << std::endl;
     return info;
   }
 
@@ -275,20 +275,20 @@ NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
   if (response.is_error) {
     LOG(logError)
         << "Unable to get named params: Something went wrong with CURL lib: "
-        << response.response << std::endl;
+        << R(response.response) << std::endl;
     return info;
   }
 
   if (response.headers.find("Status") == response.headers.end()) {
     LOG(logError)
         << "Unable to get named params: status code is missing in header: "
-        << response.response << std::endl;
+        << R(response.response) << std::endl;
     return info;
   }
 
   if (std::stoi(response.headers["Status"]) != 0) {
     LOG(logError) << "Unable to get named params: non-zero status in header: "
-                  << response.response << std::endl;
+                  << R(response.response) << std::endl;
     return info;
   }
 

@@ -55,7 +55,7 @@ func (c *Consumer) processEvents() {
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
 
-				logging.Tracef("%s [%s:%s:%d] Got DCP_MUTATION for key: %v datatype: %v",
+				logging.Tracef("%s [%s:%s:%d] Got DCP_MUTATION for key: %r datatype: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
 
 				if c.debuggerState == startDebug {
@@ -86,7 +86,7 @@ func (c *Consumer) processEvents() {
 					totalXattrLen := binary.BigEndian.Uint32(e.Value[0:])
 					totalXattrData := e.Value[4 : 4+totalXattrLen-1]
 
-					logging.Tracef("%s [%s:%s:%d] key: %v totalXattrLen: %v totalXattrData: %v",
+					logging.Tracef("%s [%s:%s:%d] key: %r totalXattrLen: %v totalXattrData: %v",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), totalXattrLen, totalXattrData)
 
 					var xMeta xattrMetadata
@@ -114,19 +114,19 @@ func (c *Consumer) processEvents() {
 						}
 					}
 
-					logging.Tracef("%s [%s:%s:%d] Key: %s xmeta dump: %#v",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), xMeta)
+					logging.Tracef("%s [%s:%s:%d] Key: %r xmeta dump: %r",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), fmt.Sprintf("%#v", xMeta))
 
 					// Validating for eventing xattr fields
 					if xMeta.Cas != "" {
 						cas, err := util.ConvertBigEndianToUint64([]byte(xMeta.Cas))
 						if err != nil {
-							logging.Errorf("%s [%s:%s:%d] Key: %v failed to convert cas string from kv to uint64, err: %v",
+							logging.Errorf("%s [%s:%s:%d] Key: %r failed to convert cas string from kv to uint64, err: %v",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
 							continue
 						}
 
-						logging.Tracef("%s [%s:%s:%d] Key: %s decoded cas: %v dcp cas: %v",
+						logging.Tracef("%s [%s:%s:%d] Key: %r decoded cas: %v dcp cas: %v",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), cas, e.Cas)
 
 						// Send mutation to V8 CPP worker _only_ when DcpEvent.Cas != Cas field in xattr
@@ -135,7 +135,7 @@ func (c *Consumer) processEvents() {
 
 							if crc32.Update(0, c.crcTable, e.Value) != xMeta.Digest {
 								if !c.sendMsgToDebugger {
-									logging.Tracef("%s [%s:%s:%d] Sending key: %v to be processed by JS handlers as cas & crc have mismatched",
+									logging.Tracef("%s [%s:%s:%d] Sending key: %r to be processed by JS handlers as cas & crc have mismatched",
 										logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 									c.sendDcpEvent(e, c.sendMsgToDebugger)
 								} else {
@@ -150,13 +150,13 @@ func (c *Consumer) processEvents() {
 									xMeta:  &xMeta,
 								}
 
-								logging.Tracef("%s [%s:%s:%d] Sending key: %v to be stored in plasma",
+								logging.Tracef("%s [%s:%s:%d] Sending key: %r to be stored in plasma",
 									logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 								c.plasmaStoreCh <- pEntry
 							}
 						} else {
-							logging.Tracef("%s [%s:%s:%d] Skipping recursive mutation for key: %v vb: %v, xmeta: %#v",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, xMeta)
+							logging.Tracef("%s [%s:%s:%d] Skipping recursive mutation for key: %r vb: %v, xmeta: %r",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, fmt.Sprintf("%#v", xMeta))
 
 							pEntry := &plasmaStoreEntry{
 								vb:     e.VBucket,
@@ -170,7 +170,7 @@ func (c *Consumer) processEvents() {
 					} else {
 						e.Value = e.Value[4+totalXattrLen:]
 						if !c.sendMsgToDebugger {
-							logging.Tracef("%s [%s:%s:%d] Sending key: %v to be processed by JS handlers because no eventing xattrs",
+							logging.Tracef("%s [%s:%s:%d] Sending key: %r to be processed by JS handlers because no eventing xattrs",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 							c.sendDcpEvent(e, c.sendMsgToDebugger)
 						} else {
@@ -481,7 +481,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 		defer func() {
 			if r := recover(); r != nil {
 				trace := debug.Stack()
-				logging.Errorf("CRDP[%s:%s:%d] addToAggChan: recover %v stack trace: %v",
+				logging.Errorf("CRDP[%s:%s:%d] addToAggChan: recover %r stack trace: %v",
 					c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 			}
 		}()

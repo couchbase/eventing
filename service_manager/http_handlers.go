@@ -554,7 +554,7 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
 		// if it occurs
 		appProgress, err := m.superSup.RebalanceTaskProgress(appName)
-		logging.Infof("Rebalance progress from node with rest port: %v progress: %v", m.restPort, appProgress)
+		logging.Infof("Rebalance progress from node with rest port: %r progress: %v", m.restPort, appProgress)
 		if err == nil {
 			progress.VbsOwnedPerPlan += appProgress.VbsOwnedPerPlan
 			progress.VbsRemainingToShuffle += appProgress.VbsRemainingToShuffle
@@ -1336,17 +1336,17 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
 	creds, err := cbauth.AuthWebCreds(r)
 	if err != nil || creds == nil {
-		logging.Warnf("Cannot authenticate request to %v", r.URL)
+		logging.Warnf("Cannot authenticate request to %r", r.URL)
 		w.WriteHeader(http.StatusUnauthorized)
 		return false
 	}
 	allowed, err := creds.IsAllowed(perm)
 	if err != nil || !allowed {
-		logging.Warnf("Cannot authorize request to %v", r.URL)
+		logging.Warnf("Cannot authorize request to %r", r.URL)
 		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
-	logging.Debugf("Allowing access to %v", r.URL)
+	logging.Debugf("Allowing access to %r", r.URL)
 	return true
 }
 
@@ -1355,7 +1355,7 @@ func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logging.Infof("Got request to clear event stats from host: %v", r.Host)
+	logging.Infof("Got request to clear event stats from host: %r", r.Host)
 	m.superSup.ClearEventStats()
 }
 
@@ -1469,7 +1469,7 @@ func (m *ServiceMgr) getConfig() (c config, info *runtimeInfo) {
 		}
 	}
 
-	logging.Infof("Retrieving config from metakv: %v", c)
+	logging.Infof("Retrieving config from metakv: %r", c)
 	info.Code = m.statusCodes.ok.Code
 	return
 }
