@@ -53,7 +53,7 @@ const (
 
 const (
 	itemCount               = 5000
-	statsLookupRetryCounter = 150
+	statsLookupRetryCounter = 250
 
 	cppthrCount   = 1
 	lcbCap        = 5
