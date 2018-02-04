@@ -15,13 +15,14 @@ func (s *SuperSupervisor) AppProducerHostPortAddr(appName string) string {
 // AppTimerTransferHostPortAddrs returns all running net.Listener instances of timer transfer
 // routines on current node
 func (s *SuperSupervisor) AppTimerTransferHostPortAddrs(appName string) (map[string]string, error) {
+	logPrefix := "SuperSupervisor::AppTimerTransferHostPortAddrs"
 
 	if _, ok := s.runningProducers[appName]; ok {
 		return s.runningProducers[appName].TimerTransferHostPortAddrs(), nil
 	}
 
-	logging.Errorf("SSUP[%d] app: %v No running producer instance found",
-		len(s.runningProducers), appName)
+	logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+		logPrefix, len(s.runningProducers), appName)
 
 	return nil, fmt.Errorf("No running producer instance found")
 }
@@ -54,7 +55,9 @@ func (s *SuperSupervisor) GetEventProcessingStats(appName string) map[string]uin
 
 // GetAppCode returns handler code for requested appname
 func (s *SuperSupervisor) GetAppCode(appName string) string {
-	logging.Infof("SSUP[%d] GetAppCode request for app: %v", len(s.runningProducers), appName)
+	logPrefix := "SuperSupervisor::GetAppCode"
+
+	logging.Infof("%s [%d] Request for app: %v", logPrefix, len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetAppCode()
 	}
@@ -63,7 +66,9 @@ func (s *SuperSupervisor) GetAppCode(appName string) string {
 
 // GetDebuggerURL returns the v8 debugger url for supplied appname
 func (s *SuperSupervisor) GetDebuggerURL(appName string) string {
-	logging.Infof("SSUP[%d] GetDebuggerURL request for app: %v", len(s.runningProducers), appName)
+	logPrefix := "SuperSupervisor::GetDebuggerURL"
+
+	logging.Infof("%s [%d] Request for app: %v", logPrefix, len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetDebuggerURL()
 	}
@@ -77,7 +82,9 @@ func (s *SuperSupervisor) GetDeployedApps() map[string]string {
 
 // GetHandlerCode returns handler code for requested appname
 func (s *SuperSupervisor) GetHandlerCode(appName string) string {
-	logging.Infof("SSUP[%d] GetHandlerCode request for app: %v", len(s.runningProducers), appName)
+	logPrefix := "SuperSupervisor::GetHandlerCode"
+
+	logging.Infof("%s [%d] Request for app: %v", logPrefix, len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetHandlerCode()
 	}
@@ -127,7 +134,9 @@ func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
 
 // GetSourceMap returns source map for requested appname
 func (s *SuperSupervisor) GetSourceMap(appName string) string {
-	logging.Infof("SSUP[%d] GetSourceMap request for app: %v", len(s.runningProducers), appName)
+	logPrefix := "SuperSupervisor::GetSourceMap"
+
+	logging.Infof("%s [%d] Request for app: %v", logPrefix, len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetSourceMap()
 	}
@@ -153,23 +162,27 @@ func (s *SuperSupervisor) RestPort() string {
 
 // SignalStartDebugger kicks off V8 Debugger for a specific deployed lambda
 func (s *SuperSupervisor) SignalStartDebugger(appName string) {
+	logPrefix := "SuperSupervisor::SignalStartDebugger"
+
 	p, ok := s.runningProducers[appName]
 	if ok {
 		p.SignalStartDebugger()
 	} else {
-		logging.Errorf("SSUP[%d] StartDebugger request for app: %v didn't go through as Eventing.Producer instance isn't alive",
-			len(s.runningProducers), appName)
+		logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+			logPrefix, len(s.runningProducers), appName)
 	}
 }
 
 // SignalStopDebugger stops V8 Debugger for a specific deployed lambda
 func (s *SuperSupervisor) SignalStopDebugger(appName string) {
+	logPrefix := "SuperSupervisor::SignalStopDebugger"
+
 	p, ok := s.runningProducers[appName]
 	if ok {
 		p.SignalStopDebugger()
 	} else {
-		logging.Errorf("SSUP[%d] StopDebugger request for app: %v didn't go through as Eventing.Producer instance isn't alive",
-			len(s.runningProducers), appName)
+		logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+			logPrefix, len(s.runningProducers), appName)
 	}
 }
 
@@ -196,34 +209,40 @@ func (s *SuperSupervisor) GetAppState(appName string) int8 {
 
 // GetDcpEventsRemainingToProcess returns remaining dcp events to process
 func (s *SuperSupervisor) GetDcpEventsRemainingToProcess(appName string) uint64 {
+	logPrefix := "SuperSupervisor::GetDcpEventsRemainingToProcess"
+
 	p, ok := s.runningProducers[appName]
 	if ok {
 		return p.GetDcpEventsRemainingToProcess()
 	}
-	logging.Errorf("SSUP[%d] Events remaining request for app: %v didn't go through as Eventing.Producer instance isn't alive",
-		len(s.runningProducers), appName)
+	logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+		logPrefix, len(s.runningProducers), appName)
 	return 0
 }
 
 // VbDcpEventsRemainingToProcess returns remaining dcp events to process
 func (s *SuperSupervisor) VbDcpEventsRemainingToProcess(appName string) map[int]int64 {
+	logPrefix := "SuperSupervisor::VbDcpEventsRemainingToProcess"
+
 	p, ok := s.runningProducers[appName]
 	if ok {
 		return p.VbDcpEventsRemainingToProcess()
 	}
-	logging.Errorf("SSUP[%d] Events per vb remaining request for app: %v didn't go through as Eventing.Producer instance isn't alive",
-		len(s.runningProducers), appName)
+	logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+		logPrefix, len(s.runningProducers), appName)
 	return nil
 }
 
 // GetEventingConsumerPids returns map of Eventing.Consumer worker name and it's os pid
 func (s *SuperSupervisor) GetEventingConsumerPids(appName string) map[string]int {
+	logPrefix := "SuperSupervisor::GetEventingConsumerPids"
+
 	p, ok := s.runningProducers[appName]
 	if ok {
 		return p.GetEventingConsumerPids()
 	}
-	logging.Errorf("SSUP[%d] Eventing consumer pid request for app: %v didn't go through as Eventing.Producer instance isn't alive",
-		len(s.runningProducers), appName)
+	logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
+		logPrefix, len(s.runningProducers), appName)
 	return nil
 }
 
