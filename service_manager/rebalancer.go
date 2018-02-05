@@ -47,6 +47,12 @@ func (r *rebalancer) gatherProgress() {
 	progressTicker := time.NewTicker(rebalanceProgressUpdateTickInterval)
 
 	<-progressTicker.C
+
+	// Wait for some additional time to allow all eventing nodes to come up with their vbucket distribution plan.
+	// Additional sleep was added in planner because metakv's reported stale values when read op was triggered
+	// right after write op.
+	time.Sleep(10 * time.Second)
+
 	// Store the initial state of rebalance progress in metakv
 	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 	if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {

@@ -232,18 +232,10 @@ func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 	}
 
 	// Garbage collect old Rebalance Tokens
-	err := util.RecursiveDelete(metakvRebalanceTokenPath)
-	if err != nil {
-		logging.Errorf("ServiceMgr::startRebalance Failed to garbage collect old rebalance token(s) from metakv, err: %v", err)
-		return err
-	}
+	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvRebalanceTokenPath)
 
 	path := metakvRebalanceTokenPath + change.ID
-	err = util.MetakvSet(path, []byte(change.ID), nil)
-	if err != nil {
-		logging.Errorf("ServiceMgr::startRebalance Failed to store rebalance token in metakv, err: %v", err)
-		return err
-	}
+	util.Retry(util.NewFixedBackoff(time.Second), metaKVSetCallback, path, change.ID)
 
 	m.updateRebalanceProgressLocked(0.0)
 
