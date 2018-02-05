@@ -12,19 +12,23 @@ import (
 )
 
 var vbTakeoverCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::vbTakeoverCallback"
+
 	c := args[0].(*Consumer)
 	vb := args[1].(uint16)
 
 	err := c.doVbTakeover(vb)
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] vb: %v vbTakeover request, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb, err)
+		logging.Errorf("%s [%s:%s:%d] vb: %v vbTakeover request, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 	}
 
 	return err
 }
 
 var gocbConnectBucketCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::gocbConnectBucketCallback"
+
 	c := args[0].(*Consumer)
 
 	connStr := fmt.Sprintf("couchbase://%s", c.kvNodes[0])
@@ -33,8 +37,8 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 	}
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
-		logging.Errorf("CRBO[%s:%d] GOCB Connect to cluster %s failed, err: %v",
-			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
+		logging.Errorf("%s [%s:%d] GOCB Connect to cluster %s failed, err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
@@ -43,15 +47,15 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 		Password: c.producer.RbacPass(),
 	})
 	if err != nil {
-		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
-			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
+		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	c.gocbBucket, err = cluster.OpenBucket(c.bucket, "")
 	if err != nil {
-		logging.Errorf("CRBO[%s:%d] GOCB Failed to connect to bucket %s, err: %v",
-			c.app.AppName, c.producer.LenRunningConsumers(), c.bucket, err)
+		logging.Errorf("%s [%s:%d] GOCB Failed to connect to bucket %s, err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, err)
 		return err
 	}
 
@@ -59,6 +63,8 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 }
 
 var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::gocbConnectMetaBucketCallback"
+
 	c := args[0].(*Consumer)
 
 	connStr := fmt.Sprintf("couchbase://%s", c.kvNodes[0])
@@ -67,8 +73,8 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	}
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
-		logging.Errorf("CRBO[%s:%d] GOCB Connect to cluster %s failed, err: %v",
-			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
+		logging.Errorf("%s [%s:%d] GOCB Connect to cluster %s failed, err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
@@ -77,15 +83,15 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 		Password: c.producer.RbacPass(),
 	})
 	if err != nil {
-		logging.Errorf("CRBO[%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
-			c.app.AppName, c.producer.LenRunningConsumers(), connStr, err)
+		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %s, err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	c.gocbMetaBucket, err = cluster.OpenBucket(c.producer.MetadataBucket(), "")
 	if err != nil {
-		logging.Errorf("CRBO[%s:%d] GOCB Failed to connect to metadata bucket %s, err: %v",
-			c.app.AppName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), err)
+		logging.Errorf("%s [%s:%d] GOCB Failed to connect to metadata bucket %s, err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), err)
 		return err
 	}
 
@@ -93,6 +99,8 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 }
 
 var commonConnectBucketOpCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::commonConnectBucketOpCallback"
+
 	c := args[0].(*Consumer)
 	b := args[1].(**couchbase.Bucket)
 
@@ -101,25 +109,27 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	var err error
 	*b, err = util.ConnectBucket(hostPortAddr, "default", c.bucket)
 	if err != nil {
-		logging.Errorf("CRBO[%s:%d] Connect to bucket: %s failed, err: %v",
-			c.app.AppName, c.producer.LenRunningConsumers(), c.bucket, err)
+		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed, err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, err)
 	} else {
-		logging.Infof("CRBO[%s:%d] Connected to bucket: %s, handle stats: %v",
-			c.app.AppName, c.producer.LenRunningConsumers(), c.bucket, (*b).BasicStats)
+		logging.Infof("%s [%s:%d] Connected to bucket: %s, handle stats: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, (*b).BasicStats)
 	}
 
 	return err
 }
 
 var setOpCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::setOpCallback"
+
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
 	vbBlob := args[2]
 
 	_, err := c.gocbMetaBucket.Upsert(vbKey, vbBlob, 0)
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s Bucket set failed, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
+		logging.Errorf("%s [%s:%s:%d] Key: %s Bucket set failed, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
 	}
 
 	if err == gocb.ErrShutdown {
@@ -130,6 +140,8 @@ var setOpCallback = func(args ...interface{}) error {
 }
 
 var getCronTimerCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::getCronTimerCallback"
+
 	c := args[0].(*Consumer)
 	key := args[1].(string)
 	val := args[2].(*cronTimers)
@@ -158,14 +170,16 @@ var getCronTimerCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for cron timer key: %s val: %v, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, val, err)
+		logging.Errorf("%s [%s:%s:%d] Bucket fetch failed for cron timer key: %s val: %v, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, val, err)
 	}
 
 	return err
 }
 
 var getOpCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::getOpCallback"
+
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
 	vbBlob := args[2]
@@ -191,8 +205,8 @@ var getOpCallback = func(args ...interface{}) error {
 		} else if err == gocb.ErrShutdown {
 			return nil
 		} else if err != nil {
-			logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for key: %s, err: %v",
-				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
+			logging.Errorf("%s [%s:%s:%d] Bucket fetch failed for key: %s, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
 			return err
 		}
 		*isNoEnt = false
@@ -204,14 +218,16 @@ var getOpCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Bucket fetch failed for key: %s, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
+		logging.Errorf("%s [%s:%s:%d] Bucket fetch failed for key: %s, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
 	}
 
 	return err
 }
 
 var getMetaOpCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::getMetaOpCallback"
+
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
 	seqNo := args[2]
@@ -221,24 +237,26 @@ var getMetaOpCallback = func(args ...interface{}) error {
 	if err == nil {
 		cErr := res.Content(subdocPath, seqNo)
 		if cErr != nil {
-			logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s path: %s reading contents from subdoc path failed, err: %v",
-				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, subdocPath, cErr)
+			logging.Errorf("%s [%s:%s:%d] Key: %s path: %s reading contents from subdoc path failed, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, subdocPath, cErr)
 			return cErr
 		}
 
 		return nil
 	}
 
-	if err == gocb.ErrShutdown {
+	if err == gocb.ErrShutdown || gocb.IsKeyNotFoundError(err) {
 		return nil
 	}
 
-	logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s path: %s subdoc lookup failed, err: %v",
-		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, subdocPath, err)
+	logging.Errorf("%s [%s:%s:%d] Key: %s path: %s subdoc lookup failed, err: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, subdocPath, err)
 	return err
 }
 
 var periodicCheckpointCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::periodicCheckpointCallback"
+
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
 	vbBlob := args[2].(*vbucketKVBlob)
@@ -258,14 +276,16 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing periodic checkpoint update, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
+		logging.Errorf("%s [%s:%s:%d] Key: %s, subdoc operation failed while performing periodic checkpoint update, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
 	}
 
 	return err
 }
 
 var updateCheckpointCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::updateCheckpointCallback"
+
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
 	vbBlob := args[2].(*vbucketKVBlob)
@@ -288,14 +308,16 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing checkpoint update post dcp stop stream, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
+		logging.Errorf("%s [%s:%s:%d] Key: %s, subdoc operation failed while performing checkpoint update post dcp stop stream, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
 	}
 
 	return err
 }
 
 var addOwnershipHistorySRCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::addOwnershipHistorySRCallback"
+
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
 	vbBlob := args[2].(*vbucketKVBlob)
@@ -316,14 +338,16 @@ var addOwnershipHistorySRCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing ownership entry app post STREAMREQ, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
+		logging.Errorf("%s [%s:%s:%d] Key: %s, subdoc operation failed while performing ownership entry app post STREAMREQ, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
 	}
 
 	return err
 }
 
 var addOwnershipHistorySECallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::addOwnershipHistorySECallback"
+
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
 	ownershipEntry := args[2].(*OwnershipEntry)
@@ -337,22 +361,24 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while performing ownership entry app post STREAMEND, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), vbKey, err)
+		logging.Errorf("%s [%s:%s:%d] Key: %s, subdoc operation failed while performing ownership entry app post STREAMEND, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
 	}
 
 	return err
 }
 
 var getFailoverLogOpCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::getFailoverLogOpCallback"
+
 	c := args[0].(*Consumer)
 	flogs := args[1].(*couchbase.FailoverLog)
 
 	var err error
 	*flogs, err = c.cbBucket.GetFailoverLogs(0xABCD, c.vbnos, c.dcpConfig)
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to get failover logs, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
+		logging.Errorf("%s [%s:%s:%d] Failed to get failover logs, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 	}
 
 	c.cbBucket.Refresh()
@@ -360,6 +386,8 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 }
 
 var startDCPFeedOpCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::startDCPFeedOpCallback"
+
 	c := args[0].(*Consumer)
 	feedName := args[1].(couchbase.DcpFeedName)
 	kvHostPort := args[2].(string)
@@ -368,12 +396,12 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 		feedName, uint32(0), includeXATTRs, []string{kvHostPort}, 0xABCD, c.dcpConfig)
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed for bucket: %v from kv node: %v, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort, err)
+		logging.Errorf("%s [%s:%s:%d] Failed to start dcp feed for bucket: %v from kv node: %v, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort, err)
 		return err
 	}
-	logging.Infof("CRBO[%s:%s:%s:%d] Started up dcp feed for bucket: %v from kv node: %v",
-		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort)
+	logging.Infof("%s [%s:%s:%d] Started up dcp feed for bucket: %v from kv node: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort)
 
 	c.kvHostDcpFeedMap[kvHostPort] = dcpFeed
 
@@ -381,13 +409,15 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 }
 
 var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::populateDcpFeedVbEntriesCallback"
+
 	c := args[0].(*Consumer)
 
 	defer func() {
 		if r := recover(); r != nil {
 			trace := debug.Stack()
-			logging.Errorf("CRDP[%s:%s:%s:%d] populateDcpFeedVbEntriesCallback: recover %v, stack trace: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
+			logging.Errorf("%s [%s:%s:%d] populateDcpFeedVbEntriesCallback: recover %v, stack trace: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()
 
@@ -414,15 +444,15 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 		feed, err := c.cbBucket.StartDcpFeedOver(
 			feedName, uint32(0), includeXATTRs, []string{kvHost}, 0xABCD, c.dcpConfig)
 		if err != nil {
-			logging.Errorf("CRBO[%s:%s:%s:%d] Failed to start dcp feed, err: %v",
-				c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), err)
+			logging.Errorf("%s [%s:%s:%d] Failed to start dcp feed, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 			return err
 		}
 
 		vbSeqNos, err := feed.DcpGetSeqnos()
 		if err != nil {
-			logging.Infof("CRDP[%s:%s:%s:%d] Failed to get vb seqnos from dcp handle: %v, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), dcpFeed, err)
+			logging.Infof("%s [%s:%s:%d] Failed to get vb seqnos from dcp handle: %v, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed, err)
 			return err
 		}
 		feed.Close()
@@ -440,6 +470,8 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 }
 
 var appendCronTimerCleanupCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::appendCronTimerCleanupCallback"
+
 	c := args[0].(*Consumer)
 	docID := args[1].(string)
 	cronTimerDocID := args[2].(string)
@@ -460,14 +492,16 @@ var appendCronTimerCleanupCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, subdoc operation failed while appending cron timers to cleanup, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), docID, err)
+		logging.Errorf("%s [%s:%s:%d] Key: %s, subdoc operation failed while appending cron timers to cleanup, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), docID, err)
 	}
 
 	return err
 }
 
 var removeDocIDCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::removeDocIDCallback"
+
 	c := args[0].(*Consumer)
 	key := args[1].(string)
 
@@ -481,14 +515,16 @@ var removeDocIDCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, failed to remove from metadata bucket, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
+		logging.Errorf("%s [%s:%s:%d] Key: %s, failed to remove from metadata bucket, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
 	}
 
 	return err
 }
 
 var removeIndexCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::removeIndexCallback"
+
 	c := args[0].(*Consumer)
 	key := args[1].(string)
 	index := args[2].(int)
@@ -501,8 +537,8 @@ var removeIndexCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("CRBO[%s:%s:%s:%d] Key: %s, failed to remove from metadata bucket, err: %v",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), key, err)
+		logging.Errorf("%s [%s:%s:%d] Key: %s, failed to remove from metadata bucket, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
 	}
 
 	return err
