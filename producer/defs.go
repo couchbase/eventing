@@ -52,6 +52,7 @@ type Producer struct {
 	appName                string
 	app                    *common.AppConfig
 	auth                   string
+	breakpadOn             bool // Switch to control whether breakpad must be turned on
 	bucket                 string
 	cleanupTimers          bool
 	cfgData                string

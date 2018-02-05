@@ -58,7 +58,12 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
                   << " err: " << info.msg << std::endl;
   }
 
-  return strdup(info.username.c_str());
+  static const char *username = "";
+  if (info.username != username) {
+    username = strdup(info.username.c_str());
+  }
+
+  return username;
 }
 
 const char *GetPassword(void *cookie, const char *host, const char *port,
@@ -75,7 +80,12 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
                   << " err: " << info.msg << std::endl;
   }
 
-  return strdup(info.password.c_str());
+  static const char *password = "";
+  if (info.password != password) {
+    password = strdup(info.password.c_str());
+  }
+
+  return password;
 }
 
 const char *GetUsernameCached(void *cookie, const char *host, const char *port,
@@ -92,7 +102,12 @@ const char *GetUsernameCached(void *cookie, const char *host, const char *port,
                   << " err: " << info.msg << std::endl;
   }
 
-  return strdup(info.username.c_str());
+  static const char *username = "";
+  if (info.username != username) {
+    username = strdup(info.username.c_str());
+  }
+
+  return username;
 }
 
 const char *GetPasswordCached(void *cookie, const char *host, const char *port,
@@ -109,7 +124,12 @@ const char *GetPasswordCached(void *cookie, const char *host, const char *port,
                   << " err: " << info.msg << std::endl;
   }
 
-  return strdup(info.password.c_str());
+  static const char *password = "";
+  if (info.password != password) {
+    password = strdup(info.password.c_str());
+  }
+
+  return password;
 }
 
 void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {

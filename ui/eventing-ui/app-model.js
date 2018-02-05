@@ -138,7 +138,8 @@ ApplicationModel.prototype.getDefaultModel = function() {
             app_log_max_files: 10,
             curl_timeout: 500,
             worker_queue_cap: 100 * 1000,
-            fuzz_offset: 0
+            fuzz_offset: 0,
+            breakpad_on: true
         }
     };
 };

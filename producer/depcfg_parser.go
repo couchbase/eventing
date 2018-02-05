@@ -68,6 +68,12 @@ func (p *Producer) parseDepcfg() error {
 		p.cleanupTimers = val.(bool)
 	}
 
+	if val, ok := settings["breakpad_on"]; !ok {
+		p.breakpadOn = true
+	} else {
+		p.breakpadOn = val.(bool)
+	}
+
 	if val, ok := settings["dcp_stream_boundary"]; !ok {
 		p.dcpStreamBoundary = common.DcpStreamBoundary("everything")
 	} else {

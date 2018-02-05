@@ -153,6 +153,7 @@ type Consumer struct {
 	app         *common.AppConfig
 	bucket      string
 	builderPool *sync.Pool
+	breakpadOn  bool
 	uuid        string
 
 	connMutex *sync.RWMutex

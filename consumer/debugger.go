@@ -36,6 +36,7 @@ func (c *debugClient) Serve() {
 		strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
 		c.consumerHandle.diagDir,
 		util.GetIPMode(),
+		"true",
 		c.eventingPort, // not read, for tagging
 		"debug")        // not read, for tagging
 

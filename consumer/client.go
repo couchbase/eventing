@@ -31,7 +31,8 @@ func (c *client) Serve() {
 		strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
 		c.consumerHandle.diagDir,
 		util.GetIPMode(),
-		c.eventingPort) // this parameter is not read, for tagging
+		strconv.FormatBool(c.consumerHandle.breakpadOn),
+		c.eventingPort) // Not read, for tagging
 
 	user, key := util.LocalKey()
 	c.cmd.Env = append(os.Environ(),

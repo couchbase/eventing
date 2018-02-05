@@ -321,7 +321,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	logging.Infof("PRDR[%s:%d] Spawning consumer to listen on socket: %r", p.appName, p.LenRunningConsumers(), sockIdentifier)
 
-	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
+	c := consumer.NewConsumer(p.dcpStreamBoundary, p.breakpadOn, p.cleanupTimers, p.enableRecursiveMutation,
 		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold,
 		p.socketWriteBatchSize, p.cronTimersPerDoc, p.cppWorkerThrCount,
 		p.vbOwnershipGiveUpRoutineCount, p.curlTimeout, p.vbOwnershipTakeoverRoutineCount,

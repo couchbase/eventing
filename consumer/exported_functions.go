@@ -252,6 +252,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			"1",
 			os.TempDir(),
 			util.GetIPMode(),
+			"true",
 			"validate") // this parameter is not read, for tagging
 
 		cmd.Env = append(os.Environ(),

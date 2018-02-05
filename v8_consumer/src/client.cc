@@ -657,8 +657,8 @@ int main(int argc, char **argv) {
   global_program_name = argv[0];
 
   if (argc < 8) {
-    std::cerr << "Need at least 7 arguments: appname, ipc_type, port, "
-                 "worker_id, batch_size, diag_dir, ipv4/6"
+    std::cerr << "Need at least 8 arguments: appname, ipc_type, port, "
+                 "worker_id, batch_size, diag_dir, ipv4/6, breakpad_on"
               << std::endl;
     return 2;
   }
@@ -687,7 +687,9 @@ int main(int argc, char **argv) {
   int batch_size = atoi(argv[5]);
   std::string diag_dir(argv[6]);
 
-  setupBreakpad(diag_dir);
+  if (strcmp(argv[8], "true") == 0) {
+    setupBreakpad(diag_dir);
+  }
 
   curl_global_init(CURL_GLOBAL_ALL);
 
