@@ -3,10 +3,13 @@ package producer
 import (
 	"fmt"
 
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/plasma"
 )
 
 func (p *Producer) openPlasmaStore() error {
+	logPrefix := "Producer::openPlasmaStore"
+
 	vbPlasmaDir := fmt.Sprintf("%v/%v_timer.data", p.eventingDir, p.app.AppName)
 
 	cfg := plasma.DefaultConfig()
@@ -26,6 +29,9 @@ func (p *Producer) openPlasmaStore() error {
 	if err != nil {
 		return err
 	}
+
+	logging.Infof("%s [%s:%d] Initialising plasma instance with memory quota: %d MB",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.plasmaMemQuota)
 
 	plasma.SetMemoryQuota(p.plasmaMemQuota * 1024 * 1024)
 

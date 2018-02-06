@@ -22,7 +22,7 @@ import (
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
-	superSup common.EventingSuperSup) *Producer {
+	memoryQuota int64, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                appName,
 		bootstrapFinishCh:      make(chan struct{}, 1),
@@ -40,6 +40,7 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 		nsServerPort:           nsServerPort,
 		pauseProducerCh:        make(chan struct{}, 1),
 		persistAllTicker:       time.NewTicker(persistAllTickInterval),
+		plasmaMemQuota:         memoryQuota,
 		seqsNoProcessed:        make(map[int]int64),
 		signalStopPersistAllCh: make(chan struct{}, 1),
 		statsRWMutex:           &sync.RWMutex{},
@@ -325,7 +326,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.vbOwnershipGiveUpRoutineCount, p.curlTimeout, p.vbOwnershipTakeoverRoutineCount,
 		p.xattrEntryPruneThreshold, p.workerQueueCap, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
 		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup,
-		p.vbPlasmaStore, p.socketTimeout, p.diagDir, p.numVbuckets, p.fuzzOffset)
+		p.vbPlasmaStore, p.socketTimeout, p.statsTickDuration, p.diagDir, p.numVbuckets, p.fuzzOffset)
 
 	p.Lock()
 	p.consumerListeners = append(p.consumerListeners, listener)

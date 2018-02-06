@@ -30,7 +30,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 	bucket, eventingAdminPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig, dcpConfig map[string]interface{},
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
-	socketTimeout time.Duration, diagDir string, numVbuckets, fuzzOffset int) *Consumer {
+	socketTimeout, statsTickInterval time.Duration, diagDir string, numVbuckets, fuzzOffset int) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -98,7 +98,7 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableR
 		socketWriteLoopStopCh:           make(chan struct{}, 1),
 		socketWriteTicker:               time.NewTicker(socketWriteTimerInterval),
 		statsRWMutex:                    &sync.RWMutex{},
-		statsTicker:                     time.NewTicker(statsTickInterval),
+		statsTicker:                     time.NewTicker(statsTickInterval * time.Millisecond),
 		stopControlRoutineCh:            make(chan struct{}, 1),
 		stopVbOwnerGiveupCh:             make(chan struct{}, vbOwnershipGiveUpRoutineCount),
 		stopVbOwnerTakeoverCh:           make(chan struct{}, vbOwnershipTakeoverRoutineCount),

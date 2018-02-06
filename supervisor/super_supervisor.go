@@ -343,6 +343,8 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, 
 		logging.Infof("%s [%d] Notifying Eventing.Producer instances to update plasma memory quota to %v MB",
 			logPrefix, len(s.runningProducers), config.RAMQuota)
 
+		s.plasmaMemQuota = config.RAMQuota
+
 		for _, eventingProducer := range s.runningProducers {
 			eventingProducer.UpdatePlasmaMemoryQuota(config.RAMQuota)
 		}
@@ -357,7 +359,7 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
 	p := producer.NewProducer(appName, s.adminPort.HTTPPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
-		s.restPort, s.uuid, s.diagDir, s)
+		s.restPort, s.uuid, s.diagDir, s.plasmaMemQuota, s)
 
 	token := s.superSup.Add(p)
 	s.mu.Lock()
@@ -518,9 +520,9 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
 		s.keepNodes = keepNodes
 	}
 
-	for _, producer := range s.runningProducers {
-		logging.Infof("%s [%d] NotifyPrepareTopologyChange to producer %p, keepNodes => %v", logPrefix, len(s.runningProducers), producer, keepNodes)
-		producer.NotifyPrepareTopologyChange(s.keepNodes)
+	for _, eventingProducer := range s.runningProducers {
+		logging.Infof("%s [%d] NotifyPrepareTopologyChange to producer %p, keepNodes => %v", logPrefix, len(s.runningProducers), eventingProducer, keepNodes)
+		eventingProducer.NotifyPrepareTopologyChange(s.keepNodes)
 	}
 }
 

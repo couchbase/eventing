@@ -151,7 +151,7 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	}
 
 	settings["skip_timer_threshold"] = 86400
-	settings["tick_duration"] = 5000
+	settings["tick_duration"] = 60000
 	settings["timer_processing_tick_interval"] = 500
 	settings["deadline_timeout"] = 3
 	settings["execution_timeout"] = 2
