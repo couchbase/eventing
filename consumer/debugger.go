@@ -27,10 +27,22 @@ func newDebugClient(c *Consumer, appName, eventingPort, ipcType, tcpPort, worker
 }
 
 func (c *debugClient) Serve() {
-	c.cmd = exec.Command("eventing-consumer", c.appName, c.ipcType, c.debugTCPPort,
-		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
-		c.consumerHandle.diagDir, util.GetIPMode(),
-		c.eventingPort, "debug") // these two parameter are not read, for tagging
+	c.cmd = exec.Command(
+		"eventing-consumer",
+		c.appName,
+		c.ipcType,
+		c.debugTCPPort,
+		c.workerName,
+		strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
+		c.consumerHandle.diagDir,
+		util.GetIPMode(),
+		c.eventingPort, // not read, for tagging
+		"debug")        // not read, for tagging
+
+	user, key := util.LocalKey()
+	c.cmd.Env = append(os.Environ(),
+		fmt.Sprintf("CBEVT_CALLBACK_USR=%s", user),
+		fmt.Sprintf("CBEVT_CALLBACK_KEY=%s", key))
 
 	c.cmd.Stderr = os.Stderr
 	c.cmd.Stdout = os.Stdout
@@ -245,7 +257,7 @@ func (c *Consumer) startDebuggerServer() {
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getKvNodesFromVbMap, c)
 
-	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
+	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
 		c.kvNodes[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)

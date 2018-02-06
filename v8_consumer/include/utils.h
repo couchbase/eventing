@@ -81,5 +81,6 @@ std::string Localhost(bool isUrl);
 void SetIPv6(bool is6);
 bool IsIPv6();
 std::string JoinHostPort(const std::string &host, const std::string &port);
+std::pair<std::string, std::string> GetLocalKey();
 
 #endif

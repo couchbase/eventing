@@ -242,10 +242,21 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 	var pid int
 	go func() {
-		cmd := exec.Command("eventing-consumer", appName, "af_inet", c.tcpPort,
-			fmt.Sprintf("worker_%s", appName), "1",
-			os.TempDir(), util.GetIPMode(),
+		user, key := util.LocalKey()
+		cmd := exec.Command(
+			"eventing-consumer",
+			appName,
+			"af_inet",
+			c.tcpPort,
+			fmt.Sprintf("worker_%s", appName),
+			"1",
+			os.TempDir(),
+			util.GetIPMode(),
 			"validate") // this parameter is not read, for tagging
+
+		cmd.Env = append(os.Environ(),
+			fmt.Sprintf("CBEVT_CALLBACK_USR=%s", user),
+			fmt.Sprintf("CBEVT_CALLBACK_KEY=%s", key))
 
 		outPipe, err := cmd.StdoutPipe()
 		if err != nil {
@@ -294,7 +305,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 	// Framing bare minimum V8 worker init payload
 	// TODO : Remove rbac user once RBAC issue is resolved
-	payload, pBuilder := c.makeV8InitPayload(appName, util.Localhost(), "", eventingPort,
+	payload, pBuilder := c.makeV8InitPayload(appName, util.Localhost(), "", eventingPort, "",
 		"", appContent, 5, 10, 1, 30, 10*1000, true, true, 500)
 
 	c.sendInitV8Worker(payload, false, pBuilder)

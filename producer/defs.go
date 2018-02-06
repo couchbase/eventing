@@ -60,6 +60,7 @@ type Producer struct {
 	curlTimeout            int64 // curl operation timeout in ms
 	diagDir                string
 	eventingAdminPort      string
+	eventingSSLPort        string
 	eventingDir            string
 	kvPort                 string
 	kvHostPorts            []string

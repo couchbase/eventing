@@ -350,7 +350,7 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, 
 func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
-	p := producer.NewProducer(appName, s.adminPort.HTTPPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
+	p := producer.NewProducer(appName, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
 		s.restPort, s.uuid, s.diagDir, s)
 
 	token := s.superSup.Add(p)

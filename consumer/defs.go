@@ -186,6 +186,7 @@ type Consumer struct {
 	dcpFeedCancelChs       []chan struct{}
 	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
 	eventingAdminPort      string
+	eventingSSLPort        string
 	eventingDir            string
 	eventingNodeAddrs      []string
 	eventingNodeUUIDs      []string

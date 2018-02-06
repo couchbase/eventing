@@ -244,8 +244,22 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   js_exception = new JsException(isolate_);
   data.js_exception = js_exception;
   data.cron_timers_per_doc = h_config->cron_timers_per_doc;
-  data.comm = new Communicator(server_settings->host_addr,
-                               server_settings->eventing_port);
+  auto ssl = true;
+  auto port = server_settings->eventing_sslport;
+  if (port.length() < 1) {
+    LOG(logError) << "SSL not available, using plain HTTP" << std::endl;
+    port = server_settings->eventing_port;
+    ssl = false;
+  }
+
+  auto key = GetLocalKey();
+  data.comm =
+    new Communicator(server_settings->host_addr,
+                     port,
+                     key.first,
+                     key.second,
+                     ssl);
+
   data.transpiler = new Transpiler(isolate_, GetTranspilerSrc());
   data.fuzz_offset = h_config->fuzz_offset;
 
@@ -286,6 +300,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << h_config->app_name << " curr_host: " << R(settings->host_addr)
                << " cron_timers_per_doc: " << h_config->cron_timers_per_doc
                << " curr_eventing_port: " << settings->eventing_port
+               << " curr_eventing_sslport: " << settings->eventing_sslport
                << " kv_host_port: " << settings->kv_host_port
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout

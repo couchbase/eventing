@@ -61,7 +61,11 @@ public:
   ~CURLClient();
 
   CURLResponse HTTPPost(const std::vector<std::string> &headers,
-                        const std::string &url, const std::string &body);
+                        const std::string &url,
+                        const std::string &body,
+                        const std::string &usr,
+                        const std::string &key);
+
   ExtractKVInfo ExtractKV(const std::string &encoded_str);
 
 private:
@@ -79,7 +83,11 @@ private:
 // Channel to communicate to eventing-producer through CURL
 class Communicator {
 public:
-  Communicator(const std::string &host_ip, const std::string &host_port);
+  Communicator(const std::string &host_ip,
+               const std::string &host_port,
+               const std::string &usr,
+               const std::string &key,
+               bool ssl);
 
   ParseInfo ParseQuery(const std::string &query);
   CredsInfo GetCreds(const std::string &endpoint);
@@ -94,6 +102,8 @@ private:
   std::string parse_query_url;
   std::string get_creds_url;
   std::string get_named_params_url;
+  std::string lo_usr;
+  std::string lo_key;
 };
 
 #endif

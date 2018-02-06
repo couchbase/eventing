@@ -55,7 +55,9 @@ std::string CURLClient::Decode(const std::string &encoded_str) {
 
 CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
                                   const std::string &url,
-                                  const std::string &body) {
+                                  const std::string &body,
+                                  const std::string &usr,
+                                  const std::string &key) {
   CURLResponse response;
 
   code = curl_easy_setopt(curl_handle, CURLOPT_URL, url.c_str());
@@ -137,6 +139,28 @@ CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
     return response;
   }
 
+  code = curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
+  if (code != CURLE_OK) {
+    response.is_error = true;
+    response.response = "Unable to turn off SSL peer verification";
+    return response;
+  }
+
+  code = curl_easy_setopt(curl_handle, CURLOPT_USERNAME, usr.c_str());
+  if (code != CURLE_OK) {
+    response.is_error = true;
+    response.response = "Unable to set username";
+    return response;
+  }
+
+  code = curl_easy_setopt(curl_handle, CURLOPT_PASSWORD, key.c_str());
+  if (code != CURLE_OK) {
+    response.is_error = true;
+    response.response = "Unable to set password";
+    return response;
+  }
+
+  response.is_error = false;
   code = curl_easy_perform(curl_handle);
   if (code != CURLE_OK) {
     response.is_error = true;
@@ -145,17 +169,21 @@ CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
     return response;
   }
 
-  response.is_error = false;
   return response;
 }
 
 Communicator::Communicator(const std::string &host_ip,
-                           const std::string &host_port) {
-  parse_query_url =
-      "http://" + JoinHostPort(host_ip, host_port) + "/parseQuery";
-  get_creds_url = "http://" + JoinHostPort(host_ip, host_port) + "/getCreds";
-  get_named_params_url =
-      "http://" + JoinHostPort(host_ip, host_port) + "/getNamedParams";
+                           const std::string &host_port,
+                           const std::string &usr,
+                           const std::string &key,
+                           bool ssl) {
+  std::string base_url = (ssl ? "https://" : "http://")
+      + JoinHostPort(host_ip, host_port);
+  parse_query_url = base_url + "/parseQuery";
+  get_creds_url = base_url + "/getCreds";
+  get_named_params_url = base_url + "/getNamedParams";
+  lo_usr = usr;
+  lo_key = key;
 }
 
 ExtractKVInfo CURLClient::ExtractKV(const std::string &encoded_str) {
@@ -233,8 +261,13 @@ CredsInfo Communicator::ExtractCredentials(const std::string &encoded_str) {
 }
 
 ParseInfo Communicator::ParseQuery(const std::string &query) {
-  auto response =
-      curl.HTTPPost({"Content-Type: text/plain"}, parse_query_url, query);
+  auto response = curl.HTTPPost(
+      {"Content-Type: text/plain"},
+      parse_query_url,
+      query,
+      lo_usr,
+      lo_key
+  );
 
   ParseInfo info;
   info.is_valid = false;
@@ -242,7 +275,7 @@ ParseInfo Communicator::ParseQuery(const std::string &query) {
 
   if (response.is_error) {
     LOG(logError)
-        << "Unable to parse N1QL query: Something went wrong with CURL lib: "
+        << "Unable to parse N1QL query: Something went wrong with cURL lib: "
         << R(response.response) << std::endl;
     return info;
   }
@@ -266,7 +299,7 @@ ParseInfo Communicator::ParseQuery(const std::string &query) {
 
 NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
   auto response =
-      curl.HTTPPost({"Content-Type: text/plain"}, get_named_params_url, query);
+      curl.HTTPPost({"Content-Type: text/plain"}, get_named_params_url, query, lo_usr, lo_key);
 
   NamedParamsInfo info;
   info.p_info.is_valid = false;
@@ -274,7 +307,7 @@ NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
 
   if (response.is_error) {
     LOG(logError)
-        << "Unable to get named params: Something went wrong with CURL lib: "
+        << "Unable to get named params: Something went wrong with cURL lib: "
         << R(response.response) << std::endl;
     return info;
   }
@@ -297,13 +330,18 @@ NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
 
 CredsInfo Communicator::GetCreds(const std::string &endpoint) {
   auto response =
-      curl.HTTPPost({"Content-Type: text/plain"}, get_creds_url, endpoint);
+      curl.HTTPPost(
+          {"Content-Type: text/plain"},
+          get_creds_url,
+          endpoint,
+          lo_usr,
+          lo_key);
 
   CredsInfo info;
   info.is_valid = false;
 
   if (response.is_error) {
-    LOG(logError) << "Unable to get creds: Something went wrong with CURL lib: "
+    LOG(logError) << "Unable to get creds: Something went wrong with cURL lib: "
                   << response.response << std::endl;
     info.msg = response.response;
     return info;

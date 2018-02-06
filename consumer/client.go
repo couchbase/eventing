@@ -22,10 +22,21 @@ func newClient(consumer *Consumer, appName, tcpPort, workerName, eventingAdminPo
 }
 
 func (c *client) Serve() {
-	c.cmd = exec.Command("eventing-consumer", c.appName, c.consumerHandle.ipcType, c.tcpPort,
-		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
-		c.consumerHandle.diagDir, util.GetIPMode(),
+	c.cmd = exec.Command(
+		"eventing-consumer",
+		c.appName,
+		c.consumerHandle.ipcType,
+		c.tcpPort,
+		c.workerName,
+		strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
+		c.consumerHandle.diagDir,
+		util.GetIPMode(),
 		c.eventingPort) // this parameter is not read, for tagging
+
+	user, key := util.LocalKey()
+	c.cmd.Env = append(os.Environ(),
+		fmt.Sprintf("CBEVT_CALLBACK_USR=%s", user),
+		fmt.Sprintf("CBEVT_CALLBACK_KEY=%s", key))
 
 	outPipe, err := c.cmd.StdoutPipe()
 	if err != nil {

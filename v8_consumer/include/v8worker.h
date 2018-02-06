@@ -97,6 +97,7 @@ typedef struct server_settings_s {
   int checkpoint_interval;
   std::string eventing_dir;
   std::string eventing_port;
+  std::string eventing_sslport;
   std::string host_addr;
   std::string kv_host_port;
   std::string rbac_user;

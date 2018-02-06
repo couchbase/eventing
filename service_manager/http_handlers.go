@@ -516,6 +516,10 @@ func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Reque
 }
 
 func (m *ServiceMgr) getNamedParamsHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateLocalAuth(w, r) {
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
 
 	data, err := ioutil.ReadAll(r.Body)
@@ -1313,6 +1317,10 @@ func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Requ
 }
 
 func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
+	if !m.validateLocalAuth(w, r) {
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
 
 	data, err := ioutil.ReadAll(r.Body)
@@ -1342,6 +1350,35 @@ func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm s
 	}
 	allowed, err := creds.IsAllowed(perm)
 	if err != nil || !allowed {
+		logging.Warnf("Cannot authorize request to %r", r.URL)
+		w.WriteHeader(http.StatusForbidden)
+		return false
+	}
+	logging.Debugf("Allowing access to %r", r.URL)
+	return true
+}
+
+func (m *ServiceMgr) validateLocalAuth(w http.ResponseWriter, r *http.Request) bool {
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		logging.Warnf("Unable to verify remote in request to %r: %r", r.URL, err)
+		w.WriteHeader(http.StatusForbidden)
+		return false
+	}
+	pip := net.ParseIP(ip)
+	if pip == nil || !pip.IsLoopback() {
+		logging.Warnf("Forbidden remote in request to %r: %r", r.URL, r)
+		w.WriteHeader(http.StatusForbidden)
+		return false
+	}
+	r_usr, r_key, ok := r.BasicAuth()
+	if !ok {
+		logging.Warnf("No credentials on request to %r", r.URL)
+		w.WriteHeader(http.StatusForbidden)
+		return false
+	}
+	usr, key := util.LocalKey()
+	if r_usr != usr || r_key != key {
 		logging.Warnf("Cannot authorize request to %r", r.URL)
 		w.WriteHeader(http.StatusForbidden)
 		return false
@@ -1432,6 +1469,10 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) []
 }
 
 func (m *ServiceMgr) parseQueryHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateLocalAuth(w, r) {
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
 
 	data, err := ioutil.ReadAll(r.Body)

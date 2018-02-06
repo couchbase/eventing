@@ -258,7 +258,7 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 	return
 }
 
-func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg string,
+func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, eventingSSLPort, kvHostPort, depCfg string,
 	capacity, cronTimerPerDoc, executionTimeout, fuzzOffset, checkpointInterval int, enableRecursiveMutation, skipLcbBootstrap bool,
 	curlTimeout int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
@@ -267,6 +267,7 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 	ch := builder.CreateString(currHost)
 	ed := builder.CreateString(eventingDir)
 	ep := builder.CreateString(eventingPort)
+	esp := builder.CreateString(eventingSSLPort)
 	dcfg := builder.CreateString(depCfg)
 	khp := builder.CreateString(kvHostPort)
 
@@ -282,6 +283,7 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 	payload.PayloadAddCurrHost(builder, ch)
 	payload.PayloadAddEventingDir(builder, ed)
 	payload.PayloadAddCurrEventingPort(builder, ep)
+	payload.PayloadAddCurrEventingSslport(builder, esp)
 	payload.PayloadAddDepcfg(builder, dcfg)
 	payload.PayloadAddKvHostPort(builder, khp)
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))

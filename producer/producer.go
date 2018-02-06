@@ -21,7 +21,7 @@ import (
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
-func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
+func NewProducer(appName, eventingAdminPort, eventingSSLPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
 	superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                appName,
@@ -29,6 +29,7 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 		dcpConfig:              make(map[string]interface{}),
 		diagDir:                diagDir,
 		eventingAdminPort:      eventingAdminPort,
+		eventingSSLPort:        eventingSSLPort,
 		eventingDir:            eventingDir,
 		eventingNodeUUIDs:      make([]string, 0),
 		kvPort:                 kvPort,
@@ -323,7 +324,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold,
 		p.socketWriteBatchSize, p.cronTimersPerDoc, p.cppWorkerThrCount,
 		p.vbOwnershipGiveUpRoutineCount, p.curlTimeout, p.vbOwnershipTakeoverRoutineCount,
-		p.xattrEntryPruneThreshold, p.workerQueueCap, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
+		p.xattrEntryPruneThreshold, p.workerQueueCap, p.bucket, p.eventingAdminPort, p.eventingSSLPort, p.eventingDir, p.logLevel,
 		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup,
 		p.vbPlasmaStore, p.socketTimeout, p.diagDir, p.numVbuckets, p.fuzzOffset)
 
