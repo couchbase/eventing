@@ -447,7 +447,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 		var progress cm.RebalanceProgress
 		err = json.Unmarshal(buf, &progress)
 		if err != nil {
-			logging.Errorf("UTIL Failed to unmarshal progress from url: %s, err: %v", url, err)
+			logging.Warnf("UTIL Failed to unmarshal progress from url: %s, err: %v", url, err)
 			errMap[nodeAddr] = err
 			continue
 		}

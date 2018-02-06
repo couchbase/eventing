@@ -148,17 +148,21 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev interface{}) error {
 	logPrefix := "SuperSupervisor::SettingsChangeCallback"
 
-	sValue := make(map[string]interface{})
-	err := json.Unmarshal(value, &sValue)
-	if err != nil {
-		logging.Errorf("%s [%d] Failed to unmarshal settings received, err: %v",
-			logPrefix, len(s.runningProducers), err)
-		return err
-	}
-
-	logging.Infof("%s [%d] SettingsChangeCallback: path => %s value => %#v", logPrefix, len(s.runningProducers), path, sValue)
-
 	if value != nil {
+		sValue := make(map[string]interface{})
+		err := json.Unmarshal(value, &sValue)
+		if err != nil {
+			logging.Errorf("%s [%d] Failed to unmarshal settings received, err: %v",
+				logPrefix, len(s.runningProducers), err)
+			return nil
+		}
+
+		// Avoid printing rbac user credentials in log
+		sValue["rbacuser"] = "****"
+		sValue["rbacpass"] = "****"
+		sValue["rbacrole"] = "****"
+
+		logging.Infof("%s [%d] SettingsChangeCallback: path => %s value => %#v", logPrefix, len(s.runningProducers), path, sValue)
 
 		splitRes := strings.Split(path, "/")
 		appName := splitRes[len(splitRes)-1]

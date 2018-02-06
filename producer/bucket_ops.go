@@ -32,7 +32,7 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 }
 
 var getFailoverLogOpCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::getFailoverLogOpCallback"
+	logPrefix := "Producer::getFailoverLogOpCallback"
 
 	p := args[0].(*Producer)
 	b := args[1].(**couchbase.Bucket)
@@ -50,7 +50,7 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 }
 
 var startFeedCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::startFeedCallback"
+	logPrefix := "Producer::startFeedCallback"
 
 	p := args[0].(*Producer)
 	b := args[1].(**couchbase.Bucket)
@@ -70,7 +70,7 @@ var startFeedCallback = func(args ...interface{}) error {
 }
 
 var dcpGetSeqNosCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::dcpGetSeqNosCallback"
+	logPrefix := "Producer::dcpGetSeqNosCallback"
 
 	p := args[0].(*Producer)
 	dcpFeed := args[1].(**couchbase.DcpFeed)
@@ -87,7 +87,7 @@ var dcpGetSeqNosCallback = func(args ...interface{}) error {
 }
 
 var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::gocbConnectMetaBucketCallback"
+	logPrefix := "Producer::gocbConnectMetaBucketCallback"
 
 	p := args[0].(*Producer)
 
@@ -124,7 +124,7 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 }
 
 var setOpCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::setOpCallback"
+	logPrefix := "Producer::setOpCallback"
 
 	p := args[0].(*Producer)
 	key := args[1].(string)
@@ -140,14 +140,16 @@ var setOpCallback = func(args ...interface{}) error {
 }
 
 var getOpCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::getOpCallback"
+	logPrefix := "Producer::getOpCallback"
 
 	p := args[0].(*Producer)
 	key := args[1].(string)
 	blob := args[2]
 
 	_, err := p.metadataBucketHandle.Get(key, blob)
-	if err == gocb.ErrShutdown {
+	if gocb.IsKeyNotFoundError(err) {
+		return nil
+	} else if err == gocb.ErrKeyNotFound {
 		return nil
 	} else if err != nil {
 		logging.Errorf("%s [%s:%d] Bucket get failed for key: %v , err: %v", logPrefix, p.appName, p.LenRunningConsumers(), key, err)
@@ -157,7 +159,7 @@ var getOpCallback = func(args ...interface{}) error {
 }
 
 var deleteOpCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::deleteOpCallback"
+	logPrefix := "Producer::deleteOpCallback"
 
 	p := args[0].(*Producer)
 	key := args[1].(string)

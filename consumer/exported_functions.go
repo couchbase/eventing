@@ -272,7 +272,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			for {
 				msg, _, err := bufOut.ReadLine()
 				if err != nil {
-					logging.Errorf("CREF[%s:%s:%s:%d] Failed to read from stdout pipe, err: %v",
+					logging.Warnf("CREF[%s:%s:%s:%d] Failed to read from stdout pipe, err: %v",
 						appName, c.workerName, c.tcpPort, c.Pid(), err)
 					return
 				}

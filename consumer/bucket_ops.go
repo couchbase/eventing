@@ -303,7 +303,7 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 		UpsertEx("previous_vb_owner", vbBlob.PreviousVBOwner, gocb.SubdocFlagCreatePath).
 		Execute()
 
-	if err == gocb.ErrShutdown {
+	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
 	}
 
@@ -356,7 +356,7 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		Execute()
 
-	if err == gocb.ErrShutdown {
+	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
 	}
 
