@@ -59,6 +59,9 @@ const (
 	lcbCap        = 5
 	sockBatchSize = 1
 	workerCount   = 3
+
+	deadlineTimeout  = 3
+	executionTimeout = 2
 )
 
 const (
@@ -100,6 +103,8 @@ type bucket struct {
 
 type commonSettings struct {
 	batchSize         int
+	deadlineTimeout   int
+	executionTimeout  int
 	lcbInstCap        int
 	recursiveBehavior string
 	streamBoundary    string

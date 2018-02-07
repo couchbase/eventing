@@ -150,11 +150,21 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["enable_recursive_mutation"] = true
 	}
 
+	if s.deadlineTimeout == 0 {
+		settings["deadline_timeout"] = deadlineTimeout
+	} else {
+		settings["deadline_timeout"] = s.deadlineTimeout
+	}
+
+	if s.executionTimeout == 0 {
+		settings["execution_timeout"] = executionTimeout
+	} else {
+		settings["execution_timeout"] = s.executionTimeout
+	}
+
 	settings["skip_timer_threshold"] = 86400
 	settings["tick_duration"] = 5000
 	settings["timer_processing_tick_interval"] = 500
-	settings["deadline_timeout"] = 3
-	settings["execution_timeout"] = 2
 	settings["log_level"] = "INFO"
 	settings["cron_timers_per_doc"] = 10000
 	settings["cleanup_timers"] = false
