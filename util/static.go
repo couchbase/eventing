@@ -24,7 +24,7 @@ func init() {
 	}
 	mid := len(buf) / 2
 	localusr = string(buf[:mid])
-	localkey = string(buf[mid])
+	localkey = string(buf[mid:])
 }
 
 func SetIPv6(is6 bool) {
