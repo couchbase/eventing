@@ -267,5 +267,8 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket);
 const char *GetPassword(void *cookie, const char *host, const char *port,
                         const char *bucket);
-
+const char *GetUsernameCached(void *cookie, const char *host, const char *port,
+                              const char *bucket);
+const char *GetPasswordCached(void *cookie, const char *host, const char *port,
+                              const char *bucket);
 #endif

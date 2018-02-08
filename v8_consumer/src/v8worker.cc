@@ -49,9 +49,9 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
   LOG(logInfo) << "Getting username for host " << R(host) << " port " << port
                << std::endl;
 
+  auto endpoint = JoinHostPort(host, port);
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(host, port);
   auto info = comm->GetCreds(endpoint);
   if (!info.is_valid) {
     LOG(logError) << "Failed to get username for " << R(host) << ":" << port
@@ -70,6 +70,40 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
   auto comm = UnwrapData(isolate)->comm;
   auto endpoint = JoinHostPort(host, port);
   auto info = comm->GetCreds(endpoint);
+  if (!info.is_valid) {
+    LOG(logError) << "Failed to get password for " << R(host) << ":" << port
+                  << " err: " << info.msg << std::endl;
+  }
+
+  return strdup(info.password.c_str());
+}
+
+const char *GetUsernameCached(void *cookie, const char *host, const char *port,
+                              const char *bucket) {
+  LOG(logInfo) << "Getting username for host " << R(host) << " port " << port
+               << std::endl;
+
+  auto isolate = static_cast<v8::Isolate *>(cookie);
+  auto comm = UnwrapData(isolate)->comm;
+  auto endpoint = JoinHostPort(host, port);
+  auto info = comm->GetCredsCached(endpoint);
+  if (!info.is_valid) {
+    LOG(logError) << "Failed to get username for " << R(host) << ":" << port
+                  << " err: " << info.msg << std::endl;
+  }
+
+  return strdup(info.username.c_str());
+}
+
+const char *GetPasswordCached(void *cookie, const char *host, const char *port,
+                              const char *bucket) {
+  LOG(logInfo) << "Getting password for host " << R(host) << " port " << port
+               << std::endl;
+
+  auto isolate = static_cast<v8::Isolate *>(cookie);
+  auto comm = UnwrapData(isolate)->comm;
+  auto endpoint = JoinHostPort(host, port);
+  auto info = comm->GetCredsCached(endpoint);
   if (!info.is_valid) {
     LOG(logError) << "Failed to get password for " << R(host) << ":" << port
                   << " err: " << info.msg << std::endl;
@@ -101,8 +135,8 @@ void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     lcb_wait(instance);
     break;
   case LCB_SUCCESS:
-    LOG(logTrace) << "NValue " << R(static_cast<int>(rg->nvalue))
-                  << "Value " << R(reinterpret_cast<const char *>(rg->value));
+    LOG(logTrace) << "NValue " << R(static_cast<int>(rg->nvalue)) << "Value "
+                  << R(reinterpret_cast<const char *>(rg->value));
     break;
   default:
     LOG(logTrace) << "LCB_CALLBACK_GET: Operation failed, "
@@ -150,7 +184,8 @@ void sdlookup_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     while (lcb_sdresult_next(resp, &ent, &iter)) {
       LOG(logTrace) << "sdlookup Status: " << ent.status
                     << "NValue: " << R(static_cast<int>(ent.nvalue))
-                    << "Value: " << R(reinterpret_cast<const char *>(ent.value));
+                    << "Value: "
+                    << R(reinterpret_cast<const char *>(ent.value));
       res->value.assign(reinterpret_cast<const char *>(ent.value),
                         static_cast<int>(ent.nvalue));
 
@@ -253,12 +288,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   }
 
   auto key = GetLocalKey();
-  data.comm =
-    new Communicator(server_settings->host_addr,
-                     port,
-                     key.first,
-                     key.second,
-                     ssl);
+  data.comm = new Communicator(server_settings->host_addr, port, key.first,
+                               key.second, ssl);
 
   data.transpiler = new Transpiler(isolate_, GetTranspilerSrc());
   data.fuzz_offset = h_config->fuzz_offset;

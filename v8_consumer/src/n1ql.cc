@@ -41,7 +41,7 @@ void ConnectionPool::AddResource() {
   }
 
   auto auth = lcbauth_new();
-  lcbauth_set_callbacks(auth, isolate, GetUsername, GetPassword);
+  lcbauth_set_callbacks(auth, isolate, GetUsernameCached, GetPasswordCached);
   lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
   lcb_set_auth(instance, auth);
 
@@ -134,7 +134,8 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
                                          const lcb_RESPN1QL *resp) {
   auto cookie = (HandlerCookie *)lcb_get_cookie(instance);
   auto isolate = cookie->isolate;
-  auto n1ql_handle = UnwrapData(isolate)->n1ql_handle;
+  auto isolate_data = UnwrapData(isolate);
+  auto n1ql_handle = isolate_data->n1ql_handle;
   auto q_handler = n1ql_handle->qhandler_stack.Top();
   v8::HandleScope handle_scope(isolate);
 
@@ -163,12 +164,7 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS) {
-      auto w = UnwrapData(isolate)->v8worker;
-      w->AddLcbException(static_cast<int>(resp->rc));
-      auto errors = n1ql_handle->ExtractErrorMsg(resp->row);
-      n1ql_op_exception_count++;
-      auto js_exception = UnwrapData(isolate)->js_exception;
-      js_exception->Throw(instance, resp->rc, errors);
+      HandleRowCallbackFailure(instance, resp, isolate_data, n1ql_handle);
     }
 
     q_handler.iter_handler->metadata = resp->row;
@@ -181,7 +177,8 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
                                              const lcb_RESPN1QL *resp) {
   auto cookie = (HandlerCookie *)lcb_get_cookie(instance);
   auto isolate = cookie->isolate;
-  auto n1ql_handle = UnwrapData(isolate)->n1ql_handle;
+  auto isolate_data = UnwrapData(isolate);
+  auto n1ql_handle = isolate_data->n1ql_handle;
   auto q_handler = n1ql_handle->qhandler_stack.Top();
 
   if (!(resp->rflags & LCB_RESP_F_FINAL)) {
@@ -199,15 +196,28 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS) {
-      auto w = UnwrapData(isolate)->v8worker;
-      w->AddLcbException(static_cast<int>(resp->rc));
-      auto errors = n1ql_handle->ExtractErrorMsg(resp->row);
-      n1ql_op_exception_count++;
-      auto js_exception = UnwrapData(isolate)->js_exception;
-      js_exception->Throw(instance, resp->rc, errors);
+      HandleRowCallbackFailure(instance, resp, isolate_data, n1ql_handle);
     }
 
     q_handler.block_handler->metadata = resp->row;
+  }
+}
+
+void N1QL::HandleRowCallbackFailure(lcb_t instance, const lcb_RESPN1QL *resp,
+                                    const Data *isolate_data,
+                                    N1QL *n1ql_handle) {
+  auto w = isolate_data->v8worker;
+  w->AddLcbException(static_cast<int>(resp->rc));
+
+  auto errors = n1ql_handle->ExtractErrorMsg(resp->row);
+  n1ql_op_exception_count++;
+
+  auto js_exception = isolate_data->js_exception;
+  js_exception->Throw(instance, resp->rc, errors);
+
+  if (resp->rc == LCB_AUTH_ERROR) {
+    auto comm = isolate_data->comm;
+    comm->Refresh();
   }
 }
 

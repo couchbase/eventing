@@ -173,12 +173,10 @@ CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
 }
 
 Communicator::Communicator(const std::string &host_ip,
-                           const std::string &host_port,
-                           const std::string &usr,
-                           const std::string &key,
-                           bool ssl) {
-  std::string base_url = (ssl ? "https://" : "http://")
-      + JoinHostPort(host_ip, host_port);
+                           const std::string &host_port, const std::string &usr,
+                           const std::string &key, bool ssl) {
+  std::string base_url =
+      (ssl ? "https://" : "http://") + JoinHostPort(host_ip, host_port);
   parse_query_url = base_url + "/parseQuery";
   get_creds_url = base_url + "/getCreds";
   get_named_params_url = base_url + "/getNamedParams";
@@ -261,13 +259,8 @@ CredsInfo Communicator::ExtractCredentials(const std::string &encoded_str) {
 }
 
 ParseInfo Communicator::ParseQuery(const std::string &query) {
-  auto response = curl.HTTPPost(
-      {"Content-Type: text/plain"},
-      parse_query_url,
-      query,
-      lo_usr,
-      lo_key
-  );
+  auto response = curl.HTTPPost({"Content-Type: text/plain"}, parse_query_url,
+                                query, lo_usr, lo_key);
 
   ParseInfo info;
   info.is_valid = false;
@@ -298,8 +291,8 @@ ParseInfo Communicator::ParseQuery(const std::string &query) {
 }
 
 NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
-  auto response =
-      curl.HTTPPost({"Content-Type: text/plain"}, get_named_params_url, query, lo_usr, lo_key);
+  auto response = curl.HTTPPost({"Content-Type: text/plain"},
+                                get_named_params_url, query, lo_usr, lo_key);
 
   NamedParamsInfo info;
   info.p_info.is_valid = false;
@@ -329,13 +322,8 @@ NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
 }
 
 CredsInfo Communicator::GetCreds(const std::string &endpoint) {
-  auto response =
-      curl.HTTPPost(
-          {"Content-Type: text/plain"},
-          get_creds_url,
-          endpoint,
-          lo_usr,
-          lo_key);
+  auto response = curl.HTTPPost({"Content-Type: text/plain"}, get_creds_url,
+                                endpoint, lo_usr, lo_key);
 
   CredsInfo info;
   info.is_valid = false;
@@ -361,3 +349,18 @@ CredsInfo Communicator::GetCreds(const std::string &endpoint) {
 
   return ExtractCredentials(response.response);
 }
+
+CredsInfo Communicator::GetCredsCached(const std::string &endpoint) {
+  auto now = time(NULL);
+  auto find = creds_cache.find(endpoint);
+  if ((find != creds_cache.end()) && (find->second.time_fetched >= now - 2)) {
+    return find->second;
+  }
+
+  auto credentials = GetCreds(endpoint);
+  credentials.time_fetched = now;
+  creds_cache[endpoint] = credentials;
+  return credentials;
+}
+
+void Communicator::Refresh() { creds_cache.clear(); }
