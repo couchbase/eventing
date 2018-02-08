@@ -109,8 +109,8 @@ else
 fi
 
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
-echo "Switching eventing to unstable"
-git checkout unstable 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout unstable"
+echo "Switching eventing to $BRANCH"
+git checkout $BRANCH 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout $BRANCH"
 git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
 current="`git rev-parse HEAD`"
 test -f ~/eventing.good || (echo $current > ~/eventing.good)

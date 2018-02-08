@@ -73,7 +73,7 @@ func (c *client) Serve() {
 		for {
 			msg, _, err := bufOut.ReadLine()
 			if err != nil {
-				logging.Infof("CRCL[%s:%s:%s:%d] Failed to read from stdout pipe, err: %v",
+				logging.Warnf("CRCL[%s:%s:%s:%d] Failed to read from stdout pipe, err: %v",
 					c.appName, c.workerName, c.tcpPort, c.osPid, err)
 				return
 			}
@@ -85,7 +85,7 @@ func (c *client) Serve() {
 		for {
 			msg, _, err := bufErr.ReadLine()
 			if err != nil {
-				logging.Infof("CRCL[%s:%s:%s:%d] Failed to read from stderr pipe, err: %v",
+				logging.Warnf("CRCL[%s:%s:%s:%d] Failed to read from stderr pipe, err: %v",
 					c.appName, c.workerName, c.tcpPort, c.osPid, err)
 				return
 			}

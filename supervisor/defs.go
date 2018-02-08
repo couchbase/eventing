@@ -75,7 +75,8 @@ type SuperSupervisor struct {
 	appProcessingStatus map[string]bool // Access controlled by appRWMutex
 
 	// Captures list of deployed apps and their last deployment time
-	deployedApps map[string]string
+	deployedApps   map[string]string
+	plasmaMemQuota int64 // In MB
 
 	cleanedUpAppMap              map[string]struct{} // Access controlled by default lock
 	mu                           *sync.RWMutex

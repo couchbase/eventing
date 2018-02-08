@@ -72,7 +72,7 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 		logging.Errorf("PRCO[%s:%d] Failed to get all eventing nodes, err: %v", p.appName, p.LenRunningConsumers(), err)
 		return err
 	} else if len(eventingNodeAddrs) == 0 {
-		logging.Errorf("PRCO[%s:%d] Count of eventing nodes reported is 0, unexpected", p.appName, p.LenRunningConsumers())
+		logging.Warnf("PRCO[%s:%d] Count of eventing nodes reported is 0, unexpected", p.appName, p.LenRunningConsumers())
 		return errors.New("eventing node count reported as 0")
 	} else {
 		atomic.StorePointer(

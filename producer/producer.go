@@ -22,7 +22,7 @@ import (
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, eventingAdminPort, eventingSSLPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
-	superSup common.EventingSuperSup) *Producer {
+	memoryQuota int64, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                appName,
 		bootstrapFinishCh:      make(chan struct{}, 1),
@@ -41,6 +41,7 @@ func NewProducer(appName, eventingAdminPort, eventingSSLPort, eventingDir, kvPor
 		nsServerPort:           nsServerPort,
 		pauseProducerCh:        make(chan struct{}, 1),
 		persistAllTicker:       time.NewTicker(persistAllTickInterval),
+		plasmaMemQuota:         memoryQuota,
 		seqsNoProcessed:        make(map[int]int64),
 		signalStopPersistAllCh: make(chan struct{}, 1),
 		statsRWMutex:           &sync.RWMutex{},
@@ -156,25 +157,25 @@ func (p *Producer) Serve() {
 				p.vbEventingNodeAssign()
 				p.initWorkerVbMap()
 
-				for _, consumer := range p.runningConsumers {
+				for _, eventingConsumer := range p.runningConsumers {
 					logging.Infof("PRDR[%s:%d] Consumer: %s sent cluster state change message from producer",
-						p.appName, p.LenRunningConsumers(), consumer.ConsumerName())
-					consumer.NotifyClusterChange()
+						p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
+					eventingConsumer.NotifyClusterChange()
 				}
 
 			case common.StopRebalanceCType:
-				for _, consumer := range p.runningConsumers {
+				for _, eventingConsumer := range p.runningConsumers {
 					logging.Infof("PRDR[%s:%d] Consumer: %s sent stop rebalance message from producer",
-						p.appName, p.LenRunningConsumers(), consumer.ConsumerName())
-					consumer.NotifyRebalanceStop()
+						p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
+					eventingConsumer.NotifyRebalanceStop()
 				}
 			}
 
 		case <-p.notifySettingsChangeCh:
 			logging.Infof("PRDR[%s:%d] Notifying consumers about settings change", p.appName, p.LenRunningConsumers())
 
-			for _, consumer := range p.runningConsumers {
-				consumer.NotifySettingsChange()
+			for _, eventingConsumer := range p.runningConsumers {
+				eventingConsumer.NotifySettingsChange()
 			}
 
 			settingsPath := metakvAppSettingsPath + p.app.AppName
@@ -202,9 +203,9 @@ func (p *Producer) Serve() {
 			// which would be needed to clean up metadata bucket
 			logging.Infof("PRDR[%s:%d] Pausing processing", p.appName, p.LenRunningConsumers())
 
-			for _, consumer := range p.runningConsumers {
-				p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[consumer])
-				delete(p.consumerSupervisorTokenMap, consumer)
+			for _, eventingConsumer := range p.runningConsumers {
+				p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[eventingConsumer])
+				delete(p.consumerSupervisorTokenMap, eventingConsumer)
 			}
 			p.runningConsumers = p.runningConsumers[:0]
 			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
@@ -226,9 +227,9 @@ func (p *Producer) Serve() {
 		case <-p.stopProducerCh:
 			logging.Infof("PRDR[%s:%d] Explicitly asked to shutdown producer routine", p.appName, p.LenRunningConsumers())
 
-			for _, consumer := range p.runningConsumers {
-				p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[consumer])
-				delete(p.consumerSupervisorTokenMap, consumer)
+			for _, eventingConsumer := range p.runningConsumers {
+				p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[eventingConsumer])
+				delete(p.consumerSupervisorTokenMap, eventingConsumer)
 			}
 			p.runningConsumers = p.runningConsumers[:0]
 			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
@@ -326,7 +327,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.vbOwnershipGiveUpRoutineCount, p.curlTimeout, p.vbOwnershipTakeoverRoutineCount,
 		p.xattrEntryPruneThreshold, p.workerQueueCap, p.bucket, p.eventingAdminPort, p.eventingSSLPort, p.eventingDir, p.logLevel,
 		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup,
-		p.vbPlasmaStore, p.socketTimeout, p.diagDir, p.numVbuckets, p.fuzzOffset)
+		p.vbPlasmaStore, p.socketTimeout, p.statsTickDuration, p.diagDir, p.numVbuckets, p.fuzzOffset)
 
 	p.Lock()
 	p.consumerListeners = append(p.consumerListeners, listener)
@@ -429,8 +430,8 @@ func (p *Producer) NotifyTopologyChange(msg *common.TopologyChangeMsg) {
 func (p *Producer) NotifyPrepareTopologyChange(keepNodes []string) {
 	p.eventingNodeUUIDs = keepNodes
 
-	for _, consumer := range p.runningConsumers {
-		consumer.UpdateEventingNodesUUIDs(keepNodes)
+	for _, eventingConsumer := range p.runningConsumers {
+		eventingConsumer.UpdateEventingNodesUUIDs(keepNodes)
 	}
 
 }

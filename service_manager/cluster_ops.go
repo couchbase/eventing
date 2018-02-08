@@ -90,3 +90,15 @@ var cleanupEventingMetaKvPath = func(args ...interface{}) error {
 
 	return err
 }
+
+var metaKVSetCallback = func(args ...interface{}) error {
+	path := args[0].(string)
+	changeID := args[1].(string)
+
+	err := util.MetakvSet(path, []byte(changeID), nil)
+	if err != nil {
+		logging.Errorf("Failed to store into metakv path: %v, err: %v", path, err)
+	}
+
+	return err
+}

@@ -117,7 +117,7 @@ ApplicationModel.prototype.getDefaultModel = function() {
             log_level: 'INFO',
             dcp_stream_boundary: 'everything',
             sock_batch_size: 100,
-            tick_duration: 5000,
+            tick_duration: 60000,
             checkpoint_interval: 10000,
             worker_count: 3,
             cleanup_timers: false,
@@ -133,7 +133,6 @@ ApplicationModel.prototype.getDefaultModel = function() {
             cpp_worker_thread_count: 2,
             vb_ownership_giveup_routine_count: 3,
             vb_ownership_takeover_routine_count: 3,
-            memory_quota: 256,
             xattr_doc_timer_entry_prune_threshold: 100,
             app_log_max_size: 1024 * 1024 * 10,
             app_log_max_files: 10,
@@ -173,7 +172,7 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.settings.sock_batch_size = 100;
     this.settings.worker_count = 3;
     this.settings.skip_timer_threshold = 86400;
-    this.settings.tick_duration = 5000;
+    this.settings.tick_duration = 60000;
     this.settings.timer_processing_tick_interval = 500;
     this.settings.deadline_timeout = 2;
     this.settings.execution_timeout = 1;

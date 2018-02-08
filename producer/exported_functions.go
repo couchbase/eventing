@@ -650,7 +650,12 @@ func (p *Producer) CleanupMetadataBucket() {
 
 // UpdatePlasmaMemoryQuota allows tuning of memory quota for timers
 func (p *Producer) UpdatePlasmaMemoryQuota(quota int64) {
-	p.plasmaMemQuota = quota
+	logPrefix := "Producer::UpdatePlasmaMemoryQuota"
+
+	logging.Infof("%s [%s:%d] Updating plasma memory quota to %d MB",
+		logPrefix, p.appName, p.LenRunningConsumers(), quota)
+
+	p.plasmaMemQuota = quota // in MB
 	plasma.SetMemoryQuota(p.plasmaMemQuota * 1024 * 1024)
 }
 
@@ -666,21 +671,21 @@ func (p *Producer) TimerDebugStats() map[int]map[string]interface{} {
 				aggStats[vb] = stats
 			} else {
 
-				copied_during_rebalance_counter := aggStats[vb]["copied_during_rebalance_counter"].(uint64) + stats["copied_during_rebalance_counter"].(uint64)
-				deleted_during_cleanup_counter := aggStats[vb]["deleted_during_cleanup_counter"].(uint64) + stats["deleted_during_cleanup_counter"].(uint64)
-				removed_during_rebalance_counter := aggStats[vb]["removed_during_rebalance_counter"].(uint64) + stats["removed_during_rebalance_counter"].(uint64)
-				sent_to_worker_counter := aggStats[vb]["sent_to_worker_counter"].(uint64) + stats["sent_to_worker_counter"].(uint64)
-				timer_create_counter := aggStats[vb]["timer_create_counter"].(uint64) + stats["timer_create_counter"].(uint64)
-				timers_in_past_counter := aggStats[vb]["timers_in_past_counter"].(uint64) + stats["timers_in_past_counter"].(uint64)
-				transferred_during_rebalance_counter := aggStats[vb]["transferred_during_rebalance_counter"].(uint64) + stats["transferred_during_rebalance_counter"].(uint64)
+				copiedDuringRebalanceCounter := aggStats[vb]["copied_during_rebalance_counter"].(uint64) + stats["copied_during_rebalance_counter"].(uint64)
+				deletedDuringCleanupCounter := aggStats[vb]["deleted_during_cleanup_counter"].(uint64) + stats["deleted_during_cleanup_counter"].(uint64)
+				removedDuringRebalanceCounter := aggStats[vb]["removed_during_rebalance_counter"].(uint64) + stats["removed_during_rebalance_counter"].(uint64)
+				sentToWorkerCounter := aggStats[vb]["sent_to_worker_counter"].(uint64) + stats["sent_to_worker_counter"].(uint64)
+				timerCreateCounter := aggStats[vb]["timer_create_counter"].(uint64) + stats["timer_create_counter"].(uint64)
+				timersInPastCounter := aggStats[vb]["timers_in_past_counter"].(uint64) + stats["timers_in_past_counter"].(uint64)
+				transferredDuringRebalanceCounter := aggStats[vb]["transferred_during_rebalance_counter"].(uint64) + stats["transferred_during_rebalance_counter"].(uint64)
 
-				aggStats[vb]["copied_during_rebalance_counter"] = copied_during_rebalance_counter
-				aggStats[vb]["deleted_during_cleanup_counter"] = deleted_during_cleanup_counter
-				aggStats[vb]["removed_during_rebalance_counter"] = removed_during_rebalance_counter
-				aggStats[vb]["sent_to_worker_counter"] = sent_to_worker_counter
-				aggStats[vb]["timer_create_counter"] = timer_create_counter
-				aggStats[vb]["timers_in_past_counter"] = timers_in_past_counter
-				aggStats[vb]["transferred_during_rebalance_counter"] = transferred_during_rebalance_counter
+				aggStats[vb]["copied_during_rebalance_counter"] = copiedDuringRebalanceCounter
+				aggStats[vb]["deleted_during_cleanup_counter"] = deletedDuringCleanupCounter
+				aggStats[vb]["removed_during_rebalance_counter"] = removedDuringRebalanceCounter
+				aggStats[vb]["sent_to_worker_counter"] = sentToWorkerCounter
+				aggStats[vb]["timer_create_counter"] = timerCreateCounter
+				aggStats[vb]["timers_in_past_counter"] = timersInPastCounter
+				aggStats[vb]["transferred_during_rebalance_counter"] = transferredDuringRebalanceCounter
 			}
 		}
 	}

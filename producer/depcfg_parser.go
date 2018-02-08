@@ -81,7 +81,7 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	if val, ok := settings["tick_duration"]; !ok {
-		p.statsTickDuration = time.Duration(5000)
+		p.statsTickDuration = time.Duration(60000)
 	} else {
 		p.statsTickDuration = time.Duration(val.(float64))
 	}
@@ -150,12 +150,6 @@ func (p *Producer) parseDepcfg() error {
 		p.cppWorkerThrCount = int(val.(float64))
 	} else {
 		p.cppWorkerThrCount = 1
-	}
-
-	if val, ok := settings["memory_quota"]; ok {
-		p.plasmaMemQuota = int64(val.(float64))
-	} else {
-		p.plasmaMemQuota = 256 // in MB
 	}
 
 	if val, ok := settings["xattr_doc_timer_entry_prune_threshold"]; ok {

@@ -11,6 +11,8 @@ import (
 )
 
 var commonConnectBucketOpCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::commonConnectBucketOpCallback"
+
 	p := args[0].(*Producer)
 	b := args[1].(**couchbase.Bucket)
 
@@ -19,17 +21,19 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	var err error
 	*b, err = util.ConnectBucket(hostPortAddr, "default", p.metadatabucket)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Connect to bucket: %s failed, err: %v",
-			p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
 	} else {
-		logging.Infof("PRDR[%s:%d] Connected to bucket: %s, handle stats: %v",
-			p.appName, p.LenRunningConsumers(), p.metadatabucket, (*b).BasicStats)
+		logging.Infof("%s [%s:%d] Connected to bucket: %s, handle stats: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, (*b).BasicStats)
 	}
 
 	return err
 }
 
 var getFailoverLogOpCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::getFailoverLogOpCallback"
+
 	p := args[0].(*Producer)
 	b := args[1].(**couchbase.Bucket)
 	flogs := args[2].(*couchbase.FailoverLog)
@@ -38,14 +42,16 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	var err error
 	*flogs, err = (*b).GetFailoverLogs(0xABCD, vbs, p.dcpConfig)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to get failover logs, err: %v",
-			p.appName, p.LenRunningConsumers(), err)
+		logging.Errorf("%s [%s:%d] Failed to get failover logs, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
 	}
 
 	return err
 }
 
 var startFeedCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::startFeedCallback"
+
 	p := args[0].(*Producer)
 	b := args[1].(**couchbase.Bucket)
 	dcpFeed := args[2].(**couchbase.DcpFeed)
@@ -56,14 +62,16 @@ var startFeedCallback = func(args ...interface{}) error {
 	var err error
 	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), 0, kvNodeAddrs, 0xABCD, p.dcpConfig)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to start dcp feed for bucket: %v, err: %v",
-			p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+		logging.Errorf("%s [%s:%d] Failed to start dcp feed for bucket: %v, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
 	}
 
 	return err
 }
 
 var dcpGetSeqNosCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::dcpGetSeqNosCallback"
+
 	p := args[0].(*Producer)
 	dcpFeed := args[1].(**couchbase.DcpFeed)
 	vbSeqNos := args[2].(*map[uint16]uint64)
@@ -71,14 +79,16 @@ var dcpGetSeqNosCallback = func(args ...interface{}) error {
 	var err error
 	*vbSeqNos, err = (*dcpFeed).DcpGetSeqnos()
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to get dcp seqnos for metadata bucket: %v, err: %v",
-			p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+		logging.Errorf("%s [%s:%d] Failed to get dcp seqnos for metadata bucket: %v, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
 	}
 
 	return err
 }
 
 var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::gocbConnectMetaBucketCallback"
+
 	p := args[0].(*Producer)
 
 	connStr := fmt.Sprintf("couchbase://%s", p.KvHostPorts()[0])
@@ -88,22 +98,22 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] GOCB Connect to cluster %r failed, err: %v",
-			p.appName, p.LenRunningConsumers(), connStr, err)
+		logging.Errorf("%s [%s:%d] GOCB Connect to cluster %r failed, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	err = cluster.Authenticate(&util.DynamicAuthenticator{})
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] GOCB Failed to authenticate to the cluster %r failed, err: %v",
-			p.appName, p.LenRunningConsumers(), connStr, err)
+		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %r failed, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	p.metadataBucketHandle, err = cluster.OpenBucket(p.metadatabucket, "")
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] GOCB Failed to connect to bucket %s failed, err: %v",
-			p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+		logging.Errorf("%s [%s:%d] GOCB Failed to connect to bucket %s failed, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
 		return err
 	}
 
@@ -111,6 +121,8 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 }
 
 var setOpCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::setOpCallback"
+
 	p := args[0].(*Producer)
 	key := args[1].(string)
 	blob := args[2]
@@ -119,40 +131,48 @@ var setOpCallback = func(args ...interface{}) error {
 	if err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
-		logging.Errorf("PRDR[%s:%d] Bucket set failed for key: %r , err: %v", p.appName, p.LenRunningConsumers(), key, err)
+		logging.Errorf("%s [%s:%d] Bucket set failed for key: %r , err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 	}
 	return err
 }
 
 var getOpCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::getOpCallback"
+
 	p := args[0].(*Producer)
 	key := args[1].(string)
 	blob := args[2]
 
 	_, err := p.metadataBucketHandle.Get(key, blob)
-	if err == gocb.ErrShutdown {
+	if gocb.IsKeyNotFoundError(err) {
+		return nil
+	} else if err == gocb.ErrKeyNotFound {
 		return nil
 	} else if err != nil {
-		logging.Errorf("PRDR[%s:%d] Bucket get failed for key: %r , err: %v", p.appName, p.LenRunningConsumers(), key, err)
+		logging.Errorf("%s [%s:%d] Bucket get failed for key: %r , err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 	}
 
 	return err
 }
 
 var deleteOpCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::deleteOpCallback"
+
 	p := args[0].(*Producer)
 	key := args[1].(string)
 
 	_, err := p.metadataBucketHandle.Remove(key, 0)
-	if err == gocb.ErrKeyNotFound {
-		logging.Errorf("PRDR[%s:%d] Key: %r doesn't exist, err: %v",
-			p.appName, p.LenRunningConsumers(), key, err)
+	if gocb.IsKeyNotFoundError(err) {
+		logging.Errorf("%s [%s:%d] Key: %r doesn't exist, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 		return nil
 	} else if err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
-		logging.Errorf("PRDR[%s:%d] Bucket delete failed for key: %r, err: %v",
-			p.appName, p.LenRunningConsumers(), key, err)
+		logging.Errorf("%s [%s:%d] Bucket delete failed for key: %r, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 	}
 	return err
 }

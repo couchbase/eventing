@@ -47,20 +47,26 @@ func (r *rebalancer) gatherProgress() {
 	progressTicker := time.NewTicker(rebalanceProgressUpdateTickInterval)
 
 	<-progressTicker.C
+
+	// Wait for some additional time to allow all eventing nodes to come up with their vbucket distribution plan.
+	// Additional sleep was added in planner because metakv's reported stale values when read op was triggered
+	// right after write op.
+	time.Sleep(10 * time.Second)
+
 	// Store the initial state of rebalance progress in metakv
 	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 	if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
-		logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress from all nodes, initProgress: %v errMap dump: %r",
+		logging.Warnf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress from all nodes, initProgress: %v errMap dump: %r",
 			initProgress, errMap)
 
 		util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
 		r.cb.done(fmt.Errorf("Failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
 		return
 	} else if len(errMap) > 0 && len(r.keepNodes) > 1 {
-		logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress, initProgress: %v errMap dump: %r",
+		logging.Warnf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress, initProgress: %v errMap dump: %r",
 			initProgress, errMap)
 	} else if len(errMap) == 1 && len(r.keepNodes) == 1 {
-		logging.Errorf("rebalancer::gatherProgress Failed to capture rebalance progress, initProgress: %v errMap dump: %r",
+		logging.Warnf("rebalancer::gatherProgress Failed to capture rebalance progress, initProgress: %v errMap dump: %r",
 			initProgress, errMap)
 		return
 	}
