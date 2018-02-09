@@ -49,7 +49,7 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
   LOG(logInfo) << "Getting username for host " << R(host) << " port " << port
                << std::endl;
 
-  auto endpoint = JoinHostPort(Localhost(false), port);
+  auto endpoint = JoinHostPort(host, port);
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
   auto info = comm->GetCreds(endpoint);
@@ -73,7 +73,7 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
 
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(Localhost(false), port);
+  auto endpoint = JoinHostPort(host, port);
   auto info = comm->GetCreds(endpoint);
   if (!info.is_valid) {
     LOG(logError) << "Failed to get password for " << R(host) << ":" << port
@@ -95,7 +95,7 @@ const char *GetUsernameCached(void *cookie, const char *host, const char *port,
 
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(Localhost(false), port);
+  auto endpoint = JoinHostPort(host, port);
   auto info = comm->GetCredsCached(endpoint);
   if (!info.is_valid) {
     LOG(logError) << "Failed to get username for " << R(host) << ":" << port
@@ -117,7 +117,7 @@ const char *GetPasswordCached(void *cookie, const char *host, const char *port,
 
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(Localhost(false), port);
+  auto endpoint = JoinHostPort(host, port);
   auto info = comm->GetCredsCached(endpoint);
   if (!info.is_valid) {
     LOG(logError) << "Failed to get password for " << R(host) << ":" << port
@@ -173,19 +173,8 @@ void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
 }
 
 void sdmutate_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  auto resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
-  lcb_SDENTRY ent;
-  size_t iter = 0;
-
   auto res = reinterpret_cast<Result *>(rb->cookie);
   res->rc = rb->rc;
-
-  if (lcb_sdresult_next(resp, &ent, &iter)) {
-    LOG(logTrace) << "sdmutate key: " << (char *)rb->key
-                  << " Status: " << ent.status
-                  << " NValue: " << R(static_cast<int>(ent.nvalue))
-                  << " Value: " << R(reinterpret_cast<const char *>(ent.value));
-  }
 }
 
 void sdlookup_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
@@ -202,10 +191,6 @@ void sdlookup_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     size_t iter = 0;
     int index = 0;
     while (lcb_sdresult_next(resp, &ent, &iter)) {
-      LOG(logTrace) << "sdlookup Status: " << ent.status
-                    << "NValue: " << R(static_cast<int>(ent.nvalue))
-                    << "Value: "
-                    << R(reinterpret_cast<const char *>(ent.value));
       res->value.assign(reinterpret_cast<const char *>(ent.value),
                         static_cast<int>(ent.nvalue));
 
