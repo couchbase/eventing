@@ -23,11 +23,11 @@ import (
 )
 
 // NewConsumer called by producer to create consumer handle
-func NewConsumer(streamBoundary common.DcpStreamBoundary, breakpadOn, cleanupTimers, enableRecursiveMutation bool,
+func NewConsumer(streamBoundary common.DcpStreamBoundary, cleanupTimers, enableRecursiveMutation bool,
 	executionTimeout, index, lcbInstCapacity, skipTimerThreshold, sockWriteBatchSize int,
 	cronTimersPerDoc, cppWorkerThrCount, vbOwnershipGiveUpRoutineCount int,
 	curlTimeout int64, vbOwnershipTakeoverRoutineCount, xattrEntryPruneThreshold int, workerQueueCap int64,
-	bucket, eventingAdminPort, eventingSSLPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
+	bucket, eventingAdminPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig, dcpConfig map[string]interface{},
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
 	socketTimeout, statsTickInterval time.Duration, diagDir string, numVbuckets, fuzzOffset int) *Consumer {
@@ -37,7 +37,6 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, breakpadOn, cleanupTim
 		addCronTimerStopCh:              make(chan struct{}, 1),
 		app:                             app,
 		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpConfig["dataChanSize"].(int)),
-		breakpadOn:                      breakpadOn,
 		bucket:                          bucket,
 		cbBucket:                        b,
 		checkpointInterval:              checkpointInterval,
@@ -63,7 +62,6 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, breakpadOn, cleanupTim
 		docTimerProcessingStopCh:        make(chan struct{}, 1),
 		enableRecursiveMutation:         enableRecursiveMutation,
 		eventingAdminPort:               eventingAdminPort,
-		eventingSSLPort:                 eventingSSLPort,
 		eventingDir:                     eventingDir,
 		eventingNodeUUIDs:               eventingNodeUUIDs,
 		executionTimeout:                executionTimeout,
@@ -185,7 +183,7 @@ func (c *Consumer) Serve() {
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
-	logging.Infof("%s [%s:%s:%d] Spawning worker corresponding to producer, node addr: %r",
+	logging.Infof("%s [%s:%s:%d] Spawning worker corresponding to producer, node addr: %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr())
 
 	var feedName couchbase.DcpFeedName
@@ -256,11 +254,12 @@ func (c *Consumer) HandleV8Worker() {
 		var err error
 		currHost, _, err = net.SplitHostPort(h)
 		if err != nil {
-			logging.Errorf("Unable to split hostport %r: %v", h, err)
+			logging.Errorf("Unable to split hostport %v: %v", h, err)
 		}
 	}
 
-	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
+	// TODO : Remove rbac user once RBAC issue is resolved
+	payload, pBuilder := c.makeV8InitPayload(c.producer.RbacUser(), c.producer.RbacPass(), c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
 		c.kvNodes[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)
@@ -285,7 +284,7 @@ func (c *Consumer) Stop() {
 	defer func() {
 		if r := recover(); r != nil {
 			trace := debug.Stack()
-			logging.Errorf("V8CR[%s:%s:%s:%d] Consumer stop routine, recover %r stack trace: %v",
+			logging.Errorf("V8CR[%s:%s:%s:%d] Consumer stop routine, recover %v stack trace: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()

@@ -117,14 +117,8 @@ function isJsExpression(stmt) {
 }
 
 function transpileQuery(query, namedParams) {
-    var exprAst = new N1QLQueryExprAst(query, namedParams);
-    // N1QL expression need not have a semi-colon at it's end.
-    // But it's essential to turn the expression into a statement in order to
-    // append the semi colon.
-    // Appending the semi colon is essential because it causes a syntax error if
-    // the JavaScript is uni-lined.
-    var stmtAst = new N1QLQueryStmtAst(exprAst);
-    return escodegen.generate(stmtAst);
+    var ast = new N1QLQueryAst(query, namedParams);
+    return escodegen.generate(ast);
 }
 
 // A utility class for handling nodes of an AST.
@@ -137,6 +131,7 @@ function NodeUtils() {
 
     // Deletes a node from the body.
     this.deleteNode = function(parentBody, nodeToDel) {
+
         var deleteIndex = parentBody.indexOf(nodeToDel);
         parentBody.splice(deleteIndex, 1);
     };
@@ -948,12 +943,7 @@ function BlockStatementAst(body) {
     this.body = [body];
 }
 
-function N1QLQueryStmtAst(exprAst) {
-    Ast.call(this, 'ExpressionStatement');
-    this.expression = exprAst;
-}
-
-function N1QLQueryExprAst(query, namedParams) {
+function N1QLQueryAst(query, namedParams) {
     Ast.call(this, 'NewExpression');
     this.callee = {
         "type": "Identifier",
@@ -1097,6 +1087,7 @@ function PostIter(iterProp, returnBubbleFunc) {
                     });
                     // If the label is found and doesn't point to the for-of node, then add a break <label>.
                     if (lookup.targetFound) {
+
                         if (/ForOfStatement/.test(lookup.stopNode.body.type)) {
                             pushCase = false;
                         } else {
@@ -1106,6 +1097,7 @@ function PostIter(iterProp, returnBubbleFunc) {
                     // If the search was interrupted, then it means that it encountered a for-of node. So, add a
                     // 'return stopIter' node.
                     if (lookup.searchInterrupted) {
+
                         stopIterAst = new StopIterAst(lookup.stopNode.right.name);
                         arg = new Arg({
                             code: LoopModifier.CONST.LABELED_BREAK,
@@ -1132,6 +1124,7 @@ function PostIter(iterProp, returnBubbleFunc) {
                         }
                     });
                     if (lookup.targetFound) {
+
                         if (/ForOfStatement/.test(lookup.stopNode.body.type)) {
                             pushCase = false;
                         } else {
@@ -1139,6 +1132,7 @@ function PostIter(iterProp, returnBubbleFunc) {
                         }
                     }
                     if (lookup.searchInterrupted) {
+
                         if (lookup.stopNode.parentLabel === postIter.args) {
                             returnStmtAst = new ReturnAst(null);
                         } else {
@@ -1170,9 +1164,11 @@ function PostIter(iterProp, returnBubbleFunc) {
                         }
                     });
                     if (lookup.targetFound) {
+
                         returnStmtAst = new ReturnAst(new ReturnDataAst(postIter.iterVar, this.returnBubbleFunc));
                     }
                     if (lookup.searchInterrupted) {
+
                         stopIterAst = new StopIterAst(lookup.stopNode.right.name);
                         arg = new Arg({
                             code: LoopModifier.CONST.RETURN,
@@ -1658,6 +1654,7 @@ function IterCompatible(forOfNode, globalAncestorStack) {
                             }
                         });
                         if (lookup.searchInterrupted) {
+
                             stopIterAst = new StopIterAst(lookup.stopNode.right.name);
                             arg = new Arg({
                                 code: LoopModifier.CONST.LABELED_BREAK,
@@ -1686,6 +1683,7 @@ function IterCompatible(forOfNode, globalAncestorStack) {
                             }
                         });
                         if (lookup.searchInterrupted) {
+
                             if (lookup.stopNode.parentLabel === node.label.name) {
                                 returnStmtAst = new ReturnAst(null);
                             } else {
@@ -1823,6 +1821,7 @@ function getAst(code, sourceFileName) {
                     }
                 });
                 if (lookup.targetFound) {
+
                     // TODO :   Anonymous function might require some attention because comparing null doesn't make sense.
                     node.targetFunction = lookup.stopNode.id ? lookup.stopNode.id.name : null;
                 }

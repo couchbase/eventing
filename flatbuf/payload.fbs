@@ -25,9 +25,12 @@ table Payload {
   // Server settings
   curr_host:string;
   curr_eventing_port:string;
-  curr_eventing_sslport:string;
   eventing_dir:string;
   kv_host_port:string;
+
+  // TODO : Remove rbac_user and rbac_pass once RBAC issue is resolved
+  rbac_user:string;
+  rbac_pass:string;
 
   // DCP event related fields
   key:string; // dcp mutation key

@@ -214,7 +214,7 @@ func (c *ClusterInfoCache) fetchServerGroups() error {
 			}
 		}
 		if !found {
-			logging.Warnf("ClusterInfoCache Initialization: Unable to identify server group for node %r.", cached.Hostname)
+			logging.Warnf("ClusterInfoCache Initialization: Unable to identify server group for node %v.", cached.Hostname)
 		}
 	}
 
@@ -374,7 +374,7 @@ func (c *ClusterInfoCache) GetServiceAddress(nid NodeId, srvc string) (addr stri
 
 	node := c.nodesvs[nid]
 	if port, ok = node.Services[srvc]; !ok {
-		logging.Errorf("%vInvalid Service %v for node %r. Nodes %r \n NodeServices %v",
+		logging.Errorf("%vInvalid Service %v for node %v. Nodes %v \n NodeServices %v",
 			c.logPrefix, srvc, node, c.nodes, c.nodesvs)
 		err = ErrInvalidService
 		return

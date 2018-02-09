@@ -38,7 +38,7 @@ var downloadDirCallback = func(args ...interface{}) error {
 
 	err := client.DownloadDir(vb, timerDir, c.eventingDir)
 	if err != nil {
-		logging.Errorf("Consumer::downloadDirCallback [%s:%d] vb: %v Failed to download timer dir from node: %r src: %r dst: %r err: %v",
+		logging.Errorf("Consumer::downloadDirCallback [%s:%d] vb: %v Failed to download timer dir from node: %v src: %v dst: %v err: %v",
 			c.workerName, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir, err)
 
 		return errFailedRPCDownloadDir

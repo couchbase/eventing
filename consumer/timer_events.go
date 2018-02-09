@@ -23,7 +23,7 @@ var plasmaInsertKV = func(args ...interface{}) error {
 	defer func() {
 		if r := recover(); r != nil {
 			trace := debug.Stack()
-			logging.Errorf("%s [%s:%s:%d] recover, %r stack trace: %v",
+			logging.Errorf("%s [%s:%s:%d] recover, %v stack trace: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()
@@ -44,10 +44,10 @@ var plasmaInsertKV = func(args ...interface{}) error {
 
 	err = w.InsertKV([]byte(k), []byte(v))
 	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %r vb: %v Failed to insert into plasma store, err: %v",
+		logging.Errorf("%s [%s:%s:%d] Key: %v vb: %v Failed to insert into plasma store, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, vb, err)
 	} else {
-		logging.Tracef("%s [%s:%s:%d] Key: %r value: %v vb: %v Successfully inserted into plasma store, err: %v",
+		logging.Tracef("%s [%s:%s:%d] Key: %v value: %v vb: %v Successfully inserted into plasma store, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, v, vb, err)
 
 	}
@@ -133,7 +133,7 @@ func (c *Consumer) processDocTimerEvents() {
 			itr.SetEndKey([]byte(endKeyPrefix))
 
 			for itr.Seek([]byte(startKeyPrefix)); itr.Valid(); itr.Next() {
-				logging.Tracef("%s [%s:%s:%d] vb: %d timerEvent key: %r value: %r",
+				logging.Tracef("%s [%s:%s:%d] vb: %d timerEvent key: %v value: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, string(itr.Key()), string(itr.Value()))
 
 				entries := strings.Split(string(itr.Key()), "::")
@@ -167,7 +167,7 @@ func (c *Consumer) processTimerEvent(currTs time.Time, event string, vb uint16) 
 	var timerEntry byTimerEntry
 	err := json.Unmarshal([]byte(event), &timerEntry)
 	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %d processTimerEvent Failed to unmarshal timerEvent: %r err: %v",
+		logging.Errorf("%s [%s:%s:%d] vb: %d processTimerEvent Failed to unmarshal timerEvent: %v err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, event, err)
 	} else {
 
@@ -257,7 +257,7 @@ func (c *Consumer) cleanupProcessedDocTimers() {
 							err = writer.DeleteKV(itr.Key())
 							writer.End()
 							if err != nil {
-								logging.Errorf("%s [%s:%s:%d] vb: %d key: %r Failed to delete from plasma handle, err: %v",
+								logging.Errorf("%s [%s:%s:%d] vb: %d key: %v Failed to delete from plasma handle, err: %v",
 									logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, string(itr.Key()), err)
 							} else {
 								counter := c.vbProcessingStats.getVbStat(vb, "deleted_during_cleanup_counter").(uint64)
@@ -565,7 +565,7 @@ func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer
 		}
 
 		if !ts.After(time.Now()) {
-			logging.Tracef("%s [%s:%s:%d] vb: %d Not adding timer event: %r to plasma because it was timer in past",
+			logging.Tracef("%s [%s:%s:%d] vb: %d Not adding timer event: %v to plasma because it was timer in past",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, ts)
 			c.timersInPastCounter++
 
@@ -586,7 +586,7 @@ func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer
 			CallbackFn: callbackFn,
 		}
 
-		logging.Tracef("%s [%s:%s:%d] vb: %v doc-id timerKey: %r byTimerEntry: %r",
+		logging.Tracef("%s [%s:%s:%d] vb: %v doc-id timerKey: %v byTimerEntry: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, timerKey, v)
 
 		encodedVal, mErr := json.Marshal(&v)
@@ -615,10 +615,10 @@ func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer
 		_, err := docF.Execute()
 		if err == gocb.ErrKeyNotFound {
 		} else if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Key: %r vb: %v, Failed to prune timer records from past, err: %v",
+			logging.Errorf("%s [%s:%s:%d] Key: %v vb: %v, Failed to prune timer records from past, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), e.key, e.vb, err)
 		} else {
-			logging.Tracef("%s [%s:%s:%d] Key: %r vb: %v, timer records in xattr: %r",
+			logging.Tracef("%s [%s:%s:%d] Key: %v vb: %v, timer records in xattr: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), e.key, e.vb, timersToKeep)
 		}
 	}

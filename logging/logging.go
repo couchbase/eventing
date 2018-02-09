@@ -1,5 +1,6 @@
 package logging
 
+import "io"
 import "os"
 import "fmt"
 import "strings"
@@ -8,9 +9,9 @@ import "bytes"
 import "runtime/debug"
 import l "log"
 
-type LogLevel int
+// Log levels
+type LogLevel int16
 
-// public interface
 const (
 	Silent LogLevel = iota
 	Fatal
@@ -23,6 +24,7 @@ const (
 	Trace
 )
 
+// Logger interface
 type Logger interface {
 	// Warnings, logged by default.
 	Warnf(format string, v ...interface{})
@@ -36,13 +38,31 @@ type Logger interface {
 	Verbosef(format string, v ...interface{})
 	// Get stack trace
 	StackTrace() string
+	// Timing utility
+	Timer(format string, v ...interface{}) Ender
 	// Debugging messages
 	Debugf(format string, v ...interface{})
-	// Program execution - most verbose
+	// Program execution
 	Tracef(format string, v ...interface{})
+	// Call and print the stringer if verbose enabled
+	LazyVerbose(fn func() string)
+	// Call and print the stringer if debugging enabled
+	LazyDebug(fn func() string)
+	// Call and print the stringer if tracing enabled
+	LazyTrace(fn func() string)
 }
 
-// implementation
+// Timer interface
+type Ender interface {
+	// Stop and log timing
+	End()
+}
+
+//
+// Implementation
+//
+
+// Messages administrator should eventually see.
 func (t LogLevel) String() string {
 	switch t {
 	case Silent:
@@ -93,69 +113,218 @@ func Level(s string) LogLevel {
 	}
 }
 
-var baselevel LogLevel
-var target *l.Logger
-var noredact bool
-
-func init() {
-	target = l.New(os.Stdout, "", 0)
-	baselevel = Info
-	noredact = os.Getenv("CB_EVENTING_NOREDACT") == "true"
+type destination struct {
+	baselevel LogLevel
+	target    *l.Logger
 }
 
-func printf(at LogLevel, format string, v ...interface{}) {
-	if baselevel >= at {
-		if noredact {
-			format = strings.Replace(format, "%r", "%v", -1)
-		} else {
-			format = strings.Replace(format, "%r", "<ud>%v</ud>", -1)
-		}
-		ts := time.Now().Format("2006-01-02T15:04:05.000-07:00")
-		target.Printf(ts+" ["+at.String()+"] "+format, v...)
+func (log *destination) Warnf(format string, v ...interface{}) {
+	log.printf(Warn, format, v...)
+}
+
+// Errors that caused problems in execution logic.
+func (log *destination) Errorf(format string, v ...interface{}) {
+	log.printf(Error, format, v...)
+}
+
+// Fatal messages are to be logged prior to exiting due to errors.
+func (log *destination) Fatalf(format string, v ...interface{}) {
+	log.printf(Fatal, format, v...)
+}
+
+// Info messages are those that are logged but not expected to be read.
+func (log *destination) Infof(format string, v ...interface{}) {
+	log.printf(Info, format, v...)
+}
+
+// Used for logging additional information that are not logged by info level
+// This may slightly impact performance
+func (log *destination) Verbosef(format string, v ...interface{}) {
+	log.printf(Verbose, format, v...)
+}
+
+// Debug messages to help analyze problem. Default off.
+func (log *destination) Debugf(format string, v ...interface{}) {
+	log.printf(Debug, format, v...)
+}
+
+// Execution trace showing the program flow. Default off.
+func (log *destination) Tracef(format string, v ...interface{}) {
+	log.printf(Trace, format, v...)
+}
+
+// Set the base log level
+func (log *destination) SetLogLevel(to LogLevel) {
+	log.baselevel = to
+}
+
+// Get stack trace
+func (log *destination) StackTrace() string {
+	return log.getStackTrace(2, debug.Stack())
+}
+
+// Run function only if output will be logged at debug level
+func (log *destination) LazyDebug(fn func() string) {
+	if log.IsEnabled(Debug) {
+		log.printf(Debug, "%s", fn())
 	}
 }
 
-func Warnf(format string, v ...interface{}) {
-	printf(Warn, format, v...)
+// Run function only if output will be logged at verbose level
+func (log *destination) LazyVerbose(fn func() string) {
+	if log.IsEnabled(Verbose) {
+		log.printf(Verbose, "%s", fn())
+	}
 }
 
-func Errorf(format string, v ...interface{}) {
-	printf(Error, format, v...)
+// Run function only if output will be logged at trace level
+func (log *destination) LazyTrace(fn func() string) {
+	if log.IsEnabled(Trace) {
+		log.printf(Trace, "%s", fn())
+	}
 }
 
-func Fatalf(format string, v ...interface{}) {
-	printf(Fatal, format, v...)
+// Check if enabled
+func (log *destination) IsEnabled(at LogLevel) bool {
+	return log.baselevel >= at
 }
 
-func Infof(format string, v ...interface{}) {
-	printf(Info, format, v...)
+func (log *destination) printf(at LogLevel, format string, v ...interface{}) {
+	if log.IsEnabled(at) {
+		ts := time.Now().Format("2006-01-02T15:04:05.000-07:00")
+		log.target.Printf(ts+" ["+at.String()+"] "+format, v...)
+	}
 }
 
-func Verbosef(format string, v ...interface{}) {
-	printf(Verbose, format, v...)
-}
-
-func Debugf(format string, v ...interface{}) {
-	printf(Debug, format, v...)
-}
-
-func Tracef(format string, v ...interface{}) {
-	printf(Trace, format, v...)
-}
-
-func IsEnabled(at LogLevel) bool {
-	return baselevel >= at
-}
-
-func SetLogLevel(to LogLevel) {
-	baselevel = to
-}
-
-func StackTrace() string {
+func (log *destination) getStackTrace(skip int, stack []byte) string {
 	var buf bytes.Buffer
-	lines := strings.Split(string(debug.Stack()), "\n")
-	for _, call := range lines[2:] {
+	lines := strings.Split(string(stack), "\n")
+	for _, call := range lines[skip*2:] {
 		buf.WriteString(fmt.Sprintf("%s\n", call))
 	}
 	return buf.String()
+}
+
+// The default logger
+var SystemLogger destination
+
+func init() {
+	dest := l.New(os.Stdout, "", 0)
+	SystemLogger = destination{baselevel: Info, target: dest}
+}
+
+// SetLogWriter sets a new default destination
+func SetLogWriter(w io.Writer) {
+	dest := l.New(w, "", 0)
+	SystemLogger = destination{baselevel: Info, target: dest}
+}
+
+//
+// A set of convenience methods to log to default logger
+// See correspond methods on destination for details
+//
+func Warnf(format string, v ...interface{}) {
+	SystemLogger.printf(Warn, format, v...)
+}
+
+// Errorf to log message and warning messages will be logged.
+func Errorf(format string, v ...interface{}) {
+	SystemLogger.printf(Error, format, v...)
+}
+
+// Fatalf to log message and warning messages will be logged.
+func Fatalf(format string, v ...interface{}) {
+	SystemLogger.printf(Fatal, format, v...)
+}
+
+// Infof to log message at info level.
+func Infof(format string, v ...interface{}) {
+	SystemLogger.printf(Info, format, v...)
+}
+
+// Verbosef to log message at verbose level.
+func Verbosef(format string, v ...interface{}) {
+	SystemLogger.printf(Verbose, format, v...)
+}
+
+// Debugf to log message at info level.
+func Debugf(format string, v ...interface{}) {
+	SystemLogger.printf(Debug, format, v...)
+}
+
+// Tracef to log message at info level.
+func Tracef(format string, v ...interface{}) {
+	SystemLogger.printf(Trace, format, v...)
+}
+
+// StackTrace prints current stack at specified log level
+func StackTrace() string {
+	return SystemLogger.getStackTrace(2, debug.Stack())
+}
+
+// Set the base log level
+func SetLogLevel(to LogLevel) {
+	SystemLogger.SetLogLevel(to)
+}
+
+// Check if logging is enabled
+func IsEnabled(lvl LogLevel) bool {
+	return SystemLogger.IsEnabled(lvl)
+}
+
+// Run function only if output will be logged at verbose level
+func LazyVerbose(fn func() string) {
+	if SystemLogger.IsEnabled(Verbose) {
+		SystemLogger.printf(Verbose, "%s", fn())
+	}
+}
+
+// Run function only if output will be logged at debug level
+func LazyDebug(fn func() string) {
+	if SystemLogger.IsEnabled(Debug) {
+		SystemLogger.printf(Debug, "%s", fn())
+	}
+}
+
+// Run function only if output will be logged at trace level
+func LazyTrace(fn func() string) {
+	if SystemLogger.IsEnabled(Trace) {
+		SystemLogger.printf(Trace, "%s", fn())
+	}
+}
+
+// Run function only if output will be logged at verbose level
+// Only %v is allowable in format string
+func LazyVerbosef(fmt string, fns ...func() string) {
+	if SystemLogger.IsEnabled(Verbose) {
+		snippets := make([]interface{}, len(fns))
+		for i, fn := range fns {
+			snippets[i] = fn()
+		}
+		SystemLogger.printf(Verbose, fmt, snippets...)
+	}
+}
+
+// Run function only if output will be logged at debug level
+// Only %v is allowable in format string
+func LazyDebugf(fmt string, fns ...func() string) {
+	if SystemLogger.IsEnabled(Debug) {
+		snippets := make([]interface{}, len(fns))
+		for i, fn := range fns {
+			snippets[i] = fn()
+		}
+		SystemLogger.printf(Debug, fmt, snippets...)
+	}
+}
+
+// Run function only if output will be logged at trace level
+// Only %v is allowable in format string
+func LazyTracef(fmt string, fns ...func() string) {
+	if SystemLogger.IsEnabled(Trace) {
+		snippets := make([]interface{}, len(fns))
+		for i, fn := range fns {
+			snippets[i] = fn()
+		}
+		SystemLogger.printf(Trace, fmt, snippets...)
+	}
 }

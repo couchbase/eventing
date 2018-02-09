@@ -661,7 +661,7 @@ func GetBucket(endpoint, poolname, bucketname string) (*Bucket, error) {
 func normalizeHost(ch, h string) string {
 	host, port, err := net.SplitHostPort(h)
 	if err != nil {
-		logging.Errorf("Error parsing %r: %v", h, err)
+		logging.Errorf("Error parsing %v: %v", h, err)
 		return h
 	}
 	if host == "$HOST" {

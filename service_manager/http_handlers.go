@@ -516,10 +516,6 @@ func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Reque
 }
 
 func (m *ServiceMgr) getNamedParamsHandler(w http.ResponseWriter, r *http.Request) {
-	if !m.validateLocalAuth(w, r) {
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
 
 	data, err := ioutil.ReadAll(r.Body)
@@ -558,7 +554,7 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
 		// if it occurs
 		appProgress, err := m.superSup.RebalanceTaskProgress(appName)
-		logging.Infof("Rebalance progress from node with rest port: %r progress: %v", m.restPort, appProgress)
+		logging.Infof("Rebalance progress from node with rest port: %v progress: %v", m.restPort, appProgress)
 		if err == nil {
 			progress.VbsOwnedPerPlan += appProgress.VbsOwnedPerPlan
 			progress.VbsRemainingToShuffle += appProgress.VbsRemainingToShuffle
@@ -1317,11 +1313,7 @@ func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Requ
 }
 
 func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
-	if !m.validateLocalAuth(w, r) {
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+	w.Header().Set("Content-Type", "text/plain")
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -1333,57 +1325,31 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 	var username, password string
 	util.Retry(util.NewFixedBackoff(time.Second), util.GetCredsCallback, string(data), &username, &password)
 
-	response := url.Values{}
-	response.Add("username", username)
-	response.Add("password", password)
+	creds := credsInfo{Username: username, Password: password}
+	response, err := json.Marshal(creds)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		return
+	}
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s", response.Encode())
+	fmt.Fprintf(w, "%v", string(response))
 }
 
 func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
 	creds, err := cbauth.AuthWebCreds(r)
 	if err != nil || creds == nil {
-		logging.Warnf("Cannot authenticate request to %r", r.URL)
+		logging.Warnf("Cannot authenticate request to %v", r.URL)
 		w.WriteHeader(http.StatusUnauthorized)
 		return false
 	}
 	allowed, err := creds.IsAllowed(perm)
 	if err != nil || !allowed {
-		logging.Warnf("Cannot authorize request to %r", r.URL)
+		logging.Warnf("Cannot authorize request to %v", r.URL)
 		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
-	logging.Debugf("Allowing access to %r", r.URL)
-	return true
-}
-
-func (m *ServiceMgr) validateLocalAuth(w http.ResponseWriter, r *http.Request) bool {
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		logging.Warnf("Unable to verify remote in request to %r: %r", r.URL, err)
-		w.WriteHeader(http.StatusForbidden)
-		return false
-	}
-	pip := net.ParseIP(ip)
-	if pip == nil || !pip.IsLoopback() {
-		logging.Warnf("Forbidden remote in request to %r: %r", r.URL, r)
-		w.WriteHeader(http.StatusForbidden)
-		return false
-	}
-	r_usr, r_key, ok := r.BasicAuth()
-	if !ok {
-		logging.Warnf("No credentials on request to %r", r.URL)
-		w.WriteHeader(http.StatusForbidden)
-		return false
-	}
-	usr, key := util.LocalKey()
-	if r_usr != usr || r_key != key {
-		logging.Warnf("Cannot authorize request to %r", r.URL)
-		w.WriteHeader(http.StatusForbidden)
-		return false
-	}
-	logging.Debugf("Allowing access to %r", r.URL)
+	logging.Debugf("Allowing access to %v", r.URL)
 	return true
 }
 
@@ -1392,7 +1358,7 @@ func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logging.Infof("Got request to clear event stats from host: %r", r.Host)
+	logging.Infof("Got request to clear event stats from host: %v", r.Host)
 	m.superSup.ClearEventStats()
 }
 
@@ -1469,10 +1435,6 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) []
 }
 
 func (m *ServiceMgr) parseQueryHandler(w http.ResponseWriter, r *http.Request) {
-	if !m.validateLocalAuth(w, r) {
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
 
 	data, err := ioutil.ReadAll(r.Body)
@@ -1510,7 +1472,7 @@ func (m *ServiceMgr) getConfig() (c config, info *runtimeInfo) {
 		}
 	}
 
-	logging.Infof("Retrieving config from metakv: %r", c)
+	logging.Infof("Retrieving config from metakv: %v", c)
 	info.Code = m.statusCodes.ok.Code
 	return
 }

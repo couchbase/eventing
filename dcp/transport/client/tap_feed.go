@@ -279,6 +279,8 @@ loop:
 			break loop
 		}
 
+		//logging.Warnf("** TapFeed received %#v : %q", pkt, pkt.Body)
+
 		if pkt.Opcode == transport.TAP_CONNECT {
 			// This is not an event from the server; it's
 			// an error response to my connect request.

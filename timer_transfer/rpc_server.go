@@ -71,7 +71,7 @@ func (r *RPC) Stat(req FileRequest, res *StatsResponse) error {
 
 // CreateArchive creates an archive for requested dirname
 func (r *RPC) CreateArchive(req FileRequest, res *StatsResponse) error {
-	logging.Debugf("RPC::CreateArchive [%s:%s] Got request: %r", r.server.AppName, r.server.WorkerName, req)
+	logging.Debugf("RPC::CreateArchive [%s:%s] Got request: %v", r.server.AppName, r.server.WorkerName, req)
 
 	if !r.checkIfUUIDIsExpected(req.UUID) {
 		return errUnexpectedNodeUUID
@@ -114,7 +114,7 @@ func (r *RPC) CreateArchive(req FileRequest, res *StatsResponse) error {
 // RemoveArchive erases the archive that was previously created by
 // CreateArchive RPC call from client
 func (r *RPC) RemoveArchive(req FileRequest, res *Response) error {
-	logging.Debugf("RPC::RemoveArchive [%s:%s] Got request: %r", r.server.AppName, r.server.WorkerName, req)
+	logging.Debugf("RPC::RemoveArchive [%s:%s] Got request: %v", r.server.AppName, r.server.WorkerName, req)
 
 	if !r.checkIfUUIDIsExpected(req.UUID) {
 		return errUnexpectedNodeUUID
@@ -130,7 +130,7 @@ func (r *RPC) RemoveArchive(req FileRequest, res *Response) error {
 
 // RemoveDir cleans up dir on client request
 func (r *RPC) RemoveDir(req FileRequest, res *Response) error {
-	logging.Debugf("RPC::RemoveDir [%s:%s] Got request: %r", r.server.AppName, r.server.WorkerName, req)
+	logging.Debugf("RPC::RemoveDir [%s:%s] Got request: %v", r.server.AppName, r.server.WorkerName, req)
 
 	if !r.checkIfUUIDIsExpected(req.UUID) {
 		return errUnexpectedNodeUUID

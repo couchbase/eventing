@@ -204,7 +204,7 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto sleep_duration = LCB_OP_RETRY_INTERVAL;
   while (res.rc != LCB_SUCCESS) {
     LOG(logTrace) << "Retrying... Cron timer create failure for doc:"
-                  << timer_entry << " payload: " << R(opaque)
+                  << timer_entry << " payload: " << opaque
                   << " lcb rc:" << lcb_strerror(nullptr, res.rc)
                   << " sleep_duration: " << sleep_duration * 1000 << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
@@ -242,7 +242,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   // If the doc not supposed to expire, skip
   // setting up timer callback for it
   if (atoi(start_ts.c_str()) == 0) {
-    LOG(logError) << "Skipping timer callback setup for doc_id:" << R(doc_id)
+    LOG(logError) << "Skipping timer callback setup for doc_id:" << doc_id
                   << ", won't expire" << std::endl;
     return;
   }
@@ -271,7 +271,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_entry += "\"";
   timer_entry.insert(0, 1, '"');
   LOG(logTrace) << "Request to register doc timer, callback_func:" << cb_func
-                << " doc_id:" << R(doc_id) << " start_ts:" << timer_entry
+                << " doc_id:" << doc_id << " start_ts:" << timer_entry
                 << std::endl;
 
   while (true) {
@@ -307,7 +307,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       LOG(logError)
           << "Retrying... Failed to while performing lookup for fulldoc "
              "and exptime"
-          << " doc key:" << R(doc_id) << " rc: " << lcb_strerror(nullptr, res.rc)
+          << " doc key:" << doc_id << " rc: " << lcb_strerror(nullptr, res.rc)
           << std::endl;
       std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
       sleep_duration *= 1.5;
@@ -374,7 +374,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     if (res.rc != LCB_SUCCESS) {
       doc_timer_create_failure++;
       LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
-                    << R(doc_id) << " return code:" << res.rc
+                    << doc_id << " return code:" << res.rc
                     << " msg:" << lcb_strerror(nullptr, res.rc) << std::endl;
       return;
     }
@@ -383,7 +383,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     while (res.rc != LCB_SUCCESS && res.rc != LCB_KEY_EEXISTS) {
       LOG(logError) << "Retrying... Failed to update timer related xattr "
                        "fields for doc_id:"
-                    << R(doc_id) << " return code:" << res.rc
+                    << doc_id << " return code:" << res.rc
                     << " msg:" << lcb_strerror(nullptr, res.rc) << std::endl;
       std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
       sleep_duration *= 1.5;
@@ -401,7 +401,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     }
 
     if (res.rc == LCB_KEY_EEXISTS) {
-      LOG(logTrace) << "CAS Mismatch for " << R(doc_id) << ". Retrying"
+      LOG(logTrace) << "CAS Mismatch for " << doc_id << ". Retrying"
                     << std::endl;
       std::this_thread::sleep_for(
           std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
@@ -503,7 +503,7 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   url += url_suffix;
 
-  LOG(logTrace) << "method: " << http_method
+  LOG(logTrace) << "method: " << http_method << " auth:" << auth
                 << " data: " << data << " url: " << url << std::endl;
 
   if (http_method.empty()) {

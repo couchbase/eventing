@@ -186,9 +186,7 @@ private:
   template <typename>
   static void RowCallback(lcb_t instance, int callback_type,
                           const lcb_RESPN1QL *resp);
-  static void HandleRowCallbackFailure(lcb_t instance, const lcb_RESPN1QL *resp,
-                                       const Data *isolate_data,
-                                       N1QL *n1ql_handle);
+
   v8::Isolate *isolate;
   ConnectionPool *inst_pool;
 };

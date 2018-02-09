@@ -97,7 +97,6 @@ typedef struct server_settings_s {
   int checkpoint_interval;
   std::string eventing_dir;
   std::string eventing_port;
-  std::string eventing_sslport;
   std::string host_addr;
   std::string kv_host_port;
   std::string rbac_user;
@@ -267,8 +266,5 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket);
 const char *GetPassword(void *cookie, const char *host, const char *port,
                         const char *bucket);
-const char *GetUsernameCached(void *cookie, const char *host, const char *port,
-                              const char *bucket);
-const char *GetPasswordCached(void *cookie, const char *host, const char *port,
-                              const char *bucket);
+
 #endif

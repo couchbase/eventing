@@ -157,6 +157,11 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			return nil
 		}
 
+		// Avoid printing rbac user credentials in log
+		sValue["rbacuser"] = "****"
+		sValue["rbacpass"] = "****"
+		sValue["rbacrole"] = "****"
+
 		logging.Infof("%s [%d] SettingsChangeCallback: path => %s value => %#v", logPrefix, len(s.runningProducers), path, sValue)
 
 		splitRes := strings.Split(path, "/")
@@ -357,7 +362,7 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
-	p := producer.NewProducer(appName, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
+	p := producer.NewProducer(appName, s.adminPort.HTTPPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
 		s.restPort, s.uuid, s.diagDir, s.plasmaMemQuota, s)
 
 	token := s.superSup.Add(p)

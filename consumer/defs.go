@@ -153,7 +153,6 @@ type Consumer struct {
 	app         *common.AppConfig
 	bucket      string
 	builderPool *sync.Pool
-	breakpadOn  bool
 	uuid        string
 
 	connMutex *sync.RWMutex
@@ -185,7 +184,6 @@ type Consumer struct {
 	dcpFeedCancelChs       []chan struct{}
 	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
 	eventingAdminPort      string
-	eventingSSLPort        string
 	eventingDir            string
 	eventingNodeAddrs      []string
 	eventingNodeUUIDs      []string

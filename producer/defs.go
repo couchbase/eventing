@@ -52,7 +52,6 @@ type Producer struct {
 	appName                string
 	app                    *common.AppConfig
 	auth                   string
-	breakpadOn             bool // Switch to control whether breakpad must be turned on
 	bucket                 string
 	cleanupTimers          bool
 	cfgData                string
@@ -61,7 +60,6 @@ type Producer struct {
 	curlTimeout            int64 // curl operation timeout in ms
 	diagDir                string
 	eventingAdminPort      string
-	eventingSSLPort        string
 	eventingDir            string
 	kvPort                 string
 	kvHostPorts            []string
@@ -207,4 +205,8 @@ type Producer struct {
 	workerSupervisor *suptree.Supervisor
 
 	sync.RWMutex
+
+	// TODO : Remove rbacUser and rbacPass once the RBAC issue is resolved
+	rbacUser string
+	rbacPass string
 }

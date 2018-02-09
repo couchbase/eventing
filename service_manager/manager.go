@@ -19,7 +19,7 @@ import (
 //NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
 func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.EventingSuperSup) *ServiceMgr {
 
-	logging.Infof("ServiceMgr::newServiceMgr config: %r rebalanceRunning: %v", fmt.Sprintf("%#v", config), rebalanceRunning)
+	logging.Infof("ServiceMgr::newServiceMgr config: %#v rebalanceRunning: %v", config, rebalanceRunning)
 
 	mu := &sync.RWMutex{}
 

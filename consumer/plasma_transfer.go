@@ -50,17 +50,17 @@ func (c *Consumer) CreateTempPlasmaStore(vb uint16) error {
 		if bytes.Compare(itr.Key()[0:len(keyPrefix)], keyPrefix) == 0 {
 			val, err := w.LookupKV(itr.Key())
 			if err != nil && err != plasma.ErrItemNoValue {
-				logging.Tracef("%s [%s:%d] vb: %v key: %r failed to lookup, err: %v",
+				logging.Tracef("%s [%s:%d] vb: %v key: %s failed to lookup, err: %v",
 					logPrefix, c.workerName, c.Pid(), vb, string(itr.Key()), err)
 				continue
 			}
-			logging.Tracef("%s [%s:%d] vb: %v read key: %r from source plasma store",
+			logging.Tracef("%s [%s:%d] vb: %v read key: %s from source plasma store",
 				logPrefix, c.workerName, c.Pid(), vb, string(itr.Key()))
 
 			rebPlasmaWriter.Begin()
 			err = rebPlasmaWriter.InsertKV(itr.Key(), val)
 			if err != nil {
-				logging.Errorf("%s [%s:%d] vb: %v key: %r failed to insert, err: %v",
+				logging.Errorf("%s [%s:%d] vb: %v key: %s failed to insert, err: %v",
 					logPrefix, c.workerName, c.Pid(), vb, string(itr.Key()), err)
 			} else {
 				counter := c.vbProcessingStats.getVbStat(vb, "transferred_during_rebalance_counter").(uint64)
@@ -106,7 +106,7 @@ func (c *Consumer) PurgePlasmaRecords(vb uint16) error {
 		if bytes.Compare(itr.Key()[0:len(keyPrefix)], keyPrefix) == 0 {
 			_, err := w.LookupKV(itr.Key())
 			if err != nil && err != plasma.ErrItemNoValue {
-				logging.Errorf("%s [%s:%d] vb: %v key: %r failed lookup, err: %v",
+				logging.Errorf("%s [%s:%d] vb: %v key: %s failed lookup, err: %v",
 					logPrefix, c.workerName, c.Pid(), vb, string(itr.Key()), err)
 				continue
 			}
@@ -117,7 +117,7 @@ func (c *Consumer) PurgePlasmaRecords(vb uint16) error {
 				counter := c.vbProcessingStats.getVbStat(vb, "removed_during_rebalance_counter").(uint64)
 				c.vbProcessingStats.updateVbStat(vb, "removed_during_rebalance_counter", counter+1)
 
-				logging.Tracef("%s [%s:%d] vb: %v deleted key: %r from source plasma",
+				logging.Tracef("%s [%s:%d] vb: %v deleted key: %s  from source plasma",
 					logPrefix, c.workerName, c.Pid(), vb, string(itr.Key()))
 			}
 			w.End()

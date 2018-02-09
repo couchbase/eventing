@@ -97,7 +97,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats) {
 					continue
 				}
 
-				logging.Tracef("CRVT[%s:giveup_r_%d:%s:%d] vb: %v uuid: %v vbStat uuid: %v owner node: %r consumer name: %v",
+				logging.Tracef("CRVT[%s:giveup_r_%d:%s:%d] vb: %v uuid: %v vbStat uuid: %v owner node: %v consumer name: %v",
 					c.workerName, i, c.tcpPort, c.Pid(), vb, c.NodeUUID(),
 					vbsts.getVbStat(vb, "node_uuid"),
 					vbsts.getVbStat(vb, "current_vb_owner"),
@@ -257,7 +257,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 	switch vbBlob.DCPStreamStatus {
 	case dcpStreamRunning:
 
-		logging.Tracef("CRVT[%s:%s:%d] vb: %v dcp stream status: %v curr owner: %r worker: %v UUID consumer: %v from metadata: %v check if current node should own vb: %v",
+		logging.Tracef("CRVT[%s:%s:%d] vb: %v dcp stream status: %v curr owner: %v worker: %v UUID consumer: %v from metadata: %v check if current node should own vb: %v",
 			c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus,
 			vbBlob.CurrentVBOwner, vbBlob.AssignedWorker, c.NodeUUID(),
 			vbBlob.NodeUUID, c.checkIfCurrentNodeShouldOwnVb(vb))
@@ -275,7 +275,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 				return errVbOwnedByAnotherWorker
 			}
 
-			logging.Verbosef("CRVT[%s:%s:%d] Node: %r taking ownership of vb: %d old node: %r isn't alive any more as per ns_server vbuuid: %v vblob.uuid: %v",
+			logging.Verbosef("CRVT[%s:%s:%d] Node: %v taking ownership of vb: %d old node: %s isn't alive any more as per ns_server vbuuid: %v vblob.uuid: %v",
 				c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vb, vbBlob.CurrentVBOwner,
 				c.NodeUUID(), vbBlob.NodeUUID)
 
@@ -356,7 +356,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	previousNodeUUID := vbBlob.PreviousNodeUUID
 	previousVBOwner := vbBlob.PreviousVBOwner
 
-	logging.Debugf("CRVT[%s:%s:%d] vb: %v previous worker: %v timer dir: %v node uuid: %v vb owner: %r",
+	logging.Debugf("CRVT[%s:%s:%d] vb: %v previous worker: %v timer dir: %v node uuid: %v vb owner: %v",
 		c.workerName, c.tcpPort, c.Pid(), vb, previousAssignedWorker, previousEventingDir,
 		previousNodeUUID, previousVBOwner)
 
@@ -375,12 +375,12 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 			if _, pOk := timerAddrs[addr][previousAssignedWorker]; pOk {
 				host, _, err := net.SplitHostPort(previousVBOwner)
 				if err != nil {
-					logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to parse host address: %r, err: %v",
+					logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to parse host address: %v, err: %v",
 						c.workerName, c.tcpPort, c.Pid(), vb, previousVBOwner, err)
 				}
 				_, port, err := net.SplitHostPort(timerAddrs[addr][previousAssignedWorker])
 				if err != nil {
-					logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to parse host port: %r, err: %v",
+					logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to parse host port: %v, err: %v",
 						c.workerName, c.tcpPort, c.Pid(), vb, timerAddrs[addr][previousAssignedWorker], err)
 				}
 				remoteConsumerAddr = net.JoinHostPort(host, port)
@@ -389,12 +389,12 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	} else {
 		host, _, err := net.SplitHostPort(previousVBOwner)
 		if err != nil {
-			logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to parse host address: %r, err: %v",
+			logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to parse host address: %v, err: %v",
 				c.workerName, c.tcpPort, c.Pid(), vb, previousVBOwner, err)
 		}
 		_, port, err := net.SplitHostPort(timerAddrs[previousVBOwner][previousAssignedWorker])
 		if err != nil {
-			logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to parse host port: %r, err: %v",
+			logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to parse host port: %v, err: %v",
 				c.workerName, c.tcpPort, c.Pid(), vb, timerAddrs[addr][previousAssignedWorker], err)
 		}
 		remoteConsumerAddr = net.JoinHostPort(host, port)
@@ -402,7 +402,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 
 	client := timer.NewRPCClient(c, remoteConsumerAddr, c.app.AppName, previousAssignedWorker)
 	if err := client.DialPath("/" + previousAssignedWorker + "/"); err != nil {
-		logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to connect to remote RPC server addr: %r, err: %v",
+		logging.Errorf("CRVT[%s:%s:%d] vb: %v Failed to connect to remote RPC server addr: %v, err: %v",
 			c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, err)
 
 		return errFailedConnectRemoteRPC
@@ -416,7 +416,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 
 	if c.NodeUUID() != previousNodeUUID {
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval*5), downloadDirCallback, c, client, timerDir, sTimerDir, dTimerDir, remoteConsumerAddr, vb)
-		logging.Debugf("CRVT[%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %r from: %r",
+		logging.Debugf("CRVT[%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %v from: %v",
 			c.workerName, c.tcpPort, c.Pid(), vb, sTimerDir, dTimerDir, remoteConsumerAddr)
 
 		err := c.copyPlasmaRecords(vb, dTimerDir)
@@ -426,7 +426,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 			return err
 		}
 	} else {
-		logging.Debugf("CRVT[%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %r prev path: %v curr path: %v",
+		logging.Debugf("CRVT[%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %v prev path: %v curr path: %v",
 			c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir)
 	}
 

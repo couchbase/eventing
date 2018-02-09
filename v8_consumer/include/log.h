@@ -25,7 +25,6 @@ enum LogLevel { logSilent, logInfo, logError, logWarning, logDebug, logTrace };
 extern std::string appName;
 extern LogLevel desiredLogLevel;
 extern std::string workerID;
-extern bool noRedact;
 
 inline std::string NowTime();
 
@@ -55,6 +54,5 @@ inline LogLevel LevelFromString(const std::string &level) {
     ;                                                                          \
   else                                                                         \
     std::cout
-#endif
 
-#define R(msg) (noRedact ? "" : "<ud>") << msg << (noRedact ? "" : "</ud>")
+#endif

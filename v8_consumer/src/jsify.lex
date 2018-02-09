@@ -164,8 +164,6 @@ int TransformSource(const char* input, std::string *output, Pos *last_pos) {
     pos_type_len[static_cast<std::size_t>(insert_type::kN1QLBegin)] = 2;
     pos_type_len[static_cast<std::size_t>(insert_type::kN1QLEnd)] = 3;
 
-    // Reset flex state for the subsequent calls.
-    BEGIN INITIAL;
     int code = yylex();
 
     // Clear the buffer allocation after the lex.
@@ -177,7 +175,7 @@ int TransformSource(const char* input, std::string *output, Pos *last_pos) {
     }
 
     // Clear the global variable for the next input.
-    n1ql_query = js_code = "";
+    js_code = "";
     return code;
 }
 

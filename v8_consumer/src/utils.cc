@@ -287,14 +287,3 @@ std::string JoinHostPort(const std::string &host, const std::string &port) {
   static std::regex ipv6re("^[0-9a-f:]*:[0-9a-f:]+$");
   return std::regex_match(host, ipv6re) ? "["+host+"]:"+port : host+":"+port;
 }
-
-std::pair<std::string, std::string> GetLocalKey() {
-  const char *usr = std::getenv("CBEVT_CALLBACK_USR");
-  const char *key = std::getenv("CBEVT_CALLBACK_KEY");
-  if (!usr || !key) {
-    LOG(logError) << "Failed to read CBEVT_CALLBACK_USR/KEY env var" << std::endl;
-    usr = "unknown-client";
-    key = "unknown-client";
-  }
-  return std::make_pair<std::string,std::string>(usr, key);
-}

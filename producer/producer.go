@@ -21,7 +21,7 @@ import (
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
-func NewProducer(appName, eventingAdminPort, eventingSSLPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
+func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
 	memoryQuota int64, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                appName,
@@ -29,7 +29,6 @@ func NewProducer(appName, eventingAdminPort, eventingSSLPort, eventingDir, kvPor
 		dcpConfig:              make(map[string]interface{}),
 		diagDir:                diagDir,
 		eventingAdminPort:      eventingAdminPort,
-		eventingSSLPort:        eventingSSLPort,
 		eventingDir:            eventingDir,
 		eventingNodeUUIDs:      make([]string, 0),
 		kvPort:                 kvPort,
@@ -149,7 +148,7 @@ func (p *Producer) Serve() {
 	for {
 		select {
 		case msg := <-p.topologyChangeCh:
-			logging.Infof("PRDR[%s:%d] Got topology change msg: %r from super_supervisor",
+			logging.Infof("PRDR[%s:%d] Got topology change msg: %v from super_supervisor",
 				p.appName, p.LenRunningConsumers(), msg)
 
 			switch msg.CType {
@@ -302,7 +301,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 			logging.Errorf("PRDR[%s:%d] Failed to parse tcp port, err: %v", p.appName, p.LenRunningConsumers(), err)
 		}
 
-		logging.Infof("PRDR[%s:%d] Started server on port: %s listener: %r", p.appName, p.LenRunningConsumers(), p.tcpPort, listener)
+		logging.Infof("PRDR[%s:%d] Started server on port: %s listener: %v", p.appName, p.LenRunningConsumers(), p.tcpPort, listener)
 
 		sockIdentifier = p.tcpPort
 		ipcType = "af_inet"
@@ -319,13 +318,13 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	}
 
-	logging.Infof("PRDR[%s:%d] Spawning consumer to listen on socket: %r", p.appName, p.LenRunningConsumers(), sockIdentifier)
+	logging.Infof("PRDR[%s:%d] Spawning consumer to listen on socket: %v", p.appName, p.LenRunningConsumers(), sockIdentifier)
 
-	c := consumer.NewConsumer(p.dcpStreamBoundary, p.breakpadOn, p.cleanupTimers, p.enableRecursiveMutation,
+	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
 		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold,
 		p.socketWriteBatchSize, p.cronTimersPerDoc, p.cppWorkerThrCount,
 		p.vbOwnershipGiveUpRoutineCount, p.curlTimeout, p.vbOwnershipTakeoverRoutineCount,
-		p.xattrEntryPruneThreshold, p.workerQueueCap, p.bucket, p.eventingAdminPort, p.eventingSSLPort, p.eventingDir, p.logLevel,
+		p.xattrEntryPruneThreshold, p.workerQueueCap, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
 		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup,
 		p.vbPlasmaStore, p.socketTimeout, p.statsTickDuration, p.diagDir, p.numVbuckets, p.fuzzOffset)
 
@@ -452,7 +451,7 @@ func (p *Producer) SignalStartDebugger() {
 	if dInstAddrBlob.NodeUUID == "" {
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, p, key, blob)
 	} else {
-		logging.Errorf("PRDR[%s:%d] Debugger already started. Host: %r Worker: %v uuid: %v",
+		logging.Errorf("PRDR[%s:%d] Debugger already started. Host: %v Worker: %v uuid: %v",
 			p.appName, p.LenRunningConsumers(), dInstAddrBlob.HostPortAddr, dInstAddrBlob.ConsumerName, dInstAddrBlob.NodeUUID)
 	}
 }

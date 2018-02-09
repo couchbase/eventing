@@ -39,7 +39,7 @@ var getNsServerNodesAddressesOpCallback = func(args ...interface{}) error {
 	} else {
 		atomic.StorePointer(
 			(*unsafe.Pointer)(unsafe.Pointer(&p.nsServerNodeAddrs)), unsafe.Pointer(&nsServerNodeAddrs))
-		logging.Infof("PRCO[%s:%d] Got NS Server nodes: %r", p.appName, p.LenRunningConsumers(), fmt.Sprintf("%#v", nsServerNodeAddrs))
+		logging.Infof("PRCO[%s:%d] Got NS Server nodes: %#v", p.appName, p.LenRunningConsumers(), nsServerNodeAddrs)
 	}
 
 	return err
@@ -77,7 +77,7 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 	} else {
 		atomic.StorePointer(
 			(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs)), unsafe.Pointer(&eventingNodeAddrs))
-		logging.Infof("PRCO[%s:%d] Got eventing nodes: %r", p.appName, p.LenRunningConsumers(), fmt.Sprintf("%#v", eventingNodeAddrs))
+		logging.Infof("PRCO[%s:%d] Got eventing nodes: %#v", p.appName, p.LenRunningConsumers(), eventingNodeAddrs)
 		return nil
 	}
 

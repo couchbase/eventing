@@ -68,12 +68,6 @@ func (p *Producer) parseDepcfg() error {
 		p.cleanupTimers = val.(bool)
 	}
 
-	if val, ok := settings["breakpad_on"]; !ok {
-		p.breakpadOn = true
-	} else {
-		p.breakpadOn = val.(bool)
-	}
-
 	if val, ok := settings["dcp_stream_boundary"]; !ok {
 		p.dcpStreamBoundary = common.DcpStreamBoundary("everything")
 	} else {
@@ -109,6 +103,21 @@ func (p *Producer) parseDepcfg() error {
 	} else {
 		p.skipTimerThreshold = int(val.(float64))
 	}
+
+	// TODO : Remove the following settings once the RBAC issue is resolved
+	val, ok := settings["rbacuser"]
+	if !ok {
+		logging.Errorf("DCFG[%s] RBAC username not supplied", p.appName)
+		return fmt.Errorf("rbac username missing")
+	}
+	p.rbacUser = val.(string)
+
+	val, ok = settings["rbacpass"]
+	if !ok {
+		logging.Errorf("DCFG[%s] RBAC password not supplied", p.appName)
+		return fmt.Errorf("rbac password missing")
+	}
+	p.rbacPass = val.(string)
 
 	if val, ok := settings["lcb_inst_capacity"]; ok {
 		p.lcbInstCapacity = int(val.(float64))
@@ -263,8 +272,8 @@ func (p *Producer) parseDepcfg() error {
 	logLevel := settings["log_level"].(string)
 	logging.SetLogLevel(util.GetLogLevel(logLevel))
 
-	logging.Infof("DCFG[%s] Loaded app => wc: %v bucket: %v statsTickD: %v",
-		p.appName, p.workerCount, p.bucket, p.statsTickDuration)
+	logging.Infof("DCFG[%s] Loaded app => wc: %v auth: %v bucket: %v statsTickD: %v",
+		p.appName, p.workerCount, p.auth, p.bucket, p.statsTickDuration)
 
 	if p.workerCount <= 0 {
 		return fmt.Errorf("%v", errorUnexpectedWorkerCount)

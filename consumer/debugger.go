@@ -27,23 +27,10 @@ func newDebugClient(c *Consumer, appName, eventingPort, ipcType, tcpPort, worker
 }
 
 func (c *debugClient) Serve() {
-	c.cmd = exec.Command(
-		"eventing-consumer",
-		c.appName,
-		c.ipcType,
-		c.debugTCPPort,
-		c.workerName,
-		strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
-		c.consumerHandle.diagDir,
-		util.GetIPMode(),
-		"true",
-		c.eventingPort, // not read, for tagging
-		"debug")        // not read, for tagging
-
-	user, key := util.LocalKey()
-	c.cmd.Env = append(os.Environ(),
-		fmt.Sprintf("CBEVT_CALLBACK_USR=%s", user),
-		fmt.Sprintf("CBEVT_CALLBACK_KEY=%s", key))
+	c.cmd = exec.Command("eventing-consumer", c.appName, c.ipcType, c.debugTCPPort,
+		c.workerName, strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
+		c.consumerHandle.diagDir, util.GetIPMode(),
+		c.eventingPort, "debug") // these two parameter are not read, for tagging
 
 	c.cmd.Stderr = os.Stderr
 	c.cmd.Stdout = os.Stdout
@@ -149,8 +136,8 @@ func (c *Consumer) pollForDebuggerStart() {
 		checkDInstAddrBlob:
 			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, dInstAddrKey, dInstAddrBlob, &cas, false)
 
-			logging.Infof("CRPS[%s:%s:%s:%d] Debugger inst addr key: %r dump: %r",
-				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, fmt.Sprintf("%#v", dInstAddrBlob))
+			logging.Infof("CRPS[%s:%s:%s:%d] Debugger inst addr key: %s dump: %#v",
+				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, dInstAddrBlob)
 
 			if dInstAddrBlob.HostPortAddr == "" {
 
@@ -160,7 +147,7 @@ func (c *Consumer) pollForDebuggerStart() {
 
 				_, err := c.gocbMetaBucket.Replace(dInstAddrKey, dInstAddrBlob, gocb.Cas(cas), 0)
 				if err != nil {
-					logging.Errorf("CRPS[%s:%s:%s:%d] Bucket cas failed for debugger inst addr key: %r, err: %v",
+					logging.Errorf("CRPS[%s:%s:%s:%d] Bucket cas failed for debugger inst addr key: %s, err: %v",
 						c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, err)
 					goto checkDInstAddrBlob
 				} else {
@@ -188,7 +175,7 @@ func (c *Consumer) startDebuggerServer() {
 			return
 		}
 
-		logging.Infof("CRSD[%s:%s:%s:%d] Start server on addr: %r for communication to C++ debugger",
+		logging.Infof("CRSD[%s:%s:%s:%d] Start server on addr: %v for communication to C++ debugger",
 			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.debugListener.Addr().String())
 
 		_, c.debugTCPPort, err = net.SplitHostPort(c.debugListener.Addr().String())
@@ -258,7 +245,8 @@ func (c *Consumer) startDebuggerServer() {
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getKvNodesFromVbMap, c)
 
-	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
+	// TODO : Remove rbac user once RBAC issue is resolved
+	payload, pBuilder := c.makeV8InitPayload(c.producer.RbacUser(), c.producer.RbacPass(), c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
 		c.kvNodes[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)
