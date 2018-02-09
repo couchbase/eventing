@@ -24,11 +24,19 @@ struct CURLResponse {
   std::unordered_map<std::string, std::string> headers;
 };
 
+struct DecodeKVInfo {
+  bool is_valid;
+  std::string msg;
+  std::string key;
+  std::string value;
+};
+
 struct CredsInfo {
-  bool is_error;
-  std::string error;
+  bool is_valid;
+  std::string msg;
   std::string username;
   std::string password;
+  time_t time_fetched;
 };
 
 struct ExtractKVInfo {
@@ -54,7 +62,9 @@ public:
   ~CURLClient();
 
   CURLResponse HTTPPost(const std::vector<std::string> &headers,
-                        const std::string &url, const std::string &body);
+                        const std::string &url, const std::string &body,
+                        const std::string &usr, const std::string &key);
+
   ExtractKVInfo ExtractKV(const std::string &encoded_str);
 
 private:
@@ -73,21 +83,26 @@ private:
 class Communicator {
 public:
   Communicator(const std::string &host_ip, const std::string &host_port,
-               v8::Isolate *isolate);
+               const std::string &usr, const std::string &key, bool ssl);
 
   ParseInfo ParseQuery(const std::string &query);
   CredsInfo GetCreds(const std::string &endpoint);
+  CredsInfo GetCredsCached(const std::string &endpoint);
   NamedParamsInfo GetNamedParams(const std::string &query);
+  void Refresh();
 
 private:
   NamedParamsInfo ExtractNamedParams(const std::string &encoded_str);
+  CredsInfo ExtractCredentials(const std::string &encoded_str);
   ParseInfo ExtractParseInfo(const std::string &encoded_str);
 
   CURLClient curl;
   std::string parse_query_url;
   std::string get_creds_url;
   std::string get_named_params_url;
-  v8::Isolate *isolate;
+  std::string lo_usr;
+  std::string lo_key;
+  std::unordered_map<std::string, CredsInfo> creds_cache;
 };
 
 #endif

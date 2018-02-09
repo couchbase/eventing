@@ -23,7 +23,7 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 		logging.Errorf("CRCO Count of eventing nodes reported is 0, unexpected")
 		return fmt.Errorf("eventing node count reported as 0")
 	} else {
-		logging.Infof("CRCO Got eventing nodes: %#v", eventingNodeAddrs)
+		logging.Infof("CRCO Got eventing nodes: %r", fmt.Sprintf("%#v", eventingNodeAddrs))
 		c.eventingNodeAddrs = eventingNodeAddrs
 		return nil
 	}

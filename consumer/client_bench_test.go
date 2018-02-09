@@ -113,7 +113,7 @@ func init() {
 	c.sendWorkerThrMap(nil, false)
 	c.sendWorkerThrCount(0, false)
 
-	payload, pBuilder := c.makeV8InitPayload("credit_score", "localhost", "/tmp", "25000", "localhost:12000", string(cfgData),
+	payload, pBuilder := c.makeV8InitPayload("credit_score", "localhost", "/tmp", "25000", "", "localhost:12000", string(cfgData),
 		5, 1, 30, 1000, false)
 	c.sendInitV8Worker(payload, false, pBuilder)
 	c.sendLoadV8Worker(appCode, false)

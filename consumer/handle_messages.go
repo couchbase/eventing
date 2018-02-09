@@ -397,7 +397,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 
 	metadata, err := json.Marshal(&m)
 	if err != nil {
-		logging.Errorf("CRHM[%s:%s:%s:%d] key: %v failed to marshal metadata",
+		logging.Errorf("CRHM[%s:%s:%s:%d] key: %r failed to marshal metadata",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 		return
 	}
@@ -434,7 +434,7 @@ func (c *Consumer) sendMessageLoop() {
 	defer func() {
 		if r := recover(); r != nil {
 			trace := debug.Stack()
-			logging.Errorf("CRHM[%s:%s:%s:%d] sendMessageLoop recover, %v stack trace: %v",
+			logging.Errorf("CRHM[%s:%s:%s:%d] sendMessageLoop recover, %r stack trace: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()
@@ -561,7 +561,7 @@ func (c *Consumer) readMessageLoop() {
 	defer func() {
 		if r := recover(); r != nil {
 			trace := debug.Stack()
-			logging.Errorf("CRHM[%s:%s:%s:%d] readMessageLoop recover, %v stack trace: %v",
+			logging.Errorf("CRHM[%s:%s:%s:%d] readMessageLoop recover, %r stack trace: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()

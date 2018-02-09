@@ -49,12 +49,6 @@ struct Data {
   int cron_timers_per_doc;
   lcb_t cb_instance;
   lcb_t meta_cb_instance;
-  std::unordered_map<std::string, std::string> username_store;
-  std::unordered_map<std::string, std::string> password_store;
-
-  // TODO : Remove the rbac user and pass once RBAC issue is resolved
-  std::string rbac_user;
-  std::string rbac_pass;
 };
 
 inline Data *UnwrapData(v8::Isolate *isolate) {
@@ -87,5 +81,6 @@ std::string Localhost(bool isUrl);
 void SetIPv6(bool is6);
 bool IsIPv6();
 std::string JoinHostPort(const std::string &host, const std::string &port);
+std::pair<std::string, std::string> GetLocalKey();
 
 #endif

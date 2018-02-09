@@ -968,16 +968,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         form.appname.$error.appExists = form.appname.$viewValue in formCtrl.savedApps;
                     }
 
-                    // TODO : Remove this check once RBAC issue is resolved
-                    // Need to check where rbacpass is empty manually and update state.
-                    // Don't know why AngularJS is giving wrong state for this field.
-                    // Disabling this field as it may be deprecated.
-                    form.rbacpass.$error.required = form.rbacpass.$modelValue === '';
 
-                    // TODO : Remove RBAC username and password checks once RBAC issue is resolved
-                    return form.rbacuser.$error.required ||
-                        form.rbacpass.$error.required ||
-                        form.appname.$error.required ||
+                    return form.appname.$error.required ||
                         form.appname.$error.appExists ||
                         form.worker_count.$error.required ||
                         form.worker_count.$error.min ||

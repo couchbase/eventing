@@ -123,9 +123,6 @@ ApplicationModel.prototype.getDefaultModel = function() {
             cleanup_timers: false,
             skip_timer_threshold: 86400,
             timer_processing_tick_interval: 500,
-            rbacuser: 'eventing',
-            rbacpass: 'asdasd',
-            rbacrole: 'admin',
             processing_status: false,
             deployment_status: false,
             enable_recursive_mutation: false,
@@ -141,7 +138,8 @@ ApplicationModel.prototype.getDefaultModel = function() {
             app_log_max_files: 10,
             curl_timeout: 500,
             worker_queue_cap: 100 * 1000,
-            fuzz_offset: 0
+            fuzz_offset: 0,
+            breakpad_on: true
         }
     };
 };

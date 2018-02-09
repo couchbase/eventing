@@ -23,7 +23,7 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 		logging.Errorf("SMCO Count of eventing nodes reported is 0, unexpected")
 		return fmt.Errorf("eventing node count reported as 0")
 	} else {
-		logging.Debugf("SMCO Got eventing nodes: %#v", eventingNodeAddrs)
+		logging.Debugf("SMCO Got eventing nodes: %r", fmt.Sprintf("%#v", eventingNodeAddrs))
 		m.eventingNodeAddrs = eventingNodeAddrs
 		return nil
 	}

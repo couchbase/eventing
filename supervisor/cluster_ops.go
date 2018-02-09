@@ -36,7 +36,7 @@ var getEventingNodeAddrsCallback = func(args ...interface{}) error {
 		logging.Errorf("SSCO no eventing nodes reported")
 		return fmt.Errorf("0 nodes reported for eventing service, unexpected")
 	} else {
-		logging.Infof("SSCO addrs: %#v", addrs)
+		logging.Infof("SSCO addrs: %r", fmt.Sprintf("%#v", addrs))
 	}
 	return err
 }

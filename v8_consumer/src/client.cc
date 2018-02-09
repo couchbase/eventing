@@ -85,12 +85,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       server_settings->eventing_dir.assign(payload->eventing_dir()->str());
       server_settings->eventing_port.assign(
           payload->curr_eventing_port()->str());
+      server_settings->eventing_sslport.assign(
+          payload->curr_eventing_sslport()->str());
       server_settings->host_addr.assign(payload->curr_host()->str());
       server_settings->kv_host_port.assign(payload->kv_host_port()->str());
-
-      // TODO : Remove rbac user and pass once RBAC issue is resolved
-      server_settings->rbac_user.assign(payload->rbac_user()->str());
-      server_settings->rbac_pass.assign(payload->rbac_pass()->str());
 
       LOG(logDebug) << "Loading app:" << app_name << std::endl;
 
@@ -111,7 +109,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority = true;
       break;
     case oLoad:
-      LOG(logDebug) << "Loading app code:" << parsed_header->metadata
+      LOG(logDebug) << "Loading app code:" << R(parsed_header->metadata)
                     << std::endl;
       for (int16_t i = 0; i < thr_count; i++) {
         workers[i]->V8WorkerLoad(parsed_header->metadata);
@@ -211,7 +209,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority = true;
       break;
     case oGetCompileInfo:
-      LOG(logDebug) << "Compiling app code:" << parsed_header->metadata
+      LOG(logDebug) << "Compiling app code:" << R(parsed_header->metadata)
                     << std::endl;
       compile_resp = workers[0]->CompileHandler(parsed_header->metadata);
 
@@ -442,7 +440,7 @@ void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
                << " worker_id:" << worker_id << " batch_size:" << batch_size
                << " port:" << port << std::endl;
 
-  uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *) &server_sock,
+  uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
                  [](uv_connect_t *conn, int status) {
                    AppWorker::GetAppWorker()->OnConnect(conn, status);
                  });
@@ -659,8 +657,8 @@ int main(int argc, char **argv) {
   global_program_name = argv[0];
 
   if (argc < 8) {
-    std::cerr << "Need at least 7 arguments: appname, ipc_type, port, "
-                 "worker_id, batch_size, diag_dir, ipv4/6"
+    std::cerr << "Need at least 8 arguments: appname, ipc_type, port, "
+                 "worker_id, batch_size, diag_dir, ipv4/6, breakpad_on"
               << std::endl;
     return 2;
   }
@@ -689,7 +687,9 @@ int main(int argc, char **argv) {
   int batch_size = atoi(argv[5]);
   std::string diag_dir(argv[6]);
 
-  setupBreakpad(diag_dir);
+  if (strcmp(argv[8], "true") == 0) {
+    setupBreakpad(diag_dir);
+  }
 
   curl_global_init(CURL_GLOBAL_ALL);
 
@@ -698,7 +698,8 @@ int main(int argc, char **argv) {
   AppWorker *worker = AppWorker::GetAppWorker();
 
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
-    worker->InitUDS(appname, Localhost(false), worker_id, batch_size, uds_sock_path);
+    worker->InitUDS(appname, Localhost(false), worker_id, batch_size,
+                    uds_sock_path);
   } else {
     worker->InitTcpSock(appname, Localhost(false), worker_id, batch_size, port);
   }
