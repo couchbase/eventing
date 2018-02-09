@@ -307,8 +307,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       LOG(logError)
           << "Retrying... Failed to while performing lookup for fulldoc "
              "and exptime"
-          << " doc key:" << R(doc_id) << " rc: " << lcb_strerror(nullptr, res.rc)
-          << std::endl;
+          << " doc key:" << R(doc_id)
+          << " rc: " << lcb_strerror(nullptr, res.rc) << std::endl;
       std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
       sleep_duration *= 1.5;
 
@@ -503,8 +503,8 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   url += url_suffix;
 
-  LOG(logTrace) << "method: " << http_method
-                << " data: " << data << " url: " << url << std::endl;
+  LOG(logTrace) << "method: " << http_method << " data: " << data
+                << " url: " << url << std::endl;
 
   if (http_method.empty()) {
     http_method.assign("GET");

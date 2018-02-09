@@ -11,8 +11,8 @@
 
 #include <regex>
 
-#include "utils.h"
 #include "js_exception.h"
+#include "utils.h"
 
 #include "../../gen/js/escodegen.h"
 #include "../../gen/js/esprima.h"
@@ -271,30 +271,28 @@ std::string GetTranspilerSrc() {
   return transpiler_js_src;
 }
 
-void SetIPv6(bool is6) {
-  ipv6 = is6;
-}
+void SetIPv6(bool is6) { ipv6 = is6; }
 
 std::string Localhost(bool isUrl) {
-  return ipv6 ?  (isUrl ? "[::1]" : "::1") : "127.0.0.1";
+  return ipv6 ? (isUrl ? "[::1]" : "::1") : "127.0.0.1";
 }
 
-bool IsIPv6() {
-  return ipv6;
-}
+bool IsIPv6() { return ipv6; }
 
 std::string JoinHostPort(const std::string &host, const std::string &port) {
   static std::regex ipv6re("^[0-9a-f:]*:[0-9a-f:]+$");
-  return std::regex_match(host, ipv6re) ? "["+host+"]:"+port : host+":"+port;
+  return std::regex_match(host, ipv6re) ? "[" + host + "]:" + port
+                                        : host + ":" + port;
 }
 
 std::pair<std::string, std::string> GetLocalKey() {
   const char *usr = std::getenv("CBEVT_CALLBACK_USR");
   const char *key = std::getenv("CBEVT_CALLBACK_KEY");
   if (!usr || !key) {
-    LOG(logError) << "Failed to read CBEVT_CALLBACK_USR/KEY env var" << std::endl;
+    LOG(logError) << "Failed to read CBEVT_CALLBACK_USR/KEY env var"
+                  << std::endl;
     usr = "unknown-client";
     key = "unknown-client";
   }
-  return std::make_pair<std::string,std::string>(usr, key);
+  return std::make_pair<std::string, std::string>(usr, key);
 }

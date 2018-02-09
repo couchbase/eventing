@@ -49,7 +49,7 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
   LOG(logInfo) << "Getting username for host " << R(host) << " port " << port
                << std::endl;
 
-  auto endpoint = JoinHostPort(host, port);
+  auto endpoint = JoinHostPort(Localhost(false), port);
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
   auto info = comm->GetCreds(endpoint);
@@ -73,7 +73,7 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
 
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(host, port);
+  auto endpoint = JoinHostPort(Localhost(false), port);
   auto info = comm->GetCreds(endpoint);
   if (!info.is_valid) {
     LOG(logError) << "Failed to get password for " << R(host) << ":" << port
@@ -95,7 +95,7 @@ const char *GetUsernameCached(void *cookie, const char *host, const char *port,
 
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(host, port);
+  auto endpoint = JoinHostPort(Localhost(false), port);
   auto info = comm->GetCredsCached(endpoint);
   if (!info.is_valid) {
     LOG(logError) << "Failed to get username for " << R(host) << ":" << port
@@ -117,7 +117,7 @@ const char *GetPasswordCached(void *cookie, const char *host, const char *port,
 
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(host, port);
+  auto endpoint = JoinHostPort(Localhost(false), port);
   auto info = comm->GetCredsCached(endpoint);
   if (!info.is_valid) {
     LOG(logError) << "Failed to get password for " << R(host) << ":" << port
@@ -299,13 +299,20 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   js_exception = new JsException(isolate_);
   data.js_exception = js_exception;
   data.cron_timers_per_doc = h_config->cron_timers_per_doc;
+
+  auto ssl = false;
+  auto port = server_settings->eventing_port;
+
+  // Temporarily disabling ssl as requests to eventing-producer
+  // are having problem with ssl.
+  /*
   auto ssl = true;
   auto port = server_settings->eventing_sslport;
   if (port.length() < 1) {
     LOG(logError) << "SSL not available, using plain HTTP" << std::endl;
     port = server_settings->eventing_port;
     ssl = false;
-  }
+  }*/
 
   auto key = GetLocalKey();
   data.comm = new Communicator(server_settings->host_addr, port, key.first,

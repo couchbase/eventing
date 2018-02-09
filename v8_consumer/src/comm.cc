@@ -175,8 +175,8 @@ CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
 Communicator::Communicator(const std::string &host_ip,
                            const std::string &host_port, const std::string &usr,
                            const std::string &key, bool ssl) {
-  std::string base_url =
-      (ssl ? "https://" : "http://") + JoinHostPort(host_ip, host_port);
+  std::string base_url = (ssl ? "https://" : "http://") +
+                         JoinHostPort(Localhost(false), host_port);
   parse_query_url = base_url + "/parseQuery";
   get_creds_url = base_url + "/getCreds";
   get_named_params_url = base_url + "/getNamedParams";
