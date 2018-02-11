@@ -438,10 +438,17 @@ func flushFunctionAndBucket(handler string) {
 }
 
 func dumpStats(handler string) {
-	makeStatsRequest("processing stats from Go process", processingStatURL+handler)
-	makeStatsRequest("execution stats from CPP worker", executionStatsURL+handler)
-	makeStatsRequest("latency stats from CPP worker", failureStatsURL+handler)
-	makeStatsRequest("failure stats from CPP worker", latencyStatsURL+handler)
+	makeStatsRequest("Node1: Processing stats from Go process", processingStatURL1+handler)
+	makeStatsRequest("Node2: Processing stats from Go process", processingStatURL2+handler)
+
+	makeStatsRequest("Node1: Execution stats from CPP worker", executionStatsURL1+handler)
+	makeStatsRequest("Node2: Execution stats from CPP worker", executionStatsURL2+handler)
+
+	makeStatsRequest("Node1: Latency stats from CPP worker", failureStatsURL1+handler)
+	makeStatsRequest("Node2: Latency stats from CPP worker", failureStatsURL2+handler)
+
+	makeStatsRequest("Node1: Failure stats from CPP worker", latencyStatsURL1+handler)
+	makeStatsRequest("Node2: Failure stats from CPP worker", latencyStatsURL2+handler)
 }
 
 func makeStatsRequest(context, url string) {
