@@ -104,6 +104,12 @@ func (p *Producer) parseDepcfg() error {
 		p.socketWriteBatchSize = int(val.(float64))
 	}
 
+	if val, ok := settings["checkpoint_interval"]; !ok {
+		p.checkpointTickDuration = 60000 * time.Millisecond
+	} else {
+		p.checkpointTickDuration = time.Duration(val.(float64)) * time.Millisecond
+	}
+
 	if val, ok := settings["skip_timer_threshold"]; !ok {
 		p.skipTimerThreshold = 86400
 	} else {

@@ -186,6 +186,8 @@ type Producer struct {
 	// about topology change
 	topologyChangeCh chan *common.TopologyChangeMsg
 
+	checkpointTickDuration time.Duration
+
 	// time.Ticker duration for dumping consumer stats
 	statsTickDuration time.Duration
 

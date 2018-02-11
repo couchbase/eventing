@@ -30,7 +30,8 @@ func NewConsumer(streamBoundary common.DcpStreamBoundary, breakpadOn, cleanupTim
 	bucket, eventingAdminPort, eventingSSLPort, eventingDir, logLevel, ipcType, tcpPort, uuid string,
 	eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig, dcpConfig map[string]interface{},
 	p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
-	socketTimeout, statsTickInterval time.Duration, diagDir string, numVbuckets, fuzzOffset int) *Consumer {
+	checkpointInterval, socketTimeout, statsTickInterval time.Duration, diagDir string,
+	numVbuckets, fuzzOffset int) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{

@@ -112,7 +112,7 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	// default settings
 	settings := make(map[string]interface{})
 
-	settings["checkpoint_interval"] = 10000
+	settings["checkpoint_interval"] = 100000
 
 	if s.thrCount == 0 {
 		settings["cpp_worker_thread_count"] = cppthrCount
