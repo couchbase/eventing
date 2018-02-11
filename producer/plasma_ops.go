@@ -10,7 +10,7 @@ import (
 func (p *Producer) openPlasmaStore() error {
 	logPrefix := "Producer::openPlasmaStore"
 
-	vbPlasmaDir := fmt.Sprintf("%v/%v_timer.data", p.eventingDir, p.app.AppName)
+	vbPlasmaDir := fmt.Sprintf("%v/%v_timer.data", p.processConfig.EventingDir, p.app.AppName)
 
 	cfg := plasma.DefaultConfig()
 	cfg.File = vbPlasmaDir
