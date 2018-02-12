@@ -18,6 +18,13 @@ import (
 func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) {
 	header, hBuilder := c.makeLogLevelHeader(logLevel)
 
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.v8WorkerMessagesProcessed["LOG_LEVEL"]; !ok {
+		c.v8WorkerMessagesProcessed["LOG_LEVEL"] = 0
+	}
+	c.v8WorkerMessagesProcessed["LOG_LEVEL"]++
+	c.msgProcessedRWMutex.Unlock()
+
 	m := &msgToTransmit{
 		msg: &message{
 			Header: header,
@@ -463,6 +470,7 @@ func (c *Consumer) sendMessageLoop() {
 
 				// Reset the sendMessage buffer and message counter
 				c.sendMsgBuffer.Reset()
+				c.aggMessagesSentCounter += c.sendMsgCounter
 				c.sendMsgCounter = 0
 				c.sendMsgBufferRWMutex.Unlock()
 			}
@@ -524,7 +532,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 
 	c.sendMsgCounter++
 
-	if c.sendMsgCounter >= c.socketWriteBatchSize || m.prioritize || m.sendToDebugger {
+	if c.sendMsgCounter >= uint64(c.socketWriteBatchSize) || m.prioritize || m.sendToDebugger {
 		c.connMutex.Lock()
 		defer c.connMutex.Unlock()
 
@@ -550,6 +558,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 		}
 
 		// Reset the sendMessage buffer and message counter
+		c.aggMessagesSentCounter += c.sendMsgCounter
 		c.sendMsgBuffer.Reset()
 		c.sendMsgCounter = 0
 	}

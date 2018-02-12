@@ -196,7 +196,15 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << cron_timer_msg_counter << ", \"dcp_delete_msg_counter\":";
       estats << dcp_delete_msg_counter << ", \"dcp_mutation_msg_counter\":";
       estats << dcp_mutation_msg_counter << ", \"doc_timer_msg_counter\":";
-      estats << doc_timer_msg_counter;
+      estats << doc_timer_msg_counter
+             << ", \"enqueued_cron_timer_msg_counter\":";
+      estats << enqueued_cron_timer_msg_counter
+             << ", \"enqueued_dcp_delete_msg_counter\":";
+      estats << enqueued_dcp_delete_msg_counter
+             << ", \"enqueued_dcp_mutation_msg_counter\":";
+      estats << enqueued_dcp_mutation_msg_counter
+             << ", \"enqueued_doc_timer_msg_counter\":",
+          estats << enqueued_doc_timer_msg_counter;
 
       if (workers.size() >= 1) {
         agg_queue_size = 0;
@@ -269,12 +277,14 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oDelete:
       worker_index = partition_thr_map[parsed_header->partition];
       if (workers[worker_index] != nullptr) {
+        enqueued_dcp_delete_msg_counter++;
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
       }
       break;
     case oMutation:
       worker_index = partition_thr_map[parsed_header->partition];
       if (workers[worker_index] != nullptr) {
+        enqueued_dcp_mutation_msg_counter++;
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
       }
       break;
@@ -288,12 +298,14 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oDocTimer:
       worker_index = partition_thr_map[parsed_header->partition];
       if (workers[worker_index] != nullptr) {
+        enqueued_doc_timer_msg_counter++;
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
       }
       break;
     case oCronTimer:
       worker_index = partition_thr_map[parsed_header->partition];
       if (workers[worker_index] != nullptr) {
+        enqueued_cron_timer_msg_counter++;
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
       }
       break;

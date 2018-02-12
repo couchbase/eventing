@@ -39,6 +39,11 @@ std::atomic<int64_t> dcp_delete_msg_counter = {0};
 std::atomic<int64_t> dcp_mutation_msg_counter = {0};
 std::atomic<int64_t> doc_timer_msg_counter = {0};
 
+std::atomic<int64_t> enqueued_cron_timer_msg_counter = {0};
+std::atomic<int64_t> enqueued_dcp_delete_msg_counter = {0};
+std::atomic<int64_t> enqueued_dcp_mutation_msg_counter = {0};
+std::atomic<int64_t> enqueued_doc_timer_msg_counter = {0};
+
 enum RETURN_CODE {
   kSuccess = 0,
   kFailedToCompileJs,
@@ -850,7 +855,6 @@ void V8Worker::RouteMessage() {
             (const void *)msg.payload->payload.c_str());
         cron_cb_fns.assign(payload->doc_ids_callback_fns()->str());
         timer_ts.assign(payload->timer_ts()->str());
-        cron_timer_msg_counter++;
         this->SendCronTimer(cron_cb_fns, timer_ts, payload->timer_partition());
         break;
       default:
@@ -1152,6 +1156,7 @@ void V8Worker::SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
         } else {
           execute_flag = true;
           execute_start_time = Time::now();
+          cron_timer_msg_counter++;
           fn_handle->Call(context->Global(), 1, arg);
           std::lock_guard<std::mutex> lck(cron_timer_mtx);
           cron_timer_checkpoint[partition] = timer_ts;

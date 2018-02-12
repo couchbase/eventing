@@ -82,6 +82,10 @@ func (c *Consumer) controlRoutine() {
 		retryVbsRemainingToRestream:
 			vbsToRestream := c.vbsRemainingToRestream
 
+			if len(vbsToRestream) == 0 {
+				continue
+			}
+
 			// Verify if the app is deployed or not before trying to reopen vbucket DCP streams
 			// for the ones which recently have returned STREAMEND. QE frequently does flush
 			// on source bucket right after undeploy
@@ -90,10 +94,6 @@ func (c *Consumer) controlRoutine() {
 				c.vbsRemainingToRestream = make([]uint16, 0)
 				logging.Infof("CRCR[%s:%s:%s:%d] Discarding request to restream vbs: %v as the app has been undeployed",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
-				continue
-			}
-
-			if len(vbsToRestream) == 0 {
 				continue
 			}
 

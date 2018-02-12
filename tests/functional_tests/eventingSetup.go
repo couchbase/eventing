@@ -112,7 +112,7 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	// default settings
 	settings := make(map[string]interface{})
 
-	settings["checkpoint_interval"] = 100000
+	settings["checkpoint_interval"] = 10000
 
 	if s.thrCount == 0 {
 		settings["cpp_worker_thread_count"] = cppthrCount
@@ -168,9 +168,6 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	settings["log_level"] = "INFO"
 	settings["cron_timers_per_doc"] = 10000
 	settings["cleanup_timers"] = false
-	settings["rbacrole"] = "admin"
-	settings["rbacuser"] = "eventing"
-	settings["rbacpass"] = "asdasd"
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
 	settings["description"] = "Sample app"
@@ -223,9 +220,6 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 
 	settings["timer_worker_pool_size"] = 1
 	settings["skip_timer_threshold"] = 86400
-
-	settings["rbacuser"] = rbacuser
-	settings["rbacpass"] = rbacpass
 
 	data, err := json.Marshal(&settings)
 	if err != nil {

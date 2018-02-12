@@ -78,8 +78,10 @@ func (c *Consumer) processEvents() {
 				switch e.Datatype {
 				case dcpDatatypeJSON:
 					if !c.sendMsgToDebugger {
+						c.dcpMutationCounter++
 						c.sendDcpEvent(e, c.sendMsgToDebugger)
 					} else {
+						c.dcpMutationCounter++
 						go c.sendDcpEvent(e, c.sendMsgToDebugger)
 					}
 				case dcpDatatypeJSONXattr:
@@ -137,8 +139,10 @@ func (c *Consumer) processEvents() {
 								if !c.sendMsgToDebugger {
 									logging.Tracef("%s [%s:%s:%d] Sending key: %r to be processed by JS handlers as cas & crc have mismatched",
 										logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+									c.dcpMutationCounter++
 									c.sendDcpEvent(e, c.sendMsgToDebugger)
 								} else {
+									c.dcpMutationCounter++
 									go c.sendDcpEvent(e, c.sendMsgToDebugger)
 								}
 							} else {
@@ -172,8 +176,10 @@ func (c *Consumer) processEvents() {
 						if !c.sendMsgToDebugger {
 							logging.Tracef("%s [%s:%s:%d] Sending key: %r to be processed by JS handlers because no eventing xattrs",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+							c.dcpMutationCounter++
 							c.sendDcpEvent(e, c.sendMsgToDebugger)
 						} else {
+							c.dcpMutationCounter++
 							go c.sendDcpEvent(e, c.sendMsgToDebugger)
 						}
 					}
@@ -197,8 +203,10 @@ func (c *Consumer) processEvents() {
 				}
 
 				if !c.sendMsgToDebugger {
+					c.dcpDeletionCounter++
 					c.sendDcpEvent(e, c.sendMsgToDebugger)
 				} else {
+					c.dcpDeletionCounter++
 					go c.sendDcpEvent(e, c.sendMsgToDebugger)
 				}
 
