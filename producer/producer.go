@@ -44,7 +44,6 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 		statsRWMutex:           &sync.RWMutex{},
 		superSup:               superSup,
 		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
-		updateStatsTicker:      time.NewTicker(updateStatsTickInterval),
 		updateStatsStopCh:      make(chan struct{}, 1),
 		uuid:                   uuid,
 		workerNameConsumerMap: make(map[string]common.EventingConsumer),
@@ -69,6 +68,8 @@ func (p *Producer) Serve() {
 		logging.Fatalf("PRDR[%s:%d] Failure parsing depcfg, err: %v", p.appName, p.LenRunningConsumers(), err)
 		return
 	}
+
+	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
 	logging.Infof("PRDR[%s:%d] number of vbuckets for %v: %v", p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)
 

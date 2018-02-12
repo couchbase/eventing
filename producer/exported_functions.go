@@ -389,6 +389,9 @@ func (p *Producer) vbDistributionStats() {
 
 		if _, ok := vbNodeMap[currentOwner]; !ok && currentOwner != "" {
 			vbNodeMap[currentOwner] = make(map[string][]uint16)
+		}
+
+		if _, ok := vbNodeMap[currentOwner][workerID]; !ok {
 			vbNodeMap[currentOwner][workerID] = make([]uint16, 0)
 		}
 

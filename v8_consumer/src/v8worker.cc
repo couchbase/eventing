@@ -20,26 +20,30 @@
 bool debugger_started = false;
 bool enable_recursive_mutation = false;
 
-std::atomic<std::int64_t> bucket_op_exception_count = {0};
-std::atomic<std::int64_t> n1ql_op_exception_count = {0};
-std::atomic<std::int64_t> timeout_count = {0};
-std::atomic<std::int16_t> checkpoint_failure_count = {0};
+std::atomic<int64_t> bucket_op_exception_count = {0};
+std::atomic<int64_t> n1ql_op_exception_count = {0};
+std::atomic<int64_t> timeout_count = {0};
+std::atomic<int16_t> checkpoint_failure_count = {0};
 
-std::atomic<std::int64_t> on_update_success = {0};
-std::atomic<std::int64_t> on_update_failure = {0};
-std::atomic<std::int64_t> on_delete_success = {0};
-std::atomic<std::int64_t> on_delete_failure = {0};
+std::atomic<int64_t> on_update_success = {0};
+std::atomic<int64_t> on_update_failure = {0};
+std::atomic<int64_t> on_delete_success = {0};
+std::atomic<int64_t> on_delete_failure = {0};
 
-std::atomic<std::int64_t> doc_timer_create_failure = {0};
+std::atomic<int64_t> doc_timer_create_failure = {0};
 
-std::atomic<std::int64_t> messages_processed_counter = {0};
+std::atomic<int64_t> messages_processed_counter = {0};
+
+std::atomic<int64_t> cron_timer_msg_counter = {0};
+std::atomic<int64_t> dcp_delete_msg_counter = {0};
+std::atomic<int64_t> dcp_mutation_msg_counter = {0};
+std::atomic<int64_t> doc_timer_msg_counter = {0};
 
 enum RETURN_CODE {
   kSuccess = 0,
   kFailedToCompileJs,
   kNoHandlersDefined,
   kFailedInitBucketHandle,
-  kFailedInitN1QLHandle,
   kOnUpdateCallFail,
   kOnDeleteCallFail
 };
@@ -813,6 +817,7 @@ void V8Worker::RouteMessage() {
     case eDCP:
       switch (getDCPOpcode(msg.header->opcode)) {
       case oDelete:
+        dcp_delete_msg_counter++;
         this->SendDelete(msg.header->metadata);
         break;
       case oMutation:
@@ -820,6 +825,7 @@ void V8Worker::RouteMessage() {
             (const void *)msg.payload->payload.c_str());
         val.assign(payload->value()->str());
         metadata.assign(msg.header->metadata);
+        dcp_mutation_msg_counter++;
         this->SendUpdate(val, metadata, "json");
         break;
       default:
@@ -834,6 +840,7 @@ void V8Worker::RouteMessage() {
         callback_fn.assign(payload->callback_fn()->str());
         doc_id.assign(payload->doc_id()->str());
         timer_ts.assign(payload->timer_ts()->str());
+        doc_timer_msg_counter++;
         this->SendDocTimer(callback_fn, doc_id, timer_ts,
                            payload->timer_partition());
         break;
@@ -843,6 +850,7 @@ void V8Worker::RouteMessage() {
             (const void *)msg.payload->payload.c_str());
         cron_cb_fns.assign(payload->doc_ids_callback_fns()->str());
         timer_ts.assign(payload->timer_ts()->str());
+        cron_timer_msg_counter++;
         this->SendCronTimer(cron_cb_fns, timer_ts, payload->timer_partition());
         break;
       default:

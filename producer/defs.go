@@ -20,9 +20,8 @@ const (
 )
 
 const (
-	bucketOpRetryInterval   = time.Duration(1000) * time.Millisecond
-	persistAllTickInterval  = time.Duration(5000) * time.Millisecond
-	updateStatsTickInterval = time.Duration(5000) * time.Millisecond
+	bucketOpRetryInterval  = time.Duration(1000) * time.Millisecond
+	persistAllTickInterval = time.Duration(5000) * time.Millisecond
 
 	udsSockPathLimit = 100
 
