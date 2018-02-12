@@ -24,7 +24,7 @@ func main() {
 		KeyFile:  flags.sslKeyFile,
 	}
 
-	s := supervisor.NewSuperSupervisor(adminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid, flags.diagDir)
+	s := supervisor.NewSuperSupervisor(adminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid, flags.diagDir, flags.numVbuckets)
 
 	// For app reloads
 	go func(s *supervisor.SuperSupervisor) {

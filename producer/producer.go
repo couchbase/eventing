@@ -22,7 +22,7 @@ import (
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
-	memoryQuota int64, superSup common.EventingSuperSup) *Producer {
+	memoryQuota int64, numVbuckets int, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                appName,
 		bootstrapFinishCh:      make(chan struct{}, 1),
@@ -35,6 +35,7 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 		notifySettingsChangeCh: make(chan struct{}, 1),
 		notifySupervisorCh:     make(chan struct{}),
 		nsServerPort:           nsServerPort,
+		numVbuckets:            numVbuckets,
 		pauseProducerCh:        make(chan struct{}, 1),
 		persistAllTicker:       time.NewTicker(persistAllTickInterval),
 		plasmaMemQuota:         memoryQuota,
@@ -66,13 +67,6 @@ func (p *Producer) Serve() {
 	err := p.parseDepcfg()
 	if err != nil {
 		logging.Fatalf("PRDR[%s:%d] Failure parsing depcfg, err: %v", p.appName, p.LenRunningConsumers(), err)
-		return
-	}
-
-	hostPortAddr := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
-	p.numVbuckets, err = util.NumVbuckets(hostPortAddr, p.handlerConfig.SourceBucket)
-	if err != nil {
-		logging.Fatalf("PRDR[%s:%d] Failure to fetch vbucket count, err: %v", p.appName, p.LenRunningConsumers(), err)
 		return
 	}
 

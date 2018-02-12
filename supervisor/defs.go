@@ -63,6 +63,7 @@ type SuperSupervisor struct {
 	eventingDir string
 	keepNodes   []string
 	kvPort      string
+	numVbuckets int
 	restPort    string
 	superSup    *suptree.Supervisor
 	supCmdCh    chan supCmdMsg
