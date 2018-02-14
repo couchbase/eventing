@@ -330,6 +330,9 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+/* With multi node, this seems to put more pressure on CI node,
+because of 16 * 2 workers, each with 4 threads. Will selectively enable
+it with bit more tuning.
 func TestCPPWorkerCleanup(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_update.js"
@@ -348,7 +351,7 @@ func TestCPPWorkerCleanup(t *testing.T) {
 	dumpStats(handler)
 	flushFunctionAndBucket(handler)
 	time.Sleep(30 * time.Second)
-}
+}*/
 
 func TestWithUserXattrs(t *testing.T) {
 	time.Sleep(time.Second * 5)
