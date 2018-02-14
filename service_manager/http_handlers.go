@@ -912,7 +912,10 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	logging.Infof("Fetching function draft definitions")
+	// Moving just this case to trace log level as ns_server keeps polling
+	// eventing every 5s to see if new functions have been created. So on an idle
+	// cluster it will log lot of this message.
+	logging.Tracef("Fetching function draft definitions")
 	audit.Log(auditevent.FetchDrafts, r, nil)
 	respData := m.getTempStoreAll()
 
