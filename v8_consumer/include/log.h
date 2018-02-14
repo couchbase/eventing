@@ -12,6 +12,7 @@
 #ifndef LOG_H
 #define LOG_H
 
+#include <atomic>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
@@ -21,7 +22,6 @@
 #include <string>
 
 enum LogLevel { logSilent, logError, logInfo, logWarning, logDebug, logTrace };
-
 extern std::string appName;
 extern LogLevel desiredLogLevel;
 extern std::string workerID;
@@ -50,11 +50,25 @@ inline LogLevel LevelFromString(const std::string &level) {
   return logInfo;
 }
 
+class AtomicLog {
+public:
+  AtomicLog() {
+    while (spin_lock.test_and_set(std::memory_order_acquire)) {
+    }
+  }
+
+  std::ostream &Cout() { return std::cout; }
+
+  ~AtomicLog() { spin_lock.clear(std::memory_order_release); }
+
+  static std::atomic_flag spin_lock;
+};
+
 #define LOG(level)                                                             \
   if (level > desiredLogLevel)                                                 \
     ;                                                                          \
   else                                                                         \
-    std::cout
+    AtomicLog().Cout()
 #endif
 
 #define R(msg) (noRedact ? "" : "<ud>") << msg << (noRedact ? "" : "</ud>")
