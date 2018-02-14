@@ -13,6 +13,7 @@
 #define COMM_H
 
 #include <curl/curl.h>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <v8.h>
@@ -61,21 +62,21 @@ public:
   CURLClient();
   ~CURLClient();
 
+  ExtractKVInfo ExtractKV(const std::string &encoded_str);
   CURLResponse HTTPPost(const std::vector<std::string> &headers,
                         const std::string &url, const std::string &body,
                         const std::string &usr, const std::string &key);
 
-  ExtractKVInfo ExtractKV(const std::string &encoded_str);
-
 private:
   static size_t BodyCallback(void *buffer, size_t size, size_t nmemb,
                              void *cookie);
+  std::string Decode(const std::string &encoded_str);
   static size_t HeaderCallback(char *buffer, size_t size, size_t nitems,
                                void *cookie);
-  std::string Decode(const std::string &encoded_str);
 
-  CURL *curl_handle;
   CURLcode code;
+  CURL *curl_handle;
+  std::mutex curl_handle_lck;
   struct curl_slist *headers;
 };
 
@@ -85,24 +86,24 @@ public:
   Communicator(const std::string &host_ip, const std::string &host_port,
                const std::string &usr, const std::string &key, bool ssl);
 
-  ParseInfo ParseQuery(const std::string &query);
   CredsInfo GetCreds(const std::string &endpoint);
   CredsInfo GetCredsCached(const std::string &endpoint);
   NamedParamsInfo GetNamedParams(const std::string &query);
+  ParseInfo ParseQuery(const std::string &query);
   void Refresh();
 
 private:
-  NamedParamsInfo ExtractNamedParams(const std::string &encoded_str);
   CredsInfo ExtractCredentials(const std::string &encoded_str);
+  NamedParamsInfo ExtractNamedParams(const std::string &encoded_str);
   ParseInfo ExtractParseInfo(const std::string &encoded_str);
 
+  std::unordered_map<std::string, CredsInfo> creds_cache;
   CURLClient curl;
-  std::string parse_query_url;
   std::string get_creds_url;
   std::string get_named_params_url;
-  std::string lo_usr;
   std::string lo_key;
-  std::unordered_map<std::string, CredsInfo> creds_cache;
+  std::string lo_usr;
+  std::string parse_query_url;
 };
 
 #endif
