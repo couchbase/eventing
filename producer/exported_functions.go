@@ -372,34 +372,28 @@ func (p *Producer) vbDistributionStats() {
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
 
-		if _, ok := vbBlob["vb_id"]; !ok {
-			continue
-		}
-		vbucket := uint16(vbBlob["vb_id"].(float64))
-
-		if _, ok := vbBlob["current_vb_owner"]; !ok {
+		if val, ok := vbBlob["current_vb_owner"]; !ok || val == "" {
 			continue
 		}
 		currentOwner := vbBlob["current_vb_owner"].(string)
 
-		if _, ok := vbBlob["assigned_worker"]; !ok {
+		if val, ok := vbBlob["assigned_worker"]; !ok || val == "" {
 			continue
 		}
 		workerID := vbBlob["assigned_worker"].(string)
 
-		if _, ok := vbNodeMap[currentOwner]; !ok && currentOwner != "" {
+		if _, ok := vbNodeMap[currentOwner]; !ok {
 			vbNodeMap[currentOwner] = make(map[string][]uint16)
 		}
 
-		if _, ok := vbNodeMap[currentOwner][workerID]; !ok {
-			vbNodeMap[currentOwner][workerID] = make([]uint16, 0)
+		if _, cOk := vbNodeMap[currentOwner]; cOk {
+			if _, wOk := vbNodeMap[currentOwner][workerID]; !wOk {
+				vbNodeMap[currentOwner][workerID] = make([]uint16, 0)
+			}
 		}
 
-		if currentOwner != "" && workerID != "" {
-			vbNodeMap[currentOwner][workerID] = append(
-				vbNodeMap[currentOwner][workerID], vbucket)
-		}
-
+		vbNodeMap[currentOwner][workerID] = append(
+			vbNodeMap[currentOwner][workerID], uint16(vb))
 	}
 
 	p.statsRWMutex.Lock()
