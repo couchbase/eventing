@@ -459,7 +459,7 @@ func (c *Consumer) sendMessageLoop() {
 			if c.sendMsgCounter > 0 && c.conn != nil {
 				c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
 
-				func(c *Consumer) {
+				func() {
 					c.sendMsgBufferRWMutex.Lock()
 					defer c.sendMsgBufferRWMutex.Lock()
 					err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
@@ -473,8 +473,7 @@ func (c *Consumer) sendMessageLoop() {
 					c.sendMsgBuffer.Reset()
 					c.aggMessagesSentCounter += c.sendMsgCounter
 					c.sendMsgCounter = 0
-					c.sendMsgBufferRWMutex.Unlock()
-				}(c)
+				}()
 			}
 		case <-c.socketWriteLoopStopCh:
 			c.socketWriteLoopStopAckCh <- struct{}{}
