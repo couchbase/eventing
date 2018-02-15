@@ -459,20 +459,22 @@ func (c *Consumer) sendMessageLoop() {
 			if c.sendMsgCounter > 0 && c.conn != nil {
 				c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
 
-				c.sendMsgBufferRWMutex.Lock()
+				func(c *Consumer) {
+					c.sendMsgBufferRWMutex.Lock()
+					defer c.sendMsgBufferRWMutex.Lock()
+					err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
+					if err != nil {
+						logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+						c.client.Stop()
+					}
 
-				err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
-				if err != nil {
-					logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-					c.client.Stop()
-				}
-
-				// Reset the sendMessage buffer and message counter
-				c.sendMsgBuffer.Reset()
-				c.aggMessagesSentCounter += c.sendMsgCounter
-				c.sendMsgCounter = 0
-				c.sendMsgBufferRWMutex.Unlock()
+					// Reset the sendMessage buffer and message counter
+					c.sendMsgBuffer.Reset()
+					c.aggMessagesSentCounter += c.sendMsgCounter
+					c.sendMsgCounter = 0
+					c.sendMsgBufferRWMutex.Unlock()
+				}(c)
 			}
 		case <-c.socketWriteLoopStopCh:
 			c.socketWriteLoopStopAckCh <- struct{}{}

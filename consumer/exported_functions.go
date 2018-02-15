@@ -238,7 +238,6 @@ func (c *Consumer) UpdateEventingNodesUUIDs(uuids []string) {
 
 // GetLatencyStats returns latency stats for event handlers from from cpp world
 func (c *Consumer) GetLatencyStats() map[string]uint64 {
-	c.sendGetLatencyStats(false)
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
 
@@ -253,7 +252,6 @@ func (c *Consumer) GetLatencyStats() map[string]uint64 {
 
 // GetExecutionStats returns OnUpdate/OnDelete success/failure stats for event handlers from cpp world
 func (c *Consumer) GetExecutionStats() map[string]uint64 {
-	c.sendGetExecutionStats(false)
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
 
@@ -268,7 +266,6 @@ func (c *Consumer) GetExecutionStats() map[string]uint64 {
 
 // GetFailureStats returns failure stats for event handlers from cpp world
 func (c *Consumer) GetFailureStats() map[string]uint64 {
-	c.sendGetFailureStats(false)
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
 	failureStats := make(map[string]uint64)
@@ -291,7 +288,6 @@ func (c *Consumer) Pid() int {
 
 // GetLcbExceptionsStats returns libcouchbase exception stats from CPP workers
 func (c *Consumer) GetLcbExceptionsStats() map[string]uint64 {
-	c.sendGetLcbExceptionStats(false)
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
 	lcbExceptionStats := make(map[string]uint64)
