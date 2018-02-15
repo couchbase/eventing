@@ -461,7 +461,7 @@ func (c *Consumer) sendMessageLoop() {
 
 				func() {
 					c.sendMsgBufferRWMutex.Lock()
-					defer c.sendMsgBufferRWMutex.Lock()
+					defer c.sendMsgBufferRWMutex.Unlock()
 					err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
 					if err != nil {
 						logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
