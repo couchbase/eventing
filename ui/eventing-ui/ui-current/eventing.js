@@ -84,16 +84,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         appClone.settings.processing_status = true;
                         // Disable edit button till we get the compilation info
                         self.disableEditButton = true;
-                        return ApplicationService.primaryStore.deployApp(appClone);
-                    })
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
-                        }
-
-                        console.log(response.data);
-                        return ApplicationService.tempStore.saveApp(appClone);
+                        return ApplicationService.public.deployApp(appClone);
                     })
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
@@ -767,6 +758,19 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 'Content-Type': 'application/json'
                             },
                             data: appModel.settings
+                        });
+                    },
+                    deployApp: function(appModel) {
+                        return $http({
+                            url: `/_p/event/api/v1/functions/${appModel.appname}`,
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: appModel
                         });
                     }
                 },
