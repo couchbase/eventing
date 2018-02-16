@@ -34,6 +34,17 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             function(ApplicationService) {
                                 return ApplicationService.tempStore.getAllApps();
                             }
+                        ],
+                        isAppDeployed: ['ApplicationService',
+                            function(ApplicationService) {
+                                return ApplicationService.tempStore.isAppDeployed(appName)
+                                    .then(function(isDeployed) {
+                                        return isDeployed;
+                                    })
+                                    .catch(function(errResponse) {
+                                        console.error('Unable to get deployed apps list', errResponse);
+                                    });
+                            }
                         ]
                     }
                 });
@@ -374,14 +385,15 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for settings.
-    .controller('SettingsCtrl', ['$q', '$timeout', '$scope', 'ApplicationService', 'FormValidationService', 'appName', 'bucketsResolve', 'savedApps',
-        function($q, $timeout, $scope, ApplicationService, FormValidationService, appName, bucketsResolve, savedApps) {
+    .controller('SettingsCtrl', ['$q', '$timeout', '$scope', 'ApplicationService', 'FormValidationService', 'appName', 'bucketsResolve', 'savedApps', 'isAppDeployed',
+        function($q, $timeout, $scope, ApplicationService, FormValidationService, appName, bucketsResolve, savedApps, isAppDeployed) {
             var self = this,
                 appModel = ApplicationService.local.getAppByName(appName);
 
             self.isDialog = false;
             self.showSuccessAlert = false;
             self.showWarningAlert = false;
+            self.isAppDeployed = isAppDeployed;
 
             // Need to initialize buckets if they are empty,
             // otherwise self.saveSettings() would compare 'null' with '[]'.
@@ -418,38 +430,21 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 // Deadline timeout must be greater than execution timeout.
                 $scope.appModel.settings.deadline_timeout = $scope.appModel.settings.execution_timeout + 2;
 
-                ApplicationService.primaryStore.saveSettings($scope.appModel)
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
+                // Update local changes.
+                appModel.settings = $scope.appModel.settings;
+                appModel.depcfg.buckets = bindings;
+
+                ApplicationService.tempStore.isAppDeployed(appName)
+                    .then(function(isDeployed) {
+                        if (isDeployed) {
+                            return ApplicationService.public.updateSettings($scope.appModel);
                         }
-
-                        console.log(response.data);
-                        return ApplicationService.tempStore.saveApp($scope.appModel);
-                    })
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
-                        }
-
-                        console.log('Settings saved:', response.data);
-                        showSuccessAlert('Settings saved successfully!');
-                        // Update local changes.
-                        appModel.settings = $scope.appModel.settings;
-                        appModel.depcfg.buckets = bindings;
-
-
-                        // TODO : May not need these as we don't allow editing of these buckets.
-                        appModel.depcfg.source_bucket = self.sourceBucket;
-                        appModel.depcfg.metadata_bucket = self.metadataBucket;
-                        closeDialog('ok');
                     })
                     .catch(function(errResponse) {
-                        console.error(errResponse.data);
-                        dismissDialog('cancel');
+                        console.error('Unable to get deployed apps list', errResponse);
                     });
+
+                closeDialog('ok');
             };
 
             self.cancelEdit = function(dismissDialog) {
@@ -760,6 +755,21 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         return appManager.getAppByName(appName);
                     }
                 },
+                public: {
+                    updateSettings: function(appModel) {
+                        return $http({
+                            url: `/_p/event/api/v1/functions/${appModel.appname}/settings`,
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: appModel.settings
+                        });
+                    }
+                },
                 tempStore: {
                     getAllApps: function() {
                         return $http.get('/_p/event/getAppTempStore/')
@@ -786,6 +796,22 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             },
                             data: app
                         });
+                    },
+                    isAppDeployed: function(appName) {
+                        return $http.get('/_p/event/getAppTempStore/')
+                            .then(function(response) {
+                                // Create and return an ApplicationManager instance.
+                                var deployedAppsMgr = new ApplicationManager();
+
+                                for (var deployedApp of response.data) {
+                                    deployedAppsMgr.pushApp(new Application(deployedApp));
+                                }
+
+                                return deployedAppsMgr;
+                            })
+                            .then(function(deployedAppsMgr) {
+                                return deployedAppsMgr.getAppByName(appName).settings.deployment_status;
+                            });
                     },
                     deleteApp: function(appName) {
                         return $http.get('/_p/event/deleteAppTempStore/?name=' + appName);
