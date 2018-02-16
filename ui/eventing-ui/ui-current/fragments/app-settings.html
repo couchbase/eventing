@@ -62,7 +62,7 @@
           ng-model="appModel.appname">
         <div
           class="error field-error"
-          ng-show="formCtrl.createAppForm.appname.$error.required && formCtrl.createAppForm.appname.$dirty">
+          ng-show="formCtrl.createAppForm.appname.$error.required">
           Name cannot be empty
         </div>
         <div
@@ -204,7 +204,11 @@
           </div>
           <div class="column width-4">
             <h4 class="text-medium inline">name</h4>
-            <input type="text" ng-model="bindings[$index].name"/>
+            <span class="input-prepend">
+              <select ng-model="bindings[$index].name"
+                      ng-options="bucket for bucket in formCtrl.sourceBuckets">
+              </select>
+            </span>
           </div>
           <div class="width-4">
             <h4 class="text-medium inline">value</h4>
@@ -255,7 +259,11 @@
           </div>
           <div class="column width-4">
             <h4 class="text-medium inline">name</h4>
-            <input type="text" ng-model="formCtrl.bindings[$index].name"/>
+            <span class="input-prepend">
+              <select ng-model="formCtrl.bindings[$index].name"
+                      ng-options="bucket for bucket in formCtrl.sourceBuckets">
+              </select>
+            </span>
           </div>
           <div class="width-4">
             <h4 class="text-medium inline">value</h4>
@@ -279,7 +287,7 @@
       <button
         ng-show="formCtrl.isDialog"
         ng-click="$close('ok')"
-        ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel)">
+        ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel) || formCtrl.isFuncNameUndefined() || formCtrl.createAppForm.$pristine">
         Next: Add Code
       </button>
       <a

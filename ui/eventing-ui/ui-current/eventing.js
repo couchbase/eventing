@@ -299,13 +299,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 scope.appModel = new ApplicationModel();
                 scope.appModel.initializeDefaults();
                 scope.bindings = [];
-                // Add a sample row of bindings.
                 scope.bindings.push({
                     type: 'alias',
                     name: '',
                     value: ''
                 });
-
                 createApp(scope);
             };
 
@@ -346,8 +344,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for creating an application.
-    .controller('CreateCtrl', ['FormValidationService', 'bucketsResolve', 'savedApps',
-        function(FormValidationService, bucketsResolve, savedApps) {
+    .controller('CreateCtrl', ['$scope', 'FormValidationService', 'bucketsResolve', 'savedApps',
+        function($scope, FormValidationService, bucketsResolve, savedApps) {
             var self = this;
             self.isDialog = true;
 
@@ -356,6 +354,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.savedApps = savedApps.getApplications();
 
             self.bindings = [];
+            if ($scope.bindings.length > 0) {
+                $scope.bindings[0].name = bucketsResolve[0];
+            }
 
             // Checks whether source and metadata buckets are the same.
             self.srcMetaSameBucket = function(appModel) {
@@ -365,6 +366,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.isFormInvalid = function() {
                 return FormValidationService.isFormInvalid(self);
             };
+
+            self.isFuncNameUndefined = function() {
+                let b = !$scope.appModel.appname;
+                return b;
+            }
         }
     ])
     // Controller for settings.
@@ -950,10 +956,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     }
 
                     // Check whether the appname exists in the list of apps.
-                    if (form.appname.$viewValue) {
+                    if (form.appname.$viewValue && form.appname.$viewValue !== '') {
                         form.appname.$error.appExists = form.appname.$viewValue in formCtrl.savedApps;
                     }
 
+                    form.appname.$error.required = form.appname.$viewValue === '';
 
                     return form.appname.$error.required ||
                         form.appname.$error.appExists ||
