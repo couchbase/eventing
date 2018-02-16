@@ -2,7 +2,9 @@ package servicemanager
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // For debugging
@@ -146,7 +148,7 @@ func (m *ServiceMgr) initService() {
 
 		go func() {
 			for {
-				err := cbauth.RegisterCertRefreshCallback(refresh)
+				err := cbauth.RegisterTLSRefreshCallback(refresh)
 				if err == nil {
 					break
 				}
@@ -159,17 +161,37 @@ func (m *ServiceMgr) initService() {
 					logging.Errorf("Error in loading SSL certificate: %v", err)
 					return
 				}
+
+				clientAuthType, err := cbauth.GetClientCertAuthType()
+				if err != nil {
+					logging.Errorf("Error in getting client cert auth type, %v", err)
+					return
+				}
+
+				config := &tls.Config{
+					Certificates:             []tls.Certificate{cert},
+					CipherSuites:             []uint16{tls.TLS_RSA_WITH_AES_256_CBC_SHA},
+					MinVersion:               tls.VersionTLS12,
+					PreferServerCipherSuites: true,
+					ClientAuth:               clientAuthType,
+				}
+
+				if clientAuthType != tls.NoClientCert {
+					caCert, err := ioutil.ReadFile(m.certFile)
+					if err != nil {
+						logging.Errorf("Error in reading cacert file, %v", err)
+						return
+					}
+					caCertPool := x509.NewCertPool()
+					caCertPool.AppendCertsFromPEM(caCert)
+					config.ClientCAs = caCertPool
+				}
+
 				// allow only strong ssl as this is an internal API and interop is not a concern
 				sslsrv := &http.Server{
 					Addr:         sslAddr,
 					TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
-					TLSConfig: &tls.Config{
-						Certificates:             []tls.Certificate{cert},
-						CipherSuites:             []uint16{tls.TLS_RSA_WITH_AES_256_CBC_SHA},
-						MinVersion:               tls.VersionTLS12,
-						PreferServerCipherSuites: true,
-						// ClientAuth:            tls.RequireAndVerifyClientCert,
-					},
+					TLSConfig:    config,
 				}
 				// replace below with ListenAndServeTLS on moving to go1.8
 				lsnr, err := net.Listen("tcp", sslAddr)

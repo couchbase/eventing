@@ -208,3 +208,40 @@ type PlannerNodeVbMapping struct {
 	StartVb  int    `json:"start_vb"`
 	VbsCount int    `json:"vb_count"`
 }
+
+type HandlerConfig struct {
+	CheckpointInterval       int
+	CleanupTimers            bool
+	CPPWorkerThrCount        int
+	CronTimersPerDoc         int
+	CurlTimeout              int64
+	EnableRecursiveMutation  bool
+	ExecutionTimeout         int
+	FuzzOffset               int
+	LcbInstCapacity          int
+	LogLevel                 string
+	SkipTimerThreshold       int
+	SocketWriteBatchSize     int
+	SocketTimeout            int
+	SourceBucket             string
+	StatsLogInterval         int
+	StreamBoundary           DcpStreamBoundary
+	WorkerCount              int
+	WorkerQueueCap           int64
+	XattrEntryPruneThreshold int
+}
+
+type ProcessConfig struct {
+	BreakpadOn      bool
+	DiagDir         string
+	EventingDir     string
+	EventingPort    string
+	EventingSSLPort string
+	IPCType         string
+	SockIdentifier  string
+}
+
+type RebalanceConfig struct {
+	VBOwnershipGiveUpRoutineCount   int
+	VBOwnershipTakeoverRoutineCount int
+}

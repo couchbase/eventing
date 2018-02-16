@@ -3,7 +3,6 @@ package consumer
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"hash/crc32"
 	"net"
 	"os/exec"
@@ -30,8 +29,7 @@ const (
 	tsLayout                 = "2006-01-02T15:04:05Z"
 
 	metakvEventingPath    = "/eventing/"
-	metakvAppsPath        = metakvEventingPath + "apps/"
-	metakvAppSettingsPath = metakvEventingPath + "settings/"
+	metakvAppSettingsPath = metakvEventingPath + "appsettings/"
 )
 
 const (
@@ -74,9 +72,6 @@ const (
 	// Interval for retrying vb dcp stream
 	dcpStreamRequestRetryInterval = time.Duration(1000) * time.Millisecond
 
-	// Last processed seq # checkpoint interval
-	checkpointInterval = time.Duration(3000) * time.Millisecond
-
 	// Interval for retrying failed cluster related operations
 	clusterOpRetryInterval = time.Duration(1000) * time.Millisecond
 
@@ -110,16 +105,6 @@ const (
 	dcpStreamUninitialised = ""
 )
 
-var (
-	errPlasmaHandleMissing = errors.New("Failed to find plasma handle")
-)
-
-type debuggerBlob struct {
-	ConsumerName string `json:"consumer_name"`
-	HostPortAddr string `json:"host_port_addr"`
-	UUID         string `json:"uuid"`
-}
-
 type xattrMetadata struct {
 	Cas    string   `json:"cas"`
 	Digest uint32   `json:"digest"`
@@ -132,11 +117,6 @@ type vbFlogEntry struct {
 	statusCode     mcd.Status
 	vb             uint16
 	flog           *cb.FailoverLog
-}
-
-type v8InitMeta struct {
-	AppName    string `json:"app_name"`
-	KvHostPort string `json:"kv_host_port"`
 }
 
 type dcpMetadata struct {
@@ -279,7 +259,7 @@ type Consumer struct {
 	// Map that needed to short circuits failover log to dcp stream request routine
 	vbFlogChan chan *vbFlogEntry
 
-	sendMsgCounter int
+	sendMsgCounter uint64
 	// For performance reasons, Golang writes dcp events to tcp socket in batches
 	// socketWriteBatchSize controls the batch size
 	socketWriteBatchSize     int
@@ -356,14 +336,18 @@ type Consumer struct {
 	// Tracks V8 Opcodes processed per consumer
 	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by msgProcessedRWMutex
 
-	doctimerMessagesProcessed  uint64
-	crontimerMessagesProcessed uint64
-	timerMessagesProcessedPSec int
-
 	plasmaInsertCounter uint64
 	plasmaDeleteCounter uint64
 	plasmaLookupCounter uint64
 	timersInPastCounter uint64
+
+	// DCP and Timer event related counters
+	aggMessagesSentCounter     uint64
+	crontimerMessagesProcessed uint64
+	dcpDeletionCounter         uint64
+	dcpMutationCounter         uint64
+	doctimerMessagesProcessed  uint64
+	timerMessagesProcessedPSec int
 
 	// capture dcp operation stats, granularity of these stats depend on statsTickInterval
 	dcpOpsProcessed     uint64

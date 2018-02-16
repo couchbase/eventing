@@ -126,23 +126,3 @@ func ConnectBucket(cluster, pooln, bucketn string) (*couchbase.Bucket, error) {
 	}
 	return bucket, err
 }
-
-// NumVbuckets return the number of vbuckets in bucket.
-func NumVbuckets(hostPortAddr, bucketName string) (int, error) {
-	bucket, err := ConnectBucket(hostPortAddr, "default", bucketName)
-	if err != nil {
-		logging.Errorf("Unable to connect to bucket %v, err: %v", bucketName, err)
-		return 0, err
-	}
-
-	count := 0
-	m, err := bucket.GetVBmap(nil)
-	if err == nil {
-		for _, vbnos := range m {
-			count += len(vbnos)
-		}
-	}
-
-	bucket.Close()
-	return count, err
-}

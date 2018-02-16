@@ -20,9 +20,8 @@ const (
 )
 
 const (
-	bucketOpRetryInterval   = time.Duration(1000) * time.Millisecond
-	persistAllTickInterval  = time.Duration(5000) * time.Millisecond
-	updateStatsTickInterval = time.Duration(5000) * time.Millisecond
+	bucketOpRetryInterval  = time.Duration(1000) * time.Millisecond
+	persistAllTickInterval = time.Duration(5000) * time.Millisecond
 
 	udsSockPathLimit = 100
 
@@ -52,21 +51,11 @@ type Producer struct {
 	appName                string
 	app                    *common.AppConfig
 	auth                   string
-	breakpadOn             bool // Switch to control whether breakpad must be turned on
-	bucket                 string
 	cleanupTimers          bool
 	cfgData                string
-	cppWorkerThrCount      int // No. of worker threads per CPP worker process
-	cronTimersPerDoc       int
-	curlTimeout            int64 // curl operation timeout in ms
-	diagDir                string
-	eventingAdminPort      string
-	eventingSSLPort        string
-	eventingDir            string
 	kvPort                 string
 	kvHostPorts            []string
 	listenerHandles        []net.Listener
-	logLevel               string
 	metadatabucket         string
 	metadataBucketHandle   *gocb.Bucket
 	metakvAppHostPortsPath string
@@ -75,12 +64,13 @@ type Producer struct {
 	numVbuckets            int
 	pauseProducerCh        chan struct{}
 	persistAllTicker       *time.Ticker
-	workerQueueCap         int64
-	tcpPort                string
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
 	uuid                   string
-	workerCount            int
+
+	handlerConfig   *common.HandlerConfig
+	processConfig   *common.ProcessConfig
+	rebalanceConfig *common.RebalanceConfig
 
 	// DCP config, as they need to be tunable
 	dcpConfig map[string]interface{}
@@ -103,39 +93,6 @@ type Producer struct {
 	// i.e. started up all it's child routines
 	bootstrapFinishCh chan struct{}
 
-	// Routines to control parallel vbucket ownership transfer
-	// during rebalance
-	vbOwnershipGiveUpRoutineCount   int
-	vbOwnershipTakeoverRoutineCount int
-
-	// N1QL Transpiler related nested iterator config params
-	lcbInstCapacity int
-
-	enableRecursiveMutation bool
-
-	// Controls read and write deadline timeout for communication
-	// between Go and C++ process
-	socketTimeout time.Duration
-
-	// Caps wall clock time allowed for execution of Javascript handler
-	// code by V8 runtime(in seconds)
-	executionTimeout int
-
-	// Controls start seq no for vb dcp stream
-	// currently supports:
-	// everything - start from beginning and listen forever
-	// from_now - start from current vb seq no and listen forever
-	dcpStreamBoundary common.DcpStreamBoundary
-
-	// skipTimerThreshold controls the threshold beyond which if timer event
-	// trigger is delayed, it's execution will be skipped
-	skipTimerThreshold int
-
-	// Needed by cron timers
-	// A random number (0 - fuzzOffset) will be added to the epoch time at which the callback function
-	// was supposed to be called
-	fuzzOffset int
-
 	// stats gathered from ClusterInfo
 	localAddress      string
 	eventingNodeAddrs []string
@@ -145,14 +102,6 @@ type Producer struct {
 
 	consumerListeners []net.Listener
 	ProducerListener  net.Listener
-
-	// Threshold post which eventing will try to prune stale xattr records related to
-	// doc timer from KV document in source bucket
-	xattrEntryPruneThreshold int
-
-	// For performance reasons, Golang writes dcp events to tcp socket in batches
-	// socketWriteBatchSize controls the batch size
-	socketWriteBatchSize int
 
 	// Chan used to signify update of app level settings
 	notifySettingsChangeCh chan struct{}
@@ -185,9 +134,6 @@ type Producer struct {
 	// topologyChangeCh used by super_supervisor to notify producer
 	// about topology change
 	topologyChangeCh chan *common.TopologyChangeMsg
-
-	// time.Ticker duration for dumping consumer stats
-	statsTickDuration time.Duration
 
 	statsRWMutex *sync.RWMutex
 

@@ -145,9 +145,7 @@ var getOpCallback = func(args ...interface{}) error {
 	blob := args[2]
 
 	_, err := p.metadataBucketHandle.Get(key, blob)
-	if gocb.IsKeyNotFoundError(err) {
-		return nil
-	} else if err == gocb.ErrKeyNotFound {
+	if gocb.IsKeyNotFoundError(err) || err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
 	} else if err != nil {
 		logging.Errorf("%s [%s:%d] Bucket get failed for key: %r , err: %v",
@@ -164,11 +162,7 @@ var deleteOpCallback = func(args ...interface{}) error {
 	key := args[1].(string)
 
 	_, err := p.metadataBucketHandle.Remove(key, 0)
-	if gocb.IsKeyNotFoundError(err) {
-		logging.Errorf("%s [%s:%d] Key: %r doesn't exist, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
-		return nil
-	} else if err == gocb.ErrShutdown {
+	if gocb.IsKeyNotFoundError(err) || err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
 		logging.Errorf("%s [%s:%d] Bucket delete failed for key: %r, err: %v",

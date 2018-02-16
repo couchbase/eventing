@@ -14,7 +14,7 @@
 #include "utils.h"
 
 static char const *global_program_name;
-int messages_processed(0);
+int messages_parsed(0);
 
 std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
   auto header = flatbuf::header::GetHeader(parsed_message->header.c_str());
@@ -191,7 +191,20 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << on_update_failure << ", \"on_delete_success\":";
       estats << on_delete_success << ", \"on_delete_failure\":";
       estats << on_delete_failure << ", \"doc_timer_create_failure\":";
-      estats << doc_timer_create_failure;
+      estats << doc_timer_create_failure << ", \"messages_parsed\":";
+      estats << messages_parsed << ", \"cron_timer_msg_counter\":";
+      estats << cron_timer_msg_counter << ", \"dcp_delete_msg_counter\":";
+      estats << dcp_delete_msg_counter << ", \"dcp_mutation_msg_counter\":";
+      estats << dcp_mutation_msg_counter << ", \"doc_timer_msg_counter\":";
+      estats << doc_timer_msg_counter
+             << ", \"enqueued_cron_timer_msg_counter\":";
+      estats << enqueued_cron_timer_msg_counter
+             << ", \"enqueued_dcp_delete_msg_counter\":";
+      estats << enqueued_dcp_delete_msg_counter
+             << ", \"enqueued_dcp_mutation_msg_counter\":";
+      estats << enqueued_dcp_mutation_msg_counter
+             << ", \"enqueued_doc_timer_msg_counter\":",
+          estats << enqueued_doc_timer_msg_counter;
 
       if (workers.size() >= 1) {
         agg_queue_size = 0;
@@ -264,12 +277,14 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oDelete:
       worker_index = partition_thr_map[parsed_header->partition];
       if (workers[worker_index] != nullptr) {
+        enqueued_dcp_delete_msg_counter++;
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
       }
       break;
     case oMutation:
       worker_index = partition_thr_map[parsed_header->partition];
       if (workers[worker_index] != nullptr) {
+        enqueued_dcp_mutation_msg_counter++;
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
       }
       break;
@@ -283,12 +298,14 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oDocTimer:
       worker_index = partition_thr_map[parsed_header->partition];
       if (workers[worker_index] != nullptr) {
+        enqueued_doc_timer_msg_counter++;
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
       }
       break;
     case oCronTimer:
       worker_index = partition_thr_map[parsed_header->partition];
       if (workers[worker_index] != nullptr) {
+        enqueued_cron_timer_msg_counter++;
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
       }
       break;
@@ -378,7 +395,7 @@ std::unique_ptr<message_t> ParseServerMessage(int encoded_header_size,
       HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE + encoded_header_size,
       encoded_payload_size);
 
-  messages_processed++;
+  messages_parsed++;
 
   return parsed_message;
 }

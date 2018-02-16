@@ -15,42 +15,28 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 return Object.keys(self.appList).length === 0;
             };
 
-            self.toggleProcessing = function(app) {
-                // Clone the app for easier backtracking.
-                var appClone = app.clone();
-                appClone.settings.processing_status = !appClone.settings.processing_status;
-
-                ApplicationService.primaryStore.getDeployedApps()
-                    .then(function(response) {
-                        // Check if the app is deployed completely before toggling the processing state.
-                        if (!(appClone.appname in response.data)) {
-                            showErrorAlert(`Function "${appClone.appname}" may be undergoing bootstrap. Please try later.`);
-                            return $q.reject(`Unable to pause/run "${appClone.appname}". Possibly, bootstrap in progress`);
-                        }
-
-                        return ApplicationService.primaryStore.saveSettings(appClone);
-                    }).then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
-                        }
-
-                        console.log(response.data);
-                        return ApplicationService.tempStore.saveApp(appClone);
-                    })
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
-                        }
-
-                        console.log(response.data);
-                        // Processing status was successfully toggled, update the UI.
-                        app.settings.processing_status = appClone.settings.processing_status;
-                    })
-                    .catch(function(errResponse) {
-                        console.error(errResponse);
-                    });
+            self.openSettings = function(appName) {
+                $uibModal.open({
+                    templateUrl: '../_p/ui/event/ui-current/fragments/app-settings.html',
+                    controller: 'SettingsCtrl',
+                    controllerAs: 'formCtrl',
+                    resolve: {
+                        appName: [function() {
+                            return appName;
+                        }],
+                        bucketsResolve: ['ApplicationService',
+                            function(ApplicationService) {
+                                // Getting the list of buckets from server.
+                                return ApplicationService.server.getLatestBuckets();
+                            }
+                        ],
+                        savedApps: ['ApplicationService',
+                            function(ApplicationService) {
+                                return ApplicationService.tempStore.getAllApps();
+                            }
+                        ]
+                    }
+                });
             };
 
             self.toggleDeployment = function(app) {
@@ -382,10 +368,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for settings.
-    .controller('SettingsCtrl', ['$q', '$uibModal', '$state', '$timeout', '$scope', '$stateParams', 'ApplicationService', 'FormValidationService', 'bucketsResolve', 'savedApps',
-        function($q, $uibModal, $state, $timeout, $scope, $stateParams, ApplicationService, FormValidationService, bucketsResolve, savedApps) {
+    .controller('SettingsCtrl', ['$q', '$timeout', '$scope', 'ApplicationService', 'FormValidationService', 'appName', 'bucketsResolve', 'savedApps',
+        function($q, $timeout, $scope, ApplicationService, FormValidationService, appName, bucketsResolve, savedApps) {
             var self = this,
-                appModel = ApplicationService.local.getAppByName($stateParams.appName);
+                appModel = ApplicationService.local.getAppByName(appName);
 
             self.isDialog = false;
             self.showSuccessAlert = false;
@@ -416,7 +402,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 return FormValidationService.isValidIdentifier(binding.value);
             };
 
-            self.saveSettings = function() {
+            self.saveSettings = function(dismissDialog, closeDialog) {
                 var bindings = ApplicationService.convertBindingToConfig(self.bindings);
                 if (JSON.stringify(appModel.depcfg.buckets) !== JSON.stringify(bindings)) {
                     $scope.appModel.depcfg.buckets = bindings;
@@ -452,19 +438,19 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         // TODO : May not need these as we don't allow editing of these buckets.
                         appModel.depcfg.source_bucket = self.sourceBucket;
                         appModel.depcfg.metadata_bucket = self.metadataBucket;
+                        closeDialog('ok');
                     })
                     .catch(function(errResponse) {
                         console.error(errResponse.data);
+                        dismissDialog('cancel');
                     });
             };
 
-            self.cancelEdit = function() {
+            self.cancelEdit = function(dismissDialog) {
                 // TODO : Consider using appModel.clone()
                 $scope.appModel = JSON.parse(JSON.stringify(appModel));
                 $scope.appModel.settings.cleanup_timers = String(appModel.settings.cleanup_timers);
-
-                // Upon pressing cancel in the settings page, go back to the summary page.
-                $state.go('app.admin.eventing.summary');
+                dismissDialog('cancel');
             };
 
             function showSuccessAlert(message) {
@@ -1019,30 +1005,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         isEventingRunning: ['ApplicationService',
                             function(ApplicationService) {
                                 return ApplicationService.server.isEventingRunning();
-                            }
-                        ]
-                    }
-                })
-                .state('app.admin.eventing.settings', {
-                    url: '/settings/:appName',
-                    templateUrl: '../_p/ui/event/ui-current/fragments/app-settings.html',
-                    controller: 'SettingsCtrl',
-                    controllerAs: 'formCtrl',
-                    resolve: {
-                        loadApps: ['ApplicationService',
-                            function(ApplicationService) {
-                                return ApplicationService.local.loadApps();
-                            }
-                        ],
-                        bucketsResolve: ['ApplicationService',
-                            function(ApplicationService) {
-                                // Getting the list of buckets.
-                                return ApplicationService.server.getLatestBuckets();
-                            }
-                        ],
-                        savedApps: ['ApplicationService',
-                            function(ApplicationService) {
-                                return ApplicationService.tempStore.getAllApps();
                             }
                         ]
                     }

@@ -20,26 +20,35 @@
 bool debugger_started = false;
 bool enable_recursive_mutation = false;
 
-std::atomic<std::int64_t> bucket_op_exception_count = {0};
-std::atomic<std::int64_t> n1ql_op_exception_count = {0};
-std::atomic<std::int64_t> timeout_count = {0};
-std::atomic<std::int16_t> checkpoint_failure_count = {0};
+std::atomic<int64_t> bucket_op_exception_count = {0};
+std::atomic<int64_t> n1ql_op_exception_count = {0};
+std::atomic<int64_t> timeout_count = {0};
+std::atomic<int16_t> checkpoint_failure_count = {0};
 
-std::atomic<std::int64_t> on_update_success = {0};
-std::atomic<std::int64_t> on_update_failure = {0};
-std::atomic<std::int64_t> on_delete_success = {0};
-std::atomic<std::int64_t> on_delete_failure = {0};
+std::atomic<int64_t> on_update_success = {0};
+std::atomic<int64_t> on_update_failure = {0};
+std::atomic<int64_t> on_delete_success = {0};
+std::atomic<int64_t> on_delete_failure = {0};
 
-std::atomic<std::int64_t> doc_timer_create_failure = {0};
+std::atomic<int64_t> doc_timer_create_failure = {0};
 
-std::atomic<std::int64_t> messages_processed_counter = {0};
+std::atomic<int64_t> messages_processed_counter = {0};
+
+std::atomic<int64_t> cron_timer_msg_counter = {0};
+std::atomic<int64_t> dcp_delete_msg_counter = {0};
+std::atomic<int64_t> dcp_mutation_msg_counter = {0};
+std::atomic<int64_t> doc_timer_msg_counter = {0};
+
+std::atomic<int64_t> enqueued_cron_timer_msg_counter = {0};
+std::atomic<int64_t> enqueued_dcp_delete_msg_counter = {0};
+std::atomic<int64_t> enqueued_dcp_mutation_msg_counter = {0};
+std::atomic<int64_t> enqueued_doc_timer_msg_counter = {0};
 
 enum RETURN_CODE {
   kSuccess = 0,
   kFailedToCompileJs,
   kNoHandlersDefined,
   kFailedInitBucketHandle,
-  kFailedInitN1QLHandle,
   kOnUpdateCallFail,
   kOnDeleteCallFail
 };
@@ -173,19 +182,8 @@ void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
 }
 
 void sdmutate_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  auto resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
-  lcb_SDENTRY ent;
-  size_t iter = 0;
-
   auto res = reinterpret_cast<Result *>(rb->cookie);
   res->rc = rb->rc;
-
-  if (lcb_sdresult_next(resp, &ent, &iter)) {
-    LOG(logTrace) << "sdmutate key: " << (char *)rb->key
-                  << " Status: " << ent.status
-                  << " NValue: " << R(static_cast<int>(ent.nvalue))
-                  << " Value: " << R(reinterpret_cast<const char *>(ent.value));
-  }
 }
 
 void sdlookup_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
@@ -202,10 +200,6 @@ void sdlookup_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     size_t iter = 0;
     int index = 0;
     while (lcb_sdresult_next(resp, &ent, &iter)) {
-      LOG(logTrace) << "sdlookup Status: " << ent.status
-                    << "NValue: " << R(static_cast<int>(ent.nvalue))
-                    << "Value: "
-                    << R(reinterpret_cast<const char *>(ent.value));
       res->value.assign(reinterpret_cast<const char *>(ent.value),
                         static_cast<int>(ent.nvalue));
 
@@ -299,13 +293,20 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   js_exception = new JsException(isolate_);
   data.js_exception = js_exception;
   data.cron_timers_per_doc = h_config->cron_timers_per_doc;
+
+  auto ssl = false;
+  auto port = server_settings->eventing_port;
+
+  // Temporarily disabling ssl as requests to eventing-producer
+  // are having problem with ssl.
+  /*
   auto ssl = true;
   auto port = server_settings->eventing_sslport;
   if (port.length() < 1) {
     LOG(logError) << "SSL not available, using plain HTTP" << std::endl;
     port = server_settings->eventing_port;
     ssl = false;
-  }
+  }*/
 
   auto key = GetLocalKey();
   data.comm = new Communicator(server_settings->host_addr, port, key.first,
@@ -821,6 +822,7 @@ void V8Worker::RouteMessage() {
     case eDCP:
       switch (getDCPOpcode(msg.header->opcode)) {
       case oDelete:
+        dcp_delete_msg_counter++;
         this->SendDelete(msg.header->metadata);
         break;
       case oMutation:
@@ -828,6 +830,7 @@ void V8Worker::RouteMessage() {
             (const void *)msg.payload->payload.c_str());
         val.assign(payload->value()->str());
         metadata.assign(msg.header->metadata);
+        dcp_mutation_msg_counter++;
         this->SendUpdate(val, metadata, "json");
         break;
       default:
@@ -842,6 +845,7 @@ void V8Worker::RouteMessage() {
         callback_fn.assign(payload->callback_fn()->str());
         doc_id.assign(payload->doc_id()->str());
         timer_ts.assign(payload->timer_ts()->str());
+        doc_timer_msg_counter++;
         this->SendDocTimer(callback_fn, doc_id, timer_ts,
                            payload->timer_partition());
         break;
@@ -1152,6 +1156,7 @@ void V8Worker::SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
         } else {
           execute_flag = true;
           execute_start_time = Time::now();
+          cron_timer_msg_counter++;
           fn_handle->Call(context->Global(), 1, arg);
           std::lock_guard<std::mutex> lck(cron_timer_mtx);
           cron_timer_checkpoint[partition] = timer_ts;

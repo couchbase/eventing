@@ -146,11 +146,11 @@ func (p *Producer) initWorkerVbMap() {
 	logging.Debugf("%s [%s:%d] eventingAddr: %r vbucketsToHandle, len: %d dump: %r",
 		logPrefix, p.appName, p.LenRunningConsumers(), eventingNodeAddr, len(vbucketsToHandle), util.Condense(vbucketsToHandle))
 
-	vbucketPerWorker := len(vbucketsToHandle) / p.workerCount
+	vbucketPerWorker := len(vbucketsToHandle) / p.handlerConfig.WorkerCount
 	var startVbIndex int
 
-	vbCountPerWorker := make([]int, p.workerCount)
-	for i := 0; i < p.workerCount; i++ {
+	vbCountPerWorker := make([]int, p.handlerConfig.WorkerCount)
+	for i := 0; i < p.handlerConfig.WorkerCount; i++ {
 		vbCountPerWorker[i] = vbucketPerWorker
 		startVbIndex += vbucketPerWorker
 	}
@@ -170,7 +170,7 @@ func (p *Producer) initWorkerVbMap() {
 
 	startVbIndex = 0
 
-	for i := 0; i < p.workerCount; i++ {
+	for i := 0; i < p.handlerConfig.WorkerCount; i++ {
 		workerName = fmt.Sprintf("worker_%s_%d", p.appName, i)
 
 		for j := 0; j < vbCountPerWorker[i]; j++ {
@@ -204,7 +204,7 @@ func (p *Producer) getKvVbMap() {
 			continue
 		}
 
-		vbs, err := cinfo.GetVBuckets(kvaddr, p.bucket)
+		vbs, err := cinfo.GetVBuckets(kvaddr, p.handlerConfig.SourceBucket)
 		if err != nil {
 			logging.Errorf("%s [%s:%d] Failed to get vbuckets for given kv util.NodeId, err: %v",
 				logPrefix, p.appName, p.LenRunningConsumers(), err)

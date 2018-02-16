@@ -18,18 +18,19 @@ import (
 )
 
 // NewSuperSupervisor creates the super_supervisor handle
-func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string) *SuperSupervisor {
+func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string, numVbuckets int) *SuperSupervisor {
 	s := &SuperSupervisor{
-		appDeploymentStatus: make(map[string]bool),
-		appProcessingStatus: make(map[string]bool),
-		CancelCh:            make(chan struct{}, 1),
-		cleanedUpAppMap:     make(map[string]struct{}),
-		deployedApps:        make(map[string]string),
-		adminPort:           adminPort,
-		diagDir:             diagDir,
-		eventingDir:         eventingDir,
-		keepNodes:           make([]string, 0),
-		kvPort:              kvPort,
+		appDeploymentStatus:          make(map[string]bool),
+		appProcessingStatus:          make(map[string]bool),
+		CancelCh:                     make(chan struct{}, 1),
+		cleanedUpAppMap:              make(map[string]struct{}),
+		deployedApps:                 make(map[string]string),
+		adminPort:                    adminPort,
+		diagDir:                      diagDir,
+		eventingDir:                  eventingDir,
+		keepNodes:                    make([]string, 0),
+		kvPort:                       kvPort,
+		numVbuckets:                  numVbuckets,
 		producerSupervisorTokenMap:   make(map[common.EventingProducer]suptree.ServiceToken),
 		restPort:                     restPort,
 		runningProducers:             make(map[string]common.EventingProducer),
@@ -358,7 +359,7 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
 	p := producer.NewProducer(appName, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
-		s.restPort, s.uuid, s.diagDir, s.plasmaMemQuota, s)
+		s.restPort, s.uuid, s.diagDir, s.plasmaMemQuota, s.numVbuckets, s)
 
 	token := s.superSup.Add(p)
 	s.mu.Lock()

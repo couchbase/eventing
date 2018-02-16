@@ -46,25 +46,6 @@ func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-func TestOnUpdateN1QLOp(t *testing.T) {
-	time.Sleep(time.Second * 5)
-	handler := "n1ql_insert_on_update.js"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-
-	pumpBucketOps(opsType{}, &rateLimit{})
-	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
-	if itemCount != eventCount {
-		t.Error("For", "OnUpdateN1QLOp",
-			"expected", itemCount,
-			"got", eventCount,
-		)
-	}
-
-	dumpStats(handler)
-	flushFunctionAndBucket(handler)
-}
-
 func TestOnDeleteBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_delete.js"
@@ -103,25 +84,6 @@ func TestDocTimerBucketOp(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-func TestDocTimerN1QLOp(t *testing.T) {
-	time.Sleep(time.Second * 5)
-	handler := "n1ql_insert_with_doc_timer.js"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-
-	pumpBucketOps(opsType{}, &rateLimit{})
-	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
-	if itemCount != eventCount {
-		t.Error("For", "DocTimerN1QLOp",
-			"expected", itemCount,
-			"got", eventCount,
-		)
-	}
-
-	dumpStats(handler)
-	flushFunctionAndBucket(handler)
-}
-
 func TestCronTimerBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_with_cron_timer.js"
@@ -132,25 +94,6 @@ func TestCronTimerBucketOp(t *testing.T) {
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "CronTimerBucketOp",
-			"expected", itemCount,
-			"got", eventCount,
-		)
-	}
-
-	dumpStats(handler)
-	flushFunctionAndBucket(handler)
-}
-
-func TestCronTimerN1QLOp(t *testing.T) {
-	time.Sleep(time.Second * 5)
-	handler := "n1ql_insert_with_cron_timer.js"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-
-	pumpBucketOps(opsType{}, &rateLimit{})
-	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
-	if itemCount != eventCount {
-		t.Error("For", "CronTimerN1QLOp",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -247,7 +190,7 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 func TestMultipleHandlers(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler1 := "bucket_op_on_update.js"
-	handler2 := "n1ql_insert_on_update.js"
+	handler2 := "bucket_op_on_delete.js"
 
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)
@@ -256,10 +199,19 @@ func TestMultipleHandlers(t *testing.T) {
 	createAndDeployFunction(handler2, handler2, &commonSettings{})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
-	eventCount := verifyBucketOps(itemCount*2, statsLookupRetryCounter*2)
-	if itemCount*2 != eventCount {
-		t.Error("For", "MultipleHandlers",
-			"expected", itemCount*2,
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "MultipleHandlers UpdateOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	pumpBucketOps(opsType{delete: true}, &rateLimit{})
+	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
+	if eventCount != itemCount*2 {
+		t.Error("For", "MultipleHandlers DeleteOp",
+			"expected", 0,
 			"got", eventCount,
 		)
 	}
@@ -378,6 +330,9 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+/* With multi node, this seems to put more pressure on CI node,
+because of 16 * 2 workers, each with 4 threads. Will selectively enable
+it with bit more tuning.
 func TestCPPWorkerCleanup(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_update.js"
@@ -396,7 +351,7 @@ func TestCPPWorkerCleanup(t *testing.T) {
 	dumpStats(handler)
 	flushFunctionAndBucket(handler)
 	time.Sleep(30 * time.Second)
-}
+}*/
 
 func TestWithUserXattrs(t *testing.T) {
 	time.Sleep(time.Second * 5)

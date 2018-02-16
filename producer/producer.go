@@ -21,16 +21,12 @@ import (
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
-func NewProducer(appName, eventingAdminPort, eventingSSLPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
-	memoryQuota int64, superSup common.EventingSuperSup) *Producer {
+func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
+	memoryQuota int64, numVbuckets int, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                appName,
 		bootstrapFinishCh:      make(chan struct{}, 1),
 		dcpConfig:              make(map[string]interface{}),
-		diagDir:                diagDir,
-		eventingAdminPort:      eventingAdminPort,
-		eventingSSLPort:        eventingSSLPort,
-		eventingDir:            eventingDir,
 		eventingNodeUUIDs:      make([]string, 0),
 		kvPort:                 kvPort,
 		listenerHandles:        make([]net.Listener, 0),
@@ -39,6 +35,7 @@ func NewProducer(appName, eventingAdminPort, eventingSSLPort, eventingDir, kvPor
 		notifySettingsChangeCh: make(chan struct{}, 1),
 		notifySupervisorCh:     make(chan struct{}),
 		nsServerPort:           nsServerPort,
+		numVbuckets:            numVbuckets,
 		pauseProducerCh:        make(chan struct{}, 1),
 		persistAllTicker:       time.NewTicker(persistAllTickInterval),
 		plasmaMemQuota:         memoryQuota,
@@ -47,11 +44,18 @@ func NewProducer(appName, eventingAdminPort, eventingSSLPort, eventingDir, kvPor
 		statsRWMutex:           &sync.RWMutex{},
 		superSup:               superSup,
 		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
-		updateStatsTicker:      time.NewTicker(updateStatsTickInterval),
 		updateStatsStopCh:      make(chan struct{}, 1),
 		uuid:                   uuid,
 		workerNameConsumerMap: make(map[string]common.EventingConsumer),
+		handlerConfig:         &common.HandlerConfig{},
+		processConfig:         &common.ProcessConfig{},
+		rebalanceConfig:       &common.RebalanceConfig{},
 	}
+
+	p.processConfig.DiagDir = diagDir
+	p.processConfig.EventingDir = eventingDir
+	p.processConfig.EventingPort = eventingPort
+	p.processConfig.EventingSSLPort = eventingSSLPort
 
 	p.eventingNodeUUIDs = append(p.eventingNodeUUIDs, uuid)
 	return p
@@ -65,14 +69,9 @@ func (p *Producer) Serve() {
 		return
 	}
 
-	hostPortAddr := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
-	p.numVbuckets, err = util.NumVbuckets(hostPortAddr, p.bucket)
-	if err != nil {
-		logging.Fatalf("PRDR[%s:%d] Failure to fetch vbucket count, err: %v", p.appName, p.LenRunningConsumers(), err)
-		return
-	}
+	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
-	logging.Infof("PRDR[%s:%d] number of vbuckets for %v: %v", p.appName, p.LenRunningConsumers(), p.bucket, p.numVbuckets)
+	logging.Infof("PRDR[%s:%d] number of vbuckets for %v: %v", p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)
 
 	for i := 0; i < p.numVbuckets; i++ {
 		p.seqsNoProcessed[i] = 0
@@ -265,14 +264,14 @@ func (p *Producer) Stop() {
 // Implement fmt.Stringer interface for better debugging in case
 // producer routine crashes and supervisor has to respawn it
 func (p *Producer) String() string {
-	return fmt.Sprintf("Producer => app: %s tcpPort: %s", p.appName, p.tcpPort)
+	return fmt.Sprintf("Producer => app: %s tcpPort: %s", p.appName, p.processConfig.SockIdentifier)
 }
 
 func (p *Producer) startBucket() {
 
-	logging.Infof("PRDR[%s:%d] Connecting with bucket: %q", p.appName, p.LenRunningConsumers(), p.bucket)
+	logging.Infof("PRDR[%s:%d] Connecting with bucket: %q", p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket)
 
-	for i := 0; i < p.workerCount; i++ {
+	for i := 0; i < p.handlerConfig.WorkerCount; i++ {
 		workerName := fmt.Sprintf("worker_%s_%d", p.appName, i)
 		p.handleV8Consumer(workerName, p.workerVbucketMap[workerName], i)
 	}
@@ -282,7 +281,6 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	var listener net.Listener
 	var err error
-	var ipcType, sockIdentifier string
 
 	// For windows use tcp socket based communication
 	// For linux/macos use unix domain sockets
@@ -297,15 +295,14 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 			logging.Errorf("PRDR[%s:%d] Failed to listen on tcp port, err: %v", p.appName, p.LenRunningConsumers(), err)
 		}
 
-		_, p.tcpPort, err = net.SplitHostPort(listener.Addr().String())
+		_, p.processConfig.SockIdentifier, err = net.SplitHostPort(listener.Addr().String())
 		if err != nil {
 			logging.Errorf("PRDR[%s:%d] Failed to parse tcp port, err: %v", p.appName, p.LenRunningConsumers(), err)
 		}
 
-		logging.Infof("PRDR[%s:%d] Started server on port: %s listener: %r", p.appName, p.LenRunningConsumers(), p.tcpPort, listener)
+		logging.Infof("PRDR[%s:%d] Started server on port: %s listener: %r", p.appName, p.LenRunningConsumers(), p.processConfig.SockIdentifier, listener)
 
-		sockIdentifier = p.tcpPort
-		ipcType = "af_inet"
+		p.processConfig.IPCType = "af_inet"
 
 	} else {
 		os.Remove(udsSockPath)
@@ -314,20 +311,15 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		if err != nil {
 			logging.Errorf("PRDR[%s:%d] Failed to listen on unix domain socket, err: %v", p.appName, p.LenRunningConsumers(), err)
 		}
-		sockIdentifier = udsSockPath
-		ipcType = "af_unix"
+		p.processConfig.SockIdentifier = udsSockPath
+		p.processConfig.IPCType = "af_unix"
 
 	}
 
-	logging.Infof("PRDR[%s:%d] Spawning consumer to listen on socket: %r", p.appName, p.LenRunningConsumers(), sockIdentifier)
+	logging.Infof("PRDR[%s:%d] Spawning consumer to listen on socket: %r", p.appName, p.LenRunningConsumers(), p.processConfig.SockIdentifier)
 
-	c := consumer.NewConsumer(p.dcpStreamBoundary, p.breakpadOn, p.cleanupTimers, p.enableRecursiveMutation,
-		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold,
-		p.socketWriteBatchSize, p.cronTimersPerDoc, p.cppWorkerThrCount,
-		p.vbOwnershipGiveUpRoutineCount, p.curlTimeout, p.vbOwnershipTakeoverRoutineCount,
-		p.xattrEntryPruneThreshold, p.workerQueueCap, p.bucket, p.eventingAdminPort, p.eventingSSLPort, p.eventingDir, p.logLevel,
-		ipcType, sockIdentifier, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup,
-		p.vbPlasmaStore, p.socketTimeout, p.statsTickDuration, p.diagDir, p.numVbuckets, p.fuzzOffset)
+	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid,
+		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.vbPlasmaStore, p.numVbuckets)
 
 	p.Lock()
 	p.consumerListeners = append(p.consumerListeners, listener)

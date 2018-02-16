@@ -61,6 +61,103 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["TIMERS_IN_PAST"] = c.timersInPastCounter
 	}
 
+	if c.dcpMutationCounter > 0 {
+		stats["DCP_MUTATION_SENT_TO_WORKER"] = c.dcpMutationCounter
+	}
+
+	if c.dcpDeletionCounter > 0 {
+		stats["DCP_DELETION_SENT_TO_WORKER"] = c.dcpDeletionCounter
+	}
+
+	if c.aggMessagesSentCounter > 0 {
+		stats["AGG_MESSAGES_SENT_TO_WORKER"] = c.aggMessagesSentCounter
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["LOG_LEVEL"]; ok {
+		if c.v8WorkerMessagesProcessed["LOG_LEVEL"] > 0 {
+			stats["LOG_LEVEL"] = c.v8WorkerMessagesProcessed["LOG_LEVEL"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["THR_COUNT"]; ok {
+		if c.v8WorkerMessagesProcessed["THR_COUNT"] > 0 {
+			stats["THR_COUNT"] = c.v8WorkerMessagesProcessed["THR_COUNT"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["THR_MAP"]; ok {
+		if c.v8WorkerMessagesProcessed["THR_MAP"] > 0 {
+			stats["THR_MAP"] = c.v8WorkerMessagesProcessed["THR_MAP"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_START"]; ok {
+		if c.v8WorkerMessagesProcessed["DEBUG_START"] > 0 {
+			stats["DEBUG_START"] = c.v8WorkerMessagesProcessed["DEBUG_START"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_STOP"]; ok {
+		if c.v8WorkerMessagesProcessed["DEBUG_STOP"] > 0 {
+			stats["DEBUG_STOP"] = c.v8WorkerMessagesProcessed["DEBUG_STOP"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["V8_INIT"]; ok {
+		if c.v8WorkerMessagesProcessed["V8_INIT"] > 0 {
+			stats["V8_INIT"] = c.v8WorkerMessagesProcessed["V8_INIT"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["V8_COMPILE"]; ok {
+		if c.v8WorkerMessagesProcessed["V8_COMPILE"] > 0 {
+			stats["V8_COMPILE"] = c.v8WorkerMessagesProcessed["V8_COMPILE"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["V8_LOAD"]; ok {
+		if c.v8WorkerMessagesProcessed["V8_LOAD"] > 0 {
+			stats["V8_LOAD"] = c.v8WorkerMessagesProcessed["V8_LOAD"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["LATENCY_STATS"]; ok {
+		if c.v8WorkerMessagesProcessed["LATENCY_STATS"] > 0 {
+			stats["LATENCY_STATS"] = c.v8WorkerMessagesProcessed["LATENCY_STATS"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["FAILURE_STATS"]; ok {
+		if c.v8WorkerMessagesProcessed["FAILURE_STATS"] > 0 {
+			stats["FAILURE_STATS"] = c.v8WorkerMessagesProcessed["FAILURE_STATS"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["EXECUTION_STATS"]; ok {
+		if c.v8WorkerMessagesProcessed["EXECUTION_STATS"] > 0 {
+			stats["EXECUTION_STATS"] = c.v8WorkerMessagesProcessed["EXECUTION_STATS"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]; ok {
+		if c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"] > 0 {
+			stats["LCB_EXCEPTION_STATS"] = c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["SOURCE_MAP"]; ok {
+		if c.v8WorkerMessagesProcessed["SOURCE_MAP"] > 0 {
+			stats["SOURCE_MAP"] = c.v8WorkerMessagesProcessed["SOURCE_MAP"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["HANDLER_CODE"]; ok {
+		if c.v8WorkerMessagesProcessed["HANDLER_CODE"] > 0 {
+			stats["HANDLER_CODE"] = c.v8WorkerMessagesProcessed["HANDLER_CODE"]
+
+		}
+	}
+
 	c.msgProcessedRWMutex.RUnlock()
 
 	return stats
@@ -141,7 +238,6 @@ func (c *Consumer) UpdateEventingNodesUUIDs(uuids []string) {
 
 // GetLatencyStats returns latency stats for event handlers from from cpp world
 func (c *Consumer) GetLatencyStats() map[string]uint64 {
-	c.sendGetLatencyStats(false)
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
 
@@ -156,7 +252,6 @@ func (c *Consumer) GetLatencyStats() map[string]uint64 {
 
 // GetExecutionStats returns OnUpdate/OnDelete success/failure stats for event handlers from cpp world
 func (c *Consumer) GetExecutionStats() map[string]uint64 {
-	c.sendGetExecutionStats(false)
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
 
@@ -171,7 +266,6 @@ func (c *Consumer) GetExecutionStats() map[string]uint64 {
 
 // GetFailureStats returns failure stats for event handlers from cpp world
 func (c *Consumer) GetFailureStats() map[string]uint64 {
-	c.sendGetFailureStats(false)
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
 	failureStats := make(map[string]uint64)
@@ -194,7 +288,6 @@ func (c *Consumer) Pid() int {
 
 // GetLcbExceptionsStats returns libcouchbase exception stats from CPP workers
 func (c *Consumer) GetLcbExceptionsStats() map[string]uint64 {
-	c.sendGetLcbExceptionStats(false)
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
 	lcbExceptionStats := make(map[string]uint64)

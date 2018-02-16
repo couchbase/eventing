@@ -25,6 +25,16 @@ size_t CURLClient::BodyCallback(void *buffer, size_t size, size_t nmemb,
   return realsize;
 }
 
+std::string CURLClient::Decode(const std::string &encoded_str) {
+  int n_decode;
+  auto decoded_str_ptr =
+      curl_easy_unescape(curl_handle, encoded_str.c_str(),
+                         static_cast<int>(encoded_str.length()), &n_decode);
+  std::string decoded_str(decoded_str_ptr, decoded_str_ptr + n_decode);
+  curl_free(decoded_str_ptr);
+  return decoded_str;
+}
+
 // Callback gets invoked for every header that arrives
 size_t CURLClient::HeaderCallback(char *buffer, size_t size, size_t nitems,
                                   void *cookie) {
@@ -43,14 +53,27 @@ size_t CURLClient::HeaderCallback(char *buffer, size_t size, size_t nitems,
   return realsize;
 }
 
-std::string CURLClient::Decode(const std::string &encoded_str) {
-  int n_decode;
-  auto decoded_str_ptr =
-      curl_easy_unescape(curl_handle, encoded_str.c_str(),
-                         static_cast<int>(encoded_str.length()), &n_decode);
-  std::string decoded_str(decoded_str_ptr, decoded_str_ptr + n_decode);
-  curl_free(decoded_str_ptr);
-  return decoded_str;
+ExtractKVInfo CURLClient::ExtractKV(const std::string &encoded_str) {
+  ExtractKVInfo info;
+  info.is_valid = false;
+
+  std::istringstream tokenizer(encoded_str);
+  std::string item;
+  while (std::getline(tokenizer, item, '&')) {
+    auto i = item.find('=');
+    if (i == std::string::npos) {
+      info.msg = "Encoded string is not delimited by =";
+      return info;
+    }
+
+    auto key = Decode(item.substr(0, i));
+    auto value = item.substr(i + 1);
+    std::replace(value.begin(), value.end(), '+', ' ');
+    info.kv[key] = Decode(value);
+  }
+
+  info.is_valid = true;
+  return info;
 }
 
 CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
@@ -58,6 +81,7 @@ CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
                                   const std::string &body,
                                   const std::string &usr,
                                   const std::string &key) {
+  std::lock_guard<std::mutex> lock(curl_handle_lck);
   CURLResponse response;
 
   code = curl_easy_setopt(curl_handle, CURLOPT_URL, url.c_str());
@@ -175,8 +199,8 @@ CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
 Communicator::Communicator(const std::string &host_ip,
                            const std::string &host_port, const std::string &usr,
                            const std::string &key, bool ssl) {
-  std::string base_url =
-      (ssl ? "https://" : "http://") + JoinHostPort(host_ip, host_port);
+  std::string base_url = (ssl ? "https://" : "http://") +
+                         JoinHostPort(Localhost(false), host_port);
   parse_query_url = base_url + "/parseQuery";
   get_creds_url = base_url + "/getCreds";
   get_named_params_url = base_url + "/getNamedParams";
@@ -184,26 +208,19 @@ Communicator::Communicator(const std::string &host_ip,
   lo_key = key;
 }
 
-ExtractKVInfo CURLClient::ExtractKV(const std::string &encoded_str) {
-  ExtractKVInfo info;
+CredsInfo Communicator::ExtractCredentials(const std::string &encoded_str) {
+  CredsInfo info;
   info.is_valid = false;
 
-  std::istringstream tokenizer(encoded_str);
-  std::string item;
-  while (std::getline(tokenizer, item, '&')) {
-    auto i = item.find('=');
-    if (i == std::string::npos) {
-      info.msg = "Encoded string is not delimited by =";
-      return info;
-    }
-
-    auto key = Decode(item.substr(0, i));
-    auto value = item.substr(i + 1);
-    std::replace(value.begin(), value.end(), '+', ' ');
-    info.kv[key] = Decode(value);
+  auto kv_info = curl.ExtractKV(encoded_str);
+  if (!kv_info.is_valid) {
+    info.msg = kv_info.msg;
+    return info;
   }
 
   info.is_valid = true;
+  info.username = kv_info.kv["username"];
+  info.password = kv_info.kv["password"];
   return info;
 }
 
@@ -240,85 +257,6 @@ ParseInfo Communicator::ExtractParseInfo(const std::string &encoded_str) {
   info.is_valid = std::stoi(kv_info.kv["is_valid"]) != 0;
   info.info = kv_info.kv["info"];
   return info;
-}
-
-CredsInfo Communicator::ExtractCredentials(const std::string &encoded_str) {
-  CredsInfo info;
-  info.is_valid = false;
-
-  auto kv_info = curl.ExtractKV(encoded_str);
-  if (!kv_info.is_valid) {
-    info.msg = kv_info.msg;
-    return info;
-  }
-
-  info.is_valid = true;
-  info.username = kv_info.kv["username"];
-  info.password = kv_info.kv["password"];
-  return info;
-}
-
-ParseInfo Communicator::ParseQuery(const std::string &query) {
-  auto response = curl.HTTPPost({"Content-Type: text/plain"}, parse_query_url,
-                                query, lo_usr, lo_key);
-
-  ParseInfo info;
-  info.is_valid = false;
-  info.info = "Something went wrong while parsing the N1QL query";
-
-  if (response.is_error) {
-    LOG(logError)
-        << "Unable to parse N1QL query: Something went wrong with cURL lib: "
-        << R(response.response) << std::endl;
-    return info;
-  }
-
-  if (response.headers.find("Status") == response.headers.end()) {
-    LOG(logError)
-        << "Unable to parse N1QL query: status code is missing in header:"
-        << R(response.response) << std::endl;
-    return info;
-  }
-
-  int status = std::stoi(response.headers["Status"]);
-  if (status != 0) {
-    LOG(logError) << "Unable to parse N1QL query: non-zero status in header"
-                  << status << std::endl;
-    return info;
-  }
-
-  return ExtractParseInfo(response.response);
-}
-
-NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
-  auto response = curl.HTTPPost({"Content-Type: text/plain"},
-                                get_named_params_url, query, lo_usr, lo_key);
-
-  NamedParamsInfo info;
-  info.p_info.is_valid = false;
-  info.p_info.info = "Something went wrong while extracting named parameters";
-
-  if (response.is_error) {
-    LOG(logError)
-        << "Unable to get named params: Something went wrong with cURL lib: "
-        << R(response.response) << std::endl;
-    return info;
-  }
-
-  if (response.headers.find("Status") == response.headers.end()) {
-    LOG(logError)
-        << "Unable to get named params: status code is missing in header: "
-        << R(response.response) << std::endl;
-    return info;
-  }
-
-  if (std::stoi(response.headers["Status"]) != 0) {
-    LOG(logError) << "Unable to get named params: non-zero status in header: "
-                  << R(response.response) << std::endl;
-    return info;
-  }
-
-  return ExtractNamedParams(response.response);
 }
 
 CredsInfo Communicator::GetCreds(const std::string &endpoint) {
@@ -361,6 +299,69 @@ CredsInfo Communicator::GetCredsCached(const std::string &endpoint) {
   credentials.time_fetched = now;
   creds_cache[endpoint] = credentials;
   return credentials;
+}
+
+NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
+  auto response = curl.HTTPPost({"Content-Type: text/plain"},
+                                get_named_params_url, query, lo_usr, lo_key);
+
+  NamedParamsInfo info;
+  info.p_info.is_valid = false;
+  info.p_info.info = "Something went wrong while extracting named parameters";
+
+  if (response.is_error) {
+    LOG(logError)
+        << "Unable to get named params: Something went wrong with cURL lib: "
+        << R(response.response) << std::endl;
+    return info;
+  }
+
+  if (response.headers.find("Status") == response.headers.end()) {
+    LOG(logError)
+        << "Unable to get named params: status code is missing in header: "
+        << R(response.response) << std::endl;
+    return info;
+  }
+
+  if (std::stoi(response.headers["Status"]) != 0) {
+    LOG(logError) << "Unable to get named params: non-zero status in header: "
+                  << R(response.response) << std::endl;
+    return info;
+  }
+
+  return ExtractNamedParams(response.response);
+}
+
+ParseInfo Communicator::ParseQuery(const std::string &query) {
+  auto response = curl.HTTPPost({"Content-Type: text/plain"}, parse_query_url,
+                                query, lo_usr, lo_key);
+
+  ParseInfo info;
+  info.is_valid = false;
+  info.info = "Something went wrong while parsing the N1QL query";
+
+  if (response.is_error) {
+    LOG(logError)
+        << "Unable to parse N1QL query: Something went wrong with cURL lib: "
+        << R(response.response) << std::endl;
+    return info;
+  }
+
+  if (response.headers.find("Status") == response.headers.end()) {
+    LOG(logError)
+        << "Unable to parse N1QL query: status code is missing in header:"
+        << R(response.response) << std::endl;
+    return info;
+  }
+
+  int status = std::stoi(response.headers["Status"]);
+  if (status != 0) {
+    LOG(logError) << "Unable to parse N1QL query: non-zero status in header"
+                  << status << std::endl;
+    return info;
+  }
+
+  return ExtractParseInfo(response.response);
 }
 
 void Communicator::Refresh() { creds_cache.clear(); }

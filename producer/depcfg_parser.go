@@ -44,7 +44,7 @@ func (p *Producer) parseDepcfg() error {
 	util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, p, &user, &password)
 	p.auth = fmt.Sprintf("%s:%s", user, password)
 
-	p.bucket = string(depcfg.SourceBucket())
+	p.handlerConfig.SourceBucket = string(depcfg.SourceBucket())
 	p.cfgData = string(cfgData)
 	p.metadatabucket = string(depcfg.MetadataBucket())
 
@@ -62,114 +62,146 @@ func (p *Producer) parseDepcfg() error {
 		return uErr
 	}
 
-	if val, ok := settings["cleanup_timers"]; !ok {
-		p.cleanupTimers = false
+	// Handler related configurations
+
+	if val, ok := settings["checkpoint_interval"]; ok {
+		p.handlerConfig.CheckpointInterval = int(val.(float64))
 	} else {
-		p.cleanupTimers = val.(bool)
+		p.handlerConfig.CheckpointInterval = 60000
 	}
 
-	if val, ok := settings["breakpad_on"]; !ok {
-		p.breakpadOn = true
+	if val, ok := settings["cleanup_timers"]; ok {
+		p.handlerConfig.CleanupTimers = val.(bool)
 	} else {
-		p.breakpadOn = val.(bool)
-	}
-
-	if val, ok := settings["dcp_stream_boundary"]; !ok {
-		p.dcpStreamBoundary = common.DcpStreamBoundary("everything")
-	} else {
-		p.dcpStreamBoundary = common.DcpStreamBoundary(val.(string))
-	}
-
-	if val, ok := settings["log_level"]; !ok {
-		p.logLevel = "INFO"
-	} else {
-		p.logLevel = val.(string)
-	}
-
-	if val, ok := settings["tick_duration"]; !ok {
-		p.statsTickDuration = time.Duration(60000)
-	} else {
-		p.statsTickDuration = time.Duration(val.(float64))
-	}
-
-	if val, ok := settings["worker_count"]; !ok {
-		p.workerCount = 3
-	} else {
-		p.workerCount = int(val.(float64))
-	}
-
-	if val, ok := settings["sock_batch_size"]; !ok {
-		p.socketWriteBatchSize = 100
-	} else {
-		p.socketWriteBatchSize = int(val.(float64))
-	}
-
-	if val, ok := settings["skip_timer_threshold"]; !ok {
-		p.skipTimerThreshold = 86400
-	} else {
-		p.skipTimerThreshold = int(val.(float64))
-	}
-
-	if val, ok := settings["lcb_inst_capacity"]; ok {
-		p.lcbInstCapacity = int(val.(float64))
-	} else {
-		p.lcbInstCapacity = 5
-	}
-
-	if val, ok := settings["enable_recursive_mutation"]; ok {
-		p.enableRecursiveMutation = val.(bool)
-	} else {
-		p.enableRecursiveMutation = false
-	}
-
-	if val, ok := settings["deadline_timeout"]; ok {
-		p.socketTimeout = time.Duration(val.(float64)) * time.Second
-	} else {
-		p.socketTimeout = time.Duration(2 * time.Second)
-	}
-
-	if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
-		p.vbOwnershipGiveUpRoutineCount = int(val.(float64))
-	} else {
-		p.vbOwnershipGiveUpRoutineCount = 3
-	}
-
-	if val, ok := settings["vb_ownership_takeover_routine_count"]; ok {
-		p.vbOwnershipTakeoverRoutineCount = int(val.(float64))
-	} else {
-		p.vbOwnershipTakeoverRoutineCount = 3
-	}
-
-	if val, ok := settings["execution_timeout"]; ok {
-		p.executionTimeout = int(val.(float64))
-	} else {
-		p.executionTimeout = 1
-	}
-
-	if val, ok := settings["fuzz_offset"]; ok {
-		p.fuzzOffset = int(val.(float64))
-	} else {
-		p.fuzzOffset = 0
+		p.handlerConfig.CleanupTimers = false
 	}
 
 	if val, ok := settings["cpp_worker_thread_count"]; ok {
-		p.cppWorkerThrCount = int(val.(float64))
+		p.handlerConfig.CPPWorkerThrCount = int(val.(float64))
 	} else {
-		p.cppWorkerThrCount = 1
+		p.handlerConfig.CPPWorkerThrCount = 1
+	}
+
+	if val, ok := settings["cron_timers_per_doc"]; ok {
+		p.handlerConfig.CronTimersPerDoc = int(val.(float64))
+	} else {
+		p.handlerConfig.CronTimersPerDoc = 1000
+	}
+
+	if val, ok := settings["curl_timeout"]; ok {
+		p.handlerConfig.CurlTimeout = int64(val.(float64))
+	} else {
+		p.handlerConfig.CurlTimeout = int64(500)
+	}
+
+	if val, ok := settings["enable_recursive_mutation"]; ok {
+		p.handlerConfig.EnableRecursiveMutation = val.(bool)
+	} else {
+		p.handlerConfig.EnableRecursiveMutation = false
+	}
+
+	if val, ok := settings["execution_timeout"]; ok {
+		p.handlerConfig.ExecutionTimeout = int(val.(float64))
+	} else {
+		p.handlerConfig.ExecutionTimeout = 1
+	}
+
+	if val, ok := settings["fuzz_offset"]; ok {
+		p.handlerConfig.FuzzOffset = int(val.(float64))
+	} else {
+		p.handlerConfig.FuzzOffset = 0
+	}
+
+	if val, ok := settings["lcb_inst_capacity"]; ok {
+		p.handlerConfig.LcbInstCapacity = int(val.(float64))
+	} else {
+		p.handlerConfig.LcbInstCapacity = 5
+	}
+
+	if val, ok := settings["log_level"]; ok {
+		p.handlerConfig.LogLevel = val.(string)
+	} else {
+		p.handlerConfig.LogLevel = "INFO"
+	}
+
+	if val, ok := settings["skip_timer_threshold"]; ok {
+		p.handlerConfig.SkipTimerThreshold = int(val.(float64))
+	} else {
+		p.handlerConfig.SkipTimerThreshold = 86400
+	}
+
+	if val, ok := settings["sock_batch_size"]; ok {
+		p.handlerConfig.SocketWriteBatchSize = int(val.(float64))
+	} else {
+		p.handlerConfig.SocketWriteBatchSize = 100
+	}
+
+	if val, ok := settings["deadline_timeout"]; ok {
+		p.handlerConfig.SocketTimeout = int(val.(float64))
+	} else {
+		p.handlerConfig.SocketTimeout = 2
+	}
+
+	if val, ok := settings["tick_duration"]; ok {
+		p.handlerConfig.StatsLogInterval = int(val.(float64))
+	} else {
+		p.handlerConfig.StatsLogInterval = 60000
+	}
+
+	if val, ok := settings["dcp_stream_boundary"]; ok {
+		p.handlerConfig.StreamBoundary = common.DcpStreamBoundary(val.(string))
+	} else {
+		p.handlerConfig.StreamBoundary = common.DcpStreamBoundary("everything")
+	}
+
+	if val, ok := settings["worker_count"]; ok {
+		p.handlerConfig.WorkerCount = int(val.(float64))
+	} else {
+		p.handlerConfig.WorkerCount = 3
+	}
+
+	if val, ok := settings["worker_queue_cap"]; ok {
+		p.handlerConfig.WorkerQueueCap = int64(val.(float64))
+	} else {
+		p.handlerConfig.WorkerQueueCap = int64(100 * 1000)
 	}
 
 	if val, ok := settings["xattr_doc_timer_entry_prune_threshold"]; ok {
-		p.xattrEntryPruneThreshold = int(val.(float64))
+		p.handlerConfig.XattrEntryPruneThreshold = int(val.(float64))
 	} else {
-		p.xattrEntryPruneThreshold = 100
+		p.handlerConfig.XattrEntryPruneThreshold = 100
 	}
+
+	// Process related configuration
+
+	if val, ok := settings["breakpad_on"]; ok {
+		p.processConfig.BreakpadOn = val.(bool)
+	} else {
+		p.processConfig.BreakpadOn = true
+	}
+
+	// Rebalance related configurations
+
+	if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
+		p.rebalanceConfig.VBOwnershipGiveUpRoutineCount = int(val.(float64))
+	} else {
+		p.rebalanceConfig.VBOwnershipGiveUpRoutineCount = 3
+	}
+
+	if val, ok := settings["vb_ownership_takeover_routine_count"]; ok {
+		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = int(val.(float64))
+	} else {
+		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = 3
+	}
+
+	// Application logging related configurations
 
 	if val, ok := settings["app_log_dir"]; ok {
 		os.MkdirAll(val.(string), 0755)
 		p.appLogPath = fmt.Sprintf("%s/%s", val.(string), p.appName)
 	} else {
-		os.MkdirAll(p.eventingDir, 0755)
-		p.appLogPath = fmt.Sprintf("%s/%s.log", p.eventingDir, p.appName)
+		os.MkdirAll(p.processConfig.EventingDir, 0755)
+		p.appLogPath = fmt.Sprintf("%s/%s.log", p.processConfig.EventingDir, p.appName)
 	}
 
 	if val, ok := settings["app_log_max_size"]; ok {
@@ -184,23 +216,7 @@ func (p *Producer) parseDepcfg() error {
 		p.appLogMaxFiles = 10
 	}
 
-	if val, ok := settings["curl_timeout"]; ok {
-		p.curlTimeout = int64(val.(float64))
-	} else {
-		p.curlTimeout = int64(500)
-	}
-
-	if val, ok := settings["worker_queue_cap"]; ok {
-		p.workerQueueCap = int64(val.(float64))
-	} else {
-		p.workerQueueCap = int64(100 * 1000)
-	}
-
-	if val, ok := settings["cron_timers_per_doc"]; ok {
-		p.cronTimersPerDoc = int(val.(float64))
-	} else {
-		p.cronTimersPerDoc = 1000
-	}
+	// Doc timer configurations for plasma
 
 	if val, ok := settings["max_delta_chain_len"]; ok {
 		p.maxDeltaChainLen = int(val.(float64))
@@ -238,6 +254,8 @@ func (p *Producer) parseDepcfg() error {
 		p.lssReadAheadSize = 1024 * 1024
 	}
 
+	// DCP connection related configurations
+
 	if val, ok := settings["data_chan_size"]; ok {
 		p.dcpConfig["dataChanSize"] = int(val.(float64))
 	} else {
@@ -264,9 +282,9 @@ func (p *Producer) parseDepcfg() error {
 	logging.SetLogLevel(util.GetLogLevel(logLevel))
 
 	logging.Infof("DCFG[%s] Loaded app => wc: %v bucket: %v statsTickD: %v",
-		p.appName, p.workerCount, p.bucket, p.statsTickDuration)
+		p.appName, p.handlerConfig.WorkerCount, p.handlerConfig.SourceBucket, p.handlerConfig.StatsLogInterval)
 
-	if p.workerCount <= 0 {
+	if p.handlerConfig.WorkerCount <= 0 {
 		return fmt.Errorf("%v", errorUnexpectedWorkerCount)
 	}
 

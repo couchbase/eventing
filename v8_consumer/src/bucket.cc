@@ -30,8 +30,8 @@ static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
   if (resp->rc == LCB_SUCCESS) {
     result->value.assign(reinterpret_cast<const char *>(resp->value),
                          static_cast<int>(resp->nvalue));
-    LOG(logTrace) << "Value: " << R(result->value) << " flags: " << resp->itmflags
-                  << std::endl;
+    LOG(logTrace) << "Value: " << R(result->value)
+                  << " flags: " << resp->itmflags << std::endl;
   }
 }
 
@@ -190,8 +190,8 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
     return;
   }
 
-  LOG(logTrace) << "Get call result Key: " << R(key) << " Value: " << R(result.value)
-                << std::endl;
+  LOG(logTrace) << "Get call result Key: " << R(key)
+                << " Value: " << R(result.value) << std::endl;
 
   const std::string &value = result.value;
   auto value_json = v8::JSON::Parse(v8Str(isolate, value.c_str()));

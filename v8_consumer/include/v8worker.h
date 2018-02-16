@@ -138,6 +138,17 @@ extern std::atomic<int64_t> doc_timer_create_failure;
 
 extern std::atomic<int64_t> messages_processed_counter;
 
+// DCP or Timer event counter
+extern std::atomic<int64_t> cron_timer_msg_counter;
+extern std::atomic<int64_t> dcp_delete_msg_counter;
+extern std::atomic<int64_t> dcp_mutation_msg_counter;
+extern std::atomic<int64_t> doc_timer_msg_counter;
+
+extern std::atomic<int64_t> enqueued_cron_timer_msg_counter;
+extern std::atomic<int64_t> enqueued_dcp_delete_msg_counter;
+extern std::atomic<int64_t> enqueued_dcp_mutation_msg_counter;
+extern std::atomic<int64_t> enqueued_doc_timer_msg_counter;
+
 class V8Worker {
 public:
   V8Worker(v8::Platform *platform, handler_config_t *config,

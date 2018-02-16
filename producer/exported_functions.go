@@ -312,7 +312,7 @@ func (p *Producer) GetEventingConsumerPids() map[string]int {
 // PurgePlasmaRecords cleans up the plasma data store housing doc id timer related data
 // Given plasma records are for a specific app, we could simply purge the store from disk
 func (p *Producer) PurgePlasmaRecords() {
-	vbPlasmaDir := fmt.Sprintf("%v/%v_timer.data", p.eventingDir, p.app.AppName)
+	vbPlasmaDir := fmt.Sprintf("%v/%v_timer.data", p.processConfig.EventingDir, p.app.AppName)
 
 	p.vbPlasmaStore.Close()
 	err := os.RemoveAll(vbPlasmaDir)
@@ -372,31 +372,28 @@ func (p *Producer) vbDistributionStats() {
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, vbKey, &vbBlob)
 
-		if _, ok := vbBlob["vb_id"]; !ok {
-			continue
-		}
-		vbucket := uint16(vbBlob["vb_id"].(float64))
-
-		if _, ok := vbBlob["current_vb_owner"]; !ok {
+		if val, ok := vbBlob["current_vb_owner"]; !ok || val == "" {
 			continue
 		}
 		currentOwner := vbBlob["current_vb_owner"].(string)
 
-		if _, ok := vbBlob["assigned_worker"]; !ok {
+		if val, ok := vbBlob["assigned_worker"]; !ok || val == "" {
 			continue
 		}
 		workerID := vbBlob["assigned_worker"].(string)
 
-		if _, ok := vbNodeMap[currentOwner]; !ok && currentOwner != "" {
+		if _, ok := vbNodeMap[currentOwner]; !ok {
 			vbNodeMap[currentOwner] = make(map[string][]uint16)
-			vbNodeMap[currentOwner][workerID] = make([]uint16, 0)
 		}
 
-		if currentOwner != "" && workerID != "" {
-			vbNodeMap[currentOwner][workerID] = append(
-				vbNodeMap[currentOwner][workerID], vbucket)
+		if _, cOk := vbNodeMap[currentOwner]; cOk {
+			if _, wOk := vbNodeMap[currentOwner][workerID]; !wOk {
+				vbNodeMap[currentOwner][workerID] = make([]uint16, 0)
+			}
 		}
 
+		vbNodeMap[currentOwner][workerID] = append(
+			vbNodeMap[currentOwner][workerID], uint16(vb))
 	}
 
 	p.statsRWMutex.Lock()
@@ -475,10 +472,10 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 
 // PurgeAppLog cleans up application log files
 func (p *Producer) PurgeAppLog() {
-	d, err := os.Open(p.eventingDir)
+	d, err := os.Open(p.processConfig.EventingDir)
 	if err != nil {
 		logging.Errorf("PRDR[%s:%d] Failed to open eventingDir: %v while trying to purge app logs, err: %v",
-			p.appName, p.LenRunningConsumers(), p.eventingDir, err)
+			p.appName, p.LenRunningConsumers(), p.processConfig.EventingDir, err)
 		return
 	}
 	defer d.Close()
@@ -486,14 +483,14 @@ func (p *Producer) PurgeAppLog() {
 	names, err := d.Readdirnames(-1)
 	if err != nil {
 		logging.Errorf("PRDR[%s:%d] Failed list contents of eventingDir: %v, err: %v",
-			p.appName, p.LenRunningConsumers(), p.eventingDir, err)
+			p.appName, p.LenRunningConsumers(), p.processConfig.EventingDir, err)
 		return
 	}
 
 	prefix := fmt.Sprintf("%s.log", p.app.AppName)
 	for _, name := range names {
 		if strings.HasPrefix(name, prefix) {
-			err = os.RemoveAll(filepath.Join(p.eventingDir, name))
+			err = os.RemoveAll(filepath.Join(p.processConfig.EventingDir, name))
 			if err != nil {
 				logging.Errorf("PRDR[%s:%d] Failed to remove app log: %v, err: %v",
 					p.appName, p.LenRunningConsumers(), name, err)

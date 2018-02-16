@@ -18,6 +18,13 @@ import (
 func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) {
 	header, hBuilder := c.makeLogLevelHeader(logLevel)
 
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.v8WorkerMessagesProcessed["LOG_LEVEL"]; !ok {
+		c.v8WorkerMessagesProcessed["LOG_LEVEL"] = 0
+	}
+	c.v8WorkerMessagesProcessed["LOG_LEVEL"]++
+	c.msgProcessedRWMutex.Unlock()
+
 	m := &msgToTransmit{
 		msg: &message{
 			Header: header,
@@ -452,19 +459,21 @@ func (c *Consumer) sendMessageLoop() {
 			if c.sendMsgCounter > 0 && c.conn != nil {
 				c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
 
-				c.sendMsgBufferRWMutex.Lock()
+				func() {
+					c.sendMsgBufferRWMutex.Lock()
+					defer c.sendMsgBufferRWMutex.Unlock()
+					err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
+					if err != nil {
+						logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
+							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+						c.client.Stop()
+					}
 
-				err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
-				if err != nil {
-					logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
-						c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
-					c.client.Stop()
-				}
-
-				// Reset the sendMessage buffer and message counter
-				c.sendMsgBuffer.Reset()
-				c.sendMsgCounter = 0
-				c.sendMsgBufferRWMutex.Unlock()
+					// Reset the sendMessage buffer and message counter
+					c.sendMsgBuffer.Reset()
+					c.aggMessagesSentCounter += c.sendMsgCounter
+					c.sendMsgCounter = 0
+				}()
 			}
 		case <-c.socketWriteLoopStopCh:
 			c.socketWriteLoopStopAckCh <- struct{}{}
@@ -524,7 +533,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 
 	c.sendMsgCounter++
 
-	if c.sendMsgCounter >= c.socketWriteBatchSize || m.prioritize || m.sendToDebugger {
+	if c.sendMsgCounter >= uint64(c.socketWriteBatchSize) || m.prioritize || m.sendToDebugger {
 		c.connMutex.Lock()
 		defer c.connMutex.Unlock()
 
@@ -550,6 +559,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 		}
 
 		// Reset the sendMessage buffer and message counter
+		c.aggMessagesSentCounter += c.sendMsgCounter
 		c.sendMsgBuffer.Reset()
 		c.sendMsgCounter = 0
 	}

@@ -154,3 +154,60 @@ func TestN1QLNestedForLoop(t *testing.T) {
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
 }
+
+func TestDocTimerN1QLOp(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "n1ql_insert_with_doc_timer.js"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "DocTimerN1QLOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats(handler)
+	flushFunctionAndBucket(handler)
+}
+
+func TestCronTimerN1QLOp(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "n1ql_insert_with_cron_timer.js"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "CronTimerN1QLOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats(handler)
+	flushFunctionAndBucket(handler)
+}
+
+func TestOnUpdateN1QLOp(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "n1ql_insert_on_update.js"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "OnUpdateN1QLOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats(handler)
+	flushFunctionAndBucket(handler)
+}
