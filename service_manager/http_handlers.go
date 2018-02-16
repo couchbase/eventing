@@ -916,7 +916,6 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	// eventing every 5s to see if new functions have been created. So on an idle
 	// cluster it will log lot of this message.
 	logging.Tracef("Fetching function draft definitions")
-	audit.Log(auditevent.FetchDrafts, r, nil)
 	respData := m.getTempStoreAll()
 
 	data, err := json.Marshal(respData)
@@ -1639,7 +1638,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 		appName := match[1]
 		switch r.Method {
 		case "GET":
-			audit.Log(auditevent.FetchDrafts, r, appName)
 
 			app, info := m.getTempStore(appName)
 			if info.Code != m.statusCodes.ok.Code {
