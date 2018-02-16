@@ -220,13 +220,13 @@ func KVVbMap(auth, bucket, hostaddress string) (map[uint16]string, error) {
 	for _, kvAddr := range kvAddrs {
 		addr, err := cinfo.GetServiceAddress(kvAddr, DataService)
 		if err != nil {
-			logging.Errorf("UTIL Failed to get address of KV host: %v, err: %v", kvAddr, err)
+			logging.Errorf("UTIL Failed to get address of KV host: %r, err: %v", kvAddr, err)
 			return nil, err
 		}
 
 		vbs, err := cinfo.GetVBuckets(kvAddr, bucket)
 		if err != nil {
-			logging.Errorf("UTIL Failed to get vbuckets for given kv: %v, err: %v", kvAddr, err)
+			logging.Errorf("UTIL Failed to get vbuckets for given kv: %r, err: %v", kvAddr, err)
 			continue
 		}
 
@@ -260,14 +260,14 @@ func GetProcessedPSec(urlSuffix, nodeAddr string) (string, error) {
 
 	res, err := netClient.Get(url)
 	if err != nil {
-		logging.Errorf("UTIL Failed to gather events processed/sec stats from url: %s, err: %v", url, err)
+		logging.Errorf("UTIL Failed to gather events processed/sec stats from url: %r, err: %v", url, err)
 		return "", err
 	}
 	defer res.Body.Close()
 
 	buf, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+		logging.Errorf("UTIL Failed to read response body from url: %r, err: %v", url, err)
 		return "", err
 	}
 
@@ -284,21 +284,21 @@ func GetAggProcessedPSec(urlSuffix string, nodeAddrs []string) (string, error) {
 
 		res, err := netClient.Get(url)
 		if err != nil {
-			logging.Errorf("UTIL Failed to gather events processed/sec stats from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to gather events processed/sec stats from url: %r, err: %v", url, err)
 			continue
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
-			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to read response body from url: %r, err: %v", url, err)
 			continue
 		}
 
 		var pStats cm.EventProcessingStats
 		err = json.Unmarshal(buf, &pStats)
 		if err != nil {
-			logging.Errorf("UTIL Failed to unmarshal response body from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to unmarshal response body from url: %r, err: %v", url, err)
 			continue
 		}
 
@@ -323,7 +323,7 @@ func StopDebugger(urlSuffix, nodeAddr, appName string) {
 
 	_, err := netClient.Get(url)
 	if err != nil {
-		logging.Errorf("UTIL Failed to capture v8 debugger url from url: %s, err: %v", url, err)
+		logging.Errorf("UTIL Failed to capture v8 debugger url from url: %r, err: %v", url, err)
 		return
 	}
 	return
@@ -341,13 +341,13 @@ func GetDebuggerURL(urlSuffix, nodeAddr, appName string) string {
 
 	res, err := netClient.Get(url)
 	if err != nil {
-		logging.Errorf("UTIL Failed to capture v8 debugger url from url: %s, err: %v", url, err)
+		logging.Errorf("UTIL Failed to capture v8 debugger url from url: %r, err: %v", url, err)
 		return ""
 	}
 
 	buf, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		logging.Errorf("UTIL Failed to read v8 debugger url response from url: %s, err: %v", url, err)
+		logging.Errorf("UTIL Failed to read v8 debugger url response from url: %r, err: %v", url, err)
 		return ""
 	}
 
@@ -364,14 +364,14 @@ func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) (map[string]string, erro
 
 		res, err := netClient.Get(url)
 		if err != nil {
-			logging.Errorf("UTIL Failed to fetch node uuid from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to fetch node uuid from url: %r, err: %v", url, err)
 			return nil, err
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
-			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to read response body from url: %r, err: %v", url, err)
 			return nil, err
 		}
 
@@ -390,21 +390,21 @@ func GetEventProcessingStats(urlSuffix string, nodeAddrs []string) (map[string]i
 
 		res, err := netClient.Get(url)
 		if err != nil {
-			logging.Errorf("UTIL Failed to gather event processing stats from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to gather event processing stats from url: %r, err: %v", url, err)
 			return nil, err
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
-			logging.Errorf("UTIL Failed to read response body for event processing stats from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to read response body for event processing stats from url: %r, err: %v", url, err)
 			return nil, err
 		}
 
 		var nodePStats map[string]int64
 		err = json.Unmarshal(buf, &nodePStats)
 		if err != nil {
-			logging.Errorf("UTIL Failed to unmarshal event processing stats from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to unmarshal event processing stats from url: %r, err: %v", url, err)
 			return nil, err
 		}
 
@@ -431,7 +431,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 
 		res, err := netClient.Get(url)
 		if err != nil {
-			logging.Errorf("UTIL Failed to gather task status from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to gather task status from url: %r, err: %v", url, err)
 			errMap[nodeAddr] = err
 			continue
 		}
@@ -439,7 +439,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
-			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to read response body from url: %r, err: %v", url, err)
 			errMap[nodeAddr] = err
 			continue
 		}
@@ -447,7 +447,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 		var progress cm.RebalanceProgress
 		err = json.Unmarshal(buf, &progress)
 		if err != nil {
-			logging.Warnf("UTIL Failed to unmarshal progress from url: %s, err: %v", url, err)
+			logging.Warnf("UTIL Failed to unmarshal progress from url: %r, err: %v", url, err)
 			errMap[nodeAddr] = err
 			continue
 		}
@@ -466,13 +466,13 @@ func GetAggTimerHostPortAddrs(appName, eventingAdminPort, urlSuffix string) (map
 
 	res, err := netClient.Get(url)
 	if err != nil {
-		logging.Errorf("UTIL Failed to capture aggregate timer host port addrs from url: %s, err: %v", url, err)
+		logging.Errorf("UTIL Failed to capture aggregate timer host port addrs from url: %r, err: %v", url, err)
 		return nil, err
 	}
 
 	buf, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		logging.Errorf("UTIL Failed to read response from url: %s, err: %v", url, err)
+		logging.Errorf("UTIL Failed to read response from url: %r, err: %v", url, err)
 		return nil, err
 	}
 
@@ -495,21 +495,21 @@ func GetTimerHostPortAddrs(urlSuffix string, nodeAddrs []string) (string, error)
 
 		res, err := netClient.Get(url)
 		if err != nil {
-			logging.Errorf("UTIL Failed to gather timer host port addrs from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to gather timer host port addrs from url: %r, err: %v", url, err)
 			return "", err
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
-			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to read response body from url: %r, err: %v", url, err)
 			return "", err
 		}
 
 		var addrs map[string]string
 		err = json.Unmarshal(buf, &addrs)
 		if err != nil {
-			logging.Errorf("UTIL Failed to unmarshal timer host port addrs from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to unmarshal timer host port addrs from url: %r, err: %v", url, err)
 			return "", nil
 		}
 
@@ -535,21 +535,21 @@ func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[strin
 
 		res, err := netClient.Get(url)
 		if err != nil {
-			logging.Errorf("UTIL Failed to get deployed apps from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to get deployed apps from url: %r, err: %v", url, err)
 			return nil, err
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
-			logging.Errorf("UTIL Failed to read response body from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to read response body from url: %r, err: %v", url, err)
 			return nil, err
 		}
 
 		var locallyDeployedApps map[string]string
 		err = json.Unmarshal(buf, &locallyDeployedApps)
 		if err != nil {
-			logging.Errorf("UTIL Failed to unmarshal deployed apps from url: %s, err: %v", url, err)
+			logging.Errorf("UTIL Failed to unmarshal deployed apps from url: %r, err: %v", url, err)
 			return nil, err
 		}
 
@@ -846,14 +846,14 @@ var GetCredsCallback = func(args ...interface{}) error {
 	var err error
 	*username, *password, err = cbauth.GetMemcachedServiceAuth(endpoint)
 	if err != nil {
-		logging.Errorf("UTIL Failed to get credentials for endpoint: %v, err: %v", endpoint, err)
+		logging.Errorf("UTIL Failed to get credentials for endpoint: %r, err: %v", endpoint, err)
 	}
 
 	return err
 }
 
 func (dynAuth *DynamicAuthenticator) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, error) {
-	logging.Infof("UTIL Authenticating endpoint: %s bucket: %s", req.Endpoint, req.Bucket)
+	logging.Infof("UTIL Authenticating endpoint: %r bucket: %s", req.Endpoint, req.Bucket)
 
 	var username, password string
 	Retry(NewFixedBackoff(time.Second), GetCredsCallback, req.Endpoint, &username, &password)

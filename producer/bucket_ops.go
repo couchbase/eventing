@@ -98,17 +98,14 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Connect to cluster %s failed, err: %v",
+		logging.Errorf("%s [%s:%d] GOCB Connect to cluster %r failed, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
-	err = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: p.RbacUser(),
-		Password: p.RbacPass(),
-	})
+	err = cluster.Authenticate(&util.DynamicAuthenticator{})
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %s failed, err: %v",
+		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %r failed, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), connStr, err)
 		return err
 	}
@@ -134,7 +131,8 @@ var setOpCallback = func(args ...interface{}) error {
 	if err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
-		logging.Errorf("%s [%s:%d] Bucket set failed for key: %v , err: %v", logPrefix, p.appName, p.LenRunningConsumers(), key, err)
+		logging.Errorf("%s [%s:%d] Bucket set failed for key: %r , err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 	}
 	return err
 }
@@ -152,7 +150,8 @@ var getOpCallback = func(args ...interface{}) error {
 	} else if err == gocb.ErrKeyNotFound {
 		return nil
 	} else if err != nil {
-		logging.Errorf("%s [%s:%d] Bucket get failed for key: %v , err: %v", logPrefix, p.appName, p.LenRunningConsumers(), key, err)
+		logging.Errorf("%s [%s:%d] Bucket get failed for key: %r , err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 	}
 
 	return err
@@ -166,11 +165,13 @@ var deleteOpCallback = func(args ...interface{}) error {
 
 	_, err := p.metadataBucketHandle.Remove(key, 0)
 	if gocb.IsKeyNotFoundError(err) {
+		logging.Errorf("%s [%s:%d] Key: %r doesn't exist, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 		return nil
 	} else if err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
-		logging.Errorf("%s [%s:%d] Bucket delete failed for key: %v, err: %v",
+		logging.Errorf("%s [%s:%d] Bucket delete failed for key: %r, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 	}
 	return err

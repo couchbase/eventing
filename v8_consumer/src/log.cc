@@ -9,6 +9,7 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <cstdlib>
 #include "log.h"
 
 std::ostringstream app_log_os;
@@ -22,3 +23,11 @@ void setAppName(std::string app) { appName = app; }
 void setLogLevel(LogLevel level) { desiredLogLevel = level; }
 
 void setWorkerID(std::string wID) { workerID = wID; }
+
+static bool isNoRedact() {
+  const char* evar = std::getenv("CB_EVENTING_NOREDACT");
+  if (!evar) return false;
+  return (std::string(evar) == "true");
+}
+
+bool noRedact = isNoRedact();

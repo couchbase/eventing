@@ -48,7 +48,7 @@ func (c *Consumer) controlRoutine() {
 			settings := make(map[string]interface{})
 			err = json.Unmarshal(sData, &settings)
 			if err != nil {
-				logging.Errorf("CRCR[%s:%s:%s:%d] Failed to unmarshal settings received from metakv, err: %v",
+				logging.Errorf("CRCR[%s:%s:%s:%d] Failed to unmarshal settings received from metakv, err: %r",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
 				continue
 			}
