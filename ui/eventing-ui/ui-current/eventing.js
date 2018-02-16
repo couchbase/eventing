@@ -582,75 +582,90 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             };
 
             self.debugApp = function() {
-                if (!isDebugOn) {
-                    debugScope.url = 'Waiting for mutation';
-                    debugScope.urlReceived = false;
-                    isDebugOn = true;
-
-                    // Starts the debugger agent.
-                    ApplicationService.debug.start(app.appname)
-                        .then(function(response) {
-                            var responseCode = ApplicationService.status.getResponseCode(response);
-                            if (responseCode) {
-                                var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
-                                return $q.reject(errMsg);
-                            }
-
-                            console.log('Start debug:', response.data);
-
-                            // Poll till we get the URL for debugging.
-                            function getDebugUrl() {
-                                console.log('Fetching debug url for ' + app.appname);
-                                ApplicationService.debug.getUrl(app.appname)
-                                    .then(function(response) {
-                                        var responseCode = ApplicationService.status.getResponseCode(response);
-                                        if (responseCode) {
-                                            var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
-                                            return $q.reject(errMsg);
-                                        }
-
-                                        if (isDebugOn && response.data === '') {
-                                            setTimeout(getDebugUrl, 1000);
-                                        } else {
-                                            debugScope.urlReceived = true;
-                                            debugScope.url = response.data;
-                                        }
-                                    })
-                                    .catch(function(errResponse) {
-                                        console.error('Unable to get debugger URL for ' + app.appname, errResponse.data);
-                                    });
-                            }
-
-                            getDebugUrl();
-                        })
-                        .catch(function(errResponse) {
-                            console.error('Failed to start debugger', errResponse);
-                        })
-                }
-
-                // Open the dialog to show the URL for debugging.
-                $uibModal.open({
-                        templateUrl: '../_p/ui/event/ui-current/dialogs/app-debug.html',
-                        scope: debugScope
-                    }).result
+                ApplicationService.primaryStore.getDeployedApps()
                     .then(function(response) {
-                        // Stop debugger agent.
-                        return ApplicationService.debug.stop(app.appname)
-                    })
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
-                            return $q.reject(errMsg);
+                        if (!(app.appname in response.data)) {
+                            showErrorAlert(`Function ${app.appname} may be undergoing bootstrap. Please try later.`);
+                            return;
                         }
 
-                        console.log('debugger stopped');
-                        isDebugOn = false;
-                        debugScope.url = 'Waiting for mutation';
-                        debugScope.urlReceived = false;
+                        if (!isDebugOn) {
+                            debugScope.url = 'Waiting for mutation';
+                            debugScope.urlReceived = false;
+                            isDebugOn = true;
+
+                            // Starts the debugger agent.
+                            ApplicationService.debug.start(app.appname)
+                                .then(function(response) {
+                                    var responseCode = ApplicationService.status.getResponseCode(response);
+                                    if (responseCode) {
+                                        var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
+                                        return $q.reject(errMsg);
+                                    }
+
+                                    console.log('Start debug:', response.data);
+
+                                    // Poll till we get the URL for debugging.
+                                    function getDebugUrl() {
+                                        console.log('Fetching debug url for ' + app.appname);
+                                        ApplicationService.debug.getUrl(app.appname)
+                                            .then(function(response) {
+                                                var responseCode = ApplicationService.status.getResponseCode(response);
+                                                if (responseCode) {
+                                                    var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
+                                                    return $q.reject(errMsg);
+                                                }
+
+                                                if (isDebugOn && response.data === '') {
+                                                    setTimeout(getDebugUrl, 1000);
+                                                } else {
+                                                    debugScope.urlReceived = true;
+                                                    debugScope.url = response.data;
+                                                }
+                                            })
+                                            .catch(function(errResponse) {
+                                                console.error('Unable to get debugger URL for ' + app.appname, errResponse.data);
+                                            });
+                                    }
+
+                                    getDebugUrl();
+                                })
+                                .catch(function(errResponse) {
+                                    console.error('Failed to start debugger', errResponse);
+                                })
+                        }
+
+                        function stopDebugger() {
+                            return ApplicationService.debug.stop(app.appname)
+                                .then(function(response) {
+                                    var responseCode = ApplicationService.status.getResponseCode(response);
+                                    if (responseCode) {
+                                        var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
+                                        return $q.reject(errMsg);
+                                    }
+
+                                    console.log('debugger stopped');
+                                    isDebugOn = false;
+                                    debugScope.url = 'Waiting for mutation';
+                                    debugScope.urlReceived = false;
+                                });
+                        }
+
+                        // Open the dialog to show the URL for debugging.
+                        $uibModal.open({
+                                templateUrl: '../_p/ui/event/ui-current/dialogs/app-debug.html',
+                                scope: debugScope
+                            }).result
+                            .then(function(response) {
+                                // Stop debugger agent.
+                                return stopDebugger();
+                            })
+                            .catch(function(errResponse) {
+                                return stopDebugger();
+                            });
                     })
                     .catch(function(errResponse) {
-                        console.error('Failed to start debugger:', errResponse.data);
+                        console.error('Unable to start debugger', errResponse);
                     });
             };
 
@@ -667,6 +682,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 self.showWarningAlert = true;
                 $timeout(function() {
                     self.showWarningAlert = false;
+                }, 4000);
+            }
+
+            function showErrorAlert(message) {
+                self.errorMessage = message;
+                self.showErrorAlert = true;
+                $timeout(function() {
+                    self.showErrorAlert = false;
                 }, 4000);
             }
         }
