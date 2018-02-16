@@ -73,6 +73,10 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["AGG_MESSAGES_SENT_TO_WORKER"] = c.aggMessagesSentCounter
 	}
 
+	if c.doctimerResponsesRecieved > 0 {
+		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.doctimerResponsesRecieved
+	}
+
 	if _, ok := c.v8WorkerMessagesProcessed["LOG_LEVEL"]; ok {
 		if c.v8WorkerMessagesProcessed["LOG_LEVEL"] > 0 {
 			stats["LOG_LEVEL"] = c.v8WorkerMessagesProcessed["LOG_LEVEL"]

@@ -57,15 +57,14 @@ var plasmaInsertKV = func(args ...interface{}) error {
 }
 
 func (c *Consumer) processDocTimerEvents() {
-	logPrefix := "timerProcessingWorker::processTimerEvents"
+	logPrefix := "timerProcessingWorker::processDocTimerEvents"
 
 	timerProcessingTicker := time.NewTicker(c.timerProcessingTickInterval)
 
-	vbsOwned := c.getCurrentlyOwnedVbs()
 	reader := c.vbPlasmaStore.NewReader()
 
-	for _, vb := range vbsOwned {
-		vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
+	for vb := uint16(0); vb < uint16(c.numVbuckets); vb++ {
+		vbKey := fmt.Sprintf("%s::vb::%v", c.app.AppName, vb)
 
 		var vbBlob vbucketKVBlob
 		var cas gocb.Cas
@@ -97,7 +96,7 @@ func (c *Consumer) processDocTimerEvents() {
 		case <-timerProcessingTicker.C:
 		}
 
-		vbsOwned = c.getCurrentlyOwnedVbs()
+		vbsOwned := c.getCurrentlyOwnedVbs()
 		for _, vb := range vbsOwned {
 			currTimer := c.vbProcessingStats.getVbStat(vb, "currently_processed_doc_id_timer").(string)
 
@@ -167,7 +166,7 @@ func (c *Consumer) processTimerEvent(currTs time.Time, event string, vb uint16) 
 	var timerEntry byTimerEntry
 	err := json.Unmarshal([]byte(event), &timerEntry)
 	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %d processTimerEvent Failed to unmarshal timerEvent: %r err: %v",
+		logging.Errorf("%s [%s:%s:%d] vb: %d Failed to unmarshal timerEvent: %r err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, event, err)
 	} else {
 
@@ -206,7 +205,7 @@ func (c *Consumer) cleanupProcessedDocTimers() {
 		select {
 		case <-timerCleanupTicker.C:
 			for _, vb := range vbsOwned {
-				vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
+				vbKey := fmt.Sprintf("%s::vb::%v", c.app.AppName, vb)
 
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
@@ -287,7 +286,7 @@ func (c *Consumer) processCronTimerEvents() {
 	vbsOwned := c.getVbsOwned()
 
 	for _, vb := range vbsOwned {
-		vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
+		vbKey := fmt.Sprintf("%s::vb::%v", c.app.AppName, vb)
 
 		var vbBlob vbucketKVBlob
 		var cas gocb.Cas
@@ -546,6 +545,57 @@ func (c *Consumer) storeDocTimerEventLoop() {
 func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer) error {
 	logPrefix := "Consumer::storeTimerEvent"
 
+	ts, err := time.Parse(tsLayout, e.timerTs)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] vb: %d Failed to parse time: %v err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, e.timerTs, err)
+		return err
+	}
+
+	if !ts.After(time.Now()) {
+		logging.Errorf("%s [%s:%s:%d] vb: %d Not adding timer event: %r to plasma because it was timer in past",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, ts)
+		c.timersInPastCounter++
+
+		counter := c.vbProcessingStats.getVbStat(e.vb, "timers_in_past_counter").(uint64)
+		c.vbProcessingStats.updateVbStat(e.vb, "timers_in_past_counter", counter+1)
+
+		return err
+	}
+
+	// Sample timer key: vb_<vb_no>::<app_name>::<timestamp in GMT>::<callback_func>::<doc_id>
+	timerKey := fmt.Sprintf("vb_%v::%v::%v::%v::%v", e.vb, c.app.AppName, e.timerTs, e.callbackFn, e.key)
+
+	v := byTimerEntry{
+		DocID:      e.key,
+		CallbackFn: e.callbackFn,
+	}
+
+	logging.Tracef("%s [%s:%s:%d] vb: %v doc-id timerKey: %r byTimerEntry: %r",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, timerKey, v)
+
+	encodedVal, mErr := json.Marshal(&v)
+	if mErr != nil {
+		logging.Errorf("%s [%s:%s:%d] Key: %v JSON marshal failed, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), timerKey, err)
+		return err
+	}
+
+	c.plasmaInsertCounter++
+	util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaInsertKV, c,
+		writer, timerKey, string(encodedVal), e.vb)
+
+	counter := c.vbProcessingStats.getVbStat(e.vb, "timer_create_counter").(uint64)
+	c.vbProcessingStats.updateVbStat(e.vb, "timer_create_counter", counter+1)
+
+	return nil
+}
+
+// Keeping this around, as garbage collection of stale doc timer still needs to be taken
+// care in revised design
+/*func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer) error {
+	logPrefix := "Consumer::storeTimerEvent"
+
 	entriesToPrune := 0
 	timersToKeep := make([]string, 0)
 
@@ -625,4 +675,4 @@ func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer
 
 	c.vbProcessingStats.updateVbStat(e.vb, "plasma_last_seq_no_stored", e.seqNo)
 	return nil
-}
+}*/

@@ -1,12 +1,17 @@
 package consumer
 
 import (
+	"strings"
+
 	"encoding/json"
+
 	"github.com/couchbase/eventing/gen/flatbuf/header"
 	"github.com/couchbase/eventing/gen/flatbuf/payload"
 	"github.com/couchbase/eventing/gen/flatbuf/response"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
+	"strconv"
 )
 
 const (
@@ -63,6 +68,7 @@ const (
 const (
 	respMsgType int8 = iota
 	respV8WorkerConfig
+	docTimerResponse
 )
 
 const (
@@ -77,6 +83,10 @@ const (
 	compileInfo
 	queueSize
 	lcbExceptions
+)
+
+const (
+	docTimerResponseOpcode int8 = iota
 )
 
 type message struct {
@@ -386,6 +396,32 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal lcb exception stats, msg: %r err: %v",
 					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
+		}
+	case docTimerResponse:
+		data := strings.Split(msg, "::")
+		if len(data) == 5 {
+			timerTs, callbackFn, docID, seqStr := data[0], data[1], data[2], data[4]
+
+			seqNo, err := strconv.ParseInt(seqStr, 10, 64)
+			if err != nil {
+				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to convert seqNo %v to int64, timerEntry: %v err: %v",
+					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), seqStr, msg, err)
+				return
+			}
+
+			pEntry := &plasmaStoreEntry{
+				callbackFn: callbackFn,
+				key:        docID,
+				timerTs:    timerTs,
+				vb:         util.VbucketByKey([]byte(docID), c.numVbuckets),
+			}
+
+			c.vbProcessingStats.updateVbStat(pEntry.vb, "last_doc_timer_feedback_seqno", uint64(seqNo))
+			logging.Infof("CRDP[%s:%s:%s:%d] vb: %v Updating last_doc_timer_feedback_seqno to seqNo: %v",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), pEntry.vb, seqNo)
+
+			c.doctimerResponsesRecieved++
+			c.plasmaStoreCh <- pEntry
 		}
 	}
 }

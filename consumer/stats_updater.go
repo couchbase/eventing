@@ -17,6 +17,8 @@ func newVbProcessingStats(appName string, numVbuckets uint16) vbStats {
 		vbsts[i].stats["plasma_last_seq_no_stored"] = uint64(0)
 		vbsts[i].stats["plasma_last_seq_no_persisted"] = uint64(0)
 
+		vbsts[i].stats["last_doc_timer_feedback_seqno"] = uint64(0)
+
 		vbsts[i].stats["currently_processed_doc_id_timer"] = time.Now().UTC().Format(time.RFC3339)
 		vbsts[i].stats["doc_id_timer_processing_worker"] = ""
 		vbsts[i].stats["last_processed_doc_id_timer_event"] = time.Now().UTC().Format(time.RFC3339)
@@ -71,6 +73,7 @@ func (vbs vbStats) copyVbStats(numVbuckets uint16) vbStats {
 		vbsts[i].stats["next_doc_id_timer_to_process"] = vbs.getVbStat(i, "next_doc_id_timer_to_process")
 
 		vbsts[i].stats["last_processed_seq_no"] = vbs.getVbStat(i, "last_processed_seq_no")
+		vbsts[i].stats["last_doc_timer_feedback_seqno"] = vbs.getVbStat(i, "last_doc_timer_feedback_seqno")
 
 		vbsts[i].stats["next_cron_timer_to_process"] = vbs.getVbStat(i, "next_cron_timer_to_process")
 		vbsts[i].stats["last_processed_cron_timer_event"] = vbs.getVbStat(i, "last_processed_cron_timer_event")

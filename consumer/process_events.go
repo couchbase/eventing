@@ -146,30 +146,35 @@ func (c *Consumer) processEvents() {
 									go c.sendDcpEvent(e, c.sendMsgToDebugger)
 								}
 							} else {
-								pEntry := &plasmaStoreEntry{
+
+								// Disabling it for now. As doc timers now depend on feedback directly from CPP workers,
+								// instead of feedback over DCP.
+								/*pEntry := &plasmaStoreEntry{
 									vb:     e.VBucket,
 									seqNo:  e.Seqno,
 									expiry: e.Expiry,
 									key:    string(e.Key),
 									xMeta:  &xMeta,
 								}
+								c.plasmaStoreCh <- pEntry*/
 
 								logging.Tracef("%s [%s:%s:%d] Sending key: %r to be stored in plasma",
 									logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-								c.plasmaStoreCh <- pEntry
 							}
 						} else {
 							logging.Tracef("%s [%s:%s:%d] Skipping recursive mutation for key: %r vb: %v, xmeta: %r",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, fmt.Sprintf("%#v", xMeta))
 
-							pEntry := &plasmaStoreEntry{
+							// Disabling it for now. As doc timers now depend on feedback directly from CPP workers,
+							// instead of feedback over DCP.
+							/*pEntry := &plasmaStoreEntry{
 								vb:     e.VBucket,
 								seqNo:  e.Seqno,
 								expiry: e.Expiry,
 								key:    string(e.Key),
 								xMeta:  &xMeta,
 							}
-							c.plasmaStoreCh <- pEntry
+							c.plasmaStoreCh <- pEntry*/
 						}
 					} else {
 						e.Value = e.Value[4+totalXattrLen:]
@@ -465,6 +470,14 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 			}
 			vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
 
+			vbBlob.CurrentProcessedDocIDTimer = time.Now().UTC().Format(time.RFC3339)
+			vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
+			vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+
+			vbBlob.CurrentProcessedCronTimer = time.Now().UTC().Format(time.RFC3339)
+			vbBlob.LastProcessedCronTimerEvent = time.Now().UTC().Format(time.RFC3339)
+			vbBlob.NextCronTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+
 			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, vbKey, &vbBlob)
 
 			switch c.dcpStreamBoundary {
@@ -476,9 +489,15 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
 			}
 		} else {
+			var streamStartSeqNo uint64
+			if vbBlob.LastDocTimerFeedbackSeqNo < vbBlob.LastSeqNoProcessed {
+				streamStartSeqNo = vbBlob.LastDocTimerFeedbackSeqNo
+			} else {
+				streamStartSeqNo = vbBlob.LastSeqNoProcessed
+			}
 
 			if vbBlob.NodeUUID == c.NodeUUID() {
-				c.dcpRequestStreamHandle(vbno, &vbBlob, vbBlob.LastSeqNoProcessed)
+				c.dcpRequestStreamHandle(vbno, &vbBlob, streamStartSeqNo)
 			}
 		}
 	}

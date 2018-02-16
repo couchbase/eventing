@@ -279,6 +279,23 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     lcb_CMDSUBDOC gcmd = {0};
     LCB_CMD_SET_KEY(&gcmd, doc_id.c_str(), doc_id.size());
 
+    auto v8worker = UnwrapData(isolate)->v8worker;
+
+    // Frame the payload that needs to be sent over To Eventing-producer
+    // to store doc timer entry inside plasma
+    doc_timer_msg_t msg;
+    msg.timer_entry.assign(ConvertToISO8601(start_ts));
+    msg.timer_entry += "Z::";
+    msg.timer_entry += cb_func;
+    msg.timer_entry += "::";
+    msg.timer_entry += doc_id;
+    msg.timer_entry += "::";
+    msg.timer_entry += std::to_string(v8worker->currently_processed_vb);
+    msg.timer_entry += "::";
+    msg.timer_entry += std::to_string(v8worker->currently_processed_seqno);
+
+    v8worker->doc_timer_queue->push(msg);
+
     // Fetch document expiration using virtual extended attributes
     Result res;
     std::vector<lcb_SDSPEC> gspecs;

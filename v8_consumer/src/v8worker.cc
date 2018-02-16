@@ -378,6 +378,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   delete config;
 
+  this->doc_timer_queue = new Queue<doc_timer_msg_t>();
   this->worker_queue = new Queue<worker_msg_t>();
 
   std::thread r_thr(&V8Worker::RouteMessage, this);
@@ -985,6 +986,9 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   if (seq_val->IsNumber() && vb_val->IsNumber()) {
     vb_seq[vb_val->ToInteger()->Value()].get()->store(
         seq_val->ToInteger()->Value(), std::memory_order_seq_cst);
+
+    currently_processed_seqno = seq_val->ToInteger()->Value();
+    currently_processed_vb = vb_val->ToInteger()->Value();
   }
 
   if (try_catch.HasCaught()) {
@@ -1058,6 +1062,9 @@ int V8Worker::SendDelete(std::string meta) {
   if (seq_val->IsNumber() && vb_val->IsNumber()) {
     vb_seq[vb_val->ToInteger()->Value()].get()->store(
         seq_val->ToInteger()->Value(), std::memory_order_seq_cst);
+
+    currently_processed_seqno = seq_val->ToInteger()->Value();
+    currently_processed_vb = vb_val->ToInteger()->Value();
   }
 
   assert(!try_catch.HasCaught());
@@ -1234,9 +1241,7 @@ void V8Worker::StopDebugger() {
 }
 
 void V8Worker::Enqueue(header_t *h, message_t *p) {
-  const flatbuf::payload::Payload *payload;
   std::string key, val;
-  payload = flatbuf::payload::GetPayload((const void *)p->payload.c_str());
 
   worker_msg_t msg;
   msg.header = h;

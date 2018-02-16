@@ -347,6 +347,8 @@ type Consumer struct {
 	dcpDeletionCounter         uint64
 	dcpMutationCounter         uint64
 	doctimerMessagesProcessed  uint64
+	doctimerResponsesRecieved  uint64
+
 	timerMessagesProcessedPSec int
 
 	// capture dcp operation stats, granularity of these stats depend on statsTickInterval
@@ -415,19 +417,20 @@ type plasmaStoreMsg struct {
 }
 
 type vbucketKVBlob struct {
-	AssignedWorker         string           `json:"assigned_worker"`
-	CurrentVBOwner         string           `json:"current_vb_owner"`
-	DCPStreamStatus        string           `json:"dcp_stream_status"`
-	LastCheckpointTime     string           `json:"last_checkpoint_time"`
-	LastSeqNoProcessed     uint64           `json:"last_processed_seq_no"`
-	NodeUUID               string           `json:"node_uuid"`
-	OwnershipHistory       []OwnershipEntry `json:"ownership_history"`
-	PreviousAssignedWorker string           `json:"previous_assigned_worker"`
-	PreviousNodeUUID       string           `json:"previous_node_uuid"`
-	PreviousEventingDir    string           `json:"previous_node_eventing_dir"`
-	PreviousVBOwner        string           `json:"previous_vb_owner"`
-	VBId                   uint16           `json:"vb_id"`
-	VBuuid                 uint64           `json:"vb_uuid"`
+	AssignedWorker            string           `json:"assigned_worker"`
+	CurrentVBOwner            string           `json:"current_vb_owner"`
+	DCPStreamStatus           string           `json:"dcp_stream_status"`
+	LastCheckpointTime        string           `json:"last_checkpoint_time"`
+	LastDocTimerFeedbackSeqNo uint64           `json:"last_doc_timer_feedback_seqno"`
+	LastSeqNoProcessed        uint64           `json:"last_processed_seq_no"`
+	NodeUUID                  string           `json:"node_uuid"`
+	OwnershipHistory          []OwnershipEntry `json:"ownership_history"`
+	PreviousAssignedWorker    string           `json:"previous_assigned_worker"`
+	PreviousNodeUUID          string           `json:"previous_node_uuid"`
+	PreviousEventingDir       string           `json:"previous_node_eventing_dir"`
+	PreviousVBOwner           string           `json:"previous_vb_owner"`
+	VBId                      uint16           `json:"vb_id"`
+	VBuuid                    uint64           `json:"vb_uuid"`
 
 	AssignedDocIDTimerWorker     string `json:"doc_id_timer_processing_worker"`
 	CurrentProcessedDocIDTimer   string `json:"currently_processed_doc_id_timer"`
@@ -485,9 +488,10 @@ type cppQueueSize struct {
 }
 
 type plasmaStoreEntry struct {
-	vb     uint16
-	seqNo  uint64
-	expiry uint32
-	key    string
-	xMeta  *xattrMetadata
+	callbackFn string
+	expiry     uint32
+	key        string
+	timerTs    string
+	vb         uint16
+	xMeta      *xattrMetadata
 }
