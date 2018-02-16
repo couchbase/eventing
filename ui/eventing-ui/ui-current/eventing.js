@@ -39,44 +39,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 });
             };
 
-            self.toggleProcessing = function(app) {
-                // Clone the app for easier backtracking.
-                var appClone = app.clone();
-                appClone.settings.processing_status = !appClone.settings.processing_status;
-
-                ApplicationService.primaryStore.getDeployedApps()
-                    .then(function(response) {
-                        // Check if the app is deployed completely before toggling the processing state.
-                        if (!(appClone.appname in response.data)) {
-                            showErrorAlert(`Function "${appClone.appname}" may be undergoing bootstrap. Please try later.`);
-                            return $q.reject(`Unable to pause/run "${appClone.appname}". Possibly, bootstrap in progress`);
-                        }
-
-                        return ApplicationService.primaryStore.saveSettings(appClone);
-                    }).then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
-                        }
-
-                        console.log(response.data);
-                        return ApplicationService.tempStore.saveApp(appClone);
-                    })
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
-                        }
-
-                        console.log(response.data);
-                        // Processing status was successfully toggled, update the UI.
-                        app.settings.processing_status = appClone.settings.processing_status;
-                    })
-                    .catch(function(errResponse) {
-                        console.error(errResponse);
-                    });
-            };
-
             self.toggleDeployment = function(app) {
                 var deploymentScope = $scope.$new(true);
                 deploymentScope.appName = app.appname;

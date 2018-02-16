@@ -67,12 +67,6 @@
               {{app.getDeploymentStatus(true)}}
             </button>
             <button
-              class="outline"
-              ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)"
-              ng-disabled="!app.settings.deployment_status">
-              {{app.getProcessingStatus(true)}}
-            </button>
-            <button
               ng-click="$event.stopPropagation();"
               ui-sref="app.admin.eventing.handler({appName:app.appname})"
               ng-disabled="summaryCtrl.disableEditButton">
