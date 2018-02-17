@@ -227,6 +227,9 @@ func TestMultipleHandlers(t *testing.T) {
 	flushFunctionAndBucket(handler2)
 }
 
+/* Disabling pause/resume tests as it's retired. Keeping the tests around as
+we might need to use these tests for allowing deploy/undeploy to pick
+things up from last checkpointed seq no
 func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
@@ -285,7 +288,7 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 	}
 
 	flushFunctionAndBucket(handler)
-}
+}*/
 
 func TestCommentUnCommentOnDelete(t *testing.T) {
 	time.Sleep(time.Second * 5)
