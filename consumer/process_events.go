@@ -474,10 +474,6 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 			vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
 			vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
-			vbBlob.CurrentProcessedCronTimer = time.Now().UTC().Format(time.RFC3339)
-			vbBlob.LastProcessedCronTimerEvent = time.Now().UTC().Format(time.RFC3339)
-			vbBlob.NextCronTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
-
 			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, vbKey, &vbBlob)
 
 			switch c.dcpStreamBoundary {
