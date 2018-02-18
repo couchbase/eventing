@@ -63,20 +63,40 @@ func createAndDeployFunction(appName, hFileName string, settings *commonSettings
 		return
 	}
 
-	var aliases []string
-	aliases = append(aliases, "dst_bucket")
+	var aliases, bnames []string
 
-	// Source bucket bindings disallowed
-	// aliases = append(aliases, "src_bucket")
+	if len(settings.aliasSources) == 0 {
+		aliases = append(aliases, "dst_bucket")
 
-	var bnames []string
-	bnames = append(bnames, "hello-world")
+		// Source bucket bindings disallowed
+		// aliases = append(aliases, "src_bucket")
+
+		bnames = append(bnames, "hello-world")
+	} else {
+		for index, val := range settings.aliasSources {
+			bnames = append(bnames, val)
+			aliases = append(aliases, settings.aliasHandles[index])
+		}
+	}
+
+	var metaBucket, srcBucket string
+	if settings.sourceBucket == "" {
+		srcBucket = "default"
+	} else {
+		srcBucket = settings.sourceBucket
+	}
+
+	if settings.metaBucket == "" {
+		metaBucket = "eventing"
+	} else {
+		metaBucket = settings.sourceBucket
+	}
 
 	// Source bucket bindings disallowed
 	// bnames = append(bnames, "default")
 
 	data, err := createFunction(true, true, 0, settings, aliases,
-		bnames, appName, content, "eventing", "default")
+		bnames, appName, content, metaBucket, srcBucket)
 	if err != nil {
 		fmt.Println("Create function, err:", err)
 		return

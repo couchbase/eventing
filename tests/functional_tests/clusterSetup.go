@@ -290,6 +290,25 @@ func waitForDeployToFinish(appName string) {
 	}
 }
 
+func waitForUndeployToFinish(appName string) {
+	for {
+		time.Sleep(5 * time.Second)
+
+		log.Printf("Waiting for app: %v to get un-deployed\n", appName)
+
+		deployedApps, err := getDeployedApps()
+		if err != nil {
+			continue
+		}
+
+		if _, exists := deployedApps[appName]; !exists {
+			log.Printf("App: %v got un-deployed\n", appName)
+			return
+		}
+
+	}
+}
+
 func getDeployedApps() (map[string]string, error) {
 	r, err := makeRequest("GET", strings.NewReader(""), deployedAppsURL)
 
@@ -449,7 +468,7 @@ retryClusterCredsSetup:
 	waitForRebalanceFinish()
 
 retryQuotaSetup:
-	_, err = quotaSetup(300, 900)
+	_, err = quotaSetup(300, 4000)
 	if err != nil {
 		fmt.Println("Quota setup", err)
 		time.Sleep(time.Second)
@@ -461,8 +480,15 @@ retryQuotaSetup:
 	buckets = append(buckets, "eventing")
 	buckets = append(buckets, "hello-world")
 
+	// Buckets for system tests
+	buckets = append(buckets, "default-dst")
+	buckets = append(buckets, "other-dst-1")
+	buckets = append(buckets, "other-dst-2")
+	buckets = append(buckets, "other-1")
+	buckets = append(buckets, "other-2")
+
 	for _, bucket := range buckets {
-		_, err = createBucket(bucket, 300)
+		_, err = createBucket(bucket, 500)
 		if err != nil {
 			fmt.Println("Create bucket:", err)
 			return

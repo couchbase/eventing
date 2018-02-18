@@ -23,6 +23,10 @@ type opsType struct {
 }
 
 func pumpBucketOps(ops opsType, rate *rateLimit) {
+	pumpBucketOpsSrc(ops, "default", rate)
+}
+
+func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 	if ops.count == 0 {
 		ops.count = itemCount
 	}
@@ -32,7 +36,7 @@ func pumpBucketOps(ops opsType, rate *rateLimit) {
 		Username: rbacuser,
 		Password: rbacpass,
 	})
-	bucket, err := cluster.OpenBucket("default", "")
+	bucket, err := cluster.OpenBucket(srcBucket, "")
 	if err != nil {
 		fmt.Println("Bucket open, err:", err)
 		return
