@@ -14,6 +14,47 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             // Broadcast on channel 'isEventingRunning'
             $rootScope.$broadcast('isEventingRunning', self.isEventingRunning);
 
+            for (var app of Object.keys(self.appList)) {
+                self.appList[app].uiState = 'warmup';
+            }
+
+            // Poll to get the App status and reflect the same in the UI
+            function deployedAppsTicker() {
+                if (!self.isEventingRunning) {
+                    return;
+                }
+
+                ApplicationService.primaryStore.getDeployedApps()
+                    .then(function(response) {
+                        for (var app of Object.keys(self.appList)) {
+                            if (app in response.data) {
+                                self.appList[app].uiState = 'healthy';
+                            } else {
+                                self.appList[app].uiState = 'warmup';
+                            }
+                        }
+
+                        setTimeout(deployedAppsTicker, 2000);
+                    })
+                    .catch(function(errResponse) {
+                        console.error('Unable to get deployed apps', errResponse);
+                    });
+            }
+
+            deployedAppsTicker();
+
+            self.getAppUiProcessingState = function(app) {
+                if (app.getDeploymentStatus() === 'deployed') {
+                    if (self.appList[app.appname].uiState === 'healthy') {
+                        return 'running';
+                    } else {
+                        return 'bootstrapping';
+                    }
+                } else {
+                    return 'paused';
+                }
+            };
+
             self.isAppListEmpty = function() {
                 return Object.keys(self.appList).length === 0;
             };
