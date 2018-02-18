@@ -365,14 +365,25 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 return appModel.depcfg.source_bucket === appModel.depcfg.metadata_bucket;
             };
 
+            self.srcBindingSameBucket = function(appModel, binding) {
+                return appModel.depcfg.source_bucket === binding.name;
+            };
+
             self.isFormInvalid = function() {
-                return FormValidationService.isFormInvalid(self);
+                return FormValidationService.isFormInvalid(self, $scope.bindings, $scope.formCtrl.createAppForm.source_bucket.$viewValue);
             };
 
             self.isFuncNameUndefined = function() {
-                let b = !$scope.appModel.appname;
-                return b;
-            }
+                return !$scope.appModel.appname;
+            };
+
+            self.validateBinding = function(binding) {
+                if (binding && binding.value) {
+                    return FormValidationService.isValidIdentifier(binding.value);
+                }
+
+                return true;
+            };
         }
     ])
     // Controller for settings.
@@ -385,6 +396,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.showSuccessAlert = false;
             self.showWarningAlert = false;
             self.isAppDeployed = isAppDeployed;
+            self.sourceAndBindingSame = false;
 
             // Need to initialize buckets if they are empty,
             // otherwise self.saveSettings() would compare 'null' with '[]'.
@@ -404,11 +416,19 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             $scope.appModel = JSON.parse(JSON.stringify(appModel));
 
             self.isFormInvalid = function() {
-                return FormValidationService.isFormInvalid(self);
+                return FormValidationService.isFormInvalid(self, self.bindings, appModel.depcfg.source_bucket);
+            };
+
+            self.srcBindingSameBucket = function(binding) {
+                return appModel.depcfg.source_bucket === binding.name;
             };
 
             self.validateBinding = function(binding) {
-                return FormValidationService.isValidIdentifier(binding.value);
+                if (binding && binding.value) {
+                    return FormValidationService.isValidIdentifier(binding.value);
+                }
+
+                return true;
             };
 
             self.saveSettings = function(dismissDialog, closeDialog) {
@@ -986,7 +1006,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
     .factory('FormValidationService', [
         function() {
             function isValidIdentifier(value) {
-                var re = /\b[a-zA-Z_$][a-zA-Z_$0-9]*\b/g;
+                var re = /^[a-zA-Z_$][a-zA-Z_$0-9]*$/g;
                 return value && value.trim().match(re);
             }
 
@@ -994,11 +1014,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 isValidIdentifier: function(value) {
                     return isValidIdentifier(value);
                 },
-                isFormInvalid: function(formCtrl) {
+                isFormInvalid: function(formCtrl, bindings, sourceBucket) {
                     var bindingsValid = true,
+                        allBindingsSrc = false,
                         form = formCtrl.createAppForm;
 
-                    for (var binding of formCtrl.bindings) {
+                    for (var binding of bindings) {
                         if (!bindingsValid) {
                             break;
                         }
@@ -1008,9 +1029,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
                     }
 
+                    for (var binding of bindings) {
+                        allBindingsSrc = allBindingsSrc || (sourceBucket === binding.name)
+                    }
+
                     // Check whether the appname exists in the list of apps.
                     if (form.appname.$viewValue && form.appname.$viewValue !== '') {
                         form.appname.$error.appExists = form.appname.$viewValue in formCtrl.savedApps;
+                        form.appname.$error.appnameInvalid = !isValidIdentifier(form.appname.$viewValue);
                     }
 
                     form.appname.$error.required = form.appname.$viewValue === '';
@@ -1025,6 +1051,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         form.execution_timeout.$error.max ||
                         formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
                         formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
+                        form.appname.$error.appnameInvalid ||
+                        allBindingsSrc ||
                         !bindingsValid;
                 }
             }

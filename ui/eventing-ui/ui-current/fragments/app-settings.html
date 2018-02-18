@@ -70,6 +70,11 @@
           ng-show="formCtrl.createAppForm.appname.$error.appExists">
           A function with this name already exists.
         </div>
+        <div
+          class="error field-error"
+          ng-show="formCtrl.createAppForm.appname.$error.appnameInvalid">
+          Function name should be a valid identifier.
+        </div>
       </div>
       <div class="formrow">
         <label>Description</label>
@@ -188,39 +193,49 @@
           </div>
         </div>
         <hr>
-        <div class="row margin-bottom-half" ng-repeat="binding in bindings track by $index">
-          <div class="column width-4">
-            <h4 class="text-medium inline">type</h4>
-            <span
-              class="fa-stack icon-info"
-              uib-tooltip="A binding for referencing a bucket in your function. 'name' is the actual name of the bucket in the cluster. 'value' is the alias you will use to refer to the bucket."
-              tooltip-placement="right">
+        <div ng-repeat="binding in bindings track by $index">
+          <div class="row margin-bottom-half">
+            <div class="column width-4">
+              <h4 class="text-medium inline">type</h4>
+              <span
+                class="fa-stack icon-info"
+                uib-tooltip="A binding for referencing a bucket in your function. 'name' is the actual name of the bucket in the cluster. 'value' is the alias you will use to refer to the bucket."
+                tooltip-placement="right">
             <span class="icon fa-circle-thin fa-stack-2x"></span>
             <span class="icon fa-info fa-stack-1x"></span>
             </span>
-            <select>
-              <option value="alias"
-                      ng-model="bindings[$index].type">Alias
-              </option>
-            </select>
-          </div>
-          <div class="column width-4">
-            <h4 class="text-medium inline">name</h4>
-            <span class="input-prepend">
+              <select>
+                <option value="alias"
+                        ng-model="bindings[$index].type">Alias
+                </option>
+              </select>
+            </div>
+            <div class="column width-4">
+              <h4 class="text-medium inline">name</h4>
+              <span class="input-prepend">
               <select ng-model="bindings[$index].name"
                       ng-options="bucket for bucket in formCtrl.sourceBuckets">
               </select>
             </span>
+            </div>
+            <div class="width-4">
+              <h4 class="text-medium inline">value</h4>
+              <input type="text" ng-model="bindings[$index].value"/>
+            </div>
+            <div
+              class="red-2 cursor-pointer"
+              ng-click="bindings.splice($index, 1)"
+              style="padding: 1rem 0 .5rem 1rem">
+              <span class="icon fa-close"></span>
+            </div>
           </div>
-          <div class="width-4">
-            <h4 class="text-medium inline">value</h4>
-            <input type="text" ng-model="bindings[$index].value"/>
+          <div class="row margin-bottom-half error field-error"
+               ng-show="!formCtrl.validateBinding(bindings[$index])">
+            Alias value must be a valid identifier
           </div>
-          <div
-            class="red-2 cursor-pointer"
-            ng-click="bindings.splice($index, 1)"
-            style="padding: 1rem 0 .5rem 1rem">
-            <span class="icon fa-close"></span>
+          <div class="row margin-bottom-half error field-error"
+               ng-show="formCtrl.srcBindingSameBucket(appModel, bindings[$index])">
+            Alias value must not be the same as source bucket
           </div>
         </div>
       </div>
@@ -245,44 +260,54 @@
           </div>
         </div>
         <hr>
-        <div class="row margin-bottom-half" ng-repeat="binding in formCtrl.bindings track by $index">
-          <div class="column width-4">
-            <h4 class="text-medium inline">type</h4>
-            <span
-              class="fa-stack icon-info"
-              uib-tooltip="A binding for referencing a bucket in your function. 'name' is the actual name of the bucket in the cluster. 'value' is the alias you will use to refer to the bucket."
-              tooltip-placement="right">
+        <div ng-repeat="binding in formCtrl.bindings track by $index">
+          <div class="row margin-bottom-half">
+            <div class="column width-4">
+              <h4 class="text-medium inline">type</h4>
+              <span
+                class="fa-stack icon-info"
+                uib-tooltip="A binding for referencing a bucket in your function. 'name' is the actual name of the bucket in the cluster. 'value' is the alias you will use to refer to the bucket."
+                tooltip-placement="right">
             <span class="icon fa-circle-thin fa-stack-2x"></span>
             <span class="icon fa-info fa-stack-1x"></span>
             </span>
-            <select>
-              <option value="alias"
-                      ng-disabled="formCtrl.isAppDeployed"
-                      ng-model="formCtrl.bindings[$index].type">Alias
-              </option>
-            </select>
-          </div>
-          <div class="column width-4">
-            <h4 class="text-medium inline">name</h4>
-            <span class="input-prepend">
+              <select>
+                <option value="alias"
+                        ng-disabled="formCtrl.isAppDeployed"
+                        ng-model="formCtrl.bindings[$index].type">Alias
+                </option>
+              </select>
+            </div>
+            <div class="column width-4">
+              <h4 class="text-medium inline">name</h4>
+              <span class="input-prepend">
               <select ng-model="formCtrl.bindings[$index].name"
                       ng-disabled="formCtrl.isAppDeployed"
                       ng-options="bucket for bucket in formCtrl.sourceBuckets">
               </select>
             </span>
+            </div>
+            <div class="width-4">
+              <h4 class="text-medium inline">value</h4>
+              <input type="text"
+                     ng-disabled="formCtrl.isAppDeployed"
+                     ng-model="formCtrl.bindings[$index].value"/>
+            </div>
+            <div
+              ng-if="!formCtrl.isAppDeployed"
+              class="red-2 cursor-pointer"
+              ng-click="formCtrl.bindings.splice($index, 1)"
+              style="padding: 1rem 0 .5rem 1rem">
+              <span class="icon fa-close"></span>
+            </div>
           </div>
-          <div class="width-4">
-            <h4 class="text-medium inline">value</h4>
-            <input type="text"
-                   ng-disabled="formCtrl.isAppDeployed"
-                   ng-model="formCtrl.bindings[$index].value"/>
+          <div class="row margin-bottom-half error field-error"
+               ng-show="!formCtrl.validateBinding(formCtrl.bindings[$index])">
+            Alias value must be a valid identifier
           </div>
-          <div
-            ng-if="!formCtrl.isAppDeployed"
-            class="red-2 cursor-pointer"
-            ng-click="formCtrl.bindings.splice($index, 1)"
-            style="padding: 1rem 0 .5rem 1rem">
-            <span class="icon fa-close"></span>
+          <div class="row margin-bottom-half error field-error"
+               ng-show="formCtrl.srcBindingSameBucket(formCtrl.bindings[$index])">
+            Alias value must not be the same as source bucket
           </div>
         </div>
       </div>
