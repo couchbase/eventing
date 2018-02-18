@@ -1,7 +1,7 @@
 angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault'])
     // Controller for the summary page.
-    .controller('SummaryCtrl', ['$q', '$scope', '$state', '$uibModal', '$timeout', '$location', 'ApplicationService', 'serverNodes', 'isEventingRunning',
-        function($q, $scope, $state, $uibModal, $timeout, $location, ApplicationService, serverNodes, isEventingRunning) {
+    .controller('SummaryCtrl', ['$q', '$scope', '$rootScope', '$state', '$uibModal', '$timeout', '$location', 'ApplicationService', 'serverNodes', 'isEventingRunning',
+        function($q, $scope, $rootScope, $state, $uibModal, $timeout, $location, ApplicationService, serverNodes, isEventingRunning) {
             var self = this;
 
             self.errorState = !ApplicationService.status.isErrorCodesLoaded();
@@ -10,6 +10,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.isEventingRunning = isEventingRunning;
             self.appList = ApplicationService.local.getAllApps();
             self.disableEditButton = false;
+
+            // Broadcast on channel 'isEventingRunning'
+            $rootScope.$broadcast('isEventingRunning', self.isEventingRunning);
 
             self.isAppListEmpty = function() {
                 return Object.keys(self.appList).length === 0;
@@ -242,6 +245,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
     .controller('HeaderCtrl', ['$q', '$scope', '$uibModal', '$state', 'mnPoolDefault', 'ApplicationService',
         function($q, $scope, $uibModal, $state, mnPoolDefault, ApplicationService) {
             var self = this;
+            self.isEventingRunning = true;
+
+            // Subscribe to channel 'isEventingRunning' from SummaryCtrl
+            $scope.$on('isEventingRunning', function(event, args) {
+                self.isEventingRunning = args;
+            });
 
             function createApp(creationScope) {
                 // Open the settings fragment as create dialog.
@@ -747,6 +756,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     $state.go('app.admin.eventing.summary');
                 });
 
+            function getNormalizedHost(url) {
+                var a = document.createElement('a');
+                a.href = url;
+                if (a.hostname === 'localhost') {
+                    a.hostname = '127.0.0.1';
+                }
+
+                return a.host;
+            }
+
             // APIs provided by the ApplicationService.
             return {
                 local: {
@@ -947,19 +966,20 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             });
                     },
                     isEventingRunning: function() {
-                        return $http.get('/pools/default/nodeServices')
+                        return mnPoolDefault.get()
                             .then(function(response) {
-                                for (var node of response.data.nodesExt) {
-                                    // The response JSON will have 'thisNode = true' from which the REST call was made.
-                                    if (node.thisNode && 'eventingAdminPort' in node.services) {
-                                        return true;
-                                    }
+                                return mnPoolDefault.getUrlsRunningService(response.nodes, 'eventing');
+                            })
+                            .then(function(response) {
+                                var eventingNodes = [];
+                                for (var url of response) {
+                                    eventingNodes.push(getNormalizedHost(url));
                                 }
 
-                                return false;
+                                return eventingNodes.indexOf(getNormalizedHost(window.location.href)) > -1;
                             })
                             .catch(function(errResponse) {
-                                console.error('Unable to check if eventing service is running', errResponse);
+                                console.error('Unable to get server nodes', errResponse);
                             });
                     },
                     getAllEventingNodes: function() {

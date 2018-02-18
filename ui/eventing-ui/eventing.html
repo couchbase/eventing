@@ -1,8 +1,10 @@
 <mn-element-cargo depot="actions">
   <div class="header-controls resp-xsml" ng-controller="HeaderCtrl as headerCtrl">
-    <a ng-click="headerCtrl.importConfig()">IMPORT</a>
-    <a ng-click="headerCtrl.showCreateDialog()">ADD FUNCTION</a>
-    <input type="file" id="loadConfig" name="config" style="display:none">
+    <div ng-if="headerCtrl.isEventingRunning">
+      <a ng-click="headerCtrl.importConfig()">IMPORT</a>
+      <a ng-click="headerCtrl.showCreateDialog()">ADD FUNCTION</a>
+      <input type="file" id="loadConfig" name="config" style="display:none">
+    </div>
   </div>
 </mn-element-cargo>
 <div ui-view></div>
