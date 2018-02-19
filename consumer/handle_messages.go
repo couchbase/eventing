@@ -495,12 +495,6 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 	// Protocol encoding format:
 	//<headerSize><payloadSize><Header><Payload>
 
-	// For debugging
-	// event := ReadHeader(msg.Header)
-	// if event == int8(DcpEvent) {
-	// 	ReadPayload(msg.Payload)
-	// }
-
 	c.sendMsgBufferRWMutex.Lock()
 	defer c.sendMsgBufferRWMutex.Unlock()
 	err := binary.Write(&c.sendMsgBuffer, binary.LittleEndian, uint32(len(m.msg.Header)))
@@ -586,6 +580,7 @@ func (c *Consumer) readMessageLoop() {
 			}
 			break
 		}
+
 		if err != nil {
 			logging.Errorf("CRHM[%s:%s:%s:%d] Read from client socket failed, err: %v",
 				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)

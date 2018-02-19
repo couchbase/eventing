@@ -83,6 +83,7 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbuck
 
 	vbBlob.CurrentProcessedDocIDTimer = c.vbProcessingStats.getVbStat(vbno, "currently_processed_doc_id_timer").(string)
 	vbBlob.CurrentProcessedCronTimer = c.vbProcessingStats.getVbStat(vbno, "currently_processed_cron_timer").(string)
+	vbBlob.LastDocTimerFeedbackSeqNo = c.vbProcessingStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64)
 	vbBlob.NextDocIDTimerToProcess = c.vbProcessingStats.getVbStat(vbno, "next_doc_id_timer_to_process").(string)
 	vbBlob.NextCronTimerToProcess = c.vbProcessingStats.getVbStat(vbno, "next_cron_timer_to_process").(string)
 	vbBlob.PlasmaPersistedSeqNo = c.vbProcessingStats.getVbStat(vbno, "plasma_last_seq_no_persisted").(uint64)

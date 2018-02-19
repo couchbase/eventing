@@ -337,7 +337,16 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	c.vbsStreamRRWMutex.Unlock()
 
 	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
-	err := c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
+	c.vbProcessingStats.updateVbStat(vb, "last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo)
+
+	var streamStartSeqNo uint64
+	if vbBlob.LastDocTimerFeedbackSeqNo < vbBlob.LastSeqNoProcessed {
+		streamStartSeqNo = vbBlob.LastDocTimerFeedbackSeqNo
+	} else {
+		streamStartSeqNo = vbBlob.LastSeqNoProcessed
+	}
+
+	err := c.dcpRequestStreamHandle(vb, vbBlob, streamStartSeqNo)
 	if err != nil {
 		c.vbsStreamRRWMutex.Lock()
 		defer c.vbsStreamRRWMutex.Unlock()

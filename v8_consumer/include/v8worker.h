@@ -73,6 +73,11 @@ using atomic_ptr_t = std::shared_ptr<std::atomic<int64_t>>;
 // Used for checkpointing of vbucket seq nos
 typedef std::map<int64_t, atomic_ptr_t> vb_seq_map_t;
 
+typedef struct doc_timer_msg_s {
+  std::string
+      timer_entry; // <timestamp in GMT>::<callback_func>::<doc_id>::<seq_no>
+} doc_timer_msg_t;
+
 // Header frame structure for messages from Go world
 typedef struct header_s {
   uint8_t event;
@@ -156,6 +161,7 @@ public:
   ~V8Worker();
 
   void operator()() {
+
     if (debugger_started)
       return;
     while (!shutdown_terminator) {
@@ -199,6 +205,7 @@ public:
                     int args_len);
 
   void Enqueue(header_t *header, message_t *payload);
+  void EnqueueDocTimer(header_t *header, message_t *payload);
   int64_t QueueSize();
 
   void AddLcbException(int err_code);
@@ -234,11 +241,14 @@ public:
   volatile bool execute_flag;
   volatile bool shutdown_terminator;
 
+  int64_t currently_processed_vb;
+  int64_t currently_processed_seqno;
   Time::time_point execute_start_time;
 
   std::thread checkpointing_thr;
   std::thread processing_thr;
   std::thread *terminator_thr;
+  Queue<doc_timer_msg_t> *doc_timer_queue;
   Queue<worker_msg_t> *worker_queue;
 
   ConnectionPool *conn_pool;

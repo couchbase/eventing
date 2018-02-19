@@ -1,7 +1,7 @@
 angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault'])
     // Controller for the summary page.
-    .controller('SummaryCtrl', ['$q', '$scope', '$state', '$uibModal', '$timeout', '$location', 'ApplicationService', 'serverNodes', 'isEventingRunning',
-        function($q, $scope, $state, $uibModal, $timeout, $location, ApplicationService, serverNodes, isEventingRunning) {
+    .controller('SummaryCtrl', ['$q', '$scope', '$rootScope', '$state', '$uibModal', '$timeout', '$location', 'ApplicationService', 'serverNodes', 'isEventingRunning',
+        function($q, $scope, $rootScope, $state, $uibModal, $timeout, $location, ApplicationService, serverNodes, isEventingRunning) {
             var self = this;
 
             self.errorState = !ApplicationService.status.isErrorCodesLoaded();
@@ -10,6 +10,50 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.isEventingRunning = isEventingRunning;
             self.appList = ApplicationService.local.getAllApps();
             self.disableEditButton = false;
+
+            // Broadcast on channel 'isEventingRunning'
+            $rootScope.$broadcast('isEventingRunning', self.isEventingRunning);
+
+            for (var app of Object.keys(self.appList)) {
+                self.appList[app].uiState = 'warmup';
+            }
+
+            // Poll to get the App status and reflect the same in the UI
+            function deployedAppsTicker() {
+                if (!self.isEventingRunning) {
+                    return;
+                }
+
+                ApplicationService.primaryStore.getDeployedApps()
+                    .then(function(response) {
+                        for (var app of Object.keys(self.appList)) {
+                            if (app in response.data) {
+                                self.appList[app].uiState = 'healthy';
+                            } else {
+                                self.appList[app].uiState = 'warmup';
+                            }
+                        }
+
+                        setTimeout(deployedAppsTicker, 2000);
+                    })
+                    .catch(function(errResponse) {
+                        console.error('Unable to get deployed apps', errResponse);
+                    });
+            }
+
+            deployedAppsTicker();
+
+            self.getAppUiProcessingState = function(app) {
+                if (app.getDeploymentStatus() === 'deployed') {
+                    if (self.appList[app.appname].uiState === 'healthy') {
+                        return 'running';
+                    } else {
+                        return 'bootstrapping';
+                    }
+                } else {
+                    return 'paused';
+                }
+            };
 
             self.isAppListEmpty = function() {
                 return Object.keys(self.appList).length === 0;
@@ -33,6 +77,17 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         savedApps: ['ApplicationService',
                             function(ApplicationService) {
                                 return ApplicationService.tempStore.getAllApps();
+                            }
+                        ],
+                        isAppDeployed: ['ApplicationService',
+                            function(ApplicationService) {
+                                return ApplicationService.tempStore.isAppDeployed(appName)
+                                    .then(function(isDeployed) {
+                                        return isDeployed;
+                                    })
+                                    .catch(function(errResponse) {
+                                        console.error('Unable to get deployed apps list', errResponse);
+                                    });
                             }
                         ]
                     }
@@ -73,16 +128,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         appClone.settings.processing_status = true;
                         // Disable edit button till we get the compilation info
                         self.disableEditButton = true;
-                        return ApplicationService.primaryStore.deployApp(appClone);
-                    })
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
-                        }
-
-                        console.log(response.data);
-                        return ApplicationService.tempStore.saveApp(appClone);
+                        return ApplicationService.public.deployApp(appClone);
                     })
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
@@ -240,6 +286,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
     .controller('HeaderCtrl', ['$q', '$scope', '$uibModal', '$state', 'mnPoolDefault', 'ApplicationService',
         function($q, $scope, $uibModal, $state, mnPoolDefault, ApplicationService) {
             var self = this;
+            self.isEventingRunning = true;
+
+            // Subscribe to channel 'isEventingRunning' from SummaryCtrl
+            $scope.$on('isEventingRunning', function(event, args) {
+                self.isEventingRunning = args;
+            });
 
             function createApp(creationScope) {
                 // Open the settings fragment as create dialog.
@@ -299,13 +351,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 scope.appModel = new ApplicationModel();
                 scope.appModel.initializeDefaults();
                 scope.bindings = [];
-                // Add a sample row of bindings.
                 scope.bindings.push({
                     type: 'alias',
                     name: '',
                     value: ''
                 });
-
                 createApp(scope);
             };
 
@@ -346,8 +396,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for creating an application.
-    .controller('CreateCtrl', ['FormValidationService', 'bucketsResolve', 'savedApps',
-        function(FormValidationService, bucketsResolve, savedApps) {
+    .controller('CreateCtrl', ['$scope', 'FormValidationService', 'bucketsResolve', 'savedApps',
+        function($scope, FormValidationService, bucketsResolve, savedApps) {
             var self = this;
             self.isDialog = true;
 
@@ -356,26 +406,47 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.savedApps = savedApps.getApplications();
 
             self.bindings = [];
+            if ($scope.bindings.length > 0) {
+                $scope.bindings[0].name = bucketsResolve[0];
+            }
 
             // Checks whether source and metadata buckets are the same.
             self.srcMetaSameBucket = function(appModel) {
                 return appModel.depcfg.source_bucket === appModel.depcfg.metadata_bucket;
             };
 
+            self.srcBindingSameBucket = function(appModel, binding) {
+                return appModel.depcfg.source_bucket === binding.name;
+            };
+
             self.isFormInvalid = function() {
-                return FormValidationService.isFormInvalid(self);
+                return FormValidationService.isFormInvalid(self, $scope.bindings, $scope.formCtrl.createAppForm.source_bucket.$viewValue);
+            };
+
+            self.isFuncNameUndefined = function() {
+                return !$scope.appModel.appname;
+            };
+
+            self.validateBinding = function(binding) {
+                if (binding && binding.value) {
+                    return FormValidationService.isValidIdentifier(binding.value);
+                }
+
+                return true;
             };
         }
     ])
     // Controller for settings.
-    .controller('SettingsCtrl', ['$q', '$timeout', '$scope', 'ApplicationService', 'FormValidationService', 'appName', 'bucketsResolve', 'savedApps',
-        function($q, $timeout, $scope, ApplicationService, FormValidationService, appName, bucketsResolve, savedApps) {
+    .controller('SettingsCtrl', ['$q', '$timeout', '$scope', 'ApplicationService', 'FormValidationService', 'appName', 'bucketsResolve', 'savedApps', 'isAppDeployed',
+        function($q, $timeout, $scope, ApplicationService, FormValidationService, appName, bucketsResolve, savedApps, isAppDeployed) {
             var self = this,
                 appModel = ApplicationService.local.getAppByName(appName);
 
             self.isDialog = false;
             self.showSuccessAlert = false;
             self.showWarningAlert = false;
+            self.isAppDeployed = isAppDeployed;
+            self.sourceAndBindingSame = false;
 
             // Need to initialize buckets if they are empty,
             // otherwise self.saveSettings() would compare 'null' with '[]'.
@@ -395,11 +466,19 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             $scope.appModel = JSON.parse(JSON.stringify(appModel));
 
             self.isFormInvalid = function() {
-                return FormValidationService.isFormInvalid(self);
+                return FormValidationService.isFormInvalid(self, self.bindings, appModel.depcfg.source_bucket);
+            };
+
+            self.srcBindingSameBucket = function(binding) {
+                return appModel.depcfg.source_bucket === binding.name;
             };
 
             self.validateBinding = function(binding) {
-                return FormValidationService.isValidIdentifier(binding.value);
+                if (binding && binding.value) {
+                    return FormValidationService.isValidIdentifier(binding.value);
+                }
+
+                return true;
             };
 
             self.saveSettings = function(dismissDialog, closeDialog) {
@@ -412,38 +491,21 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 // Deadline timeout must be greater than execution timeout.
                 $scope.appModel.settings.deadline_timeout = $scope.appModel.settings.execution_timeout + 2;
 
-                ApplicationService.primaryStore.saveSettings($scope.appModel)
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
+                // Update local changes.
+                appModel.settings = $scope.appModel.settings;
+                appModel.depcfg.buckets = bindings;
+
+                ApplicationService.tempStore.isAppDeployed(appName)
+                    .then(function(isDeployed) {
+                        if (isDeployed) {
+                            return ApplicationService.public.updateSettings($scope.appModel);
                         }
-
-                        console.log(response.data);
-                        return ApplicationService.tempStore.saveApp($scope.appModel);
-                    })
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
-                        }
-
-                        console.log('Settings saved:', response.data);
-                        showSuccessAlert('Settings saved successfully!');
-                        // Update local changes.
-                        appModel.settings = $scope.appModel.settings;
-                        appModel.depcfg.buckets = bindings;
-
-
-                        // TODO : May not need these as we don't allow editing of these buckets.
-                        appModel.depcfg.source_bucket = self.sourceBucket;
-                        appModel.depcfg.metadata_bucket = self.metadataBucket;
-                        closeDialog('ok');
                     })
                     .catch(function(errResponse) {
-                        console.error(errResponse.data);
-                        dismissDialog('cancel');
+                        console.error('Unable to get deployed apps list', errResponse);
                     });
+
+                closeDialog('ok');
             };
 
             self.cancelEdit = function(dismissDialog) {
@@ -576,75 +638,90 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             };
 
             self.debugApp = function() {
-                if (!isDebugOn) {
-                    debugScope.url = 'Waiting for mutation';
-                    debugScope.urlReceived = false;
-                    isDebugOn = true;
-
-                    // Starts the debugger agent.
-                    ApplicationService.debug.start(app.appname)
-                        .then(function(response) {
-                            var responseCode = ApplicationService.status.getResponseCode(response);
-                            if (responseCode) {
-                                var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
-                                return $q.reject(errMsg);
-                            }
-
-                            console.log('Start debug:', response.data);
-
-                            // Poll till we get the URL for debugging.
-                            function getDebugUrl() {
-                                console.log('Fetching debug url for ' + app.appname);
-                                ApplicationService.debug.getUrl(app.appname)
-                                    .then(function(response) {
-                                        var responseCode = ApplicationService.status.getResponseCode(response);
-                                        if (responseCode) {
-                                            var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
-                                            return $q.reject(errMsg);
-                                        }
-
-                                        if (isDebugOn && response.data === '') {
-                                            setTimeout(getDebugUrl, 1000);
-                                        } else {
-                                            debugScope.urlReceived = true;
-                                            debugScope.url = response.data;
-                                        }
-                                    })
-                                    .catch(function(errResponse) {
-                                        console.error('Unable to get debugger URL for ' + app.appname, errResponse.data);
-                                    });
-                            }
-
-                            getDebugUrl();
-                        })
-                        .catch(function(errResponse) {
-                            console.error('Failed to start debugger', errResponse);
-                        })
-                }
-
-                // Open the dialog to show the URL for debugging.
-                $uibModal.open({
-                        templateUrl: '../_p/ui/event/ui-current/dialogs/app-debug.html',
-                        scope: debugScope
-                    }).result
+                ApplicationService.primaryStore.getDeployedApps()
                     .then(function(response) {
-                        // Stop debugger agent.
-                        return ApplicationService.debug.stop(app.appname)
-                    })
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
-                            return $q.reject(errMsg);
+                        if (!(app.appname in response.data)) {
+                            showErrorAlert(`Function ${app.appname} may be undergoing bootstrap. Please try later.`);
+                            return;
                         }
 
-                        console.log('debugger stopped');
-                        isDebugOn = false;
-                        debugScope.url = 'Waiting for mutation';
-                        debugScope.urlReceived = false;
+                        if (!isDebugOn) {
+                            debugScope.url = 'Waiting for mutation';
+                            debugScope.urlReceived = false;
+                            isDebugOn = true;
+
+                            // Starts the debugger agent.
+                            ApplicationService.debug.start(app.appname)
+                                .then(function(response) {
+                                    var responseCode = ApplicationService.status.getResponseCode(response);
+                                    if (responseCode) {
+                                        var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
+                                        return $q.reject(errMsg);
+                                    }
+
+                                    console.log('Start debug:', response.data);
+
+                                    // Poll till we get the URL for debugging.
+                                    function getDebugUrl() {
+                                        console.log('Fetching debug url for ' + app.appname);
+                                        ApplicationService.debug.getUrl(app.appname)
+                                            .then(function(response) {
+                                                var responseCode = ApplicationService.status.getResponseCode(response);
+                                                if (responseCode) {
+                                                    var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
+                                                    return $q.reject(errMsg);
+                                                }
+
+                                                if (isDebugOn && response.data === '') {
+                                                    setTimeout(getDebugUrl, 1000);
+                                                } else {
+                                                    debugScope.urlReceived = true;
+                                                    debugScope.url = response.data;
+                                                }
+                                            })
+                                            .catch(function(errResponse) {
+                                                console.error('Unable to get debugger URL for ' + app.appname, errResponse.data);
+                                            });
+                                    }
+
+                                    getDebugUrl();
+                                })
+                                .catch(function(errResponse) {
+                                    console.error('Failed to start debugger', errResponse);
+                                })
+                        }
+
+                        function stopDebugger() {
+                            return ApplicationService.debug.stop(app.appname)
+                                .then(function(response) {
+                                    var responseCode = ApplicationService.status.getResponseCode(response);
+                                    if (responseCode) {
+                                        var errMsg = ApplicationService.status.getErrorMsg(responseCode, response.data);
+                                        return $q.reject(errMsg);
+                                    }
+
+                                    console.log('debugger stopped');
+                                    isDebugOn = false;
+                                    debugScope.url = 'Waiting for mutation';
+                                    debugScope.urlReceived = false;
+                                });
+                        }
+
+                        // Open the dialog to show the URL for debugging.
+                        $uibModal.open({
+                                templateUrl: '../_p/ui/event/ui-current/dialogs/app-debug.html',
+                                scope: debugScope
+                            }).result
+                            .then(function(response) {
+                                // Stop debugger agent.
+                                return stopDebugger();
+                            })
+                            .catch(function(errResponse) {
+                                return stopDebugger();
+                            });
                     })
                     .catch(function(errResponse) {
-                        console.error('Failed to start debugger:', errResponse.data);
+                        console.error('Unable to start debugger', errResponse);
                     });
             };
 
@@ -661,6 +738,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 self.showWarningAlert = true;
                 $timeout(function() {
                     self.showWarningAlert = false;
+                }, 4000);
+            }
+
+            function showErrorAlert(message) {
+                self.errorMessage = message;
+                self.showErrorAlert = true;
+                $timeout(function() {
+                    self.showErrorAlert = false;
                 }, 4000);
             }
         }
@@ -712,6 +797,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     $state.go('app.admin.eventing.summary');
                 });
 
+            function getNormalizedHost(url) {
+                var a = document.createElement('a');
+                a.href = url;
+                if (a.hostname === 'localhost') {
+                    a.hostname = '127.0.0.1';
+                }
+
+                return a.host;
+            }
+
             // APIs provided by the ApplicationService.
             return {
                 local: {
@@ -729,6 +824,34 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     },
                     getAppByName: function(appName) {
                         return appManager.getAppByName(appName);
+                    }
+                },
+                public: {
+                    updateSettings: function(appModel) {
+                        return $http({
+                            url: `/_p/event/api/v1/functions/${appModel.appname}/settings`,
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: appModel.settings
+                        });
+                    },
+                    deployApp: function(appModel) {
+                        return $http({
+                            url: `/_p/event/api/v1/functions/${appModel.appname}`,
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: appModel
+                        });
                     }
                 },
                 tempStore: {
@@ -757,6 +880,22 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             },
                             data: app
                         });
+                    },
+                    isAppDeployed: function(appName) {
+                        return $http.get('/_p/event/getAppTempStore/')
+                            .then(function(response) {
+                                // Create and return an ApplicationManager instance.
+                                var deployedAppsMgr = new ApplicationManager();
+
+                                for (var deployedApp of response.data) {
+                                    deployedAppsMgr.pushApp(new Application(deployedApp));
+                                }
+
+                                return deployedAppsMgr;
+                            })
+                            .then(function(deployedAppsMgr) {
+                                return deployedAppsMgr.getAppByName(appName).settings.deployment_status;
+                            });
                     },
                     deleteApp: function(appName) {
                         return $http.get('/_p/event/deleteAppTempStore/?name=' + appName);
@@ -868,19 +1007,20 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             });
                     },
                     isEventingRunning: function() {
-                        return $http.get('/pools/default/nodeServices')
+                        return mnPoolDefault.get()
                             .then(function(response) {
-                                for (var node of response.data.nodesExt) {
-                                    // The response JSON will have 'thisNode = true' from which the REST call was made.
-                                    if (node.thisNode && 'eventingAdminPort' in node.services) {
-                                        return true;
-                                    }
+                                return mnPoolDefault.getUrlsRunningService(response.nodes, 'eventing');
+                            })
+                            .then(function(response) {
+                                var eventingNodes = [];
+                                for (var url of response) {
+                                    eventingNodes.push(getNormalizedHost(url));
                                 }
 
-                                return false;
+                                return eventingNodes.indexOf(getNormalizedHost(window.location.href)) > -1;
                             })
                             .catch(function(errResponse) {
-                                console.error('Unable to check if eventing service is running', errResponse);
+                                console.error('Unable to get server nodes', errResponse);
                             });
                     },
                     getAllEventingNodes: function() {
@@ -927,7 +1067,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
     .factory('FormValidationService', [
         function() {
             function isValidIdentifier(value) {
-                var re = /\b[a-zA-Z_$][a-zA-Z_$0-9]*\b/g;
+                var re = /^[a-zA-Z_$][a-zA-Z_$0-9]*$/g;
                 return value && value.trim().match(re);
             }
 
@@ -935,11 +1075,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 isValidIdentifier: function(value) {
                     return isValidIdentifier(value);
                 },
-                isFormInvalid: function(formCtrl) {
+                isFormInvalid: function(formCtrl, bindings, sourceBucket) {
                     var bindingsValid = true,
+                        allBindingsSrc = false,
                         form = formCtrl.createAppForm;
 
-                    for (var binding of formCtrl.bindings) {
+                    for (var binding of bindings) {
                         if (!bindingsValid) {
                             break;
                         }
@@ -949,11 +1090,17 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
                     }
 
-                    // Check whether the appname exists in the list of apps.
-                    if (form.appname.$viewValue) {
-                        form.appname.$error.appExists = form.appname.$viewValue in formCtrl.savedApps;
+                    for (var binding of bindings) {
+                        allBindingsSrc = allBindingsSrc || (sourceBucket === binding.name)
                     }
 
+                    // Check whether the appname exists in the list of apps.
+                    if (form.appname.$viewValue && form.appname.$viewValue !== '') {
+                        form.appname.$error.appExists = form.appname.$viewValue in formCtrl.savedApps;
+                        form.appname.$error.appnameInvalid = !isValidIdentifier(form.appname.$viewValue);
+                    }
+
+                    form.appname.$error.required = form.appname.$viewValue === '';
 
                     return form.appname.$error.required ||
                         form.appname.$error.appExists ||
@@ -965,6 +1112,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         form.execution_timeout.$error.max ||
                         formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
                         formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
+                        form.appname.$error.appnameInvalid ||
+                        allBindingsSrc ||
                         !bindingsValid;
                 }
             }

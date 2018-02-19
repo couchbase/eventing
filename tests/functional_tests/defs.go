@@ -107,11 +107,15 @@ type bucket struct {
 }
 
 type commonSettings struct {
+	aliasHandles      []string
+	aliasSources      []string
 	batchSize         int
 	deadlineTimeout   int
 	executionTimeout  int
 	lcbInstCap        int
+	metaBucket        string
 	recursiveBehavior string
+	sourceBucket      string
 	streamBoundary    string
 	thrCount          int
 	workerCount       int

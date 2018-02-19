@@ -65,7 +65,7 @@ timer_opcode getTimerOpcode(int8_t opcode);
 debugger_opcode getDebuggerOpcode(int8_t opcode);
 
 // Opcodes for outgoing messages from C++ to Go
-enum msg_type { mType, mV8_Worker_Config, Msg_Unknown };
+enum msg_type { mType, mV8_Worker_Config, mDoc_Timer_Response, Msg_Unknown };
 
 enum v8_worker_config_opcode {
   oConfigOpcode,
@@ -81,5 +81,7 @@ enum v8_worker_config_opcode {
   oLcbExceptions,
   V8_Worker_Config_Opcode_Unknown
 };
+
+enum doc_timer_response_opcode { timerResponse };
 
 #endif

@@ -14,7 +14,8 @@
 #include "utils.h"
 
 static char const *global_program_name;
-int messages_parsed(0);
+uint64_t doc_timer_responses_sent(0);
+uint64_t messages_parsed(0);
 
 std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
   auto header = flatbuf::header::GetHeader(parsed_message->header.c_str());
@@ -203,8 +204,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << enqueued_dcp_delete_msg_counter
              << ", \"enqueued_dcp_mutation_msg_counter\":";
       estats << enqueued_dcp_mutation_msg_counter
-             << ", \"enqueued_doc_timer_msg_counter\":",
-          estats << enqueued_doc_timer_msg_counter;
+             << ", \"enqueued_doc_timer_msg_counter\":";
+      estats << enqueued_doc_timer_msg_counter;
+      estats << ", \"doc_timer_responses_sent\":";
+      estats << doc_timer_responses_sent;
 
       if (workers.size() >= 1) {
         agg_queue_size = 0;
@@ -546,6 +549,8 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
           if (messages_processed_counter >= batch_size || msg_priority) {
 
+            messages_processed_counter = 0;
+
             // Reset the message priority flag
             msg_priority = false;
 
@@ -622,8 +627,62 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
                          AppWorker::GetAppWorker()->OnWrite(req_msg, status);
                        });
             }
+          }
 
-            messages_processed_counter = 0;
+          if (workers.size() >= 1) {
+
+            for (const auto &w : workers) {
+              auto timer_entry_count = w.second->doc_timer_queue->count();
+
+              if (timer_entry_count > 0) {
+                doc_timer_responses_sent += timer_entry_count;
+
+                LOG(logTrace) << "Worker: " << w.second
+                              << " doc timer queue size: " << timer_entry_count
+                              << std::endl;
+
+                while (timer_entry_count > 0) {
+                  auto doc_timer_msg = w.second->doc_timer_queue->pop();
+
+                  flatbuffers::FlatBufferBuilder builder;
+                  auto msg_offset =
+                      builder.CreateString(doc_timer_msg.timer_entry);
+
+                  auto r = flatbuf::response::CreateResponse(
+                      builder, mDoc_Timer_Response, timerResponse, msg_offset);
+                  builder.Finish(r);
+
+                  LOG(logTrace)
+                      << "Worker: " << w.second << " flushing doc timer entry: "
+                      << doc_timer_msg.timer_entry << std::endl;
+
+                  uint32_t s = builder.GetSize();
+                  char *size = (char *)&s;
+
+                  // Write size of payload to socket
+                  write_req_t *req_size = new (write_req_t);
+                  req_size->buf = uv_buf_init(size, sizeof(uint32_t));
+                  uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
+                           [](uv_write_t *req_size, int status) {
+                             AppWorker::GetAppWorker()->OnWrite(req_size,
+                                                                status);
+                           });
+
+                  // Write payload to socket
+                  write_req_t *req_msg = new (write_req_t);
+                  std::string msg((const char *)builder.GetBufferPointer(),
+                                  builder.GetSize());
+                  req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
+                  uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
+                           [](uv_write_t *req_msg, int status) {
+                             AppWorker::GetAppWorker()->OnWrite(req_msg,
+                                                                status);
+                           });
+
+                  timer_entry_count--;
+                }
+              }
+            }
           }
         }
       }
