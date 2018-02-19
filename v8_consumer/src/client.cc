@@ -549,6 +549,8 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
           if (messages_processed_counter >= batch_size || msg_priority) {
 
+            messages_processed_counter = 0;
+
             // Reset the message priority flag
             msg_priority = false;
 
@@ -625,12 +627,16 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
                          AppWorker::GetAppWorker()->OnWrite(req_msg, status);
                        });
             }
+          }
 
-            if (workers.size() >= 1) {
+          if (workers.size() >= 1) {
 
-              for (const auto &w : workers) {
-                auto timer_entry_count = w.second->doc_timer_queue->count();
+            for (const auto &w : workers) {
+              auto timer_entry_count = w.second->doc_timer_queue->count();
+
+              if (timer_entry_count > 0) {
                 doc_timer_responses_sent += timer_entry_count;
+
                 LOG(logTrace) << "Worker: " << w.second
                               << " doc timer queue size: " << timer_entry_count
                               << std::endl;
@@ -677,8 +683,6 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
                 }
               }
             }
-
-            messages_processed_counter = 0;
           }
         }
       }
