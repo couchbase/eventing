@@ -280,7 +280,7 @@ std::string Localhost(bool isUrl) {
 bool IsIPv6() { return ipv6; }
 
 std::string JoinHostPort(const std::string &host, const std::string &port) {
-  static std::regex ipv6re("^[0-9a-f:]*:[0-9a-f:]+$");
+  static std::regex ipv6re("^[0-9a-fA-F:]*:[0-9a-fA-F:]+$");
   return std::regex_match(host, ipv6re) ? "[" + host + "]:" + port
                                         : host + ":" + port;
 }
