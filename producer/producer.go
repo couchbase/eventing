@@ -278,6 +278,10 @@ func (p *Producer) startBucket() {
 }
 
 func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int) {
+	logPrefix := "Producer::handleV8Consumer"
+
+	// Separate out of band socket to pipeline data from Eventing-consumer to Eventing-producer
+	var feedbackListener net.Listener
 
 	var listener net.Listener
 	var err error
@@ -288,35 +292,52 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	// Adding host port in uds path in order to make it across different nodes on a cluster_run setup
 	udsSockPath := fmt.Sprintf("%s/%s_%s.sock", os.TempDir(), p.nsServerHostPort, workerName)
+	feedbackSockPath := fmt.Sprintf("%s/feedback_%s_%s.sock", os.TempDir(), p.nsServerHostPort, workerName)
 
-	if runtime.GOOS == "windows" || len(udsSockPath) > udsSockPathLimit {
+	if runtime.GOOS == "windows" || len(feedbackSockPath) > udsSockPathLimit {
+		feedbackListener, err = net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
+		if err != nil {
+			logging.Errorf("%s [%s:%d] Failed to listen on feedback tcp port, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		}
+
+		_, p.processConfig.FeedbackSockIdentifier, err = net.SplitHostPort(feedbackListener.Addr().String())
+		if err != nil {
+			logging.Errorf("%s [%s:%d] Failed to parse feedback tcp port, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		}
+
 		listener, err = net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
 		if err != nil {
-			logging.Errorf("PRDR[%s:%d] Failed to listen on tcp port, err: %v", p.appName, p.LenRunningConsumers(), err)
+			logging.Errorf("%s [%s:%d] Failed to listen on tcp port, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		}
 
 		_, p.processConfig.SockIdentifier, err = net.SplitHostPort(listener.Addr().String())
 		if err != nil {
-			logging.Errorf("PRDR[%s:%d] Failed to parse tcp port, err: %v", p.appName, p.LenRunningConsumers(), err)
+			logging.Errorf("%s [%s:%d] Failed to parse tcp port, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		}
-
-		logging.Infof("PRDR[%s:%d] Started server on port: %s listener: %r", p.appName, p.LenRunningConsumers(), p.processConfig.SockIdentifier, listener)
 
 		p.processConfig.IPCType = "af_inet"
 
 	} else {
 		os.Remove(udsSockPath)
+		os.Remove(feedbackSockPath)
+
+		feedbackListener, err = net.Listen("unix", feedbackSockPath)
+		if err != nil {
+			logging.Errorf("%s [%s:%d] Failed to listen on feedback unix domain socket, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		}
+		p.processConfig.FeedbackSockIdentifier = feedbackSockPath
 
 		listener, err = net.Listen("unix", udsSockPath)
 		if err != nil {
-			logging.Errorf("PRDR[%s:%d] Failed to listen on unix domain socket, err: %v", p.appName, p.LenRunningConsumers(), err)
+			logging.Errorf("%s [%s:%d] Failed to listen on unix domain socket, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		}
 		p.processConfig.SockIdentifier = udsSockPath
-		p.processConfig.IPCType = "af_unix"
 
+		p.processConfig.IPCType = "af_unix"
 	}
 
-	logging.Infof("PRDR[%s:%d] Spawning consumer to listen on socket: %r", p.appName, p.LenRunningConsumers(), p.processConfig.SockIdentifier)
+	logging.Infof("%s [%s:%d] Spawning consumer to listen on socket: %r feedback socket: %r",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.processConfig.SockIdentifier, p.processConfig.FeedbackSockIdentifier)
 
 	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid,
 		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.vbPlasmaStore, p.numVbuckets)
@@ -338,12 +359,25 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 				return
 			}
 
-			logging.Infof("PRDR[%s:%d] Got request from cpp worker, conn: %v", p.appName, p.LenRunningConsumers(), conn)
+			logging.Infof("%s [%s:%d] Got request from cpp worker, conn: %v", logPrefix, p.appName, p.LenRunningConsumers(), conn)
 			c.SetConnHandle(conn)
 			c.SignalConnected()
 			c.HandleV8Worker()
 		}
 	}(listener, c)
+
+	go func(feedbackListener net.Listener, c *consumer.Consumer) {
+		for {
+			conn, err := feedbackListener.Accept()
+			if err != nil {
+				return
+			}
+			logging.Infof("%s [%s:%d] Got request from cpp worker, feedback conn: %v", logPrefix, p.appName, p.LenRunningConsumers(), conn)
+
+			c.SetFeedbackConnHandle(conn)
+			c.SignalFeedbackConnected()
+		}
+	}(feedbackListener, c)
 }
 
 // CleanupDeadConsumer cleans up a dead consumer handle from list of active running consumers

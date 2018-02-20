@@ -1,9 +1,9 @@
 package consumer
 
 import (
-	"strings"
-
 	"encoding/json"
+	"strconv"
+	"strings"
 
 	"github.com/couchbase/eventing/gen/flatbuf/header"
 	"github.com/couchbase/eventing/gen/flatbuf/payload"
@@ -11,7 +11,6 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
-	"strconv"
 )
 
 const (
@@ -344,6 +343,7 @@ func (c *Consumer) parseWorkerResponse(msg []byte) {
 }
 
 func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
+	logPrefix := "Consumer::routeResponse"
 
 	switch msgType {
 	case respV8WorkerConfig:
@@ -357,44 +357,44 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.latencyStats)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal latency stats, msg: %r err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal latency stats, msg: %r err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case failureStats:
 			c.statsRWMutex.Lock()
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.failureStats)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal failure stats, msg: %r err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal failure stats, msg: %r err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case executionStats:
 			c.statsRWMutex.Lock()
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.executionStats)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal execution stats, msg: %r err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal execution stats, msg: %r err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case compileInfo:
 			err := json.Unmarshal([]byte(msg), &c.compileInfo)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal compilation stats, msg: %r err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal compilation stats, msg: %r err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case queueSize:
 			err := json.Unmarshal([]byte(msg), &c.cppWorkerAggQueueSize)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal agg queue size, msg: %r err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal agg queue size, msg: %r err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case lcbExceptions:
 			c.statsRWMutex.Lock()
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.lcbExceptionStats)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to unmarshal lcb exception stats, msg: %r err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), msg, err)
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal lcb exception stats, msg: %r err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		}
 	case docTimerResponse:
@@ -404,8 +404,8 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 
 			seqNo, err := strconv.ParseInt(seqStr, 10, 64)
 			if err != nil {
-				logging.Errorf("CRDP[%s:%s:%s:%d] Failed to convert seqNo %v to int64, timerEntry: %v err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), seqStr, msg, err)
+				logging.Errorf("%s [%s:%s:%d] Failed to convert seqNo %v to int64, timerEntry: %v err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), seqStr, msg, err)
 				return
 			}
 
@@ -417,8 +417,8 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			}
 
 			c.vbProcessingStats.updateVbStat(pEntry.vb, "last_doc_timer_feedback_seqno", uint64(seqNo))
-			logging.Infof("CRDP[%s:%s:%s:%d] vb: %v Updating last_doc_timer_feedback_seqno to seqNo: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), pEntry.vb, seqNo)
+			logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_doc_timer_feedback_seqno to seqNo: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), pEntry.vb, seqNo)
 
 			c.doctimerResponsesRecieved++
 			c.plasmaStoreCh <- pEntry

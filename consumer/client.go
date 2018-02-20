@@ -11,13 +11,14 @@ import (
 	"github.com/couchbase/eventing/util"
 )
 
-func newClient(consumer *Consumer, appName, tcpPort, workerName, eventingAdminPort string) *client {
+func newClient(consumer *Consumer, appName, tcpPort, feedbackTCPPort, workerName, eventingAdminPort string) *client {
 	return &client{
-		appName:        appName,
-		consumerHandle: consumer,
-		eventingPort:   eventingAdminPort,
-		tcpPort:        tcpPort,
-		workerName:     workerName,
+		appName:         appName,
+		consumerHandle:  consumer,
+		eventingPort:    eventingAdminPort,
+		feedbackTCPPort: feedbackTCPPort,
+		tcpPort:         tcpPort,
+		workerName:      workerName,
 	}
 }
 
@@ -27,6 +28,7 @@ func (c *client) Serve() {
 		c.appName,
 		c.consumerHandle.ipcType,
 		c.tcpPort,
+		c.feedbackTCPPort,
 		c.workerName,
 		strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
 		c.consumerHandle.diagDir,

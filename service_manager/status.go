@@ -2,6 +2,7 @@ package servicemanager
 
 import (
 	"encoding/json"
+
 	"github.com/couchbase/eventing/logging"
 )
 

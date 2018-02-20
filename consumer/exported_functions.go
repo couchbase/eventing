@@ -194,12 +194,14 @@ func (c *Consumer) NodeUUID() string {
 
 // SetConnHandle sets the tcp connection handle for CPP V8 worker
 func (c *Consumer) SetConnHandle(conn net.Conn) {
+	logPrefix := "Consumer::SetConnHandle"
+
 	c.connMutex.Lock()
 	defer c.connMutex.Unlock()
 
 	c.conn = conn
-	logging.Infof("CREF[%s:%s:%s:%d] Setting conn handle: %r",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.conn)
+	logging.Infof("%s [%s:%s:%d] Setting conn handle: %r",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.conn)
 
 	c.sockReader = bufio.NewReader(c.conn)
 	go c.readMessageLoop()
@@ -207,6 +209,22 @@ func (c *Consumer) SetConnHandle(conn net.Conn) {
 	c.socketWriteLoopStopCh <- struct{}{}
 	<-c.socketWriteLoopStopAckCh
 	go c.sendMessageLoop()
+}
+
+// SetFeedbackConnHandle initialised the socket connect for data channel from eventing-consumer
+func (c *Consumer) SetFeedbackConnHandle(conn net.Conn) {
+	logPrefix := "Consumer::SetFeedbackConnHandle"
+
+	c.connMutex.Lock()
+	defer c.connMutex.Unlock()
+
+	c.feedbackConn = conn
+	logging.Infof("%s [%s:%s:%d] Setting feedback conn handle: %r",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.feedbackConn)
+
+	c.sockFeedbackReader = bufio.NewReader(c.feedbackConn)
+
+	go c.feedbackReadMessageLoop()
 }
 
 // SignalBootstrapFinish is leveraged by Eventing.Producer instance to know
@@ -222,6 +240,12 @@ func (c *Consumer) SignalBootstrapFinish() {
 // tcp listener instance
 func (c *Consumer) SignalConnected() {
 	c.signalConnectedCh <- struct{}{}
+}
+
+// SignalFeedbackConnected notifies consumer routine when CPP V8 worker has connected to
+// data channel
+func (c *Consumer) SignalFeedbackConnected() {
+	c.signalFeedbackConnectedCh <- struct{}{}
 }
 
 // TimerTransferHostPortAddr returns hostport combination for RPC server handling transfer of
@@ -344,6 +368,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			"eventing-consumer",
 			appName,
 			"af_inet",
+			c.tcpPort,
 			c.tcpPort,
 			fmt.Sprintf("worker_%s", appName),
 			"1",

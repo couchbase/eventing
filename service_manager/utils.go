@@ -2,12 +2,12 @@ package servicemanager
 
 import (
 	"encoding/binary"
-
 	"encoding/json"
 	"fmt"
-	"github.com/couchbase/cbauth/service"
 	"net/http"
 	"strconv"
+
+	"github.com/couchbase/cbauth/service"
 )
 
 func decodeRev(b service.Revision) uint64 {

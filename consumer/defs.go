@@ -136,8 +136,9 @@ type Consumer struct {
 	breakpadOn  bool
 	uuid        string
 
-	connMutex *sync.RWMutex
-	conn      net.Conn // Access controlled by connMutex
+	connMutex    *sync.RWMutex
+	conn         net.Conn // Access controlled by connMutex
+	feedbackConn net.Conn // Access controlled by connMutex
 
 	// Captures aggregate of items in queue maintained for each V8Worker instance.
 	// Within a single CPP worker process, the number of V8Worker instance is equal
@@ -263,9 +264,11 @@ type Consumer struct {
 	// For performance reasons, Golang writes dcp events to tcp socket in batches
 	// socketWriteBatchSize controls the batch size
 	socketWriteBatchSize     int
+	feedbackReadMsgBuffer    bytes.Buffer
 	readMsgBuffer            bytes.Buffer
 	sendMsgBuffer            bytes.Buffer
 	sendMsgBufferRWMutex     *sync.RWMutex
+	sockFeedbackReader       *bufio.Reader
 	sockReader               *bufio.Reader
 	socketReadLoopStopCh     chan struct{}
 	socketReadLoopStopAckCh  chan struct{}
@@ -297,7 +300,8 @@ type Consumer struct {
 	// Populated when C++ v8 worker is spawned
 	// correctly and downstream tcp socket is available
 	// for sending messages. Unbuffered channel.
-	signalConnectedCh chan struct{}
+	signalConnectedCh         chan struct{}
+	signalFeedbackConnectedCh chan struct{}
 
 	// Chan used by signal update of app handler settings
 	signalSettingsChangeCh chan struct{}
@@ -324,8 +328,9 @@ type Consumer struct {
 	// Will be triggered in case of stop rebalance operation
 	stopVbOwnerTakeoverCh chan struct{}
 
-	debugTCPPort string
-	tcpPort      string
+	debugTCPPort    string
+	feedbackTCPPort string
+	tcpPort         string
 
 	signalDebuggerConnectedCh chan struct{}
 
@@ -395,13 +400,14 @@ type debugClient struct {
 }
 
 type client struct {
-	appName        string
-	consumerHandle *Consumer
-	cmd            *exec.Cmd
-	eventingPort   string
-	osPid          int
-	tcpPort        string
-	workerName     string
+	appName         string
+	consumerHandle  *Consumer
+	cmd             *exec.Cmd
+	eventingPort    string
+	feedbackTCPPort string
+	osPid           int
+	tcpPort         string
+	workerName      string
 }
 
 type vbStats map[uint16]*vbStat

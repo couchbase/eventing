@@ -35,9 +35,9 @@ typedef struct {
 } write_req_t;
 
 typedef struct resp_msg_s {
+  std::string msg;
   uint8_t msg_type;
   uint8_t opcode;
-  std::string msg;
 } resp_msg_t;
 
 typedef union {
@@ -48,14 +48,19 @@ typedef union {
 class AppWorker {
 public:
   static AppWorker *GetAppWorker();
+  std::vector<char> *GetReadBuffer();
+
   void InitTcpSock(const std::string &appname, const std::string &addr,
-                   const std::string &worker_id, int batch_size, int port);
+                   const std::string &worker_id, int batch_size,
+                   int feedback_port, int port);
 
   void InitUDS(const std::string &appname, const std::string &addr,
                const std::string &worker_id, int batch_size,
-               std::string uds_sock_path);
+               std::string feedback_sock_path, std::string uds_sock_path);
 
   void OnConnect(uv_connect_t *conn, int status);
+  void OnFeedbackConnect(uv_connect_t *conn, int status);
+
   void OnRead(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf);
   void OnWrite(uv_write_t *req, int status);
 
@@ -64,25 +69,41 @@ public:
   void RouteMessageWithResponse(header_t *parsed_header,
                                 message_t *parsed_message);
 
-  std::vector<char> *GetReadBuffer();
+  void StartFeedbackUVLoop();
+  void StartMainUVLoop();
+
+  void WriteResponses();
+
+  std::thread main_uv_loop_thr;
+  std::thread feedback_uv_loop_thr;
 
 private:
   AppWorker();
   ~AppWorker();
 
+  std::thread write_responses_thr;
   std::map<int16_t, V8Worker *> workers;
 
-  uv_loop_t main_loop;
+  // Socket  handles for out of band data channel to pipeline data to parent
+  // eventing-producer
+  uv_connect_t feedback_conn;
+  uv_stream_t *feedback_conn_handle;
+  uv_loop_t feedback_loop;
+  bool feedback_loop_running;
+  sockaddr_in46 feedback_server_sock;
+  uv_tcp_t feedback_tcp_sock;
+  uv_pipe_t feedback_uds_sock;
 
-  uv_pipe_t uds_sock;
-  uv_tcp_t tcp_sock;
-
+  // Socket handles for data channel to pipeline messages from parent
+  // eventing-producer to cpp workers
   uv_connect_t conn;
   uv_stream_t *conn_handle;
-
-  sockaddr_in46 server_sock;
-
+  uv_loop_t main_loop;
   bool main_loop_running;
+  sockaddr_in46 server_sock;
+  uv_tcp_t tcp_sock;
+  uv_pipe_t uds_sock;
+
   std::string app_name;
 
   std::string next_message;

@@ -561,12 +561,80 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 	return nil
 }
 
-func (c *Consumer) readMessageLoop() {
+func (c *Consumer) feedbackReadMessageLoop() {
+	logPrefix := "Consumer::feedbackReadMessageLoop"
+
 	defer func() {
 		if r := recover(); r != nil {
 			trace := debug.Stack()
-			logging.Errorf("CRHM[%s:%s:%s:%d] readMessageLoop recover, %r stack trace: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
+			logging.Errorf("%s [%s:%s:%d] Recover, %r stack trace: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
+		}
+	}()
+
+	for {
+		buffer := make([]byte, 4096)
+		bytesRead, err := c.sockFeedbackReader.Read(buffer)
+
+		if err == io.EOF || bytesRead == 0 {
+			if c.client != nil {
+				c.client.Stop()
+			}
+			break
+		}
+
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Read from client socket failed, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+			c.client.Stop()
+			return
+		}
+
+		if bytesRead < len(buffer) {
+			buffer = buffer[:bytesRead]
+		}
+
+		if bytesRead >= headerFragmentSize || c.feedbackReadMsgBuffer.Len() >= headerFragmentSize {
+
+		parseFeedbackMessage:
+			if c.feedbackReadMsgBuffer.Len() > 0 {
+				buffer = append(c.feedbackReadMsgBuffer.Bytes(), buffer...)
+				c.feedbackReadMsgBuffer.Reset()
+			}
+
+			headerSize := binary.LittleEndian.Uint32(buffer[:headerFragmentSize])
+
+			if len(buffer) >= int(headerFragmentSize+headerSize) {
+
+				c.parseWorkerResponse(buffer[headerFragmentSize : headerFragmentSize+headerSize])
+				buffer = buffer[headerFragmentSize+headerSize:]
+
+				c.feedbackReadMsgBuffer.Write(buffer)
+
+				if c.feedbackReadMsgBuffer.Len() > headerFragmentSize {
+					buffer = buffer[:0]
+					goto parseFeedbackMessage
+				}
+			} else {
+				c.feedbackReadMsgBuffer.Write(buffer)
+				buffer = buffer[:0]
+			}
+
+		} else {
+			c.feedbackReadMsgBuffer.Write(buffer)
+			buffer = buffer[:0]
+		}
+	}
+}
+
+func (c *Consumer) readMessageLoop() {
+	logPrefix := "Consumer::readMessageLoop"
+
+	defer func() {
+		if r := recover(); r != nil {
+			trace := debug.Stack()
+			logging.Errorf("%s [%s:%s:%d] readMessageLoop recover, %r stack trace: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()
 
@@ -582,8 +650,8 @@ func (c *Consumer) readMessageLoop() {
 		}
 
 		if err != nil {
-			logging.Errorf("CRHM[%s:%s:%s:%d] Read from client socket failed, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+			logging.Errorf("%s [%s:%s:%d] Read from client socket failed, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 			c.client.Stop()
 			return
 		}
