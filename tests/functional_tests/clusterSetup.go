@@ -481,11 +481,11 @@ retryQuotaSetup:
 	buckets = append(buckets, "hello-world")
 
 	// Buckets for system tests
-	buckets = append(buckets, "default-dst")
-	buckets = append(buckets, "other-dst-1")
-	buckets = append(buckets, "other-dst-2")
-	buckets = append(buckets, "other-1")
-	buckets = append(buckets, "other-2")
+	// buckets = append(buckets, "default-dst")
+	// buckets = append(buckets, "other-dst-1")
+	// buckets = append(buckets, "other-dst-2")
+	// buckets = append(buckets, "other-1")
+	// buckets = append(buckets, "other-2")
 
 	for _, bucket := range buckets {
 		_, err = createBucket(bucket, 500)
