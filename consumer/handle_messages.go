@@ -590,6 +590,8 @@ func (c *Consumer) feedbackReadMessageLoop() {
 			return
 		}
 
+		c.adhocDoctimerResponsesRecieved++
+
 		if bytesRead < len(buffer) {
 			buffer = buffer[:bytesRead]
 		}

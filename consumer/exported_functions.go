@@ -77,6 +77,10 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.doctimerResponsesRecieved
 	}
 
+	if c.adhocDoctimerResponsesRecieved > 0 {
+		stats["ADHOC_DOC_TIMER_RESPONSES_RECEIVED"] = c.adhocDoctimerResponsesRecieved
+	}
+
 	if _, ok := c.v8WorkerMessagesProcessed["LOG_LEVEL"]; ok {
 		if c.v8WorkerMessagesProcessed["LOG_LEVEL"] > 0 {
 			stats["LOG_LEVEL"] = c.v8WorkerMessagesProcessed["LOG_LEVEL"]

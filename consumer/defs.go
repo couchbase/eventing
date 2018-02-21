@@ -347,12 +347,13 @@ type Consumer struct {
 	timersInPastCounter uint64
 
 	// DCP and Timer event related counters
-	aggMessagesSentCounter     uint64
-	crontimerMessagesProcessed uint64
-	dcpDeletionCounter         uint64
-	dcpMutationCounter         uint64
-	doctimerMessagesProcessed  uint64
-	doctimerResponsesRecieved  uint64
+	adhocDoctimerResponsesRecieved uint64
+	aggMessagesSentCounter         uint64
+	crontimerMessagesProcessed     uint64
+	dcpDeletionCounter             uint64
+	dcpMutationCounter             uint64
+	doctimerMessagesProcessed      uint64
+	doctimerResponsesRecieved      uint64
 
 	timerMessagesProcessedPSec int
 

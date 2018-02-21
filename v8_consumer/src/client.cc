@@ -204,8 +204,9 @@ void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
 }
 
 void AppWorker::OnWrite(uv_write_t *req, int status) {
-  if (status) {
-    LOG(logError) << "Write error, err: " << uv_strerror(status) << std::endl;
+  if (status < 0) {
+    LOG(logError) << "Main loop write callback error: " << uv_strerror(status)
+                  << std::endl;
   }
 
   write_req_t *wr = (write_req_t *)req;
@@ -715,8 +716,6 @@ void AppWorker::StartFeedbackUVLoop() {
   }
 }
 
-// Writes data
-
 void AppWorker::WriteResponses() {
   while (true) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -727,48 +726,63 @@ void AppWorker::WriteResponses() {
         auto timer_entry_count = w.second->doc_timer_queue->count();
 
         if (timer_entry_count > 0) {
-          doc_timer_responses_sent += timer_entry_count;
 
           LOG(logTrace) << "Worker: " << w.second
                         << " doc timer queue size: " << timer_entry_count
                         << std::endl;
 
-          while (timer_entry_count > 0) {
-            auto doc_timer_msg = w.second->doc_timer_queue->pop();
+          for (auto i = 0; i <= timer_entry_count / CHUNKS_PER_WRITE; i++) {
 
-            flatbuffers::FlatBufferBuilder builder;
-            auto msg_offset = builder.CreateString(doc_timer_msg.timer_entry);
+            std::vector<uv_buf_t> responses;
 
-            auto r = flatbuf::response::CreateResponse(
-                builder, mDoc_Timer_Response, timerResponse, msg_offset);
-            builder.Finish(r);
+            for (auto j = 0; j < CHUNKS_PER_WRITE; j++) {
 
-            LOG(logTrace) << "Worker: " << w.second
-                          << " flushing doc timer entry: "
-                          << doc_timer_msg.timer_entry << std::endl;
+              if ((i * CHUNKS_PER_WRITE + j) < timer_entry_count) {
 
-            uint32_t s = builder.GetSize();
-            char *size = (char *)&s;
+                auto doc_timer_msg = w.second->doc_timer_queue->pop();
 
-            // Write size of payload to socket
-            write_req_t *req_size = new (write_req_t);
-            req_size->buf = uv_buf_init(size, sizeof(uint32_t));
-            uv_write((uv_write_t *)req_size, feedback_conn_handle,
-                     &req_size->buf, 1, [](uv_write_t *req_size, int status) {
-                       AppWorker::GetAppWorker()->OnWrite(req_size, status);
-                     });
+                flatbuffers::FlatBufferBuilder builder;
+                auto msg_offset =
+                    builder.CreateString(doc_timer_msg.timer_entry);
 
-            // Write payload to socket
-            write_req_t *req_msg = new (write_req_t);
-            std::string msg((const char *)builder.GetBufferPointer(),
-                            builder.GetSize());
-            req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
-            uv_write((uv_write_t *)req_msg, feedback_conn_handle, &req_msg->buf,
-                     1, [](uv_write_t *req_msg, int status) {
-                       AppWorker::GetAppWorker()->OnWrite(req_msg, status);
-                     });
+                auto r = flatbuf::response::CreateResponse(
+                    builder, mDoc_Timer_Response, timerResponse, msg_offset);
+                builder.Finish(r);
 
-            timer_entry_count--;
+                LOG(logInfo)
+                    << "Worker: " << w.second << " flushing doc timer entry: "
+                    << doc_timer_msg.timer_entry << std::endl;
+
+                uint32_t s = builder.GetSize();
+                char *size = (char *)&s;
+
+                auto buf_size = uv_buf_init(size, sizeof(uint32_t));
+                responses.push_back(buf_size);
+
+                std::string msg((const char *)builder.GetBufferPointer(),
+                                builder.GetSize());
+                auto buf_msg = uv_buf_init((char *)msg.c_str(), msg.length());
+                responses.push_back(buf_msg);
+
+                doc_timer_responses_sent++;
+              }
+            }
+
+            if (responses.size() > 0) {
+
+              int res_code = -1;
+
+              do {
+                res_code = uv_try_write(feedback_conn_handle, responses.data(),
+                                        responses.size());
+                LOG(logInfo) << "Flushing to socket, vector of size: "
+                             << responses.size()
+                             << " response code:" << res_code << std::endl;
+
+              } while (res_code < 0);
+
+              std::vector<uv_buf_t>().swap(responses);
+            }
           }
         }
       }

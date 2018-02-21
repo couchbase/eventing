@@ -25,6 +25,7 @@ extern void(assert)(int);
 #include <vector>
 
 const size_t MAX_BUF_SIZE = 65536;
+const int64_t CHUNKS_PER_WRITE = 1;
 
 const int HEADER_FRAGMENT_SIZE = 4;  // uint32
 const int PAYLOAD_FRAGMENT_SIZE = 4; // uint32
