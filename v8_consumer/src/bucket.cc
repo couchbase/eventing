@@ -63,8 +63,9 @@ static void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
 }
 
 Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
-               const char *alias)
-    : bucket_name(bname), endpoint(ep), bucket_alias(alias), worker(w) {
+               const char *alias, bool block_mutation)
+    : block_mutation(block_mutation), bucket_name(bname), endpoint(ep),
+      bucket_alias(alias), worker(w) {
   isolate_ = w->GetIsolate();
   context_.Reset(isolate_, w->context_);
 
@@ -137,8 +138,10 @@ v8::Local<v8::Object> Bucket::WrapBucketMap() {
   auto context = context_.Get(isolate_);
   auto result = templ->NewInstance(context).ToLocalChecked();
   auto bucket_lcb_obj_ptr = v8::External::New(isolate_, &bucket_lcb_obj);
+  auto block_mutation_ptr = v8::External::New(isolate_, &block_mutation);
 
-  result->SetInternalField(0, bucket_lcb_obj_ptr);
+  result->SetInternalField(LCB_INST_FIELD_NO, bucket_lcb_obj_ptr);
+  result->SetInternalField(BLOCK_MUTATION_FIELD_NO, block_mutation_ptr);
   return handle_scope.Escape(result);
 }
 
@@ -169,7 +172,8 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
   std::string key(*utf8_key);
 
-  lcb_t *bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
+  lcb_t *bucket_lcb_obj_ptr =
+      UnwrapInternalField<lcb_t>(info.Holder(), LCB_INST_FIELD_NO);
 
   Result result;
   lcb_CMDGET gcmd = {0};
@@ -206,6 +210,15 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
   if (name->IsSymbol())
     return;
 
+  auto block_mutation =
+      UnwrapInternalField<bool>(info.Holder(), BLOCK_MUTATION_FIELD_NO);
+  if (*block_mutation) {
+    auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
+    js_exception->Throw("Writing to source bucket is forbidden");
+    ++bucket_op_exception_count;
+    return;
+  }
+
   v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
   std::string key(*utf8_key);
   std::string value = JSONStringify(info.GetIsolate(), value_obj);
@@ -214,7 +227,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
                 << " enable_recursive_mutation: " << enable_recursive_mutation
                 << std::endl;
 
-  lcb_t *bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
+  lcb_t *bucket_lcb_obj_ptr =
+      UnwrapInternalField<lcb_t>(info.Holder(), LCB_INST_FIELD_NO);
   Result sres;
 
   if (!enable_recursive_mutation) {
@@ -354,10 +368,20 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   if (name->IsSymbol())
     return;
 
+  auto block_mutation =
+      UnwrapInternalField<bool>(info.Holder(), BLOCK_MUTATION_FIELD_NO);
+  if (*block_mutation) {
+    auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
+    js_exception->Throw("Delete from source bucket is forbidden");
+    ++bucket_op_exception_count;
+    return;
+  }
+
   v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
   std::string key(*utf8_key);
 
-  lcb_t *bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
+  lcb_t *bucket_lcb_obj_ptr =
+      UnwrapInternalField<lcb_t>(info.Holder(), LCB_INST_FIELD_NO);
 
   Result result;
   lcb_CMDREMOVE rcmd = {0};
@@ -386,10 +410,10 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
 v8::Local<v8::ObjectTemplate> Bucket::MakeBucketMapTemplate() {
   v8::EscapableHandleScope handle_scope(isolate_);
 
-  v8::Local<v8::ObjectTemplate> result = v8::ObjectTemplate::New(isolate_);
+  auto result = v8::ObjectTemplate::New(isolate_);
   // We will store lcb_instance associated with this bucket object in the
   // internal field
-  result->SetInternalFieldCount(1);
+  result->SetInternalFieldCount(2);
   // Register corresponding callbacks for alphanumeric accesses on bucket
   // object
   result->SetHandler(v8::NamedPropertyHandlerConfiguration(

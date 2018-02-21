@@ -338,9 +338,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
           std::string bucket_name =
               config->component_configs["buckets"][bucket_alias][0];
 
-          bucket_handle =
-              new Bucket(this, bucket_name.c_str(),
-                         settings->kv_host_port.c_str(), bucket_alias.c_str());
+          bucket_handle = new Bucket(
+              this, bucket_name.c_str(), settings->kv_host_port.c_str(),
+              bucket_alias.c_str(), cb_source_bucket == bucket_name);
 
           bucket_handles.push_back(bucket_handle);
         }

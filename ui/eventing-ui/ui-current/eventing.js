@@ -1064,7 +1064,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 },
                 isFormInvalid: function(formCtrl, bindings, sourceBucket) {
                     var bindingsValid = true,
-                        allBindingsSrc = false,
                         form = formCtrl.createAppForm;
 
                     for (var binding of bindings) {
@@ -1075,10 +1074,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         if (binding.value.length) {
                             bindingsValid = isValidIdentifier(binding.value);
                         }
-                    }
-
-                    for (var binding of bindings) {
-                        allBindingsSrc = allBindingsSrc || (sourceBucket === binding.name)
                     }
 
                     // Check whether the appname exists in the list of apps.
@@ -1100,7 +1095,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
                         formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
                         form.appname.$error.appnameInvalid ||
-                        allBindingsSrc ||
                         !bindingsValid;
                 }
             }

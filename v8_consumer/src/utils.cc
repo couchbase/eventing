@@ -100,20 +100,6 @@ std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
   return stringified_obj;
 }
 
-lcb_t *UnwrapLcbInstance(v8::Local<v8::Object> obj) {
-  v8::Local<v8::External> field =
-      v8::Local<v8::External>::Cast(obj->GetInternalField(0));
-  void *ptr = field->Value();
-  return static_cast<lcb_t *>(ptr);
-}
-
-lcb_t *UnwrapV8WorkerLcbInstance(v8::Local<v8::Object> object) {
-  v8::Local<v8::External> field =
-      v8::Local<v8::External>::Cast(object->GetInternalField(2));
-  void *ptr = field->Value();
-  return static_cast<lcb_t *>(ptr);
-}
-
 // Extracts a C string from a V8 Utf8Value.
 const char *ToCString(const v8::String::Utf8Value &value) {
   return *value ? *value : "<std::string conversion failed>";
