@@ -406,7 +406,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.savedApps = savedApps.getApplications();
 
             self.bindings = [];
-            if ($scope.bindings.length > 0) {
+            if (($scope.bindings.length > 0) && ($scope.bindings[0].name === '')) {
                 $scope.bindings[0].name = bucketsResolve[0];
             }
 
@@ -999,7 +999,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     isEventingRunning: function() {
                         return mnPoolDefault.get()
                             .then(function(response) {
-                                console.log(response);
                                 var isEventingRunning = _.indexOf(response.thisNode.services, 'eventing') > -1;
                                 console.log('isEventingRunning', isEventingRunning);
                                 return isEventingRunning;

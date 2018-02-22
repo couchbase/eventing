@@ -85,7 +85,7 @@
         class="disclosure formrow"
         ng-class="{disclosed: showSettings}"
         ng-click="showSettings = !showSettings">
-        Other Settings
+        Settings
       </div>
       <div ng-show="showSettings">
         <div class="formrow indent-1">
@@ -181,7 +181,7 @@
             <button
               class="outline btn-small"
               title="Add a binding"
-              ng-click="bindings.push({type:'alias', name:'', value:''})">
+              ng-click="bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:''})">
               +
             </button>
             <button
@@ -247,7 +247,7 @@
               class="outline btn-small"
               title="Add a binding"
               ng-disabled="formCtrl.isAppDeployed"
-              ng-click="formCtrl.bindings.push({type:'alias', name:'', value:''})">
+              ng-click="formCtrl.bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:''})">
               +
             </button>
             <button
