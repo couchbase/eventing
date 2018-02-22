@@ -797,16 +797,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     $state.go('app.admin.eventing.summary');
                 });
 
-            function getNormalizedHost(url) {
-                var a = document.createElement('a');
-                a.href = url;
-                if (a.hostname === 'localhost') {
-                    a.hostname = '127.0.0.1';
-                }
-
-                return a.host;
-            }
-
             // APIs provided by the ApplicationService.
             return {
                 local: {
@@ -1009,17 +999,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     isEventingRunning: function() {
                         return mnPoolDefault.get()
                             .then(function(response) {
-                                return mnPoolDefault.getUrlsRunningService(response.nodes, 'eventing');
-                            })
-                            .then(function(response) {
-                                var eventingNodes = [];
-                                for (var url of response) {
-                                    eventingNodes.push(getNormalizedHost(url));
-                                }
-
-                                return eventingNodes.indexOf(getNormalizedHost(window.location.href)) > -1;
-                            })
-                            .catch(function(errResponse) {
+                                console.log(response);
+                                var isEventingRunning = _.indexOf(response.thisNode.services, 'eventing') > -1;
+                                console.log('isEventingRunning', isEventingRunning);
+                                return isEventingRunning;
+                            }).catch(function(errResponse) {
                                 console.error('Unable to get server nodes', errResponse);
                             });
                     },
