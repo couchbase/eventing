@@ -550,6 +550,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.editorDisabled = app.settings.deployment_status || app.settings.processing_status;
             self.debugDisabled = !(app.settings.deployment_status && app.settings.processing_status);
 
+            $state.current.data.title = app.appname;
+
             $scope.aceLoaded = function(editor) {
                 var markers = [],
                     Range = ace.require('ace/range').Range;
@@ -1150,6 +1152,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 return ApplicationService.local.loadApps();
                             }
                         ]
+                    },
+                    data: {
+                        child: 'app.admin.eventing.summary'
                     }
                 });
 
