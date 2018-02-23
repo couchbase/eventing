@@ -55,6 +55,12 @@ inline Data *UnwrapData(v8::Isolate *isolate) {
   return reinterpret_cast<Data *>(isolate->GetData(DATA_SLOT));
 }
 
+template <typename T>
+T *UnwrapInternalField(v8::Local<v8::Object> obj, int field_no) {
+  auto field = v8::Local<v8::External>::Cast(obj->GetInternalField(field_no));
+  return static_cast<T *>(field->Value());
+}
+
 int WinSprintf(char **strp, const char *fmt, ...);
 
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const char *str);
@@ -63,9 +69,6 @@ v8::Local<v8::Name> v8Name(v8::Isolate *isolate, uint32_t key);
 std::string ObjectToString(v8::Local<v8::Value> value);
 
 std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object);
-
-lcb_t *UnwrapLcbInstance(v8::Local<v8::Object> object);
-lcb_t *UnwrapV8WorkerLcbInstance(v8::Local<v8::Object> object);
 
 const char *ToCString(const v8::String::Utf8Value &value);
 bool ToCBool(const v8::Local<v8::Boolean> &value);

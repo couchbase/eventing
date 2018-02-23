@@ -85,7 +85,7 @@
         class="disclosure formrow"
         ng-class="{disclosed: showSettings}"
         ng-click="showSettings = !showSettings">
-        Other Settings
+        Settings
       </div>
       <div ng-show="showSettings">
         <div class="formrow indent-1">
@@ -181,7 +181,7 @@
             <button
               class="outline btn-small"
               title="Add a binding"
-              ng-click="bindings.push({type:'alias', name:'', value:''})">
+              ng-click="bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:''})">
               +
             </button>
             <button
@@ -235,7 +235,7 @@
           </div>
           <div class="row margin-bottom-half error field-error"
                ng-show="formCtrl.srcBindingSameBucket(appModel, bindings[$index])">
-            Alias value must not be the same as source bucket
+            Only read on this bucket is allowed, write/delete on this bucket is forbidden
           </div>
         </div>
       </div>
@@ -247,7 +247,7 @@
               class="outline btn-small"
               title="Add a binding"
               ng-disabled="formCtrl.isAppDeployed"
-              ng-click="formCtrl.bindings.push({type:'alias', name:'', value:''})">
+              ng-click="formCtrl.bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:''})">
               +
             </button>
             <button
@@ -307,30 +307,30 @@
           </div>
           <div class="row margin-bottom-half error field-error"
                ng-show="formCtrl.srcBindingSameBucket(formCtrl.bindings[$index])">
-            Alias value must not be the same as source bucket
+            Only read on this bucket is allowed, write/delete on this bucket is forbidden
           </div>
         </div>
       </div>
     </div>
     <div class="panel-footer">
       <a
-        ng-show="formCtrl.isDialog"
+        ng-if="formCtrl.isDialog"
         ng-click="$dismiss('cancel')">
         Cancel
       </a>
       <button
-        ng-show="formCtrl.isDialog"
+        ng-if="formCtrl.isDialog"
         ng-click="$close('ok')"
-        ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel) || formCtrl.isFuncNameUndefined() || formCtrl.createAppForm.$pristine">
+        ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel) || formCtrl.isFuncNameUndefined() ">
         Next: Add Code
       </button>
       <a
-        ng-show="!formCtrl.isDialog"
+        ng-if="!formCtrl.isDialog"
         ng-click="formCtrl.cancelEdit($dismiss)">
         Cancel
       </a>
       <button
-        ng-show="!formCtrl.isDialog"
+        ng-if="!formCtrl.isDialog"
         ng-click="formCtrl.saveSettings($dismiss, $close)"
         ng-disabled="formCtrl.isFormInvalid()">
         Save

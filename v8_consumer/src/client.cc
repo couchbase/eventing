@@ -11,11 +11,28 @@
 
 #include "client.h"
 #include "breakpad.h"
-#include "utils.h"
 
 static char const *global_program_name;
 uint64_t doc_timer_responses_sent(0);
 uint64_t messages_parsed(0);
+
+static void alloc_buffer(uv_handle_t *handle, size_t suggested_size,
+                         uv_buf_t *buf) {
+  std::vector<char> *read_buffer = AppWorker::GetAppWorker()->GetReadBuffer();
+  *buf = uv_buf_init(read_buffer->data(), read_buffer->capacity());
+}
+
+int combineAsciiToInt(std::vector<int> *input) {
+  int result = 0;
+  for (std::string::size_type i = 0; i < input->size(); i++) {
+    if ((*input)[i] < 0) {
+      result = result + pow(256, i) * (256 + (*input)[i]);
+    } else {
+      result = result + pow(256, i) * (*input)[i];
+    }
+  }
+  return result;
+}
 
 std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
   auto header = flatbuf::header::GetHeader(parsed_message->header.c_str());
@@ -37,6 +54,303 @@ std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
   }
 
   return parsed_header;
+}
+
+std::unique_ptr<message_t> ParseServerMessage(int encoded_header_size,
+                                              int encoded_payload_size,
+                                              const std::string &message) {
+  std::unique_ptr<message_t> parsed_message(new message_t);
+  parsed_message->header = message.substr(
+      HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE, encoded_header_size);
+  parsed_message->payload = message.substr(
+      HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE + encoded_header_size,
+      encoded_payload_size);
+
+  messages_parsed++;
+
+  return parsed_message;
+}
+
+AppWorker *AppWorker::GetAppWorker() {
+  static AppWorker worker;
+  return &worker;
+}
+
+std::vector<char> *AppWorker::GetReadBuffer() { return &read_buffer; }
+
+void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
+                            const std::string &worker_id, int bsize,
+                            int feedback_port, int port) {
+  uv_tcp_init(&feedback_loop, &feedback_tcp_sock);
+  uv_tcp_init(&main_loop, &tcp_sock);
+
+  if (IsIPv6()) {
+    uv_ip6_addr(addr.c_str(), feedback_port, &feedback_server_sock.sock6);
+    uv_ip6_addr(addr.c_str(), port, &server_sock.sock6);
+  } else {
+    uv_ip4_addr(addr.c_str(), feedback_port, &feedback_server_sock.sock4);
+    uv_ip4_addr(addr.c_str(), port, &server_sock.sock4);
+  }
+
+  app_name = appname;
+  batch_size = bsize;
+  messages_processed_counter = 0;
+
+  LOG(logInfo) << "Starting worker with af_inet for appname:" << appname
+               << " worker_id:" << worker_id << " batch_size:" << batch_size
+               << " feedback port:" << R(feedback_port) << " port:" << R(port)
+               << std::endl;
+
+  uv_tcp_connect(&feedback_conn, &feedback_tcp_sock,
+                 (const struct sockaddr *)&feedback_server_sock,
+                 [](uv_connect_t *feedback_conn, int status) {
+                   AppWorker::GetAppWorker()->OnFeedbackConnect(feedback_conn,
+                                                                status);
+                 });
+
+  uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
+                 [](uv_connect_t *conn, int status) {
+                   AppWorker::GetAppWorker()->OnConnect(conn, status);
+                 });
+
+  std::thread f_thr(&AppWorker::StartFeedbackUVLoop, this);
+  feedback_uv_loop_thr = std::move(f_thr);
+
+  std::thread m_thr(&AppWorker::StartMainUVLoop, this);
+  main_uv_loop_thr = std::move(m_thr);
+}
+
+void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
+                        const std::string &worker_id, int bsize,
+                        std::string feedback_sock_path,
+                        std::string uds_sock_path) {
+  uv_pipe_init(&feedback_loop, &feedback_uds_sock, 0);
+  uv_pipe_init(&main_loop, &uds_sock, 0);
+
+  app_name = appname;
+  batch_size = bsize;
+  messages_processed_counter = 0;
+
+  LOG(logInfo) << "Starting worker with af_unix for appname:" << appname
+               << " worker_id:" << worker_id << " batch_size:" << batch_size
+               << " feedback uds path:" << R(feedback_sock_path)
+               << " uds_path:" << R(uds_sock_path) << std::endl;
+
+  uv_pipe_connect(
+      &feedback_conn, &feedback_uds_sock, feedback_sock_path.c_str(),
+      [](uv_connect_t *feedback_conn, int status) {
+        AppWorker::GetAppWorker()->OnFeedbackConnect(feedback_conn, status);
+      });
+
+  uv_pipe_connect(&conn, &uds_sock, uds_sock_path.c_str(),
+                  [](uv_connect_t *conn, int status) {
+                    AppWorker::GetAppWorker()->OnConnect(conn, status);
+                  });
+
+  std::thread f_thr(&AppWorker::StartFeedbackUVLoop, this);
+  feedback_uv_loop_thr = std::move(f_thr);
+
+  std::thread m_thr(&AppWorker::StartMainUVLoop, this);
+  main_uv_loop_thr = std::move(m_thr);
+}
+
+void AppWorker::OnConnect(uv_connect_t *conn, int status) {
+  if (status == 0) {
+    LOG(logInfo) << "Client connected" << std::endl;
+
+    uv_read_start(conn->handle, alloc_buffer,
+                  [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
+                    AppWorker::GetAppWorker()->OnRead(stream, nread, buf);
+                  });
+    conn_handle = conn->handle;
+  } else {
+    LOG(logError) << "Connection failed with error:" << uv_strerror(status)
+                  << std::endl;
+  }
+}
+
+void AppWorker::OnFeedbackConnect(uv_connect_t *conn, int status) {
+  if (status == 0) {
+    LOG(logInfo) << "Client connected on feedback channel" << std::endl;
+
+    uv_read_start(conn->handle, alloc_buffer,
+                  [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
+                    AppWorker::GetAppWorker()->OnRead(stream, nread, buf);
+                  });
+    feedback_conn_handle = conn->handle;
+
+  } else {
+    LOG(logError) << "Connection failed with error:" << uv_strerror(status)
+                  << std::endl;
+  }
+}
+
+void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
+                       const uv_buf_t *buf) {
+  if (nread > 0) {
+    AppWorker::GetAppWorker()->ParseValidChunk(stream, nread, buf->base);
+  } else if (nread == 0) {
+    next_message.clear();
+  } else {
+    if (nread != UV_EOF) {
+      LOG(logError) << "Read error, err code: " << uv_err_name(nread)
+                    << std::endl;
+    }
+    AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message.length(),
+                                               next_message.c_str());
+    next_message.clear();
+    uv_read_stop(stream);
+  }
+}
+
+void AppWorker::OnWrite(uv_write_t *req, int status) {
+  if (status < 0) {
+    LOG(logError) << "Main loop write callback error: " << uv_strerror(status)
+                  << std::endl;
+  }
+
+  write_req_t *wr = (write_req_t *)req;
+  delete wr;
+}
+
+void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
+                                const char *buf) {
+  std::string buf_base;
+  for (int i = 0; i < nread; i++) {
+    buf_base += buf[i];
+  }
+
+  if (next_message.length() > 0) {
+    buf_base = next_message + buf_base;
+    next_message.clear();
+  }
+
+  for (; buf_base.length() > HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE;) {
+    std::vector<int> header_entries, payload_entries;
+    int encoded_header_size, encoded_payload_size;
+
+    for (int i = 0; i < HEADER_FRAGMENT_SIZE; i++) {
+      header_entries.push_back(int(buf_base[i]));
+    }
+    encoded_header_size = combineAsciiToInt(&header_entries);
+
+    for (int i = HEADER_FRAGMENT_SIZE;
+         i < HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE; i++) {
+      payload_entries.push_back(int(buf_base[i]));
+    }
+    encoded_payload_size = combineAsciiToInt(&payload_entries);
+
+    std::string::size_type message_size =
+        HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE + encoded_header_size +
+        encoded_payload_size;
+
+    if (buf_base.length() < message_size) {
+      next_message.assign(buf_base);
+      return;
+    } else {
+      std::string chunk_to_parse = buf_base.substr(0, message_size);
+
+      std::unique_ptr<message_t> parsed_message = ParseServerMessage(
+          encoded_header_size, encoded_payload_size, chunk_to_parse);
+
+      if (parsed_message) {
+        message_t *pmessage = parsed_message.release();
+        std::unique_ptr<header_t> parsed_header = ParseHeader(pmessage);
+
+        if (parsed_header) {
+          header_t *pheader = parsed_header.release();
+          RouteMessageWithResponse(pheader, pmessage);
+
+          if (messages_processed_counter >= batch_size || msg_priority) {
+
+            messages_processed_counter = 0;
+
+            // Reset the message priority flag
+            msg_priority = false;
+
+            if (!resp_msg->msg.empty()) {
+              flatbuffers::FlatBufferBuilder builder;
+
+              auto msg_offset = builder.CreateString(resp_msg->msg.c_str());
+              auto r = flatbuf::response::CreateResponse(
+                  builder, resp_msg->msg_type, resp_msg->opcode, msg_offset);
+              builder.Finish(r);
+
+              uint32_t s = builder.GetSize();
+              char *size = (char *)&s;
+
+              write_req_t *req_size = new (write_req_t);
+              req_size->buf = uv_buf_init(size, sizeof(uint32_t));
+              uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
+                       [](uv_write_t *req_size, int status) {
+                         AppWorker::GetAppWorker()->OnWrite(req_size, status);
+                       });
+
+              // Write payload to socket
+              write_req_t *req_msg = new (write_req_t);
+              std::string msg((const char *)builder.GetBufferPointer(),
+                              builder.GetSize());
+              req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
+              uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
+                       [](uv_write_t *req_msg, int status) {
+                         AppWorker::GetAppWorker()->OnWrite(req_msg, status);
+                       });
+
+              // Reset the values
+              resp_msg->msg.clear();
+              resp_msg->msg_type = 0;
+              resp_msg->opcode = 0;
+            }
+
+            // Flush the aggregate item count in queues for all running V8
+            // worker instances
+            if (workers.size() >= 1) {
+              int64_t agg_queue_size = 0;
+              for (const auto &w : workers) {
+                agg_queue_size += w.second->QueueSize();
+              }
+
+              std::ostringstream queue_stats;
+              queue_stats << "{\"agg_queue_size\":";
+              queue_stats << agg_queue_size << "}";
+
+              flatbuffers::FlatBufferBuilder builder;
+              auto msg_offset = builder.CreateString(queue_stats.str());
+              auto r = flatbuf::response::CreateResponse(
+                  builder, mV8_Worker_Config, oQueueSize, msg_offset);
+              builder.Finish(r);
+
+              uint32_t s = builder.GetSize();
+              char *size = (char *)&s;
+
+              // Write size of payload to socket
+              write_req_t *req_size = new (write_req_t);
+              req_size->buf = uv_buf_init(size, sizeof(uint32_t));
+              uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
+                       [](uv_write_t *req_size, int status) {
+                         AppWorker::GetAppWorker()->OnWrite(req_size, status);
+                       });
+
+              // Write payload to socket
+              write_req_t *req_msg = new (write_req_t);
+              std::string msg((const char *)builder.GetBufferPointer(),
+                              builder.GetSize());
+              req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
+              uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
+                       [](uv_write_t *req_msg, int status) {
+                         AppWorker::GetAppWorker()->OnWrite(req_msg, status);
+                       });
+            }
+          }
+        }
+      }
+    }
+    buf_base.erase(0, message_size);
+  }
+
+  if (buf_base.length() > 0) {
+    next_message.assign(buf_base);
+  }
 }
 
 void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
@@ -388,345 +702,125 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   }
 }
 
-std::unique_ptr<message_t> ParseServerMessage(int encoded_header_size,
-                                              int encoded_payload_size,
-                                              const std::string &message) {
-  std::unique_ptr<message_t> parsed_message(new message_t);
-  parsed_message->header = message.substr(
-      HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE, encoded_header_size);
-  parsed_message->payload = message.substr(
-      HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE + encoded_header_size,
-      encoded_payload_size);
-
-  messages_parsed++;
-
-  return parsed_message;
-}
-
-static void alloc_buffer(uv_handle_t *handle, size_t suggested_size,
-                         uv_buf_t *buf) {
-  std::vector<char> *read_buffer = AppWorker::GetAppWorker()->GetReadBuffer();
-  *buf = uv_buf_init(read_buffer->data(), read_buffer->capacity());
-}
-
-AppWorker::AppWorker() : conn_handle(nullptr), main_loop_running(false) {
-  uv_loop_init(&main_loop);
-  read_buffer.resize(MAX_BUF_SIZE);
-  resp_msg = new (resp_msg_t);
-  msg_priority = false;
-}
-
-AppWorker::~AppWorker() { uv_loop_close(&main_loop); }
-
-void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
-                        const std::string &worker_id, int bsize,
-                        std::string uds_sock_path) {
-  uv_pipe_init(&main_loop, &uds_sock, 0);
-
-  app_name = appname;
-  batch_size = bsize;
-  messages_processed_counter = 0;
-
-  LOG(logInfo) << "Starting worker with uds for appname:" << appname
-               << " worker_id:" << worker_id << " batch_size:" << batch_size
-               << " uds_path:" << uds_sock_path << std::endl;
-
-  uv_pipe_connect(&conn, &uds_sock, uds_sock_path.c_str(),
-                  [](uv_connect_t *conn, int status) {
-                    AppWorker::GetAppWorker()->OnConnect(conn, status);
-                  });
-
+void AppWorker::StartMainUVLoop() {
   if (main_loop_running == false) {
     uv_run(&main_loop, UV_RUN_DEFAULT);
     main_loop_running = true;
   }
 }
 
-void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
-                            const std::string &worker_id, int bsize, int port) {
-  uv_tcp_init(&main_loop, &tcp_sock);
-
-  if (IsIPv6()) {
-    uv_ip6_addr(addr.c_str(), port, &server_sock.sock6);
-  } else {
-    uv_ip4_addr(addr.c_str(), port, &server_sock.sock4);
-  }
-
-  app_name = appname;
-  batch_size = bsize;
-  messages_processed_counter = 0;
-
-  LOG(logInfo) << "Starting worker for appname:" << appname
-               << " worker_id:" << worker_id << " batch_size:" << batch_size
-               << " port:" << port << std::endl;
-
-  uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
-                 [](uv_connect_t *conn, int status) {
-                   AppWorker::GetAppWorker()->OnConnect(conn, status);
-                 });
-
-  if (main_loop_running == false) {
-    uv_run(&main_loop, UV_RUN_DEFAULT);
-    main_loop_running = true;
+void AppWorker::StartFeedbackUVLoop() {
+  if (feedback_loop_running == false) {
+    uv_run(&feedback_loop, UV_RUN_DEFAULT);
+    feedback_loop_running = true;
   }
 }
 
-void AppWorker::OnConnect(uv_connect_t *conn, int status) {
-  if (status == 0) {
-    LOG(logInfo) << "Client connected" << std::endl;
+void AppWorker::WriteResponses() {
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    uv_read_start(conn->handle, alloc_buffer,
-                  [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
-                    AppWorker::GetAppWorker()->OnRead(stream, nread, buf);
-                  });
+    if (workers.size() >= 1) {
 
-    conn_handle = conn->handle;
-  } else {
-    LOG(logError) << "Connection failed with error:" << uv_strerror(status)
-                  << std::endl;
-  }
-}
+      for (const auto &w : workers) {
+        auto timer_entry_count = w.second->doc_timer_queue->count();
 
-int combineAsciiToInt(std::vector<int> *input) {
-  int result = 0;
-  for (std::string::size_type i = 0; i < input->size(); i++) {
-    if ((*input)[i] < 0) {
-      result = result + pow(256, i) * (256 + (*input)[i]);
-    } else {
-      result = result + pow(256, i) * (*input)[i];
-    }
-  }
-  return result;
-}
+        if (timer_entry_count > 0) {
 
-void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
-                                const char *buf) {
-  std::string buf_base;
-  for (int i = 0; i < nread; i++) {
-    buf_base += buf[i];
-  }
+          LOG(logTrace) << "Worker: " << w.second
+                        << " doc timer queue size: " << timer_entry_count
+                        << std::endl;
 
-  if (next_message.length() > 0) {
-    buf_base = next_message + buf_base;
-    next_message.clear();
-  }
+          for (auto i = 0; i <= timer_entry_count / CHUNKS_PER_WRITE; i++) {
 
-  for (; buf_base.length() > HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE;) {
-    std::vector<int> header_entries, payload_entries;
-    int encoded_header_size, encoded_payload_size;
+            std::vector<uv_buf_t> responses;
 
-    for (int i = 0; i < HEADER_FRAGMENT_SIZE; i++) {
-      header_entries.push_back(int(buf_base[i]));
-    }
-    encoded_header_size = combineAsciiToInt(&header_entries);
+            for (auto j = 0; j < CHUNKS_PER_WRITE; j++) {
 
-    for (int i = HEADER_FRAGMENT_SIZE;
-         i < HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE; i++) {
-      payload_entries.push_back(int(buf_base[i]));
-    }
-    encoded_payload_size = combineAsciiToInt(&payload_entries);
+              if ((i * CHUNKS_PER_WRITE + j) < timer_entry_count) {
 
-    std::string::size_type message_size =
-        HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE + encoded_header_size +
-        encoded_payload_size;
+                auto doc_timer_msg = w.second->doc_timer_queue->pop();
 
-    if (buf_base.length() < message_size) {
-      next_message.assign(buf_base);
-      return;
-    } else {
-      std::string chunk_to_parse = buf_base.substr(0, message_size);
+                flatbuffers::FlatBufferBuilder builder;
+                auto msg_offset =
+                    builder.CreateString(doc_timer_msg.timer_entry);
 
-      std::unique_ptr<message_t> parsed_message = ParseServerMessage(
-          encoded_header_size, encoded_payload_size, chunk_to_parse);
+                auto r = flatbuf::response::CreateResponse(
+                    builder, mDoc_Timer_Response, timerResponse, msg_offset);
+                builder.Finish(r);
 
-      if (parsed_message) {
-        message_t *pmessage = parsed_message.release();
-        std::unique_ptr<header_t> parsed_header = ParseHeader(pmessage);
+                LOG(logInfo)
+                    << "Worker: " << w.second << " flushing doc timer entry: "
+                    << doc_timer_msg.timer_entry << std::endl;
 
-        if (parsed_header) {
-          header_t *pheader = parsed_header.release();
-          RouteMessageWithResponse(pheader, pmessage);
+                uint32_t s = builder.GetSize();
+                char *size = (char *)&s;
 
-          if (messages_processed_counter >= batch_size || msg_priority) {
+                auto buf_size = uv_buf_init(size, sizeof(uint32_t));
+                responses.push_back(buf_size);
 
-            messages_processed_counter = 0;
+                std::string msg((const char *)builder.GetBufferPointer(),
+                                builder.GetSize());
+                auto buf_msg = uv_buf_init((char *)msg.c_str(), msg.length());
+                responses.push_back(buf_msg);
 
-            // Reset the message priority flag
-            msg_priority = false;
-
-            if (!resp_msg->msg.empty()) {
-              flatbuffers::FlatBufferBuilder builder;
-
-              auto msg_offset = builder.CreateString(resp_msg->msg.c_str());
-              auto r = flatbuf::response::CreateResponse(
-                  builder, resp_msg->msg_type, resp_msg->opcode, msg_offset);
-              builder.Finish(r);
-
-              uint32_t s = builder.GetSize();
-              char *size = (char *)&s;
-
-              write_req_t *req_size = new (write_req_t);
-              req_size->buf = uv_buf_init(size, sizeof(uint32_t));
-              uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
-                       [](uv_write_t *req_size, int status) {
-                         AppWorker::GetAppWorker()->OnWrite(req_size, status);
-                       });
-
-              // Write payload to socket
-              write_req_t *req_msg = new (write_req_t);
-              std::string msg((const char *)builder.GetBufferPointer(),
-                              builder.GetSize());
-              req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
-              uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
-                       [](uv_write_t *req_msg, int status) {
-                         AppWorker::GetAppWorker()->OnWrite(req_msg, status);
-                       });
-
-              // Reset the values
-              resp_msg->msg.clear();
-              resp_msg->msg_type = 0;
-              resp_msg->opcode = 0;
+                doc_timer_responses_sent++;
+              }
             }
 
-            // Flush the aggregate item count in queues for all running V8
-            // worker instances
-            if (workers.size() >= 1) {
-              int64_t agg_queue_size = 0;
-              for (const auto &w : workers) {
-                agg_queue_size += w.second->QueueSize();
-              }
+            if (responses.size() > 0) {
 
-              std::ostringstream queue_stats;
-              queue_stats << "{\"agg_queue_size\":";
-              queue_stats << agg_queue_size << "}";
+              int res_code = -1;
 
-              flatbuffers::FlatBufferBuilder builder;
-              auto msg_offset = builder.CreateString(queue_stats.str());
-              auto r = flatbuf::response::CreateResponse(
-                  builder, mV8_Worker_Config, oQueueSize, msg_offset);
-              builder.Finish(r);
+              do {
+                res_code = uv_try_write(feedback_conn_handle, responses.data(),
+                                        responses.size());
+                LOG(logInfo) << "Flushing to socket, vector of size: "
+                             << responses.size()
+                             << " response code:" << res_code << std::endl;
 
-              uint32_t s = builder.GetSize();
-              char *size = (char *)&s;
+              } while (res_code < 0);
 
-              // Write size of payload to socket
-              write_req_t *req_size = new (write_req_t);
-              req_size->buf = uv_buf_init(size, sizeof(uint32_t));
-              uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
-                       [](uv_write_t *req_size, int status) {
-                         AppWorker::GetAppWorker()->OnWrite(req_size, status);
-                       });
-
-              // Write payload to socket
-              write_req_t *req_msg = new (write_req_t);
-              std::string msg((const char *)builder.GetBufferPointer(),
-                              builder.GetSize());
-              req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
-              uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
-                       [](uv_write_t *req_msg, int status) {
-                         AppWorker::GetAppWorker()->OnWrite(req_msg, status);
-                       });
-            }
-          }
-
-          if (workers.size() >= 1) {
-
-            for (const auto &w : workers) {
-              auto timer_entry_count = w.second->doc_timer_queue->count();
-
-              if (timer_entry_count > 0) {
-                doc_timer_responses_sent += timer_entry_count;
-
-                LOG(logTrace) << "Worker: " << w.second
-                              << " doc timer queue size: " << timer_entry_count
-                              << std::endl;
-
-                while (timer_entry_count > 0) {
-                  auto doc_timer_msg = w.second->doc_timer_queue->pop();
-
-                  flatbuffers::FlatBufferBuilder builder;
-                  auto msg_offset =
-                      builder.CreateString(doc_timer_msg.timer_entry);
-
-                  auto r = flatbuf::response::CreateResponse(
-                      builder, mDoc_Timer_Response, timerResponse, msg_offset);
-                  builder.Finish(r);
-
-                  LOG(logTrace)
-                      << "Worker: " << w.second << " flushing doc timer entry: "
-                      << doc_timer_msg.timer_entry << std::endl;
-
-                  uint32_t s = builder.GetSize();
-                  char *size = (char *)&s;
-
-                  // Write size of payload to socket
-                  write_req_t *req_size = new (write_req_t);
-                  req_size->buf = uv_buf_init(size, sizeof(uint32_t));
-                  uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
-                           [](uv_write_t *req_size, int status) {
-                             AppWorker::GetAppWorker()->OnWrite(req_size,
-                                                                status);
-                           });
-
-                  // Write payload to socket
-                  write_req_t *req_msg = new (write_req_t);
-                  std::string msg((const char *)builder.GetBufferPointer(),
-                                  builder.GetSize());
-                  req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
-                  uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
-                           [](uv_write_t *req_msg, int status) {
-                             AppWorker::GetAppWorker()->OnWrite(req_msg,
-                                                                status);
-                           });
-
-                  timer_entry_count--;
-                }
-              }
+              std::vector<uv_buf_t>().swap(responses);
             }
           }
         }
       }
     }
-    buf_base.erase(0, message_size);
-  }
-
-  if (buf_base.length() > 0) {
-    next_message.assign(buf_base);
   }
 }
 
-void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
-                       const uv_buf_t *buf) {
-  if (nread > 0) {
-    AppWorker::GetAppWorker()->ParseValidChunk(stream, nread, buf->base);
-  } else if (nread == 0) {
-    next_message.clear();
-  } else {
-    if (nread != UV_EOF) {
-      LOG(logError) << "Read error, err code: " << uv_err_name(nread)
-                    << std::endl;
-    }
-    AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message.length(),
-                                               next_message.c_str());
-    next_message.clear();
-    uv_read_stop(stream);
-  }
+AppWorker::AppWorker() : feedback_conn_handle(nullptr), conn_handle(nullptr) {
+
+  uv_loop_init(&feedback_loop);
+  uv_loop_init(&main_loop);
+
+  read_buffer.resize(MAX_BUF_SIZE);
+  resp_msg = new (resp_msg_t);
+  msg_priority = false;
+
+  feedback_loop_running = false;
+  main_loop_running = false;
+
+  std::thread w_thr(&AppWorker::WriteResponses, this);
+  write_responses_thr = std::move(w_thr);
 }
 
-void AppWorker::OnWrite(uv_write_t *req, int status) {
-  if (status) {
-    LOG(logError) << "Write error, err: " << uv_strerror(status) << std::endl;
+AppWorker::~AppWorker() {
+  if (feedback_uv_loop_thr.joinable()) {
+    feedback_uv_loop_thr.join();
   }
 
-  write_req_t *wr = (write_req_t *)req;
-  delete wr;
-}
+  if (main_uv_loop_thr.joinable()) {
+    main_uv_loop_thr.join();
+  }
 
-std::vector<char> *AppWorker::GetReadBuffer() { return &read_buffer; }
+  if (write_responses_thr.joinable()) {
+    write_responses_thr.join();
+  }
 
-AppWorker *AppWorker::GetAppWorker() {
-  static AppWorker worker;
-  return &worker;
+  uv_loop_close(&feedback_loop);
+  uv_loop_close(&main_loop);
 }
 
 int main(int argc, char **argv) {
@@ -739,7 +833,7 @@ int main(int argc, char **argv) {
     return 2;
   }
 
-  SetIPv6(std::string(argv[7]) == "ipv6");
+  SetIPv6(std::string(argv[8]) == "ipv6");
 
   srand(static_cast<unsigned>(time(nullptr)));
 
@@ -750,20 +844,22 @@ int main(int argc, char **argv) {
   std::string appname(argv[1]);
   std::string ipc_type(argv[2]); // can be af_unix or af_inet
 
-  std::string uds_sock_path;
-  int port;
+  std::string feedback_sock_path, uds_sock_path;
+  int feedback_port, port;
 
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
     uds_sock_path.assign(argv[3]);
+    feedback_sock_path.assign(argv[4]);
   } else {
     port = atoi(argv[3]);
+    feedback_port = atoi(argv[4]);
   }
 
-  std::string worker_id(argv[4]);
-  int batch_size = atoi(argv[5]);
-  std::string diag_dir(argv[6]);
+  std::string worker_id(argv[5]);
+  int batch_size = atoi(argv[6]);
+  std::string diag_dir(argv[7]);
 
-  if (strcmp(argv[8], "true") == 0) {
+  if (strcmp(argv[9], "true") == 0) {
     setupBreakpad(diag_dir);
   }
 
@@ -775,10 +871,14 @@ int main(int argc, char **argv) {
 
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
     worker->InitUDS(appname, Localhost(false), worker_id, batch_size,
-                    uds_sock_path);
+                    feedback_sock_path, uds_sock_path);
   } else {
-    worker->InitTcpSock(appname, Localhost(false), worker_id, batch_size, port);
+    worker->InitTcpSock(appname, Localhost(false), worker_id, batch_size,
+                        feedback_port, port);
   }
+
+  worker->main_uv_loop_thr.join();
+  worker->feedback_uv_loop_thr.join();
 
   curl_global_cleanup();
 }

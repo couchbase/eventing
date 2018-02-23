@@ -63,6 +63,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		eventingDir:                     pConfig.EventingDir,
 		eventingNodeUUIDs:               eventingNodeUUIDs,
 		executionTimeout:                hConfig.ExecutionTimeout,
+		feedbackTCPPort:                 pConfig.FeedbackSockIdentifier,
 		fuzzOffset:                      hConfig.FuzzOffset,
 		gracefulShutdownChan:            make(chan struct{}, 1),
 		ipcType:                         pConfig.IPCType,
@@ -83,6 +84,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		signalBootstrapFinishCh:         make(chan struct{}, 1),
 		signalConnectedCh:               make(chan struct{}, 1),
 		signalDebugBlobDebugStopCh:      make(chan struct{}, 1),
+		signalFeedbackConnectedCh:       make(chan struct{}, 1),
 		signalInstBlobCasOpFinishCh:     make(chan struct{}, 1),
 		signalSettingsChangeCh:          make(chan struct{}, 1),
 		signalStartDebuggerCh:           make(chan struct{}, 1),
@@ -201,7 +203,7 @@ func (c *Consumer) Serve() {
 		c.hostDcpFeedRWMutex.Unlock()
 	}
 
-	c.client = newClient(c, c.app.AppName, c.tcpPort, c.workerName, c.eventingAdminPort)
+	c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
 	c.startDcp(flogs)
@@ -238,6 +240,7 @@ func (c *Consumer) Serve() {
 // HandleV8Worker sets up CPP V8 worker post its bootstrap
 func (c *Consumer) HandleV8Worker() {
 	<-c.signalConnectedCh
+	<-c.signalFeedbackConnectedCh
 
 	logging.SetLogLevel(util.GetLogLevel(c.logLevel))
 	c.sendLogLevel(c.logLevel, false)

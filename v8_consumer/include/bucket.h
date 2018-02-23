@@ -20,9 +20,13 @@
 
 #include "v8worker.h"
 
+#define LCB_INST_FIELD_NO 0
+#define BLOCK_MUTATION_FIELD_NO 1
+
 class Bucket {
 public:
-  Bucket(V8Worker *w, const char *bname, const char *ep, const char *alias);
+  Bucket(V8Worker *w, const char *bname, const char *ep, const char *alias,
+         bool block_mutation);
   ~Bucket();
 
   bool Initialize(V8Worker *w);
@@ -79,6 +83,7 @@ private:
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
 
+  bool block_mutation;
   std::string bucket_name;
   std::string endpoint;
   std::string bucket_alias;

@@ -1,5 +1,5 @@
 {
-  "version" : 1,
+  "version" : 2,
   "module" : "eventing",
   "events" : [
    {
@@ -8,6 +8,7 @@
      "description" : "Eventing function definition was created or updated",
      "sync" : false,
      "enabled" : true,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -20,6 +21,7 @@
      "description" : "Eventing function definition was deleted",
      "sync" : false,
      "enabled" : true,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -31,7 +33,8 @@
      "name" : "Fetch Functions",
      "description" : "Eventing function definition was read",
      "sync" : false,
-     "enabled" : true,
+     "enabled" : false,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -43,7 +46,8 @@
      "name" : "List Deployed",
      "description" : "Eventing deployed functions list was read",
      "sync" : false,
-     "enabled" : true,
+     "enabled" : false,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -55,7 +59,8 @@
      "name" : "Fetch Drafts",
      "description" : "Eventing function draft definitions were read",
      "sync" : false,
-     "enabled" : true,
+     "enabled" : false,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -68,6 +73,7 @@
      "description" : "Eventing function draft definitions were deleted",
      "sync" : false,
      "enabled" : true,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -80,6 +86,7 @@
      "description" : "Save a draft definition to the store",
      "sync" : false,
      "enabled" : true,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -92,6 +99,7 @@
      "description" : "Start eventing function debugger",
      "sync" : false,
      "enabled" : true,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -104,6 +112,7 @@
      "description" : "Stop eventing function debugger",
      "sync" : false,
      "enabled" : true,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -116,6 +125,7 @@
      "description" : "Start tracing eventing function execution",
      "sync" : false,
      "enabled" : true,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -128,6 +138,7 @@
      "description" : "Stop tracing eventing function execution",
      "sync" : false,
      "enabled" : true,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -140,6 +151,7 @@
      "description" : "Save settings for a given app",
      "sync" : false,
      "enabled" : true,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -151,7 +163,8 @@
      "name" : "Fetch Config",
      "description" : "Get config for eventing",
      "sync" : false,
-     "enabled" : true,
+     "enabled" : false,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -164,6 +177,7 @@
      "description" : "Save config for eventing",
      "sync" : false,
      "enabled" : true,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}
@@ -176,6 +190,7 @@
      "description" : "Clears up app definitions and settings from metakv",
      "sync" : false,
      "enabled" : true,
+     "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
        "user" : {"source" : "", "user" : ""}

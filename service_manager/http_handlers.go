@@ -916,6 +916,7 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	// eventing every 5s to see if new functions have been created. So on an idle
 	// cluster it will log lot of this message.
 	logging.Tracef("Fetching function draft definitions")
+	audit.Log(auditevent.FetchDrafts, r, nil)
 	respData := m.getTempStoreAll()
 
 	data, err := json.Marshal(respData)
@@ -1051,15 +1052,6 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
-		if app.DeploymentConfig.Buckets[i].BucketName == app.DeploymentConfig.SourceBucket {
-			info.Code = m.statusCodes.errSourceBinding.Code
-			info.Info = "Bucket binding for source bucket disallowed"
-
-			return
-		}
-	}
-
 	data, err := json.Marshal(app)
 	if err != nil {
 		info.Code = m.statusCodes.errMarshalResp.Code
@@ -1170,14 +1162,6 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	var bNames []flatbuffers.UOffsetT
 
 	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
-
-		if app.DeploymentConfig.Buckets[i].BucketName == app.DeploymentConfig.SourceBucket {
-			info.Code = m.statusCodes.errSourceBinding.Code
-			info.Info = "Bucket binding for source bucket disallowed"
-
-			return
-		}
-
 		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
 		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
 
@@ -1638,6 +1622,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 		appName := match[1]
 		switch r.Method {
 		case "GET":
+			audit.Log(auditevent.FetchDrafts, r, appName)
 
 			app, info := m.getTempStore(appName)
 			if info.Code != m.statusCodes.ok.Code {

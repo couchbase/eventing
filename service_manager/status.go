@@ -2,6 +2,7 @@ package servicemanager
 
 import (
 	"encoding/json"
+
 	"github.com/couchbase/eventing/logging"
 )
 
@@ -67,7 +68,6 @@ type statusCodes struct {
 	errSaveConfig        statusBase
 	errGetConfig         statusBase
 	errGetCreds          statusBase
-	errSourceBinding     statusBase
 }
 
 func (m *ServiceMgr) initErrCodes() {
@@ -108,7 +108,6 @@ func (m *ServiceMgr) initErrCodes() {
 		errSaveConfig:        statusBase{"ERR_SAVE_CONFIG", 33},
 		errGetConfig:         statusBase{"ERR_GET_CONFIG", 34},
 		errGetCreds:          statusBase{"ERR_GET_CREDS", 35},
-		errSourceBinding:     statusBase{"ERR_SOURCE_BINDING", 36},
 	}
 
 	errors := []errorPayload{
@@ -289,11 +288,6 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errGetCreds.Name,
 			Code:        m.statusCodes.errGetCreds.Code,
 			Description: "Failed to get credentials from cbauth",
-		},
-		{
-			Name:        m.statusCodes.errSourceBinding.Name,
-			Code:        m.statusCodes.errSourceBinding.Code,
-			Description: "Bucket binding for source bucket disallowed",
 		},
 	}
 

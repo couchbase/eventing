@@ -111,8 +111,10 @@ type EventingConsumer interface {
 	RebalanceTaskProgress() *RebalanceProgress
 	Serve()
 	SetConnHandle(net.Conn)
+	SetFeedbackConnHandle(net.Conn)
 	SignalBootstrapFinish()
 	SignalConnected()
+	SignalFeedbackConnected()
 	SignalStopDebugger()
 	SpawnCompilationWorker(appcode, appContent, appName, eventingPort string) (*CompileStatus, error)
 	Stop()
@@ -232,13 +234,14 @@ type HandlerConfig struct {
 }
 
 type ProcessConfig struct {
-	BreakpadOn      bool
-	DiagDir         string
-	EventingDir     string
-	EventingPort    string
-	EventingSSLPort string
-	IPCType         string
-	SockIdentifier  string
+	BreakpadOn             bool
+	DiagDir                string
+	EventingDir            string
+	EventingPort           string
+	EventingSSLPort        string
+	FeedbackSockIdentifier string
+	IPCType                string
+	SockIdentifier         string
 }
 
 type RebalanceConfig struct {

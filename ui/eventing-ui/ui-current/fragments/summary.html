@@ -84,6 +84,9 @@
   <div ng-if="summaryCtrl.errorState">
     <p>Something went wrong with the Eventing service.</p>
   </div>
+  <div ng-if="summaryCtrl.errorCode && summaryCtrl.errorCode == 403">
+    <p>User does not have sufficient privileges to access eventing UI.</p>
+  </div>
 </div>
 <div ng-if="!summaryCtrl.isEventingRunning">
   <p>The Eventing interface is only available on Couchbase nodes running the Eventing service.</p>

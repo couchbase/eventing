@@ -5,6 +5,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             var self = this;
 
             self.errorState = !ApplicationService.status.isErrorCodesLoaded();
+            self.errorCode = 200;
             self.showErrorAlert = self.showSuccessAlert = false;
             self.serverNodes = serverNodes;
             self.isEventingRunning = isEventingRunning;
@@ -37,6 +38,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         setTimeout(deployedAppsTicker, 2000);
                     })
                     .catch(function(errResponse) {
+                        self.errorCode = errResponse && errResponse.status || 500;
                         console.error('Unable to get deployed apps', errResponse);
                     });
             }
@@ -406,7 +408,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.savedApps = savedApps.getApplications();
 
             self.bindings = [];
-            if ($scope.bindings.length > 0) {
+            if (($scope.bindings.length > 0) && ($scope.bindings[0].name === '')) {
                 $scope.bindings[0].name = bucketsResolve[0];
             }
 
@@ -499,6 +501,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     .then(function(isDeployed) {
                         if (isDeployed) {
                             return ApplicationService.public.updateSettings($scope.appModel);
+                        } else {
+                            return ApplicationService.tempStore.saveApp($scope.appModel);
                         }
                     })
                     .catch(function(errResponse) {
@@ -549,6 +553,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.disableSaveButton = true;
             self.editorDisabled = app.settings.deployment_status || app.settings.processing_status;
             self.debugDisabled = !(app.settings.deployment_status && app.settings.processing_status);
+
+            $state.current.data.title = app.appname;
 
             $scope.aceLoaded = function(editor) {
                 var markers = [],
@@ -797,16 +803,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     $state.go('app.admin.eventing.summary');
                 });
 
-            function getNormalizedHost(url) {
-                var a = document.createElement('a');
-                a.href = url;
-                if (a.hostname === 'localhost') {
-                    a.hostname = '127.0.0.1';
-                }
-
-                return a.host;
-            }
-
             // APIs provided by the ApplicationService.
             return {
                 local: {
@@ -1009,17 +1005,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     isEventingRunning: function() {
                         return mnPoolDefault.get()
                             .then(function(response) {
-                                return mnPoolDefault.getUrlsRunningService(response.nodes, 'eventing');
-                            })
-                            .then(function(response) {
-                                var eventingNodes = [];
-                                for (var url of response) {
-                                    eventingNodes.push(getNormalizedHost(url));
-                                }
-
-                                return eventingNodes.indexOf(getNormalizedHost(window.location.href)) > -1;
-                            })
-                            .catch(function(errResponse) {
+                                var isEventingRunning = _.indexOf(response.thisNode.services, 'eventing') > -1;
+                                console.log('isEventingRunning', isEventingRunning);
+                                return isEventingRunning;
+                            }).catch(function(errResponse) {
                                 console.error('Unable to get server nodes', errResponse);
                             });
                     },
@@ -1077,7 +1066,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 },
                 isFormInvalid: function(formCtrl, bindings, sourceBucket) {
                     var bindingsValid = true,
-                        allBindingsSrc = false,
                         form = formCtrl.createAppForm;
 
                     for (var binding of bindings) {
@@ -1088,10 +1076,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         if (binding.value.length) {
                             bindingsValid = isValidIdentifier(binding.value);
                         }
-                    }
-
-                    for (var binding of bindings) {
-                        allBindingsSrc = allBindingsSrc || (sourceBucket === binding.name)
                     }
 
                     // Check whether the appname exists in the list of apps.
@@ -1113,7 +1097,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
                         formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
                         form.appname.$error.appnameInvalid ||
-                        allBindingsSrc ||
                         !bindingsValid;
                 }
             }
@@ -1167,6 +1150,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 return ApplicationService.local.loadApps();
                             }
                         ]
+                    },
+                    data: {
+                        child: 'app.admin.eventing.summary'
                     }
                 });
 
