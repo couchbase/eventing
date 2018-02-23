@@ -501,6 +501,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     .then(function(isDeployed) {
                         if (isDeployed) {
                             return ApplicationService.public.updateSettings($scope.appModel);
+                        } else {
+                            return ApplicationService.tempStore.saveApp($scope.appModel);
                         }
                     })
                     .catch(function(errResponse) {

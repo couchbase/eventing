@@ -314,23 +314,23 @@
     </div>
     <div class="panel-footer">
       <a
-        ng-show="formCtrl.isDialog"
+        ng-if="formCtrl.isDialog"
         ng-click="$dismiss('cancel')">
         Cancel
       </a>
       <button
-        ng-show="formCtrl.isDialog"
+        ng-if="formCtrl.isDialog"
         ng-click="$close('ok')"
-        ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel) || formCtrl.isFuncNameUndefined() || formCtrl.createAppForm.$pristine">
+        ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel) || formCtrl.isFuncNameUndefined() ">
         Next: Add Code
       </button>
       <a
-        ng-show="!formCtrl.isDialog"
+        ng-if="!formCtrl.isDialog"
         ng-click="formCtrl.cancelEdit($dismiss)">
         Cancel
       </a>
       <button
-        ng-show="!formCtrl.isDialog"
+        ng-if="!formCtrl.isDialog"
         ng-click="formCtrl.saveSettings($dismiss, $close)"
         ng-disabled="formCtrl.isFormInvalid()">
         Save
