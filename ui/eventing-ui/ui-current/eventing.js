@@ -5,6 +5,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             var self = this;
 
             self.errorState = !ApplicationService.status.isErrorCodesLoaded();
+            self.errorCode = 200;
             self.showErrorAlert = self.showSuccessAlert = false;
             self.serverNodes = serverNodes;
             self.isEventingRunning = isEventingRunning;
@@ -37,6 +38,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         setTimeout(deployedAppsTicker, 2000);
                     })
                     .catch(function(errResponse) {
+                        self.errorCode = errResponse && errResponse.status || 500;
                         console.error('Unable to get deployed apps', errResponse);
                     });
             }
