@@ -383,9 +383,9 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case queueSize:
-			err := json.Unmarshal([]byte(msg), &c.cppWorkerAggQueueSize)
+			err := json.Unmarshal([]byte(msg), &c.cppQueueSizes)
 			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal agg queue size, msg: %r err: %v",
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal cpp queue sizes, msg: %r err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case lcbExceptions:

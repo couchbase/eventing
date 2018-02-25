@@ -802,6 +802,8 @@ void V8Worker::Checkpoint() {
   }
 }
 
+int64_t V8Worker::DocTimerQueueSize() { return doc_timer_queue->count(); }
+
 int64_t V8Worker::QueueSize() { return worker_queue->count(); }
 
 void V8Worker::RouteMessage() {

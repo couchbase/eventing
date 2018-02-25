@@ -26,11 +26,11 @@ func (c *Consumer) processEvents() {
 
 	for {
 
-		if c.cppWorkerAggQueueSize != nil {
-			if c.workerQueueCap < c.cppWorkerAggQueueSize.AggQueueSize {
-				logging.Infof("%s [%s:%s:%d] Throttling events to cpp worker, aggregate queue size: %v cap: %v",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppWorkerAggQueueSize.AggQueueSize,
-					c.workerQueueCap)
+		if c.cppQueueSizes != nil {
+			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize || c.feedbackQueueCap < c.cppQueueSizes.DocTimerQueueSize {
+				logging.Infof("%s [%s:%s:%d] Throttling events to cpp worker, aggregate queue size: %v cap: %v feedback queue size: %v cap: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.AggQueueSize, c.workerQueueCap,
+					c.cppQueueSizes.DocTimerQueueSize, c.feedbackQueueCap)
 				time.Sleep(1 * time.Second)
 			}
 		}

@@ -220,6 +220,7 @@ type HandlerConfig struct {
 	EnableRecursiveMutation  bool
 	ExecutionTimeout         int
 	FeedbackBatchSize        int
+	FeedbackQueueCap         int64
 	FuzzOffset               int
 	LcbInstCapacity          int
 	LogLevel                 string

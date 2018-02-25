@@ -206,6 +206,7 @@ public:
 
   void Enqueue(header_t *header, message_t *payload);
   void EnqueueDocTimer(header_t *header, message_t *payload);
+  int64_t DocTimerQueueSize();
   int64_t QueueSize();
 
   void AddLcbException(int err_code);

@@ -94,6 +94,18 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.CurlTimeout = int64(500)
 	}
 
+	if val, ok := settings["dcp_stream_boundary"]; ok {
+		p.handlerConfig.StreamBoundary = common.DcpStreamBoundary(val.(string))
+	} else {
+		p.handlerConfig.StreamBoundary = common.DcpStreamBoundary("everything")
+	}
+
+	if val, ok := settings["deadline_timeout"]; ok {
+		p.handlerConfig.SocketTimeout = int(val.(float64))
+	} else {
+		p.handlerConfig.SocketTimeout = 2
+	}
+
 	if val, ok := settings["enable_recursive_mutation"]; ok {
 		p.handlerConfig.EnableRecursiveMutation = val.(bool)
 	} else {
@@ -109,7 +121,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["feedback_batch_size"]; ok {
 		p.handlerConfig.FeedbackBatchSize = int(val.(float64))
 	} else {
-		p.handlerConfig.FeedbackBatchSize = 100
+		p.handlerConfig.FeedbackBatchSize = 10 * 1000
 	}
 
 	if val, ok := settings["fuzz_offset"]; ok {
@@ -142,28 +154,22 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.SocketWriteBatchSize = 100
 	}
 
-	if val, ok := settings["deadline_timeout"]; ok {
-		p.handlerConfig.SocketTimeout = int(val.(float64))
-	} else {
-		p.handlerConfig.SocketTimeout = 2
-	}
-
 	if val, ok := settings["tick_duration"]; ok {
 		p.handlerConfig.StatsLogInterval = int(val.(float64))
 	} else {
 		p.handlerConfig.StatsLogInterval = 60000
 	}
 
-	if val, ok := settings["dcp_stream_boundary"]; ok {
-		p.handlerConfig.StreamBoundary = common.DcpStreamBoundary(val.(string))
-	} else {
-		p.handlerConfig.StreamBoundary = common.DcpStreamBoundary("everything")
-	}
-
 	if val, ok := settings["worker_count"]; ok {
 		p.handlerConfig.WorkerCount = int(val.(float64))
 	} else {
 		p.handlerConfig.WorkerCount = 3
+	}
+
+	if val, ok := settings["worker_feedback_queue_cap"]; ok {
+		p.handlerConfig.FeedbackQueueCap = int64(val.(float64))
+	} else {
+		p.handlerConfig.FeedbackQueueCap = int64(100 * 1000)
 	}
 
 	if val, ok := settings["worker_queue_cap"]; ok {

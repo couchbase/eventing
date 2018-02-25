@@ -308,14 +308,16 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             // Flush the aggregate item count in queues for all running V8
             // worker instances
             if (workers.size() >= 1) {
-              int64_t agg_queue_size = 0;
+              int64_t agg_queue_size = 0, feedback_queue_size = 0;
               for (const auto &w : workers) {
                 agg_queue_size += w.second->QueueSize();
+                feedback_queue_size += w.second->DocTimerQueueSize();
               }
 
               std::ostringstream queue_stats;
               queue_stats << "{\"agg_queue_size\":";
-              queue_stats << agg_queue_size << "}";
+              queue_stats << agg_queue_size << ", \"feedback_queue_size\":";
+              queue_stats << feedback_queue_size << "}";
 
               flatbuffers::FlatBufferBuilder builder;
               auto msg_offset = builder.CreateString(queue_stats.str());
@@ -364,7 +366,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   handler_config_t *handler_config;
 
   int worker_index;
-  int64_t latency_buckets, agg_queue_size;
+  int64_t latency_buckets, agg_queue_size, feedback_queue_size;
   std::vector<int64_t> agg_hgram, worker_hgram;
   std::ostringstream lstats, estats, fstats;
   std::map<int, int64_t> agg_lcb_exceptions;
@@ -528,11 +530,14 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
       if (workers.size() >= 1) {
         agg_queue_size = 0;
+        feedback_queue_size = 0;
         for (const auto &w : workers) {
           agg_queue_size += w.second->QueueSize();
+          feedback_queue_size += w.second->DocTimerQueueSize();
         }
 
         estats << ", \"agg_queue_size\":" << agg_queue_size;
+        estats << ", \"feedback_queue_size\":" << feedback_queue_size;
       }
       estats << "}";
 
@@ -720,8 +725,9 @@ void AppWorker::StartFeedbackUVLoop() {
 }
 
 void AppWorker::WriteResponses() {
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
   while (true) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     if (workers.size() >= 1) {
 
@@ -772,7 +778,7 @@ void AppWorker::WriteResponses() {
 
                 // Could have leveraged strcpy or strncpy, but for some reason
                 // copied over buffer had invalid entries.
-                for (int k = 0; k < msg.size(); k++) {
+                for (int k = 0; k < int(msg.size()); k++) {
                   msg_entry[k] = msg[k];
                 }
                 msg_entry[msg.size()] = '\0';
@@ -800,6 +806,8 @@ void AppWorker::WriteResponses() {
               std::vector<uv_buf_t>().swap(responses);
             }
           }
+        } else {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
       }
     }
