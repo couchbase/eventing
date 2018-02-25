@@ -2,6 +2,7 @@
 #define CLIENT_H
 
 #include <chrono>
+#include <cstring>
 #include <iostream>
 #include <math.h>
 #include <sstream>
@@ -25,10 +26,9 @@ extern void(assert)(int);
 #include <vector>
 
 const size_t MAX_BUF_SIZE = 65536;
-const int64_t CHUNKS_PER_WRITE = 1;
-
 const int HEADER_FRAGMENT_SIZE = 4;  // uint32
 const int PAYLOAD_FRAGMENT_SIZE = 4; // uint32
+const int SIZEOF_UINT32 = 4;
 
 typedef struct {
   uv_write_t req;
@@ -53,11 +53,12 @@ public:
 
   void InitTcpSock(const std::string &appname, const std::string &addr,
                    const std::string &worker_id, int batch_size,
-                   int feedback_port, int port);
+                   int feedback_batch_size, int feedback_port, int port);
 
   void InitUDS(const std::string &appname, const std::string &addr,
                const std::string &worker_id, int batch_size,
-               std::string feedback_sock_path, std::string uds_sock_path);
+               int feedback_batch_size, std::string feedback_sock_path,
+               std::string uds_sock_path);
 
   void OnConnect(uv_connect_t *conn, int status);
   void OnFeedbackConnect(uv_connect_t *conn, int status);
@@ -87,6 +88,7 @@ private:
 
   // Socket  handles for out of band data channel to pipeline data to parent
   // eventing-producer
+  int feedback_batch_size;
   uv_connect_t feedback_conn;
   uv_stream_t *feedback_conn_handle;
   uv_loop_t feedback_loop;
@@ -97,6 +99,7 @@ private:
 
   // Socket handles for data channel to pipeline messages from parent
   // eventing-producer to cpp workers
+  int batch_size;
   uv_connect_t conn;
   uv_stream_t *conn_handle;
   uv_loop_t main_loop;
@@ -118,10 +121,6 @@ private:
   // Controls the size of thread pool, each thread executing user supplied
   // handler code against dcp/timer events
   int16_t thr_count;
-
-  // In order to improve throughput, dcp events are sent in batches
-  // batch_size controls the size of it
-  int batch_size;
 
   // Captures the config message that will be written by C++ worker
   // to the tcp socket in order to communicate message to Go world

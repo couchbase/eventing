@@ -376,6 +376,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			c.tcpPort,
 			fmt.Sprintf("worker_%s", appName),
 			"1",
+			"1",
 			os.TempDir(),
 			util.GetIPMode(),
 			"true",

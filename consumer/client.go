@@ -31,6 +31,7 @@ func (c *client) Serve() {
 		c.feedbackTCPPort,
 		c.workerName,
 		strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
+		strconv.Itoa(c.consumerHandle.feedbackWriteBatchSize),
 		c.consumerHandle.diagDir,
 		util.GetIPMode(),
 		strconv.FormatBool(c.consumerHandle.breakpadOn),

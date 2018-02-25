@@ -261,10 +261,9 @@ type Consumer struct {
 	vbFlogChan chan *vbFlogEntry
 
 	sendMsgCounter uint64
-	// For performance reasons, Golang writes dcp events to tcp socket in batches
-	// socketWriteBatchSize controls the batch size
-	socketWriteBatchSize     int
+
 	feedbackReadMsgBuffer    bytes.Buffer
+	feedbackWriteBatchSize   int
 	readMsgBuffer            bytes.Buffer
 	sendMsgBuffer            bytes.Buffer
 	sendMsgBufferRWMutex     *sync.RWMutex
@@ -272,6 +271,7 @@ type Consumer struct {
 	sockReader               *bufio.Reader
 	socketReadLoopStopCh     chan struct{}
 	socketReadLoopStopAckCh  chan struct{}
+	socketWriteBatchSize     int
 	socketWriteTicker        *time.Ticker
 	socketWriteLoopStopCh    chan struct{}
 	socketWriteLoopStopAckCh chan struct{}

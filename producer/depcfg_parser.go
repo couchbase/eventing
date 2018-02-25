@@ -106,6 +106,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.ExecutionTimeout = 1
 	}
 
+	if val, ok := settings["feedback_batch_size"]; ok {
+		p.handlerConfig.FeedbackBatchSize = int(val.(float64))
+	} else {
+		p.handlerConfig.FeedbackBatchSize = 100
+	}
+
 	if val, ok := settings["fuzz_offset"]; ok {
 		p.handlerConfig.FuzzOffset = int(val.(float64))
 	} else {
