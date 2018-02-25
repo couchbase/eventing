@@ -182,6 +182,10 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["execution_timeout"] = s.executionTimeout
 	}
 
+	settings["feedback_batch_size"] = 100
+	settings["feedback_read_buffer_size"] = 4096
+	settings["worker_feedback_queue_cap"] = 1000
+
 	settings["skip_timer_threshold"] = 86400
 	settings["tick_duration"] = 60000
 	settings["timer_processing_tick_interval"] = 500

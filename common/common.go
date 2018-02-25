@@ -221,6 +221,7 @@ type HandlerConfig struct {
 	ExecutionTimeout         int
 	FeedbackBatchSize        int
 	FeedbackQueueCap         int64
+	FeedbackReadBufferSize   int
 	FuzzOffset               int
 	LcbInstCapacity          int
 	LogLevel                 string

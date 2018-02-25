@@ -422,6 +422,10 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 
 			c.doctimerResponsesRecieved++
 			c.plasmaStoreCh <- pEntry
+		} else {
+			logging.Errorf("%s [%s:%s:%d] Invalid doc timer message received: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
+			c.errorParsingDocTimerResponses++
 		}
 	}
 }

@@ -121,7 +121,13 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["feedback_batch_size"]; ok {
 		p.handlerConfig.FeedbackBatchSize = int(val.(float64))
 	} else {
-		p.handlerConfig.FeedbackBatchSize = 10 * 1000
+		p.handlerConfig.FeedbackBatchSize = 100
+	}
+
+	if val, ok := settings["feedback_read_buffer_size"]; ok {
+		p.handlerConfig.FeedbackReadBufferSize = int(val.(float64))
+	} else {
+		p.handlerConfig.FeedbackReadBufferSize = 4096
 	}
 
 	if val, ok := settings["fuzz_offset"]; ok {
@@ -169,7 +175,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["worker_feedback_queue_cap"]; ok {
 		p.handlerConfig.FeedbackQueueCap = int64(val.(float64))
 	} else {
-		p.handlerConfig.FeedbackQueueCap = int64(100 * 1000)
+		p.handlerConfig.FeedbackQueueCap = int64(10 * 1000)
 	}
 
 	if val, ok := settings["worker_queue_cap"]; ok {

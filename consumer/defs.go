@@ -263,6 +263,7 @@ type Consumer struct {
 
 	sendMsgCounter uint64
 
+	feedbackReadBufferSize   int
 	feedbackReadMsgBuffer    bytes.Buffer
 	feedbackWriteBatchSize   int
 	readMsgBuffer            bytes.Buffer
@@ -355,6 +356,7 @@ type Consumer struct {
 	dcpMutationCounter             uint64
 	doctimerMessagesProcessed      uint64
 	doctimerResponsesRecieved      uint64
+	errorParsingDocTimerResponses  uint64
 
 	timerMessagesProcessedPSec int
 

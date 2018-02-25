@@ -77,6 +77,10 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.doctimerResponsesRecieved
 	}
 
+	if c.errorParsingDocTimerResponses > 0 {
+		stats["ERROR_PARSING_DOC_TIMER_RESPONSES"] = c.errorParsingDocTimerResponses
+	}
+
 	if c.adhocDoctimerResponsesRecieved > 0 {
 		stats["ADHOC_DOC_TIMER_RESPONSES_RECEIVED"] = c.adhocDoctimerResponsesRecieved
 	}
