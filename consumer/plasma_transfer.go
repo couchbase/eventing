@@ -25,6 +25,7 @@ func (c *Consumer) CreateTempPlasmaStore(vb uint16) error {
 			logPrefix, c.workerName, c.Pid(), vb, err)
 		return err
 	}
+	defer itr.Close()
 
 	vbPlasmaDir := fmt.Sprintf("%v/reb_%v_%v_timer.data", c.eventingDir, vb, c.app.AppName)
 
@@ -44,20 +45,24 @@ func (c *Consumer) CreateTempPlasmaStore(vb uint16) error {
 
 	rebPlasmaWriter := vbRebPlasmaStore.NewWriter()
 
+	logging.Tracef("%s [%s:%d] vb: %v plasma stats: %v",
+		logPrefix, c.workerName, c.Pid(), vb, c.vbPlasmaStore.GetStats().String())
+
 	for itr.SeekFirst(); itr.Valid(); itr.Next() {
 		keyPrefix := []byte(fmt.Sprintf("vb_%v::", vb))
 
 		if bytes.Compare(itr.Key()[0:len(keyPrefix)], keyPrefix) == 0 {
+			rebPlasmaWriter.Begin()
 			val, err := w.LookupKV(itr.Key())
-			if err != nil && err != plasma.ErrItemNoValue {
+			if err != nil {
 				logging.Tracef("%s [%s:%d] vb: %v key: %r failed to lookup, err: %v",
 					logPrefix, c.workerName, c.Pid(), vb, string(itr.Key()), err)
+				rebPlasmaWriter.End()
 				continue
 			}
 			logging.Tracef("%s [%s:%d] vb: %v read key: %r from source plasma store",
 				logPrefix, c.workerName, c.Pid(), vb, string(itr.Key()))
 
-			rebPlasmaWriter.Begin()
 			err = rebPlasmaWriter.InsertKV(itr.Key(), val)
 			if err != nil {
 				logging.Errorf("%s [%s:%d] vb: %v key: %r failed to insert, err: %v",
@@ -98,19 +103,13 @@ func (c *Consumer) PurgePlasmaRecords(vb uint16) error {
 			logPrefix, c.workerName, c.Pid(), vb, err)
 		return err
 	}
+	defer itr.Close()
 
 	// TODO: Leverage range iteration using start and end key. Otherwise with large no. of timers, this would be pretty slow.
 	for itr.SeekFirst(); itr.Valid(); itr.Next() {
 		keyPrefix := []byte(fmt.Sprintf("vb_%v::", vb))
 
 		if bytes.Compare(itr.Key()[0:len(keyPrefix)], keyPrefix) == 0 {
-			_, err := w.LookupKV(itr.Key())
-			if err != nil && err != plasma.ErrItemNoValue {
-				logging.Errorf("%s [%s:%d] vb: %v key: %r failed lookup, err: %v",
-					logPrefix, c.workerName, c.Pid(), vb, string(itr.Key()), err)
-				continue
-			}
-
 			w.Begin()
 			err = w.DeleteKV(itr.Key())
 			if err == nil {
@@ -154,20 +153,21 @@ func (c *Consumer) copyPlasmaRecords(vb uint16, dTimerDir string) error {
 			logPrefix, c.workerName, c.Pid(), vb, err)
 		return err
 	}
+	defer itr.Close()
 
 	for itr.SeekFirst(); itr.Valid(); itr.Next() {
-
+		plasmaStoreWriter.Begin()
 		val, err := w.LookupKV(itr.Key())
 		if err != nil && err != plasma.ErrItemNoValue {
 			logging.Errorf("%s [%s:%d] key: %v Failed to lookup, err: %v",
 				logPrefix, c.workerName, c.Pid(), string(itr.Key()), err)
+			plasmaStoreWriter.End()
 			continue
 		} else {
 			logging.Tracef("%s [%s:%d] Inserting key: %v Lookup value: %v",
 				logPrefix, c.workerName, c.Pid(), string(itr.Key()), string(val))
 		}
 
-		plasmaStoreWriter.Begin()
 		err = plasmaStoreWriter.InsertKV(itr.Key(), val)
 		if err != nil {
 			logging.Errorf("%s [%s:%d] key: %v Failed to insert, err: %v",
