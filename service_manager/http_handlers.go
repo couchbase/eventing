@@ -1317,7 +1317,7 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var username, password string
-	util.Retry(util.NewFixedBackoff(time.Second), util.GetCredsCallback, string(data), &username, &password)
+	util.Retry(util.NewFixedBackoff(time.Second), util.LCBGetCredsCallback, string(data), &username, &password)
 
 	response := url.Values{}
 	response.Add("username", username)
