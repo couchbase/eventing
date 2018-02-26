@@ -12,7 +12,6 @@
 #include "client.h"
 #include "breakpad.h"
 
-static char const *global_program_name;
 uint64_t doc_timer_responses_sent(0);
 uint64_t messages_parsed(0);
 
@@ -79,7 +78,7 @@ AppWorker *AppWorker::GetAppWorker() {
 std::vector<char> *AppWorker::GetReadBuffer() { return &read_buffer; }
 
 void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
-                            const std::string &worker_id, int bsize,
+                            const std::string &worker_id, int bsize, int fbsize,
                             int feedback_port, int port) {
   uv_tcp_init(&feedback_loop, &feedback_tcp_sock);
   uv_tcp_init(&main_loop, &tcp_sock);
@@ -94,10 +93,12 @@ void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
 
   app_name = appname;
   batch_size = bsize;
+  feedback_batch_size = fbsize;
   messages_processed_counter = 0;
 
   LOG(logInfo) << "Starting worker with af_inet for appname:" << appname
-               << " worker_id:" << worker_id << " batch_size:" << batch_size
+               << " worker id:" << worker_id << " batch size:" << batch_size
+               << " feedback batch size:" << fbsize
                << " feedback port:" << R(feedback_port) << " port:" << R(port)
                << std::endl;
 
@@ -121,7 +122,7 @@ void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
 }
 
 void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
-                        const std::string &worker_id, int bsize,
+                        const std::string &worker_id, int bsize, int fbsize,
                         std::string feedback_sock_path,
                         std::string uds_sock_path) {
   uv_pipe_init(&feedback_loop, &feedback_uds_sock, 0);
@@ -129,10 +130,12 @@ void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
 
   app_name = appname;
   batch_size = bsize;
+  feedback_batch_size = fbsize;
   messages_processed_counter = 0;
 
   LOG(logInfo) << "Starting worker with af_unix for appname:" << appname
-               << " worker_id:" << worker_id << " batch_size:" << batch_size
+               << " worker id:" << worker_id << " batch size:" << batch_size
+               << " feedback batch size:" << fbsize
                << " feedback uds path:" << R(feedback_sock_path)
                << " uds_path:" << R(uds_sock_path) << std::endl;
 
@@ -280,7 +283,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
               char *size = (char *)&s;
 
               write_req_t *req_size = new (write_req_t);
-              req_size->buf = uv_buf_init(size, sizeof(uint32_t));
+              req_size->buf = uv_buf_init(size, SIZEOF_UINT32);
               uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
                        [](uv_write_t *req_size, int status) {
                          AppWorker::GetAppWorker()->OnWrite(req_size, status);
@@ -305,14 +308,16 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             // Flush the aggregate item count in queues for all running V8
             // worker instances
             if (workers.size() >= 1) {
-              int64_t agg_queue_size = 0;
+              int64_t agg_queue_size = 0, feedback_queue_size = 0;
               for (const auto &w : workers) {
                 agg_queue_size += w.second->QueueSize();
+                feedback_queue_size += w.second->DocTimerQueueSize();
               }
 
               std::ostringstream queue_stats;
               queue_stats << "{\"agg_queue_size\":";
-              queue_stats << agg_queue_size << "}";
+              queue_stats << agg_queue_size << ", \"feedback_queue_size\":";
+              queue_stats << feedback_queue_size << "}";
 
               flatbuffers::FlatBufferBuilder builder;
               auto msg_offset = builder.CreateString(queue_stats.str());
@@ -325,7 +330,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
               // Write size of payload to socket
               write_req_t *req_size = new (write_req_t);
-              req_size->buf = uv_buf_init(size, sizeof(uint32_t));
+              req_size->buf = uv_buf_init(size, SIZEOF_UINT32);
               uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
                        [](uv_write_t *req_size, int status) {
                          AppWorker::GetAppWorker()->OnWrite(req_size, status);
@@ -361,7 +366,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   handler_config_t *handler_config;
 
   int worker_index;
-  int64_t latency_buckets, agg_queue_size;
+  int64_t latency_buckets, agg_queue_size, feedback_queue_size;
   std::vector<int64_t> agg_hgram, worker_hgram;
   std::ostringstream lstats, estats, fstats;
   std::map<int, int64_t> agg_lcb_exceptions;
@@ -525,11 +530,14 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
       if (workers.size() >= 1) {
         agg_queue_size = 0;
+        feedback_queue_size = 0;
         for (const auto &w : workers) {
           agg_queue_size += w.second->QueueSize();
+          feedback_queue_size += w.second->DocTimerQueueSize();
         }
 
         estats << ", \"agg_queue_size\":" << agg_queue_size;
+        estats << ", \"feedback_queue_size\":" << feedback_queue_size;
       }
       estats << "}";
 
@@ -717,8 +725,9 @@ void AppWorker::StartFeedbackUVLoop() {
 }
 
 void AppWorker::WriteResponses() {
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
   while (true) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     if (workers.size() >= 1) {
 
@@ -731,13 +740,13 @@ void AppWorker::WriteResponses() {
                         << " doc timer queue size: " << timer_entry_count
                         << std::endl;
 
-          for (auto i = 0; i <= timer_entry_count / CHUNKS_PER_WRITE; i++) {
+          for (auto i = 0; i <= timer_entry_count / feedback_batch_size; i++) {
 
             std::vector<uv_buf_t> responses;
 
-            for (auto j = 0; j < CHUNKS_PER_WRITE; j++) {
+            for (auto j = 0; j < feedback_batch_size; j++) {
 
-              if ((i * CHUNKS_PER_WRITE + j) < timer_entry_count) {
+              if ((i * feedback_batch_size + j) < timer_entry_count) {
 
                 auto doc_timer_msg = w.second->doc_timer_queue->pop();
 
@@ -749,41 +758,56 @@ void AppWorker::WriteResponses() {
                     builder, mDoc_Timer_Response, timerResponse, msg_offset);
                 builder.Finish(r);
 
-                LOG(logInfo)
+                LOG(logTrace)
                     << "Worker: " << w.second << " flushing doc timer entry: "
                     << doc_timer_msg.timer_entry << std::endl;
 
                 uint32_t s = builder.GetSize();
-                char *size = (char *)&s;
+                char *size = new char[SIZEOF_UINT32];
+                char *temp_store = (char *)&s;
 
-                auto buf_size = uv_buf_init(size, sizeof(uint32_t));
+                strncpy(size, temp_store, SIZEOF_UINT32);
+
+                auto buf_size = uv_buf_init(size, SIZEOF_UINT32);
                 responses.push_back(buf_size);
 
                 std::string msg((const char *)builder.GetBufferPointer(),
                                 builder.GetSize());
-                auto buf_msg = uv_buf_init((char *)msg.c_str(), msg.length());
+
+                char *msg_entry = new char[msg.size() + 1];
+
+                // Could have leveraged strcpy or strncpy, but for some reason
+                // copied over buffer had invalid entries.
+                for (int k = 0; k < int(msg.size()); k++) {
+                  msg_entry[k] = msg[k];
+                }
+                msg_entry[msg.size()] = '\0';
+
+                auto buf_msg = uv_buf_init(msg_entry, msg.length());
                 responses.push_back(buf_msg);
 
-                doc_timer_responses_sent++;
+                builder.Clear();
               }
             }
 
             if (responses.size() > 0) {
-
               int res_code = -1;
-
               do {
                 res_code = uv_try_write(feedback_conn_handle, responses.data(),
                                         responses.size());
-                LOG(logInfo) << "Flushing to socket, vector of size: "
-                             << responses.size()
-                             << " response code:" << res_code << std::endl;
-
+                if (res_code > 0) {
+                  for (const uv_buf_t &entry : responses) {
+                    delete entry.base;
+                  }
+                  doc_timer_responses_sent += responses.size() / 2;
+                }
               } while (res_code < 0);
 
               std::vector<uv_buf_t>().swap(responses);
             }
           }
+        } else {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
       }
     }
@@ -824,16 +848,17 @@ AppWorker::~AppWorker() {
 }
 
 int main(int argc, char **argv) {
-  global_program_name = argv[0];
 
   if (argc < 8) {
-    std::cerr << "Need at least 8 arguments: appname, ipc_type, port, "
-                 "worker_id, batch_size, diag_dir, ipv4/6, breakpad_on"
-              << std::endl;
+    std::cerr
+        << "Need at least 10 arguments: appname, ipc_type, port, feedback_port"
+           "worker_id, batch_size, feedback_batch_size, diag_dir, ipv4/6, "
+           "breakpad_on"
+        << std::endl;
     return 2;
   }
 
-  SetIPv6(std::string(argv[8]) == "ipv6");
+  SetIPv6(std::string(argv[9]) == "ipv6");
 
   srand(static_cast<unsigned>(time(nullptr)));
 
@@ -857,9 +882,10 @@ int main(int argc, char **argv) {
 
   std::string worker_id(argv[5]);
   int batch_size = atoi(argv[6]);
-  std::string diag_dir(argv[7]);
+  int feedback_batch_size = atoi(argv[7]);
+  std::string diag_dir(argv[8]);
 
-  if (strcmp(argv[9], "true") == 0) {
+  if (strcmp(argv[10], "true") == 0) {
     setupBreakpad(diag_dir);
   }
 
@@ -871,10 +897,10 @@ int main(int argc, char **argv) {
 
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
     worker->InitUDS(appname, Localhost(false), worker_id, batch_size,
-                    feedback_sock_path, uds_sock_path);
+                    feedback_batch_size, feedback_sock_path, uds_sock_path);
   } else {
     worker->InitTcpSock(appname, Localhost(false), worker_id, batch_size,
-                        feedback_port, port);
+                        feedback_batch_size, feedback_port, port);
   }
 
   worker->main_uv_loop_thr.join();

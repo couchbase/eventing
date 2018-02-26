@@ -219,6 +219,9 @@ type HandlerConfig struct {
 	CurlTimeout              int64
 	EnableRecursiveMutation  bool
 	ExecutionTimeout         int
+	FeedbackBatchSize        int
+	FeedbackQueueCap         int64
+	FeedbackReadBufferSize   int
 	FuzzOffset               int
 	LcbInstCapacity          int
 	LogLevel                 string

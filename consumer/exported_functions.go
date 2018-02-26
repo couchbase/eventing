@@ -77,6 +77,10 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.doctimerResponsesRecieved
 	}
 
+	if c.errorParsingDocTimerResponses > 0 {
+		stats["ERROR_PARSING_DOC_TIMER_RESPONSES"] = c.errorParsingDocTimerResponses
+	}
+
 	if c.adhocDoctimerResponsesRecieved > 0 {
 		stats["ADHOC_DOC_TIMER_RESPONSES_RECEIVED"] = c.adhocDoctimerResponsesRecieved
 	}
@@ -375,6 +379,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			c.tcpPort,
 			c.tcpPort,
 			fmt.Sprintf("worker_%s", appName),
+			"1",
 			"1",
 			os.TempDir(),
 			util.GetIPMode(),

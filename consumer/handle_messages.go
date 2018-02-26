@@ -573,7 +573,7 @@ func (c *Consumer) feedbackReadMessageLoop() {
 	}()
 
 	for {
-		buffer := make([]byte, 4096)
+		buffer := make([]byte, c.feedbackReadBufferSize)
 		bytesRead, err := c.sockFeedbackReader.Read(buffer)
 
 		if err == io.EOF || bytesRead == 0 {

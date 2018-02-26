@@ -143,9 +143,10 @@ type Consumer struct {
 	// Captures aggregate of items in queue maintained for each V8Worker instance.
 	// Within a single CPP worker process, the number of V8Worker instance is equal
 	// to number of worker threads spawned
-	cppWorkerAggQueueSize *cppQueueSize
-	cronTimersPerDoc      int
-	workerQueueCap        int64
+	cppQueueSizes    *cppQueueSize
+	cronTimersPerDoc int
+	feedbackQueueCap int64
+	workerQueueCap   int64
 
 	cppThrPartitionMap map[int][]uint16
 	cppWorkerThrCount  int // No. of worker threads per CPP worker process
@@ -261,10 +262,10 @@ type Consumer struct {
 	vbFlogChan chan *vbFlogEntry
 
 	sendMsgCounter uint64
-	// For performance reasons, Golang writes dcp events to tcp socket in batches
-	// socketWriteBatchSize controls the batch size
-	socketWriteBatchSize     int
+
+	feedbackReadBufferSize   int
 	feedbackReadMsgBuffer    bytes.Buffer
+	feedbackWriteBatchSize   int
 	readMsgBuffer            bytes.Buffer
 	sendMsgBuffer            bytes.Buffer
 	sendMsgBufferRWMutex     *sync.RWMutex
@@ -272,6 +273,7 @@ type Consumer struct {
 	sockReader               *bufio.Reader
 	socketReadLoopStopCh     chan struct{}
 	socketReadLoopStopAckCh  chan struct{}
+	socketWriteBatchSize     int
 	socketWriteTicker        *time.Ticker
 	socketWriteLoopStopCh    chan struct{}
 	socketWriteLoopStopAckCh chan struct{}
@@ -354,6 +356,7 @@ type Consumer struct {
 	dcpMutationCounter             uint64
 	doctimerMessagesProcessed      uint64
 	doctimerResponsesRecieved      uint64
+	errorParsingDocTimerResponses  uint64
 
 	timerMessagesProcessedPSec int
 
@@ -491,7 +494,8 @@ type msgToTransmit struct {
 }
 
 type cppQueueSize struct {
-	AggQueueSize int64 `json:"agg_queue_size"`
+	AggQueueSize      int64 `json:"agg_queue_size"`
+	DocTimerQueueSize int64 `json:"feedback_queue_size"`
 }
 
 type plasmaStoreEntry struct {
