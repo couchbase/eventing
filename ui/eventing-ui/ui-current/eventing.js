@@ -1159,8 +1159,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             mnPluggableUiRegistryProvider.registerConfig({
                 name: 'Eventing',
                 state: 'app.admin.eventing.summary',
-                plugIn: 'adminTab',
-                after: 'indexes',
+                plugIn: 'workbenchTab',
+                index: 4,
+                responsiveHide: true
             });
         }
     ]);
