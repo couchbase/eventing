@@ -2,6 +2,7 @@ package servicemanager
 
 import (
 	"encoding/json"
+	"net/http"
 
 	"github.com/couchbase/eventing/logging"
 )
@@ -40,9 +41,6 @@ type statusCodes struct {
 	errSaveAppPs         statusBase
 	errSaveAppTs         statusBase
 	errSetSettingsPs     statusBase
-	startDbg             statusBase
-	stopDbg              statusBase
-	getDbgURL            statusBase
 	errDelAppSettingsPs  statusBase
 	errAppNotDeployed    statusBase
 	errAppNotFoundTs     statusBase
@@ -70,19 +68,80 @@ type statusCodes struct {
 	errGetCreds          statusBase
 }
 
+func (m *ServiceMgr) getDisposition(code int) int {
+	switch code {
+	case m.statusCodes.ok.Code:
+		return http.StatusOK
+	case m.statusCodes.errDelAppPs.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errDelAppTs.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errSaveAppPs.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errSaveAppTs.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errSetSettingsPs.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errDelAppSettingsPs.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errAppNotDeployed.Code:
+		return http.StatusNotAcceptable
+	case m.statusCodes.errAppNotFoundTs.Code:
+		return http.StatusNotFound
+	case m.statusCodes.errMarshalResp.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errReadReq.Code:
+		return http.StatusBadRequest
+	case m.statusCodes.errUnmarshalPld.Code:
+		return http.StatusBadRequest
+	case m.statusCodes.errSrcMbSame.Code:
+		return http.StatusUnprocessableEntity
+	case m.statusCodes.errInvalidExt.Code:
+		return http.StatusBadRequest
+	case m.statusCodes.errGetVbSeqs.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errAppDeployed.Code:
+		return http.StatusUnprocessableEntity
+	case m.statusCodes.errAppNotInit.Code:
+		return http.StatusLocked
+	case m.statusCodes.errAppNotUndeployed.Code:
+		return http.StatusUnprocessableEntity
+	case m.statusCodes.errStatusesNotFound.Code:
+		return http.StatusBadRequest
+	case m.statusCodes.errConnectNsServer.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errBucketTypeCheck.Code:
+		return http.StatusUnprocessableEntity
+	case m.statusCodes.errMemcachedBucket.Code:
+		return http.StatusUnprocessableEntity
+	case m.statusCodes.errHandlerCompile.Code:
+		return http.StatusUnprocessableEntity
+	case m.statusCodes.errAppNameMismatch.Code:
+		return http.StatusUnprocessableEntity
+	case m.statusCodes.errSrcBucketMissing.Code:
+		return http.StatusGone
+	case m.statusCodes.errMetaBucketMissing.Code:
+		return http.StatusGone
+	case m.statusCodes.errNoEventingNodes.Code:
+		return http.StatusBadRequest
+	case m.statusCodes.errSaveConfig.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errGetConfig.Code:
+		return http.StatusInternalServerError
+	default:
+		logging.Warnf("Unknown status code: %v", code)
+		return http.StatusInternalServerError
+	}
+}
+
 func (m *ServiceMgr) initErrCodes() {
 	m.statusCodes = statusCodes{
 		ok:                   statusBase{"OK", 0},
 		errDelAppPs:          statusBase{"ERR_DEL_APP_PS", 1},
 		errDelAppTs:          statusBase{"ERR_DEL_APP_TS", 2},
-		errGetAppPs:          statusBase{"ERR_GET_APP_PS", 3},
-		getAppTs:             statusBase{"ERR_GET_APP_TS", 4},
 		errSaveAppPs:         statusBase{"ERR_SAVE_APP_PS", 5},
 		errSaveAppTs:         statusBase{"ERR_SAVE_APP_TS", 6},
 		errSetSettingsPs:     statusBase{"ERR_SET_SETTINGS_PS", 7},
-		startDbg:             statusBase{"ERR_START_DBG", 8},
-		stopDbg:              statusBase{"ERR_STOP_DBG", 9},
-		getDbgURL:            statusBase{"ERR_GET_DBG_URL", 10},
 		errDelAppSettingsPs:  statusBase{"ERR_DEL_APP_SETTINGS_PS", 11},
 		errAppNotDeployed:    statusBase{"ERR_APP_NOT_DEPLOYED", 12},
 		errAppNotFoundTs:     statusBase{"ERR_APP_NOT_FOUND_TS", 13},
@@ -100,14 +159,12 @@ func (m *ServiceMgr) initErrCodes() {
 		errBucketTypeCheck:   statusBase{"ERR_BUCKET_TYPE_CHECK", 25},
 		errMemcachedBucket:   statusBase{"ERR_SOURCE_BUCKET_MEMCACHED", 26},
 		errHandlerCompile:    statusBase{"ERR_HANDLER_COMPILATION", 27},
-		errRbacCreds:         statusBase{"ERR_INSUFFICIENT_RBAC_CREDS", 28},
 		errAppNameMismatch:   statusBase{"ERR_APPNAME_MISMATCH", 29},
 		errSrcBucketMissing:  statusBase{"ERR_SRC_BUCKET_MISSING", 30},
 		errMetaBucketMissing: statusBase{"ERR_METADATA_BUCKET_MISSING", 31},
 		errNoEventingNodes:   statusBase{"ERR_NO_EVENTING_NODES_FOUND", 32},
 		errSaveConfig:        statusBase{"ERR_SAVE_CONFIG", 33},
 		errGetConfig:         statusBase{"ERR_GET_CONFIG", 34},
-		errGetCreds:          statusBase{"ERR_GET_CREDS", 35},
 	}
 
 	errors := []errorPayload{
@@ -148,21 +205,6 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errSetSettingsPs.Name,
 			Code:        m.statusCodes.errSetSettingsPs.Code,
 			Description: "Unable to set application settings in primary store",
-		},
-		{
-			Name:        m.statusCodes.startDbg.Name,
-			Code:        m.statusCodes.startDbg.Code,
-			Description: "Unable to start debugger",
-		},
-		{
-			Name:        m.statusCodes.stopDbg.Name,
-			Code:        m.statusCodes.stopDbg.Code,
-			Description: "Unable to stop debugger",
-		},
-		{
-			Name:        m.statusCodes.getDbgURL.Name,
-			Code:        m.statusCodes.getDbgURL.Code,
-			Description: "Unable to get debugger URL",
 		},
 		{
 			Name:        m.statusCodes.errDelAppSettingsPs.Name,

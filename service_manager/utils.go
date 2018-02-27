@@ -27,13 +27,13 @@ func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeIn
 	response, err := json.Marshal(errInfo)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
 		fmt.Fprintf(w, "{\"error\":\"Failed to marshal error info, err: %v\"}", err)
 		return
 	}
 
 	if runtimeInfo.Code != m.statusCodes.ok.Code {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(m.getDisposition(runtimeInfo.Code))
 	}
 
 	w.Header().Add(headerKey, strconv.Itoa(errInfo.Code))
@@ -44,7 +44,7 @@ func (m *ServiceMgr) sendRuntimeInfoList(w http.ResponseWriter, runtimeInfoList 
 	response, err := json.Marshal(runtimeInfoList)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
 		fmt.Fprintf(w, "{\"error\":\"Failed to marshal error info, err: %v\"}", err)
 		return
 	}

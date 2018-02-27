@@ -922,7 +922,7 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	data, err := json.Marshal(respData)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
 		fmt.Fprintf(w, "{\"error\":\"Failed to marshal response for stats, err: %v\"}", err)
 		return
 	}
