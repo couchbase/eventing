@@ -17,9 +17,9 @@ func (p *Producer) openPlasmaStore() error {
 	cfg.MaxDeltaChainLen = p.maxDeltaChainLen
 	cfg.MaxPageItems = p.maxPageItems
 	cfg.MinPageItems = p.minPageItems
-	cfg.UseMemoryMgmt = true
-	cfg.AutoSwapper = true
-	cfg.EnableSnapshotSMR = false
+	cfg.UseMemoryMgmt = p.useMemoryMgmt
+	cfg.AutoSwapper = p.autoSwapper
+	cfg.EnableSnapshotSMR = p.enableSnapshotSMR
 	cfg.LSSCleanerMaxThreshold = p.lssCleanerMaxThreshold
 	cfg.LSSCleanerThreshold = p.lssCleanerThreshold
 	cfg.LSSReadAheadSize = p.lssReadAheadSize

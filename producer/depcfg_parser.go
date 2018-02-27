@@ -236,22 +236,16 @@ func (p *Producer) parseDepcfg() error {
 
 	// Doc timer configurations for plasma
 
-	if val, ok := settings["max_delta_chain_len"]; ok {
-		p.maxDeltaChainLen = int(val.(float64))
+	if val, ok := settings["auto_swapper"]; ok {
+		p.autoSwapper = val.(bool)
 	} else {
-		p.maxDeltaChainLen = 200
+		p.autoSwapper = true
 	}
 
-	if val, ok := settings["max_page_items"]; ok {
-		p.maxPageItems = int(val.(float64))
+	if val, ok := settings["enable_snapshot_smr"]; ok {
+		p.enableSnapshotSMR = val.(bool)
 	} else {
-		p.maxPageItems = 400
-	}
-
-	if val, ok := settings["min_page_items"]; ok {
-		p.minPageItems = int(val.(float64))
-	} else {
-		p.minPageItems = 50
+		p.enableSnapshotSMR = false
 	}
 
 	if val, ok := settings["lss_cleaner_max_threshold"]; ok {
@@ -270,6 +264,30 @@ func (p *Producer) parseDepcfg() error {
 		p.lssReadAheadSize = int64(val.(float64))
 	} else {
 		p.lssReadAheadSize = 1024 * 1024
+	}
+
+	if val, ok := settings["max_delta_chain_len"]; ok {
+		p.maxDeltaChainLen = int(val.(float64))
+	} else {
+		p.maxDeltaChainLen = 200
+	}
+
+	if val, ok := settings["max_page_items"]; ok {
+		p.maxPageItems = int(val.(float64))
+	} else {
+		p.maxPageItems = 400
+	}
+
+	if val, ok := settings["min_page_items"]; ok {
+		p.minPageItems = int(val.(float64))
+	} else {
+		p.minPageItems = 50
+	}
+
+	if val, ok := settings["use_memory_manager"]; ok {
+		p.useMemoryMgmt = val.(bool)
+	} else {
+		p.useMemoryMgmt = true
 	}
 
 	// DCP connection related configurations

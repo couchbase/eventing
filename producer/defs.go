@@ -82,12 +82,15 @@ type Producer struct {
 	appLogWriter   io.WriteCloser
 
 	// Plasma configs
+	autoSwapper            bool
+	enableSnapshotSMR      bool
 	lssCleanerMaxThreshold int
 	lssCleanerThreshold    int
 	lssReadAheadSize       int64
 	maxDeltaChainLen       int
 	maxPageItems           int
 	minPageItems           int
+	useMemoryMgmt          bool
 
 	// Chan used to signal if Eventing.Producer has finished bootstrap
 	// i.e. started up all it's child routines
