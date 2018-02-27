@@ -284,6 +284,12 @@ func (p *Producer) parseDepcfg() error {
 		p.minPageItems = 50
 	}
 
+	if val, ok := settings["persist_interval"]; ok {
+		p.persistInterval = int(val.(float64))
+	} else {
+		p.persistInterval = 5000
+	}
+
 	if val, ok := settings["use_memory_manager"]; ok {
 		p.useMemoryMgmt = val.(bool)
 	} else {

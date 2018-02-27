@@ -37,7 +37,6 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 		nsServerPort:           nsServerPort,
 		numVbuckets:            numVbuckets,
 		pauseProducerCh:        make(chan struct{}, 1),
-		persistAllTicker:       time.NewTicker(persistAllTickInterval),
 		plasmaMemQuota:         memoryQuota,
 		seqsNoProcessed:        make(map[int]int64),
 		signalStopPersistAllCh: make(chan struct{}, 1),
@@ -69,6 +68,7 @@ func (p *Producer) Serve() {
 		return
 	}
 
+	p.persistAllTicker = time.NewTicker(time.Duration(p.persistInterval) * time.Millisecond)
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
 	logging.Infof("PRDR[%s:%d] number of vbuckets for %v: %v", p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)

@@ -20,8 +20,7 @@ const (
 )
 
 const (
-	bucketOpRetryInterval  = time.Duration(1000) * time.Millisecond
-	persistAllTickInterval = time.Duration(5000) * time.Millisecond
+	bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
 
 	udsSockPathLimit = 100
 
@@ -90,6 +89,7 @@ type Producer struct {
 	maxDeltaChainLen       int
 	maxPageItems           int
 	minPageItems           int
+	persistInterval        int //in ms
 	useMemoryMgmt          bool
 
 	// Chan used to signal if Eventing.Producer has finished bootstrap
