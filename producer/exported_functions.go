@@ -513,7 +513,6 @@ func (p *Producer) CleanupMetadataBucket() {
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), commonConnectBucketOpCallback, p, &b)
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startFeedCallback, p, &b, &dcpFeed, kvNodeAddrs)
-	defer dcpFeed.Close()
 
 	logging.Infof("%s [%s:%d] Started up dcpFeed to cleanup artifacts from metadata bucket: %v",
 		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket)
@@ -532,11 +531,10 @@ func (p *Producer) CleanupMetadataBucket() {
 	wg.Add(1)
 
 	rw := &sync.RWMutex{}
-	stopCh := make(chan struct{}, 1)
 	receivedVbSeqNos := make(map[uint16]uint64)
 
 	go func(b *couchbase.Bucket, dcpFeed *couchbase.DcpFeed, wg *sync.WaitGroup,
-		stopCh chan struct{}, receivedVbSeqNos map[uint16]uint64, rw *sync.RWMutex) {
+		receivedVbSeqNos map[uint16]uint64, rw *sync.RWMutex) {
 
 		defer wg.Done()
 
@@ -545,13 +543,10 @@ func (p *Producer) CleanupMetadataBucket() {
 
 		for {
 			select {
-			case <-stopCh:
-				logging.Infof("%s [%s:%d] Exiting cron timer cleanup routine, mutations till high vb seqnos received",
-					logPrefix, p.appName, p.LenRunningConsumers())
-				return
-
 			case e, ok := <-dcpFeed.C:
 				if ok == false {
+					logging.Infof("%s [%s:%d] Exiting cron timer cleanup routine, mutations till high vb seqnos received",
+						logPrefix, p.appName, p.LenRunningConsumers())
 					return
 				}
 
@@ -569,7 +564,7 @@ func (p *Producer) CleanupMetadataBucket() {
 				}
 			}
 		}
-	}(b, dcpFeed, &wg, stopCh, receivedVbSeqNos, rw)
+	}(b, dcpFeed, &wg, receivedVbSeqNos, rw)
 
 	var flogs couchbase.FailoverLog
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, p, &b, &flogs, vbs)
@@ -599,7 +594,7 @@ func (p *Producer) CleanupMetadataBucket() {
 
 	wg.Add(1)
 
-	go func(wg *sync.WaitGroup, stopCh chan struct{}) {
+	go func(wg *sync.WaitGroup, dcpFeed *couchbase.DcpFeed) {
 		defer wg.Done()
 
 		for {
@@ -633,14 +628,15 @@ func (p *Producer) CleanupMetadataBucket() {
 					continue
 				}
 
-				stopCh <- struct{}{}
-				logging.Infof("%s [%s:%d] Sent message on stop cron timer cleanup routine",
+				dcpFeed.Close()
+				logging.Infof("%s [%s:%d] Closed dcpFeed spawned for cleaning up metadata bucket artifacts",
 					logPrefix, p.appName, p.LenRunningConsumers())
+
 				ticker.Stop()
 				return
 			}
 		}
-	}(&wg, stopCh)
+	}(&wg, dcpFeed)
 
 	wg.Wait()
 }

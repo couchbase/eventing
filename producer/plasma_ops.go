@@ -17,9 +17,9 @@ func (p *Producer) openPlasmaStore() error {
 	cfg.MaxDeltaChainLen = p.maxDeltaChainLen
 	cfg.MaxPageItems = p.maxPageItems
 	cfg.MinPageItems = p.minPageItems
-	cfg.UseMemoryMgmt = true
-	cfg.AutoSwapper = true
-	cfg.EnableSnapshotSMR = false
+	cfg.UseMemoryMgmt = p.useMemoryMgmt
+	cfg.AutoSwapper = p.autoSwapper
+	cfg.EnableSnapshotSMR = p.enableSnapshotSMR
 	cfg.LSSCleanerMaxThreshold = p.lssCleanerMaxThreshold
 	cfg.LSSCleanerThreshold = p.lssCleanerThreshold
 	cfg.LSSReadAheadSize = p.lssReadAheadSize
@@ -39,10 +39,20 @@ func (p *Producer) openPlasmaStore() error {
 }
 
 func (p *Producer) persistPlasma() {
+	logPrefix := "Producer::persistPlasma"
+	counter := 0
+
 	for {
 		select {
 		case <-p.persistAllTicker.C:
 			p.vbPlasmaStore.PersistAll()
+			counter++
+			if counter == 10 {
+				stats := p.vbPlasmaStore.GetStats()
+				logging.Infof("%s [%s:%d] Plasma stats: %s",
+					logPrefix, p.appName, p.LenRunningConsumers(), stats.String())
+				counter = 0
+			}
 
 		case <-p.signalStopPersistAllCh:
 			return
