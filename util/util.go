@@ -838,13 +838,18 @@ func VbucketByKey(key []byte, numVbuckets int) uint16 {
 	return uint16((crc32.ChecksumIEEE(key) >> 16) % uint32(numVbuckets))
 }
 
+func stripScheme(endpoint string) string {
+	return strings.TrimPrefix(strings.TrimPrefix(endpoint, "http://"), "https://")
+}
+
 var LCBGetCredsCallback = func(args ...interface{}) error {
 	endpoint := args[0].(string)
 	username := args[1].(*string)
 	password := args[2].(*string)
 
+	strippedEndpoint := stripScheme(endpoint)
 	var err error
-	*username, *password, err = cbauth.GetMemcachedServiceAuth(endpoint)
+	*username, *password, err = cbauth.GetMemcachedServiceAuth(strippedEndpoint)
 	if err != nil {
 		logging.Errorf("UTIL LCB Failed to get credentials for endpoint: %r, err: %v", endpoint, err)
 	}
@@ -857,8 +862,9 @@ var GoCBGetCredsCallback = func(args ...interface{}) error {
 	username := args[1].(*string)
 	password := args[2].(*string)
 
+	strippedEndpoint := stripScheme(endpoint)
 	var err error
-	*username, *password, err = cbauth.GetMemcachedServiceAuth(endpoint)
+	*username, *password, err = cbauth.GetMemcachedServiceAuth(strippedEndpoint)
 	if err != nil {
 		logging.Errorf("UTIL GoCB Failed to get credentials for endpoint: %r, err: %v", endpoint, err)
 	}

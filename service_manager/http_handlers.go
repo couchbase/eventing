@@ -442,7 +442,7 @@ var getDeployedAppsCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	logging.Infof("Cluster wide deployed app status: %v", aggDeployedApps)
+	logging.Infof("Cluster wide deployed app status: %r", aggDeployedApps)
 
 	return nil
 }
@@ -1357,14 +1357,14 @@ func (m *ServiceMgr) validateLocalAuth(w http.ResponseWriter, r *http.Request) b
 		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
-	r_usr, r_key, ok := r.BasicAuth()
+	rUsr, rKey, ok := r.BasicAuth()
 	if !ok {
 		logging.Warnf("No credentials on request to %r", r.URL)
 		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
 	usr, key := util.LocalKey()
-	if r_usr != usr || r_key != key {
+	if rUsr != usr || rKey != key {
 		logging.Warnf("Cannot authorize request to %r", r.URL)
 		w.WriteHeader(http.StatusForbidden)
 		return false
