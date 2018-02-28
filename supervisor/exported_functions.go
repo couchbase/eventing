@@ -7,11 +7,6 @@ import (
 	"github.com/couchbase/eventing/logging"
 )
 
-// AppProducerHostPortAddr returns hostPortAddr for producer specific to an app
-func (s *SuperSupervisor) AppProducerHostPortAddr(appName string) string {
-	return s.runningProducersHostPortAddr[appName]
-}
-
 // AppTimerTransferHostPortAddrs returns all running net.Listener instances of timer transfer
 // routines on current node
 func (s *SuperSupervisor) AppTimerTransferHostPortAddrs(appName string) (map[string]string, error) {
@@ -141,18 +136,6 @@ func (s *SuperSupervisor) GetSourceMap(appName string) string {
 		return p.GetSourceMap()
 	}
 	return ""
-}
-
-// ProducerHostPortAddrs returns the list of hostPortAddr for http server instances running
-// on current eventing node
-func (s *SuperSupervisor) ProducerHostPortAddrs() []string {
-	var hostPortAddrs []string
-
-	for _, hostPortAddr := range s.runningProducersHostPortAddr {
-		hostPortAddrs = append(hostPortAddrs, hostPortAddr)
-	}
-
-	return hostPortAddrs
 }
 
 // RestPort returns ns_server port(typically 8091/9000)

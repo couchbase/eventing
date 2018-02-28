@@ -3,8 +3,6 @@ package supervisor
 import (
 	"encoding/json"
 	"fmt"
-	"net"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -20,24 +18,23 @@ import (
 // NewSuperSupervisor creates the super_supervisor handle
 func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string, numVbuckets int) *SuperSupervisor {
 	s := &SuperSupervisor{
-		appDeploymentStatus:          make(map[string]bool),
-		appProcessingStatus:          make(map[string]bool),
-		CancelCh:                     make(chan struct{}, 1),
-		cleanedUpAppMap:              make(map[string]struct{}),
-		deployedApps:                 make(map[string]string),
-		adminPort:                    adminPort,
-		diagDir:                      diagDir,
-		eventingDir:                  eventingDir,
-		keepNodes:                    make([]string, 0),
-		kvPort:                       kvPort,
-		numVbuckets:                  numVbuckets,
-		producerSupervisorTokenMap:   make(map[common.EventingProducer]suptree.ServiceToken),
-		restPort:                     restPort,
-		runningProducers:             make(map[string]common.EventingProducer),
-		runningProducersHostPortAddr: make(map[string]string),
-		supCmdCh:                     make(chan supCmdMsg, 10),
-		superSup:                     suptree.NewSimple("super_supervisor"),
-		uuid:                         uuid,
+		appDeploymentStatus:        make(map[string]bool),
+		appProcessingStatus:        make(map[string]bool),
+		CancelCh:                   make(chan struct{}, 1),
+		cleanedUpAppMap:            make(map[string]struct{}),
+		deployedApps:               make(map[string]string),
+		adminPort:                  adminPort,
+		diagDir:                    diagDir,
+		eventingDir:                eventingDir,
+		keepNodes:                  make([]string, 0),
+		kvPort:                     kvPort,
+		numVbuckets:                numVbuckets,
+		producerSupervisorTokenMap: make(map[common.EventingProducer]suptree.ServiceToken),
+		restPort:                   restPort,
+		runningProducers:           make(map[string]common.EventingProducer),
+		supCmdCh:                   make(chan supCmdMsg, 10),
+		superSup:                   suptree.NewSimple("super_supervisor"),
+		uuid:                       uuid,
 	}
 	s.appRWMutex = &sync.RWMutex{}
 	s.mu = &sync.RWMutex{}
@@ -354,8 +351,6 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, 
 }
 
 func (s *SuperSupervisor) spawnApp(appName string) {
-	logPrefix := "SuperSupervisor::spawnApp"
-
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
 	p := producer.NewProducer(appName, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
@@ -366,30 +361,6 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 	defer s.mu.Unlock()
 	s.runningProducers[appName] = p
 	s.producerSupervisorTokenMap[p] = token
-
-	go func(p *producer.Producer, s *SuperSupervisor, appName, metakvAppHostPortsPath string) {
-		var err error
-		p.ProducerListener, err = net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
-		if err != nil {
-			logging.Fatalf("%s [%d] Listen failed with error: %v", logPrefix, len(s.runningProducers), err)
-			return
-		}
-
-		addr := p.ProducerListener.Addr().String()
-		logging.Infof("%s [%d] Listening on host string %s app: %s", logPrefix, len(s.runningProducers), addr, appName)
-		s.runningProducersHostPortAddr[appName] = addr
-
-		h := http.NewServeMux()
-
-		h.HandleFunc("/getEventsPSec", p.EventsProcessedPSec)
-		h.HandleFunc("/getNodeMap", p.GetNodeMap)
-		h.HandleFunc("/getSettings", p.GetSettings)
-		h.HandleFunc("/getVbStats", p.GetConsumerVbProcessingStats)
-		h.HandleFunc("/getWorkerMap", p.GetWorkerMap)
-		h.HandleFunc("/updateSettings", p.UpdateSettings)
-
-		http.Serve(p.ProducerListener, h)
-	}(p, s, appName, metakvAppHostPortsPath)
 
 	p.NotifyPrepareTopologyChange(s.keepNodes)
 }

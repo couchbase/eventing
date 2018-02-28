@@ -79,12 +79,11 @@ type SuperSupervisor struct {
 	deployedApps   map[string]string
 	plasmaMemQuota int64 // In MB
 
-	cleanedUpAppMap              map[string]struct{} // Access controlled by default lock
-	mu                           *sync.RWMutex
-	producerSupervisorTokenMap   map[common.EventingProducer]suptree.ServiceToken
-	runningProducers             map[string]common.EventingProducer
-	runningProducersHostPortAddr map[string]string
-	vbucketsToOwn                []uint16
+	cleanedUpAppMap            map[string]struct{} // Access controlled by default lock
+	mu                         *sync.RWMutex
+	producerSupervisorTokenMap map[common.EventingProducer]suptree.ServiceToken
+	runningProducers           map[string]common.EventingProducer
+	vbucketsToOwn              []uint16
 
 	serviceMgr common.EventingServiceMgr
 	sync.RWMutex

@@ -338,27 +338,6 @@ func (m *ServiceMgr) getTimerHostPortAddrs(w http.ResponseWriter, r *http.Reques
 	fmt.Fprintf(w, "")
 }
 
-func (m *ServiceMgr) getAggEventsPSec(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
-	values := r.URL.Query()
-	appName := values["name"][0]
-
-	logging.Debugf("Reading aggregate events processed per second for %v", appName)
-
-	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
-
-	pStats, err := util.GetAggProcessedPSec(fmt.Sprintf("/getEventsPSec?name=%s", appName), m.eventingNodeAddrs)
-	if err != nil {
-		logging.Errorf("Failed to processing stats for app: %v, err: %v", appName, err)
-		return
-	}
-
-	fmt.Fprintf(w, "%v", pStats)
-}
-
 func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
@@ -380,32 +359,6 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 		fmt.Fprintf(w, "%s", string(data))
 
-	} else {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-		fmt.Fprintf(w, "App: %v not deployed", appName)
-	}
-}
-
-func (m *ServiceMgr) getEventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
-	values := r.URL.Query()
-	appName := values["name"][0]
-
-	if m.checkIfDeployed(appName) {
-		producerHostPortAddr := m.superSup.AppProducerHostPortAddr(appName)
-
-		pSec, err := util.GetProcessedPSec("/getEventsPSec", producerHostPortAddr)
-		if err != nil {
-			logging.Errorf("Failed to capture events processed/sec stat from producer for app: %v on current node, err: %v",
-				appName, err)
-			return
-		}
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%v", pSec)
 	} else {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 		fmt.Fprintf(w, "App: %v not deployed", appName)

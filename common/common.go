@@ -127,7 +127,6 @@ type EventingConsumer interface {
 }
 
 type EventingSuperSup interface {
-	AppProducerHostPortAddr(appName string) string
 	AppTimerTransferHostPortAddrs(string) (map[string]string, error)
 	ClearEventStats()
 	DeployedAppList() []string
@@ -148,7 +147,6 @@ type EventingSuperSup interface {
 	GetSourceMap(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)
 	PlannerStats(appName string) []*PlannerNodeVbMapping
-	ProducerHostPortAddrs() []string
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
 	RestPort() string
 	SignalStartDebugger(appName string)
