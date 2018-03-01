@@ -1269,15 +1269,19 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var username, password string
-	util.Retry(util.NewFixedBackoff(time.Second), util.LCBGetCredsCallback, string(data), &username, &password)
+	strippedEndpoint := util.StripScheme(string(data))
+	username, password, err := cbauth.GetMemcachedServiceAuth(strippedEndpoint)
+	if err != nil {
+		logging.Errorf("Failed to get credentials for endpoint: %r, err: %v", strippedEndpoint, err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errRbacCreds.Code))
+	} else {
+		response := url.Values{}
+		response.Add("username", username)
+		response.Add("password", password)
 
-	response := url.Values{}
-	response.Add("username", username)
-	response.Add("password", password)
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s", response.Encode())
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", response.Encode())
+	}
 }
 
 func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
