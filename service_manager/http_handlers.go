@@ -358,7 +358,6 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 		fmt.Fprintf(w, "%s", string(data))
-
 	} else {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 		fmt.Fprintf(w, "App: %v not deployed", appName)
@@ -726,12 +725,22 @@ func (m *ServiceMgr) setSettingsHandler(w http.ResponseWriter, r *http.Request) 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		w.WriteHeader(m.getDisposition(m.statusCodes.errReadReq.Code))
 		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
 		return
 	}
 
-	if runtimeInfo := m.setSettings(appName, data); runtimeInfo.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, runtimeInfo)
+	var settings map[string]interface{}
+	err = json.Unmarshal(data, &settings)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errUnmarshalPld.Code))
+		w.WriteHeader(m.getDisposition(m.statusCodes.errUnmarshalPld.Code))
+		fmt.Fprintf(w, "Failed to unmarshal setting supplied, err: %v", err)
+		return
+	}
+
+	if info := m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
 		return
 	}
 
@@ -942,7 +951,7 @@ func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Reque
 func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, "{\"error\":\"Request not authorized\"}")
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
 		return
 	}
 
@@ -957,7 +966,7 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, "{\"error\":\"Failed to marshal response for stats, err: %v\"}", err)
+		fmt.Fprintf(w, `{"error":"Failed to marshal response for stats, err: %v"}`, err)
 		return
 	}
 
@@ -1026,6 +1035,7 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		w.WriteHeader(m.getDisposition(m.statusCodes.errReadReq.Code))
 		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
 		return
 	}
@@ -1033,10 +1043,16 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 	var app application
 	err = json.Unmarshal(data, &app)
 	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errUnmarshalPld.Code))
+		w.WriteHeader(m.getDisposition(m.statusCodes.errUnmarshalPld.Code))
 		errString := fmt.Sprintf("App: %s, Failed to unmarshal payload", appName)
 		logging.Errorf("%s, err: %v", errString, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errUnmarshalPld.Code))
 		fmt.Fprintf(w, "%s\n", errString)
+		return
+	}
+
+	if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
 		return
 	}
 
@@ -1134,6 +1150,11 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+
 	info := m.savePrimaryStore(app)
 	m.sendErrorInfo(w, info)
 }
@@ -1198,15 +1219,13 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	uuid := cinfo.GetBucketUUID(app.DeploymentConfig.SourceBucket)
-	if uuid == "" {
+	if cinfo.GetBucketUUID(app.DeploymentConfig.SourceBucket) == "" {
 		info.Code = m.statusCodes.errSrcBucketMissing.Code
 		info.Info = fmt.Sprintf("Supplied source bucket: %v doesn't exist", app.DeploymentConfig.SourceBucket)
 		return
 	}
 
-	uuid = cinfo.GetBucketUUID(app.DeploymentConfig.MetadataBucket)
-	if uuid == "" {
+	if cinfo.GetBucketUUID(app.DeploymentConfig.MetadataBucket) == "" {
 		info.Code = m.statusCodes.errMetaBucketMissing.Code
 		info.Info = fmt.Sprintf("Supplied metadata bucket: %v doesn't exist", app.DeploymentConfig.MetadataBucket)
 		return
@@ -1430,52 +1449,6 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
-	creds, err := cbauth.AuthWebCreds(r)
-	if err != nil || creds == nil {
-		logging.Warnf("Cannot authenticate request to %r", r.URL)
-		w.WriteHeader(http.StatusUnauthorized)
-		return false
-	}
-	allowed, err := creds.IsAllowed(perm)
-	if err != nil || !allowed {
-		logging.Warnf("Cannot authorize request to %r", r.URL)
-		w.WriteHeader(http.StatusForbidden)
-		return false
-	}
-	logging.Debugf("Allowing access to %r", r.URL)
-	return true
-}
-
-func (m *ServiceMgr) validateLocalAuth(w http.ResponseWriter, r *http.Request) bool {
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		logging.Warnf("Unable to verify remote in request to %r: %r", r.URL, err)
-		w.WriteHeader(http.StatusForbidden)
-		return false
-	}
-	pip := net.ParseIP(ip)
-	if pip == nil || !pip.IsLoopback() {
-		logging.Warnf("Forbidden remote in request to %r: %r", r.URL, r)
-		w.WriteHeader(http.StatusForbidden)
-		return false
-	}
-	rUsr, rKey, ok := r.BasicAuth()
-	if !ok {
-		logging.Warnf("No credentials on request to %r", r.URL)
-		w.WriteHeader(http.StatusForbidden)
-		return false
-	}
-	usr, key := util.LocalKey()
-	if rUsr != usr || rKey != key {
-		logging.Warnf("Cannot authorize request to %r", r.URL)
-		w.WriteHeader(http.StatusForbidden)
-		return false
-	}
-	logging.Debugf("Allowing access to %r", r.URL)
-	return true
-}
-
 func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
@@ -1483,78 +1456,6 @@ func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 
 	logging.Infof("Got request to clear event stats from host: %r", r.Host)
 	m.superSup.ClearEventStats()
-}
-
-func (m *ServiceMgr) getHandler(appName string) string {
-	if m.checkIfDeployed(appName) {
-		return m.superSup.GetHandlerCode(appName)
-	}
-
-	return ""
-}
-
-func (m *ServiceMgr) getSourceMap(appName string) string {
-	if m.checkIfDeployed(appName) {
-		return m.superSup.GetSourceMap(appName)
-	}
-
-	return ""
-}
-
-func (m *ServiceMgr) checkIfDeployed(appName string) bool {
-	deployedApps := m.superSup.DeployedAppList()
-	for _, app := range deployedApps {
-		if app == appName {
-			return true
-		}
-	}
-	return false
-}
-
-func (m *ServiceMgr) unmarshalApp(r *http.Request) (app application, info *runtimeInfo) {
-	info = &runtimeInfo{}
-
-	data, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		info.Code = m.statusCodes.errReadReq.Code
-		info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
-		logging.Errorf(info.Info)
-		return
-	}
-
-	err = json.Unmarshal(data, &app)
-	if err != nil {
-		info.Code = m.statusCodes.errUnmarshalPld.Code
-		info.Info = fmt.Sprintf("Failed to unmarshal payload err: %v", err)
-		logging.Errorf(info.Info)
-		return
-	}
-
-	info.Code = m.statusCodes.ok.Code
-	info.Info = "OK"
-	return
-}
-
-// Unmarshals list of application and returns application objects
-func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) []application {
-	data, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
-		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
-		return nil
-	}
-
-	var appList []application
-	err = json.Unmarshal(data, &appList)
-	if err != nil {
-		errString := fmt.Sprintf("Failed to unmarshal payload err: %v", err)
-		logging.Errorf("%s", errString)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errUnmarshalPld.Code))
-		fmt.Fprintf(w, "%s\n", errString)
-		return nil
-	}
-
-	return appList
 }
 
 func (m *ServiceMgr) parseQueryHandler(w http.ResponseWriter, r *http.Request) {
@@ -1628,7 +1529,7 @@ func (m *ServiceMgr) saveConfig(c config) (info *runtimeInfo) {
 func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, "{\"error\":\"Request not authorized\"}")
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
 		return
 	}
 
@@ -1698,7 +1599,7 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, "{\"error\":\"Request not authorized\"}")
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
 		return
 	}
 
@@ -1742,8 +1643,23 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			var settings map[string]interface{}
+			err = json.Unmarshal(data, &settings)
+			if err != nil {
+				info.Code = m.statusCodes.errMarshalResp.Code
+				info.Info = fmt.Sprintf("Failed to unmarshal setting supplied, err: %v", err)
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			if info = m.validateSettings(settings); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
 			if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
+				return
 			}
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -1757,7 +1673,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 			app, info := m.getTempStore(appName)
 			if info.Code != m.statusCodes.ok.Code {
-				w.WriteHeader(http.StatusNotFound)
 				m.sendErrorInfo(w, info)
 				return
 			}
@@ -1782,11 +1697,15 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
 			// Reject the request if there is a mismatch of app name in URL and body
 			if app.Name != appName {
 				info.Code = m.statusCodes.errAppNameMismatch.Code
 				info.Info = fmt.Sprintf("Function name in the URL (%s) and body (%s) must be same", appName, app.Name)
-				w.WriteHeader(http.StatusBadRequest)
 				m.sendErrorInfo(w, info)
 				return
 			}
@@ -1836,6 +1755,11 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			for _, app := range appList {
 				audit.Log(auditevent.CreateFunction, r, app.Name)
 
+				if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
+					infoList = append(infoList, info)
+					continue
+				}
+
 				// Save to temp store only if saving to primary store succeeds
 				if info := m.savePrimaryStore(app); info.Code == m.statusCodes.ok.Code {
 					audit.Log(auditevent.SaveDraft, r, app.Name)
@@ -1879,7 +1803,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, "{\"error\":\"Request not authorized\"}")
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
 		return
 	}
 
@@ -1927,7 +1851,7 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 		response, err := json.Marshal(statsList)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "{\"error\":\"Failed to marshal response for stats, err: %v\"}", err)
+			fmt.Fprintf(w, `{"error":"Failed to marshal response for stats, err: %v"}`, err)
 			return
 		}
 
@@ -1942,7 +1866,7 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 // Clears up all Eventing related artifacts from metakv, typically will be used for rebalance tests
 func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, "{\"error\":\"Request not authorized\"}")
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
 		return
 	}
 

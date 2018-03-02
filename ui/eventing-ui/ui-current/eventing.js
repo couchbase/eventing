@@ -432,13 +432,21 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 return !$scope.appModel.appname;
             };
 
-            self.validateBinding = function(binding) {
+            self.validateVariableRegex = function(binding) {
                 if (binding && binding.value) {
-                    return FormValidationService.isValidIdentifier(binding.value);
+                    return FormValidationService.isValidVariableRegex(binding.value);
                 }
 
                 return true;
             };
+
+            self.validateVariable = function(binding) {
+                if (binding && binding.value) {
+                    return FormValidationService.isValidVariable(binding.value);
+                }
+
+                return true;
+            }
         }
     ])
     // Controller for settings.
@@ -478,9 +486,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 return appModel.depcfg.source_bucket === binding.name;
             };
 
-            self.validateBinding = function(binding) {
+            self.validateVariableRegex = function(binding) {
                 if (binding && binding.value) {
-                    return FormValidationService.isValidIdentifier(binding.value);
+                    return FormValidationService.isValidVariable(binding.value);
                 }
 
                 return true;
@@ -1062,14 +1070,122 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
     // Service to validate the form in settings and create app.
     .factory('FormValidationService', [
         function() {
-            function isValidIdentifier(value) {
+            var jsReservedWords = [
+                'abstract',
+                'await',
+                'boolean',
+                'break',
+                'byte',
+                'case',
+                'catch',
+                'char',
+                'class',
+                'const',
+                'continue',
+                'debugger',
+                'default',
+                'delete',
+                'do',
+                'double',
+                'enum',
+                'else',
+                'export',
+                'extends',
+                'final',
+                'finally',
+                'float',
+                'for',
+                'function',
+                'goto',
+                'if',
+                'implements',
+                'import',
+                'interface',
+                'in',
+                'instanceof',
+                'int',
+                'let',
+                'long',
+                'native',
+                'new',
+                'package',
+                'private',
+                'protected',
+                'public',
+                'return',
+                'short',
+                'static',
+                'super',
+                'switch',
+                'synchronized',
+                'this',
+                'throw',
+                'throws',
+                'transient',
+                'try',
+                'typeof',
+                'var',
+                'void',
+                'volatile',
+                'while',
+                'with',
+                'yield'
+            ];
+
+            var n1qlReservedWords = [
+                'alter',
+                'build',
+                'create',
+                'delete',
+                'drop',
+                'execute',
+                'explain',
+                'from',
+                'grant',
+                'infer',
+                'insert',
+                'merge',
+                'prepare',
+                'rename',
+                'select',
+                'revoke',
+                'update',
+                'upsert'
+            ];
+
+            function isValidVariableRegex(value) {
                 var re = /^[a-zA-Z_$][a-zA-Z_$0-9]*$/g;
-                return value && value.trim().match(re);
+                return value && value.match(re);
+            }
+
+            function isValidVariable(value) {
+                if (!isValidVariableRegex(value)) {
+                    return false;
+                }
+
+                if (_.indexOf(jsReservedWords, value) !== -1) {
+                    return false;
+                }
+
+
+                if (_.indexOf(n1qlReservedWords, value.toLowerCase()) !== -1) {
+                    return false;
+                }
+
+                return true;
+            }
+
+            function isValidApplicationName(value) {
+                var re = /^[a-zA-Z0-9_%][a-zA-Z_0-9.%\\-]*$/g;
+                return value && value.match(re);
             }
 
             return {
-                isValidIdentifier: function(value) {
-                    return isValidIdentifier(value);
+                isValidVariable: function(value) {
+                    return isValidVariable(value);
+                },
+                isValidVariableRegex: function(value) {
+                    return isValidVariableRegex(value);
                 },
                 isFormInvalid: function(formCtrl, bindings, sourceBucket) {
                     var bindingsValid = true,
@@ -1081,14 +1197,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
 
                         if (binding.value.length) {
-                            bindingsValid = isValidIdentifier(binding.value);
+                            bindingsValid = isValidVariable(binding.value);
                         }
                     }
 
                     // Check whether the appname exists in the list of apps.
                     if (form.appname.$viewValue && form.appname.$viewValue !== '') {
                         form.appname.$error.appExists = form.appname.$viewValue in formCtrl.savedApps;
-                        form.appname.$error.appnameInvalid = !isValidIdentifier(form.appname.$viewValue);
+                        form.appname.$error.appnameInvalid = !isValidApplicationName(form.appname.$viewValue);
                     }
 
                     form.appname.$error.required = form.appname.$viewValue === '';
