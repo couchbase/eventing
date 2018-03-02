@@ -738,6 +738,49 @@ func (m *ServiceMgr) setSettingsHandler(w http.ResponseWriter, r *http.Request) 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 }
 
+func (m *ServiceMgr) getSettings(appName string) (*map[string]interface{}, *runtimeInfo) {
+	logging.Infof("Get settings for app %v", appName)
+
+	app, status := m.getTempStore(appName)
+	if status.Code != m.statusCodes.ok.Code {
+		return nil, status
+	}
+
+	// State validation - app must be in deployed state
+	deployedApps := m.superSup.GetDeployedApps()
+	processingStatus, pOk := app.Settings["processing_status"].(bool)
+	deploymentStatus, dOk := app.Settings["deployment_status"].(bool)
+	info := runtimeInfo{}
+
+	if pOk && dOk {
+		// Check for disable processing
+		if deploymentStatus == true && processingStatus == false {
+			if _, ok := deployedApps[appName]; !ok {
+				info.Code = m.statusCodes.errAppNotInit.Code
+				info.Info = fmt.Sprintf("App: %v not processing mutations. Operation not permitted. Fetch function definition instead", appName)
+				return nil, &info
+			}
+		}
+
+		// Check for undeploy
+		if deploymentStatus == false && processingStatus == false {
+			if _, ok := deployedApps[appName]; !ok {
+				info.Code = m.statusCodes.errAppNotInit.Code
+				info.Info = fmt.Sprintf("App: %v not bootstrapped. Operation not permitted. Fetch function definition instead", appName)
+				return nil, &info
+			}
+		}
+	} else {
+		info.Code = m.statusCodes.errStatusesNotFound.Code
+		info.Info = fmt.Sprintf("App: %v Missing processing or deployment statuses or both", appName)
+		return nil, &info
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	info.Info = fmt.Sprintf("Got settings for app: %v", appName)
+	return &app.Settings, &info
+}
+
 func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	logging.Infof("Set settings for app %v", appName)
@@ -776,7 +819,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		if deploymentStatus == true && processingStatus == false {
 			if _, ok := deployedApps[appName]; !ok {
 				info.Code = m.statusCodes.errAppNotInit.Code
-				info.Info = fmt.Sprintf("App: %v not bootstrapped, discarding request to disable processing for it", appName)
+				info.Info = fmt.Sprintf("App: %v not processing mutations. Operation is not permitted. Edit function instead", appName)
 				return
 			}
 		}
@@ -785,13 +828,13 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		if deploymentStatus == false && processingStatus == false {
 			if _, ok := deployedApps[appName]; !ok {
 				info.Code = m.statusCodes.errAppNotInit.Code
-				info.Info = fmt.Sprintf("App: %v not bootstrapped, discarding request to undeploy it", appName)
+				info.Info = fmt.Sprintf("App: %v not bootstrapped. Operation not permitted. Edit function instead", appName)
 				return
 			}
 		}
 	} else {
 		info.Code = m.statusCodes.errStatusesNotFound.Code
-		info.Info = fmt.Sprintf("App: %v Missing processing or deployment statuses or both in supplied settings", appName)
+		info.Info = fmt.Sprintf("App: %v Missing processing or deployment statuses or both", appName)
 		return
 	}
 
@@ -1645,6 +1688,10 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fmt.Fprintf(w, "%s", string(data))
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
 	}
 }
 
@@ -1661,8 +1708,29 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	info := &runtimeInfo{}
 
 	if match := functionsNameSettings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		info = &runtimeInfo{}
 		appName := match[1]
 		switch r.Method {
+		case "GET":
+			audit.Log(auditevent.GetSettings, r, nil)
+			settings, info := m.getSettings(appName)
+			if info.Code != m.statusCodes.ok.Code {
+				w.WriteHeader(http.StatusNotFound)
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			response, err := json.Marshal(settings)
+			if err != nil {
+				info.Code = m.statusCodes.errMarshalResp.Code
+				info.Info = fmt.Sprintf("Failed to marshal app, err : %v", err)
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+			fmt.Fprintf(w, "%s", string(response))
+
 		case "POST":
 			audit.Log(auditevent.SetSettings, r, appName)
 
@@ -1677,6 +1745,9 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
 			}
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
 		}
 	} else if match := functionsName.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		appName := match[1]
@@ -1748,6 +1819,10 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				m.sendErrorInfo(w, info)
 			}
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
 		}
 
 	} else if match := functions.FindStringSubmatch(r.URL.Path); len(match) != 0 {
@@ -1793,6 +1868,10 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			m.sendRuntimeInfoList(w, infoList)
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
 		}
 	}
 }
