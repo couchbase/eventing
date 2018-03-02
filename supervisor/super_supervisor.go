@@ -516,6 +516,8 @@ func (s *SuperSupervisor) cleanupProducer(appName string) {
 		s.Unlock()
 
 		if !ok {
+			p.StopRunningConsumers()
+
 			p.CleanupMetadataBucket()
 
 			logging.Infof("%s [%d] App: %v Purging timer entries from plasma", logPrefix, len(s.runningProducers), appName)

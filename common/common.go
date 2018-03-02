@@ -74,6 +74,7 @@ type EventingProducer interface {
 	Serve()
 	Stop()
 	StopProducer()
+	StopRunningConsumers()
 	String() string
 	TimerDebugStats() map[int]map[string]interface{}
 	TimerTransferHostPortAddrs() map[string]string
