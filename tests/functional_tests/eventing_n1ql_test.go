@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func testFlexReset(handler string, t *testing.T) {
+func testFlexReset(handler, testName string, t *testing.T) {
 	time.Sleep(time.Second * 5)
 	itemCount := 1000
 
@@ -26,7 +26,7 @@ func testFlexReset(handler string, t *testing.T) {
 
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "N1QLLabelledBreak",
+		t.Error("For", testName,
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -39,12 +39,12 @@ func testFlexReset(handler string, t *testing.T) {
 
 func TestFlexReset1(t *testing.T) {
 	handler := "n1ql_flex_reset1.js"
-	testFlexReset(handler, t)
+	testFlexReset(handler, "TestFlexReset1", t)
 }
 
 func TestFlexReset2(t *testing.T) {
 	handler := "n1ql_flex_reset2.js"
-	testFlexReset(handler, t)
+	testFlexReset(handler, "TestFlexReset2", t)
 }
 
 func TestN1QLLabelledBreak(t *testing.T) {

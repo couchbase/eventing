@@ -27,6 +27,7 @@ ConnectionPool::ConnectionPool(v8::Isolate *isolate, int capacity,
 // Creates and adds one lcb instance into the pool.
 void ConnectionPool::AddResource() {
   // Initialization of lcb instances pool.
+  auto init_success = true;
   lcb_create_st options;
   lcb_error_t err;
   memset(&options, 0, sizeof(options));
@@ -37,35 +38,60 @@ void ConnectionPool::AddResource() {
   lcb_t instance = nullptr;
   err = lcb_create(&instance, &options);
   if (err != LCB_SUCCESS) {
-    Error(instance, "N1QL: unable to create lcb handle", err);
+    init_success = false;
+    Error(instance, "N1QL: Unable to create lcb handle", err);
   }
 
   auto auth = lcbauth_new();
-  lcbauth_set_callbacks(auth, isolate, GetUsernameCached, GetPasswordCached);
-  lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
+  err = lcbauth_set_callbacks(auth, isolate, GetUsernameCached,
+                              GetPasswordCached);
+  if (err != LCB_SUCCESS) {
+    init_success = false;
+    Error(instance, "N1QL: Unable to set auth callbacks", err);
+  }
+
+  err = lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
+  if (err != LCB_SUCCESS) {
+    init_success = false;
+    Error(instance, "N1QL: Unable to set auth mode to dynamic", err);
+  }
+
   lcb_set_auth(instance, auth);
 
   err = lcb_connect(instance);
   if (err != LCB_SUCCESS) {
-    Error(instance, "N1QL: unable to connect to server", err);
+    init_success = false;
+    Error(instance, "N1QL: Unable to connect to server", err);
   }
 
-  lcb_wait(instance);
+  err = lcb_wait(instance);
+  if (err != LCB_SUCCESS) {
+    init_success = false;
+    Error(instance, "N1QL: Unable to schedule op to connect to server", err);
+  }
 
   err = lcb_get_bootstrap_status(instance);
   if (err != LCB_SUCCESS) {
-    Error(instance, "N1QL: unable to get bootstrap status", err);
+    init_success = false;
+    Error(instance, "N1QL: Unable to get bootstrap status", err);
   }
 
   ++inst_count;
   instances.push(instance);
+  if (init_success) {
+    LOG(logInfo) << "N1QL: lcb instance successfully initialized for "
+                 << R(conn_str) << std::endl;
+  } else {
+    LOG(logError) << "N1QL: Unable to initialize lcb instance for "
+                  << R(conn_str) << std::endl;
+  }
 }
 
 lcb_t ConnectionPool::GetResource() {
   // Dynamically expand the pool size if it's within the pool capacity.
   if (instances.empty()) {
     if (inst_count >= capacity) {
-      throw "Maximum pool capacity reached";
+      throw "N1QL: Maximum pool capacity reached";
     } else {
       AddResource();
     }
@@ -121,8 +147,9 @@ std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata) {
       errors.push_back(*msg);
     }
   } else {
-    LOG(logError) << "Error parsing JSON while extracting N1QL error message"
-                  << std::endl;
+    LOG(logError)
+        << "N1QL: Error parsing JSON while extracting N1QL error message"
+        << std::endl;
   }
 
   return errors;
@@ -237,21 +264,22 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   lcb_N1QLPARAMS *n1ql_params = lcb_n1p_new();
   err = lcb_n1p_setstmtz(n1ql_params, q_handler.query.c_str());
   if (err != LCB_SUCCESS) {
-    ConnectionPool::Error(instance, "unable to build query string", err);
+    ConnectionPool::Error(instance, "N1QL: Unable to build query string", err);
   }
 
   for (const auto &param : *q_handler.named_params) {
     err = lcb_n1p_namedparamz(n1ql_params, param.first.c_str(),
                               param.second.c_str());
     if (err != LCB_SUCCESS) {
-      ConnectionPool::Error(instance, "unable to set named parameters", err);
+      ConnectionPool::Error(instance, "N1QL: Unable to set named parameters",
+                            err);
     }
   }
 
   lcb_n1p_mkcmd(n1ql_params, &cmd);
   err = lcb_n1ql_query(instance, nullptr, &cmd);
   if (err != LCB_SUCCESS) {
-    ConnectionPool::Error(instance, "unable to query", err);
+    ConnectionPool::Error(instance, "N1QL: Unable to set query", err);
   }
 
   lcb_n1p_free(n1ql_params);
@@ -262,7 +290,10 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   cookie.handle = handle;
   lcb_set_cookie(instance, &cookie);
   // Run the query.
-  lcb_wait(instance);
+  err = lcb_wait(instance);
+  if (err != LCB_SUCCESS) {
+    ConnectionPool::Error(instance, "N1QL: Query execution failed", err);
+  }
 
   // Resource clean-up.
   lcb_set_cookie(instance, nullptr);
@@ -539,13 +570,13 @@ void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
       auto result = scope_stack->Delete(
           context, v8::Number::New(isolate, scope_stack->Size() - 1));
       if (result.IsNothing()) {
-        throw "Unable to delete from scope stack";
+        throw "N1QL: Unable to delete from scope stack";
       }
     } else {
-      throw "Scope stack not set";
+      throw "N1QL: Scope stack not set";
     }
   } else {
-    throw "Base hash not set";
+    throw "N1QL: Base hash not set";
   }
 }
 
@@ -574,13 +605,11 @@ std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
       v8::String::Utf8Value hash(top_value);
       return *hash;
     } else {
-      throw "Scope stack not set";
+      throw "N1QL: Scope stack not set";
     }
   } else {
-    throw "Base hash not set";
+    throw "N1QL: Base hash not set";
   }
-
-  return "";
 }
 
 // Generates and sets a unique hash to a N1qlQuery instance.
@@ -643,7 +672,7 @@ bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args,
   // Checking for FromJust would crash the v8 process if has_key is empty
   // https://v8.paulfryzel.com/docs/master/classv8_1_1_maybe.html#a6c35f4870a5b5049d09ba5f13c67ede9
   if (has_key.IsNothing()) {
-    throw "Key was empty";
+    throw "N1QL: Key was empty";
   }
 
   return !has_key.IsNothing() && has_key.IsJust() && has_key.FromJust();
@@ -652,7 +681,7 @@ bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args,
 // Utility method to convert a MaybeLocal handle to a local handle.
 template <typename T> v8::Local<T> ToLocal(const v8::MaybeLocal<T> &handle) {
   if (handle.IsEmpty()) {
-    throw "Handle is empty";
+    throw "N1QL: Handle is empty";
   }
 
   auto isolate = v8::Isolate::GetCurrent();
@@ -661,7 +690,7 @@ template <typename T> v8::Local<T> ToLocal(const v8::MaybeLocal<T> &handle) {
   v8::Local<T> value;
   auto result = handle.ToLocal(&value);
   if (!result) {
-    LOG(logError) << "handle.ToLocal failed" << std::endl;
+    LOG(logError) << "N1QL: handle.ToLocal failed" << std::endl;
   }
 
   return handle_scope.Escape(value);

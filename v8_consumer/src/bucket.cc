@@ -10,15 +10,14 @@
 // permissions and limitations under the License.
 
 #include "bucket.h"
-#include "utils.h"
 
 #define LCB_NO_DEPR_CXX_CTORS
 #undef NDEBUG
 
 // lcb related callbacks
 static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
-  const lcb_RESPGET *resp = reinterpret_cast<const lcb_RESPGET *>(rb);
-  Result *result = reinterpret_cast<Result *>(rb->cookie);
+  auto resp = reinterpret_cast<const lcb_RESPGET *>(rb);
+  auto result = reinterpret_cast<Result *>(rb->cookie);
 
   LOG(logTrace) << "Bucket: LCB_GET callback, res: "
                 << lcb_strerror(nullptr, rb->rc) << rb->rc << " cas " << rb->cas
@@ -30,14 +29,14 @@ static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
   if (resp->rc == LCB_SUCCESS) {
     result->value.assign(reinterpret_cast<const char *>(resp->value),
                          static_cast<int>(resp->nvalue));
-    LOG(logTrace) << "Value: " << R(result->value)
+    LOG(logTrace) << "Bucket: Value: " << R(result->value)
                   << " flags: " << resp->itmflags << std::endl;
   }
 }
 
 static void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  const lcb_RESPSTORE *resp = reinterpret_cast<const lcb_RESPSTORE *>(rb);
-  Result *result = reinterpret_cast<Result *>(rb->cookie);
+  auto resp = reinterpret_cast<const lcb_RESPSTORE *>(rb);
+  auto result = reinterpret_cast<Result *>(rb->cookie);
 
   result->rc = resp->rc;
   result->cas = resp->cas;
@@ -48,7 +47,7 @@ static void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
 }
 
 static void sdmutate_callback(lcb_t, int cbtype, const lcb_RESPBASE *rb) {
-  Result *result = reinterpret_cast<Result *>(rb->cookie);
+  auto result = reinterpret_cast<Result *>(rb->cookie);
   result->rc = rb->rc;
 
   LOG(logTrace) << "Bucket: LCB_SDMUTATE callback "
@@ -56,10 +55,11 @@ static void sdmutate_callback(lcb_t, int cbtype, const lcb_RESPBASE *rb) {
 }
 
 static void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  const lcb_RESPREMOVE *resp = reinterpret_cast<const lcb_RESPREMOVE *>(rb);
-  Result *result = reinterpret_cast<Result *>(rb->cookie);
+  auto result = reinterpret_cast<Result *>(rb->cookie);
+  result->rc = rb->rc;
 
-  result->rc = resp->rc;
+  LOG(logTrace) << "Bucket: LCB_DEL callback "
+                << lcb_strerror(nullptr, result->rc) << std::endl;
 }
 
 Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
@@ -69,6 +69,7 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
   isolate_ = w->GetIsolate();
   context_.Reset(isolate_, w->context_);
 
+  auto init_success = true;
   auto connstr =
       "couchbase://" + endpoint + "/" + bucket_name + "?select_bucket=true";
   if (IsIPv6()) {
@@ -88,12 +89,31 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
   lcb_create(&bucket_lcb_obj, &crst);
 
   auto auth = lcbauth_new();
-  lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
-  lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
+  auto err = lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "Bucket: Unable to set auth callbacks" << std::endl;
+    init_success = false;
+  }
+
+  err = lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "Bucket: Unable to set auth mode to dynamic" << std::endl;
+    init_success = false;
+  }
+
   lcb_set_auth(bucket_lcb_obj, auth);
 
-  lcb_connect(bucket_lcb_obj);
-  lcb_wait(bucket_lcb_obj);
+  err = lcb_connect(bucket_lcb_obj);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "Bucket: Unable to connect to bucket" << std::endl;
+    init_success = false;
+  }
+
+  err = lcb_wait(bucket_lcb_obj);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "Bucket: Unable to schedule call for connect" << std::endl;
+    init_success = false;
+  }
 
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_GET, get_callback);
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_STORE, set_callback);
@@ -102,7 +122,21 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_REMOVE, del_callback);
 
   lcb_U32 lcb_timeout = 2500000; // 2.5s
-  lcb_cntl(bucket_lcb_obj, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
+  err =
+      lcb_cntl(bucket_lcb_obj, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
+  if (err != LCB_SUCCESS) {
+    init_success = false;
+    LOG(logError) << "Bucket: Unable to set timeout for bucket ops"
+                  << std::endl;
+  }
+
+  if (init_success) {
+    LOG(logInfo) << "Bucket: lcb instance for " << bname
+                 << " initialized successfully" << std::endl;
+  } else {
+    LOG(logError) << "Bucket: Unable to initialize lcb instance for " << bname
+                  << std::endl;
+  }
 }
 
 Bucket::~Bucket() {
@@ -117,11 +151,7 @@ bool Bucket::Initialize(V8Worker *w) {
   context_.Reset(isolate_, context);
   v8::Context::Scope context_scope(context);
 
-  if (!InstallMaps()) {
-    return false;
-  }
-
-  return true;
+  return InstallMaps();
 }
 
 // Associates the lcb instance with the bucket object and returns it
@@ -152,8 +182,8 @@ bool Bucket::InstallMaps() {
   auto bucket_obj = WrapBucketMap();
   auto context = v8::Local<v8::Context>::New(isolate_, context_);
 
-  LOG(logInfo) << "Registering handler for bucket_alias: " << bucket_alias
-               << " bucket_name: " << bucket_name << std::endl;
+  LOG(logInfo) << "Bucket: Registering handler for bucket_alias: "
+               << bucket_alias << " bucket_name: " << bucket_name << std::endl;
 
   return context->Global()->Set(v8Str(isolate_, bucket_alias.c_str()),
                                 bucket_obj);
@@ -164,37 +194,50 @@ template <>
 void Bucket::BucketGet<v8::Local<v8::Name>>(
     const v8::Local<v8::Name> &name,
     const v8::PropertyCallbackInfo<v8::Value> &info) {
+  auto isolate = info.GetIsolate();
   if (name->IsSymbol()) {
+    auto js_exception = UnwrapData(isolate)->js_exception;
+    js_exception->Throw("Symbol data type is not supported");
+    ++bucket_op_exception_count;
     return;
   }
 
-  auto isolate = info.GetIsolate();
   v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
   std::string key(*utf8_key);
 
-  lcb_t *bucket_lcb_obj_ptr =
+  auto bucket_lcb_obj_ptr =
       UnwrapInternalField<lcb_t>(info.Holder(), LCB_INST_FIELD_NO);
 
   Result result;
   lcb_CMDGET gcmd = {0};
   LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
   lcb_sched_enter(*bucket_lcb_obj_ptr);
-  lcb_get3(*bucket_lcb_obj_ptr, &result, &gcmd);
-  lcb_sched_leave(*bucket_lcb_obj_ptr);
-  lcb_wait(*bucket_lcb_obj_ptr);
-
-  // Throw an exception in JavaScript if the bucket get call failed.
-  if (result.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "LCB_GET call failed: " << result.rc << std::endl;
-    auto w = UnwrapData(info.GetIsolate())->v8worker;
-    w->AddLcbException(static_cast<int>(result.rc));
-    bucket_op_exception_count++;
-    auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->Throw(*bucket_lcb_obj_ptr, result.rc);
+  auto err = lcb_get3(*bucket_lcb_obj_ptr, &result, &gcmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "Bucket: Unable to set params for LCB_GET: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
   }
 
-  LOG(logTrace) << "Get call result Key: " << R(key)
+  lcb_sched_leave(*bucket_lcb_obj_ptr);
+  err = lcb_wait(*bucket_lcb_obj_ptr);
+
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "Bucket: Unable to schedule LCB_GET: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
+
+  // Throw an exception in JavaScript if the bucket get call failed.
+  if (result.rc != LCB_SUCCESS) {
+    LOG(logError) << "Bucket: LCB_GET call failed: " << result.rc << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.rc);
+    return;
+  }
+
+  LOG(logTrace) << "Bucket: Get call result Key: " << R(key)
                 << " Value: " << R(result.value) << std::endl;
 
   const std::string &value = result.value;
@@ -207,8 +250,13 @@ template <>
 void Bucket::BucketSet<v8::Local<v8::Name>>(
     const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
     const v8::PropertyCallbackInfo<v8::Value> &info) {
-  if (name->IsSymbol())
+  auto isolate = info.GetIsolate();
+  if (name->IsSymbol()) {
+    auto js_exception = UnwrapData(isolate)->js_exception;
+    js_exception->Throw("Symbol data type is not supported");
+    ++bucket_op_exception_count;
     return;
+  }
 
   auto block_mutation =
       UnwrapInternalField<bool>(info.Holder(), BLOCK_MUTATION_FIELD_NO);
@@ -221,43 +269,59 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
   v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
   std::string key(*utf8_key);
-  std::string value = JSONStringify(info.GetIsolate(), value_obj);
+  auto value = JSONStringify(isolate, value_obj);
 
-  LOG(logTrace) << "Set call Key: " << R(key) << " Value: " << R(value)
+  LOG(logTrace) << "Bucket: Set call Key: " << R(key) << " Value: " << R(value)
                 << " enable_recursive_mutation: " << enable_recursive_mutation
                 << std::endl;
 
-  lcb_t *bucket_lcb_obj_ptr =
+  auto bucket_lcb_obj_ptr =
       UnwrapInternalField<lcb_t>(info.Holder(), LCB_INST_FIELD_NO);
   Result sres;
 
   if (!enable_recursive_mutation) {
-    LOG(logTrace) << "Adding macro in xattr to avoid retriggering of handler "
-                     "from recursive mutation, enable_recursive_mutation: "
-                  << enable_recursive_mutation << std::endl;
+    LOG(logTrace)
+        << "Bucket: Adding macro in xattr to avoid retriggering of handler "
+           "from recursive mutation, enable_recursive_mutation: "
+        << enable_recursive_mutation << std::endl;
 
     while (true) {
       Result gres;
       lcb_CMDGET gcmd = {0};
       LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
       lcb_sched_enter(*bucket_lcb_obj_ptr);
-      lcb_get3(*bucket_lcb_obj_ptr, &gres, &gcmd);
+      auto err = lcb_get3(*bucket_lcb_obj_ptr, &gres, &gcmd);
+      if (err != LCB_SUCCESS) {
+        LOG(logError)
+            << "Bucket: Unable to get key for recursive_mutation=false"
+            << std::endl;
+      }
+
       lcb_sched_leave(*bucket_lcb_obj_ptr);
-      lcb_wait(*bucket_lcb_obj_ptr);
+      err = lcb_wait(*bucket_lcb_obj_ptr);
+      if (err != LCB_SUCCESS) {
+        LOG(logError) << "Bucket: Unable to schedule call to get key for "
+                         "recursive_mutation=false"
+                      << std::endl;
+      }
 
       switch (gres.rc) {
       case LCB_KEY_ENOENT:
-        LOG(logTrace) << "Key: " << R(key)
+        LOG(logTrace) << "Bucket: Key: " << R(key)
                       << " doesn't exist in bucket where mutation has "
                          "to be written"
                       << std::endl;
         break;
+
       case LCB_SUCCESS:
         break;
+
       default:
-        LOG(logTrace) << "Failed to fetch full doc: " << R(key)
+        HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, gres.rc);
+        LOG(logError) << "Bucket: Failed to fetch full doc: " << R(key)
                       << " to calculate digest, res: "
-                      << lcb_strerror(nullptr, gres.rc) << std::endl;
+                      << lcb_strerror(*bucket_lcb_obj_ptr, gres.rc)
+                      << std::endl;
         return;
       }
 
@@ -265,7 +329,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       if (gres.rc == LCB_SUCCESS) {
         uint32_t d = crc32c(0, gres.value.c_str(), gres.value.length());
         digest.assign(std::to_string(d));
-        LOG(logTrace) << "key: " << R(key) << " digest: " << digest
+        LOG(logTrace) << "Bucket: key: " << R(key) << " digest: " << digest
                       << " value: " << R(gres.value) << std::endl;
       }
 
@@ -309,29 +373,44 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
       mcmd.cas = gres.cas;
 
-      lcb_subdoc3(*bucket_lcb_obj_ptr, &sres, &mcmd);
-      lcb_wait(*bucket_lcb_obj_ptr);
+      err = lcb_subdoc3(*bucket_lcb_obj_ptr, &sres, &mcmd);
+      if (err != LCB_SUCCESS) {
+        LOG(logError) << "Bucket: Unable to set subdoc op for setting macro"
+                      << std::endl;
+      }
+
+      err = lcb_wait(*bucket_lcb_obj_ptr);
+      if (err != LCB_SUCCESS) {
+        LOG(logError)
+            << "Bucket: Unable to schedule subdoc op for setting macro"
+            << std::endl;
+      }
 
       switch (sres.rc) {
       case LCB_SUCCESS:
-        LOG(logTrace) << "Successfully wrote doc:" << R(key) << std::endl;
+        LOG(logTrace) << "Bucket: Successfully wrote doc:" << R(key)
+                      << std::endl;
         info.GetReturnValue().Set(value_obj);
         return;
+
       case LCB_KEY_EEXISTS:
-        LOG(logTrace) << "CAS mismatch for doc:" << R(key) << std::endl;
+        LOG(logInfo) << "Bucket: CAS mismatch for doc:" << R(key) << std::endl;
         std::this_thread::sleep_for(
             std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
         break;
+
       default:
-        LOG(logTrace) << "Encountered error:" << lcb_strerror(nullptr, sres.rc)
+        LOG(logError) << "Bucket: Encountered error:"
+                      << lcb_strerror(*bucket_lcb_obj_ptr, sres.rc)
                       << " for key:" << R(key) << std::endl;
-        info.GetReturnValue().Set(value_obj);
+
+        HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, gres.rc);
         return;
       }
     }
   } else {
     LOG(logTrace)
-        << "Performing recursive mutation, enable_recursive_mutation: "
+        << "Bucket: Performing recursive mutation, enable_recursive_mutation: "
         << enable_recursive_mutation << std::endl;
 
     lcb_CMDSTORE scmd = {0};
@@ -341,19 +420,29 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     scmd.flags = 0x2000000;
 
     lcb_sched_enter(*bucket_lcb_obj_ptr);
-    lcb_store3(*bucket_lcb_obj_ptr, &sres, &scmd);
+    auto err = lcb_store3(*bucket_lcb_obj_ptr, &sres, &scmd);
+    if (err != LCB_SUCCESS) {
+      LOG(logError) << "Bucket: Unable to set params for LCB_SET: "
+                    << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+      HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+      return;
+    }
+
     lcb_sched_leave(*bucket_lcb_obj_ptr);
-    lcb_wait(*bucket_lcb_obj_ptr);
+    err = lcb_wait(*bucket_lcb_obj_ptr);
+
+    if (err != LCB_SUCCESS) {
+      LOG(logError) << "Bucket: Unable to schedule LCB_SET: "
+                    << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+      HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+      return;
+    }
   }
 
   // Throw an exception in JavaScript if the bucket set call failed.
   if (sres.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "LCB_STORE call failed: " << sres.rc << std::endl;
-    auto w = UnwrapData(info.GetIsolate())->v8worker;
-    w->AddLcbException(static_cast<int>(sres.rc));
-    bucket_op_exception_count++;
-    auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
-    js_exception->Throw(*bucket_lcb_obj_ptr, sres.rc);
+    LOG(logError) << "Bucket: LCB_STORE call failed: " << sres.rc << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, sres.rc);
     return;
   }
 
@@ -365,8 +454,13 @@ template <>
 void Bucket::BucketDelete<v8::Local<v8::Name>>(
     v8::Local<v8::Name> name,
     const v8::PropertyCallbackInfo<v8::Boolean> &info) {
-  if (name->IsSymbol())
+  auto isolate = info.GetIsolate();
+  if (name->IsSymbol()) {
+    auto js_exception = UnwrapData(isolate)->js_exception;
+    js_exception->Throw("Symbol data type is not supported");
+    ++bucket_op_exception_count;
     return;
+  }
 
   auto block_mutation =
       UnwrapInternalField<bool>(info.Holder(), BLOCK_MUTATION_FIELD_NO);
@@ -380,7 +474,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
   std::string key(*utf8_key);
 
-  lcb_t *bucket_lcb_obj_ptr =
+  auto bucket_lcb_obj_ptr =
       UnwrapInternalField<lcb_t>(info.Holder(), LCB_INST_FIELD_NO);
 
   Result result;
@@ -388,22 +482,44 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   LCB_CMD_SET_KEY(&rcmd, key.c_str(), key.length());
 
   lcb_sched_enter(*bucket_lcb_obj_ptr);
-  lcb_remove3(*bucket_lcb_obj_ptr, &result, &rcmd);
+  auto err = lcb_remove3(*bucket_lcb_obj_ptr, &result, &rcmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "Bucket: Unable to set params for LCB_REMOVE: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
+
   lcb_sched_leave(*bucket_lcb_obj_ptr);
-  lcb_wait(*bucket_lcb_obj_ptr);
+  err = lcb_wait(*bucket_lcb_obj_ptr);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "Bucket: Unable to schedule LCB_REMOVE: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
 
   // Throw an exception in JavaScript if the bucket delete call failed.
   if (result.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "LCB_REMOVE call failed: " << result.rc << std::endl;
-    auto w = UnwrapData(info.GetIsolate())->v8worker;
-    w->AddLcbException(static_cast<int>(result.rc));
-    bucket_op_exception_count++;
-    auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
-    js_exception->Throw(*bucket_lcb_obj_ptr, result.rc);
+    LOG(logError) << "Bucket: LCB_REMOVE call failed: " << result.rc
+                  << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.rc);
     return;
   }
 
   info.GetReturnValue().Set(true);
+}
+
+void Bucket::HandleBucketOpFailure(v8::Isolate *isolate,
+                                   lcb_t bucket_lcb_obj_ptr,
+                                   lcb_error_t error) {
+  auto isolate_data = UnwrapData(isolate);
+  auto w = isolate_data->v8worker;
+  w->AddLcbException(error);
+  ++bucket_op_exception_count;
+
+  auto js_exception = isolate_data->js_exception;
+  js_exception->Throw(bucket_lcb_obj_ptr, error);
 }
 
 // Registers the necessary callbacks to the bucket object in JavaScript

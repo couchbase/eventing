@@ -685,3 +685,17 @@ func (p *Producer) TimerDebugStats() map[int]map[string]interface{} {
 
 	return aggStats
 }
+
+// StopRunningConsumers stops all running instances of Eventing.Consumer
+func (p *Producer) StopRunningConsumers() {
+	logPrefix := "Producer::StopRunningConsumers"
+
+	logging.Infof("%s [%s:%d] Stopping running instances of Eventing.Consumer",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
+	for _, eventingConsumer := range p.runningConsumers {
+		p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[eventingConsumer])
+		delete(p.consumerSupervisorTokenMap, eventingConsumer)
+	}
+	p.runningConsumers = p.runningConsumers[:0]
+}

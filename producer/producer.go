@@ -219,7 +219,6 @@ func (p *Producer) Serve() {
 			}
 
 			p.signalStopPersistAllCh <- struct{}{}
-			p.ProducerListener.Close()
 
 			p.notifySupervisorCh <- struct{}{}
 
@@ -254,7 +253,6 @@ func (p *Producer) Stop() {
 	p.metadataBucketHandle.Close()
 	p.stopProducerCh <- struct{}{}
 	p.signalStopPersistAllCh <- struct{}{}
-	p.ProducerListener.Close()
 
 	p.appLogWriter.Close()
 

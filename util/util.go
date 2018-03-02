@@ -28,7 +28,8 @@ const (
 	EventingAdminService = "eventingAdminPort"
 	DataService          = "kv"
 	MgmtService          = "mgmt"
-	HTTPRequestTimeout   = time.Duration(5000) * time.Millisecond
+
+	HTTPRequestTimeout = time.Duration(5000) * time.Millisecond
 )
 
 type Uint16Slice []uint16
@@ -838,42 +839,25 @@ func VbucketByKey(key []byte, numVbuckets int) uint16 {
 	return uint16((crc32.ChecksumIEEE(key) >> 16) % uint32(numVbuckets))
 }
 
-var LCBGetCredsCallback = func(args ...interface{}) error {
-	endpoint := args[0].(string)
-	username := args[1].(*string)
-	password := args[2].(*string)
-
-	var err error
-	*username, *password, err = cbauth.GetMemcachedServiceAuth(endpoint)
-	if err != nil {
-		logging.Errorf("UTIL LCB Failed to get credentials for endpoint: %r, err: %v", endpoint, err)
-	}
-
-	return err
-}
-
-var GoCBGetCredsCallback = func(args ...interface{}) error {
-	endpoint := args[0].(string)
-	username := args[1].(*string)
-	password := args[2].(*string)
-
-	var err error
-	*username, *password, err = cbauth.GetMemcachedServiceAuth(endpoint)
-	if err != nil {
-		logging.Errorf("UTIL GoCB Failed to get credentials for endpoint: %r, err: %v", endpoint, err)
-	}
-
-	return err
+func StripScheme(endpoint string) string {
+	return strings.TrimPrefix(strings.TrimPrefix(endpoint, "http://"), "https://")
 }
 
 func (dynAuth *DynamicAuthenticator) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, error) {
 	logging.Infof("UTIL Authenticating endpoint: %r bucket: %s", req.Endpoint, req.Bucket)
 
-	var username, password string
-	Retry(NewFixedBackoff(time.Second), GoCBGetCredsCallback, req.Endpoint, &username, &password)
+	strippedEndpoint := StripScheme(req.Endpoint)
+	username, password, err := cbauth.GetMemcachedServiceAuth(strippedEndpoint)
+	if err != nil {
+		return []gocb.UserPassPair{{
+			Username: "",
+			Password: "",
+		}}, fmt.Errorf("Failed to fetch system rbac credentials")
+	} else {
+		return []gocb.UserPassPair{{
+			Username: username,
+			Password: password,
+		}}, nil
+	}
 
-	return []gocb.UserPassPair{{
-		Username: username,
-		Password: password,
-	}}, nil
 }

@@ -338,27 +338,6 @@ func (m *ServiceMgr) getTimerHostPortAddrs(w http.ResponseWriter, r *http.Reques
 	fmt.Fprintf(w, "")
 }
 
-func (m *ServiceMgr) getAggEventsPSec(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
-	values := r.URL.Query()
-	appName := values["name"][0]
-
-	logging.Debugf("Reading aggregate events processed per second for %v", appName)
-
-	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
-
-	pStats, err := util.GetAggProcessedPSec(fmt.Sprintf("/getEventsPSec?name=%s", appName), m.eventingNodeAddrs)
-	if err != nil {
-		logging.Errorf("Failed to processing stats for app: %v, err: %v", appName, err)
-		return
-	}
-
-	fmt.Fprintf(w, "%v", pStats)
-}
-
 func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
@@ -380,32 +359,6 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 		fmt.Fprintf(w, "%s", string(data))
 
-	} else {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-		fmt.Fprintf(w, "App: %v not deployed", appName)
-	}
-}
-
-func (m *ServiceMgr) getEventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
-	values := r.URL.Query()
-	appName := values["name"][0]
-
-	if m.checkIfDeployed(appName) {
-		producerHostPortAddr := m.superSup.AppProducerHostPortAddr(appName)
-
-		pSec, err := util.GetProcessedPSec("/getEventsPSec", producerHostPortAddr)
-		if err != nil {
-			logging.Errorf("Failed to capture events processed/sec stat from producer for app: %v on current node, err: %v",
-				appName, err)
-			return
-		}
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%v", pSec)
 	} else {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 		fmt.Fprintf(w, "App: %v not deployed", appName)
@@ -442,7 +395,7 @@ var getDeployedAppsCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	logging.Infof("Cluster wide deployed app status: %v", aggDeployedApps)
+	logging.Infof("Cluster wide deployed app status: %r", aggDeployedApps)
 
 	return nil
 }
@@ -922,7 +875,7 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	data, err := json.Marshal(respData)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
 		fmt.Fprintf(w, "{\"error\":\"Failed to marshal response for stats, err: %v\"}", err)
 		return
 	}
@@ -1316,15 +1269,19 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var username, password string
-	util.Retry(util.NewFixedBackoff(time.Second), util.LCBGetCredsCallback, string(data), &username, &password)
+	strippedEndpoint := util.StripScheme(string(data))
+	username, password, err := cbauth.GetMemcachedServiceAuth(strippedEndpoint)
+	if err != nil {
+		logging.Errorf("Failed to get credentials for endpoint: %r, err: %v", strippedEndpoint, err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errRbacCreds.Code))
+	} else {
+		response := url.Values{}
+		response.Add("username", username)
+		response.Add("password", password)
 
-	response := url.Values{}
-	response.Add("username", username)
-	response.Add("password", password)
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s", response.Encode())
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", response.Encode())
+	}
 }
 
 func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
@@ -1357,14 +1314,14 @@ func (m *ServiceMgr) validateLocalAuth(w http.ResponseWriter, r *http.Request) b
 		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
-	r_usr, r_key, ok := r.BasicAuth()
+	rUsr, rKey, ok := r.BasicAuth()
 	if !ok {
 		logging.Warnf("No credentials on request to %r", r.URL)
 		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
 	usr, key := util.LocalKey()
-	if r_usr != usr || r_key != key {
+	if rUsr != usr || rKey != key {
 		logging.Warnf("Cannot authorize request to %r", r.URL)
 		w.WriteHeader(http.StatusForbidden)
 		return false
