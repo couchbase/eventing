@@ -6,9 +6,10 @@ cat > ~/.cienv <<EOF
     export RELEASE=5.5.0
     export MANIFEST="couchbase-server/vulcan.xml"
     export MODE="functional,integration"
+    export BRANCH="unstable"
     #export WATCHERS="somebody@couchbase.com nobody@couchbase.com"
-    #export PEGGED=3277
-    #export GERRIT=87890
+    #export PEGGED=1979
+    #export GERRIT="90331"
 EOF
 fi
 source ~/.cienv
