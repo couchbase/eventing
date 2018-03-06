@@ -353,7 +353,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " cron_timers_per_doc: " << h_config->cron_timers_per_doc
                << " curr_eventing_port: " << settings->eventing_port
                << " curr_eventing_sslport: " << settings->eventing_sslport
-               << " kv_host_port: " << settings->kv_host_port
+               << " kv_host_port: " << R(settings->kv_host_port)
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
                << " fuzz offset: " << h_config->fuzz_offset
@@ -450,7 +450,7 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
 }
 
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
-  LOG(logInfo) << "Eventing dir: " << settings->eventing_dir << std::endl;
+  LOG(logInfo) << "Eventing dir: " << R(settings->eventing_dir) << std::endl;
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());

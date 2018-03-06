@@ -44,6 +44,8 @@ func (r *rebalancer) doRebalance() {
 }
 
 func (r *rebalancer) gatherProgress() {
+	logPrefix := "rebalancer::gatherProgress"
+
 	progressTicker := time.NewTicker(rebalanceProgressUpdateTickInterval)
 
 	<-progressTicker.C
@@ -56,26 +58,26 @@ func (r *rebalancer) gatherProgress() {
 	// Store the initial state of rebalance progress in metakv
 	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 	if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
-		logging.Warnf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress from all nodes, initProgress: %v errMap dump: %r",
-			initProgress, errMap)
+		logging.Warnf(" %s Failed to capture cluster wide rebalance progress from all nodes, initProgress: %v errMap dump: %r",
+			logPrefix, initProgress, errMap)
 
 		util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
-		r.cb.done(fmt.Errorf("Failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
+		r.cb.done(fmt.Errorf("%s Failed to aggregate rebalance progress from all eventing nodes, err: %v", logPrefix, errMap), r.done)
 		return
 	} else if len(errMap) > 0 && len(r.keepNodes) > 1 {
-		logging.Warnf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress, initProgress: %v errMap dump: %r",
-			initProgress, errMap)
+		logging.Warnf("%s Failed to capture cluster wide rebalance progress, initProgress: %v errMap dump: %r",
+			logPrefix, initProgress, errMap)
 	} else if len(errMap) == 1 && len(r.keepNodes) == 1 {
-		logging.Warnf("rebalancer::gatherProgress Failed to capture rebalance progress, initProgress: %v errMap dump: %r",
-			initProgress, errMap)
+		logging.Warnf("%s Failed to capture rebalance progress, initProgress: %v errMap dump: %r",
+			logPrefix, initProgress, errMap)
 		return
 	}
 
-	logging.Infof("rebalancer::gatherProgress initProgress dump: %r", initProgress)
+	logging.Infof("%s initProgress dump: %r", logPrefix, initProgress)
 
 	buf, err := json.Marshal(initProgress)
 	if err != nil {
-		logging.Errorf("rebalancer::gatherProgress Failed to marshal rebalance progress. Retrying")
+		logging.Errorf("%s Failed to marshal rebalance progress. Retrying", logPrefix)
 		util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
 		return
 	}
@@ -83,7 +85,7 @@ func (r *rebalancer) gatherProgress() {
 	progressPath := fmt.Sprintf("%sprogress", metakvRebalanceProgress)
 	err = util.MetakvSet(progressPath, buf, nil)
 	if err != nil {
-		logging.Errorf("rebalancer::gatherProgress Failed to write rebalance init progress to metakv. Retrying")
+		logging.Errorf("%s Failed to write rebalance init progress to metakv. Retrying", logPrefix)
 		util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
 		return
 	}
@@ -93,10 +95,10 @@ func (r *rebalancer) gatherProgress() {
 		case <-progressTicker.C:
 			p, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 			if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
-				logging.Errorf("rebalancer::gatherProgress Failed to capture cluster wide rebalance progress from all nodes, errMap dump: %r", errMap)
+				logging.Errorf("%s Failed to capture cluster wide rebalance progress from all nodes, errMap dump: %r", logPrefix, errMap)
 
 				util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
-				r.cb.done(fmt.Errorf("Failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
+				r.cb.done(fmt.Errorf("%s Failed to aggregate rebalance progress from all eventing nodes, err: %v", logPrefix, errMap), r.done)
 				progressTicker.Stop()
 				return
 			} else if len(errMap) > 0 {
@@ -112,18 +114,18 @@ func (r *rebalancer) gatherProgress() {
 
 				buf, err = util.MetakvGet(progressPath)
 				if err != nil {
-					logging.Errorf("rebalancer::gatherProgress Failed to read rebalance init progress from metakv")
+					logging.Errorf("%s Failed to read rebalance init progress from metakv", logPrefix)
 					continue
 				}
 
 				err = json.Unmarshal(buf, &aggProgress)
 				if err != nil {
-					logging.Errorf("rebalancer::gatherProgress Failed to unmarshal rebalance init progress")
+					logging.Errorf("%s Failed to unmarshal rebalance init progress", logPrefix)
 					continue
 				}
 
-				logging.Infof("rebalancer::gatherProgress total vbs to shuffle: %v vbs remaining to shuffle: %v",
-					aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle)
+				logging.Infof("%s total vbs to shuffle: %v vbs remaining to shuffle: %v",
+					logPrefix, aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle)
 
 				if p.VbsRemainingToShuffle > aggProgress.VbsRemainingToShuffle {
 					aggProgress.VbsRemainingToShuffle = p.VbsRemainingToShuffle

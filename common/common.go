@@ -66,6 +66,7 @@ type EventingProducer interface {
 	PlannerStats() []*PlannerNodeVbMapping
 	PurgeAppLog()
 	PurgePlasmaRecords()
+	RebalanceStatus() bool
 	RebalanceTaskProgress() *RebalanceProgress
 	SignalBootstrapFinish()
 	SignalCheckpointBlobCleanup()
@@ -109,6 +110,7 @@ type EventingConsumer interface {
 	NotifySettingsChange()
 	Pid() int
 	PurgePlasmaRecords(vb uint16) error
+	RebalanceStatus() bool
 	RebalanceTaskProgress() *RebalanceProgress
 	Serve()
 	SetConnHandle(net.Conn)
@@ -148,6 +150,7 @@ type EventingSuperSup interface {
 	GetSourceMap(appName string) string
 	NotifyPrepareTopologyChange(keepNodes []string)
 	PlannerStats(appName string) []*PlannerNodeVbMapping
+	RebalanceStatus() bool
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
 	RestPort() string
 	SignalStartDebugger(appName string)

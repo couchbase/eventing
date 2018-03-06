@@ -13,6 +13,8 @@ import (
 )
 
 func (c *Consumer) controlRoutine() {
+	logPrefix := "Consumer::controlRoutine"
+
 	for {
 		select {
 		case <-c.clusterStateChangeNotifCh:
@@ -22,34 +24,36 @@ func (c *Consumer) controlRoutine() {
 			c.stopVbOwnerGiveupCh = make(chan struct{}, c.vbOwnershipGiveUpRoutineCount)
 			c.stopVbOwnerTakeoverCh = make(chan struct{}, c.vbOwnershipTakeoverRoutineCount)
 
-			logging.Infof("CRCR[%s:%s:%s:%d] Got notification that cluster state has changed",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+			logging.Infof("%s [%s:%s:%d] Got notification that cluster state has changed",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 			c.vbsStreamClosedRWMutex.Lock()
 			c.vbsStreamClosed = make(map[uint16]bool)
 			c.vbsStreamClosedRWMutex.Unlock()
 
 			c.isRebalanceOngoing = true
+			logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
 			go c.vbsStateUpdate()
 
 		case <-c.signalSettingsChangeCh:
 
-			logging.Infof("CRCR[%s:%s:%s:%d] Got notification for settings change",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+			logging.Infof("%s [%s:%s:%d] Got notification for settings change",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 			settingsPath := metakvAppSettingsPath + c.app.AppName
 			sData, err := util.MetakvGet(settingsPath)
 			if err != nil {
-				logging.Errorf("CRCR[%s:%s:%s:%d] Failed to fetch updated settings from metakv, err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+				logging.Errorf("%s [%s:%s:%d] Failed to fetch updated settings from metakv, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 				continue
 			}
 
 			settings := make(map[string]interface{})
 			err = json.Unmarshal(sData, &settings)
 			if err != nil {
-				logging.Errorf("CRCR[%s:%s:%s:%d] Failed to unmarshal settings received from metakv, err: %r",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal settings received from metakv, err: %r",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 				continue
 			}
 
@@ -92,21 +96,21 @@ func (c *Consumer) controlRoutine() {
 			deployedApps := c.superSup.GetDeployedApps()
 			if _, ok := deployedApps[c.app.AppName]; !ok {
 				c.vbsRemainingToRestream = make([]uint16, 0)
-				logging.Infof("CRCR[%s:%s:%s:%d] Discarding request to restream vbs: %v as the app has been undeployed",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
+				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v as the app has been undeployed",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
 				continue
 			}
 
 			if !c.isRebalanceOngoing {
-				logging.Infof("CRCR[%s:%s:%s:%d] Discarding request to restream vbs: %v as rebalance has been stopped",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
+				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v as rebalance has been stopped",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
 				c.vbsRemainingToRestream = make([]uint16, 0)
 				continue
 			}
 
 			sort.Sort(util.Uint16Slice(vbsToRestream))
-			logging.Verbosef("CRCR[%s:%s:%s:%d] vbsToRestream len: %v dump: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsToRestream), util.Condense(vbsToRestream))
+			logging.Verbosef("%s [%s:%s:%d] vbsToRestream len: %v dump: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsToRestream), util.Condense(vbsToRestream))
 
 			var vbsFailedToStartStream []uint16
 
@@ -128,8 +132,8 @@ func (c *Consumer) controlRoutine() {
 				var cas gocb.Cas
 				vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
 
-				logging.Debugf("CRCR[%s:%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
+				logging.Debugf("%s [%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 				err := c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
@@ -138,8 +142,8 @@ func (c *Consumer) controlRoutine() {
 				}
 			}
 
-			logging.Debugf("CRCR[%s:%s:%s:%d] vbsFailedToStartStream => len: %v dump: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), len(vbsFailedToStartStream), util.Condense(vbsFailedToStartStream))
+			logging.Debugf("%s [%s:%s:%d] vbsFailedToStartStream => len: %v dump: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsFailedToStartStream), util.Condense(vbsFailedToStartStream))
 
 			vbsToRestream = util.VbsSliceDiff(vbsFailedToStartStream, vbsToRestream)
 
@@ -152,8 +156,8 @@ func (c *Consumer) controlRoutine() {
 			sort.Sort(util.Uint16Slice(diff))
 
 			if vbsRemainingToRestream > 0 {
-				logging.Verbosef("CRCR[%s:%s:%s:%d] Retrying vbsToRestream, remaining len: %v dump: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbsRemainingToRestream, util.Condense(diff))
+				logging.Verbosef("%s [%s:%s:%d] Retrying vbsToRestream, remaining len: %v dump: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vbsRemainingToRestream, util.Condense(diff))
 				goto retryVbsRemainingToRestream
 			}
 

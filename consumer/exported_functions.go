@@ -238,8 +238,10 @@ func (c *Consumer) SetFeedbackConnHandle(conn net.Conn) {
 // SignalBootstrapFinish is leveraged by Eventing.Producer instance to know
 // if corresponding Eventing.Consumer instance has finished bootstrap
 func (c *Consumer) SignalBootstrapFinish() {
-	logging.Infof("CREF[%s:%s:%s:%d] Got request to signal bootstrap status",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+	logPrefix := "Consumer::SignalBootstrapFinish"
+
+	logging.Infof("%s [%s:%s:%d] Got request to signal bootstrap status",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	<-c.signalBootstrapFinishCh
 }
@@ -337,10 +339,12 @@ func (c *Consumer) GetLcbExceptionsStats() map[string]uint64 {
 
 // SpawnCompilationWorker bring up a CPP worker to compile the user supplied handler code
 func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventingPort string) (*common.CompileStatus, error) {
+	logPrefix := "Consumer::SpawnCompilationWorker"
+
 	listener, err := net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
 	if err != nil {
-		logging.Errorf("CREF[%s:%s:%s:%d] Compilation worker: Failed to listen on tcp port, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		logging.Errorf("%s [%s:%s:%d] Compilation worker: Failed to listen on tcp port, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return nil, err
 	}
 
@@ -352,21 +356,21 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 		var err error
 		c.conn, err = listener.Accept()
 		if err != nil {
-			logging.Errorf("CREF[%s:%s:%s:%d] Compilation worker: Error on accept, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+			logging.Errorf("%s [%s:%s:%d] Compilation worker: Error on accept, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 			return
 		}
 
-		logging.Infof("CREF[%s:%s:%s:%d] Compilation worker: got connection: %r",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.conn)
+		logging.Infof("%s [%s:%s:%d] Compilation worker: got connection: %r",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.conn)
 
 		connectedCh <- struct{}{}
 	}(listener, connectedCh)
 
 	_, c.tcpPort, err = net.SplitHostPort(listener.Addr().String())
 	if err != nil {
-		logging.Errorf("CREF[%s:%s:%s:%d] Failed to parse address, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		logging.Errorf("%s [%s:%s:%d] Failed to parse address, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 	}
 
 	var pid int
@@ -392,7 +396,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 		outPipe, err := cmd.StdoutPipe()
 		if err != nil {
-			logging.Errorf("CREF[%s:%s:%s:%d] Failed to open stdout pipe, err: %v",
+			logging.Errorf("%s [%s:%s:%d] Failed to open stdout pipe, err: %v",
 				appName, c.workerName, c.tcpPort, c.Pid(), err)
 			return
 		}
@@ -401,13 +405,13 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 		err = cmd.Start()
 		if err != nil {
-			logging.Errorf("CREF[%s:%s:%s:%d] Failed to spawn compilation worker, err: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+			logging.Errorf("%s [%s:%s:%d] Failed to spawn compilation worker, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 			return
 		}
 		pid = cmd.Process.Pid
-		logging.Infof("CREF[%s:%s:%s:%d] compilation worker launched",
-			c.app.AppName, c.workerName, c.tcpPort, pid)
+		logging.Infof("%s [%s:%s:%d] compilation worker launched",
+			logPrefix, c.workerName, c.tcpPort, pid)
 
 		bufOut := bufio.NewReader(outPipe)
 
@@ -415,8 +419,8 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			for {
 				msg, _, err := bufOut.ReadLine()
 				if err != nil {
-					logging.Warnf("CREF[%s:%s:%s:%d] Failed to read from stdout pipe, err: %v",
-						appName, c.workerName, c.tcpPort, c.Pid(), err)
+					logging.Warnf("%s [%s:%s:%d] Failed to read from stdout pipe, err: %v",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 					return
 				}
 
@@ -426,8 +430,8 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 		err = cmd.Wait()
 
-		logging.Infof("CREF[%s:%s:%s:%d] compilation worker exited with status %v",
-			c.app.AppName, c.workerName, c.tcpPort, pid, err)
+		logging.Infof("%s [%s:%s:%d] compilation worker exited with status %v",
+			logPrefix, c.workerName, c.tcpPort, pid, err)
 
 	}()
 	<-connectedCh
@@ -460,8 +464,8 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 		}
 	}
 
-	logging.Infof("CREF[%s:%s:%s:%d] compilation status %v",
-		c.app.AppName, c.workerName, c.tcpPort, pid, c.compileInfo)
+	logging.Infof("%s [%s:%s:%d] compilation status %v",
+		logPrefix, c.workerName, c.tcpPort, pid, c.compileInfo)
 
 	return c.compileInfo, nil
 }
@@ -513,4 +517,9 @@ func (c *Consumer) TimerDebugStats() map[int]map[string]interface{} {
 	}
 
 	return stats
+}
+
+// RebalanceStatus returns state of rebalance for consumer instance
+func (c *Consumer) RebalanceStatus() bool {
+	return c.isRebalanceOngoing
 }

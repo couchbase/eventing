@@ -66,6 +66,8 @@ type statusCodes struct {
 	errSaveConfig        statusBase
 	errGetConfig         statusBase
 	errGetCreds          statusBase
+	errGetRebStatus      statusBase
+	errRebOngoing        statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -128,6 +130,10 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusInternalServerError
 	case m.statusCodes.errGetConfig.Code:
 		return http.StatusInternalServerError
+	case m.statusCodes.errGetRebStatus.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errRebOngoing.Code:
+		return http.StatusNotAcceptable
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -165,6 +171,8 @@ func (m *ServiceMgr) initErrCodes() {
 		errNoEventingNodes:   statusBase{"ERR_NO_EVENTING_NODES_FOUND", 32},
 		errSaveConfig:        statusBase{"ERR_SAVE_CONFIG", 33},
 		errGetConfig:         statusBase{"ERR_GET_CONFIG", 34},
+		errGetRebStatus:      statusBase{"ERR_GET_REBALANCE_STATUS", 35},
+		errRebOngoing:        statusBase{"ERR_REBALANCE_ONGOING", 36},
 	}
 
 	errors := []errorPayload{
@@ -330,6 +338,16 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errGetCreds.Name,
 			Code:        m.statusCodes.errGetCreds.Code,
 			Description: "Failed to get credentials from cbauth",
+		},
+		{
+			Name:        m.statusCodes.errGetRebStatus.Name,
+			Code:        m.statusCodes.errGetRebStatus.Code,
+			Description: "Failed to get rebalance status from eventing nodes",
+		},
+		{
+			Name:        m.statusCodes.errRebOngoing.Name,
+			Code:        m.statusCodes.errRebOngoing.Code,
+			Description: "Rebalance ongoing on some/all Eventing nodes, creating new apps or changing settings for existing apps isn't allowed",
 		},
 	}
 
