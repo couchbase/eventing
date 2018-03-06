@@ -23,7 +23,7 @@ private:
   std::queue<T> data_queue;
   std::mutex mut;
   std::condition_variable data_cond;
-  std::atomic<std::int64_t> entry_count;
+  std::atomic<std::int64_t> entry_count = {0};
 
 public:
   Queue() = default;

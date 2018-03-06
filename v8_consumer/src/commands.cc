@@ -15,14 +15,12 @@ event_type getEvent(int8_t event) {
   if (event == 1)
     return eDCP;
   if (event == 2)
-    return eHTTP;
-  if (event == 3)
     return eV8_Worker;
-  if (event == 4)
+  if (event == 3)
     return eApp_Worker_Setting;
-  if (event == 5)
+  if (event == 4)
     return eTimer;
-  if (event == 6)
+  if (event == 5)
     return eDebugger;
   return Event_Unknown;
 }
@@ -59,14 +57,6 @@ dcp_opcode getDCPOpcode(int8_t opcode) {
   if (opcode == 2)
     return oMutation;
   return DCP_Opcode_Unknown;
-}
-
-http_opcode getHTTPOpcode(int8_t opcode) {
-  if (opcode == 1)
-    return oGet;
-  if (opcode == 2)
-    return oPost;
-  return HTTP_Opcode_Unknown;
 }
 
 app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {

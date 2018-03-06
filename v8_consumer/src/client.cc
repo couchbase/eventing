@@ -15,6 +15,17 @@
 uint64_t doc_timer_responses_sent(0);
 uint64_t messages_parsed(0);
 
+std::atomic<int64_t> e_dcp_lost = {0};
+std::atomic<int64_t> e_v8_worker_lost = {0};
+std::atomic<int64_t> e_app_worker_setting_lost = {0};
+std::atomic<int64_t> e_timer_lost = {0};
+std::atomic<int64_t> e_debugger_lost = {0};
+
+std::atomic<int64_t> mutation_events_lost = {0};
+std::atomic<int64_t> delete_events_lost = {0};
+std::atomic<int64_t> cron_timer_events_lost = {0};
+std::atomic<int64_t> doc_timer_events_lost = {0};
+
 static void alloc_buffer(uv_handle_t *handle, size_t suggested_size,
                          uv_buf_t *buf) {
   std::vector<char> *read_buffer = AppWorker::GetAppWorker()->GetReadBuffer();
@@ -307,7 +318,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
             // Flush the aggregate item count in queues for all running V8
             // worker instances
-            if (workers.size() >= 1) {
+            if (!workers.empty()) {
               int64_t agg_queue_size = 0, feedback_queue_size = 0;
               for (const auto &w : workers) {
                 agg_queue_size += w.second->QueueSize();
@@ -315,8 +326,8 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
               }
 
               std::ostringstream queue_stats;
-              queue_stats << "{\"agg_queue_size\":";
-              queue_stats << agg_queue_size << ", \"feedback_queue_size\":";
+              queue_stats << R"({"agg_queue_size":)";
+              queue_stats << agg_queue_size << R"(, "feedback_queue_size":)";
               queue_stats << feedback_queue_size << "}";
 
               flatbuffers::FlatBufferBuilder builder;
@@ -476,9 +487,9 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           }
 
           if (i == 0) {
-            lstats << "\"" << HIST_FROM << "\":" << agg_hgram[i];
+            lstats << R"(")" << HIST_FROM << R"(":)" << agg_hgram[i];
           } else {
-            lstats << "\"" << i * HIST_WIDTH << "\":" << agg_hgram[i];
+            lstats << R"(")" << i * HIST_WIDTH << R"(":)" << agg_hgram[i];
           }
         }
 
@@ -493,11 +504,24 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       break;
     case oGetFailureStats:
       fstats.str(std::string());
-      fstats << "{\"bucket_op_exception_count\":";
-      fstats << bucket_op_exception_count << ", \"n1ql_op_exception_count\":";
-      fstats << n1ql_op_exception_count << ", \"timeout_count\":";
-      fstats << timeout_count << ", \"checkpoint_failure_count\":";
-      fstats << checkpoint_failure_count << "}";
+      fstats << R"({"bucket_op_exception_count":)";
+      fstats << bucket_op_exception_count << R"(, "n1ql_op_exception_count":)";
+      fstats << n1ql_op_exception_count << R"(, "timeout_count":)";
+      fstats << timeout_count << R"(, "checkpoint_failure_count":)";
+      fstats << checkpoint_failure_count << ",";
+
+      fstats << R"("dcp_events_lost": )" << e_dcp_lost << ",";
+      fstats << R"("v8worker_events_lost": )" << e_v8_worker_lost << ",";
+      fstats << R"("app_worker_setting_events_lost": )"
+             << e_app_worker_setting_lost << ",";
+      fstats << R"("timer_events_lost": )" << e_timer_lost << ",";
+      fstats << R"("debugger_events_lost": )" << e_debugger_lost << ",";
+      fstats << R"("mutation_events_lost": )" << mutation_events_lost << ",";
+      fstats << R"("delete_events_lost": )" << delete_events_lost << ",";
+      fstats << R"("cron_timer_events_lost": )" << cron_timer_events_lost
+             << ",";
+      fstats << R"("doc_timer_events_lost": )" << doc_timer_events_lost;
+      fstats << "}";
 
       resp_msg->msg.assign(fstats.str());
       resp_msg->msg_type = mV8_Worker_Config;
@@ -506,29 +530,29 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       break;
     case oGetExecutionStats:
       estats.str(std::string());
-      estats << "{\"on_update_success\":";
-      estats << on_update_success << ", \"on_update_failure\":";
-      estats << on_update_failure << ", \"on_delete_success\":";
-      estats << on_delete_success << ", \"on_delete_failure\":";
-      estats << on_delete_failure << ", \"doc_timer_create_failure\":";
-      estats << doc_timer_create_failure << ", \"messages_parsed\":";
-      estats << messages_parsed << ", \"cron_timer_msg_counter\":";
-      estats << cron_timer_msg_counter << ", \"dcp_delete_msg_counter\":";
-      estats << dcp_delete_msg_counter << ", \"dcp_mutation_msg_counter\":";
-      estats << dcp_mutation_msg_counter << ", \"doc_timer_msg_counter\":";
+      estats << R"({"on_update_success":)";
+      estats << on_update_success << R"(, "on_update_failure":)";
+      estats << on_update_failure << R"(, "on_delete_success":)";
+      estats << on_delete_success << R"(, "on_delete_failure":)";
+      estats << on_delete_failure << R"(, "doc_timer_create_failure":)";
+      estats << doc_timer_create_failure << R"(, "messages_parsed":)";
+      estats << messages_parsed << R"(, "cron_timer_msg_counter":)";
+      estats << cron_timer_msg_counter << R"(, "dcp_delete_msg_counter":)";
+      estats << dcp_delete_msg_counter << R"(, "dcp_mutation_msg_counter":)";
+      estats << dcp_mutation_msg_counter << R"(, "doc_timer_msg_counter":)";
       estats << doc_timer_msg_counter
-             << ", \"enqueued_cron_timer_msg_counter\":";
+             << R"(, "enqueued_cron_timer_msg_counter":)";
       estats << enqueued_cron_timer_msg_counter
-             << ", \"enqueued_dcp_delete_msg_counter\":";
+             << R"(, "enqueued_dcp_delete_msg_counter":)";
       estats << enqueued_dcp_delete_msg_counter
-             << ", \"enqueued_dcp_mutation_msg_counter\":";
+             << R"(, "enqueued_dcp_mutation_msg_counter":)";
       estats << enqueued_dcp_mutation_msg_counter
-             << ", \"enqueued_doc_timer_msg_counter\":";
+             << R"(, "enqueued_doc_timer_msg_counter":)";
       estats << enqueued_doc_timer_msg_counter;
-      estats << ", \"doc_timer_responses_sent\":";
+      estats << R"(, "doc_timer_responses_sent":)";
       estats << doc_timer_responses_sent;
 
-      if (workers.size() >= 1) {
+      if (!workers.empty()) {
         agg_queue_size = 0;
         feedback_queue_size = 0;
         for (const auto &w : workers) {
@@ -536,8 +560,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           feedback_queue_size += w.second->DocTimerQueueSize();
         }
 
-        estats << ", \"agg_queue_size\":" << agg_queue_size;
-        estats << ", \"feedback_queue_size\":" << feedback_queue_size;
+        estats << R"(, "agg_queue_size":)" << agg_queue_size;
+        estats << R"(, "feedback_queue_size":)" << feedback_queue_size;
       }
       estats << "}";
 
@@ -573,7 +597,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           estats << ",";
         }
 
-        estats << "\"" << entry.first << "\":" << entry.second;
+        estats << R"(")" << entry.first << R"(":)" << entry.second;
 
         if (i == agg_lcb_exceptions.size() - 1) {
           estats << "}";
@@ -589,7 +613,9 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       break;
     case oVersion:
     default:
-      LOG(logError) << "worker_opcode_unknown encountered" << std::endl;
+      LOG(logError) << "Opcode " << getV8WorkerOpcode(parsed_header->opcode)
+                    << "is not implemented for eV8Worker" << std::endl;
+      ++e_v8_worker_lost;
       break;
     }
     break;
@@ -604,6 +630,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       if (workers[worker_index] != nullptr) {
         enqueued_dcp_delete_msg_counter++;
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
+      } else {
+        LOG(logError) << "Delete event lost: worker " << worker_index
+                      << " is null" << std::endl;
+        ++delete_events_lost;
       }
       break;
     case oMutation:
@@ -611,10 +641,16 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       if (workers[worker_index] != nullptr) {
         enqueued_dcp_mutation_msg_counter++;
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
+      } else {
+        LOG(logError) << "Mutation event lost: worker " << worker_index
+                      << " is null" << std::endl;
+        ++mutation_events_lost;
       }
       break;
     default:
-      LOG(logError) << "dcp_opcode_unknown encountered" << std::endl;
+      LOG(logError) << "Opcode " << getDCPOpcode(parsed_header->opcode)
+                    << "is not implemented for eDCP" << std::endl;
+      ++e_dcp_lost;
       break;
     }
     break;
@@ -625,6 +661,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       if (workers[worker_index] != nullptr) {
         enqueued_doc_timer_msg_counter++;
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
+      } else {
+        LOG(logError) << "Doc timer event lost: worker " << worker_index
+                      << " is null" << std::endl;
+        ++doc_timer_events_lost;
       }
       break;
     case oCronTimer:
@@ -632,18 +672,16 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       if (workers[worker_index] != nullptr) {
         enqueued_cron_timer_msg_counter++;
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
+      } else {
+        LOG(logError) << "Cron timer event lost: worker " << worker_index
+                      << " is null" << std::endl;
+        ++cron_timer_events_lost;
       }
       break;
     default:
-      break;
-    }
-    break;
-  case eHTTP:
-    switch (getHTTPOpcode(parsed_header->opcode)) {
-    case oGet:
-    case oPost:
-    default:
-      LOG(logError) << "http_opcode_unknown encountered" << std::endl;
+      LOG(logError) << "Opcode " << getTimerOpcode(parsed_header->opcode)
+                    << "is not implemented for eTimer" << std::endl;
+      ++e_timer_lost;
       break;
     }
     break;
@@ -681,6 +719,11 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority = true;
       break;
     default:
+      LOG(logError) << "Opcode "
+                    << getAppWorkerSettingOpcode(parsed_header->opcode)
+                    << "is not implemented for eApp_Worker_Setting"
+                    << std::endl;
+      ++e_app_worker_setting_lost;
       break;
     }
     break;
@@ -691,6 +734,9 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       if (workers[worker_index] != nullptr) {
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
         msg_priority = true;
+      } else {
+        LOG(logError) << "Debugger start event lost: worker " << worker_index
+                      << " is null" << std::endl;
       }
       break;
     case oDebuggerStop:
@@ -698,9 +744,15 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       if (workers[worker_index] != nullptr) {
         workers[worker_index]->Enqueue(parsed_header, parsed_message);
         msg_priority = true;
+      } else {
+        LOG(logError) << "Debugger stop event lost: worker " << worker_index
+                      << " is null" << std::endl;
       }
       break;
     default:
+      LOG(logError) << "Opcode " << getDebuggerOpcode(parsed_header->opcode)
+                    << "is not implemented for eDebugger" << std::endl;
+      ++e_debugger_lost;
       break;
     }
     break;
@@ -711,14 +763,14 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 }
 
 void AppWorker::StartMainUVLoop() {
-  if (main_loop_running == false) {
+  if (!main_loop_running) {
     uv_run(&main_loop, UV_RUN_DEFAULT);
     main_loop_running = true;
   }
 }
 
 void AppWorker::StartFeedbackUVLoop() {
-  if (feedback_loop_running == false) {
+  if (!feedback_loop_running) {
     uv_run(&feedback_loop, UV_RUN_DEFAULT);
     feedback_loop_running = true;
   }
@@ -729,7 +781,7 @@ void AppWorker::WriteResponses() {
 
   while (true) {
 
-    if (workers.size() >= 1) {
+    if (!workers.empty()) {
 
       for (const auto &w : workers) {
         auto timer_entry_count = w.second->doc_timer_queue->count();
