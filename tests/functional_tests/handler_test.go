@@ -3,7 +3,6 @@
 package eventing
 
 import (
-	"fmt"
 	"log"
 	"testing"
 	"time"
