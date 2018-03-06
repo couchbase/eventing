@@ -4,6 +4,7 @@ package eventing
 
 import (
 	"fmt"
+	"log"
 	"testing"
 	"time"
 )
@@ -121,7 +122,7 @@ func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 		}
 
 		dumpStats(handler)
-		fmt.Println("Undeploying app:", handler)
+		log.Println("Undeploying app:", handler)
 		setSettings(handler, false, false, &commonSettings{})
 		bucketFlush("default")
 		bucketFlush("hello-world")
@@ -149,7 +150,7 @@ func TestDeployUndeployLoopDocTimer(t *testing.T) {
 		}
 
 		dumpStats(handler)
-		fmt.Println("Undeploying app:", handler)
+		log.Println("Undeploying app:", handler)
 		setSettings(handler, false, false, &commonSettings{})
 		bucketFlush("default")
 		bucketFlush("hello-world")
@@ -177,7 +178,7 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 		}
 
 		dumpStats(handler)
-		fmt.Println("Undeploying app:", handler)
+		log.Println("Undeploying app:", handler)
 		setSettings(handler, false, false, &commonSettings{})
 		bucketFlush("default")
 		bucketFlush("hello-world")
@@ -308,7 +309,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	}
 
 	dumpStats(appName)
-	fmt.Println("Undeploying app:", appName)
+	log.Println("Undeploying app:", appName)
 	setSettings(appName, false, false, &commonSettings{})
 
 	time.Sleep(30 * time.Second)
@@ -326,7 +327,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	}
 
 	dumpStats(appName)
-	fmt.Println("Undeploying app:", appName)
+	log.Println("Undeploying app:", appName)
 	setSettings(appName, false, false, &commonSettings{})
 
 	time.Sleep(5 * time.Second)

@@ -57,6 +57,8 @@ func postToEventindEndpoint(url string, payload []byte) {
 }
 
 func createAndDeployFunction(appName, hFileName string, settings *commonSettings) {
+	log.Printf("Deploying app: %s", appName)
+
 	content, err := getHandlerCode(hFileName)
 	if err != nil {
 		fmt.Println("Get handler code, err:", err)

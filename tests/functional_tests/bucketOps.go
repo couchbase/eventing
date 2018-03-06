@@ -2,6 +2,7 @@ package eventing
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/couchbase/gocb"
@@ -27,6 +28,8 @@ func pumpBucketOps(ops opsType, rate *rateLimit) {
 }
 
 func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
+	log.Println("Starting bucket ops to source bucket")
+
 	if ops.count == 0 {
 		ops.count = itemCount
 	}
