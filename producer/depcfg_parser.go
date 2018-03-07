@@ -14,7 +14,9 @@ import (
 )
 
 func (p *Producer) parseDepcfg() error {
-	logging.Infof("DCFG[%s] Opening up application file", p.appName)
+	logPrefix := "Producer::parseDepcfg"
+
+	logging.Infof("%s [%s] Opening up application file", logPrefix, p.appName)
 
 	var cfgData []byte
 	path := metakvAppsPath + p.appName
@@ -51,14 +53,14 @@ func (p *Producer) parseDepcfg() error {
 	settingsPath := metakvAppSettingsPath + p.appName
 	sData, sErr := util.MetakvGet(settingsPath)
 	if sErr != nil {
-		logging.Errorf("DCFG[%s] Failed to fetch settings from metakv, err: %v", p.appName, sErr)
+		logging.Errorf("%s [%s] Failed to fetch settings from metakv, err: %v", logPrefix, p.appName, sErr)
 		return sErr
 	}
 
 	settings := make(map[string]interface{})
 	uErr := json.Unmarshal(sData, &settings)
 	if uErr != nil {
-		logging.Errorf("DCFG[%s] Failed to unmarshal settings received from metakv, err: %v", p.appName, uErr)
+		logging.Errorf("%s [%s] Failed to unmarshal settings received from metakv, err: %v", logPrefix, p.appName, uErr)
 		return uErr
 	}
 
@@ -323,8 +325,8 @@ func (p *Producer) parseDepcfg() error {
 	logLevel := settings["log_level"].(string)
 	logging.SetLogLevel(util.GetLogLevel(logLevel))
 
-	logging.Infof("DCFG[%s] Loaded app => wc: %v bucket: %v statsTickD: %v",
-		p.appName, p.handlerConfig.WorkerCount, p.handlerConfig.SourceBucket, p.handlerConfig.StatsLogInterval)
+	logging.Infof("%s [%s] Loaded app => wc: %v bucket: %v statsTickD: %v",
+		logPrefix, p.appName, p.handlerConfig.WorkerCount, p.handlerConfig.SourceBucket, p.handlerConfig.StatsLogInterval)
 
 	if p.handlerConfig.WorkerCount <= 0 {
 		return fmt.Errorf("%v", errorUnexpectedWorkerCount)
@@ -335,7 +337,7 @@ func (p *Producer) parseDepcfg() error {
 	var err error
 	p.kvHostPorts, err = util.KVNodesAddresses(p.auth, p.nsServerHostPort)
 	if err != nil {
-		logging.Errorf("DCFG[%s] Failed to get list of kv nodes in the cluster, err: %v", p.appName, err)
+		logging.Errorf("%s [%s] Failed to get list of kv nodes in the cluster, err: %v", logPrefix, p.appName, err)
 		return err
 	}
 

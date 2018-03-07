@@ -32,19 +32,21 @@ func NewTimerTransfer(consumer common.EventingConsumer, appName, eventingDir, ho
 
 // Serve acts as entry point for supervising routine
 func (s *TransferSrv) Serve() {
+	logPrefix := "TransferSrv::Serve"
+
 	session := &Session{
 		mu:             &sync.Mutex{},
 		sessionFileMap: make(map[SessionID]*os.File),
 	}
 
-	logging.Infof("TTSR[%s:%s] Registering RPC server", s.AppName, s.WorkerName)
+	logging.Infof("%s [%s:%s] Registering RPC server", logPrefix, s.AppName, s.WorkerName)
 
 	err := s.Server.RegisterName(s.WorkerName, &RPC{
 		server:  s,
 		session: session,
 	})
 	if err != nil {
-		logging.Errorf("TTSR[%s:%s] Failed to spawn timer transfer routine, err: %v", s.AppName, s.WorkerName, err)
+		logging.Errorf("%s [%s:%s] Failed to spawn timer transfer routine, err: %v", logPrefix, s.AppName, s.WorkerName, err)
 		return
 	}
 
@@ -52,23 +54,25 @@ func (s *TransferSrv) Serve() {
 
 	s.Listener, err = net.Listen("tcp", ":0")
 	if err != nil {
-		logging.Errorf("TTSR[%s:%s] Failed to listen, err: %v", s.AppName, s.WorkerName, err)
+		logging.Errorf("%s [%s:%s] Failed to listen, err: %v", logPrefix, s.AppName, s.WorkerName, err)
 		return
 	}
 
 	s.Addr = s.Listener.Addr().String()
-	logging.Infof("TTSR[%s:%s] Timer transfer routine addr: %v", s.AppName, s.WorkerName, s.Addr)
+	logging.Infof("%s [%s:%s] Timer transfer routine addr: %r", logPrefix, s.AppName, s.WorkerName, s.Addr)
 
 	http.Serve(s.Listener, s.Mux)
 }
 
 // Stop acts termination routine for timer transferring routine
 func (s *TransferSrv) Stop() {
+	logPrefix := "TransferSrv::Stop"
+
 	err := s.Listener.Close()
 	if err != nil {
-		logging.Errorf("TTSR[%s:%s] Failed to stop timer transfer server, err: %v", s.AppName, s.WorkerName, err)
+		logging.Errorf("%s [%s:%s] Failed to stop timer transfer server, err: %v", logPrefix, s.AppName, s.WorkerName, err)
 	} else {
-		logging.Infof("TTSR[%s:%s] Successfully stopped timer transfer handle", s.AppName, s.WorkerName)
+		logging.Infof("%s [%s:%s] Successfully stopped timer transfer handle", logPrefix, s.AppName, s.WorkerName)
 	}
 }
 

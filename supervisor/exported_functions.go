@@ -72,6 +72,9 @@ func (s *SuperSupervisor) GetDebuggerURL(appName string) string {
 
 // GetDeployedApps returns list of deployed apps and their last deployment time
 func (s *SuperSupervisor) GetDeployedApps() map[string]string {
+	s.appListRWMutex.RLock()
+	defer s.appListRWMutex.RUnlock()
+
 	return s.deployedApps
 }
 
@@ -300,4 +303,18 @@ func (s *SuperSupervisor) RebalanceStatus() bool {
 	}
 
 	return false
+}
+
+// BootstrapAppList returns list of apps undergoing bootstrap
+func (s *SuperSupervisor) BootstrapAppList() map[string]string {
+	bootstrappingApps := make(map[string]string)
+
+	s.appListRWMutex.RLock()
+	defer s.appListRWMutex.RUnlock()
+
+	for appName, ts := range s.bootstrappingApps {
+		bootstrappingApps[appName] = ts
+	}
+
+	return bootstrappingApps
 }

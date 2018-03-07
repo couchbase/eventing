@@ -15,14 +15,19 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 
 	m := args[0].(*ServiceMgr)
 
+	var ignoreIfZeroNodes bool
+	if len(args) == 2 {
+		ignoreIfZeroNodes = args[1].(bool)
+	}
+
 	hostAddress := net.JoinHostPort(util.Localhost(), m.restPort)
 
 	eventingNodeAddrs, err := util.EventingNodesAddresses(m.auth, hostAddress)
 	if err != nil {
 		logging.Errorf("%s Failed to get all eventing nodes, err: %v", logPrefix, err)
 		return err
-	} else if len(eventingNodeAddrs) == 0 {
-		logging.Errorf("%s Count of eventing nodes reported is 0, unexpected", logPrefix)
+	} else if len(eventingNodeAddrs) == 0 && !ignoreIfZeroNodes {
+		logging.Errorf("%s IgnoreIfZeroNodes: %v Count of eventing nodes reported is 0, unexpected", logPrefix, ignoreIfZeroNodes)
 		return fmt.Errorf("eventing node count reported as 0")
 	} else {
 		logging.Debugf("%s Got eventing nodes: %r", logPrefix, fmt.Sprintf("%#v", eventingNodeAddrs))
@@ -62,11 +67,12 @@ var storeKeepNodesCallback = func(args ...interface{}) error {
 
 	err = util.MetakvSet(metakvConfigKeepNodes, data, nil)
 	if err != nil {
-		logging.Errorf("%s Failed to store keep nodes UUIDs: %v in metakv, err: %v",
+		logging.Errorf("%s Failed to store keepNodes UUIDs: %v in metakv, err: %v",
 			logPrefix, keepNodeUUIDs, err)
 		return err
 	}
 
+	logging.Infof("%s Keep nodes UUID(s): %v", logPrefix, keepNodeUUIDs)
 	return nil
 }
 
@@ -101,8 +107,24 @@ var cleanupEventingMetaKvPath = func(args ...interface{}) error {
 	return err
 }
 
+var metakvGetCallback = func(args ...interface{}) error {
+	logPrefix := "ServiceMgr::metakvGetCallback"
+
+	path := args[0].(string)
+	cfgData := args[1].(*[]byte)
+
+	var err error
+	*cfgData, err = util.MetakvGet(path)
+	if err != nil {
+		logging.Errorf("%s Failed to lookup path: %v from metakv, err: %v", logPrefix, path, err)
+		return err
+	}
+
+	return nil
+}
+
 var metaKVSetCallback = func(args ...interface{}) error {
-	logPrefix := "logPrefix::metaKVSetCallback"
+	logPrefix := "ServiceMgr::metaKVSetCallback"
 
 	path := args[0].(string)
 	changeID := args[1].(string)

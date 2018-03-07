@@ -28,6 +28,8 @@ func (c *Consumer) openPlasmaStore(vbPlasmaDir string) (*plasma.Plasma, error) {
 }
 
 var downloadDirCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::downloadDirCallback"
+
 	c := args[0].(*Consumer)
 	client := args[1].(*timer.Client)
 	timerDir := args[2].(string)
@@ -38,8 +40,8 @@ var downloadDirCallback = func(args ...interface{}) error {
 
 	err := client.DownloadDir(vb, timerDir, c.eventingDir)
 	if err != nil {
-		logging.Errorf("Consumer::downloadDirCallback [%s:%d] vb: %v Failed to download timer dir from node: %r src: %r dst: %r err: %v",
-			c.workerName, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir, err)
+		logging.Errorf("%s [%s:%d] vb: %v Failed to download timer dir from node: %r src: %r dst: %r err: %v",
+			logPrefix, c.workerName, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir, err)
 
 		return errFailedRPCDownloadDir
 	}

@@ -375,7 +375,7 @@ func (c *Consumer) NotifyClusterChange() {
 func (c *Consumer) NotifyRebalanceStop() {
 	logPrefix := "Consumer::NotifyRebalanceStop"
 
-	logging.Infof("[%s:%s:%d] Got notification about rebalance stop",
+	logging.Infof("%s [%s:%s:%d] Got notification about rebalance stop",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.isRebalanceOngoing = false

@@ -385,17 +385,17 @@ func (m *ServiceMgr) getAggTimerHostPortAddrs(w http.ResponseWriter, r *http.Req
 }
 
 var getDeployedAppsCallback = func(args ...interface{}) error {
-	m := args[0].(*ServiceMgr)
-	aggDeployedApps := args[1].(*map[string]map[string]string)
+	aggDeployedApps := args[0].(*map[string]map[string]string)
+	nodeAddrs := args[1].([]string)
 
 	var err error
-	*aggDeployedApps, err = util.GetDeployedApps("/getLocallyDeployedApps", m.eventingNodeAddrs)
+	*aggDeployedApps, err = util.GetDeployedApps("/getLocallyDeployedApps", nodeAddrs)
 	if err != nil {
 		logging.Errorf("Failed to get deployed apps, err: %v", err)
 		return err
 	}
 
-	logging.Infof("Cluster wide deployed app status: %r", aggDeployedApps)
+	logging.Infof("Cluster wide deployed app status: %r", *aggDeployedApps)
 
 	return nil
 }
@@ -408,10 +408,16 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListDeployed, r, nil)
 
-	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+	nodeAddrs, err := m.getActiveNodeAddrs()
+	if err != nil {
+		logging.Errorf("Failed to fetch active Eventing nodes, err: %v", err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errActiveEventingNodes.Code))
+		fmt.Fprintf(w, "")
+		return
+	}
 
 	aggDeployedApps := make(map[string]map[string]string)
-	util.Retry(util.NewFixedBackoff(time.Second), getDeployedAppsCallback, m, &aggDeployedApps)
+	util.Retry(util.NewFixedBackoff(time.Second), getDeployedAppsCallback, &aggDeployedApps, nodeAddrs)
 
 	appDeployedNodesCounter := make(map[string]int)
 
@@ -425,7 +431,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	numEventingNodes := len(m.eventingNodeAddrs)
+	numEventingNodes := len(nodeAddrs)
 	if numEventingNodes <= 0 {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errNoEventingNodes.Code))
 		fmt.Fprintf(w, "")
@@ -1292,6 +1298,37 @@ func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Reques
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 	fmt.Fprintf(w, "App: %v not deployed", appName)
+}
+
+func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+
+	appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", m.eventingNodeAddrs)
+	if err != nil {
+		logging.Errorf("Failed to grab bootstrapping app list from all eventing nodes or some apps are undergoing bootstrap")
+		return
+	}
+
+	w.Write([]byte(strconv.FormatBool(appsBootstrapping)))
+}
+
+func (m *ServiceMgr) getBootstrappingApps(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	bootstrappingApps := m.superSup.BootstrapAppList()
+	data, err := json.Marshal(bootstrappingApps)
+	if err != nil {
+		fmt.Fprintf(w, "Failed to marshal bootstrapping app list, err: %v", err)
+		return
+	}
+
+	w.Write(data)
 }
 
 func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Request) {

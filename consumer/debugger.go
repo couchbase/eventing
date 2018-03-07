@@ -27,6 +27,8 @@ func newDebugClient(c *Consumer, appName, eventingPort, ipcType, tcpPort, worker
 }
 
 func (c *debugClient) Serve() {
+	logPrefix := "debugClient::Serve"
+
 	c.cmd = exec.Command(
 		"eventing-consumer",
 		c.appName,
@@ -50,26 +52,28 @@ func (c *debugClient) Serve() {
 
 	err := c.cmd.Start()
 	if err != nil {
-		logging.Errorf("CRDCL[%s:%s:%s:%d] Failed to spawn c++ worker for debugger",
-			c.appName, c.workerName, c.debugTCPPort, c.osPid)
+		logging.Errorf("%s [%s:%s:%d] Failed to spawn c++ worker for debugger",
+			logPrefix, c.workerName, c.debugTCPPort, c.osPid)
 	} else {
-		logging.Infof("CRDCL[%s:%s:%s:%d] C++ worker launched for debugger",
-			c.appName, c.workerName, c.debugTCPPort, c.osPid)
+		logging.Infof("%s [%s:%s:%d] C++ worker launched for debugger",
+			logPrefix, c.workerName, c.debugTCPPort, c.osPid)
 	}
 
 	err = c.cmd.Wait()
 	if err != nil {
-		logging.Warnf("CRCL[%s:%s:%s:%d] Exiting c++ debug worker with error: %v",
-			c.appName, c.workerName, c.debugTCPPort, c.osPid, err)
+		logging.Warnf("%s [%s:%s:%d] Exiting c++ debug worker with error: %v",
+			logPrefix, c.workerName, c.debugTCPPort, c.osPid, err)
 	}
 
-	logging.Debugf("CRDCL[%s:%s:%s:%d] Exiting C++ worker spawned for debugger",
-		c.appName, c.workerName, c.debugTCPPort, c.osPid)
+	logging.Debugf("%s [%s:%s:%d] Exiting C++ worker spawned for debugger",
+		logPrefix, c.workerName, c.debugTCPPort, c.osPid)
 }
 
 func (c *debugClient) Stop() {
-	logging.Debugf("CRDCL[%s:%s:%s:%d] Stopping C++ worker spawned for debugger",
-		c.appName, c.workerName, c.debugTCPPort, c.osPid)
+	logPrefix := "debugClient::Stop"
+
+	logging.Debugf("%s [%s:%s:%d] Stopping C++ worker spawned for debugger",
+		logPrefix, c.workerName, c.debugTCPPort, c.osPid)
 
 	c.consumerHandle.sendMsgToDebugger = false
 
@@ -90,6 +94,8 @@ func (c *debugClient) String() string {
 }
 
 func (c *Consumer) pollForDebuggerStart() {
+	logPrefix := "Consumer::pollForDebuggerStart"
+
 	dFlagKey := fmt.Sprintf("%s::%s", c.app.AppName, startDebuggerFlag)
 	dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
 
@@ -149,8 +155,8 @@ func (c *Consumer) pollForDebuggerStart() {
 		checkDInstAddrBlob:
 			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, dInstAddrKey, dInstAddrBlob, &cas, false)
 
-			logging.Infof("CRPS[%s:%s:%s:%d] Debugger inst addr key: %r dump: %r",
-				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, fmt.Sprintf("%#v", dInstAddrBlob))
+			logging.Infof("%s [%s:%s:%d] Debugger inst addr key: %r dump: %r",
+				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, fmt.Sprintf("%#v", dInstAddrBlob))
 
 			if dInstAddrBlob.HostPortAddr == "" {
 
@@ -160,8 +166,8 @@ func (c *Consumer) pollForDebuggerStart() {
 
 				_, err := c.gocbMetaBucket.Replace(dInstAddrKey, dInstAddrBlob, gocb.Cas(cas), 0)
 				if err != nil {
-					logging.Errorf("CRPS[%s:%s:%s:%d] Bucket cas failed for debugger inst addr key: %r, err: %v",
-						c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, err)
+					logging.Errorf("%s [%s:%s:%d] Bucket cas failed for debugger inst addr key: %r, err: %v",
+						logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, err)
 					goto checkDInstAddrBlob
 				} else {
 					dFlagBlob.StartDebug = false
@@ -176,6 +182,8 @@ func (c *Consumer) pollForDebuggerStart() {
 }
 
 func (c *Consumer) startDebuggerServer() {
+	logPrefix := "Consumer::startDebuggerServer"
+
 	var err error
 	var ipcType string
 	udsSockPath := fmt.Sprintf("%s/debug_%s.sock", os.TempDir(), c.ConsumerName())
@@ -183,18 +191,18 @@ func (c *Consumer) startDebuggerServer() {
 	if runtime.GOOS == "windows" || len(udsSockPath) > udsSockPathLimit {
 		c.debugListener, err = net.Listen("tcp", ":0")
 		if err != nil {
-			logging.Errorf("CRSD[%s:%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
-				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
+			logging.Errorf("%s [%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
+				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
 			return
 		}
 
-		logging.Infof("CRSD[%s:%s:%s:%d] Start server on addr: %r for communication to C++ debugger",
-			c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.debugListener.Addr().String())
+		logging.Infof("%s [%s:%s:%d] Start server on addr: %r for communication to C++ debugger",
+			logPrefix, c.ConsumerName(), c.tcpPort, c.Pid(), c.debugListener.Addr().String())
 
 		_, c.debugTCPPort, err = net.SplitHostPort(c.debugListener.Addr().String())
 		if err != nil {
-			logging.Errorf("CRSD[%s:%s:%s:%d] Failed to parse assigned port in '%v', err: %v",
-				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), c.debugListener.Addr(), err)
+			logging.Errorf("%s [%s:%s:%d] Failed to parse assigned port in '%v', err: %v",
+				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), c.debugListener.Addr(), err)
 			return
 		}
 		ipcType = "af_inet"
@@ -205,8 +213,8 @@ func (c *Consumer) startDebuggerServer() {
 
 		c.debugListener, err = net.Listen("unix", udsSockPath)
 		if err != nil {
-			logging.Errorf("CRSD[%s:%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
-				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
+			logging.Errorf("%s [%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
+				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
 		}
 
 		ipcType = "af_unix"
@@ -225,8 +233,8 @@ func (c *Consumer) startDebuggerServer() {
 	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", c.eventingDir, c.app.AppName)
 	err = os.Remove(frontendURLFilePath)
 	if err != nil {
-		logging.Infof("CRSD[%s:%s:%s:%d] Failed to remove frontend.url file, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		logging.Infof("%s [%s:%s:%d] Failed to remove frontend.url file, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 	}
 
 	c.debugClient = newDebugClient(c, c.app.AppName, c.eventingAdminPort, ipcType, c.debugTCPPort, c.workerName)
@@ -262,8 +270,8 @@ func (c *Consumer) startDebuggerServer() {
 		c.kvNodes[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)
-	logging.Debugf("CRSD[%s:%s:%s:%d] Debug enabled V8 worker init enable_recursive_mutation flag: %v",
-		c.app.AppName, c.workerName, c.debugTCPPort, c.Pid(), c.enableRecursiveMutation)
+	logging.Debugf("%s [%s:%s:%d] Debug enabled V8 worker init enable_recursive_mutation flag: %v",
+		logPrefix, c.workerName, c.debugTCPPort, c.Pid(), c.enableRecursiveMutation)
 
 	c.sendInitV8Worker(payload, true, pBuilder)
 
@@ -275,8 +283,10 @@ func (c *Consumer) startDebuggerServer() {
 }
 
 func (c *Consumer) stopDebuggerServer() {
-	logging.Infof("CRSD[%s:%s:%s:%d] Closing connection to C++ worker for debugger. Local addr: %v, remote addr: %v",
-		c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), c.debugConn.LocalAddr().String(), c.debugConn.RemoteAddr().String())
+	logPrefix := "Consumer::stopDebuggerServer"
+
+	logging.Infof("%s [%s:%s:%d] Closing connection to C++ worker for debugger. Local addr: %v, remote addr: %v",
+		logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), c.debugConn.LocalAddr().String(), c.debugConn.RemoteAddr().String())
 
 	c.debuggerStarted = false
 	c.sendMsgToDebugger = false

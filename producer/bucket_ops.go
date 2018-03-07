@@ -24,8 +24,8 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
 	} else {
-		logging.Infof("%s [%s:%d] Connected to bucket: %s, handle stats: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, (*b).BasicStats)
+		logging.Infof("%s [%s:%d] Connected to bucket: %s",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket)
 	}
 
 	return err

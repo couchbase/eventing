@@ -62,16 +62,18 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 
 // Serve implements suptree.Service interface
 func (p *Producer) Serve() {
+	logPrefix := "Producer::Serve"
+
 	err := p.parseDepcfg()
 	if err != nil {
-		logging.Fatalf("PRDR[%s:%d] Failure parsing depcfg, err: %v", p.appName, p.LenRunningConsumers(), err)
+		logging.Fatalf("%s [%s:%d] Failure parsing depcfg, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
 	}
 
 	p.persistAllTicker = time.NewTicker(time.Duration(p.persistInterval) * time.Millisecond)
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
-	logging.Infof("PRDR[%s:%d] number of vbuckets for %v: %v", p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)
+	logging.Infof("%s [%s:%d] number of vbuckets for %v: %v", logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)
 
 	for i := 0; i < p.numVbuckets; i++ {
 		p.seqsNoProcessed[i] = 0
@@ -79,19 +81,19 @@ func (p *Producer) Serve() {
 
 	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles)
 	if err != nil {
-		logging.Fatalf("PRDR[%s:%d] Failure to open application log writer handle, err: %v", p.appName, p.LenRunningConsumers(), err)
+		logging.Fatalf("%s [%s:%d] Failure to open application log writer handle, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
 	}
 
 	err = p.vbEventingNodeAssign()
 	if err != nil {
-		logging.Fatalf("PRDR[%s:%d] Failure while assigning vbuckets to workers, err: %v", p.appName, p.LenRunningConsumers(), err)
+		logging.Fatalf("%s [%s:%d] Failure while assigning vbuckets to workers, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
 	}
 
 	err = p.openPlasmaStore()
 	if err != nil {
-		logging.Fatalf("PRDR[%s:%d] Failure opening up plasma instance, err: %v", p.appName, p.LenRunningConsumers(), err)
+		logging.Fatalf("%s [%s:%d] Failure opening up plasma instance, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
 	}
 
@@ -105,7 +107,7 @@ func (p *Producer) Serve() {
 		up := strings.Split(p.auth, ":")
 		if _, err := cbauth.InternalRetryDefaultInit(p.nsServerHostPort,
 			up[0], up[1]); err != nil {
-			logging.Fatalf("PRDR[%s:%d] Failed to initialise cbauth, err: %v", p.appName, p.LenRunningConsumers(), err)
+			logging.Fatalf("%s [%s:%d] Failed to initialise cbauth, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		}
 	}
 
@@ -148,8 +150,8 @@ func (p *Producer) Serve() {
 	for {
 		select {
 		case msg := <-p.topologyChangeCh:
-			logging.Infof("PRDR[%s:%d] Got topology change msg: %r from super_supervisor",
-				p.appName, p.LenRunningConsumers(), msg)
+			logging.Infof("%s [%s:%d] Got topology change msg: %r from super_supervisor",
+				logPrefix, p.appName, p.LenRunningConsumers(), msg)
 
 			switch msg.CType {
 			case common.StartRebalanceCType:
@@ -157,21 +159,21 @@ func (p *Producer) Serve() {
 				p.initWorkerVbMap()
 
 				for _, eventingConsumer := range p.runningConsumers {
-					logging.Infof("PRDR[%s:%d] Consumer: %s sent cluster state change message from producer",
-						p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
+					logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer",
+						logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
 					eventingConsumer.NotifyClusterChange()
 				}
 
 			case common.StopRebalanceCType:
 				for _, eventingConsumer := range p.runningConsumers {
-					logging.Infof("PRDR[%s:%d] Consumer: %s sent stop rebalance message from producer",
-						p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
+					logging.Infof("%s [%s:%d] Consumer: %s sent stop rebalance message from producer",
+						logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
 					eventingConsumer.NotifyRebalanceStop()
 				}
 			}
 
 		case <-p.notifySettingsChangeCh:
-			logging.Infof("PRDR[%s:%d] Notifying consumers about settings change", p.appName, p.LenRunningConsumers())
+			logging.Infof("%s [%s:%d] Notifying consumers about settings change", logPrefix, p.appName, p.LenRunningConsumers())
 
 			for _, eventingConsumer := range p.runningConsumers {
 				eventingConsumer.NotifySettingsChange()
@@ -180,16 +182,16 @@ func (p *Producer) Serve() {
 			settingsPath := metakvAppSettingsPath + p.app.AppName
 			sData, err := util.MetakvGet(settingsPath)
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Failed to fetch updated settings from metakv, err: %v",
-					p.appName, p.LenRunningConsumers(), err)
+				logging.Errorf("%s [%s:%d] Failed to fetch updated settings from metakv, err: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), err)
 				continue
 			}
 
 			settings := make(map[string]interface{})
 			err = json.Unmarshal(sData, &settings)
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Failed to unmarshal settings received from metakv, err: %v",
-					p.appName, p.LenRunningConsumers(), err)
+				logging.Errorf("%s [%s:%d] Failed to unmarshal settings received from metakv, err: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), err)
 				continue
 			}
 
@@ -200,7 +202,7 @@ func (p *Producer) Serve() {
 
 			// This routine cleans up everything apart from metadataBucketHandle,
 			// which would be needed to clean up metadata bucket
-			logging.Infof("PRDR[%s:%d] Pausing processing", p.appName, p.LenRunningConsumers())
+			logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
 
 			for _, eventingConsumer := range p.runningConsumers {
 				p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[eventingConsumer])
@@ -223,7 +225,7 @@ func (p *Producer) Serve() {
 			p.notifySupervisorCh <- struct{}{}
 
 		case <-p.stopProducerCh:
-			logging.Infof("PRDR[%s:%d] Explicitly asked to shutdown producer routine", p.appName, p.LenRunningConsumers())
+			logging.Infof("%s [%s:%d] Explicitly asked to shutdown producer routine", logPrefix, p.appName, p.LenRunningConsumers())
 
 			for _, eventingConsumer := range p.runningConsumers {
 				p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[eventingConsumer])
@@ -266,8 +268,9 @@ func (p *Producer) String() string {
 }
 
 func (p *Producer) startBucket() {
+	logPrefix := "Producer::startBucket"
 
-	logging.Infof("PRDR[%s:%d] Connecting with bucket: %q", p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket)
+	logging.Infof("%s [%s:%d] Connecting with bucket: %q", logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket)
 
 	for i := 0; i < p.handlerConfig.WorkerCount; i++ {
 		workerName := fmt.Sprintf("worker_%s_%d", p.appName, i)
@@ -463,6 +466,8 @@ func (p *Producer) NotifyPrepareTopologyChange(keepNodes []string) {
 // SignalStartDebugger updates KV blob in metadata bucket signalling request to start
 // V8 Debugger
 func (p *Producer) SignalStartDebugger() {
+	logPrefix := "Producer::SignalStartDebugger"
+
 	key := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
 	blob := &common.StartDebugBlob{
 		StartDebug: true,
@@ -476,14 +481,16 @@ func (p *Producer) SignalStartDebugger() {
 	if dInstAddrBlob.NodeUUID == "" {
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, p, key, blob)
 	} else {
-		logging.Errorf("PRDR[%s:%d] Debugger already started. Host: %r Worker: %v uuid: %v",
-			p.appName, p.LenRunningConsumers(), dInstAddrBlob.HostPortAddr, dInstAddrBlob.ConsumerName, dInstAddrBlob.NodeUUID)
+		logging.Errorf("%s [%s:%d] Debugger already started. Host: %r Worker: %v uuid: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), dInstAddrBlob.HostPortAddr, dInstAddrBlob.ConsumerName, dInstAddrBlob.NodeUUID)
 	}
 }
 
 // SignalStopDebugger updates KV blob in metadata bucket signalling request to stop
 // V8 Debugger
 func (p *Producer) SignalStopDebugger() {
+	logPrefix := "Producer::SignalStopDebugger"
+
 	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 
@@ -497,7 +504,7 @@ func (p *Producer) SignalStopDebugger() {
 		}
 	} else {
 		if debuggerInstBlob.HostPortAddr == "" {
-			logging.Errorf("PRDR[%s:%d] Debugger hasn't started.", p.appName, p.LenRunningConsumers())
+			logging.Errorf("%s [%s:%d] Debugger hasn't started.", logPrefix, p.appName, p.LenRunningConsumers())
 
 			debugBlob := &common.StartDebugBlob{
 				StartDebug: false,

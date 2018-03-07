@@ -23,16 +23,13 @@ const (
 	// MetakvRebalanceTokenPath refers to path under metakv where rebalance tokens are stored
 	MetakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	stopRebalance            = "stopRebalance"
+
+	// Store list of eventing keepNodes
+	metakvConfigKeepNodes = metakvEventingPath + "config/keepNodes"
 )
 
 const (
-	rebalanceRunning = "RebalanceRunning"
-	autoLssCleaning  = false
-	maxDeltaChainLen = 30
-	maxPageItems     = 100
-	minPageItems     = 10
-	numTimerVbMoves  = 10
-	numVbuckets      = 1024
+	numVbuckets = 1024
 )
 
 const (
@@ -75,9 +72,10 @@ type SuperSupervisor struct {
 	appDeploymentStatus map[string]bool // Access controlled by appRWMutex
 	appProcessingStatus map[string]bool // Access controlled by appRWMutex
 
-	// Captures list of deployed apps and their last deployment time
-	deployedApps   map[string]string
-	plasmaMemQuota int64 // In MB
+	appListRWMutex    *sync.RWMutex
+	bootstrappingApps map[string]string // Captures list of apps undergoing bootstrap, access controlled by appListRWMutex
+	deployedApps      map[string]string // Captures list of deployed apps and their last deployment time, access controlled by appListRWMutex
+	plasmaMemQuota    int64             // In MB
 
 	cleanedUpAppMap            map[string]struct{} // Access controlled by default lock
 	mu                         *sync.RWMutex

@@ -20,6 +20,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	s := &SuperSupervisor{
 		appDeploymentStatus:        make(map[string]bool),
 		appProcessingStatus:        make(map[string]bool),
+		bootstrappingApps:          make(map[string]string),
 		CancelCh:                   make(chan struct{}, 1),
 		cleanedUpAppMap:            make(map[string]struct{}),
 		deployedApps:               make(map[string]string),
@@ -37,6 +38,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		uuid:                       uuid,
 	}
 	s.appRWMutex = &sync.RWMutex{}
+	s.appListRWMutex = &sync.RWMutex{}
 	s.mu = &sync.RWMutex{}
 	go s.superSup.ServeBackground()
 
@@ -60,11 +62,44 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	return s
 }
 
+func (s *SuperSupervisor) checkIfNodeInCluster() bool {
+	logPrefix := "SuperSupervisor::checkIfNodeInCluster"
+
+	var data []byte
+	var keepNodes []string
+
+	util.Retry(util.NewFixedBackoff(time.Second), metakvGetCallback, s, metakvConfigKeepNodes, &data)
+	err := json.Unmarshal(data, &keepNodes)
+	if err != nil {
+		logging.Errorf("%s [%d] Failed to unmarshal keepNodes, err: %v", logPrefix, len(s.runningProducers), err)
+		return false
+	}
+
+	var nodeInCluster bool
+	for _, uuid := range keepNodes {
+		if uuid == s.uuid {
+			nodeInCluster = true
+		}
+	}
+
+	if !nodeInCluster {
+		logging.Infof("%s [%d] Node not part of cluster. Current node uuid: %v keepNodes: %v", logPrefix, len(s.runningProducers), s.uuid, keepNodes)
+		return false
+	}
+
+	return true
+}
+
 // EventHandlerLoadCallback is registered as callback from metakv observe calls on event handlers path
 func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, rev interface{}) error {
 	logPrefix := "SuperSupervisor::EventHandlerLoadCallback"
 
 	logging.Infof("%s [%d] path => %s encoded value size => %v", logPrefix, len(s.runningProducers), path, len(value))
+
+	if !s.checkIfNodeInCluster() {
+		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, len(s.runningProducers))
+		return nil
+	}
 
 	if value != nil {
 		splitRes := strings.Split(path, "/")
@@ -146,6 +181,11 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev interface{}) error {
 	logPrefix := "SuperSupervisor::SettingsChangeCallback"
 
+	if !s.checkIfNodeInCluster() {
+		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, len(s.runningProducers))
+		return nil
+	}
+
 	if value != nil {
 		sValue := make(map[string]interface{})
 		err := json.Unmarshal(value, &sValue)
@@ -155,7 +195,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			return nil
 		}
 
-		logging.Infof("%s [%d] SettingsChangeCallback: path => %s value => %#v", logPrefix, len(s.runningProducers), path, sValue)
+		logging.Infof("%s [%d] Path => %s value => %#v", logPrefix, len(s.runningProducers), path, sValue)
 
 		splitRes := strings.Split(path, "/")
 		appName := splitRes[len(splitRes)-1]
@@ -230,6 +270,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						}
 					}
 
+					s.appListRWMutex.Lock()
+					s.bootstrappingApps[appName] = time.Now().String()
+					s.appListRWMutex.Unlock()
+
 					s.spawnApp(appName)
 
 					s.appDeploymentStatus[appName] = deploymentStatus
@@ -237,12 +281,18 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 					if eventingProducer, ok := s.runningProducers[appName]; ok {
 						eventingProducer.SignalBootstrapFinish()
-						logging.Infof("%s [%d] App: %s, Stopping running instance of Eventing.Producer", logPrefix, len(s.runningProducers), appName)
+
+						s.appListRWMutex.Lock()
 						s.deployedApps[appName] = time.Now().String()
+						s.appListRWMutex.Unlock()
 
 						s.Lock()
 						delete(s.cleanedUpAppMap, appName)
 						s.Unlock()
+
+						s.appListRWMutex.Lock()
+						delete(s.bootstrappingApps, appName)
+						s.appListRWMutex.Unlock()
 					}
 				} else {
 					s.supCmdCh <- msg
@@ -284,7 +334,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 					logging.Infof("%s [%d] App: %s enabled, settings change requesting undeployment",
 						logPrefix, len(s.runningProducers), appName)
+
+					s.appListRWMutex.Lock()
 					delete(s.deployedApps, appName)
+					s.appListRWMutex.Unlock()
 
 					s.cleanupProducer(appName)
 				}
@@ -299,7 +352,12 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte, rev interface{}) error {
 	logPrefix := "SuperSupervisor::TopologyChangeNotifCallback"
 
-	logging.Infof("%s [%d] path => %s value => %s", logPrefix, len(s.runningProducers), path, string(value))
+	logging.Infof("%s [%d] Path => %s value => %s", logPrefix, len(s.runningProducers), path, string(value))
+
+	if !s.checkIfNodeInCluster() {
+		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, len(s.runningProducers))
+		return nil
+	}
 
 	topologyChangeMsg := &common.TopologyChangeMsg{}
 
@@ -310,6 +368,91 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			topologyChangeMsg.CType = common.StopRebalanceCType
 		} else {
 			topologyChangeMsg.CType = common.StartRebalanceCType
+		}
+
+		// On topology change notification, lookup up in metakv if there are any any apps
+		// that haven't been deployed on current node. Case where this is needed: Eventing node
+		// n_1 is added to cluster while an app was bootstrapping, rebalance would be failed as
+		// one app is doing bootstrap. When next rebalance request comes in, on n_1 it needs to
+		// deploy the missing apps that aren't running on it.
+
+		appsInPrimaryStore := util.ListChildren(MetakvAppsPath)
+		logging.Infof("%s [%d] Apps in primary store: %v, running apps: %v",
+			logPrefix, len(s.runningProducers), appsInPrimaryStore, s.runningProducers)
+
+		for _, appName := range appsInPrimaryStore {
+
+			path := MetakvAppSettingsPath + appName
+			sData, err := util.MetakvGet(path)
+			if err != nil {
+				logging.Errorf("%s [%d] Failed to fetch settings for app: %s, err: %v", logPrefix, len(s.runningProducers), appName, err)
+				return nil
+			}
+
+			settings := make(map[string]interface{})
+			err = json.Unmarshal(sData, &settings)
+			if err != nil {
+				logging.Errorf("%s [%d] Failed to unmarshal application settings, err: %v", logPrefix, len(s.runningProducers), err)
+			}
+
+			val, ok := settings["processing_status"]
+			if !ok {
+				logging.Errorf("%s [%d] Missing processing_status", logPrefix, len(s.runningProducers))
+				return nil
+			}
+
+			processingStatus, ok := val.(bool)
+			if !ok {
+				logging.Errorf("%s [%d] Supplied processing_status unexpected", logPrefix, len(s.runningProducers))
+				return nil
+			}
+
+			val, ok = settings["deployment_status"]
+			if !ok {
+				logging.Errorf("%s [%d] Missing deployment_status", logPrefix, len(s.runningProducers))
+				return nil
+			}
+
+			deploymentStatus, ok := val.(bool)
+			if !ok {
+				logging.Errorf("%s [%d] Supplied deployment_status unexpected", logPrefix, len(s.runningProducers))
+				return nil
+			}
+
+			logging.Infof("%s [%d] App: %s deployment_status: %v processing_status: %v runningProducer: %v",
+				logPrefix, len(s.runningProducers), appName, deploymentStatus, processingStatus, s.runningProducers[appName])
+
+			if _, ok := s.runningProducers[appName]; deploymentStatus == true && processingStatus == true && !ok {
+
+				logging.Infof("%s [%d] Bootstrapping app: %s", logPrefix, len(s.runningProducers), appName)
+
+				s.appListRWMutex.Lock()
+				s.bootstrappingApps[appName] = time.Now().String()
+				s.appListRWMutex.Unlock()
+
+				s.spawnApp(appName)
+
+				s.appDeploymentStatus[appName] = deploymentStatus
+				s.appProcessingStatus[appName] = processingStatus
+
+				if eventingProducer, ok := s.runningProducers[appName]; ok {
+					eventingProducer.SignalBootstrapFinish()
+
+					logging.Infof("%s [%d] Bootstrap finished for app: %s", logPrefix, len(s.runningProducers), appName)
+
+					s.appListRWMutex.Lock()
+					s.deployedApps[appName] = time.Now().String()
+					s.appListRWMutex.Unlock()
+
+					s.Lock()
+					delete(s.cleanedUpAppMap, appName)
+					s.Unlock()
+
+					s.appListRWMutex.Lock()
+					delete(s.bootstrappingApps, appName)
+					s.appListRWMutex.Unlock()
+				}
+			}
 		}
 
 		for _, eventingProducer := range s.runningProducers {
@@ -325,7 +468,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, rev interface{}) error {
 	logPrefix := "SuperSupervisor::GlobalConfigChangeCallback"
 
-	logging.Infof("%s [%d] path => %s value => %s", logPrefix, len(s.runningProducers), path, string(value))
+	logging.Infof("%s [%d] Path => %s value => %s", logPrefix, len(s.runningProducers), path, string(value))
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -351,16 +494,20 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, 
 }
 
 func (s *SuperSupervisor) spawnApp(appName string) {
+	logPrefix := "SuperSupervisor::spawnApp"
+
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
 	p := producer.NewProducer(appName, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
 		s.restPort, s.uuid, s.diagDir, s.plasmaMemQuota, s.numVbuckets, s)
 
+	logging.Infof("%s [%d] Spawning up app: %s", logPrefix, len(s.runningProducers), appName)
+
 	token := s.superSup.Add(p)
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.runningProducers[appName] = p
 	s.producerSupervisorTokenMap[p] = token
+
+	logging.Infof("%s [%d] Spawned up app: %s", logPrefix, len(s.runningProducers), appName)
 
 	p.NotifyPrepareTopologyChange(s.keepNodes)
 }
@@ -400,7 +547,10 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 						s.appProcessingStatus[appName] = false
 
 						logging.Infof("%s [%d] App: %s Requested to delete app", logPrefix, len(s.runningProducers), appName)
+
+						s.appListRWMutex.Lock()
 						delete(s.deployedApps, appName)
+						s.appListRWMutex.Unlock()
 
 						s.cleanupProducer(appName)
 
@@ -424,6 +574,10 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					p.NotifySupervisor()
 					logging.Infof("%s [%d] Cleaned up previous running producer instance, app: %s", logPrefix, len(s.runningProducers), appName)
 				}
+
+				s.appListRWMutex.Lock()
+				s.bootstrappingApps[appName] = time.Now().String()
+				s.appListRWMutex.Unlock()
 
 				s.spawnApp(appName)
 
@@ -461,11 +615,18 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 				if eventingProducer, ok := s.runningProducers[appName]; ok {
 					eventingProducer.SignalBootstrapFinish()
 					logging.Infof("%s [%d] Loading app: %s", logPrefix, len(s.runningProducers), appName)
+
+					s.appListRWMutex.Lock()
 					s.deployedApps[appName] = time.Now().String()
+					s.appListRWMutex.Unlock()
 
 					s.Lock()
 					delete(s.cleanedUpAppMap, appName)
 					s.Unlock()
+
+					s.appListRWMutex.Lock()
+					delete(s.bootstrappingApps, appName)
+					s.appListRWMutex.Unlock()
 				}
 
 			case cmdSettingsUpdate:
@@ -488,11 +649,12 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
 	if len(keepNodes) == 0 {
 		logging.Errorf("%s [%d] 0 eventing nodes supplied as keepNodes", logPrefix, len(s.runningProducers))
 	} else {
+		logging.Infof("%s [%d] Updating keepNodes %v", logPrefix, len(s.runningProducers), keepNodes)
 		s.keepNodes = keepNodes
 	}
 
 	for _, eventingProducer := range s.runningProducers {
-		logging.Infof("%s [%d] NotifyPrepareTopologyChange to producer %p, keepNodes => %v", logPrefix, len(s.runningProducers), eventingProducer, keepNodes)
+		logging.Infof("%s [%d] Updating producer %p, keepNodes => %v", logPrefix, len(s.runningProducers), eventingProducer, keepNodes)
 		eventingProducer.NotifyPrepareTopologyChange(s.keepNodes)
 	}
 }
