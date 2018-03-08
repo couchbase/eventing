@@ -5,7 +5,7 @@ export PATH=$PATH:~/bin
 rm -rf ~/.ciscripts
 git clone -q git://github.com/couchbase/eventing ~/.ciscripts
 cd ~/.ciscripts
-git checkout unstable
+(source ~/.cienv; git checkout $BRANCH)
 
 while true; do
   git pull -q
@@ -13,4 +13,5 @@ while true; do
   domain
   sleep 600
 done
+
 

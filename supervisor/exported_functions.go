@@ -280,3 +280,24 @@ func (s *SuperSupervisor) TimerDebugStats(appName string) (map[int]map[string]in
 
 	return nil, fmt.Errorf("Eventing.Producer isn't alive")
 }
+
+// RebalanceStatus reports back status of rebalance for all running apps on current node
+func (s *SuperSupervisor) RebalanceStatus() bool {
+	logPrefix := "SuperSupervisor::RebalanceStatus"
+
+	rebalanceStatuses := make(map[string]bool)
+	for appName, p := range s.runningProducers {
+		rebalanceStatuses[appName] = p.RebalanceStatus()
+	}
+
+	logging.Infof("%s [%d] Rebalance status from all running applications: %#v",
+		logPrefix, len(s.runningProducers), rebalanceStatuses)
+
+	for _, rebStatus := range rebalanceStatuses {
+		if rebStatus {
+			return rebStatus
+		}
+	}
+
+	return false
+}

@@ -122,10 +122,12 @@ func (p *Producer) GetEventProcessingStats() map[string]uint64 {
 
 // GetHandlerCode returns handler code to assist V8 Debugger
 func (p *Producer) GetHandlerCode() string {
+	logPrefix := "Producer::GetHandlerCode"
+
 	if len(p.runningConsumers) > 0 {
 		return p.runningConsumers[0].GetHandlerCode()
 	}
-	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
+	logging.Errorf("%s [%s:%d] No active Eventing.Consumer instances running", logPrefix, p.appName, p.LenRunningConsumers())
 	return ""
 }
 
@@ -138,10 +140,12 @@ func (p *Producer) GetNsServerPort() string {
 
 // GetSourceMap return source map to assist V8 Debugger
 func (p *Producer) GetSourceMap() string {
+	logPrefix := "Producer::GetSourceMap"
+
 	if len(p.runningConsumers) > 0 {
 		return p.runningConsumers[0].GetSourceMap()
 	}
-	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
+	logging.Errorf("%s [%s:%d] No active Eventing.Consumer instances running", logPrefix, p.appName, p.LenRunningConsumers())
 	return ""
 }
 
@@ -201,9 +205,11 @@ func (p *Producer) NsServerNodeCount() int {
 // SignalBootstrapFinish is leveraged by EventingSuperSup instance to
 // check if app handler has finished bootstrapping
 func (p *Producer) SignalBootstrapFinish() {
+	logPrefix := "Producer::SignalBootstrapFinish"
+
 	runningConsumers := make([]common.EventingConsumer, 0)
 
-	logging.Infof("PRDR[%s:%d] Got request to signal bootstrap status", p.appName, p.LenRunningConsumers())
+	logging.Infof("%s [%s:%d] Got request to signal bootstrap status", logPrefix, p.appName, p.LenRunningConsumers())
 	<-p.bootstrapFinishCh
 
 	p.RLock()
@@ -222,6 +228,7 @@ func (p *Producer) SignalBootstrapFinish() {
 
 // SignalCheckpointBlobCleanup cleans up eventing app related blobs from metadata bucket
 func (p *Producer) SignalCheckpointBlobCleanup() {
+	logPrefix := "Producer::SignalCheckpointBlobCleanup"
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
@@ -234,8 +241,8 @@ func (p *Producer) SignalCheckpointBlobCleanup() {
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, dInstAddrKey)
 
-	logging.Infof("PRDR[%s:%d] Purged all owned checkpoint & debugger blobs from metadata bucket: %s",
-		p.appName, p.LenRunningConsumers(), p.metadataBucketHandle.Name())
+	logging.Infof("%s [%s:%d] Purged all owned checkpoint & debugger blobs from metadata bucket: %s",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.metadataBucketHandle.Name())
 }
 
 // VbEventingNodeAssignMap returns the vbucket to evening node mapping
@@ -312,13 +319,15 @@ func (p *Producer) GetEventingConsumerPids() map[string]int {
 // PurgePlasmaRecords cleans up the plasma data store housing doc id timer related data
 // Given plasma records are for a specific app, we could simply purge the store from disk
 func (p *Producer) PurgePlasmaRecords() {
+	logPrefix := "Producer::PurgePlasmaRecords"
+
 	vbPlasmaDir := fmt.Sprintf("%v/%v_timer.data", p.processConfig.EventingDir, p.app.AppName)
 
 	p.vbPlasmaStore.Close()
 	err := os.RemoveAll(vbPlasmaDir)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Got err: %v while trying to purge timer records",
-			p.appName, p.LenRunningConsumers(), err)
+		logging.Errorf("%s [%s:%d] Got err: %v while trying to purge timer records",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
 	}
 }
 
@@ -472,18 +481,20 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 
 // PurgeAppLog cleans up application log files
 func (p *Producer) PurgeAppLog() {
+	logPrefix := "Producer::PurgeAppLog"
+
 	d, err := os.Open(p.processConfig.EventingDir)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to open eventingDir: %v while trying to purge app logs, err: %v",
-			p.appName, p.LenRunningConsumers(), p.processConfig.EventingDir, err)
+		logging.Errorf("%s [%s:%d] Failed to open eventingDir: %v while trying to purge app logs, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.processConfig.EventingDir, err)
 		return
 	}
 	defer d.Close()
 
 	names, err := d.Readdirnames(-1)
 	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed list contents of eventingDir: %v, err: %v",
-			p.appName, p.LenRunningConsumers(), p.processConfig.EventingDir, err)
+		logging.Errorf("%s [%s:%d] Failed list contents of eventingDir: %v, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.processConfig.EventingDir, err)
 		return
 	}
 
@@ -492,8 +503,8 @@ func (p *Producer) PurgeAppLog() {
 		if strings.HasPrefix(name, prefix) {
 			err = os.RemoveAll(filepath.Join(p.processConfig.EventingDir, name))
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Failed to remove app log: %v, err: %v",
-					p.appName, p.LenRunningConsumers(), name, err)
+				logging.Errorf("%s [%s:%d] Failed to remove app log: %v, err: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), name, err)
 			}
 		}
 	}
@@ -698,4 +709,25 @@ func (p *Producer) StopRunningConsumers() {
 		delete(p.consumerSupervisorTokenMap, eventingConsumer)
 	}
 	p.runningConsumers = p.runningConsumers[:0]
+}
+
+// RebalanceStatus returns state of rebalance for all running consumer instances
+func (p *Producer) RebalanceStatus() bool {
+	logPrefix := "Producer::RebalanceStatus"
+
+	consumerRebStatuses := make(map[string]bool)
+	for _, c := range p.runningConsumers {
+		consumerRebStatuses[c.ConsumerName()] = c.RebalanceStatus()
+	}
+
+	logging.Infof("%s [%s:%d] Rebalance status from all running consumer instances: %#v",
+		logPrefix, p.appName, p.LenRunningConsumers(), consumerRebStatuses)
+
+	for _, rebStatus := range consumerRebStatuses {
+		if rebStatus {
+			return rebStatus
+		}
+	}
+
+	return false
 }

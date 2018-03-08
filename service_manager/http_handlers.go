@@ -527,6 +527,15 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 	w.Write(buf)
 }
 
+// Report back state of rebalance on current node
+func (m *ServiceMgr) getRebalanceStatus(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	w.Write([]byte(strconv.FormatBool(m.superSup.RebalanceStatus())))
+}
+
 // Reports aggregated event processing stats from all producers
 func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
@@ -553,7 +562,7 @@ func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.R
 	fmt.Fprintf(w, "%s", string(buf))
 }
 
-// Reports aggregated rebalance progress from all producers
+// Reports aggregated rebalance progress from all Eventing nodes in the cluster
 func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
@@ -570,6 +579,23 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.Write(buf)
+}
+
+// Report aggregated rebalance status from all Eventing nodes in the cluster
+func (m *ServiceMgr) getAggRebalanceStatus(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+
+	status, err := util.CheckIfRebalanceOngoing("/getRebalanceStatus", m.eventingNodeAddrs)
+	if err != nil {
+		logging.Errorf("Failed to grab correct rebalance status from some/all nodes, err: %v", err)
+		return
+	}
+
+	w.Write([]byte(strconv.FormatBool(status)))
 }
 
 func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
@@ -710,6 +736,12 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 	info = &runtimeInfo{}
 	logging.Infof("Set settings for app %v", appName)
 
+	if rebStatus := m.checkRebalanceStatus(); rebStatus.Code != m.statusCodes.ok.Code {
+		info.Code = rebStatus.Code
+		info.Info = rebStatus.Info
+		return
+	}
+
 	var settings map[string]interface{}
 	err := json.Unmarshal(data, &settings)
 	if err != nil {
@@ -764,8 +796,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		return
 	}
 
-	path := metakvAppSettingsPath + appName
-	err = util.MetakvSet(path, data, nil)
+	metakvPath := metakvAppSettingsPath + appName
+	err = util.MetakvSet(metakvPath, data, nil)
 	if err != nil {
 		info.Code = m.statusCodes.errSetSettingsPs.Code
 		info.Info = fmt.Sprintf("Failed to store setting for app: %v, err: %v", appName, err)
@@ -1057,11 +1089,45 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 	m.sendErrorInfo(w, info)
 }
 
+func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
+	info = &runtimeInfo{}
+
+	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+
+	rebStatus, err := util.CheckIfRebalanceOngoing("/getRebalanceStatus", m.eventingNodeAddrs)
+	if err != nil {
+		logging.Errorf("Failed to grab correct rebalance status from some/all Eventing nodes, err: %v", err)
+
+		info.Code = m.statusCodes.errGetRebStatus.Code
+		info.Info = fmt.Sprintf("Failed to get rebalance status from eventing nodes")
+		return
+	}
+
+	logging.Infof("Rebalance ongoing across some/all Eventing nodes: %v", rebStatus)
+
+	if rebStatus {
+		logging.Warnf("Rebalance ongoing on some/all Eventing nodes")
+
+		info.Code = m.statusCodes.errRebOngoing.Code
+		info.Info = fmt.Sprintf("Rebalance ongoing on some/all Eventing nodes, creating new apps or changing settings for existing apps isn't allowed")
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 // Saves application to metakv and returns appropriate success/error code
 func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	appName := app.Name
 	info = &runtimeInfo{}
 	logging.Infof("Saving application %v to primary store", appName)
+
+	if rebStatus := m.checkRebalanceStatus(); rebStatus.Code != m.statusCodes.ok.Code {
+		info.Code = rebStatus.Code
+		info.Info = rebStatus.Info
+		return
+	}
 
 	if m.checkIfDeployed(appName) {
 		info.Code = m.statusCodes.errAppDeployed.Code

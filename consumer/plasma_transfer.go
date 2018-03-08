@@ -37,7 +37,7 @@ func (c *Consumer) CreateTempPlasmaStore(vb uint16) error {
 		return err
 	}
 
-	logging.Infof("%s [%s:%d] vb: %v tempPlasmaDir: %v created temp plasma instance during rebalance",
+	logging.Infof("%s [%s:%d] vb: %v tempPlasmaDir: %r created temp plasma instance during rebalance",
 		logPrefix, c.workerName, c.Pid(), vb, vbPlasmaDir)
 
 	defer vbRebPlasmaStore.Close()

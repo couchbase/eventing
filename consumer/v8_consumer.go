@@ -242,6 +242,8 @@ func (c *Consumer) Serve() {
 
 // HandleV8Worker sets up CPP V8 worker post its bootstrap
 func (c *Consumer) HandleV8Worker() {
+	logPrefix := "Consumer::HandleV8Worker"
+
 	<-c.signalConnectedCh
 	<-c.signalFeedbackConnectedCh
 
@@ -266,8 +268,8 @@ func (c *Consumer) HandleV8Worker() {
 		c.kvNodes[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)
-	logging.Debugf("V8CR[%s:%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
+	logging.Debugf("%s [%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 
@@ -284,16 +286,18 @@ func (c *Consumer) HandleV8Worker() {
 
 // Stop acts terminate routine for consumer handle
 func (c *Consumer) Stop() {
+	logPrefix := "Consumer::Stop"
+
 	defer func() {
 		if r := recover(); r != nil {
 			trace := debug.Stack()
-			logging.Errorf("V8CR[%s:%s:%s:%d] Consumer stop routine, recover %r stack trace: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
+			logging.Errorf("%s [%s:%s:%d] Consumer stop routine, recover %r stack trace: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()
 
-	logging.Infof("V8CR[%s:%s:%s:%d] Gracefully shutting down consumer routine",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.docTimerProcessingStopCh <- struct{}{}
 
@@ -358,8 +362,10 @@ func (c *Consumer) String() string {
 // NotifyClusterChange is called by producer handle to signify each
 // consumer instance about StartTopologyChange rpc call from cbauth service.Manager
 func (c *Consumer) NotifyClusterChange() {
-	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about cluster state change",
-		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid())
+	logPrefix := "Consumer::NotifyClusterChange"
+
+	logging.Infof("%s [%s:%s:%d] Got notification about cluster state change",
+		logPrefix, c.ConsumerName(), c.tcpPort, c.Pid())
 
 	c.clusterStateChangeNotifCh <- struct{}{}
 }
@@ -367,10 +373,14 @@ func (c *Consumer) NotifyClusterChange() {
 // NotifyRebalanceStop is called by producer to signal stopping of
 // rebalance operation
 func (c *Consumer) NotifyRebalanceStop() {
-	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about rebalance stop",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+	logPrefix := "Consumer::NotifyRebalanceStop"
+
+	logging.Infof("[%s:%s:%d] Got notification about rebalance stop",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.isRebalanceOngoing = false
+	logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
 
 	for i := 0; i < c.vbOwnershipGiveUpRoutineCount; i++ {
 		c.stopVbOwnerGiveupCh <- struct{}{}
@@ -383,16 +393,20 @@ func (c *Consumer) NotifyRebalanceStop() {
 
 // NotifySettingsChange signals consumer instance of settings update
 func (c *Consumer) NotifySettingsChange() {
-	logging.Infof("V8CR[%s:%s:%s:%d] Got notification about application settings update",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+	logPrefix := "Consumer::NotifySettingsChange"
+
+	logging.Infof("%s [%s:%s:%d] Got notification about application settings update",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.signalSettingsChangeCh <- struct{}{}
 }
 
 // SignalStopDebugger signal C++ V8 consumer to stop Debugger Agent
 func (c *Consumer) SignalStopDebugger() {
-	logging.Infof("V8CR[%s:%s:%s:%d] Got signal to stop V8 Debugger Agent",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+	logPrefix := "Consumer::SignalStopDebugger"
+
+	logging.Infof("%s [%s:%s:%d] Got signal to stop V8 Debugger Agent",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.signalStopDebuggerCh <- struct{}{}
 
@@ -406,8 +420,8 @@ func (c *Consumer) SignalStopDebugger() {
 	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", c.eventingDir, c.app.AppName)
 	err := os.Remove(frontendURLFilePath)
 	if err != nil {
-		logging.Infof("V8CR[%s:%s:%s:%d] Failed to remove frontend.url file, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		logging.Infof("%s [%s:%s:%d] Failed to remove frontend.url file, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 	}
 }
 
