@@ -127,7 +127,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["feedback_read_buffer_size"]; ok {
 		p.handlerConfig.FeedbackReadBufferSize = int(val.(float64))
 	} else {
-		p.handlerConfig.FeedbackReadBufferSize = 4096
+		p.handlerConfig.FeedbackReadBufferSize = 65536
 	}
 
 	if val, ok := settings["fuzz_offset"]; ok {
