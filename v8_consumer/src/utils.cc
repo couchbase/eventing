@@ -21,6 +21,7 @@
 #include "../../gen/js/transpiler.h"
 
 static bool ipv6 = false;
+std::mutex time_now_mutex;
 
 #if defined(WIN32) || defined(_WIN32)
 int Wvasprintf(char **strp, const char *fmt, va_list ap) {
@@ -281,4 +282,17 @@ std::pair<std::string, std::string> GetLocalKey() {
     key = "unknown-client";
   }
   return std::make_pair<std::string, std::string>(usr, key);
+}
+
+std::string GetTimestampNow() {
+  // std::ctime is not thread safe -
+  // http://en.cppreference.com/w/cpp/chrono/c/ctime
+  std::lock_guard<std::mutex> lock(time_now_mutex);
+
+  auto now = std::chrono::system_clock::now();
+  auto now_time = std::chrono::system_clock::to_time_t(now);
+  std::string now_str = std::ctime(&now_time);
+  now_str.erase(std::remove(now_str.begin(), now_str.end(), '\n'),
+                now_str.end());
+  return ConvertToISO8601(now_str) + "Z";
 }

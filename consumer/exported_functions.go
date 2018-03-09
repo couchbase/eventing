@@ -289,11 +289,11 @@ func (c *Consumer) GetLatencyStats() map[string]uint64 {
 }
 
 // GetExecutionStats returns OnUpdate/OnDelete success/failure stats for event handlers from cpp world
-func (c *Consumer) GetExecutionStats() map[string]uint64 {
+func (c *Consumer) GetExecutionStats() map[string]interface{} {
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
 
-	executionStats := make(map[string]uint64)
+	executionStats := make(map[string]interface{})
 
 	for k, v := range c.executionStats {
 		executionStats[k] = v
@@ -303,10 +303,10 @@ func (c *Consumer) GetExecutionStats() map[string]uint64 {
 }
 
 // GetFailureStats returns failure stats for event handlers from cpp world
-func (c *Consumer) GetFailureStats() map[string]uint64 {
+func (c *Consumer) GetFailureStats() map[string]interface{} {
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
-	failureStats := make(map[string]uint64)
+	failureStats := make(map[string]interface{})
 
 	for k, v := range c.failureStats {
 		failureStats[k] = v
