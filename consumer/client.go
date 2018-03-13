@@ -83,7 +83,7 @@ func (c *client) Serve() {
 					logPrefix, c.workerName, c.tcpPort, c.osPid, err)
 				return
 			}
-			logging.Infof("%s", string(msg))
+			logging.Infof("eventing-consumer [%s:%s:%d] %s", c.workerName, c.tcpPort, c.osPid, string(msg))
 		}
 	}(bufOut)
 

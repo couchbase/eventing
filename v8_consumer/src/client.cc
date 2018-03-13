@@ -15,16 +15,18 @@
 uint64_t doc_timer_responses_sent(0);
 uint64_t messages_parsed(0);
 
-std::atomic<int64_t> e_dcp_lost = {0};
-std::atomic<int64_t> e_v8_worker_lost = {0};
 std::atomic<int64_t> e_app_worker_setting_lost = {0};
-std::atomic<int64_t> e_timer_lost = {0};
+std::atomic<int64_t> e_dcp_lost = {0};
 std::atomic<int64_t> e_debugger_lost = {0};
+std::atomic<int64_t> e_timer_lost = {0};
+std::atomic<int64_t> e_v8_worker_lost = {0};
 
-std::atomic<int64_t> mutation_events_lost = {0};
-std::atomic<int64_t> delete_events_lost = {0};
 std::atomic<int64_t> cron_timer_events_lost = {0};
+std::atomic<int64_t> delete_events_lost = {0};
 std::atomic<int64_t> doc_timer_events_lost = {0};
+std::atomic<int64_t> mutation_events_lost = {0};
+
+std::atomic<int64_t> uv_try_write_failure_counter = {0};
 
 static void alloc_buffer(uv_handle_t *handle, size_t suggested_size,
                          uv_buf_t *buf) {
@@ -217,16 +219,6 @@ void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
   }
 }
 
-void AppWorker::OnWrite(uv_write_t *req, int status) {
-  if (status < 0) {
-    LOG(logError) << "Main loop write callback error: " << uv_strerror(status)
-                  << std::endl;
-  }
-
-  write_req_t *wr = (write_req_t *)req;
-  delete wr;
-}
-
 void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
                                 const char *buf) {
   std::string buf_base;
@@ -293,22 +285,58 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
               uint32_t s = builder.GetSize();
               char *size = (char *)&s;
 
-              write_req_t *req_size = new (write_req_t);
-              req_size->buf = uv_buf_init(size, SIZEOF_UINT32);
-              uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
-                       [](uv_write_t *req_size, int status) {
-                         AppWorker::GetAppWorker()->OnWrite(req_size, status);
-                       });
+              uv_buf_t buffer = uv_buf_init(size, SIZEOF_UINT32);
+
+              int bytes_to_write = 0;
+              int bytes_written = UV_EAGAIN;
+
+              do {
+                bytes_to_write = 0;
+                bytes_written = uv_try_write(stream, &buffer, 1);
+                bytes_to_write += buffer.len;
+
+                if (bytes_to_write > bytes_written) {
+                  LOG(logInfo)
+                      << " Response message size bytes_written: "
+                      << bytes_written << " bytes_to_write: " << bytes_to_write
+                      << std::endl;
+
+                  uv_try_write_failure_counter++;
+
+                  std::string original_data(buffer.base, buffer.len);
+                  std::string pending_data(original_data, bytes_written);
+                  buffer = uv_buf_init((char *)pending_data.c_str(),
+                                       pending_data.size());
+                }
+              } while ((bytes_written == UV_EAGAIN) ||
+                       (bytes_to_write > bytes_written));
 
               // Write payload to socket
-              write_req_t *req_msg = new (write_req_t);
               std::string msg((const char *)builder.GetBufferPointer(),
                               builder.GetSize());
-              req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
-              uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
-                       [](uv_write_t *req_msg, int status) {
-                         AppWorker::GetAppWorker()->OnWrite(req_msg, status);
-                       });
+              buffer = uv_buf_init((char *)msg.c_str(), msg.length());
+
+              bytes_written = UV_EAGAIN;
+
+              do {
+                bytes_to_write = 0;
+                bytes_written = uv_try_write(stream, &buffer, 1);
+                bytes_to_write += buffer.len;
+
+                if (bytes_to_write > bytes_written) {
+                  LOG(logInfo)
+                      << " Response message bytes_written: " << bytes_written
+                      << " bytes_to_write: " << bytes_to_write << std::endl;
+
+                  uv_try_write_failure_counter++;
+
+                  std::string original_data(buffer.base, buffer.len);
+                  std::string pending_data(original_data, bytes_written);
+                  buffer = uv_buf_init((char *)pending_data.c_str(),
+                                       pending_data.size());
+                }
+              } while ((bytes_written == UV_EAGAIN) ||
+                       (bytes_to_write > bytes_written));
 
               // Reset the values
               resp_msg->msg.clear();
@@ -340,22 +368,58 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
               char *size = (char *)&s;
 
               // Write size of payload to socket
-              write_req_t *req_size = new (write_req_t);
-              req_size->buf = uv_buf_init(size, SIZEOF_UINT32);
-              uv_write((uv_write_t *)req_size, stream, &req_size->buf, 1,
-                       [](uv_write_t *req_size, int status) {
-                         AppWorker::GetAppWorker()->OnWrite(req_size, status);
-                       });
+              uv_buf_t buffer = uv_buf_init(size, SIZEOF_UINT32);
+
+              int bytes_to_write = 0;
+              int bytes_written = UV_EAGAIN;
+
+              do {
+                bytes_to_write = 0;
+                bytes_written = uv_try_write(stream, &buffer, 1);
+                bytes_to_write += buffer.len;
+
+                if (bytes_to_write > bytes_written) {
+                  LOG(logInfo)
+                      << "Worker queue size bytes_written: " << bytes_written
+                      << " bytes_to_write: " << bytes_to_write << std::endl;
+
+                  uv_try_write_failure_counter++;
+
+                  std::string original_data(buffer.base, buffer.len);
+                  std::string pending_data(original_data, bytes_written);
+                  buffer = uv_buf_init((char *)pending_data.c_str(),
+                                       pending_data.size());
+                }
+              } while ((bytes_written == UV_EAGAIN) ||
+                       (bytes_to_write > bytes_written));
 
               // Write payload to socket
-              write_req_t *req_msg = new (write_req_t);
               std::string msg((const char *)builder.GetBufferPointer(),
                               builder.GetSize());
-              req_msg->buf = uv_buf_init((char *)msg.c_str(), msg.length());
-              uv_write((uv_write_t *)req_msg, stream, &req_msg->buf, 1,
-                       [](uv_write_t *req_msg, int status) {
-                         AppWorker::GetAppWorker()->OnWrite(req_msg, status);
-                       });
+              buffer = uv_buf_init((char *)msg.c_str(), msg.length());
+
+              bytes_written = UV_EAGAIN;
+
+              do {
+                bytes_to_write = 0;
+                bytes_written = uv_try_write(stream, &buffer, 1);
+                bytes_to_write += buffer.len;
+
+                if (bytes_to_write > bytes_written) {
+                  LOG(logInfo)
+                      << "Worker queue size stats bytes_written: "
+                      << bytes_written << " bytes_to_write: " << bytes_to_write
+                      << std::endl;
+
+                  uv_try_write_failure_counter++;
+
+                  std::string original_data(buffer.base, buffer.len);
+                  std::string pending_data(original_data, bytes_written);
+                  buffer = uv_buf_init((char *)pending_data.c_str(),
+                                       pending_data.size());
+                }
+              } while ((bytes_written == UV_EAGAIN) ||
+                       (bytes_to_write > bytes_written));
             }
           }
         }
@@ -551,6 +615,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << enqueued_doc_timer_msg_counter;
       estats << R"(, "doc_timer_responses_sent":)";
       estats << doc_timer_responses_sent;
+      estats << R"(, "uv_try_write_failure_counter":)";
+      estats << uv_try_write_failure_counter;
 
       if (!workers.empty()) {
         agg_queue_size = 0;
@@ -795,6 +861,7 @@ void AppWorker::WriteResponses() {
           for (auto i = 0; i <= timer_entry_count / feedback_batch_size; i++) {
 
             std::vector<uv_buf_t> responses;
+            int bytes_to_write = 0;
 
             for (auto j = 0; j < feedback_batch_size; j++) {
 
@@ -821,6 +888,7 @@ void AppWorker::WriteResponses() {
                 strncpy(size, temp_store, SIZEOF_UINT32);
 
                 auto buf_size = uv_buf_init(size, SIZEOF_UINT32);
+                bytes_to_write += buf_size.len;
                 responses.push_back(buf_size);
 
                 std::string msg((const char *)builder.GetBufferPointer(),
@@ -836,6 +904,7 @@ void AppWorker::WriteResponses() {
                 msg_entry[msg.size()] = '\0';
 
                 auto buf_msg = uv_buf_init(msg_entry, msg.length());
+                bytes_to_write += buf_msg.len;
                 responses.push_back(buf_msg);
 
                 builder.Clear();
@@ -843,17 +912,65 @@ void AppWorker::WriteResponses() {
             }
 
             if (responses.size() > 0) {
-              int res_code = -1;
+
+              int bytes_written = UV_EAGAIN;
+
               do {
-                res_code = uv_try_write(feedback_conn_handle, responses.data(),
-                                        responses.size());
-                if (res_code > 0) {
+                bytes_written = uv_try_write(
+                    feedback_conn_handle, responses.data(), responses.size());
+
+                if (bytes_written == bytes_to_write) {
+                  doc_timer_responses_sent += responses.size() / 2;
+                  responses.clear();
                   for (const uv_buf_t &entry : responses) {
                     delete entry.base;
                   }
-                  doc_timer_responses_sent += responses.size() / 2;
                 }
-              } while (res_code < 0);
+
+                // When a portion of supplied uv_buf_t's wasn't flushed
+                // successfully on the socket. uv_try_write is retried for only
+                // those uv_buf_t's that weren't flushed successfully.
+                if ((bytes_written < bytes_to_write) && (bytes_written > 0)) {
+                  LOG(logInfo)
+                      << "Doc timer feedback bytes_written: " << bytes_written
+                      << " bytes_to_write: " << bytes_to_write << std::endl;
+                  bytes_to_write -= bytes_written;
+
+                  uv_try_write_failure_counter++;
+
+                  std::vector<uv_buf_t> temp_buffers;
+                  int buffer_sizes_so_far = 0;
+                  int index = -1;
+
+                  // Check at what std::vector index, entries were written
+                  // successfully
+                  for (auto const &buffer : responses) {
+                    if ((int(buffer.len) + buffer_sizes_so_far) >
+                        bytes_written) {
+
+                      std::string original_data(buffer.base, buffer.len);
+                      std::string pending_data(
+                          original_data, (bytes_written - buffer_sizes_so_far));
+                      uv_buf_t temp_buffer = uv_buf_init(
+                          (char *)pending_data.c_str(), pending_data.size());
+                      temp_buffers.push_back(temp_buffer);
+                      ++index;
+                      doc_timer_responses_sent += index / 2;
+                      break;
+                    } else {
+                      buffer_sizes_so_far += buffer.len;
+                      ++index;
+                    }
+                  }
+
+                  for (std::vector<int>::size_type i = index + 1;
+                       i != responses.size(); i++) {
+                    temp_buffers.push_back(responses[i]);
+                  }
+                  responses.swap(temp_buffers);
+                }
+
+              } while ((bytes_written == UV_EAGAIN) || (responses.size() > 0));
 
               std::vector<uv_buf_t>().swap(responses);
             }

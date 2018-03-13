@@ -20,7 +20,7 @@
 #include <sstream>
 #include <string>
 
-enum LogLevel { logSilent, logInfo, logError, logWarning, logDebug, logTrace };
+enum LogLevel { logSilent, logError, logInfo, logWarning, logDebug, logTrace };
 
 extern std::string appName;
 extern LogLevel desiredLogLevel;
