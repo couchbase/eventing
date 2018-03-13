@@ -8,6 +8,25 @@ import (
 	"time"
 )
 
+func TestOnUpdateN1QLOp(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "n1ql_insert_on_update.js"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "OnUpdateN1QLOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats(handler)
+	flushFunctionAndBucket(handler)
+}
+
 func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_update.js"
@@ -131,6 +150,7 @@ func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 	deleteFunction(handler)
 }
 
+/*
 func TestDeployUndeployLoopDocTimer(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_with_doc_timer.js"
@@ -158,6 +178,7 @@ func TestDeployUndeployLoopDocTimer(t *testing.T) {
 
 	deleteFunction(handler)
 }
+*/
 
 func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 5)
