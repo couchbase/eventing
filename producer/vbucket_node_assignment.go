@@ -42,28 +42,25 @@ func (p *Producer) vbEventingNodeAssign() error {
 		return err
 	}
 
-	// This will kick off post eventing-producer bootstrap in cases where it's killed and then
-	// re-spawned by babysitter. Reads from metakv the list of keep nodes
-	// from metakv, which were written on last StartTopologyChange RPC call
-	if len(p.eventingNodeUUIDs) == 1 && p.eventingNodeUUIDs[0] == p.uuid {
-		var data []byte
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), metakvGetCallback, p, metakvConfigKeepNodes, &data)
+	var data []byte
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), metakvGetCallback, p, metakvConfigKeepNodes, &data)
 
-		var keepNodes []string
-		err := json.Unmarshal(data, &keepNodes)
-		if err != nil {
-			logging.Errorf("%s [%s:%d] Failed to unmarshal keep nodes received from metakv, err: %v",
-				logPrefix, p.appName, p.LenRunningConsumers(), err)
-		} else {
-			if len(keepNodes) > 0 {
-				logging.Infof("%s [%s:%d] Updating Eventing keep nodes uuids. Previous: %v current: %v",
-					logPrefix, p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, keepNodes)
-				p.eventingNodeUUIDs = append([]string(nil), keepNodes...)
-			} else {
-				logging.Errorf("%s [%s:%d] KeepNodes is empty: %v",
-					logPrefix, p.appName, p.LenRunningConsumers(), keepNodes)
-			}
-		}
+	var keepNodes []string
+	err = json.Unmarshal(data, &keepNodes)
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Failed to unmarshal keepNodes received from metakv, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
+		return err
+	}
+
+	if len(keepNodes) > 0 {
+		logging.Infof("%s [%s:%d] Updating Eventing keepNodes uuids. Previous: %v current: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, keepNodes)
+		p.eventingNodeUUIDs = append([]string(nil), keepNodes...)
+	} else {
+		logging.Errorf("%s [%s:%d] KeepNodes is empty: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), keepNodes)
+		return fmt.Errorf("KeepNodes is empty")
 	}
 
 	// Only includes nodes that supposed to be part of cluster post StartTopologyChange call
@@ -73,7 +70,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 	}
 	sort.Strings(eventingNodeAddrs)
 
-	logging.Debugf("%s [%s:%d] EventingNodeUUIDs: %v eventingNodeAddrs: %r",
+	logging.Infof("%s [%s:%d] EventingNodeUUIDs: %v eventingNodeAddrs: %r",
 		logPrefix, p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, eventingNodeAddrs)
 
 	vbucketsPerNode := p.numVbuckets / len(eventingNodeAddrs)
@@ -103,7 +100,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 
 	for i, v := range vbCountPerNode {
 
-		logging.Debugf("%s [%s:%d] EventingNodeUUIDs: %v Eventing node index: %d eventing node addr: %r startVb: %v vbs count: %v",
+		logging.Infof("%s [%s:%d] EventingNodeUUIDs: %v Eventing node index: %d eventing node addr: %r startVb: %v vbs count: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, i, eventingNodeAddrs[i], startVb, v)
 
 		nodeMapping := &common.PlannerNodeVbMapping{
@@ -143,7 +140,7 @@ func (p *Producer) initWorkerVbMap() {
 
 	sort.Sort(util.Uint16Slice(vbucketsToHandle))
 
-	logging.Debugf("%s [%s:%d] eventingAddr: %r vbucketsToHandle, len: %d dump: %r",
+	logging.Infof("%s [%s:%d] eventingAddr: %r vbucketsToHandle, len: %d dump: %v",
 		logPrefix, p.appName, p.LenRunningConsumers(), eventingNodeAddr, len(vbucketsToHandle), util.Condense(vbucketsToHandle))
 
 	vbucketPerWorker := len(vbucketsToHandle) / p.handlerConfig.WorkerCount
@@ -178,11 +175,10 @@ func (p *Producer) initWorkerVbMap() {
 			startVbIndex++
 		}
 
-		logging.Debugf("%s [%s:%d] eventingAddr: %r worker name: %v assigned vbs len: %d dump: %r",
+		logging.Infof("%s [%s:%d] eventingAddr: %r worker name: %v assigned vbs len: %d dump: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), eventingNodeAddr, workerName,
 			len(p.workerVbucketMap[workerName]), util.Condense(p.workerVbucketMap[workerName]))
 	}
-
 }
 
 func (p *Producer) getKvVbMap() {

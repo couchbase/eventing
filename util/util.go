@@ -841,3 +841,39 @@ func CheckIfRebalanceOngoing(urlSuffix string, nodeAddrs []string) (bool, error)
 
 	return false, nil
 }
+
+func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error) {
+	logPrefix := "util::GetAggBootstrappingApps"
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	for _, nodeAddr := range nodeAddrs {
+		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(endpointURL)
+		if err != nil {
+			logging.Errorf("%s Failed to gather bootstrapping app list from url: %r, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("%s Failed to read response body from url: %r, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+
+		bootstrappingApps := make(map[string]string)
+		err = json.Unmarshal(buf, &bootstrappingApps)
+		if err != nil {
+			logging.Errorf("%s Failed to marshal bootstrapping app list from url: %r, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+
+		if len(bootstrappingApps) > 0 {
+			return true, fmt.Errorf("Some apps are undergoing bootstrap")
+		}
+	}
+
+	return false, nil
+}

@@ -89,7 +89,7 @@ const (
 
 	retryVbMetaStateCheckInterval = time.Duration(100) * time.Millisecond
 
-	vbTakeoverRetryInterval = time.Duration(100) * time.Millisecond
+	vbTakeoverRetryInterval = time.Duration(1000) * time.Millisecond
 
 	retryInterval = time.Duration(1000) * time.Millisecond
 

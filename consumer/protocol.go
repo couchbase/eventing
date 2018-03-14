@@ -16,7 +16,6 @@ import (
 const (
 	eventType int8 = iota
 	dcpEvent
-	httpEvent
 	v8WorkerEvent
 	appWorkerSetting
 	timerEvent

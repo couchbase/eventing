@@ -421,20 +421,21 @@ func (c *Consumer) processEvents() {
 }
 
 func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
+	logPrefix := "Consumer::startDcp"
 
-	logging.Infof("CRDP[%s:%s:%d] no. of vbs owned: %d",
-		c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
+	logging.Infof("%s [%s:%s:%d] no. of vbs owned: %d",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
 	vbSeqnos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil && c.dcpStreamBoundary != common.DcpEverything {
-		logging.Errorf("CRDP[%s:%s:%d] Failed to fetch vb seqnos, err: %v", c.workerName, c.tcpPort, c.Pid(), err)
+		logging.Errorf("%s [%s:%s:%d] Failed to fetch vb seqnos, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return
 	}
 
-	logging.Debugf("CRDP[%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
-		c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
+	logging.Debugf("%s [%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
 
 	for vbno, flog := range flogs {
 
@@ -500,12 +501,14 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 }
 
 func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan struct{}) {
+	logPrefix := "Consumer::addToAggChan"
+
 	go func(dcpFeed *couchbase.DcpFeed) {
 		defer func() {
 			if r := recover(); r != nil {
 				trace := debug.Stack()
-				logging.Errorf("CRDP[%s:%s:%d] addToAggChan: recover %r stack trace: %v",
-					c.workerName, c.tcpPort, c.Pid(), r, string(trace))
+				logging.Errorf("%s [%s:%s:%d] addToAggChan: recover %r stack trace: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 			}
 		}()
 
@@ -522,8 +525,8 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 					}
 					c.hostDcpFeedRWMutex.RUnlock()
 
-					logging.Infof("CRDP[%s:%s:%d] Closing dcp feed: %v for bucket: %s",
-						c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), c.bucket)
+					logging.Infof("%s [%s:%s:%d] Closing dcp feed: %v for bucket: %s",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), c.bucket)
 					c.hostDcpFeedRWMutex.Lock()
 					delete(c.kvHostDcpFeedMap, kvAddr)
 					c.hostDcpFeedRWMutex.Unlock()
@@ -532,15 +535,15 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 				}
 
 				if e.Opcode == mcd.DCP_STREAMEND || e.Opcode == mcd.DCP_STREAMREQ {
-					logging.Debugf("CRDP[%s:%s:%d] addToAggChan dcpFeed name: %v vb: %v Opcode: %v Status: %v",
-						c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), e.VBucket, e.Opcode, e.Status)
+					logging.Debugf("%s [%s:%s:%d] addToAggChan dcpFeed name: %v vb: %v Opcode: %v Status: %v",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), e.VBucket, e.Opcode, e.Status)
 				}
 
 				c.aggDCPFeed <- e
 
 			case <-cancelCh:
-				logging.Infof("CRDP[%s:%s:%d] Closing cancel message related to dcp feed: %v for bucket: %s",
-					c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), c.bucket)
+				logging.Infof("%s [%s:%s:%d] Closing cancel message related to dcp feed: %v for bucket: %s",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), c.bucket)
 				return
 			}
 		}
@@ -548,6 +551,8 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 }
 
 func (c *Consumer) cleanupStaleDcpFeedHandles() {
+	logPrefix := "Consumer::cleanupStaleDcpFeedHandles"
+
 	kvAddrsPerVbMap := make(map[string]struct{})
 	for _, kvAddr := range c.kvVbMap {
 		kvAddrsPerVbMap[kvAddr] = struct{}{}
@@ -572,8 +577,8 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() {
 	}
 
 	for _, kvAddr := range kvAddrDcpFeedsToClose {
-		logging.Debugf("CRDP[%s:%s:%s:%d] Going to cleanup kv dcp feed for kvAddr: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), kvAddr)
+		logging.Debugf("%s [%s:%s:%d] Going to cleanup kv dcp feed for kvAddr: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), kvAddr)
 
 		c.hostDcpFeedRWMutex.RLock()
 		feed, ok := c.kvHostDcpFeedMap[kvAddr]
@@ -638,6 +643,7 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vb uint16) {
 }
 
 func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) error {
+	logPrefix := "Consumer::dcpRequestStreamHandle"
 
 	c.cbBucket.Refresh()
 
@@ -659,8 +665,8 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
 		c.addToAggChan(dcpFeed, cancelCh)
 
-		logging.Debugf("CRDP[%s:%s:%d] vb: %d kvAddr: %v Started up new dcp feed",
-			c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr)
+		logging.Debugf("%s [%s:%s:%d] vb: %d kvAddr: %v Started up new dcp feed",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr)
 	}
 	c.hostDcpFeedRWMutex.Unlock()
 
@@ -673,13 +679,13 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 
 	snapStart, snapEnd := start, start
 
-	logging.Debugf("CRDP[%s:%s:%d] vb: %d DCP stream start vbKvAddr: %v vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
-		c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd)
+	logging.Debugf("%s [%s:%s:%d] vb: %d DCP stream start vbKvAddr: %v vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd)
 
 	err := dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 	if err != nil {
-		logging.Errorf("CRDP[%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
-			c.workerName, c.tcpPort, c.Pid(), vbno, dcpFeed.DcpFeedName(), err)
+		logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, dcpFeed.DcpFeedName(), err)
 		if c.checkIfCurrentConsumerShouldOwnVb(vbno) {
 			c.Lock()
 			c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbno)
@@ -698,24 +704,24 @@ loop:
 	vbFlog := <-c.vbFlogChan
 
 	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
-		logging.Tracef("CRDP[%s:%s:%d] vb: %d DCP Stream created", c.workerName, c.tcpPort, c.Pid(), vbno)
+		logging.Tracef("%s [%s:%s:%d] vb: %d DCP Stream created", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
 		return nil
 	}
 
 	if vbFlog.streamReqRetry && vbFlog.vb == vbno {
 
 		if vbFlog.statusCode == mcd.ROLLBACK {
-			logging.Infof("CRDP[%s:%s:%d] vb: %d vbuuid: %d Rollback requested by DCP, previous startseq: %d rollback startseq: %d",
-				c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, vbFlog.seqNo)
+			logging.Infof("%s [%s:%s:%d] vb: %d vbuuid: %d Rollback requested by DCP, previous startseq: %d rollback startseq: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, vbFlog.seqNo)
 			start, snapStart, snapEnd = vbFlog.seqNo, vbFlog.seqNo, vbFlog.seqNo
 		}
 
-		logging.Infof("CRDP[%s:%s:%d] vb: %v Retrying DCP stream start vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
-			c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
+		logging.Infof("%s [%s:%s:%d] vb: %v Retrying DCP stream start vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
 		err := dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 		if err != nil {
-			logging.Errorf("CRDP[%s:%s:%d] vb: %v Retrying DCP stream start failed, err: %v",
-				c.workerName, c.tcpPort, c.Pid(), vbno, err)
+			logging.Errorf("%s [%s:%s:%d] vb: %v Retrying DCP stream start failed, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, err)
 		}
 
 		goto loop

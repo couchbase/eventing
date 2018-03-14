@@ -131,6 +131,7 @@ type EventingConsumer interface {
 
 type EventingSuperSup interface {
 	AppTimerTransferHostPortAddrs(string) (map[string]string, error)
+	BootstrapAppList() map[string]string
 	ClearEventStats()
 	DeployedAppList() []string
 	GetEventProcessingStats(appName string) map[string]uint64

@@ -23,7 +23,7 @@ In 5.1, responses returned by below functions are opaque and should not be edite
 ## Delete all functions
 `DELETE` `/api/v1/functions`
 
-## Manipulate a function's settings
+## Get a function's settings
 `GET` `/api/v1/functions/<name>/settings`
 
 ## Modify a function's settings

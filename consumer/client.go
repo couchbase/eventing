@@ -23,6 +23,8 @@ func newClient(consumer *Consumer, appName, tcpPort, feedbackTCPPort, workerName
 }
 
 func (c *client) Serve() {
+	logPrefix := "client::Serve"
+
 	c.cmd = exec.Command(
 		"eventing-consumer",
 		c.appName,
@@ -44,15 +46,15 @@ func (c *client) Serve() {
 
 	outPipe, err := c.cmd.StdoutPipe()
 	if err != nil {
-		logging.Errorf("CRCL[%s:%s:%s:%d] Failed to open stdout pipe, err: %v",
-			c.appName, c.workerName, c.tcpPort, c.osPid, err)
+		logging.Errorf("%s [%s:%s:%d] Failed to open stdout pipe, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.osPid, err)
 		return
 	}
 
 	errPipe, err := c.cmd.StderrPipe()
 	if err != nil {
-		logging.Errorf("CRCL[%s:%s:%s:%d] Failed to open stderr pipe, err: %v",
-			c.appName, c.workerName, c.tcpPort, c.osPid, err)
+		logging.Errorf("%s [%s:%s:%d] Failed to open stderr pipe, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.osPid, err)
 		return
 	}
 
@@ -61,12 +63,12 @@ func (c *client) Serve() {
 
 	err = c.cmd.Start()
 	if err != nil {
-		logging.Errorf("CRCL[%s:%s:%s:%d] Failed to spawn worker, err: %v",
-			c.appName, c.workerName, c.tcpPort, c.osPid, err)
+		logging.Errorf("%s [%s:%s:%d] Failed to spawn worker, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.osPid, err)
 	} else {
 		c.osPid = c.cmd.Process.Pid
-		logging.Infof("CRCL[%s:%s:%s:%d] c++ worker launched",
-			c.appName, c.workerName, c.tcpPort, c.osPid)
+		logging.Infof("%s [%s:%s:%d] c++ worker launched",
+			logPrefix, c.workerName, c.tcpPort, c.osPid)
 	}
 	c.consumerHandle.osPid.Store(c.osPid)
 
@@ -77,8 +79,8 @@ func (c *client) Serve() {
 		for {
 			msg, _, err := bufOut.ReadLine()
 			if err != nil {
-				logging.Warnf("CRCL[%s:%s:%s:%d] Failed to read from stdout pipe, err: %v",
-					c.appName, c.workerName, c.tcpPort, c.osPid, err)
+				logging.Warnf("%s [%s:%s:%d] Failed to read from stdout pipe, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.osPid, err)
 				return
 			}
 			logging.Infof("%s", string(msg))
@@ -89,8 +91,8 @@ func (c *client) Serve() {
 		for {
 			msg, _, err := bufErr.ReadLine()
 			if err != nil {
-				logging.Warnf("CRCL[%s:%s:%s:%d] Failed to read from stderr pipe, err: %v",
-					c.appName, c.workerName, c.tcpPort, c.osPid, err)
+				logging.Warnf("%s [%s:%s:%d] Failed to read from stderr pipe, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.osPid, err)
 				return
 			}
 			c.consumerHandle.producer.WriteAppLog(string(msg))
@@ -99,12 +101,12 @@ func (c *client) Serve() {
 
 	err = c.cmd.Wait()
 	if err != nil {
-		logging.Warnf("CRCL[%s:%s:%s:%d] Exiting c++ worker with error: %v",
-			c.appName, c.workerName, c.tcpPort, c.osPid, err)
+		logging.Warnf("%s [%s:%s:%d] Exiting c++ worker with error: %v",
+			logPrefix, c.workerName, c.tcpPort, c.osPid, err)
 	}
 
-	logging.Debugf("CRCL[%s:%s:%s:%d] Exiting c++ worker routine",
-		c.appName, c.workerName, c.tcpPort, c.osPid)
+	logging.Debugf("%s [%s:%s:%d] Exiting c++ worker routine",
+		logPrefix, c.workerName, c.tcpPort, c.osPid)
 
 	c.consumerHandle.connMutex.Lock()
 	defer c.consumerHandle.connMutex.Unlock()
@@ -118,7 +120,9 @@ func (c *client) Serve() {
 }
 
 func (c *client) Stop() {
-	logging.Debugf("CRCL[%s:%s:%s:%d] Exiting c++ worker", c.appName, c.workerName, c.tcpPort, c.osPid)
+	logPrefix := "client::Stop"
+
+	logging.Debugf("%s [%s:%s:%d] Exiting c++ worker", logPrefix, c.workerName, c.tcpPort, c.osPid)
 
 	if c.osPid > 1 {
 		ps, err := os.FindProcess(c.osPid)

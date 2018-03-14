@@ -3,6 +3,7 @@ package servicemanager
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -86,12 +87,14 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/deleteApplication/", m.deletePrimaryStoreHandler)
 	http.HandleFunc("/deleteAppTempStore/", m.deleteTempStoreHandler)
 	http.HandleFunc("/debugging/", m.debugging)
+	http.HandleFunc("/getAggBootstrappingApps", m.getAggBootstrappingApps)
 	http.HandleFunc("/getAggEventProcessingStats", m.getAggEventProcessingStats)
 	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
 	http.HandleFunc("/getAggRebalanceStatus", m.getAggRebalanceStatus)
 	http.HandleFunc("/getAggTimerHostPortAddrs", m.getAggTimerHostPortAddrs)
 	http.HandleFunc("/getApplication/", m.getPrimaryStoreHandler)
 	http.HandleFunc("/getAppTempStore/", m.getTempStoreHandler)
+	http.HandleFunc("/getBootstrappingApps", m.getBootstrappingApps)
 	http.HandleFunc("/getConsumerPids", m.getEventingConsumerPids)
 	http.HandleFunc("/getCreds", m.getCreds)
 	http.HandleFunc("/getDcpEventsRemaining", m.getDcpEventsRemaining)
@@ -242,6 +245,7 @@ func (m *ServiceMgr) prepareRebalance(change service.TopologyChange) error {
 }
 
 func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
+	logPrefix := "ServiceMgr::startRebalance"
 
 	// Reset the failoverNotif flag, which got set to signify failover action on the cluster
 	if m.failoverNotif {
@@ -253,9 +257,11 @@ func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 		rev:    0,
 	}
 
+	logging.Infof("%s Garbage collecting old rebalance tokens", logPrefix)
 	// Garbage collect old Rebalance Tokens
 	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvRebalanceTokenPath)
 
+	logging.Infof("%s Writing rebalance token: %s to metakv", logPrefix, change.ID)
 	path := metakvRebalanceTokenPath + change.ID
 	util.Retry(util.NewFixedBackoff(time.Second), metaKVSetCallback, path, change.ID)
 
@@ -503,4 +509,44 @@ func (m *ServiceMgr) onRebalanceDoneLocked(err error) {
 		s.rebalanceTask = newTask
 		s.rebalanceID = ""
 	})
+}
+
+func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
+	logPrefix := "ServiceMgr::getActiveNodeAddrs"
+
+	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m, true)
+
+	nodeAddrs := make([]string, 0)
+
+	// m.eventingNodeAddrs would capture all online Eventing nodes in the cluster, so it might include
+	// Eventing nodes that aren't actually part of cluster yet but were requested as part of KeepNodes
+	// from ns_server in PrepareTopologyChange RPC call. So filtering out only the previously existing
+	// Eventing nodes to check if any app is undergoing bootstrap is needed.
+	addrUUIDMap, err := util.GetNodeUUIDs("/uuid", m.eventingNodeAddrs)
+	if err != nil {
+		logging.Errorf("%s Failed to get eventing node uuids, err: %v", logPrefix, err)
+		return nodeAddrs, err
+	}
+
+	var data []byte
+	util.Retry(util.NewFixedBackoff(time.Second), metakvGetCallback, metakvConfigKeepNodes, &data)
+
+	var keepNodes []string
+	err = json.Unmarshal(data, &keepNodes)
+	if err != nil {
+		logging.Warnf("%s Failed to unmarshal keepNodes received from metakv, err: %v",
+			logPrefix, err)
+		return nodeAddrs, err
+	}
+
+	for _, uuid := range keepNodes {
+		if nodeAddr, ok := addrUUIDMap[uuid]; ok {
+			nodeAddrs = append(nodeAddrs, nodeAddr)
+		}
+	}
+
+	logging.Infof("%s keepNodes from metakv: %v addrUUIDMap: %r nodeAddrs: %r",
+		logPrefix, keepNodes, addrUUIDMap, nodeAddrs)
+
+	return nodeAddrs, nil
 }

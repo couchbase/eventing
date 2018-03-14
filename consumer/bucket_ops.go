@@ -19,7 +19,7 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 
 	err := c.doVbTakeover(vb)
 	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %v vbTakeover request, err: %v",
+		logging.Infof("%s [%s:%s:%d] vb: %v vbTakeover request, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 	}
 
@@ -106,8 +106,8 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed, err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, err)
 	} else {
-		logging.Infof("%s [%s:%d] Connected to bucket: %s, handle stats: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, (*b).BasicStats)
+		logging.Infof("%s [%s:%d] Connected to bucket: %s",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket)
 	}
 
 	return err
