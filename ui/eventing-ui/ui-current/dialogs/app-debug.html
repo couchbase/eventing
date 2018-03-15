@@ -7,6 +7,11 @@
     <div class="row">
       <p>Open the following URL to begin debugging.</p>
     </div>
+    <div class="row" ng-hide="debugCtrl.isChrome()">
+      <p><span class="semi-bold red-3">
+      Below URL can only be opened in Google Chrome.
+      </span></p>
+    </div>
     <div class="row">
       <input ng-disabled="!urlReceived" id="debug-url" type="text" size="25"
              ng-model="url" readonly/>

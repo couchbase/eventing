@@ -767,6 +767,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             $('#debug-url').select();
             document.execCommand('copy');
         };
+
+        self.isChrome = function() {
+            return !!window.chrome;
+        }
     }])
     // Service to manage the applications.
     .factory('ApplicationService', ['$q', '$http', '$state', 'mnPoolDefault',
