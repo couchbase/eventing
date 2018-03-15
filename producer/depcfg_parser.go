@@ -197,7 +197,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["breakpad_on"]; ok {
 		p.processConfig.BreakpadOn = val.(bool)
 	} else {
-		p.processConfig.BreakpadOn = true
+		p.processConfig.BreakpadOn = false
 	}
 
 	// Rebalance related configurations
