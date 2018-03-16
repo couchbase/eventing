@@ -13,6 +13,8 @@ import (
 )
 
 var getClusterInfoCacheOpCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::getClusterInfoCacheOpCallback"
+
 	p := args[0].(*Producer)
 	cinfo := args[1].(**util.ClusterInfoCache)
 
@@ -21,8 +23,8 @@ var getClusterInfoCacheOpCallback = func(args ...interface{}) error {
 	var err error
 	*cinfo, err = util.FetchNewClusterInfoCache(hostAddress)
 	if err != nil {
-		logging.Errorf("PRCO[%s:%d] Failed to get CIC handle while trying to get kv vbmap, err: %v",
-			p.appName, p.LenRunningConsumers(), err)
+		logging.Errorf("%s [%s:%d] Failed to get CIC handle while trying to get kv vbmap, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
 	}
 
 	return err

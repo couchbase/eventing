@@ -9,17 +9,12 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <cassert>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <string>
 #include <vector>
-
-#ifndef STANDALONE_BUILD
-extern void(assert)(int);
-#else
-#include <cassert>
-#endif
 
 #include "../../gen/flatbuf/cfg_schema_generated.h"
 

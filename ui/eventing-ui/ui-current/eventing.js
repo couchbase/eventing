@@ -329,8 +329,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         creationScope.appModel.settings.deadline_timeout = creationScope.appModel.settings.execution_timeout + 2;
 
                         ApplicationService.local.createApp(creationScope.appModel);
-                        return $state.go('app.admin.eventing.handler', {
-                            appName: creationScope.appModel.appname
+                        return $state.transitionTo('app.admin.eventing.handler', {
+                            appName: creationScope.appModel.appname,
+                        }, {
+                            // Explained in detail - https://github.com/angular-ui/ui-router/issues/3196
+                            reload: true
                         });
                     })
                     .then(function(response) {
@@ -764,6 +767,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             $('#debug-url').select();
             document.execCommand('copy');
         };
+
+        self.isChrome = function() {
+            return !!window.chrome;
+        }
     }])
     // Service to manage the applications.
     .factory('ApplicationService', ['$q', '$http', '$state', 'mnPoolDefault',

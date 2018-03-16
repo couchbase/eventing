@@ -13,6 +13,7 @@
 #define V8WORKER_H
 
 #include <atomic>
+#include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -47,12 +48,6 @@
 #include "../../gen/flatbuf/header_generated.h"
 #include "../../gen/flatbuf/payload_generated.h"
 #include "../../gen/flatbuf/response_generated.h"
-
-#ifndef STANDALONE_BUILD
-extern void(assert)(int);
-#else
-#include <cassert>
-#endif
 
 typedef std::chrono::high_resolution_clock Time;
 typedef std::chrono::nanoseconds nsecs;

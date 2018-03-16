@@ -1,17 +1,12 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
+#include <cassert>
 #include <chrono>
 #include <cstring>
 #include <iostream>
 #include <math.h>
 #include <sstream>
-
-#ifndef STANDALONE_BUILD
-extern void(assert)(int);
-#else
-#include <cassert>
-#endif
 
 #include "v8worker.h"
 
@@ -64,7 +59,6 @@ public:
   void OnFeedbackConnect(uv_connect_t *conn, int status);
 
   void OnRead(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf);
-  void OnWrite(uv_write_t *req, int status);
 
   void ParseValidChunk(uv_stream_t *stream, int nread, const char *buf);
 

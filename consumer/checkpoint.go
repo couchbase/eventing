@@ -11,6 +11,8 @@ import (
 )
 
 func (c *Consumer) doLastSeqNoCheckpoint() {
+	logPrefix := "Consumer::doLastSeqNoCheckpoint"
+
 	c.checkpointTicker = time.NewTicker(c.checkpointInterval)
 
 	var vbBlob vbucketKVBlob
@@ -22,8 +24,8 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 		case <-c.checkpointTicker.C:
 			deployedApps := c.superSup.GetDeployedApps()
 			if _, ok := deployedApps[c.app.AppName]; !ok {
-				logging.Infof("CRCH[%s:%s:%s:%d] Returning from checkpoint ticker routine",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+				logging.Infof("%s [%s:%s:%d] Returning from checkpoint ticker routine",
+					logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return
 			}
 
@@ -41,8 +43,8 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
 					if isNoEnt {
 
-						logging.Infof("CRCH[%s:%s:%s:%d] vb: %d Creating the initial metadata blob entry",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vbno)
+						logging.Infof("%s [%s:%s:%d] vb: %d Creating the initial metadata blob entry",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
 
 						c.updateCheckpointInfo(vbKey, vbno, &vbBlob)
 						continue

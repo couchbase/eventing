@@ -36,6 +36,8 @@ func (c *Consumer) EventsProcessedPSec() *cm.EventProcessingStats {
 }
 
 func (c *Consumer) dcpEventsRemainingToProcess() {
+	logPrefix := "Consumer::dcpEventsRemainingToProcess"
+
 	vbsTohandle := c.vbsToHandle()
 	if len(vbsTohandle) <= 0 {
 		return
@@ -47,7 +49,8 @@ func (c *Consumer) dcpEventsRemainingToProcess() {
 
 	seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil {
-		logging.Errorf("CRVT[%s:%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v", c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		c.dcpEventsRemaining = 0
 		return
 	}
