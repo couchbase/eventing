@@ -232,7 +232,7 @@ func TestMultipleHandlers(t *testing.T) {
 	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
 	if eventCount != itemCount*2 {
 		t.Error("For", "MultipleHandlers DeleteOp",
-			"expected", 0,
+			"expected", itemCount*2,
 			"got", eventCount,
 		)
 	}
