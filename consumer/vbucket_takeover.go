@@ -22,6 +22,8 @@ var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another worker o
 var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")
 
 func (c *Consumer) reclaimVbOwnership(vb uint16) error {
+	logPrefix := "Consumer::reclaimVbOwnership"
+
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
 
@@ -31,8 +33,8 @@ func (c *Consumer) reclaimVbOwnership(vb uint16) error {
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 	if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
-		logging.Debugf("CRVT[%s:%s:%d] vb: %v successfully reclaimed ownership",
-			c.workerName, c.tcpPort, c.Pid(), vb)
+		logging.Debugf("%s [%s:%s:%d] vb: %v successfully reclaimed ownership",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		return nil
 	}
 
@@ -41,19 +43,21 @@ func (c *Consumer) reclaimVbOwnership(vb uint16) error {
 
 // Vbucket ownership give-up routine
 func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
+	logPrefix := "Consumer::vbGiveUpRoutine"
+
 	defer giveupWg.Done()
 
 	if len(c.vbsRemainingToGiveUp) == 0 {
-		logging.Tracef("CRVT[%s:%s:%d] No vbuckets remaining to give up",
-			c.workerName, c.tcpPort, c.Pid())
+		logging.Tracef("%s [%s:%s:%d] No vbuckets remaining to give up",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
 	}
 
 	vbsDistribution := util.VbucketDistribution(c.vbsRemainingToGiveUp, c.vbOwnershipGiveUpRoutineCount)
 
 	for k, v := range vbsDistribution {
-		logging.Tracef("CRVT[%s:%s:%d] vb give up routine id: %v, vbs assigned len: %v dump: %v",
-			c.workerName, c.tcpPort, c.Pid(), k, len(v), util.Condense(v))
+		logging.Tracef("%s [%s:%s:%d] vb give up routine id: %v, vbs assigned len: %v dump: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, len(v), util.Condense(v))
 	}
 
 	signalPlasmaClosedChs := make([]chan uint16, 0)
@@ -78,14 +82,14 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 				if vbBlob.NodeUUID != c.NodeUUID() && vbBlob.DCPStreamStatus == dcpStreamRunning {
-					logging.Tracef("CRVT[%s:giveup_r_%d:%s:%d] vb: %v metadata  node uuid: %v dcp stream status: %v, skipping give up phase",
-						c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.NodeUUID, vbBlob.DCPStreamStatus)
+					logging.Tracef("%s [%s:giveup_r_%d:%s:%d] vb: %v metadata  node uuid: %v dcp stream status: %v, skipping give up phase",
+						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.NodeUUID, vbBlob.DCPStreamStatus)
 
 					c.RLock()
 					err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
 					if err != nil {
-						logging.Errorf("CRVT[%s:giveup_r_%d:%s:%d] vb: %v Failed to close dcp stream, err: %v",
-							c.workerName, i, c.tcpPort, c.Pid(), vb, err)
+						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %v Failed to close dcp stream, err: %v",
+							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
 					}
 					c.RUnlock()
 
@@ -98,8 +102,8 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					continue
 				}
 
-				logging.Tracef("CRVT[%s:giveup_r_%d:%s:%d] vb: %v uuid: %v vbStat uuid: %v owner node: %r consumer name: %v",
-					c.workerName, i, c.tcpPort, c.Pid(), vb, c.NodeUUID(),
+				logging.Tracef("%s [%s:giveup_r_%d:%s:%d] vb: %v uuid: %v vbStat uuid: %v owner node: %r consumer name: %v",
+					logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, c.NodeUUID(),
 					vbsts.getVbStat(vb, "node_uuid"),
 					vbsts.getVbStat(vb, "current_vb_owner"),
 					vbsts.getVbStat(vb, "assigned_worker"))
@@ -121,8 +125,8 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					c.RLock()
 					err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
 					if err != nil {
-						logging.Errorf("CRVT[%s:giveup_r_%d:%s:%d] vb: %v Failed to close dcp stream, err: %v",
-							c.workerName, i, c.tcpPort, c.Pid(), vb, err)
+						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %v Failed to close dcp stream, err: %v",
+							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
 					}
 					c.RUnlock()
 
@@ -137,13 +141,13 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 				retryVbMetaStateCheck:
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-					logging.Tracef("CRVT[%s:giveup_r_%d:%s:%d] vb: %v vbsStateUpdate MetaState check",
-						c.workerName, i, c.tcpPort, c.Pid(), vb)
+					logging.Tracef("%s [%s:giveup_r_%d:%s:%d] vb: %v vbsStateUpdate MetaState check",
+						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
 
 					select {
 					case <-c.stopVbOwnerGiveupCh:
-						logging.Debugf("CRVT[%s:giveup_r_%d:%s:%d] Exiting vb ownership give-up routine, last vb handled: %v",
-							c.workerName, i, c.tcpPort, c.Pid(), vb)
+						logging.Debugf("%s [%s:giveup_r_%d:%s:%d] Exiting vb ownership give-up routine, last vb handled: %v",
+							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
 						return
 
 					default:
@@ -157,8 +161,8 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 							time.Sleep(retryVbMetaStateCheckInterval)
 							goto retryVbMetaStateCheck
 						}
-						logging.Debugf("CRVT[%s:giveup_r_%d:%s:%d] Gracefully exited vb ownership give-up routine, last vb handled: %v",
-							c.workerName, i, c.tcpPort, c.Pid(), vb)
+						logging.Debugf("%s [%s:giveup_r_%d:%s:%d] Gracefully exited vb ownership give-up routine, last vb handled: %v",
+							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
 					}
 				}
 			}

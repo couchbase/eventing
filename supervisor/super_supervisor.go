@@ -96,7 +96,7 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 
 	logging.Infof("%s [%d] path => %s encoded value size => %v", logPrefix, len(s.runningProducers), path, len(value))
 
-	if !s.checkIfNodeInCluster() {
+	if !s.checkIfNodeInCluster() && len(s.runningProducers) == 0 {
 		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, len(s.runningProducers))
 		return nil
 	}
@@ -181,7 +181,7 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev interface{}) error {
 	logPrefix := "SuperSupervisor::SettingsChangeCallback"
 
-	if !s.checkIfNodeInCluster() {
+	if !s.checkIfNodeInCluster() && len(s.runningProducers) == 0 {
 		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, len(s.runningProducers))
 		return nil
 	}
@@ -354,7 +354,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 	logging.Infof("%s [%d] Path => %s value => %s", logPrefix, len(s.runningProducers), path, string(value))
 
-	if !s.checkIfNodeInCluster() {
+	if !s.checkIfNodeInCluster() && len(s.runningProducers) == 0 {
 		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, len(s.runningProducers))
 		return nil
 	}

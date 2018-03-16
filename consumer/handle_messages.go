@@ -438,11 +438,13 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 }
 
 func (c *Consumer) sendMessageLoop() {
+	logPrefix := "Consumer::sendMessageLoop"
+
 	defer func() {
 		if r := recover(); r != nil {
 			trace := debug.Stack()
-			logging.Errorf("CRHM[%s:%s:%s:%d] sendMessageLoop recover, %r stack trace: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
+			logging.Errorf("%s [%s:%s:%d] sendMessageLoop recover, %r stack trace: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()
 
@@ -464,8 +466,8 @@ func (c *Consumer) sendMessageLoop() {
 					defer c.sendMsgBufferRWMutex.Unlock()
 					err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
 					if err != nil {
-						logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
-							c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+						logging.Errorf("%s [%s:%s:%d] Write to downstream socket failed, err: %v",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 						c.client.Stop()
 					}
 
@@ -483,6 +485,8 @@ func (c *Consumer) sendMessageLoop() {
 }
 
 func (c *Consumer) sendMessage(m *msgToTransmit) error {
+	logPrefix := "Consumer::sendMessage"
+
 	defer func() {
 		if m.headerBuilder != nil {
 			c.putBuilder(m.headerBuilder)
@@ -499,29 +503,29 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 	defer c.sendMsgBufferRWMutex.Unlock()
 	err := binary.Write(&c.sendMsgBuffer, binary.LittleEndian, uint32(len(m.msg.Header)))
 	if err != nil {
-		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing header size, err : %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		logging.Errorf("%s [%s:%s:%d] Failure while writing header size, err : %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return err
 	}
 
 	err = binary.Write(&c.sendMsgBuffer, binary.LittleEndian, uint32(len(m.msg.Payload)))
 	if err != nil {
-		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing payload size, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		logging.Errorf("%s [%s:%s:%d] Failure while writing payload size, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return err
 	}
 
 	err = binary.Write(&c.sendMsgBuffer, binary.LittleEndian, m.msg.Header)
 	if err != nil {
-		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing encoded header, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		logging.Errorf("%s [%s:%s:%d] Failure while writing encoded header, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return err
 	}
 
 	err = binary.Write(&c.sendMsgBuffer, binary.LittleEndian, m.msg.Payload)
 	if err != nil {
-		logging.Errorf("CRHM[%s:%s:%s:%d] Failure while writing encoded payload, err: %v",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+		logging.Errorf("%s [%s:%s:%d] Failure while writing encoded payload, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return err
 	}
 
@@ -536,16 +540,16 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 
 			err = binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
 			if err != nil {
-				logging.Errorf("CRHM[%s:%s:%s:%d] Write to downstream socket failed, err: %v",
-					c.app.AppName, c.workerName, c.tcpPort, c.Pid(), err)
+				logging.Errorf("%s [%s:%s:%d] Write to downstream socket failed, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 				c.client.Stop()
 				return err
 			}
 		} else if c.debugConn != nil {
 			err = binary.Write(c.debugConn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
 			if err != nil {
-				logging.Errorf("CRHM[%s:%s:%s:%d] Write to debug enabled worker socket failed, err: %v",
-					c.app.AppName, c.workerName, c.debugTCPPort, c.Pid(), err)
+				logging.Errorf("%s [%s:%s:%d] Write to debug enabled worker socket failed, err: %v",
+					logPrefix, c.workerName, c.debugTCPPort, c.Pid(), err)
 				c.debugConn.Close()
 				return err
 			}
