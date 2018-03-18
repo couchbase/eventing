@@ -27,6 +27,7 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 		appName:                appName,
 		bootstrapFinishCh:      make(chan struct{}, 1),
 		dcpConfig:              make(map[string]interface{}),
+		ejectNodeUUIDs:         make([]string, 0),
 		eventingNodeUUIDs:      make([]string, 0),
 		kvPort:                 kvPort,
 		listenerHandles:        make([]net.Listener, 0),
@@ -454,7 +455,8 @@ func (p *Producer) NotifyTopologyChange(msg *common.TopologyChangeMsg) {
 }
 
 // NotifyPrepareTopologyChange captures keepNodes supplied as part of topology change message
-func (p *Producer) NotifyPrepareTopologyChange(keepNodes []string) {
+func (p *Producer) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string) {
+	p.ejectNodeUUIDs = ejectNodes
 	p.eventingNodeUUIDs = keepNodes
 
 	for _, eventingConsumer := range p.runningConsumers {

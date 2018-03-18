@@ -150,7 +150,7 @@ func (p *Producer) GetSourceMap() string {
 }
 
 // IsEventingNodeAlive verifies if a hostPortAddr combination is an active eventing node
-func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr string) bool {
+func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool {
 	eventingNodeAddrs := (*[]string)(atomic.LoadPointer(
 		(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs))))
 	if eventingNodeAddrs != nil {
@@ -160,6 +160,12 @@ func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr string) bool {
 			}
 		}
 	}
+
+	// To assist in the case of hostname update
+	if util.Contains(nodeUUID, p.eventingNodeUUIDs) || util.Contains(nodeUUID, p.eventingNodeUUIDs) {
+		return true
+	}
+
 	return false
 }
 

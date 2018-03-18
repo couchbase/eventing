@@ -323,6 +323,9 @@ func (c *Consumer) processEvents() {
 				c.vbsStreamClosedRWMutex.Unlock()
 
 				if !cUpdated {
+					logging.Infof("%s [%s:%s:%d] vb: %v updating metadata about dcp stream close",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 					c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
 				}

@@ -51,12 +51,12 @@ type EventingProducer interface {
 	GetPlasmaStats() (map[string]interface{}, error)
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
-	IsEventingNodeAlive(eventingHostPortAddr string) bool
+	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
 	KvHostPorts() []string
 	LenRunningConsumers() int
 	MetadataBucket() string
 	NotifyInit()
-	NotifyPrepareTopologyChange(keepNodes []string)
+	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string)
 	NotifySettingsChange()
 	NotifySupervisor()
 	NotifyTopologyChange(msg *TopologyChangeMsg)
@@ -149,7 +149,7 @@ type EventingSuperSup interface {
 	GetPlasmaStats(appName string) (map[string]interface{}, error)
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
-	NotifyPrepareTopologyChange(keepNodes []string)
+	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string)
 	PlannerStats(appName string) []*PlannerNodeVbMapping
 	RebalanceStatus() bool
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)

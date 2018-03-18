@@ -133,7 +133,7 @@ func (m *ServiceMgr) validateAliasName(aliasName string) (info *runtimeInfo) {
 		"yield",
 	}
 
-	if contains(aliasName, jsReservedWords) {
+	if util.Contains(aliasName, jsReservedWords) {
 		info.Code = m.statusCodes.errInvalidConfig.Code
 		info.Info = "Alias must not be a JavaScript reserved word"
 		return
@@ -161,7 +161,7 @@ func (m *ServiceMgr) validateAliasName(aliasName string) (info *runtimeInfo) {
 		"upsert",
 	}
 
-	if containsIgnoreCase(aliasName, n1qlReservedWords) {
+	if util.ContainsIgnoreCase(aliasName, n1qlReservedWords) {
 		info.Code = m.statusCodes.errInvalidConfig.Code
 		info.Info = "Alias must not be a N1QL reserved word"
 		return
@@ -389,7 +389,7 @@ func (m *ServiceMgr) validatePossibleValues(field string, settings map[string]in
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
-	if val, ok := settings[field]; ok && !contains(val.(string), possibleValues) {
+	if val, ok := settings[field]; ok && !util.Contains(val.(string), possibleValues) {
 		info.Info = fmt.Sprintf("Invalid value for %s, possible values are %s", field, strings.Join(possibleValues, ", "))
 		return
 	}

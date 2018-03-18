@@ -877,3 +877,23 @@ func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error)
 
 	return false, nil
 }
+
+func Contains(needle string, haystack []string) bool {
+	for _, item := range haystack {
+		if item == needle {
+			return true
+		}
+	}
+
+	return false
+}
+
+func ContainsIgnoreCase(needle string, haystack []string) bool {
+	for _, item := range haystack {
+		if strings.EqualFold(item, needle) {
+			return true
+		}
+	}
+
+	return false
+}

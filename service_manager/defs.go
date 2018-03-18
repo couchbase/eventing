@@ -43,15 +43,16 @@ const (
 
 // ServiceMgr implements cbauth_service interface
 type ServiceMgr struct {
-	auth              string
-	config            util.ConfigHolder
-	eventingNodeAddrs []string
 	adminHTTPPort     string
 	adminSSLPort      string
+	auth              string
 	certFile          string
+	config            util.ConfigHolder
+	ejectNodeUUIDs    []string
+	eventingNodeAddrs []string
+	failoverNotif     bool
 	keepNodeUUIDs     []string
 	keyFile           string
-	failoverNotif     bool
 	mu                *sync.RWMutex
 	uuid              string
 

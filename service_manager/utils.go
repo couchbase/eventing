@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/logging"
@@ -20,26 +19,6 @@ func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 			return true
 		}
 	}
-	return false
-}
-
-func contains(needle string, haystack []string) bool {
-	for _, item := range haystack {
-		if item == needle {
-			return true
-		}
-	}
-
-	return false
-}
-
-func containsIgnoreCase(needle string, haystack []string) bool {
-	for _, item := range haystack {
-		if strings.EqualFold(item, needle) {
-			return true
-		}
-	}
-
 	return false
 }
 
