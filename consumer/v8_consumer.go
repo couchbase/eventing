@@ -16,7 +16,6 @@ import (
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/plasma"
 	"github.com/google/flatbuffers/go"
@@ -163,10 +162,6 @@ func (c *Consumer) Serve() {
 	c.consumerSup = suptree.NewSimple(c.workerName)
 	go c.consumerSup.ServeBackground()
 
-	c.timerTransferHandle = timer.NewTimerTransfer(c, c.app.AppName, c.eventingDir,
-		c.HostPortAddr(), c.workerName)
-	c.timerTransferSupToken = c.consumerSup.Add(c.timerTransferHandle)
-
 	c.cppWorkerThrPartitionMap()
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getKvNodesFromVbMap, c)
@@ -305,7 +300,6 @@ func (c *Consumer) Stop() {
 	c.gocbBucket.Close()
 	c.gocbMetaBucket.Close()
 
-	c.consumerSup.Remove(c.timerTransferSupToken)
 	c.consumerSup.Remove(c.clientSupToken)
 	c.consumerSup.Stop()
 

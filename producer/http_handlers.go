@@ -32,18 +32,6 @@ func (p *Producer) EventsProcessedPSec(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%v", string(encodedStats))
 }
 
-// TimerTransferHostPortAddrs returns list of hostPortAddrs for consumer level routines, that are
-// responsible for transferring of timer related metadata during rebalance
-func (p *Producer) TimerTransferHostPortAddrs() map[string]string {
-	hostPortAddrs := make(map[string]string)
-
-	for _, consumer := range p.runningConsumers {
-		hostPortAddrs[consumer.ConsumerName()] = consumer.TimerTransferHostPortAddr()
-	}
-
-	return hostPortAddrs
-}
-
 // GetSettings dumps the event handler specific config
 func (p *Producer) GetSettings(w http.ResponseWriter, r *http.Request) {
 	encodedSettings, err := json.Marshal(p.app.Settings)

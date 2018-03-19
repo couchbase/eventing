@@ -7,21 +7,6 @@ import (
 	"github.com/couchbase/eventing/logging"
 )
 
-// AppTimerTransferHostPortAddrs returns all running net.Listener instances of timer transfer
-// routines on current node
-func (s *SuperSupervisor) AppTimerTransferHostPortAddrs(appName string) (map[string]string, error) {
-	logPrefix := "SuperSupervisor::AppTimerTransferHostPortAddrs"
-
-	if _, ok := s.runningProducers[appName]; ok {
-		return s.runningProducers[appName].TimerTransferHostPortAddrs(), nil
-	}
-
-	logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
-		logPrefix, len(s.runningProducers), appName)
-
-	return nil, fmt.Errorf("No running producer instance found")
-}
-
 // ClearEventStats flushes event processing stats
 func (s *SuperSupervisor) ClearEventStats() {
 	for _, p := range s.runningProducers {

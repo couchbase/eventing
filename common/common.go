@@ -78,7 +78,6 @@ type EventingProducer interface {
 	StopRunningConsumers()
 	String() string
 	TimerDebugStats() map[int]map[string]interface{}
-	TimerTransferHostPortAddrs() map[string]string
 	UpdatePlasmaMemoryQuota(quota int64)
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbDistributionStats() map[string]map[string]string
@@ -91,7 +90,6 @@ type EventingProducer interface {
 type EventingConsumer interface {
 	ClearEventStats()
 	ConsumerName() string
-	CreateTempPlasmaStore(vb uint16) error
 	DcpEventsRemainingToProcess() uint64
 	EventingNodeUUIDs() []string
 	EventsProcessedPSec() *EventProcessingStats
@@ -123,14 +121,12 @@ type EventingConsumer interface {
 	Stop()
 	String() string
 	TimerDebugStats() map[int]map[string]interface{}
-	TimerTransferHostPortAddr() string
 	UpdateEventingNodesUUIDs(uuids []string)
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbProcessingStats() map[uint16]map[string]interface{}
 }
 
 type EventingSuperSup interface {
-	AppTimerTransferHostPortAddrs(string) (map[string]string, error)
 	BootstrapAppList() map[string]string
 	ClearEventStats()
 	DeployedAppList() []string
