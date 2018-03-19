@@ -347,40 +347,6 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob) error {
 	logPrefix := "Consumer::updateVbOwnerAndStartDCPStream"
 
-	c.vbsStreamRRWMutex.Lock()
-	if _, ok := c.vbStreamRequested[vb]; !ok {
-		c.vbStreamRequested[vb] = struct{}{}
-		logging.Debugf("%s [%s:%s:%d] vb: %v Going to make DcpRequestStream call",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-	} else {
-		c.vbsStreamRRWMutex.Unlock()
-		logging.Debugf("%s [%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-		return nil
-	}
-	c.vbsStreamRRWMutex.Unlock()
-
-	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
-	c.vbProcessingStats.updateVbStat(vb, "last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo)
-
-	var streamStartSeqNo uint64
-	if vbBlob.LastDocTimerFeedbackSeqNo < vbBlob.LastSeqNoProcessed {
-		streamStartSeqNo = vbBlob.LastDocTimerFeedbackSeqNo
-	} else {
-		streamStartSeqNo = vbBlob.LastSeqNoProcessed
-	}
-
-	err := c.dcpRequestStreamHandle(vb, vbBlob, streamStartSeqNo)
-	if err != nil {
-		c.vbsStreamRRWMutex.Lock()
-		defer c.vbsStreamRRWMutex.Unlock()
-
-		if _, ok := c.vbStreamRequested[vb]; ok {
-			delete(c.vbStreamRequested, vb)
-		}
-		return err
-	}
-
 	timerAddrs := make(map[string]map[string]string)
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), aggTimerHostPortAddrsCallback, c, &timerAddrs)
@@ -461,6 +427,40 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	} else {
 		logging.Debugf("%s [%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %r prev path: %v curr path: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir)
+	}
+
+	c.vbsStreamRRWMutex.Lock()
+	if _, ok := c.vbStreamRequested[vb]; !ok {
+		c.vbStreamRequested[vb] = struct{}{}
+		logging.Debugf("%s [%s:%s:%d] vb: %v Going to make DcpRequestStream call",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+	} else {
+		c.vbsStreamRRWMutex.Unlock()
+		logging.Debugf("%s [%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+		return nil
+	}
+	c.vbsStreamRRWMutex.Unlock()
+
+	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
+	c.vbProcessingStats.updateVbStat(vb, "last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo)
+
+	var streamStartSeqNo uint64
+	if vbBlob.LastDocTimerFeedbackSeqNo < vbBlob.LastSeqNoProcessed {
+		streamStartSeqNo = vbBlob.LastDocTimerFeedbackSeqNo
+	} else {
+		streamStartSeqNo = vbBlob.LastSeqNoProcessed
+	}
+
+	err := c.dcpRequestStreamHandle(vb, vbBlob, streamStartSeqNo)
+	if err != nil {
+		c.vbsStreamRRWMutex.Lock()
+		defer c.vbsStreamRRWMutex.Unlock()
+
+		if _, ok := c.vbStreamRequested[vb]; ok {
+			delete(c.vbStreamRequested, vb)
+		}
+		return err
 	}
 
 	return nil
