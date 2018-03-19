@@ -258,16 +258,6 @@ func (c *Consumer) SignalFeedbackConnected() {
 	c.signalFeedbackConnectedCh <- struct{}{}
 }
 
-// TimerTransferHostPortAddr returns hostport combination for RPC server handling transfer of
-// timer related plasma files during rebalance
-func (c *Consumer) TimerTransferHostPortAddr() string {
-	if c.timerTransferHandle == nil {
-		return ""
-	}
-
-	return c.timerTransferHandle.Addr
-}
-
 // UpdateEventingNodesUUIDs is called by producer instance to notify about
 // updated list of node uuids
 func (c *Consumer) UpdateEventingNodesUUIDs(uuids []string) {

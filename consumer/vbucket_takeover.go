@@ -1,16 +1,19 @@
 package consumer
 
 import (
+	"bytes"
+	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"sort"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/couchbase/eventing/dcp"
+	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 )
@@ -347,86 +350,136 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob) error {
 	logPrefix := "Consumer::updateVbOwnerAndStartDCPStream"
 
-	timerAddrs := make(map[string]map[string]string)
+	logging.Infof("%s [%s:%s:%d] vb: %v LastProcessedSeqNo: %d",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastSeqNoProcessed)
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), aggTimerHostPortAddrsCallback, c, &timerAddrs)
-	previousAssignedWorker := vbBlob.PreviousAssignedWorker
-	previousEventingDir := vbBlob.PreviousEventingDir
-	previousNodeUUID := vbBlob.PreviousNodeUUID
-	previousVBOwner := vbBlob.PreviousVBOwner
+	// Recreate doc timer records from dcp backfill only if last_processed_seq_no is > 0
+	if vbBlob.LastSeqNoProcessed > 0 {
 
-	logging.Debugf("%s [%s:%s:%d] vb: %v previous worker: %v timer dir: %v node uuid: %v vb owner: %r",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, previousAssignedWorker, previousEventingDir,
-		previousNodeUUID, previousVBOwner)
+		util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getKvNodesFromVbMap, c)
 
-	var addr, remoteConsumerAddr string
-	var ok bool
+		var b *couchbase.Bucket
+		var dcpFeed *couchbase.DcpFeed
 
-	// To handle case of hostname update
-	if addr, ok = timerAddrs[previousVBOwner][previousAssignedWorker]; !ok {
-		util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, c)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), commonConnectBucketOpCallback, c, &b)
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startFeedFromKVNodesCallback, c, &b, vb, &dcpFeed, c.kvNodes)
 
-		var addrUUIDMap map[string]string
-		util.Retry(util.NewFixedBackoff(time.Second), aggUUIDCallback, c, &addrUUIDMap)
-		addr = addrUUIDMap[previousNodeUUID]
+		logging.Infof("%s [%s:%s:%d] vb: %v Starting up dcpFeed to (re)create doc timer metadata via backfill, source bucket: %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket)
 
-		if _, aOk := timerAddrs[addr]; aOk {
-			if _, pOk := timerAddrs[addr][previousAssignedWorker]; pOk {
-				host, _, err := net.SplitHostPort(previousVBOwner)
-				if err != nil {
-					logging.Errorf("%s [%s:%s:%d] vb: %v Failed to parse host address: %r, err: %v",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, previousVBOwner, err)
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		go func(dcpFeed *couchbase.DcpFeed, wg *sync.WaitGroup) {
+			defer wg.Done()
+
+			for {
+				select {
+				case e, ok := <-dcpFeed.C:
+					if ok == false {
+						logging.Infof("%s [%s:%d] vb: %v Exiting doc timer recreate routine",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+						return
+					}
+
+					logging.Tracef("%s [%s:%s:%d] vb: %v Opcode received: %v key: %r datatype: %v seq no: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, e.Opcode, string(e.Key), e.Datatype, e.Seqno)
+
+					switch e.Opcode {
+					case mcd.DCP_STREAMEND:
+						logging.Infof("%s [%s:%s:%d] vb: %v Stream end has been received",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+						return
+
+					case mcd.DCP_MUTATION:
+						switch e.Datatype {
+						case dcpDatatypeJSONXattr:
+							totalXattrLen := binary.BigEndian.Uint32(e.Value[0:])
+							totalXattrData := e.Value[4 : 4+totalXattrLen-1]
+
+							logging.Infof("%s [%s:%s:%d] key: %r totalXattrLen: %v totalXattrData: %v",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), totalXattrLen, totalXattrData)
+
+							var xMeta xattrMetadata
+							var bytesDecoded uint32
+
+							// Try decoding all xattrs defined in io-vector encoding format
+							for bytesDecoded < totalXattrLen {
+								frameLength := binary.BigEndian.Uint32(totalXattrData)
+								bytesDecoded += 4
+								frameData := totalXattrData[4 : 4+frameLength-1]
+								bytesDecoded += frameLength
+								if bytesDecoded < totalXattrLen {
+									totalXattrData = totalXattrData[4+frameLength:]
+								}
+
+								if len(frameData) > len(xattrPrefix) {
+									if bytes.Compare(frameData[:len(xattrPrefix)], []byte(xattrPrefix)) == 0 {
+										toParse := frameData[len(xattrPrefix)+1:]
+
+										err := json.Unmarshal(toParse, &xMeta)
+										if err != nil {
+											logging.Errorf("%s [%s:%s:%d] Failed to unmarshal xattr metadata, err: %v",
+												logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+											continue
+										}
+									}
+								}
+							}
+
+							pEntry := &plasmaStoreEntry{
+								vb:    e.VBucket,
+								key:   string(e.Key),
+								xMeta: &xMeta,
+							}
+							c.plasmaStoreCh <- pEntry
+
+							logging.Infof("%s [%s:%s:%d] Inserting doc timer key: %r into plasma",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+
+						default:
+						}
+
+					default:
+					}
+
 				}
-				_, port, err := net.SplitHostPort(timerAddrs[addr][previousAssignedWorker])
+			}
+		}(dcpFeed, &wg)
+
+		var flogs couchbase.FailoverLog
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs)
+
+		start, snapStart, snapEnd := uint64(0), uint64(0), vbBlob.LastSeqNoProcessed
+		flags := uint32(0)
+		end := vbBlob.LastSeqNoProcessed
+
+		logging.Infof("%s [%s:%s:%d] vb: %v Going to start DCP streams from source bucket: %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket)
+
+		for fVbucket, flog := range flogs {
+			if fVbucket == vb {
+				vbuuid, _, _ := flog.Latest()
+
+				logging.Infof("%s [%s:%s:%d] vb: %v starting DCP feed. Start seq no: %d end seq no: %d",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, start, end)
+
+				opaque := uint16(vb)
+				err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
 				if err != nil {
-					logging.Errorf("%s [%s:%s:%d] vb: %v Failed to parse host port: %r, err: %v",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerAddrs[addr][previousAssignedWorker], err)
+					logging.Errorf("%s [%s:%s:%d] vb: %v Failed to stream",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 				}
-				remoteConsumerAddr = net.JoinHostPort(host, port)
 			}
 		}
+
+		wg.Wait()
+
+		dcpFeed.Close()
+
 	} else {
-		host, _, err := net.SplitHostPort(previousVBOwner)
-		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] vb: %v Failed to parse host address: %r, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, previousVBOwner, err)
-		}
-		_, port, err := net.SplitHostPort(timerAddrs[previousVBOwner][previousAssignedWorker])
-		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] vb: %v Failed to parse host port: %r, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerAddrs[addr][previousAssignedWorker], err)
-		}
-		remoteConsumerAddr = net.JoinHostPort(host, port)
-	}
-
-	client := timer.NewRPCClient(c, remoteConsumerAddr, c.app.AppName, previousAssignedWorker)
-	if err := client.DialPath("/" + previousAssignedWorker + "/"); err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %v Failed to connect to remote RPC server addr: %r, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, err)
-
-		return errFailedConnectRemoteRPC
-	}
-	defer client.Close()
-
-	timerDir := fmt.Sprintf("reb_%v_%v_timer.data", vb, c.app.AppName)
-
-	sTimerDir := fmt.Sprintf("%v/reb_%v_%v_timer.data", previousEventingDir, vb, c.app.AppName)
-	dTimerDir := fmt.Sprintf("%v/reb_%v_%v_timer.data", c.eventingDir, vb, c.app.AppName)
-
-	if c.NodeUUID() != previousNodeUUID {
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval*5), downloadDirCallback, c, client, timerDir, sTimerDir, dTimerDir, remoteConsumerAddr, vb)
-		logging.Debugf("%s [%s:%s:%d] vb: %v Successfully downloaded timer dir: %v to: %r from: %r",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, sTimerDir, dTimerDir, remoteConsumerAddr)
-
-		err := c.copyPlasmaRecords(vb, dTimerDir)
-		if err != nil {
-			logging.Debugf("%s [%s:%s:%d] vb: %v Encountered error: %v, while trying to copy over plasma contents from temp plasma store",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-			return err
-		}
-	} else {
-		logging.Debugf("%s [%s:%s:%d] vb: %v Skipping transfer of timer dir because src and dst are same node addr: %r prev path: %v curr path: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, remoteConsumerAddr, sTimerDir, dTimerDir)
+		logging.Infof("%s [%s:%s:%d] vb: %v Not starting dcp stream as lastProcessedSeqNo: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastSeqNoProcessed)
 	}
 
 	c.vbsStreamRRWMutex.Lock()

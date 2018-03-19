@@ -317,27 +317,6 @@ func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "App: %v not deployed", appName)
 }
 
-func (m *ServiceMgr) getTimerHostPortAddrs(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
-	values := r.URL.Query()
-	appName := values["name"][0]
-
-	data, err := m.superSup.AppTimerTransferHostPortAddrs(appName)
-	if err == nil {
-		buf, err := json.Marshal(data)
-		if err != nil {
-			fmt.Fprintf(w, "err: %v", err)
-			return
-		}
-		fmt.Fprintf(w, "%v", string(buf))
-	}
-
-	fmt.Fprintf(w, "")
-}
-
 func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
@@ -362,25 +341,6 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 		fmt.Fprintf(w, "App: %v not deployed", appName)
 	}
-}
-
-func (m *ServiceMgr) getAggTimerHostPortAddrs(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
-	values := r.URL.Query()
-	appName := values["name"][0]
-
-	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
-
-	addrs, err := util.GetTimerHostPortAddrs(fmt.Sprintf("/getTimerHostPortAddrs?name=%s", appName), m.eventingNodeAddrs)
-	if err != nil {
-		logging.Errorf("Failed to marshal timer hosts for app: %v, err: %v", appName, err)
-		return
-	}
-
-	fmt.Fprintf(w, "%v", addrs)
 }
 
 var getDeployedAppsCallback = func(args ...interface{}) error {

@@ -421,48 +421,6 @@ func GetAggTimerHostPortAddrs(appName, eventingAdminPort, urlSuffix string) (map
 	return hostPortAddrs, nil
 }
 
-func GetTimerHostPortAddrs(urlSuffix string, nodeAddrs []string) (string, error) {
-	logPrefix := "util::GetTimerHostPortAddrs"
-
-	hostPortAddrs := make(map[string]map[string]string)
-
-	netClient := NewClient(HTTPRequestTimeout)
-
-	for _, nodeAddr := range nodeAddrs {
-		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
-
-		res, err := netClient.Get(endpointURL)
-		if err != nil {
-			logging.Errorf("%s Failed to gather timer host port addrs from url: %r, err: %v", logPrefix, endpointURL, err)
-			return "", err
-		}
-		defer res.Body.Close()
-
-		buf, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			logging.Errorf("%s Failed to read response body from url: %r, err: %v", logPrefix, endpointURL, err)
-			return "", err
-		}
-
-		var addrs map[string]string
-		err = json.Unmarshal(buf, &addrs)
-		if err != nil {
-			logging.Errorf("%s Failed to unmarshal timer host port addrs from url: %r, err: %v", logPrefix, endpointURL, err)
-			return "", nil
-		}
-
-		hostPortAddrs[nodeAddr] = make(map[string]string)
-		hostPortAddrs[nodeAddr] = addrs
-	}
-
-	buf, err := json.Marshal(&hostPortAddrs)
-	if err != nil {
-		return "", err
-	}
-
-	return string(buf), nil
-}
-
 func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {
 	logPrefix := "util::GetDeployedApps"
 

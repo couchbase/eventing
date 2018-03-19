@@ -403,6 +403,27 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	return nil
 }
 
+var startFeedFromKVNodesCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::startFeedCallback"
+
+	c := args[0].(*Consumer)
+	b := args[1].(**couchbase.Bucket)
+	vb := args[2].(uint16)
+	dcpFeed := args[3].(**couchbase.DcpFeed)
+	kvNodeAddrs := args[4].([]string)
+
+	feedName := couchbase.DcpFeedName(fmt.Sprintf("eventing:%s_%s_vb_%v_docTimer", c.HostPortAddr(), c.workerName, vb))
+
+	var err error
+	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), includeXATTRs, kvNodeAddrs, 0xABCD, c.dcpConfig)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to start dcp feed for bucket: %v kv nodes: %r, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvNodeAddrs, err)
+	}
+
+	return err
+}
+
 var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::populateDcpFeedVbEntriesCallback"
 

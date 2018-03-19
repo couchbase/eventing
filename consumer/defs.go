@@ -15,7 +15,6 @@ import (
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/eventing/timer_transfer"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/plasma"
 	"github.com/google/flatbuffers/go"
@@ -75,9 +74,6 @@ const (
 	// Interval for retrying failed cluster related operations
 	clusterOpRetryInterval = time.Duration(1000) * time.Millisecond
 
-	// Interval at which plasma.PersistAll will be called against *plasma.Plasma
-	persistAllTickInterval = time.Duration(5000) * time.Millisecond
-
 	// Interval for retrying failed plasma operations
 	plasmaOpRetryInterval = time.Duration(1000) * time.Millisecond
 
@@ -129,7 +125,7 @@ type dcpMetadata struct {
 // Consumer is responsible interacting with c++ v8 worker over local tcp port
 type Consumer struct {
 	app         *common.AppConfig
-	bucket      string
+	bucket      string // source bucket
 	builderPool *sync.Pool
 	breakpadOn  bool
 	uuid        string
@@ -246,11 +242,6 @@ type Consumer struct {
 	socketTimeout               time.Duration
 	timerCleanupStopCh          chan struct{}
 	timerProcessingTickInterval time.Duration
-
-	// Instance of timer related data transferring routine, under
-	// the supervision of consumer routine
-	timerTransferHandle   *timer.TransferSrv
-	timerTransferSupToken suptree.ServiceToken
 
 	enableRecursiveMutation bool
 
@@ -498,7 +489,6 @@ type cppQueueSize struct {
 
 type plasmaStoreEntry struct {
 	callbackFn string
-	expiry     uint32
 	key        string
 	timerTs    string
 	vb         uint16
