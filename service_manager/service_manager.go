@@ -107,19 +107,25 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 
 	logging.Infof("%s change: %#v", logPrefix, change)
 
+	m.ejectNodeUUIDs = make([]string, 0)
+
+	for _, node := range change.EjectNodes {
+		m.ejectNodeUUIDs = append(m.ejectNodeUUIDs, string(node.NodeID))
+	}
+
 	m.keepNodeUUIDs = make([]string, 0)
 
 	for _, node := range change.KeepNodes {
 		m.keepNodeUUIDs = append(m.keepNodeUUIDs, string(node.NodeInfo.NodeID))
 	}
 
-	logging.Infof("%s keepNodeUUIDs: %v", logPrefix, m.keepNodeUUIDs)
+	logging.Infof("%s ejectNodeUUIDs: %v keepNodeUUIDs: %v", logPrefix, m.ejectNodeUUIDs, m.keepNodeUUIDs)
 
 	m.updateStateLocked(func(s *state) {
 		m.rebalanceID = change.ID
 	})
 
-	m.superSup.NotifyPrepareTopologyChange(m.keepNodeUUIDs)
+	m.superSup.NotifyPrepareTopologyChange(m.ejectNodeUUIDs, m.keepNodeUUIDs)
 
 	return nil
 }

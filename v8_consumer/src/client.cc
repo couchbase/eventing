@@ -584,8 +584,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       fstats << R"("delete_events_lost": )" << delete_events_lost << ",";
       fstats << R"("cron_timer_events_lost": )" << cron_timer_events_lost
              << ",";
-      fstats << R"("doc_timer_events_lost": )" << doc_timer_events_lost;
+      fstats << R"("doc_timer_events_lost": )" << doc_timer_events_lost << ",";
+      fstats << R"("timestamp" : ")" << GetTimestampNow() << R"(")";
       fstats << "}";
+      LOG(logTrace) << "v8worker failure stats : " << fstats.str() << std::endl;
 
       resp_msg->msg.assign(fstats.str());
       resp_msg->msg_type = mV8_Worker_Config;
@@ -629,7 +631,9 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
         estats << R"(, "agg_queue_size":)" << agg_queue_size;
         estats << R"(, "feedback_queue_size":)" << feedback_queue_size;
       }
-      estats << "}";
+
+      estats << R"(, "timestamp":")" << GetTimestampNow() << R"("})";
+      LOG(logTrace) << "v8worker execution stats:" << estats.str() << std::endl;
 
       resp_msg->msg.assign(estats.str());
       resp_msg->msg_type = mV8_Worker_Config;

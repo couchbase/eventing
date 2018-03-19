@@ -73,7 +73,7 @@
         <div
           class="error field-error"
           ng-show="formCtrl.createAppForm.appname.$error.appnameInvalid">
-          Function name should be a valid identifier.
+          Function name can only contain characters in range A-Z, a-z, 0-9 as well as underscore, percent, period & dash.
         </div>
       </div>
       <div class="formrow">
@@ -230,8 +230,12 @@
             </div>
           </div>
           <div class="row margin-bottom-half error field-error"
-               ng-show="!formCtrl.validateBinding(bindings[$index])">
+               ng-show="!formCtrl.validateVariableRegex(bindings[$index])">
             Alias value must be a valid identifier
+          </div>
+          <div class="row margin-bottom-half error field-error"
+               ng-show="!formCtrl.validateVariable(bindings[$index])">
+            Alias value must neither be a JavaScript nor a N1QL reserved word
           </div>
           <div class="row margin-bottom-half error field-error"
                ng-show="formCtrl.srcBindingSameBucket(appModel, bindings[$index])">
@@ -302,8 +306,12 @@
             </div>
           </div>
           <div class="row margin-bottom-half error field-error"
-               ng-show="!formCtrl.validateBinding(formCtrl.bindings[$index])">
+               ng-show="!formCtrl.validateVariableRegex(formCtrl.bindings[$index])">
             Alias value must be a valid identifier
+          </div>
+          <div class="row margin-bottom-half error field-error"
+               ng-show="!formCtrl.validateVariable(formCtrl.bindings[$index])">
+            Alias value must neither be a JavaScript nor a N1QL reserved word
           </div>
           <div class="row margin-bottom-half error field-error"
                ng-show="formCtrl.srcBindingSameBucket(formCtrl.bindings[$index])">

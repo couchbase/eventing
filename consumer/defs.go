@@ -175,8 +175,8 @@ type Consumer struct {
 	isRebalanceOngoing     bool
 	ipcType                string                        // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
 	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
-	executionStats         map[string]uint64             // Access controlled by statsRWMutex
-	failureStats           map[string]uint64             // Access controlled by statsRWMutex
+	executionStats         map[string]interface{}        // Access controlled by statsRWMutex
+	failureStats           map[string]interface{}        // Access controlled by statsRWMutex
 	latencyStats           map[string]uint64             // Access controlled by statsRWMutex
 	lcbExceptionStats      map[string]uint64             // Access controlled by statsRWMutex
 	compileInfo            *common.CompileStatus

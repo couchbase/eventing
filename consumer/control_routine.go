@@ -109,7 +109,7 @@ func (c *Consumer) controlRoutine() {
 			}
 
 			sort.Sort(util.Uint16Slice(vbsToRestream))
-			logging.Verbosef("%s [%s:%s:%d] vbsToRestream len: %v dump: %v",
+			logging.Infof("%s [%s:%s:%d] vbsToRestream len: %v dump: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsToRestream), util.Condense(vbsToRestream))
 
 			var vbsFailedToStartStream []uint16
@@ -132,7 +132,7 @@ func (c *Consumer) controlRoutine() {
 				var cas gocb.Cas
 				vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
 
-				logging.Debugf("%s [%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
+				logging.Infof("%s [%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
@@ -142,7 +142,7 @@ func (c *Consumer) controlRoutine() {
 				}
 			}
 
-			logging.Debugf("%s [%s:%s:%d] vbsFailedToStartStream => len: %v dump: %v",
+			logging.Infof("%s [%s:%s:%d] vbsFailedToStartStream => len: %v dump: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsFailedToStartStream), util.Condense(vbsFailedToStartStream))
 
 			vbsToRestream = util.VbsSliceDiff(vbsFailedToStartStream, vbsToRestream)
@@ -156,7 +156,7 @@ func (c *Consumer) controlRoutine() {
 			sort.Sort(util.Uint16Slice(diff))
 
 			if vbsRemainingToRestream > 0 {
-				logging.Verbosef("%s [%s:%s:%d] Retrying vbsToRestream, remaining len: %v dump: %v",
+				logging.Infof("%s [%s:%s:%d] Retrying vbsToRestream, remaining len: %v dump: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vbsRemainingToRestream, util.Condense(diff))
 				goto retryVbsRemainingToRestream
 			}

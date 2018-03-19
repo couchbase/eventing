@@ -57,6 +57,7 @@ type SuperSupervisor struct {
 	auth        string
 	CancelCh    chan struct{}
 	adminPort   AdminPortConfig
+	ejectNodes  []string
 	eventingDir string
 	keepNodes   []string
 	kvPort      string

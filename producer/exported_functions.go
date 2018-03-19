@@ -55,32 +55,48 @@ func (p *Producer) GetLatencyStats() map[string]uint64 {
 }
 
 // GetExecutionStats returns execution stats aggregated from Eventing.Consumer instances
-func (p *Producer) GetExecutionStats() map[string]uint64 {
-	executionStats := make(map[string]uint64)
+func (p *Producer) GetExecutionStats() map[string]interface{} {
+	executionStats := make(map[string]interface{})
+	executionStats["timestamp"] = make(map[int]string)
+
 	for _, c := range p.runningConsumers {
-		ceStats := c.GetExecutionStats()
-		for k, v := range ceStats {
-			if _, ok := executionStats[k]; !ok {
-				executionStats[k] = 0
+		for k, v := range c.GetExecutionStats() {
+			if k == "timestamp" {
+				executionStats["timestamp"].(map[int]string)[c.Pid()] = v.(string)
+				continue
 			}
-			executionStats[k] += v
+
+			if _, ok := executionStats[k]; !ok {
+				executionStats[k] = float64(0)
+			}
+
+			executionStats[k] = executionStats[k].(float64) + v.(float64)
 		}
 	}
+
 	return executionStats
 }
 
 // GetFailureStats returns failure stats aggregated from Eventing.Consumer instances
-func (p *Producer) GetFailureStats() map[string]uint64 {
-	failureStats := make(map[string]uint64)
+func (p *Producer) GetFailureStats() map[string]interface{} {
+	failureStats := make(map[string]interface{})
+	failureStats["timestamp"] = make(map[int]string)
+
 	for _, c := range p.runningConsumers {
-		cfStats := c.GetFailureStats()
-		for k, v := range cfStats {
-			if _, ok := failureStats[k]; !ok {
-				failureStats[k] = 0
+		for k, v := range c.GetFailureStats() {
+			if k == "timestamp" {
+				failureStats["timestamp"].(map[int]string)[c.Pid()] = v.(string)
+				continue
 			}
-			failureStats[k] += v
+
+			if _, ok := failureStats[k]; !ok {
+				failureStats[k] = float64(0)
+			}
+
+			failureStats[k] = failureStats[k].(float64) + v.(float64)
 		}
 	}
+
 	return failureStats
 }
 
@@ -150,7 +166,7 @@ func (p *Producer) GetSourceMap() string {
 }
 
 // IsEventingNodeAlive verifies if a hostPortAddr combination is an active eventing node
-func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr string) bool {
+func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool {
 	eventingNodeAddrs := (*[]string)(atomic.LoadPointer(
 		(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs))))
 	if eventingNodeAddrs != nil {
@@ -160,6 +176,12 @@ func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr string) bool {
 			}
 		}
 	}
+
+	// To assist in the case of hostname update
+	if util.Contains(nodeUUID, p.eventingNodeUUIDs) || util.Contains(nodeUUID, p.eventingNodeUUIDs) {
+		return true
+	}
+
 	return false
 }
 

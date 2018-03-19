@@ -69,6 +69,7 @@ type statusCodes struct {
 	errGetRebStatus        statusBase
 	errRebOngoing          statusBase
 	errActiveEventingNodes statusBase
+	errInvalidConfig       statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -135,6 +136,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusInternalServerError
 	case m.statusCodes.errRebOngoing.Code:
 		return http.StatusNotAcceptable
+	case m.statusCodes.errInvalidConfig.Code:
+		return http.StatusBadRequest
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -175,6 +178,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errGetRebStatus:        statusBase{"ERR_GET_REBALANCE_STATUS", 35},
 		errRebOngoing:          statusBase{"ERR_REBALANCE_ONGOING", 36},
 		errActiveEventingNodes: statusBase{"ERR_FETCHING_ACTIVE_EVENTING_NODES", 37},
+		errInvalidConfig:       statusBase{"ERR_INVALID_CONFIG", 38},
 	}
 
 	errors := []errorPayload{
@@ -355,6 +359,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errActiveEventingNodes.Name,
 			Code:        m.statusCodes.errActiveEventingNodes.Code,
 			Description: "Failed to fetch active Eventing nodes",
+		},
+		{
+			Name:        m.statusCodes.errInvalidConfig.Name,
+			Code:        m.statusCodes.errInvalidConfig.Code,
+			Description: "Invalid configuration",
 		},
 	}
 

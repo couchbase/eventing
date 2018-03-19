@@ -81,7 +81,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["cpp_worker_thread_count"]; ok {
 		p.handlerConfig.CPPWorkerThrCount = int(val.(float64))
 	} else {
-		p.handlerConfig.CPPWorkerThrCount = 1
+		p.handlerConfig.CPPWorkerThrCount = 2
 	}
 
 	if val, ok := settings["cron_timers_per_doc"]; ok {

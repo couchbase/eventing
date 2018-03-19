@@ -26,6 +26,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		deployedApps:               make(map[string]string),
 		adminPort:                  adminPort,
 		diagDir:                    diagDir,
+		ejectNodes:                 make([]string, 0),
 		eventingDir:                eventingDir,
 		keepNodes:                  make([]string, 0),
 		kvPort:                     kvPort,
@@ -509,7 +510,7 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 
 	logging.Infof("%s [%d] Spawned up app: %s", logPrefix, len(s.runningProducers), appName)
 
-	p.NotifyPrepareTopologyChange(s.keepNodes)
+	p.NotifyPrepareTopologyChange(s.ejectNodes, s.keepNodes)
 }
 
 // HandleSupCmdMsg handles control commands like app (re)deploy, settings update
@@ -643,8 +644,10 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 // NotifyPrepareTopologyChange notifies each producer instance running on current eventing nodes
 // about keepNodes supplied by ns_server
-func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
+func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string) {
 	logPrefix := "SuperSupervisor::NotifyPrepareTopologyChange"
+
+	s.ejectNodes = ejectNodes
 
 	if len(keepNodes) == 0 {
 		logging.Errorf("%s [%d] 0 eventing nodes supplied as keepNodes", logPrefix, len(s.runningProducers))
@@ -655,7 +658,7 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
 
 	for _, eventingProducer := range s.runningProducers {
 		logging.Infof("%s [%d] Updating producer %p, keepNodes => %v", logPrefix, len(s.runningProducers), eventingProducer, keepNodes)
-		eventingProducer.NotifyPrepareTopologyChange(s.keepNodes)
+		eventingProducer.NotifyPrepareTopologyChange(s.ejectNodes, s.keepNodes)
 	}
 }
 

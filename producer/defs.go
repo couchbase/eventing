@@ -101,6 +101,7 @@ type Producer struct {
 	eventingNodeAddrs []string
 	kvNodeAddrs       []string
 	nsServerNodeAddrs []string
+	ejectNodeUUIDs    []string
 	eventingNodeUUIDs []string
 
 	consumerListeners []net.Listener

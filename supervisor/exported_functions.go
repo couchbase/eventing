@@ -98,7 +98,7 @@ func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
 }
 
 // GetExecutionStats returns aggregated failure stats from Eventing.Producer instance
-func (s *SuperSupervisor) GetExecutionStats(appName string) map[string]uint64 {
+func (s *SuperSupervisor) GetExecutionStats(appName string) map[string]interface{} {
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetExecutionStats()
 	}
@@ -106,7 +106,7 @@ func (s *SuperSupervisor) GetExecutionStats(appName string) map[string]uint64 {
 }
 
 // GetFailureStats returns aggregated failure stats from Eventing.Producer instance
-func (s *SuperSupervisor) GetFailureStats(appName string) map[string]uint64 {
+func (s *SuperSupervisor) GetFailureStats(appName string) map[string]interface{} {
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetFailureStats()
 	}

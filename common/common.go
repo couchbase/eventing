@@ -42,8 +42,8 @@ type EventingProducer interface {
 	GetDebuggerURL() string
 	GetEventingConsumerPids() map[string]int
 	GetEventProcessingStats() map[string]uint64
-	GetExecutionStats() map[string]uint64
-	GetFailureStats() map[string]uint64
+	GetExecutionStats() map[string]interface{}
+	GetFailureStats() map[string]interface{}
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
@@ -51,12 +51,12 @@ type EventingProducer interface {
 	GetPlasmaStats() (map[string]interface{}, error)
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
-	IsEventingNodeAlive(eventingHostPortAddr string) bool
+	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
 	KvHostPorts() []string
 	LenRunningConsumers() int
 	MetadataBucket() string
 	NotifyInit()
-	NotifyPrepareTopologyChange(keepNodes []string)
+	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string)
 	NotifySettingsChange()
 	NotifySupervisor()
 	NotifyTopologyChange(msg *TopologyChangeMsg)
@@ -96,8 +96,8 @@ type EventingConsumer interface {
 	EventingNodeUUIDs() []string
 	EventsProcessedPSec() *EventProcessingStats
 	GetEventProcessingStats() map[string]uint64
-	GetExecutionStats() map[string]uint64
-	GetFailureStats() map[string]uint64
+	GetExecutionStats() map[string]interface{}
+	GetFailureStats() map[string]interface{}
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
@@ -141,15 +141,15 @@ type EventingSuperSup interface {
 	GetDebuggerURL(appName string) string
 	GetDeployedApps() map[string]string
 	GetEventingConsumerPids(appName string) map[string]int
-	GetExecutionStats(appName string) map[string]uint64
-	GetFailureStats(appName string) map[string]uint64
+	GetExecutionStats(appName string) map[string]interface{}
+	GetFailureStats(appName string) map[string]interface{}
 	GetHandlerCode(appName string) string
 	GetLatencyStats(appName string) map[string]uint64
 	GetLcbExceptionsStats(appName string) map[string]uint64
 	GetPlasmaStats(appName string) (map[string]interface{}, error)
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
-	NotifyPrepareTopologyChange(keepNodes []string)
+	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string)
 	PlannerStats(appName string) []*PlannerNodeVbMapping
 	RebalanceStatus() bool
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
