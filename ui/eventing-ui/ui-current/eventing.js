@@ -1176,7 +1176,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             }
 
             function isValidApplicationName(value) {
-                var re = /^[a-zA-Z0-9_%][a-zA-Z_0-9.%\\-]*$/g;
+                var re = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/g;
                 return value && value.match(re);
             }
 
