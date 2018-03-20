@@ -11,7 +11,7 @@ import (
 // Tests mimicking testrunner functional tests
 func TestEventingRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "timers_rebalance.js"
+	handler := "timers_rebalance"
 
 	flushFunctionAndBucket(handler)
 	time.Sleep(5 * time.Second)
@@ -65,7 +65,7 @@ func TestEventingRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) 
 
 func TestEventingRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "timers_rebalance.js"
+	handler := "timers_rebalance"
 
 	addNodeFromRest("127.0.0.1:9001", "eventing")
 	rebalanceFromRest([]string{""})
@@ -117,7 +117,7 @@ func TestEventingRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T)
 
 func TestEventingSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "timers_rebalance.js"
+	handler := "timers_rebalance"
 
 	flushFunctionAndBucket(handler)
 	time.Sleep(5 * time.Second)
@@ -175,7 +175,7 @@ func TestEventingSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T
 
 func TestKVRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "timers_rebalance.js"
+	handler := "timers_rebalance"
 
 	flushFunctionAndBucket(handler)
 	time.Sleep(5 * time.Second)
@@ -226,7 +226,7 @@ func TestKVRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 
 func TestKVRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "timers_rebalance.js"
+	handler := "timers_rebalance"
 
 	addNodeFromRest("127.0.0.1:9001", "kv")
 	rebalanceFromRest([]string{""})
@@ -277,7 +277,7 @@ func TestKVRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 
 func TestKVSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "timers_rebalance.js"
+	handler := "timers_rebalance"
 
 	flushFunctionAndBucket(handler)
 	time.Sleep(5 * time.Second)

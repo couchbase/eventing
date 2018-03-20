@@ -38,18 +38,18 @@ func testFlexReset(handler, testName string, t *testing.T) {
 }
 
 func TestFlexReset1(t *testing.T) {
-	handler := "n1ql_flex_reset1.js"
+	handler := "n1ql_flex_reset1"
 	testFlexReset(handler, "TestFlexReset1", t)
 }
 
 func TestFlexReset2(t *testing.T) {
-	handler := "n1ql_flex_reset2.js"
+	handler := "n1ql_flex_reset2"
 	testFlexReset(handler, "TestFlexReset2", t)
 }
 
 func TestN1QLLabelledBreak(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "n1ql_labelled_break.js"
+	handler := "n1ql_labelled_break"
 
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
@@ -76,7 +76,7 @@ func TestN1QLLabelledBreak(t *testing.T) {
 
 func TestN1QLUnlabelledBreak(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "n1ql_unlabelled_break.js"
+	handler := "n1ql_unlabelled_break"
 
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
@@ -103,7 +103,7 @@ func TestN1QLUnlabelledBreak(t *testing.T) {
 
 func TestN1QLThrowStatement(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "n1ql_throw_statement.js"
+	handler := "n1ql_throw_statement"
 
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
@@ -130,7 +130,7 @@ func TestN1QLThrowStatement(t *testing.T) {
 
 func TestN1QLNestedForLoop(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "n1ql_nested_for_loops.js"
+	handler := "n1ql_nested_for_loops"
 
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
@@ -157,7 +157,7 @@ func TestN1QLNestedForLoop(t *testing.T) {
 
 func TestDocTimerN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "n1ql_insert_with_doc_timer.js"
+	handler := "n1ql_insert_with_doc_timer"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
@@ -176,7 +176,7 @@ func TestDocTimerN1QLOp(t *testing.T) {
 
 func TestCronTimerN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "n1ql_insert_with_cron_timer.js"
+	handler := "n1ql_insert_with_cron_timer"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
@@ -195,7 +195,7 @@ func TestCronTimerN1QLOp(t *testing.T) {
 
 func TestOnUpdateN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "n1ql_insert_on_update.js"
+	handler := "n1ql_insert_on_update"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 

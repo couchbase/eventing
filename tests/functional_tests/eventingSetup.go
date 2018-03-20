@@ -13,7 +13,7 @@ import (
 )
 
 func getHandlerCode(filename string) (string, error) {
-	content, err := ioutil.ReadFile(handlerCodeDir + filename)
+	content, err := ioutil.ReadFile(handlerCodeDir + filename + ".js")
 	if err != nil {
 		fmt.Printf("Failed to open up file: %s, err: %v\n", filename, err)
 		return "", err

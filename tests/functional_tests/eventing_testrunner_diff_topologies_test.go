@@ -11,7 +11,7 @@ import (
 // Tests mimicking testrunner topology tests
 func TestTopologyEventingRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "on_delete_bucket_op_uncomment.js"
+	handler := "on_delete_bucket_op_uncomment"
 
 	addNodeFromRest("127.0.0.1:9001", "eventing,kv")
 	rebalanceFromRest([]string{""})

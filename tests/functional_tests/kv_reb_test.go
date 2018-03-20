@@ -10,7 +10,7 @@ import (
 /** OnUpdate Bucket op cases start **/
 func TestKVRebOnUpdateBucketOpOneByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "bucket_op_on_update.js"
+	handler := "bucket_op_on_update"
 
 	flushFunctionAndBucket(handler)
 	time.Sleep(5 * time.Second)
@@ -50,7 +50,7 @@ func TestKVRebOnUpdateBucketOpOneByOne(t *testing.T) {
 
 /*func TestKVRebOnUpdateBucketOpAllAtOnce(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "bucket_op_on_update.js"
+	handler := "bucket_op_on_update"
 
 	flushFunctionAndBucket(handler)
 	time.Sleep(5 * time.Second)
@@ -81,7 +81,7 @@ func TestKVRebOnUpdateBucketOpOneByOne(t *testing.T) {
 
 func TestKVSwapRebOnUpdateBucketOp(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "bucket_op_on_update.js"
+	handler := "bucket_op_on_update"
 
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
@@ -125,7 +125,7 @@ func TestKVSwapRebOnUpdateBucketOp(t *testing.T) {
 /** OnUpdate timer cases start **/
 func TestKVRebOnUpdateDocTimerOneByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "bucket_op_with_doc_timer.js"
+	handler := "bucket_op_with_doc_timer"
 
 	flushFunctionAndBucket(handler)
 	time.Sleep(5 * time.Second)
@@ -171,7 +171,7 @@ func TestKVRebOnUpdateDocTimerOneByOne(t *testing.T) {
 // CPU firepower is needed
 /*func TestKVRebalanceOnUpdateDocTimerAllAtOnce(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "bucket_op_with_doc_timer.js"
+	handler := "bucket_op_with_doc_timer"
 
 	flushFunctionAndBucket(handler)
 	time.Sleep(5 * time.Second)
@@ -211,7 +211,7 @@ func TestKVRebOnUpdateDocTimerOneByOne(t *testing.T) {
 
 func TestKVSwapRebOnUpdateDocTimer(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "bucket_op_with_doc_timer.js"
+	handler := "bucket_op_with_doc_timer"
 
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
@@ -254,8 +254,8 @@ func TestKVSwapRebOnUpdateDocTimer(t *testing.T) {
 /** Multiple handlers cases start **/
 func TestKVRebalanceWithMultipleHandlers(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler1 := "bucket_op_on_update.js"
-	handler2 := "bucket_op_with_doc_timer.js"
+	handler1 := "bucket_op_on_update"
+	handler2 := "bucket_op_with_doc_timer"
 
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)
@@ -294,8 +294,8 @@ func TestKVRebalanceWithMultipleHandlers(t *testing.T) {
 
 func TestKVSwapRebalanceWithMultipleHandlers(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler1 := "bucket_op_on_update.js"
-	handler2 := "bucket_op_with_doc_timer.js"
+	handler1 := "bucket_op_on_update"
+	handler2 := "bucket_op_with_doc_timer"
 
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)
@@ -342,7 +342,7 @@ func TestKVSwapRebalanceWithMultipleHandlers(t *testing.T) {
 /** KV Rebalance stop and start **/
 func TestKVRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "bucket_op_on_update.js"
+	handler := "bucket_op_on_update"
 
 	flushFunctionAndBucket(handler)
 	time.Sleep(5 * time.Second)
@@ -392,7 +392,7 @@ func TestKVRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 
 func TestKVFailoverOnUpdateBucketOp(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "bucket_op_on_update.js"
+	handler := "bucket_op_on_update"
 
 	flushFunctionAndBucket(handler)
 	time.Sleep(5 * time.Second)
