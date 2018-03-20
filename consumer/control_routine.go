@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/couchbase/eventing/logging"
@@ -102,7 +101,7 @@ func (c *Consumer) controlRoutine() {
 			}
 
 			if !c.isRebalanceOngoing {
-				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v as rebalance has been stopped",
+				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v as Eventing rebalance isn't running",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
 				c.vbsRemainingToRestream = make([]uint16, 0)
 				continue
@@ -130,7 +129,7 @@ func (c *Consumer) controlRoutine() {
 
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
-				vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
+				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 
 				logging.Infof("%s [%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)

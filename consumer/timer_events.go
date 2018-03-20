@@ -57,7 +57,7 @@ var plasmaInsertKV = func(args ...interface{}) error {
 }
 
 func (c *Consumer) processDocTimerEvents() {
-	logPrefix := "timerProcessingWorker::processDocTimerEvents"
+	logPrefix := "Consumer::processDocTimerEvents"
 
 	timerProcessingTicker := time.NewTicker(c.timerProcessingTickInterval)
 

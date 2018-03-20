@@ -8,7 +8,6 @@ import (
 	"hash/crc32"
 	"runtime/debug"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -227,7 +226,7 @@ func (c *Consumer) processEvents() {
 					var vbBlob vbucketKVBlob
 					var cas gocb.Cas
 
-					vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
+					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
 
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
@@ -269,10 +268,6 @@ func (c *Consumer) processEvents() {
 					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
 					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
 
-					c.vbsStreamRRWMutex.Lock()
-					delete(c.vbStreamRequested, e.VBucket)
-					c.vbsStreamRRWMutex.Unlock()
-
 					c.vbFlogChan <- vbFlog
 					continue
 				}
@@ -300,8 +295,14 @@ func (c *Consumer) processEvents() {
 
 				logging.Debugf("%s [%s:%s:%d] vb: %v, got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
+				c.vbsStreamRRWMutex.Lock()
+				if _, ok := c.vbStreamRequested[e.VBucket]; ok {
+					delete(c.vbStreamRequested, e.VBucket)
+				}
+				c.vbsStreamRRWMutex.Unlock()
+
 				//Store the latest state of vbucket processing stats in the metadata bucket
-				vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(e.VBucket)))
+				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
 
 				entry := OwnershipEntry{
 					AssignedWorker: c.ConsumerName(),
@@ -331,7 +332,7 @@ func (c *Consumer) processEvents() {
 				}
 
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
-					logging.Debugf("%s [%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
+					logging.Infof("%s [%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 					c.Lock()
 					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, e.VBucket)
@@ -444,7 +445,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 
 		vbuuid, _, _ := flog.Latest()
 
-		vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vbno)))
+		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vbno)
 		var vbBlob vbucketKVBlob
 		var start uint64
 		var cas gocb.Cas
@@ -604,7 +605,7 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() {
 func (c *Consumer) clearUpOnwershipInfoFromMeta(vb uint16) {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
-	vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
+	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 	vbBlob.AssignedDocIDTimerWorker = ""
@@ -668,7 +669,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
 		c.addToAggChan(dcpFeed, cancelCh)
 
-		logging.Debugf("%s [%s:%s:%d] vb: %d kvAddr: %v Started up new dcp feed",
+		logging.Infof("%s [%s:%s:%d] vb: %d kvAddr: %v Started up new dcp feed",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr)
 	}
 	c.hostDcpFeedRWMutex.Unlock()
@@ -682,7 +683,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 
 	snapStart, snapEnd := start, start
 
-	logging.Debugf("%s [%s:%s:%d] vb: %d DCP stream start vbKvAddr: %v vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+	logging.Infof("%s [%s:%s:%d] vb: %d DCP stream start vbKvAddr: %r vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd)
 
 	err := dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
