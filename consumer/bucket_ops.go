@@ -380,6 +380,29 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	return err
 }
 
+var getFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::getFailoverLogOpAllVbucketsCallback"
+
+	c := args[0].(*Consumer)
+	b := args[1].(*couchbase.Bucket)
+	flogs := args[2].(*couchbase.FailoverLog)
+
+	vbs := make([]uint16, 0)
+	for vb := 0; vb < c.numVbuckets; vb++ {
+		vbs = append(vbs, uint16(vb))
+	}
+
+	var err error
+	*flogs, err = b.GetFailoverLogs(0xABCD, vbs, c.dcpConfig)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to get failover logs, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+	}
+
+	b.Refresh()
+	return err
+}
+
 var startDCPFeedOpCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::startDCPFeedOpCallback"
 
