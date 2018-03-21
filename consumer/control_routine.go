@@ -83,7 +83,10 @@ func (c *Consumer) controlRoutine() {
 		case <-c.restartVbDcpStreamTicker.C:
 
 		retryVbsRemainingToRestream:
-			vbsToRestream := c.vbsRemainingToRestream
+			c.Lock()
+			vbsToRestream := make([]uint16, len(c.vbsRemainingToRestream))
+			copy(vbsToRestream, c.vbsRemainingToRestream)
+			c.Unlock()
 
 			if len(vbsToRestream) == 0 {
 				continue
@@ -94,16 +97,13 @@ func (c *Consumer) controlRoutine() {
 			// on source bucket right after undeploy
 			deployedApps := c.superSup.GetDeployedApps()
 			if _, ok := deployedApps[c.app.AppName]; !ok {
+
+				c.Lock()
 				c.vbsRemainingToRestream = make([]uint16, 0)
+				c.Unlock()
+
 				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v as the app has been undeployed",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
-				continue
-			}
-
-			if !c.isRebalanceOngoing {
-				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v as Eventing rebalance isn't running",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
-				c.vbsRemainingToRestream = make([]uint16, 0)
 				continue
 			}
 
