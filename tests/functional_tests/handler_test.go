@@ -93,11 +93,68 @@ func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestOnUpdateBucketOpDefaultSettings10K(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 10*1024)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "OnUpdateBucketOpDefaultSettings",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats(handler)
+	flushFunctionAndBucket(handler)
+}
+
+func TestOnUpdateBucketOpDefaultSettings100K(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 100*1024)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "OnUpdateBucketOpDefaultSettings",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats(handler)
+	flushFunctionAndBucket(handler)
+}
+
 func TestOnDeleteBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_on_delete"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(opsType{expiry: 1, delete: true}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "OnDeleteBucketOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats(handler)
+	flushFunctionAndBucket(handler)
+}
+
+func TestOnDeleteBucketOp5K(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "bucket_op_on_delete"
+	flushFunctionAndBucket(handler)
+	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 5*1024)
 
 	pumpBucketOps(opsType{expiry: 1, delete: true}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)

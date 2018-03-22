@@ -6,10 +6,15 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os/exec"
 	"strings"
 	"time"
+)
+
+const (
+	LettersAndDigits = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
 
 func getHandlerCode(filename string) (string, error) {
@@ -56,10 +61,19 @@ func postToEventindEndpoint(url string, payload []byte) {
 	fmt.Println(string(body))
 }
 
-func createAndDeployFunction(appName, hFileName string, settings *commonSettings) {
-	log.Printf("Deploying app: %s", appName)
+func createPadding(paddingCount int) string {
+	pad := make([]byte, paddingCount)
+	for idx := range pad {
+		pad[idx] = LettersAndDigits[rand.Intn(len(LettersAndDigits))]
+	}
+	return "/*" + string(pad) + "*/"
+}
 
+func createAndDeployLargeFunction(appName, hFileName string, settings *commonSettings, paddingCount int) {
+	log.Printf("Deploying app: %s", appName)
+	pad := createPadding(paddingCount)
 	content, err := getHandlerCode(hFileName)
+	content = pad + content
 	if err != nil {
 		fmt.Println("Get handler code, err:", err)
 		return
@@ -106,6 +120,10 @@ func createAndDeployFunction(appName, hFileName string, settings *commonSettings
 
 	postToTempStore(appName, data)
 	postToMainStore(appName, data)
+}
+
+func createAndDeployFunction(appName, hFileName string, settings *commonSettings) {
+	createAndDeployLargeFunction(appName, hFileName, settings, 0)
 }
 
 func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSettings,

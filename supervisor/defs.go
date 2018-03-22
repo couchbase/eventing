@@ -26,6 +26,7 @@ const (
 
 	// Store list of eventing keepNodes
 	metakvConfigKeepNodes = metakvEventingPath + "config/keepNodes"
+	MetakvChecksumPath    = metakvEventingPath + "checksum/"
 )
 
 const (
