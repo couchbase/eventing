@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/couchbase/eventing/logging"
@@ -84,7 +83,10 @@ func (c *Consumer) controlRoutine() {
 		case <-c.restartVbDcpStreamTicker.C:
 
 		retryVbsRemainingToRestream:
-			vbsToRestream := c.vbsRemainingToRestream
+			c.Lock()
+			vbsToRestream := make([]uint16, len(c.vbsRemainingToRestream))
+			copy(vbsToRestream, c.vbsRemainingToRestream)
+			c.Unlock()
 
 			if len(vbsToRestream) == 0 {
 				continue
@@ -95,16 +97,13 @@ func (c *Consumer) controlRoutine() {
 			// on source bucket right after undeploy
 			deployedApps := c.superSup.GetDeployedApps()
 			if _, ok := deployedApps[c.app.AppName]; !ok {
+
+				c.Lock()
 				c.vbsRemainingToRestream = make([]uint16, 0)
+				c.Unlock()
+
 				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v as the app has been undeployed",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
-				continue
-			}
-
-			if !c.isRebalanceOngoing {
-				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v as rebalance has been stopped",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
-				c.vbsRemainingToRestream = make([]uint16, 0)
 				continue
 			}
 
@@ -130,7 +129,7 @@ func (c *Consumer) controlRoutine() {
 
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
-				vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
+				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 
 				logging.Infof("%s [%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)

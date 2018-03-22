@@ -169,6 +169,7 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 	case service.TopologyChangeTypeRebalance:
 
 		nodeAddrs, err := m.getActiveNodeAddrs()
+		logging.Infof("%s Active Eventing nodes in the cluster: %r", logPrefix, nodeAddrs)
 
 		if len(nodeAddrs) > 0 && err == nil {
 
@@ -181,6 +182,10 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 				logging.Warnf("%s Some apps are undergoing bootstrap on some/all Eventing nodes, err: %v", logPrefix, err)
 				return err
 			}
+		}
+
+		if err != nil {
+			logging.Errorf("%s Error encountered while fetching active Eventing nodes, err: %v", logPrefix, err)
 		}
 
 		util.Retry(util.NewFixedBackoff(time.Second), storeKeepNodesCallback, m.keepNodeUUIDs)

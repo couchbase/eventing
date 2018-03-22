@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
@@ -18,8 +17,6 @@ import (
 	"github.com/couchbase/gocb"
 )
 
-var errFailedRPCDownloadDir = errors.New("failed to download vbucket dir from source RPC server")
-var errFailedConnectRemoteRPC = errors.New("failed to connect to remote RPC server")
 var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
 var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another worker on same node")
 var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")
@@ -32,7 +29,7 @@ func (c *Consumer) reclaimVbOwnership(vb uint16) error {
 
 	c.doVbTakeover(vb)
 
-	vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
+	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 	if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
@@ -81,7 +78,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 			var cas gocb.Cas
 
 			for _, vb := range vbsRemainingToGiveUp {
-				vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
+				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 				if vbBlob.NodeUUID != c.NodeUUID() && vbBlob.DCPStreamStatus == dcpStreamRunning {
@@ -275,7 +272,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
 
-	vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vb)))
+	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
@@ -350,6 +347,19 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob) error {
 	logPrefix := "Consumer::updateVbOwnerAndStartDCPStream"
 
+	c.vbsStreamRRWMutex.Lock()
+	if _, ok := c.vbStreamRequested[vb]; !ok {
+		c.vbStreamRequested[vb] = struct{}{}
+		logging.Infof("%s [%s:%s:%d] vb: %v Going to make DcpRequestStream call",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+	} else {
+		c.vbsStreamRRWMutex.Unlock()
+		logging.Infof("%s [%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+		return nil
+	}
+	c.vbsStreamRRWMutex.Unlock()
+
 	logging.Infof("%s [%s:%s:%d] vb: %v LastProcessedSeqNo: %d",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastSeqNoProcessed)
 
@@ -363,9 +373,6 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), commonConnectBucketOpCallback, c, &b)
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startFeedFromKVNodesCallback, c, &b, vb, &dcpFeed, c.kvNodes)
-
-		logging.Infof("%s [%s:%s:%d] vb: %v Starting up dcpFeed to (re)create doc timer metadata via backfill, source bucket: %s",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket)
 
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -441,6 +448,8 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 						}
 
 					default:
+						logging.Tracef("%s [%s:%s:%d] vb: %v Got opcode: %v",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, e.Opcode)
 					}
 
 				}
@@ -448,29 +457,32 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		}(dcpFeed, &wg)
 
 		var flogs couchbase.FailoverLog
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs)
+
+		// TODO: Can be improved by requesting failover log just the vbucket for stream is going to be requested
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpAllVbucketsCallback, c, b, &flogs)
 
 		start, snapStart, snapEnd := uint64(0), uint64(0), vbBlob.LastSeqNoProcessed
 		flags := uint32(0)
 		end := vbBlob.LastSeqNoProcessed
 
-		logging.Infof("%s [%s:%s:%d] vb: %v Going to start DCP streams from source bucket: %s",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket)
+		logging.Infof("%s [%s:%s:%d] vb: %v Going to start DCP feed from source bucket: %s start seq no: %d end seq no: %d KV nodes: %r flog len: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket, start, end, c.kvNodes, len(flogs))
 
-		for fVbucket, flog := range flogs {
-			if fVbucket == vb {
-				vbuuid, _, _ := flog.Latest()
+		if flog, ok := flogs[vb]; ok {
+			vbuuid, _, _ := flog.Latest()
 
-				logging.Infof("%s [%s:%s:%d] vb: %v starting DCP feed. Start seq no: %d end seq no: %d",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, start, end)
+			logging.Infof("%s [%s:%s:%d] vb: %v starting DCP feed. Start seq no: %d end seq no: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, start, end)
 
-				opaque := uint16(vb)
-				err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
-				if err != nil {
-					logging.Errorf("%s [%s:%s:%d] vb: %v Failed to stream",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-				}
+			opaque := uint16(vb)
+			err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] vb: %v Failed to stream",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 			}
+		} else {
+			logging.Errorf("%s [%s:%s:%d] vb: %v Failover log doesn't have entry for it",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		}
 
 		wg.Wait()
@@ -478,22 +490,9 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		dcpFeed.Close()
 
 	} else {
-		logging.Infof("%s [%s:%s:%d] vb: %v Not starting dcp stream as lastProcessedSeqNo: %d",
+		logging.Infof("%s [%s:%s:%d] vb: %v Not starting dcp backfill for doc timer as lastProcessedSeqNo: %d",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastSeqNoProcessed)
 	}
-
-	c.vbsStreamRRWMutex.Lock()
-	if _, ok := c.vbStreamRequested[vb]; !ok {
-		c.vbStreamRequested[vb] = struct{}{}
-		logging.Debugf("%s [%s:%s:%d] vb: %v Going to make DcpRequestStream call",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-	} else {
-		c.vbsStreamRRWMutex.Unlock()
-		logging.Debugf("%s [%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-		return nil
-	}
-	c.vbsStreamRRWMutex.Unlock()
 
 	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
 	c.vbProcessingStats.updateVbStat(vb, "last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo)
@@ -507,12 +506,6 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 
 	err := c.dcpRequestStreamHandle(vb, vbBlob, streamStartSeqNo)
 	if err != nil {
-		c.vbsStreamRRWMutex.Lock()
-		defer c.vbsStreamRRWMutex.Unlock()
-
-		if _, ok := c.vbStreamRequested[vb]; ok {
-			delete(c.vbStreamRequested, vb)
-		}
 		return err
 	}
 

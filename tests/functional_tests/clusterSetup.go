@@ -461,12 +461,6 @@ retryClusterCredsSetup:
 		goto retryClusterCredsSetup
 	}
 
-	time.Sleep(5 * time.Second)
-	addNodeFromRest("127.0.0.1:9001", "kv")
-	addNodeFromRest("127.0.0.1:9002", "eventing")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-
 retryQuotaSetup:
 	_, err = quotaSetup(300, 4000)
 	if err != nil {

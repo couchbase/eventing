@@ -23,7 +23,7 @@ func TestSimpleSystem(t *testing.T) {
 		Undeploy all the methods in the following order bucket op, cron timers, doc timers
 	*/
 
-	handler1 := "sys_test_bucket_op.js"
+	handler1 := "sys_test_bucket_op"
 	handler1SrcBucket := "default"
 	handler1DstBucket := "default-dst"
 	handler1AliasHandles := make([]string, 0)
@@ -31,7 +31,7 @@ func TestSimpleSystem(t *testing.T) {
 	handler1AliasSources := make([]string, 0)
 	handler1AliasSources = append(handler1AliasSources, handler1DstBucket)
 
-	handler2 := "sys_test_cron_timer.js"
+	handler2 := "sys_test_cron_timer"
 	handler2SrcBucket := "other-2"
 	handler2DstBucket := "other-dst-2"
 	handler2AliasHandles := make([]string, 0)
@@ -39,7 +39,7 @@ func TestSimpleSystem(t *testing.T) {
 	handler2AliasSources := make([]string, 0)
 	handler2AliasSources = append(handler2AliasSources, handler2DstBucket)
 
-	handler3 := "sys_test_doc_timer.js"
+	handler3 := "sys_test_doc_timer"
 	handler3SrcBucket := "other-1"
 	handler3DstBucket := "other-dst-1"
 	handler3AliasHandles := make([]string, 0)

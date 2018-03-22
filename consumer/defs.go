@@ -188,7 +188,7 @@ type Consumer struct {
 	vbnos                  []uint16
 	vbsRemainingToOwn      []uint16
 	vbsRemainingToGiveUp   []uint16
-	vbsRemainingToRestream []uint16
+	vbsRemainingToRestream []uint16        // Access controlled by default lock
 	vbsStreamClosed        map[uint16]bool // Access controlled by vbsStreamClosedRWMutex
 	vbsStreamClosedRWMutex *sync.RWMutex
 	vbStreamRequested      map[uint16]struct{} // Access controlled by vbsStreamRRWMutex

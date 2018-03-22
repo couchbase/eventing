@@ -2,7 +2,6 @@ package consumer
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/couchbase/eventing/logging"
@@ -37,7 +36,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 				if c.ConsumerName() == c.vbProcessingStats.getVbStat(vbno, "assigned_worker") &&
 					c.NodeUUID() == c.vbProcessingStats.getVbStat(vbno, "node_uuid") {
 
-					vbKey := fmt.Sprintf("%s::vb::%s", c.app.AppName, strconv.Itoa(int(vbno)))
+					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vbno)
 
 					// Metadata blob doesn't exist probably the app is deployed for the first time.
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)

@@ -10,10 +10,16 @@ import (
 
 // RebalanceTaskProgress reports progress to producer
 func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
+	logPrefix := "Consumer::RebalanceTaskProgress"
+
 	progress := &cm.RebalanceProgress{}
 
 	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
 	vbsRemainingToOwn := c.getVbRemainingToOwn()
+
+	logging.Infof("%s [%s:%s:%d] vbsRemainingToGiveUp: %v vbsRemainingToOwn: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(),
+		util.Condense(vbsRemainingToGiveUp), util.Condense(vbsRemainingToOwn))
 
 	if len(vbsRemainingToGiveUp) > 0 || len(vbsRemainingToOwn) > 0 {
 		vbsOwnedPerPlan := c.getVbsOwned()

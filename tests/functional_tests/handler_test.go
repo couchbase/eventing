@@ -10,7 +10,7 @@ import (
 
 func TestOnUpdateN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "n1ql_insert_on_update.js"
+	handler := "n1ql_insert_on_update"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
@@ -29,7 +29,7 @@ func TestOnUpdateN1QLOp(t *testing.T) {
 
 func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "bucket_op_on_update.js"
+	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
@@ -48,7 +48,7 @@ func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
 
 func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "bucket_op_on_update.js"
+	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77})
 
@@ -67,7 +67,7 @@ func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 
 func TestOnDeleteBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "bucket_op_on_delete.js"
+	handler := "bucket_op_on_delete"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
@@ -86,7 +86,7 @@ func TestOnDeleteBucketOp(t *testing.T) {
 
 func TestDocTimerBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "bucket_op_with_doc_timer.js"
+	handler := "bucket_op_with_doc_timer"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
@@ -105,7 +105,7 @@ func TestDocTimerBucketOp(t *testing.T) {
 
 func TestCronTimerBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "bucket_op_with_cron_timer.js"
+	handler := "bucket_op_with_cron_timer"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
@@ -124,7 +124,7 @@ func TestCronTimerBucketOp(t *testing.T) {
 
 func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "bucket_op_on_update.js"
+	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 
 	for i := 0; i < 5; i++ {
@@ -153,7 +153,7 @@ func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 /*
 func TestDeployUndeployLoopDocTimer(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "bucket_op_with_doc_timer.js"
+	handler := "bucket_op_with_doc_timer"
 	flushFunctionAndBucket(handler)
 
 	for i := 0; i < 5; i++ {
@@ -182,7 +182,7 @@ func TestDeployUndeployLoopDocTimer(t *testing.T) {
 
 func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "bucket_op_on_update.js"
+	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 
 	for i := 0; i < 5; i++ {
@@ -210,8 +210,8 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 
 func TestMultipleHandlers(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler1 := "bucket_op_on_update.js"
-	handler2 := "bucket_op_on_delete.js"
+	handler1 := "bucket_op_on_update"
+	handler2 := "bucket_op_on_delete"
 
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)
@@ -232,7 +232,7 @@ func TestMultipleHandlers(t *testing.T) {
 	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
 	if eventCount != itemCount*2 {
 		t.Error("For", "MultipleHandlers DeleteOp",
-			"expected", 0,
+			"expected", itemCount*2,
 			"got", eventCount,
 		)
 	}
@@ -254,7 +254,7 @@ things up from last checkpointed seq no
 func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
-	handler := "bucket_op_on_update.js"
+	handler := "bucket_op_on_update"
 
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
@@ -284,7 +284,7 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
-	handler := "bucket_op_on_update.js"
+	handler := "bucket_op_on_update"
 
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4})
@@ -313,7 +313,7 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 
 func TestCommentUnCommentOnDelete(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "on_delete_bucket_op_comment.js"
+	handler := "on_delete_bucket_op_comment"
 	appName := "comment_uncomment_test"
 	flushFunctionAndBucket(handler)
 
@@ -334,7 +334,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 
 	time.Sleep(30 * time.Second)
 
-	handler = "on_delete_bucket_op_uncomment.js"
+	handler = "on_delete_bucket_op_uncomment"
 	createAndDeployFunction(appName, handler, &commonSettings{})
 
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
@@ -359,7 +359,7 @@ because of 16 * 2 workers, each with 4 threads. Will selectively enable
 it with bit more tuning.
 func TestCPPWorkerCleanup(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "bucket_op_on_update.js"
+	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{batchSize: 100, workerCount: 16})
 
@@ -379,7 +379,7 @@ func TestCPPWorkerCleanup(t *testing.T) {
 
 func TestWithUserXattrs(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "on_delete_bucket_op_comment.js"
+	handler := "on_delete_bucket_op_comment"
 	flushFunctionAndBucket(handler)
 	pumpBucketOps(opsType{}, &rateLimit{})
 	pumpBucketOps(opsType{writeXattrs: true, xattrPrefix: "_1"}, &rateLimit{})
@@ -402,7 +402,7 @@ func TestWithUserXattrs(t *testing.T) {
 // Disabling as for the time being source bucket mutations aren't allowed
 /* func TestSourceBucketMutations(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "source_bucket_update_op.js"
+	handler := "source_bucket_update_op"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{recursiveBehavior: "disable"})
 
