@@ -76,8 +76,9 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 	mainStoreResponse = &restResponse{}
 
 	log.Printf("Deploying app: %s", appName)
-
+	pad := createPadding(paddingCount)
 	content, err := getHandlerCode(hFileName)
+	content = pad + content
 	if err != nil {
 		fmt.Println("Get handler code, err:", err)
 		return

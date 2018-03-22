@@ -18,6 +18,8 @@ const (
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	metakvRebalanceProgress  = metakvEventingPath + "rebalanceProgress/"
 	metakvTempAppsPath       = metakvEventingPath + "tempApps/"
+	metakvChecksumPath       = metakvEventingPath + "checksum/"
+	metakvTempChecksumPath   = metakvEventingPath + "tempchecksum/"
 	stopRebalance            = "stopRebalance"
 )
 
@@ -44,6 +46,10 @@ const (
 const (
 	srcMapExt  = ".map.json"
 	srcCodeExt = ".js"
+)
+
+const (
+	maxHandlerSize = 128*1024
 )
 
 // ServiceMgr implements cbauth_service interface

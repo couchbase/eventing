@@ -258,7 +258,6 @@ func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 	logging.Infof("%s Garbage collecting old rebalance tokens", logPrefix)
 	// Garbage collect old Rebalance Tokens
 	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvRebalanceTokenPath)
-
 	logging.Infof("%s Writing rebalance token: %s to metakv", logPrefix, change.ID)
 	path := metakvRebalanceTokenPath + change.ID
 	util.Retry(util.NewFixedBackoff(time.Second), metaKVSetCallback, path, change.ID)
