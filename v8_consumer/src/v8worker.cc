@@ -99,9 +99,6 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
 
 const char *GetUsernameCached(void *cookie, const char *host, const char *port,
                               const char *bucket) {
-  LOG(logInfo) << "Getting username for host " << R(host) << " port " << port
-               << std::endl;
-
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
   auto endpoint = JoinHostPort(host, port);
@@ -121,9 +118,6 @@ const char *GetUsernameCached(void *cookie, const char *host, const char *port,
 
 const char *GetPasswordCached(void *cookie, const char *host, const char *port,
                               const char *bucket) {
-  LOG(logInfo) << "Getting password for host " << R(host) << " port " << port
-               << std::endl;
-
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
   auto endpoint = JoinHostPort(host, port);

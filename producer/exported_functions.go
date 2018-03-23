@@ -697,21 +697,19 @@ func (p *Producer) TimerDebugStats() map[int]map[string]interface{} {
 				aggStats[vb] = stats
 			} else {
 
-				copiedDuringRebalanceCounter := aggStats[vb]["copied_during_rebalance_counter"].(uint64) + stats["copied_during_rebalance_counter"].(uint64)
 				deletedDuringCleanupCounter := aggStats[vb]["deleted_during_cleanup_counter"].(uint64) + stats["deleted_during_cleanup_counter"].(uint64)
 				removedDuringRebalanceCounter := aggStats[vb]["removed_during_rebalance_counter"].(uint64) + stats["removed_during_rebalance_counter"].(uint64)
 				sentToWorkerCounter := aggStats[vb]["sent_to_worker_counter"].(uint64) + stats["sent_to_worker_counter"].(uint64)
 				timerCreateCounter := aggStats[vb]["timer_create_counter"].(uint64) + stats["timer_create_counter"].(uint64)
 				timersInPastCounter := aggStats[vb]["timers_in_past_counter"].(uint64) + stats["timers_in_past_counter"].(uint64)
-				transferredDuringRebalanceCounter := aggStats[vb]["transferred_during_rebalance_counter"].(uint64) + stats["transferred_during_rebalance_counter"].(uint64)
+				timersCreatedFromBackfill := aggStats[vb]["timers_recreated_from_dcp_backfill"].(uint64) + stats["timers_recreated_from_dcp_backfill"].(uint64)
 
-				aggStats[vb]["copied_during_rebalance_counter"] = copiedDuringRebalanceCounter
 				aggStats[vb]["deleted_during_cleanup_counter"] = deletedDuringCleanupCounter
 				aggStats[vb]["removed_during_rebalance_counter"] = removedDuringRebalanceCounter
 				aggStats[vb]["sent_to_worker_counter"] = sentToWorkerCounter
 				aggStats[vb]["timer_create_counter"] = timerCreateCounter
 				aggStats[vb]["timers_in_past_counter"] = timersInPastCounter
-				aggStats[vb]["transferred_during_rebalance_counter"] = transferredDuringRebalanceCounter
+				aggStats[vb]["timers_recreated_from_dcp_backfill"] = timersCreatedFromBackfill
 			}
 		}
 	}
