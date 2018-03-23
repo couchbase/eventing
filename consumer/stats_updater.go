@@ -29,13 +29,12 @@ func newVbProcessingStats(appName string, numVbuckets uint16) vbStats {
 		vbsts[i].stats["last_processed_cron_timer_event"] = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
 		// Doc timer debug stats
-		vbsts[i].stats["copied_during_rebalance_counter"] = uint64(0)
 		vbsts[i].stats["deleted_during_cleanup_counter"] = uint64(0)
 		vbsts[i].stats["removed_during_rebalance_counter"] = uint64(0)
 		vbsts[i].stats["sent_to_worker_counter"] = uint64(0)
 		vbsts[i].stats["timer_create_counter"] = uint64(0)
 		vbsts[i].stats["timers_in_past_counter"] = uint64(0)
-		vbsts[i].stats["transferred_during_rebalance_counter"] = uint64(0)
+		vbsts[i].stats["timers_recreated_from_dcp_backfill"] = uint64(0)
 	}
 	return vbsts
 }
@@ -79,15 +78,14 @@ func (vbs vbStats) copyVbStats(numVbuckets uint16) vbStats {
 		vbsts[i].stats["last_processed_cron_timer_event"] = vbs.getVbStat(i, "last_processed_cron_timer_event")
 
 		vbsts[i].stats["node_uuid"] = vbs.getVbStat(i, "node_uuid")
-		vbsts[i].stats["plasma_last_persisted_seq_no"] = vbs.getVbStat(i, "plasma_last_persisted_seq_no")
 
-		vbsts[i].stats["copied_during_rebalance_counter"] = vbs.getVbStat(i, "copied_during_rebalance_counter")
 		vbsts[i].stats["deleted_during_cleanup_counter"] = vbs.getVbStat(i, "deleted_during_cleanup_counter")
 		vbsts[i].stats["removed_during_rebalance_counter"] = vbs.getVbStat(i, "removed_during_rebalance_counter")
 		vbsts[i].stats["sent_to_worker_counter"] = vbs.getVbStat(i, "sent_to_worker_counter")
 		vbsts[i].stats["timer_create_counter"] = vbs.getVbStat(i, "timer_create_counter")
 		vbsts[i].stats["timers_in_past_counter"] = vbs.getVbStat(i, "timers_in_past_counter")
-		vbsts[i].stats["transferred_during_rebalance_counter"] = vbs.getVbStat(i, "transferred_during_rebalance_counter")
+		vbsts[i].stats["timers_recreated_from_dcp_backfill"] = vbs.getVbStat(i, "timers_recreated_from_dcp_backfill")
+
 	}
 	return vbsts
 }

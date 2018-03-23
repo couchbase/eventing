@@ -439,8 +439,6 @@ type vbucketKVBlob struct {
 	CurrentProcessedCronTimer   string `json:"currently_processed_cron_timer"`
 	LastProcessedCronTimerEvent string `json:"last_processed_cron_timer_event"`
 	NextCronTimerToProcess      string `json:"next_cron_timer_to_process"`
-
-	PlasmaPersistedSeqNo uint64 `json:"plasma_last_persisted_seq_no"`
 }
 
 // OwnershipEntry captures the state of vbucket within the metadata blob
@@ -492,5 +490,4 @@ type plasmaStoreEntry struct {
 	key        string
 	timerTs    string
 	vb         uint16
-	xMeta      *xattrMetadata
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -404,7 +405,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 							totalXattrLen := binary.BigEndian.Uint32(e.Value[0:])
 							totalXattrData := e.Value[4 : 4+totalXattrLen-1]
 
-							logging.Infof("%s [%s:%s:%d] key: %r totalXattrLen: %v totalXattrData: %v",
+							logging.Tracef("%s [%s:%s:%d] key: %r totalXattrLen: %v totalXattrData: %v",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), totalXattrLen, totalXattrData)
 
 							var xMeta xattrMetadata
@@ -434,14 +435,25 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 								}
 							}
 
-							pEntry := &plasmaStoreEntry{
-								vb:    e.VBucket,
-								key:   string(e.Key),
-								xMeta: &xMeta,
-							}
-							c.plasmaStoreCh <- pEntry
+							for _, timerEntry := range xMeta.Timers {
 
-							logging.Infof("%s [%s:%s:%d] Inserting doc timer key: %r into plasma",
+								data := strings.Split(timerEntry, "::")
+
+								if len(data) == 3 {
+									pEntry := &plasmaStoreEntry{
+										callbackFn: data[2],
+										key:        string(e.Key),
+										timerTs:    data[1],
+										vb:         e.VBucket,
+									}
+
+									c.plasmaStoreCh <- pEntry
+									counter := c.vbProcessingStats.getVbStat(e.VBucket, "timers_recreated_from_dcp_backfill").(uint64)
+									c.vbProcessingStats.updateVbStat(e.VBucket, "timers_recreated_from_dcp_backfill", counter+1)
+								}
+							}
+
+							logging.Tracef("%s [%s:%s:%d] Inserting doc timer key: %r into plasma",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 
 						default:

@@ -61,6 +61,18 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["TIMERS_IN_PAST"] = c.timersInPastCounter
 	}
 
+	if c.plasmaDeleteCounter > 0 {
+		stats["PLASMA_DELETE_COUNTER"] = c.plasmaDeleteCounter
+	}
+
+	if c.plasmaInsertCounter > 0 {
+		stats["PLASMA_INSERT_COUNTER"] = c.plasmaInsertCounter
+	}
+
+	if c.plasmaLookupCounter > 0 {
+		stats["PLASMA_LOOKUP_COUNTER"] = c.plasmaLookupCounter
+	}
+
 	if c.dcpMutationCounter > 0 {
 		stats["DCP_MUTATION_SENT_TO_WORKER"] = c.dcpMutationCounter
 	}
@@ -492,7 +504,6 @@ func (c *Consumer) TimerDebugStats() map[int]map[string]interface{} {
 			stats[vb] = make(map[string]interface{})
 
 			stats[vb]["assigned_worker"] = c.vbProcessingStats.getVbStat(uint16(vb), "assigned_worker")
-			stats[vb]["copied_during_rebalance_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "copied_during_rebalance_counter")
 			stats[vb]["currently_processed_doc_id_timer"] = c.vbProcessingStats.getVbStat(uint16(vb), "currently_processed_doc_id_timer")
 			stats[vb]["deleted_during_cleanup_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "deleted_during_cleanup_counter")
 			stats[vb]["last_processed_doc_id_timer_event"] = c.vbProcessingStats.getVbStat(uint16(vb), "last_processed_doc_id_timer_event")
@@ -502,7 +513,7 @@ func (c *Consumer) TimerDebugStats() map[int]map[string]interface{} {
 			stats[vb]["sent_to_worker_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "sent_to_worker_counter")
 			stats[vb]["timer_create_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "timer_create_counter")
 			stats[vb]["timers_in_past_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "timers_in_past_counter")
-			stats[vb]["transferred_during_rebalance_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "transferred_during_rebalance_counter")
+			stats[vb]["timers_recreated_from_dcp_backfill"] = c.vbProcessingStats.getVbStat(uint16(vb), "timers_recreated_from_dcp_backfill")
 		}
 	}
 

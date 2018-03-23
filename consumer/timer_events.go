@@ -83,7 +83,6 @@ func (c *Consumer) processDocTimerEvents() {
 		}
 
 		c.vbProcessingStats.updateVbStat(vb, "last_processed_doc_id_timer_event", vbBlob.LastProcessedDocIDTimerEvent)
-		c.vbProcessingStats.updateVbStat(vb, "plasma_last_seq_no_persisted", vbBlob.PlasmaPersistedSeqNo)
 	}
 
 	for {
@@ -552,15 +551,23 @@ func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer
 		return err
 	}
 
-	if !ts.After(time.Now()) {
-		logging.Errorf("%s [%s:%s:%d] vb: %d Not adding timer event: %r to plasma because it was timer in past",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, ts)
+	lastProcessedDocTimer := c.vbProcessingStats.getVbStat(e.vb, "last_processed_doc_id_timer_event").(string)
+	lastProcessedTs, err := time.Parse(tsLayout, lastProcessedDocTimer)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] vb: %d Failed to parse last processed doc timer timestamp: %v err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, e.timerTs, err)
+		return err
+	}
+
+	if !ts.After(lastProcessedTs) {
+		logging.Errorf("%s [%s:%s:%d] vb: %d Not adding timer event: %r to plasma because it was timer in past, lastProcessedDocTimer: %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, ts, lastProcessedDocTimer)
 		c.timersInPastCounter++
 
 		counter := c.vbProcessingStats.getVbStat(e.vb, "timers_in_past_counter").(uint64)
 		c.vbProcessingStats.updateVbStat(e.vb, "timers_in_past_counter", counter+1)
 
-		return err
+		return fmt.Errorf("requested timer timestamp is in past")
 	}
 
 	// Sample timer key: vb_<vb_no>::<app_name>::<timestamp in GMT>::<callback_func>::<doc_id>
