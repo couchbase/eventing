@@ -119,10 +119,20 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 		m.keepNodeUUIDs = append(m.keepNodeUUIDs, string(node.NodeInfo.NodeID))
 	}
 
+	nodeList := make([]service.NodeID, 0)
+	for _, n := range change.KeepNodes {
+		nodeList = append(nodeList, n.NodeInfo.NodeID)
+	}
+
+	for _, n := range change.EjectNodes {
+		nodeList = append(nodeList, n.NodeID)
+	}
+
 	logging.Infof("%s ejectNodeUUIDs: %v keepNodeUUIDs: %v", logPrefix, m.ejectNodeUUIDs, m.keepNodeUUIDs)
 
 	m.updateStateLocked(func(s *state) {
 		m.rebalanceID = change.ID
+		m.servers = nodeList
 	})
 
 	m.superSup.NotifyPrepareTopologyChange(m.ejectNodeUUIDs, m.keepNodeUUIDs)
@@ -185,7 +195,7 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 		}
 
 		if err != nil {
-			logging.Errorf("%s Error encountered while fetching active Eventing nodes, err: %v", logPrefix, err)
+			logging.Warnf("%s Error encountered while fetching active Eventing nodes, err: %v", logPrefix, err)
 		}
 
 		util.Retry(util.NewFixedBackoff(time.Second), storeKeepNodesCallback, m.keepNodeUUIDs)
