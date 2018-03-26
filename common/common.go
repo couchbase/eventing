@@ -51,6 +51,7 @@ type EventingProducer interface {
 	GetPlasmaStats() (map[string]interface{}, error)
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
+	InternalVbDistributionStats() map[string]string
 	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
 	KvHostPorts() []string
 	LenRunningConsumers() int
@@ -80,7 +81,7 @@ type EventingProducer interface {
 	TimerDebugStats() map[int]map[string]interface{}
 	UpdatePlasmaMemoryQuota(quota int64)
 	VbDcpEventsRemainingToProcess() map[int]int64
-	VbDistributionStats() map[string]map[string]string
+	VbDistributionStatsFromMetadata() map[string]map[string]string
 	VbEventingNodeAssignMap() map[uint16]string
 	WorkerVbMap() map[string][]uint16
 	WriteAppLog(log string)
@@ -102,6 +103,7 @@ type EventingConsumer interface {
 	GetSourceMap() string
 	HandleV8Worker()
 	HostPortAddr() string
+	InternalVbDistributionStats() []uint16
 	NodeUUID() string
 	NotifyClusterChange()
 	NotifyRebalanceStop()
@@ -145,6 +147,7 @@ type EventingSuperSup interface {
 	GetPlasmaStats(appName string) (map[string]interface{}, error)
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
+	InternalVbDistributionStats(appName string) map[string]string
 	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string)
 	PlannerStats(appName string) []*PlannerNodeVbMapping
 	RebalanceStatus() bool
@@ -154,7 +157,7 @@ type EventingSuperSup interface {
 	TimerDebugStats(appName string) (map[int]map[string]interface{}, error)
 	SignalStopDebugger(appName string)
 	VbDcpEventsRemainingToProcess(appName string) map[int]int64
-	VbDistributionStats(appName string) map[string]map[string]string
+	VbDistributionStatsFromMetadata(appName string) map[string]map[string]string
 }
 
 type EventingServiceMgr interface {

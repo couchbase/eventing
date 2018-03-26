@@ -276,6 +276,9 @@ func (c *Consumer) processEvents() {
 
 				c.vbsStreamRRWMutex.Lock()
 				if _, ok := c.vbStreamRequested[e.VBucket]; ok {
+					logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+
 					delete(c.vbStreamRequested, e.VBucket)
 				}
 				c.vbsStreamRRWMutex.Unlock()
@@ -313,6 +316,10 @@ func (c *Consumer) processEvents() {
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 					logging.Infof("%s [%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+					c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
+
 					c.Lock()
 					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, e.VBucket)
 					c.Unlock()
@@ -665,6 +672,16 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, dcpFeed.DcpFeedName(), err)
+
+		c.vbsStreamRRWMutex.Lock()
+		if _, ok := c.vbStreamRequested[vbno]; ok {
+			logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
+
+			delete(c.vbStreamRequested, vbno)
+		}
+		c.vbsStreamRRWMutex.Unlock()
+
 		if c.checkIfCurrentConsumerShouldOwnVb(vbno) {
 			c.Lock()
 			c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbno)

@@ -139,20 +139,21 @@ type backlogStat struct {
 }
 
 type stats struct {
-	DocTimerDebugStats   interface{} `json:"doc_timer_debug_stats,omitempty"`
-	EventProcessingStats interface{} `json:"event_processing_stats,omitempty"`
-	EventsRemaining      interface{} `json:"events_remaining,omitempty"`
-	ExecutionStats       interface{} `json:"execution_stats,omitempty"`
-	FailureStats         interface{} `json:"failure_stats,omitempty"`
-	FunctionName         interface{} `json:"function_name"`
-	LatencyStats         interface{} `json:"latency_stats,omitempty"`
-	LcbExceptionStats    interface{} `json:"lcb_exception_stats,omitempty"`
-	PlannerStats         interface{} `json:"planner_stats,omitempty"`
-	PlasmaStats          interface{} `json:"plasma_stats,omitempty"`
-	SeqsProcessed        interface{} `json:"seqs_processed,omitempty"`
-	VbDcpEventsRemaining interface{} `json:"dcp_event_backlog_per_vb,omitempty"`
-	VbDistributionStats  interface{} `json:"vb_distribution_stats,omitempty"`
-	WorkerPids           interface{} `json:"worker_pids,omitempty"`
+	DocTimerDebugStats              interface{} `json:"doc_timer_debug_stats,omitempty"`
+	EventProcessingStats            interface{} `json:"event_processing_stats,omitempty"`
+	EventsRemaining                 interface{} `json:"events_remaining,omitempty"`
+	ExecutionStats                  interface{} `json:"execution_stats,omitempty"`
+	FailureStats                    interface{} `json:"failure_stats,omitempty"`
+	FunctionName                    interface{} `json:"function_name"`
+	InternalVbDistributionStats     interface{} `json:"internal_vb_distribution_stats,omitempty"`
+	LatencyStats                    interface{} `json:"latency_stats,omitempty"`
+	LcbExceptionStats               interface{} `json:"lcb_exception_stats,omitempty"`
+	PlannerStats                    interface{} `json:"planner_stats,omitempty"`
+	PlasmaStats                     interface{} `json:"plasma_stats,omitempty"`
+	SeqsProcessed                   interface{} `json:"seqs_processed,omitempty"`
+	VbDcpEventsRemaining            interface{} `json:"dcp_event_backlog_per_vb,omitempty"`
+	VbDistributionStatsFromMetadata interface{} `json:"vb_distribution_stats_from_metadata,omitempty"`
+	WorkerPids                      interface{} `json:"worker_pids,omitempty"`
 }
 
 type config struct {
