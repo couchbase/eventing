@@ -49,6 +49,7 @@ struct ExtractKVInfo {
 // Info about parsing N1QL query
 struct ParseInfo {
   bool is_valid;
+  bool is_select_query;
   std::string info;
 };
 

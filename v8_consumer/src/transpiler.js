@@ -116,8 +116,13 @@ function isJsExpression(stmt) {
     }
 }
 
-function transpileQuery(query, namedParams) {
+function transpileQuery(query, namedParams, isSelectQuery) {
     var exprAst = new N1QLQueryExprAst(query, namedParams);
+    if (!isSelectQuery) {
+        // Call execQuery() for non select queries
+        exprAst = new CallExecQueryAst(exprAst);
+    }
+
     // N1QL expression need not have a semi-colon at it's end.
     // But it's essential to turn the expression into a statement in order to
     // append the semi colon.
@@ -161,12 +166,12 @@ function NodeUtils() {
         switch (context) {
             // Mapping of if-else block to for-of loop.
             /*
-                Before:
-                for (var r of res1){...}
-                After:
-                if (res1.isInstance) {
-                    res1.iter(function (r) {...}
-                } else {...}
+            	Before:
+            	for (var r of res1){...}
+            	After:
+            	if (res1.isInstance) {
+            		res1.iter(function (r) {...}
+            	} else {...}
             */
             case Context.IterTypeCheck:
                 source.loc = self.deepCopy(sourceCopy.loc);
@@ -1000,6 +1005,21 @@ function N1QLQueryExprAst(query, namedParams) {
     }
 }
 
+function CallExecQueryAst(object) {
+    Ast.call(this, 'CallExpression');
+    this.callee = {
+        "type": "MemberExpression",
+        "computed": false,
+        "object": object,
+        "property": {
+            "type": "Identifier",
+            "name": "execQuery"
+        }
+    };
+
+    this.arguments = [];
+}
+
 // Class for maintaining the object that will be passed to 'stopIter'.
 function Arg(arg) {
     this.code = arg.code;
@@ -1316,13 +1336,13 @@ function IterCompatible(forOfNode, globalAncestorStack) {
                     stopIterAst = arg = null;
                     // Labeled break statement.
                     /*
-                        Before:
-                        break x;
-                        After:
-                        return res.stopIter({
-                            'code': 'labeled_break',
-                            'args': 'x'
-                        });
+                    	Before:
+                    	break x;
+                    	After:
+                    	return res.stopIter({
+                    		'code': 'labeled_break',
+                    		'args': 'x'
+                    	});
                     */
                     if (node.label && lblBreakMod.isReplaceReq(node.label.name)) {
                         stopIterAst = new StopIterAst(nodeCopy.right.name);
@@ -1334,10 +1354,10 @@ function IterCompatible(forOfNode, globalAncestorStack) {
                     } else if (!node.label && breakMod.isReplaceReq()) {
                         // Unlabeled break statement.
                         /*
-                            Before:
-                            break;
-                            After:
-                            return res.stopIter({ 'code': 'break' });
+                        	Before:
+                        	break;
+                        	After:
+                        	return res.stopIter({ 'code': 'break' });
                          */
                         stopIterAst = new StopIterAst(nodeCopy.right.name);
                         arg = new Arg({
@@ -1356,13 +1376,13 @@ function IterCompatible(forOfNode, globalAncestorStack) {
                 case 'ContinueStatement':
                     // Labeled continue statement.
                     /*
-                        Before:
-                        continue x;
-                        After:
-                        return res.stopIter({
-                            'code': 'labeled_continue',
-                            'args': 'x'
-                        });
+                    	Before:
+                    	continue x;
+                    	After:
+                    	return res.stopIter({
+                    		'code': 'labeled_continue',
+                    		'args': 'x'
+                    	});
                      */
                     if (node.label && lblContinueMod.isReplaceReq(node.label.name)) {
                         if (nodeCopy.parentLabel === node.label.name) {
@@ -1384,10 +1404,10 @@ function IterCompatible(forOfNode, globalAncestorStack) {
                     } else if (continueMod.isReplaceReq()) {
                         // Unlabeled continue statement.
                         /*
-                            Before:
-                            continue;
-                            After:
-                            return;
+                        	Before:
+                        	continue;
+                        	After:
+                        	return;
                          */
                         nodeUtils.replaceNode(node, new ReturnAst(null), Context.ContinueStatement);
                     }
@@ -1395,14 +1415,14 @@ function IterCompatible(forOfNode, globalAncestorStack) {
 
                 case 'ReturnStatement':
                     /*
-                        Before:
-                        return a + b;
-                        After:
-                        return res.stopIter({
-                            'code': 'return',
-                            'args': '(a + b)',
-                            'data': a + b
-                        });
+                    	Before:
+                    	return a + b;
+                    	After:
+                    	return res.stopIter({
+                    		'code': 'return',
+                    		'args': '(a + b)',
+                    		'data': a + b
+                    	});
                      */
                     if (returnMod.isReplaceReq(node)) {
                         // Return statement may or may not have arguments.
@@ -1464,10 +1484,10 @@ function IterCompatible(forOfNode, globalAncestorStack) {
         switch (context) {
             // Maps the source to target loc during the following kind of transformation -
             /*
-                Before:
-                for (var r of res3){...}
-                After:
-                res.iter(function (r) {...}
+            	Before:
+            	for (var r of res3){...}
+            	After:
+            	res.iter(function (r) {...}
              */
             case Context.IterConsequent:
                 target.loc = nodeUtils.deepCopy(source.loc);

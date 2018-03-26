@@ -3,6 +3,5 @@ function OnUpdate(doc,meta) {
     docTimer(timerCallback, meta.id, expiry);
 }
 function timerCallback(docid) {
-    var query = INSERT INTO `hello-world` ( KEY, VALUE ) VALUES ( UUID() ,'timerCallback');
-    query.execQuery();
+    INSERT INTO `hello-world` ( KEY, VALUE ) VALUES ( UUID() ,'timerCallback');
 }

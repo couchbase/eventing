@@ -105,22 +105,25 @@ std::string Transpiler::GetSourceMap(const std::string &handler_code,
   return *utf8result;
 }
 
-std::string
-Transpiler::TranspileQuery(const std::string &query,
-                           const std::vector<std::string> &named_params) {
+std::string Transpiler::TranspileQuery(const std::string &query,
+                                       const NamedParamsInfo &info) {
   v8::HandleScope handle_scope(isolate);
 
   auto named_params_v8arr =
-      v8::Array::New(isolate, static_cast<int>(named_params.size()));
-  for (std::size_t i = 0; i < named_params.size(); ++i) {
+      v8::Array::New(isolate, static_cast<int>(info.named_params.size()));
+  auto is_select_query_v8bool =
+      v8::Boolean::New(isolate, info.p_info.is_select_query);
+  for (std::size_t i = 0; i < info.named_params.size(); ++i) {
     named_params_v8arr->Set(static_cast<uint32_t>(i),
-                            v8Str(isolate, named_params[i].c_str()));
+                            v8Str(isolate, info.named_params[i].c_str()));
   }
 
-  v8::Local<v8::Value> args[2];
+  v8::Local<v8::Value> args[3];
   args[0] = v8Str(isolate, query);
   args[1] = named_params_v8arr;
-  auto result = ExecTranspiler("transpileQuery", args, 2);
+  args[2] = is_select_query_v8bool;
+
+  auto result = ExecTranspiler("transpileQuery", args, 3);
   v8::String::Utf8Value utf8result(result);
 
   return *utf8result;

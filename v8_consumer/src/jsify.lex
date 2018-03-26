@@ -322,7 +322,7 @@ std::string TranspileQuery(const std::string &query) {
 
                 auto info = comm->GetNamedParams(query);
                 parse_info = info.p_info;
-                return transpiler->TranspileQuery(query, info.named_params);
+                return transpiler->TranspileQuery(query, info);
             }
 
         case kCommentN1QL: {
@@ -354,6 +354,5 @@ void ReplaceRecentChar(std::string &str, char m, char n) {
 ParseInfo ParseQuery(const std::string &query) {
     auto isolate = v8::Isolate::GetCurrent();
     auto comm = UnwrapData(isolate)->comm;
-    auto info = comm->ParseQuery(query);
-    return info;
+    return comm->ParseQuery(query);
 }

@@ -11,8 +11,7 @@ function OnUpdate(doc, meta) {
 					var res3 = SELECT * FROM default LIMIT $lim;
 					for(var row3 of res3) {
 						var docId = meta.id + (++count);
-						var ins = INSERT INTO `hello-world` (KEY, VALUE) VALUES ($docId, 'Hello world');
-						ins.execQuery();
+						INSERT INTO `hello-world` (KEY, VALUE) VALUES ($docId, 'Hello world');
 						throw 'Error';
 					}
 				}

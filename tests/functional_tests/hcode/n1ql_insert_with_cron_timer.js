@@ -3,6 +3,5 @@ function OnUpdate(doc,meta) {
     cronTimer(NDtimerCallback, meta.id, expiry);
 }
 function NDtimerCallback(docid) {
-    var query = INSERT INTO `hello-world` ( KEY, VALUE ) VALUES ( UUID() ,'NDtimerCallback');
-    query.execQuery();
+    INSERT INTO `hello-world` ( KEY, VALUE ) VALUES ( UUID() ,'NDtimerCallback');
 }

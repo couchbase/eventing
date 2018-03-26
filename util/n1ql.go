@@ -16,8 +16,9 @@ type queryExpr struct {
 }
 
 type ParseInfo struct {
-	IsValid bool   `json:"is_valid"`
-	Info    string `json:"info"`
+	IsValid       bool   `json:"is_valid"`
+	IsSelectQuery bool   `json:"is_select_query"`
+	Info          string `json:"info"`
 }
 
 type NamedParamsInfo struct {
@@ -25,27 +26,33 @@ type NamedParamsInfo struct {
 	NamedParams []string  `json:"named_params"`
 }
 
-func Parse(query string) (info *ParseInfo) {
-	info = &ParseInfo{IsValid: true}
+func Parse(query string) (info *ParseInfo, alg algebra.Statement) {
+	info = &ParseInfo{IsValid: true, IsSelectQuery: false}
 
-	_, err := n1ql.ParseStatement(query)
+	alg, err := n1ql.ParseStatement(query)
 	if err != nil {
 		info.IsValid = false
 		info.Info = fmt.Sprintf("%v", err)
 		return
 	}
 
+	switch alg.(type) {
+	case *algebra.Select:
+		info.IsSelectQuery = true
+	}
+
 	return
 }
 
 func GetNamedParams(query string) (info *NamedParamsInfo) {
+	var alg algebra.Statement
+	var err error
 	info = &NamedParamsInfo{}
 	info.PInfo.IsValid = true
 
-	alg, err := n1ql.ParseStatement(query)
-	if err != nil {
-		info.PInfo.IsValid = false
-		info.PInfo.Info = fmt.Sprintf("%v", err)
+	parseInfo, alg := Parse(query)
+	info.PInfo = *parseInfo
+	if !info.PInfo.IsValid {
 		return
 	}
 
