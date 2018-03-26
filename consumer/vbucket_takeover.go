@@ -94,7 +94,6 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					}
 					c.RUnlock()
 
-					c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", "")
 					c.vbProcessingStats.updateVbStat(vb, "assigned_worker", "")
 					c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", "")
 					c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", dcpStreamStopped)
@@ -527,20 +526,17 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBlob) {
 	logPrefix := "Consumer::updateCheckpoint"
 
-	vbBlob.AssignedDocIDTimerWorker = ""
 	vbBlob.AssignedWorker = ""
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
 	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 	vbBlob.NodeUUID = ""
 	vbBlob.PreviousAssignedWorker = c.ConsumerName()
-	vbBlob.PreviousEventingDir = c.eventingDir
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
 	vbBlob.PreviousVBOwner = c.HostPortAddr()
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), updateCheckpointCallback, c, vbKey, vbBlob)
 
-	c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
 	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
 	c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", vbBlob.DCPStreamStatus)

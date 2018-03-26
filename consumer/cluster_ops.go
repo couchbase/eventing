@@ -95,36 +95,3 @@ var getKvNodesFromVbMap = func(args ...interface{}) error {
 
 	return err
 }
-
-var aggTimerHostPortAddrsCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::aggTimerHostPortAddrsCallback"
-
-	c := args[0].(*Consumer)
-	timerAddrs := args[1].(*map[string]map[string]string)
-
-	var err error
-	*timerAddrs, err = util.GetAggTimerHostPortAddrs(c.app.AppName, c.eventingAdminPort, getAggTimerHostPortAddrs)
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Failed to grab aggregate timer host port addrs, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-	}
-
-	return err
-}
-
-var aggUUIDCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::aggUUIDCallback"
-
-	c := args[0].(*Consumer)
-	addrUUIDMap := args[1].(*map[string]string)
-
-	var err error
-	*addrUUIDMap, err = util.GetNodeUUIDs("/uuid", c.eventingNodeAddrs)
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Failed to grab node uuids, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-		return err
-	}
-
-	return nil
-}

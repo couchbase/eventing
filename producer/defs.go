@@ -63,6 +63,7 @@ type Producer struct {
 	numVbuckets            int
 	pauseProducerCh        chan struct{}
 	persistAllTicker       *time.Ticker
+	statsTicker            *time.Ticker
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
 	uuid                   string

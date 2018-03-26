@@ -426,12 +426,10 @@ type vbucketKVBlob struct {
 	OwnershipHistory          []OwnershipEntry `json:"ownership_history"`
 	PreviousAssignedWorker    string           `json:"previous_assigned_worker"`
 	PreviousNodeUUID          string           `json:"previous_node_uuid"`
-	PreviousEventingDir       string           `json:"previous_node_eventing_dir"`
 	PreviousVBOwner           string           `json:"previous_vb_owner"`
 	VBId                      uint16           `json:"vb_id"`
 	VBuuid                    uint64           `json:"vb_uuid"`
 
-	AssignedDocIDTimerWorker     string `json:"doc_id_timer_processing_worker"`
 	CurrentProcessedDocIDTimer   string `json:"currently_processed_doc_id_timer"`
 	LastProcessedDocIDTimerEvent string `json:"last_processed_doc_id_timer_event"`
 	NextDocIDTimerToProcess      string `json:"next_doc_id_timer_to_process"`

@@ -989,7 +989,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
 
   if (try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Last exception: " << last_exception << std::endl;
+    std::cerr << "Last exception: " << last_exception << std::endl;
   }
 
   if (debugger_started) {
@@ -1084,8 +1084,8 @@ int V8Worker::SendDelete(std::string meta) {
     execute_flag = false;
 
     if (try_catch.HasCaught()) {
-      LOG(logError) << "Exception message"
-                    << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+      std::cerr << "Exception message"
+                << ExceptionString(GetIsolate(), &try_catch) << std::endl;
       UpdateHistogram(start_time);
       on_delete_failure++;
       return kOnDeleteCallFail;
