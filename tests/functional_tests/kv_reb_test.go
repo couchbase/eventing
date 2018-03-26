@@ -48,6 +48,53 @@ func TestKVRebOnUpdateBucketOpOneByOne(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestKVHardFailoverRecovery(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+
+	flushFunctionAndBucket(handler)
+	time.Sleep(5 * time.Second)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: rlOpsPSec,
+		count:   rlItemCount,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9001", "kv")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	failoverFromRest([]string{"127.0.0.1:9001"})
+
+	time.Sleep(60 * time.Second)
+
+	recoveryFromRest("127.0.0.1:9001", "full")
+
+	rebalanceFromRest([]string{})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}
+
 /*func TestKVRebOnUpdateBucketOpAllAtOnce(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"

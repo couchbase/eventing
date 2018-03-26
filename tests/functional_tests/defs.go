@@ -43,6 +43,7 @@ const (
 	addNodeURL   = "http://127.0.0.1:9000/controller/addNode"
 	poolsURL     = "http://127.0.0.1:9000/pools/default"
 	rebalanceURL = "http://127.0.0.1:9000/controller/rebalance"
+	recoveryURL  = "http://127.0.0.1:9000/controller/setRecoveryType"
 	taskURL      = "http://127.0.0.1:9000/pools/default/tasks"
 )
 
