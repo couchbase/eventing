@@ -1783,10 +1783,11 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 				stats.ExecutionStats = m.superSup.GetExecutionStats(app.Name)
 				stats.FailureStats = m.superSup.GetFailureStats(app.Name)
 				stats.FunctionName = app.Name
+				stats.InternalVbDistributionStats = m.superSup.InternalVbDistributionStats(app.Name)
 				stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
 				stats.WorkerPids = m.superSup.GetEventingConsumerPids(app.Name)
 				stats.PlannerStats = m.superSup.PlannerStats(app.Name)
-				stats.VbDistributionStats = m.superSup.VbDistributionStats(app.Name)
+				stats.VbDistributionStatsFromMetadata = m.superSup.VbDistributionStatsFromMetadata(app.Name)
 
 				if fullStats {
 					stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)

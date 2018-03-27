@@ -146,17 +146,6 @@ func (c *Consumer) processEvents() {
 								}
 							} else {
 
-								// Disabling it for now. As doc timers now depend on feedback directly from CPP workers,
-								// instead of feedback over DCP.
-								/*pEntry := &plasmaStoreEntry{
-									vb:     e.VBucket,
-									seqNo:  e.Seqno,
-									expiry: e.Expiry,
-									key:    string(e.Key),
-									xMeta:  &xMeta,
-								}
-								c.plasmaStoreCh <- pEntry*/
-
 								logging.Tracef("%s [%s:%s:%d] Sending key: %r to be stored in plasma",
 									logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 							}
@@ -164,16 +153,6 @@ func (c *Consumer) processEvents() {
 							logging.Tracef("%s [%s:%s:%d] Skipping recursive mutation for key: %r vb: %v, xmeta: %r",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, fmt.Sprintf("%#v", xMeta))
 
-							// Disabling it for now. As doc timers now depend on feedback directly from CPP workers,
-							// instead of feedback over DCP.
-							/*pEntry := &plasmaStoreEntry{
-								vb:     e.VBucket,
-								seqNo:  e.Seqno,
-								expiry: e.Expiry,
-								key:    string(e.Key),
-								xMeta:  &xMeta,
-							}
-							c.plasmaStoreCh <- pEntry*/
 						}
 					} else {
 						e.Value = e.Value[4+totalXattrLen:]
@@ -297,11 +276,14 @@ func (c *Consumer) processEvents() {
 
 				c.vbsStreamRRWMutex.Lock()
 				if _, ok := c.vbStreamRequested[e.VBucket]; ok {
+					logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+
 					delete(c.vbStreamRequested, e.VBucket)
 				}
 				c.vbsStreamRRWMutex.Unlock()
 
-				//Store the latest state of vbucket processing stats in the metadata bucket
+				// Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
 
 				entry := OwnershipEntry{
@@ -334,6 +316,10 @@ func (c *Consumer) processEvents() {
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 					logging.Infof("%s [%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+
+					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+					c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
+
 					c.Lock()
 					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, e.VBucket)
 					c.Unlock()
@@ -465,7 +451,6 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 			vbBlob.PreviousAssignedWorker = c.ConsumerName()
 			vbBlob.PreviousNodeUUID = c.NodeUUID()
 			vbBlob.PreviousVBOwner = c.HostPortAddr()
-			vbBlob.PreviousEventingDir = c.eventingDir
 
 			entry := OwnershipEntry{
 				AssignedWorker: c.ConsumerName(),
@@ -608,14 +593,12 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vb uint16) {
 	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-	vbBlob.AssignedDocIDTimerWorker = ""
 	vbBlob.AssignedWorker = ""
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
 	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 	vbBlob.NodeUUID = ""
 	vbBlob.PreviousAssignedWorker = c.ConsumerName()
-	vbBlob.PreviousEventingDir = c.eventingDir
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
 	vbBlob.PreviousVBOwner = c.HostPortAddr()
 
@@ -643,7 +626,6 @@ func (c *Consumer) clearUpOnwershipInfoFromMeta(vb uint16) {
 	c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vb, "node_uuid", vbBlob.NodeUUID)
-	c.vbProcessingStats.updateVbStat(vb, "doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker)
 }
 
 func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) error {
@@ -690,6 +672,16 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, dcpFeed.DcpFeedName(), err)
+
+		c.vbsStreamRRWMutex.Lock()
+		if _, ok := c.vbStreamRequested[vbno]; ok {
+			logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
+
+			delete(c.vbStreamRequested, vbno)
+		}
+		c.vbsStreamRRWMutex.Unlock()
+
 		if c.checkIfCurrentConsumerShouldOwnVb(vbno) {
 			c.Lock()
 			c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbno)

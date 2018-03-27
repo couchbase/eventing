@@ -225,12 +225,12 @@ void startDebuggerFlag(bool started) {
     setLogLevel(logSilent);
   }
 }
-void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
 
 V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    server_settings_t *server_settings)
     : settings(server_settings), platform_(platform) {
-  enableRecursiveMutation(h_config->enable_recursive_mutation);
+  enable_recursive_mutation = h_config->enable_recursive_mutation;
+  curl_timeout = h_config->curl_timeout;
   histogram = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
 
   for (int i = 0; i < NUM_VBUCKETS; i++) {
@@ -989,7 +989,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
 
   if (try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Last exception: " << last_exception << std::endl;
+    std::cerr << "Last exception: " << last_exception << std::endl;
   }
 
   if (debugger_started) {
@@ -1084,8 +1084,8 @@ int V8Worker::SendDelete(std::string meta) {
     execute_flag = false;
 
     if (try_catch.HasCaught()) {
-      LOG(logError) << "Exception message"
-                    << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+      std::cerr << "Exception message"
+                << ExceptionString(GetIsolate(), &try_catch) << std::endl;
       UpdateHistogram(start_time);
       on_delete_failure++;
       return kOnDeleteCallFail;

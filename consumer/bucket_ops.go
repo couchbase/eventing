@@ -257,7 +257,6 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 
 	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
 		UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath).
-		UpsertEx("doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_cron_timer", vbBlob.CurrentProcessedCronTimer, gocb.SubdocFlagCreatePath).
 		UpsertEx("next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess, gocb.SubdocFlagCreatePath).
@@ -288,11 +287,9 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath).
-		UpsertEx("doc_id_timer_processing_worker", vbBlob.AssignedDocIDTimerWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath).
 		UpsertEx("node_uuid", vbBlob.NodeUUID, gocb.SubdocFlagCreatePath).
 		UpsertEx("previous_assigned_worker", vbBlob.PreviousAssignedWorker, gocb.SubdocFlagCreatePath).
-		UpsertEx("previous_node_eventing_dir", vbBlob.PreviousEventingDir, gocb.SubdocFlagCreatePath).
 		UpsertEx("previous_node_uuid", vbBlob.PreviousNodeUUID, gocb.SubdocFlagCreatePath).
 		UpsertEx("previous_vb_owner", vbBlob.PreviousVBOwner, gocb.SubdocFlagCreatePath).
 		Execute()

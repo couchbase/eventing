@@ -74,7 +74,6 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 
 func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbucketKVBlob) {
 
-	vbBlob.AssignedDocIDTimerWorker = c.vbProcessingStats.getVbStat(vbno, "doc_id_timer_processing_worker").(string)
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
 	vbBlob.DCPStreamStatus = c.vbProcessingStats.getVbStat(vbno, "dcp_stream_status").(string)

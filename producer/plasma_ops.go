@@ -40,21 +40,19 @@ func (p *Producer) openPlasmaStore() error {
 
 func (p *Producer) persistPlasma() {
 	logPrefix := "Producer::persistPlasma"
-	counter := 0
 
 	for {
 		select {
 		case <-p.persistAllTicker.C:
 			p.vbPlasmaStore.PersistAll()
-			counter++
-			if counter == 10 {
-				stats := p.vbPlasmaStore.GetStats()
-				logging.Infof("%s [%s:%d] Plasma stats: %s",
-					logPrefix, p.appName, p.LenRunningConsumers(), stats.String())
-				counter = 0
-			}
+
+		case <-p.statsTicker.C:
+			stats := p.vbPlasmaStore.GetStats()
+			logging.Infof("%s [%s:%d] Plasma stats: %s",
+				logPrefix, p.appName, p.LenRunningConsumers(), stats.String())
 
 		case <-p.signalStopPersistAllCh:
+			p.statsTicker.Stop()
 			return
 		}
 	}

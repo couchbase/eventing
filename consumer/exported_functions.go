@@ -495,6 +495,20 @@ func (c *Consumer) initConsumer(appName string) {
 	}
 }
 
+// InternalVbDistributionStats returns internal state of vbucket ownership distribution on local eventing node
+func (c *Consumer) InternalVbDistributionStats() []uint16 {
+	activeDcpStreams := make([]uint16, 0)
+
+	for vb := 0; vb < c.numVbuckets; vb++ {
+		dcpStreamStatus := c.vbProcessingStats.getVbStat(uint16(vb), "dcp_stream_status").(string)
+		if dcpStreamStatus == dcpStreamRunning {
+			activeDcpStreams = append(activeDcpStreams, uint16(vb))
+		}
+	}
+
+	return activeDcpStreams
+}
+
 // TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
 func (c *Consumer) TimerDebugStats() map[int]map[string]interface{} {
 	stats := make(map[int]map[string]interface{})

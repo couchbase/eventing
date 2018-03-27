@@ -165,7 +165,7 @@ func failover(hostname string) {
 	}
 	cbCliPath := buildDir + "/install/bin/couchbase-cli"
 
-	log.Println("Starting up rebalance")
+	log.Println("Starting up failover")
 
 	cmd := exec.Command(cbCliPath, "failover", "-c", "127.0.0.1:9000", "-u", username, "-p", password, "--force", "--server-failover=", hostname)
 
@@ -182,6 +182,14 @@ func failoverFromRest(nodesToRemove []string) {
 	_, removeNodes := otpNodes(nodesToRemove)
 	payload := strings.NewReader(fmt.Sprintf("otpNode=%s", url.QueryEscape(removeNodes)))
 	makeRequest("POST", payload, failoverURL)
+}
+
+func recoveryFromRest(hostname, recoveryType string) {
+	log.Printf("Kicking off failover recovery, type: %s\n", recoveryType)
+
+	_, recoveryNodes := otpNodes([]string{hostname})
+	payload := strings.NewReader(fmt.Sprintf("otpNode=%s&recoveryType=%s", url.QueryEscape(recoveryNodes), recoveryType))
+	makeRequest("POST", payload, recoveryURL)
 }
 
 func addNodeFromRest(hostname, roles string) ([]byte, error) {

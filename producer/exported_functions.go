@@ -376,8 +376,19 @@ func (p *Producer) GetPlasmaStats() (map[string]interface{}, error) {
 	return res, nil
 }
 
-// VbDistributionStats dumps the state of vbucket distribution per metadata bucket
-func (p *Producer) VbDistributionStats() map[string]map[string]string {
+// InternalVbDistributionStats returns internal state of vbucket ownership distribution on local eventing node
+func (p *Producer) InternalVbDistributionStats() map[string]string {
+	distributionStats := make(map[string]string)
+
+	for _, consumer := range p.runningConsumers {
+		distributionStats[consumer.ConsumerName()] = util.Condense(consumer.InternalVbDistributionStats())
+	}
+
+	return distributionStats
+}
+
+// VbDistributionStatsFromMetadata dumps the state of vbucket distribution per metadata bucket
+func (p *Producer) VbDistributionStatsFromMetadata() map[string]map[string]string {
 	p.statsRWMutex.RLock()
 	defer p.statsRWMutex.RUnlock()
 
