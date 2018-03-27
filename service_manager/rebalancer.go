@@ -58,22 +58,22 @@ func (r *rebalancer) gatherProgress() {
 	// Store the initial state of rebalance progress in metakv
 	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 	if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
-		logging.Warnf(" %s Failed to capture cluster wide rebalance progress from all nodes, initProgress: %v errMap dump: %r",
+		logging.Warnf(" %s Failed to capture cluster wide rebalance progress from all nodes, initProgress: %v errMap dump: %rm",
 			logPrefix, initProgress, errMap)
 
 		util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
 		r.cb.done(fmt.Errorf("%s Failed to aggregate rebalance progress from all eventing nodes, err: %v", logPrefix, errMap), r.done)
 		return
 	} else if len(errMap) > 0 && len(r.keepNodes) > 1 {
-		logging.Warnf("%s Failed to capture cluster wide rebalance progress, initProgress: %v errMap dump: %r",
+		logging.Warnf("%s Failed to capture cluster wide rebalance progress, initProgress: %v errMap dump: %rm",
 			logPrefix, initProgress, errMap)
 	} else if len(errMap) == 1 && len(r.keepNodes) == 1 {
-		logging.Warnf("%s Failed to capture rebalance progress, initProgress: %v errMap dump: %r",
+		logging.Warnf("%s Failed to capture rebalance progress, initProgress: %v errMap dump: %rm",
 			logPrefix, initProgress, errMap)
 		return
 	}
 
-	logging.Infof("%s initProgress dump: %r", logPrefix, initProgress)
+	logging.Infof("%s initProgress dump: %rm", logPrefix, initProgress)
 
 	buf, err := json.Marshal(initProgress)
 	if err != nil {
@@ -95,7 +95,7 @@ func (r *rebalancer) gatherProgress() {
 		case <-progressTicker.C:
 			p, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 			if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
-				logging.Errorf("%s Failed to capture cluster wide rebalance progress from all nodes, errMap dump: %r", logPrefix, errMap)
+				logging.Errorf("%s Failed to capture cluster wide rebalance progress from all nodes, errMap dump: %rm", logPrefix, errMap)
 
 				util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
 				r.cb.done(fmt.Errorf("%s Failed to aggregate rebalance progress from all eventing nodes, err: %v", logPrefix, errMap), r.done)

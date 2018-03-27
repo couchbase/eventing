@@ -88,7 +88,7 @@ func (feed *TapFeed) connectToNodes() (killSwitch chan bool, err error) {
 		var singleFeed *memcached.TapFeed
 		singleFeed, err = serverConn.StartTapFeed(feed.args)
 		if err != nil {
-			logging.Errorf("dcp-client: Error connecting to tap feed of %r: %v", serverConn.host, err)
+			logging.Errorf("dcp-client: Error connecting to tap feed of %rs: %v", serverConn.host, err)
 			feed.closeNodeFeeds()
 			return
 		}
@@ -105,7 +105,7 @@ func (feed *TapFeed) forwardTapEvents(singleFeed *memcached.TapFeed, killSwitch 
 		case event, ok := <-singleFeed.C:
 			if !ok {
 				if singleFeed.Error != nil {
-					logging.Errorf("dcp-client: Tap feed from %r failed: %v", host, singleFeed.Error)
+					logging.Errorf("dcp-client: Tap feed from %rs failed: %v", host, singleFeed.Error)
 				}
 				killSwitch <- true
 				return

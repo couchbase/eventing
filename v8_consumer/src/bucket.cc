@@ -29,7 +29,7 @@ static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
   if (resp->rc == LCB_SUCCESS) {
     result->value.assign(reinterpret_cast<const char *>(resp->value),
                          static_cast<int>(resp->nvalue));
-    LOG(logTrace) << "Bucket: Value: " << R(result->value)
+    LOG(logTrace) << "Bucket: Value: " << RU(result->value)
                   << " flags: " << resp->itmflags << std::endl;
   }
 }
@@ -76,7 +76,7 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
     connstr += "&ipv6=allow";
   }
 
-  LOG(logInfo) << "Bucket: connstr " << R(connstr) << std::endl;
+  LOG(logInfo) << "Bucket: connstr " << RS(connstr) << std::endl;
 
   // lcb related setup
   lcb_create_st crst;
@@ -237,8 +237,8 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
     return;
   }
 
-  LOG(logTrace) << "Bucket: Get call result Key: " << R(key)
-                << " Value: " << R(result.value) << std::endl;
+  LOG(logTrace) << "Bucket: Get call result Key: " << RU(key)
+                << " Value: " << RU(result.value) << std::endl;
 
   const std::string &value = result.value;
   auto value_json = v8::JSON::Parse(v8Str(isolate, value.c_str()));
@@ -271,7 +271,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
   std::string key(*utf8_key);
   auto value = JSONStringify(isolate, value_obj);
 
-  LOG(logTrace) << "Bucket: Set call Key: " << R(key) << " Value: " << R(value)
+  LOG(logTrace) << "Bucket: Set call Key: " << RU(key) << " Value: " << RU(value)
                 << " enable_recursive_mutation: " << enable_recursive_mutation
                 << std::endl;
 
@@ -307,7 +307,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
       switch (gres.rc) {
       case LCB_KEY_ENOENT:
-        LOG(logTrace) << "Bucket: Key: " << R(key)
+        LOG(logTrace) << "Bucket: Key: " << RU(key)
                       << " doesn't exist in bucket where mutation has "
                          "to be written"
                       << std::endl;
@@ -318,7 +318,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
       default:
         HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, gres.rc);
-        LOG(logError) << "Bucket: Failed to fetch full doc: " << R(key)
+        LOG(logError) << "Bucket: Failed to fetch full doc: " << RU(key)
                       << " to calculate digest, res: "
                       << lcb_strerror(*bucket_lcb_obj_ptr, gres.rc)
                       << std::endl;
@@ -329,8 +329,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       if (gres.rc == LCB_SUCCESS) {
         uint32_t d = crc32c(0, gres.value.c_str(), gres.value.length());
         digest.assign(std::to_string(d));
-        LOG(logTrace) << "Bucket: key: " << R(key) << " digest: " << digest
-                      << " value: " << R(gres.value) << std::endl;
+        LOG(logTrace) << "Bucket: key: " << RU(key) << " digest: " << digest
+                      << " value: " << RU(gres.value) << std::endl;
       }
 
       lcb_CMDSUBDOC mcmd = {0};
@@ -388,13 +388,13 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
       switch (sres.rc) {
       case LCB_SUCCESS:
-        LOG(logTrace) << "Bucket: Successfully wrote doc:" << R(key)
+        LOG(logTrace) << "Bucket: Successfully wrote doc:" << RU(key)
                       << std::endl;
         info.GetReturnValue().Set(value_obj);
         return;
 
       case LCB_KEY_EEXISTS:
-        LOG(logInfo) << "Bucket: CAS mismatch for doc:" << R(key) << std::endl;
+        LOG(logInfo) << "Bucket: CAS mismatch for doc:" << RU(key) << std::endl;
         std::this_thread::sleep_for(
             std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
         break;
@@ -402,7 +402,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       default:
         LOG(logError) << "Bucket: Encountered error:"
                       << lcb_strerror(*bucket_lcb_obj_ptr, sres.rc)
-                      << " for key:" << R(key) << std::endl;
+                      << " for key:" << RU(key) << std::endl;
 
         HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, gres.rc);
         return;

@@ -43,7 +43,7 @@ var getNsServerNodesAddressesOpCallback = func(args ...interface{}) error {
 	} else {
 		atomic.StorePointer(
 			(*unsafe.Pointer)(unsafe.Pointer(&p.nsServerNodeAddrs)), unsafe.Pointer(&nsServerNodeAddrs))
-		logging.Infof("%s [%s:%d] Got NS Server nodes: %r", logPrefix, p.appName, p.LenRunningConsumers(), fmt.Sprintf("%#v", nsServerNodeAddrs))
+		logging.Infof("%s [%s:%d] Got NS Server nodes: %rs", logPrefix, p.appName, p.LenRunningConsumers(), fmt.Sprintf("%#v", nsServerNodeAddrs))
 	}
 
 	return err
@@ -62,7 +62,7 @@ var getKVNodesAddressesOpCallback = func(args ...interface{}) error {
 	} else {
 		atomic.StorePointer(
 			(*unsafe.Pointer)(unsafe.Pointer(&p.kvNodeAddrs)), unsafe.Pointer(&kvNodeAddrs))
-		logging.Infof("%s [%s:%d] Got KV nodes: %r", logPrefix, p.appName, p.LenRunningConsumers(), kvNodeAddrs)
+		logging.Infof("%s [%s:%d] Got KV nodes: %rs", logPrefix, p.appName, p.LenRunningConsumers(), kvNodeAddrs)
 	}
 
 	return err
@@ -85,7 +85,7 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 	} else {
 		atomic.StorePointer(
 			(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs)), unsafe.Pointer(&eventingNodeAddrs))
-		logging.Infof("%s [%s:%d] Got eventing nodes: %r", logPrefix, p.appName, p.LenRunningConsumers(), fmt.Sprintf("%#v", eventingNodeAddrs))
+		logging.Infof("%s [%s:%d] Got eventing nodes: %rs", logPrefix, p.appName, p.LenRunningConsumers(), fmt.Sprintf("%#v", eventingNodeAddrs))
 		return nil
 	}
 

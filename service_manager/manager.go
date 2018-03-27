@@ -22,7 +22,7 @@ import (
 //NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
 func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.EventingSuperSup) *ServiceMgr {
 
-	logging.Infof("ServiceMgr::newServiceMgr config: %r rebalanceRunning: %v", fmt.Sprintf("%#v", config), rebalanceRunning)
+	logging.Infof("ServiceMgr::newServiceMgr config: %rm rebalanceRunning: %v", fmt.Sprintf("%#v", config), rebalanceRunning)
 
 	mu := &sync.RWMutex{}
 
@@ -543,7 +543,7 @@ func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
 		}
 	}
 
-	logging.Infof("%s keepNodes from metakv: %v addrUUIDMap: %r nodeAddrs: %r",
+	logging.Infof("%s keepNodes from metakv: %v addrUUIDMap: %rm nodeAddrs: %rs",
 		logPrefix, keepNodes, addrUUIDMap, nodeAddrs)
 
 	return nodeAddrs, nil

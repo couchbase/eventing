@@ -179,11 +179,11 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 	case service.TopologyChangeTypeRebalance:
 
 		nodeAddrs, err := m.getActiveNodeAddrs()
-		logging.Infof("%s Active Eventing nodes in the cluster: %r", logPrefix, nodeAddrs)
+		logging.Infof("%s Active Eventing nodes in the cluster: %rs", logPrefix, nodeAddrs)
 
 		if len(nodeAddrs) > 0 && err == nil {
 
-			logging.Infof("%s Querying nodes: %r for bootstrap status", logPrefix, nodeAddrs)
+			logging.Infof("%s Querying nodes: %rs for bootstrap status", logPrefix, nodeAddrs)
 
 			// Fail rebalance if some apps are undergoing bootstrap
 			appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", nodeAddrs)

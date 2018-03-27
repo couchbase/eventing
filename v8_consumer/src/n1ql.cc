@@ -80,10 +80,10 @@ void ConnectionPool::AddResource() {
   instances.push(instance);
   if (init_success) {
     LOG(logInfo) << "N1QL: lcb instance successfully initialized for "
-                 << R(conn_str) << std::endl;
+                 << RS(conn_str) << std::endl;
   } else {
     LOG(logError) << "N1QL: Unable to initialize lcb instance for "
-                  << R(conn_str) << std::endl;
+                  << RS(conn_str) << std::endl;
   }
 }
 

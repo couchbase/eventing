@@ -71,4 +71,6 @@ public:
     AtomicLog().Cout()
 #endif
 
-#define R(msg) (noRedact ? "" : "<ud>") << msg << (noRedact ? "" : "</ud>")
+#define RU(msg) (noRedact ? "" : "<ud>") << msg << (noRedact ? "" : "</ud>")
+#define RM(msg) msg
+#define RS(msg) msg

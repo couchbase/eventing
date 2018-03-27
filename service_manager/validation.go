@@ -41,17 +41,17 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
 	creds, err := cbauth.AuthWebCreds(r)
 	if err != nil || creds == nil {
-		logging.Warnf("Cannot authenticate request to %r", r.URL)
+		logging.Warnf("Cannot authenticate request to %rs", r.URL)
 		w.WriteHeader(http.StatusUnauthorized)
 		return false
 	}
 	allowed, err := creds.IsAllowed(perm)
 	if err != nil || !allowed {
-		logging.Warnf("Cannot authorize request to %r", r.URL)
+		logging.Warnf("Cannot authorize request to %rs", r.URL)
 		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
-	logging.Debugf("Allowing access to %r", r.URL)
+	logging.Debugf("Allowing access to %rs", r.URL)
 	return true
 }
 
@@ -283,33 +283,33 @@ func (m *ServiceMgr) validateLessThan(field1, field2 string, settings map[string
 func (m *ServiceMgr) validateLocalAuth(w http.ResponseWriter, r *http.Request) bool {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		logging.Warnf("Unable to verify remote in request to %r: %r", r.URL, err)
+		logging.Warnf("Unable to verify remote in request to %rs: %rs", r.URL, err)
 		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
 
 	pip := net.ParseIP(ip)
 	if pip == nil || !pip.IsLoopback() {
-		logging.Warnf("Forbidden remote in request to %r: %r", r.URL, r)
+		logging.Warnf("Forbidden remote in request to %rs: %rs", r.URL, r)
 		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
 
 	rUsr, rKey, ok := r.BasicAuth()
 	if !ok {
-		logging.Warnf("No credentials on request to %r", r.URL)
+		logging.Warnf("No credentials on request to %rs", r.URL)
 		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
 
 	usr, key := util.LocalKey()
 	if rUsr != usr || rKey != key {
-		logging.Warnf("Cannot authorize request to %r", r.URL)
+		logging.Warnf("Cannot authorize request to %rs", r.URL)
 		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
 
-	logging.Debugf("Allowing access to %r", r.URL)
+	logging.Debugf("Allowing access to %rs", r.URL)
 	return true
 }
 

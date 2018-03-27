@@ -228,7 +228,7 @@ func (c *Consumer) SetConnHandle(conn net.Conn) {
 	defer c.connMutex.Unlock()
 
 	c.conn = conn
-	logging.Infof("%s [%s:%s:%d] Setting conn handle: %r",
+	logging.Infof("%s [%s:%s:%d] Setting conn handle: %rs",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.conn)
 
 	c.sockReader = bufio.NewReader(c.conn)
@@ -247,7 +247,7 @@ func (c *Consumer) SetFeedbackConnHandle(conn net.Conn) {
 	defer c.connMutex.Unlock()
 
 	c.feedbackConn = conn
-	logging.Infof("%s [%s:%s:%d] Setting feedback conn handle: %r",
+	logging.Infof("%s [%s:%s:%d] Setting feedback conn handle: %rs",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.feedbackConn)
 
 	c.sockFeedbackReader = bufio.NewReader(c.feedbackConn)
@@ -371,7 +371,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			return
 		}
 
-		logging.Infof("%s [%s:%s:%d] Compilation worker: got connection: %r",
+		logging.Infof("%s [%s:%s:%d] Compilation worker: got connection: %rs",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.conn)
 
 		connectedCh <- struct{}{}

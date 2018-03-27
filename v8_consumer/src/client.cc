@@ -112,7 +112,7 @@ void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
   LOG(logInfo) << "Starting worker with af_inet for appname:" << appname
                << " worker id:" << worker_id << " batch size:" << batch_size
                << " feedback batch size:" << fbsize
-               << " feedback port:" << R(feedback_port) << " port:" << R(port)
+               << " feedback port:" << RS(feedback_port) << " port:" << RS(port)
                << std::endl;
 
   uv_tcp_connect(&feedback_conn, &feedback_tcp_sock,
@@ -149,8 +149,8 @@ void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
   LOG(logInfo) << "Starting worker with af_unix for appname:" << appname
                << " worker id:" << worker_id << " batch size:" << batch_size
                << " feedback batch size:" << fbsize
-               << " feedback uds path:" << R(feedback_sock_path)
-               << " uds_path:" << R(uds_sock_path) << std::endl;
+               << " feedback uds path:" << RS(feedback_sock_path)
+               << " uds_path:" << RS(uds_sock_path) << std::endl;
 
   uv_pipe_connect(
       &feedback_conn, &feedback_uds_sock, feedback_sock_path.c_str(),
@@ -504,7 +504,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority = true;
       break;
     case oLoad:
-      LOG(logDebug) << "Loading app code:" << R(parsed_header->metadata)
+      LOG(logDebug) << "Loading app code:" << RM(parsed_header->metadata)
                     << std::endl;
       for (int16_t i = 0; i < thr_count; i++) {
         workers[i]->V8WorkerLoad(parsed_header->metadata);
@@ -641,7 +641,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority = true;
       break;
     case oGetCompileInfo:
-      LOG(logDebug) << "Compiling app code:" << R(parsed_header->metadata)
+      LOG(logDebug) << "Compiling app code:" << RM(parsed_header->metadata)
                     << std::endl;
       compile_resp = workers[0]->CompileHandler(parsed_header->metadata);
 

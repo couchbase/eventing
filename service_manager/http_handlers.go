@@ -354,7 +354,7 @@ var getDeployedAppsCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	logging.Infof("Cluster wide deployed app status: %r", *aggDeployedApps)
+	logging.Infof("Cluster wide deployed app status: %rm", *aggDeployedApps)
 
 	return nil
 }
@@ -477,7 +477,7 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
 		// if it occurs
 		appProgress, err := m.superSup.RebalanceTaskProgress(appName)
-		logging.Infof("Rebalance progress from node with rest port: %r progress: %v", m.restPort, appProgress)
+		logging.Infof("Rebalance progress from node with rest port: %rs progress: %v", m.restPort, appProgress)
 		if err == nil {
 			progress.VbsOwnedPerPlan += appProgress.VbsOwnedPerPlan
 			progress.VbsRemainingToShuffle += appProgress.VbsRemainingToShuffle
@@ -1398,7 +1398,7 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 	strippedEndpoint := util.StripScheme(string(data))
 	username, password, err := cbauth.GetMemcachedServiceAuth(strippedEndpoint)
 	if err != nil {
-		logging.Errorf("Failed to get credentials for endpoint: %r, err: %v", strippedEndpoint, err)
+		logging.Errorf("Failed to get credentials for endpoint: %rs, err: %v", strippedEndpoint, err)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errRbacCreds.Code))
 	} else {
 		response := url.Values{}
@@ -1415,7 +1415,7 @@ func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logging.Infof("Got request to clear event stats from host: %r", r.Host)
+	logging.Infof("Got request to clear event stats from host: %rs", r.Host)
 	m.superSup.ClearEventStats()
 }
 
@@ -1462,7 +1462,7 @@ func (m *ServiceMgr) getConfig() (c config, info *runtimeInfo) {
 		}
 	}
 
-	logging.Infof("Retrieving config from metakv: %r", c)
+	logging.Infof("Retrieving config from metakv: %ru", c)
 	info.Code = m.statusCodes.ok.Code
 	return
 }

@@ -222,7 +222,7 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto sleep_duration = LCB_OP_RETRY_INTERVAL;
   while (res.rc != LCB_SUCCESS) {
     LOG(logTrace) << "Cron timer: (Retry) Create failure for doc:"
-                  << timer_entry << " payload: " << R(opaque)
+                  << timer_entry << " payload: " << RU(opaque)
                   << " lcb rc:" << lcb_strerror(meta_cb_instance, res.rc)
                   << " sleep_duration: " << sleep_duration * 1000 << std::endl;
 
@@ -273,7 +273,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   // setting up timer callback for it
   if (atoi(start_ts.c_str()) == 0) {
     LOG(logError) << "DocTimer: Skipping timer callback setup for doc_id:"
-                  << R(doc_id) << ", won't expire" << std::endl;
+                  << RU(doc_id) << ", won't expire" << std::endl;
     ++doc_timer_create_failure;
     auto js_exception = UnwrapData(isolate)->js_exception;
     js_exception->Throw("Timer won't expire");
@@ -304,7 +304,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_entry += "\"";
   timer_entry.insert(0, 1, '"');
   LOG(logTrace) << "DocTimer: Request to register doc timer, callback_func:"
-                << cb_func << " doc_id:" << R(doc_id)
+                << cb_func << " doc_id:" << RU(doc_id)
                 << " start_ts:" << timer_entry << std::endl;
 
   while (true) {
@@ -365,7 +365,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     while (res.rc != LCB_SUCCESS) {
       LOG(logError) << "DocTimer: (Retry) Failed while performing lookup for "
                        "fulldoc and exptime"
-                    << " doc key:" << R(doc_id)
+                    << " doc key:" << RU(doc_id)
                     << " rc: " << lcb_strerror(cb_instance, res.rc)
                     << std::endl;
 
@@ -456,7 +456,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
       HandleDocTimerFailure(isolate, cb_instance, res.rc);
       LOG(logError)
           << "DocTimer: Failed to update timer related xattr fields for doc_id:"
-          << R(doc_id) << " return code:" << res.rc
+          << RU(doc_id) << " return code:" << res.rc
           << " msg:" << lcb_strerror(cb_instance, res.rc) << std::endl;
       return;
     }
@@ -465,7 +465,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     while (res.rc != LCB_SUCCESS && res.rc != LCB_KEY_EEXISTS) {
       LOG(logError) << "DocTimer: (Retry) Failed to update timer related xattr "
                        "fields for doc_id:"
-                    << R(doc_id) << " return code:" << res.rc
+                    << RU(doc_id) << " return code:" << res.rc
                     << " msg:" << lcb_strerror(cb_instance, res.rc)
                     << std::endl;
 
@@ -496,7 +496,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     }
 
     if (res.rc == LCB_KEY_EEXISTS) {
-      LOG(logTrace) << "DocTimer: CAS Mismatch for " << R(doc_id)
+      LOG(logTrace) << "DocTimer: CAS Mismatch for " << RU(doc_id)
                     << ". Retrying" << std::endl;
 
       std::this_thread::sleep_for(
