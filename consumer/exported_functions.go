@@ -61,6 +61,14 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["TIMERS_IN_PAST"] = c.timersInPastCounter
 	}
 
+	if c.timersInPastFromBackfill > 0 {
+		stats["TIMERS_IN_PAST_FROM_BACKFILL"] = c.timersInPastFromBackfill
+	}
+
+	if c.timersRecreatedFromDCPBackfill > 0 {
+		stats["TIMERS_RECREATED_FROM_DCP_BACKFILL"] = c.timersRecreatedFromDCPBackfill
+	}
+
 	if c.plasmaDeleteCounter > 0 {
 		stats["PLASMA_DELETE_COUNTER"] = c.plasmaDeleteCounter
 	}
@@ -527,6 +535,7 @@ func (c *Consumer) TimerDebugStats() map[int]map[string]interface{} {
 			stats[vb]["sent_to_worker_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "sent_to_worker_counter")
 			stats[vb]["timer_create_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "timer_create_counter")
 			stats[vb]["timers_in_past_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "timers_in_past_counter")
+			stats[vb]["timers_in_past_from_backfill_counter"] = c.vbProcessingStats.getVbStat(uint16(vb), "timers_in_past_from_backfill_counter")
 			stats[vb]["timers_recreated_from_dcp_backfill"] = c.vbProcessingStats.getVbStat(uint16(vb), "timers_recreated_from_dcp_backfill")
 		}
 	}

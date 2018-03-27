@@ -360,150 +360,152 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	}
 	c.vbsStreamRRWMutex.Unlock()
 
-	logging.Infof("%s [%s:%s:%d] vb: %v LastProcessedSeqNo: %d",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastSeqNoProcessed)
+	seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+		return err
+	}
 
-	// Recreate doc timer records from dcp backfill only if last_processed_seq_no is > 0
-	if vbBlob.LastSeqNoProcessed > 0 {
+	logging.Infof("%s [%s:%s:%d] vb: %v LastProcessedSeqNo: %d LastDocTimerFeedbackSeqNo: %d high seq no: %d",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastSeqNoProcessed, vbBlob.LastDocTimerFeedbackSeqNo, seqNos[int(vb)])
 
-		util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getKvNodesFromVbMap, c)
+	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getKvNodesFromVbMap, c)
 
-		var b *couchbase.Bucket
-		var dcpFeed *couchbase.DcpFeed
+	var b *couchbase.Bucket
+	var dcpFeed *couchbase.DcpFeed
 
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), commonConnectBucketOpCallback, c, &b)
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startFeedFromKVNodesCallback, c, &b, vb, &dcpFeed, c.kvNodes)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), commonConnectBucketOpCallback, c, &b)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startFeedFromKVNodesCallback, c, &b, vb, &dcpFeed, c.kvNodes)
 
-		var wg sync.WaitGroup
-		wg.Add(1)
+	var wg sync.WaitGroup
+	wg.Add(1)
 
-		go func(dcpFeed *couchbase.DcpFeed, wg *sync.WaitGroup) {
-			defer wg.Done()
+	go func(dcpFeed *couchbase.DcpFeed, wg *sync.WaitGroup) {
+		defer wg.Done()
 
-			for {
-				select {
-				case e, ok := <-dcpFeed.C:
-					if ok == false {
-						logging.Infof("%s [%s:%d] vb: %v Exiting doc timer recreate routine",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-						return
-					}
+		for {
+			select {
+			case e, ok := <-dcpFeed.C:
+				if ok == false {
+					logging.Infof("%s [%s:%d] vb: %v Exiting doc timer recreate routine",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+					return
+				}
 
-					logging.Tracef("%s [%s:%s:%d] vb: %v Opcode received: %v key: %r datatype: %v seq no: %d",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, e.Opcode, string(e.Key), e.Datatype, e.Seqno)
+				logging.Tracef("%s [%s:%s:%d] vb: %v Opcode received: %v key: %r datatype: %v seq no: %d",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, e.Opcode, string(e.Key), e.Datatype, e.Seqno)
 
-					switch e.Opcode {
-					case mcd.DCP_STREAMEND:
-						logging.Infof("%s [%s:%s:%d] vb: %v Stream end has been received",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-						return
+				switch e.Opcode {
+				case mcd.DCP_STREAMEND:
+					logging.Infof("%s [%s:%s:%d] vb: %v Stream end has been received",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+					return
 
-					case mcd.DCP_MUTATION:
-						switch e.Datatype {
-						case dcpDatatypeJSONXattr:
-							totalXattrLen := binary.BigEndian.Uint32(e.Value[0:])
-							totalXattrData := e.Value[4 : 4+totalXattrLen-1]
+				case mcd.DCP_MUTATION:
+					switch e.Datatype {
+					case dcpDatatypeJSONXattr:
+						totalXattrLen := binary.BigEndian.Uint32(e.Value[0:])
+						totalXattrData := e.Value[4 : 4+totalXattrLen-1]
 
-							logging.Tracef("%s [%s:%s:%d] key: %r totalXattrLen: %v totalXattrData: %v",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), totalXattrLen, totalXattrData)
+						logging.Tracef("%s [%s:%s:%d] key: %r totalXattrLen: %v totalXattrData: %v",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), totalXattrLen, totalXattrData)
 
-							var xMeta xattrMetadata
-							var bytesDecoded uint32
+						var xMeta xattrMetadata
+						var bytesDecoded uint32
 
-							// Try decoding all xattrs defined in io-vector encoding format
-							for bytesDecoded < totalXattrLen {
-								frameLength := binary.BigEndian.Uint32(totalXattrData)
-								bytesDecoded += 4
-								frameData := totalXattrData[4 : 4+frameLength-1]
-								bytesDecoded += frameLength
-								if bytesDecoded < totalXattrLen {
-									totalXattrData = totalXattrData[4+frameLength:]
-								}
+						// Try decoding all xattrs defined in io-vector encoding format
+						for bytesDecoded < totalXattrLen {
+							frameLength := binary.BigEndian.Uint32(totalXattrData)
+							bytesDecoded += 4
+							frameData := totalXattrData[4 : 4+frameLength-1]
+							bytesDecoded += frameLength
+							if bytesDecoded < totalXattrLen {
+								totalXattrData = totalXattrData[4+frameLength:]
+							}
 
-								if len(frameData) > len(xattrPrefix) {
-									if bytes.Compare(frameData[:len(xattrPrefix)], []byte(xattrPrefix)) == 0 {
-										toParse := frameData[len(xattrPrefix)+1:]
+							if len(frameData) > len(xattrPrefix) {
+								if bytes.Compare(frameData[:len(xattrPrefix)], []byte(xattrPrefix)) == 0 {
+									toParse := frameData[len(xattrPrefix)+1:]
 
-										err := json.Unmarshal(toParse, &xMeta)
-										if err != nil {
-											logging.Errorf("%s [%s:%s:%d] Failed to unmarshal xattr metadata, err: %v",
-												logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-											continue
-										}
+									err := json.Unmarshal(toParse, &xMeta)
+									if err != nil {
+										logging.Errorf("%s [%s:%s:%d] Failed to unmarshal xattr metadata, err: %v",
+											logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+										continue
 									}
 								}
 							}
-
-							for _, timerEntry := range xMeta.Timers {
-
-								data := strings.Split(timerEntry, "::")
-
-								if len(data) == 3 {
-									pEntry := &plasmaStoreEntry{
-										callbackFn: data[2],
-										key:        string(e.Key),
-										timerTs:    data[1],
-										vb:         e.VBucket,
-									}
-
-									c.plasmaStoreCh <- pEntry
-									counter := c.vbProcessingStats.getVbStat(e.VBucket, "timers_recreated_from_dcp_backfill").(uint64)
-									c.vbProcessingStats.updateVbStat(e.VBucket, "timers_recreated_from_dcp_backfill", counter+1)
-								}
-							}
-
-							logging.Tracef("%s [%s:%s:%d] Inserting doc timer key: %r into plasma",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-
-						default:
 						}
 
+						for _, timerEntry := range xMeta.Timers {
+
+							data := strings.Split(timerEntry, "::")
+
+							if len(data) == 3 {
+								pEntry := &plasmaStoreEntry{
+									callbackFn:   data[2],
+									fromBackfill: true,
+									key:          string(e.Key),
+									timerTs:      data[1],
+									vb:           e.VBucket,
+								}
+
+								c.plasmaStoreCh <- pEntry
+								counter := c.vbProcessingStats.getVbStat(e.VBucket, "timers_recreated_from_dcp_backfill").(uint64)
+								c.vbProcessingStats.updateVbStat(e.VBucket, "timers_recreated_from_dcp_backfill", counter+1)
+
+								c.timersRecreatedFromDCPBackfill++
+							}
+						}
+
+						logging.Tracef("%s [%s:%s:%d] Inserting doc timer key: %r into plasma",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+
 					default:
-						logging.Tracef("%s [%s:%s:%d] vb: %v Got opcode: %v",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, e.Opcode)
 					}
 
+				default:
+					logging.Tracef("%s [%s:%s:%d] vb: %v Got opcode: %v",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, e.Opcode)
 				}
+
 			}
-		}(dcpFeed, &wg)
+		}
+	}(dcpFeed, &wg)
 
-		var flogs couchbase.FailoverLog
+	var flogs couchbase.FailoverLog
 
-		// TODO: Can be improved by requesting failover log just the vbucket for stream is going to be requested
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpAllVbucketsCallback, c, b, &flogs)
+	// TODO: Can be improved by requesting failover log just the vbucket for stream is going to be requested
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpAllVbucketsCallback, c, b, &flogs)
 
-		start, snapStart, snapEnd := uint64(0), uint64(0), vbBlob.LastSeqNoProcessed
-		flags := uint32(0)
-		end := vbBlob.LastSeqNoProcessed
+	start, snapStart, snapEnd := uint64(0), uint64(0), seqNos[int(vb)]
+	flags := uint32(0)
+	end := seqNos[int(vb)]
 
-		logging.Infof("%s [%s:%s:%d] vb: %v Going to start DCP feed from source bucket: %s start seq no: %d end seq no: %d KV nodes: %r flog len: %d",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket, start, end, c.kvNodes, len(flogs))
+	logging.Infof("%s [%s:%s:%d] vb: %v Going to start DCP feed from source bucket: %s start seq no: %d end seq no: %d KV nodes: %r flog len: %d",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket, start, end, c.kvNodes, len(flogs))
 
-		if flog, ok := flogs[vb]; ok {
-			vbuuid, _, _ := flog.Latest()
+	if flog, ok := flogs[vb]; ok {
+		vbuuid, _, _ := flog.Latest()
 
-			logging.Infof("%s [%s:%s:%d] vb: %v starting DCP feed. Start seq no: %d end seq no: %d",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, start, end)
+		logging.Infof("%s [%s:%s:%d] vb: %v starting DCP feed. Start seq no: %d end seq no: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, start, end)
 
-			opaque := uint16(vb)
-			err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
-			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] vb: %v Failed to stream",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-			}
-		} else {
-			logging.Errorf("%s [%s:%s:%d] vb: %v Failover log doesn't have entry for it",
+		opaque := uint16(vb)
+		err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] vb: %v Failed to stream",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		}
-
-		wg.Wait()
-
-		dcpFeed.Close()
-
 	} else {
-		logging.Infof("%s [%s:%s:%d] vb: %v Not starting dcp backfill for doc timer as lastProcessedSeqNo: %d",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastSeqNoProcessed)
+		logging.Errorf("%s [%s:%s:%d] vb: %v Failover log doesn't have entry for it",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	}
+
+	wg.Wait()
+
+	dcpFeed.Close()
 
 	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
 	c.vbProcessingStats.updateVbStat(vb, "last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo)
@@ -515,7 +517,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		streamStartSeqNo = vbBlob.LastSeqNoProcessed
 	}
 
-	err := c.dcpRequestStreamHandle(vb, vbBlob, streamStartSeqNo)
+	err = c.dcpRequestStreamHandle(vb, vbBlob, streamStartSeqNo)
 	if err != nil {
 		return err
 	}

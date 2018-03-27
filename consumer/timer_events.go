@@ -564,6 +564,13 @@ func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, ts, lastProcessedDocTimer)
 		c.timersInPastCounter++
 
+		if e.fromBackfill {
+			c.timersInPastFromBackfill++
+
+			counter := c.vbProcessingStats.getVbStat(e.vb, "timers_in_past_from_backfill_counter").(uint64)
+			c.vbProcessingStats.updateVbStat(e.vb, "timers_in_past_from_backfill_counter", counter+1)
+		}
+
 		counter := c.vbProcessingStats.getVbStat(e.vb, "timers_in_past_counter").(uint64)
 		c.vbProcessingStats.updateVbStat(e.vb, "timers_in_past_counter", counter+1)
 
