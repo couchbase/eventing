@@ -339,8 +339,9 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.processConfig.IPCType = "af_unix"
 	}
 
-	logging.Infof("%s [%s:%d] Spawning consumer to listen on socket: %r feedback socket: %r",
-		logPrefix, p.appName, p.LenRunningConsumers(), p.processConfig.SockIdentifier, p.processConfig.FeedbackSockIdentifier)
+	logging.Infof("%s [%s:%d] Spawning consumer to listen on socket: %r feedback socket: %r vbs len: %d dump: %s",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.processConfig.SockIdentifier, p.processConfig.FeedbackSockIdentifier,
+		len(vbnos), util.Condense(vbnos))
 
 	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid,
 		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.vbPlasmaStore, p.numVbuckets)

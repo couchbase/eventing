@@ -575,7 +575,27 @@ func VbsSliceDiff(X, Y []uint16) []uint16 {
 	return diff
 }
 
-func SliceDifferences(kv1, kv2 []string) []string {
+func Uint16SliceDiff(kv1, kv2 []uint16) []uint16 {
+	var diff []uint16
+
+	for _, s1 := range kv1 {
+		found := false
+		for _, s2 := range kv2 {
+			if s1 == s2 {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			diff = append(diff, s1)
+		}
+	}
+
+	return diff
+}
+
+func StrSliceDiff(kv1, kv2 []string) []string {
 	var diff []string
 
 	for _, s1 := range kv1 {

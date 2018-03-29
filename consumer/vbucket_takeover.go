@@ -264,6 +264,9 @@ retryStreamUpdate:
 	logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
 
+	c.writePlanToMetadataBucket()
+	logging.Infof("%s [%s:%s:%d] Wrote plan to metadata bucket", logPrefix, c.workerName, c.tcpPort, c.Pid())
+
 }
 
 func (c *Consumer) doVbTakeover(vb uint16) error {
@@ -495,8 +498,11 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		opaque := uint16(vb)
 		err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] vb: %v Failed to stream",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+			logging.Errorf("%s [%s:%s:%d] vb: %v Failed to request stream for recreating doc timers, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+
+			dcpFeed.Close()
+			return err
 		}
 	} else {
 		logging.Errorf("%s [%s:%s:%d] vb: %v Failover log doesn't have entry for it",
@@ -645,4 +651,65 @@ func (c *Consumer) verifyVbsCurrentlyOwned(vbsToMigrate []uint16) []uint16 {
 func (c *Consumer) vbsToHandle() []uint16 {
 	workerVbMap := c.producer.WorkerVbMap()
 	return workerVbMap[c.ConsumerName()]
+}
+
+func (c *Consumer) writePlanToMetadataBucket() {
+	logPrefix := "Consumer::writePlanToMetadataBucket"
+
+	planKey := fmt.Sprintf("%s_%s", c.uuid, c.ConsumerName())
+
+	plan := &planInfo{
+		ConsumerName: c.ConsumerName(),
+		NodeUUID:     c.NodeUUID(),
+		VbsOwned:     c.getCurrentlyOwnedVbs(),
+	}
+
+	logging.Infof("%s [%s:%s:%d] Writing plan: %#v to planKey: %s",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), plan, planKey)
+
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, planKey, plan)
+
+	getPlan := &planInfo{}
+	var cas gocb.Cas
+
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, planKey, getPlan, &cas, false)
+
+	logging.Infof("%s [%s:%s:%d] Dumping info. planKey: %s plan dump: %#v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), planKey, getPlan)
+}
+
+func (c *Consumer) doCleanupForPreviouslyOwnedVbs() {
+	logPrefix := "Consumer::doCleanupForPreviouslyOwnedVbs"
+
+	planKey := fmt.Sprintf("%s_%s", c.uuid, c.ConsumerName())
+
+	var plan planInfo
+	var cas gocb.Cas
+
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, planKey, &plan, &cas, false)
+
+	logging.Infof("%s [%s:%s:%d] Previous plan dump: %#v docKey: %s",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), plan, planKey)
+
+	if plan.NodeUUID == c.NodeUUID() && plan.ConsumerName == c.ConsumerName() {
+		vbsNotSupposedToOwn := util.Uint16SliceDiff(plan.VbsOwned, c.vbnos)
+
+		logging.Infof("%s [%s:%s:%d] vbsNotSupposedToOwn len: %d dump: %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsNotSupposedToOwn), util.Condense(vbsNotSupposedToOwn))
+
+		for _, vb := range vbsNotSupposedToOwn {
+
+			vbKey := fmt.Sprintf("%s::vb::%v", c.app.AppName, vb)
+
+			var vbBlob vbucketKVBlob
+			var cas gocb.Cas
+
+			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+
+			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.DCPStreamStatus == dcpStreamRunning {
+				c.updateCheckpoint(vbKey, vb, &vbBlob)
+				logging.Infof("%s [%s:%s:%d] vb: %v Cleaned up ownership", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+			}
+		}
+	}
 }

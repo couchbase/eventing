@@ -21,6 +21,15 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 	if err != nil {
 		logging.Infof("%s [%s:%s:%d] vb: %v vbTakeover request, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+
+		c.vbsStreamRRWMutex.Lock()
+		if _, ok := c.vbStreamRequested[vb]; ok {
+			logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+
+			delete(c.vbStreamRequested, vb)
+		}
+		c.vbsStreamRRWMutex.Unlock()
 	}
 
 	return err

@@ -413,8 +413,8 @@ func (c *Consumer) processEvents() {
 func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 	logPrefix := "Consumer::startDcp"
 
-	logging.Infof("%s [%s:%s:%d] no. of vbs owned: %d",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
+	logging.Infof("%s [%s:%s:%d] no. of vbs owned len: %d dump: %s",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos), util.Condense(c.vbnos))
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
@@ -559,7 +559,7 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() {
 	}
 	c.hostDcpFeedRWMutex.RUnlock()
 
-	kvAddrDcpFeedsToClose := util.SliceDifferences(kvHostDcpFeedMapEntries, kvAddrListPerVbMap)
+	kvAddrDcpFeedsToClose := util.StrSliceDiff(kvHostDcpFeedMapEntries, kvAddrListPerVbMap)
 
 	if len(kvAddrDcpFeedsToClose) > 0 {
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), populateDcpFeedVbEntriesCallback, c)

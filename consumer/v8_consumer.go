@@ -204,7 +204,16 @@ func (c *Consumer) Serve() {
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
+	c.doCleanupForPreviouslyOwnedVbs()
+
 	c.startDcp(flogs)
+
+	vbsOwned := c.getCurrentlyOwnedVbs()
+	vbsRemainingToOwn := util.VbsSliceDiff(c.vbnos, vbsOwned)
+	if len(vbsRemainingToOwn) == 0 {
+		c.writePlanToMetadataBucket()
+		logging.Infof("%s [%s:%s:%d] Wrote plan to metadata bucket", logPrefix, c.workerName, c.tcpPort, c.Pid())
+	}
 
 	logging.Infof("%s [%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)

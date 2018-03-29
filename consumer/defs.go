@@ -21,11 +21,10 @@ import (
 )
 
 const (
-	xattrCasPath             = "eventing.cas"
-	xattrPrefix              = "eventing"
-	xattrTimerPath           = "eventing.timers"
-	getAggTimerHostPortAddrs = "getAggTimerHostPortAddrs"
-	tsLayout                 = "2006-01-02T15:04:05Z"
+	xattrCasPath   = "eventing.cas"
+	xattrPrefix    = "eventing"
+	xattrTimerPath = "eventing.timers"
+	tsLayout       = "2006-01-02T15:04:05Z"
 
 	metakvEventingPath    = "/eventing/"
 	metakvAppSettingsPath = metakvEventingPath + "appsettings/"
@@ -412,11 +411,6 @@ type vbStat struct {
 	sync.RWMutex
 }
 
-type plasmaStoreMsg struct {
-	vb    uint16
-	store *plasma.Plasma
-}
-
 type vbucketKVBlob struct {
 	AssignedWorker            string           `json:"assigned_worker"`
 	CurrentVBOwner            string           `json:"current_vb_owner"`
@@ -491,4 +485,10 @@ type plasmaStoreEntry struct {
 	key          string
 	timerTs      string
 	vb           uint16
+}
+
+type planInfo struct {
+	ConsumerName string   `json:"consumer_name"`
+	NodeUUID     string   `json:"node_uuid"`
+	VbsOwned     []uint16 `json:"vbs_owned"`
 }
