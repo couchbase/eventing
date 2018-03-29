@@ -76,14 +76,13 @@ const (
 )
 
 const (
-	indexDir = "%2Ftmp%2Findex"
 	dataDir  = "%2Ftmp%2Fdata"
 	services = "kv%2Cn1ql%2Cindex%2Ceventing"
 )
 
 const (
 	indexMemQuota  = 300
-	bucketmemQuota = 300
+	bucketmemQuota = 500
 	bucketType     = "membase"
 	replicas       = 1
 )

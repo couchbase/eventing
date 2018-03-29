@@ -33,6 +33,7 @@ func newVbProcessingStats(appName string, numVbuckets uint16) vbStats {
 		vbsts[i].stats["sent_to_worker_counter"] = uint64(0)
 		vbsts[i].stats["timer_create_counter"] = uint64(0)
 		vbsts[i].stats["timers_in_past_counter"] = uint64(0)
+		vbsts[i].stats["timers_in_past_from_backfill_counter"] = uint64(0)
 		vbsts[i].stats["timers_recreated_from_dcp_backfill"] = uint64(0)
 	}
 	return vbsts
@@ -82,6 +83,7 @@ func (vbs vbStats) copyVbStats(numVbuckets uint16) vbStats {
 		vbsts[i].stats["sent_to_worker_counter"] = vbs.getVbStat(i, "sent_to_worker_counter")
 		vbsts[i].stats["timer_create_counter"] = vbs.getVbStat(i, "timer_create_counter")
 		vbsts[i].stats["timers_in_past_counter"] = vbs.getVbStat(i, "timers_in_past_counter")
+		vbsts[i].stats["timers_in_past_from_backfill_counter"] = vbs.getVbStat(i, "timers_in_past_from_backfill_counter")
 		vbsts[i].stats["timers_recreated_from_dcp_backfill"] = vbs.getVbStat(i, "timers_recreated_from_dcp_backfill")
 
 	}

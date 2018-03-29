@@ -12,6 +12,7 @@
 #include "log.h"
 #include <cstdlib>
 
+std::atomic_flag AtomicLog::spin_lock = ATOMIC_FLAG_INIT;
 std::ostringstream app_log_os;
 
 std::string appName = "";

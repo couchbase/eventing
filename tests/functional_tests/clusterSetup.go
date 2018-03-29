@@ -470,7 +470,7 @@ retryClusterCredsSetup:
 	}
 
 retryQuotaSetup:
-	_, err = quotaSetup(300, 4000)
+	_, err = quotaSetup(indexMemQuota, bucketmemQuota*8)
 	if err != nil {
 		fmt.Println("Quota setup", err)
 		time.Sleep(time.Second)

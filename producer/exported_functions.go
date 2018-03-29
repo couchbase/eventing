@@ -713,6 +713,7 @@ func (p *Producer) TimerDebugStats() map[int]map[string]interface{} {
 				sentToWorkerCounter := aggStats[vb]["sent_to_worker_counter"].(uint64) + stats["sent_to_worker_counter"].(uint64)
 				timerCreateCounter := aggStats[vb]["timer_create_counter"].(uint64) + stats["timer_create_counter"].(uint64)
 				timersInPastCounter := aggStats[vb]["timers_in_past_counter"].(uint64) + stats["timers_in_past_counter"].(uint64)
+				timersInPastFromBackfill := aggStats[vb]["timers_in_past_from_backfill_counter"].(uint64) + stats["timers_in_past_from_backfill_counter"].(uint64)
 				timersCreatedFromBackfill := aggStats[vb]["timers_recreated_from_dcp_backfill"].(uint64) + stats["timers_recreated_from_dcp_backfill"].(uint64)
 
 				aggStats[vb]["deleted_during_cleanup_counter"] = deletedDuringCleanupCounter
@@ -720,6 +721,7 @@ func (p *Producer) TimerDebugStats() map[int]map[string]interface{} {
 				aggStats[vb]["sent_to_worker_counter"] = sentToWorkerCounter
 				aggStats[vb]["timer_create_counter"] = timerCreateCounter
 				aggStats[vb]["timers_in_past_counter"] = timersInPastCounter
+				aggStats[vb]["timers_in_past_from_backfill_counter"] = timersInPastFromBackfill
 				aggStats[vb]["timers_recreated_from_dcp_backfill"] = timersCreatedFromBackfill
 			}
 		}

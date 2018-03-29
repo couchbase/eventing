@@ -332,10 +332,12 @@ type Consumer struct {
 	// Tracks V8 Opcodes processed per consumer
 	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by msgProcessedRWMutex
 
-	plasmaInsertCounter uint64
-	plasmaDeleteCounter uint64
-	plasmaLookupCounter uint64
-	timersInPastCounter uint64
+	plasmaInsertCounter            uint64
+	plasmaDeleteCounter            uint64
+	plasmaLookupCounter            uint64
+	timersInPastCounter            uint64
+	timersInPastFromBackfill       uint64
+	timersRecreatedFromDCPBackfill uint64
 
 	// DCP and Timer event related counters
 	adhocDoctimerResponsesRecieved uint64
@@ -484,8 +486,9 @@ type cppQueueSize struct {
 }
 
 type plasmaStoreEntry struct {
-	callbackFn string
-	key        string
-	timerTs    string
-	vb         uint16
+	callbackFn   string
+	fromBackfill bool
+	key          string
+	timerTs      string
+	vb           uint16
 }
