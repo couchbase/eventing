@@ -8,6 +8,34 @@ import (
 	"time"
 )
 
+func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "n1ql_insert_on_update"
+	flushFunctionAndBucket(handler)
+
+	for i := 0; i < 5; i++ {
+		createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77})
+
+		pumpBucketOps(opsType{}, &rateLimit{})
+		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+		if itemCount != eventCount {
+			t.Error("For", "DeployUndeployLoopNonDefaultSettings",
+				"expected", itemCount,
+				"got", eventCount,
+			)
+		}
+
+		dumpStats(handler)
+		log.Println("Undeploying app:", handler)
+		setSettings(handler, false, false, &commonSettings{})
+		bucketFlush("default")
+		bucketFlush("hello-world")
+		time.Sleep(30 * time.Second)
+	}
+
+	deleteFunction(handler)
+}
+
 func TestOnUpdateN1QLOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "n1ql_insert_on_update"
@@ -179,34 +207,6 @@ func TestDeployUndeployLoopDocTimer(t *testing.T) {
 	deleteFunction(handler)
 }
 */
-
-func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
-	time.Sleep(time.Second * 5)
-	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
-
-	for i := 0; i < 5; i++ {
-		createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77})
-
-		pumpBucketOps(opsType{}, &rateLimit{})
-		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
-		if itemCount != eventCount {
-			t.Error("For", "DeployUndeployLoopNonDefaultSettings",
-				"expected", itemCount,
-				"got", eventCount,
-			)
-		}
-
-		dumpStats(handler)
-		log.Println("Undeploying app:", handler)
-		setSettings(handler, false, false, &commonSettings{})
-		bucketFlush("default")
-		bucketFlush("hello-world")
-		time.Sleep(30 * time.Second)
-	}
-
-	deleteFunction(handler)
-}
 
 func TestMultipleHandlers(t *testing.T) {
 	time.Sleep(time.Second * 5)

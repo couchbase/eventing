@@ -8,8 +8,7 @@ function OnUpdate(doc, meta) {
 		var res2 = SELECT * FROM default LIMIT $lim;
 		for(var row2 of res2) {
 			var docId = meta.id + (++count);
-			var ins = INSERT INTO `hello-world` (KEY, VALUE) VALUES ($docId, 'Hello world');
-			ins.execQuery();
+			INSERT INTO `hello-world` (KEY, VALUE) VALUES ($docId, 'Hello world');
 			break;
 		}
 	}

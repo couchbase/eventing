@@ -236,6 +236,7 @@ Communicator::ExtractNamedParams(const std::string &encoded_str) {
   }
 
   info.p_info.is_valid = std::stoi(kv_info.kv["is_valid"]) != 0;
+  info.p_info.is_select_query = std::stoi(kv_info.kv["is_select_query"]) != 0;
   info.p_info.info = kv_info.kv["info"];
   for (int i = 0; i < std::stoi(kv_info.kv["named_params_size"]); ++i) {
     info.named_params.emplace_back(kv_info.kv[std::to_string(i)]);
@@ -255,6 +256,7 @@ ParseInfo Communicator::ExtractParseInfo(const std::string &encoded_str) {
   }
 
   info.is_valid = std::stoi(kv_info.kv["is_valid"]) != 0;
+  info.is_select_query = std::stoi(kv_info.kv["is_select_query"]) != 0;
   info.info = kv_info.kv["info"];
   return info;
 }

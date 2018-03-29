@@ -211,7 +211,7 @@ public:
   std::string GetSourceMap(const std::string &handler_code,
                            const std::string &src_filename);
   std::string TranspileQuery(const std::string &query,
-                             const std::vector<std::string> &named_params);
+                             const NamedParamsInfo &info);
   bool IsTimerCalled(const std::string &handler_code);
   bool IsJsExpression(const std::string &str);
   static void LogCompilationInfo(const CompilationInfo &info);
