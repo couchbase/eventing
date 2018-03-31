@@ -432,7 +432,7 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 }
 
 var startFeedFromKVNodesCallback = func(args ...interface{}) error {
-	logPrefix := "Producer::startFeedCallback"
+	logPrefix := "Consumer::startFeedFromKVNodesCallback"
 
 	c := args[0].(*Consumer)
 	b := args[1].(**couchbase.Bucket)

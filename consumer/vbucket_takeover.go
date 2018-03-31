@@ -57,21 +57,15 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 	vbsDistribution := util.VbucketDistribution(c.vbsRemainingToGiveUp, c.vbOwnershipGiveUpRoutineCount)
 
 	for k, v := range vbsDistribution {
-		logging.Tracef("%s [%s:%s:%d] vb give up routine id: %v, vbs assigned len: %v dump: %v",
+		logging.Infof("%s [%s:%s:%d] vb give up routine id: %v, vbs assigned len: %v dump: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, len(v), util.Condense(v))
-	}
-
-	signalPlasmaClosedChs := make([]chan uint16, 0)
-	for i := 0; i < c.vbOwnershipGiveUpRoutineCount; i++ {
-		ch := make(chan uint16, c.numVbuckets)
-		signalPlasmaClosedChs = append(signalPlasmaClosedChs, ch)
 	}
 
 	var wg sync.WaitGroup
 	wg.Add(c.vbOwnershipGiveUpRoutineCount)
 
 	for i := 0; i < c.vbOwnershipGiveUpRoutineCount; i++ {
-		go func(c *Consumer, i int, vbsRemainingToGiveUp []uint16, signalPlasmaClosedCh chan uint16, wg *sync.WaitGroup, vbsts vbStats) {
+		go func(c *Consumer, i int, vbsRemainingToGiveUp []uint16, wg *sync.WaitGroup, vbsts vbStats) {
 
 			defer wg.Done()
 
@@ -83,7 +77,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
 				if vbBlob.NodeUUID != c.NodeUUID() && vbBlob.DCPStreamStatus == dcpStreamRunning {
-					logging.Tracef("%s [%s:giveup_r_%d:%s:%d] vb: %v metadata  node uuid: %v dcp stream status: %v, skipping give up phase",
+					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %v metadata  node uuid: %v dcp stream status: %v, skipping give up phase",
 						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.NodeUUID, vbBlob.DCPStreamStatus)
 
 					c.RLock()
@@ -102,7 +96,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					continue
 				}
 
-				logging.Tracef("%s [%s:giveup_r_%d:%s:%d] vb: %v uuid: %v vbStat uuid: %v owner node: %r consumer name: %v",
+				logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %v uuid: %v vbStat uuid: %v owner node: %r consumer name: %v",
 					logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, c.NodeUUID(),
 					vbsts.getVbStat(vb, "node_uuid"),
 					vbsts.getVbStat(vb, "current_vb_owner"),
@@ -110,10 +104,6 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 
 				if vbsts.getVbStat(vb, "node_uuid") == c.NodeUUID() &&
 					vbsts.getVbStat(vb, "assigned_worker") == c.ConsumerName() {
-
-					// TODO: Retry loop for dcp close stream as it could fail and additional verification checks
-					// Additional check needed to verify if vbBlob.NewOwner is the expected owner
-					// as per the vbEventingNodesAssignMap
 
 					c.vbsStreamClosedRWMutex.Lock()
 					_, cUpdated := c.vbsStreamClosed[vb]
@@ -123,6 +113,9 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					c.vbsStreamClosedRWMutex.Unlock()
 
 					c.RLock()
+					// TODO: Retry loop for dcp close stream as it could fail and additional verification checks.
+					// Additional check needed to verify if vbBlob.NewOwner is the expected owner
+					// as per the vbEventingNodesAssignMap.
 					err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
 					if err != nil {
 						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %v Failed to close dcp stream, err: %v",
@@ -169,7 +162,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					}
 				}
 			}
-		}(c, i, vbsDistribution[i], signalPlasmaClosedChs[i], &wg, vbsts)
+		}(c, i, vbsDistribution[i], &wg, vbsts)
 	}
 
 	wg.Wait()
@@ -199,7 +192,7 @@ func (c *Consumer) vbsStateUpdate() {
 	vbsOwned := c.getCurrentlyOwnedVbs()
 	sort.Sort(util.Uint16Slice(vbsOwned))
 
-	logging.Tracef("%s [%s:%s:%d] Before vbTakeover, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v Owned len: %v dump: %v",
+	logging.Infof("%s [%s:%s:%d] Before vbTakeover, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v Owned len: %v dump: %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(),
 		util.Condense(c.vbsRemainingToOwn), util.Condense(c.vbsRemainingToGiveUp),
 		len(vbsOwned), util.Condense(vbsOwned))
@@ -208,7 +201,7 @@ retryStreamUpdate:
 	vbsDistribution := util.VbucketDistribution(c.vbsRemainingToOwn, c.vbOwnershipTakeoverRoutineCount)
 
 	for k, v := range vbsDistribution {
-		logging.Tracef("%s [%s:%s:%d] vb takeover routine id: %v, vbs assigned len: %v dump: %v",
+		logging.Infof("%s [%s:%s:%d] vb takeover routine id: %v, vbs assigned len: %v dump: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, len(v), util.Condense(v))
 	}
 
@@ -222,7 +215,7 @@ retryStreamUpdate:
 			for _, vb := range vbsRemainingToOwn {
 				select {
 				case <-c.stopVbOwnerTakeoverCh:
-					logging.Debugf("%s [%s:takeover_r_%d:%s:%d] Exiting vb ownership takeover routine, next vb: %v",
+					logging.Infof("%s [%s:takeover_r_%d:%s:%d] Exiting vb ownership takeover routine, next vb: %v",
 						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
 					return
 				default:
@@ -263,10 +256,6 @@ retryStreamUpdate:
 	c.isRebalanceOngoing = false
 	logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
-
-	c.writePlanToMetadataBucket()
-	logging.Infof("%s [%s:%s:%d] Wrote plan to metadata bucket", logPrefix, c.workerName, c.tcpPort, c.Pid())
-
 }
 
 func (c *Consumer) doVbTakeover(vb uint16) error {
@@ -479,7 +468,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 
 	var flogs couchbase.FailoverLog
 
-	// TODO: Can be improved by requesting failover log just the vbucket for stream is going to be requested
+	// TODO: Can be improved by requesting failover log just for the vbucket for which stream is going to be requested
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpAllVbucketsCallback, c, b, &flogs)
 
 	start, snapStart, snapEnd := uint64(0), uint64(0), seqNos[int(vb)]
@@ -653,63 +642,31 @@ func (c *Consumer) vbsToHandle() []uint16 {
 	return workerVbMap[c.ConsumerName()]
 }
 
-func (c *Consumer) writePlanToMetadataBucket() {
-	logPrefix := "Consumer::writePlanToMetadataBucket"
-
-	planKey := fmt.Sprintf("%s_%s", c.uuid, c.ConsumerName())
-
-	plan := &planInfo{
-		ConsumerName: c.ConsumerName(),
-		NodeUUID:     c.NodeUUID(),
-		VbsOwned:     c.getCurrentlyOwnedVbs(),
-	}
-
-	logging.Infof("%s [%s:%s:%d] Writing plan: %#v to planKey: %s",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), plan, planKey)
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, planKey, plan)
-
-	getPlan := &planInfo{}
-	var cas gocb.Cas
-
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, planKey, getPlan, &cas, false)
-
-	logging.Infof("%s [%s:%s:%d] Dumping info. planKey: %s plan dump: %#v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), planKey, getPlan)
-}
-
 func (c *Consumer) doCleanupForPreviouslyOwnedVbs() {
 	logPrefix := "Consumer::doCleanupForPreviouslyOwnedVbs"
 
-	planKey := fmt.Sprintf("%s_%s", c.uuid, c.ConsumerName())
+	vbuckets := make([]uint16, 0)
+	for vb := 0; vb < c.numVbuckets; vb++ {
+		vbuckets = append(vbuckets, uint16(vb))
+	}
 
-	var plan planInfo
-	var cas gocb.Cas
+	vbsNotSupposedToOwn := util.Uint16SliceDiff(vbuckets, c.vbnos)
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, planKey, &plan, &cas, false)
+	logging.Infof("%s [%s:%s:%d] vbsNotSupposedToOwn len: %d dump: %s",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsNotSupposedToOwn), util.Condense(vbsNotSupposedToOwn))
 
-	logging.Infof("%s [%s:%s:%d] Previous plan dump: %#v docKey: %s",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), plan, planKey)
+	for _, vb := range vbsNotSupposedToOwn {
 
-	if plan.NodeUUID == c.NodeUUID() && plan.ConsumerName == c.ConsumerName() {
-		vbsNotSupposedToOwn := util.Uint16SliceDiff(plan.VbsOwned, c.vbnos)
+		vbKey := fmt.Sprintf("%s::vb::%v", c.app.AppName, vb)
 
-		logging.Infof("%s [%s:%s:%d] vbsNotSupposedToOwn len: %d dump: %s",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsNotSupposedToOwn), util.Condense(vbsNotSupposedToOwn))
+		var vbBlob vbucketKVBlob
+		var cas gocb.Cas
 
-		for _, vb := range vbsNotSupposedToOwn {
+		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 
-			vbKey := fmt.Sprintf("%s::vb::%v", c.app.AppName, vb)
-
-			var vbBlob vbucketKVBlob
-			var cas gocb.Cas
-
-			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
-
-			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.DCPStreamStatus == dcpStreamRunning {
-				c.updateCheckpoint(vbKey, vb, &vbBlob)
-				logging.Infof("%s [%s:%s:%d] vb: %v Cleaned up ownership", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-			}
+		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() && vbBlob.DCPStreamStatus == dcpStreamRunning {
+			c.updateCheckpoint(vbKey, vb, &vbBlob)
+			logging.Infof("%s [%s:%s:%d] vb: %v Cleaned up ownership", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		}
 	}
 }

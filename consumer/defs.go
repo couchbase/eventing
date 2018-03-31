@@ -486,9 +486,3 @@ type plasmaStoreEntry struct {
 	timerTs      string
 	vb           uint16
 }
-
-type planInfo struct {
-	ConsumerName string   `json:"consumer_name"`
-	NodeUUID     string   `json:"node_uuid"`
-	VbsOwned     []uint16 `json:"vbs_owned"`
-}
