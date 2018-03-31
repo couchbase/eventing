@@ -8,6 +8,7 @@ import (
 	"hash/crc32"
 	"runtime/debug"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -146,10 +147,45 @@ func (c *Consumer) processEvents() {
 								}
 							} else {
 
-								logging.Tracef("%s [%s:%s:%d] Sending key: %r to be stored in plasma",
-									logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+								// Enabling it until MB-28779 gets resolved
+								for _, timerEntry := range xMeta.Timers {
+
+									data := strings.Split(timerEntry, "::")
+
+									if len(data) == 3 {
+										pEntry := &plasmaStoreEntry{
+											callbackFn: data[2],
+											key:        string(e.Key),
+											timerTs:    data[1],
+											vb:         e.VBucket,
+										}
+
+										c.plasmaStoreCh <- pEntry
+										logging.Infof("%s [%s:%s:%d] Sending key: %r to be stored in plasma, timer entry: %v pEntry: %#v",
+											logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), timerEntry, pEntry)
+									}
+								}
 							}
 						} else {
+							// Enabling it until MB-28779 gets resolved
+							for _, timerEntry := range xMeta.Timers {
+
+								data := strings.Split(timerEntry, "::")
+
+								if len(data) == 3 {
+									pEntry := &plasmaStoreEntry{
+										callbackFn: data[2],
+										key:        string(e.Key),
+										timerTs:    data[1],
+										vb:         e.VBucket,
+									}
+
+									c.plasmaStoreCh <- pEntry
+									logging.Infof("%s [%s:%s:%d] Sending key: %r to be stored in plasma, timer entry: %v pEntry: %#v",
+										logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), timerEntry, pEntry)
+								}
+							}
+
 							logging.Tracef("%s [%s:%s:%d] Skipping recursive mutation for key: %r vb: %v, xmeta: %r",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, fmt.Sprintf("%#v", xMeta))
 
