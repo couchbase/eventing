@@ -204,6 +204,8 @@ func (c *Consumer) Serve() {
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
+	c.doCleanupForPreviouslyOwnedVbs()
+
 	c.startDcp(flogs)
 
 	logging.Infof("%s [%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",

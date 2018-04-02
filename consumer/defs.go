@@ -21,11 +21,10 @@ import (
 )
 
 const (
-	xattrCasPath             = "eventing.cas"
-	xattrPrefix              = "eventing"
-	xattrTimerPath           = "eventing.timers"
-	getAggTimerHostPortAddrs = "getAggTimerHostPortAddrs"
-	tsLayout                 = "2006-01-02T15:04:05Z"
+	xattrCasPath   = "eventing.cas"
+	xattrPrefix    = "eventing"
+	xattrTimerPath = "eventing.timers"
+	tsLayout       = "2006-01-02T15:04:05Z"
 
 	metakvEventingPath    = "/eventing/"
 	metakvAppSettingsPath = metakvEventingPath + "appsettings/"
@@ -410,11 +409,6 @@ type vbStats map[uint16]*vbStat
 type vbStat struct {
 	stats map[string]interface{}
 	sync.RWMutex
-}
-
-type plasmaStoreMsg struct {
-	vb    uint16
-	store *plasma.Plasma
 }
 
 type vbucketKVBlob struct {
