@@ -299,3 +299,13 @@ std::string GetTimestampNow() {
                 now_str.end());
   return ConvertToISO8601(now_str) + "Z";
 }
+
+ParseInfo UnflattenParseInfo(std::unordered_map<std::string, std::string> &kv) {
+  ParseInfo info;
+  info.is_valid = std::stoi(kv["is_valid"]) != 0;
+  info.is_select_query = std::stoi(kv["is_select_query"]) != 0;
+  info.is_dml_query = std::stoi(kv["is_dml_query"]) != 0;
+  info.keyspace_name = kv["keyspace_name"];
+  info.info = kv["info"];
+  return info;
+}

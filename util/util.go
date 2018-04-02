@@ -1042,3 +1042,13 @@ func ContainsIgnoreCase(needle string, haystack []string) bool {
 
 	return false
 }
+
+func ToStr(value bool) (strValue string) {
+	if value {
+		strValue = "1"
+	} else {
+		strValue = "0"
+	}
+
+	return
+}

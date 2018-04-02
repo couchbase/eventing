@@ -117,13 +117,23 @@
 
             case kJsify:
             case kCommentN1QL: {
+                    auto isolate = v8::Isolate::GetCurrent();
                     parse_info = ParseQuery(n1ql_query);
                     if(parse_info.is_valid) {
+                        // If the query is DML, it should not execute on the source bucket
+                        if(parse_info.is_dml_query) {
+                            auto source = UnwrapData(isolate)->v8worker->cb_source_bucket;
+                            if(source == parse_info.keyspace_name) {
+                                parse_info.is_valid = false;
+                                parse_info.info = R"(Can not execute DML query on bucket ")" + source + R"(")";
+                                return kN1QLParserError;
+                            }
+                        }
+
                         // It's a valid N1QL query, transpile and add to code
                         js_code += TranspileQuery(n1ql_query);
                     } else {
                         // It's not a N1QL query, maybe it's a JS expression
-                        auto isolate = v8::Isolate::GetCurrent();
                         auto transpiler = UnwrapData(isolate)->transpiler;
                         if(!transpiler->IsJsExpression(n1ql_query)) {
                             // Neither a N1QL query nor a JS expression

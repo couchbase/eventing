@@ -27,15 +27,16 @@ func getHandlerCode(filename string) (string, error) {
 	return string(content), nil
 }
 
-func postToTempStore(appName string, payload []byte) {
-	postToEventindEndpoint(tempStoreURL+appName, payload)
+func postToTempStore(appName string, payload []byte) *restResponse {
+	return postToEventingEndpoint(tempStoreURL+appName, payload)
 }
 
-func postToMainStore(appName string, payload []byte) {
-	postToEventindEndpoint(deployURL+appName, payload)
+func postToMainStore(appName string, payload []byte) *restResponse {
+	return postToEventingEndpoint(deployURL+appName, payload)
 }
 
-func postToEventindEndpoint(url string, payload []byte) {
+func postToEventingEndpoint(url string, payload []byte) (response *restResponse) {
+	response = &restResponse{}
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {
 		fmt.Println("Post to eventing endpoint:", err)
@@ -52,13 +53,14 @@ func postToEventindEndpoint(url string, payload []byte) {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	response.body, response.err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Println("Post to eventing, response read:", err)
 		return
 	}
 
-	fmt.Println(string(body))
+	fmt.Println(string(response.body))
+	return
 }
 
 func createPadding(paddingCount int) string {
@@ -69,7 +71,10 @@ func createPadding(paddingCount int) string {
 	return "/*" + string(pad) + "*/"
 }
 
-func createAndDeployLargeFunction(appName, hFileName string, settings *commonSettings, paddingCount int) {
+func createAndDeployLargeFunction(appName, hFileName string, settings *commonSettings, paddingCount int) (tempStoreResponse, mainStoreResponse *restResponse) {
+	tempStoreResponse = &restResponse{}
+	mainStoreResponse = &restResponse{}
+
 	log.Printf("Deploying app: %s", appName)
 	pad := createPadding(paddingCount)
 	content, err := getHandlerCode(hFileName)
@@ -118,12 +123,13 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 		return
 	}
 
-	postToTempStore(appName, data)
-	postToMainStore(appName, data)
+	tempStoreResponse = postToTempStore(appName, data)
+	mainStoreResponse = postToMainStore(appName, data)
+	return
 }
 
-func createAndDeployFunction(appName, hFileName string, settings *commonSettings) {
-	createAndDeployLargeFunction(appName, hFileName, settings, 0)
+func createAndDeployFunction(appName, hFileName string, settings *commonSettings) (*restResponse, *restResponse) {
+	return createAndDeployLargeFunction(appName, hFileName, settings, 0)
 }
 
 func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSettings,
@@ -463,7 +469,7 @@ func getBucketItemCount(bucketName string) (int, error) {
 
 func bucketFlush(bucketName string) {
 	flushEndpoint := fmt.Sprintf("http://127.0.0.1:9000/pools/default/buckets/%s/controller/doFlush", bucketName)
-	postToEventindEndpoint(flushEndpoint, nil)
+	postToEventingEndpoint(flushEndpoint, nil)
 }
 
 func flushFunctionAndBucket(handler string) {

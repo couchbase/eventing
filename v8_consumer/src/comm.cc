@@ -227,17 +227,15 @@ CredsInfo Communicator::ExtractCredentials(const std::string &encoded_str) {
 NamedParamsInfo
 Communicator::ExtractNamedParams(const std::string &encoded_str) {
   NamedParamsInfo info;
-  info.p_info.is_valid = false;
 
   auto kv_info = curl.ExtractKV(encoded_str);
   if (!kv_info.is_valid) {
+    info.p_info.is_valid = false;
     info.p_info.info = kv_info.msg;
     return info;
   }
 
-  info.p_info.is_valid = std::stoi(kv_info.kv["is_valid"]) != 0;
-  info.p_info.is_select_query = std::stoi(kv_info.kv["is_select_query"]) != 0;
-  info.p_info.info = kv_info.kv["info"];
+  info.p_info = UnflattenParseInfo(kv_info.kv);
   for (int i = 0; i < std::stoi(kv_info.kv["named_params_size"]); ++i) {
     info.named_params.emplace_back(kv_info.kv[std::to_string(i)]);
   }
@@ -246,19 +244,15 @@ Communicator::ExtractNamedParams(const std::string &encoded_str) {
 }
 
 ParseInfo Communicator::ExtractParseInfo(const std::string &encoded_str) {
-  ParseInfo info;
-  info.is_valid = false;
-
   auto kv_info = curl.ExtractKV(encoded_str);
   if (!kv_info.is_valid) {
+    ParseInfo info;
+    info.is_valid = false;
     info.info = kv_info.msg;
     return info;
   }
 
-  info.is_valid = std::stoi(kv_info.kv["is_valid"]) != 0;
-  info.is_select_query = std::stoi(kv_info.kv["is_select_query"]) != 0;
-  info.info = kv_info.kv["info"];
-  return info;
+  return UnflattenParseInfo(kv_info.kv);
 }
 
 CredsInfo Communicator::GetCreds(const std::string &endpoint) {
