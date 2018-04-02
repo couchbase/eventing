@@ -165,27 +165,27 @@ func (m *ServiceMgr) unmarshalApp(r *http.Request) (app application, info *runti
 }
 
 // Unmarshals list of application and returns application objects
-func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) []application {
+func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) (appList *[]application, info *runtimeInfo) {
 	logPrefix := "ServiceMgr::unmarshalAppList"
+	appList = &[]application{}
+	info = &runtimeInfo{}
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		errString := fmt.Sprintf("Failed to read request body, err: %v", err)
-		logging.Errorf("%s %s", logPrefix, errString)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
-		fmt.Fprintf(w, errString)
-		return nil
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
 	}
 
-	var appList []application
 	err = json.Unmarshal(data, &appList)
 	if err != nil {
-		errString := fmt.Sprintf("Failed to unmarshal payload err: %v", err)
-		logging.Errorf("%s %s", logPrefix, errString)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errUnmarshalPld.Code))
-		fmt.Fprintf(w, "%s\n", errString)
-		return nil
+		info.Code = m.statusCodes.errUnmarshalPld.Code
+		info.Info = fmt.Sprintf("Failed to unmarshal payload err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
 	}
 
-	return appList
+	info.Code = m.statusCodes.ok.Code
+	return
 }

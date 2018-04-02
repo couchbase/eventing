@@ -220,7 +220,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         var fileName = appName + '.json';
 
                         // Create a new blob of the app.
-                        var fileToSave = new Blob([JSON.stringify(app)], {
+                        var fileToSave = new Blob([JSON.stringify([app])], {
                             type: 'application/json',
                             name: fileName
                         });
@@ -372,6 +372,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     reader.onloadend = function() {
                         try {
                             var app = JSON.parse(reader.result);
+                            if (app instanceof Array) {
+                                app = app[0];
+                            }
+
                             var scope = $scope.$new(true);
                             scope.appModel = new ApplicationModel(app);
                             scope.bindings = ApplicationService.getBindingFromConfig(app.depcfg.buckets);

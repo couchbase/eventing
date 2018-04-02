@@ -3,10 +3,74 @@
 package eventing
 
 import (
+	"encoding/json"
 	"log"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestImportExport(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	n1qlHandler := "n1ql_insert_on_update"
+	flushFunctionAndBucket(n1qlHandler)
+	createAndDeployFunction(n1qlHandler, n1qlHandler, &commonSettings{})
+
+	bucketHandler := "bucket_op_on_update"
+	flushFunctionAndBucket(bucketHandler)
+	createAndDeployFunction(bucketHandler, bucketHandler, &commonSettings{})
+
+	waitForDeployToFinish(n1qlHandler)
+	waitForDeployToFinish(bucketHandler)
+
+	exportResponse, err := makeRequest("GET", strings.NewReader(""), exportFunctionsURL)
+	if err != nil {
+		t.Errorf("Unable to export Functions %v, err : %v\n", exportFunctionsURL, err)
+		return
+	}
+
+	flushFunctionAndBucket(bucketHandler)
+	flushFunctionAndBucket(n1qlHandler)
+
+	_, err = makeRequest("POST", strings.NewReader(string(exportResponse)), importFunctionsURL)
+	if err != nil {
+		t.Errorf("Unable import Functions, err : %v\n", err)
+		return
+	}
+
+	response, err := makeRequest("GET", strings.NewReader(""), functionsURL)
+	if err != nil {
+		t.Errorf("Unable to list Functions %v, err : %v\n", err)
+		return
+	}
+
+	var functionsList []map[string]interface{}
+	err = json.Unmarshal(response, &functionsList)
+	if err != nil {
+		t.Errorf("Unable to unmarshal response %v, err %v\n", err)
+		return
+	}
+
+	if !functionExists(n1qlHandler, functionsList) {
+		t.Errorf("Import/Export failed for %v", n1qlHandler)
+		return
+	}
+
+	if !functionExists(bucketHandler, functionsList) {
+		t.Errorf("Import/Export failed for %v", bucketHandler)
+		return
+	}
+}
+
+func functionExists(name string, functionsList []map[string]interface{}) bool {
+	for _, function := range functionsList {
+		if funcName := function["appname"].(string); name == funcName {
+			return true
+		}
+	}
+
+	return false
+}
 
 func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 5)
