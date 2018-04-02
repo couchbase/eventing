@@ -343,7 +343,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   }
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: "
-               << h_config->app_name << " curr_host: " << RS(settings->host_addr)
+               << h_config->app_name
+               << " curr_host: " << RS(settings->host_addr)
                << " cron_timers_per_doc: " << h_config->cron_timers_per_doc
                << " curr_eventing_port: " << RS(settings->eventing_port)
                << " curr_eventing_sslport: " << RS(settings->eventing_sslport)
@@ -453,8 +454,8 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::Context::Scope context_scope(context);
 
   auto uniline_info = UniLineN1QL(script_to_execute);
-  LOG(logTrace) << "code after Unilining N1QL: " << RM(uniline_info.handler_code)
-                << std::endl;
+  LOG(logTrace) << "code after Unilining N1QL: "
+                << RM(uniline_info.handler_code) << std::endl;
   if (uniline_info.code != kOK) {
     LOG(logError) << "failed to uniline N1QL: " << RM(uniline_info.code)
                   << std::endl;

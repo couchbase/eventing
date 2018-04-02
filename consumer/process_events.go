@@ -160,7 +160,7 @@ func (c *Consumer) processEvents() {
 										}
 
 										c.plasmaStoreCh <- pEntry
-										logging.Infof("%s [%s:%s:%d] Sending key: %ru to be stored in plasma, timer entry: %v pEntry: %#v",
+										logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be stored in plasma, timer entry: %v pEntry: %#v",
 											logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), timerEntry, pEntry)
 									}
 								}
@@ -180,7 +180,7 @@ func (c *Consumer) processEvents() {
 									}
 
 									c.plasmaStoreCh <- pEntry
-									logging.Infof("%s [%s:%s:%d] Sending key: %ru to be stored in plasma, timer entry: %v pEntry: %#v",
+									logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be stored in plasma, timer entry: %v pEntry: %#v",
 										logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), timerEntry, pEntry)
 								}
 							}

@@ -22,6 +22,7 @@
 
 static bool ipv6 = false;
 std::mutex time_now_mutex;
+std::mutex convert_to_iso8601_mutex;
 
 #if defined(WIN32) || defined(_WIN32)
 int Wvasprintf(char **strp, const char *fmt, va_list ap) {
@@ -115,6 +116,8 @@ bool ToCBool(const v8::Local<v8::Boolean> &value) {
 }
 
 std::string ConvertToISO8601(std::string timestamp) {
+  std::lock_guard<std::mutex> lock(convert_to_iso8601_mutex);
+
   char buf[sizeof "2016-08-09T10:11:12"];
   std::string buf_s;
   time_t now;

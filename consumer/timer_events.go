@@ -148,6 +148,7 @@ func (c *Consumer) processDocTimerEvents() {
 					if ts.After(time.Now()) {
 						continue
 					}
+
 					c.processTimerEvent(cts, string(itr.Value()), vb)
 				}
 			}

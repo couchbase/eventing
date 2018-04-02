@@ -271,7 +271,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
   std::string key(*utf8_key);
   auto value = JSONStringify(isolate, value_obj);
 
-  LOG(logTrace) << "Bucket: Set call Key: " << RU(key) << " Value: " << RU(value)
+  LOG(logTrace) << "Bucket: Set call Key: " << RU(key)
+                << " Value: " << RU(value)
                 << " enable_recursive_mutation: " << enable_recursive_mutation
                 << std::endl;
 
