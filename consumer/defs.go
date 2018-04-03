@@ -297,7 +297,8 @@ type Consumer struct {
 	// Chan used by signal update of app handler settings
 	signalSettingsChangeCh chan struct{}
 
-	stopControlRoutineCh chan struct{}
+	stopHandleFailoverLogCh chan struct{}
+	stopControlRoutineCh    chan struct{}
 
 	// Populated when downstream tcp socket mapping to
 	// C++ v8 worker is down. Buffered channel to avoid deadlock

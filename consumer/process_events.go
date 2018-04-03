@@ -706,47 +706,57 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 		c.hostDcpFeedRWMutex.Lock()
 		delete(c.kvHostDcpFeedMap, vbKvAddr)
 		c.hostDcpFeedRWMutex.Unlock()
-
-		return err
 	}
 
-loop:
-	vbFlog := <-c.vbFlogChan
+	return err
+}
 
-	logging.Infof("%s [%s:%s:%d] vb: %d Got entry from vbFlogChan: %#v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbFlog)
+func (c *Consumer) handleFailoverLog() {
+	logPrefix := "Consumer::handlerFailoverLog"
 
-	if vbFlog.signalStreamEnd {
-		logging.Infof("%s [%s:%s:%d] vb: %d Got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
-		return nil
-	}
+	for {
+		select {
+		case vbFlog := <-c.vbFlogChan:
+			logging.Infof("%s [%s:%s:%d] vb: %d Got entry from vbFlogChan: %#v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbFlog)
 
-	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
-		logging.Infof("%s [%s:%s:%d] vb: %d DCP Stream created", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
-		return nil
-	}
+			if vbFlog.signalStreamEnd {
+				logging.Infof("%s [%s:%s:%d] vb: %d Got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
+				continue
+			}
 
-	if vbFlog.streamReqRetry {
+			if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
+				logging.Infof("%s [%s:%s:%d] vb: %d DCP Stream created", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
+				continue
+			}
 
-		if vbFlog.statusCode == mcd.ROLLBACK {
-			logging.Infof("%s [%s:%s:%d] vb: %d vbuuid: %d Rollback requested by DCP, rollback startseq: %d",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
-			start, snapStart, snapEnd = vbFlog.seqNo, vbFlog.seqNo, vbFlog.seqNo
+			if vbFlog.streamReqRetry {
+
+				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vbFlog.vb)
+				var vbBlob vbucketKVBlob
+				var cas gocb.Cas
+				var isNoEnt bool
+
+				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
+
+				if vbFlog.statusCode == mcd.ROLLBACK {
+					logging.Infof("%s [%s:%s:%d] vb: %v Rollback requested by DCP. Retrying DCP stream start vbuuid: %d startSeq: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
+					c.dcpRequestStreamHandle(vbFlog.vb, &vbBlob, vbFlog.seqNo)
+				} else {
+					logging.Infof("%s [%s:%s:%d] vb: %v Retrying DCP stream start vbuuid: %d startSeq: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
+					c.dcpRequestStreamHandle(vbFlog.vb, &vbBlob, 0)
+				}
+
+			}
+
+		case <-c.stopHandleFailoverLogCh:
+			logging.Infof("%s [%s:%s:%d] Exiting routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+
 		}
-
-		logging.Infof("%s [%s:%s:%d] vb: %v Retrying DCP stream start vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, start, snapStart, snapEnd)
-
-		err := dcpFeed.DcpRequestStream(vbFlog.vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
-		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] vb: %v Retrying DCP stream start failed, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, err)
-		}
-
-		goto loop
 	}
-
-	return nil
 }
 
 func (c *Consumer) getCurrentlyOwnedVbs() []uint16 {
