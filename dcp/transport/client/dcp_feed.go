@@ -297,7 +297,7 @@ func (feed *DcpFeed) handlePacket(
 
 	stream := feed.vbstreams[vb]
 	if stream == nil {
-		fmsg := "%v spurious %v for %d: %r\n"
+		fmsg := "%v spurious %v for %d: %ru\n"
 		logging.Fatalf(fmsg, prefix, pkt.Opcode, vb, fmt.Sprintf("%#v", pkt))
 		return "ok" // yeah it not _my_ mistake...
 	}

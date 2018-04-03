@@ -55,7 +55,7 @@ enum RETURN_CODE {
 
 const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket) {
-  LOG(logInfo) << "Getting username for host " << R(host) << " port " << port
+  LOG(logInfo) << "Getting username for host " << RS(host) << " port " << port
                << std::endl;
 
   auto endpoint = JoinHostPort(host, port);
@@ -63,7 +63,7 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
   auto comm = UnwrapData(isolate)->comm;
   auto info = comm->GetCreds(endpoint);
   if (!info.is_valid) {
-    LOG(logError) << "Failed to get username for " << R(host) << ":" << port
+    LOG(logError) << "Failed to get username for " << RS(host) << ":" << port
                   << " err: " << info.msg << std::endl;
   }
 
@@ -77,7 +77,7 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
 
 const char *GetPassword(void *cookie, const char *host, const char *port,
                         const char *bucket) {
-  LOG(logInfo) << "Getting password for host " << R(host) << " port " << port
+  LOG(logInfo) << "Getting password for host " << RS(host) << " port " << port
                << std::endl;
 
   auto isolate = static_cast<v8::Isolate *>(cookie);
@@ -85,7 +85,7 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
   auto endpoint = JoinHostPort(host, port);
   auto info = comm->GetCreds(endpoint);
   if (!info.is_valid) {
-    LOG(logError) << "Failed to get password for " << R(host) << ":" << port
+    LOG(logError) << "Failed to get password for " << RS(host) << ":" << port
                   << " err: " << info.msg << std::endl;
   }
 
@@ -104,7 +104,7 @@ const char *GetUsernameCached(void *cookie, const char *host, const char *port,
   auto endpoint = JoinHostPort(host, port);
   auto info = comm->GetCredsCached(endpoint);
   if (!info.is_valid) {
-    LOG(logError) << "Failed to get username for " << R(host) << ":" << port
+    LOG(logError) << "Failed to get username for " << RS(host) << ":" << port
                   << " err: " << info.msg << std::endl;
   }
 
@@ -123,7 +123,7 @@ const char *GetPasswordCached(void *cookie, const char *host, const char *port,
   auto endpoint = JoinHostPort(host, port);
   auto info = comm->GetCredsCached(endpoint);
   if (!info.is_valid) {
-    LOG(logError) << "Failed to get password for " << R(host) << ":" << port
+    LOG(logError) << "Failed to get password for " << RS(host) << ":" << port
                   << " err: " << info.msg << std::endl;
   }
 
@@ -158,8 +158,8 @@ void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     lcb_wait(instance);
     break;
   case LCB_SUCCESS:
-    LOG(logTrace) << "NValue " << R(static_cast<int>(rg->nvalue)) << "Value "
-                  << R(reinterpret_cast<const char *>(rg->value));
+    LOG(logTrace) << "NValue " << RU(static_cast<int>(rg->nvalue)) << "Value "
+                  << RU(reinterpret_cast<const char *>(rg->value));
     break;
   default:
     LOG(logTrace) << "LCB_CALLBACK_GET: Operation failed, "
@@ -343,11 +343,12 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   }
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: "
-               << h_config->app_name << " curr_host: " << R(settings->host_addr)
+               << h_config->app_name
+               << " curr_host: " << RS(settings->host_addr)
                << " cron_timers_per_doc: " << h_config->cron_timers_per_doc
-               << " curr_eventing_port: " << settings->eventing_port
-               << " curr_eventing_sslport: " << settings->eventing_sslport
-               << " kv_host_port: " << R(settings->kv_host_port)
+               << " curr_eventing_port: " << RS(settings->eventing_port)
+               << " curr_eventing_sslport: " << RS(settings->eventing_sslport)
+               << " kv_host_port: " << RS(settings->kv_host_port)
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
                << " fuzz offset: " << h_config->fuzz_offset
@@ -444,7 +445,7 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
 }
 
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
-  LOG(logInfo) << "Eventing dir: " << R(settings->eventing_dir) << std::endl;
+  LOG(logInfo) << "Eventing dir: " << RS(settings->eventing_dir) << std::endl;
   v8::Locker locker(GetIsolate());
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
@@ -453,10 +454,10 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::Context::Scope context_scope(context);
 
   auto uniline_info = UniLineN1QL(script_to_execute);
-  LOG(logTrace) << "code after Unilining N1QL: " << R(uniline_info.handler_code)
-                << std::endl;
+  LOG(logTrace) << "code after Unilining N1QL: "
+                << RM(uniline_info.handler_code) << std::endl;
   if (uniline_info.code != kOK) {
-    LOG(logError) << "failed to uniline N1QL: " << R(uniline_info.code)
+    LOG(logError) << "failed to uniline N1QL: " << RM(uniline_info.code)
                   << std::endl;
     return uniline_info.code;
   }
@@ -464,9 +465,9 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   handler_code_ = uniline_info.handler_code;
 
   auto jsify_info = Jsify(script_to_execute);
-  LOG(logTrace) << "jsified code: " << R(jsify_info.handler_code) << std::endl;
+  LOG(logTrace) << "jsified code: " << RM(jsify_info.handler_code) << std::endl;
   if (jsify_info.code != kOK) {
-    LOG(logError) << "failed to jsify: " << R(jsify_info.handler_code)
+    LOG(logError) << "failed to jsify: " << RM(jsify_info.handler_code)
                   << std::endl;
     return jsify_info.code;
   }
@@ -483,13 +484,13 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   script_to_execute += std::string((const char *)js_builtin) + '\n';
   source_map_ =
       transpiler->GetSourceMap(jsify_info.handler_code, app_name_ + ".js");
-  LOG(logTrace) << "source map:" << R(source_map_) << std::endl;
+  LOG(logTrace) << "source map:" << RM(source_map_) << std::endl;
 
   v8::Local<v8::String> source =
       v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());
 
   script_to_execute_ = script_to_execute;
-  LOG(logTrace) << "script to execute: " << R(script_to_execute) << std::endl;
+  LOG(logTrace) << "script to execute: " << RM(script_to_execute) << std::endl;
 
   if (!ExecuteScript(source))
     return kFailedToCompileJs;
@@ -549,7 +550,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     lcb_create(&cb_instance, &crst);
     lcb_set_auth(cb_instance, auth);
     lcb_error_t rc = lcb_connect(cb_instance);
-    LOG(logDebug) << "LCB_CONNECT to " << R(cb_instance) << " returns " << rc
+    LOG(logDebug) << "LCB_CONNECT to " << RS(cb_instance) << " returns " << rc
                   << std::endl;
     lcb_wait(cb_instance);
 
@@ -812,7 +813,7 @@ void V8Worker::RouteMessage() {
 
     LOG(logTrace) << " event: " << static_cast<int16_t>(msg.header->event)
                   << " opcode: " << static_cast<int16_t>(msg.header->opcode)
-                  << " metadata: " << R(msg.header->metadata)
+                  << " metadata: " << RU(msg.header->metadata)
                   << " partition: " << msg.header->partition << std::endl;
 
     switch (getEvent(msg.header->event)) {
@@ -956,7 +957,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  LOG(logTrace) << "value: " << R(value) << " meta: " << R(meta)
+  LOG(logTrace) << "value: " << RU(value) << " meta: " << RU(meta)
                 << " doc_type: " << doc_type << std::endl;
   v8::TryCatch try_catch(GetIsolate());
 
@@ -1040,7 +1041,7 @@ int V8Worker::SendDelete(std::string meta) {
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  LOG(logTrace) << " meta: " << R(meta) << std::endl;
+  LOG(logTrace) << " meta: " << RU(meta) << std::endl;
   v8::TryCatch try_catch(GetIsolate());
 
   v8::Local<v8::Value> args[1];
@@ -1176,7 +1177,7 @@ void V8Worker::SendDocTimer(std::string callback_fn, std::string doc_id,
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
 
-  LOG(logTrace) << "Got timer event, doc_id:" << R(doc_id)
+  LOG(logTrace) << "Got timer event, doc_id:" << RU(doc_id)
                 << " callback_fn:" << callback_fn << std::endl;
 
   auto context = context_.Get(isolate_);
@@ -1245,7 +1246,7 @@ void V8Worker::Enqueue(header_t *h, message_t *p) {
   LOG(logTrace) << "Inserting event: " << static_cast<int16_t>(h->event)
                 << " opcode: " << static_cast<int16_t>(h->opcode)
                 << " partition: " << h->partition
-                << " metadata: " << R(h->metadata) << std::endl;
+                << " metadata: " << RU(h->metadata) << std::endl;
   worker_queue->push(msg);
 }
 

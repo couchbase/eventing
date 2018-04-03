@@ -10,7 +10,7 @@ import (
 
 func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 5)
-	handler := "n1ql_insert_on_update"
+	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 
 	for i := 0; i < 5; i++ {

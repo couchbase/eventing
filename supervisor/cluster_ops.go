@@ -40,7 +40,7 @@ var getEventingNodeAddrsCallback = func(args ...interface{}) error {
 		logging.Errorf("%s no eventing nodes reported", logPrefix)
 		return fmt.Errorf("0 nodes reported for eventing service, unexpected")
 	} else {
-		logging.Infof("%s addrs: %r", logPrefix, fmt.Sprintf("%#v", addrs))
+		logging.Infof("%s addrs: %rs", logPrefix, fmt.Sprintf("%#v", addrs))
 	}
 	return err
 }

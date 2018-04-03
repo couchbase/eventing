@@ -70,7 +70,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 	}
 	sort.Strings(eventingNodeAddrs)
 
-	logging.Infof("%s [%s:%d] EventingNodeUUIDs: %v eventingNodeAddrs: %r",
+	logging.Infof("%s [%s:%d] EventingNodeUUIDs: %v eventingNodeAddrs: %rs",
 		logPrefix, p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, eventingNodeAddrs)
 
 	vbucketsPerNode := p.numVbuckets / len(eventingNodeAddrs)
@@ -100,7 +100,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 
 	for i, v := range vbCountPerNode {
 
-		logging.Infof("%s [%s:%d] EventingNodeUUIDs: %v Eventing node index: %d eventing node addr: %r startVb: %v vbs count: %v",
+		logging.Infof("%s [%s:%d] EventingNodeUUIDs: %v Eventing node index: %d eventing node addr: %rs startVb: %v vbs count: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, i, eventingNodeAddrs[i], startVb, v)
 
 		nodeMapping := &common.PlannerNodeVbMapping{
@@ -140,7 +140,7 @@ func (p *Producer) initWorkerVbMap() {
 
 	sort.Sort(util.Uint16Slice(vbucketsToHandle))
 
-	logging.Infof("%s [%s:%d] eventingAddr: %r vbucketsToHandle, len: %d dump: %v",
+	logging.Infof("%s [%s:%d] eventingAddr: %rs vbucketsToHandle, len: %d dump: %v",
 		logPrefix, p.appName, p.LenRunningConsumers(), eventingNodeAddr, len(vbucketsToHandle), util.Condense(vbucketsToHandle))
 
 	vbucketPerWorker := len(vbucketsToHandle) / p.handlerConfig.WorkerCount
@@ -175,7 +175,7 @@ func (p *Producer) initWorkerVbMap() {
 			startVbIndex++
 		}
 
-		logging.Infof("%s [%s:%d] eventingAddr: %r worker name: %v assigned vbs len: %d dump: %v",
+		logging.Infof("%s [%s:%d] eventingAddr: %rs worker name: %v assigned vbs len: %d dump: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), eventingNodeAddr, workerName,
 			len(p.workerVbucketMap[workerName]), util.Condense(p.workerVbucketMap[workerName]))
 	}

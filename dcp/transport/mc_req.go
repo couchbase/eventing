@@ -171,7 +171,7 @@ func (req *MCRequest) Receive(r io.Reader, hdrBytes []byte) (int, error) {
 		req.Key = buf[elen : klen+elen]
 		req.Body = buf[klen+elen:]
 		if isSnapEndOpen(req) {
-			fmsg := "open snapshot %r hdrBytes:%v buf:%r"
+			fmsg := "open snapshot %rm hdrBytes:%v buf:%ru"
 			logging.Errorf(fmsg, fmt.Sprintf("%#v", req), hdrBytes, buf)
 		}
 	}

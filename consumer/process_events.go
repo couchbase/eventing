@@ -8,7 +8,6 @@ import (
 	"hash/crc32"
 	"runtime/debug"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -55,7 +54,7 @@ func (c *Consumer) processEvents() {
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
 
-				logging.Tracef("%s [%s:%s:%d] Got DCP_MUTATION for key: %r datatype: %v",
+				logging.Tracef("%s [%s:%s:%d] Got DCP_MUTATION for key: %ru datatype: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
 
 				if c.debuggerState == startDebug {
@@ -88,7 +87,7 @@ func (c *Consumer) processEvents() {
 					totalXattrLen := binary.BigEndian.Uint32(e.Value[0:])
 					totalXattrData := e.Value[4 : 4+totalXattrLen-1]
 
-					logging.Tracef("%s [%s:%s:%d] key: %r totalXattrLen: %v totalXattrData: %v",
+					logging.Tracef("%s [%s:%s:%d] key: %ru totalXattrLen: %v totalXattrData: %ru",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), totalXattrLen, totalXattrData)
 
 					var xMeta xattrMetadata
@@ -116,19 +115,19 @@ func (c *Consumer) processEvents() {
 						}
 					}
 
-					logging.Tracef("%s [%s:%s:%d] Key: %r xmeta dump: %r",
+					logging.Tracef("%s [%s:%s:%d] Key: %ru xmeta dump: %ru",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), fmt.Sprintf("%#v", xMeta))
 
 					// Validating for eventing xattr fields
 					if xMeta.Cas != "" {
 						cas, err := util.ConvertBigEndianToUint64([]byte(xMeta.Cas))
 						if err != nil {
-							logging.Errorf("%s [%s:%s:%d] Key: %r failed to convert cas string from kv to uint64, err: %v",
+							logging.Errorf("%s [%s:%s:%d] Key: %ru failed to convert cas string from kv to uint64, err: %v",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
 							continue
 						}
 
-						logging.Tracef("%s [%s:%s:%d] Key: %r decoded cas: %v dcp cas: %v",
+						logging.Tracef("%s [%s:%s:%d] Key: %ru decoded cas: %v dcp cas: %v",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), cas, e.Cas)
 
 						// Send mutation to V8 CPP worker _only_ when DcpEvent.Cas != Cas field in xattr
@@ -137,7 +136,7 @@ func (c *Consumer) processEvents() {
 
 							if crc32.Update(0, c.crcTable, e.Value) != xMeta.Digest {
 								if !c.sendMsgToDebugger {
-									logging.Tracef("%s [%s:%s:%d] Sending key: %r to be processed by JS handlers as cas & crc have mismatched",
+									logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers as cas & crc have mismatched",
 										logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 									c.dcpMutationCounter++
 									c.sendDcpEvent(e, c.sendMsgToDebugger)
@@ -147,53 +146,18 @@ func (c *Consumer) processEvents() {
 								}
 							} else {
 
-								// Enabling it until MB-28779 gets resolved
-								for _, timerEntry := range xMeta.Timers {
-
-									data := strings.Split(timerEntry, "::")
-
-									if len(data) == 3 {
-										pEntry := &plasmaStoreEntry{
-											callbackFn: data[2],
-											key:        string(e.Key),
-											timerTs:    data[1],
-											vb:         e.VBucket,
-										}
-
-										c.plasmaStoreCh <- pEntry
-										logging.Infof("%s [%s:%s:%d] Sending key: %r to be stored in plasma, timer entry: %v pEntry: %#v",
-											logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), timerEntry, pEntry)
-									}
-								}
+								logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be stored in plasma",
+									logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 							}
 						} else {
-							// Enabling it until MB-28779 gets resolved
-							for _, timerEntry := range xMeta.Timers {
-
-								data := strings.Split(timerEntry, "::")
-
-								if len(data) == 3 {
-									pEntry := &plasmaStoreEntry{
-										callbackFn: data[2],
-										key:        string(e.Key),
-										timerTs:    data[1],
-										vb:         e.VBucket,
-									}
-
-									c.plasmaStoreCh <- pEntry
-									logging.Infof("%s [%s:%s:%d] Sending key: %r to be stored in plasma, timer entry: %v pEntry: %#v",
-										logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), timerEntry, pEntry)
-								}
-							}
-
-							logging.Tracef("%s [%s:%s:%d] Skipping recursive mutation for key: %r vb: %v, xmeta: %r",
+							logging.Tracef("%s [%s:%s:%d] Skipping recursive mutation for key: %ru vb: %v, xmeta: %ru",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, fmt.Sprintf("%#v", xMeta))
 
 						}
 					} else {
 						e.Value = e.Value[4+totalXattrLen:]
 						if !c.sendMsgToDebugger {
-							logging.Tracef("%s [%s:%s:%d] Sending key: %r to be processed by JS handlers because no eventing xattrs",
+							logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers because no eventing xattrs",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 							c.dcpMutationCounter++
 							c.sendDcpEvent(e, c.sendMsgToDebugger)
@@ -532,7 +496,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 		defer func() {
 			if r := recover(); r != nil {
 				trace := debug.Stack()
-				logging.Errorf("%s [%s:%s:%d] addToAggChan: recover %r stack trace: %v",
+				logging.Errorf("%s [%s:%s:%d] addToAggChan: recover %rm stack trace: %rm",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 			}
 		}()
@@ -701,7 +665,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 
 	snapStart, snapEnd := start, start
 
-	logging.Infof("%s [%s:%s:%d] vb: %d DCP stream start vbKvAddr: %r vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
+	logging.Infof("%s [%s:%s:%d] vb: %d DCP stream start vbKvAddr: %rs vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd)
 
 	err := dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)

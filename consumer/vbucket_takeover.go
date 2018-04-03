@@ -96,7 +96,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					continue
 				}
 
-				logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %v uuid: %v vbStat uuid: %v owner node: %r consumer name: %v",
+				logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %v uuid: %v vbStat uuid: %v owner node: %rs consumer name: %v",
 					logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, c.NodeUUID(),
 					vbsts.getVbStat(vb, "node_uuid"),
 					vbsts.getVbStat(vb, "current_vb_owner"),
@@ -271,7 +271,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 	switch vbBlob.DCPStreamStatus {
 	case dcpStreamRunning:
 
-		logging.Infof("%s [%s:%s:%d] vb: %v dcp stream status: %v curr owner: %r worker: %v UUID consumer: %v from metadata: %v check if current node should own vb: %v",
+		logging.Infof("%s [%s:%s:%d] vb: %v dcp stream status: %v curr owner: %rs worker: %v UUID consumer: %v from metadata: %v check if current node should own vb: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus,
 			vbBlob.CurrentVBOwner, vbBlob.AssignedWorker, c.NodeUUID(),
 			vbBlob.NodeUUID, c.checkIfCurrentNodeShouldOwnVb(vb))
@@ -289,7 +289,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 				return errVbOwnedByAnotherWorker
 			}
 
-			logging.Infof("%s [%s:%s:%d] Node: %r taking ownership of vb: %d old node: %r isn't alive any more as per ns_server vbuuid: %v vblob.uuid: %v",
+			logging.Infof("%s [%s:%s:%d] Node: %rs taking ownership of vb: %d old node: %rs isn't alive any more as per ns_server vbuuid: %v vblob.uuid: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vb, vbBlob.CurrentVBOwner,
 				c.NodeUUID(), vbBlob.NodeUUID)
 
@@ -385,7 +385,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 					return
 				}
 
-				logging.Tracef("%s [%s:%s:%d] vb: %v Opcode received: %v key: %r datatype: %v seq no: %d",
+				logging.Tracef("%s [%s:%s:%d] vb: %v Opcode received: %v key: %ru datatype: %v seq no: %d",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, e.Opcode, string(e.Key), e.Datatype, e.Seqno)
 
 				switch e.Opcode {
@@ -400,7 +400,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 						totalXattrLen := binary.BigEndian.Uint32(e.Value[0:])
 						totalXattrData := e.Value[4 : 4+totalXattrLen-1]
 
-						logging.Tracef("%s [%s:%s:%d] key: %r totalXattrLen: %v totalXattrData: %v",
+						logging.Tracef("%s [%s:%s:%d] key: %ru totalXattrLen: %v totalXattrData: %v",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), totalXattrLen, totalXattrData)
 
 						var xMeta xattrMetadata

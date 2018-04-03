@@ -317,7 +317,7 @@ func readHeader(buf []byte) int8 {
 	opcode := headerPos.Opcode()
 	metadata := string(headerPos.Metadata())
 
-	logging.Infof(" ReadHeader => event: %d opcode: %d meta: %r\n",
+	logging.Infof(" ReadHeader => event: %d opcode: %d meta: %ru\n",
 		event, opcode, metadata)
 	return event
 }
@@ -328,7 +328,7 @@ func readPayload(buf []byte) {
 	key := string(payloadPos.Key())
 	val := string(payloadPos.Value())
 
-	logging.Infof("ReadPayload => key: %r val: %r\n", key, val)
+	logging.Infof("ReadPayload => key: %ru val: %ru\n", key, val)
 }
 
 func (c *Consumer) parseWorkerResponse(msg []byte) {
@@ -356,7 +356,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.latencyStats)
 			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal latency stats, msg: %r err: %v",
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal latency stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case failureStats:
@@ -364,7 +364,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.failureStats)
 			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal failure stats, msg: %r err: %v",
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal failure stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case executionStats:
@@ -372,19 +372,19 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.executionStats)
 			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal execution stats, msg: %r err: %v",
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal execution stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case compileInfo:
 			err := json.Unmarshal([]byte(msg), &c.compileInfo)
 			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal compilation stats, msg: %r err: %v",
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal compilation stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case queueSize:
 			err := json.Unmarshal([]byte(msg), &c.cppQueueSizes)
 			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal cpp queue sizes, msg: %r err: %v",
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal cpp queue sizes, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case lcbExceptions:
@@ -392,7 +392,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.lcbExceptionStats)
 			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal lcb exception stats, msg: %r err: %v",
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal lcb exception stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		}

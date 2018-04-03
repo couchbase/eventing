@@ -106,10 +106,12 @@ func init() {
 func printf(at LogLevel, format string, v ...interface{}) {
 	if baselevel >= at {
 		if noredact {
-			format = strings.Replace(format, "%r", "%v", -1)
+			format = strings.Replace(format, "%ru", "%v", -1)
 		} else {
-			format = strings.Replace(format, "%r", "<ud>%v</ud>", -1)
+			format = strings.Replace(format, "%ru", "<ud>%v</ud>", -1)
 		}
+		format = strings.Replace(format, "%rm", "%v", -1) // not implemented
+		format = strings.Replace(format, "%rs", "%v", -1) // not implemented
 		ts := time.Now().Format("2006-01-02T15:04:05.000-07:00")
 		target.Printf(ts+" ["+at.String()+"] "+format, v...)
 	}

@@ -152,7 +152,7 @@ func (p *Producer) Serve() {
 	for {
 		select {
 		case msg := <-p.topologyChangeCh:
-			logging.Infof("%s [%s:%d] Got topology change msg: %r from super_supervisor",
+			logging.Infof("%s [%s:%d] Got topology change msg: %rm from super_supervisor",
 				logPrefix, p.appName, p.LenRunningConsumers(), msg)
 
 			switch msg.CType {
@@ -339,7 +339,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.processConfig.IPCType = "af_unix"
 	}
 
-	logging.Infof("%s [%s:%d] Spawning consumer to listen on socket: %r feedback socket: %r vbs len: %d dump: %s",
+	logging.Infof("%s [%s:%d] Spawning consumer to listen on socket: %rs feedback socket: %rs vbs len: %d dump: %s",
 		logPrefix, p.appName, p.LenRunningConsumers(), p.processConfig.SockIdentifier, p.processConfig.FeedbackSockIdentifier,
 		len(vbnos), util.Condense(vbnos))
 
@@ -485,7 +485,7 @@ func (p *Producer) SignalStartDebugger() {
 	if dInstAddrBlob.NodeUUID == "" {
 		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, p, key, blob)
 	} else {
-		logging.Errorf("%s [%s:%d] Debugger already started. Host: %r Worker: %v uuid: %v",
+		logging.Errorf("%s [%s:%d] Debugger already started. Host: %rs Worker: %v uuid: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), dInstAddrBlob.HostPortAddr, dInstAddrBlob.ConsumerName, dInstAddrBlob.NodeUUID)
 	}
 }
