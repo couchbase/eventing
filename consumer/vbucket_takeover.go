@@ -155,6 +155,15 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 						//     is received)
 						if vbBlob.DCPStreamStatus != dcpStreamRunning || (vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName()) {
 							time.Sleep(retryVbMetaStateCheckInterval)
+
+							// Handling the case where KV rollbacks the checkpoint data update post DcpCloseStream
+							if vbBlob.DCPStreamStatus == dcpStreamRunning && vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
+
+								logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d KV potentially lost checkpoint data update post DcpCloseStream call, rewriting...",
+									logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
+								c.updateCheckpoint(vbKey, vb, &vbBlob)
+							}
+
 							goto retryVbMetaStateCheck
 						}
 						logging.Infof("%s [%s:giveup_r_%d:%s:%d] Gracefully exited vb ownership give-up routine, last vb handled: %v",
@@ -373,8 +382,12 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	go func(dcpFeed *couchbase.DcpFeed, wg *sync.WaitGroup) {
+	var receivedTillEndSeqNo bool
+
+	go func(dcpFeed *couchbase.DcpFeed, wg *sync.WaitGroup, endSeqNo uint64, receivedTillEndSeqNo *bool) {
 		defer wg.Done()
+
+		var seqNoReceived uint64
 
 		for {
 			select {
@@ -385,13 +398,24 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 					return
 				}
 
+				if e.Seqno > seqNoReceived {
+					seqNoReceived = e.Seqno
+				}
+
 				logging.Tracef("%s [%s:%s:%d] vb: %v Opcode received: %v key: %ru datatype: %v seq no: %d",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, e.Opcode, string(e.Key), e.Datatype, e.Seqno)
 
 				switch e.Opcode {
 				case mcd.DCP_STREAMEND:
-					logging.Infof("%s [%s:%s:%d] vb: %v Stream end has been received",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+					logging.Infof("%s [%s:%s:%d] vb: %v Stream end has been received. LastSeqNoReceived: %d endSeqNo: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, endSeqNo)
+
+					if seqNoReceived == endSeqNo {
+						*receivedTillEndSeqNo = true
+					} else {
+						logging.Errorf("%s [%s:%s:%d] vb: %v Received events till end seq no: %d desired: %d",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, endSeqNo)
+					}
 					return
 
 				case mcd.DCP_MUTATION:
@@ -451,7 +475,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 							}
 						}
 
-						logging.Tracef("%s [%s:%s:%d] Inserting doc timer key: %r into plasma",
+						logging.Tracef("%s [%s:%s:%d] Inserting doc timer key: %ru into plasma",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 
 					default:
@@ -464,18 +488,18 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 
 			}
 		}
-	}(dcpFeed, &wg)
+	}(dcpFeed, &wg, seqNos[vb], &receivedTillEndSeqNo)
 
 	var flogs couchbase.FailoverLog
 
 	// TODO: Can be improved by requesting failover log just for the vbucket for which stream is going to be requested
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpAllVbucketsCallback, c, b, &flogs)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpAllVbucketsCallback, c, b, &flogs, vb)
 
 	start, snapStart, snapEnd := uint64(0), uint64(0), seqNos[int(vb)]
 	flags := uint32(0)
 	end := seqNos[int(vb)]
 
-	logging.Infof("%s [%s:%s:%d] vb: %v Going to start DCP feed from source bucket: %s start seq no: %d end seq no: %d KV nodes: %r flog len: %d",
+	logging.Infof("%s [%s:%s:%d] vb: %v Going to start DCP feed from source bucket: %s start seq no: %d end seq no: %d KV nodes: %rs flog len: %d",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket, start, end, c.kvNodes, len(flogs))
 
 	if flog, ok := flogs[vb]; ok {
@@ -501,6 +525,10 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	wg.Wait()
 
 	dcpFeed.Close()
+
+	if !receivedTillEndSeqNo {
+		return fmt.Errorf("not received doc timer events till desired end seq no")
+	}
 
 	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
 	c.vbProcessingStats.updateVbStat(vb, "last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo)
