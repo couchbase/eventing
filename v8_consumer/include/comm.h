@@ -50,6 +50,8 @@ struct ExtractKVInfo {
 struct ParseInfo {
   bool is_valid;
   bool is_select_query;
+  bool is_dml_query;
+  std::string keyspace_name;
   std::string info;
 };
 

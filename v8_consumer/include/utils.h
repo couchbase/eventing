@@ -86,5 +86,6 @@ bool IsIPv6();
 std::string JoinHostPort(const std::string &host, const std::string &port);
 std::pair<std::string, std::string> GetLocalKey();
 std::string GetTimestampNow();
+ParseInfo UnflattenParseInfo(std::unordered_map<std::string, std::string> &kv);
 
 #endif

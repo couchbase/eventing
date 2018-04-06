@@ -2,6 +2,8 @@ package util
 
 import (
 	"fmt"
+	"net/url"
+
 	"github.com/couchbase/query/algebra"
 	"github.com/couchbase/query/expression"
 	"github.com/couchbase/query/parser/n1ql"
@@ -18,6 +20,8 @@ type queryExpr struct {
 type ParseInfo struct {
 	IsValid       bool   `json:"is_valid"`
 	IsSelectQuery bool   `json:"is_select_query"`
+	IsDmlQuery    bool   `json:"is_dml_query"`
+	KeyspaceName  string `json:"keyspace_name"`
 	Info          string `json:"info"`
 }
 
@@ -26,8 +30,16 @@ type NamedParamsInfo struct {
 	NamedParams []string  `json:"named_params"`
 }
 
+func (parseInfo *ParseInfo) FlattenParseInfo(urlValues *url.Values) {
+	urlValues.Add("is_valid", ToStr(parseInfo.IsValid))
+	urlValues.Add("is_select_query", ToStr(parseInfo.IsSelectQuery))
+	urlValues.Add("is_dml_query", ToStr(parseInfo.IsDmlQuery))
+	urlValues.Add("keyspace_name", parseInfo.KeyspaceName)
+	urlValues.Add("info", parseInfo.Info)
+}
+
 func Parse(query string) (info *ParseInfo, alg algebra.Statement) {
-	info = &ParseInfo{IsValid: true, IsSelectQuery: false}
+	info = &ParseInfo{IsValid: true, IsSelectQuery: false, IsDmlQuery: true}
 
 	alg, err := n1ql.ParseStatement(query)
 	if err != nil {
@@ -36,9 +48,28 @@ func Parse(query string) (info *ParseInfo, alg algebra.Statement) {
 		return
 	}
 
-	switch alg.(type) {
+	switch queryType := alg.(type) {
 	case *algebra.Select:
 		info.IsSelectQuery = true
+		info.IsDmlQuery = false
+
+	case *algebra.Insert:
+		info.KeyspaceName = queryType.KeyspaceRef().Keyspace()
+
+	case *algebra.Upsert:
+		info.KeyspaceName = queryType.KeyspaceRef().Keyspace()
+
+	case *algebra.Delete:
+		info.KeyspaceName = queryType.KeyspaceRef().Keyspace()
+
+	case *algebra.Update:
+		info.KeyspaceName = queryType.KeyspaceRef().Keyspace()
+
+	case *algebra.Merge:
+		info.KeyspaceName = queryType.KeyspaceRef().Keyspace()
+
+	default:
+		info.IsDmlQuery = false
 	}
 
 	return

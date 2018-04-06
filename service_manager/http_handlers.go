@@ -450,9 +450,7 @@ func (m *ServiceMgr) getNamedParamsHandler(w http.ResponseWriter, r *http.Reques
 	info := util.GetNamedParams(query)
 	response := url.Values{}
 
-	response.Add("is_valid", toStr(info.PInfo.IsValid))
-	response.Add("info", info.PInfo.Info)
-	response.Add("is_select_query", toStr(info.PInfo.IsSelectQuery))
+	info.PInfo.FlattenParseInfo(&response)
 	response.Add("named_params_size", strconv.Itoa(len(info.NamedParams)))
 
 	for i, namedParam := range info.NamedParams {
@@ -1435,10 +1433,7 @@ func (m *ServiceMgr) parseQueryHandler(w http.ResponseWriter, r *http.Request) {
 	query := string(data)
 	info, _ := util.Parse(query)
 	response := url.Values{}
-
-	response.Add("is_valid", toStr(info.IsValid))
-	response.Add("is_select_query", toStr(info.IsSelectQuery))
-	response.Add("info", info.Info)
+	info.FlattenParseInfo(&response)
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "%s", response.Encode())

@@ -105,11 +105,12 @@ type xattrMetadata struct {
 }
 
 type vbFlogEntry struct {
-	seqNo          uint64
-	streamReqRetry bool
-	statusCode     mcd.Status
-	vb             uint16
-	flog           *cb.FailoverLog
+	flog            *cb.FailoverLog
+	seqNo           uint64
+	signalStreamEnd bool
+	statusCode      mcd.Status
+	streamReqRetry  bool
+	vb              uint16
 }
 
 type dcpMetadata struct {
@@ -296,7 +297,8 @@ type Consumer struct {
 	// Chan used by signal update of app handler settings
 	signalSettingsChangeCh chan struct{}
 
-	stopControlRoutineCh chan struct{}
+	stopHandleFailoverLogCh chan struct{}
+	stopControlRoutineCh    chan struct{}
 
 	// Populated when downstream tcp socket mapping to
 	// C++ v8 worker is down. Buffered channel to avoid deadlock

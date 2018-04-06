@@ -561,7 +561,7 @@ func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer
 	}
 
 	if !ts.After(lastProcessedTs) {
-		logging.Errorf("%s [%s:%s:%d] vb: %d Not adding timer event: %ru to plasma because it was timer in past, lastProcessedDocTimer: %s",
+		logging.Tracef("%s [%s:%s:%d] vb: %d Not adding timer event: %ru to plasma because it was timer in past, lastProcessedDocTimer: %s",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), e.vb, ts, lastProcessedDocTimer)
 		c.timersInPastCounter++
 

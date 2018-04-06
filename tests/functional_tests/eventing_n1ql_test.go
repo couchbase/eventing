@@ -3,6 +3,7 @@
 package eventing
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -35,6 +36,30 @@ func testFlexReset(handler, testName string, t *testing.T) {
 	dumpStats(handler)
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
+}
+
+func TestRecursiveMutationN1QL(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "n1ql_insert_same_src"
+	flushFunctionAndBucket(handler)
+
+	_, mainStoreResponse := createAndDeployFunction(handler, handler, &commonSettings{})
+	if mainStoreResponse.err != nil {
+		t.Errorf("Unable to POST to main store, err : %v\n", mainStoreResponse.err)
+		return
+	}
+
+	var response map[string]interface{}
+	err := json.Unmarshal(mainStoreResponse.body, &response)
+	if err != nil {
+		t.Errorf("Failed to unmarshal response from Main store, err : %v\n", err)
+		return
+	}
+
+	if response["name"].(string) != "ERR_HANDLER_COMPILATION" {
+		t.Errorf("Compilation must fail")
+		return
+	}
 }
 
 func TestFlexReset1(t *testing.T) {

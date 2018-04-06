@@ -138,16 +138,6 @@ func (m *ServiceMgr) sendRuntimeInfoList(w http.ResponseWriter, runtimeInfoList 
 	fmt.Fprintf(w, string(response))
 }
 
-func toStr(value bool) (strValue string) {
-	if value {
-		strValue = "1"
-	} else {
-		strValue = "0"
-	}
-
-	return
-}
-
 func (m *ServiceMgr) unmarshalApp(r *http.Request) (app application, info *runtimeInfo) {
 	logPrefix := "ServiceMgr::unmarshalApp"
 	info = &runtimeInfo{}

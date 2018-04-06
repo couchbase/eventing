@@ -1036,7 +1036,7 @@ loop:
 			select {
 			case <-tick.C:
 				percent := float64(duration) / float64(time.Since(epoc))
-				fmsg := "%v DCP-socket -> projector blocked %v (%f%%)"
+				fmsg := "%v DCP-socket -> eventing blocked %v (%f%%)"
 				logging.Infof(fmsg, feed.logPrefix, blockedTs, percent)
 			default:
 			}

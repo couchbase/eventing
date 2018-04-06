@@ -200,7 +200,7 @@ func (c *Consumer) processEvents() {
 
 				if e.Status == mcd.SUCCESS {
 
-					vbFlog := &vbFlogEntry{streamReqRetry: false, statusCode: e.Status}
+					vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
 
 					var vbBlob vbucketKVBlob
 					var cas gocb.Cas
@@ -211,8 +211,9 @@ func (c *Consumer) processEvents() {
 
 					vbuuid, seqNo, err := e.FailoverLog.Latest()
 					if err != nil {
-						logging.Errorf("%s [%s:%s:%d] Failure to get latest failover log vb: %d err: %v, not updating metadata",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, err)
+						logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan."+
+							" Failure to get latest failover log, err: %v",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog, err)
 						c.vbFlogChan <- vbFlog
 						continue
 					}
@@ -247,24 +248,32 @@ func (c *Consumer) processEvents() {
 					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
 					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
 
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
 					c.vbFlogChan <- vbFlog
 					continue
 				}
 
 				if e.Status == mcd.KEY_EEXISTS || e.Status == mcd.NOT_MY_VBUCKET {
-					vbFlog := &vbFlogEntry{streamReqRetry: false, statusCode: e.Status}
+					vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
+
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
 					c.vbFlogChan <- vbFlog
 					continue
 				}
 
 				if e.Status == mcd.EINVAL || e.Status == mcd.ROLLBACK || e.Status == mcd.ENOMEM {
 					vbFlog := &vbFlogEntry{
-						seqNo:          e.Seqno,
-						streamReqRetry: true,
-						statusCode:     e.Status,
-						vb:             e.VBucket,
 						flog:           e.FailoverLog,
+						seqNo:          e.Seqno,
+						statusCode:     e.Status,
+						streamReqRetry: true,
+						vb:             e.VBucket,
 					}
+
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
 					c.vbFlogChan <- vbFlog
 				}
 			case mcd.DCP_STREAMEND:
@@ -316,6 +325,11 @@ func (c *Consumer) processEvents() {
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 					logging.Infof("%s [%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+
+					vbFlog := &vbFlogEntry{signalStreamEnd: true, vb: e.VBucket}
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMEND Inserting entry: %#v to vbFlogChan",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
+					c.vbFlogChan <- vbFlog
 
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
 					c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
@@ -692,38 +706,57 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 		c.hostDcpFeedRWMutex.Lock()
 		delete(c.kvHostDcpFeedMap, vbKvAddr)
 		c.hostDcpFeedRWMutex.Unlock()
-
-		return err
 	}
 
-loop:
-	vbFlog := <-c.vbFlogChan
+	return err
+}
 
-	if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
-		logging.Tracef("%s [%s:%s:%d] vb: %d DCP Stream created", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
-		return nil
-	}
+func (c *Consumer) handleFailoverLog() {
+	logPrefix := "Consumer::handlerFailoverLog"
 
-	if vbFlog.streamReqRetry && vbFlog.vb == vbno {
+	for {
+		select {
+		case vbFlog := <-c.vbFlogChan:
+			logging.Infof("%s [%s:%s:%d] vb: %d Got entry from vbFlogChan: %#v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbFlog)
 
-		if vbFlog.statusCode == mcd.ROLLBACK {
-			logging.Infof("%s [%s:%s:%d] vb: %d vbuuid: %d Rollback requested by DCP, previous startseq: %d rollback startseq: %d",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, vbFlog.seqNo)
-			start, snapStart, snapEnd = vbFlog.seqNo, vbFlog.seqNo, vbFlog.seqNo
+			if vbFlog.signalStreamEnd {
+				logging.Infof("%s [%s:%s:%d] vb: %d Got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
+				continue
+			}
+
+			if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
+				logging.Infof("%s [%s:%s:%d] vb: %d DCP Stream created", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
+				continue
+			}
+
+			if vbFlog.streamReqRetry {
+
+				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vbFlog.vb)
+				var vbBlob vbucketKVBlob
+				var cas gocb.Cas
+				var isNoEnt bool
+
+				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
+
+				if vbFlog.statusCode == mcd.ROLLBACK {
+					logging.Infof("%s [%s:%s:%d] vb: %v Rollback requested by DCP. Retrying DCP stream start vbuuid: %d startSeq: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
+					c.dcpRequestStreamHandle(vbFlog.vb, &vbBlob, vbFlog.seqNo)
+				} else {
+					logging.Infof("%s [%s:%s:%d] vb: %v Retrying DCP stream start vbuuid: %d startSeq: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
+					c.dcpRequestStreamHandle(vbFlog.vb, &vbBlob, 0)
+				}
+
+			}
+
+		case <-c.stopHandleFailoverLogCh:
+			logging.Infof("%s [%s:%s:%d] Exiting routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+
 		}
-
-		logging.Infof("%s [%s:%s:%d] vb: %v Retrying DCP stream start vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbBlob.VBuuid, start, snapStart, snapEnd)
-		err := dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
-		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] vb: %v Retrying DCP stream start failed, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, err)
-		}
-
-		goto loop
 	}
-
-	return nil
 }
 
 func (c *Consumer) getCurrentlyOwnedVbs() []uint16 {

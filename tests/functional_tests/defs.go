@@ -128,3 +128,8 @@ type rateLimit struct {
 	stopCh  chan struct{}
 	loop    bool
 }
+
+type restResponse struct {
+	body []byte
+	err  error
+}

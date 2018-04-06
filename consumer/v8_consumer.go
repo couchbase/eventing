@@ -102,6 +102,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		statsRWMutex:                    &sync.RWMutex{},
 		statsTicker:                     time.NewTicker(time.Duration(hConfig.StatsLogInterval) * time.Millisecond),
 		stopControlRoutineCh:            make(chan struct{}, 1),
+		stopHandleFailoverLogCh:         make(chan struct{}, 1),
 		stopVbOwnerGiveupCh:             make(chan struct{}, rConfig.VBOwnershipGiveUpRoutineCount),
 		stopVbOwnerTakeoverCh:           make(chan struct{}, rConfig.VBOwnershipTakeoverRoutineCount),
 		superSup:                        s,
@@ -174,6 +175,8 @@ func (c *Consumer) Serve() {
 
 	var flogs couchbase.FailoverLog
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs)
+
+	go c.handleFailoverLog()
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
 	logging.Infof("%s [%s:%s:%d] vbnos len: %d",
@@ -333,6 +336,8 @@ func (c *Consumer) Stop() {
 	for _, dcpFeed := range c.kvHostDcpFeedMap {
 		dcpFeed.Close()
 	}
+
+	c.stopHandleFailoverLogCh <- struct{}{}
 
 	close(c.aggDCPFeed)
 
