@@ -18,8 +18,6 @@ const (
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	metakvRebalanceProgress  = metakvEventingPath + "rebalanceProgress/"
 	metakvTempAppsPath       = metakvEventingPath + "tempApps/"
-	metakvChecksumPath       = metakvEventingPath + "checksum/"
-	metakvTempChecksumPath   = metakvEventingPath + "tempchecksum/"
 	stopRebalance            = "stopRebalance"
 )
 

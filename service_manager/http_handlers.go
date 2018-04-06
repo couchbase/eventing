@@ -140,19 +140,29 @@ func (m *ServiceMgr) deletePrimaryStore(appName string) (info *runtimeInfo) {
 		return
 	}
 
-	settingPath := metakvAppSettingsPath + appName
-	err := util.MetaKvDelete(settingPath, nil)
-	if err != nil {
-		info.Code = m.statusCodes.errDelAppSettingsPs.Code
-		info.Info = fmt.Sprintf("Failed to delete setting for app: %v, err: %v", appName, err)
-		return
-	}
+	appList := util.ListChildren(metakvAppsPath)
+	for _, app := range appList {
+		if app == appName {
+			settingsPath := metakvAppSettingsPath + appName
+			err := util.MetaKvDelete(settingsPath, nil)
+			if err != nil {
+				info.Code = m.statusCodes.errDelAppSettingsPs.Code
+				info.Info = fmt.Sprintf("Failed to delete setting for app: %v, err: %v", appName, err)
+				return
+			}
 
-	err = util.DeleteAppContent(metakvAppsPath, metakvChecksumPath, appName)
-	if err != nil {
-		info.Code = m.statusCodes.errDelAppPs.Code
-		info.Info = fmt.Sprintf("Failed to delete app: %v, err: %v", appName, err)
-		return
+			appsPath := metakvAppsPath + appName
+			err = util.MetaKvDelete(appsPath, nil)
+			if err != nil {
+				info.Code = m.statusCodes.errDelAppPs.Code
+				info.Info = fmt.Sprintf("Failed to delete app definition for app: %v, err: %v", appName, err)
+				return
+			}
+
+			info.Code = m.statusCodes.ok.Code
+			info.Info = fmt.Sprintf("Deleting app: %v in the background", appName)
+			return
+		}
 	}
 
 	// TODO : This must be changed to app not deployed / found
@@ -199,11 +209,24 @@ func (m *ServiceMgr) deleteTempStore(appName string) (info *runtimeInfo) {
 		return
 	}
 
-	if err := util.DeleteAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName); err != nil {
-		info.Code = m.statusCodes.errDelAppTs.Code
-		info.Info = fmt.Sprintf("Failed to delete App definition : %v, err: %v", appName, err)
-		return
+	tempAppList := util.ListChildren(metakvTempAppsPath)
+
+	for _, tempAppName := range tempAppList {
+		if appName == tempAppName {
+			path := metakvTempAppsPath + tempAppName
+			err := util.MetaKvDelete(path, nil)
+			if err != nil {
+				info.Code = m.statusCodes.errDelAppTs.Code
+				info.Info = fmt.Sprintf("Failed to delete from temp store for %v, err: %v", appName, err)
+				return
+			}
+
+			info.Code = m.statusCodes.ok.Code
+			info.Info = fmt.Sprintf("Deleting app: %v in the background", appName)
+			return
+		}
 	}
+
 	info.Code = m.statusCodes.ok.Code
 	info.Info = fmt.Sprintf("Deleting app: %v in the background", appName)
 	return
@@ -820,7 +843,9 @@ func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Reque
 	respData := make([]application, len(appList))
 
 	for index, appName := range appList {
-		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
+
+		path := metakvAppsPath + appName
+		data, err := util.MetakvGet(path)
 		if err == nil {
 
 			config := cfg.GetRootAsConfig(data, 0)
@@ -913,7 +938,8 @@ func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtim
 	logging.Infof("Fetching function draft definitions for %s", appName)
 
 	for _, name := range util.ListChildren(metakvTempAppsPath) {
-		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, name)
+		path := metakvTempAppsPath + name
+		data, err := util.MetakvGet(path)
 		if err == nil {
 			uErr := json.Unmarshal(data, &app)
 			if uErr != nil {
@@ -938,12 +964,13 @@ func (m *ServiceMgr) getTempStoreAll() []application {
 	applications := make([]application, len(tempAppList))
 
 	for i, name := range tempAppList {
-		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, name)
+		path := metakvTempAppsPath + name
+		data, err := util.MetakvGet(path)
 		if err == nil {
 			var app application
 			uErr := json.Unmarshal(data, &app)
 			if uErr != nil {
-				logging.Errorf("Failed to unmarshal data from metakv, name:%v, err: %v data: %v", name, uErr, string(data))
+				logging.Errorf("Failed to unmarshal data from metakv, err: %v", uErr)
 				continue
 			}
 
@@ -996,6 +1023,7 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	appName := app.Name
+	path := metakvTempAppsPath + appName
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
 	logging.Infof("Saving handler to temporary store: %v", appName)
 
@@ -1040,15 +1068,7 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	//Delete stale entry
-	err = util.DeleteAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName)
-	if err != nil {
-		info.Code = m.statusCodes.errSaveAppTs.Code
-		info.Info = fmt.Sprintf("Failed to clean up stale entry from TempStore: %v err: %v", appName, err)
-		return
-	}
-
-	err = util.WriteAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName, data)
+	err = util.MetakvSet(path, data, nil)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppTs.Code
 		info.Info = fmt.Sprintf("Failed to store handlers for app: %v err: %v", appName, err)
@@ -1260,15 +1280,8 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	//Delete stale entry
-	err = util.DeleteAppContent(metakvAppsPath, metakvChecksumPath, appName)
-	if err != nil {
-		info.Code = m.statusCodes.errSaveAppPs.Code
-		info.Info = fmt.Sprintf("Failed to clean up stale entry for app: %v err: %v", appName, err)
-		return
-	}
-
-	err = util.WriteAppContent(metakvAppsPath, metakvChecksumPath, appName, appContent)
+	path := metakvAppsPath + appName
+	err = util.MetakvSet(path, appContent, nil)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppPs.Code
 		info.Info = fmt.Sprintf("App: %v failed to write to metakv, err: %v", appName, err)
@@ -1817,8 +1830,6 @@ func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.CleanupEventing, r, nil)
 
-	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvChecksumPath)
-	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvTempChecksumPath)
 	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvAppsPath)
 	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvTempAppsPath)
 	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvAppSettingsPath)

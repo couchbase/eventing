@@ -163,6 +163,17 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 			s.appProcessingStatus[appName] = true
 			s.appDeploymentStatus[appName] = true
 		}
+	} else {
+
+		// Delete application request
+		splitRes := strings.Split(path, "/")
+		appName := splitRes[len(splitRes)-1]
+		msg := supCmdMsg{
+			ctx: appName,
+			cmd: cmdAppDelete,
+		}
+
+		s.supCmdCh <- msg
 	}
 	return nil
 }

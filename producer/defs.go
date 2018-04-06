@@ -17,7 +17,6 @@ const (
 	metakvAppsPath        = metakvEventingPath + "apps/"
 	metakvAppSettingsPath = metakvEventingPath + "appsettings/"
 	metakvConfigKeepNodes = metakvEventingPath + "config/keepNodes" // Store list of eventing keepNodes
-	metakvChecksumPath    = metakvEventingPath + "checksum/"
 )
 
 const (

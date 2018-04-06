@@ -1,13 +1,10 @@
 package util
 
 import (
-	"bytes"
 	"crypto/md5"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"hash/crc32"
-	"io"
 	"io/ioutil"
 	"net"
 	"net/url"
@@ -33,10 +30,6 @@ const (
 	MgmtService          = "mgmt"
 
 	HTTPRequestTimeout = time.Duration(5000) * time.Millisecond
-)
-
-const (
-	metakvMaxDocSize = 4096 //Fragment size for Appcontent
 )
 
 type Uint16Slice []uint16
@@ -83,43 +76,6 @@ func (config Config) Update(data interface{}) error {
 func (config Config) Set(key string, value interface{}) Config {
 	config[key] = value
 	return config
-}
-
-func ComputeMD5(data []byte) ([]byte, error) {
-	hash := md5.New()
-	if _, err := io.Copy(hash, bytes.NewReader(data)); err != nil {
-		return nil, err
-	}
-	checksum := hash.Sum(nil)
-	return checksum, nil
-}
-
-type PayloadHash struct {
-	Fragmentcnt  int      `json:"fragment_count"`
-	Fragmenthash [][]byte `json:"fragment_hash"`
-}
-
-func (payloadhash *PayloadHash) Update(payload []byte, fragmentSize int) error {
-	length := len(payload)
-	fragmentCount := length / fragmentSize
-	if length%fragmentSize != 0 {
-		fragmentCount++
-	}
-	payloadhash.Fragmentcnt = fragmentCount
-	payloadhash.Fragmenthash = make([][]byte, fragmentCount)
-	for idx := 0; idx < fragmentCount; idx++ {
-		curridx := idx * fragmentSize
-		lastidx := (idx + 1) * fragmentSize
-		if lastidx > length {
-			lastidx = length
-		}
-		checksum, err := ComputeMD5(payload[curridx:lastidx])
-		if err != nil {
-			return err
-		}
-		payloadhash.Fragmenthash[idx] = checksum
-	}
-	return nil
 }
 
 func SprintDCPCounts(counts map[mcd.CommandCode]uint64) (string, uint64, time.Time) {
@@ -515,15 +471,12 @@ func ListChildren(path string) []string {
 	}
 
 	var children []string
-	hmap := make(map[string]bool)
 	for _, entry := range entries {
 		splitRes := strings.Split(entry.Path, "/")
-		child := splitRes[len(splitRes)-2]
-		if _, seen := hmap[child]; seen == false {
-			hmap[child] = true
-			children = append(children, child)
-		}
+		child := splitRes[len(splitRes)-1]
+		children = append(children, child)
 	}
+
 	return children
 }
 
@@ -549,123 +502,6 @@ func MetakvRecursiveDelete(dirpath string) error {
 
 func RecursiveDelete(dirpath string) error {
 	return metakv.RecursiveDelete(dirpath)
-}
-
-//WriteAppContent fragments the payload and store it to metakv
-func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) error {
-	appsPath += appName
-	appsPath += "/"
-	length := len(payload)
-
-	checksumPath += appName
-	fragmentCount := length / metakvMaxDocSize
-	if length%metakvMaxDocSize != 0 {
-		fragmentCount++
-	}
-
-	for idx := 0; idx < fragmentCount; idx++ {
-		currpath := appsPath + strconv.Itoa(int(idx))
-		curridx := idx * metakvMaxDocSize
-		lastidx := (idx + 1) * metakvMaxDocSize
-		if lastidx > length {
-			lastidx = length
-		}
-		fragment := payload[curridx:lastidx]
-		err := MetakvSet(currpath, fragment, nil)
-		if err != nil {
-			//Delete existing entry from appspath
-			if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-				return errd
-			}
-			return err
-		}
-	}
-
-	//Compute MD5 hash and Update it to metakv
-	payloadhash := PayloadHash{}
-	if err := payloadhash.Update(payload, metakvMaxDocSize); err != nil {
-		//Delete existing entry from appspath
-		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-			return errd
-		}
-		return err
-	}
-
-	//Marshal payloadhash and update it to metakv
-	hashdata, err := json.Marshal(&payloadhash)
-	if err != nil {
-		//Delete existing entry from appspath
-		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-			return errd
-		}
-		return err
-	}
-
-	if err = MetakvSet(checksumPath, hashdata, nil); err != nil {
-		//Delete existing entry from appspath
-		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-			return errd
-		}
-		return err
-	}
-
-	return nil
-}
-
-//ReadAppContent reads Handler Code
-func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
-	//Fetch Checksum data from metakv and unmarshal it
-	checksumPath += appName
-	var payloadhash PayloadHash
-	if hashdata, err := MetakvGet(checksumPath); err != nil {
-		return nil, err
-	} else {
-		if err := json.Unmarshal(hashdata, &payloadhash); err != nil {
-			return nil, err
-		}
-	}
-
-	//Read fragment data
-	var payload []byte
-	appsPath += appName
-	for idx := 0; idx < payloadhash.Fragmentcnt; idx++ {
-		path := appsPath + "/" + strconv.Itoa(int(idx))
-		data, err := MetakvGet(path)
-		if err != nil {
-			return nil, err
-		}
-
-		if data == nil {
-			return nil, errors.New("Reading stale data")
-		}
-
-		if fragmenthash, err := ComputeMD5(data); err != nil {
-			return nil, err
-		} else {
-			if bytes.Equal(fragmenthash, payloadhash.Fragmenthash[idx]) != true {
-				return nil, errors.New("Checksum mismatch for payload fragments")
-			}
-			payload = append(payload, data...)
-		}
-	}
-	return payload, nil
-}
-
-//DeleteAppContent delete handler code
-func DeleteAppContent(appPath, checksumPath, appName string) error {
-	//Delete Checksum path
-	checksumPath += appName
-	if err := MetaKvDelete(checksumPath, nil); err != nil {
-		return err
-	}
-
-	//Delete Apps Path
-	appPath += appName
-	appPath += "/"
-	if err := MetakvRecursiveDelete(appPath); err != nil {
-		return err
-	}
-	return nil
 }
 
 func GetHash(appCode string) string {

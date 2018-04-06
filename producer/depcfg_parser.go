@@ -19,13 +19,14 @@ func (p *Producer) parseDepcfg() error {
 	logging.Infof("%s [%s] Opening up application file", logPrefix, p.appName)
 
 	var cfgData []byte
+	path := metakvAppsPath + p.appName
 
 	// Adding sleep until source of MB-26702 is known
 	time.Sleep(5 * time.Second)
 
 	// Keeping metakv lookup in retry loop. There is potential metakv related race between routine that gets notified about updates
 	// to metakv path and routine that does metakv lookup
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), metakvAppCallback, p, metakvAppsPath, metakvChecksumPath, p.appName, &cfgData)
+	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), metakvGetCallback, p, path, &cfgData)
 
 	config := cfg.GetRootAsConfig(cfgData, 0)
 
