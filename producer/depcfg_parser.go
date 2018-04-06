@@ -250,6 +250,12 @@ func (p *Producer) parseDepcfg() error {
 		p.enableSnapshotSMR = false
 	}
 
+	if val, ok := settings["iterator_refresh_counter"]; ok {
+		p.iteratorRefreshCounter = val.(int)
+	} else {
+		p.iteratorRefreshCounter = 10 * 1000
+	}
+
 	if val, ok := settings["lss_cleaner_max_threshold"]; ok {
 		p.lssCleanerMaxThreshold = int(val.(float64))
 	} else {

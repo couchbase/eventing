@@ -25,7 +25,7 @@ import (
 func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, rConfig *common.RebalanceConfig,
 	index int, uuid string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	dcpConfig map[string]interface{}, p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
-	numVbuckets int) *Consumer {
+	iteratorRefreshCounter, numVbuckets int) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -69,6 +69,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		fuzzOffset:                      hConfig.FuzzOffset,
 		gracefulShutdownChan:            make(chan struct{}, 1),
 		ipcType:                         pConfig.IPCType,
+		iteratorRefreshCounter:          iteratorRefreshCounter,
 		hostDcpFeedRWMutex:              &sync.RWMutex{},
 		kvHostDcpFeedMap:                make(map[string]*couchbase.DcpFeed),
 		lcbInstCapacity:                 hConfig.LcbInstCapacity,

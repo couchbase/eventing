@@ -537,6 +537,10 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
+	if info = m.validatePositiveInteger("iterator_refresh_counter", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validatePositiveInteger("lss_cleaner_max_threshold", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}

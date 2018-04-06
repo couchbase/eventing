@@ -215,8 +215,9 @@ type Consumer struct {
 	docTimerEntryCh  chan *byTimer
 	cronTimerEntryCh chan *timerMsg
 
-	timerAddrs    map[string]map[string]string
-	vbPlasmaStore *plasma.Plasma
+	iteratorRefreshCounter int // Refresh interval for plasma iterator to allow garbage to be cleared up
+	timerAddrs             map[string]map[string]string
+	vbPlasmaStore          *plasma.Plasma
 
 	plasmaStoreCh     chan *plasmaStoreEntry
 	plasmaStoreStopCh chan struct{}

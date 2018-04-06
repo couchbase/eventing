@@ -84,6 +84,7 @@ type Producer struct {
 	// Plasma configs
 	autoSwapper            bool
 	enableSnapshotSMR      bool
+	iteratorRefreshCounter int
 	lssCleanerMaxThreshold int
 	lssCleanerThreshold    int
 	lssReadAheadSize       int64

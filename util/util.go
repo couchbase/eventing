@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io/ioutil"
-	"net"
 	"net/url"
 	"sort"
 	"strconv"
@@ -394,34 +393,6 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 	}
 
 	return aggProgress, errMap
-}
-
-func GetAggTimerHostPortAddrs(appName, eventingAdminPort, urlSuffix string) (map[string]map[string]string, error) {
-	logPrefix := "util::GetAggTimerHostPortAddrs"
-
-	netClient := NewClient(HTTPRequestTimeout)
-
-	endpointURL := fmt.Sprintf("http://%s/%s?name=%s", net.JoinHostPort(Localhost(), eventingAdminPort), urlSuffix, appName)
-
-	res, err := netClient.Get(endpointURL)
-	if err != nil {
-		logging.Errorf("%s Failed to capture aggregate timer host port addrs from url: %rs, err: %v", logPrefix, endpointURL, err)
-		return nil, err
-	}
-
-	buf, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		logging.Errorf("%s Failed to read response from url: %rs, err: %v", logPrefix, endpointURL, err)
-		return nil, err
-	}
-
-	hostPortAddrs := make(map[string]map[string]string)
-	err = json.Unmarshal(buf, &hostPortAddrs)
-	if err != nil {
-		return nil, err
-	}
-
-	return hostPortAddrs, nil
 }
 
 func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {
