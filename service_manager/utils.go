@@ -55,6 +55,7 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "worker_count", float64(3))
 	fillMissingDefault(settings, "worker_feedback_queue_cap", float64(10*1000))
 	fillMissingDefault(settings, "worker_queue_cap", float64(100*1000))
+	fillMissingDefault(settings, "worker_queue_mem_cap", float64(1024))
 	fillMissingDefault(settings, "xattr_doc_timer_entry_prune_threshold", float64(100))
 
 	// Process related configuration
@@ -81,7 +82,8 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "use_memory_manager", true)
 
 	// DCP connection related configurations
-	fillMissingDefault(settings, "data_chan_size", float64(10000))
+	fillMissingDefault(settings, "agg_dcp_feed_mem_cap", float64(1024))
+	fillMissingDefault(settings, "data_chan_size", float64(50))
 	fillMissingDefault(settings, "dcp_gen_chan_size", float64(10000))
 	fillMissingDefault(settings, "dcp_num_connections", float64(1))
 }

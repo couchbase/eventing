@@ -32,6 +32,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		addCronTimerStopCh:              make(chan struct{}, 1),
 		app:                             app,
 		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpConfig["dataChanSize"].(int)),
+		aggDCPFeedMemCap:                hConfig.AggDCPFeedMemCap,
 		breakpadOn:                      pConfig.BreakpadOn,
 		bucket:                          hConfig.SourceBucket,
 		cbBucket:                        b,
@@ -130,6 +131,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbsStreamRRWMutex:               &sync.RWMutex{},
 		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
 		workerQueueCap:                  hConfig.WorkerQueueCap,
+		workerQueueMemCap:               hConfig.WorkerQueueMemCap,
 		xattrEntryPruneThreshold:        hConfig.XattrEntryPruneThreshold,
 	}
 
@@ -284,7 +286,6 @@ func (c *Consumer) HandleV8Worker() {
 	go c.storeDocTimerEventLoop()
 
 	go c.processEvents()
-
 }
 
 // Stop acts terminate routine for consumer handle

@@ -191,6 +191,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.WorkerQueueCap = int64(100 * 1000)
 	}
 
+	if val, ok := settings["worker_queue_mem_cap"]; ok {
+		p.handlerConfig.WorkerQueueMemCap = int64(val.(float64)) * 1024 * 1024
+	} else {
+		p.handlerConfig.WorkerQueueMemCap = 1024 * 1024 * 1024
+	}
+
 	if val, ok := settings["xattr_doc_timer_entry_prune_threshold"]; ok {
 		p.handlerConfig.XattrEntryPruneThreshold = int(val.(float64))
 	} else {
@@ -310,11 +316,16 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	// DCP connection related configurations
+	if val, ok := settings["agg_dcp_feed_mem_cap"]; ok {
+		p.handlerConfig.AggDCPFeedMemCap = int64(val.(float64)) * 1024 * 1024
+	} else {
+		p.handlerConfig.AggDCPFeedMemCap = 1024 * 1024 * 1024
+	}
 
 	if val, ok := settings["data_chan_size"]; ok {
 		p.dcpConfig["dataChanSize"] = int(val.(float64))
 	} else {
-		p.dcpConfig["dataChanSize"] = 10000
+		p.dcpConfig["dataChanSize"] = 50
 	}
 
 	if val, ok := settings["dcp_gen_chan_size"]; ok {

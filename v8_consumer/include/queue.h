@@ -19,47 +19,41 @@
 #include <thread>
 
 template <typename T> class Queue {
-private:
-  std::queue<T> data_queue;
-  std::mutex mut;
-  std::condition_variable data_cond;
-  std::atomic<std::int64_t> entry_count = {0};
-
 public:
   Queue() = default;
   Queue(const Queue &) = delete;
   Queue &operator=(const Queue &) = delete;
 
-  T pop() {
+  T Pop() {
     std::unique_lock<std::mutex> lk(mut);
     while (data_queue.empty()) {
       data_cond.wait(lk);
     }
     auto value = data_queue.front();
+    queue_size -= value.GetSize();
     data_queue.pop();
     entry_count--;
     return value;
   }
 
-  void pop(T &item) {
-    std::unique_lock<std::mutex> lk(mut);
-    while (data_queue.empty()) {
-      data_cond.wait(lk);
-    }
-    item = data_queue.front();
-    data_queue.pop();
-    entry_count--;
-  }
-
-  void push(const T &item) {
+  void Push(const T &item) {
     std::unique_lock<std::mutex> lk(mut);
     data_queue.push(item);
+    queue_size += item.GetSize();
     entry_count++;
     lk.unlock();
     data_cond.notify_one();
   }
 
-  int64_t count() { return entry_count; }
+  int64_t Count() { return entry_count; }
+  std::size_t Size() { return queue_size; }
+
+private:
+  std::queue<T> data_queue;
+  std::mutex mut;
+  std::condition_variable data_cond;
+  std::atomic<std::int64_t> entry_count = {0};
+  std::atomic<std::size_t> queue_size = {0};
 };
 
 #endif
