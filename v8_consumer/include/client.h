@@ -46,6 +46,8 @@ public:
   static AppWorker *GetAppWorker();
   std::vector<char> *GetReadBuffer();
 
+  void FlushToConn(uv_stream_t *stream, char *buffer, int length);
+
   void InitTcpSock(const std::string &appname, const std::string &addr,
                    const std::string &worker_id, int batch_size,
                    int feedback_batch_size, int feedback_port, int port);
