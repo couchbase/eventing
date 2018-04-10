@@ -240,6 +240,15 @@ func (c *Consumer) cleanupProcessedDocTimers() {
 					continue
 				}
 
+				lastCleanedUpTs, err := time.Parse(tsLayout, vbBlob.LastCleanedUpDocIDTimerEvent)
+				if err == nil {
+					if lastProcessedTs.Sub(lastCleanedUpTs) == time.Second {
+						logging.Tracef("%s [%s:%d] vb: %v Skipping cleanup operation as LastProcessedDocIDTimerEvent: %s LastCleanedUpDocIDTimerEvent: %s",
+							logPrefix, c.workerName, c.Pid(), vb, vbBlob.LastProcessedDocIDTimerEvent, vbBlob.LastCleanedUpDocIDTimerEvent)
+						continue
+					}
+				}
+
 				var itr *plasma.MVCCIterator
 				var itrCount int
 				firstIteration := true
@@ -315,11 +324,16 @@ func (c *Consumer) cleanupUtility(lastProcessedTs time.Time, timerKey string, vb
 	if len(entries) == 5 {
 		lTs, err := time.Parse(tsLayout, entries[2])
 		if err != nil {
-
+			logging.Errorf("%s [%s:%s:%d] vb: %d key: %ru Failed to parse timestamp: %s, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerKey, entries[2], err)
+			return
 		}
 
 		lVb, err := strconv.Atoi(strings.Split(entries[0], "_")[1])
 		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] vb: %d Failed to parse vbucket id, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+			return
 		}
 
 		if !lTs.After(lastProcessedTs) && (lVb == int(vb)) {
@@ -332,6 +346,7 @@ func (c *Consumer) cleanupUtility(lastProcessedTs time.Time, timerKey string, vb
 			} else {
 				counter := c.vbProcessingStats.getVbStat(vb, "deleted_during_cleanup_counter").(uint64)
 				c.vbProcessingStats.updateVbStat(vb, "deleted_during_cleanup_counter", counter+1)
+				c.vbProcessingStats.updateVbStat(vb, "last_cleaned_up_doc_id_timer_event", entries[2])
 			}
 		}
 	}

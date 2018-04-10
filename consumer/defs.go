@@ -430,6 +430,7 @@ type vbucketKVBlob struct {
 	VBuuid                    uint64           `json:"vb_uuid"`
 
 	CurrentProcessedDocIDTimer   string `json:"currently_processed_doc_id_timer"`
+	LastCleanedUpDocIDTimerEvent string `json:"last_cleaned_up_doc_id_timer_event"`
 	LastProcessedDocIDTimerEvent string `json:"last_processed_doc_id_timer_event"`
 	NextDocIDTimerToProcess      string `json:"next_doc_id_timer_to_process"`
 

@@ -385,7 +385,7 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 			continue
 		}
 
-		logging.Infof("%s endpointURL: %r VbsRemainingToShuffle: %d VbsOwnedPerPlan: %d",
+		logging.Infof("%s endpointURL: %rs VbsRemainingToShuffle: %d VbsOwnedPerPlan: %d",
 			logPrefix, endpointURL, progress.VbsRemainingToShuffle, progress.VbsOwnedPerPlan)
 
 		aggProgress.VbsRemainingToShuffle += progress.VbsRemainingToShuffle

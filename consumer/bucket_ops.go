@@ -265,6 +265,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	vbBlob := args[2].(*vbucketKVBlob)
 
 	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+		UpsertEx("last_cleaned_up_doc_id_timer_event", vbBlob.LastCleanedUpDocIDTimerEvent, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_cron_timer", vbBlob.CurrentProcessedCronTimer, gocb.SubdocFlagCreatePath).
