@@ -443,6 +443,7 @@ var startFeedFromKVNodesCallback = func(args ...interface{}) error {
 	kvNodeAddrs := args[4].([]string)
 
 	feedName := couchbase.DcpFeedName(fmt.Sprintf("eventing:%s_%s_vb_%v_docTimer", c.HostPortAddr(), c.workerName, vb))
+	(*b).Refresh()
 
 	var err error
 	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), includeXATTRs, kvNodeAddrs, 0xABCD, c.dcpConfig)
@@ -458,6 +459,8 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::populateDcpFeedVbEntriesCallback"
 
 	c := args[0].(*Consumer)
+
+	c.cbBucket.Refresh()
 
 	defer func() {
 		if r := recover(); r != nil {
