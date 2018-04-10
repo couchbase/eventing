@@ -78,7 +78,7 @@ error_email() {
        -s west.smtp.mx.exch029.serverdata.net:25 \
        -f 'Eventing CI <community_admin@couchbase.com>' \
        -t $WATCHERS \
-       -u 'Eventing CI just broke'
+       -u "Eventing CI $CINAME broke"
 }
 
 error_exit() {
