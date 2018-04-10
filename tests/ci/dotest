@@ -117,7 +117,7 @@ export phase=functional
 if [[ "$MODE" == *"$phase"* ]]; then
   echo "</pre><h4>${phase^} tests</h4><pre>"
   cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
-  GOMAXPROCS=16 $GOROOT/bin/go test -timeout 2h -tags 'handler n1ql' -v 2>&1 | tee -a $WORKSPACE/test.log
+  GOMAXPROCS=16 $GOROOT/bin/go test -timeout 2h -tags handler -v 2>&1 | tee -a $WORKSPACE/test.log
   collect_logs
 fi
 
