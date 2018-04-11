@@ -2,6 +2,8 @@ package consumer
 
 import (
 	"time"
+
+	"github.com/couchbase/eventing/logging"
 )
 
 func newVbProcessingStats(appName string, numVbuckets uint16) vbStats {
@@ -93,9 +95,17 @@ func (vbs vbStats) copyVbStats(numVbuckets uint16) vbStats {
 }
 
 func (c *Consumer) updateWorkerStats() {
+	logPrefix := "Consumer::updateWorkerStats"
+
 	for {
 		select {
 		case <-c.updateStatsTicker.C:
+			if c.workerExited {
+				logging.Infof("%s [%s:%s:%d] Skipping sending worker stat opcode as worker exited",
+					logPrefix, c.workerName, c.tcpPort, c.Pid())
+				continue
+			}
+
 			c.dcpEventsRemainingToProcess()
 			c.sendGetExecutionStats(false)
 			c.sendGetFailureStats(false)

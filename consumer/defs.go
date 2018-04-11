@@ -193,6 +193,7 @@ type Consumer struct {
 	vbsStreamClosedRWMutex *sync.RWMutex
 	vbStreamRequested      map[uint16]struct{} // Access controlled by vbsStreamRRWMutex
 	vbsStreamRRWMutex      *sync.RWMutex
+	workerExited           bool
 
 	xattrEntryPruneThreshold int
 
