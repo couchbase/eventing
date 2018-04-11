@@ -90,6 +90,8 @@ func (r *rebalancer) gatherProgress() {
 		return
 	}
 
+	var rebProgressCounter int
+
 	for {
 		select {
 		case <-progressTicker.C:
@@ -98,7 +100,7 @@ func (r *rebalancer) gatherProgress() {
 				logging.Errorf("%s Failed to capture cluster wide rebalance progress from all nodes, errMap dump: %rm", logPrefix, errMap)
 
 				util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
-				r.cb.done(fmt.Errorf("%s Failed to aggregate rebalance progress from all eventing nodes, err: %v", logPrefix, errMap), r.done)
+				r.cb.done(fmt.Errorf("Failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
 				progressTicker.Stop()
 				return
 			} else if len(errMap) > 0 {
@@ -131,7 +133,24 @@ func (r *rebalancer) gatherProgress() {
 					aggProgress.VbsRemainingToShuffle = p.VbsRemainingToShuffle
 				}
 
-				progress = 1.0 - (float64(p.VbsRemainingToShuffle))/float64(aggProgress.VbsRemainingToShuffle)
+				workRemaining := (float64(p.VbsRemainingToShuffle)) / float64(aggProgress.VbsRemainingToShuffle)
+
+				if util.FloatEquals(progress, (1 - workRemaining)) {
+					rebProgressCounter++
+				} else {
+					rebProgressCounter = 0
+				}
+
+				progress = 1.0 - workRemaining
+			}
+
+			if rebProgressCounter == rebalanceStalenessCounter {
+				logging.Errorf("%s Failing rebalance as progress hasn't made progress for past %d secs", logPrefix, rebProgressCounter*3)
+
+				util.Retry(util.NewFixedBackoff(time.Second), stopRebalanceCallback, r)
+				r.cb.done(fmt.Errorf("Eventing rebalance hasn't made progress for past %d secs", rebProgressCounter*3), r.done)
+				progressTicker.Stop()
+				return
 			}
 
 			r.cb.progress(progress, r.c)
