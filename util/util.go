@@ -29,6 +29,8 @@ const (
 	MgmtService          = "mgmt"
 
 	HTTPRequestTimeout = time.Duration(5000) * time.Millisecond
+
+	EPSILON = 0.00000001
 )
 
 type Uint16Slice []uint16
@@ -858,4 +860,8 @@ func ToStr(value bool) (strValue string) {
 	}
 
 	return
+}
+
+func FloatEquals(a, b float64) bool {
+	return (a-b) < EPSILON && (b-a) < EPSILON
 }
