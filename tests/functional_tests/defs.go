@@ -14,15 +14,10 @@ const (
 	deletePrimStoreURL = "http://127.0.0.1:9000/_p/event/deleteApplication/?name="
 	deployedAppsURL    = "http://127.0.0.1:9300/getDeployedApps"
 
-	processingStatURL1 = "http://127.0.0.1:9300/getEventProcessingStats?name="
-	executionStatsURL1 = "http://127.0.0.1:9300/getExecutionStats?name="
-	failureStatsURL1   = "http://127.0.0.1:9300/getLatencyStats?name="
-	latencyStatsURL1   = "http://127.0.0.1:9300/getFailureStats?name="
-
-	processingStatURL2 = "http://127.0.0.1:9302/getEventProcessingStats?name="
-	executionStatsURL2 = "http://127.0.0.1:9302/getExecutionStats?name="
-	failureStatsURL2   = "http://127.0.0.1:9302/getLatencyStats?name="
-	latencyStatsURL2   = "http://127.0.0.1:9302/getFailureStats?name="
+	statsEndpointURL0 = "http://127.0.0.1:9300/api/v1/stats"
+	statsEndpointURL1 = "http://127.0.0.1:9301/api/v1/stats"
+	statsEndpointURL2 = "http://127.0.0.1:9302/api/v1/stats"
+	statsEndpointURL3 = "http://127.0.0.1:9303/api/v1/stats"
 )
 
 const (
@@ -113,6 +108,7 @@ type commonSettings struct {
 	deadlineTimeout   int
 	executionTimeout  int
 	lcbInstCap        int
+	logLevel          string
 	metaBucket        string
 	recursiveBehavior string
 	sourceBucket      string

@@ -398,6 +398,8 @@ func metaStateDump() {
 	}
 	fmt.Println()
 	fmt.Println()
+
+	dumpStats()
 }
 
 func parseN1qlResponse(res []byte) (map[string]interface{}, error) {

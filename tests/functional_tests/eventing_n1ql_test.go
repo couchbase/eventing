@@ -33,7 +33,7 @@ func testFlexReset(handler, testName string, t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
 }
@@ -94,7 +94,7 @@ func TestN1QLLabelledBreak(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
 }
@@ -121,7 +121,7 @@ func TestN1QLUnlabelledBreak(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
 }
@@ -148,7 +148,7 @@ func TestN1QLThrowStatement(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
 }
@@ -175,7 +175,7 @@ func TestN1QLNestedForLoop(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
 }
@@ -195,7 +195,7 @@ func TestDocTimerN1QLOp(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }
 
@@ -214,7 +214,7 @@ func TestCronTimerN1QLOp(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }
 
@@ -233,6 +233,6 @@ func TestOnUpdateN1QLOp(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }

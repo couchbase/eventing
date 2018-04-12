@@ -208,19 +208,16 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["execution_timeout"] = s.executionTimeout
 	}
 
-	settings["feedback_batch_size"] = 100
-	settings["feedback_read_buffer_size"] = 4096
-	settings["worker_feedback_queue_cap"] = 1000
+	if s.logLevel == "" {
+		settings["log_level"] = "INFO"
+	} else {
+		settings["log_level"] = s.logLevel
+	}
 
-	settings["skip_timer_threshold"] = 86400
-	settings["tick_duration"] = 60000
-	settings["timer_processing_tick_interval"] = 500
-	settings["log_level"] = "INFO"
-	settings["cron_timers_per_doc"] = 10000
-	settings["cleanup_timers"] = false
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
 	settings["description"] = "Sample app"
+	settings["breakpad_on"] = false
 
 	app.Settings = settings
 
@@ -481,18 +478,11 @@ func flushFunctionAndBucket(handler string) {
 	bucketFlush("hello-world")
 }
 
-func dumpStats(handler string) {
-	makeStatsRequest("Node1: Processing stats from Go process", processingStatURL1+handler)
-	makeStatsRequest("Node2: Processing stats from Go process", processingStatURL2+handler)
-
-	makeStatsRequest("Node1: Execution stats from CPP worker", executionStatsURL1+handler)
-	makeStatsRequest("Node2: Execution stats from CPP worker", executionStatsURL2+handler)
-
-	makeStatsRequest("Node1: Latency stats from CPP worker", failureStatsURL1+handler)
-	makeStatsRequest("Node2: Latency stats from CPP worker", failureStatsURL2+handler)
-
-	makeStatsRequest("Node1: Failure stats from CPP worker", latencyStatsURL1+handler)
-	makeStatsRequest("Node2: Failure stats from CPP worker", latencyStatsURL2+handler)
+func dumpStats() {
+	makeStatsRequest("Node0: Eventing stats", statsEndpointURL0)
+	makeStatsRequest("Node1: Eventing stats", statsEndpointURL1)
+	makeStatsRequest("Node2: Eventing stats", statsEndpointURL2)
+	makeStatsRequest("Node3: Eventing stats", statsEndpointURL3)
 }
 
 func makeStatsRequest(context, url string) {
@@ -506,13 +496,32 @@ func makeStatsRequest(context, url string) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Println("Delete resp:", err)
+		fmt.Println("http call resp:", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Printf("%v::%v\n", context, string(body))
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Read response: ", err)
+		return
+	}
+
+	var response interface{}
+	err = json.Unmarshal(data, &response)
+	if err != nil {
+		fmt.Println("Unmarshal stats response:", err)
+		return
+	}
+
+	// Pretty print json
+	body, err := json.MarshalIndent(&response, "", "  ")
+	if err != nil {
+		fmt.Println("Pretty print json:", err)
+		return
+	}
+
+	fmt.Printf("%v::%s\n", context, string(body))
 }
 
 func eventingConsumerPidsAlive() (bool, int) {
