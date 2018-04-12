@@ -108,7 +108,7 @@ func TestOnUpdateBucketOpDefaultSettings10K(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }
 
@@ -127,7 +127,7 @@ func TestOnUpdateBucketOpDefaultSettings100K(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }
 
@@ -165,7 +165,7 @@ func TestOnDeleteBucketOp5K(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }
 

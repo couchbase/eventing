@@ -10,10 +10,10 @@ function OnDelete(meta) {
     cronTimer(NDtimerCallbackN1QL, meta.id, expiry);
 }
 
-function NDtimerCallbackCreate(docid, expiry) {
+function NDtimerCallbackCreate(docid) {
     dst_bucket3[docid] = 'from NDtimerCallbackCreate';
 }
 
-function NDtimerCallbackN1QL(docid, expiry) {
+function NDtimerCallbackN1QL(docid) {
     delete dst_bucket3[docid];
 }

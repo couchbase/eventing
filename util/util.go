@@ -622,7 +622,7 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 		}
 
 		if data == nil {
-			logging.Errorf("%s MetakvGet data is empty,  fragment number: %d fragment count: %d appName: %s", logPrefix, idx, payloadhash.Fragmentcnt,appName)
+			logging.Errorf("%s MetakvGet data is empty,  fragment number: %d fragment count: %d appName: %s", logPrefix, idx, payloadhash.Fragmentcnt, appName)
 			return nil, errors.New("Reading stale data")
 		}
 

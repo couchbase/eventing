@@ -259,8 +259,8 @@ func TestEventingSwapRebOnUpdateBucketOp(t *testing.T) {
 
 /** OnUpdate Bucket op cases end **/
 
-/** OnUpdate doc/cron timer cases start **/
-func TestEventingRebKVOpsOnUpdateDocTimerOnyByOne(t *testing.T) {
+/** OnUpdate doc/cron timer cases start - Disabled for now as in vulcan they are going as Beta**/
+/*func TestEventingRebKVOpsOnUpdateDocTimerOnyByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_doc_timer"
 
@@ -442,14 +442,14 @@ func TestEventingSwapRebOnUpdateDocTimer(t *testing.T) {
 	rl.stopCh <- struct{}{}
 
 	flushFunctionAndBucket(handler)
-}
+}*/
 
 /** OnUpdate doc/cron timer cases end **/
 
 /** Multiple handlers cases start **/
 func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler1 := "bucket_op_with_doc_timer"
+	handler1 := "sys_test_bucket_op"
 	handler2 := "bucket_op_on_update"
 
 	flushFunctionAndBucket(handler1)
@@ -482,8 +482,8 @@ func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	// addAllNodesOneByOne("eventing")
-	// removeAllNodesOneByOne()
+	addAllNodesOneByOne("eventing")
+	removeAllNodesOneByOne()
 
 	rl.stopCh <- struct{}{}
 
@@ -491,9 +491,9 @@ func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 	flushFunctionAndBucket(handler2)
 }
 
-/*func TestEventingRebBucketOpAndDocTimerHandlersAllAtOnce(t *testing.T) {
+func TestEventingRebBucketOpAndDocTimerHandlersAllAtOnce(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler1 := "bucket_op_with_doc_timer"
+	handler1 := "sys_test_bucket_op"
 	handler2 := "bucket_op_on_update"
 
 	flushFunctionAndBucket(handler1)
@@ -511,7 +511,7 @@ func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler1)
 	waitForDeployToFinish(handler2)
@@ -524,14 +524,14 @@ func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)
-}*/
+}
 
 // Swap rebalance operations for eventing role
 
 func TestEventingSwapRebMultipleHandlers(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler1 := "bucket_op_on_update"
-	handler2 := "bucket_op_with_doc_timer"
+	handler2 := "sys_test_bucket_op"
 
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)

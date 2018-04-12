@@ -49,7 +49,7 @@ const (
 )
 
 const (
-	maxHandlerSize = 128*1024
+	maxHandlerSize = 128 * 1024
 )
 
 // ServiceMgr implements cbauth_service interface
