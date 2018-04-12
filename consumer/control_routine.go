@@ -95,7 +95,7 @@ func (c *Consumer) controlRoutine() {
 			// Verify if the app is deployed or not before trying to reopen vbucket DCP streams
 			// for the ones which recently have returned STREAMEND. QE frequently does flush
 			// on source bucket right after undeploy
-			deployedApps := c.superSup.GetDeployedApps()
+			deployedApps := c.superSup.GetLocallyDeployedApps()
 			if _, ok := deployedApps[c.app.AppName]; !ok {
 
 				c.Lock()
@@ -170,6 +170,8 @@ func (c *Consumer) controlRoutine() {
 			}
 
 		case <-c.stopControlRoutineCh:
+			logging.Infof("%s [%s:%s:%d] Exiting control routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
 	}

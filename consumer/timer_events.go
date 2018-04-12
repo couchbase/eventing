@@ -388,6 +388,9 @@ func (c *Consumer) processCronTimerEvents() {
 	for {
 		select {
 		case <-c.cronTimerStopCh:
+			logging.Infof("%s [%s:%s:%d] Exiting cron timer processing routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+
 			return
 
 		case <-c.cronTimerProcessingTicker.C:
@@ -483,7 +486,7 @@ func (c *Consumer) addCronTimersToCleanup() {
 		select {
 		case e, ok := <-c.cleanupCronTimerCh:
 			if ok == false {
-				logging.Infof("%s [%s:%s:%d] Exiting cron timer cleanup routine",
+				logging.Infof("%s [%s:%s:%d] Exiting add timers to cleanup routine",
 					logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return
 			}
@@ -492,6 +495,8 @@ func (c *Consumer) addCronTimersToCleanup() {
 			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), appendCronTimerCleanupCallback, c, cronTimerCleanupKey, e.docID)
 
 		case <-c.addCronTimerStopCh:
+			logging.Infof("%s [%s:%s:%d] Exiting add timers to cleanup routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
 	}
@@ -599,6 +604,8 @@ func (c *Consumer) updateDocTimerStats(vb uint16) {
 }
 
 func (c *Consumer) storeDocTimerEventLoop() {
+	logPrefix := "Consumer::storeDocTimerEventLoop"
+
 	writer := c.vbPlasmaStore.NewWriter()
 
 	for {
@@ -611,6 +618,8 @@ func (c *Consumer) storeDocTimerEventLoop() {
 			c.storeDocTimerEvent(e, writer)
 
 		case <-c.plasmaStoreStopCh:
+			logging.Infof("%s [%s:%s:%d] Exiting doc timer store routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
 	}

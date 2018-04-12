@@ -60,7 +60,12 @@ func (s *SuperSupervisor) GetDeployedApps() map[string]string {
 	s.appListRWMutex.RLock()
 	defer s.appListRWMutex.RUnlock()
 
-	return s.deployedApps
+	deployedApps := make(map[string]string)
+	for app, timeStamp := range s.deployedApps {
+		deployedApps[app] = timeStamp
+	}
+
+	return deployedApps
 }
 
 // GetHandlerCode returns handler code for requested appname
@@ -80,6 +85,19 @@ func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
 		return p.GetLatencyStats()
 	}
 	return nil
+}
+
+// GetLocallyDeployedApps returns list of deployed apps and their last deployment time
+func (s *SuperSupervisor) GetLocallyDeployedApps() map[string]string {
+	s.appListRWMutex.RLock()
+	defer s.appListRWMutex.RUnlock()
+
+	locallyDeployedApps := make(map[string]string)
+	for app, timeStamp := range s.locallyDeployedApps {
+		locallyDeployedApps[app] = timeStamp
+	}
+
+	return locallyDeployedApps
 }
 
 // GetExecutionStats returns aggregated failure stats from Eventing.Producer instance

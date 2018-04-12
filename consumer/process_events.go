@@ -456,7 +456,6 @@ func (c *Consumer) processEvents() {
 			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, dInstAddrKey, dInstAddrBlob)
 
 		case <-c.stopConsumerCh:
-
 			logging.Infof("%s [%s:%s:%d] Exiting processEvents routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
@@ -792,7 +791,7 @@ func (c *Consumer) handleFailoverLog() {
 			}
 
 		case <-c.stopHandleFailoverLogCh:
-			logging.Infof("%s [%s:%s:%d] Exiting routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			logging.Infof("%s [%s:%s:%d] Exiting failover log handling routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 
 		}

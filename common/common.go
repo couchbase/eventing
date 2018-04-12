@@ -144,6 +144,7 @@ type EventingSuperSup interface {
 	GetHandlerCode(appName string) string
 	GetLatencyStats(appName string) map[string]uint64
 	GetLcbExceptionsStats(appName string) map[string]uint64
+	GetLocallyDeployedApps() map[string]string
 	GetPlasmaStats(appName string) (map[string]interface{}, error)
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string

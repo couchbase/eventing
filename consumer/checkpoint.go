@@ -21,7 +21,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 	for {
 		select {
 		case <-c.checkpointTicker.C:
-			deployedApps := c.superSup.GetDeployedApps()
+			deployedApps := c.superSup.GetLocallyDeployedApps()
 			if _, ok := deployedApps[c.app.AppName]; !ok {
 				logging.Infof("%s [%s:%s:%d] Returning from checkpoint ticker routine",
 					logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -67,6 +67,8 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 			}
 
 		case <-c.stopCheckpointingCh:
+			logging.Infof("%s [%s:%s:%d] Exited checkpointing routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
 	}

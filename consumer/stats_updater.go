@@ -113,6 +113,8 @@ func (c *Consumer) updateWorkerStats() {
 			c.sendGetLcbExceptionStats(false)
 
 		case <-c.updateStatsStopCh:
+			logging.Infof("%s [%s:%s:%d] Exiting cpp worker stats updater routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
 	}
