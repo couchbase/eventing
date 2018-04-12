@@ -325,11 +325,11 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					logging.Infof("%s [%d] App: %s enabled, settings change requesting undeployment",
 						logPrefix, len(s.runningProducers), appName)
 
+					s.cleanupProducer(appName)
+
 					s.appListRWMutex.Lock()
 					delete(s.deployedApps, appName)
 					s.appListRWMutex.Unlock()
-
-					s.cleanupProducer(appName)
 				}
 			}
 		}
@@ -538,11 +538,11 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 						logging.Infof("%s [%d] App: %s Requested to delete app", logPrefix, len(s.runningProducers), appName)
 
+						s.cleanupProducer(appName)
+
 						s.appListRWMutex.Lock()
 						delete(s.deployedApps, appName)
 						s.appListRWMutex.Unlock()
-
-						s.cleanupProducer(appName)
 
 						delete(s.appDeploymentStatus, appName)
 						delete(s.appProcessingStatus, appName)
