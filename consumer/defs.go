@@ -76,8 +76,6 @@ const (
 	// Interval for retrying failed plasma operations
 	plasmaOpRetryInterval = time.Duration(1000) * time.Millisecond
 
-	timerProcessingTickInterval = time.Duration(500) * time.Millisecond
-
 	restartVbDcpStreamTickInterval = time.Duration(3000) * time.Millisecond
 
 	retryVbMetaStateCheckInterval = time.Duration(1000) * time.Millisecond

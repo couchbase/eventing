@@ -109,7 +109,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
 		timerCleanupStopCh:              make(chan struct{}, 1),
-		timerProcessingTickInterval:     timerProcessingTickInterval,
+		timerProcessingTickInterval:     time.Duration(hConfig.TimerProcessingTickInterval) * time.Millisecond,
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		uuid:                            uuid,
 		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),

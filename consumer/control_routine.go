@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -56,28 +55,22 @@ func (c *Consumer) controlRoutine() {
 				continue
 			}
 
-			c.logLevel = settings["log_level"].(string)
-			logging.SetLogLevel(util.GetLogLevel(c.logLevel))
-			c.sendLogLevel(c.logLevel, false)
+			if val, ok := settings["log_level"]; ok {
+				c.logLevel = val.(string)
+				logging.SetLogLevel(util.GetLogLevel(c.logLevel))
+				c.sendLogLevel(c.logLevel, false)
+			}
 
-			c.skipTimerThreshold = int(settings["skip_timer_threshold"].(float64))
-
-			c.timerProcessingTickInterval = time.Duration(settings["timer_processing_tick_interval"].(float64)) * time.Millisecond
-
-			if val, ok := settings["deadline_timeout"]; ok {
-				c.socketTimeout = time.Duration(val.(float64)) * time.Second
+			if val, ok := settings["skip_timer_threshold"]; ok {
+				c.skipTimerThreshold = int(val.(float64))
 			}
 
 			if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
 				c.vbOwnershipGiveUpRoutineCount = int(val.(float64))
-			} else {
-				c.vbOwnershipGiveUpRoutineCount = 1
 			}
 
 			if val, ok := settings["vb_ownership_takeover_routine_count"]; ok {
 				c.vbOwnershipTakeoverRoutineCount = int(val.(float64))
-			} else {
-				c.vbOwnershipTakeoverRoutineCount = 1
 			}
 
 		case <-c.restartVbDcpStreamTicker.C:

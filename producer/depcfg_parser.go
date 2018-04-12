@@ -167,6 +167,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.StatsLogInterval = 300 * 1000
 	}
 
+	if val, ok := settings["timer_processing_tick_interval"]; ok {
+		p.handlerConfig.TimerProcessingTickInterval = int(val.(float64))
+	} else {
+		p.handlerConfig.TimerProcessingTickInterval = 500
+	}
+
 	if val, ok := settings["worker_count"]; ok {
 		p.handlerConfig.WorkerCount = int(val.(float64))
 	} else {
