@@ -478,6 +478,8 @@ func (c *Consumer) sendMessageLoop() {
 				}()
 			}
 		case <-c.socketWriteLoopStopCh:
+			logging.Infof("%s [%s:%s:%d] Exiting send message routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			c.socketWriteLoopStopAckCh <- struct{}{}
 			return
 		}

@@ -70,6 +70,7 @@ type statusCodes struct {
 	errRebOngoing          statusBase
 	errActiveEventingNodes statusBase
 	errInvalidConfig       statusBase
+	errAppCodeSize         statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -138,6 +139,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusNotAcceptable
 	case m.statusCodes.errInvalidConfig.Code:
 		return http.StatusBadRequest
+	case m.statusCodes.errAppCodeSize.Code:
+		return http.StatusBadRequest
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -179,6 +182,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errRebOngoing:          statusBase{"ERR_REBALANCE_ONGOING", 36},
 		errActiveEventingNodes: statusBase{"ERR_FETCHING_ACTIVE_EVENTING_NODES", 37},
 		errInvalidConfig:       statusBase{"ERR_INVALID_CONFIG", 38},
+		errAppCodeSize:         statusBase{"ERR_APPCODE_SIZE", 39},
 	}
 
 	errors := []errorPayload{
@@ -364,6 +368,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errInvalidConfig.Name,
 			Code:        m.statusCodes.errInvalidConfig.Code,
 			Description: "Invalid configuration",
+		},
+		{
+			Name:        m.statusCodes.errAppCodeSize.Name,
+			Code:        m.statusCodes.errAppCodeSize.Code,
+			Description: "Handler Code size is more than 128k",
 		},
 	}
 

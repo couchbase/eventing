@@ -144,6 +144,7 @@ type EventingSuperSup interface {
 	GetHandlerCode(appName string) string
 	GetLatencyStats(appName string) map[string]uint64
 	GetLcbExceptionsStats(appName string) map[string]uint64
+	GetLocallyDeployedApps() map[string]string
 	GetPlasmaStats(appName string) (map[string]interface{}, error)
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
@@ -214,28 +215,29 @@ type PlannerNodeVbMapping struct {
 }
 
 type HandlerConfig struct {
-	CheckpointInterval       int
-	CleanupTimers            bool
-	CPPWorkerThrCount        int
-	CronTimersPerDoc         int
-	CurlTimeout              int64
-	EnableRecursiveMutation  bool
-	ExecutionTimeout         int
-	FeedbackBatchSize        int
-	FeedbackQueueCap         int64
-	FeedbackReadBufferSize   int
-	FuzzOffset               int
-	LcbInstCapacity          int
-	LogLevel                 string
-	SkipTimerThreshold       int
-	SocketWriteBatchSize     int
-	SocketTimeout            int
-	SourceBucket             string
-	StatsLogInterval         int
-	StreamBoundary           DcpStreamBoundary
-	WorkerCount              int
-	WorkerQueueCap           int64
-	XattrEntryPruneThreshold int
+	CheckpointInterval          int
+	CleanupTimers               bool
+	CPPWorkerThrCount           int
+	CronTimersPerDoc            int
+	CurlTimeout                 int64
+	EnableRecursiveMutation     bool
+	ExecutionTimeout            int
+	FeedbackBatchSize           int
+	FeedbackQueueCap            int64
+	FeedbackReadBufferSize      int
+	FuzzOffset                  int
+	LcbInstCapacity             int
+	LogLevel                    string
+	SkipTimerThreshold          int
+	SocketWriteBatchSize        int
+	SocketTimeout               int
+	SourceBucket                string
+	StatsLogInterval            int
+	StreamBoundary              DcpStreamBoundary
+	TimerProcessingTickInterval int
+	WorkerCount                 int
+	WorkerQueueCap              int64
+	XattrEntryPruneThreshold    int
 }
 
 type ProcessConfig struct {

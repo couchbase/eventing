@@ -104,6 +104,7 @@ func (c *client) Serve() {
 		logging.Warnf("%s [%s:%s:%d] Exiting c++ worker with error: %v",
 			logPrefix, c.workerName, c.tcpPort, c.osPid, err)
 	}
+	c.consumerHandle.workerExited = true
 
 	logging.Debugf("%s [%s:%s:%d] Exiting c++ worker routine",
 		logPrefix, c.workerName, c.tcpPort, c.osPid)
@@ -121,6 +122,8 @@ func (c *client) Serve() {
 
 func (c *client) Stop() {
 	logPrefix := "client::Stop"
+
+	c.consumerHandle.workerExited = true
 
 	logging.Debugf("%s [%s:%s:%d] Exiting c++ worker", logPrefix, c.workerName, c.tcpPort, c.osPid)
 

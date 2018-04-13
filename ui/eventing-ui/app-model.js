@@ -139,7 +139,6 @@ ApplicationModel.prototype.getDefaultModel = function() {
             curl_timeout: 500,
             worker_queue_cap: 100 * 1000,
             fuzz_offset: 0,
-            breakpad_on: true
         }
     };
 };

@@ -78,7 +78,7 @@ error_email() {
        -s west.smtp.mx.exch029.serverdata.net:25 \
        -f 'Eventing CI <community_admin@couchbase.com>' \
        -t $WATCHERS \
-       -u 'Eventing CI just broke'
+       -u "Eventing CI $CINAME broke"
 }
 
 error_exit() {
@@ -126,7 +126,7 @@ export phase=rebalance
 if [[ "$MODE" == *"$phase"* ]]; then
   echo "</pre><h4>${phase^} tests</h4><pre>"
   cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
-  GOMAXPROCS=16 $GOROOT/bin/go test -timeout 12h -tags rebalance  -v 2>&1 | tee -a $WORKSPACE/test.log
+  GOMAXPROCS=16 $GOROOT/bin/go test -timeout 12h -tags "eventing_reb eventing_reb_wh kv_reb testrunner_topology system" -v 2>&1 | tee -a $WORKSPACE/test.log
   collect_logs
 fi
 

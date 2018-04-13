@@ -344,7 +344,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		len(vbnos), util.Condense(vbnos))
 
 	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid,
-		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.vbPlasmaStore, p.numVbuckets)
+		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.vbPlasmaStore, p.iteratorRefreshCounter, p.numVbuckets)
 
 	p.Lock()
 	p.consumerListeners = append(p.consumerListeners, listener)

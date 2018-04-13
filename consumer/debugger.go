@@ -107,6 +107,8 @@ func (c *Consumer) pollForDebuggerStart() {
 
 		select {
 		case <-c.signalStopDebuggerRoutineCh:
+			logging.Infof("%s [%s:%s:%d] Exiting debugger blob polling routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		default:
 		}

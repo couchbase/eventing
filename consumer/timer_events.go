@@ -116,24 +116,42 @@ func (c *Consumer) processDocTimerEvents() {
 				continue
 			}
 
+			var itr *plasma.MVCCIterator
+			var itrCount int
+
+			startKeyPrefix := []byte(fmt.Sprintf("vb_%v::%s::%s", vb, c.app.AppName, currTimer))
+			endKeyPrefix := []byte(fmt.Sprintf("vb_%v::%s::%s", vb, c.app.AppName, cts.Add(time.Second).Format(tsLayout)))
+
 			snapshot := c.vbPlasmaStore.NewSnapshot()
 
-			itr, err := reader.NewSnapshotIterator(snapshot)
+		processTimerIteratorRefresh:
+			itrCount = 0
+			itr, err = reader.NewSnapshotIterator(snapshot)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] vb: %v Failed to create snapshot, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 				continue
 			}
 
-			startKeyPrefix := fmt.Sprintf("vb_%v::%s::%s", vb, c.app.AppName, currTimer)
-			endKeyPrefix := fmt.Sprintf("vb_%v::%s::%s", vb, c.app.AppName, cts.Add(time.Second).Format(tsLayout))
+			itr.SetEndKey(endKeyPrefix)
 
-			itr.SetEndKey([]byte(endKeyPrefix))
+			for itr.Seek(startKeyPrefix); itr.Valid(); itr.Next() {
+				itrCount++
 
-			for itr.Seek([]byte(startKeyPrefix)); itr.Valid(); itr.Next() {
+				if itrCount == c.iteratorRefreshCounter {
+					logging.Infof("%s [%s:%s:%d] vb: %d Closing iterator on iterCount: %d timerEvent key: %ru value: %ru",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, itrCount, string(itr.Key()), string(itr.Value()))
+
+					startKeyPrefix = itr.Key()
+
+					itr.Close()
+					goto processTimerIteratorRefresh
+				}
+
 				logging.Tracef("%s [%s:%s:%d] vb: %d timerEvent key: %ru value: %ru",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, string(itr.Key()), string(itr.Value()))
 
+				// Entry format <vbucket>::<app_name>::<timestamp>::<callback_func>::<doc_id>
 				entries := strings.Split(string(itr.Key()), "::")
 
 				// For some reason plasma iterator returned timer entries from future with
@@ -152,6 +170,7 @@ func (c *Consumer) processDocTimerEvents() {
 					c.processTimerEvent(cts, string(itr.Value()), vb)
 				}
 			}
+
 			snapshot.Close()
 			itr.Close()
 
@@ -221,50 +240,67 @@ func (c *Consumer) cleanupProcessedDocTimers() {
 					continue
 				}
 
+				lastCleanedUpTs, err := time.Parse(tsLayout, vbBlob.LastCleanedUpDocIDTimerEvent)
+				if err == nil {
+					if lastProcessedTs.Sub(lastCleanedUpTs) == time.Second {
+						logging.Tracef("%s [%s:%d] vb: %v Skipping cleanup operation as LastProcessedDocIDTimerEvent: %s LastCleanedUpDocIDTimerEvent: %s",
+							logPrefix, c.workerName, c.Pid(), vb, vbBlob.LastProcessedDocIDTimerEvent, vbBlob.LastCleanedUpDocIDTimerEvent)
+						continue
+					}
+				}
+
+				var itr *plasma.MVCCIterator
+				var itrCount int
+				firstIteration := true
+
+				var startKey []byte
+				endKeyPrefix := []byte(fmt.Sprintf("vb_%v::%s::%s", vb, c.app.AppName, lastProcessedTs.UTC().Format(time.RFC3339)))
+
 				snapshot := c.vbPlasmaStore.NewSnapshot()
 
-				itr, err := reader.NewSnapshotIterator(snapshot)
+			cleanupTimerIteratorRefresh:
+				itrCount = 0
+				itr, err = reader.NewSnapshotIterator(snapshot)
 				if err != nil {
 					logging.Errorf("%s [%s:%d] vb: %v Failed to create snapshot, err: %v",
 						logPrefix, c.workerName, c.Pid(), vb, err)
 					continue
 				}
 
-				endKeyPrefix := fmt.Sprintf("vb_%v::%s::%s", vb, c.app.AppName, lastProcessedTs.UTC().Format(time.RFC3339))
-
 				itr.SetEndKey([]byte(endKeyPrefix))
 
-				for itr.SeekFirst(); itr.Valid(); itr.Next() {
+				if firstIteration {
+					firstIteration = false
 
-					entries := strings.Split(string(itr.Key()), "::")
+					// Could have folded SeekFirst into Seek([]byte{}),
+					// but turns out plasma expects non-empty byte slice
+					for itr.SeekFirst(); itr.Valid(); itr.Next() {
+						itrCount++
 
-					// Additional checking to make sure only processed doc timer entries are purged.
-					// Iterator uses raw byte comparision.
-					if len(entries) == 5 {
-						lTs, err := time.Parse(tsLayout, entries[2])
-						if err != nil {
-							continue
+						if itrCount == c.iteratorRefreshCounter {
+							startKey = itr.Key()
+
+							itr.Close()
+							goto cleanupTimerIteratorRefresh
 						}
 
-						lVb, err := strconv.Atoi(strings.Split(entries[0], "_")[1])
-						if err != nil {
-							continue
+						c.cleanupUtility(lastProcessedTs, string(itr.Key()), vb, writer)
+					}
+				} else {
+					for itr.Seek(startKey); itr.Valid(); itr.Next() {
+						itrCount++
+
+						if itrCount == c.iteratorRefreshCounter {
+							startKey = itr.Key()
+
+							itr.Close()
+							goto cleanupTimerIteratorRefresh
 						}
 
-						if !lTs.After(lastProcessedTs) && (lVb == int(vb)) {
-							writer.Begin()
-							err = writer.DeleteKV(itr.Key())
-							writer.End()
-							if err != nil {
-								logging.Errorf("%s [%s:%s:%d] vb: %d key: %ru Failed to delete from plasma handle, err: %v",
-									logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, string(itr.Key()), err)
-							} else {
-								counter := c.vbProcessingStats.getVbStat(vb, "deleted_during_cleanup_counter").(uint64)
-								c.vbProcessingStats.updateVbStat(vb, "deleted_during_cleanup_counter", counter+1)
-							}
-						}
+						c.cleanupUtility(lastProcessedTs, string(itr.Key()), vb, writer)
 					}
 				}
+
 				itr.Close()
 				snapshot.Close()
 			}
@@ -274,6 +310,44 @@ func (c *Consumer) cleanupProcessedDocTimers() {
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			timerCleanupTicker.Stop()
 			return
+		}
+	}
+}
+
+func (c *Consumer) cleanupUtility(lastProcessedTs time.Time, timerKey string, vb uint16, writer *plasma.Writer) {
+	logPrefix := "Consumer::cleanupUtility"
+
+	entries := strings.Split(timerKey, "::")
+
+	// Additional checking to make sure only processed doc timer entries are purged.
+	// Iterator uses raw byte comparision.
+	if len(entries) == 5 {
+		lTs, err := time.Parse(tsLayout, entries[2])
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] vb: %d key: %ru Failed to parse timestamp: %s, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerKey, entries[2], err)
+			return
+		}
+
+		lVb, err := strconv.Atoi(strings.Split(entries[0], "_")[1])
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] vb: %d Failed to parse vbucket id, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+			return
+		}
+
+		if !lTs.After(lastProcessedTs) && (lVb == int(vb)) {
+			writer.Begin()
+			err = writer.DeleteKV([]byte(timerKey))
+			writer.End()
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] vb: %d key: %ru Failed to delete from plasma handle, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerKey, err)
+			} else {
+				counter := c.vbProcessingStats.getVbStat(vb, "deleted_during_cleanup_counter").(uint64)
+				c.vbProcessingStats.updateVbStat(vb, "deleted_during_cleanup_counter", counter+1)
+				c.vbProcessingStats.updateVbStat(vb, "last_cleaned_up_doc_id_timer_event", entries[2])
+			}
 		}
 	}
 }
@@ -314,6 +388,9 @@ func (c *Consumer) processCronTimerEvents() {
 	for {
 		select {
 		case <-c.cronTimerStopCh:
+			logging.Infof("%s [%s:%s:%d] Exiting cron timer processing routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+
 			return
 
 		case <-c.cronTimerProcessingTicker.C:
@@ -409,7 +486,7 @@ func (c *Consumer) addCronTimersToCleanup() {
 		select {
 		case e, ok := <-c.cleanupCronTimerCh:
 			if ok == false {
-				logging.Infof("%s [%s:%s:%d] Exiting cron timer cleanup routine",
+				logging.Infof("%s [%s:%s:%d] Exiting add timers to cleanup routine",
 					logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return
 			}
@@ -418,6 +495,8 @@ func (c *Consumer) addCronTimersToCleanup() {
 			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), appendCronTimerCleanupCallback, c, cronTimerCleanupKey, e.docID)
 
 		case <-c.addCronTimerStopCh:
+			logging.Infof("%s [%s:%s:%d] Exiting add timers to cleanup routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
 	}
@@ -525,6 +604,8 @@ func (c *Consumer) updateDocTimerStats(vb uint16) {
 }
 
 func (c *Consumer) storeDocTimerEventLoop() {
+	logPrefix := "Consumer::storeDocTimerEventLoop"
+
 	writer := c.vbPlasmaStore.NewWriter()
 
 	for {
@@ -537,6 +618,8 @@ func (c *Consumer) storeDocTimerEventLoop() {
 			c.storeDocTimerEvent(e, writer)
 
 		case <-c.plasmaStoreStopCh:
+			logging.Infof("%s [%s:%s:%d] Exiting doc timer store routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
 	}

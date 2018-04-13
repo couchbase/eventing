@@ -18,6 +18,8 @@ const (
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	metakvRebalanceProgress  = metakvEventingPath + "rebalanceProgress/"
 	metakvTempAppsPath       = metakvEventingPath + "tempApps/"
+	metakvChecksumPath       = metakvEventingPath + "checksum/"
+	metakvTempChecksumPath   = metakvEventingPath + "tempchecksum/"
 	stopRebalance            = "stopRebalance"
 )
 
@@ -34,11 +36,20 @@ const (
 	headerKey                = "status"
 	maxApplicationNameLength = 100
 	maxAliasLength           = 20 // Technically, there isn't any limit on a JavaScript variable length.
+
+	// Rebalance progress ticker ticks at every 3s, 1200 ticks would amount to 1hr.
+	// If rebalance is stuck are specific progress % for longer than 1hr, rebalance
+	// would be failed.
+	rebalanceStalenessCounter = 1200
 )
 
 const (
 	srcMapExt  = ".map.json"
 	srcCodeExt = ".js"
+)
+
+const (
+	maxHandlerSize = 128 * 1024
 )
 
 // ServiceMgr implements cbauth_service interface

@@ -2,6 +2,7 @@
 
 if [ ! -f ~/.cienv ]; then
 cat > ~/.cienv <<EOF
+    export CINAME=ci-eventing
     export WORKSPACE=/opt/build
     export RELEASE=5.5.0
     export MANIFEST="couchbase-server/vulcan.xml"

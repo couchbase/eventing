@@ -25,7 +25,7 @@ import (
 func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, rConfig *common.RebalanceConfig,
 	index int, uuid string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	dcpConfig map[string]interface{}, p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
-	numVbuckets int) *Consumer {
+	iteratorRefreshCounter, numVbuckets int) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -69,6 +69,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		fuzzOffset:                      hConfig.FuzzOffset,
 		gracefulShutdownChan:            make(chan struct{}, 1),
 		ipcType:                         pConfig.IPCType,
+		iteratorRefreshCounter:          iteratorRefreshCounter,
 		hostDcpFeedRWMutex:              &sync.RWMutex{},
 		kvHostDcpFeedMap:                make(map[string]*couchbase.DcpFeed),
 		lcbInstCapacity:                 hConfig.LcbInstCapacity,
@@ -108,7 +109,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
 		timerCleanupStopCh:              make(chan struct{}, 1),
-		timerProcessingTickInterval:     timerProcessingTickInterval,
+		timerProcessingTickInterval:     time.Duration(hConfig.TimerProcessingTickInterval) * time.Millisecond,
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		uuid:                            uuid,
 		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),
@@ -278,6 +279,8 @@ func (c *Consumer) HandleV8Worker() {
 	c.sendGetSourceMap(false)
 	c.sendGetHandlerCode(false)
 
+	c.workerExited = false
+
 	go c.storeDocTimerEventLoop()
 
 	go c.processEvents()
@@ -304,13 +307,19 @@ func (c *Consumer) Stop() {
 	c.cbBucket.Close()
 	c.gocbBucket.Close()
 	c.gocbMetaBucket.Close()
+	logging.Infof("%s [%s:%s:%d] Issued close for go-couchbase ang gocb handler",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.consumerSup.Remove(c.clientSupToken)
 	c.consumerSup.Stop()
+	logging.Infof("%s [%s:%s:%d] Requested to stop supervisor for Eventing.Consumer",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.checkpointTicker.Stop()
 	c.restartVbDcpStreamTicker.Stop()
 	c.statsTicker.Stop()
+	logging.Infof("%s [%s:%s:%d] Stopped checkpoint, restart vb dcp stream and stats tickers",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.addCronTimerStopCh <- struct{}{}
 	c.cleanupCronTimerStopCh <- struct{}{}
@@ -318,9 +327,13 @@ func (c *Consumer) Stop() {
 	<-c.socketWriteLoopStopAckCh
 	c.socketWriteTicker.Stop()
 	c.timerCleanupStopCh <- struct{}{}
+	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop cron, doc routines",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.updateStatsTicker.Stop()
 	c.updateStatsStopCh <- struct{}{}
+	logging.Infof("%s [%s:%s:%d] Sent signal to stop cpp worker stat collection routine",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.plasmaStoreStopCh <- struct{}{}
 	c.stopCheckpointingCh <- struct{}{}
@@ -328,18 +341,26 @@ func (c *Consumer) Stop() {
 	c.stopControlRoutineCh <- struct{}{}
 	c.stopConsumerCh <- struct{}{}
 	c.signalStopDebuggerRoutineCh <- struct{}{}
-
-	for _, cancelCh := range c.dcpFeedCancelChs {
-		cancelCh <- struct{}{}
-	}
+	logging.Infof("%s [%s:%s:%d] Send signal over channel to stop plasma store, checkpointing, cron timer processing routines",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	for _, dcpFeed := range c.kvHostDcpFeedMap {
 		dcpFeed.Close()
 	}
+	logging.Infof("%s [%s:%s:%d] Closed all dcpfeed handles",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
+
+	for _, cancelCh := range c.dcpFeedCancelChs {
+		cancelCh <- struct{}{}
+	}
+	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop dcp event forwarding routine",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.stopHandleFailoverLogCh <- struct{}{}
 
 	close(c.aggDCPFeed)
+	logging.Infof("%s [%s:%s:%d] Closing up aggDcpFeed channel",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	if c.conn != nil {
 		c.conn.Close()
@@ -349,6 +370,9 @@ func (c *Consumer) Stop() {
 		c.debugConn.Close()
 		c.debugListener.Close()
 	}
+
+	logging.Infof("%s [%s:%s:%d] Exiting Eventing.Consumer Stop routine",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }
 
 // Implement fmt.Stringer interface to allow better debugging

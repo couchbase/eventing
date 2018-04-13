@@ -485,6 +485,10 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
+	if info = m.validatePositiveInteger("timer_processing_tick_interval", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validatePositiveInteger("worker_count", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -534,6 +538,10 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 	}
 
 	if info = m.validateBoolean("enable_snapshot_smr", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("iterator_refresh_counter", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

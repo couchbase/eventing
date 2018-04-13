@@ -8,6 +8,7 @@ import (
 	"hash/crc32"
 	"runtime/debug"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -148,8 +149,47 @@ func (c *Consumer) processEvents() {
 
 								logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be stored in plasma",
 									logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+
+								// Enabling it until MB-28779 gets resolved
+								for _, timerEntry := range xMeta.Timers {
+
+									data := strings.Split(timerEntry, "::")
+
+									if len(data) == 3 {
+										pEntry := &plasmaStoreEntry{
+											callbackFn: data[2],
+											key:        string(e.Key),
+											timerTs:    data[1],
+											vb:         e.VBucket,
+										}
+
+										c.plasmaStoreCh <- pEntry
+										logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be stored in plasma, timer entry: %v pEntry: %#v",
+											logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), timerEntry, pEntry)
+									}
+								}
 							}
 						} else {
+
+							// Enabling it until MB-28779 gets resolved
+							for _, timerEntry := range xMeta.Timers {
+
+								data := strings.Split(timerEntry, "::")
+
+								if len(data) == 3 {
+									pEntry := &plasmaStoreEntry{
+										callbackFn: data[2],
+										key:        string(e.Key),
+										timerTs:    data[1],
+										vb:         e.VBucket,
+									}
+
+									c.plasmaStoreCh <- pEntry
+									logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be stored in plasma, timer entry: %v pEntry: %#v",
+										logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), timerEntry, pEntry)
+								}
+							}
+
 							logging.Tracef("%s [%s:%s:%d] Skipping recursive mutation for key: %ru vb: %v, xmeta: %ru",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, fmt.Sprintf("%#v", xMeta))
 
@@ -416,7 +456,6 @@ func (c *Consumer) processEvents() {
 			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, dInstAddrKey, dInstAddrBlob)
 
 		case <-c.stopConsumerCh:
-
 			logging.Infof("%s [%s:%s:%d] Exiting processEvents routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
@@ -752,7 +791,7 @@ func (c *Consumer) handleFailoverLog() {
 			}
 
 		case <-c.stopHandleFailoverLogCh:
-			logging.Infof("%s [%s:%s:%d] Exiting routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			logging.Infof("%s [%s:%s:%d] Exiting failover log handling routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 
 		}

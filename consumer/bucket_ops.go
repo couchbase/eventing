@@ -265,6 +265,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	vbBlob := args[2].(*vbucketKVBlob)
 
 	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+		UpsertEx("last_cleaned_up_doc_id_timer_event", vbBlob.LastCleanedUpDocIDTimerEvent, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_cron_timer", vbBlob.CurrentProcessedCronTimer, gocb.SubdocFlagCreatePath).
@@ -442,6 +443,7 @@ var startFeedFromKVNodesCallback = func(args ...interface{}) error {
 	kvNodeAddrs := args[4].([]string)
 
 	feedName := couchbase.DcpFeedName(fmt.Sprintf("eventing:%s_%s_vb_%v_docTimer", c.HostPortAddr(), c.workerName, vb))
+	(*b).Refresh()
 
 	var err error
 	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), includeXATTRs, kvNodeAddrs, 0xABCD, c.dcpConfig)
@@ -457,6 +459,8 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::populateDcpFeedVbEntriesCallback"
 
 	c := args[0].(*Consumer)
+
+	c.cbBucket.Refresh()
 
 	defer func() {
 		if r := recover(); r != nil {

@@ -76,8 +76,6 @@ const (
 	// Interval for retrying failed plasma operations
 	plasmaOpRetryInterval = time.Duration(1000) * time.Millisecond
 
-	timerProcessingTickInterval = time.Duration(500) * time.Millisecond
-
 	restartVbDcpStreamTickInterval = time.Duration(3000) * time.Millisecond
 
 	retryVbMetaStateCheckInterval = time.Duration(1000) * time.Millisecond
@@ -193,6 +191,7 @@ type Consumer struct {
 	vbsStreamClosedRWMutex *sync.RWMutex
 	vbStreamRequested      map[uint16]struct{} // Access controlled by vbsStreamRRWMutex
 	vbsStreamRRWMutex      *sync.RWMutex
+	workerExited           bool
 
 	xattrEntryPruneThreshold int
 
@@ -215,8 +214,9 @@ type Consumer struct {
 	docTimerEntryCh  chan *byTimer
 	cronTimerEntryCh chan *timerMsg
 
-	timerAddrs    map[string]map[string]string
-	vbPlasmaStore *plasma.Plasma
+	iteratorRefreshCounter int // Refresh interval for plasma iterator to allow garbage to be cleared up
+	timerAddrs             map[string]map[string]string
+	vbPlasmaStore          *plasma.Plasma
 
 	plasmaStoreCh     chan *plasmaStoreEntry
 	plasmaStoreStopCh chan struct{}
@@ -429,6 +429,7 @@ type vbucketKVBlob struct {
 	VBuuid                    uint64           `json:"vb_uuid"`
 
 	CurrentProcessedDocIDTimer   string `json:"currently_processed_doc_id_timer"`
+	LastCleanedUpDocIDTimerEvent string `json:"last_cleaned_up_doc_id_timer_event"`
 	LastProcessedDocIDTimerEvent string `json:"last_processed_doc_id_timer_event"`
 	NextDocIDTimerToProcess      string `json:"next_doc_id_timer_to_process"`
 

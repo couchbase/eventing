@@ -25,7 +25,7 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 			)
 		}
 
-		dumpStats(handler)
+		dumpStats()
 		log.Println("Undeploying app:", handler)
 		setSettings(handler, false, false, &commonSettings{})
 		bucketFlush("default")
@@ -51,7 +51,7 @@ func TestOnUpdateN1QLOp(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }
 
@@ -70,7 +70,7 @@ func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }
 
@@ -89,7 +89,45 @@ func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
+func TestOnUpdateBucketOpDefaultSettings10K(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 10*1024)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "OnUpdateBucketOpDefaultSettings",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
+func TestOnUpdateBucketOpDefaultSettings100K(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 100*1024)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "OnUpdateBucketOpDefaultSettings",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }
 
@@ -108,7 +146,26 @@ func TestOnDeleteBucketOp(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
+func TestOnDeleteBucketOp5K(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "bucket_op_on_delete"
+	flushFunctionAndBucket(handler)
+	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 5*1024)
+
+	pumpBucketOps(opsType{expiry: 1, delete: true}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "OnDeleteBucketOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }
 
@@ -127,7 +184,7 @@ func TestDocTimerBucketOp(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }
 
@@ -146,7 +203,7 @@ func TestCronTimerBucketOp(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }
 
@@ -167,7 +224,7 @@ func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 			)
 		}
 
-		dumpStats(handler)
+		dumpStats()
 		log.Println("Undeploying app:", handler)
 		setSettings(handler, false, false, &commonSettings{})
 		bucketFlush("default")
@@ -196,7 +253,7 @@ func TestDeployUndeployLoopDocTimer(t *testing.T) {
 			)
 		}
 
-		dumpStats(handler)
+		dumpStats()
 		log.Println("Undeploying app:", handler)
 		setSettings(handler, false, false, &commonSettings{})
 		bucketFlush("default")
@@ -237,8 +294,7 @@ func TestMultipleHandlers(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler1)
-	dumpStats(handler2)
+	dumpStats()
 
 	// Pause the apps
 	setSettings(handler1, true, false, &commonSettings{})
@@ -273,7 +329,7 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 			)
 		}
 
-		dumpStats(handler)
+		dumpStats()
 		fmt.Printf("Pausing the app: %s\n\n", handler)
 		setSettings(handler, true, false, &commonSettings{})
 	}
@@ -303,7 +359,7 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 			)
 		}
 
-		dumpStats(handler)
+		dumpStats()
 		fmt.Printf("Pausing the app: %s\n\n", handler)
 		setSettings(handler, true, false, &commonSettings{})
 	}
@@ -328,7 +384,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 		)
 	}
 
-	dumpStats(appName)
+	dumpStats()
 	log.Println("Undeploying app:", appName)
 	setSettings(appName, false, false, &commonSettings{})
 
@@ -346,7 +402,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 		)
 	}
 
-	dumpStats(appName)
+	dumpStats()
 	log.Println("Undeploying app:", appName)
 	setSettings(appName, false, false, &commonSettings{})
 
@@ -372,7 +428,7 @@ func TestCPPWorkerCleanup(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 	time.Sleep(30 * time.Second)
 }*/
@@ -395,7 +451,7 @@ func TestWithUserXattrs(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 }
 
@@ -415,6 +471,6 @@ func TestWithUserXattrs(t *testing.T) {
 		)
 	}
 
-	dumpStats(handler)
+	dumpStats()
 	flushFunctionAndBucket(handler)
 } */

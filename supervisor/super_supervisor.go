@@ -18,18 +18,19 @@ import (
 // NewSuperSupervisor creates the super_supervisor handle
 func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string, numVbuckets int) *SuperSupervisor {
 	s := &SuperSupervisor{
+		adminPort:                  adminPort,
 		appDeploymentStatus:        make(map[string]bool),
 		appProcessingStatus:        make(map[string]bool),
 		bootstrappingApps:          make(map[string]string),
 		CancelCh:                   make(chan struct{}, 1),
 		cleanedUpAppMap:            make(map[string]struct{}),
 		deployedApps:               make(map[string]string),
-		adminPort:                  adminPort,
 		diagDir:                    diagDir,
 		ejectNodes:                 make([]string, 0),
 		eventingDir:                eventingDir,
 		keepNodes:                  make([]string, 0),
 		kvPort:                     kvPort,
+		locallyDeployedApps:        make(map[string]string),
 		numVbuckets:                numVbuckets,
 		producerSupervisorTokenMap: make(map[common.EventingProducer]suptree.ServiceToken),
 		restPort:                   restPort,
@@ -163,17 +164,6 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 			s.appProcessingStatus[appName] = true
 			s.appDeploymentStatus[appName] = true
 		}
-	} else {
-
-		// Delete application request
-		splitRes := strings.Split(path, "/")
-		appName := splitRes[len(splitRes)-1]
-		msg := supCmdMsg{
-			ctx: appName,
-			cmd: cmdAppDelete,
-		}
-
-		s.supCmdCh <- msg
 	}
 	return nil
 }
@@ -285,6 +275,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 						s.appListRWMutex.Lock()
 						s.deployedApps[appName] = time.Now().String()
+						s.locallyDeployedApps[appName] = time.Now().String()
 						s.appListRWMutex.Unlock()
 
 						s.Lock()
@@ -337,10 +328,14 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						logPrefix, len(s.runningProducers), appName)
 
 					s.appListRWMutex.Lock()
-					delete(s.deployedApps, appName)
+					delete(s.locallyDeployedApps, appName)
 					s.appListRWMutex.Unlock()
 
 					s.cleanupProducer(appName)
+
+					s.appListRWMutex.Lock()
+					delete(s.deployedApps, appName)
+					s.appListRWMutex.Unlock()
 				}
 			}
 		}
@@ -443,6 +438,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 					s.appListRWMutex.Lock()
 					s.deployedApps[appName] = time.Now().String()
+					s.locallyDeployedApps[appName] = time.Now().String()
 					s.appListRWMutex.Unlock()
 
 					s.Lock()
@@ -550,10 +546,14 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 						logging.Infof("%s [%d] App: %s Requested to delete app", logPrefix, len(s.runningProducers), appName)
 
 						s.appListRWMutex.Lock()
-						delete(s.deployedApps, appName)
+						delete(s.locallyDeployedApps, appName)
 						s.appListRWMutex.Unlock()
 
 						s.cleanupProducer(appName)
+
+						s.appListRWMutex.Lock()
+						delete(s.deployedApps, appName)
+						s.appListRWMutex.Unlock()
 
 						delete(s.appDeploymentStatus, appName)
 						delete(s.appProcessingStatus, appName)
@@ -619,6 +619,7 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 					s.appListRWMutex.Lock()
 					s.deployedApps[appName] = time.Now().String()
+					s.locallyDeployedApps[appName] = time.Now().String()
 					s.appListRWMutex.Unlock()
 
 					s.Lock()

@@ -127,3 +127,25 @@ var metakvGetCallback = func(args ...interface{}) error {
 
 	return nil
 }
+
+var metakvAppCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::metakvAppCallback"
+
+	p := args[0].(*Producer)
+	appPath := args[1].(string)
+	checksumPath := args[2].(string)
+	appName := args[3].(string)
+	cfgData := args[4].(*[]byte)
+
+	var err error
+	*cfgData, err = util.ReadAppContent(appPath, checksumPath, appName)
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Failed to lookup path: %v from metakv, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), appPath, err)
+		return err
+	}
+	if len(*cfgData) == 0 {
+		logging.Errorf("%s [%s:%d] Looked up path: %v from metakv, but got empty value", logPrefix, p.appName, p.LenRunningConsumers(), appPath)
+		return fmt.Errorf("Empty value from metakv lookup")
+	}
+	return nil
+}

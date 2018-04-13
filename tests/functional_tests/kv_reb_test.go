@@ -40,8 +40,8 @@ func TestKVRebOnUpdateBucketOpOneByOne(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	// addAllNodesOneByOne("kv")
-	// removeAllNodesOneByOne()
+	addAllNodesOneByOne("kv")
+	removeAllNodesOneByOne()
 
 	rl.stopCh <- struct{}{}
 
@@ -95,7 +95,7 @@ func TestKVHardFailoverRecovery(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-/*func TestKVRebOnUpdateBucketOpAllAtOnce(t *testing.T) {
+func TestKVRebOnUpdateBucketOpAllAtOnce(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
@@ -113,7 +113,7 @@ func TestKVHardFailoverRecovery(t *testing.T) {
 		loop:    true,
 	}
 
-	go pumpBucketOps(rlItemCount, 0, false, 0, rl)
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
@@ -124,7 +124,7 @@ func TestKVHardFailoverRecovery(t *testing.T) {
 	rl.stopCh <- struct{}{}
 
 	flushFunctionAndBucket(handler)
-}*/
+}
 
 func TestKVSwapRebOnUpdateBucketOp(t *testing.T) {
 	time.Sleep(5 * time.Second)
@@ -169,8 +169,8 @@ func TestKVSwapRebOnUpdateBucketOp(t *testing.T) {
 
 /** OnUpdate Bucket op cases end **/
 
-/** OnUpdate timer cases start **/
-func TestKVRebOnUpdateDocTimerOneByOne(t *testing.T) {
+/** OnUpdate timer cases start - Disabled for now as timers are beta **/
+/*func TestKVRebOnUpdateDocTimerOneByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_doc_timer"
 
@@ -216,7 +216,7 @@ func TestKVRebOnUpdateDocTimerOneByOne(t *testing.T) {
 // Commenting this test out for now, as running 4 KV nodes via cluster_run
 // and to let rebalance go through successfully, seems like decent amount of
 // CPU firepower is needed
-/*func TestKVRebalanceOnUpdateDocTimerAllAtOnce(t *testing.T) {
+func TestKVRebalanceOnUpdateDocTimerAllAtOnce(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_doc_timer"
 
@@ -254,7 +254,7 @@ func TestKVRebOnUpdateDocTimerOneByOne(t *testing.T) {
 	rl.stopCh <- struct{}{}
 
 	flushFunctionAndBucket(handler)
-}*/
+}
 
 func TestKVSwapRebOnUpdateDocTimer(t *testing.T) {
 	time.Sleep(5 * time.Second)
@@ -294,7 +294,7 @@ func TestKVSwapRebOnUpdateDocTimer(t *testing.T) {
 	rl.stopCh <- struct{}{}
 
 	flushFunctionAndBucket(handler)
-}
+}*/
 
 /** OnUpdate timer cases end **/
 
@@ -302,7 +302,7 @@ func TestKVSwapRebOnUpdateDocTimer(t *testing.T) {
 func TestKVRebalanceWithMultipleHandlers(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler1 := "bucket_op_on_update"
-	handler2 := "bucket_op_with_doc_timer"
+	handler2 := "sys_test_bucket_op"
 
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)
@@ -342,7 +342,7 @@ func TestKVRebalanceWithMultipleHandlers(t *testing.T) {
 func TestKVSwapRebalanceWithMultipleHandlers(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler1 := "bucket_op_on_update"
-	handler2 := "bucket_op_with_doc_timer"
+	handler2 := "sys_test_bucket_op"
 
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)

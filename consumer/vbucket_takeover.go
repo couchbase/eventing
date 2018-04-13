@@ -410,7 +410,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 					logging.Infof("%s [%s:%s:%d] vb: %v Stream end has been received. LastSeqNoReceived: %d endSeqNo: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, endSeqNo)
 
-					if seqNoReceived == endSeqNo {
+					if seqNoReceived >= endSeqNo {
 						*receivedTillEndSeqNo = true
 					} else {
 						logging.Errorf("%s [%s:%s:%d] vb: %v Received events till end seq no: %d desired: %d",
