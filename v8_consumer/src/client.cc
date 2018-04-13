@@ -780,7 +780,7 @@ void AppWorker::StartFeedbackUVLoop() {
 void AppWorker::WriteResponses() {
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-  while (true) {
+  while (!thread_exit_cond.load()) {
 
     if (!workers.empty()) {
 
@@ -921,9 +921,13 @@ void AppWorker::WriteResponses() {
 }
 
 AppWorker::AppWorker() : feedback_conn_handle(nullptr), conn_handle(nullptr) {
-
+  thread_exit_cond.store(false);
   uv_loop_init(&feedback_loop);
   uv_loop_init(&main_loop);
+  feedback_loop_async.data = (void *)&feedback_loop;
+  main_loop_async.data = (void *)&main_loop;
+  uv_async_init(&feedback_loop, &feedback_loop_async, AppWorker::StopUvLoop);
+  uv_async_init(&main_loop, &main_loop_async, AppWorker::StopUvLoop);
 
   read_buffer.resize(MAX_BUF_SIZE);
   resp_msg = new (resp_msg_t);
@@ -951,6 +955,26 @@ AppWorker::~AppWorker() {
 
   uv_loop_close(&feedback_loop);
   uv_loop_close(&main_loop);
+}
+
+void AppWorker::ReadStdinLoop() {
+  auto functor = [](AppWorker *worker, uv_async_t *async1, uv_async_t *async2) {
+    std::string token;
+    while (!std::cin.eof()) {
+        std::cin.clear();
+        std::getline(std::cin, token);
+    }
+    worker->thread_exit_cond.store(true);
+    uv_async_send(async1);
+    uv_async_send(async2);
+  };
+  std::thread thr(functor, this, &feedback_loop_async, &main_loop_async);
+  stdin_read_thr = std::move(thr);
+}
+
+void AppWorker::StopUvLoop(uv_async_t *async) {
+  uv_loop_t *handle = (uv_loop_t *)async->data;
+  uv_stop(handle);
 }
 
 int main(int argc, char **argv) {
@@ -1000,7 +1024,6 @@ int main(int argc, char **argv) {
   setAppName(appname);
   setWorkerID(worker_id);
   AppWorker *worker = AppWorker::GetAppWorker();
-
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
     worker->InitUDS(appname, Localhost(false), worker_id, batch_size,
                     feedback_batch_size, feedback_sock_path, uds_sock_path);
@@ -1008,7 +1031,8 @@ int main(int argc, char **argv) {
     worker->InitTcpSock(appname, Localhost(false), worker_id, batch_size,
                         feedback_batch_size, feedback_port, port);
   }
-
+  worker->ReadStdinLoop();
+  worker->stdin_read_thr.join();
   worker->main_uv_loop_thr.join();
   worker->feedback_uv_loop_thr.join();
 
