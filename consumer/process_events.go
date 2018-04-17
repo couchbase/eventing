@@ -291,6 +291,12 @@ func (c *Consumer) processEvents() {
 					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
 					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
 
+					if !c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
+						c.Lock()
+						c.vbsRemainingToClose = append(c.vbsRemainingToClose, e.VBucket)
+						c.Unlock()
+					}
+
 					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
 					c.vbFlogChan <- vbFlog
