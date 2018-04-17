@@ -297,7 +297,7 @@ func (c *Consumer) processEvents() {
 					continue
 				}
 
-				if e.Status == mcd.KEY_EEXISTS || e.Status == mcd.NOT_MY_VBUCKET {
+				if e.Status == mcd.KEY_EEXISTS {
 					vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
 
 					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
@@ -306,10 +306,16 @@ func (c *Consumer) processEvents() {
 					continue
 				}
 
-				if e.Status == mcd.EINVAL || e.Status == mcd.ROLLBACK || e.Status == mcd.ENOMEM {
+				if e.Status == mcd.EINVAL || e.Status == mcd.ROLLBACK || e.Status == mcd.ENOMEM || e.Status == mcd.NOT_MY_VBUCKET {
+					_, seqNo, err := e.FailoverLog.Latest()
+					if err != nil {
+						logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ Failure to get latest failover log, err: %v",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, err)
+					}
+
 					vbFlog := &vbFlogEntry{
 						flog:           e.FailoverLog,
-						seqNo:          e.Seqno,
+						seqNo:          seqNo,
 						statusCode:     e.Status,
 						streamReqRetry: true,
 						vb:             e.VBucket,
