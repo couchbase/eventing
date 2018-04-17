@@ -12,7 +12,6 @@
 PROJECT (eventing-inspector)
 
 INCLUDE (FindCouchbaseLibuv)
-INCLUDE (FindCouchbaseLibCouchbase)
 INCLUDE (FindCouchbaseOpenSSL)
 
 FIND_PACKAGE(ZLIB REQUIRED)

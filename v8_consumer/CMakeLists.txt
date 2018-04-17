@@ -13,11 +13,13 @@ PROJECT(eventing-consumer)
 
 INCLUDE (FindCouchbaseJemalloc)
 INCLUDE (FindCouchbaseLibuv)
-INCLUDE (FindCouchbaseLibCouchbase)
 INCLUDE (FindCouchbaseV8)
 INCLUDE (FindCouchbaseBreakpad)
 
-INCLUDE_DIRECTORIES(BEFORE ${LIBCOUCHBASE_INCLUDE_DIR} ${LIBUV_INCLUDE_DIR})
+INCLUDE_DIRECTORIES(BEFORE
+                     "${libcouchbase_SOURCE_DIR}/include"
+                     "${libcouchbase_BINARY_DIR}/generated"
+                     "${LIBUV_INCLUDE_DIR}")
 
 INCLUDE_DIRECTORIES(AFTER
                      ${ICU_INCLUDE_DIR}
@@ -62,7 +64,6 @@ SET(EVENTING_LIBRARIES
     ${ICU_LIBRARIES}
     ${JEMALLOC_LIBRARIES}
     ${CURL_LIBRARIES}
-    ${LIBCOUCHBASE_LIBRARIES}
     ${LIBUV_LIBRARIES}
     ${ZLIB_LIBRARIES}
     eventing-inspector
@@ -79,7 +80,7 @@ IF(BREAKPAD_FOUND)
 ENDIF()
 
 ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})
-ADD_DEPENDENCIES(eventing-consumer generated platform)
+ADD_DEPENDENCIES(eventing-consumer generated platform couchbase)
 
-TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES})
+TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES} couchbase)
 INSTALL(TARGETS eventing-consumer RUNTIME DESTINATION bin)
