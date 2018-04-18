@@ -1,13 +1,13 @@
 function OnUpdate(doc, meta) {
     //log('creating document on dst : ', meta.id);
     var expiry = Math.round((new Date()).getTime() / 1000) + 5;
-    docTimer(timerCallback, meta.id, expiry);
+    docTimer(timerCallback, expiry, meta.id);
 }
 
 function OnDelete(meta) {
     //log('deleting document: ', meta.id);
     var expiry = Math.round((new Date()).getTime() / 1000) + 30;
-    cronTimer(NDtimerCallback, meta.id, expiry);
+    cronTimer(NDtimerCallback, expiry, meta.id);
 }
 
 function timerCallback(docid) {
