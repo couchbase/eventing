@@ -30,7 +30,7 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	if info = m.validateSettings(app.Settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateSettings(util.DeepCopy(app.Settings)); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -501,6 +501,10 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
+	if info = m.validatePositiveInteger("worker_queue_mem_cap", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validatePositiveInteger("xattr_doc_timer_entry_prune_threshold", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -578,6 +582,10 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 	}
 
 	// DCP connection related configurations
+	if info = m.validatePositiveInteger("agg_dcp_feed_mem_cap", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validatePositiveInteger("data_chan_size", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}

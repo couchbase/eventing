@@ -214,7 +214,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   lcb_sched_enter(*bucket_lcb_obj_ptr);
   auto err = lcb_get3(*bucket_lcb_obj_ptr, &result, &gcmd);
   if (err != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: Unable to set params for LCB_GET: "
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_GET: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
@@ -224,7 +224,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   err = lcb_wait(*bucket_lcb_obj_ptr);
 
   if (err != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: Unable to schedule LCB_GET: "
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_GET: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
@@ -232,7 +232,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
 
   // Throw an exception in JavaScript if the bucket get call failed.
   if (result.rc != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: LCB_GET call failed: " << result.rc << std::endl;
+    LOG(logTrace) << "Bucket: LCB_GET call failed: " << result.rc << std::endl;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.rc);
     return;
   }
@@ -293,7 +293,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       lcb_sched_enter(*bucket_lcb_obj_ptr);
       auto err = lcb_get3(*bucket_lcb_obj_ptr, &gres, &gcmd);
       if (err != LCB_SUCCESS) {
-        LOG(logError)
+        LOG(logTrace)
             << "Bucket: Unable to get key for recursive_mutation=false"
             << std::endl;
       }
@@ -301,7 +301,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       lcb_sched_leave(*bucket_lcb_obj_ptr);
       err = lcb_wait(*bucket_lcb_obj_ptr);
       if (err != LCB_SUCCESS) {
-        LOG(logError) << "Bucket: Unable to schedule call to get key for "
+        LOG(logTrace) << "Bucket: Unable to schedule call to get key for "
                          "recursive_mutation=false"
                       << std::endl;
       }
@@ -319,7 +319,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
       default:
         HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, gres.rc);
-        LOG(logError) << "Bucket: Failed to fetch full doc: " << RU(key)
+        LOG(logTrace) << "Bucket: Failed to fetch full doc: " << RU(key)
                       << " to calculate digest, res: "
                       << lcb_strerror(*bucket_lcb_obj_ptr, gres.rc)
                       << std::endl;
@@ -376,13 +376,13 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
       err = lcb_subdoc3(*bucket_lcb_obj_ptr, &sres, &mcmd);
       if (err != LCB_SUCCESS) {
-        LOG(logError) << "Bucket: Unable to set subdoc op for setting macro"
+        LOG(logTrace) << "Bucket: Unable to set subdoc op for setting macro"
                       << std::endl;
       }
 
       err = lcb_wait(*bucket_lcb_obj_ptr);
       if (err != LCB_SUCCESS) {
-        LOG(logError)
+        LOG(logTrace)
             << "Bucket: Unable to schedule subdoc op for setting macro"
             << std::endl;
       }
@@ -395,13 +395,14 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
         return;
 
       case LCB_KEY_EEXISTS:
-        LOG(logInfo) << "Bucket: CAS mismatch for doc:" << RU(key) << std::endl;
+        LOG(logTrace) << "Bucket: CAS mismatch for doc:" << RU(key)
+                      << std::endl;
         std::this_thread::sleep_for(
             std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
         break;
 
       default:
-        LOG(logError) << "Bucket: Encountered error:"
+        LOG(logTrace) << "Bucket: Encountered error:"
                       << lcb_strerror(*bucket_lcb_obj_ptr, sres.rc)
                       << " for key:" << RU(key) << std::endl;
 
@@ -423,7 +424,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     lcb_sched_enter(*bucket_lcb_obj_ptr);
     auto err = lcb_store3(*bucket_lcb_obj_ptr, &sres, &scmd);
     if (err != LCB_SUCCESS) {
-      LOG(logError) << "Bucket: Unable to set params for LCB_SET: "
+      LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
                     << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
       HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
       return;
@@ -433,7 +434,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     err = lcb_wait(*bucket_lcb_obj_ptr);
 
     if (err != LCB_SUCCESS) {
-      LOG(logError) << "Bucket: Unable to schedule LCB_SET: "
+      LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
                     << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
       HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
       return;
@@ -442,7 +443,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
   // Throw an exception in JavaScript if the bucket set call failed.
   if (sres.rc != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: LCB_STORE call failed: " << sres.rc << std::endl;
+    LOG(logTrace) << "Bucket: LCB_STORE call failed: " << sres.rc << std::endl;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, sres.rc);
     return;
   }
@@ -485,7 +486,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   lcb_sched_enter(*bucket_lcb_obj_ptr);
   auto err = lcb_remove3(*bucket_lcb_obj_ptr, &result, &rcmd);
   if (err != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: Unable to set params for LCB_REMOVE: "
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_REMOVE: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
@@ -494,7 +495,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   lcb_sched_leave(*bucket_lcb_obj_ptr);
   err = lcb_wait(*bucket_lcb_obj_ptr);
   if (err != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: Unable to schedule LCB_REMOVE: "
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
@@ -502,7 +503,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
 
   // Throw an exception in JavaScript if the bucket delete call failed.
   if (result.rc != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: LCB_REMOVE call failed: " << result.rc
+    LOG(logTrace) << "Bucket: LCB_REMOVE call failed: " << result.rc
                   << std::endl;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.rc);
     return;

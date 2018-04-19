@@ -13,6 +13,9 @@ const (
 	deleteTempStoreURL = "http://127.0.0.1:9000/_p/event/deleteAppTempStore/?name="
 	deletePrimStoreURL = "http://127.0.0.1:9000/_p/event/deleteApplication/?name="
 	deployedAppsURL    = "http://127.0.0.1:9300/getDeployedApps"
+	exportFunctionsURL = "http://127.0.0.1:9300/api/v1/export"
+	importFunctionsURL = "http://127.0.0.1:9300/api/v1/import"
+	functionsURL       = "http://127.0.0.1:9300/api/v1/functions"
 
 	statsEndpointURL0 = "http://127.0.0.1:9300/api/v1/stats"
 	statsEndpointURL1 = "http://127.0.0.1:9301/api/v1/stats"

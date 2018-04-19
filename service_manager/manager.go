@@ -126,6 +126,10 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/api/v1/config/", m.configHandler)
 	http.HandleFunc("/api/v1/functions", m.functionsHandler)
 	http.HandleFunc("/api/v1/functions/", m.functionsHandler)
+	http.HandleFunc("/api/v1/export", m.exportHandler)
+	http.HandleFunc("/api/v1/export/", m.exportHandler)
+	http.HandleFunc("/api/v1/import", m.importHandler)
+	http.HandleFunc("/api/v1/import/", m.importHandler)
 
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)

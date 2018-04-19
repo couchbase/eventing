@@ -11,7 +11,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -24,7 +24,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -37,7 +37,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -50,7 +50,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -63,7 +63,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -76,7 +76,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -89,7 +89,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -102,7 +102,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -115,7 +115,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -128,7 +128,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -141,7 +141,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -154,7 +154,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -167,7 +167,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -180,7 +180,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
    },
@@ -193,7 +193,7 @@
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
-       "user" : {"source" : "", "user" : ""}
+       "user" : {"domain" : "", "user" : ""}
      },
      "optional_fields" : {"context" : ""}
    },
@@ -201,6 +201,32 @@
      "id" : 32783,
      "name" : "Get Settings",
      "description" : "Get settings for a given app",
+     "sync" : false,
+     "enabled" : false,
+     "filtering_permitted" : true,
+     "mandatory_fields" : {
+       "timestamp" : "",
+       "user" : {"domain" : "", "user" : ""}
+      },
+      "optional_fields" : {"context" : ""}
+   },
+   {
+     "id" : 32784,
+     "name" : "Import Functions",
+     "description" : "Import a list of functions",
+     "sync" : false,
+     "enabled" : false,
+     "filtering_permitted" : true,
+     "mandatory_fields" : {
+       "timestamp" : "",
+       "user" : {"source" : "", "user" : ""}
+      },
+      "optional_fields" : {"context" : ""}
+   },
+   {
+     "id" : 32785,
+     "name" : "Export Functions",
+     "description" : "Export the list of functions",
      "sync" : false,
      "enabled" : false,
      "filtering_permitted" : true,

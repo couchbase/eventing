@@ -69,12 +69,19 @@ using atomic_ptr_t = std::shared_ptr<std::atomic<int64_t>>;
 typedef std::map<int64_t, atomic_ptr_t> vb_seq_map_t;
 
 typedef struct doc_timer_msg_s {
+  std::size_t GetSize() const { return timer_entry.length(); }
+
   std::string
       timer_entry; // <timestamp in GMT>::<callback_func>::<doc_id>::<seq_no>
 } doc_timer_msg_t;
 
 // Header frame structure for messages from Go world
 typedef struct header_s {
+  std::size_t GetSize() const {
+    return metadata.length() + sizeof(event) + sizeof(opcode) +
+           sizeof(partition) + metadata.length();
+  }
+
   uint8_t event;
   uint8_t opcode;
   int16_t partition;
@@ -83,12 +90,16 @@ typedef struct header_s {
 
 // Flatbuffer encoded message from Go world
 typedef struct message_s {
+  std::size_t GetSize() const { return header.length() + payload.length(); }
+
   std::string header;
   std::string payload;
 } message_t;
 
 // Struct to contain flatbuffer decoded message from Go world
 typedef struct worker_msg_s {
+  std::size_t GetSize() const { return header->GetSize() + payload->GetSize(); }
+
   header_t *header;
   message_t *payload;
 } worker_msg_t;
@@ -200,9 +211,6 @@ public:
                     int args_len);
 
   void Enqueue(header_t *header, message_t *payload);
-  void EnqueueDocTimer(header_t *header, message_t *payload);
-  int64_t DocTimerQueueSize();
-  int64_t QueueSize();
 
   void AddLcbException(int err_code);
   void ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions);
@@ -211,11 +219,8 @@ public:
 
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
-
   v8::Persistent<v8::Function> on_update_;
   v8::Persistent<v8::Function> on_delete_;
-
-  v8::Global<v8::ObjectTemplate> worker_template;
 
   // lcb instances to source and metadata buckets
   lcb_t cb_instance;
@@ -228,7 +233,6 @@ public:
   std::string handler_code_;
   std::string script_to_execute_;
   std::string source_map_;
-
   std::string cb_source_bucket;
   int64_t max_task_duration;
 

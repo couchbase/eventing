@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -27,10 +28,10 @@ func (c *Consumer) processEvents() {
 	for {
 
 		if c.cppQueueSizes != nil {
-			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize || c.feedbackQueueCap < c.cppQueueSizes.DocTimerQueueSize {
-				logging.Infof("%s [%s:%s:%d] Throttling events to cpp worker, aggregate queue size: %v cap: %v feedback queue size: %v cap: %v",
+			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize || c.feedbackQueueCap < c.cppQueueSizes.DocTimerQueueSize || c.workerQueueMemCap < c.cppQueueSizes.AggQueueMemory {
+				logging.Infof("%s [%s:%s:%d] Throttling events to cpp worker, aggregate queue size: %v cap: %v feedback queue size: %v cap: %v aggregate queue memory: %v cap %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.AggQueueSize, c.workerQueueCap,
-					c.cppQueueSizes.DocTimerQueueSize, c.feedbackQueueCap)
+					c.cppQueueSizes.DocTimerQueueSize, c.feedbackQueueCap, c.cppQueueSizes.AggQueueMemory, c.workerQueueMemCap)
 				time.Sleep(1 * time.Second)
 			}
 		}
@@ -44,6 +45,8 @@ func (c *Consumer) processEvents() {
 				c.stopCheckpointingCh <- struct{}{}
 				return
 			}
+
+			atomic.AddInt64(&c.aggDCPFeedMem, -int64(len(e.Value)))
 
 			c.msgProcessedRWMutex.Lock()
 			if _, ok := c.dcpMessagesProcessed[e.Opcode]; !ok {
@@ -294,7 +297,7 @@ func (c *Consumer) processEvents() {
 					continue
 				}
 
-				if e.Status == mcd.KEY_EEXISTS || e.Status == mcd.NOT_MY_VBUCKET {
+				if e.Status == mcd.KEY_EEXISTS {
 					vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
 
 					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
@@ -303,10 +306,16 @@ func (c *Consumer) processEvents() {
 					continue
 				}
 
-				if e.Status == mcd.EINVAL || e.Status == mcd.ROLLBACK || e.Status == mcd.ENOMEM {
+				if e.Status == mcd.EINVAL || e.Status == mcd.ROLLBACK || e.Status == mcd.ENOMEM || e.Status == mcd.NOT_MY_VBUCKET {
+					_, seqNo, err := e.FailoverLog.Latest()
+					if err != nil {
+						logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ Failure to get latest failover log, err: %v",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, err)
+					}
+
 					vbFlog := &vbFlogEntry{
 						flog:           e.FailoverLog,
-						seqNo:          e.Seqno,
+						seqNo:          seqNo,
 						statusCode:     e.Status,
 						streamReqRetry: true,
 						vb:             e.VBucket,
@@ -576,11 +585,17 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 					return
 				}
 
+				if c.aggDCPFeedMem > c.aggDCPFeedMemCap {
+					logging.Infof("%s [%s:%s:%d] Throttling, aggDCPFeed memory : %v bytes aggDCPFeedMemCap : %v\n", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.aggDCPFeedMem, c.aggDCPFeedMemCap)
+					time.Sleep(1 * time.Second)
+				}
+
 				if e.Opcode == mcd.DCP_STREAMEND || e.Opcode == mcd.DCP_STREAMREQ {
 					logging.Debugf("%s [%s:%s:%d] addToAggChan dcpFeed name: %v vb: %v Opcode: %v Status: %v",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), e.VBucket, e.Opcode, e.Status)
 				}
 
+				atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
 				c.aggDCPFeed <- e
 
 			case <-cancelCh:

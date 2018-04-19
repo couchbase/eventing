@@ -58,8 +58,16 @@ func (c *client) Serve() {
 		return
 	}
 
+	inPipe, err := c.cmd.StdinPipe()
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to open stdin pipe, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.osPid, err)
+		return
+	}
+
 	defer outPipe.Close()
 	defer errPipe.Close()
+	defer inPipe.Close()
 
 	err = c.cmd.Start()
 	if err != nil {

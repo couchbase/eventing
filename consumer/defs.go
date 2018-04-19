@@ -135,10 +135,11 @@ type Consumer struct {
 	// Captures aggregate of items in queue maintained for each V8Worker instance.
 	// Within a single CPP worker process, the number of V8Worker instance is equal
 	// to number of worker threads spawned
-	cppQueueSizes    *cppQueueSize
-	cronTimersPerDoc int
-	feedbackQueueCap int64
-	workerQueueCap   int64
+	cppQueueSizes     *cppQueueSize
+	cronTimersPerDoc  int
+	feedbackQueueCap  int64
+	workerQueueCap    int64
+	workerQueueMemCap int64
 
 	cppThrPartitionMap map[int][]uint16
 	cppWorkerThrCount  int // No. of worker threads per CPP worker process
@@ -151,6 +152,8 @@ type Consumer struct {
 	sourceMap          string // source map to assist with V8 Debugger
 	sendMsgToDebugger  bool
 
+	aggDCPFeedMemCap       int64
+	aggDCPFeedMem          int64
 	aggDCPFeed             chan *cb.DcpEvent
 	cbBucket               *couchbase.Bucket
 	checkpointInterval     time.Duration
@@ -480,6 +483,7 @@ type msgToTransmit struct {
 type cppQueueSize struct {
 	AggQueueSize      int64 `json:"agg_queue_size"`
 	DocTimerQueueSize int64 `json:"feedback_queue_size"`
+	AggQueueMemory    int64 `json:"agg_queue_memory"`
 }
 
 type plasmaStoreEntry struct {

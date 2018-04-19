@@ -300,16 +300,20 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             // Flush the aggregate item count in queues for all running V8
             // worker instances
             if (!workers.empty()) {
-              int64_t agg_queue_size = 0, feedback_queue_size = 0;
+              int64_t agg_queue_size = 0, feedback_queue_size = 0,
+                      agg_queue_memory = 0;
               for (const auto &w : workers) {
-                agg_queue_size += w.second->QueueSize();
-                feedback_queue_size += w.second->DocTimerQueueSize();
+                agg_queue_size += w.second->worker_queue->Count();
+                feedback_queue_size += w.second->doc_timer_queue->Count();
+                agg_queue_memory += w.second->worker_queue->Size() +
+                                    w.second->doc_timer_queue->Size();
               }
 
               std::ostringstream queue_stats;
               queue_stats << R"({"agg_queue_size":)";
               queue_stats << agg_queue_size << R"(, "feedback_queue_size":)";
-              queue_stats << feedback_queue_size << "}";
+              queue_stats << feedback_queue_size << R"(, "agg_queue_memory":)";
+              queue_stats << agg_queue_memory << "}";
 
               flatbuffers::FlatBufferBuilder builder;
               auto msg_offset = builder.CreateString(queue_stats.str());
@@ -372,7 +376,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   handler_config_t *handler_config;
 
   int worker_index;
-  int64_t latency_buckets, agg_queue_size, feedback_queue_size;
+  int64_t latency_buckets, agg_queue_size, feedback_queue_size,
+      agg_queue_memory;
   std::vector<int64_t> agg_hgram, worker_hgram;
   std::ostringstream lstats, estats, fstats;
   std::map<int, int64_t> agg_lcb_exceptions;
@@ -552,15 +557,17 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << uv_try_write_failure_counter;
 
       if (!workers.empty()) {
-        agg_queue_size = 0;
-        feedback_queue_size = 0;
+        agg_queue_memory = agg_queue_size = feedback_queue_size = 0;
         for (const auto &w : workers) {
-          agg_queue_size += w.second->QueueSize();
-          feedback_queue_size += w.second->DocTimerQueueSize();
+          agg_queue_size += w.second->worker_queue->Count();
+          feedback_queue_size += w.second->doc_timer_queue->Count();
+          agg_queue_memory += w.second->worker_queue->Size() +
+                              w.second->doc_timer_queue->Size();
         }
 
         estats << R"(, "agg_queue_size":)" << agg_queue_size;
         estats << R"(, "feedback_queue_size":)" << feedback_queue_size;
+        estats << R"(, "agg_queue_memory":)" << agg_queue_memory;
       }
 
       estats << R"(, "timestamp":")" << GetTimestampNow() << R"("})";
@@ -780,12 +787,12 @@ void AppWorker::StartFeedbackUVLoop() {
 void AppWorker::WriteResponses() {
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-  while (true) {
+  while (!thread_exit_cond.load()) {
 
     if (!workers.empty()) {
 
       for (const auto &w : workers) {
-        auto timer_entry_count = w.second->doc_timer_queue->count();
+        auto timer_entry_count = w.second->doc_timer_queue->Count();
 
         if (timer_entry_count > 0) {
 
@@ -802,7 +809,7 @@ void AppWorker::WriteResponses() {
 
               if ((i * feedback_batch_size + j) < timer_entry_count) {
 
-                auto doc_timer_msg = w.second->doc_timer_queue->pop();
+                auto doc_timer_msg = w.second->doc_timer_queue->Pop();
 
                 flatbuffers::FlatBufferBuilder builder;
                 auto msg_offset =
@@ -921,9 +928,13 @@ void AppWorker::WriteResponses() {
 }
 
 AppWorker::AppWorker() : feedback_conn_handle(nullptr), conn_handle(nullptr) {
-
+  thread_exit_cond.store(false);
   uv_loop_init(&feedback_loop);
   uv_loop_init(&main_loop);
+  feedback_loop_async.data = (void *)&feedback_loop;
+  main_loop_async.data = (void *)&main_loop;
+  uv_async_init(&feedback_loop, &feedback_loop_async, AppWorker::StopUvLoop);
+  uv_async_init(&main_loop, &main_loop_async, AppWorker::StopUvLoop);
 
   read_buffer.resize(MAX_BUF_SIZE);
   resp_msg = new (resp_msg_t);
@@ -951,6 +962,26 @@ AppWorker::~AppWorker() {
 
   uv_loop_close(&feedback_loop);
   uv_loop_close(&main_loop);
+}
+
+void AppWorker::ReadStdinLoop() {
+  auto functor = [](AppWorker *worker, uv_async_t *async1, uv_async_t *async2) {
+    std::string token;
+    while (!std::cin.eof()) {
+        std::cin.clear();
+        std::getline(std::cin, token);
+    }
+    worker->thread_exit_cond.store(true);
+    uv_async_send(async1);
+    uv_async_send(async2);
+  };
+  std::thread thr(functor, this, &feedback_loop_async, &main_loop_async);
+  stdin_read_thr = std::move(thr);
+}
+
+void AppWorker::StopUvLoop(uv_async_t *async) {
+  uv_loop_t *handle = (uv_loop_t *)async->data;
+  uv_stop(handle);
 }
 
 int main(int argc, char **argv) {
@@ -1000,7 +1031,6 @@ int main(int argc, char **argv) {
   setAppName(appname);
   setWorkerID(worker_id);
   AppWorker *worker = AppWorker::GetAppWorker();
-
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
     worker->InitUDS(appname, Localhost(false), worker_id, batch_size,
                     feedback_batch_size, feedback_sock_path, uds_sock_path);
@@ -1008,7 +1038,8 @@ int main(int argc, char **argv) {
     worker->InitTcpSock(appname, Localhost(false), worker_id, batch_size,
                         feedback_batch_size, feedback_port, port);
   }
-
+  worker->ReadStdinLoop();
+  worker->stdin_read_thr.join();
   worker->main_uv_loop_thr.join();
   worker->feedback_uv_loop_thr.join();
 

@@ -797,17 +797,12 @@ void V8Worker::Checkpoint() {
   }
 }
 
-int64_t V8Worker::DocTimerQueueSize() { return doc_timer_queue->count(); }
-
-int64_t V8Worker::QueueSize() { return worker_queue->count(); }
-
 void V8Worker::RouteMessage() {
   const flatbuf::payload::Payload *payload;
   std::string key, val, timer_ts, doc_id, callback_fn, cron_cb_fns, metadata;
 
   while (true) {
-    worker_msg_t msg;
-    msg = worker_queue->pop();
+    auto msg = worker_queue->Pop();
     payload = flatbuf::payload::GetPayload(
         (const void *)msg.payload->payload.c_str());
 
@@ -1247,7 +1242,7 @@ void V8Worker::Enqueue(header_t *h, message_t *p) {
                 << " opcode: " << static_cast<int16_t>(h->opcode)
                 << " partition: " << h->partition
                 << " metadata: " << RU(h->metadata) << std::endl;
-  worker_queue->push(msg);
+  worker_queue->Push(msg);
 }
 
 std::string V8Worker::CompileHandler(std::string handler) {

@@ -1048,3 +1048,12 @@ func ToStr(value bool) (strValue string) {
 func FloatEquals(a, b float64) bool {
 	return (a-b) < EPSILON && (b-a) < EPSILON
 }
+
+func DeepCopy(kv map[string]interface{}) (newKv map[string]interface{}) {
+	newKv = make(map[string]interface{})
+	for k, v := range kv {
+		newKv[k] = v
+	}
+
+	return
+}

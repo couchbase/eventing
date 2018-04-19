@@ -72,13 +72,17 @@ public:
 
   void WriteResponses();
 
+  void ReadStdinLoop();
+
+  static void StopUvLoop(uv_async_t *);
+
   std::thread main_uv_loop_thr;
   std::thread feedback_uv_loop_thr;
+  std::thread stdin_read_thr;
 
 private:
   AppWorker();
   ~AppWorker();
-
   std::thread write_responses_thr;
   std::map<int16_t, V8Worker *> workers;
 
@@ -88,6 +92,7 @@ private:
   uv_connect_t feedback_conn;
   uv_stream_t *feedback_conn_handle;
   uv_loop_t feedback_loop;
+  uv_async_t feedback_loop_async;
   bool feedback_loop_running;
   sockaddr_in46 feedback_server_sock;
   uv_tcp_t feedback_tcp_sock;
@@ -99,6 +104,7 @@ private:
   uv_connect_t conn;
   uv_stream_t *conn_handle;
   uv_loop_t main_loop;
+  uv_async_t main_loop_async;
   bool main_loop_running;
   sockaddr_in46 server_sock;
   uv_tcp_t tcp_sock;
@@ -125,6 +131,8 @@ private:
   bool msg_priority;
 
   std::vector<char> read_buffer;
+
+  std::atomic<bool> thread_exit_cond;
 };
 
 #endif

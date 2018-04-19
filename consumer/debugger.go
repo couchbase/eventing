@@ -50,7 +50,15 @@ func (c *debugClient) Serve() {
 	c.cmd.Stderr = os.Stderr
 	c.cmd.Stdout = os.Stdout
 
-	err := c.cmd.Start()
+	inPipe, err := c.cmd.StdinPipe()
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to open stdin pipe, err: %v",
+			c.appName, c.workerName, c.debugTCPPort, c.osPid, err)
+		return
+	}
+	defer inPipe.Close()
+
+	err = c.cmd.Start()
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to spawn c++ worker for debugger",
 			logPrefix, c.workerName, c.debugTCPPort, c.osPid)

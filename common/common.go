@@ -215,6 +215,7 @@ type PlannerNodeVbMapping struct {
 }
 
 type HandlerConfig struct {
+	AggDCPFeedMemCap            int64
 	CheckpointInterval          int
 	CleanupTimers               bool
 	CPPWorkerThrCount           int
@@ -237,6 +238,7 @@ type HandlerConfig struct {
 	TimerProcessingTickInterval int
 	WorkerCount                 int
 	WorkerQueueCap              int64
+	WorkerQueueMemCap           int64
 	XattrEntryPruneThreshold    int
 }
 

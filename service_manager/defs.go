@@ -14,7 +14,7 @@ const (
 	metakvAppsPath           = metakvEventingPath + "apps/"
 	metakvAppSettingsPath    = metakvEventingPath + "appsettings/"     // function settings
 	metakvConfigKeepNodes    = metakvEventingPath + "config/keepNodes" // Store list of eventing keepNodes
-	metakvConfigPath         = metakvEventingPath + "config/settings"  // global settings
+	metakvConfigPath         = metakvEventingPath + "settings/config"  // global settings
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	metakvRebalanceProgress  = metakvEventingPath + "rebalanceProgress/"
 	metakvTempAppsPath       = metakvEventingPath + "tempApps/"

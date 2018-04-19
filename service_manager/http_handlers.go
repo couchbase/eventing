@@ -894,13 +894,13 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	// cluster it will log lot of this message.
 	logging.Tracef("Fetching function draft definitions")
 	audit.Log(auditevent.FetchDrafts, r, nil)
-	respData := m.getTempStoreAll()
+	applications := m.getTempStoreAll()
 
-	data, err := json.Marshal(respData)
+	data, err := json.Marshal(applications)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, `{"error":"Failed to marshal response for stats, err: %v"}`, err)
+		fmt.Fprintf(w, `{"error":"Failed to marshal response, err: %v"}`, err)
 		return
 	}
 
@@ -1108,7 +1108,7 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 		logging.Errorf("Failed to grab correct rebalance status from some/all Eventing nodes, err: %v", err)
 
 		info.Code = m.statusCodes.errGetRebStatus.Code
-		info.Info = fmt.Sprintf("Failed to get rebalance status from eventing nodes")
+		info.Info = "Failed to get rebalance status from eventing nodes"
 		return
 	}
 
@@ -1118,7 +1118,7 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 		logging.Warnf("Rebalance ongoing on some/all Eventing nodes")
 
 		info.Code = m.statusCodes.errRebOngoing.Code
-		info.Info = fmt.Sprintf("Rebalance ongoing on some/all Eventing nodes, creating new apps or changing settings for existing apps isn't allowed")
+		info.Info = "Rebalance ongoing on some/all Eventing nodes, creating new apps or changing settings for existing apps isn't allowed"
 		return
 	}
 
@@ -1700,27 +1700,13 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			m.getTempStoreHandler(w, r)
 
 		case "POST":
-			infoList := []*runtimeInfo{}
-			appList := m.unmarshalAppList(w, r)
-			for _, app := range appList {
-				audit.Log(auditevent.CreateFunction, r, app.Name)
-
-				if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
-					infoList = append(infoList, info)
-					continue
-				}
-
-				// Save to temp store only if saving to primary store succeeds
-				if info := m.savePrimaryStore(app); info.Code == m.statusCodes.ok.Code {
-					audit.Log(auditevent.SaveDraft, r, app.Name)
-
-					info := m.saveTempStore(app)
-					infoList = append(infoList, info)
-				} else {
-					infoList = append(infoList, info)
-				}
+			appList, info := m.unmarshalAppList(w, r)
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
 			}
 
+			infoList := m.createApplications(r, appList, false)
 			m.sendRuntimeInfoList(w, infoList)
 
 		case "DELETE":
@@ -1828,4 +1814,91 @@ func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvAppsPath)
 	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvTempAppsPath)
 	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvAppSettingsPath)
+}
+
+func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		return
+	}
+
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	audit.Log(auditevent.ExportFunctions, r, nil)
+
+	apps := m.getTempStoreAll()
+	for _, app := range apps {
+		app.Settings["deployment_status"] = false
+		app.Settings["processing_status"] = false
+	}
+
+	data, err := json.Marshal(apps)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
+		fmt.Fprintf(w, `{"error":"Failed to marshal response, err: %v"}`, err)
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s\n", data)
+}
+
+func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		return
+	}
+
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	audit.Log(auditevent.ImportFunctions, r, nil)
+
+	appList, info := m.unmarshalAppList(w, r)
+	if info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	infoList := m.createApplications(r, appList, true)
+	m.sendRuntimeInfoList(w, infoList)
+}
+
+func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application, undeploy bool) (infoList []*runtimeInfo) {
+	infoList = []*runtimeInfo{}
+	for _, app := range *appList {
+		audit.Log(auditevent.CreateFunction, r, app.Name)
+
+		if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
+			infoList = append(infoList, info)
+			continue
+		}
+
+		if undeploy {
+			app.Settings["deployment_status"] = false
+			app.Settings["processing_status"] = false
+		}
+
+		// Save to temp store only if saving to primary store succeeds
+		if info := m.savePrimaryStore(app); info.Code == m.statusCodes.ok.Code {
+			audit.Log(auditevent.SaveDraft, r, app.Name)
+
+			info := m.saveTempStore(app)
+			infoList = append(infoList, info)
+		} else {
+			infoList = append(infoList, info)
+		}
+	}
+
+	return
 }

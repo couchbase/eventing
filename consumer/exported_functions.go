@@ -413,6 +413,15 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 		defer outPipe.Close()
 
+		inPipe, err := cmd.StdinPipe()
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to open stdin pipe, err: %v",
+				appName, c.workerName, c.tcpPort, c.Pid(), err)
+			return
+		}
+
+		defer inPipe.Close()
+
 		err = cmd.Start()
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to spawn compilation worker, err: %v",
