@@ -404,14 +404,14 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			fmt.Sprintf("CBEVT_CALLBACK_USR=%s", user),
 			fmt.Sprintf("CBEVT_CALLBACK_KEY=%s", key))
 
-		outPipe, err := cmd.StdoutPipe()
+		errPipe, err := cmd.StderrPipe()
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Failed to open stdout pipe, err: %v",
+			logging.Errorf("%s [%s:%s:%d] Failed to open stderr pipe, err: %v",
 				appName, c.workerName, c.tcpPort, c.Pid(), err)
 			return
 		}
 
-		defer outPipe.Close()
+		defer errPipe.Close()
 
 		inPipe, err := cmd.StdinPipe()
 		if err != nil {
@@ -432,20 +432,20 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 		logging.Infof("%s [%s:%s:%d] compilation worker launched",
 			logPrefix, c.workerName, c.tcpPort, pid)
 
-		bufOut := bufio.NewReader(outPipe)
+		bufErr := bufio.NewReader(errPipe)
 
-		go func(bufOut *bufio.Reader) {
+		go func(bufErr *bufio.Reader) {
 			for {
-				msg, _, err := bufOut.ReadLine()
+				msg, _, err := bufErr.ReadLine()
 				if err != nil {
-					logging.Warnf("%s [%s:%s:%d] Failed to read from stdout pipe, err: %v",
+					logging.Warnf("%s [%s:%s:%d] Failed to read from stderr pipe, err: %v",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 					return
 				}
 
 				logging.Infof("%s", string(msg))
 			}
-		}(bufOut)
+		}(bufErr)
 
 		err = cmd.Wait()
 

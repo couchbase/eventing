@@ -278,8 +278,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
               v8::FunctionTemplate::New(GetIsolate(), GetReturnValueFunction));
 
   if (try_catch.HasCaught()) {
-    last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Last exception: " << last_exception << std::endl;
+    LOG(logError) << "Exception logged:"
+                  << ExceptionString(GetIsolate(), &try_catch) << std::endl;
   }
 
   auto context = v8::Context::New(GetIsolate(), nullptr, global);
@@ -889,8 +889,8 @@ bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
   if (!v8::Script::Compile(context, script, &origin)
            .ToLocal(&compiled_script)) {
     assert(try_catch.HasCaught());
-    last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Exception logged:" << last_exception << std::endl;
+    LOG(logError) << "Exception logged:"
+                  << ExceptionString(GetIsolate(), &try_catch) << std::endl;
     // The script failed to compile; bail out.
     return false;
   }
@@ -898,8 +898,8 @@ bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
   v8::Local<v8::Value> result;
   if (!compiled_script->Run(context).ToLocal(&result)) {
     assert(try_catch.HasCaught());
-    last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Exception logged:" << last_exception << std::endl;
+    LOG(logError) << "Exception logged:"
+                  << ExceptionString(GetIsolate(), &try_catch) << std::endl;
     // Running the script failed; bail out.
     return false;
   }
@@ -983,8 +983,8 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   }
 
   if (try_catch.HasCaught()) {
-    last_exception = ExceptionString(GetIsolate(), &try_catch);
-    std::cerr << "Last exception: " << last_exception << std::endl;
+    APPLOG << "OnUpdate Exception: "
+           << ExceptionString(GetIsolate(), &try_catch) << std::endl;
   }
 
   if (debugger_started) {
@@ -1006,8 +1006,8 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
     execute_flag = false;
 
     if (try_catch.HasCaught()) {
-      LOG(logDebug) << "Exception message: "
-                    << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+      APPLOG << "OnUpdate Exception: "
+             << ExceptionString(GetIsolate(), &try_catch) << std::endl;
       UpdateHistogram(start_time);
       on_update_failure++;
       return kOnUpdateCallFail;
@@ -1078,8 +1078,8 @@ int V8Worker::SendDelete(std::string meta) {
     execute_flag = false;
 
     if (try_catch.HasCaught()) {
-      std::cerr << "Exception message"
-                << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+      APPLOG << "OnDelete Exception: "
+             << ExceptionString(GetIsolate(), &try_catch) << std::endl;
       UpdateHistogram(start_time);
       on_delete_failure++;
       return kOnDeleteCallFail;

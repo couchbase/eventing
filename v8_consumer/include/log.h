@@ -50,25 +50,41 @@ inline LogLevel LevelFromString(const std::string &level) {
   return logInfo;
 }
 
-class AtomicLog {
+class AtomicCerrLog {
 public:
-  AtomicLog() {
-    while (spin_lock.test_and_set(std::memory_order_acquire)) {
+  AtomicCerrLog() {
+    while (cerr_spin_lock.test_and_set(std::memory_order_acquire)) {
+    }
+  }
+
+  std::ostream &Cerr() { return std::cerr; }
+
+  ~AtomicCerrLog() { cerr_spin_lock.clear(std::memory_order_release); }
+
+  static std::atomic_flag cerr_spin_lock;
+};
+
+class AtomicCoutLog {
+public:
+  AtomicCoutLog() {
+    while (cout_spin_lock.test_and_set(std::memory_order_acquire)) {
     }
   }
 
   std::ostream &Cout() { return std::cout; }
 
-  ~AtomicLog() { spin_lock.clear(std::memory_order_release); }
+  ~AtomicCoutLog() { cout_spin_lock.clear(std::memory_order_release); }
 
-  static std::atomic_flag spin_lock;
+  static std::atomic_flag cout_spin_lock;
 };
+
+#define APPLOG AtomicCoutLog().Cout()
 
 #define LOG(level)                                                             \
   if (level > desiredLogLevel)                                                 \
     ;                                                                          \
   else                                                                         \
-    AtomicLog().Cout()
+    AtomicCerrLog().Cerr()
 #endif
 
 #define RU(msg) (noRedact ? "" : "<ud>") << msg << (noRedact ? "" : "</ud>")
