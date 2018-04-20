@@ -69,10 +69,11 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
 
-  if (args.Length() != 3) {
-    LOG(logError) << "Cron timer: Need 3 args: <callback_func> <payload> "
-                     "<timeWhenToKickOff>"
-                  << std::endl;
+  if (args.Length() < 3) {
+    LOG(logError)
+        << "Cron timer: Need 3 args: <callback_func> <timeWhenToKickOff>"
+           "<payload>"
+        << std::endl;
     return;
   }
 
@@ -85,9 +86,9 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  std::string opaque(JSONStringify(args.GetIsolate(), args[1]));
+  std::string opaque(JSONStringify(args.GetIsolate(), args[2]));
 
-  v8::Local<v8::Value> ts_v8_val(args[2]);
+  v8::Local<v8::Value> ts_v8_val(args[1]);
   auto actual_ts = ts_v8_val->ToInteger()->Value();
   if (actual_ts <= 0) {
     LOG(logError) << "Cron timer: Skipping cron timer callback setup, invalid "
@@ -253,6 +254,13 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
 
+  if (args.Length() < 3) {
+    LOG(logError) << "Doc Timer : <callback_func> <timeWhenToKickOff> <DocID>"
+                     "<payload>"
+                  << std::endl;
+    return;
+  }
+
   std::string cb_func;
   if (isFuncReference(args, 0)) {
     v8::Local<v8::Function> func_ref = args[0].As<v8::Function>();
@@ -262,8 +270,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  v8::String::Utf8Value doc(args[1]);
-  v8::String::Utf8Value ts(args[2]);
+  v8::String::Utf8Value doc(args[2]);
+  v8::String::Utf8Value ts(args[1]);
 
   std::string doc_id, start_ts, timer_entry;
   doc_id.assign(std::string(*doc));

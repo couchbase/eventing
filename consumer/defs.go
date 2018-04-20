@@ -187,8 +187,9 @@ type Consumer struct {
 	numVbuckets            int
 	vbDcpFeedMap           map[uint16]*couchbase.DcpFeed
 	vbnos                  []uint16
-	vbsRemainingToOwn      []uint16
+	vbsRemainingToClose    []uint16 // Access controlled by default lock
 	vbsRemainingToGiveUp   []uint16
+	vbsRemainingToOwn      []uint16
 	vbsRemainingToRestream []uint16        // Access controlled by default lock
 	vbsStreamClosed        map[uint16]bool // Access controlled by vbsStreamClosedRWMutex
 	vbsStreamClosedRWMutex *sync.RWMutex

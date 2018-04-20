@@ -76,12 +76,15 @@ func (c *Consumer) controlRoutine() {
 		case <-c.restartVbDcpStreamTicker.C:
 
 		retryVbsRemainingToRestream:
-			c.Lock()
+			c.RLock()
 			vbsToRestream := make([]uint16, len(c.vbsRemainingToRestream))
 			copy(vbsToRestream, c.vbsRemainingToRestream)
-			c.Unlock()
 
-			if len(vbsToRestream) == 0 {
+			vbsRemainingToClose := make([]uint16, len(c.vbsRemainingToClose))
+			copy(vbsRemainingToClose, c.vbsRemainingToClose)
+			c.RUnlock()
+
+			if len(vbsToRestream) == 0 && len(vbsRemainingToClose) == 0 {
 				continue
 			}
 
@@ -93,15 +96,46 @@ func (c *Consumer) controlRoutine() {
 
 				c.Lock()
 				c.vbsRemainingToRestream = make([]uint16, 0)
+				c.vbsRemainingToClose = make([]uint16, 0)
 				c.Unlock()
 
-				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v as the app has been undeployed",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream))
+				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v and vbsRemainingToClose: %v as the app has been undeployed",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream), util.Condense(vbsRemainingToClose))
 				continue
 			}
 
+			sort.Sort(util.Uint16Slice(vbsRemainingToClose))
+			logging.Infof("%s [%s:%s:%d] vbsRemainingToClose len: %d dump: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsRemainingToClose), util.Condense(vbsRemainingToClose))
+
+			for _, vb := range vbsRemainingToClose {
+				if !c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+					continue
+				}
+
+				if c.checkIfCurrentConsumerShouldOwnVb(vb) {
+					continue
+				}
+
+				c.RLock()
+				err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
+				c.RUnlock()
+				if err != nil {
+					logging.Errorf("%s [%s:%s:%d] vb: %v Failed to close dcp stream, err: %v",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+				} else {
+					logging.Infof("%s [%s:%s:%d] vb: %v Issued dcp close stream as current worker isn't supposed to own per plan",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+				}
+
+				var vbBlob vbucketKVBlob
+				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
+
+				c.updateCheckpoint(vbKey, vb, &vbBlob)
+			}
+
 			sort.Sort(util.Uint16Slice(vbsToRestream))
-			logging.Infof("%s [%s:%s:%d] vbsToRestream len: %v dump: %v",
+			logging.Infof("%s [%s:%s:%d] vbsToRestream len: %d dump: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsToRestream), util.Condense(vbsToRestream))
 
 			var vbsFailedToStartStream []uint16

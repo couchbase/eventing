@@ -122,6 +122,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbOwnershipTakeoverRoutineCount: rConfig.VBOwnershipTakeoverRoutineCount,
 		vbPlasmaStore:                   vbPlasmaStore,
 		vbProcessingStats:               newVbProcessingStats(app.AppName, uint16(numVbuckets)),
+		vbsRemainingToClose:             make([]uint16, 0),
 		vbsRemainingToGiveUp:            make([]uint16, 0),
 		vbsRemainingToOwn:               make([]uint16, 0),
 		vbsRemainingToRestream:          make([]uint16, 0),
