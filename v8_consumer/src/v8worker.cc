@@ -945,7 +945,6 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
 
   if (on_update_.IsEmpty()) {
     UpdateHistogram(start_time);
-    on_update_failure++;
     return kOnUpdateCallFail;
   }
 
@@ -1029,7 +1028,6 @@ int V8Worker::SendDelete(std::string meta) {
 
   if (on_delete_.IsEmpty()) {
     UpdateHistogram(start_time);
-    on_delete_failure++;
     return kOnDeleteCallFail;
   }
 
