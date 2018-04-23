@@ -3,6 +3,8 @@ package supervisor
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -164,6 +166,17 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 			s.appProcessingStatus[appName] = true
 			s.appDeploymentStatus[appName] = true
 		}
+	} else {
+
+		// Delete application request
+		splitRes := strings.Split(path, "/")
+		appName := splitRes[len(splitRes)-1]
+		msg := supCmdMsg{
+			ctx: appName,
+			cmd: cmdAppDelete,
+		}
+
+		s.supCmdCh <- msg
 	}
 	return nil
 }
@@ -522,43 +535,32 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 			case cmdAppDelete:
 				logging.Infof("%s [%d] Deleting app: %s", logPrefix, len(s.runningProducers), appName)
 
-				// Spawning another routine to process cleanup of plasma store, otherwise
-				// it would block (re)deploy of new lambdas
-				go func(s *SuperSupervisor) {
-					var addrs []string
-					var currNodeAddr string
+				d, err := os.Open(s.eventingDir)
+				if err != nil {
+					logging.Errorf("%s [%d] App: %s failed to open eventingDir: %s while trying to purge app logs, err: %v",
+						logPrefix, len(s.runningProducers), appName, err)
+					continue
+				}
 
-					util.Retry(util.NewFixedBackoff(time.Second), getEventingNodeAddrsCallback, s, &addrs)
+				names, err := d.Readdirnames(-1)
+				if err != nil {
+					logging.Errorf("%s [%d] App: %s failed to list contents of eventingDir: %s, err: %v",
+						logPrefix, len(s.runningProducers), appName, s.eventingDir, err)
+					d.Close()
+					continue
+				}
 
-					util.Retry(util.NewFixedBackoff(time.Second), getCurrentEventingNodeAddrCallback, s, &currNodeAddr)
-
-					s.assignVbucketsToOwn(addrs, currNodeAddr)
-
-					checkIfDeployed := true
-					if s.appDeploymentStatus[appName] == false && s.appProcessingStatus[appName] == false {
-						checkIfDeployed = false
+				prefix := fmt.Sprintf("%s.log", appName)
+				for _, name := range names {
+					if strings.HasPrefix(name, prefix) {
+						err = os.RemoveAll(filepath.Join(s.eventingDir, name))
+						if err != nil {
+							logging.Errorf("%s [%d] Failed to remove app log: %s, err: %v",
+								logPrefix, len(s.runningProducers), name, err)
+						}
 					}
-
-					if checkIfDeployed {
-						s.appDeploymentStatus[appName] = false
-						s.appProcessingStatus[appName] = false
-
-						logging.Infof("%s [%d] App: %s Requested to delete app", logPrefix, len(s.runningProducers), appName)
-
-						s.appListRWMutex.Lock()
-						delete(s.locallyDeployedApps, appName)
-						s.appListRWMutex.Unlock()
-
-						s.cleanupProducer(appName)
-
-						s.appListRWMutex.Lock()
-						delete(s.deployedApps, appName)
-						s.appListRWMutex.Unlock()
-
-						delete(s.appDeploymentStatus, appName)
-						delete(s.appProcessingStatus, appName)
-					}
-				}(s)
+				}
+				d.Close()
 
 			case cmdAppLoad:
 				logging.Infof("%s [%d] Loading app: %s", logPrefix, len(s.runningProducers), appName)
@@ -693,8 +695,6 @@ func (s *SuperSupervisor) cleanupProducer(appName string) {
 
 		s.superSup.Remove(s.producerSupervisorTokenMap[p])
 		delete(s.producerSupervisorTokenMap, p)
-
-		p.PurgeAppLog()
 
 		p.NotifySupervisor()
 		logging.Infof("%s [%d] Cleaned up running Eventing.Producer instance, app: %s", logPrefix, len(s.runningProducers), appName)
