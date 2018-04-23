@@ -943,11 +943,6 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
 
-  if (on_update_.IsEmpty()) {
-    UpdateHistogram(start_time);
-    return kOnUpdateCallFail;
-  }
-
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
@@ -980,6 +975,11 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
 
     currently_processed_seqno = seq_val->ToInteger()->Value();
     currently_processed_vb = vb_val->ToInteger()->Value();
+  }
+
+  if (on_update_.IsEmpty()) {
+    UpdateHistogram(start_time);
+    return kOnUpdateCallFail;
   }
 
   if (try_catch.HasCaught()) {
@@ -1026,11 +1026,6 @@ int V8Worker::SendDelete(std::string meta) {
   v8::Isolate::Scope isolate_scope(GetIsolate());
   v8::HandleScope handle_scope(GetIsolate());
 
-  if (on_delete_.IsEmpty()) {
-    UpdateHistogram(start_time);
-    return kOnDeleteCallFail;
-  }
-
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
@@ -1055,6 +1050,11 @@ int V8Worker::SendDelete(std::string meta) {
 
     currently_processed_seqno = seq_val->ToInteger()->Value();
     currently_processed_vb = vb_val->ToInteger()->Value();
+  }
+
+  if (on_delete_.IsEmpty()) {
+    UpdateHistogram(start_time);
+    return kOnDeleteCallFail;
   }
 
   assert(!try_catch.HasCaught());
