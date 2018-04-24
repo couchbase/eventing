@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
@@ -28,7 +29,11 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 				return
 			}
 
-			util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
+			err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+				return
+			}
 
 			for vbno := range c.vbProcessingStats {
 
@@ -39,19 +44,34 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vbno)
 
 					// Metadata blob doesn't exist probably the app is deployed for the first time.
-					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
+					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return
+					}
+
 					if isNoEnt {
 
 						logging.Infof("%s [%s:%s:%d] vb: %d Creating the initial metadata blob entry",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
 
-						c.updateCheckpointInfo(vbKey, vbno, &vbBlob)
+						err = c.updateCheckpointInfo(vbKey, vbno, &vbBlob)
+						if err == common.ErrRetryTimeout {
+							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+							return
+						}
+
 						continue
 					}
 
 					// Steady state cluster
 					if c.NodeUUID() == vbBlob.NodeUUID && vbBlob.DCPStreamStatus == dcpStreamRunning {
-						c.updateCheckpointInfo(vbKey, vbno, &vbBlob)
+						err = c.updateCheckpointInfo(vbKey, vbno, &vbBlob)
+						if err == common.ErrRetryTimeout {
+							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+							return
+						}
+
 						continue
 					}
 
@@ -59,7 +79,12 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					if vbBlob.CurrentVBOwner == "" && c.checkIfCurrentNodeShouldOwnVb(vbno) &&
 						c.checkIfCurrentConsumerShouldOwnVb(vbno) && vbBlob.DCPStreamStatus == dcpStreamStopped {
 
-						c.updateCheckpointInfo(vbKey, vbno, &vbBlob)
+						err = c.updateCheckpointInfo(vbKey, vbno, &vbBlob)
+						if err == common.ErrRetryTimeout {
+							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+							return
+						}
+
 						continue
 					}
 
@@ -74,7 +99,8 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 	}
 }
 
-func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbucketKVBlob) {
+func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbucketKVBlob) error {
+	logPrefix := "Consumer::updateCheckpointInfo"
 
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
@@ -93,5 +119,11 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbuck
 	vbBlob.LastDocTimerFeedbackSeqNo = c.vbProcessingStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64)
 	vbBlob.NextCronTimerToProcess = c.vbProcessingStats.getVbStat(vbno, "next_cron_timer_to_process").(string)
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), periodicCheckpointCallback, c, vbKey, vbBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, periodicCheckpointCallback, c, vbKey, vbBlob)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return common.ErrRetryTimeout
+	}
+
+	return nil
 }

@@ -127,6 +127,7 @@ type Consumer struct {
 	builderPool *sync.Pool
 	breakpadOn  bool
 	uuid        string
+	retryCount  *int64
 
 	connMutex    *sync.RWMutex
 	conn         net.Conn // Access controlled by connMutex

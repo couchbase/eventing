@@ -205,6 +205,55 @@ func (m *ServiceMgr) validateBoolean(field string, settings map[string]interface
 	return
 }
 
+func (m *ServiceMgr) validateBucketExists(bucketName string) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
+	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	if err != nil {
+		info.Code = m.statusCodes.errConnectNsServer.Code
+		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
+		return
+	}
+
+	if clusterInfo.GetBucketUUID(bucketName) == "" {
+		info.Code = m.statusCodes.errBucketMissing.Code
+		info.Info = fmt.Sprintf("Bucket %s does not exist", bucketName)
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) validateNonMemcached(bucketName string) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
+	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	if err != nil {
+		info.Code = m.statusCodes.errConnectNsServer.Code
+		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
+		return
+	}
+
+	isMemcached, err := clusterInfo.IsMemcached(bucketName)
+	if err != nil {
+		info.Code = m.statusCodes.errBucketTypeCheck.Code
+		info.Info = fmt.Sprintf("Failed to check bucket type using cluster info cache, err: %v", err)
+		return
+	}
+
+	if isMemcached {
+		info.Code = m.statusCodes.errMemcachedBucket.Code
+		info.Info = fmt.Sprintf("Bucket %s is memcached, should be either couchbase or ephemeral", bucketName)
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
@@ -213,7 +262,19 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		return
 	}
 
+	if info = m.validateBucketExists(deploymentConfig.SourceBucket); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateNonMemcached(deploymentConfig.SourceBucket); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validateNonEmpty(deploymentConfig.MetadataBucket, "Metadata bucket name"); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateBucketExists(deploymentConfig.MetadataBucket); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

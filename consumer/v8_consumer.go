@@ -25,7 +25,7 @@ import (
 func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, rConfig *common.RebalanceConfig,
 	index int, uuid string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	dcpConfig map[string]interface{}, p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
-	iteratorRefreshCounter, numVbuckets int) *Consumer {
+	iteratorRefreshCounter, numVbuckets int, retryCount *int64) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -83,6 +83,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		plasmaStoreStopCh:               make(chan struct{}, 1),
 		producer:                        p,
 		restartVbDcpStreamTicker:        time.NewTicker(restartVbDcpStreamTickInterval),
+		retryCount:                      retryCount,
 		sendMsgBufferRWMutex:            &sync.RWMutex{},
 		sendMsgCounter:                  0,
 		sendMsgToDebugger:               false,
@@ -149,6 +150,13 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 func (c *Consumer) Serve() {
 	logPrefix := "Consumer::Serve"
 
+	defer func() {
+		if *c.retryCount >= 0 {
+			c.signalBootstrapFinishCh <- struct{}{}
+			c.producer.RemoveConsumerToken(c.workerName)
+		}
+	}()
+
 	c.cronCurrTimer = time.Now().Add(-time.Second * 10).UTC().Format(time.RFC3339)
 	c.cronNextTimer = time.Now().Add(-time.Second * 10).UTC().Format(time.RFC3339)
 
@@ -172,16 +180,36 @@ func (c *Consumer) Serve() {
 
 	c.cppWorkerThrPartitionMap()
 
-	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getKvNodesFromVbMap, c)
+	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), commonConnectBucketOpCallback, c, &c.cbBucket)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, commonConnectBucketOpCallback, c, &c.cbBucket)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), gocbConnectBucketCallback, c)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, gocbConnectBucketCallback, c)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), gocbConnectMetaBucketCallback, c)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, gocbConnectMetaBucketCallback, c)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
 
 	var flogs couchbase.FailoverLog
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getFailoverLogOpCallback, c, &flogs)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpCallback, c, &flogs)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
 
 	go c.handleFailoverLog()
 
@@ -189,20 +217,33 @@ func (c *Consumer) Serve() {
 	logging.Infof("%s [%s:%s:%d] vbnos len: %d dump: %s",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos), util.Condense(c.vbnos))
 
-	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
+	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
 
 	logging.Infof("%s [%s:%s:%d] Spawning worker corresponding to producer, node addr: %rs",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr())
 
 	var feedName couchbase.DcpFeedName
 
-	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getKvNodesFromVbMap, c)
+	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
+
 	kvHostPorts := c.kvNodes
 	for _, kvHostPort := range kvHostPorts {
 		feedName = couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + kvHostPort + "_" + c.workerName)
 
 		c.hostDcpFeedRWMutex.Lock()
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), startDCPFeedOpCallback, c, feedName, kvHostPort)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startDCPFeedOpCallback, c, feedName, kvHostPort)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
 
 		cancelCh := make(chan struct{}, 1)
 		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
@@ -214,9 +255,17 @@ func (c *Consumer) Serve() {
 	c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
 	c.clientSupToken = c.consumerSup.Add(c.client)
 
-	c.doCleanupForPreviouslyOwnedVbs()
+	err = c.doCleanupForPreviouslyOwnedVbs()
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
 
-	c.startDcp(flogs)
+	err = c.startDcp(flogs)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
 
 	logging.Infof("%s [%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)
@@ -241,14 +290,18 @@ func (c *Consumer) Serve() {
 
 	c.signalBootstrapFinishCh <- struct{}{}
 
-	c.controlRoutine()
+	err = c.controlRoutine()
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
 
 	logging.Debugf("%s [%s:%s:%d] Exiting consumer init routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }
 
 // HandleV8Worker sets up CPP V8 worker post its bootstrap
-func (c *Consumer) HandleV8Worker() {
+func (c *Consumer) HandleV8Worker() error {
 	logPrefix := "Consumer::HandleV8Worker"
 
 	<-c.signalConnectedCh
@@ -259,7 +312,11 @@ func (c *Consumer) HandleV8Worker() {
 	c.sendWorkerThrMap(nil, false)
 	c.sendWorkerThrCount(0, false)
 
-	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
+	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return common.ErrRetryTimeout
+	}
 
 	currHost := util.Localhost()
 	h := c.HostPortAddr()
@@ -290,6 +347,7 @@ func (c *Consumer) HandleV8Worker() {
 	go c.storeDocTimerEventLoop()
 
 	go c.processEvents()
+	return nil
 }
 
 // Stop acts terminate routine for consumer handle
@@ -307,60 +365,137 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	c.docTimerProcessingStopCh <- struct{}{}
+	if c.docTimerProcessingStopCh != nil {
+		c.docTimerProcessingStopCh <- struct{}{}
+	}
 
-	c.cbBucket.Close()
-	c.gocbBucket.Close()
-	c.gocbMetaBucket.Close()
+	if c.cbBucket != nil {
+		c.cbBucket.Close()
+	}
+
+	if c.gocbBucket != nil {
+		c.gocbBucket.Close()
+	}
+
+	if c.gocbMetaBucket != nil {
+		c.gocbMetaBucket.Close()
+	}
+
 	logging.Infof("%s [%s:%s:%d] Issued close for go-couchbase and gocb handles",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	c.consumerSup.Remove(c.clientSupToken)
+	if c.consumerSup != nil {
+		c.consumerSup.Remove(c.clientSupToken)
+	}
+
 	logging.Infof("%s [%s:%s:%d] Requested to remove supervision of eventing-consumer",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	c.checkpointTicker.Stop()
-	c.restartVbDcpStreamTicker.Stop()
-	c.statsTicker.Stop()
+	if c.checkpointTicker != nil {
+		c.checkpointTicker.Stop()
+	}
+
+	if c.restartVbDcpStreamTicker != nil {
+		c.restartVbDcpStreamTicker.Stop()
+	}
+
+	if c.statsTicker != nil {
+		c.statsTicker.Stop()
+	}
+
 	logging.Infof("%s [%s:%s:%d] Stopped checkpoint, restart vb dcp stream and stats tickers",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	c.addCronTimerStopCh <- struct{}{}
-	c.cleanupCronTimerStopCh <- struct{}{}
-	c.socketWriteLoopStopCh <- struct{}{}
-	<-c.socketWriteLoopStopAckCh
-	c.socketWriteTicker.Stop()
-	c.timerCleanupStopCh <- struct{}{}
+	if c.addCronTimerStopCh != nil {
+		c.addCronTimerStopCh <- struct{}{}
+	}
+
+	if c.cleanupCronTimerStopCh != nil {
+		c.cleanupCronTimerStopCh <- struct{}{}
+	}
+
+	if c.socketWriteLoopStopCh != nil {
+		c.socketWriteLoopStopCh <- struct{}{}
+	}
+
+	if c.socketWriteLoopStopAckCh != nil {
+		<-c.socketWriteLoopStopAckCh
+	}
+
+	if c.socketWriteTicker != nil {
+		c.socketWriteTicker.Stop()
+	}
+
+	if c.timerCleanupStopCh != nil {
+		c.timerCleanupStopCh <- struct{}{}
+	}
+
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop cron, doc routines",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	c.updateStatsTicker.Stop()
-	c.updateStatsStopCh <- struct{}{}
+	if c.updateStatsTicker != nil {
+		c.updateStatsTicker.Stop()
+	}
+
+	if c.updateStatsStopCh != nil {
+		c.updateStatsStopCh <- struct{}{}
+	}
+
 	logging.Infof("%s [%s:%s:%d] Sent signal to stop cpp worker stat collection routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	c.plasmaStoreStopCh <- struct{}{}
-	c.stopCheckpointingCh <- struct{}{}
-	c.cronTimerStopCh <- struct{}{}
-	c.stopControlRoutineCh <- struct{}{}
-	c.stopConsumerCh <- struct{}{}
-	c.signalStopDebuggerRoutineCh <- struct{}{}
+	if c.plasmaStoreStopCh != nil {
+		c.plasmaStoreStopCh <- struct{}{}
+	}
+
+	if c.stopCheckpointingCh != nil {
+		c.stopCheckpointingCh <- struct{}{}
+	}
+
+	if c.cronTimerStopCh != nil {
+		c.cronTimerStopCh <- struct{}{}
+	}
+
+	if c.stopControlRoutineCh != nil {
+		c.stopControlRoutineCh <- struct{}{}
+	}
+
+	if c.stopConsumerCh != nil {
+		c.stopConsumerCh <- struct{}{}
+	}
+
+	if c.signalStopDebuggerRoutineCh != nil {
+		c.signalStopDebuggerRoutineCh <- struct{}{}
+	}
+
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop plasma store, checkpointing, cron timer processing routines",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	for _, dcpFeed := range c.kvHostDcpFeedMap {
-		dcpFeed.Close()
+	if c.kvHostDcpFeedMap != nil {
+		for _, dcpFeed := range c.kvHostDcpFeedMap {
+			if dcpFeed != nil {
+				dcpFeed.Close()
+			}
+		}
 	}
+
 	logging.Infof("%s [%s:%s:%d] Closed all dcpfeed handles",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	for _, cancelCh := range c.dcpFeedCancelChs {
-		cancelCh <- struct{}{}
+	if c.dcpFeedCancelChs != nil {
+		for _, cancelCh := range c.dcpFeedCancelChs {
+			if cancelCh != nil {
+				cancelCh <- struct{}{}
+			}
+		}
 	}
+
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop dcp event forwarding routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	c.stopHandleFailoverLogCh <- struct{}{}
+	if c.stopHandleFailoverLogCh != nil {
+		c.stopHandleFailoverLogCh <- struct{}{}
+	}
 
 	close(c.aggDCPFeed)
 	logging.Infof("%s [%s:%s:%d] Closing up aggDcpFeed channel",
@@ -375,7 +510,10 @@ func (c *Consumer) Stop() {
 		c.debugListener.Close()
 	}
 
-	c.consumerSup.Stop()
+	if c.consumerSup != nil {
+		c.consumerSup.Stop()
+	}
+
 	logging.Infof("%s [%s:%s:%d] Requested to stop supervisor for Eventing.Consumer",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
@@ -435,7 +573,7 @@ func (c *Consumer) NotifySettingsChange() {
 }
 
 // SignalStopDebugger signal C++ V8 consumer to stop Debugger Agent
-func (c *Consumer) SignalStopDebugger() {
+func (c *Consumer) SignalStopDebugger() error {
 	logPrefix := "Consumer::SignalStopDebugger"
 
 	logging.Infof("%s [%s:%s:%d] Got signal to stop V8 Debugger Agent",
@@ -448,14 +586,20 @@ func (c *Consumer) SignalStopDebugger() {
 	// Reset the debugger instance blob
 	dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
 	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, dInstAddrKey, dInstAddrBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, dInstAddrKey, dInstAddrBlob)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return common.ErrRetryTimeout
+	}
 
 	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", c.eventingDir, c.app.AppName)
-	err := os.Remove(frontendURLFilePath)
+	err = os.Remove(frontendURLFilePath)
 	if err != nil {
 		logging.Infof("%s [%s:%s:%d] Failed to remove frontend.url file, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 	}
+
+	return nil
 }
 
 func (c *Consumer) getBuilder() *flatbuffers.Builder {

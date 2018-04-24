@@ -1,6 +1,7 @@
 package common
 
 import (
+	"errors"
 	"net"
 )
 
@@ -30,16 +31,18 @@ const (
 	AppStateUnexpected
 )
 
+var ErrRetryTimeout = errors.New("retry timeout")
+
 // EventingProducer interface to export functions from eventing_producer
 type EventingProducer interface {
 	Auth() string
 	CfgData() string
-	CleanupMetadataBucket()
+	CleanupMetadataBucket() error
 	CleanupUDSs()
 	ClearEventStats()
 	GetAppCode() string
 	GetDcpEventsRemainingToProcess() uint64
-	GetDebuggerURL() string
+	GetDebuggerURL() (string, error)
 	GetEventingConsumerPids() map[string]int
 	GetEventProcessingStats() map[string]uint64
 	GetExecutionStats() map[string]interface{}
@@ -69,10 +72,12 @@ type EventingProducer interface {
 	PurgePlasmaRecords()
 	RebalanceStatus() bool
 	RebalanceTaskProgress() *RebalanceProgress
+	RemoveConsumerToken(workerName string)
 	SignalBootstrapFinish()
-	SignalCheckpointBlobCleanup()
-	SignalStartDebugger()
-	SignalStopDebugger()
+	SignalCheckpointBlobCleanup() error
+	SignalStartDebugger() error
+	SignalStopDebugger() error
+	SetRetryCount(retryCount int64)
 	Serve()
 	Stop()
 	StopProducer()
@@ -102,7 +107,7 @@ type EventingConsumer interface {
 	GetLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
 	GetSourceMap() string
-	HandleV8Worker()
+	HandleV8Worker() error
 	HostPortAddr() string
 	Index() int
 	InternalVbDistributionStats() []uint16
@@ -120,7 +125,7 @@ type EventingConsumer interface {
 	SignalBootstrapFinish()
 	SignalConnected()
 	SignalFeedbackConnected()
-	SignalStopDebugger()
+	SignalStopDebugger() error
 	SpawnCompilationWorker(appcode, appContent, appName, eventingPort string) (*CompileStatus, error)
 	Stop()
 	String() string
@@ -134,12 +139,13 @@ type EventingConsumer interface {
 type EventingSuperSup interface {
 	BootstrapAppList() map[string]string
 	ClearEventStats()
+	CleanupProducer(appName string) error
 	DeployedAppList() []string
 	GetEventProcessingStats(appName string) map[string]uint64
 	GetAppCode(appName string) string
 	GetAppState(appName string) int8
 	GetDcpEventsRemainingToProcess(appName string) uint64
-	GetDebuggerURL(appName string) string
+	GetDebuggerURL(appName string) (string, error)
 	GetDeployedApps() map[string]string
 	GetEventingConsumerPids(appName string) map[string]int
 	GetExecutionStats(appName string) map[string]interface{}
@@ -156,10 +162,11 @@ type EventingSuperSup interface {
 	PlannerStats(appName string) []*PlannerNodeVbMapping
 	RebalanceStatus() bool
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
+	RemoveProducerToken(appName string)
 	RestPort() string
-	SignalStartDebugger(appName string)
+	SignalStartDebugger(appName string) error
 	TimerDebugStats(appName string) (map[int]map[string]interface{}, error)
-	SignalStopDebugger(appName string)
+	SignalStopDebugger(appName string) error
 	VbDcpEventsRemainingToProcess(appName string) map[int]int64
 	VbDistributionStatsFromMetadata(appName string) map[string]map[string]string
 	VbSeqnoStats(appName string) (map[int][]map[string]interface{}, error)

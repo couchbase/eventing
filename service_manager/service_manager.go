@@ -173,7 +173,7 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 
 	switch change.Type {
 	case service.TopologyChangeTypeFailover:
-		util.Retry(util.NewFixedBackoff(time.Second), storeKeepNodesCallback, m.keepNodeUUIDs)
+		util.Retry(util.NewFixedBackoff(time.Second), nil, storeKeepNodesCallback, m.keepNodeUUIDs)
 		m.failoverNotif = true
 
 	case service.TopologyChangeTypeRebalance:
@@ -198,7 +198,7 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 			logging.Warnf("%s Error encountered while fetching active Eventing nodes, err: %v", logPrefix, err)
 		}
 
-		util.Retry(util.NewFixedBackoff(time.Second), storeKeepNodesCallback, m.keepNodeUUIDs)
+		util.Retry(util.NewFixedBackoff(time.Second), nil, storeKeepNodesCallback, m.keepNodeUUIDs)
 
 		m.startRebalance(change)
 

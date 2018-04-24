@@ -53,6 +53,7 @@ type ConfigHolder struct {
 }
 
 type DynamicAuthenticator struct {
+	Caller string
 }
 
 func (h *ConfigHolder) Store(conf Config) {
@@ -924,21 +925,19 @@ func StripScheme(endpoint string) string {
 func (dynAuth *DynamicAuthenticator) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, error) {
 	logPrefix := "DynamicAuthenticator::Credentials"
 
-	logging.Infof("%s Authenticating endpoint: %rs bucket: %rm", logPrefix, req.Endpoint, req.Bucket)
+	logging.Infof("%s invoked by %s, authenticating endpoint: %rs bucket: %rm", logPrefix, dynAuth.Caller, req.Endpoint, req.Bucket)
 
 	strippedEndpoint := StripScheme(req.Endpoint)
 	username, password, err := cbauth.GetMemcachedServiceAuth(strippedEndpoint)
 	if err != nil {
-		return []gocb.UserPassPair{{
-			Username: "",
-			Password: "",
-		}}, fmt.Errorf("Failed to fetch system rbac credentials")
-	} else {
-		return []gocb.UserPassPair{{
-			Username: username,
-			Password: password,
-		}}, nil
+		logging.Errorf("%s invoked by %s, failed to get auth from cbauth", logPrefix, dynAuth.Caller)
+		return []gocb.UserPassPair{{}}, err
 	}
+
+	return []gocb.UserPassPair{{
+		Username: username,
+		Password: password,
+	}}, nil
 }
 
 func CheckIfRebalanceOngoing(urlSuffix string, nodeAddrs []string) (bool, error) {
@@ -1056,4 +1055,9 @@ func DeepCopy(kv map[string]interface{}) (newKv map[string]interface{}) {
 	}
 
 	return
+}
+
+func GetAppNameFromPath(path string) string {
+	split := strings.Split(path, "/")
+	return split[len(split)-1]
 }

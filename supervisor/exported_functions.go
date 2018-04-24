@@ -45,14 +45,15 @@ func (s *SuperSupervisor) GetAppCode(appName string) string {
 }
 
 // GetDebuggerURL returns the v8 debugger url for supplied appname
-func (s *SuperSupervisor) GetDebuggerURL(appName string) string {
+func (s *SuperSupervisor) GetDebuggerURL(appName string) (string, error) {
 	logPrefix := "SuperSupervisor::GetDebuggerURL"
 
 	logging.Infof("%s [%d] Request for app: %v", logPrefix, len(s.runningProducers), appName)
 	if p, ok := s.runningProducers[appName]; ok {
 		return p.GetDebuggerURL()
 	}
-	return ""
+
+	return "", nil
 }
 
 // GetDeployedApps returns list of deployed apps and their last deployment time
@@ -150,29 +151,41 @@ func (s *SuperSupervisor) RestPort() string {
 }
 
 // SignalStartDebugger kicks off V8 Debugger for a specific deployed lambda
-func (s *SuperSupervisor) SignalStartDebugger(appName string) {
+func (s *SuperSupervisor) SignalStartDebugger(appName string) error {
 	logPrefix := "SuperSupervisor::SignalStartDebugger"
 
 	p, ok := s.runningProducers[appName]
 	if ok {
-		p.SignalStartDebugger()
+		err := p.SignalStartDebugger()
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, len(s.runningProducers))
+			return common.ErrRetryTimeout
+		}
 	} else {
 		logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
 			logPrefix, len(s.runningProducers), appName)
 	}
+
+	return nil
 }
 
 // SignalStopDebugger stops V8 Debugger for a specific deployed lambda
-func (s *SuperSupervisor) SignalStopDebugger(appName string) {
+func (s *SuperSupervisor) SignalStopDebugger(appName string) error {
 	logPrefix := "SuperSupervisor::SignalStopDebugger"
 
 	p, ok := s.runningProducers[appName]
 	if ok {
-		p.SignalStopDebugger()
+		err := p.SignalStopDebugger()
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, len(s.runningProducers))
+			return common.ErrRetryTimeout
+		}
 	} else {
 		logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
 			logPrefix, len(s.runningProducers), appName)
 	}
+
+	return nil
 }
 
 // GetAppState returns current state of app
@@ -340,4 +353,11 @@ func (s *SuperSupervisor) VbSeqnoStats(appName string) (map[int][]map[string]int
 	}
 
 	return nil, fmt.Errorf("Eventing.Producer isn't alive")
+}
+
+func (s *SuperSupervisor) RemoveProducerToken(appName string) {
+	if p, exists := s.runningProducers[appName]; exists {
+		s.superSup.Remove(s.producerSupervisorTokenMap[p])
+		delete(s.producerSupervisorTokenMap, p)
+	}
 }

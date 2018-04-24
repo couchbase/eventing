@@ -42,12 +42,12 @@ func (c *Consumer) EventsProcessedPSec() *cm.EventProcessingStats {
 	return pStats
 }
 
-func (c *Consumer) dcpEventsRemainingToProcess() {
+func (c *Consumer) dcpEventsRemainingToProcess() error {
 	logPrefix := "Consumer::dcpEventsRemainingToProcess"
 
 	vbsTohandle := c.vbsToHandle()
 	if len(vbsTohandle) <= 0 {
-		return
+		return nil
 	}
 
 	c.statsRWMutex.Lock()
@@ -59,7 +59,7 @@ func (c *Consumer) dcpEventsRemainingToProcess() {
 		logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		c.dcpEventsRemaining = 0
-		return
+		return nil
 	}
 
 	var eventsProcessed, seqNo, totalEvents uint64
@@ -67,7 +67,11 @@ func (c *Consumer) dcpEventsRemainingToProcess() {
 
 	for _, vbno := range vbsTohandle {
 		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vbno)
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getMetaOpCallback, c, vbKey, &seqNo, subdocPath)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getMetaOpCallback, c, vbKey, &seqNo, subdocPath)
+		if err == cm.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return cm.ErrRetryTimeout
+		}
 
 		if seqNos[int(vbno)] > seqNo {
 			c.statsRWMutex.Lock()
@@ -84,6 +88,7 @@ func (c *Consumer) dcpEventsRemainingToProcess() {
 	}
 
 	c.dcpEventsRemaining = totalEvents - eventsProcessed
+	return nil
 }
 
 // DcpEventsRemainingToProcess reports cached value for dcp events remaining to producer

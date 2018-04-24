@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -228,7 +227,7 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	logging.Infof("App: %v got request to get V8 debugger url", appName)
 
 	if m.checkIfDeployed(appName) {
-		debugURL := m.superSup.GetDebuggerURL(appName)
+		debugURL, _ := m.superSup.GetDebuggerURL(appName)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 		fmt.Fprintf(w, "%s", debugURL)
 		return
@@ -361,7 +360,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	aggDeployedApps := make(map[string]map[string]string)
-	util.Retry(util.NewFixedBackoff(time.Second), getDeployedAppsCallback, &aggDeployedApps, nodeAddrs)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getDeployedAppsCallback, &aggDeployedApps, nodeAddrs)
 
 	appDeployedNodesCounter := make(map[string]int)
 
@@ -507,7 +506,7 @@ func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.R
 	params := r.URL.Query()
 	appName := params["name"][0]
 
-	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
 	pStats, err := util.GetEventProcessingStats("/getEventProcessingStats?name="+appName, m.eventingNodeAddrs)
 	if err != nil {
@@ -530,7 +529,7 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
 	aggProgress, _ := util.GetProgress("/getRebalanceProgress", m.eventingNodeAddrs)
 
@@ -549,7 +548,7 @@ func (m *ServiceMgr) getAggRebalanceStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
 	status, err := util.CheckIfRebalanceOngoing("/getRebalanceStatus", m.eventingNodeAddrs)
 	if err != nil {
@@ -1017,42 +1016,6 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	appName := app.Name
-	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	logging.Infof("Saving handler to temporary store: %v", appName)
-
-	cinfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
-	if err != nil {
-		info.Code = m.statusCodes.errConnectNsServer.Code
-		info.Info = fmt.Sprintf("Failed to initialise cluster info cache, err: %v", err)
-		return
-	}
-
-	uuid := cinfo.GetBucketUUID(app.DeploymentConfig.SourceBucket)
-	if uuid == "" {
-		info.Code = m.statusCodes.errSrcBucketMissing.Code
-		info.Info = fmt.Sprintf("Supplied source bucket: %v doesn't exist", app.DeploymentConfig.SourceBucket)
-		return
-	}
-
-	uuid = cinfo.GetBucketUUID(app.DeploymentConfig.MetadataBucket)
-	if uuid == "" {
-		info.Code = m.statusCodes.errMetaBucketMissing.Code
-		info.Info = fmt.Sprintf("Supplied metadata bucket: %v doesn't exist", app.DeploymentConfig.MetadataBucket)
-		return
-	}
-
-	isMemcached, err := cinfo.IsMemcached(app.DeploymentConfig.SourceBucket)
-	if err != nil {
-		info.Code = m.statusCodes.errBucketTypeCheck.Code
-		info.Info = fmt.Sprintf("Failed to check bucket type using cluster info cache, err: %v", err)
-		return
-	}
-
-	if isMemcached {
-		info.Code = m.statusCodes.errMemcachedBucket.Code
-		info.Info = "Source bucket is memcached, should be either couchbase or ephemeral"
-		return
-	}
 
 	data, err := json.Marshal(app)
 	if err != nil {
@@ -1122,7 +1085,7 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 	info = &runtimeInfo{}
 
-	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
 	rebStatus, err := util.CheckIfRebalanceOngoing("/getRebalanceStatus", m.eventingNodeAddrs)
 	if err != nil {
@@ -1171,41 +1134,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	cinfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
-	if err != nil {
-		info.Code = m.statusCodes.errConnectNsServer.Code
-		info.Info = fmt.Sprintf("Failed to initialise cluster info cache, err: %v", err)
-		return
-	}
-
-	if cinfo.GetBucketUUID(app.DeploymentConfig.SourceBucket) == "" {
-		info.Code = m.statusCodes.errSrcBucketMissing.Code
-		info.Info = fmt.Sprintf("Supplied source bucket: %v doesn't exist", app.DeploymentConfig.SourceBucket)
-		return
-	}
-
-	if cinfo.GetBucketUUID(app.DeploymentConfig.MetadataBucket) == "" {
-		info.Code = m.statusCodes.errMetaBucketMissing.Code
-		info.Info = fmt.Sprintf("Supplied metadata bucket: %v doesn't exist", app.DeploymentConfig.MetadataBucket)
-		return
-	}
-
-	isMemcached, err := cinfo.IsMemcached(app.DeploymentConfig.SourceBucket)
-	if err != nil {
-		info.Code = m.statusCodes.errBucketTypeCheck.Code
-		info.Info = fmt.Sprintf("Failed to check bucket type using cluster info cache, err: %v", err)
-		return
-	}
-
-	if isMemcached {
-		info.Code = m.statusCodes.errMemcachedBucket.Code
-		info.Info = "Source bucket is memcached, should be either couchbase or ephemeral"
-		return
-	}
-
 	builder := flatbuffers.NewBuilder(0)
-
 	var bNames []flatbuffers.UOffsetT
 
 	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
@@ -1340,7 +1269,7 @@ func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
 	appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", m.eventingNodeAddrs)
 	if err != nil {
@@ -1577,11 +1506,42 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	functions := regexp.MustCompile("^/api/v1/functions/?$")
 	functionsName := regexp.MustCompile("^/api/v1/functions/(.+[^/])/?$") // Match is agnostic of trailing '/'
 	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.+[^/])/settings/?$")
-	info := &runtimeInfo{}
+	functionsNameRetry := regexp.MustCompile("^/api/v1/functions/(.+[^/])/retry/?$")
 
-	if match := functionsNameSettings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
-		info = &runtimeInfo{}
+	if match := functionsNameRetry.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		appName := match[1]
+		info := &runtimeInfo{}
+
+		if r.Method != "POST" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		data, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			info.Code = m.statusCodes.errReadReq.Code
+			info.Info = fmt.Sprintf("Failed to read request body, err : %v", err)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		var retryBody retry
+		err = json.Unmarshal(data, &retryBody)
+		if err != nil {
+			info.Code = m.statusCodes.errMarshalResp.Code
+			info.Info = fmt.Sprintf("Failed to unmarshal retry, err: %v", err)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if info = m.notifyRetryToAllProducers(appName, &retryBody); info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+	} else if match := functionsNameSettings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		appName := match[1]
+		info := &runtimeInfo{}
+
 		switch r.Method {
 		case "GET":
 			audit.Log(auditevent.GetSettings, r, nil)
@@ -1757,6 +1717,23 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (m *ServiceMgr) notifyRetryToAllProducers(appName string, r *retry) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+
+	retryPath := metakvAppsRetryPath + appName
+	retryCount := []byte(strconv.Itoa(int(r.Count)))
+
+	err := util.MetakvSet(retryPath, retryCount, nil)
+	if err != nil {
+		info.Code = m.statusCodes.errAppRetry.Code
+		info.Info = fmt.Sprintf("Unable to set metakv path for retry, err : %v", err)
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
@@ -1840,11 +1817,11 @@ func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.CleanupEventing, r, nil)
 
-	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvChecksumPath)
-	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvTempChecksumPath)
-	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvAppsPath)
-	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvTempAppsPath)
-	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvAppSettingsPath)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvChecksumPath)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvTempChecksumPath)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvAppsPath)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvTempAppsPath)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvAppSettingsPath)
 }
 
 func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {

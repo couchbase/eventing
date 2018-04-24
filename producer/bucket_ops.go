@@ -103,7 +103,7 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	err = cluster.Authenticate(&util.DynamicAuthenticator{})
+	err = cluster.Authenticate(&util.DynamicAuthenticator{Caller: logPrefix})
 	if err != nil {
 		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %rs failed, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), connStr, err)

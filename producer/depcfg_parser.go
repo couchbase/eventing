@@ -25,7 +25,11 @@ func (p *Producer) parseDepcfg() error {
 
 	// Keeping metakv lookup in retry loop. There is potential metakv related race between routine that gets notified about updates
 	// to metakv path and routine that does metakv lookup
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), metakvAppCallback, p, metakvAppsPath, metakvChecksumPath, p.appName, &cfgData)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, metakvAppCallback, p, metakvAppsPath, metakvChecksumPath, p.appName, &cfgData)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s] Exiting due to timeout", logPrefix, p.appName)
+		return common.ErrRetryTimeout
+	}
 
 	config := cfg.GetRootAsConfig(cfgData, 0)
 
@@ -42,7 +46,12 @@ func (p *Producer) parseDepcfg() error {
 	depcfg := config.DepCfg(d)
 
 	var user, password string
-	util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, p, &user, &password)
+	err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getHTTPServiceAuth, p, &user, &password)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s] Exiting due to timeout", logPrefix, p.appName)
+		return common.ErrRetryTimeout
+	}
+
 	p.auth = fmt.Sprintf("%s:%s", user, password)
 
 	p.handlerConfig.SourceBucket = string(depcfg.SourceBucket())
@@ -356,7 +365,6 @@ func (p *Producer) parseDepcfg() error {
 
 	p.nsServerHostPort = net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
-	var err error
 	p.kvHostPorts, err = util.KVNodesAddresses(p.auth, p.nsServerHostPort)
 	if err != nil {
 		logging.Errorf("%s [%s] Failed to get list of kv nodes in the cluster, err: %v", logPrefix, p.appName, err)

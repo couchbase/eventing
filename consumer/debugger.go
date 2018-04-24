@@ -123,7 +123,12 @@ func (c *Consumer) pollForDebuggerStart() {
 
 		c.debuggerState = debuggerOpcode
 
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, dFlagKey, dFlagBlob, &cas, false)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, dFlagKey, dFlagBlob, &cas, false)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
+
 		if !dFlagBlob.StartDebug {
 			time.Sleep(debuggerFlagCheckInterval)
 			continue
@@ -146,7 +151,12 @@ func (c *Consumer) pollForDebuggerStart() {
 					dFlagKey := fmt.Sprintf("%s::%s", c.app.AppName, startDebuggerFlag)
 					dFlagBlob := &common.StartDebugBlob{}
 
-					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, dFlagKey, dFlagBlob, &cas, false)
+					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, dFlagKey, dFlagBlob, &cas, false)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return
+					}
+
 					if !dFlagBlob.StartDebug {
 						c.signalDebugBlobDebugStopCh <- struct{}{}
 						return
@@ -163,7 +173,11 @@ func (c *Consumer) pollForDebuggerStart() {
 			}
 
 		checkDInstAddrBlob:
-			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, dInstAddrKey, dInstAddrBlob, &cas, false)
+			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, dInstAddrKey, dInstAddrBlob, &cas, false)
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+				return
+			}
 
 			logging.Infof("%s [%s:%s:%d] Debugger inst addr key: %rm dump: %rm",
 				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, fmt.Sprintf("%#v", dInstAddrBlob))
@@ -181,7 +195,11 @@ func (c *Consumer) pollForDebuggerStart() {
 					goto checkDInstAddrBlob
 				} else {
 					dFlagBlob.StartDebug = false
-					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, dFlagKey, dFlagBlob)
+					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, dFlagKey, dFlagBlob)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return
+					}
 
 					c.signalStartDebuggerCh <- struct{}{}
 				}
@@ -263,7 +281,11 @@ func (c *Consumer) startDebuggerServer() {
 
 	c.sendWorkerThrCount(1, true) // Spawn just one thread when debugger is spawned to avoid complexity
 
-	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
+	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
 
 	currHost := util.Localhost()
 	h := c.HostPortAddr()
@@ -274,7 +296,11 @@ func (c *Consumer) startDebuggerServer() {
 		}
 	}
 
-	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getKvNodesFromVbMap, c)
+	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
 
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
 		c.kvNodes[0], c.producer.CfgData(), c.lcbInstCapacity,
