@@ -31,6 +31,7 @@
 #include <string>
 #include <thread>
 #include <time.h>
+#include <uv.h>
 #include <v8-debug.h>
 #include <v8.h>
 
@@ -217,6 +218,26 @@ public:
 
   void UpdateHistogram(Time::time_point t);
 
+  /**
+   * Remove item from doc_timer_queue, serialize it and
+   * populate @param messages.
+   *
+   * @param messages
+   * @param length_prefix_sum
+   * @param window_size
+   */
+  void GetDocTimerMessages(std::vector<uv_buf_t> &messages,
+                           std::vector<int> &length_prefix_sum,
+                           size_t window_size);
+
+  /**
+   * Read vb_seq map, serialize it and populate @param messages
+   *
+   * @param messages
+   */
+  void GetBucketOpsMessages(std::vector<uv_buf_t> &messages,
+                            std::vector<int> &length_prefix_sum);
+
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
   v8::Persistent<v8::Function> on_update_;
@@ -261,6 +282,8 @@ public:
   Data data;
 
 private:
+  std::vector<uv_buf_t> BuildResponse(const std::string &payload,
+                                      int8_t msg_type, int8_t response_opcode);
   std::string connstr;
   std::string meta_connstr;
   std::string src_path;

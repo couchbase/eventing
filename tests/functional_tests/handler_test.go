@@ -61,14 +61,14 @@ func TestImportExport(t *testing.T) {
 
 	response, err := makeRequest("GET", strings.NewReader(""), functionsURL)
 	if err != nil {
-		t.Errorf("Unable to list Functions %v, err : %v\n", err)
+		t.Errorf("Unable to list Functions err : %v\n", err)
 		return
 	}
 
 	var functionsList []map[string]interface{}
 	err = json.Unmarshal(response, &functionsList)
 	if err != nil {
-		t.Errorf("Unable to unmarshal response %v, err %v\n", err)
+		t.Errorf("Unable to unmarshal response err %v\n", err)
 		return
 	}
 

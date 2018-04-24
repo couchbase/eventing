@@ -565,21 +565,13 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 
 	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
 	c.vbProcessingStats.updateVbStat(vb, "last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo)
+	c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
+	c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
-	var streamStartSeqNo uint64
-	if vbBlob.LastDocTimerFeedbackSeqNo < vbBlob.LastSeqNoProcessed {
-		streamStartSeqNo = vbBlob.LastDocTimerFeedbackSeqNo
-	} else {
-		streamStartSeqNo = vbBlob.LastSeqNoProcessed
-	}
-
-	err = c.dcpRequestStreamHandle(vb, vbBlob, streamStartSeqNo)
+	err = c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
 	if err != nil {
 		return err
 	}
-	c.vbProcessingStats.updateVbStat(vb, "start_seq_no", streamStartSeqNo)
-	c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
-
 	return nil
 }
 

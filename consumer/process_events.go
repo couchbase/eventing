@@ -563,16 +563,9 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 
 			}
 		} else {
-			var streamStartSeqNo uint64
-			if vbBlob.LastDocTimerFeedbackSeqNo < vbBlob.LastSeqNoProcessed {
-				streamStartSeqNo = vbBlob.LastDocTimerFeedbackSeqNo
-			} else {
-				streamStartSeqNo = vbBlob.LastSeqNoProcessed
-			}
-
 			if vbBlob.NodeUUID == c.NodeUUID() {
-				c.dcpRequestStreamHandle(vbno, &vbBlob, streamStartSeqNo)
-				c.vbProcessingStats.updateVbStat(vbno, "start_seq_no", streamStartSeqNo)
+				c.dcpRequestStreamHandle(vbno, &vbBlob, vbBlob.LastSeqNoProcessed)
+				c.vbProcessingStats.updateVbStat(vbno, "start_seq_no", vbBlob.LastSeqNoProcessed)
 				c.vbProcessingStats.updateVbStat(vbno, "timestamp", time.Now().Format(time.RFC3339))
 
 			}
