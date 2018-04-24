@@ -83,18 +83,6 @@ func (c *client) Serve() {
 	bufOut := bufio.NewReader(outPipe)
 	bufErr := bufio.NewReader(errPipe)
 
-	go func(bufOut *bufio.Reader) {
-		for {
-			msg, _, err := bufOut.ReadLine()
-			if err != nil {
-				logging.Warnf("%s [%s:%s:%d] Failed to read from stdout pipe, err: %v",
-					logPrefix, c.workerName, c.tcpPort, c.osPid, err)
-				return
-			}
-			logging.Infof("eventing-consumer [%s:%s:%d] %s", c.workerName, c.tcpPort, c.osPid, string(msg))
-		}
-	}(bufOut)
-
 	go func(bufErr *bufio.Reader) {
 		for {
 			msg, _, err := bufErr.ReadLine()
@@ -103,9 +91,21 @@ func (c *client) Serve() {
 					logPrefix, c.workerName, c.tcpPort, c.osPid, err)
 				return
 			}
-			c.consumerHandle.producer.WriteAppLog(string(msg))
+			logging.Infof("eventing-consumer [%s:%s:%d] %s", c.workerName, c.tcpPort, c.osPid, string(msg))
 		}
 	}(bufErr)
+
+	go func(bufOut *bufio.Reader) {
+		for {
+			msg, _, err := bufOut.ReadLine()
+			if err != nil {
+				logging.Warnf("%s [%s:%s:%d] Failed to read from stdout pipe, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.osPid, err)
+				return
+			}
+			c.consumerHandle.producer.WriteAppLog(string(msg))
+		}
+	}(bufOut)
 
 	err = c.cmd.Wait()
 	if err != nil {

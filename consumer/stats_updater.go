@@ -23,6 +23,7 @@ func newVbProcessingStats(appName string, numVbuckets uint16) vbStats {
 
 		vbsts[i].stats["currently_processed_doc_id_timer"] = time.Now().UTC().Format(time.RFC3339)
 		vbsts[i].stats["last_cleaned_up_doc_id_timer_event"] = time.Now().UTC().Format(time.RFC3339)
+		vbsts[i].stats["last_doc_id_timer_sent_to_worker"] = time.Now().UTC().Format(time.RFC3339)
 		vbsts[i].stats["last_processed_doc_id_timer_event"] = time.Now().UTC().Format(time.RFC3339)
 		vbsts[i].stats["next_doc_id_timer_to_process"] = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
@@ -71,6 +72,7 @@ func (vbs vbStats) copyVbStats(numVbuckets uint16) vbStats {
 		vbsts[i].stats["dcp_stream_status"] = vbs.getVbStat(i, "dcp_stream_status")
 
 		vbsts[i].stats["last_cleaned_up_doc_id_timer_event"] = vbs.getVbStat(i, "last_cleaned_up_doc_id_timer_event")
+		vbsts[i].stats["last_doc_id_timer_sent_to_worker"] = vbs.getVbStat(i, "last_doc_id_timer_sent_to_worker")
 		vbsts[i].stats["last_processed_doc_id_timer_event"] = vbs.getVbStat(i, "last_processed_doc_id_timer_event")
 		vbsts[i].stats["next_doc_id_timer_to_process"] = vbs.getVbStat(i, "next_doc_id_timer_to_process")
 

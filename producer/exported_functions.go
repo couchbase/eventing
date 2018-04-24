@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -510,37 +509,6 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 	}
 
 	return producerLevelProgress
-}
-
-// PurgeAppLog cleans up application log files
-func (p *Producer) PurgeAppLog() {
-	logPrefix := "Producer::PurgeAppLog"
-
-	d, err := os.Open(p.processConfig.EventingDir)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to open eventingDir: %v while trying to purge app logs, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.processConfig.EventingDir, err)
-		return
-	}
-	defer d.Close()
-
-	names, err := d.Readdirnames(-1)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed list contents of eventingDir: %v, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.processConfig.EventingDir, err)
-		return
-	}
-
-	prefix := fmt.Sprintf("%s.log", p.app.AppName)
-	for _, name := range names {
-		if strings.HasPrefix(name, prefix) {
-			err = os.RemoveAll(filepath.Join(p.processConfig.EventingDir, name))
-			if err != nil {
-				logging.Errorf("%s [%s:%d] Failed to remove app log: %v, err: %v",
-					logPrefix, p.appName, p.LenRunningConsumers(), name, err)
-			}
-		}
-	}
 }
 
 // CleanupMetadataBucket clears up all application related artifacts from

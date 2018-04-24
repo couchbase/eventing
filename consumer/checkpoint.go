@@ -86,8 +86,9 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbuck
 	vbBlob.CurrentProcessedDocIDTimer = c.vbProcessingStats.getVbStat(vbno, "currently_processed_doc_id_timer").(string)
 	vbBlob.CurrentProcessedCronTimer = c.vbProcessingStats.getVbStat(vbno, "currently_processed_cron_timer").(string)
 	vbBlob.LastCleanedUpDocIDTimerEvent = c.vbProcessingStats.getVbStat(vbno, "last_cleaned_up_doc_id_timer_event").(string)
-	vbBlob.LastDocTimerFeedbackSeqNo = c.vbProcessingStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64)
+	vbBlob.LastDocIDTimerSentToWorker = c.vbProcessingStats.getVbStat(vbno, "last_doc_id_timer_sent_to_worker").(string)
 	vbBlob.NextDocIDTimerToProcess = c.vbProcessingStats.getVbStat(vbno, "next_doc_id_timer_to_process").(string)
+	vbBlob.LastDocTimerFeedbackSeqNo = c.vbProcessingStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64)
 	vbBlob.NextCronTimerToProcess = c.vbProcessingStats.getVbStat(vbno, "next_cron_timer_to_process").(string)
 
 	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), periodicCheckpointCallback, c, vbKey, vbBlob)

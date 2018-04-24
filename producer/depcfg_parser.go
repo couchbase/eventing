@@ -110,7 +110,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["enable_recursive_mutation"]; ok {
 		p.handlerConfig.EnableRecursiveMutation = val.(bool)
 	} else {
-		p.handlerConfig.EnableRecursiveMutation = false
+		p.handlerConfig.EnableRecursiveMutation = true
 	}
 
 	if val, ok := settings["execution_timeout"]; ok {

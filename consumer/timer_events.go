@@ -205,6 +205,8 @@ func (c *Consumer) processTimerEvent(currTs time.Time, event string, vb uint16) 
 		}
 		c.docTimerEntryCh <- timer
 
+		c.vbProcessingStats.updateVbStat(vb, "last_doc_id_timer_sent_to_worker", currTs.UTC().Format(time.RFC3339))
+
 		counter := c.vbProcessingStats.getVbStat(vb, "sent_to_worker_counter").(uint64)
 		c.vbProcessingStats.updateVbStat(vb, "sent_to_worker_counter", counter+1)
 	}
@@ -230,6 +232,12 @@ func (c *Consumer) cleanupProcessedDocTimers() {
 				var cas gocb.Cas
 
 				util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, vbKey, &vbBlob, &cas, false)
+
+				lastDocIDTimerSentToWorker := c.vbProcessingStats.getVbStat(vb, "last_doc_id_timer_sent_to_worker").(string)
+
+				if strings.Compare(lastDocIDTimerSentToWorker, vbBlob.LastProcessedDocIDTimerEvent) == 0 {
+					continue
+				}
 
 				lastProcessedDocTimer := vbBlob.LastProcessedDocIDTimerEvent
 

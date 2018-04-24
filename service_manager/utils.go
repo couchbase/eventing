@@ -41,7 +41,7 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "curl_timeout", float64(500))
 	fillMissingDefault(settings, "deadline_timeout", float64(4))
 	fillMissingDefault(settings, "execution_timeout", float64(2))
-	fillMissingDefault(settings, "enable_recursive_mutation", false)
+	fillMissingDefault(settings, "enable_recursive_mutation", true)
 	fillMissingDefault(settings, "execution_timeout", float64(1))
 	fillMissingDefault(settings, "feedback_batch_size", float64(100))
 	fillMissingDefault(settings, "feedback_read_buffer_size", float64(65536))

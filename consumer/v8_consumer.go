@@ -309,7 +309,7 @@ func (c *Consumer) Stop() {
 	c.cbBucket.Close()
 	c.gocbBucket.Close()
 	c.gocbMetaBucket.Close()
-	logging.Infof("%s [%s:%s:%d] Issued close for go-couchbase ang gocb handler",
+	logging.Infof("%s [%s:%s:%d] Issued close for go-couchbase and gocb handles",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.consumerSup.Remove(c.clientSupToken)

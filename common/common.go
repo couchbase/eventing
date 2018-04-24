@@ -65,7 +65,6 @@ type EventingProducer interface {
 	NsServerNodeCount() int
 	PauseProducer()
 	PlannerStats() []*PlannerNodeVbMapping
-	PurgeAppLog()
 	PurgePlasmaRecords()
 	RebalanceStatus() bool
 	RebalanceTaskProgress() *RebalanceProgress

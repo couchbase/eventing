@@ -968,8 +968,8 @@ void AppWorker::ReadStdinLoop() {
   auto functor = [](AppWorker *worker, uv_async_t *async1, uv_async_t *async2) {
     std::string token;
     while (!std::cin.eof()) {
-        std::cin.clear();
-        std::getline(std::cin, token);
+      std::cin.clear();
+      std::getline(std::cin, token);
     }
     worker->thread_exit_cond.store(true);
     uv_async_send(async1);

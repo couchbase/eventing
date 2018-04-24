@@ -269,6 +269,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 		UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_cron_timer", vbBlob.CurrentProcessedCronTimer, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_doc_id_timer_sent_to_worker", vbBlob.LastDocIDTimerSentToWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess, gocb.SubdocFlagCreatePath).
 		UpsertEx("next_cron_timer_to_process", vbBlob.NextCronTimerToProcess, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo, gocb.SubdocFlagCreatePath).

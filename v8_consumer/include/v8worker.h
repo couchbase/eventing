@@ -278,7 +278,6 @@ private:
   bool ExecuteScript(v8::Local<v8::String> script);
   std::list<Bucket *> bucket_handles;
   N1QL *n1ql_handle;
-  std::string last_exception;
   v8::Isolate *isolate_;
   v8::Platform *platform_;
   inspector::Agent *agent;
