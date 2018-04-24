@@ -34,7 +34,6 @@ const (
 type EventingProducer interface {
 	Auth() string
 	CfgData() string
-	CleanupDeadConsumer(consumer EventingConsumer)
 	CleanupMetadataBucket()
 	ClearEventStats()
 	GetAppCode() string
@@ -53,6 +52,7 @@ type EventingProducer interface {
 	GetSourceMap() string
 	InternalVbDistributionStats() map[string]string
 	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
+	KillAndRespawnEventingConsumer(consumer EventingConsumer)
 	KvHostPorts() []string
 	LenRunningConsumers() int
 	MetadataBucket() string
@@ -103,6 +103,7 @@ type EventingConsumer interface {
 	GetSourceMap() string
 	HandleV8Worker()
 	HostPortAddr() string
+	Index() int
 	InternalVbDistributionStats() []uint16
 	NodeUUID() string
 	NotifyClusterChange()

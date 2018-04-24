@@ -170,6 +170,7 @@ type Consumer struct {
 	executionTimeout         int
 	gocbBucket               *gocb.Bucket
 	gocbMetaBucket           *gocb.Bucket
+	index                    int
 	ipcType                  string // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
 	isRebalanceOngoing       bool
 	kvHostDcpFeedMap         map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
@@ -407,6 +408,7 @@ type client struct {
 	eventingPort    string
 	feedbackTCPPort string
 	osPid           int
+	stopCalled      bool
 	tcpPort         string
 	workerName      string
 }

@@ -25,6 +25,13 @@ func newClient(consumer *Consumer, appName, tcpPort, feedbackTCPPort, workerName
 func (c *client) Serve() {
 	logPrefix := "client::Serve"
 
+	logging.Infof("%s [%s:%s:%d] At startup stopCalled: %t",
+		logPrefix, c.workerName, c.tcpPort, c.osPid, c.stopCalled)
+
+	if c.stopCalled {
+		return
+	}
+
 	c.cmd = exec.Command(
 		"eventing-consumer",
 		c.appName,
@@ -114,9 +121,6 @@ func (c *client) Serve() {
 	}
 	c.consumerHandle.workerExited = true
 
-	logging.Debugf("%s [%s:%s:%d] Exiting c++ worker routine",
-		logPrefix, c.workerName, c.tcpPort, c.osPid)
-
 	c.consumerHandle.connMutex.Lock()
 	defer c.consumerHandle.connMutex.Unlock()
 
@@ -126,14 +130,27 @@ func (c *client) Serve() {
 		}
 	}
 	c.consumerHandle.conn = nil
+
+	logging.Infof("%s [%s:%s:%d] After worker exit, stopCalled: %t",
+		logPrefix, c.workerName, c.tcpPort, c.osPid, c.stopCalled)
+
+	if !c.stopCalled {
+		logging.Infof("%s [%s:%s:%d] Informing Eventing.Producer to stop Eventing.Consumer instance: %v",
+			logPrefix, c.workerName, c.tcpPort, c.osPid, c.consumerHandle)
+
+		c.consumerHandle.producer.KillAndRespawnEventingConsumer(c.consumerHandle)
+		c.stopCalled = true
+	}
 }
 
 func (c *client) Stop() {
 	logPrefix := "client::Stop"
 
-	c.consumerHandle.workerExited = true
+	c.stopCalled = true
 
-	logging.Debugf("%s [%s:%s:%d] Exiting c++ worker", logPrefix, c.workerName, c.tcpPort, c.osPid)
+	logging.Infof("%s [%s:%s:%d] Exiting c++ worker", logPrefix, c.workerName, c.tcpPort, c.osPid)
+
+	c.consumerHandle.workerExited = true
 
 	if c.osPid > 1 {
 		ps, err := os.FindProcess(c.osPid)

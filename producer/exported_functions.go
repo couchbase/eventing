@@ -275,9 +275,15 @@ func (p *Producer) VbEventingNodeAssignMap() map[uint16]string {
 
 // WorkerVbMap returns mapping of active consumers to vbuckets they should handle as per static planner
 func (p *Producer) WorkerVbMap() map[string][]uint16 {
-	p.RLock()
-	defer p.RUnlock()
-	return p.workerVbucketMap
+	p.workerVbMapRWMutex.RLock()
+	defer p.workerVbMapRWMutex.RUnlock()
+
+	workerVbucketMap := make(map[string][]uint16)
+	for workerName, assignedVbs := range p.workerVbucketMap {
+		workerVbucketMap[workerName] = assignedVbs
+	}
+
+	return workerVbucketMap
 }
 
 // PauseProducer pauses the execution of Eventing.Producer and corresponding Eventing.Consumer instances

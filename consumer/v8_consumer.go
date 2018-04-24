@@ -69,6 +69,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		feedbackWriteBatchSize:          hConfig.FeedbackBatchSize,
 		fuzzOffset:                      hConfig.FuzzOffset,
 		gracefulShutdownChan:            make(chan struct{}, 1),
+		index:                           index,
 		ipcType:                         pConfig.IPCType,
 		iteratorRefreshCounter:          iteratorRefreshCounter,
 		hostDcpFeedRWMutex:              &sync.RWMutex{},
@@ -185,8 +186,8 @@ func (c *Consumer) Serve() {
 	go c.handleFailoverLog()
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
-	logging.Infof("%s [%s:%s:%d] vbnos len: %d",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos))
+	logging.Infof("%s [%s:%s:%d] vbnos len: %d dump: %s",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos), util.Condense(c.vbnos))
 
 	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
 
@@ -266,7 +267,7 @@ func (c *Consumer) HandleV8Worker() {
 		var err error
 		currHost, _, err = net.SplitHostPort(h)
 		if err != nil {
-			logging.Errorf("Unable to split hostport %rs: %v", h, err)
+			logging.Errorf("%s Unable to split hostport %rs: %v", logPrefix, h, err)
 		}
 	}
 
@@ -274,7 +275,7 @@ func (c *Consumer) HandleV8Worker() {
 		c.kvNodes[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)
-	logging.Debugf("%s [%s:%s:%d] V8 worker init enable_recursive_mutation flag: %v",
+	logging.Infof("%s [%s:%s:%d] V8 worker init enable_recursive_mutation flag: %t",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
@@ -315,8 +316,7 @@ func (c *Consumer) Stop() {
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.consumerSup.Remove(c.clientSupToken)
-	c.consumerSup.Stop()
-	logging.Infof("%s [%s:%s:%d] Requested to stop supervisor for Eventing.Consumer",
+	logging.Infof("%s [%s:%s:%d] Requested to remove supervision of eventing-consumer",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.checkpointTicker.Stop()
@@ -345,7 +345,7 @@ func (c *Consumer) Stop() {
 	c.stopControlRoutineCh <- struct{}{}
 	c.stopConsumerCh <- struct{}{}
 	c.signalStopDebuggerRoutineCh <- struct{}{}
-	logging.Infof("%s [%s:%s:%d] Send signal over channel to stop plasma store, checkpointing, cron timer processing routines",
+	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop plasma store, checkpointing, cron timer processing routines",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	for _, dcpFeed := range c.kvHostDcpFeedMap {
@@ -374,6 +374,10 @@ func (c *Consumer) Stop() {
 		c.debugConn.Close()
 		c.debugListener.Close()
 	}
+
+	c.consumerSup.Stop()
+	logging.Infof("%s [%s:%s:%d] Requested to stop supervisor for Eventing.Consumer",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	logging.Infof("%s [%s:%s:%d] Exiting Eventing.Consumer Stop routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())

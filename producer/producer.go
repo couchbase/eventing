@@ -26,11 +26,14 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 	p := &Producer{
 		appName:                appName,
 		bootstrapFinishCh:      make(chan struct{}, 1),
+		consumerListeners:      make(map[common.EventingConsumer]net.Listener),
 		dcpConfig:              make(map[string]interface{}),
 		ejectNodeUUIDs:         make([]string, 0),
 		eventingNodeUUIDs:      make([]string, 0),
+		feedbackListeners:      make(map[common.EventingConsumer]net.Listener),
+		handleV8ConsumerMutex:  &sync.Mutex{},
 		kvPort:                 kvPort,
-		listenerHandles:        make([]net.Listener, 0),
+		listenerRWMutex:        &sync.RWMutex{},
 		metakvAppHostPortsPath: metakvAppHostPortsPath,
 		notifyInitCh:           make(chan struct{}, 2),
 		notifySettingsChangeCh: make(chan struct{}, 1),
@@ -46,10 +49,12 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
 		updateStatsStopCh:      make(chan struct{}, 1),
 		uuid:                   uuid,
-		workerNameConsumerMap: make(map[string]common.EventingConsumer),
-		handlerConfig:         &common.HandlerConfig{},
-		processConfig:         &common.ProcessConfig{},
-		rebalanceConfig:       &common.RebalanceConfig{},
+		workerNameConsumerMap:        make(map[string]common.EventingConsumer),
+		workerNameConsumerMapRWMutex: &sync.RWMutex{},
+		workerVbMapRWMutex:           &sync.RWMutex{},
+		handlerConfig:                &common.HandlerConfig{},
+		processConfig:                &common.ProcessConfig{},
+		rebalanceConfig:              &common.RebalanceConfig{},
 	}
 
 	p.processConfig.DiagDir = diagDir
@@ -211,16 +216,22 @@ func (p *Producer) Serve() {
 				delete(p.consumerSupervisorTokenMap, eventingConsumer)
 			}
 			p.runningConsumers = p.runningConsumers[:0]
-			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
 
+			p.workerNameConsumerMapRWMutex.Lock()
+			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
+			p.workerNameConsumerMapRWMutex.Unlock()
+
+			p.listenerRWMutex.Lock()
 			for _, listener := range p.consumerListeners {
 				listener.Close()
 			}
+			p.consumerListeners = make(map[common.EventingConsumer]net.Listener)
 
-			p.consumerListeners = p.consumerListeners[:0]
-			for _, lHandle := range p.listenerHandles {
-				lHandle.Close()
+			for _, listener := range p.feedbackListeners {
+				listener.Close()
 			}
+			p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
+			p.listenerRWMutex.Unlock()
 
 			p.signalStopPersistAllCh <- struct{}{}
 
@@ -234,12 +245,22 @@ func (p *Producer) Serve() {
 				delete(p.consumerSupervisorTokenMap, eventingConsumer)
 			}
 			p.runningConsumers = p.runningConsumers[:0]
-			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
 
+			p.workerNameConsumerMapRWMutex.Lock()
+			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
+			p.workerNameConsumerMapRWMutex.Unlock()
+
+			p.listenerRWMutex.Lock()
 			for _, listener := range p.consumerListeners {
 				listener.Close()
 			}
-			p.consumerListeners = p.consumerListeners[:0]
+			p.consumerListeners = make(map[common.EventingConsumer]net.Listener)
+
+			for _, listener := range p.feedbackListeners {
+				listener.Close()
+			}
+			p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
+			p.listenerRWMutex.Unlock()
 
 			p.notifySupervisorCh <- struct{}{}
 			return
@@ -249,10 +270,18 @@ func (p *Producer) Serve() {
 
 // Stop implements suptree.Service interface
 func (p *Producer) Stop() {
-	// Cleanup all consumer listen handles
-	for _, lHandle := range p.listenerHandles {
+
+	p.listenerRWMutex.RLock()
+	for _, lHandle := range p.consumerListeners {
 		lHandle.Close()
 	}
+	p.consumerListeners = make(map[common.EventingConsumer]net.Listener)
+
+	for _, fHandle := range p.feedbackListeners {
+		fHandle.Close()
+	}
+	p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
+	p.listenerRWMutex.RUnlock()
 
 	p.metadataBucketHandle.Close()
 	p.stopProducerCh <- struct{}{}
@@ -276,12 +305,20 @@ func (p *Producer) startBucket() {
 
 	for i := 0; i < p.handlerConfig.WorkerCount; i++ {
 		workerName := fmt.Sprintf("worker_%s_%d", p.appName, i)
-		p.handleV8Consumer(workerName, p.workerVbucketMap[workerName], i)
+
+		p.workerVbMapRWMutex.RLock()
+		vbsAssigned := p.workerVbucketMap[workerName]
+		p.workerVbMapRWMutex.RUnlock()
+
+		p.handleV8Consumer(workerName, vbsAssigned, i)
 	}
 }
 
 func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int) {
 	logPrefix := "Producer::handleV8Consumer"
+
+	p.handleV8ConsumerMutex.Lock()
+	defer p.handleV8ConsumerMutex.Unlock()
 
 	// Separate out of band socket to pipeline data from Eventing-consumer to Eventing-producer
 	var feedbackListener net.Listener
@@ -339,22 +376,27 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.processConfig.IPCType = "af_unix"
 	}
 
-	logging.Infof("%s [%s:%d] Spawning consumer to listen on socket: %rs feedback socket: %rs vbs len: %d dump: %s",
+	logging.Infof("%s [%s:%d] Spawning consumer to listen on socket: %rs feedback socket: %rs index: %d vbs len: %d dump: %s",
 		logPrefix, p.appName, p.LenRunningConsumers(), p.processConfig.SockIdentifier, p.processConfig.FeedbackSockIdentifier,
-		len(vbnos), util.Condense(vbnos))
+		index, len(vbnos), util.Condense(vbnos))
 
 	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid,
 		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.vbPlasmaStore, p.iteratorRefreshCounter, p.numVbuckets)
 
+	p.listenerRWMutex.Lock()
+	p.consumerListeners[c] = listener
+	p.feedbackListeners[c] = feedbackListener
+	p.listenerRWMutex.Unlock()
+
+	p.workerNameConsumerMapRWMutex.Lock()
+	p.workerNameConsumerMap[workerName] = c
+	p.workerNameConsumerMapRWMutex.Unlock()
+
 	p.Lock()
-	p.consumerListeners = append(p.consumerListeners, listener)
 	serviceToken := p.workerSupervisor.Add(c)
 	p.runningConsumers = append(p.runningConsumers, c)
-	p.workerNameConsumerMap[workerName] = c
 	p.consumerSupervisorTokenMap[c] = serviceToken
 	p.Unlock()
-
-	p.listenerHandles = append(p.listenerHandles, listener)
 
 	go func(listener net.Listener, c *consumer.Consumer) {
 		for {
@@ -363,7 +405,8 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 				return
 			}
 
-			logging.Infof("%s [%s:%d] Got request from cpp worker, conn: %v", logPrefix, p.appName, p.LenRunningConsumers(), conn)
+			logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, conn: %v",
+				logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), conn)
 			c.SetConnHandle(conn)
 			c.SignalConnected()
 			c.HandleV8Worker()
@@ -376,7 +419,8 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 			if err != nil {
 				return
 			}
-			logging.Infof("%s [%s:%d] Got request from cpp worker, feedback conn: %v", logPrefix, p.appName, p.LenRunningConsumers(), conn)
+			logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, feedback conn: %v",
+				logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), conn)
 
 			c.SetFeedbackConnHandle(conn)
 			c.SignalFeedbackConnected()
@@ -384,10 +428,13 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	}(feedbackListener, c)
 }
 
-// CleanupDeadConsumer cleans up a dead consumer handle from list of active running consumers
-func (p *Producer) CleanupDeadConsumer(c common.EventingConsumer) {
+// KillAndRespawnEventingConsumer cleans up a dead consumer handle from list of active running consumers
+func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
+	logPrefix := "Producer::KillAndRespawnEventingConsumer"
+
+	consumerIndex := c.Index()
+
 	p.Lock()
-	defer p.Unlock()
 	var indexToPurge int
 	for i, val := range p.runningConsumers {
 		if val == c {
@@ -402,7 +449,34 @@ func (p *Producer) CleanupDeadConsumer(c common.EventingConsumer) {
 		p.runningConsumers = p.runningConsumers[:0]
 	}
 
+	serviceToken := p.consumerSupervisorTokenMap[c]
+	p.Unlock()
+
+	p.workerNameConsumerMapRWMutex.Lock()
 	delete(p.workerNameConsumerMap, c.ConsumerName())
+	p.workerNameConsumerMapRWMutex.Unlock()
+
+	logging.Infof("%s [%s:%d] IndexToPurge: %d ConsumerIndex: %d Shutting down Eventing.Consumer instance: %v",
+		logPrefix, p.appName, p.LenRunningConsumers(), indexToPurge, consumerIndex, c)
+
+	p.workerSupervisor.Remove(serviceToken)
+
+	logging.Infof("%s [%s:%d] IndexToPurge: %d ConsumerIndex: %d Closing down listener handles",
+		logPrefix, p.appName, p.LenRunningConsumers(), indexToPurge, consumerIndex)
+
+	p.listenerRWMutex.RLock()
+	p.consumerListeners[c].Close()
+	p.feedbackListeners[c].Close()
+	p.listenerRWMutex.RUnlock()
+
+	logging.Infof("%s [%s:%d] ConsumerIndex: %d Respawning the Eventing.Consumer instance",
+		logPrefix, p.appName, p.LenRunningConsumers(), consumerIndex)
+	workerName := fmt.Sprintf("worker_%s_%d", p.appName, consumerIndex)
+	p.workerVbMapRWMutex.RLock()
+	vbsAssigned := p.workerVbucketMap[workerName]
+	p.workerVbMapRWMutex.RUnlock()
+
+	p.handleV8Consumer(workerName, vbsAssigned, consumerIndex)
 }
 
 func (p *Producer) getEventingNodeAddrs() []string {
@@ -433,12 +507,6 @@ func (p *Producer) getEventingNodeAssignedVbuckets(eventingNode string) []uint16
 		}
 	}
 	return vbnos
-}
-
-func (p *Producer) getConsumerAssignedVbuckets(workerName string) []uint16 {
-	p.RLock()
-	defer p.RUnlock()
-	return p.workerVbucketMap[workerName]
 }
 
 // NotifySettingsChange is called by super_supervisor to notify producer about settings update

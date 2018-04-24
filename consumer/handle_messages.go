@@ -468,7 +468,6 @@ func (c *Consumer) sendMessageLoop() {
 					if err != nil {
 						logging.Errorf("%s [%s:%s:%d] Write to downstream socket failed, err: %v",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-						c.client.Stop()
 					}
 
 					// Reset the sendMessage buffer and message counter
@@ -544,7 +543,6 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Write to downstream socket failed, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-				c.client.Stop()
 				return err
 			}
 		} else if c.debugConn != nil {
@@ -583,16 +581,12 @@ func (c *Consumer) feedbackReadMessageLoop() {
 		bytesRead, err := c.sockFeedbackReader.Read(buffer)
 
 		if err == io.EOF || bytesRead == 0 {
-			if c.client != nil {
-				c.client.Stop()
-			}
 			break
 		}
 
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Read from client socket failed, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-			c.client.Stop()
 			return
 		}
 
@@ -651,16 +645,12 @@ func (c *Consumer) readMessageLoop() {
 		bytesRead, err := c.sockReader.Read(buffer)
 
 		if err == io.EOF || bytesRead == 0 {
-			if c.client != nil {
-				c.client.Stop()
-			}
 			break
 		}
 
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Read from client socket failed, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-			c.client.Stop()
 			return
 		}
 

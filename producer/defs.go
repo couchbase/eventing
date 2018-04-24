@@ -53,9 +53,9 @@ type Producer struct {
 	auth                   string
 	cleanupTimers          bool
 	cfgData                string
+	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
 	kvPort                 string
 	kvHostPorts            []string
-	listenerHandles        []net.Listener
 	metadatabucket         string
 	metadataBucketHandle   *gocb.Bucket
 	metakvAppHostPortsPath string
@@ -107,8 +107,9 @@ type Producer struct {
 	ejectNodeUUIDs    []string
 	eventingNodeUUIDs []string
 
-	consumerListeners []net.Listener
-	ProducerListener  net.Listener
+	consumerListeners map[common.EventingConsumer]net.Listener // Access controlled by listenerRWMutex
+	feedbackListeners map[common.EventingConsumer]net.Listener // Access controlled by listenerRWMutex
+	listenerRWMutex   *sync.RWMutex
 
 	// Chan used to signify update of app level settings
 	notifySettingsChangeCh chan struct{}
@@ -123,9 +124,11 @@ type Producer struct {
 	clusterStateChange chan struct{}
 
 	// List of running consumers, will be needed if we want to gracefully shut them down
-	runningConsumers           []common.EventingConsumer
+	runningConsumers           []common.EventingConsumer // Access controlled by default lock
 	consumerSupervisorTokenMap map[common.EventingConsumer]suptree.ServiceToken
-	workerNameConsumerMap      map[string]common.EventingConsumer
+
+	workerNameConsumerMap        map[string]common.EventingConsumer // Access controlled by workerNameConsumerMapRWMutex
+	workerNameConsumerMapRWMutex *sync.RWMutex
 
 	// vbucket to eventing node assignment
 	vbEventingNodeAssignMap map[uint16]string
@@ -144,16 +147,17 @@ type Producer struct {
 
 	statsRWMutex *sync.RWMutex
 
-	plannerNodeMappings []*common.PlannerNodeVbMapping // access controlled by statsRWMutex
+	plannerNodeMappings []*common.PlannerNodeVbMapping // Access controlled by statsRWMutex
 	seqsNoProcessed     map[int]int64                  // Access controlled by statsRWMutex
 	updateStatsTicker   *time.Ticker
 	updateStatsStopCh   chan struct{}
 
 	// Captures vbucket assignment to different eventing nodes
-	vbEventingNodeMap map[string]map[string]string // access controlled by statsRWMutex
+	vbEventingNodeMap map[string]map[string]string // Access controlled by statsRWMutex
 
 	// Map keeping track of vbuckets assigned to each worker(consumer)
-	workerVbucketMap map[string][]uint16
+	workerVbucketMap   map[string][]uint16 // Access controlled by workerVbMapRWMutex
+	workerVbMapRWMutex *sync.RWMutex
 
 	// Supervisor of workers responsible for
 	// pipelining messages to V8

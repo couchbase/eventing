@@ -583,3 +583,9 @@ func (c *Consumer) VbSeqnoStats() map[int]map[string]interface{} {
 
 	return seqnoStats
 }
+
+// Index returns the index of consumer among all consumers designated
+// for specific handler on an eventing node
+func (c *Consumer) Index() int {
+	return c.index
+}
