@@ -119,6 +119,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/stopDebugger/", m.stopDebugger)
 	http.HandleFunc("/stopTracing", m.stopTracing)
 	http.HandleFunc("/uuid", m.getNodeUUID)
+	http.HandleFunc("/version", m.getNodeVersion)
 
 	// Public REST APIs
 	http.HandleFunc("/api/v1/stats", m.statsHandler)

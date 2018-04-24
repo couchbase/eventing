@@ -1,0 +1,7 @@
+// +build ignore
+
+#include <string>
+
+std::string EventingVer() {
+	return std::string("${EVENTING_VER}");
+}

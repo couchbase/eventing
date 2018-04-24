@@ -72,6 +72,14 @@ func (m *ServiceMgr) getNodeUUID(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%v", m.uuid)
 }
 
+func (m *ServiceMgr) getNodeVersion(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+	logging.Debugf("Got request to fetch version from host %v", r.Host)
+	fmt.Fprintf(w, "%v", util.EventingVer())
+}
+
 func (m *ServiceMgr) debugging(w http.ResponseWriter, r *http.Request) {
 	logging.Debugf("Got debugging fetch %v", r.URL)
 	jsFile := path.Base(r.URL.Path)

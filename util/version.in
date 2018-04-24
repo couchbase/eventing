@@ -1,0 +1,5 @@
+package version
+
+func EventingVer() string {
+	return "${EVENTING_VER}"
+}

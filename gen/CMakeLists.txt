@@ -31,6 +31,16 @@ IF(BUILD_ENTERPRISE)
   SET(TAGS "${TAGS} enterprise")
 ENDIF()
 
+MESSAGE(INFO "Eventing version is ${EVENTING_VER}")
+CONFIGURE_FILE(
+  "${PROJECT_SOURCE_DIR}/util/version.in"
+  "${PROJECT_SOURCE_DIR}/gen/version/version.go"
+)
+CONFIGURE_FILE(
+  "${PROJECT_SOURCE_DIR}/v8_consumer/src/version.in"
+  "${PROJECT_SOURCE_DIR}/gen/version/version.cc"
+)
+
 GoInstall(
   TARGET convertjs
   PACKAGE github.com/couchbase/eventing/gen/convertjs
@@ -171,6 +181,8 @@ ADD_CUSTOM_TARGET(generated DEPENDS
         flatbuf/cfg_schema_generated.h flatbuf/cfg_schema/Cfg_schema.go
         parser/jsify.cc
         auditevent/events.go
+        version/version.go
+        version/version.cc
 )
 
 ADD_DEPENDENCIES(generated convertjs convertaudit)
