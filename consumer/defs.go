@@ -152,52 +152,53 @@ type Consumer struct {
 	sourceMap          string // source map to assist with V8 Debugger
 	sendMsgToDebugger  bool
 
-	aggDCPFeedMemCap       int64
-	aggDCPFeedMem          int64
-	aggDCPFeed             chan *cb.DcpEvent
-	cbBucket               *couchbase.Bucket
-	checkpointInterval     time.Duration
-	cleanupTimers          bool
-	dcpEventsRemaining     uint64
-	dcpFeedCancelChs       []chan struct{}
-	dcpFeedVbMap           map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
-	eventingAdminPort      string
-	eventingSSLPort        string
-	eventingDir            string
-	eventingNodeAddrs      []string
-	eventingNodeUUIDs      []string
-	executionTimeout       int
-	gocbBucket             *gocb.Bucket
-	gocbMetaBucket         *gocb.Bucket
-	isRebalanceOngoing     bool
-	ipcType                string                        // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
-	kvHostDcpFeedMap       map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
-	executionStats         map[string]interface{}        // Access controlled by statsRWMutex
-	failureStats           map[string]interface{}        // Access controlled by statsRWMutex
-	latencyStats           map[string]uint64             // Access controlled by statsRWMutex
-	lcbExceptionStats      map[string]uint64             // Access controlled by statsRWMutex
-	compileInfo            *common.CompileStatus
-	statsRWMutex           *sync.RWMutex
-	hostDcpFeedRWMutex     *sync.RWMutex
-	kvNodes                []string
-	kvVbMap                map[uint16]string // Access controlled by default lock
-	logLevel               string
-	superSup               common.EventingSuperSup
-	vbDcpEventsRemaining   map[int]int64 // Access controlled by statsRWMutex
-	numVbuckets            int
-	vbDcpFeedMap           map[uint16]*couchbase.DcpFeed
-	vbnos                  []uint16
-	vbsRemainingToClose    []uint16 // Access controlled by default lock
-	vbsRemainingToGiveUp   []uint16
-	vbsRemainingToOwn      []uint16
-	vbsRemainingToRestream []uint16        // Access controlled by default lock
-	vbsStreamClosed        map[uint16]bool // Access controlled by vbsStreamClosedRWMutex
-	vbsStreamClosedRWMutex *sync.RWMutex
-	vbStreamRequested      map[uint16]struct{} // Access controlled by vbsStreamRRWMutex
-	vbsStreamRRWMutex      *sync.RWMutex
-	workerExited           bool
-
+	aggDCPFeedMemCap         int64
+	aggDCPFeedMem            int64
+	aggDCPFeed               chan *cb.DcpEvent
+	cbBucket                 *couchbase.Bucket
+	checkpointInterval       time.Duration
+	cleanupTimers            bool
+	compileInfo              *common.CompileStatus
+	dcpEventsRemaining       uint64
+	dcpFeedCancelChs         []chan struct{}
+	dcpFeedVbMap             map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
+	eventingAdminPort        string
+	eventingSSLPort          string
+	eventingDir              string
+	eventingNodeAddrs        []string
+	eventingNodeUUIDs        []string
+	executionTimeout         int
+	gocbBucket               *gocb.Bucket
+	gocbMetaBucket           *gocb.Bucket
+	ipcType                  string // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
+	isRebalanceOngoing       bool
+	kvHostDcpFeedMap         map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
+	hostDcpFeedRWMutex       *sync.RWMutex
+	kvNodes                  []string
+	kvVbMap                  map[uint16]string // Access controlled by default lock
+	logLevel                 string
+	numVbuckets              int
+	statsTickDuration        time.Duration
+	superSup                 common.EventingSuperSup
+	vbDcpEventsRemaining     map[int]int64 // Access controlled by statsRWMutex
+	vbDcpFeedMap             map[uint16]*couchbase.DcpFeed
+	vbnos                    []uint16
+	vbsRemainingToClose      []uint16 // Access controlled by default lock
+	vbsRemainingToGiveUp     []uint16
+	vbsRemainingToOwn        []uint16
+	vbsRemainingToRestream   []uint16        // Access controlled by default lock
+	vbsStreamClosed          map[uint16]bool // Access controlled by vbsStreamClosedRWMutex
+	vbsStreamClosedRWMutex   *sync.RWMutex
+	vbStreamRequested        map[uint16]struct{} // Access controlled by vbsStreamRRWMutex
+	vbsStreamRRWMutex        *sync.RWMutex
+	workerExited             bool
 	xattrEntryPruneThreshold int
+
+	executionStats    map[string]interface{} // Access controlled by statsRWMutex
+	failureStats      map[string]interface{} // Access controlled by statsRWMutex
+	latencyStats      map[string]uint64      // Access controlled by statsRWMutex
+	lcbExceptionStats map[string]uint64      // Access controlled by statsRWMutex
+	statsRWMutex      *sync.RWMutex
 
 	// DCP config, as they need to be tunable
 	dcpConfig map[string]interface{}

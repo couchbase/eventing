@@ -19,7 +19,7 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 
 	err := c.doVbTakeover(vb)
 	if err != nil {
-		logging.Infof("%s [%s:%s:%d] vb: %v vbTakeover request, err: %v",
+		logging.Infof("%s [%s:%s:%d] vb: %v vbTakeover request, msg:",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 
 		c.vbsStreamRRWMutex.Lock()

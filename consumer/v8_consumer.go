@@ -102,7 +102,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		socketWriteLoopStopCh:           make(chan struct{}, 1),
 		socketWriteTicker:               time.NewTicker(socketWriteTimerInterval),
 		statsRWMutex:                    &sync.RWMutex{},
-		statsTicker:                     time.NewTicker(time.Duration(hConfig.StatsLogInterval) * time.Millisecond),
+		statsTickDuration:               time.Duration(hConfig.StatsLogInterval) * time.Millisecond,
 		stopControlRoutineCh:            make(chan struct{}, 1),
 		stopHandleFailoverLogCh:         make(chan struct{}, 1),
 		stopVbOwnerGiveupCh:             make(chan struct{}, rConfig.VBOwnershipGiveUpRoutineCount),
@@ -154,6 +154,8 @@ func (c *Consumer) Serve() {
 
 	c.docCurrTimer = time.Now().UTC().Format(time.RFC3339)
 	c.docNextTimer = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+
+	c.statsTicker = time.NewTicker(c.statsTickDuration)
 
 	// Insert an entry to sendMessage loop control channel to signify a normal bootstrap
 	c.socketWriteLoopStopAckCh <- struct{}{}
