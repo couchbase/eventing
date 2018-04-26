@@ -121,7 +121,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbOwnershipGiveUpRoutineCount:   rConfig.VBOwnershipGiveUpRoutineCount,
 		vbOwnershipTakeoverRoutineCount: rConfig.VBOwnershipTakeoverRoutineCount,
 		vbPlasmaStore:                   vbPlasmaStore,
-		vbProcessingStats:               newVbProcessingStats(app.AppName, uint16(numVbuckets)),
 		vbsRemainingToClose:             make([]uint16, 0),
 		vbsRemainingToGiveUp:            make([]uint16, 0),
 		vbsRemainingToOwn:               make([]uint16, 0),
@@ -155,6 +154,7 @@ func (c *Consumer) Serve() {
 	c.docCurrTimer = time.Now().UTC().Format(time.RFC3339)
 	c.docNextTimer = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
+	c.vbProcessingStats = newVbProcessingStats(c.app.AppName, uint16(c.numVbuckets), c.NodeUUID(), c.workerName)
 	c.statsTicker = time.NewTicker(c.statsTickDuration)
 
 	// Insert an entry to sendMessage loop control channel to signify a normal bootstrap

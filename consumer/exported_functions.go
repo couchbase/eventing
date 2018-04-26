@@ -526,7 +526,7 @@ func (c *Consumer) InternalVbDistributionStats() []uint16 {
 	return activeDcpStreams
 }
 
-// TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
+// TimerDebugStats captures timer related stats to assist in debugging mismatches during rebalance
 func (c *Consumer) TimerDebugStats() map[int]map[string]interface{} {
 	stats := make(map[int]map[string]interface{})
 
@@ -555,4 +555,31 @@ func (c *Consumer) TimerDebugStats() map[int]map[string]interface{} {
 // RebalanceStatus returns state of rebalance for consumer instance
 func (c *Consumer) RebalanceStatus() bool {
 	return c.isRebalanceOngoing
+}
+
+// VbSeqnoStats returns seq no stats, which can be useful in figuring out missed events during rebalance
+func (c *Consumer) VbSeqnoStats() map[int]map[string]interface{} {
+	seqnoStats := make(map[int]map[string]interface{})
+
+	for vb := 0; vb < c.numVbuckets; vb++ {
+		if _, ok := seqnoStats[vb]; !ok {
+			seqnoStats[vb] = make(map[string]interface{})
+
+			everOwnedVb := c.vbProcessingStats.getVbStat(uint16(vb), "ever_owned_vb").(bool)
+			if !everOwnedVb {
+				continue
+			}
+
+			seqnoStats[vb]["host_name"] = c.vbProcessingStats.getVbStat(uint16(vb), "host_name")
+			seqnoStats[vb]["last_checkpointed_seq_no"] = c.vbProcessingStats.getVbStat(uint16(vb), "last_checkpointed_seq_no")
+			seqnoStats[vb]["node_uuid"] = c.vbProcessingStats.getVbStat(uint16(vb), "node_uuid")
+			seqnoStats[vb]["start_seq_no"] = c.vbProcessingStats.getVbStat(uint16(vb), "start_seq_no")
+			seqnoStats[vb]["seq_no_at_stream_end"] = c.vbProcessingStats.getVbStat(uint16(vb), "seq_no_at_stream_end")
+			seqnoStats[vb]["seq_no_after_close_stream"] = c.vbProcessingStats.getVbStat(uint16(vb), "seq_no_after_close_stream")
+			seqnoStats[vb]["timestamp"] = c.vbProcessingStats.getVbStat(uint16(vb), "timestamp")
+			seqnoStats[vb]["worker_name"] = c.vbProcessingStats.getVbStat(uint16(vb), "worker_name")
+		}
+	}
+
+	return seqnoStats
 }

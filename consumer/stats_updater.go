@@ -6,14 +6,14 @@ import (
 	"github.com/couchbase/eventing/logging"
 )
 
-func newVbProcessingStats(appName string, numVbuckets uint16) vbStats {
+func newVbProcessingStats(appName string, numVbuckets uint16, uuid, workerName string) vbStats {
 	vbsts := make(vbStats, numVbuckets)
 	for i := uint16(0); i < numVbuckets; i++ {
 		vbsts[i] = &vbStat{
 			stats: make(map[string]interface{}),
 		}
-		vbsts[i].stats["dcp_stream_status"] = dcpStreamStopped
 		vbsts[i].stats["assigned_worker"] = ""
+		vbsts[i].stats["dcp_stream_status"] = dcpStreamStopped
 		vbsts[i].stats["requesting_worker"] = ""
 
 		vbsts[i].stats["plasma_last_seq_no_stored"] = uint64(0)
@@ -39,6 +39,18 @@ func newVbProcessingStats(appName string, numVbuckets uint16) vbStats {
 		vbsts[i].stats["timers_in_past_counter"] = uint64(0)
 		vbsts[i].stats["timers_in_past_from_backfill_counter"] = uint64(0)
 		vbsts[i].stats["timers_recreated_from_dcp_backfill"] = uint64(0)
+
+		// vb seq no stats
+		vbsts[i].stats["ever_owned_vb"] = false
+		vbsts[i].stats["host_name"] = ""
+		vbsts[i].stats["last_checkpointed_seq_no"] = uint64(0)
+		vbsts[i].stats["last_read_seq_no"] = uint64(0)
+		vbsts[i].stats["node_uuid"] = uuid
+		vbsts[i].stats["start_seq_no"] = uint64(0)
+		vbsts[i].stats["seq_no_at_stream_end"] = uint64(0)
+		vbsts[i].stats["seq_no_after_close_stream"] = uint64(0)
+		vbsts[i].stats["timestamp"] = time.Now().UTC().Format(time.RFC3339)
+		vbsts[i].stats["worker_name"] = workerName
 	}
 	return vbsts
 }

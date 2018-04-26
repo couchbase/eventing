@@ -93,6 +93,10 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", dcpStreamStopped)
 					c.vbProcessingStats.updateVbStat(vb, "node_uuid", "")
 
+					lastSeqNo := c.vbProcessingStats.getVbStat(uint16(vb), "last_read_seq_no").(uint64)
+					c.vbProcessingStats.updateVbStat(vb, "seq_no_after_close_stream", lastSeqNo)
+					c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
+
 					continue
 				}
 
@@ -122,6 +126,10 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
 					}
 					c.RUnlock()
+
+					lastSeqNo := c.vbProcessingStats.getVbStat(uint16(vb), "last_read_seq_no").(uint64)
+					c.vbProcessingStats.updateVbStat(vb, "seq_no_after_close_stream", lastSeqNo)
+					c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
 					if !cUpdated {
 						logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %v updating metadata about dcp stream close",
@@ -569,6 +577,8 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	if err != nil {
 		return err
 	}
+	c.vbProcessingStats.updateVbStat(vb, "start_seq_no", streamStartSeqNo)
+	c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
 	return nil
 }

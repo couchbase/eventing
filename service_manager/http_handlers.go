@@ -448,6 +448,8 @@ func (m *ServiceMgr) getNamedParamsHandler(w http.ResponseWriter, r *http.Reques
 
 // Reports progress across all producers on current node
 func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::getRebalanceProgress"
+
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
 	}
@@ -460,16 +462,27 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
 		// if it occurs
 		appProgress, err := m.superSup.RebalanceTaskProgress(appName)
-		logging.Infof("Rebalance progress from node with rest port: %rs progress: %v", m.restPort, appProgress)
+		logging.Infof("%s Rebalance progress from node with rest port: %rs progress: %v",
+			logPrefix, m.restPort, appProgress)
 		if err == nil {
 			progress.VbsOwnedPerPlan += appProgress.VbsOwnedPerPlan
 			progress.VbsRemainingToShuffle += appProgress.VbsRemainingToShuffle
 		}
 	}
 
+	if progress.VbsRemainingToShuffle == 0 {
+		statsList := m.populateStats(true)
+		data, err := json.Marshal(statsList)
+		if err != nil {
+			logging.Errorf("%s Failed to unmarshal stats, err: %v", logPrefix, err)
+		} else {
+			logging.Infof("%s No more vbucket remaining to shuffle. Stats dump: %v", logPrefix, string(data))
+		}
+	}
+
 	buf, err := json.Marshal(progress)
 	if err != nil {
-		logging.Errorf("Failed to unmarshal rebalance progress across all producers on current node, err: %v", err)
+		logging.Errorf("%s Failed to unmarshal rebalance progress across all producers on current node, err: %v", logPrefix, err)
 		return
 	}
 
@@ -1758,40 +1771,7 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 			fullStats = typeParam == "full"
 		}
 
-		statsList := make([]stats, 0)
-		for _, app := range m.getTempStoreAll() {
-			if m.checkIfDeployed(app.Name) {
-				stats := stats{}
-				stats.EventProcessingStats = m.superSup.GetEventProcessingStats(app.Name)
-				stats.EventsRemaining = backlogStat{DcpBacklog: m.superSup.GetDcpEventsRemainingToProcess(app.Name)}
-				stats.ExecutionStats = m.superSup.GetExecutionStats(app.Name)
-				stats.FailureStats = m.superSup.GetFailureStats(app.Name)
-				stats.FunctionName = app.Name
-				stats.InternalVbDistributionStats = m.superSup.InternalVbDistributionStats(app.Name)
-				stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
-				stats.WorkerPids = m.superSup.GetEventingConsumerPids(app.Name)
-				stats.PlannerStats = m.superSup.PlannerStats(app.Name)
-				stats.VbDistributionStatsFromMetadata = m.superSup.VbDistributionStatsFromMetadata(app.Name)
-
-				if fullStats {
-					stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
-
-					plasmaStats, err := m.superSup.GetPlasmaStats(app.Name)
-					if err == nil {
-						stats.PlasmaStats = plasmaStats
-					}
-
-					stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
-					stats.VbDcpEventsRemaining = m.superSup.VbDcpEventsRemainingToProcess(app.Name)
-					debugStats, err := m.superSup.TimerDebugStats(app.Name)
-					if err == nil {
-						stats.DocTimerDebugStats = debugStats
-					}
-				}
-
-				statsList = append(statsList, stats)
-			}
-		}
+		statsList := m.populateStats(fullStats)
 
 		response, err := json.Marshal(statsList)
 		if err != nil {
@@ -1806,6 +1786,49 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	return
+}
+
+func (m *ServiceMgr) populateStats(fullStats bool) []stats {
+	statsList := make([]stats, 0)
+	for _, app := range m.getTempStoreAll() {
+		if m.checkIfDeployed(app.Name) {
+			stats := stats{}
+			stats.EventProcessingStats = m.superSup.GetEventProcessingStats(app.Name)
+			stats.EventsRemaining = backlogStat{DcpBacklog: m.superSup.GetDcpEventsRemainingToProcess(app.Name)}
+			stats.ExecutionStats = m.superSup.GetExecutionStats(app.Name)
+			stats.FailureStats = m.superSup.GetFailureStats(app.Name)
+			stats.FunctionName = app.Name
+			stats.InternalVbDistributionStats = m.superSup.InternalVbDistributionStats(app.Name)
+			stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
+			stats.WorkerPids = m.superSup.GetEventingConsumerPids(app.Name)
+			stats.PlannerStats = m.superSup.PlannerStats(app.Name)
+			stats.VbDistributionStatsFromMetadata = m.superSup.VbDistributionStatsFromMetadata(app.Name)
+
+			if fullStats {
+				stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
+
+				plasmaStats, err := m.superSup.GetPlasmaStats(app.Name)
+				if err == nil {
+					stats.PlasmaStats = plasmaStats
+				}
+
+				stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
+				stats.VbDcpEventsRemaining = m.superSup.VbDcpEventsRemainingToProcess(app.Name)
+				debugStats, err := m.superSup.TimerDebugStats(app.Name)
+				if err == nil {
+					stats.DocTimerDebugStats = debugStats
+				}
+				vbSeqnoStats, err := m.superSup.VbSeqnoStats(app.Name)
+				if err == nil {
+					stats.VbSeqnoStats = vbSeqnoStats
+				}
+			}
+
+			statsList = append(statsList, stats)
+		}
+	}
+
+	return statsList
 }
 
 // Clears up all Eventing related artifacts from metakv, typically will be used for rebalance tests

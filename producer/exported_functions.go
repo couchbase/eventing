@@ -732,3 +732,25 @@ func (p *Producer) RebalanceStatus() bool {
 
 	return false
 }
+
+// VbSeqnoStats returns seq no stats, which can be useful in figuring out missed events during rebalance
+func (p *Producer) VbSeqnoStats() map[int][]map[string]interface{} {
+	seqnoStats := make(map[int][]map[string]interface{})
+
+	for _, consumer := range p.runningConsumers {
+		workerStats := consumer.VbSeqnoStats()
+
+		for vb, stats := range workerStats {
+			if len(stats) == 0 {
+				continue
+			}
+
+			if _, ok := seqnoStats[vb]; !ok {
+				seqnoStats[vb] = make([]map[string]interface{}, 0)
+			}
+			seqnoStats[vb] = append(seqnoStats[vb], stats)
+		}
+	}
+
+	return seqnoStats
+}
