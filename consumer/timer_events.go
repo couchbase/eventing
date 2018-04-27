@@ -56,28 +56,12 @@ var plasmaInsertKV = func(args ...interface{}) error {
 	return err
 }
 
-var plasmaDeleteKV = func(args ...interface{}) error {
-	logPrefix := "Consumer::plasmaDeleteKV"
-
-	c := args[0].(*Consumer)
-	w := args[1].(*plasma.Writer)
-	k := args[2].(string)
-
-	err := w.DeleteKV([]byte(k))
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %ru err : %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), k, err)
-	}
-
-	return err
-}
-
 func (c *Consumer) processDocTimerEvents() {
 	logPrefix := "Consumer::processDocTimerEvents"
 
 	timerProcessingTicker := time.NewTicker(c.timerProcessingTickInterval)
 
 	reader := c.vbPlasmaStore.NewReader()
-	writer := c.vbPlasmaStore.NewWriter()
 
 	for vb := uint16(0); vb < uint16(c.numVbuckets); vb++ {
 		vbKey := fmt.Sprintf("%s::vb::%v", c.app.AppName, vb)
@@ -183,7 +167,7 @@ func (c *Consumer) processDocTimerEvents() {
 						continue
 					}
 
-					c.processTimerEvent(cts, writer, string(itr.Key()), string(itr.Value()), vb)
+					c.processTimerEvent(cts, string(itr.Value()), vb)
 				}
 			}
 
@@ -195,7 +179,7 @@ func (c *Consumer) processDocTimerEvents() {
 	}
 }
 
-func (c *Consumer) processTimerEvent(currTs time.Time, writer *plasma.Writer, key, event string, vb uint16) {
+func (c *Consumer) processTimerEvent(currTs time.Time, event string, vb uint16) {
 	logPrefix := "Consumer::processTimerEvent"
 
 	var timerEntry byTimerEntry
@@ -203,43 +187,29 @@ func (c *Consumer) processTimerEvent(currTs time.Time, writer *plasma.Writer, ke
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] vb: %d Failed to unmarshal timerEvent: %ru err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, event, err)
-		return
-	}
+	} else {
 
-	var exists bool
-	var connShutdown bool
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), checkKeyExistsCallback, c, timerEntry.DocID, &exists, &connShutdown)
-	if !exists {
-		logging.Tracef("%s [%s:%s:%d] : %ru not found, skipping firing of doc timer", logPrefix, c.workerName, c.tcpPort, c.Pid(), timerEntry.DocID)
-		if connShutdown {
-			logging.Tracef("%s [%s:%s:%d] : gocb connection shutdown, skipping purging of doc timer from plasma", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return
+		// Going a second back in time. This way last doc timer checkpointing in CPP worker will be off by a second.
+		// And hence when clean is happening in Go process based on checkpointed value from CPP workers, it wouldn't
+		// timers mapping to current second. Otherwise, there is room that a subset of doc timers mapped to execute
+		// at current second might get lost.
+		currTs = currTs.Add(-time.Second)
+		timerMeta := &byTimerEntryMeta{
+			partition: int32(vb),
+			timestamp: currTs.UTC().Format(time.RFC3339),
 		}
 
-		util.Retry(util.NewFixedBackoff(plasmaOpRetryInterval), plasmaDeleteKV, c, writer, key)
-		return
+		timer := &byTimer{
+			entry: &timerEntry,
+			meta:  timerMeta,
+		}
+		c.docTimerEntryCh <- timer
+
+		c.vbProcessingStats.updateVbStat(vb, "last_doc_id_timer_sent_to_worker", currTs.UTC().Format(time.RFC3339))
+
+		counter := c.vbProcessingStats.getVbStat(vb, "sent_to_worker_counter").(uint64)
+		c.vbProcessingStats.updateVbStat(vb, "sent_to_worker_counter", counter+1)
 	}
-
-	// Going a second back in time. This way last doc timer checkpointing in CPP worker will be off by a second.
-	// And hence when clean is happening in Go process based on checkpointed value from CPP workers, it wouldn't
-	// timers mapping to current second. Otherwise, there is room that a subset of doc timers mapped to execute
-	// at current second might get lost.
-	currTs = currTs.Add(-time.Second)
-	timerMeta := &byTimerEntryMeta{
-		partition: int32(vb),
-		timestamp: currTs.UTC().Format(time.RFC3339),
-	}
-
-	timer := &byTimer{
-		entry: &timerEntry,
-		meta:  timerMeta,
-	}
-	c.docTimerEntryCh <- timer
-
-	c.vbProcessingStats.updateVbStat(vb, "last_doc_id_timer_sent_to_worker", currTs.UTC().Format(time.RFC3339))
-
-	counter := c.vbProcessingStats.getVbStat(vb, "sent_to_worker_counter").(uint64)
-	c.vbProcessingStats.updateVbStat(vb, "sent_to_worker_counter", counter+1)
 }
 
 func (c *Consumer) cleanupProcessedDocTimers() {

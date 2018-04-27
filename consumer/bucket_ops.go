@@ -593,34 +593,3 @@ var removeIndexCallback = func(args ...interface{}) error {
 
 	return err
 }
-
-var checkKeyExistsCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::checkKeyExistsCallback"
-
-	c := args[0].(*Consumer)
-	docId := args[1].(string)
-	exists := args[2].(*bool)
-	connShutdown := args[3].(*bool)
-	var value interface{}
-
-	_, err := c.gocbBucket.Get(docId, &value)
-	if err == gocb.ErrShutdown {
-		*exists = false
-		*connShutdown = true
-		return nil
-	}
-
-	*connShutdown = false
-	if err == gocb.ErrKeyNotFound {
-		*exists = false
-		return nil
-	}
-
-	if err == nil {
-		*exists = true
-		return nil
-	}
-
-	logging.Errorf("%s [%s:%s:%d] Key: %ru, err : %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), docId, err)
-	return err
-}
