@@ -83,23 +83,30 @@ v8::Local<v8::Name> v8Name(v8::Isolate *isolate, uint32_t key) {
 }
 
 std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
+  if (object.IsEmpty()) {
+    return std::string();
+  }
+
   v8::HandleScope handle_scope(isolate);
 
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
-  v8::Local<v8::Object> global = context->Global();
+  auto global = context->Global();
 
-  auto JSON = global->Get(v8Str(isolate, "JSON"))->ToObject();
-  auto JSON_stringify =
-      v8::Local<v8::Function>::Cast(JSON->Get(v8Str(isolate, "stringify")));
+  auto key =
+      v8::String::NewFromUtf8(isolate, "JSON", v8::NewStringType::kNormal)
+          .ToLocalChecked();
+  auto json = global->Get(context, key).ToLocalChecked().As<v8::Object>();
 
-  v8::Local<v8::Value> result;
-  v8::Local<v8::Value> args[1];
-  args[0] = {object};
-  result = JSON_stringify->Call(context->Global(), 1, args);
+  key =
+      v8::String::NewFromUtf8(isolate, "stringify", v8::NewStringType::kNormal)
+          .ToLocalChecked();
+  auto stringify = json->Get(context, key).ToLocalChecked().As<v8::Function>();
 
-  v8::String::Utf8Value utf8_result(result);
-  std::string stringified_obj(*utf8_result);
-  return stringified_obj;
+  v8::Local<v8::Value> args[1] = {object};
+  auto result = stringify->Call(global, 1, args);
+
+  v8::String::Utf8Value const utf8_result(result);
+  return std::string(*utf8_result, utf8_result.length());
 }
 
 // Extracts a C string from a V8 Utf8Value.
