@@ -760,3 +760,16 @@ func (p *Producer) VbSeqnoStats() map[int][]map[string]interface{} {
 
 	return seqnoStats
 }
+
+// CleanupUDSs clears up UDS created for communication between Go and eventing-consumer
+func (p *Producer) CleanupUDSs() {
+	if p.processConfig.IPCType == "af_unix" {
+		for _, c := range p.runningConsumers {
+			udsSockPath := fmt.Sprintf("%s/%s_%s.sock", os.TempDir(), p.nsServerHostPort, c.ConsumerName())
+			feedbackSockPath := fmt.Sprintf("%s/feedback_%s_%s.sock", os.TempDir(), p.nsServerHostPort, c.ConsumerName())
+
+			os.Remove(udsSockPath)
+			os.Remove(feedbackSockPath)
+		}
+	}
+}
