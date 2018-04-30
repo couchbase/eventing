@@ -58,6 +58,7 @@ func (c *Consumer) processEvents() {
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
 
+				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 				logging.Tracef("%s [%s:%s:%d] Got DCP_MUTATION for key: %ru datatype: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
 
@@ -212,6 +213,9 @@ func (c *Consumer) processEvents() {
 				}
 
 			case mcd.DCP_DELETION:
+
+				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
+
 				if c.debuggerState == startDebug {
 
 					c.signalUpdateDebuggerInstBlobCh <- struct{}{}
@@ -281,7 +285,7 @@ func (c *Consumer) processEvents() {
 						CurrentVBOwner: c.HostPortAddr(),
 						Operation:      dcpStreamRunning,
 						StartSeqNo:     startSeqNo,
-						Timestamp:      time.Now().String(),
+						Timestamp:      time.Now().Format(time.RFC3339),
 					}
 
 					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), addOwnershipHistorySRCallback, c, vbKey, &vbBlob, &entry)
@@ -290,6 +294,12 @@ func (c *Consumer) processEvents() {
 					c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", c.HostPortAddr())
 					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
 					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
+
+					c.vbProcessingStats.updateVbStat(e.VBucket, "ever_owned_vb", true)
+					c.vbProcessingStats.updateVbStat(e.VBucket, "host_name", c.HostPortAddr())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "last_checkpointed_seq_no", startSeqNo)
+					c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
+					c.vbProcessingStats.updateVbStat(e.VBucket, "worker_name", c.ConsumerName())
 
 					if !c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 						c.Lock()
@@ -368,6 +378,10 @@ func (c *Consumer) processEvents() {
 					c.vbsStreamClosed[e.VBucket] = true
 				}
 				c.vbsStreamClosedRWMutex.Unlock()
+
+				lastSeqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_read_seq_no").(uint64)
+				c.vbProcessingStats.updateVbStat(e.VBucket, "seq_no_at_stream_end", lastSeqNo)
+				c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
 
 				if !cUpdated {
 					logging.Infof("%s [%s:%s:%d] vb: %v updating metadata about dcp stream close",
@@ -538,9 +552,15 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 			case common.DcpEverything:
 				start = uint64(0)
 				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+				c.vbProcessingStats.updateVbStat(vbno, "start_seq_no", start)
+				c.vbProcessingStats.updateVbStat(vbno, "timestamp", time.Now().Format(time.RFC3339))
+
 			case common.DcpFromNow:
 				start = uint64(vbSeqnos[int(vbno)])
 				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
+				c.vbProcessingStats.updateVbStat(vbno, "start_seq_no", start)
+				c.vbProcessingStats.updateVbStat(vbno, "timestamp", time.Now().Format(time.RFC3339))
+
 			}
 		} else {
 			var streamStartSeqNo uint64
@@ -552,6 +572,9 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) {
 
 			if vbBlob.NodeUUID == c.NodeUUID() {
 				c.dcpRequestStreamHandle(vbno, &vbBlob, streamStartSeqNo)
+				c.vbProcessingStats.updateVbStat(vbno, "start_seq_no", streamStartSeqNo)
+				c.vbProcessingStats.updateVbStat(vbno, "timestamp", time.Now().Format(time.RFC3339))
+
 			}
 		}
 	}
@@ -803,10 +826,14 @@ func (c *Consumer) handleFailoverLog() {
 					logging.Infof("%s [%s:%s:%d] vb: %v Rollback requested by DCP. Retrying DCP stream start vbuuid: %d startSeq: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
 					c.dcpRequestStreamHandle(vbFlog.vb, &vbBlob, vbFlog.seqNo)
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", vbFlog.seqNo)
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 				} else {
 					logging.Infof("%s [%s:%s:%d] vb: %v Retrying DCP stream start vbuuid: %d startSeq: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
 					c.dcpRequestStreamHandle(vbFlog.vb, &vbBlob, 0)
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", vbFlog.seqNo)
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 				}
 
 			}

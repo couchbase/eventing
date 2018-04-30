@@ -275,9 +275,15 @@ func (p *Producer) VbEventingNodeAssignMap() map[uint16]string {
 
 // WorkerVbMap returns mapping of active consumers to vbuckets they should handle as per static planner
 func (p *Producer) WorkerVbMap() map[string][]uint16 {
-	p.RLock()
-	defer p.RUnlock()
-	return p.workerVbucketMap
+	p.workerVbMapRWMutex.RLock()
+	defer p.workerVbMapRWMutex.RUnlock()
+
+	workerVbucketMap := make(map[string][]uint16)
+	for workerName, assignedVbs := range p.workerVbucketMap {
+		workerVbucketMap[workerName] = assignedVbs
+	}
+
+	return workerVbucketMap
 }
 
 // PauseProducer pauses the execution of Eventing.Producer and corresponding Eventing.Consumer instances
@@ -731,4 +737,39 @@ func (p *Producer) RebalanceStatus() bool {
 	}
 
 	return false
+}
+
+// VbSeqnoStats returns seq no stats, which can be useful in figuring out missed events during rebalance
+func (p *Producer) VbSeqnoStats() map[int][]map[string]interface{} {
+	seqnoStats := make(map[int][]map[string]interface{})
+
+	for _, consumer := range p.runningConsumers {
+		workerStats := consumer.VbSeqnoStats()
+
+		for vb, stats := range workerStats {
+			if len(stats) == 0 {
+				continue
+			}
+
+			if _, ok := seqnoStats[vb]; !ok {
+				seqnoStats[vb] = make([]map[string]interface{}, 0)
+			}
+			seqnoStats[vb] = append(seqnoStats[vb], stats)
+		}
+	}
+
+	return seqnoStats
+}
+
+// CleanupUDSs clears up UDS created for communication between Go and eventing-consumer
+func (p *Producer) CleanupUDSs() {
+	if p.processConfig.IPCType == "af_unix" {
+		for _, c := range p.runningConsumers {
+			udsSockPath := fmt.Sprintf("%s/%s_%s.sock", os.TempDir(), p.nsServerHostPort, c.ConsumerName())
+			feedbackSockPath := fmt.Sprintf("%s/feedback_%s_%s.sock", os.TempDir(), p.nsServerHostPort, c.ConsumerName())
+
+			os.Remove(udsSockPath)
+			os.Remove(feedbackSockPath)
+		}
+	}
 }

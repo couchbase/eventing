@@ -57,7 +57,8 @@ SET(EVENTING_SOURCES
     src/utils.cc
     src/function_templates.cc
     src/breakpad.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../gen/version/version.cc)
 
 SET(EVENTING_LIBRARIES
     ${V8_LIBRARIES}

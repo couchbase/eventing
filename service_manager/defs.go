@@ -164,6 +164,7 @@ type stats struct {
 	SeqsProcessed                   interface{} `json:"seqs_processed,omitempty"`
 	VbDcpEventsRemaining            interface{} `json:"dcp_event_backlog_per_vb,omitempty"`
 	VbDistributionStatsFromMetadata interface{} `json:"vb_distribution_stats_from_metadata,omitempty"`
+	VbSeqnoStats                    interface{} `json:"vb_seq_no_stats,omitempty"`
 	WorkerPids                      interface{} `json:"worker_pids,omitempty"`
 }
 

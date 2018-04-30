@@ -13,6 +13,8 @@ import (
 func main() {
 	initFlags()
 
+	logging.Infof("Started eventing producer version: %v", util.EventingVer())
+
 	util.SetIPv6(flags.ipv6)
 
 	audit.Init(flags.restPort)

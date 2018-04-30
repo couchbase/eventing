@@ -353,7 +353,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " execution_timeout: " << h_config->execution_timeout
                << " fuzz offset: " << h_config->fuzz_offset
                << " enable_recursive_mutation: " << enable_recursive_mutation
-               << " curl_timeout: " << curl_timeout << std::endl;
+               << " curl_timeout: " << curl_timeout
+               << " version: " << EventingVer() << std::endl;
 
   connstr = "couchbase://" + settings->kv_host_port + "/" + cb_source_bucket +
             "?select_bucket=true";

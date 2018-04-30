@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -127,6 +128,10 @@ func (c *Consumer) controlRoutine() {
 					logging.Infof("%s [%s:%s:%d] vb: %v Issued dcp close stream as current worker isn't supposed to own per plan",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 				}
+
+				lastSeqNo := c.vbProcessingStats.getVbStat(uint16(vb), "last_read_seq_no").(uint64)
+				c.vbProcessingStats.updateVbStat(vb, "seq_no_after_close_stream", lastSeqNo)
+				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
 				var vbBlob vbucketKVBlob
 				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)

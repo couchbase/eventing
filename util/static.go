@@ -2,7 +2,7 @@ package util
 
 import (
 	"crypto/rand"
-
+	"github.com/couchbase/eventing/gen/version"
 	"github.com/couchbase/eventing/logging"
 )
 
@@ -63,4 +63,8 @@ func SetMaxVbuckets(sz int) {
 
 func GetMaxVbuckets() int {
 	return vbcount
+}
+
+func EventingVer() string {
+	return version.EventingVer()
 }

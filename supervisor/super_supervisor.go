@@ -685,10 +685,10 @@ func (s *SuperSupervisor) cleanupProducer(appName string) {
 
 		if !ok {
 			p.StopRunningConsumers()
-
+			p.CleanupUDSs()
 			p.CleanupMetadataBucket()
 
-			logging.Infof("%s [%d] App: %v Purging timer entries from plasma", logPrefix, len(s.runningProducers), appName)
+			logging.Infof("%s [%d] App: %s Purging timer entries from plasma", logPrefix, len(s.runningProducers), appName)
 			p.PurgePlasmaRecords()
 			logging.Infof("%s [%d] Purged timer entries for app: %s", logPrefix, len(s.runningProducers), appName)
 		}

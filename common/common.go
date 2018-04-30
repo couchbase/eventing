@@ -34,8 +34,8 @@ const (
 type EventingProducer interface {
 	Auth() string
 	CfgData() string
-	CleanupDeadConsumer(consumer EventingConsumer)
 	CleanupMetadataBucket()
+	CleanupUDSs()
 	ClearEventStats()
 	GetAppCode() string
 	GetDcpEventsRemainingToProcess() uint64
@@ -53,6 +53,7 @@ type EventingProducer interface {
 	GetSourceMap() string
 	InternalVbDistributionStats() map[string]string
 	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
+	KillAndRespawnEventingConsumer(consumer EventingConsumer)
 	KvHostPorts() []string
 	LenRunningConsumers() int
 	MetadataBucket() string
@@ -82,6 +83,7 @@ type EventingProducer interface {
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbDistributionStatsFromMetadata() map[string]map[string]string
 	VbEventingNodeAssignMap() map[uint16]string
+	VbSeqnoStats() map[int][]map[string]interface{}
 	WorkerVbMap() map[string][]uint16
 	WriteAppLog(log string)
 }
@@ -102,6 +104,7 @@ type EventingConsumer interface {
 	GetSourceMap() string
 	HandleV8Worker()
 	HostPortAddr() string
+	Index() int
 	InternalVbDistributionStats() []uint16
 	NodeUUID() string
 	NotifyClusterChange()
@@ -125,6 +128,7 @@ type EventingConsumer interface {
 	UpdateEventingNodesUUIDs(uuids []string)
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbProcessingStats() map[uint16]map[string]interface{}
+	VbSeqnoStats() map[int]map[string]interface{}
 }
 
 type EventingSuperSup interface {
@@ -158,6 +162,7 @@ type EventingSuperSup interface {
 	SignalStopDebugger(appName string)
 	VbDcpEventsRemainingToProcess(appName string) map[int]int64
 	VbDistributionStatsFromMetadata(appName string) map[string]map[string]string
+	VbSeqnoStats(appName string) (map[int][]map[string]interface{}, error)
 }
 
 type EventingServiceMgr interface {

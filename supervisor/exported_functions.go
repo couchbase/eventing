@@ -331,3 +331,13 @@ func (s *SuperSupervisor) BootstrapAppList() map[string]string {
 
 	return bootstrappingApps
 }
+
+// VbSeqnoStats returns seq no stats, which can be useful in figuring out missed events during rebalance
+func (s *SuperSupervisor) VbSeqnoStats(appName string) (map[int][]map[string]interface{}, error) {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.VbSeqnoStats(), nil
+	}
+
+	return nil, fmt.Errorf("Eventing.Producer isn't alive")
+}

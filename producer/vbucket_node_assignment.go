@@ -159,10 +159,10 @@ func (p *Producer) initWorkerVbMap() {
 		}
 	}
 
-	p.Lock()
-	defer p.Unlock()
-
 	var workerName string
+
+	p.workerVbMapRWMutex.Lock()
+	defer p.workerVbMapRWMutex.Unlock()
 	p.workerVbucketMap = make(map[string][]uint16)
 
 	startVbIndex = 0

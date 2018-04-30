@@ -19,7 +19,7 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 
 	err := c.doVbTakeover(vb)
 	if err != nil {
-		logging.Infof("%s [%s:%s:%d] vb: %v vbTakeover request, err: %v",
+		logging.Infof("%s [%s:%s:%d] vb: %v vbTakeover request, msg:",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 
 		c.vbsStreamRRWMutex.Lock()
@@ -591,5 +591,36 @@ var removeIndexCallback = func(args ...interface{}) error {
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
 	}
 
+	return err
+}
+
+var checkKeyExistsCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::checkKeyExistsCallback"
+
+	c := args[0].(*Consumer)
+	docId := args[1].(string)
+	exists := args[2].(*bool)
+	connShutdown := args[3].(*bool)
+	var value interface{}
+
+	_, err := c.gocbBucket.Get(docId, &value)
+	if err == gocb.ErrShutdown {
+		*exists = false
+		*connShutdown = true
+		return nil
+	}
+
+	*connShutdown = false
+	if err == gocb.ErrKeyNotFound {
+		*exists = false
+		return nil
+	}
+
+	if err == nil {
+		*exists = true
+		return nil
+	}
+
+	logging.Errorf("%s [%s:%s:%d] Key: %ru, err : %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), docId, err)
 	return err
 }
