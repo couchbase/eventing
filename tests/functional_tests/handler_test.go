@@ -10,6 +10,27 @@ import (
 	"time"
 )
 
+func TestDocTimerExpiredDocs(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	itemCount := 0
+	handler := "bucket_op_doc_timer_expired_docs"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	pumpBucketOps(opsType{expiry: 1}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "TestDocTimerExpiredDocs",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
 func TestImportExport(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	n1qlHandler := "n1ql_insert_on_update"
