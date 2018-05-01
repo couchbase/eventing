@@ -2,6 +2,7 @@ package producer
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/plasma"
@@ -40,11 +41,12 @@ func (p *Producer) openPlasmaStore() error {
 
 func (p *Producer) persistPlasma() {
 	logPrefix := "Producer::persistPlasma"
+	persistenceConcurrency := runtime.NumCPU()
 
 	for {
 		select {
 		case <-p.persistAllTicker.C:
-			p.vbPlasmaStore.PersistAll()
+			p.vbPlasmaStore.PersistAll(persistenceConcurrency)
 
 		case <-p.statsTicker.C:
 			stats := p.vbPlasmaStore.GetStats()
