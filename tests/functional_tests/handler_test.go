@@ -10,6 +10,26 @@ import (
 	"time"
 )
 
+func TestCRLF(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	itemCount := 100
+	handler := "n1ql_newlines"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "TestCRLF",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
 func TestDocTimerExpiredDocs(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	itemCount := 0

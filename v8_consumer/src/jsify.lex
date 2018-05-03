@@ -36,21 +36,23 @@
     }
 <MLCMT>"*/"	{
         /* Stop of a multi-line comment */
-        js_code += "*/";
         BEGIN previous_state;
+        js_code += "*/";
     }
-<MLCMT>\n	{
-        js_code += "\n";
-    }
+<MLCMT>\n   |
+<MLCMT>\r   |
+<MLCMT>\r\n {js_code += std::string(yytext);}
 "//"	{
         /* Single-line comment */
         previous_state = YYSTATE;
         BEGIN SLCMT;
         js_code += "//";
     }
-<SLCMT>\n	{
+<SLCMT>\n   |
+<SLCMT>\r   |
+<SLCMT>\r\n {
         BEGIN previous_state;
-        js_code += "\n";
+        js_code += std::string(yytext);
     }
 ["]	{HandleStrStart(DSTR); /* Handling double-quoted string */}
 <DSTR>["]	{HandleStrStop(DSTR);}
@@ -58,42 +60,42 @@
 <SSTR>[']	{HandleStrStop(SSTR);}
 [`]	{HandleStrStart(TSTR); /* Handling templated string */}
 <TSTR>[`]	{HandleStrStop(TSTR);}
-(var|function)[ \t\n]+[aA][lL][tT][eE][rR][ \t\n;=(]|[aA][lL][tT][eE][rR][ \t\n]*:[ \t\n]*\{	{return kKeywordAlter; /* Checking the constraints in this section */}
-(var|function)[ \t\n]+[bB][uU][iI][lL][dD][ \t\n;=(]|[bB][uU][iI][lL][dD][ \t\n]*:[ \t\n]*\{	{return kKeywordBuild;}
-(var|function)[ \t\n]+[cC][rR][eE][aA][tT][eE][ \t\n;=(]|[cC][rR][eE][aA][tT][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordCreate;}
-(var|function)[ \t\n]+[dD][eE][lL][eE][tT][eE][ \t\n;=(]|[dD][eE][lL][eE][tT][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordDelete;}
-(var|function)[ \t\n]+[dD][rR][oO][pP][ \t\n;=(]|[dD][rR][oO][pP][ \t\n]*:[ \t\n]*\{	{return kKeywordDrop;}
-(var|function)[ \t\n]+[eE][xX][eE][cC][uU][tT][eE][ \t\n;=(]|[eE][xX][eE][cC][uU][tT][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordExecute;}
-(var|function)[ \t\n]+[eE][xX][pP][lL][aA][iI][nN][ \t\n;=(]|[eE][xX][pP][lL][aA][iI][nN][ \t\n]*:[ \t\n]*\{	{return kKeywordExplain;}
-(var|function)[ \t\n]+[fF][rR][oO][mM][ \t\n;=(]|[fF][rR][oO][mM][ \t\n]*:[ \t\n]*\{	{return kKeywordFrom;}
-(var|function)[ \t\n]+[gG][rR][aA][nN][tT][ \t\n;=(]|[gG][rR][aA][nN][tT][ \t\n]*:[ \t\n]*\{	{return kKeywordGrant;}
-(var|function)[ \t\n]+[iI][nN][fF][eE][rR][ \t\n;=(]|[iI][nN][fF][eE][rR][ \t\n]*:[ \t\n]*\{	{return kKeywordInfer;}
-(var|function)[ \t\n]+[iI][nN][sS][eE][rR][tT][ \t\n;=(]|[iI][nN][sS][eE][rR][tT][ \t\n]*:[ \t\n]*\{	{return kKeywordInsert;}
-(var|function)[ \t\n]+[mM][eE][rR][gG][eE][ \t\n;=(]|[mM][eE][rR][gG][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordMerge;}
-(var|function)[ \t\n]+[pP][rR][eE][pP][aA][rR][eE][ \t\n;=(]|[pP][rR][eE][pP][aA][rR][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordPrepare;}
-(var|function)[ \t\n]+[rR][eE][nN][aA][mM][eE][ \t\n;=(]|[rR][eE][nN][aA][mM][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordRename;}
-(var|function)[ \t\n]+[sS][eE][lL][eE][cC][tT][ \t\n;=(]|[sS][eE][lL][eE][cC][tT][ \t\n]*:[ \t\n]*\{	{return kKeywordSelect;}
-(var|function)[ \t\n]+[rR][eE][vV][oO][kK][eE][ \t\n;=(]|[rR][eE][vV][oO][kK][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordRevoke;}
-(var|function)[ \t\n]+[uU][pP][dD][aA][tT][eE][ \t\n;=(]|[uU][pP][dD][aA][tT][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordUpdate;}
-(var|function)[ \t\n]+[uU][pP][sS][eE][rR][tT][ \t\n;=(]|[uU][pP][sS][eE][rR][tT][ \t\n]*:[ \t\n]*\{	{return kKeywordUpsert;}
-[aA][lL][tT][eE][rR][ \t\n][ \t\n]?	|
-[bB][uU][iI][lL][dD][ \t\n][ \t\n]?	|
-[cC][rR][eE][aA][tT][eE][ \t\n][ \t\n]? |
-[dD][eE][lL][eE][tT][eE][ \t\n][ \t\n]?	|
-[dD][rR][oO][pP][ \t\n][ \t\n]?	|
-[eE][xX][eE][cC][uU][tT][eE][ \t\n][ \t\n]?	|
-[eE][xX][pP][lL][aA][iI][nN][ \t\n][ \t\n]?	|
-[fF][rR][oO][mM][ \t\n][ \t\n]?	|
-[gG][rR][aA][nN][tT][ \t\n][ \t\n]?	|
-[iI][nN][fF][eE][rR][ \t\n][ \t\n]?	|
-[iI][nN][sS][eE][rR][tT][ \t\n][ \t\n]?	|
-[mM][eE][rR][gG][eE][ \t\n][ \t\n]?	|
-[pP][rR][eE][pP][aA][rR][eE][ \t\n][ \t\n]?	|
-[rR][eE][nN][aA][mM][eE][ \t\n][ \t\n]?	|
-[sS][eE][lL][eE][cC][tT][ \t\n][ \t\n]?	|
-[rR][eE][vV][oO][kK][eE][ \t\n][ \t\n]?	|
-[uU][pP][dD][aA][tT][eE][ \t\n][ \t\n]?	|
-[uU][pP][sS][eE][rR][tT][ \t\n][ \t\n]?	{
+(var|function)[ \t\r\n]+[aA][lL][tT][eE][rR][ \t\r\n;=(]|[aA][lL][tT][eE][rR][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordAlter; /* Checking the constraints in this section */}
+(var|function)[ \t\r\n]+[bB][uU][iI][lL][dD][ \t\r\n;=(]|[bB][uU][iI][lL][dD][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordBuild;}
+(var|function)[ \t\r\n]+[cC][rR][eE][aA][tT][eE][ \t\r\n;=(]|[cC][rR][eE][aA][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordCreate;}
+(var|function)[ \t\r\n]+[dD][eE][lL][eE][tT][eE][ \t\r\n;=(]|[dD][eE][lL][eE][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordDelete;}
+(var|function)[ \t\r\n]+[dD][rR][oO][pP][ \t\r\n;=(]|[dD][rR][oO][pP][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordDrop;}
+(var|function)[ \t\r\n]+[eE][xX][eE][cC][uU][tT][eE][ \t\r\n;=(]|[eE][xX][eE][cC][uU][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordExecute;}
+(var|function)[ \t\r\n]+[eE][xX][pP][lL][aA][iI][nN][ \t\r\n;=(]|[eE][xX][pP][lL][aA][iI][nN][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordExplain;}
+(var|function)[ \t\r\n]+[fF][rR][oO][mM][ \t\r\n;=(]|[fF][rR][oO][mM][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordFrom;}
+(var|function)[ \t\r\n]+[gG][rR][aA][nN][tT][ \t\r\n;=(]|[gG][rR][aA][nN][tT][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordGrant;}
+(var|function)[ \t\r\n]+[iI][nN][fF][eE][rR][ \t\r\n;=(]|[iI][nN][fF][eE][rR][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordInfer;}
+(var|function)[ \t\r\n]+[iI][nN][sS][eE][rR][tT][ \t\r\n;=(]|[iI][nN][sS][eE][rR][tT][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordInsert;}
+(var|function)[ \t\r\n]+[mM][eE][rR][gG][eE][ \t\r\n;=(]|[mM][eE][rR][gG][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordMerge;}
+(var|function)[ \t\r\n]+[pP][rR][eE][pP][aA][rR][eE][ \t\r\n;=(]|[pP][rR][eE][pP][aA][rR][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordPrepare;}
+(var|function)[ \t\r\n]+[rR][eE][nN][aA][mM][eE][ \t\r\n;=(]|[rR][eE][nN][aA][mM][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordRename;}
+(var|function)[ \t\r\n]+[sS][eE][lL][eE][cC][tT][ \t\r\n;=(]|[sS][eE][lL][eE][cC][tT][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordSelect;}
+(var|function)[ \t\r\n]+[rR][eE][vV][oO][kK][eE][ \t\r\n;=(]|[rR][eE][vV][oO][kK][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordRevoke;}
+(var|function)[ \t\r\n]+[uU][pP][dD][aA][tT][eE][ \t\r\n;=(]|[uU][pP][dD][aA][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordUpdate;}
+(var|function)[ \t\r\n]+[uU][pP][sS][eE][rR][tT][ \t\r\n;=(]|[uU][pP][sS][eE][rR][tT][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordUpsert;}
+[aA][lL][tT][eE][rR][ \t\r\n][ \t\r\n]?	|
+[bB][uU][iI][lL][dD][ \t\r\n][ \t\r\n]?	|
+[cC][rR][eE][aA][tT][eE][ \t\r\n][ \t\r\n]? |
+[dD][eE][lL][eE][tT][eE][ \t\r\n][ \t\r\n]?	|
+[dD][rR][oO][pP][ \t\r\n][ \t\r\n]?	|
+[eE][xX][eE][cC][uU][tT][eE][ \t\r\n][ \t\r\n]?	|
+[eE][xX][pP][lL][aA][iI][nN][ \t\r\n][ \t\r\n]?	|
+[fF][rR][oO][mM][ \t\r\n][ \t\r\n]?	|
+[gG][rR][aA][nN][tT][ \t\r\n][ \t\r\n]?	|
+[iI][nN][fF][eE][rR][ \t\r\n][ \t\r\n]?	|
+[iI][nN][sS][eE][rR][tT][ \t\r\n][ \t\r\n]?	|
+[mM][eE][rR][gG][eE][ \t\r\n][ \t\r\n]?	|
+[pP][rR][eE][pP][aA][rR][eE][ \t\r\n][ \t\r\n]?	|
+[rR][eE][nN][aA][mM][eE][ \t\r\n][ \t\r\n]?	|
+[sS][eE][lL][eE][cC][tT][ \t\r\n][ \t\r\n]?	|
+[rR][eE][vV][oO][kK][eE][ \t\r\n][ \t\r\n]?	|
+[uU][pP][dD][aA][tT][eE][ \t\r\n][ \t\r\n]?	|
+[uU][pP][sS][eE][rR][tT][ \t\r\n][ \t\r\n]?	{
         BEGIN N1QL;
 
         n1ql_query = std::string(yytext);
@@ -104,6 +106,7 @@
             // The '\n' might be consumed by the regex above
             // It's essential to replace it with a space as multi-line string with single-quotes isn't possible in JavaScript
             ReplaceRecentChar(n1ql_query, '\n', ' ');
+            ReplaceRecentChar(n1ql_query, '\r', ' ');
         }
     }
 <N1QL>";"	{
@@ -151,19 +154,24 @@
                 break;
         }
     }
-<N1QL>.	{
-        n1ql_query += std::string(yytext);
-    }
-<N1QL>\n {
+<N1QL>. |
+<N1QL>\n    |
+<N1QL>\r    |
+<N1QL>\r\n  {
+        std::string str(yytext);
         if(lex_op == kCommentN1QL) {
-            n1ql_query += "\n";
+            n1ql_query += str;
         } else {
-            n1ql_query += " ";
+            ReplaceRecentChar(str, '\n', ' ');
+            ReplaceRecentChar(str, '\r', ' ');
+            n1ql_query += str;
         }
     }
 <MLCMT,SLCMT,DSTR,SSTR,TSTR>.	{js_code += std::string(yytext);}
-.	{js_code += std::string(yytext);}
-\n	{js_code += "\n";}
+.   |
+\n  |
+\r  |
+\r\n    {js_code += std::string(yytext);}
 %%
 // Parses the given input string.
 int TransformSource(const char* input, std::string *output, Pos *last_pos) {
@@ -222,8 +230,8 @@ CommentN1QLInfo CommentN1QL(const std::string &input) {
 
 // Update line number, column number and index based on the current value of js_code
 void UpdatePos(Pos *pos) {
-    pos->line_no = std::count(js_code.begin(), js_code.end(), '\n') + 1;
-    for(auto c = js_code.crbegin(); (c != js_code.crend()) && (*c != '\n'); ++c) {
+    pos->line_no = CountNewLines(js_code) + 1;
+    for(auto c = js_code.crbegin(); (c != js_code.crend()) && (*c != '\r') && (*c != '\n'); ++c) {
         ++pos->col_no;
     }
 
@@ -240,7 +248,7 @@ void UpdatePos(insert_type type) {
     }
 
     // Count the number of newlines since the previously updated pos
-    pos.line_no = std::count(js_code.begin() + pos.line_no, js_code.end(), '\n') + 1;
+    pos.line_no = CountNewLines(js_code, pos.line_no) + 1;
     switch(type) {
         case insert_type::kN1QLBegin:
             pos.index = js_code.length();
@@ -340,7 +348,7 @@ std::string TranspileQuery(const std::string &query) {
                 // This is done because it will be ambiguous to JavaScript parser if it sees comment in N1QL query.
                 std::string query_transpiled = "/*";
                 for(const auto &c: query) {
-                    query_transpiled += (c == '\n' ? c : '*');
+                    query_transpiled += (c == '\r' || c == '\n'? c : '*');
                 }
 
                 query_transpiled += "*/$;";
@@ -365,4 +373,20 @@ ParseInfo ParseQuery(const std::string &query) {
     auto isolate = v8::Isolate::GetCurrent();
     auto comm = UnwrapData(isolate)->comm;
     return comm->ParseQuery(query);
+}
+
+// Returns the number of the logically equivalent newlines in str
+int32_t CountNewLines(const std::string &str, const int32_t from) {
+    return CountStr("\r", str, from) + CountStr("\n", str, from) - CountStr("\r\n", str, from);
+}
+
+// Returns the number of needles in haystack
+int32_t CountStr(const std::string &needle, const std::string &haystack, const int32_t from) {
+  int32_t count = 0;
+  for (auto i = haystack.find(needle, static_cast<std::size_t>(from)); i != std::string::npos;
+       i = haystack.find(needle, i + 1)) {
+    ++count;
+  }
+
+  return count;
 }
