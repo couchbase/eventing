@@ -228,6 +228,7 @@ type PlannerNodeVbMapping struct {
 type HandlerConfig struct {
 	AggDCPFeedMemCap            int64
 	CheckpointInterval          int
+	IdleCheckpointInterval      int
 	CleanupTimers               bool
 	CPPWorkerThrCount           int
 	CronTimersPerDoc            int

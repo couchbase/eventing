@@ -478,6 +478,10 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
+	if info = m.validatePositiveInteger("idle_checkpoint_interval", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validateBoolean("cleanup_timers", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}

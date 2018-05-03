@@ -80,6 +80,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.CheckpointInterval = 60000
 	}
 
+	if val, ok := settings["idle_checkpoint_interval"]; ok {
+		p.handlerConfig.IdleCheckpointInterval = int(val.(float64))
+	} else {
+		p.handlerConfig.IdleCheckpointInterval = 30000
+	}
+
 	if val, ok := settings["cleanup_timers"]; ok {
 		p.handlerConfig.CleanupTimers = val.(bool)
 	} else {

@@ -37,6 +37,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		bucket:                          hConfig.SourceBucket,
 		cbBucket:                        b,
 		checkpointInterval:              time.Duration(hConfig.CheckpointInterval) * time.Millisecond,
+		idleCheckpointInterval:          time.Duration(hConfig.IdleCheckpointInterval) * time.Millisecond,
 		cleanupCronTimerCh:              make(chan *cronTimerToCleanup, dcpConfig["genChanSize"].(int)),
 		cleanupCronTimerStopCh:          make(chan struct{}, 1),
 		cleanupTimers:                   hConfig.CleanupTimers,
@@ -165,6 +166,7 @@ func (c *Consumer) Serve() {
 
 	c.vbProcessingStats = newVbProcessingStats(c.app.AppName, uint16(c.numVbuckets), c.NodeUUID(), c.workerName)
 	c.statsTicker = time.NewTicker(c.statsTickDuration)
+	c.backupVbStats = newVbBackupStats(uint16(c.numVbuckets))
 
 	// Insert an entry to sendMessage loop control channel to signify a normal bootstrap
 	c.socketWriteLoopStopAckCh <- struct{}{}

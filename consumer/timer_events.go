@@ -503,6 +503,9 @@ func (c *Consumer) processCronTimerEvents() {
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, timerDocID, err)
 						}
 
+						lastcounter := c.vbProcessingStats.getVbStat(vb, "processed_crontimer_counter").(uint64)
+						c.vbProcessingStats.updateVbStat(vb, "processed_crontimer_counter", lastcounter+1)
+
 						// Going back a second to assist in checkpointing of cron timers in CPP workers and to
 						// avoid cleaning up of timers that map to current second and are yet to be processed
 						ts.Add(-time.Second)

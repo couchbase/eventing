@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
-	"time"
 	"testing"
+	"time"
 )
 
 const (

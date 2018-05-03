@@ -18,7 +18,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
 	var isNoEnt bool
-
+	checkpoints := make([]time.Time, 1024)
 	for {
 		select {
 		case <-c.checkpointTicker.C:
@@ -43,6 +43,9 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 
 					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vbno)
 
+					if c.isVbIdle(vbno, &checkpoints[vbno]) {
+						continue
+					}
 					// Metadata blob doesn't exist probably the app is deployed for the first time.
 					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, vbKey, &vbBlob, &cas, true, &isNoEnt)
 					if err == common.ErrRetryTimeout {
@@ -87,7 +90,6 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 
 						continue
 					}
-
 				}
 			}
 
@@ -102,6 +104,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbucketKVBlob) error {
 	logPrefix := "Consumer::updateCheckpointInfo"
 
+	c.updateBackupVbStats(vbno)
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
 	vbBlob.DCPStreamStatus = c.vbProcessingStats.getVbStat(vbno, "dcp_stream_status").(string)
@@ -116,7 +119,6 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbuck
 	vbBlob.LastDocTimerFeedbackSeqNo = c.vbProcessingStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64)
 	vbBlob.LastSeqNoProcessed = c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
 	vbBlob.NextDocIDTimerToProcess = c.vbProcessingStats.getVbStat(vbno, "next_doc_id_timer_to_process").(string)
-	vbBlob.LastDocTimerFeedbackSeqNo = c.vbProcessingStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64)
 	vbBlob.NextCronTimerToProcess = c.vbProcessingStats.getVbStat(vbno, "next_cron_timer_to_process").(string)
 
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, periodicCheckpointCallback, c, vbKey, vbBlob)
@@ -126,4 +128,29 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbuck
 	}
 
 	return nil
+}
+
+func (c *Consumer) isVbIdle(vbno uint16, checkpointTime *time.Time) bool {
+	currentTime := time.Now()
+	if checkpointTime.IsZero() == false &&
+		currentTime.Sub(*checkpointTime) < c.idleCheckpointInterval &&
+		c.backupVbStats.getVbStat(vbno, "last_processed_seq_no").(uint64) == c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64) &&
+		c.backupVbStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64) == c.vbProcessingStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64) &&
+		c.backupVbStats.getVbStat(vbno, "sent_to_worker_counter").(uint64) == c.vbProcessingStats.getVbStat(vbno, "sent_to_worker_counter").(uint64) &&
+		c.backupVbStats.getVbStat(vbno, "processed_crontimer_counter").(uint64) == c.vbProcessingStats.getVbStat(vbno, "processed_crontimer_counter").(uint64) {
+		return true
+	}
+	*checkpointTime = currentTime
+	return false
+}
+
+func (c *Consumer) updateBackupVbStats(vbno uint16) {
+	bucketopSeqNo := c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64)
+	doctimerSeqNo := c.vbProcessingStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64)
+	doctimerCount := c.vbProcessingStats.getVbStat(vbno, "sent_to_worker_counter").(uint64)
+	crontimerCount := c.vbProcessingStats.getVbStat(vbno, "processed_crontimer_counter").(uint64)
+	c.backupVbStats.updateVbStat(vbno, "last_processed_seq_no", bucketopSeqNo)
+	c.backupVbStats.updateVbStat(vbno, "last_doc_timer_feedback_seqno", doctimerSeqNo)
+	c.backupVbStats.updateVbStat(vbno, "sent_to_worker_counter", doctimerCount)
+	c.backupVbStats.updateVbStat(vbno, "processed_crontimer_counter", crontimerCount)
 }

@@ -158,6 +158,7 @@ type Consumer struct {
 	aggDCPFeed               chan *cb.DcpEvent
 	cbBucket                 *couchbase.Bucket
 	checkpointInterval       time.Duration
+	idleCheckpointInterval   time.Duration
 	cleanupTimers            bool
 	compileInfo              *common.CompileStatus
 	dcpEventsRemaining       uint64
@@ -366,6 +367,7 @@ type Consumer struct {
 
 	sync.RWMutex
 	vbProcessingStats vbStats
+	backupVbStats     vbStats
 
 	checkpointTicker         *time.Ticker
 	restartVbDcpStreamTicker *time.Ticker
