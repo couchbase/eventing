@@ -10,7 +10,6 @@
 // permissions and limitations under the License.
 
 #include "bucket.h"
-#include "retry_util.h"
 
 #define LCB_NO_DEPR_CXX_CTORS
 #undef NDEBUG
@@ -213,8 +212,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   lcb_CMDGET gcmd = {0};
   LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
   lcb_sched_enter(*bucket_lcb_obj_ptr);
-  auto err = eventing::retryutil::RetryWithFixedBackoff(
-      1000, 500, isRetriable, lcb_get3, *bucket_lcb_obj_ptr, &result, &gcmd);
+  auto err = lcb_get3(*bucket_lcb_obj_ptr, &result, &gcmd);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_GET: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
@@ -223,9 +221,8 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   }
 
   lcb_sched_leave(*bucket_lcb_obj_ptr);
+  err = lcb_wait(*bucket_lcb_obj_ptr);
 
-  err = eventing::retryutil::RetryWithFixedBackoff(
-      1000, 500, isRetriable, lcb_wait, *bucket_lcb_obj_ptr);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_GET: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
@@ -294,8 +291,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       lcb_CMDGET gcmd = {0};
       LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
       lcb_sched_enter(*bucket_lcb_obj_ptr);
-      auto err = eventing::retryutil::RetryWithFixedBackoff(
-          1000, 500, isRetriable, lcb_get3, *bucket_lcb_obj_ptr, &gres, &gcmd);
+      auto err = lcb_get3(*bucket_lcb_obj_ptr, &gres, &gcmd);
       if (err != LCB_SUCCESS) {
         LOG(logTrace)
             << "Bucket: Unable to get key for recursive_mutation=false"
@@ -303,8 +299,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       }
 
       lcb_sched_leave(*bucket_lcb_obj_ptr);
-      err = eventing::retryutil::RetryWithFixedBackoff(
-          1000, 500, isRetriable, lcb_wait, *bucket_lcb_obj_ptr);
+      err = lcb_wait(*bucket_lcb_obj_ptr);
       if (err != LCB_SUCCESS) {
         LOG(logTrace) << "Bucket: Unable to schedule call to get key for "
                          "recursive_mutation=false"
@@ -379,16 +374,13 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
       mcmd.cas = gres.cas;
 
-      err = eventing::retryutil::RetryWithFixedBackoff(
-          1000, 500, isRetriable, lcb_subdoc3, *bucket_lcb_obj_ptr, &sres,
-          &mcmd);
+      err = lcb_subdoc3(*bucket_lcb_obj_ptr, &sres, &mcmd);
       if (err != LCB_SUCCESS) {
         LOG(logTrace) << "Bucket: Unable to set subdoc op for setting macro"
                       << std::endl;
       }
 
-      err = eventing::retryutil::RetryWithFixedBackoff(
-          1000, 500, isRetriable, lcb_wait, *bucket_lcb_obj_ptr);
+      err = lcb_wait(*bucket_lcb_obj_ptr);
       if (err != LCB_SUCCESS) {
         LOG(logTrace)
             << "Bucket: Unable to schedule subdoc op for setting macro"
@@ -430,8 +422,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     scmd.flags = 0x2000000;
 
     lcb_sched_enter(*bucket_lcb_obj_ptr);
-    auto err = eventing::retryutil::RetryWithFixedBackoff(
-        1000, 500, isRetriable, lcb_store3, *bucket_lcb_obj_ptr, &sres, &scmd);
+    auto err = lcb_store3(*bucket_lcb_obj_ptr, &sres, &scmd);
     if (err != LCB_SUCCESS) {
       LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
                     << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
@@ -440,8 +431,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     }
 
     lcb_sched_leave(*bucket_lcb_obj_ptr);
-    err = eventing::retryutil::RetryWithFixedBackoff(
-        1000, 500, isRetriable, lcb_wait, *bucket_lcb_obj_ptr);
+    err = lcb_wait(*bucket_lcb_obj_ptr);
+
     if (err != LCB_SUCCESS) {
       LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
                     << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
@@ -493,8 +484,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   LCB_CMD_SET_KEY(&rcmd, key.c_str(), key.length());
 
   lcb_sched_enter(*bucket_lcb_obj_ptr);
-  auto err = eventing::retryutil::RetryWithFixedBackoff(
-      1000, 500, isRetriable, lcb_remove3, *bucket_lcb_obj_ptr, &result, &rcmd);
+  auto err = lcb_remove3(*bucket_lcb_obj_ptr, &result, &rcmd);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_REMOVE: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
@@ -503,8 +493,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   }
 
   lcb_sched_leave(*bucket_lcb_obj_ptr);
-  err = eventing::retryutil::RetryWithFixedBackoff(
-      1000, 500, isRetriable, lcb_wait, *bucket_lcb_obj_ptr);
+  err = lcb_wait(*bucket_lcb_obj_ptr);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;

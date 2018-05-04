@@ -89,6 +89,5 @@ std::string GetTimestampNow();
 ParseInfo UnflattenParseInfo(std::unordered_map<std::string, std::string> &kv);
 
 std::string EventingVer();
-bool isRetriable(lcb_error_t error);
 
 #endif

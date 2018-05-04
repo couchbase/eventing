@@ -316,9 +316,3 @@ ParseInfo UnflattenParseInfo(std::unordered_map<std::string, std::string> &kv) {
   info.info = kv["info"];
   return info;
 }
-
-bool isRetriable(lcb_error_t error) {
-  if (LCB_EIFTMP(error))
-    return true;
-  return false;
-}
