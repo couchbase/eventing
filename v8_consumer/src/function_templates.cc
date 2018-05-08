@@ -15,6 +15,7 @@ long curl_timeout = 500L; // Default curl timeout of 500ms
 
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
+  v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
 
   auto context = isolate->GetCurrentContext();
@@ -38,7 +39,8 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
 // console.log for debugger - also logs to eventing.log
 void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  v8::Isolate *isolate = args.GetIsolate();
+  auto isolate = args.GetIsolate();
+  v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
 
@@ -66,7 +68,8 @@ void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  v8::Isolate *isolate = args.GetIsolate();
+  auto isolate = args.GetIsolate();
+  v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
 
   if (args.Length() < 3) {
@@ -251,7 +254,8 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  v8::Isolate *isolate = args.GetIsolate();
+  auto isolate = args.GetIsolate();
+  v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
 
   if (args.Length() < 3) {
@@ -533,7 +537,8 @@ size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb,
 }
 
 void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  v8::Isolate *isolate = args.GetIsolate();
+  auto isolate = args.GetIsolate();
+  v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
 
   std::string auth, data, http_method, mime_type, url, url_suffix;

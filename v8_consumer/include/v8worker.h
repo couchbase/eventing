@@ -185,6 +185,8 @@ public:
           if (isolate_) {
             LOG(logTrace) << "Task took: " << ns.count()
                           << "ns, terminating it's execution" << std::endl;
+            v8::Locker locker(isolate_);
+
             timeout_count++;
             v8::V8::TerminateExecution(isolate_);
             execute_flag = false;

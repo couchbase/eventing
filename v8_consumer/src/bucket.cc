@@ -16,13 +16,19 @@
 #undef NDEBUG
 
 // lcb related callbacks
-static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
+static void get_callback(lcb_t instance, int, const lcb_RESPBASE *rb) {
   auto resp = reinterpret_cast<const lcb_RESPGET *>(rb);
   auto result = reinterpret_cast<Result *>(rb->cookie);
 
   LOG(logTrace) << "Bucket: LCB_GET callback, res: "
                 << lcb_strerror(nullptr, rb->rc) << rb->rc << " cas " << rb->cas
                 << std::endl;
+
+  // TODO : Check if there's a specific error code for missing bucket
+  if (rb->rc == LCB_PROTOCOL_ERROR) {
+    LOG(logError) << "Bucket: LCB_GET breaking out" << std::endl;
+    lcb_breakout(instance);
+  }
 
   result->rc = resp->rc;
   result->value.clear();
@@ -39,6 +45,11 @@ static void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   auto resp = reinterpret_cast<const lcb_RESPSTORE *>(rb);
   auto result = reinterpret_cast<Result *>(rb->cookie);
 
+  if (rb->rc == LCB_PROTOCOL_ERROR) {
+    LOG(logError) << "Bucket: LCB_STORE breaking out" << std::endl;
+    lcb_breakout(instance);
+  }
+
   result->rc = resp->rc;
   result->cas = resp->cas;
 
@@ -47,9 +58,15 @@ static void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
                 << std::endl;
 }
 
-static void sdmutate_callback(lcb_t, int cbtype, const lcb_RESPBASE *rb) {
+static void sdmutate_callback(lcb_t instance, int cbtype,
+                              const lcb_RESPBASE *rb) {
   auto result = reinterpret_cast<Result *>(rb->cookie);
   result->rc = rb->rc;
+
+  if (rb->rc == LCB_PROTOCOL_ERROR) {
+    LOG(logError) << "Bucket: LCB_SDMUTATE breaking out" << std::endl;
+    lcb_breakout(instance);
+  }
 
   LOG(logTrace) << "Bucket: LCB_SDMUTATE callback "
                 << lcb_strerror(nullptr, result->rc) << std::endl;
@@ -58,6 +75,11 @@ static void sdmutate_callback(lcb_t, int cbtype, const lcb_RESPBASE *rb) {
 static void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   auto result = reinterpret_cast<Result *>(rb->cookie);
   result->rc = rb->rc;
+
+  if (rb->rc == LCB_PROTOCOL_ERROR) {
+    LOG(logError) << "Bucket: LCB_DEL breaking out" << std::endl;
+    lcb_breakout(instance);
+  }
 
   LOG(logTrace) << "Bucket: LCB_DEL callback "
                 << lcb_strerror(nullptr, result->rc) << std::endl;

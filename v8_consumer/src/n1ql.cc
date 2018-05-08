@@ -328,6 +328,7 @@ ExtractNamedParams(const v8::FunctionCallbackInfo<v8::Value> &args) {
 // iter() function that is exposed to JavaScript.
 void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
+  v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
 
   try {
@@ -398,6 +399,7 @@ void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 // execQuery() function that is exposed to JavaScript.
 void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
+  v8::Locker locker(isolate);
   v8::HandleScope handleScope(isolate);
 
   try {
