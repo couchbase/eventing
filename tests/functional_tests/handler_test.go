@@ -10,6 +10,26 @@ import (
 	"time"
 )
 
+func TestCRLF(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	itemCount := 100
+	handler := "n1ql_newlines"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "TestCRLF",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
 func TestDocTimerExpiredDocs(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	itemCount := 0
@@ -61,14 +81,14 @@ func TestImportExport(t *testing.T) {
 
 	response, err := makeRequest("GET", strings.NewReader(""), functionsURL)
 	if err != nil {
-		t.Errorf("Unable to list Functions %v, err : %v\n", err)
+		t.Errorf("Unable to list Functions err : %v\n", err)
 		return
 	}
 
 	var functionsList []map[string]interface{}
 	err = json.Unmarshal(response, &functionsList)
 	if err != nil {
-		t.Errorf("Unable to unmarshal response %v, err %v\n", err)
+		t.Errorf("Unable to unmarshal response err %v\n", err)
 		return
 	}
 
@@ -113,8 +133,8 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 		dumpStats()
 		log.Println("Undeploying app:", handler)
 		setSettings(handler, false, false, &commonSettings{})
-		bucketFlush("default")
-		bucketFlush("hello-world")
+		bucketFlushVerbose("default", t)
+		bucketFlushVerbose("hello-world", t)
 		time.Sleep(30 * time.Second)
 	}
 
@@ -160,9 +180,9 @@ func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
 }
 
 func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * 30)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucketVerbose(handler, t)
 	createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
@@ -175,7 +195,7 @@ func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucketVerbose(handler, t)
 }
 
 func TestOnUpdateBucketOpDefaultSettings10K(t *testing.T) {
@@ -293,7 +313,7 @@ func TestCronTimerBucketOp(t *testing.T) {
 }
 
 func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * 30)
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 
@@ -312,8 +332,8 @@ func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 		dumpStats()
 		log.Println("Undeploying app:", handler)
 		setSettings(handler, false, false, &commonSettings{})
-		bucketFlush("default")
-		bucketFlush("hello-world")
+		bucketFlushVerbose("default", t)
+		bucketFlushVerbose("hello-world", t)
 		time.Sleep(30 * time.Second)
 	}
 
@@ -351,12 +371,12 @@ func TestDeployUndeployLoopDocTimer(t *testing.T) {
 */
 
 func TestMultipleHandlers(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * 30)
 	handler1 := "bucket_op_on_update"
 	handler2 := "bucket_op_on_delete"
 
-	flushFunctionAndBucket(handler1)
-	flushFunctionAndBucket(handler2)
+	flushFunctionAndBucketVerbose(handler1, t)
+	flushFunctionAndBucketVerbose(handler2, t)
 
 	createAndDeployFunction(handler1, handler1, &commonSettings{})
 	createAndDeployFunction(handler2, handler2, &commonSettings{})
@@ -385,8 +405,8 @@ func TestMultipleHandlers(t *testing.T) {
 	setSettings(handler1, true, false, &commonSettings{})
 	setSettings(handler2, true, false, &commonSettings{})
 
-	flushFunctionAndBucket(handler1)
-	flushFunctionAndBucket(handler2)
+	flushFunctionAndBucketVerbose(handler1, t)
+	flushFunctionAndBucketVerbose(handler2, t)
 }
 
 /* Disabling pause/resume tests as it's retired. Keeping the tests around as

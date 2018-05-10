@@ -127,6 +127,7 @@ type Consumer struct {
 	builderPool *sync.Pool
 	breakpadOn  bool
 	uuid        string
+	retryCount  *int64
 
 	connMutex    *sync.RWMutex
 	conn         net.Conn // Access controlled by connMutex
@@ -157,6 +158,7 @@ type Consumer struct {
 	aggDCPFeed               chan *cb.DcpEvent
 	cbBucket                 *couchbase.Bucket
 	checkpointInterval       time.Duration
+	idleCheckpointInterval   time.Duration
 	cleanupTimers            bool
 	compileInfo              *common.CompileStatus
 	dcpEventsRemaining       uint64
@@ -365,6 +367,7 @@ type Consumer struct {
 
 	sync.RWMutex
 	vbProcessingStats vbStats
+	backupVbStats     vbStats
 
 	checkpointTicker         *time.Ticker
 	restartVbDcpStreamTicker *time.Ticker

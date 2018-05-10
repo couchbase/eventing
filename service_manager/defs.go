@@ -17,6 +17,7 @@ const (
 	metakvConfigPath         = metakvEventingPath + "settings/config"  // global settings
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	metakvRebalanceProgress  = metakvEventingPath + "rebalanceProgress/"
+	metakvAppsRetryPath      = metakvEventingPath + "retry/"
 	metakvTempAppsPath       = metakvEventingPath + "tempApps/"
 	metakvChecksumPath       = metakvEventingPath + "checksum/"
 	metakvTempChecksumPath   = metakvEventingPath + "tempchecksum/"
@@ -180,4 +181,8 @@ type configResponse struct {
 type credsInfo struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+}
+
+type retry struct {
+	Count int64 `json:"count"`
 }

@@ -627,55 +627,8 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 void V8Worker::Checkpoint() {
   const auto checkpoint_interval =
       std::chrono::milliseconds(settings->checkpoint_interval);
-  std::string seq_no_path("last_processed_seq_no");
 
   while (true) {
-    for (int i = 0; i < NUM_VBUCKETS; i++) {
-      auto seq = vb_seq[i].get()->load(std::memory_order_seq_cst);
-      if (seq > 0) {
-        std::stringstream vb_key;
-        vb_key << appName << "::vb::" << i;
-
-        lcb_CMDSUBDOC cmd = {0};
-        LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());
-
-        lcb_SDSPEC seq_spec = {0};
-        seq_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-        seq_spec.options = LCB_SDSPEC_F_MKINTERMEDIATES;
-
-        auto seq_str = std::to_string(seq);
-        LCB_SDSPEC_SET_PATH(&seq_spec, seq_no_path.c_str(),
-                            seq_no_path.length());
-        LCB_SDSPEC_SET_VALUE(&seq_spec, seq_str.c_str(), seq_str.length());
-
-        cmd.specs = &seq_spec;
-        cmd.nspecs = 1;
-
-        Result cres;
-        lcb_subdoc3(checkpoint_cb_instance, &cres, &cmd);
-        lcb_wait(checkpoint_cb_instance);
-
-        auto sleep_duration = LCB_OP_RETRY_INTERVAL;
-        while (cres.rc != LCB_SUCCESS) {
-          checkpoint_failure_count++;
-          std::this_thread::sleep_for(
-              std::chrono::milliseconds(sleep_duration));
-          sleep_duration *= 1.5;
-
-          if (sleep_duration > 5000) {
-            sleep_duration = 5000;
-          }
-          lcb_subdoc3(checkpoint_cb_instance, &cres, &cmd);
-          lcb_wait(checkpoint_cb_instance);
-        }
-
-        // Reset the seq no of checkpointed vb to 0
-        if (cres.rc == LCB_SUCCESS) {
-          vb_seq[i].get()->compare_exchange_strong(seq, 0);
-        }
-      }
-    }
-
     std::string doc_timer_path("last_processed_doc_id_timer_event");
 
     doc_timer_mtx.lock();
@@ -1276,4 +1229,69 @@ std::string V8Worker::CompileHandler(std::string handler) {
   }
 
   return "";
+}
+
+void V8Worker::GetDocTimerMessages(std::vector<uv_buf_t> &messages,
+                                   std::vector<int> &length_prefix_sum,
+                                   size_t window_size) {
+  int64_t doc_timer_count =
+      std::min(doc_timer_queue->Count(), static_cast<int64_t>(window_size));
+  int bytes_to_write =
+      (length_prefix_sum.size() == 0) ? 0 : length_prefix_sum.back();
+
+  for (int64_t idx = 0; idx < doc_timer_count; ++idx) {
+    auto doc_timer_msg = doc_timer_queue->Pop();
+    auto curr_messages = BuildResponse(doc_timer_msg.timer_entry,
+                                       mDoc_Timer_Response, timerResponse);
+    for (auto &msg : curr_messages) {
+      bytes_to_write += msg.len;
+      messages.push_back(msg);
+      length_prefix_sum.push_back(bytes_to_write);
+    }
+  }
+}
+
+void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages,
+                                    std::vector<int> &length_prefix_sum) {
+  int bytes_to_write =
+      (length_prefix_sum.size() == 0) ? 0 : length_prefix_sum.back();
+  for (int vb = 0; vb < NUM_VBUCKETS; ++vb) {
+    auto seq = vb_seq[vb].get()->load(std::memory_order_seq_cst);
+    if (seq > 0) {
+      std::string seq_no = std::to_string(vb) + "::" + std::to_string(seq);
+      auto curr_messages =
+          BuildResponse(seq_no, mBucket_Ops_Response, checkpointResponse);
+      for (auto &msg : curr_messages) {
+        bytes_to_write += msg.len;
+        messages.push_back(msg);
+        length_prefix_sum.push_back(bytes_to_write);
+      }
+      // Reset the seq no of checkpointed vb to 0
+      vb_seq[vb].get()->compare_exchange_strong(seq, 0);
+    }
+  }
+}
+
+std::vector<uv_buf_t> V8Worker::BuildResponse(const std::string &payload,
+                                              int8_t msg_type,
+                                              int8_t response_opcode) {
+  std::vector<uv_buf_t> messages;
+  flatbuffers::FlatBufferBuilder builder;
+  auto msg_offset = builder.CreateString(payload);
+  auto r = flatbuf::response::CreateResponse(builder, msg_type, response_opcode,
+                                             msg_offset);
+  builder.Finish(r);
+  uint32_t length = builder.GetSize();
+
+  char *header_buffer = new char[sizeof(uint32_t)];
+  char *length_ptr = (char *)&length;
+  std::copy(length_ptr, length_ptr + sizeof(uint32_t), header_buffer);
+  messages.emplace_back(uv_buf_init(header_buffer, sizeof(uint32_t)));
+
+  char *response = reinterpret_cast<char *>(builder.GetBufferPointer());
+  char *msg = new char[length];
+  std::copy(response, response + length, msg);
+  messages.emplace_back(uv_buf_init(msg, length));
+
+  return messages;
 }

@@ -31,6 +31,7 @@
 #include <string>
 #include <thread>
 #include <time.h>
+#include <uv.h>
 #include <v8-debug.h>
 #include <v8.h>
 
@@ -184,6 +185,8 @@ public:
           if (isolate_) {
             LOG(logTrace) << "Task took: " << ns.count()
                           << "ns, terminating it's execution" << std::endl;
+            v8::Locker locker(isolate_);
+
             timeout_count++;
             v8::V8::TerminateExecution(isolate_);
             execute_flag = false;
@@ -216,6 +219,26 @@ public:
   void ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions);
 
   void UpdateHistogram(Time::time_point t);
+
+  /**
+   * Remove item from doc_timer_queue, serialize it and
+   * populate @param messages.
+   *
+   * @param messages
+   * @param length_prefix_sum
+   * @param window_size
+   */
+  void GetDocTimerMessages(std::vector<uv_buf_t> &messages,
+                           std::vector<int> &length_prefix_sum,
+                           size_t window_size);
+
+  /**
+   * Read vb_seq map, serialize it and populate @param messages
+   *
+   * @param messages
+   */
+  void GetBucketOpsMessages(std::vector<uv_buf_t> &messages,
+                            std::vector<int> &length_prefix_sum);
 
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
@@ -261,6 +284,8 @@ public:
   Data data;
 
 private:
+  std::vector<uv_buf_t> BuildResponse(const std::string &payload,
+                                      int8_t msg_type, int8_t response_opcode);
   std::string connstr;
   std::string meta_connstr;
   std::string src_path;

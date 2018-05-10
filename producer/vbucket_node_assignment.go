@@ -20,11 +20,23 @@ func (p *Producer) vbEventingNodeAssign() error {
 	// Adding a sleep to mitigate stale values from metakv
 	time.Sleep(5 * time.Second)
 
-	util.Retry(util.NewFixedBackoff(time.Second), getKVNodesAddressesOpCallback, p)
+	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return common.ErrRetryTimeout
+	}
 
-	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, p)
+	err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getEventingNodesAddressesOpCallback, p)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return common.ErrRetryTimeout
+	}
 
-	util.Retry(util.NewFixedBackoff(time.Second), getNsServerNodesAddressesOpCallback, p)
+	err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getNsServerNodesAddressesOpCallback, p)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return common.ErrRetryTimeout
+	}
 
 	// Would include eventing nodes that are about to be ejected out of the cluster
 	onlineEventingNodes := p.getEventingNodeAddrs()
@@ -43,7 +55,11 @@ func (p *Producer) vbEventingNodeAssign() error {
 	}
 
 	var data []byte
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), metakvGetCallback, p, metakvConfigKeepNodes, &data)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, metakvGetCallback, p, metakvConfigKeepNodes, &data)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return common.ErrRetryTimeout
+	}
 
 	var keepNodes []string
 	err = json.Unmarshal(data, &keepNodes)
@@ -181,12 +197,16 @@ func (p *Producer) initWorkerVbMap() {
 	}
 }
 
-func (p *Producer) getKvVbMap() {
+func (p *Producer) getKvVbMap() error {
 	logPrefix := "Producer::getKvVbMap"
 
 	var cinfo *util.ClusterInfoCache
 
-	util.Retry(util.NewFixedBackoff(time.Second), getClusterInfoCacheOpCallback, p, &cinfo)
+	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getClusterInfoCacheOpCallback, p, &cinfo)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return common.ErrRetryTimeout
+	}
 
 	kvAddrs := cinfo.GetNodesByServiceType(dataService)
 
@@ -211,4 +231,6 @@ func (p *Producer) getKvVbMap() {
 			p.kvVbMap[uint16(vbs[i])] = addr
 		}
 	}
+
+	return nil
 }

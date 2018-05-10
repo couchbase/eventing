@@ -80,11 +80,18 @@ public:
   std::thread feedback_uv_loop_thr;
   std::thread stdin_read_thr;
 
+protected:
+  void WriteResponseWithRetry(uv_stream_t *handle,
+                              const std::vector<uv_buf_t> &messages,
+                              const std::vector<int> &length_prefix_sum,
+                              size_t batch_size);
+
 private:
   AppWorker();
   ~AppWorker();
   std::thread write_responses_thr;
   std::map<int16_t, V8Worker *> workers;
+  std::chrono::milliseconds checkpoint_interval;
 
   // Socket  handles for out of band data channel to pipeline data to parent
   // eventing-producer

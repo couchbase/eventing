@@ -242,6 +242,9 @@ void UpdatePos(Pos *pos);
 std::string TranspileQuery(const std::string &query);
 void ReplaceRecentChar(std::string &str, char m, char n);
 ParseInfo ParseQuery(const std::string &query);
+int32_t CountNewLines(const std::string &str, const int32_t from = 0);
+int32_t CountStr(const std::string &needle, const std::string &haystack,
+                 const int32_t from = 0);
 
 void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args);

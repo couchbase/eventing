@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
+	"testing"
 	"time"
 )
 
@@ -464,18 +465,41 @@ func getBucketItemCount(bucketName string) (int, error) {
 	return 0, fmt.Errorf("Stat not found")
 }
 
+func bucketFlushVerbose(bucketName string, t *testing.T) {
+	t.Logf("Flushing bucket %s", bucketName)
+	bucketFlush(bucketName)
+	t.Logf("Finished flushing bucket %s", bucketName)
+}
+
 func bucketFlush(bucketName string) {
 	flushEndpoint := fmt.Sprintf("http://127.0.0.1:9000/pools/default/buckets/%s/controller/doFlush", bucketName)
 	postToEventingEndpoint(flushEndpoint, nil)
 }
 
-func flushFunctionAndBucket(handler string) {
+func flushFunction(handler string) {
 	setSettings(handler, false, false, &commonSettings{})
 	time.Sleep(5 * time.Second)
 	deleteFunction(handler)
+}
 
+func flushFunctionAndBucket(handler string) {
+	flushFunction(handler)
 	bucketFlush("default")
 	bucketFlush("hello-world")
+}
+
+func flushFunctionAndBucketVerbose(handler string, t *testing.T) {
+	t.Logf("Flushing function %s", handler)
+	flushFunction(handler)
+	t.Logf("Finished flushing function %s", handler)
+
+	t.Logf("Flushing bucket %s", "default")
+	bucketFlush("default")
+	t.Logf("Finished flushing bucket %s", "default")
+
+	t.Logf("Flushing bucket %s", "hello-world")
+	bucketFlush("hello-world")
+	t.Logf("Finished flushing bucket %s", "hello-world")
 }
 
 func dumpStats() {

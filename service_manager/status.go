@@ -71,6 +71,8 @@ type statusCodes struct {
 	errActiveEventingNodes statusBase
 	errInvalidConfig       statusBase
 	errAppCodeSize         statusBase
+	errAppRetry            statusBase
+	errBucketMissing       statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -141,6 +143,11 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusBadRequest
 	case m.statusCodes.errAppCodeSize.Code:
 		return http.StatusBadRequest
+	case m.statusCodes.errAppRetry.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errBucketMissing.Code:
+		return http.StatusInternalServerError
+
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -183,6 +190,8 @@ func (m *ServiceMgr) initErrCodes() {
 		errActiveEventingNodes: statusBase{"ERR_FETCHING_ACTIVE_EVENTING_NODES", 37},
 		errInvalidConfig:       statusBase{"ERR_INVALID_CONFIG", 38},
 		errAppCodeSize:         statusBase{"ERR_APPCODE_SIZE", 39},
+		errAppRetry:            statusBase{"ERR_APP_RETRY", 40},
+		errBucketMissing:       statusBase{"ERR_BUCKET_MISSING", 41},
 	}
 
 	errors := []errorPayload{
@@ -373,6 +382,16 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errAppCodeSize.Name,
 			Code:        m.statusCodes.errAppCodeSize.Code,
 			Description: "Handler Code size is more than 128k",
+		},
+		{
+			Name:        m.statusCodes.errAppRetry.Name,
+			Code:        m.statusCodes.errAppRetry.Code,
+			Description: "Failed to notify retry to all eventing nodes",
+		},
+		{
+			Name:        m.statusCodes.errBucketMissing.Name,
+			Code:        m.statusCodes.errBucketMissing.Code,
+			Description: "Bucket does not exist in the cluster",
 		},
 	}
 

@@ -72,8 +72,6 @@ func (c *client) Serve() {
 		return
 	}
 
-	defer outPipe.Close()
-	defer errPipe.Close()
 	defer inPipe.Close()
 
 	err = c.cmd.Start()
@@ -91,6 +89,7 @@ func (c *client) Serve() {
 	bufErr := bufio.NewReader(errPipe)
 
 	go func(bufErr *bufio.Reader) {
+		defer errPipe.Close()
 		for {
 			msg, _, err := bufErr.ReadLine()
 			if err != nil {
@@ -103,6 +102,7 @@ func (c *client) Serve() {
 	}(bufErr)
 
 	go func(bufOut *bufio.Reader) {
+		defer outPipe.Close()
 		for {
 			msg, _, err := bufOut.ReadLine()
 			if err != nil {

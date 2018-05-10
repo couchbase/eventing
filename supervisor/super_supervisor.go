@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/couchbase/eventing/service_manager"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
+	"github.com/pkg/errors"
 )
 
 // NewSuperSupervisor creates the super_supervisor handle
@@ -60,7 +62,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	s.keepNodes = append(s.keepNodes, uuid)
 
 	var user, password string
-	util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, s, &user, &password)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getHTTPServiceAuth, s, &user, &password)
 	s.auth = fmt.Sprintf("%s:%s", user, password)
 
 	return s
@@ -72,7 +74,7 @@ func (s *SuperSupervisor) checkIfNodeInCluster() bool {
 	var data []byte
 	var keepNodes []string
 
-	util.Retry(util.NewFixedBackoff(time.Second), metakvGetCallback, s, metakvConfigKeepNodes, &data)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, metakvConfigKeepNodes, &data)
 	err := json.Unmarshal(data, &keepNodes)
 	if err != nil {
 		logging.Errorf("%s [%d] Failed to unmarshal keepNodes, err: %v", logPrefix, len(s.runningProducers), err)
@@ -106,8 +108,7 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 	}
 
 	if value != nil {
-		splitRes := strings.Split(path, "/")
-		appName := splitRes[len(splitRes)-1]
+		appName := util.GetAppNameFromPath(path)
 		msg := supCmdMsg{
 			ctx: appName,
 			cmd: cmdAppLoad,
@@ -201,8 +202,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 		logging.Infof("%s [%d] Path => %s value => %#v", logPrefix, len(s.runningProducers), path, sValue)
 
-		splitRes := strings.Split(path, "/")
-		appName := splitRes[len(splitRes)-1]
+		appName := util.GetAppNameFromPath(path)
 		msg := supCmdMsg{
 			ctx: appName,
 			cmd: cmdSettingsUpdate,
@@ -263,10 +263,14 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 			switch processingStatus {
 			case true:
-
+				logging.Infof("%s [%d] Begin deploy process of %v", logPrefix, len(s.runningProducers), appName)
 				state := s.GetAppState(appName)
 
 				if state == common.AppStateUndeployed || state == common.AppStateDisabled {
+					if err := util.MetaKvDelete(MetakvAppsRetryPath+appName, nil); err != nil {
+						logging.Errorf("%s [%d] Failed to delete from metakv path, err : %v", err)
+						return err
+					}
 
 					if state == common.AppStateDisabled {
 						if p, ok := s.runningProducers[appName]; ok {
@@ -303,6 +307,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					s.supCmdCh <- msg
 				}
 
+				logging.Infof("%s [%d] End deploy process of %v", logPrefix, len(s.runningProducers), appName)
+
 			case false:
 
 				state := s.GetAppState(appName)
@@ -329,7 +335,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 				logging.Infof("%s [%d] App: %v Unexpected status requested", logPrefix, len(s.runningProducers), appName)
 
 			case false:
-
+				logging.Infof("%s [%d] Begin undeploy process of %v", logPrefix, len(s.runningProducers), appName)
 				state := s.GetAppState(appName)
 
 				if state == common.AppStateEnabled || state == common.AppStateDisabled {
@@ -344,12 +350,13 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					delete(s.locallyDeployedApps, appName)
 					s.appListRWMutex.Unlock()
 
-					s.cleanupProducer(appName)
-
+					s.CleanupProducer(appName)
 					s.appListRWMutex.Lock()
 					delete(s.deployedApps, appName)
 					s.appListRWMutex.Unlock()
 				}
+
+				logging.Infof("%s [%d] End undeploy process of %v", logPrefix, len(s.runningProducers), appName)
 			}
 		}
 
@@ -498,6 +505,28 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, 
 		for _, eventingProducer := range s.runningProducers {
 			eventingProducer.UpdatePlasmaMemoryQuota(config.RAMQuota)
 		}
+	}
+
+	return nil
+}
+
+func (s *SuperSupervisor) AppsRetryCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "SuperSupervisor::AppsRetryCallback"
+	if value == nil {
+		return errors.New("value is empty")
+	}
+
+	appName := util.GetAppNameFromPath(path)
+	retryValue, err := strconv.Atoi(string(value))
+	if err != nil {
+		logging.Infof("%s [%d] Unable to parse retry value as a number, err : %v", logPrefix, len(s.runningProducers), retryValue)
+		return err
+	}
+
+	logging.Infof("%s [%d] Setting retry for %s to %d", logPrefix, len(s.runningProducers), appName, retryValue)
+
+	if p, exists := s.runningProducers[appName]; exists {
+		p.SetRetryCount(int64(retryValue))
 	}
 
 	return nil
@@ -665,16 +694,28 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []st
 	}
 }
 
-func (s *SuperSupervisor) cleanupProducer(appName string) {
+func (s *SuperSupervisor) CleanupProducer(appName string) error {
 	logPrefix := "SuperSupervisor::cleanupProducer"
 
 	if p, ok := s.runningProducers[appName]; ok {
+		defer func() {
+			s.superSup.Remove(s.producerSupervisorTokenMap[p])
+			delete(s.producerSupervisorTokenMap, p)
+
+			p.NotifySupervisor()
+			logging.Infof("%s [%d] Cleaned up running Eventing.Producer instance, app: %s", logPrefix, len(s.runningProducers), appName)
+		}()
+
 		logging.Infof("%s [%d] App: %s, Stopping running instance of Eventing.Producer", logPrefix, len(s.runningProducers), appName)
 		p.NotifyInit()
 
 		delete(s.runningProducers, appName)
 
-		p.SignalCheckpointBlobCleanup()
+		err := p.SignalCheckpointBlobCleanup()
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, len(s.runningProducers))
+			return common.ErrRetryTimeout
+		}
 
 		s.Lock()
 		_, ok := s.cleanedUpAppMap[appName]
@@ -688,15 +729,17 @@ func (s *SuperSupervisor) cleanupProducer(appName string) {
 			p.CleanupUDSs()
 			p.CleanupMetadataBucket()
 
+			err = p.CleanupMetadataBucket()
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, len(s.runningProducers))
+				return common.ErrRetryTimeout
+			}
+
 			logging.Infof("%s [%d] App: %s Purging timer entries from plasma", logPrefix, len(s.runningProducers), appName)
 			p.PurgePlasmaRecords()
 			logging.Infof("%s [%d] Purged timer entries for app: %s", logPrefix, len(s.runningProducers), appName)
 		}
-
-		s.superSup.Remove(s.producerSupervisorTokenMap[p])
-		delete(s.producerSupervisorTokenMap, p)
-
-		p.NotifySupervisor()
-		logging.Infof("%s [%d] Cleaned up running Eventing.Producer instance, app: %s", logPrefix, len(s.runningProducers), appName)
 	}
+
+	return nil
 }

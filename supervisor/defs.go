@@ -13,6 +13,8 @@ const (
 	// MetakvAppsPath refers to path under metakv where app handlers are stored
 	MetakvAppsPath = metakvEventingPath + "apps/"
 
+	MetakvAppsRetryPath = metakvEventingPath + "retry/"
+
 	// MetakvAppSettingsPath refers to path under metakv where app settings are stored
 	MetakvAppSettingsPath       = metakvEventingPath + "appsettings/"
 	metakvProducerHostPortsPath = metakvEventingPath + "hostports/"

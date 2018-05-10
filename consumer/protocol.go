@@ -67,6 +67,7 @@ const (
 	respMsgType int8 = iota
 	respV8WorkerConfig
 	docTimerResponse
+	bucketOpsResponse
 )
 
 const (
@@ -85,6 +86,10 @@ const (
 
 const (
 	docTimerResponseOpcode int8 = iota
+)
+
+const (
+	bucketOpsResponseOpcode int8 = iota
 )
 
 type message struct {
@@ -426,5 +431,30 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
 			c.errorParsingDocTimerResponses++
 		}
+	case bucketOpsResponse:
+		data := strings.Split(msg, "::")
+		if len(data) != 2 {
+			logging.Errorf("%s [%s:%s:%d] Invalid bucket ops message received: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
+			return
+		}
+
+		vbNoStr, seqNoStr := data[0], data[1]
+		vbNo, err := strconv.ParseUint(vbNoStr, 10, 16)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to convert vbNoStr %s to int64, msg: %v err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbNoStr, msg, err)
+			return
+		}
+		seqNo, err := strconv.ParseInt(seqNoStr, 10, 64)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to convert seqNoStr %s to int64, msg: %v err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), seqNoStr, msg, err)
+			return
+		}
+
+		c.vbProcessingStats.updateVbStat(uint16(vbNo), "last_processed_seq_no", uint64(seqNo))
+		logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_processed_seq_no to seqNo: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbNo, seqNo)
 	}
 }

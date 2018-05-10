@@ -413,6 +413,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           payload->enable_recursive_mutation();
       handler_config->skip_lcb_bootstrap = payload->skip_lcb_bootstrap();
       server_settings->checkpoint_interval = payload->checkpoint_interval();
+      checkpoint_interval =
+          std::chrono::milliseconds(server_settings->checkpoint_interval);
       server_settings->eventing_dir.assign(payload->eventing_dir()->str());
       server_settings->eventing_port.assign(
           payload->curr_eventing_port()->str());
@@ -786,143 +788,70 @@ void AppWorker::StartFeedbackUVLoop() {
 
 void AppWorker::WriteResponses() {
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-
+  auto start = std::chrono::system_clock::now();
   while (!thread_exit_cond.load()) {
-
-    if (!workers.empty()) {
-
-      for (const auto &w : workers) {
-        auto timer_entry_count = w.second->doc_timer_queue->Count();
-
-        if (timer_entry_count > 0) {
-
-          LOG(logTrace) << "Worker: " << w.second
-                        << " doc timer queue size: " << timer_entry_count
-                        << std::endl;
-
-          for (auto i = 0; i <= timer_entry_count / feedback_batch_size; i++) {
-
-            std::vector<uv_buf_t> responses;
-            int bytes_to_write = 0;
-
-            for (auto j = 0; j < feedback_batch_size; j++) {
-
-              if ((i * feedback_batch_size + j) < timer_entry_count) {
-
-                auto doc_timer_msg = w.second->doc_timer_queue->Pop();
-
-                flatbuffers::FlatBufferBuilder builder;
-                auto msg_offset =
-                    builder.CreateString(doc_timer_msg.timer_entry);
-
-                auto r = flatbuf::response::CreateResponse(
-                    builder, mDoc_Timer_Response, timerResponse, msg_offset);
-                builder.Finish(r);
-
-                LOG(logTrace)
-                    << "Worker: " << w.second << " flushing doc timer entry: "
-                    << doc_timer_msg.timer_entry << std::endl;
-
-                uint32_t s = builder.GetSize();
-                char *size = new char[SIZEOF_UINT32];
-                char *temp_store = (char *)&s;
-
-                strncpy(size, temp_store, SIZEOF_UINT32);
-
-                auto buf_size = uv_buf_init(size, SIZEOF_UINT32);
-                bytes_to_write += buf_size.len;
-                responses.push_back(buf_size);
-
-                std::string msg((const char *)builder.GetBufferPointer(),
-                                builder.GetSize());
-
-                char *msg_entry = new char[msg.size() + 1];
-
-                // Could have leveraged strcpy or strncpy, but for some reason
-                // copied over buffer had invalid entries.
-                for (int k = 0; k < int(msg.size()); k++) {
-                  msg_entry[k] = msg[k];
-                }
-                msg_entry[msg.size()] = '\0';
-
-                auto buf_msg = uv_buf_init(msg_entry, msg.length());
-                bytes_to_write += buf_msg.len;
-                responses.push_back(buf_msg);
-
-                builder.Clear();
-              }
-            }
-
-            if (responses.size() > 0) {
-
-              int bytes_written = UV_EAGAIN;
-
-              do {
-                bytes_written = uv_try_write(
-                    feedback_conn_handle, responses.data(), responses.size());
-
-                if (bytes_written == bytes_to_write) {
-                  doc_timer_responses_sent += responses.size() / 2;
-                  responses.clear();
-                  for (const uv_buf_t &entry : responses) {
-                    delete entry.base;
-                  }
-                }
-
-                // When a portion of supplied uv_buf_t's wasn't flushed
-                // successfully on the socket. uv_try_write is retried for only
-                // those uv_buf_t's that weren't flushed successfully.
-                if ((bytes_written < bytes_to_write) && (bytes_written > 0)) {
-                  LOG(logInfo)
-                      << "Doc timer feedback bytes_written: " << bytes_written
-                      << " bytes_to_write: " << bytes_to_write << std::endl;
-                  bytes_to_write -= bytes_written;
-
-                  uv_try_write_failure_counter++;
-
-                  std::vector<uv_buf_t> temp_buffers;
-                  int buffer_sizes_so_far = 0;
-                  int index = -1;
-
-                  // Check at what std::vector index, entries were written
-                  // successfully
-                  for (auto const &buffer : responses) {
-                    if ((int(buffer.len) + buffer_sizes_so_far) >
-                        bytes_written) {
-
-                      std::string original_data(buffer.base, buffer.len);
-                      std::string pending_data(
-                          original_data, (bytes_written - buffer_sizes_so_far));
-                      uv_buf_t temp_buffer = uv_buf_init(
-                          (char *)pending_data.c_str(), pending_data.size());
-                      temp_buffers.push_back(temp_buffer);
-                      ++index;
-                      doc_timer_responses_sent += index / 2;
-                      break;
-                    } else {
-                      buffer_sizes_so_far += buffer.len;
-                      ++index;
-                    }
-                  }
-
-                  for (std::vector<int>::size_type i = index + 1;
-                       i != responses.size(); i++) {
-                    temp_buffers.push_back(responses[i]);
-                  }
-                  responses.swap(temp_buffers);
-                }
-
-              } while ((bytes_written == UV_EAGAIN) || (responses.size() > 0));
-
-              std::vector<uv_buf_t>().swap(responses);
-            }
-          }
-        } else {
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
+    int64_t count = 0;
+    // Update DocTimers Checkpoint
+    for (const auto &w : workers) {
+      std::vector<uv_buf_t> messages;
+      std::vector<int> length_prefix_sum;
+      w.second->GetDocTimerMessages(messages, length_prefix_sum,
+                                    feedback_batch_size);
+      if (messages.size() == 0)
+        continue;
+      count += messages.size();
+      WriteResponseWithRetry(feedback_conn_handle, messages, length_prefix_sum,
+                             2 * feedback_batch_size);
+      doc_timer_responses_sent += messages.size() / 2;
+      for (auto &buf : messages) {
+        delete buf.base;
       }
-    } else {
+    }
+
+    // Update BucketOps Checkpoint
+    auto curr = std::chrono::system_clock::now();
+    auto elapsed =
+        std::chrono::duration_cast<std::chrono::milliseconds>(curr - start);
+    if (elapsed < checkpoint_interval)
+      continue;
+    for (const auto &w : workers) {
+      std::vector<uv_buf_t> messages;
+      std::vector<int> length_prefix_sum;
+      w.second->GetBucketOpsMessages(messages, length_prefix_sum);
+      if (messages.size() == 0)
+        continue;
+      count += messages.size();
+      WriteResponseWithRetry(feedback_conn_handle, messages, length_prefix_sum,
+                             2 * feedback_batch_size);
+      for (auto &buf : messages) {
+        delete buf.base;
+      }
+    }
+    start = curr;
+    if (count == 0)
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+}
+
+void AppWorker::WriteResponseWithRetry(
+    uv_stream_t *handle, const std::vector<uv_buf_t> &messages,
+    const std::vector<int> &length_prefix_sum, size_t max_batch_size) {
+  size_t curr_idx = 0;
+  int total_bytes_written = 0;
+  while (curr_idx < messages.size()) {
+    size_t batch_size = std::min(max_batch_size, messages.size() - curr_idx);
+    int bytes_written =
+        uv_try_write(handle, messages.data() + curr_idx, batch_size);
+    if (bytes_written > 0) {
+      total_bytes_written += bytes_written;
+      auto iter =
+          std::upper_bound(length_prefix_sum.begin(), length_prefix_sum.end(),
+                           total_bytes_written);
+      if (iter == length_prefix_sum.end()) {
+        break;
+      }
+      uv_try_write_failure_counter++;
+      curr_idx = std::distance(length_prefix_sum.begin(), iter);
     }
   }
 }
@@ -945,6 +874,7 @@ AppWorker::AppWorker() : feedback_conn_handle(nullptr), conn_handle(nullptr) {
 
   std::thread w_thr(&AppWorker::WriteResponses, this);
   write_responses_thr = std::move(w_thr);
+  checkpoint_interval = std::chrono::milliseconds(1000); // default value
 }
 
 AppWorker::~AppWorker() {

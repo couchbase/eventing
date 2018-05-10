@@ -67,7 +67,7 @@ func (m *ServiceMgr) initService() {
 	logging.Infof("ServiceMgr::initService certFile: %v", m.certFile)
 	logging.Infof("ServiceMgr::initService keyFile: %v", m.keyFile)
 
-	util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, m)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getHTTPServiceAuth, m)
 
 	go func(m *ServiceMgr) {
 		for {
@@ -262,10 +262,10 @@ func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 
 	logging.Infof("%s Garbage collecting old rebalance tokens", logPrefix)
 	// Garbage collect old Rebalance Tokens
-	util.Retry(util.NewFixedBackoff(time.Second), cleanupEventingMetaKvPath, metakvRebalanceTokenPath)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvRebalanceTokenPath)
 	logging.Infof("%s Writing rebalance token: %s to metakv", logPrefix, change.ID)
 	path := metakvRebalanceTokenPath + change.ID
-	util.Retry(util.NewFixedBackoff(time.Second), metaKVSetCallback, path, change.ID)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metaKVSetCallback, path, change.ID)
 
 	m.updateRebalanceProgressLocked(0.0)
 
@@ -516,7 +516,7 @@ func (m *ServiceMgr) onRebalanceDoneLocked(err error) {
 func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
 	logPrefix := "ServiceMgr::getActiveNodeAddrs"
 
-	util.Retry(util.NewFixedBackoff(time.Second), getEventingNodesAddressesOpCallback, m, true)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m, true)
 
 	nodeAddrs := make([]string, 0)
 
@@ -531,7 +531,7 @@ func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
 	}
 
 	var data []byte
-	util.Retry(util.NewFixedBackoff(time.Second), metakvGetCallback, metakvConfigKeepNodes, &data)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, metakvConfigKeepNodes, &data)
 
 	var keepNodes []string
 	err = json.Unmarshal(data, &keepNodes)

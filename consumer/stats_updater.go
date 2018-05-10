@@ -20,6 +20,7 @@ func newVbProcessingStats(appName string, numVbuckets uint16, uuid, workerName s
 		vbsts[i].stats["plasma_last_seq_no_persisted"] = uint64(0)
 
 		vbsts[i].stats["last_doc_timer_feedback_seqno"] = uint64(0)
+		vbsts[i].stats["last_processed_seq_no"] = uint64(0)
 
 		vbsts[i].stats["currently_processed_doc_id_timer"] = time.Now().UTC().Format(time.RFC3339)
 		vbsts[i].stats["last_cleaned_up_doc_id_timer_event"] = time.Now().UTC().Format(time.RFC3339)
@@ -40,6 +41,9 @@ func newVbProcessingStats(appName string, numVbuckets uint16, uuid, workerName s
 		vbsts[i].stats["timers_in_past_from_backfill_counter"] = uint64(0)
 		vbsts[i].stats["timers_recreated_from_dcp_backfill"] = uint64(0)
 
+		//Cron timer debug stats
+		vbsts[i].stats["processed_crontimer_counter"] = uint64(0)
+
 		// vb seq no stats
 		vbsts[i].stats["ever_owned_vb"] = false
 		vbsts[i].stats["host_name"] = ""
@@ -51,6 +55,22 @@ func newVbProcessingStats(appName string, numVbuckets uint16, uuid, workerName s
 		vbsts[i].stats["seq_no_after_close_stream"] = uint64(0)
 		vbsts[i].stats["timestamp"] = time.Now().UTC().Format(time.RFC3339)
 		vbsts[i].stats["worker_name"] = workerName
+	}
+	return vbsts
+}
+
+func newVbBackupStats(numVbuckets uint16) vbStats {
+	vbsts := make(vbStats, numVbuckets)
+	for i := uint16(0); i < numVbuckets; i++ {
+		vbsts[i] = &vbStat{
+			stats: make(map[string]interface{}),
+		}
+		vbsts[i].stats["last_doc_timer_feedback_seqno"] = uint64(0)
+		vbsts[i].stats["last_processed_seq_no"] = uint64(0)
+		//Doc timer counter
+		vbsts[i].stats["sent_to_worker_counter"] = uint64(0)
+		//Cron timer counter
+		vbsts[i].stats["processed_crontimer_counter"] = uint64(0)
 	}
 	return vbsts
 }

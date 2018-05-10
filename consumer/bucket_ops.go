@@ -5,6 +5,7 @@ import (
 	"net"
 	"runtime/debug"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -18,6 +19,11 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 	vb := args[1].(uint16)
 
 	err := c.doVbTakeover(vb)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return common.ErrRetryTimeout
+	}
+
 	if err != nil {
 		logging.Infof("%s [%s:%s:%d] vb: %v vbTakeover request, msg:",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
@@ -51,7 +57,7 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	err = cluster.Authenticate(&util.DynamicAuthenticator{})
+	err = cluster.Authenticate(&util.DynamicAuthenticator{Caller: logPrefix})
 	if err != nil {
 		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %rm, err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
@@ -84,7 +90,7 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	err = cluster.Authenticate(&util.DynamicAuthenticator{})
+	err = cluster.Authenticate(&util.DynamicAuthenticator{Caller: logPrefix})
 	if err != nil {
 		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %rm, err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
@@ -273,6 +279,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 		UpsertEx("next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess, gocb.SubdocFlagCreatePath).
 		UpsertEx("next_cron_timer_to_process", vbBlob.NextCronTimerToProcess, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_processed_seq_no", vbBlob.LastSeqNoProcessed, gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {

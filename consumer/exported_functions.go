@@ -411,8 +411,6 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			return
 		}
 
-		defer errPipe.Close()
-
 		inPipe, err := cmd.StdinPipe()
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to open stdin pipe, err: %v",
@@ -435,6 +433,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 		bufErr := bufio.NewReader(errPipe)
 
 		go func(bufErr *bufio.Reader) {
+			defer errPipe.Close()
 			for {
 				msg, _, err := bufErr.ReadLine()
 				if err != nil {

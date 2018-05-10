@@ -76,5 +76,17 @@ func main() {
 		}
 	}(s)
 
+	// For aborting the retries during bootstrap
+	go func(s *supervisor.SuperSupervisor) {
+		cancelCh := make(chan struct{})
+		for {
+			err := metakv.RunObserveChildren(supervisor.MetakvAppsRetryPath, s.AppsRetryCallback, cancelCh)
+			if err != nil {
+				logging.Errorf("Eventing::main metakv observe error for apps retry, err: %v. Retrying.", err)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}(s)
+
 	s.HandleSupCmdMsg()
 }
