@@ -9,6 +9,9 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+var console = {};
+console.log = log;
+
 // LoopModifier types.
 LoopModifier.CONST = {
     BREAK: 'break',
@@ -31,6 +34,7 @@ var Context = {
 };
 
 function compile(code) {
+    console.log('Transpiler::Compile compiling now');
     try {
         var ast = esprima.parse(code, {
                 range: true,

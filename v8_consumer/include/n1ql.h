@@ -195,8 +195,8 @@ private:
 
 class Transpiler {
 public:
-  Transpiler(v8::Isolate *isolate, const std::string &transpiler_src)
-      : isolate(isolate), transpiler_src(transpiler_src) {}
+  Transpiler(v8::Isolate *isolate, const std::string &transpiler_src);
+  ~Transpiler();
 
   v8::Local<v8::Value> ExecTranspiler(const std::string &function,
                                       v8::Local<v8::Value> args[],
@@ -217,6 +217,7 @@ public:
   static void LogCompilationInfo(const CompilationInfo &info);
 
 private:
+  static void Log(const v8::FunctionCallbackInfo<v8::Value> &args);
   void RectifyCompilationInfo(CompilationInfo &info,
                               const std::list<InsertedCharsInfo> &n1ql_pos);
   CompilationInfo ComposeErrorInfo(const CommentN1QLInfo &cmt_info);
@@ -225,6 +226,7 @@ private:
                          const std::list<InsertedCharsInfo> &ins_list);
   std::string ComposeDescription(int code);
 
+  v8::Persistent<v8::Context> context_;
   v8::Isolate *isolate;
   std::string transpiler_src;
 };
