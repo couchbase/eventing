@@ -787,19 +787,23 @@ void AppWorker::StartFeedbackUVLoop() {
 }
 
 void AppWorker::WriteResponses() {
+  // TODO : Remove this sleep if its use can't be justified
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
   auto start = std::chrono::system_clock::now();
   while (!thread_exit_cond.load()) {
-    int64_t count = 0;
+    auto sleep = true;
     // Update DocTimers Checkpoint
     for (const auto &w : workers) {
       std::vector<uv_buf_t> messages;
       std::vector<int> length_prefix_sum;
       w.second->GetDocTimerMessages(messages, length_prefix_sum,
                                     feedback_batch_size);
-      if (messages.size() == 0)
+      if (messages.empty()) {
         continue;
-      count += messages.size();
+      }
+
+      sleep = false;
       WriteResponseWithRetry(feedback_conn_handle, messages, length_prefix_sum,
                              2 * feedback_batch_size);
       doc_timer_responses_sent += messages.size() / 2;
@@ -808,28 +812,34 @@ void AppWorker::WriteResponses() {
       }
     }
 
-    // Update BucketOps Checkpoint
+    if (sleep) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
     auto curr = std::chrono::system_clock::now();
     auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(curr - start);
-    if (elapsed < checkpoint_interval)
+    if (elapsed < checkpoint_interval) {
       continue;
+    }
+
+    // Update BucketOps Checkpoint
     for (const auto &w : workers) {
       std::vector<uv_buf_t> messages;
       std::vector<int> length_prefix_sum;
       w.second->GetBucketOpsMessages(messages, length_prefix_sum);
-      if (messages.size() == 0)
+      if (messages.empty()) {
         continue;
-      count += messages.size();
+      }
+
       WriteResponseWithRetry(feedback_conn_handle, messages, length_prefix_sum,
                              2 * feedback_batch_size);
       for (auto &buf : messages) {
         delete buf.base;
       }
     }
+
     start = curr;
-    if (count == 0)
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 }
 
