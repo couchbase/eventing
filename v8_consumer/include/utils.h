@@ -29,7 +29,12 @@
 
 #define DATA_SLOT 0
 #define EXCEPTION_STR_SIZE 20
-#define MAXPATHLEN 256
+
+#define TO(maybe, local)                                                       \
+  (To((maybe), (local), __FILE__, __FUNCTION__, __LINE__))
+#define TO_LOCAL(maybe, local)                                                 \
+  (ToLocal((maybe), (local), __FILE__, __FUNCTION__, __LINE__))
+#define IS_EMPTY(v8obj) (IsEmpty((v8obj), __FILE__, __FUNCTION__, __LINE__))
 
 class N1QL;
 class V8Worker;
@@ -67,14 +72,50 @@ T *UnwrapInternalField(v8::Local<v8::Object> obj, int field_no) {
   return static_cast<T *>(field->Value());
 }
 
+template <typename T>
+bool ToLocal(const v8::MaybeLocal<T> &from, v8::Local<T> *to,
+             const char *file = "", const char *caller = "", int line = -1) {
+  if (from.ToLocal(to)) {
+    return true;
+  }
+
+  LOG(logError) << "file : " << file << " line : " << line
+                << " caller : " << caller << " : Returning empty value";
+  return false;
+}
+
+template <typename T>
+bool To(const v8::Maybe<T> &from, T *to, const char *file = "",
+        const char *caller = "", int line = -1) {
+  if (from.To(to)) {
+    return true;
+  }
+
+  LOG(logError) << "file : " << file << " line : " << line
+                << " caller : " << caller << " : Returning empty value";
+  return false;
+}
+
+template <typename T>
+bool IsEmpty(const T &obj, const char *file = "", const char *caller = "",
+             int line = -1) {
+  if (obj.IsEmpty()) {
+    LOG(logError) << "file : " << file << " line : " << line
+                  << " caller : " << caller << " : v8 object is empty";
+    return true;
+  }
+
+  return false;
+}
+
 int WinSprintf(char **strp, const char *fmt, ...);
 
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const char *str);
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const std::string &str);
 v8::Local<v8::Name> v8Name(v8::Isolate *isolate, uint32_t key);
 std::string ObjectToString(v8::Local<v8::Value> value);
-
-std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object);
+std::string JSONStringify(v8::Isolate *isolate,
+                          const v8::Local<v8::Value> &object);
 
 const char *ToCString(const v8::String::Utf8Value &value);
 bool ToCBool(const v8::Local<v8::Boolean> &value);

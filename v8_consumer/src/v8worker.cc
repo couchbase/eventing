@@ -50,7 +50,8 @@ enum RETURN_CODE {
   kNoHandlersDefined,
   kFailedInitBucketHandle,
   kOnUpdateCallFail,
-  kOnDeleteCallFail
+  kOnDeleteCallFail,
+  kToLocalFailed
 };
 
 const char *GetUsername(void *cookie, const char *host, const char *port,
@@ -228,7 +229,8 @@ void startDebuggerFlag(bool started) {
 
 V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    server_settings_t *server_settings)
-    : settings(server_settings), platform_(platform) {
+    : app_name_(h_config->app_name), settings(server_settings),
+      platform_(platform) {
   enable_recursive_mutation = h_config->enable_recursive_mutation;
   curl_timeout = h_config->curl_timeout;
   histogram = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
@@ -256,8 +258,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
     UnwrapData(isolate_)->curl_handle = curl;
   }
 
-  v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(GetIsolate());
-
+  auto global = v8::ObjectTemplate::New(isolate_);
   v8::TryCatch try_catch;
 
   global->Set(v8::String::NewFromUtf8(GetIsolate(), "curl"),
@@ -309,14 +310,11 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   data.transpiler = new Transpiler(isolate_, GetTranspilerSrc());
   data.fuzz_offset = h_config->fuzz_offset;
 
-  app_name_ = h_config->app_name;
   execute_start_time = Time::now();
 
   deployment_config *config = ParseDeployment(h_config->dep_cfg.c_str());
 
   cb_source_bucket.assign(config->source_bucket);
-
-  auto it = config->component_configs.begin();
 
   Bucket *bucket_handle = nullptr;
   execute_flag = false;
@@ -324,7 +322,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   max_task_duration = SECS_TO_NS * h_config->execution_timeout;
 
   if (!h_config->skip_lcb_bootstrap) {
-    for (; it != config->component_configs.end(); it++) {
+    for (auto it = config->component_configs.begin();
+         it != config->component_configs.end(); it++) {
       if (it->first == "buckets") {
         auto bucket = config->component_configs["buckets"].begin();
         for (; bucket != config->component_configs["buckets"].end(); bucket++) {
@@ -405,6 +404,7 @@ V8Worker::~V8Worker() {
   delete js_exception;
 }
 
+// TODO : Use to v8::MaybeLocal types once MB-29560 is resolved
 // Re-compile and execute handler code for debugger
 bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
                             int args_len) {
@@ -412,14 +412,14 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
   v8::TryCatch try_catch(isolate_);
 
   // Need to construct origin for source-map to apply.
-  auto origin_v8_str = v8::String::NewFromUtf8(isolate_, src_path.c_str());
+  auto origin_v8_str = v8Str(isolate_, src_path);
   v8::ScriptOrigin origin(origin_v8_str);
   auto context = context_.Get(isolate_);
-  auto source = v8::String::NewFromUtf8(isolate_, script_to_execute_.c_str());
+  auto source = v8Str(isolate_, script_to_execute_);
 
   // Replace the usual log function with console.log
   auto global = context->Global();
-  global->Set(v8::String::NewFromUtf8(isolate_, "log"),
+  global->Set(v8Str(isolate_, "log"),
               v8::FunctionTemplate::New(isolate_, ConsoleLog)->GetFunction());
 
   v8::Local<v8::Script> script;
@@ -487,34 +487,38 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
       transpiler->GetSourceMap(jsify_info.handler_code, app_name_ + ".js");
   LOG(logTrace) << "source map:" << RM(source_map_) << std::endl;
 
-  v8::Local<v8::String> source =
-      v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());
-
+  auto source = v8Str(isolate_, script_to_execute);
   script_to_execute_ = script_to_execute;
   LOG(logTrace) << "script to execute: " << RM(script_to_execute) << std::endl;
 
-  if (!ExecuteScript(source))
+  if (!ExecuteScript(source)) {
     return kFailedToCompileJs;
+  }
 
-  v8::Local<v8::String> on_update = v8Str(GetIsolate(), "OnUpdate");
-  v8::Local<v8::String> on_delete = v8Str(GetIsolate(), "OnDelete");
+  auto global = context->Global();
+  v8::Local<v8::Value> on_update_def;
+  if (!TO_LOCAL(global->Get(context, v8Str(isolate_, "OnUpdate")),
+                &on_update_def)) {
+    return kToLocalFailed;
+  }
 
-  auto on_update_def = context->Global()->Get(on_update);
-  auto on_delete_def = context->Global()->Get(on_delete);
+  v8::Local<v8::Value> on_delete_def;
+  if (!TO_LOCAL(global->Get(context, v8Str(isolate_, "OnDelete")),
+                &on_delete_def)) {
+    return kToLocalFailed;
+  }
 
   if (!on_update_def->IsFunction() && !on_delete_def->IsFunction()) {
     return kNoHandlersDefined;
   }
 
   if (on_update_def->IsFunction()) {
-    v8::Local<v8::Function> on_update_fun =
-        v8::Local<v8::Function>::Cast(on_update_def);
+    auto on_update_fun = on_update_def.As<v8::Function>();
     on_update_.Reset(GetIsolate(), on_update_fun);
   }
 
   if (on_delete_def->IsFunction()) {
-    v8::Local<v8::Function> on_delete_fun =
-        v8::Local<v8::Function>::Cast(on_delete_def);
+    auto on_delete_fun = on_delete_def.As<v8::Function>();
     on_delete_.Reset(GetIsolate(), on_delete_fun);
   }
 
@@ -830,13 +834,12 @@ void V8Worker::RouteMessage() {
   }
 }
 
-bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
+bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
   v8::HandleScope handle_scope(GetIsolate());
   v8::TryCatch try_catch(GetIsolate());
 
   auto context = context_.Get(isolate_);
-  auto script_name =
-      v8::String::NewFromUtf8(isolate_, (app_name_ + ".js").c_str());
+  auto script_name = v8Str(isolate_, app_name_ + ".js");
   v8::ScriptOrigin origin(script_name);
 
   v8::Local<v8::Script> compiled_script;
@@ -889,6 +892,48 @@ void V8Worker::UpdateHistogram(Time::time_point start_time) {
   histogram->Add(ns.count() / 1000);
 }
 
+int V8Worker::UpdateVbSeqNumbers(const v8::Local<v8::Value> &metadata) {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  // Look for vbucket and corresponding seq no in metadata
+  v8::Local<v8::Object> metadata_obj;
+  if (!TO_LOCAL(metadata->ToObject(context), &metadata_obj)) {
+    return kToLocalFailed;
+  }
+
+  v8::Local<v8::Value> seq_val;
+  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(GetIsolate(), "seq")),
+                &seq_val)) {
+    return kToLocalFailed;
+  }
+
+  v8::Local<v8::Value> vb_val;
+  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(GetIsolate(), "vb")),
+                &vb_val)) {
+    return kToLocalFailed;
+  }
+
+  if (seq_val->IsNumber() && vb_val->IsNumber()) {
+    v8::Local<v8::Integer> vb_val_int;
+    if (!TO_LOCAL(vb_val->ToInteger(context), &vb_val_int)) {
+      return kToLocalFailed;
+    }
+
+    v8::Local<v8::Integer> seq_val_int;
+    if (!TO_LOCAL(seq_val->ToInteger(context), &seq_val_int)) {
+      return kToLocalFailed;
+    }
+
+    currently_processed_vb = vb_val_int->Value();
+    currently_processed_seqno = seq_val_int->Value();
+    vb_seq[currently_processed_vb]->store(currently_processed_seqno,
+                                          std::memory_order_seq_cst);
+  }
+
+  return kSuccess;
+}
+
 int V8Worker::SendUpdate(std::string value, std::string meta,
                          std::string doc_type) {
   Time::time_point start_time = Time::now();
@@ -904,31 +949,22 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
                 << " doc_type: " << doc_type << std::endl;
   v8::TryCatch try_catch(GetIsolate());
 
-  v8::Handle<v8::Value> args[2];
-  if (doc_type.compare("json") == 0) {
-    args[0] =
-        v8::JSON::Parse(v8::String::NewFromUtf8(GetIsolate(), value.c_str()));
+  v8::Local<v8::Value> args[2];
+  if (doc_type == "json") {
+    if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, value)), &args[0])) {
+      return kToLocalFailed;
+    }
   } else {
-    args[0] = v8::String::NewFromUtf8(GetIsolate(), value.c_str());
+    args[0] = v8Str(isolate_, value);
   }
 
-  args[1] =
-      v8::JSON::Parse(v8::String::NewFromUtf8(GetIsolate(), meta.c_str()));
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[1])) {
+    return kToLocalFailed;
+  }
 
-  // Look for vbucket and corresponding seq no in metadata
-  auto meta_fields = args[1]->ToObject(context).ToLocalChecked();
-  auto seq_str = v8Str(GetIsolate(), "seq");
-  auto vb_str = v8Str(GetIsolate(), "vb");
-
-  auto seq_val = meta_fields->Get(seq_str);
-  auto vb_val = meta_fields->Get(vb_str);
-
-  if (seq_val->IsNumber() && vb_val->IsNumber()) {
-    vb_seq[vb_val->ToInteger()->Value()].get()->store(
-        seq_val->ToInteger()->Value(), std::memory_order_seq_cst);
-
-    currently_processed_seqno = seq_val->ToInteger()->Value();
-    currently_processed_vb = vb_val->ToInteger()->Value();
+  auto update_status = UpdateVbSeqNumbers(args[1]);
+  if (update_status != kSuccess) {
+    return update_status;
   }
 
   if (on_update_.IsEmpty()) {
@@ -953,7 +989,6 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
     return kOnUpdateCallFail;
   } else {
     auto on_doc_update = on_update_.Get(isolate_);
-
     execute_flag = true;
     execute_start_time = Time::now();
     on_doc_update->Call(context->Global(), 2, args);
@@ -987,23 +1022,13 @@ int V8Worker::SendDelete(std::string meta) {
   v8::TryCatch try_catch(GetIsolate());
 
   v8::Local<v8::Value> args[1];
-  args[0] =
-      v8::JSON::Parse(v8::String::NewFromUtf8(GetIsolate(), meta.c_str()));
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[0])) {
+    return kToLocalFailed;
+  }
 
-  // Look for vbucket and corresponding seq no in metadata
-  auto meta_fields = args[0]->ToObject(context).ToLocalChecked();
-  auto seq_str = v8Str(GetIsolate(), "seq");
-  auto vb_str = v8Str(GetIsolate(), "vb");
-
-  auto seq_val = meta_fields->Get(seq_str);
-  auto vb_val = meta_fields->Get(vb_str);
-
-  if (seq_val->IsNumber() && vb_val->IsNumber()) {
-    vb_seq[vb_val->ToInteger()->Value()].get()->store(
-        seq_val->ToInteger()->Value(), std::memory_order_seq_cst);
-
-    currently_processed_seqno = seq_val->ToInteger()->Value();
-    currently_processed_vb = vb_val->ToInteger()->Value();
+  auto update_status = UpdateVbSeqNumbers(args[0]);
+  if (update_status != kSuccess) {
+    return update_status;
   }
 
   if (on_delete_.IsEmpty()) {
@@ -1064,33 +1089,64 @@ void V8Worker::SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  auto data = v8::JSON::Parse(v8Str(GetIsolate(), cron_cb_fns.c_str()));
+  v8::Local<v8::Value> data;
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, cron_cb_fns)),
+                &data)) {
+    return;
+  }
 
-  auto params = data->ToObject(context).ToLocalChecked();
-  auto cron_timers = v8Str(GetIsolate(), "cron_timers");
+  v8::Local<v8::Object> data_obj;
+  if (!TO_LOCAL(data->ToObject(context), &data_obj)) {
+    return;
+  }
 
-  auto cron_timer_entries = params->Get(cron_timers);
+  v8::Local<v8::Value> cron_timer_entries;
+  if (!TO_LOCAL(data_obj->Get(context, v8Str(GetIsolate(), "cron_timers")),
+                &cron_timer_entries)) {
+    return;
+  }
 
   if (cron_timer_entries->IsArray()) {
-    auto entries = cron_timer_entries->ToObject(context).ToLocalChecked();
-    auto entries_arr = entries.As<v8::Array>();
+    v8::Local<v8::Object> entries;
+    if (!TO_LOCAL(cron_timer_entries->ToObject(context), &entries)) {
+      return;
+    }
 
+    auto entries_arr = entries.As<v8::Array>();
     auto callback_fn = v8Str(GetIsolate(), "callback_func");
     auto payload = v8Str(GetIsolate(), "payload");
 
-    for (int i = 0; i < static_cast<int>(entries_arr->Length()); i++) {
-      auto entry = entries_arr->Get(i).As<v8::Object>();
+    for (uint32_t i = 0; i < entries_arr->Length(); i++) {
+      v8::Local<v8::Value> entry_val;
+      if (!TO_LOCAL(entries_arr->Get(context, i), &entry_val)) {
+        return;
+      }
 
-      auto cb_fn = entry->Get(callback_fn);
-      auto opaque = entry->Get(payload);
+      v8::Local<v8::Object> entry_obj;
+      if (!TO_LOCAL(entry_val->ToObject(context), &entry_obj)) {
+        return;
+      }
+
+      v8::Local<v8::Value> cb_fn;
+      if (!TO_LOCAL(entry_obj->Get(context, callback_fn), &cb_fn)) {
+        return;
+      }
+
+      v8::Local<v8::Value> opaque;
+      if (!TO_LOCAL(entry_obj->Get(context, payload), &opaque)) {
+        return;
+      }
 
       if (cb_fn->IsString() && opaque->IsString()) {
         v8::String::Utf8Value fn(cb_fn);
 
-        auto fn_value = context->Global()->Get(v8Str(GetIsolate(), *fn));
-        auto fn_handle = v8::Handle<v8::Function>::Cast(fn_value);
+        v8::Local<v8::Value> fn_value;
+        if (!TO_LOCAL(context->Global()->Get(context, cb_fn), &fn_value)) {
+          return;
+        }
 
-        v8::Handle<v8::Value> arg[1];
+        auto fn_handle = fn_value.As<v8::Function>();
+        v8::Local<v8::Value> arg[1];
         arg[0] = opaque;
 
         if (debugger_started) {
@@ -1130,14 +1186,16 @@ void V8Worker::SendDocTimer(std::string callback_fn, std::string doc_id,
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  v8::Handle<v8::Value> val = context->Global()->Get(
-      v8::String::NewFromUtf8(GetIsolate(), callback_fn.c_str(),
-                              v8::NewStringType::kNormal)
-          .ToLocalChecked());
-  v8::Handle<v8::Function> cb_fn = v8::Handle<v8::Function>::Cast(val);
+  auto global = context->Global();
+  v8::Local<v8::Value> cb_fn_val;
+  if (!TO_LOCAL(global->Get(context, v8Str(isolate_, callback_fn)),
+                &cb_fn_val)) {
+    return;
+  }
 
-  v8::Handle<v8::Value> arg[1];
-  arg[0] = v8::String::NewFromUtf8(GetIsolate(), doc_id.c_str());
+  auto cb_fn = cb_fn_val.As<v8::Function>();
+  v8::Local<v8::Value> arg[1];
+  arg[0] = v8Str(isolate_, doc_id);
 
   if (debugger_started) {
     if (!agent->IsStarted()) {
@@ -1153,7 +1211,7 @@ void V8Worker::SendDocTimer(std::string callback_fn, std::string doc_id,
   } else {
     execute_flag = true;
     execute_start_time = Time::now();
-    cb_fn->Call(context->Global(), 1, arg);
+    cb_fn->Call(global, 1, arg);
     execute_flag = false;
     std::lock_guard<std::mutex> lck(doc_timer_mtx);
     doc_timer_checkpoint[partition] = timer_ts;
@@ -1232,12 +1290,11 @@ std::string V8Worker::CompileHandler(std::string handler) {
   if (info.compile_success) {
     try {
       auto ident = IdentifyVersion(handler);
-      info_obj->Set(v8Str(isolate_, "version"),
-                    v8Str(isolate_, ident.version));
-      info_obj->Set(v8Str(isolate_, "level"),
-                    v8Str(isolate_, ident.level));
+      info_obj->Set(v8Str(isolate_, "version"), v8Str(isolate_, ident.version));
+      info_obj->Set(v8Str(isolate_, "level"), v8Str(isolate_, ident.level));
     } catch (const char *e) {
-      LOG(logError) << "Unable to identify version, ignoring:" << e << std::endl;
+      LOG(logError) << "Unable to identify version, ignoring:" << e
+                    << std::endl;
     }
   }
 
@@ -1259,9 +1316,10 @@ CodeVersion V8Worker::IdentifyVersion(std::string handler) {
 
   auto transpiler = UnwrapData(isolate_)->transpiler;
   auto script_to_execute =
-    transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
-                          app_name_ + ".map.json", settings->host_addr,
-                          settings->eventing_port) + '\n';
+      transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
+                            app_name_ + ".map.json", settings->host_addr,
+                            settings->eventing_port) +
+      '\n';
 
   script_to_execute += std::string((const char *)js_builtin) + '\n';
 

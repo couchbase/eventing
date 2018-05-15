@@ -15,7 +15,7 @@
 Transpiler::Transpiler(v8::Isolate *isolate, const std::string &transpiler_src)
     : isolate(isolate), transpiler_src(transpiler_src) {
   auto global = v8::ObjectTemplate::New(isolate);
-  global->Set(v8::String::NewFromUtf8(isolate, "log"),
+  global->Set(v8Str(isolate, "log"),
               v8::FunctionTemplate::New(isolate, Transpiler::Log));
   auto context = v8::Context::New(isolate, nullptr, global);
   context_.Reset(isolate, context);
@@ -28,19 +28,9 @@ void Transpiler::Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
 
-  auto context = isolate->GetCurrentContext();
-  auto JSON = context->Global()->Get(v8Str(isolate, "JSON"))->ToObject();
-  auto JSON_stringify =
-      v8::Local<v8::Function>::Cast(JSON->Get(v8Str(isolate, "stringify")));
-
   std::string log_msg;
-  v8::Local<v8::Value> json_args[1];
   for (auto i = 0; i < args.Length(); i++) {
-    json_args[0] = args[i];
-    auto result = JSON_stringify->Call(context->Global(), 1, json_args);
-    v8::String::Utf8Value utf8_value(result);
-
-    log_msg += *utf8_value;
+    log_msg += JSONStringify(isolate, args[i]);
     log_msg += " ";
   }
 
@@ -51,19 +41,28 @@ v8::Local<v8::Value> Transpiler::ExecTranspiler(const std::string &function,
                                                 v8::Local<v8::Value> args[],
                                                 const int &args_len) {
   v8::EscapableHandleScope handle_scope(isolate);
-
   auto context = context_.Get(isolate);
   v8::Context::Scope context_scope(context);
 
+  v8::Local<v8::Value> result;
   auto source = v8Str(isolate, transpiler_src);
-  auto script = v8::Script::Compile(context, source).ToLocalChecked();
-  script->Run(context).ToLocalChecked();
+  auto global = context->Global();
+
+  v8::Local<v8::Script> script;
+  if (!TO_LOCAL(v8::Script::Compile(context, source), &script)) {
+    return handle_scope.Escape(result);
+  }
+
+  script->Run(context);
 
   auto function_name = v8Str(isolate, function);
-  auto function_def = context->Global()->Get(function_name);
-  auto function_ref = v8::Local<v8::Function>::Cast(function_def);
-  auto result = function_ref->Call(function_ref, args_len, args);
+  v8::Local<v8::Value> function_def;
+  if (!TO_LOCAL(global->Get(context, function_name), &function_def)) {
+    return handle_scope.Escape(result);
+  }
 
+  auto function_ref = function_def.As<v8::Function>();
+  TO_LOCAL(function_ref->Call(context, function_ref, args_len, args), &result);
   return handle_scope.Escape(result);
 }
 
@@ -144,19 +143,19 @@ std::string Transpiler::TranspileQuery(const std::string &query,
                                        const NamedParamsInfo &info) {
   v8::HandleScope handle_scope(isolate);
 
-  auto named_params_v8arr =
+  auto named_params_arr =
       v8::Array::New(isolate, static_cast<int>(info.named_params.size()));
-  auto is_select_query_v8bool =
+  auto is_select_query_bool =
       v8::Boolean::New(isolate, info.p_info.is_select_query);
   for (std::size_t i = 0; i < info.named_params.size(); ++i) {
-    named_params_v8arr->Set(static_cast<uint32_t>(i),
-                            v8Str(isolate, info.named_params[i].c_str()));
+    named_params_arr->Set(static_cast<uint32_t>(i),
+                          v8Str(isolate, info.named_params[i].c_str()));
   }
 
   v8::Local<v8::Value> args[3];
   args[0] = v8Str(isolate, query);
-  args[1] = named_params_v8arr;
-  args[2] = is_select_query_v8bool;
+  args[1] = named_params_arr;
+  args[2] = is_select_query_bool;
 
   auto result = ExecTranspiler("transpileQuery", args, 3);
   v8::String::Utf8Value utf8result(result);
@@ -166,12 +165,25 @@ std::string Transpiler::TranspileQuery(const std::string &query,
 
 CodeVersion Transpiler::GetCodeVersion(const std::string &handler_code) {
   v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
   v8::Local<v8::Value> args[1];
   args[0] = v8Str(isolate, handler_code);
   auto res = ExecTranspiler("getCodeVersion", args, 1);
-  auto ans = v8::Local<v8::Array>::Cast(res);
-  v8::String::Utf8Value version(ans->Get(0));
-  v8::String::Utf8Value level(ans->Get(1));
+  auto ans = res.As<v8::Array>();
+
+  v8::Local<v8::Value> version_val;
+  if (!TO_LOCAL(ans->Get(context, 0), &version_val)) {
+    return CodeVersion{};
+  }
+
+  v8::Local<v8::Value> level_val;
+  if (!TO_LOCAL(ans->Get(context, 1), &level_val)) {
+    return CodeVersion{};
+  }
+
+  v8::String::Utf8Value version(version_val);
+  v8::String::Utf8Value level(level_val);
   return CodeVersion{*version, *level};
 }
 
@@ -180,9 +192,7 @@ bool Transpiler::IsTimerCalled(const std::string &handler_code) {
   v8::Local<v8::Value> args[1];
   args[0] = v8Str(isolate, handler_code);
   auto result = ExecTranspiler("isTimerCalled", args, 1);
-  auto bool_result = v8::Local<v8::Boolean>::Cast(result);
-
-  return ToCBool(bool_result);
+  return result.As<v8::Boolean>()->Value();
 }
 
 bool Transpiler::IsJsExpression(const std::string &str) {
@@ -190,9 +200,7 @@ bool Transpiler::IsJsExpression(const std::string &str) {
   v8::Local<v8::Value> args[1];
   args[0] = v8Str(isolate, str);
   auto result = ExecTranspiler("isJsExpression", args, 1);
-  auto bool_result = v8::Local<v8::Boolean>::Cast(result);
-
-  return ToCBool(bool_result);
+  return result.As<v8::Boolean>()->Value();
 }
 
 void Transpiler::LogCompilationInfo(const CompilationInfo &info) {
@@ -232,21 +240,78 @@ CompilationInfo Transpiler::ComposeErrorInfo(const CommentN1QLInfo &cmt_info) {
 CompilationInfo Transpiler::ComposeCompilationInfo(
     v8::Local<v8::Value> &compiler_result,
     const std::list<InsertedCharsInfo> &insertions) {
-  if (compiler_result.IsEmpty()) {
+  if (IS_EMPTY(compiler_result)) {
     throw "Result of ExecTranspiler is empty";
   }
 
-  auto res_obj = compiler_result->ToObject();
-  // Extract info returned from JavaScript compilation
-  auto language = res_obj->Get(v8Str(isolate, "language"))->ToString();
-  auto compilation_status =
-      res_obj->Get(v8Str(isolate, "compileSuccess"))->ToBoolean();
-  auto index = res_obj->Get(v8Str(isolate, "index"))->ToInteger();
-  auto line_no = res_obj->Get(v8Str(isolate, "lineNumber"))->ToInteger();
-  auto col_no = res_obj->Get(v8Str(isolate, "columnNumber"))->ToInteger();
-  auto description = res_obj->Get(v8Str(isolate, "description"))->ToString();
-
   CompilationInfo info;
+  info.compile_success = false;
+  info.description = "Internal error";
+
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
+  v8::Local<v8::Object> res_obj;
+  if (!TO_LOCAL(compiler_result->ToObject(context), &res_obj)) {
+    return info;
+  }
+
+  // Extract info returned from JavaScript compilation
+  v8::Local<v8::Value> language;
+  if (!TO_LOCAL(res_obj->Get(context, v8Str(isolate, "language")), &language)) {
+    return info;
+  }
+
+  v8::Local<v8::Value> compilation_status_val;
+  if (!TO_LOCAL(res_obj->Get(context, v8Str(isolate, "compileSuccess")),
+                &compilation_status_val)) {
+    return info;
+  }
+
+  v8::Local<v8::Boolean> compilation_status;
+  if (!TO_LOCAL(compilation_status_val->ToBoolean(context),
+                &compilation_status)) {
+    return info;
+  }
+
+  v8::Local<v8::Value> index_val;
+  if (!TO_LOCAL(res_obj->Get(context, v8Str(isolate, "index")), &index_val)) {
+    return info;
+  }
+
+  v8::Local<v8::Integer> index;
+  if (!TO_LOCAL(index_val->ToInteger(context), &index)) {
+    return info;
+  }
+
+  v8::Local<v8::Value> line_no_val;
+  if (!TO_LOCAL(res_obj->Get(context, v8Str(isolate, "lineNumber")),
+                &line_no_val)) {
+    return info;
+  }
+
+  v8::Local<v8::Integer> line_no;
+  if (!TO_LOCAL(line_no_val->ToInteger(context), &line_no)) {
+    return info;
+  }
+
+  v8::Local<v8::Value> col_no_val;
+  if (!TO_LOCAL(res_obj->Get(context, v8Str(isolate, "columnNumber")),
+                &col_no_val)) {
+    return info;
+  }
+
+  v8::Local<v8::Integer> col_no;
+  if (!TO_LOCAL(col_no_val->ToInteger(context), &col_no)) {
+    return info;
+  }
+
+  v8::Local<v8::Value> description;
+  if (!TO_LOCAL(res_obj->Get(context, v8Str(isolate, "description")),
+                &description)) {
+    return info;
+  }
+
   info.compile_success = compilation_status->Value();
   v8::String::Utf8Value lang_str(language);
   info.language = *lang_str;

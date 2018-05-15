@@ -179,8 +179,8 @@ public:
         nsecs ns = std::chrono::duration_cast<nsecs>(t - execute_start_time);
 
         LOG(logTrace) << "ns.count(): " << ns.count()
-                     << "ns, max_task_duration: " << max_task_duration << "ns"
-                     << std::endl;
+                      << "ns, max_task_duration: " << max_task_duration << "ns"
+                      << std::endl;
         if (ns.count() > max_task_duration) {
           if (isolate_) {
             LOG(logInfo) << "Task took: " << ns.count()
@@ -284,6 +284,7 @@ public:
   Data data;
 
 private:
+  int UpdateVbSeqNumbers(const v8::Local<v8::Value> &metadata);
   std::vector<uv_buf_t> BuildResponse(const std::string &payload,
                                       int8_t msg_type, int8_t response_opcode);
   std::string connstr;
@@ -300,7 +301,7 @@ private:
 
   vb_seq_map_t vb_seq;
 
-  bool ExecuteScript(v8::Local<v8::String> script);
+  bool ExecuteScript(const v8::Local<v8::String> &script);
   std::list<Bucket *> bucket_handles;
   N1QL *n1ql_handle;
   v8::Isolate *isolate_;

@@ -12,7 +12,6 @@
 #include "bucket.h"
 #include "retry_util.h"
 
-#define LCB_NO_DEPR_CXX_CTORS
 #undef NDEBUG
 
 // lcb related callbacks
@@ -189,7 +188,11 @@ v8::Local<v8::Object> Bucket::WrapBucketMap() {
   auto templ =
       v8::Local<v8::ObjectTemplate>::New(isolate_, bucket_map_template_);
   auto context = context_.Get(isolate_);
-  auto result = templ->NewInstance(context).ToLocalChecked();
+  v8::Local<v8::Object> result;
+  if (!TO_LOCAL(templ->NewInstance(context), &result)) {
+    return handle_scope.Escape(result);
+  }
+
   auto bucket_lcb_obj_ptr = v8::External::New(isolate_, &bucket_lcb_obj);
   auto block_mutation_ptr = v8::External::New(isolate_, &block_mutation);
 
@@ -208,8 +211,12 @@ bool Bucket::InstallMaps() {
   LOG(logInfo) << "Bucket: Registering handler for bucket_alias: "
                << bucket_alias << " bucket_name: " << bucket_name << std::endl;
 
-  return context->Global()->Set(v8Str(isolate_, bucket_alias.c_str()),
-                                bucket_obj);
+  auto global = context->Global();
+  auto install_maps_status = false;
+
+  TO(global->Set(context, v8Str(isolate_, bucket_alias.c_str()), bucket_obj),
+     &install_maps_status);
+  return install_maps_status;
 }
 
 // Performs the lcb related calls when bucket object is accessed
@@ -225,7 +232,10 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
     return;
   }
 
-  v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
+  v8::String::Utf8Value utf8_key(name.As<v8::String>());
   std::string key(*utf8_key);
 
   auto bucket_lcb_obj_ptr =
@@ -265,8 +275,8 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   LOG(logTrace) << "Bucket: Get call result Key: " << RU(key)
                 << " Value: " << RU(result.value) << std::endl;
 
-  const std::string &value = result.value;
-  auto value_json = v8::JSON::Parse(v8Str(isolate, value.c_str()));
+  v8::Local<v8::Value> value_json;
+  TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, result.value)), &value_json);
   info.GetReturnValue().Set(value_json);
 }
 
@@ -292,7 +302,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     return;
   }
 
-  v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
+  v8::HandleScope handle_scope(isolate);
+  v8::String::Utf8Value utf8_key(name.As<v8::String>());
   std::string key(*utf8_key);
   auto value = JSONStringify(isolate, value_obj);
 
@@ -503,7 +514,8 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
     return;
   }
 
-  v8::String::Utf8Value utf8_key(v8::Local<v8::String>::Cast(name));
+  v8::HandleScope handle_scope(isolate);
+  v8::String::Utf8Value utf8_key(name.As<v8::String>());
   std::string key(*utf8_key);
 
   auto bucket_lcb_obj_ptr =

@@ -65,7 +65,7 @@ void JsException::Throw(CURLcode res) {
   auto desc_name = desc.Get(isolate);
 
   auto code_value = v8::Number::New(isolate, static_cast<int>(res));
-  auto desc_value = v8::String::NewFromUtf8(isolate, curl_easy_strerror(res));
+  auto desc_value = v8Str(isolate, curl_easy_strerror(res));
 
   auto exception = v8::Object::New(isolate);
   exception->Set(code_name, code_value);
