@@ -179,13 +179,12 @@ public:
         nsecs ns = std::chrono::duration_cast<nsecs>(t - execute_start_time);
 
         LOG(logTrace) << "ns.count(): " << ns.count()
-                      << "ns, max_task_duration: " << max_task_duration << "ns"
-                      << std::endl;
+                     << "ns, max_task_duration: " << max_task_duration << "ns"
+                     << std::endl;
         if (ns.count() > max_task_duration) {
           if (isolate_) {
-            LOG(logTrace) << "Task took: " << ns.count()
-                          << "ns, terminating it's execution" << std::endl;
-            v8::Locker locker(isolate_);
+            LOG(logInfo) << "Task took: " << ns.count()
+                         << "ns, terminating its execution" << std::endl;
 
             timeout_count++;
             v8::V8::TerminateExecution(isolate_);

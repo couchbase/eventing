@@ -12,12 +12,47 @@
 #include "log.h"
 #include "n1ql.h"
 
+Transpiler::Transpiler(v8::Isolate *isolate, const std::string &transpiler_src)
+    : isolate(isolate), transpiler_src(transpiler_src) {
+  auto global = v8::ObjectTemplate::New(isolate);
+  global->Set(v8::String::NewFromUtf8(isolate, "log"),
+              v8::FunctionTemplate::New(isolate, Transpiler::Log));
+  auto context = v8::Context::New(isolate, nullptr, global);
+  context_.Reset(isolate, context);
+}
+
+Transpiler::~Transpiler() { context_.Reset(); }
+
+void Transpiler::Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  v8::Locker locker(isolate);
+  v8::HandleScope handle_scope(isolate);
+
+  auto context = isolate->GetCurrentContext();
+  auto JSON = context->Global()->Get(v8Str(isolate, "JSON"))->ToObject();
+  auto JSON_stringify =
+      v8::Local<v8::Function>::Cast(JSON->Get(v8Str(isolate, "stringify")));
+
+  std::string log_msg;
+  v8::Local<v8::Value> json_args[1];
+  for (auto i = 0; i < args.Length(); i++) {
+    json_args[0] = args[i];
+    auto result = JSON_stringify->Call(context->Global(), 1, json_args);
+    v8::String::Utf8Value utf8_value(result);
+
+    log_msg += *utf8_value;
+    log_msg += " ";
+  }
+
+  std::cerr << log_msg << std::endl;
+}
+
 v8::Local<v8::Value> Transpiler::ExecTranspiler(const std::string &function,
                                                 v8::Local<v8::Value> args[],
                                                 const int &args_len) {
   v8::EscapableHandleScope handle_scope(isolate);
 
-  auto context = isolate->GetCurrentContext();
+  auto context = context_.Get(isolate);
   v8::Context::Scope context_scope(context);
 
   auto source = v8Str(isolate, transpiler_src);
