@@ -213,7 +213,7 @@ func openAppLog(path string, perm os.FileMode, maxSize int64, maxFiles int) (io.
 	}
 
 	// Open path for reading/writing, create if necessary.
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, perm)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_RDWR|os.O_CREATE, perm)
 	if err != nil {
 		return nil, err
 	}

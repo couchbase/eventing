@@ -661,6 +661,19 @@ func DeleteAppContent(appPath, checksumPath, appName string) error {
 	return nil
 }
 
+//Delete stale app fragments
+func DeleteStaleAppContent(appPath, appName string) error {
+	//Delete Apps Path
+	logPrefix := "util::DeleteStaleAppContent"
+	appPath += appName
+	appPath += "/"
+	if err := MetakvRecursiveDelete(appPath); err != nil {
+		logging.Errorf("%s MetakvRecursiveDelete failed for Apps appName: %s err: %v", logPrefix, appName, err)
+		return err
+	}
+	return nil
+}
+
 func GetHash(appCode string) string {
 	hash := md5.New()
 	hash.Write([]byte(appCode))
