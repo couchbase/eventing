@@ -6,7 +6,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             self.errorState = !ApplicationService.status.isErrorCodesLoaded();
             self.errorCode = 200;
-            self.showErrorAlert = self.showSuccessAlert = false;
+            self.showErrorAlert = self.showSuccessAlert = self.showWarningAlert = false;
             self.serverNodes = serverNodes;
             self.isEventingRunning = isEventingRunning;
             self.appList = ApplicationService.local.getAllApps();
@@ -148,7 +148,19 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         self.disableEditButton = false;
 
                         // Show an alert upon successful deployment.
-                        showSuccessAlert(`${app.appname} deployed successfully!`);
+                        var warnings = null;
+                        if (response.data && response.data.info) {
+                            var info = JSON.parse(response.data.info);
+                            if (info.warnings.length > 0) {
+                                warnings = info.warnings.join(". <br/>");
+                                showWarningAlert(warnings);
+                            }
+                        }
+                        if (warnings == null) {
+                            showSuccessAlert(`${app.appname} deployed successfully!`);
+                        } else {
+                            showSuccessAlert(`${app.appname} deployed with warnings.`);
+                        }
                     })
                     .catch(function(errResponse) {
                         if (errResponse.data && (errResponse.data.name === 'ERR_HANDLER_COMPILATION')) {
@@ -271,6 +283,15 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 self.showSuccessAlert = true;
                 $timeout(function() {
                     self.showSuccessAlert = false;
+                }, 4000);
+            }
+
+            // Utility function to show warning alert.
+            function showWarningAlert(message) {
+                self.warningMessage = message;
+                self.showWarningAlert = true;
+                $timeout(function() {
+                    self.showWarningAlert = false;
                 }, 4000);
             }
 

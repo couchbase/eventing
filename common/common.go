@@ -215,6 +215,8 @@ type CompileStatus struct {
 	Line           int    `json:"line_number"`
 	Column         int    `json:"column_number"`
 	Description    string `json:"description"`
+	Version        string `json:"version"`
+	Level          string `json:"level"`
 }
 
 // PlannerNodeVbMapping captures the vbucket distribution across all

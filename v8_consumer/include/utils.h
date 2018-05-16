@@ -51,6 +51,12 @@ struct Data {
   lcb_t meta_cb_instance;
 };
 
+// Code version of handler
+struct CodeVersion {
+  std::string version;
+  std::string level;
+};
+
 inline Data *UnwrapData(v8::Isolate *isolate) {
   return reinterpret_cast<Data *>(isolate->GetData(DATA_SLOT));
 }

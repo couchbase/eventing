@@ -129,6 +129,23 @@ func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeIn
 	fmt.Fprintf(w, string(response))
 }
 
+func (m *ServiceMgr) sendRuntimeInfo(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
+	if runtimeInfo.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, runtimeInfo)
+		return
+	}
+
+	response, err := json.Marshal(runtimeInfo)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
+		fmt.Fprintf(w, `{"error":"Failed to marshal error info, err: %v"}`, err)
+		return
+	}
+
+	fmt.Fprintf(w, string(response))
+}
+
 func (m *ServiceMgr) sendRuntimeInfoList(w http.ResponseWriter, runtimeInfoList []*runtimeInfo) {
 	response, err := json.Marshal(runtimeInfoList)
 	if err != nil {

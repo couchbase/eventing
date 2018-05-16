@@ -1093,7 +1093,7 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	info := m.savePrimaryStore(app)
-	m.sendErrorInfo(w, info)
+	m.sendRuntimeInfo(w, info)
 }
 
 func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
@@ -1245,8 +1245,29 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
+	var wInfo warningsInfo
+	wInfo.Status = "Stored application config in metakv"
+
+	switch strings.ToLower(compilationInfo.Level) {
+	case "dp":
+		msg := fmt.Sprintf("Handler '%v' uses Developer Preview features. Do not use in production environments", appName)
+		wInfo.Warnings = append(wInfo.Warnings, msg)
+
+	case "beta":
+		msg := fmt.Sprintf("Handler '%v' uses Beta features. Do not use in production environments", appName)
+		wInfo.Warnings = append(wInfo.Warnings, msg)
+	}
+
+	wData, mErr := json.Marshal(&wInfo)
+	if mErr != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("App: %s Failed to marshal warnings err: %v", appName, mErr)
+		return
+	}
+
 	info.Code = m.statusCodes.ok.Code
-	info.Info = "Stored application config in metakv"
+	info.Info = string(wData)
+
 	return
 }
 
@@ -1655,14 +1676,15 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// Save to temp store only if saving to primary store succeeds
-			if runtimeInfo := m.savePrimaryStore(app); runtimeInfo.Code == m.statusCodes.ok.Code {
+			runtimeInfo := m.savePrimaryStore(app)
+			if runtimeInfo.Code == m.statusCodes.ok.Code {
 				audit.Log(auditevent.SaveDraft, r, appName)
-
-				if runtimeInfo := m.saveTempStore(app); runtimeInfo.Code != m.statusCodes.ok.Code {
-					m.sendErrorInfo(w, runtimeInfo)
+				// Save to temp store only if saving to primary store succeeds
+				if tempInfo := m.saveTempStore(app); tempInfo.Code != m.statusCodes.ok.Code {
+					m.sendErrorInfo(w, tempInfo)
 					return
 				}
+				m.sendRuntimeInfo(w, runtimeInfo)
 			} else {
 				m.sendErrorInfo(w, runtimeInfo)
 			}
@@ -1911,13 +1933,13 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			app.Settings["processing_status"] = false
 		}
 
-		// Save to temp store only if saving to primary store succeeds
-		if info := m.savePrimaryStore(app); info.Code == m.statusCodes.ok.Code {
-			audit.Log(auditevent.SaveDraft, r, app.Name)
+		info := m.savePrimaryStore(app)
+		infoList = append(infoList, info)
 
+		// Save to temp store only if saving to primary store succeeds
+		if info.Code == m.statusCodes.ok.Code {
+			audit.Log(auditevent.SaveDraft, r, app.Name)
 			info := m.saveTempStore(app)
-			infoList = append(infoList, info)
-		} else {
 			infoList = append(infoList, info)
 		}
 	}

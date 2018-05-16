@@ -7,6 +7,11 @@
           <p>{{summaryCtrl.successMessage}}</p>
         </div>
       </div>
+      <div ng-show="summaryCtrl.showWarningAlert">
+        <div class="alert alert-warning">
+          <p>{{summaryCtrl.warningMessage}}</p>
+        </div>
+      </div>
       <div ng-show="summaryCtrl.showErrorAlert">
         <div class="alert alert-error">
           <p>{{summaryCtrl.errorMessage}}</p>

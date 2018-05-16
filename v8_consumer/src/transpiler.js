@@ -101,6 +101,7 @@ function isFuncCalled(methodName, code) {
     var methodExists = false;
     estraverse.traverse(ast, {
         enter: function(node) {
+            // todo: handle aliased functions, ex: var dt = docTimer
             if (!methodExists && /CallExpression/.test(node.type)) {
                 methodExists = node.callee.name === methodName;
             }
@@ -109,6 +110,34 @@ function isFuncCalled(methodName, code) {
 
     return methodExists;
 }
+
+// Gets compatability level of code. Returns [<release>, <ga/beta/dp>]
+function getCodeVersion(code) {
+    var versions = ["vulcan"], vp = 0;
+    var levels = ["ga", "beta", "dp"], lp = 0;
+
+    var ast = esprima.parse(code, {
+        attachComment: true,
+        sourceType: 'script'
+    });
+
+    estraverse.traverse(ast, {
+        // todo: handle aliased functions, ex: var cn = cronTimer
+        enter: function(node) {
+            if (/CallExpression/.test(node.type)) {
+                if (node.callee.name === 'docTimer'  && lp < 1) lp = 1;
+                if (node.callee.name === 'cronTimer' && lp < 1) lp = 1;
+                if (node.callee.name === 'curl'      && lp < 2) lp = 2;
+            }
+            else if (/NewExpression/.test(node.type)) {
+                if (node.callee.name === 'N1qlQuery' && lp < 1) lp = 1;
+            }
+        }
+    });
+
+    return [versions[vp], levels[lp]];
+}
+
 
 // Checks if the given statement is a valid JavaScript expression.
 function isJsExpression(stmt) {
