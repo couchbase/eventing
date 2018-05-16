@@ -59,7 +59,7 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "xattr_doc_timer_entry_prune_threshold", float64(100))
 
 	// Process related configuration
-	fillMissingDefault(settings, "breakpad_on", false)
+	fillMissingDefault(settings, "breakpad_on", true)
 
 	// Rebalance related configurations
 	fillMissingDefault(settings, "vb_ownership_giveup_routine_count", float64(3))

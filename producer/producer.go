@@ -202,28 +202,36 @@ func (p *Producer) Serve() {
 					return
 				}
 				p.initWorkerVbMap()
-
-				for _, eventingConsumer := range p.runningConsumers {
-					logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer",
-						logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
-					eventingConsumer.NotifyClusterChange()
-				}
-
+				func() {
+					p.RLock()
+					defer p.RUnlock()
+					for _, eventingConsumer := range p.runningConsumers {
+						logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer",
+							logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
+						eventingConsumer.NotifyClusterChange()
+					}
+				}()
 			case common.StopRebalanceCType:
-				for _, eventingConsumer := range p.runningConsumers {
-					logging.Infof("%s [%s:%d] Consumer: %s sent stop rebalance message from producer",
-						logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
-					eventingConsumer.NotifyRebalanceStop()
-				}
+				func() {
+					p.RLock()
+					defer p.RUnlock()
+					for _, eventingConsumer := range p.runningConsumers {
+						logging.Infof("%s [%s:%d] Consumer: %s sent stop rebalance message from producer",
+							logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
+						eventingConsumer.NotifyRebalanceStop()
+					}
+				}()
 			}
 
 		case <-p.notifySettingsChangeCh:
 			logging.Infof("%s [%s:%d] Notifying consumers about settings change", logPrefix, p.appName, p.LenRunningConsumers())
-
-			for _, eventingConsumer := range p.runningConsumers {
-				eventingConsumer.NotifySettingsChange()
-			}
-
+			func() {
+				p.RLock()
+				defer p.RUnlock()
+				for _, eventingConsumer := range p.runningConsumers {
+					eventingConsumer.NotifySettingsChange()
+				}
+			}()
 			settingsPath := metakvAppSettingsPath + p.app.AppName
 			sData, err := util.MetakvGet(settingsPath)
 			if err != nil {
@@ -248,13 +256,15 @@ func (p *Producer) Serve() {
 			// This routine cleans up everything apart from metadataBucketHandle,
 			// which would be needed to clean up metadata bucket
 			logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
-
-			for _, eventingConsumer := range p.runningConsumers {
-				p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[eventingConsumer])
-				delete(p.consumerSupervisorTokenMap, eventingConsumer)
-			}
-			p.runningConsumers = p.runningConsumers[:0]
-
+			func() {
+				p.Lock()
+				defer p.Unlock()
+				for _, eventingConsumer := range p.runningConsumers {
+					p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[eventingConsumer])
+					delete(p.consumerSupervisorTokenMap, eventingConsumer)
+				}
+				p.runningConsumers = nil
+			}()
 			p.workerNameConsumerMapRWMutex.Lock()
 			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
 			p.workerNameConsumerMapRWMutex.Unlock()
@@ -277,13 +287,15 @@ func (p *Producer) Serve() {
 
 		case <-p.stopProducerCh:
 			logging.Infof("%s [%s:%d] Explicitly asked to shutdown producer routine", logPrefix, p.appName, p.LenRunningConsumers())
-
-			for _, eventingConsumer := range p.runningConsumers {
-				p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[eventingConsumer])
-				delete(p.consumerSupervisorTokenMap, eventingConsumer)
-			}
-			p.runningConsumers = p.runningConsumers[:0]
-
+			func() {
+				p.Lock()
+				defer p.Unlock()
+				for _, eventingConsumer := range p.runningConsumers {
+					p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[eventingConsumer])
+					delete(p.consumerSupervisorTokenMap, eventingConsumer)
+				}
+				p.runningConsumers = nil
+			}()
 			p.workerNameConsumerMapRWMutex.Lock()
 			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
 			p.workerNameConsumerMapRWMutex.Unlock()
@@ -510,7 +522,7 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 		p.runningConsumers = append(p.runningConsumers[:indexToPurge],
 			p.runningConsumers[indexToPurge+1:]...)
 	} else {
-		p.runningConsumers = p.runningConsumers[:0]
+		p.runningConsumers = nil
 	}
 
 	serviceToken := p.consumerSupervisorTokenMap[c]

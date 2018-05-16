@@ -345,6 +345,8 @@ var getDeployedAppsCallback = func(args ...interface{}) error {
 
 // Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
 func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::getDeployedApps"
+
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
 	}
@@ -353,7 +355,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 
 	nodeAddrs, err := m.getActiveNodeAddrs()
 	if err != nil {
-		logging.Errorf("Failed to fetch active Eventing nodes, err: %v", err)
+		logging.Warnf("%s Failed to fetch active Eventing nodes, err: %v", logPrefix, err)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errActiveEventingNodes.Code))
 		fmt.Fprintf(w, "")
 		return
@@ -390,7 +392,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 
 	buf, err := json.Marshal(deployedApps)
 	if err != nil {
-		logging.Errorf("Failed to marshal list of deployed apps, err: %v", err)
+		logging.Errorf("%s Failed to marshal list of deployed apps, err: %v", logPrefix, err)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		fmt.Fprintf(w, "")
 		return
@@ -401,6 +403,8 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::getLocallyDeployedApps"
+
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
 	}
@@ -409,7 +413,7 @@ func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Reque
 
 	buf, err := json.Marshal(deployedApps)
 	if err != nil {
-		logging.Errorf("Failed to marshal list of deployed apps, err: %v", err)
+		logging.Errorf("%s Failed to marshal list of deployed apps, err: %v", logPrefix, err)
 		fmt.Fprintf(w, "")
 		return
 	}
@@ -525,17 +529,27 @@ func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.R
 
 // Reports aggregated rebalance progress from all Eventing nodes in the cluster
 func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::getAggRebalanceProgress"
+
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
 	}
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
-	aggProgress, _ := util.GetProgress("/getRebalanceProgress", m.eventingNodeAddrs)
+	logging.Infof("%s Going to query eventing nodes: %rs for rebalance progress",
+		logPrefix, m.eventingNodeAddrs)
+
+	aggProgress, errMap := util.GetProgress("/getRebalanceProgress", m.eventingNodeAddrs)
+	if len(errMap) > 0 {
+		logging.Errorf("%s Failed to get progress from all eventing nodes: %rs err: %rs",
+			logPrefix, m.eventingNodeAddrs, errMap)
+		return
+	}
 
 	buf, err := json.Marshal(aggProgress)
 	if err != nil {
-		logging.Errorf("Failed to unmarshal rebalance progress across all producers, err: %v", err)
+		logging.Errorf("%s Failed to unmarshal rebalance progress across all producers, err: %v", logPrefix, err)
 		return
 	}
 

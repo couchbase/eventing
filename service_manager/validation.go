@@ -39,19 +39,21 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 }
 
 func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
+	logPrefix := "ServiceMgr::validateAuth"
+
 	creds, err := cbauth.AuthWebCreds(r)
 	if err != nil || creds == nil {
-		logging.Warnf("Cannot authenticate request to %rs", r.URL)
+		logging.Warnf("%s Cannot authenticate request to %rs, err: %v creds: %ru", logPrefix, r.URL, err, creds)
 		w.WriteHeader(http.StatusUnauthorized)
 		return false
 	}
 	allowed, err := creds.IsAllowed(perm)
 	if err != nil || !allowed {
-		logging.Warnf("Cannot authorize request to %rs", r.URL)
+		logging.Warnf("%s Cannot authorize request to %rs", logPrefix, r.URL)
 		w.WriteHeader(http.StatusForbidden)
 		return false
 	}
-	logging.Debugf("Allowing access to %rs", r.URL)
+	logging.Debugf("%s Allowing access to %rs", logPrefix, r.URL)
 	return true
 }
 
