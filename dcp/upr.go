@@ -163,7 +163,7 @@ func (b *Bucket) StartDcpFeedOver(
 		logPrefix: fmt.Sprintf("DCP[%v]", name),
 	}
 	feed.numConnections = config["numConnections"].(int)
-	// feed.activeVbOnly = config["activeVbOnly"].(bool)
+	feed.activeVbOnly = config["activeVbOnly"].(bool)
 
 	feed.C = feed.output
 	if feed.connectToNodes(kvaddrs, opaque, flags, config) != nil {
