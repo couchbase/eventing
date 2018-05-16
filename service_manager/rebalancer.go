@@ -55,18 +55,23 @@ func (r *rebalancer) gatherProgress() {
 	// right after write op.
 	time.Sleep(10 * time.Second)
 
-	// Store the initial state of rebalance progress in metakv
-	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
-	if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
-		logging.Warnf(" %s Failed to capture cluster wide rebalance progress from all nodes, initProgress: %v errMap dump: %rm",
-			logPrefix, initProgress, errMap)
+	retryCounter := 0
 
-		util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
-		r.cb.done(fmt.Errorf("%s Failed to aggregate rebalance progress from all eventing nodes, err: %v", logPrefix, errMap), r.done)
-		return
-	} else if len(errMap) > 0 && len(r.keepNodes) > 1 {
-		logging.Warnf("%s Failed to capture cluster wide rebalance progress, initProgress: %v errMap dump: %rm",
-			logPrefix, initProgress, errMap)
+retryRebProgress:
+	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
+	if len(errMap) > 0 && len(r.keepNodes) > 1 {
+		logging.Warnf(" %s Failed to capture cluster wide rebalance progress from all nodes. Retry counter: %d initProgress: %v errMap dump: %rm",
+			logPrefix, retryCounter, initProgress, errMap)
+		retryCounter++
+
+		if retryCounter < 5 {
+			time.Sleep(time.Second)
+			goto retryRebProgress
+		} else {
+			util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
+			r.cb.done(fmt.Errorf("Failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
+			return
+		}
 	} else if len(errMap) == 1 && len(r.keepNodes) == 1 {
 		logging.Warnf("%s Failed to capture rebalance progress, initProgress: %v errMap dump: %rm",
 			logPrefix, initProgress, errMap)

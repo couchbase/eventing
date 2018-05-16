@@ -1,12 +1,14 @@
 package util
 
 import (
-	"github.com/couchbase/cbauth"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/couchbase/cbauth"
+	"github.com/couchbase/eventing/logging"
 )
 
 type Client struct {
@@ -25,30 +27,57 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 }
 
 func (c *Client) Get(url string) (resp *http.Response, err error) {
+	logPrefix := "Client::Get"
+
 	req, err := NewRequest("GET", url, nil)
 	if err != nil {
+		logging.Errorf("%s URL: %rs Encountered err: %v", logPrefix, url, err)
 		return nil, err
 	}
-	cbauth.SetRequestAuthVia(req, nil)
+
+	err = cbauth.SetRequestAuthVia(req, nil)
+	if err != nil {
+		logging.Errorf("%s URL: %rs Failed to set auth params, err: %v", logPrefix, url, err)
+		return nil, err
+	}
+
 	return c.Client.Do(req)
 }
 
 func (c *Client) Head(url string) (resp *http.Response, err error) {
+	logPrefix := "Client::Head"
+
 	req, err := NewRequest("HEAD", url, nil)
 	if err != nil {
+		logging.Errorf("%s URL: %rs Encountered err: %v", logPrefix, url, err)
 		return nil, err
 	}
-	cbauth.SetRequestAuthVia(req, nil)
+
+	err = cbauth.SetRequestAuthVia(req, nil)
+	if err != nil {
+		logging.Errorf("%s URL: %rs Failed to set auth params, err: %v", logPrefix, url, err)
+		return nil, err
+	}
+
 	return c.Client.Do(req)
 }
 
 func (c *Client) Post(url string, contentType string, body io.Reader) (resp *http.Response, err error) {
+	logPrefix := "Client::Post"
+
 	req, err := NewRequest("POST", url, body)
 	if err != nil {
+		logging.Errorf("%s URL: %rs Encountered err: %v", logPrefix, url, err)
 		return nil, err
 	}
 	req.Header.Set("Content-Type", contentType)
-	cbauth.SetRequestAuthVia(req, nil)
+
+	err = cbauth.SetRequestAuthVia(req, nil)
+	if err != nil {
+		logging.Errorf("%s URL: %rs Failed to set auth params, err: %v", logPrefix, url, err)
+		return nil, err
+	}
+
 	return c.Client.Do(req)
 }
 

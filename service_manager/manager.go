@@ -547,7 +547,7 @@ func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
 		}
 	}
 
-	logging.Infof("%s keepNodes from metakv: %v addrUUIDMap: %rm nodeAddrs: %rs",
+	logging.Debugf("%s keepNodes from metakv: %v addrUUIDMap: %rm nodeAddrs: %rs",
 		logPrefix, keepNodes, addrUUIDMap, nodeAddrs)
 
 	return nodeAddrs, nil
