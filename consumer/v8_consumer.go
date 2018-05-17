@@ -75,6 +75,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		iteratorRefreshCounter:          iteratorRefreshCounter,
 		hostDcpFeedRWMutex:              &sync.RWMutex{},
 		kvHostDcpFeedMap:                make(map[string]*couchbase.DcpFeed),
+		kvNodesRWMutex:                  &sync.RWMutex{},
 		lcbInstCapacity:                 hConfig.LcbInstCapacity,
 		logLevel:                        hConfig.LogLevel,
 		msgProcessedRWMutex:             &sync.RWMutex{},
@@ -236,8 +237,7 @@ func (c *Consumer) Serve() {
 		return
 	}
 
-	kvHostPorts := c.kvNodes
-	for _, kvHostPort := range kvHostPorts {
+	for _, kvHostPort := range c.getKvNodes() {
 		feedName = couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + kvHostPort + "_" + c.workerName)
 
 		c.hostDcpFeedRWMutex.Lock()
@@ -331,9 +331,10 @@ func (c *Consumer) HandleV8Worker() error {
 	}
 
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
-		c.kvNodes[0], c.producer.CfgData(), c.lcbInstCapacity,
+		c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)
+
 	logging.Infof("%s [%s:%s:%d] V8 worker init enable_recursive_mutation flag: %t",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
 
@@ -611,4 +612,14 @@ func (c *Consumer) getBuilder() *flatbuffers.Builder {
 func (c *Consumer) putBuilder(b *flatbuffers.Builder) {
 	b.Reset()
 	c.builderPool.Put(b)
+}
+
+func (c *Consumer) getKvNodes() []string {
+	c.kvNodesRWMutex.Lock()
+	defer c.kvNodesRWMutex.Unlock()
+
+	kvNodes := make([]string, len(c.kvNodes))
+	copy(kvNodes, c.kvNodes)
+
+	return kvNodes
 }

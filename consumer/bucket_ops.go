@@ -46,7 +46,7 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 
-	connStr := fmt.Sprintf("couchbase://%s", c.kvNodes[0])
+	connStr := fmt.Sprintf("couchbase://%s", c.getKvNodes()[0])
 	if util.IsIPv6() {
 		connStr += "?ipv6=allow"
 	}
@@ -79,7 +79,7 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 
-	connStr := fmt.Sprintf("couchbase://%s", c.kvNodes[0])
+	connStr := fmt.Sprintf("couchbase://%s", c.getKvNodes()[0])
 	if util.IsIPv6() {
 		connStr += "?ipv6=allow"
 	}

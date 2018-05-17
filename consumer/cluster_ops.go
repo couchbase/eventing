@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"fmt"
 	"net"
 	"sync/atomic"
 	"unsafe"
@@ -9,27 +8,6 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
-
-var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::getEventingNodesAddressesOpCallback"
-
-	c := args[0].(*Consumer)
-
-	hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
-
-	eventingNodeAddrs, err := util.EventingNodesAddresses(c.producer.Auth(), hostAddress)
-	if err != nil {
-		logging.Errorf("%s Failed to get all eventing nodes, err: %v", logPrefix, err)
-		return err
-	} else if len(eventingNodeAddrs) == 0 {
-		logging.Errorf("%s Count of eventing nodes reported is 0, unexpected", logPrefix)
-		return fmt.Errorf("eventing node count reported as 0")
-	} else {
-		logging.Infof("%s Got eventing nodes: %rs", logPrefix, fmt.Sprintf("%#v", eventingNodeAddrs))
-		c.eventingNodeAddrs = eventingNodeAddrs
-		return nil
-	}
-}
 
 var getEventingNodeAddrOpCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::getEventingNodeAddrOpCallback"
@@ -86,11 +64,20 @@ var getKvNodesFromVbMap = func(args ...interface{}) error {
 			kvNodes[kvNode] = struct{}{}
 		}
 
-		c.kvNodes = make([]string, 0)
+		func() {
+			c.kvNodesRWMutex.Lock()
+			defer c.kvNodesRWMutex.Unlock()
 
-		for node := range kvNodes {
-			c.kvNodes = append(c.kvNodes, node)
-		}
+			c.kvNodes = make([]string, 0)
+
+			for node := range kvNodes {
+				c.kvNodes = append(c.kvNodes, node)
+			}
+
+			logging.Infof("%s [%s:%s:%d] Bucket: %s kvNodes: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.bucket, c.kvNodes)
+		}()
+
 	}
 
 	return err
