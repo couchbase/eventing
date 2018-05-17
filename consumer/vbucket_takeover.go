@@ -438,7 +438,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		return common.ErrRetryTimeout
 	}
 
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startFeedFromKVNodesCallback, c, &b, vb, &dcpFeed, c.kvNodes)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startFeedFromKVNodesCallback, c, &b, vb, &dcpFeed, c.getKvNodes())
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return common.ErrRetryTimeout
@@ -590,7 +590,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	end := seqNos[int(vb)]
 
 	logging.Infof("%s [%s:%s:%d] vb: %v Going to start DCP feed from source bucket: %s start seq no: %d end seq no: %d KV nodes: %rs flog len: %d",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket, start, end, c.kvNodes, len(flogs))
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket, start, end, c.getKvNodes(), len(flogs))
 
 	if flog, ok := flogs[vb]; ok {
 		vbuuid, _, _ := flog.Latest()

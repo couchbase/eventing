@@ -1,8 +1,6 @@
 package consumer
 
 import (
-	"fmt"
-
 	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -62,16 +60,10 @@ func (c *Consumer) dcpEventsRemainingToProcess() error {
 		return nil
 	}
 
-	var eventsProcessed, seqNo, totalEvents uint64
-	subdocPath := "last_processed_seq_no"
+	var eventsProcessed, totalEvents uint64
 
 	for _, vbno := range vbsTohandle {
-		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vbno)
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getMetaOpCallback, c, vbKey, &seqNo, subdocPath)
-		if err == cm.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return cm.ErrRetryTimeout
-		}
+		seqNo := c.vbProcessingStats.getVbStat(uint16(vbno), "last_read_seq_no").(uint64)
 
 		if seqNos[int(vbno)] > seqNo {
 			c.statsRWMutex.Lock()

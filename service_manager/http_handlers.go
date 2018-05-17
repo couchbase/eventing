@@ -1039,7 +1039,7 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 	}
 
 	//Delete stale entry
-	err = util.DeleteAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName)
+	err = util.DeleteStaleAppContent(metakvTempAppsPath, appName)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppTs.Code
 		info.Info = fmt.Sprintf("Failed to clean up stale entry from TempStore: %v err: %v", appName, err)
@@ -1231,7 +1231,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	}
 
 	//Delete stale entry
-	err = util.DeleteAppContent(metakvAppsPath, metakvChecksumPath, appName)
+	err = util.DeleteStaleAppContent(metakvAppsPath, appName)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppPs.Code
 		info.Info = fmt.Sprintf("Failed to clean up stale entry for app: %v err: %v", appName, err)

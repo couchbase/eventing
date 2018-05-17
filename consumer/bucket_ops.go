@@ -46,7 +46,7 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 
-	connStr := fmt.Sprintf("couchbase://%s", c.kvNodes[0])
+	connStr := fmt.Sprintf("couchbase://%s", c.getKvNodes()[0])
 	if util.IsIPv6() {
 		connStr += "?ipv6=allow"
 	}
@@ -79,7 +79,7 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 
-	connStr := fmt.Sprintf("couchbase://%s", c.kvNodes[0])
+	connStr := fmt.Sprintf("couchbase://%s", c.getKvNodes()[0])
 	if util.IsIPv6() {
 		connStr += "?ipv6=allow"
 	}
@@ -231,35 +231,6 @@ var getOpCallback = func(args ...interface{}) error {
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
 	}
 
-	return err
-}
-
-var getMetaOpCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::getMetaOpCallback"
-
-	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
-	seqNo := args[2]
-	subdocPath := args[3].(string)
-
-	res, err := c.gocbMetaBucket.LookupIn(vbKey).GetEx(subdocPath, gocb.SubdocFlagNone).Execute()
-	if err == nil {
-		cErr := res.Content(subdocPath, seqNo)
-		if cErr != nil {
-			logging.Errorf("%s [%s:%s:%d] Key: %ru path: %ru reading contents from subdoc path failed, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, subdocPath, cErr)
-			return cErr
-		}
-
-		return nil
-	}
-
-	if err == gocb.ErrShutdown || gocb.IsKeyNotFoundError(err) {
-		return nil
-	}
-
-	logging.Errorf("%s [%s:%s:%d] Key: %ru path: %ru subdoc lookup failed, err: %v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, subdocPath, err)
 	return err
 }
 
