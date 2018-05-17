@@ -50,6 +50,7 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
 		updateStatsStopCh:      make(chan struct{}, 1),
 		uuid:                   uuid,
+		vbEventingNodeAssignRWMutex:  &sync.RWMutex{},
 		workerNameConsumerMap:        make(map[string]common.EventingConsumer),
 		workerNameConsumerMapRWMutex: &sync.RWMutex{},
 		workerVbMapRWMutex:           &sync.RWMutex{},
@@ -574,9 +575,10 @@ func (p *Producer) getKvNodeAddrs() []string {
 }
 
 func (p *Producer) getEventingNodeAssignedVbuckets(eventingNode string) []uint16 {
+	p.vbEventingNodeAssignRWMutex.RLock()
+	defer p.vbEventingNodeAssignRWMutex.RUnlock()
+
 	var vbnos []uint16
-	p.RLock()
-	defer p.RUnlock()
 	for vbno, node := range p.vbEventingNodeAssignMap {
 		if node == eventingNode {
 			vbnos = append(vbnos, vbno)

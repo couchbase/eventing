@@ -129,16 +129,21 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					}
 					c.vbsStreamClosedRWMutex.Unlock()
 
-					c.RLock()
+					var dcpStreamToClose *couchbase.DcpFeed
+					func() {
+						c.RLock()
+						dcpStreamToClose = c.vbDcpFeedMap[vb]
+						c.RUnlock()
+					}()
+
 					// TODO: Retry loop for dcp close stream as it could fail and additional verification checks.
 					// Additional check needed to verify if vbBlob.NewOwner is the expected owner
 					// as per the vbEventingNodesAssignMap.
-					err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
+					err := dcpStreamToClose.DcpCloseStream(vb, vb)
 					if err != nil {
 						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %v Failed to close dcp stream, err: %v",
 							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
 					}
-					c.RUnlock()
 
 					lastSeqNo := c.vbProcessingStats.getVbStat(uint16(vb), "last_read_seq_no").(uint64)
 					c.vbProcessingStats.updateVbStat(vb, "seq_no_after_close_stream", lastSeqNo)
