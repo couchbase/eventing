@@ -473,7 +473,11 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	if progress.VbsRemainingToShuffle == 0 {
+	if progress.VbsRemainingToShuffle > 0 {
+		m.statsWritten = false
+	}
+
+	if progress.VbsRemainingToShuffle == 0 && progress.VbsOwnedPerPlan == 0 && !m.statsWritten {
 		statsList := m.populateStats(true)
 		data, err := json.Marshal(statsList)
 		if err != nil {
@@ -481,6 +485,8 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		} else {
 			logging.Infof("%s No more vbucket remaining to shuffle. Stats dump: %v", logPrefix, string(data))
 		}
+
+		m.statsWritten = true
 	}
 
 	buf, err := json.Marshal(progress)

@@ -27,16 +27,17 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 	mu := &sync.RWMutex{}
 
 	mgr := &ServiceMgr{
-		mu: mu,
+		mu:      mu,
+		servers: make([]service.NodeID, 0),
 		state: state{
 			rebalanceID:   "",
 			rebalanceTask: nil,
 			rev:           0,
 			servers:       make([]service.NodeID, 0),
 		},
-		servers:      make([]service.NodeID, 0),
-		superSup:     superSup,
+		statsWritten: true,
 		stopTracerCh: make(chan struct{}, 1),
+		superSup:     superSup,
 	}
 
 	mgr.config.Store(config)

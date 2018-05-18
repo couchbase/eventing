@@ -66,6 +66,7 @@ type ServiceMgr struct {
 	keepNodeUUIDs     []string
 	keyFile           string
 	mu                *sync.RWMutex
+	statsWritten      bool
 	uuid              string
 
 	stopTracerCh chan struct{} // chan used to signal stopping of runtime.Trace
