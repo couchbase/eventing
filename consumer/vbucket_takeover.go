@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/gocb"
 )
 
+var errDcpFeedsClosed = errors.New("dcp feeds are closed")
 var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
 var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another worker on same node")
 var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")
@@ -223,6 +224,11 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 func (c *Consumer) vbsStateUpdate() {
 	logPrefix := "Consumer::vbsStateUpdate"
 
+	c.vbsStateUpdateRunning = true
+	defer func() {
+		c.vbsStateUpdateRunning = false
+	}()
+
 	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 
@@ -265,6 +271,12 @@ retryStreamUpdate:
 
 			defer wg.Done()
 			for _, vb := range vbsRemainingToOwn {
+				if c.dcpFeedsClosed {
+					logging.Infof("%s [%s:takeover_r_%d:%s:%d] Exiting vb ownership takeover routine, as dcpFeeds are closed",
+						logPrefix, c.workerName, i, c.tcpPort, c.Pid())
+					return
+				}
+
 				select {
 				case <-c.stopVbOwnerTakeoverCh:
 					logging.Infof("%s [%s:takeover_r_%d:%s:%d] Exiting vb ownership takeover routine, next vb: %d",
@@ -300,7 +312,7 @@ retryStreamUpdate:
 
 		// Retry logic in-case previous attempt to own/start dcp stream didn't succeed
 		// because some other node has already opened(or hasn't closed) the vb dcp stream
-		if len(c.vbsRemainingToOwn) > 0 {
+		if len(c.vbsRemainingToOwn) > 0 && !c.dcpFeedsClosed {
 			time.Sleep(dcpStreamRequestRetryInterval)
 			goto retryStreamUpdate
 		}

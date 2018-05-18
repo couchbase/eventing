@@ -162,7 +162,9 @@ type Consumer struct {
 	cleanupTimers            bool
 	compileInfo              *common.CompileStatus
 	dcpEventsRemaining       uint64
-	dcpFeedCancelChs         []chan struct{}
+	dcpFeedCancelChs         map[*couchbase.DcpFeed]chan struct{} // Access controlled by dcpFeedCancelChsRWMutex
+	dcpFeedCancelChsRWMutex  *sync.RWMutex
+	dcpFeedsClosed           bool
 	dcpFeedVbMap             map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
 	eventingAdminPort        string
 	eventingSSLPort          string
@@ -190,7 +192,8 @@ type Consumer struct {
 	vbsRemainingToClose      []uint16 // Access controlled by default lock
 	vbsRemainingToGiveUp     []uint16
 	vbsRemainingToOwn        []uint16
-	vbsRemainingToRestream   []uint16        // Access controlled by default lock
+	vbsRemainingToRestream   []uint16 // Access controlled by default lock
+	vbsStateUpdateRunning    bool
 	vbsStreamClosed          map[uint16]bool // Access controlled by vbsStreamClosedRWMutex
 	vbsStreamClosedRWMutex   *sync.RWMutex
 	vbStreamRequested        map[uint16]struct{} // Access controlled by vbsStreamRRWMutex

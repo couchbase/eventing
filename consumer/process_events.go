@@ -825,7 +825,11 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 		dcpFeed = c.kvHostDcpFeedMap[vbKvAddr]
 
 		cancelCh := make(chan struct{}, 1)
-		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
+
+		c.dcpFeedCancelChsRWMutex.Lock()
+		c.dcpFeedCancelChs[dcpFeed] = cancelCh
+		c.dcpFeedCancelChsRWMutex.Unlock()
+
 		c.addToAggChan(dcpFeed, cancelCh)
 
 		logging.Infof("%s [%s:%s:%d] vb: %d kvAddr: %v Started up new dcp feed",
@@ -844,6 +848,10 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 
 	logging.Infof("%s [%s:%s:%d] vb: %d DCP stream start vbKvAddr: %rs vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd)
+
+	if c.dcpFeedsClosed {
+		return errDcpFeedsClosed
+	}
 
 	err = dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 	if err != nil {
@@ -865,7 +873,13 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 			c.Unlock()
 		}
 
+		c.dcpFeedCancelChsRWMutex.Lock()
+		c.dcpFeedCancelChs[dcpFeed] <- struct{}{}
+		delete(c.dcpFeedCancelChs, dcpFeed)
+		c.dcpFeedCancelChsRWMutex.Unlock()
+
 		dcpFeed.Close()
+
 		c.hostDcpFeedRWMutex.Lock()
 		delete(c.kvHostDcpFeedMap, vbKvAddr)
 		c.hostDcpFeedRWMutex.Unlock()

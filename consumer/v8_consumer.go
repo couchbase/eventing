@@ -51,7 +51,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		cronTimerStopCh:                 make(chan struct{}, 1),
 		curlTimeout:                     hConfig.CurlTimeout,
 		dcpConfig:                       dcpConfig,
-		dcpFeedCancelChs:                make([]chan struct{}, 0),
+		dcpFeedCancelChs:                make(map[*couchbase.DcpFeed]chan struct{}),
+		dcpFeedCancelChsRWMutex:         &sync.RWMutex{},
 		dcpFeedVbMap:                    make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:               hConfig.StreamBoundary,
 		debuggerStarted:                 false,
@@ -248,7 +249,9 @@ func (c *Consumer) Serve() {
 		}
 
 		cancelCh := make(chan struct{}, 1)
-		c.dcpFeedCancelChs = append(c.dcpFeedCancelChs, cancelCh)
+		c.dcpFeedCancelChsRWMutex.Lock()
+		c.dcpFeedCancelChs[c.kvHostDcpFeedMap[kvHostPort]] = cancelCh
+		c.dcpFeedCancelChsRWMutex.Unlock()
 
 		c.addToAggChan(c.kvHostDcpFeedMap[kvHostPort], cancelCh)
 		c.hostDcpFeedRWMutex.Unlock()
@@ -267,6 +270,10 @@ func (c *Consumer) Serve() {
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
+	}
+
+	if !c.vbsStateUpdateRunning {
+		go c.vbsStateUpdate()
 	}
 
 	logging.Infof("%s [%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
@@ -474,6 +481,8 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop plasma store, checkpointing, cron timer processing routines",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
+	c.dcpFeedsClosed = true
+
 	if c.kvHostDcpFeedMap != nil {
 		for _, dcpFeed := range c.kvHostDcpFeedMap {
 			if dcpFeed != nil {
@@ -485,6 +494,7 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Closed all dcpfeed handles",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
+	c.dcpFeedCancelChsRWMutex.RLock()
 	if c.dcpFeedCancelChs != nil {
 		for _, cancelCh := range c.dcpFeedCancelChs {
 			if cancelCh != nil {
@@ -492,6 +502,7 @@ func (c *Consumer) Stop() {
 			}
 		}
 	}
+	c.dcpFeedCancelChsRWMutex.RUnlock()
 
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop dcp event forwarding routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
