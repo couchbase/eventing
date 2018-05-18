@@ -132,7 +132,8 @@ type Producer struct {
 	workerNameConsumerMapRWMutex *sync.RWMutex
 
 	// vbucket to eventing node assignment
-	vbEventingNodeAssignMap map[uint16]string
+	vbEventingNodeAssignMap     map[uint16]string // Access controlled by vbEventingNodeAssignRWMutex
+	vbEventingNodeAssignRWMutex *sync.RWMutex
 
 	plasmaMemQuota int64
 	vbPlasmaStore  *plasma.Plasma

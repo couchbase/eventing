@@ -104,6 +104,8 @@ struct CompilationInfo {
   int32_t line_no;
   int32_t col_no;
   std::string description;
+  std::string version;
+  std::string level;
 };
 
 // Data type for managing iterators.
@@ -212,6 +214,7 @@ public:
                            const std::string &src_filename);
   std::string TranspileQuery(const std::string &query,
                              const NamedParamsInfo &info);
+  CodeVersion GetCodeVersion(const std::string &handler_code);
   bool IsTimerCalled(const std::string &handler_code);
   bool IsJsExpression(const std::string &str);
   static void LogCompilationInfo(const CompilationInfo &info);

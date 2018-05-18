@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/gocb"
 )
 
+var errDcpFeedsClosed = errors.New("dcp feeds are closed")
 var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
 var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another worker on same node")
 var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")
@@ -129,16 +130,21 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					}
 					c.vbsStreamClosedRWMutex.Unlock()
 
-					c.RLock()
+					var dcpStreamToClose *couchbase.DcpFeed
+					func() {
+						c.RLock()
+						dcpStreamToClose = c.vbDcpFeedMap[vb]
+						c.RUnlock()
+					}()
+
 					// TODO: Retry loop for dcp close stream as it could fail and additional verification checks.
 					// Additional check needed to verify if vbBlob.NewOwner is the expected owner
 					// as per the vbEventingNodesAssignMap.
-					err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
+					err := dcpStreamToClose.DcpCloseStream(vb, vb)
 					if err != nil {
 						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %v Failed to close dcp stream, err: %v",
 							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
 					}
-					c.RUnlock()
 
 					lastSeqNo := c.vbProcessingStats.getVbStat(uint16(vb), "last_read_seq_no").(uint64)
 					c.vbProcessingStats.updateVbStat(vb, "seq_no_after_close_stream", lastSeqNo)
@@ -218,6 +224,11 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 func (c *Consumer) vbsStateUpdate() {
 	logPrefix := "Consumer::vbsStateUpdate"
 
+	c.vbsStateUpdateRunning = true
+	defer func() {
+		c.vbsStateUpdateRunning = false
+	}()
+
 	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 
@@ -260,6 +271,12 @@ retryStreamUpdate:
 
 			defer wg.Done()
 			for _, vb := range vbsRemainingToOwn {
+				if c.dcpFeedsClosed {
+					logging.Infof("%s [%s:takeover_r_%d:%s:%d] Exiting vb ownership takeover routine, as dcpFeeds are closed",
+						logPrefix, c.workerName, i, c.tcpPort, c.Pid())
+					return
+				}
+
 				select {
 				case <-c.stopVbOwnerTakeoverCh:
 					logging.Infof("%s [%s:takeover_r_%d:%s:%d] Exiting vb ownership takeover routine, next vb: %d",
@@ -295,7 +312,7 @@ retryStreamUpdate:
 
 		// Retry logic in-case previous attempt to own/start dcp stream didn't succeed
 		// because some other node has already opened(or hasn't closed) the vb dcp stream
-		if len(c.vbsRemainingToOwn) > 0 {
+		if len(c.vbsRemainingToOwn) > 0 && !c.dcpFeedsClosed {
 			time.Sleep(dcpStreamRequestRetryInterval)
 			goto retryStreamUpdate
 		}

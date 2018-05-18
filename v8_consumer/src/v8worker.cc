@@ -1204,13 +1204,15 @@ std::string V8Worker::CompileHandler(std::string handler) {
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
+  auto info_obj = v8::Object::New(isolate_);
+
+  CompilationInfo info;
 
   try {
     auto transpiler = UnwrapData(isolate_)->transpiler;
-    auto info = transpiler->Compile(handler);
+    info = transpiler->Compile(handler);
     Transpiler::LogCompilationInfo(info);
 
-    auto info_obj = v8::Object::New(isolate_);
     info_obj->Set(v8Str(isolate_, "language"), v8Str(isolate_, info.language));
     info_obj->Set(v8Str(isolate_, "compile_success"),
                   v8::Boolean::New(isolate_, info.compile_success));
@@ -1222,13 +1224,49 @@ std::string V8Worker::CompileHandler(std::string handler) {
                   v8::Int32::New(isolate_, info.col_no));
     info_obj->Set(v8Str(isolate_, "description"),
                   v8Str(isolate_, info.description));
-
-    return JSONStringify(isolate_, info_obj);
   } catch (const char *e) {
     LOG(logError) << e << std::endl;
+    return "";
   }
 
-  return "";
+  if (info.compile_success) {
+    try {
+      auto ident = IdentifyVersion(handler);
+      info_obj->Set(v8Str(isolate_, "version"),
+                    v8Str(isolate_, ident.version));
+      info_obj->Set(v8Str(isolate_, "level"),
+                    v8Str(isolate_, ident.level));
+    } catch (const char *e) {
+      LOG(logError) << "Unable to identify version, ignoring:" << e << std::endl;
+    }
+  }
+
+  return JSONStringify(isolate_, info_obj);
+}
+
+CodeVersion V8Worker::IdentifyVersion(std::string handler) {
+  v8::Locker locker(GetIsolate());
+  v8::Isolate::Scope isolate_scope(GetIsolate());
+  v8::HandleScope handle_scope(GetIsolate());
+
+  auto context = context_.Get(isolate_);
+  v8::Context::Scope context_scope(context);
+
+  auto jsify_info = Jsify(handler);
+  if (jsify_info.code != kOK) {
+    throw "Jsify failed when trying to identify version";
+  }
+
+  auto transpiler = UnwrapData(isolate_)->transpiler;
+  auto script_to_execute =
+    transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
+                          app_name_ + ".map.json", settings->host_addr,
+                          settings->eventing_port) + '\n';
+
+  script_to_execute += std::string((const char *)js_builtin) + '\n';
+
+  auto ver = transpiler->GetCodeVersion(script_to_execute);
+  return ver;
 }
 
 void V8Worker::GetDocTimerMessages(std::vector<uv_buf_t> &messages,

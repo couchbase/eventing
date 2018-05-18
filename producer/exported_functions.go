@@ -161,8 +161,6 @@ func (p *Producer) GetHandlerCode() string {
 
 // GetNsServerPort return rest port for ns_server
 func (p *Producer) GetNsServerPort() string {
-	p.RLock()
-	defer p.RUnlock()
 	return p.nsServerPort
 }
 
@@ -222,8 +220,6 @@ func (p *Producer) NotifyInit() {
 
 // NsServerHostPort returns host:port combination for ns_server instance
 func (p *Producer) NsServerHostPort() string {
-	p.RLock()
-	defer p.RUnlock()
 	return p.nsServerHostPort
 }
 
@@ -299,7 +295,14 @@ func (p *Producer) SignalCheckpointBlobCleanup() error {
 
 // VbEventingNodeAssignMap returns the vbucket to evening node mapping
 func (p *Producer) VbEventingNodeAssignMap() map[uint16]string {
-	return p.vbEventingNodeAssignMap
+	p.vbEventingNodeAssignRWMutex.RLock()
+	defer p.vbEventingNodeAssignRWMutex.RUnlock()
+
+	vbEventingNodeAssignMap := make(map[uint16]string)
+	for vb, node := range p.vbEventingNodeAssignMap {
+		vbEventingNodeAssignMap[vb] = node
+	}
+	return vbEventingNodeAssignMap
 }
 
 // WorkerVbMap returns mapping of active consumers to vbuckets they should handle as per static planner

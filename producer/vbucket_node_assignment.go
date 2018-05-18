@@ -93,8 +93,8 @@ func (p *Producer) vbEventingNodeAssign() error {
 	var vbNo int
 	var startVb uint16
 
-	p.Lock()
-	defer p.Unlock()
+	p.vbEventingNodeAssignRWMutex.Lock()
+	defer p.vbEventingNodeAssignRWMutex.Unlock()
 	p.vbEventingNodeAssignMap = make(map[uint16]string)
 
 	vbCountPerNode := make([]int, len(eventingNodeAddrs))
@@ -148,6 +148,8 @@ func (p *Producer) initWorkerVbMap() {
 	// vbuckets the current eventing node is responsible to handle
 	var vbucketsToHandle []uint16
 
+	p.vbEventingNodeAssignRWMutex.RLock()
+	defer p.vbEventingNodeAssignRWMutex.RUnlock()
 	for k, v := range p.vbEventingNodeAssignMap {
 		if v == eventingNodeAddr {
 			vbucketsToHandle = append(vbucketsToHandle, k)

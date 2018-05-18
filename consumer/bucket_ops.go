@@ -24,6 +24,12 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 		return common.ErrRetryTimeout
 	}
 
+	if err == errDcpFeedsClosed {
+		logging.Infof("%s [%s:%s:%d] vb: %d vbTakeover request, msg: %v. Bailing out from retry",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+		return nil
+	}
+
 	if err != nil {
 		logging.Infof("%s [%s:%s:%d] vb: %d vbTakeover request, msg: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)

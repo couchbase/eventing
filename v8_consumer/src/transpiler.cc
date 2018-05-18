@@ -164,6 +164,17 @@ std::string Transpiler::TranspileQuery(const std::string &query,
   return *utf8result;
 }
 
+CodeVersion Transpiler::GetCodeVersion(const std::string &handler_code) {
+  v8::HandleScope handle_scope(isolate);
+  v8::Local<v8::Value> args[1];
+  args[0] = v8Str(isolate, handler_code);
+  auto res = ExecTranspiler("getCodeVersion", args, 1);
+  auto ans = v8::Local<v8::Array>::Cast(res);
+  v8::String::Utf8Value version(ans->Get(0));
+  v8::String::Utf8Value level(ans->Get(1));
+  return CodeVersion{*version, *level};
+}
+
 bool Transpiler::IsTimerCalled(const std::string &handler_code) {
   v8::HandleScope handle_scope(isolate);
   v8::Local<v8::Value> args[1];

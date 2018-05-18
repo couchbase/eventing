@@ -39,18 +39,18 @@
         BEGIN previous_state;
         js_code += "*/";
     }
+<MLCMT>\r\n |
 <MLCMT>\n   |
-<MLCMT>\r   |
-<MLCMT>\r\n {js_code += std::string(yytext);}
+<MLCMT>\r   {js_code += std::string(yytext);}
 "//"	{
         /* Single-line comment */
         previous_state = YYSTATE;
         BEGIN SLCMT;
         js_code += "//";
     }
+<SLCMT>\r\n   |
 <SLCMT>\n   |
-<SLCMT>\r   |
-<SLCMT>\r\n {
+<SLCMT>\r {
         BEGIN previous_state;
         js_code += std::string(yytext);
     }
@@ -154,10 +154,10 @@
                 break;
         }
     }
-<N1QL>. |
+<N1QL>\r\n  |
 <N1QL>\n    |
 <N1QL>\r    |
-<N1QL>\r\n  {
+<N1QL>. {
         std::string str(yytext);
         if(lex_op == kCommentN1QL) {
             n1ql_query += str;
@@ -168,10 +168,10 @@
         }
     }
 <MLCMT,SLCMT,DSTR,SSTR,TSTR>.	{js_code += std::string(yytext);}
-.   |
+\r\n    |
 \n  |
 \r  |
-\r\n    {js_code += std::string(yytext);}
+.   {js_code += std::string(yytext);}
 %%
 // Parses the given input string.
 int TransformSource(const char* input, std::string *output, Pos *last_pos) {

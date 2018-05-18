@@ -32,6 +32,11 @@ type runtimeInfo struct {
 	Info string `json:"info"`
 }
 
+type warningsInfo struct {
+	Status   string   `json:"status"`
+	Warnings []string `json:"warnings"`
+}
+
 type statusCodes struct {
 	ok                     statusBase
 	errDelAppPs            statusBase

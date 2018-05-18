@@ -206,6 +206,7 @@ public:
   void SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
                      int32_t partition);
   std::string CompileHandler(std::string handler);
+  CodeVersion IdentifyVersion(std::string handler);
 
   void StartDebugger();
   void StopDebugger();
