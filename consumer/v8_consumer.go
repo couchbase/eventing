@@ -273,6 +273,8 @@ func (c *Consumer) Serve() {
 	}
 
 	if !c.vbsStateUpdateRunning {
+		logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		go c.vbsStateUpdate()
 	}
 

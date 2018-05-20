@@ -417,6 +417,12 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob) error {
 	logPrefix := "Consumer::updateVbOwnerAndStartDCPStream"
 
+	if c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+		logging.Infof("%s [%s:%s:%d] vb: %v already owned by Eventing.Consumer, skipping",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+		return nil
+	}
+
 	c.vbsStreamRRWMutex.Lock()
 	if _, ok := c.vbStreamRequested[vb]; !ok {
 		c.vbStreamRequested[vb] = struct{}{}

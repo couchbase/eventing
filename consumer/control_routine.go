@@ -38,7 +38,12 @@ func (c *Consumer) controlRoutine() error {
 			c.isRebalanceOngoing = true
 			logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
-			go c.vbsStateUpdate()
+
+			if !c.vbsStateUpdateRunning {
+				logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine",
+					logPrefix, c.workerName, c.tcpPort, c.Pid())
+				go c.vbsStateUpdate()
+			}
 
 		case <-c.signalSettingsChangeCh:
 

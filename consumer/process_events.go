@@ -853,6 +853,19 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 		return errDcpFeedsClosed
 	}
 
+	c.vbsStreamRRWMutex.Lock()
+	if _, ok := c.vbStreamRequested[vbno]; !ok {
+		c.vbStreamRequested[vbno] = struct{}{}
+		logging.Infof("%s [%s:%s:%d] vb: %v Going to make DcpRequestStream call",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
+	} else {
+		c.vbsStreamRRWMutex.Unlock()
+		logging.Infof("%s [%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
+		return nil
+	}
+	c.vbsStreamRRWMutex.Unlock()
+
 	err = dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
