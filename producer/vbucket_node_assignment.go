@@ -131,6 +131,19 @@ func (p *Producer) vbEventingNodeAssign() error {
 			startVb++
 		}
 	}
+
+	vbEventingNodeAssignMap := make(map[uint16]string)
+	for vb, node := range p.vbEventingNodeAssignMap {
+		vbEventingNodeAssignMap[vb] = node
+	}
+
+	p.RLock()
+	defer p.RUnlock()
+
+	for _, consumer := range p.runningConsumers {
+		consumer.VbEventingNodeAssignMapUpdate(vbEventingNodeAssignMap)
+	}
+
 	return nil
 }
 
@@ -196,6 +209,18 @@ func (p *Producer) initWorkerVbMap() {
 		logging.Infof("%s [%s:%d] eventingAddr: %rs worker name: %v assigned vbs len: %d dump: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), eventingNodeAddr, workerName,
 			len(p.workerVbucketMap[workerName]), util.Condense(p.workerVbucketMap[workerName]))
+	}
+
+	workerVbucketMap := make(map[string][]uint16)
+	for workerName, assignedVbs := range p.workerVbucketMap {
+		workerVbucketMap[workerName] = assignedVbs
+	}
+
+	p.RLock()
+	defer p.RUnlock()
+
+	for _, consumer := range p.runningConsumers {
+		consumer.WorkerVbMapUpdate(workerVbucketMap)
 	}
 }
 

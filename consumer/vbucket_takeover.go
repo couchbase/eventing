@@ -400,13 +400,17 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 }
 
 func (c *Consumer) checkIfCurrentNodeShouldOwnVb(vb uint16) bool {
-	vbEventingNodeAssignMap := c.producer.VbEventingNodeAssignMap()
-	return vbEventingNodeAssignMap[vb] == c.HostPortAddr()
+	c.vbEventingNodeAssignRWMutex.RLock()
+	defer c.vbEventingNodeAssignRWMutex.RUnlock()
+
+	return c.vbEventingNodeAssignMap[vb] == c.HostPortAddr()
 }
 
 func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
-	workerVbMap := c.producer.WorkerVbMap()
-	for _, v := range workerVbMap[c.workerName] {
+	c.workerVbucketMapRWMutex.Lock()
+	defer c.workerVbucketMapRWMutex.Unlock()
+
+	for _, v := range c.workerVbucketMap[c.workerName] {
 		if vb == v {
 			return true
 		}
@@ -422,19 +426,6 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		return nil
 	}
-
-	c.vbsStreamRRWMutex.Lock()
-	if _, ok := c.vbStreamRequested[vb]; !ok {
-		c.vbStreamRequested[vb] = struct{}{}
-		logging.Infof("%s [%s:%s:%d] vb: %v Going to make DcpRequestStream call",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-	} else {
-		c.vbsStreamRRWMutex.Unlock()
-		logging.Infof("%s [%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-		return nil
-	}
-	c.vbsStreamRRWMutex.Unlock()
 
 	seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil {
@@ -612,7 +603,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	flags := uint32(0)
 	end := seqNos[int(vb)]
 
-	logging.Infof("%s [%s:%s:%d] vb: %v Going to start DCP feed from source bucket: %s start seq no: %d end seq no: %d KV nodes: %rs flog len: %d",
+	logging.Infof("%s [%s:%s:%d] vb: %v Going to start backfill DCP feed from source bucket: %s start seq no: %d end seq no: %d KV nodes: %rs flog len: %d",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket, start, end, c.getKvNodes(), len(flogs))
 
 	if flog, ok := flogs[vb]; ok {
@@ -690,8 +681,10 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 }
 
 func (c *Consumer) checkIfConsumerShouldOwnVb(vb uint16, workerName string) bool {
-	workerVbMap := c.producer.WorkerVbMap()
-	for _, v := range workerVbMap[workerName] {
+	c.workerVbucketMapRWMutex.RLock()
+	defer c.workerVbucketMapRWMutex.RUnlock()
+
+	for _, v := range c.workerVbucketMap[workerName] {
 		if vb == v {
 			return true
 		}
@@ -700,8 +693,10 @@ func (c *Consumer) checkIfConsumerShouldOwnVb(vb uint16, workerName string) bool
 }
 
 func (c *Consumer) getConsumerForGivenVbucket(vb uint16) string {
-	workerVbMap := c.producer.WorkerVbMap()
-	for workerName, vbs := range workerVbMap {
+	c.workerVbucketMapRWMutex.RLock()
+	defer c.workerVbucketMapRWMutex.RUnlock()
+
+	for workerName, vbs := range c.workerVbucketMap {
 		for _, v := range vbs {
 			if vb == v {
 				return workerName
@@ -722,9 +717,12 @@ func (c *Consumer) checkIfVbAlreadyOwnedByCurrConsumer(vb uint16) bool {
 }
 
 func (c *Consumer) getVbRemainingToOwn() []uint16 {
+	c.vbEventingNodeAssignRWMutex.RLock()
+	defer c.vbEventingNodeAssignRWMutex.RUnlock()
+
 	var vbsRemainingToOwn []uint16
 
-	for vb := range c.producer.VbEventingNodeAssignMap() {
+	for vb := range c.vbEventingNodeAssignMap {
 
 		if (c.vbProcessingStats.getVbStat(vb, "node_uuid") != c.NodeUUID() ||
 			c.vbProcessingStats.getVbStat(vb, "assigned_worker") != c.ConsumerName()) &&
@@ -741,9 +739,12 @@ func (c *Consumer) getVbRemainingToOwn() []uint16 {
 
 // Returns the list of vbs that a given consumer should own as per the producer's plan
 func (c *Consumer) getVbsOwned() []uint16 {
+	c.vbEventingNodeAssignRWMutex.RLock()
+	defer c.vbEventingNodeAssignRWMutex.RUnlock()
+
 	var vbsOwned []uint16
 
-	for vb, v := range c.producer.VbEventingNodeAssignMap() {
+	for vb, v := range c.vbEventingNodeAssignMap {
 		if v == c.HostPortAddr() && c.checkIfCurrentNodeShouldOwnVb(vb) &&
 			c.checkIfConsumerShouldOwnVb(vb, c.ConsumerName()) {
 
@@ -784,8 +785,10 @@ func (c *Consumer) verifyVbsCurrentlyOwned(vbsToMigrate []uint16) []uint16 {
 }
 
 func (c *Consumer) vbsToHandle() []uint16 {
-	workerVbMap := c.producer.WorkerVbMap()
-	return workerVbMap[c.ConsumerName()]
+	c.workerVbucketMapRWMutex.RLock()
+	defer c.workerVbucketMapRWMutex.RUnlock()
+
+	return c.workerVbucketMap[c.ConsumerName()]
 }
 
 func (c *Consumer) doCleanupForPreviouslyOwnedVbs() error {

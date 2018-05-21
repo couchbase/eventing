@@ -25,7 +25,8 @@ import (
 func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, rConfig *common.RebalanceConfig,
 	index int, uuid string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	dcpConfig map[string]interface{}, p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
-	iteratorRefreshCounter, numVbuckets int, retryCount *int64) *Consumer {
+	iteratorRefreshCounter, numVbuckets int, retryCount *int64, vbEventingNodeAssignMap map[uint16]string,
+	workerVbucketMap map[string][]uint16) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -123,6 +124,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbnos:                           vbnos,
 		updateStatsStopCh:               make(chan struct{}, 1),
 		vbDcpEventsRemaining:            make(map[int]int64),
+		vbEventingNodeAssignMap:         vbEventingNodeAssignMap,
+		vbEventingNodeAssignRWMutex:     &sync.RWMutex{},
 		vbOwnershipGiveUpRoutineCount:   rConfig.VBOwnershipGiveUpRoutineCount,
 		vbOwnershipTakeoverRoutineCount: rConfig.VBOwnershipTakeoverRoutineCount,
 		vbPlasmaStore:                   vbPlasmaStore,
@@ -137,6 +140,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
 		workerQueueCap:                  hConfig.WorkerQueueCap,
 		workerQueueMemCap:               hConfig.WorkerQueueMemCap,
+		workerVbucketMap:                workerVbucketMap,
+		workerVbucketMapRWMutex:         &sync.RWMutex{},
 		xattrEntryPruneThreshold:        hConfig.XattrEntryPruneThreshold,
 	}
 
@@ -252,6 +257,9 @@ func (c *Consumer) Serve() {
 		c.dcpFeedCancelChsRWMutex.Lock()
 		c.dcpFeedCancelChs[c.kvHostDcpFeedMap[kvHostPort]] = cancelCh
 		c.dcpFeedCancelChsRWMutex.Unlock()
+
+		logging.Infof("%s [%s:%s:%d] vbKvAddr: %s Spawned aggChan routine",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), kvHostPort)
 
 		c.addToAggChan(c.kvHostDcpFeedMap[kvHostPort], cancelCh)
 		c.hostDcpFeedRWMutex.Unlock()
