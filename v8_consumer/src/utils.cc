@@ -347,8 +347,12 @@ ParseInfo UnflattenParseInfo(std::unordered_map<std::string, std::string> &kv) {
   return info;
 }
 
-bool isRetriable(lcb_error_t error) {
-  if (LCB_EIFTMP(error))
-    return true;
-  return false;
+bool IsRetriable(lcb_error_t error) {
+  return static_cast<bool>(LCB_EIFTMP(error));
+}
+
+bool IsTerminatingRetriable(bool retry) { return retry; }
+
+bool IsExecutionTerminating(v8::Isolate *isolate) {
+  return isolate->IsExecutionTerminating();
 }

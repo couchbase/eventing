@@ -25,35 +25,35 @@ public:
   Queue &operator=(const Queue &) = delete;
 
   T Pop() {
-    std::unique_lock<std::mutex> lk(mut);
-    while (data_queue.empty()) {
-      data_cond.wait(lk);
+    std::unique_lock<std::mutex> lk(mut_);
+    while (data_queue_.empty()) {
+      data_cond_.wait(lk);
     }
-    auto value = data_queue.front();
-    queue_size -= value.GetSize();
-    data_queue.pop();
-    entry_count--;
+    auto value = data_queue_.front();
+    queue_size_ -= value.GetSize();
+    data_queue_.pop();
+    entry_count_--;
     return value;
   }
 
   void Push(const T &item) {
-    std::unique_lock<std::mutex> lk(mut);
-    data_queue.push(item);
-    queue_size += item.GetSize();
-    entry_count++;
+    std::unique_lock<std::mutex> lk(mut_);
+    data_queue_.push(item);
+    queue_size_ += item.GetSize();
+    entry_count_++;
     lk.unlock();
-    data_cond.notify_one();
+    data_cond_.notify_one();
   }
 
-  int64_t Count() { return entry_count; }
-  std::size_t Size() { return queue_size; }
+  int64_t Count() { return entry_count_; }
+  std::size_t Size() { return queue_size_; }
 
 private:
-  std::queue<T> data_queue;
-  std::mutex mut;
-  std::condition_variable data_cond;
-  std::atomic<std::int64_t> entry_count = {0};
-  std::atomic<std::size_t> queue_size = {0};
+  std::queue<T> data_queue_;
+  std::mutex mut_;
+  std::condition_variable data_cond_;
+  std::atomic<std::int64_t> entry_count_ = {0};
+  std::atomic<std::size_t> queue_size_ = {0};
 };
 
 #endif

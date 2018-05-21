@@ -11,9 +11,11 @@
 
 #include "utils.h"
 
-CURLClient::CURLClient() : headers(nullptr) { curl_handle = curl_easy_init(); }
+CURLClient::CURLClient() : headers_(nullptr) {
+  curl_handle_ = curl_easy_init();
+}
 
-CURLClient::~CURLClient() { curl_easy_cleanup(curl_handle); }
+CURLClient::~CURLClient() { curl_easy_cleanup(curl_handle_); }
 
 // Callback gets invoked for every chunk of body data that arrives
 size_t CURLClient::BodyCallback(void *buffer, size_t size, size_t nmemb,
@@ -28,7 +30,7 @@ size_t CURLClient::BodyCallback(void *buffer, size_t size, size_t nmemb,
 std::string CURLClient::Decode(const std::string &encoded_str) {
   int n_decode;
   auto decoded_str_ptr =
-      curl_easy_unescape(curl_handle, encoded_str.c_str(),
+      curl_easy_unescape(curl_handle_, encoded_str.c_str(),
                          static_cast<int>(encoded_str.length()), &n_decode);
   std::string decoded_str(decoded_str_ptr, decoded_str_ptr + n_decode);
   curl_free(decoded_str_ptr);
@@ -81,115 +83,116 @@ CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
                                   const std::string &body,
                                   const std::string &usr,
                                   const std::string &key) {
-  std::lock_guard<std::mutex> lock(curl_handle_lck);
+  std::lock_guard<std::mutex> lock(curl_handle_lck_);
   CURLResponse response;
 
-  code = curl_easy_setopt(curl_handle, CURLOPT_URL, url.c_str());
-  if (code != CURLE_OK) {
+  code_ = curl_easy_setopt(curl_handle_, CURLOPT_URL, url.c_str());
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response =
-        "Unable to set URL: " + std::string(curl_easy_strerror(code));
+        "Unable to set URL: " + std::string(curl_easy_strerror(code_));
     return response;
   }
 
   for (const auto &header : header_list) {
-    headers = curl_slist_append(headers, header.c_str());
+    headers_ = curl_slist_append(headers_, header.c_str());
   }
 
-  code = curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
-  if (code != CURLE_OK) {
+  code_ = curl_easy_setopt(curl_handle_, CURLOPT_HTTPHEADER, headers_);
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response = "Unable to do set HTTP header(s): " +
-                        std::string(curl_easy_strerror(code));
+                        std::string(curl_easy_strerror(code_));
     return response;
   }
 
-  code = curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, body.c_str());
-  if (code != CURLE_OK) {
+  code_ = curl_easy_setopt(curl_handle_, CURLOPT_POSTFIELDS, body.c_str());
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response =
-        "Unable to set POST body: " + std::string(curl_easy_strerror(code));
+        "Unable to set POST body: " + std::string(curl_easy_strerror(code_));
     return response;
   }
 
-  code = curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION,
-                          CURLClient::BodyCallback);
-  if (code != CURLE_OK) {
+  code_ = curl_easy_setopt(curl_handle_, CURLOPT_WRITEFUNCTION,
+                           CURLClient::BodyCallback);
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response = "Unable to set body callback function: " +
-                        std::string(curl_easy_strerror(code));
+                        std::string(curl_easy_strerror(code_));
     return response;
   }
 
-  code = curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION,
-                          CURLClient::HeaderCallback);
-  if (code != CURLE_OK) {
+  code_ = curl_easy_setopt(curl_handle_, CURLOPT_HEADERFUNCTION,
+                           CURLClient::HeaderCallback);
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response = "Unable to set header callback function: " +
-                        std::string(curl_easy_strerror(code));
+                        std::string(curl_easy_strerror(code_));
     return response;
   }
 
-  code = curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA,
-                          (void *)&response.headers);
-  if (code != CURLE_OK) {
+  code_ = curl_easy_setopt(curl_handle_, CURLOPT_HEADERDATA,
+                           (void *)&response.headers);
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response = "Unable to set cookie for headers: " +
-                        std::string(curl_easy_strerror(code));
+                        std::string(curl_easy_strerror(code_));
     return response;
   }
 
-  code = curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA,
-                          (void *)&response.response);
-  if (code != CURLE_OK) {
+  code_ = curl_easy_setopt(curl_handle_, CURLOPT_WRITEDATA,
+                           (void *)&response.response);
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response = "Unable to set cookie for body: " +
-                        std::string(curl_easy_strerror(code));
+                        std::string(curl_easy_strerror(code_));
     return response;
   }
 
-  code = curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-  if (code != CURLE_OK) {
+  code_ =
+      curl_easy_setopt(curl_handle_, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response =
-        "Unable to set user agent: " + std::string(curl_easy_strerror(code));
+        "Unable to set user agent: " + std::string(curl_easy_strerror(code_));
     return response;
   }
 
-  code = curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 30L);
-  if (code != CURLE_OK) {
+  code_ = curl_easy_setopt(curl_handle_, CURLOPT_TIMEOUT, 30L);
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response = "Unable to set timeout";
     return response;
   }
 
-  code = curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
-  if (code != CURLE_OK) {
+  code_ = curl_easy_setopt(curl_handle_, CURLOPT_SSL_VERIFYPEER, 0L);
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response = "Unable to turn off SSL peer verification";
     return response;
   }
 
-  code = curl_easy_setopt(curl_handle, CURLOPT_USERNAME, usr.c_str());
-  if (code != CURLE_OK) {
+  code_ = curl_easy_setopt(curl_handle_, CURLOPT_USERNAME, usr.c_str());
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response = "Unable to set username";
     return response;
   }
 
-  code = curl_easy_setopt(curl_handle, CURLOPT_PASSWORD, key.c_str());
-  if (code != CURLE_OK) {
+  code_ = curl_easy_setopt(curl_handle_, CURLOPT_PASSWORD, key.c_str());
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response = "Unable to set password";
     return response;
   }
 
   response.is_error = false;
-  code = curl_easy_perform(curl_handle);
-  if (code != CURLE_OK) {
+  code_ = curl_easy_perform(curl_handle_);
+  if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response =
-        "Unable to do HTTP POST: " + std::string(curl_easy_strerror(code));
+        "Unable to do HTTP POST: " + std::string(curl_easy_strerror(code_));
     return response;
   }
 
@@ -201,18 +204,18 @@ Communicator::Communicator(const std::string &host_ip,
                            const std::string &key, bool ssl) {
   std::string base_url = (ssl ? "https://" : "http://") +
                          JoinHostPort(Localhost(false), host_port);
-  parse_query_url = base_url + "/parseQuery";
-  get_creds_url = base_url + "/getCreds";
-  get_named_params_url = base_url + "/getNamedParams";
-  lo_usr = usr;
-  lo_key = key;
+  parse_query_url_ = base_url + "/parseQuery";
+  get_creds_url_ = base_url + "/getCreds";
+  get_named_params_url_ = base_url + "/getNamedParams";
+  lo_usr_ = usr;
+  lo_key_ = key;
 }
 
 CredsInfo Communicator::ExtractCredentials(const std::string &encoded_str) {
   CredsInfo info;
   info.is_valid = false;
 
-  auto kv_info = curl.ExtractKV(encoded_str);
+  auto kv_info = curl_.ExtractKV(encoded_str);
   if (!kv_info.is_valid) {
     info.msg = kv_info.msg;
     return info;
@@ -228,7 +231,7 @@ NamedParamsInfo
 Communicator::ExtractNamedParams(const std::string &encoded_str) {
   NamedParamsInfo info;
 
-  auto kv_info = curl.ExtractKV(encoded_str);
+  auto kv_info = curl_.ExtractKV(encoded_str);
   if (!kv_info.is_valid) {
     info.p_info.is_valid = false;
     info.p_info.info = kv_info.msg;
@@ -244,7 +247,7 @@ Communicator::ExtractNamedParams(const std::string &encoded_str) {
 }
 
 ParseInfo Communicator::ExtractParseInfo(const std::string &encoded_str) {
-  auto kv_info = curl.ExtractKV(encoded_str);
+  auto kv_info = curl_.ExtractKV(encoded_str);
   if (!kv_info.is_valid) {
     ParseInfo info;
     info.is_valid = false;
@@ -256,8 +259,8 @@ ParseInfo Communicator::ExtractParseInfo(const std::string &encoded_str) {
 }
 
 CredsInfo Communicator::GetCreds(const std::string &endpoint) {
-  auto response = curl.HTTPPost({"Content-Type: text/plain"}, get_creds_url,
-                                endpoint, lo_usr, lo_key);
+  auto response = curl_.HTTPPost({"Content-Type: text/plain"}, get_creds_url_,
+                                 endpoint, lo_usr_, lo_key_);
 
   CredsInfo info;
   info.is_valid = false;
@@ -286,8 +289,8 @@ CredsInfo Communicator::GetCreds(const std::string &endpoint) {
 
 CredsInfo Communicator::GetCredsCached(const std::string &endpoint) {
   auto now = time(NULL);
-  auto find = creds_cache.find(endpoint);
-  if ((find != creds_cache.end()) && (find->second.time_fetched >= now - 2)) {
+  auto find = creds_cache_.find(endpoint);
+  if ((find != creds_cache_.end()) && (find->second.time_fetched >= now - 2)) {
     return find->second;
   }
 
@@ -296,13 +299,14 @@ CredsInfo Communicator::GetCredsCached(const std::string &endpoint) {
 
   auto credentials = GetCreds(endpoint);
   credentials.time_fetched = now;
-  creds_cache[endpoint] = credentials;
+  creds_cache_[endpoint] = credentials;
   return credentials;
 }
 
 NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
-  auto response = curl.HTTPPost({"Content-Type: text/plain"},
-                                get_named_params_url, query, lo_usr, lo_key);
+  auto response =
+      curl_.HTTPPost({"Content-Type: text/plain"}, get_named_params_url_, query,
+                     lo_usr_, lo_key_);
 
   NamedParamsInfo info;
   info.p_info.is_valid = false;
@@ -332,8 +336,8 @@ NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
 }
 
 ParseInfo Communicator::ParseQuery(const std::string &query) {
-  auto response = curl.HTTPPost({"Content-Type: text/plain"}, parse_query_url,
-                                query, lo_usr, lo_key);
+  auto response = curl_.HTTPPost({"Content-Type: text/plain"}, parse_query_url_,
+                                 query, lo_usr_, lo_key_);
 
   ParseInfo info;
   info.is_valid = false;
@@ -363,4 +367,4 @@ ParseInfo Communicator::ParseQuery(const std::string &query) {
   return ExtractParseInfo(response.response);
 }
 
-void Communicator::Refresh() { creds_cache.clear(); }
+void Communicator::Refresh() { creds_cache_.clear(); }

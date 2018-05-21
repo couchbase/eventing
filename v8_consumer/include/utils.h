@@ -17,6 +17,7 @@
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 #include <libplatform/libplatform.h>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <unistd.h>
@@ -136,6 +137,8 @@ std::string GetTimestampNow();
 ParseInfo UnflattenParseInfo(std::unordered_map<std::string, std::string> &kv);
 
 std::string EventingVer();
-bool isRetriable(lcb_error_t error);
+bool IsRetriable(lcb_error_t error);
+bool IsTerminatingRetriable(bool retry);
+bool IsExecutionTerminating(v8::Isolate *isolate);
 
 #endif

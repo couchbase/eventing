@@ -86,14 +86,14 @@ static void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
 
 Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
                const char *alias, bool block_mutation)
-    : block_mutation(block_mutation), bucket_name(bname), endpoint(ep),
-      bucket_alias(alias), worker(w) {
+    : block_mutation_(block_mutation), bucket_name_(bname), endpoint_(ep),
+      bucket_alias_(alias), worker_(w) {
   isolate_ = w->GetIsolate();
   context_.Reset(isolate_, w->context_);
 
   auto init_success = true;
   auto connstr =
-      "couchbase://" + endpoint + "/" + bucket_name + "?select_bucket=true";
+      "couchbase://" + endpoint_ + "/" + bucket_name_ + "?select_bucket=true";
   if (IsIPv6()) {
     connstr += "&ipv6=allow";
   }
@@ -108,7 +108,7 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
   crst.v.v3.connstr = connstr.c_str();
   crst.v.v3.type = LCB_TYPE_BUCKET;
 
-  lcb_create(&bucket_lcb_obj, &crst);
+  lcb_create(&bucket_lcb_obj_, &crst);
 
   auto auth = lcbauth_new();
   auto err = lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
@@ -123,29 +123,29 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
     init_success = false;
   }
 
-  lcb_set_auth(bucket_lcb_obj, auth);
+  lcb_set_auth(bucket_lcb_obj_, auth);
 
-  err = lcb_connect(bucket_lcb_obj);
+  err = lcb_connect(bucket_lcb_obj_);
   if (err != LCB_SUCCESS) {
     LOG(logError) << "Bucket: Unable to connect to bucket" << std::endl;
     init_success = false;
   }
 
-  err = lcb_wait(bucket_lcb_obj);
+  err = lcb_wait(bucket_lcb_obj_);
   if (err != LCB_SUCCESS) {
     LOG(logError) << "Bucket: Unable to schedule call for connect" << std::endl;
     init_success = false;
   }
 
-  lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_GET, get_callback);
-  lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_STORE, set_callback);
-  lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_SDMUTATE,
+  lcb_install_callback3(bucket_lcb_obj_, LCB_CALLBACK_GET, get_callback);
+  lcb_install_callback3(bucket_lcb_obj_, LCB_CALLBACK_STORE, set_callback);
+  lcb_install_callback3(bucket_lcb_obj_, LCB_CALLBACK_SDMUTATE,
                         sdmutate_callback);
-  lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_REMOVE, del_callback);
+  lcb_install_callback3(bucket_lcb_obj_, LCB_CALLBACK_REMOVE, del_callback);
 
   lcb_U32 lcb_timeout = 2500000; // 2.5s
-  err =
-      lcb_cntl(bucket_lcb_obj, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
+  err = lcb_cntl(bucket_lcb_obj_, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT,
+                 &lcb_timeout);
   if (err != LCB_SUCCESS) {
     init_success = false;
     LOG(logError) << "Bucket: Unable to set timeout for bucket ops"
@@ -162,7 +162,7 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
 }
 
 Bucket::~Bucket() {
-  lcb_destroy(bucket_lcb_obj);
+  lcb_destroy(bucket_lcb_obj_);
   context_.Reset();
 }
 
@@ -193,8 +193,8 @@ v8::Local<v8::Object> Bucket::WrapBucketMap() {
     return handle_scope.Escape(result);
   }
 
-  auto bucket_lcb_obj_ptr = v8::External::New(isolate_, &bucket_lcb_obj);
-  auto block_mutation_ptr = v8::External::New(isolate_, &block_mutation);
+  auto bucket_lcb_obj_ptr = v8::External::New(isolate_, &bucket_lcb_obj_);
+  auto block_mutation_ptr = v8::External::New(isolate_, &block_mutation_);
 
   result->SetInternalField(LCB_INST_FIELD_NO, bucket_lcb_obj_ptr);
   result->SetInternalField(BLOCK_MUTATION_FIELD_NO, block_mutation_ptr);
@@ -209,12 +209,13 @@ bool Bucket::InstallMaps() {
   auto context = v8::Local<v8::Context>::New(isolate_, context_);
 
   LOG(logInfo) << "Bucket: Registering handler for bucket_alias: "
-               << bucket_alias << " bucket_name: " << bucket_name << std::endl;
+               << bucket_alias_ << " bucket_name: " << bucket_name_
+               << std::endl;
 
   auto global = context->Global();
   auto install_maps_status = false;
 
-  TO(global->Set(context, v8Str(isolate_, bucket_alias.c_str()), bucket_obj),
+  TO(global->Set(context, v8Str(isolate_, bucket_alias_.c_str()), bucket_obj),
      &install_maps_status);
   return install_maps_status;
 }
@@ -245,7 +246,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   lcb_CMDGET gcmd = {0};
   LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
   lcb_sched_enter(*bucket_lcb_obj_ptr);
-  auto err = RetryWithFixedBackoff(5, 200, isRetriable, lcb_get3,
+  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_get3,
                                    *bucket_lcb_obj_ptr, &result, &gcmd);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_GET: "
@@ -257,7 +258,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   lcb_sched_leave(*bucket_lcb_obj_ptr);
 
   err =
-      RetryWithFixedBackoff(5, 200, isRetriable, lcb_wait, *bucket_lcb_obj_ptr);
+      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_GET: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
@@ -327,7 +328,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       lcb_CMDGET gcmd = {0};
       LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
       lcb_sched_enter(*bucket_lcb_obj_ptr);
-      auto err = RetryWithFixedBackoff(5, 200, isRetriable, lcb_get3,
+      auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_get3,
                                        *bucket_lcb_obj_ptr, &gres, &gcmd);
       if (err != LCB_SUCCESS) {
         LOG(logTrace)
@@ -336,7 +337,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       }
 
       lcb_sched_leave(*bucket_lcb_obj_ptr);
-      err = RetryWithFixedBackoff(5, 200, isRetriable, lcb_wait,
+      err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait,
                                   *bucket_lcb_obj_ptr);
       if (err != LCB_SUCCESS) {
         LOG(logTrace) << "Bucket: Unable to schedule call to get key for "
@@ -412,14 +413,14 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
       mcmd.cas = gres.cas;
 
-      err = RetryWithFixedBackoff(5, 200, isRetriable, lcb_subdoc3,
+      err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_subdoc3,
                                   *bucket_lcb_obj_ptr, &sres, &mcmd);
       if (err != LCB_SUCCESS) {
         LOG(logTrace) << "Bucket: Unable to set subdoc op for setting macro"
                       << std::endl;
       }
 
-      err = RetryWithFixedBackoff(5, 200, isRetriable, lcb_wait,
+      err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait,
                                   *bucket_lcb_obj_ptr);
       if (err != LCB_SUCCESS) {
         LOG(logTrace)
@@ -462,7 +463,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     scmd.flags = 0x2000000;
 
     lcb_sched_enter(*bucket_lcb_obj_ptr);
-    auto err = RetryWithFixedBackoff(5, 200, isRetriable, lcb_store3,
+    auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_store3,
                                      *bucket_lcb_obj_ptr, &sres, &scmd);
     if (err != LCB_SUCCESS) {
       LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
@@ -472,7 +473,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     }
 
     lcb_sched_leave(*bucket_lcb_obj_ptr);
-    err = RetryWithFixedBackoff(5, 200, isRetriable, lcb_wait,
+    err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait,
                                 *bucket_lcb_obj_ptr);
     if (err != LCB_SUCCESS) {
       LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
@@ -526,7 +527,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   LCB_CMD_SET_KEY(&rcmd, key.c_str(), key.length());
 
   lcb_sched_enter(*bucket_lcb_obj_ptr);
-  auto err = RetryWithFixedBackoff(5, 200, isRetriable, lcb_remove3,
+  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_remove3,
                                    *bucket_lcb_obj_ptr, &result, &rcmd);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_REMOVE: "
@@ -537,7 +538,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
 
   lcb_sched_leave(*bucket_lcb_obj_ptr);
   err =
-      RetryWithFixedBackoff(5, 200, isRetriable, lcb_wait, *bucket_lcb_obj_ptr);
+      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;

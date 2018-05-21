@@ -77,10 +77,10 @@ private:
   static size_t HeaderCallback(char *buffer, size_t size, size_t nitems,
                                void *cookie);
 
-  CURLcode code;
-  CURL *curl_handle;
-  std::mutex curl_handle_lck;
-  struct curl_slist *headers;
+  CURLcode code_;
+  CURL *curl_handle_;
+  std::mutex curl_handle_lck_;
+  struct curl_slist *headers_;
 };
 
 // Channel to communicate to eventing-producer through CURL
@@ -100,13 +100,13 @@ private:
   NamedParamsInfo ExtractNamedParams(const std::string &encoded_str);
   ParseInfo ExtractParseInfo(const std::string &encoded_str);
 
-  std::unordered_map<std::string, CredsInfo> creds_cache;
-  CURLClient curl;
-  std::string get_creds_url;
-  std::string get_named_params_url;
-  std::string lo_key;
-  std::string lo_usr;
-  std::string parse_query_url;
+  std::unordered_map<std::string, CredsInfo> creds_cache_;
+  CURLClient curl_;
+  std::string get_creds_url_;
+  std::string get_named_params_url_;
+  std::string lo_key_;
+  std::string lo_usr_;
+  std::string parse_query_url_;
 };
 
 #endif

@@ -10,12 +10,12 @@
 // permissions and limitations under the License.
 
 #include "v8worker.h"
-#include "../../gen/js/builtin.h"
 #include "bucket.h"
 #include "parse_deployment.h"
+#include "retry_util.h"
 #include "utils.h"
 
-#define BUFSIZE 100
+#include "../../gen/js/builtin.h"
 
 bool debugger_started = false;
 bool enable_recursive_mutation = false;
@@ -229,14 +229,14 @@ void startDebuggerFlag(bool started) {
 
 V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    server_settings_t *server_settings)
-    : app_name_(h_config->app_name), settings(server_settings),
+    : app_name_(h_config->app_name), settings_(server_settings),
       platform_(platform) {
   enable_recursive_mutation = h_config->enable_recursive_mutation;
   curl_timeout = h_config->curl_timeout;
-  histogram = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
+  histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
 
   for (int i = 0; i < NUM_VBUCKETS; i++) {
-    vb_seq[i] = atomic_ptr_t(new std::atomic<int64_t>(0));
+    vb_seq_[i] = atomic_ptr_t(new std::atomic<int64_t>(0));
   }
 
   v8::Isolate::CreateParams create_params;
@@ -248,9 +248,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::HandleScope handle_scope(isolate_);
 
-  isolate_->SetData(DATA_SLOT, &data);
+  isolate_->SetData(DATA_SLOT, &data_);
   isolate_->SetCaptureStackTraceForUncaughtExceptions(true);
-  data.v8worker = this;
+  data_.v8worker = this;
 
   curl_global_init(CURL_GLOBAL_ALL);
   CURL *curl = curl_easy_init();
@@ -261,33 +261,33 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   auto global = v8::ObjectTemplate::New(isolate_);
   v8::TryCatch try_catch;
 
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "curl"),
-              v8::FunctionTemplate::New(GetIsolate(), Curl));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "log"),
-              v8::FunctionTemplate::New(GetIsolate(), Log));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "docTimer"),
-              v8::FunctionTemplate::New(GetIsolate(), CreateDocTimer));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "cronTimer"),
-              v8::FunctionTemplate::New(GetIsolate(), CreateCronTimer));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "iter"),
-              v8::FunctionTemplate::New(GetIsolate(), IterFunction));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "stopIter"),
-              v8::FunctionTemplate::New(GetIsolate(), StopIterFunction));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "execQuery"),
-              v8::FunctionTemplate::New(GetIsolate(), ExecQueryFunction));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "getReturnValue"),
-              v8::FunctionTemplate::New(GetIsolate(), GetReturnValueFunction));
+  global->Set(v8::String::NewFromUtf8(isolate_, "curl"),
+              v8::FunctionTemplate::New(isolate_, Curl));
+  global->Set(v8::String::NewFromUtf8(isolate_, "log"),
+              v8::FunctionTemplate::New(isolate_, Log));
+  global->Set(v8::String::NewFromUtf8(isolate_, "docTimer"),
+              v8::FunctionTemplate::New(isolate_, CreateDocTimer));
+  global->Set(v8::String::NewFromUtf8(isolate_, "cronTimer"),
+              v8::FunctionTemplate::New(isolate_, CreateCronTimer));
+  global->Set(v8::String::NewFromUtf8(isolate_, "iter"),
+              v8::FunctionTemplate::New(isolate_, IterFunction));
+  global->Set(v8::String::NewFromUtf8(isolate_, "stopIter"),
+              v8::FunctionTemplate::New(isolate_, StopIterFunction));
+  global->Set(v8::String::NewFromUtf8(isolate_, "execQuery"),
+              v8::FunctionTemplate::New(isolate_, ExecQueryFunction));
+  global->Set(v8::String::NewFromUtf8(isolate_, "getReturnValue"),
+              v8::FunctionTemplate::New(isolate_, GetReturnValueFunction));
 
   if (try_catch.HasCaught()) {
     LOG(logError) << "Exception logged:"
-                  << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+                  << ExceptionString(isolate_, &try_catch) << std::endl;
   }
 
-  auto context = v8::Context::New(GetIsolate(), nullptr, global);
-  context_.Reset(GetIsolate(), context);
-  js_exception = new JsException(isolate_);
-  data.js_exception = js_exception;
-  data.cron_timers_per_doc = h_config->cron_timers_per_doc;
+  auto context = v8::Context::New(isolate_, nullptr, global);
+  context_.Reset(isolate_, context);
+  js_exception_ = new JsException(isolate_);
+  data_.js_exception = js_exception_;
+  data_.cron_timers_per_doc = h_config->cron_timers_per_doc;
 
   auto ssl = false;
   auto port = server_settings->eventing_port;
@@ -304,22 +304,22 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   }*/
 
   auto key = GetLocalKey();
-  data.comm = new Communicator(server_settings->host_addr, port, key.first,
-                               key.second, ssl);
+  data_.comm = new Communicator(server_settings->host_addr, port, key.first,
+                                key.second, ssl);
 
-  data.transpiler = new Transpiler(isolate_, GetTranspilerSrc());
-  data.fuzz_offset = h_config->fuzz_offset;
+  data_.transpiler = new Transpiler(isolate_, GetTranspilerSrc());
+  data_.fuzz_offset = h_config->fuzz_offset;
 
-  execute_start_time = Time::now();
+  execute_start_time_ = Time::now();
 
   deployment_config *config = ParseDeployment(h_config->dep_cfg.c_str());
 
-  cb_source_bucket.assign(config->source_bucket);
+  cb_source_bucket_.assign(config->source_bucket);
 
   Bucket *bucket_handle = nullptr;
-  execute_flag = false;
-  shutdown_terminator = false;
-  max_task_duration = SECS_TO_NS * h_config->execution_timeout;
+  execute_flag_ = false;
+  shutdown_terminator_ = false;
+  max_task_duration_ = SECS_TO_NS * h_config->execution_timeout;
 
   if (!h_config->skip_lcb_bootstrap) {
     for (auto it = config->component_configs.begin();
@@ -332,10 +332,10 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
               config->component_configs["buckets"][bucket_alias][0];
 
           bucket_handle = new Bucket(
-              this, bucket_name.c_str(), settings->kv_host_port.c_str(),
-              bucket_alias.c_str(), cb_source_bucket == bucket_name);
+              this, bucket_name.c_str(), settings_->kv_host_port.c_str(),
+              bucket_alias.c_str(), cb_source_bucket_ == bucket_name);
 
-          bucket_handles.push_back(bucket_handle);
+          bucket_handles_.push_back(bucket_handle);
         }
       }
     }
@@ -343,11 +343,11 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: "
                << h_config->app_name
-               << " curr_host: " << RS(settings->host_addr)
+               << " curr_host: " << RS(settings_->host_addr)
                << " cron_timers_per_doc: " << h_config->cron_timers_per_doc
-               << " curr_eventing_port: " << RS(settings->eventing_port)
-               << " curr_eventing_sslport: " << RS(settings->eventing_sslport)
-               << " kv_host_port: " << RS(settings->kv_host_port)
+               << " curr_eventing_port: " << RS(settings_->eventing_port)
+               << " curr_eventing_sslport: " << RS(settings_->eventing_sslport)
+               << " kv_host_port: " << RS(settings_->kv_host_port)
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
                << " fuzz offset: " << h_config->fuzz_offset
@@ -355,38 +355,38 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " curl_timeout: " << curl_timeout
                << " version: " << EventingVer() << std::endl;
 
-  connstr = "couchbase://" + settings->kv_host_port + "/" + cb_source_bucket +
-            "?select_bucket=true";
-  meta_connstr = "couchbase://" + settings->kv_host_port + "/" +
-                 config->metadata_bucket + "?select_bucket=true";
+  connstr_ = "couchbase://" + settings_->kv_host_port + "/" +
+             cb_source_bucket_ + "?select_bucket=true";
+  meta_connstr_ = "couchbase://" + settings_->kv_host_port + "/" +
+                  config->metadata_bucket + "?select_bucket=true";
 
   if (IsIPv6()) {
-    connstr += "&ipv6=allow";
-    meta_connstr += "&ipv6=allow";
+    connstr_ += "&ipv6=allow";
+    meta_connstr_ += "&ipv6=allow";
   }
 
   if (!h_config->skip_lcb_bootstrap) {
-    conn_pool = new ConnectionPool(isolate_, h_config->lcb_inst_capacity,
-                                   settings->kv_host_port, cb_source_bucket);
+    conn_pool_ = new ConnectionPool(isolate_, h_config->lcb_inst_capacity,
+                                    settings_->kv_host_port, cb_source_bucket_);
   }
-  src_path = settings->eventing_dir + "/" + app_name_ + ".t.js";
+  src_path_ = settings_->eventing_dir + "/" + app_name_ + ".t.js";
 
   delete config;
 
-  this->doc_timer_queue = new Queue<doc_timer_msg_t>();
-  this->worker_queue = new Queue<worker_msg_t>();
+  this->doc_timer_queue_ = new Queue<doc_timer_msg_t>();
+  this->worker_queue_ = new Queue<worker_msg_t>();
 
   std::thread r_thr(&V8Worker::RouteMessage, this);
-  processing_thr = std::move(r_thr);
+  processing_thr_ = std::move(r_thr);
 }
 
 V8Worker::~V8Worker() {
-  if (checkpointing_thr.joinable()) {
-    checkpointing_thr.join();
+  if (checkpointing_thr_.joinable()) {
+    checkpointing_thr_.join();
   }
 
-  if (processing_thr.joinable()) {
-    processing_thr.join();
+  if (processing_thr_.joinable()) {
+    processing_thr_.join();
   }
 
   auto data = UnwrapData(isolate_);
@@ -397,14 +397,14 @@ V8Worker::~V8Worker() {
   context_.Reset();
   on_update_.Reset();
   on_delete_.Reset();
-  delete conn_pool;
-  delete n1ql_handle;
-  delete settings;
-  delete histogram;
-  delete js_exception;
+  delete conn_pool_;
+  delete n1ql_handle_;
+  delete settings_;
+  delete histogram_;
+  delete js_exception_;
 }
 
-// TODO : Use to v8::MaybeLocal types once MB-29560 is resolved
+// TODO : Use v8::MaybeLocal types once MB-29560 is resolved
 // Re-compile and execute handler code for debugger
 bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
                             int args_len) {
@@ -412,7 +412,7 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
   v8::TryCatch try_catch(isolate_);
 
   // Need to construct origin for source-map to apply.
-  auto origin_v8_str = v8Str(isolate_, src_path);
+  auto origin_v8_str = v8Str(isolate_, src_path_);
   v8::ScriptOrigin origin(origin_v8_str);
   auto context = context_.Get(isolate_);
   auto source = v8Str(isolate_, script_to_execute_);
@@ -435,9 +435,13 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
       auto func_v8_str = v8::String::NewFromUtf8(isolate_, func_name);
       auto func_ref = context->Global()->Get(func_v8_str);
       auto func = v8::Local<v8::Function>::Cast(func_ref);
+      RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                            IsTerminatingRetriable, IsExecutionTerminating,
+                            isolate_);
+
       func->Call(v8::Null(isolate_), args_len, args);
       if (try_catch.HasCaught()) {
-        agent->FatalException(try_catch.Exception(), try_catch.Message());
+        agent_->FatalException(try_catch.Exception(), try_catch.Message());
       }
 
       return true;
@@ -446,10 +450,10 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
 }
 
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
-  LOG(logInfo) << "Eventing dir: " << RS(settings->eventing_dir) << std::endl;
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
+  LOG(logInfo) << "Eventing dir: " << RS(settings_->eventing_dir) << std::endl;
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
@@ -473,14 +477,14 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     return jsify_info.code;
   }
 
-  n1ql_handle = new N1QL(conn_pool, isolate_);
-  UnwrapData(isolate_)->n1ql_handle = n1ql_handle;
+  n1ql_handle_ = new N1QL(conn_pool_, isolate_);
+  UnwrapData(isolate_)->n1ql_handle = n1ql_handle_;
 
   auto transpiler = UnwrapData(isolate_)->transpiler;
   script_to_execute =
       transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
-                            app_name_ + ".map.json", settings->host_addr,
-                            settings->eventing_port) +
+                            app_name_ + ".map.json", settings_->host_addr,
+                            settings_->eventing_port) +
       '\n';
   script_to_execute += std::string((const char *)js_builtin) + '\n';
   source_map_ =
@@ -514,18 +518,18 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
   if (on_update_def->IsFunction()) {
     auto on_update_fun = on_update_def.As<v8::Function>();
-    on_update_.Reset(GetIsolate(), on_update_fun);
+    on_update_.Reset(isolate_, on_update_fun);
   }
 
   if (on_delete_def->IsFunction()) {
     auto on_delete_fun = on_delete_def.As<v8::Function>();
-    on_delete_.Reset(GetIsolate(), on_delete_fun);
+    on_delete_.Reset(isolate_, on_delete_fun);
   }
 
-  if (bucket_handles.size() > 0) {
-    auto bucket_handle = bucket_handles.begin();
+  if (bucket_handles_.size() > 0) {
+    auto bucket_handle = bucket_handles_.begin();
 
-    for (; bucket_handle != bucket_handles.end(); bucket_handle++) {
+    for (; bucket_handle != bucket_handles_.end(); bucket_handle++) {
       if (*bucket_handle) {
         if (!(*bucket_handle)->Initialize(this)) {
           LOG(logError) << "Error initializing bucket handle" << std::endl;
@@ -548,47 +552,48 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     memset(&crst, 0, sizeof crst);
 
     crst.version = 3;
-    crst.v.v3.connstr = connstr.c_str();
+    crst.v.v3.connstr = connstr_.c_str();
     crst.v.v3.type = LCB_TYPE_BUCKET;
-    crst.v.v3.passwd = settings->rbac_pass.c_str();
+    crst.v.v3.passwd = settings_->rbac_pass.c_str();
 
-    lcb_create(&cb_instance, &crst);
-    lcb_set_auth(cb_instance, auth);
-    lcb_error_t rc = lcb_connect(cb_instance);
-    LOG(logDebug) << "LCB_CONNECT to " << RS(cb_instance) << " returns " << rc
+    lcb_create(&cb_instance_, &crst);
+    lcb_set_auth(cb_instance_, auth);
+    lcb_error_t rc = lcb_connect(cb_instance_);
+    LOG(logDebug) << "LCB_CONNECT to " << RS(cb_instance_) << " returns " << rc
                   << std::endl;
-    lcb_wait(cb_instance);
+    lcb_wait(cb_instance_);
 
-    lcb_install_callback3(cb_instance, LCB_CALLBACK_GET, get_callback);
-    lcb_install_callback3(cb_instance, LCB_CALLBACK_STORE, set_callback);
-    lcb_install_callback3(cb_instance, LCB_CALLBACK_SDMUTATE,
+    lcb_install_callback3(cb_instance_, LCB_CALLBACK_GET, get_callback);
+    lcb_install_callback3(cb_instance_, LCB_CALLBACK_STORE, set_callback);
+    lcb_install_callback3(cb_instance_, LCB_CALLBACK_SDMUTATE,
                           sdmutate_callback);
-    lcb_install_callback3(cb_instance, LCB_CALLBACK_SDLOOKUP,
+    lcb_install_callback3(cb_instance_, LCB_CALLBACK_SDLOOKUP,
                           sdlookup_callback);
-    lcb_cntl(cb_instance, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
-    UnwrapData(isolate_)->cb_instance = cb_instance;
+    lcb_cntl(cb_instance_, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
+    UnwrapData(isolate_)->cb_instance = cb_instance_;
 
     memset(&crst, 0, sizeof crst);
 
     crst.version = 3;
-    crst.v.v3.connstr = meta_connstr.c_str();
+    crst.v.v3.connstr = meta_connstr_.c_str();
     crst.v.v3.type = LCB_TYPE_BUCKET;
-    crst.v.v3.passwd = settings->rbac_pass.c_str();
+    crst.v.v3.passwd = settings_->rbac_pass.c_str();
 
-    lcb_create(&meta_cb_instance, &crst);
-    lcb_set_auth(meta_cb_instance, auth);
-    lcb_connect(meta_cb_instance);
-    lcb_wait(meta_cb_instance);
+    lcb_create(&meta_cb_instance_, &crst);
+    lcb_set_auth(meta_cb_instance_, auth);
+    lcb_connect(meta_cb_instance_);
+    lcb_wait(meta_cb_instance_);
 
-    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_GET, get_callback);
-    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_STORE, set_callback);
-    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDMUTATE,
+    lcb_install_callback3(meta_cb_instance_, LCB_CALLBACK_GET, get_callback);
+    lcb_install_callback3(meta_cb_instance_, LCB_CALLBACK_STORE, set_callback);
+    lcb_install_callback3(meta_cb_instance_, LCB_CALLBACK_SDMUTATE,
                           sdmutate_callback);
-    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDLOOKUP,
+    lcb_install_callback3(meta_cb_instance_, LCB_CALLBACK_SDLOOKUP,
                           sdlookup_callback);
-    lcb_cntl(meta_cb_instance, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
+    lcb_cntl(meta_cb_instance_, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT,
+             &lcb_timeout);
 
-    UnwrapData(isolate_)->meta_cb_instance = meta_cb_instance;
+    UnwrapData(isolate_)->meta_cb_instance = meta_cb_instance_;
   }
 
   lcb_create_st crst;
@@ -596,23 +601,24 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   memset(&crst, 0, sizeof crst);
 
   crst.version = 3;
-  crst.v.v3.connstr = meta_connstr.c_str();
+  crst.v.v3.connstr = meta_connstr_.c_str();
   crst.v.v3.type = LCB_TYPE_BUCKET;
-  crst.v.v3.passwd = settings->rbac_pass.c_str();
+  crst.v.v3.passwd = settings_->rbac_pass.c_str();
 
-  lcb_create(&checkpoint_cb_instance, &crst);
-  lcb_set_auth(checkpoint_cb_instance, auth);
-  lcb_connect(checkpoint_cb_instance);
-  lcb_wait(checkpoint_cb_instance);
+  lcb_create(&checkpoint_cb_instance_, &crst);
+  lcb_set_auth(checkpoint_cb_instance_, auth);
+  lcb_connect(checkpoint_cb_instance_);
+  lcb_wait(checkpoint_cb_instance_);
 
-  lcb_install_callback3(checkpoint_cb_instance, LCB_CALLBACK_GET, get_callback);
-  lcb_install_callback3(checkpoint_cb_instance, LCB_CALLBACK_STORE,
+  lcb_install_callback3(checkpoint_cb_instance_, LCB_CALLBACK_GET,
+                        get_callback);
+  lcb_install_callback3(checkpoint_cb_instance_, LCB_CALLBACK_STORE,
                         set_callback);
-  lcb_install_callback3(checkpoint_cb_instance, LCB_CALLBACK_SDMUTATE,
+  lcb_install_callback3(checkpoint_cb_instance_, LCB_CALLBACK_SDMUTATE,
                         sdmutate_callback);
-  lcb_install_callback3(checkpoint_cb_instance, LCB_CALLBACK_SDLOOKUP,
+  lcb_install_callback3(checkpoint_cb_instance_, LCB_CALLBACK_SDLOOKUP,
                         sdlookup_callback);
-  lcb_cntl(checkpoint_cb_instance, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT,
+  lcb_cntl(checkpoint_cb_instance_, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT,
            &lcb_timeout);
 
   // Spawning terminator thread to monitor the wall clock time for execution
@@ -620,25 +626,25 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   // reference to current object instead of having terminator thread make a
   // copy of the object. Spawned thread will execute the terminator loop logic
   // in function call operator() for V8Worker class
-  terminator_thr = new std::thread(std::ref(*this));
+  terminator_thr_ = new std::thread(std::ref(*this));
 
   std::thread c_thr(&V8Worker::Checkpoint, this);
-  checkpointing_thr = std::move(c_thr);
+  checkpointing_thr_ = std::move(c_thr);
 
   return kSuccess;
 }
 
 void V8Worker::Checkpoint() {
   const auto checkpoint_interval =
-      std::chrono::milliseconds(settings->checkpoint_interval);
+      std::chrono::milliseconds(settings_->checkpoint_interval);
 
   while (true) {
     std::string doc_timer_path("last_processed_doc_id_timer_event");
 
-    doc_timer_mtx.lock();
+    doc_timer_mtx_.lock();
     std::map<int, std::string> curr_dtimer_checkpoint(
-        doc_timer_checkpoint.begin(), doc_timer_checkpoint.end());
-    doc_timer_mtx.unlock();
+        doc_timer_checkpoint_.begin(), doc_timer_checkpoint_.end());
+    doc_timer_mtx_.unlock();
 
     for (auto &vbTimer : curr_dtimer_checkpoint) {
       std::stringstream vb_key;
@@ -664,16 +670,16 @@ void V8Worker::Checkpoint() {
       cmd.nspecs = 1;
 
       Result cres;
-      lcb_subdoc3(checkpoint_cb_instance, &cres, &cmd);
-      lcb_wait(checkpoint_cb_instance);
+      lcb_subdoc3(checkpoint_cb_instance_, &cres, &cmd);
+      lcb_wait(checkpoint_cb_instance_);
 
       if (cres.rc == LCB_SUCCESS) {
-        doc_timer_mtx.lock();
+        doc_timer_mtx_.lock();
         if (vbTimer.second.compare(1, vbTimer.second.length() - 2,
-                                   doc_timer_checkpoint[vbTimer.first]) == 0) {
-          doc_timer_checkpoint.erase(vbTimer.first);
+                                   doc_timer_checkpoint_[vbTimer.first]) == 0) {
+          doc_timer_checkpoint_.erase(vbTimer.first);
         }
-        doc_timer_mtx.unlock();
+        doc_timer_mtx_.unlock();
       }
 
       auto sleep_duration = LCB_OP_RETRY_INTERVAL;
@@ -687,17 +693,17 @@ void V8Worker::Checkpoint() {
           sleep_duration = 5000;
         };
 
-        lcb_subdoc3(checkpoint_cb_instance, &cres, &cmd);
-        lcb_wait(checkpoint_cb_instance);
+        lcb_subdoc3(checkpoint_cb_instance_, &cres, &cmd);
+        lcb_wait(checkpoint_cb_instance_);
       }
     }
 
     std::string cron_timer_path("last_processed_cron_timer_event");
 
-    cron_timer_mtx.lock();
+    cron_timer_mtx_.lock();
     std::map<int, std::string> curr_ctimer_checkpoint(
-        cron_timer_checkpoint.begin(), cron_timer_checkpoint.end());
-    cron_timer_mtx.unlock();
+        cron_timer_checkpoint_.begin(), cron_timer_checkpoint_.end());
+    cron_timer_mtx_.unlock();
 
     for (auto &vbTimer : curr_ctimer_checkpoint) {
       std::stringstream vb_key;
@@ -723,16 +729,17 @@ void V8Worker::Checkpoint() {
       cmd.nspecs = 1;
 
       Result cres;
-      lcb_subdoc3(checkpoint_cb_instance, &cres, &cmd);
-      lcb_wait(checkpoint_cb_instance);
+      lcb_subdoc3(checkpoint_cb_instance_, &cres, &cmd);
+      lcb_wait(checkpoint_cb_instance_);
 
       if (cres.rc == LCB_SUCCESS) {
-        cron_timer_mtx.lock();
+        cron_timer_mtx_.lock();
         if (vbTimer.second.compare(1, vbTimer.second.length() - 2,
-                                   cron_timer_checkpoint[vbTimer.first]) == 0) {
-          cron_timer_checkpoint.erase(vbTimer.first);
+                                   cron_timer_checkpoint_[vbTimer.first]) ==
+            0) {
+          cron_timer_checkpoint_.erase(vbTimer.first);
         }
-        cron_timer_mtx.unlock();
+        cron_timer_mtx_.unlock();
       }
 
       auto sleep_duration = LCB_OP_RETRY_INTERVAL;
@@ -746,8 +753,8 @@ void V8Worker::Checkpoint() {
           sleep_duration = 5000;
         };
 
-        lcb_subdoc3(checkpoint_cb_instance, &cres, &cmd);
-        lcb_wait(checkpoint_cb_instance);
+        lcb_subdoc3(checkpoint_cb_instance_, &cres, &cmd);
+        lcb_wait(checkpoint_cb_instance_);
       }
     }
 
@@ -760,7 +767,7 @@ void V8Worker::RouteMessage() {
   std::string key, val, timer_ts, doc_id, callback_fn, cron_cb_fns, metadata;
 
   while (true) {
-    auto msg = worker_queue->Pop();
+    auto msg = worker_queue_->Pop();
     payload = flatbuf::payload::GetPayload(
         (const void *)msg.payload->payload.c_str());
 
@@ -835,8 +842,8 @@ void V8Worker::RouteMessage() {
 }
 
 bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
-  v8::HandleScope handle_scope(GetIsolate());
-  v8::TryCatch try_catch(GetIsolate());
+  v8::HandleScope handle_scope(isolate_);
+  v8::TryCatch try_catch(isolate_);
 
   auto context = context_.Get(isolate_);
   auto script_name = v8Str(isolate_, app_name_ + ".js");
@@ -847,7 +854,7 @@ bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
            .ToLocal(&compiled_script)) {
     assert(try_catch.HasCaught());
     LOG(logError) << "Exception logged:"
-                  << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+                  << ExceptionString(isolate_, &try_catch) << std::endl;
     // The script failed to compile; bail out.
     return false;
   }
@@ -856,7 +863,7 @@ bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
   if (!compiled_script->Run(context).ToLocal(&result)) {
     assert(try_catch.HasCaught());
     LOG(logError) << "Exception logged:"
-                  << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+                  << ExceptionString(isolate_, &try_catch) << std::endl;
     // Running the script failed; bail out.
     return false;
   }
@@ -865,19 +872,19 @@ bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
 }
 
 void V8Worker::AddLcbException(int err_code) {
-  std::lock_guard<std::mutex> lock(lcb_exception_mtx);
+  std::lock_guard<std::mutex> lock(lcb_exception_mtx_);
 
-  if (lcb_exceptions.find(err_code) == lcb_exceptions.end()) {
-    lcb_exceptions[err_code] = 0;
+  if (lcb_exceptions_.find(err_code) == lcb_exceptions_.end()) {
+    lcb_exceptions_[err_code] = 0;
   }
 
-  lcb_exceptions[err_code]++;
+  lcb_exceptions_[err_code]++;
 }
 
 void V8Worker::ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions) {
-  std::lock_guard<std::mutex> lock(lcb_exception_mtx);
+  std::lock_guard<std::mutex> lock(lcb_exception_mtx_);
 
-  for (auto const &entry : lcb_exceptions) {
+  for (auto const &entry : lcb_exceptions_) {
     if (agg_lcb_exceptions.find(entry.first) == agg_lcb_exceptions.end()) {
       agg_lcb_exceptions[entry.first] = 0;
     }
@@ -889,7 +896,7 @@ void V8Worker::ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions) {
 void V8Worker::UpdateHistogram(Time::time_point start_time) {
   Time::time_point t = Time::now();
   nsecs ns = std::chrono::duration_cast<nsecs>(t - start_time);
-  histogram->Add(ns.count() / 1000);
+  histogram_->Add(ns.count() / 1000);
 }
 
 int V8Worker::UpdateVbSeqNumbers(const v8::Local<v8::Value> &metadata) {
@@ -903,14 +910,12 @@ int V8Worker::UpdateVbSeqNumbers(const v8::Local<v8::Value> &metadata) {
   }
 
   v8::Local<v8::Value> seq_val;
-  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(GetIsolate(), "seq")),
-                &seq_val)) {
+  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "seq")), &seq_val)) {
     return kToLocalFailed;
   }
 
   v8::Local<v8::Value> vb_val;
-  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(GetIsolate(), "vb")),
-                &vb_val)) {
+  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "vb")), &vb_val)) {
     return kToLocalFailed;
   }
 
@@ -925,10 +930,10 @@ int V8Worker::UpdateVbSeqNumbers(const v8::Local<v8::Value> &metadata) {
       return kToLocalFailed;
     }
 
-    currently_processed_vb = vb_val_int->Value();
-    currently_processed_seqno = seq_val_int->Value();
-    vb_seq[currently_processed_vb]->store(currently_processed_seqno,
-                                          std::memory_order_seq_cst);
+    currently_processed_vb_ = vb_val_int->Value();
+    currently_processed_seqno_ = seq_val_int->Value();
+    vb_seq_[currently_processed_vb_]->store(currently_processed_seqno_,
+                                            std::memory_order_seq_cst);
   }
 
   return kSuccess;
@@ -938,16 +943,16 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
                          std::string doc_type) {
   Time::time_point start_time = Time::now();
 
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
   LOG(logTrace) << "value: " << RU(value) << " meta: " << RU(meta)
                 << " doc_type: " << doc_type << std::endl;
-  v8::TryCatch try_catch(GetIsolate());
+  v8::TryCatch try_catch(isolate_);
 
   v8::Local<v8::Value> args[2];
   if (doc_type == "json") {
@@ -973,30 +978,33 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   }
 
   if (try_catch.HasCaught()) {
-    APPLOG << "OnUpdate Exception: "
-           << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+    APPLOG << "OnUpdate Exception: " << ExceptionString(isolate_, &try_catch)
+           << std::endl;
   }
 
   if (debugger_started) {
-    if (!agent->IsStarted()) {
-      agent->Start(isolate_, platform_, src_path.c_str());
+    if (!agent_->IsStarted()) {
+      agent_->Start(isolate_, platform_, src_path_.c_str());
     }
 
-    agent->PauseOnNextJavascriptStatement("Break on start");
+    agent_->PauseOnNextJavascriptStatement("Break on start");
     if (DebugExecute("OnUpdate", args, 2)) {
       return kSuccess;
     }
     return kOnUpdateCallFail;
   } else {
     auto on_doc_update = on_update_.Get(isolate_);
-    execute_flag = true;
-    execute_start_time = Time::now();
-    on_doc_update->Call(context->Global(), 2, args);
-    execute_flag = false;
+    execute_flag_ = true;
+    execute_start_time_ = Time::now();
+    RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                          IsTerminatingRetriable, IsExecutionTerminating,
+                          isolate_);
 
+    on_doc_update->Call(context->Global(), 2, args);
+    execute_flag_ = false;
     if (try_catch.HasCaught()) {
-      APPLOG << "OnUpdate Exception: "
-             << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+      APPLOG << "OnUpdate Exception: " << ExceptionString(isolate_, &try_catch)
+             << std::endl;
       UpdateHistogram(start_time);
       on_update_failure++;
       return kOnUpdateCallFail;
@@ -1011,15 +1019,15 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
 int V8Worker::SendDelete(std::string meta) {
   Time::time_point start_time = Time::now();
 
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
   LOG(logTrace) << " meta: " << RU(meta) << std::endl;
-  v8::TryCatch try_catch(GetIsolate());
+  v8::TryCatch try_catch(isolate_);
 
   v8::Local<v8::Value> args[1];
   if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[0])) {
@@ -1039,11 +1047,11 @@ int V8Worker::SendDelete(std::string meta) {
   assert(!try_catch.HasCaught());
 
   if (debugger_started) {
-    if (!agent->IsStarted()) {
-      agent->Start(isolate_, platform_, src_path.c_str());
+    if (!agent_->IsStarted()) {
+      agent_->Start(isolate_, platform_, src_path_.c_str());
     }
 
-    agent->PauseOnNextJavascriptStatement("Break on start");
+    agent_->PauseOnNextJavascriptStatement("Break on start");
     if (DebugExecute("OnDelete", args, 1)) {
       return kSuccess;
     }
@@ -1051,14 +1059,17 @@ int V8Worker::SendDelete(std::string meta) {
   } else {
     auto on_doc_delete = on_delete_.Get(isolate_);
 
-    execute_flag = true;
-    execute_start_time = Time::now();
-    on_doc_delete->Call(context->Global(), 1, args);
-    execute_flag = false;
+    execute_flag_ = true;
+    execute_start_time_ = Time::now();
+    RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                          IsTerminatingRetriable, IsExecutionTerminating,
+                          isolate_);
 
+    on_doc_delete->Call(context->Global(), 1, args);
+    execute_flag_ = false;
     if (try_catch.HasCaught()) {
-      APPLOG << "OnDelete Exception: "
-             << ExceptionString(GetIsolate(), &try_catch) << std::endl;
+      APPLOG << "OnDelete Exception: " << ExceptionString(isolate_, &try_catch)
+             << std::endl;
       UpdateHistogram(start_time);
       on_delete_failure++;
       return kOnDeleteCallFail;
@@ -1082,9 +1093,9 @@ void V8Worker::SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
  */
   LOG(logTrace) << "cron timers: " << cron_cb_fns << std::endl;
 
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
@@ -1101,7 +1112,7 @@ void V8Worker::SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
   }
 
   v8::Local<v8::Value> cron_timer_entries;
-  if (!TO_LOCAL(data_obj->Get(context, v8Str(GetIsolate(), "cron_timers")),
+  if (!TO_LOCAL(data_obj->Get(context, v8Str(isolate_, "cron_timers")),
                 &cron_timer_entries)) {
     return;
   }
@@ -1113,8 +1124,8 @@ void V8Worker::SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
     }
 
     auto entries_arr = entries.As<v8::Array>();
-    auto callback_fn = v8Str(GetIsolate(), "callback_func");
-    auto payload = v8Str(GetIsolate(), "payload");
+    auto callback_fn = v8Str(isolate_, "callback_func");
+    auto payload = v8Str(isolate_, "payload");
 
     for (uint32_t i = 0; i < entries_arr->Length(); i++) {
       v8::Local<v8::Value> entry_val;
@@ -1150,24 +1161,28 @@ void V8Worker::SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
         arg[0] = opaque;
 
         if (debugger_started) {
-          if (!agent->IsStarted()) {
-            agent->Start(isolate_, platform_, src_path.c_str());
+          if (!agent_->IsStarted()) {
+            agent_->Start(isolate_, platform_, src_path_.c_str());
           }
 
-          agent->PauseOnNextJavascriptStatement("Break on start");
+          agent_->PauseOnNextJavascriptStatement("Break on start");
           if (DebugExecute(*fn, arg, 1)) {
-            std::lock_guard<std::mutex> lck(cron_timer_mtx);
-            cron_timer_checkpoint[partition] = timer_ts;
+            std::lock_guard<std::mutex> lck(cron_timer_mtx_);
+            cron_timer_checkpoint_[partition] = timer_ts;
             return;
           }
         } else {
-          execute_flag = true;
-          execute_start_time = Time::now();
+          execute_flag_ = true;
+          execute_start_time_ = Time::now();
           cron_timer_msg_counter++;
+          RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                                IsTerminatingRetriable, IsExecutionTerminating,
+                                isolate_);
+
           fn_handle->Call(context->Global(), 1, arg);
-          std::lock_guard<std::mutex> lck(cron_timer_mtx);
-          cron_timer_checkpoint[partition] = timer_ts;
-          execute_flag = false;
+          std::lock_guard<std::mutex> lck(cron_timer_mtx_);
+          cron_timer_checkpoint_[partition] = timer_ts;
+          execute_flag_ = false;
         }
       }
     }
@@ -1176,9 +1191,9 @@ void V8Worker::SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
 
 void V8Worker::SendDocTimer(std::string callback_fn, std::string doc_id,
                             std::string timer_ts, int32_t partition) {
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
   LOG(logTrace) << "Got timer event, doc_id:" << RU(doc_id)
                 << " callback_fn:" << callback_fn << std::endl;
@@ -1198,23 +1213,27 @@ void V8Worker::SendDocTimer(std::string callback_fn, std::string doc_id,
   arg[0] = v8Str(isolate_, doc_id);
 
   if (debugger_started) {
-    if (!agent->IsStarted()) {
-      agent->Start(isolate_, platform_, src_path.c_str());
+    if (!agent_->IsStarted()) {
+      agent_->Start(isolate_, platform_, src_path_.c_str());
     }
 
-    agent->PauseOnNextJavascriptStatement("Break on start");
+    agent_->PauseOnNextJavascriptStatement("Break on start");
     if (DebugExecute(callback_fn.c_str(), arg, 1)) {
-      std::lock_guard<std::mutex> lck(doc_timer_mtx);
-      doc_timer_checkpoint[partition] = timer_ts;
+      std::lock_guard<std::mutex> lck(doc_timer_mtx_);
+      doc_timer_checkpoint_[partition] = timer_ts;
       return;
     }
   } else {
-    execute_flag = true;
-    execute_start_time = Time::now();
+    execute_flag_ = true;
+    execute_start_time_ = Time::now();
+    RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                          IsTerminatingRetriable, IsExecutionTerminating,
+                          isolate_);
+
     cb_fn->Call(global, 1, arg);
-    execute_flag = false;
-    std::lock_guard<std::mutex> lck(doc_timer_mtx);
-    doc_timer_checkpoint[partition] = timer_ts;
+    execute_flag_ = false;
+    std::lock_guard<std::mutex> lck(doc_timer_mtx_);
+    doc_timer_checkpoint_[partition] = timer_ts;
   }
 }
 
@@ -1226,17 +1245,17 @@ void V8Worker::StartDebugger() {
 
   LOG(logInfo) << "Starting Debugger" << std::endl;
   startDebuggerFlag(true);
-  agent = new inspector::Agent(settings->host_addr, settings->eventing_dir +
-                                                        "/" + app_name_ +
-                                                        "_frontend.url");
+  agent_ = new inspector::Agent(settings_->host_addr, settings_->eventing_dir +
+                                                          "/" + app_name_ +
+                                                          "_frontend.url");
 }
 
 void V8Worker::StopDebugger() {
   if (debugger_started) {
     LOG(logInfo) << "Stopping Debugger" << std::endl;
     startDebuggerFlag(false);
-    agent->Stop();
-    delete agent;
+    agent_->Stop();
+    delete agent_;
   } else {
     LOG(logError) << "Debugger wasn't started" << std::endl;
   }
@@ -1252,13 +1271,13 @@ void V8Worker::Enqueue(header_t *h, message_t *p) {
                 << " opcode: " << static_cast<int16_t>(h->opcode)
                 << " partition: " << h->partition
                 << " metadata: " << RU(h->metadata) << std::endl;
-  worker_queue->Push(msg);
+  worker_queue_->Push(msg);
 }
 
 std::string V8Worker::CompileHandler(std::string handler) {
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
@@ -1302,9 +1321,9 @@ std::string V8Worker::CompileHandler(std::string handler) {
 }
 
 CodeVersion V8Worker::IdentifyVersion(std::string handler) {
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
@@ -1317,8 +1336,8 @@ CodeVersion V8Worker::IdentifyVersion(std::string handler) {
   auto transpiler = UnwrapData(isolate_)->transpiler;
   auto script_to_execute =
       transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
-                            app_name_ + ".map.json", settings->host_addr,
-                            settings->eventing_port) +
+                            app_name_ + ".map.json", settings_->host_addr,
+                            settings_->eventing_port) +
       '\n';
 
   script_to_execute += std::string((const char *)js_builtin) + '\n';
@@ -1331,12 +1350,12 @@ void V8Worker::GetDocTimerMessages(std::vector<uv_buf_t> &messages,
                                    std::vector<int> &length_prefix_sum,
                                    size_t window_size) {
   int64_t doc_timer_count =
-      std::min(doc_timer_queue->Count(), static_cast<int64_t>(window_size));
+      std::min(doc_timer_queue_->Count(), static_cast<int64_t>(window_size));
   int bytes_to_write =
       (length_prefix_sum.size() == 0) ? 0 : length_prefix_sum.back();
 
   for (int64_t idx = 0; idx < doc_timer_count; ++idx) {
-    auto doc_timer_msg = doc_timer_queue->Pop();
+    auto doc_timer_msg = doc_timer_queue_->Pop();
     auto curr_messages = BuildResponse(doc_timer_msg.timer_entry,
                                        mDoc_Timer_Response, timerResponse);
     for (auto &msg : curr_messages) {
@@ -1352,7 +1371,7 @@ void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages,
   int bytes_to_write =
       (length_prefix_sum.size() == 0) ? 0 : length_prefix_sum.back();
   for (int vb = 0; vb < NUM_VBUCKETS; ++vb) {
-    auto seq = vb_seq[vb].get()->load(std::memory_order_seq_cst);
+    auto seq = vb_seq_[vb].get()->load(std::memory_order_seq_cst);
     if (seq > 0) {
       std::string seq_no = std::to_string(vb) + "::" + std::to_string(seq);
       auto curr_messages =
@@ -1363,7 +1382,7 @@ void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages,
         length_prefix_sum.push_back(bytes_to_write);
       }
       // Reset the seq no of checkpointed vb to 0
-      vb_seq[vb].get()->compare_exchange_strong(seq, 0);
+      vb_seq_[vb].get()->compare_exchange_strong(seq, 0);
     }
   }
 }

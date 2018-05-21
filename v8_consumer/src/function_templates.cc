@@ -329,11 +329,11 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     msg.timer_entry += "::";
     msg.timer_entry += doc_id;
     msg.timer_entry += "::";
-    msg.timer_entry += std::to_string(v8worker->currently_processed_vb);
+    msg.timer_entry += std::to_string(v8worker->currently_processed_vb_);
     msg.timer_entry += "::";
-    msg.timer_entry += std::to_string(v8worker->currently_processed_seqno);
+    msg.timer_entry += std::to_string(v8worker->currently_processed_seqno_);
 
-    v8worker->doc_timer_queue->Push(msg);
+    v8worker->doc_timer_queue_->Push(msg);
 
     // Fetch document expiration using virtual extended attributes
     Result res;

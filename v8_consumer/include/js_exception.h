@@ -19,20 +19,6 @@
 #include <vector>
 
 class JsException {
-private:
-  // Fields of the exception.
-  const char *code_str;
-  const char *desc_str;
-  const char *name_str;
-
-  v8::Isolate *isolate;
-  v8::Persistent<v8::String> code;
-  v8::Persistent<v8::String> name;
-  v8::Persistent<v8::String> desc;
-
-  std::string ExtractErrorName(const std::string &error);
-  void CopyMembers(JsException &&exc_obj);
-
 public:
   JsException() {}
   JsException(v8::Isolate *isolate);
@@ -48,6 +34,20 @@ public:
   void Throw(const std::string &message);
 
   ~JsException();
+
+private:
+  std::string ExtractErrorName(const std::string &error);
+  void CopyMembers(JsException &&exc_obj);
+
+  // Fields of the exception.
+  const char *code_str_;
+  const char *desc_str_;
+  const char *name_str_;
+
+  v8::Isolate *isolate_;
+  v8::Persistent<v8::String> code_;
+  v8::Persistent<v8::String> name_;
+  v8::Persistent<v8::String> desc_;
 };
 
 #endif

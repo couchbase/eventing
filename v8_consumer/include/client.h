@@ -25,11 +25,6 @@ const int HEADER_FRAGMENT_SIZE = 4;  // uint32
 const int PAYLOAD_FRAGMENT_SIZE = 4; // uint32
 const int SIZEOF_UINT32 = 4;
 
-typedef struct {
-  uv_write_t req;
-  uv_buf_t buf;
-} write_req_t;
-
 typedef struct resp_msg_s {
   std::string msg;
   uint8_t msg_type;
@@ -76,9 +71,9 @@ public:
 
   static void StopUvLoop(uv_async_t *);
 
-  std::thread main_uv_loop_thr;
-  std::thread feedback_uv_loop_thr;
-  std::thread stdin_read_thr;
+  std::thread main_uv_loop_thr_;
+  std::thread feedback_uv_loop_thr_;
+  std::thread stdin_read_thr_;
 
 protected:
   void WriteResponseWithRetry(uv_stream_t *handle,
@@ -89,57 +84,57 @@ protected:
 private:
   AppWorker();
   ~AppWorker();
-  std::thread write_responses_thr;
-  std::map<int16_t, V8Worker *> workers;
-  std::chrono::milliseconds checkpoint_interval;
+  std::thread write_responses_thr_;
+  std::map<int16_t, V8Worker *> workers_;
+  std::chrono::milliseconds checkpoint_interval_;
 
   // Socket  handles for out of band data channel to pipeline data to parent
   // eventing-producer
-  int feedback_batch_size;
-  uv_connect_t feedback_conn;
-  uv_stream_t *feedback_conn_handle;
-  uv_loop_t feedback_loop;
-  uv_async_t feedback_loop_async;
-  bool feedback_loop_running;
-  sockaddr_in46 feedback_server_sock;
-  uv_tcp_t feedback_tcp_sock;
-  uv_pipe_t feedback_uds_sock;
+  int feedback_batch_size_;
+  uv_connect_t feedback_conn_;
+  uv_stream_t *feedback_conn_handle_;
+  uv_loop_t feedback_loop_;
+  uv_async_t feedback_loop_async_;
+  bool feedback_loop_running_;
+  sockaddr_in46 feedback_server_sock_;
+  uv_tcp_t feedback_tcp_sock_;
+  uv_pipe_t feedback_uds_sock_;
 
   // Socket handles for data channel to pipeline messages from parent
   // eventing-producer to cpp workers
-  int batch_size;
-  uv_connect_t conn;
-  uv_stream_t *conn_handle;
-  uv_loop_t main_loop;
-  uv_async_t main_loop_async;
-  bool main_loop_running;
-  sockaddr_in46 server_sock;
-  uv_tcp_t tcp_sock;
-  uv_pipe_t uds_sock;
+  int batch_size_;
+  uv_connect_t conn_;
+  uv_stream_t *conn_handle_;
+  uv_loop_t main_loop_;
+  uv_async_t main_loop_async_;
+  bool main_loop_running_;
+  sockaddr_in46 server_sock_;
+  uv_tcp_t tcp_sock_;
+  uv_pipe_t uds_sock_;
 
-  std::string app_name;
+  std::string app_name_;
 
-  std::string next_message;
+  std::string next_message_;
 
-  std::map<int16_t, int16_t> partition_thr_map;
+  std::map<int16_t, int16_t> partition_thr_map_;
 
   // Controls the number of virtual partitions, in order to shard work among
   // worker threads
-  int16_t partition_count;
+  int16_t partition_count_;
 
   // Controls the size of thread pool, each thread executing user supplied
   // handler code against dcp/timer events
-  int16_t thr_count;
+  int16_t thr_count_;
 
   // Captures the config message that will be written by C++ worker
   // to the tcp socket in order to communicate message to Go world
-  resp_msg_t *resp_msg;
+  resp_msg_t *resp_msg_;
 
-  bool msg_priority;
+  bool msg_priority_;
 
-  std::vector<char> read_buffer;
+  std::vector<char> read_buffer_;
 
-  std::atomic<bool> thread_exit_cond;
+  std::atomic<bool> thread_exit_cond_;
 };
 
 #endif

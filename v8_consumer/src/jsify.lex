@@ -125,7 +125,7 @@
                     if(parse_info.is_valid) {
                         // If the query is DML, it should not execute on the source bucket
                         if(parse_info.is_dml_query) {
-                            auto source = UnwrapData(isolate)->v8worker->cb_source_bucket;
+                            auto source = UnwrapData(isolate)->v8worker->cb_source_bucket_;
                             if(source == parse_info.keyspace_name) {
                                 parse_info.is_valid = false;
                                 parse_info.info = R"(Can not execute DML query on bucket ")" + source + R"(")";

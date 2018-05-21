@@ -32,7 +32,7 @@ public:
   bool Initialize(V8Worker *w);
 
   v8::Global<v8::ObjectTemplate> bucket_map_template_;
-  lcb_t bucket_lcb_obj;
+  lcb_t bucket_lcb_obj_;
 
 private:
   bool InstallMaps();
@@ -86,12 +86,12 @@ private:
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
 
-  bool block_mutation;
-  std::string bucket_name;
-  std::string endpoint;
-  std::string bucket_alias;
+  bool block_mutation_;
+  std::string bucket_name_;
+  std::string endpoint_;
+  std::string bucket_alias_;
 
-  V8Worker *worker;
+  V8Worker *worker_;
 };
 
 #endif

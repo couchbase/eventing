@@ -88,86 +88,86 @@ AppWorker *AppWorker::GetAppWorker() {
   return &worker;
 }
 
-std::vector<char> *AppWorker::GetReadBuffer() { return &read_buffer; }
+std::vector<char> *AppWorker::GetReadBuffer() { return &read_buffer_; }
 
 void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
                             const std::string &worker_id, int bsize, int fbsize,
                             int feedback_port, int port) {
-  uv_tcp_init(&feedback_loop, &feedback_tcp_sock);
-  uv_tcp_init(&main_loop, &tcp_sock);
+  uv_tcp_init(&feedback_loop_, &feedback_tcp_sock_);
+  uv_tcp_init(&main_loop_, &tcp_sock_);
 
   if (IsIPv6()) {
-    uv_ip6_addr(addr.c_str(), feedback_port, &feedback_server_sock.sock6);
-    uv_ip6_addr(addr.c_str(), port, &server_sock.sock6);
+    uv_ip6_addr(addr.c_str(), feedback_port, &feedback_server_sock_.sock6);
+    uv_ip6_addr(addr.c_str(), port, &server_sock_.sock6);
   } else {
-    uv_ip4_addr(addr.c_str(), feedback_port, &feedback_server_sock.sock4);
-    uv_ip4_addr(addr.c_str(), port, &server_sock.sock4);
+    uv_ip4_addr(addr.c_str(), feedback_port, &feedback_server_sock_.sock4);
+    uv_ip4_addr(addr.c_str(), port, &server_sock_.sock4);
   }
 
-  app_name = appname;
-  batch_size = bsize;
-  feedback_batch_size = fbsize;
+  app_name_ = appname;
+  batch_size_ = bsize;
+  feedback_batch_size_ = fbsize;
   messages_processed_counter = 0;
 
   LOG(logInfo) << "Starting worker with af_inet for appname:" << appname
-               << " worker id:" << worker_id << " batch size:" << batch_size
+               << " worker id:" << worker_id << " batch size:" << batch_size_
                << " feedback batch size:" << fbsize
                << " feedback port:" << RS(feedback_port) << " port:" << RS(port)
                << std::endl;
 
-  uv_tcp_connect(&feedback_conn, &feedback_tcp_sock,
-                 (const struct sockaddr *)&feedback_server_sock,
+  uv_tcp_connect(&feedback_conn_, &feedback_tcp_sock_,
+                 (const struct sockaddr *)&feedback_server_sock_,
                  [](uv_connect_t *feedback_conn, int status) {
                    AppWorker::GetAppWorker()->OnFeedbackConnect(feedback_conn,
                                                                 status);
                  });
 
-  uv_tcp_connect(&conn, &tcp_sock, (const struct sockaddr *)&server_sock,
+  uv_tcp_connect(&conn_, &tcp_sock_, (const struct sockaddr *)&server_sock_,
                  [](uv_connect_t *conn, int status) {
                    AppWorker::GetAppWorker()->OnConnect(conn, status);
                  });
 
   std::thread f_thr(&AppWorker::StartFeedbackUVLoop, this);
-  feedback_uv_loop_thr = std::move(f_thr);
+  feedback_uv_loop_thr_ = std::move(f_thr);
 
   std::thread m_thr(&AppWorker::StartMainUVLoop, this);
-  main_uv_loop_thr = std::move(m_thr);
+  main_uv_loop_thr_ = std::move(m_thr);
 }
 
 void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
                         const std::string &worker_id, int bsize, int fbsize,
                         std::string feedback_sock_path,
                         std::string uds_sock_path) {
-  uv_pipe_init(&feedback_loop, &feedback_uds_sock, 0);
-  uv_pipe_init(&main_loop, &uds_sock, 0);
+  uv_pipe_init(&feedback_loop_, &feedback_uds_sock_, 0);
+  uv_pipe_init(&main_loop_, &uds_sock_, 0);
 
-  app_name = appname;
-  batch_size = bsize;
-  feedback_batch_size = fbsize;
+  app_name_ = appname;
+  batch_size_ = bsize;
+  feedback_batch_size_ = fbsize;
   messages_processed_counter = 0;
 
   LOG(logInfo) << "Starting worker with af_unix for appname:" << appname
-               << " worker id:" << worker_id << " batch size:" << batch_size
+               << " worker id:" << worker_id << " batch size:" << batch_size_
                << " feedback batch size:" << fbsize
                << " feedback uds path:" << RS(feedback_sock_path)
                << " uds_path:" << RS(uds_sock_path) << std::endl;
 
   uv_pipe_connect(
-      &feedback_conn, &feedback_uds_sock, feedback_sock_path.c_str(),
+      &feedback_conn_, &feedback_uds_sock_, feedback_sock_path.c_str(),
       [](uv_connect_t *feedback_conn, int status) {
         AppWorker::GetAppWorker()->OnFeedbackConnect(feedback_conn, status);
       });
 
-  uv_pipe_connect(&conn, &uds_sock, uds_sock_path.c_str(),
+  uv_pipe_connect(&conn_, &uds_sock_, uds_sock_path.c_str(),
                   [](uv_connect_t *conn, int status) {
                     AppWorker::GetAppWorker()->OnConnect(conn, status);
                   });
 
   std::thread f_thr(&AppWorker::StartFeedbackUVLoop, this);
-  feedback_uv_loop_thr = std::move(f_thr);
+  feedback_uv_loop_thr_ = std::move(f_thr);
 
   std::thread m_thr(&AppWorker::StartMainUVLoop, this);
-  main_uv_loop_thr = std::move(m_thr);
+  main_uv_loop_thr_ = std::move(m_thr);
 }
 
 void AppWorker::OnConnect(uv_connect_t *conn, int status) {
@@ -178,7 +178,7 @@ void AppWorker::OnConnect(uv_connect_t *conn, int status) {
                   [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
                     AppWorker::GetAppWorker()->OnRead(stream, nread, buf);
                   });
-    conn_handle = conn->handle;
+    conn_handle_ = conn->handle;
   } else {
     LOG(logError) << "Connection failed with error:" << uv_strerror(status)
                   << std::endl;
@@ -193,7 +193,7 @@ void AppWorker::OnFeedbackConnect(uv_connect_t *conn, int status) {
                   [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
                     AppWorker::GetAppWorker()->OnRead(stream, nread, buf);
                   });
-    feedback_conn_handle = conn->handle;
+    feedback_conn_handle_ = conn->handle;
 
   } else {
     LOG(logError) << "Connection failed with error:" << uv_strerror(status)
@@ -206,15 +206,15 @@ void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
   if (nread > 0) {
     AppWorker::GetAppWorker()->ParseValidChunk(stream, nread, buf->base);
   } else if (nread == 0) {
-    next_message.clear();
+    next_message_.clear();
   } else {
     if (nread != UV_EOF) {
       LOG(logError) << "Read error, err code: " << uv_err_name(nread)
                     << std::endl;
     }
-    AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message.length(),
-                                               next_message.c_str());
-    next_message.clear();
+    AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message_.length(),
+                                               next_message_.c_str());
+    next_message_.clear();
     uv_read_stop(stream);
   }
 }
@@ -226,9 +226,9 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
     buf_base += buf[i];
   }
 
-  if (next_message.length() > 0) {
-    buf_base = next_message + buf_base;
-    next_message.clear();
+  if (next_message_.length() > 0) {
+    buf_base = next_message_ + buf_base;
+    next_message_.clear();
   }
 
   for (; buf_base.length() > HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE;) {
@@ -251,7 +251,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
         encoded_payload_size;
 
     if (buf_base.length() < message_size) {
-      next_message.assign(buf_base);
+      next_message_.assign(buf_base);
       return;
     } else {
       std::string chunk_to_parse = buf_base.substr(0, message_size);
@@ -267,19 +267,19 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
           header_t *pheader = parsed_header.release();
           RouteMessageWithResponse(pheader, pmessage);
 
-          if (messages_processed_counter >= batch_size || msg_priority) {
+          if (messages_processed_counter >= batch_size_ || msg_priority_) {
 
             messages_processed_counter = 0;
 
             // Reset the message priority flag
-            msg_priority = false;
+            msg_priority_ = false;
 
-            if (!resp_msg->msg.empty()) {
+            if (!resp_msg_->msg.empty()) {
               flatbuffers::FlatBufferBuilder builder;
 
-              auto msg_offset = builder.CreateString(resp_msg->msg.c_str());
+              auto msg_offset = builder.CreateString(resp_msg_->msg.c_str());
               auto r = flatbuf::response::CreateResponse(
-                  builder, resp_msg->msg_type, resp_msg->opcode, msg_offset);
+                  builder, resp_msg_->msg_type, resp_msg_->opcode, msg_offset);
               builder.Finish(r);
 
               uint32_t s = builder.GetSize();
@@ -292,21 +292,21 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
               FlushToConn(stream, (char *)msg.c_str(), msg.length());
 
               // Reset the values
-              resp_msg->msg.clear();
-              resp_msg->msg_type = 0;
-              resp_msg->opcode = 0;
+              resp_msg_->msg.clear();
+              resp_msg_->msg_type = 0;
+              resp_msg_->opcode = 0;
             }
 
             // Flush the aggregate item count in queues for all running V8
             // worker instances
-            if (!workers.empty()) {
+            if (!workers_.empty()) {
               int64_t agg_queue_size = 0, feedback_queue_size = 0,
                       agg_queue_memory = 0;
-              for (const auto &w : workers) {
-                agg_queue_size += w.second->worker_queue->Count();
-                feedback_queue_size += w.second->doc_timer_queue->Count();
-                agg_queue_memory += w.second->worker_queue->Size() +
-                                    w.second->doc_timer_queue->Size();
+              for (const auto &w : workers_) {
+                agg_queue_size += w.second->worker_queue_->Count();
+                feedback_queue_size += w.second->doc_timer_queue_->Count();
+                agg_queue_memory += w.second->worker_queue_->Size() +
+                                    w.second->doc_timer_queue_->Size();
               }
 
               std::ostringstream queue_stats;
@@ -338,7 +338,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
   }
 
   if (buf_base.length() > 0) {
-    next_message.assign(buf_base);
+    next_message_.assign(buf_base);
   }
 }
 
@@ -413,7 +413,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           payload->enable_recursive_mutation();
       handler_config->skip_lcb_bootstrap = payload->skip_lcb_bootstrap();
       server_settings->checkpoint_interval = payload->checkpoint_interval();
-      checkpoint_interval =
+      checkpoint_interval_ =
           std::chrono::milliseconds(server_settings->checkpoint_interval);
       server_settings->eventing_dir.assign(payload->eventing_dir()->str());
       server_settings->eventing_port.assign(
@@ -423,54 +423,54 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       server_settings->host_addr.assign(payload->curr_host()->str());
       server_settings->kv_host_port.assign(payload->kv_host_port()->str());
 
-      LOG(logDebug) << "Loading app:" << app_name << std::endl;
+      LOG(logDebug) << "Loading app:" << app_name_ << std::endl;
 
       v8::V8::InitializeICU();
       platform = v8::platform::CreateDefaultPlatform();
       v8::V8::InitializePlatform(platform);
       v8::V8::Initialize();
 
-      for (int16_t i = 0; i < thr_count; i++) {
+      for (int16_t i = 0; i < thr_count_; i++) {
         V8Worker *w = new V8Worker(platform, handler_config, server_settings);
 
         LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
-        workers[i] = w;
+        workers_[i] = w;
       }
 
       delete handler_config;
 
-      msg_priority = true;
+      msg_priority_ = true;
       break;
     case oLoad:
       LOG(logDebug) << "Loading app code:" << RM(parsed_header->metadata)
                     << std::endl;
-      for (int16_t i = 0; i < thr_count; i++) {
-        workers[i]->V8WorkerLoad(parsed_header->metadata);
+      for (int16_t i = 0; i < thr_count_; i++) {
+        workers_[i]->V8WorkerLoad(parsed_header->metadata);
 
-        LOG(logInfo) << "Load index: " << i << " V8Worker: " << workers[i]
+        LOG(logInfo) << "Load index: " << i << " V8Worker: " << workers_[i]
                      << std::endl;
       }
-      msg_priority = true;
+      msg_priority_ = true;
       break;
     case oTerminate:
       break;
     case oGetSourceMap:
-      resp_msg->msg = workers[0]->source_map_;
-      resp_msg->msg_type = mV8_Worker_Config;
-      resp_msg->opcode = oSourceMap;
-      msg_priority = true;
+      resp_msg_->msg = workers_[0]->source_map_;
+      resp_msg_->msg_type = mV8_Worker_Config;
+      resp_msg_->opcode = oSourceMap;
+      msg_priority_ = true;
       break;
     case oGetHandlerCode:
-      resp_msg->msg = workers[0]->handler_code_;
-      resp_msg->msg_type = mV8_Worker_Config;
-      resp_msg->opcode = oHandlerCode;
-      msg_priority = true;
+      resp_msg_->msg = workers_[0]->handler_code_;
+      resp_msg_->msg_type = mV8_Worker_Config;
+      resp_msg_->opcode = oHandlerCode;
+      msg_priority_ = true;
       break;
     case oGetLatencyStats:
-      latency_buckets = workers[0]->histogram->Buckets();
+      latency_buckets = workers_[0]->histogram_->Buckets();
       agg_hgram.assign(latency_buckets, 0);
-      for (const auto &w : workers) {
-        worker_hgram = w.second->histogram->Hgram();
+      for (const auto &w : workers_) {
+        worker_hgram = w.second->histogram_->Hgram();
         for (std::string::size_type i = 0; i < worker_hgram.size(); i++) {
           agg_hgram[i] += worker_hgram[i];
         }
@@ -499,10 +499,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           lstats << "}";
         }
       }
-      resp_msg->msg.assign(lstats.str());
-      resp_msg->msg_type = mV8_Worker_Config;
-      resp_msg->opcode = oLatencyStats;
-      msg_priority = true;
+      resp_msg_->msg.assign(lstats.str());
+      resp_msg_->msg_type = mV8_Worker_Config;
+      resp_msg_->opcode = oLatencyStats;
+      msg_priority_ = true;
       break;
     case oGetFailureStats:
       fstats.str(std::string());
@@ -527,10 +527,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       fstats << "}";
       LOG(logTrace) << "v8worker failure stats : " << fstats.str() << std::endl;
 
-      resp_msg->msg.assign(fstats.str());
-      resp_msg->msg_type = mV8_Worker_Config;
-      resp_msg->opcode = oFailureStats;
-      msg_priority = true;
+      resp_msg_->msg.assign(fstats.str());
+      resp_msg_->msg_type = mV8_Worker_Config;
+      resp_msg_->opcode = oFailureStats;
+      msg_priority_ = true;
       break;
     case oGetExecutionStats:
       estats.str(std::string());
@@ -558,13 +558,13 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << R"(, "uv_try_write_failure_counter":)";
       estats << uv_try_write_failure_counter;
 
-      if (!workers.empty()) {
+      if (!workers_.empty()) {
         agg_queue_memory = agg_queue_size = feedback_queue_size = 0;
-        for (const auto &w : workers) {
-          agg_queue_size += w.second->worker_queue->Count();
-          feedback_queue_size += w.second->doc_timer_queue->Count();
-          agg_queue_memory += w.second->worker_queue->Size() +
-                              w.second->doc_timer_queue->Size();
+        for (const auto &w : workers_) {
+          agg_queue_size += w.second->worker_queue_->Count();
+          feedback_queue_size += w.second->doc_timer_queue_->Count();
+          agg_queue_memory += w.second->worker_queue_->Size() +
+                              w.second->doc_timer_queue_->Size();
         }
 
         estats << R"(, "agg_queue_size":)" << agg_queue_size;
@@ -575,23 +575,23 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << R"(, "timestamp":")" << GetTimestampNow() << R"("})";
       LOG(logTrace) << "v8worker execution stats:" << estats.str() << std::endl;
 
-      resp_msg->msg.assign(estats.str());
-      resp_msg->msg_type = mV8_Worker_Config;
-      resp_msg->opcode = oExecutionStats;
-      msg_priority = true;
+      resp_msg_->msg.assign(estats.str());
+      resp_msg_->msg_type = mV8_Worker_Config;
+      resp_msg_->opcode = oExecutionStats;
+      msg_priority_ = true;
       break;
     case oGetCompileInfo:
       LOG(logDebug) << "Compiling app code:" << RM(parsed_header->metadata)
                     << std::endl;
-      compile_resp = workers[0]->CompileHandler(parsed_header->metadata);
+      compile_resp = workers_[0]->CompileHandler(parsed_header->metadata);
 
-      resp_msg->msg.assign(compile_resp);
-      resp_msg->msg_type = mV8_Worker_Config;
-      resp_msg->opcode = oCompileInfo;
-      msg_priority = true;
+      resp_msg_->msg.assign(compile_resp);
+      resp_msg_->msg_type = mV8_Worker_Config;
+      resp_msg_->opcode = oCompileInfo;
+      msg_priority_ = true;
       break;
     case oGetLcbExceptions:
-      for (const auto &w : workers) {
+      for (const auto &w : workers_) {
         w.second->ListLcbExceptions(agg_lcb_exceptions);
       }
 
@@ -616,10 +616,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
         i++;
       }
 
-      resp_msg->msg.assign(estats.str());
-      resp_msg->msg_type = mV8_Worker_Config;
-      resp_msg->opcode = oLcbExceptions;
-      msg_priority = true;
+      resp_msg_->msg.assign(estats.str());
+      resp_msg_->msg_type = mV8_Worker_Config;
+      resp_msg_->opcode = oLcbExceptions;
+      msg_priority_ = true;
       break;
     case oVersion:
     default:
@@ -636,10 +636,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
     switch (getDCPOpcode(parsed_header->opcode)) {
     case oDelete:
-      worker_index = partition_thr_map[parsed_header->partition];
-      if (workers[worker_index] != nullptr) {
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
         enqueued_dcp_delete_msg_counter++;
-        workers[worker_index]->Enqueue(parsed_header, parsed_message);
+        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
       } else {
         LOG(logError) << "Delete event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -647,10 +647,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       }
       break;
     case oMutation:
-      worker_index = partition_thr_map[parsed_header->partition];
-      if (workers[worker_index] != nullptr) {
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
         enqueued_dcp_mutation_msg_counter++;
-        workers[worker_index]->Enqueue(parsed_header, parsed_message);
+        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
       } else {
         LOG(logError) << "Mutation event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -667,10 +667,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   case eTimer:
     switch (getTimerOpcode(parsed_header->opcode)) {
     case oDocTimer:
-      worker_index = partition_thr_map[parsed_header->partition];
-      if (workers[worker_index] != nullptr) {
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
         enqueued_doc_timer_msg_counter++;
-        workers[worker_index]->Enqueue(parsed_header, parsed_message);
+        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
       } else {
         LOG(logError) << "Doc timer event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -678,10 +678,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       }
       break;
     case oCronTimer:
-      worker_index = partition_thr_map[parsed_header->partition];
-      if (workers[worker_index] != nullptr) {
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
         enqueued_cron_timer_msg_counter++;
-        workers[worker_index]->Enqueue(parsed_header, parsed_message);
+        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
       } else {
         LOG(logError) << "Cron timer event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -701,21 +701,21 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       setLogLevel(LevelFromString(parsed_header->metadata));
       LOG(logInfo) << "Configured log level: " << parsed_header->metadata
                    << std::endl;
-      msg_priority = true;
+      msg_priority_ = true;
       break;
     case oWorkerThreadCount:
       LOG(logInfo) << "Worker thread count: " << parsed_header->metadata
                    << std::endl;
-      thr_count = int16_t(std::stoi(parsed_header->metadata));
-      msg_priority = true;
+      thr_count_ = int16_t(std::stoi(parsed_header->metadata));
+      msg_priority_ = true;
       break;
     case oWorkerThreadMap:
       payload = flatbuf::payload::GetPayload(
           (const void *)parsed_message->payload.c_str());
       thr_map = payload->thr_map();
-      partition_count = payload->partitionCount();
+      partition_count_ = payload->partitionCount();
       LOG(logInfo) << "Request for worker thread map, size: " << thr_map->size()
-                   << " partition_count: " << partition_count << std::endl;
+                   << " partition_count: " << partition_count_ << std::endl;
 
       for (unsigned int i = 0; i < thr_map->size(); i++) {
         int16_t thread_id = thr_map->Get(i)->threadID();
@@ -723,10 +723,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
         for (unsigned int j = 0; j < thr_map->Get(i)->partitions()->size();
              j++) {
           auto p_id = thr_map->Get(i)->partitions()->Get(j);
-          partition_thr_map[p_id] = thread_id;
+          partition_thr_map_[p_id] = thread_id;
         }
       }
-      msg_priority = true;
+      msg_priority_ = true;
       break;
     default:
       LOG(logError) << "Opcode "
@@ -740,20 +740,20 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   case eDebugger:
     switch (getDebuggerOpcode(parsed_header->opcode)) {
     case oDebuggerStart:
-      worker_index = partition_thr_map[parsed_header->partition];
-      if (workers[worker_index] != nullptr) {
-        workers[worker_index]->Enqueue(parsed_header, parsed_message);
-        msg_priority = true;
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
+        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
+        msg_priority_ = true;
       } else {
         LOG(logError) << "Debugger start event lost: worker " << worker_index
                       << " is null" << std::endl;
       }
       break;
     case oDebuggerStop:
-      worker_index = partition_thr_map[parsed_header->partition];
-      if (workers[worker_index] != nullptr) {
-        workers[worker_index]->Enqueue(parsed_header, parsed_message);
-        msg_priority = true;
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
+        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
+        msg_priority_ = true;
       } else {
         LOG(logError) << "Debugger stop event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -773,16 +773,16 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 }
 
 void AppWorker::StartMainUVLoop() {
-  if (!main_loop_running) {
-    uv_run(&main_loop, UV_RUN_DEFAULT);
-    main_loop_running = true;
+  if (!main_loop_running_) {
+    uv_run(&main_loop_, UV_RUN_DEFAULT);
+    main_loop_running_ = true;
   }
 }
 
 void AppWorker::StartFeedbackUVLoop() {
-  if (!feedback_loop_running) {
-    uv_run(&feedback_loop, UV_RUN_DEFAULT);
-    feedback_loop_running = true;
+  if (!feedback_loop_running_) {
+    uv_run(&feedback_loop_, UV_RUN_DEFAULT);
+    feedback_loop_running_ = true;
   }
 }
 
@@ -791,21 +791,21 @@ void AppWorker::WriteResponses() {
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
   auto start = std::chrono::system_clock::now();
-  while (!thread_exit_cond.load()) {
+  while (!thread_exit_cond_.load()) {
     auto sleep = true;
     // Update DocTimers Checkpoint
-    for (const auto &w : workers) {
+    for (const auto &w : workers_) {
       std::vector<uv_buf_t> messages;
       std::vector<int> length_prefix_sum;
       w.second->GetDocTimerMessages(messages, length_prefix_sum,
-                                    feedback_batch_size);
+                                    feedback_batch_size_);
       if (messages.empty()) {
         continue;
       }
 
       sleep = false;
-      WriteResponseWithRetry(feedback_conn_handle, messages, length_prefix_sum,
-                             2 * feedback_batch_size);
+      WriteResponseWithRetry(feedback_conn_handle_, messages, length_prefix_sum,
+                             2 * feedback_batch_size_);
       doc_timer_responses_sent += messages.size() / 2;
       for (auto &buf : messages) {
         delete buf.base;
@@ -819,12 +819,12 @@ void AppWorker::WriteResponses() {
     auto curr = std::chrono::system_clock::now();
     auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(curr - start);
-    if (elapsed < checkpoint_interval) {
+    if (elapsed < checkpoint_interval_) {
       continue;
     }
 
     // Update BucketOps Checkpoint
-    for (const auto &w : workers) {
+    for (const auto &w : workers_) {
       std::vector<uv_buf_t> messages;
       std::vector<int> length_prefix_sum;
       w.second->GetBucketOpsMessages(messages, length_prefix_sum);
@@ -832,8 +832,8 @@ void AppWorker::WriteResponses() {
         continue;
       }
 
-      WriteResponseWithRetry(feedback_conn_handle, messages, length_prefix_sum,
-                             2 * feedback_batch_size);
+      WriteResponseWithRetry(feedback_conn_handle_, messages, length_prefix_sum,
+                             2 * feedback_batch_size_);
       for (auto &buf : messages) {
         delete buf.base;
       }
@@ -866,42 +866,42 @@ void AppWorker::WriteResponseWithRetry(
   }
 }
 
-AppWorker::AppWorker() : feedback_conn_handle(nullptr), conn_handle(nullptr) {
-  thread_exit_cond.store(false);
-  uv_loop_init(&feedback_loop);
-  uv_loop_init(&main_loop);
-  feedback_loop_async.data = (void *)&feedback_loop;
-  main_loop_async.data = (void *)&main_loop;
-  uv_async_init(&feedback_loop, &feedback_loop_async, AppWorker::StopUvLoop);
-  uv_async_init(&main_loop, &main_loop_async, AppWorker::StopUvLoop);
+AppWorker::AppWorker() : feedback_conn_handle_(nullptr), conn_handle_(nullptr) {
+  thread_exit_cond_.store(false);
+  uv_loop_init(&feedback_loop_);
+  uv_loop_init(&main_loop_);
+  feedback_loop_async_.data = (void *)&feedback_loop_;
+  main_loop_async_.data = (void *)&main_loop_;
+  uv_async_init(&feedback_loop_, &feedback_loop_async_, AppWorker::StopUvLoop);
+  uv_async_init(&main_loop_, &main_loop_async_, AppWorker::StopUvLoop);
 
-  read_buffer.resize(MAX_BUF_SIZE);
-  resp_msg = new (resp_msg_t);
-  msg_priority = false;
+  read_buffer_.resize(MAX_BUF_SIZE);
+  resp_msg_ = new (resp_msg_t);
+  msg_priority_ = false;
 
-  feedback_loop_running = false;
-  main_loop_running = false;
+  feedback_loop_running_ = false;
+  main_loop_running_ = false;
 
   std::thread w_thr(&AppWorker::WriteResponses, this);
-  write_responses_thr = std::move(w_thr);
-  checkpoint_interval = std::chrono::milliseconds(1000); // default value
+  write_responses_thr_ = std::move(w_thr);
+  checkpoint_interval_ = std::chrono::milliseconds(1000); // default value
 }
 
 AppWorker::~AppWorker() {
-  if (feedback_uv_loop_thr.joinable()) {
-    feedback_uv_loop_thr.join();
+  if (feedback_uv_loop_thr_.joinable()) {
+    feedback_uv_loop_thr_.join();
   }
 
-  if (main_uv_loop_thr.joinable()) {
-    main_uv_loop_thr.join();
+  if (main_uv_loop_thr_.joinable()) {
+    main_uv_loop_thr_.join();
   }
 
-  if (write_responses_thr.joinable()) {
-    write_responses_thr.join();
+  if (write_responses_thr_.joinable()) {
+    write_responses_thr_.join();
   }
 
-  uv_loop_close(&feedback_loop);
-  uv_loop_close(&main_loop);
+  uv_loop_close(&feedback_loop_);
+  uv_loop_close(&main_loop_);
 }
 
 void AppWorker::ReadStdinLoop() {
@@ -911,12 +911,12 @@ void AppWorker::ReadStdinLoop() {
       std::cin.clear();
       std::getline(std::cin, token);
     }
-    worker->thread_exit_cond.store(true);
+    worker->thread_exit_cond_.store(true);
     uv_async_send(async1);
     uv_async_send(async2);
   };
-  std::thread thr(functor, this, &feedback_loop_async, &main_loop_async);
-  stdin_read_thr = std::move(thr);
+  std::thread thr(functor, this, &feedback_loop_async_, &main_loop_async_);
+  stdin_read_thr_ = std::move(thr);
 }
 
 void AppWorker::StopUvLoop(uv_async_t *async) {
@@ -979,9 +979,9 @@ int main(int argc, char **argv) {
                         feedback_batch_size, feedback_port, port);
   }
   worker->ReadStdinLoop();
-  worker->stdin_read_thr.join();
-  worker->main_uv_loop_thr.join();
-  worker->feedback_uv_loop_thr.join();
+  worker->stdin_read_thr_.join();
+  worker->main_uv_loop_thr_.join();
+  worker->feedback_uv_loop_thr_.join();
 
   curl_global_cleanup();
 }

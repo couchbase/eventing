@@ -10,17 +10,18 @@
 // permissions and limitations under the License.
 
 #include "n1ql.h"
+#include "retry_util.h"
 #include "utils.h"
 
 ConnectionPool::ConnectionPool(v8::Isolate *isolate, int capacity,
                                std::string cb_kv_endpoint,
                                std::string cb_source_bucket)
-    : capacity(capacity), inst_count(0), isolate(isolate) {
+    : capacity_(capacity), inst_count_(0), isolate_(isolate) {
 
-  conn_str = "couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket +
-             "?select_bucket=true";
+  conn_str_ = "couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket +
+              "?select_bucket=true";
   if (IsIPv6()) {
-    conn_str += "&ipv6=allow";
+    conn_str_ += "&ipv6=allow";
   }
 }
 
@@ -32,7 +33,7 @@ void ConnectionPool::AddResource() {
   lcb_error_t err;
   memset(&options, 0, sizeof(options));
   options.version = 3;
-  options.v.v3.connstr = conn_str.c_str();
+  options.v.v3.connstr = conn_str_.c_str();
   options.v.v3.type = LCB_TYPE_BUCKET;
 
   lcb_t instance = nullptr;
@@ -43,7 +44,7 @@ void ConnectionPool::AddResource() {
   }
 
   auto auth = lcbauth_new();
-  err = lcbauth_set_callbacks(auth, isolate, GetUsernameCached,
+  err = lcbauth_set_callbacks(auth, isolate_, GetUsernameCached,
                               GetPasswordCached);
   if (err != LCB_SUCCESS) {
     init_success = false;
@@ -76,29 +77,29 @@ void ConnectionPool::AddResource() {
     Error(instance, "N1QL: Unable to get bootstrap status", err);
   }
 
-  ++inst_count;
-  instances.push(instance);
+  ++inst_count_;
+  instances_.push(instance);
   if (init_success) {
     LOG(logInfo) << "N1QL: lcb instance successfully initialized for "
-                 << RS(conn_str) << std::endl;
+                 << RS(conn_str_) << std::endl;
   } else {
     LOG(logError) << "N1QL: Unable to initialize lcb instance for "
-                  << RS(conn_str) << std::endl;
+                  << RS(conn_str_) << std::endl;
   }
 }
 
 lcb_t ConnectionPool::GetResource() {
   // Dynamically expand the pool size if it's within the pool capacity.
-  if (instances.empty()) {
-    if (inst_count >= capacity) {
+  if (instances_.empty()) {
+    if (inst_count_ >= capacity_) {
       throw "N1QL: Maximum pool capacity reached";
     } else {
       AddResource();
     }
   }
 
-  lcb_t instance = instances.front();
-  instances.pop();
+  lcb_t instance = instances_.front();
+  instances_.pop();
   return instance;
 }
 
@@ -107,35 +108,35 @@ void ConnectionPool::Error(lcb_t instance, const char *msg, lcb_error_t err) {
 }
 
 ConnectionPool::~ConnectionPool() {
-  while (!instances.empty()) {
-    lcb_t instance = instances.front();
+  while (!instances_.empty()) {
+    lcb_t instance = instances_.front();
     if (instance) {
       lcb_destroy(instance);
     }
 
-    instances.pop();
+    instances_.pop();
   }
 }
 
 void HashedStack::Push(QueryHandler &q_handler) {
-  qstack.push(q_handler);
-  qmap[q_handler.hash] = &q_handler;
+  qstack_.push(q_handler);
+  qmap_[q_handler.hash] = &q_handler;
 }
 
 void HashedStack::Pop() {
-  auto it = qmap.find(qstack.top().hash);
-  qmap.erase(it);
-  qstack.pop();
+  auto it = qmap_.find(qstack_.top().hash);
+  qmap_.erase(it);
+  qstack_.pop();
 }
 
 // Extracts error messages from the metadata JSON.
 std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata) {
-  v8::HandleScope handle_scope(isolate);
+  v8::HandleScope handle_scope(isolate_);
 
   std::vector<std::string> errors;
-  auto context = isolate->GetCurrentContext();
+  auto context = isolate_->GetCurrentContext();
   v8::Local<v8::Value> metadata_val;
-  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, metadata)),
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, metadata)),
                 &metadata_val)) {
     return errors;
   }
@@ -147,7 +148,7 @@ std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata) {
 
   if (!metadata_obj.IsEmpty()) {
     v8::Local<v8::Value> errors_v8val;
-    if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate, "errors")),
+    if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "errors")),
                   &errors_v8val)) {
       return errors;
     }
@@ -165,7 +166,8 @@ std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata) {
       }
 
       v8::Local<v8::Value> msg_val;
-      if (!TO_LOCAL(error_obj->Get(context, v8Str(isolate, "msg")), &msg_val)) {
+      if (!TO_LOCAL(error_obj->Get(context, v8Str(isolate_, "msg")),
+                    &msg_val)) {
         return errors;
       }
 
@@ -207,6 +209,10 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
     // Execute the function callback passed in JavaScript.
     auto callback = q_handler.iter_handler->callback;
     v8::TryCatch try_catch(isolate);
+    RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                          IsTerminatingRetriable, IsExecutionTerminating,
+                          isolate);
+
     callback->Call(callback, 1, args);
     if (try_catch.HasCaught()) {
       // Cancel the query if an exception was thrown and re-throw the exception.
@@ -275,7 +281,7 @@ void N1QL::HandleRowCallbackFailure(lcb_t instance, const lcb_RESPN1QL *resp,
 }
 
 template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
-  q_handler.instance = inst_pool->GetResource();
+  q_handler.instance = inst_pool_->GetResource();
 
   // Schedule the data to support query.
   qhandler_stack.Push(q_handler);
@@ -312,7 +318,7 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
 
   // Add the N1QL handle as cookie - allow for query cancellation.
   HandlerCookie cookie;
-  cookie.isolate = isolate;
+  cookie.isolate = isolate_;
   cookie.handle = handle;
   lcb_set_cookie(instance, &cookie);
   // Run the query.
@@ -324,7 +330,7 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   // Resource clean-up.
   lcb_set_cookie(instance, nullptr);
   qhandler_stack.Pop();
-  inst_pool->Restore(instance);
+  inst_pool_->Restore(instance);
 }
 
 std::unordered_map<std::string, std::string>
