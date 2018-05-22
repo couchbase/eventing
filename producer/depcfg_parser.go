@@ -231,13 +231,13 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
 		p.rebalanceConfig.VBOwnershipGiveUpRoutineCount = int(val.(float64))
 	} else {
-		p.rebalanceConfig.VBOwnershipGiveUpRoutineCount = 3
+		p.rebalanceConfig.VBOwnershipGiveUpRoutineCount = 1
 	}
 
 	if val, ok := settings["vb_ownership_takeover_routine_count"]; ok {
 		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = int(val.(float64))
 	} else {
-		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = 3
+		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = 1
 	}
 
 	// Application logging related configurations

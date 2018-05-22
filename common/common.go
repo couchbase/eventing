@@ -87,9 +87,7 @@ type EventingProducer interface {
 	UpdatePlasmaMemoryQuota(quota int64)
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbDistributionStatsFromMetadata() map[string]map[string]string
-	VbEventingNodeAssignMap() map[uint16]string
 	VbSeqnoStats() map[int][]map[string]interface{}
-	WorkerVbMap() map[string][]uint16
 	WriteAppLog(log string)
 }
 
@@ -132,8 +130,10 @@ type EventingConsumer interface {
 	TimerDebugStats() map[int]map[string]interface{}
 	UpdateEventingNodesUUIDs(uuids []string)
 	VbDcpEventsRemainingToProcess() map[int]int64
+	VbEventingNodeAssignMapUpdate(map[uint16]string)
 	VbProcessingStats() map[uint16]map[string]interface{}
 	VbSeqnoStats() map[int]map[string]interface{}
+	WorkerVbMapUpdate(map[string][]uint16)
 }
 
 type EventingSuperSup interface {

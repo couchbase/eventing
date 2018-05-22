@@ -453,8 +453,30 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		logPrefix, p.appName, p.LenRunningConsumers(), p.processConfig.SockIdentifier, p.processConfig.FeedbackSockIdentifier,
 		index, len(vbnos), util.Condense(vbnos))
 
+	vbEventingNodeAssignMap := make(map[uint16]string)
+	workerVbucketMap := make(map[string][]uint16)
+
+	func() {
+		p.vbEventingNodeAssignRWMutex.RLock()
+		defer p.vbEventingNodeAssignRWMutex.RUnlock()
+
+		for vb, node := range p.vbEventingNodeAssignMap {
+			vbEventingNodeAssignMap[vb] = node
+		}
+	}()
+
+	func() {
+		p.workerVbMapRWMutex.RLock()
+		defer p.workerVbMapRWMutex.RUnlock()
+
+		for workerName, assignedVbs := range p.workerVbucketMap {
+			workerVbucketMap[workerName] = assignedVbs
+		}
+	}()
+
 	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid,
-		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.vbPlasmaStore, p.iteratorRefreshCounter, p.numVbuckets, &p.retryCount)
+		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.vbPlasmaStore, p.iteratorRefreshCounter, p.numVbuckets,
+		&p.retryCount, vbEventingNodeAssignMap, workerVbucketMap)
 
 	p.listenerRWMutex.Lock()
 	p.consumerListeners[c] = listener

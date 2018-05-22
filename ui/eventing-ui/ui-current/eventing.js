@@ -122,6 +122,17 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         scope: scope
                     }).result
                     .then(function(response) {
+                        return ApplicationService.primaryStore.getDeployedApps();
+                    })
+                    .then(function(response) {
+                        if (appClone.appname in response.data) {
+                            return $q.reject({
+                                data: {
+                                    runtime_info: `${appClone.appname} is being undeployed. Please try later.`
+                                }
+                            });
+                        }
+
                         appClone.settings.cleanup_timers = scope.settings.cleanupTimers;
                         appClone.settings.dcp_stream_boundary = scope.settings.changeFeedBoundary;
 
@@ -151,7 +162,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         var warnings = null;
                         if (response.data && response.data.info) {
                             var info = JSON.parse(response.data.info);
-                            if (info.warnings.length > 0) {
+                            if (info.warnings && info.warnings.length > 0) {
                                 warnings = info.warnings.join(". <br/>");
                                 showWarningAlert(warnings);
                             }
@@ -178,8 +189,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             }
 
             function undeployApp(app, scope) {
-                var appClone = app.clone();
-
                 $uibModal.open({
                         templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
                         scope: scope
@@ -189,15 +198,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     })
                     .then(function(response) {
                         // Check if the app is deployed completely before trying to undeploy.
-                        if (!(appClone.appname in response.data)) {
-                            showErrorAlert(`Function "${appClone.appname}" may be undergoing bootstrap. Please try later.`);
-                            return $q.reject(`Unable to undeploy "${appClone.appname}". Possibly, bootstrap in progress`);
+                        if (!(app.appname in response.data)) {
+                            showErrorAlert(`Function "${app.appname}" may be undergoing bootstrap. Please try later.`);
+                            return $q.reject(`Unable to undeploy "${app.appname}". Possibly, bootstrap in progress`);
                         }
 
-                        // Set app to 'undeployed & disabled' state and save.
-                        appClone.settings.deployment_status = false;
-                        appClone.settings.processing_status = false;
-                        return ApplicationService.primaryStore.saveSettings(appClone);
+                        return ApplicationService.public.undeployApp(app.appname);
                     })
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
@@ -206,17 +212,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
 
                         console.log(response.data);
-                        return ApplicationService.tempStore.saveApp(appClone);
-                    })
-                    .then(function(response) {
-                        var responseCode = ApplicationService.status.getResponseCode(response);
-                        if (responseCode) {
-                            return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
-                        }
-
-                        console.log(response.data);
-                        app.settings.deployment_status = appClone.settings.deployment_status;
-                        app.settings.processing_status = appClone.settings.processing_status;
+                        app.settings.deployment_status = false;
+                        app.settings.processing_status = false;
                         showSuccessAlert(`${app.appname} undeployed successfully!`);
                     })
                     .catch(function(errResponse) {
@@ -888,6 +885,23 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             },
                             data: appModel
                         });
+                    },
+                    undeployApp: function(appName) {
+                        var settings = {
+                            deployment_status: false,
+                            processing_status: false
+                        };
+                        return $http({
+                            url: `/_p/event/api/v1/functions/${appName}/settings`,
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: settings
+                        });
                     }
                 },
                 tempStore: {
@@ -938,32 +952,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     }
                 },
                 primaryStore: {
-                    deployApp: function(app) {
-                        return $http({
-                            url: '/_p/event/setApplication/?name=' + app.appname,
-                            method: 'POST',
-                            mnHttp: {
-                                isNotForm: true
-                            },
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            data: app
-                        });
-                    },
-                    saveSettings: function(app) {
-                        return $http({
-                            url: '/_p/event/setSettings/?name=' + app.appname,
-                            method: 'POST',
-                            mnHttp: {
-                                isNotForm: true
-                            },
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            data: app.settings
-                        });
-                    },
                     deleteApp: function(appName) {
                         return $http.get('/_p/event/deleteApplication/?name=' + appName);
                     },

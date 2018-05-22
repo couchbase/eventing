@@ -18,19 +18,9 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
 
-  auto context = isolate->GetCurrentContext();
-  auto JSON = context->Global()->Get(v8Str(isolate, "JSON"))->ToObject();
-  auto JSON_stringify =
-      v8::Local<v8::Function>::Cast(JSON->Get(v8Str(isolate, "stringify")));
-
   std::string log_msg;
-  v8::Local<v8::Value> json_args[1];
   for (auto i = 0; i < args.Length(); i++) {
-    json_args[0] = args[i];
-    auto result = JSON_stringify->Call(context->Global(), 1, json_args);
-    v8::String::Utf8Value utf8_value(result);
-
-    log_msg += *utf8_value;
+    log_msg += JSONStringify(isolate, args[i]);
     log_msg += " ";
   }
 
@@ -72,6 +62,7 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
 
+  auto context = isolate->GetCurrentContext();
   if (args.Length() < 3) {
     LOG(logError)
         << "Cron timer: Need 3 args: <callback_func> <timeWhenToKickOff>"
@@ -89,10 +80,13 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  std::string opaque(JSONStringify(args.GetIsolate(), args[2]));
+  std::string opaque = JSONStringify(isolate, args[2]);
+  v8::Local<v8::Integer> ts_int;
+  if (!TO_LOCAL(args[1]->ToInteger(context), &ts_int)) {
+    return;
+  }
 
-  v8::Local<v8::Value> ts_v8_val(args[1]);
-  auto actual_ts = ts_v8_val->ToInteger()->Value();
+  auto actual_ts = ts_int->Value();
   if (actual_ts <= 0) {
     LOG(logError) << "Cron timer: Skipping cron timer callback setup, invalid "
                      "start timestamp"
@@ -267,7 +261,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   std::string cb_func;
   if (isFuncReference(args, 0)) {
-    v8::Local<v8::Function> func_ref = args[0].As<v8::Function>();
+    auto func_ref = args[0].As<v8::Function>();
     v8::String::Utf8Value func_name(func_ref->GetName());
     cb_func.assign(std::string(*func_name));
   } else {
@@ -335,11 +329,11 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     msg.timer_entry += "::";
     msg.timer_entry += doc_id;
     msg.timer_entry += "::";
-    msg.timer_entry += std::to_string(v8worker->currently_processed_vb);
+    msg.timer_entry += std::to_string(v8worker->currently_processed_vb_);
     msg.timer_entry += "::";
-    msg.timer_entry += std::to_string(v8worker->currently_processed_seqno);
+    msg.timer_entry += std::to_string(v8worker->currently_processed_seqno_);
 
-    v8worker->doc_timer_queue->Push(msg);
+    v8worker->doc_timer_queue_->Push(msg);
 
     // Fetch document expiration using virtual extended attributes
     Result res;
@@ -548,12 +542,26 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   url.assign(*u);
 
   auto context = isolate->GetCurrentContext();
-  auto options = args[1]->ToObject(context).ToLocalChecked();
-  auto option_names = options->GetOwnPropertyNames();
+  v8::Local<v8::Object> options;
+  if (!TO_LOCAL(args[1]->ToObject(context), &options)) {
+    return;
+  }
 
-  for (int i = 0; i < static_cast<int>(option_names->Length()); i++) {
-    auto key = option_names->Get(i);
-    auto value = options->Get(key);
+  v8::Local<v8::Array> option_names;
+  if (!TO_LOCAL(option_names->GetOwnPropertyNames(context), &option_names)) {
+    return;
+  }
+
+  for (uint32_t i = 0; i < option_names->Length(); i++) {
+    v8::Local<v8::Value> key;
+    if (!TO_LOCAL(option_names->Get(context, i), &key)) {
+      return;
+    }
+
+    v8::Local<v8::Value> value;
+    if (!TO_LOCAL(options->Get(context, key), &value)) {
+      return;
+    }
 
     if (key->IsString()) {
       v8::String::Utf8Value utf8_key(key);
@@ -586,11 +594,17 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
               curl_slist_append(headers, "Content-Type: application/json");
         }
       } else if (strcmp(*utf8_key, "parameters") == 0) {
-        auto paramaters = value->ToObject(context).ToLocalChecked();
-        auto parameter_fields = paramaters.As<v8::Array>();
+        v8::Local<v8::Object> parameters;
+        if (!TO_LOCAL(value->ToObject(context), &parameters)) {
+          return;
+        }
 
-        for (int j = 0; j < static_cast<int>(parameter_fields->Length()); j++) {
-          auto param = parameter_fields->Get(j).As<v8::Object>();
+        auto parameter_fields = parameters.As<v8::Array>();
+        for (uint32_t j = 0; j < parameter_fields->Length(); j++) {
+          v8::Local<v8::Value> param;
+          if (!TO_LOCAL(parameter_fields->Get(context, j), &param)) {
+            return;
+          }
 
           if (param->IsString()) {
             v8::String::Utf8Value param_str(param);
@@ -674,8 +688,13 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
       return;
     }
 
-    args.GetReturnValue().Set(v8::JSON::Parse(
-        v8::String::NewFromUtf8(args.GetIsolate(), chunk.memory)));
+    v8::Local<v8::Value> response;
+    if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, chunk.memory)),
+                  &response)) {
+      return;
+    }
+
+    args.GetReturnValue().Set(response);
   }
 }
 

@@ -59,19 +59,28 @@ int WinSprintf(char **strp, const char *fmt, ...) {
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const char *str) {
   v8::EscapableHandleScope handle_scope(isolate);
 
-  auto v8_str =
-      v8::String::NewFromUtf8(isolate, str, v8::NewStringType::kNormal)
-          .ToLocalChecked();
-  return handle_scope.Escape(v8_str);
+  auto v8maybe_str =
+      v8::String::NewFromUtf8(isolate, str, v8::NewStringType::kNormal);
+  v8::Local<v8::String> v8local_str;
+  if (TO_LOCAL(v8maybe_str, &v8local_str)) {
+    return handle_scope.Escape(v8local_str);
+  }
+
+  // TODO : Need to throw an exception and propagate it to the handler
+  return handle_scope.Escape(v8::String::Empty(isolate));
 }
 
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const std::string &str) {
   v8::EscapableHandleScope handle_scope(isolate);
 
-  auto v8_str =
-      v8::String::NewFromUtf8(isolate, str.c_str(), v8::NewStringType::kNormal)
-          .ToLocalChecked();
-  return handle_scope.Escape(v8_str);
+  auto v8maybe_str =
+      v8::String::NewFromUtf8(isolate, str.c_str(), v8::NewStringType::kNormal);
+  v8::Local<v8::String> v8local_str;
+  if (TO_LOCAL(v8maybe_str, &v8local_str)) {
+    return handle_scope.Escape(v8local_str);
+  }
+
+  return handle_scope.Escape(v8::String::Empty(isolate));
 }
 
 v8::Local<v8::Name> v8Name(v8::Isolate *isolate, uint32_t key) {
@@ -82,31 +91,45 @@ v8::Local<v8::Name> v8Name(v8::Isolate *isolate, uint32_t key) {
   return handle_scope.Escape(key_name);
 }
 
-std::string JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
-  if (object.IsEmpty()) {
-    return std::string();
+std::string JSONStringify(v8::Isolate *isolate,
+                          const v8::Local<v8::Value> &object) {
+  if (IS_EMPTY(object)) {
+    return "";
   }
 
   v8::HandleScope handle_scope(isolate);
 
-  v8::Local<v8::Context> context = isolate->GetCurrentContext();
+  auto context = isolate->GetCurrentContext();
   auto global = context->Global();
 
-  auto key =
-      v8::String::NewFromUtf8(isolate, "JSON", v8::NewStringType::kNormal)
-          .ToLocalChecked();
-  auto json = global->Get(context, key).ToLocalChecked().As<v8::Object>();
+  auto key = v8Str(isolate, "JSON");
+  v8::Local<v8::Value> v8val_json;
+  if (!TO_LOCAL(global->Get(context, key), &v8val_json)) {
+    return "";
+  }
 
-  key =
-      v8::String::NewFromUtf8(isolate, "stringify", v8::NewStringType::kNormal)
-          .ToLocalChecked();
-  auto stringify = json->Get(context, key).ToLocalChecked().As<v8::Function>();
+  v8::Local<v8::Object> v8obj_json;
+  if (!TO_LOCAL(v8val_json->ToObject(context), &v8obj_json)) {
+    return "";
+  }
 
+  key = v8Str(isolate, "stringify");
+  v8::Local<v8::Value> v8val_stringify;
+  if (!TO_LOCAL(v8obj_json->Get(context, key), &v8val_stringify)) {
+    return "";
+  }
+
+  auto v8fun_stringify = v8val_stringify.As<v8::Function>();
   v8::Local<v8::Value> args[1] = {object};
-  auto result = stringify->Call(global, 1, args);
 
-  v8::String::Utf8Value const utf8_result(result);
-  return std::string(*utf8_result, utf8_result.length());
+  v8::Local<v8::Value> v8obj_result;
+  if (!TO_LOCAL(v8fun_stringify->Call(context, global, 1, args),
+                &v8obj_result)) {
+    return "";
+  }
+
+  v8::String::Utf8Value utf8_result(v8obj_result);
+  return *utf8_result;
 }
 
 // Extracts a C string from a V8 Utf8Value.
@@ -153,14 +176,21 @@ bool isFuncReference(const v8::FunctionCallbackInfo<v8::Value> &args, int i) {
   auto js_exception = UnwrapData(isolate)->js_exception;
 
   if (args[i]->IsFunction()) {
-    v8::Local<v8::Function> func_ref = args[i].As<v8::Function>();
+    auto func_ref = args[i].As<v8::Function>();
     v8::String::Utf8Value func_name(func_ref->GetName());
 
     if (func_name.length()) {
-      v8::Local<v8::Context> context = isolate->GetCurrentContext();
-      v8::Local<v8::Function> timer_func_ref =
-          context->Global()->Get(func_ref->GetName()).As<v8::Function>();
+      auto context = isolate->GetCurrentContext();
+      auto global = context->Global();
 
+      v8::Local<v8::Value> timer_func_ref_val;
+      if (!TO_LOCAL(global->Get(context, func_ref->GetName()),
+                    &timer_func_ref_val)) {
+        // TODO : Throw an exception here
+        return false;
+      }
+
+      auto timer_func_ref = timer_func_ref_val.As<v8::Function>();
       if (timer_func_ref->IsUndefined()) {
         auto exception_msg =
             std::string(*func_name) + " is not defined in global scope";
@@ -317,8 +347,12 @@ ParseInfo UnflattenParseInfo(std::unordered_map<std::string, std::string> &kv) {
   return info;
 }
 
-bool isRetriable(lcb_error_t error) {
-  if (LCB_EIFTMP(error))
-    return true;
-  return false;
+bool IsRetriable(lcb_error_t error) {
+  return static_cast<bool>(LCB_EIFTMP(error));
+}
+
+bool IsTerminatingRetriable(bool retry) { return retry; }
+
+bool IsExecutionTerminating(v8::Isolate *isolate) {
+  return isolate->IsExecutionTerminating();
 }

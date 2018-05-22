@@ -112,7 +112,6 @@ struct CompilationInfo {
 struct IterQueryHandler {
   std::string metadata;
   v8::Local<v8::Function> callback;
-  v8::Local<v8::Value> return_value;
 };
 
 struct BlockingQueryHandler {
@@ -141,7 +140,7 @@ public:
   ConnectionPool(v8::Isolate *isolate, int capacity, std::string cb_kv_endpoint,
                  std::string cb_source_bucket);
 
-  void Restore(lcb_t instance) { instances.push(instance); }
+  void Restore(lcb_t instance) { instances_.push(instance); }
   lcb_t GetResource();
   static void Error(lcb_t instance, const char *msg, lcb_error_t err);
   ~ConnectionPool();
@@ -149,11 +148,11 @@ public:
 private:
   void AddResource();
 
-  const int capacity;
-  int inst_count;
-  std::string conn_str;
-  std::queue<lcb_t> instances;
-  v8::Isolate *isolate;
+  const int capacity_;
+  int inst_count_;
+  std::string conn_str_;
+  std::queue<lcb_t> instances_;
+  v8::Isolate *isolate_;
 };
 
 // Data structure for maintaining the operations.
@@ -161,23 +160,23 @@ private:
 // and HashMap.
 class HashedStack {
 public:
-  HashedStack() {}
+  HashedStack() = default;
   void Push(QueryHandler &q_handler);
   void Pop();
-  QueryHandler Top() { return qstack.top(); }
-  QueryHandler *Get(std::string index_hash) { return qmap[index_hash]; }
+  QueryHandler Top() { return qstack_.top(); }
+  QueryHandler *Get(const std::string &index_hash) { return qmap_[index_hash]; }
   // TODO : Deduce return type
-  int Size() { return static_cast<int>(qstack.size()); }
+  int Size() { return static_cast<int>(qstack_.size()); }
 
 private:
-  std::stack<QueryHandler> qstack;
-  std::unordered_map<std::string, QueryHandler *> qmap;
+  std::stack<QueryHandler> qstack_;
+  std::unordered_map<std::string, QueryHandler *> qmap_;
 };
 
 class N1QL {
 public:
   N1QL(ConnectionPool *inst_pool, v8::Isolate *isolate)
-      : isolate(isolate), inst_pool(inst_pool) {}
+      : isolate_(isolate), inst_pool_(inst_pool) {}
   HashedStack qhandler_stack;
   std::vector<std::string> ExtractErrorMsg(const char *metadata);
   // Schedules operations for execution.
@@ -191,8 +190,8 @@ private:
   static void HandleRowCallbackFailure(lcb_t instance, const lcb_RESPN1QL *resp,
                                        const Data *isolate_data,
                                        N1QL *n1ql_handle);
-  v8::Isolate *isolate;
-  ConnectionPool *inst_pool;
+  v8::Isolate *isolate_;
+  ConnectionPool *inst_pool_;
 };
 
 class Transpiler {
@@ -230,8 +229,8 @@ private:
   std::string ComposeDescription(int code);
 
   v8::Persistent<v8::Context> context_;
-  v8::Isolate *isolate;
-  std::string transpiler_src;
+  v8::Isolate *isolate_;
+  std::string transpiler_src_;
 };
 
 // Function prototypes of jsify.lex

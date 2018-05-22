@@ -670,7 +670,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 				c.aggDCPFeed <- e
 
 			case <-cancelCh:
-				logging.Infof("%s [%s:%s:%d] Closing cancel message related to dcp feed: %v for bucket: %s",
+				logging.Infof("%s [%s:%s:%d] Exiting. Got cancel message related to dcp feed: %s for bucket: %s",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), c.bucket)
 				return
 			}
@@ -709,7 +709,7 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() error {
 	}
 
 	for _, kvAddr := range kvAddrDcpFeedsToClose {
-		logging.Debugf("%s [%s:%s:%d] Going to cleanup kv dcp feed for kvAddr: %v",
+		logging.Infof("%s [%s:%s:%d] Going to cleanup kv dcp feed for kvAddr: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), kvAddr)
 
 		c.hostDcpFeedRWMutex.RLock()
@@ -832,7 +832,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 
 		c.addToAggChan(dcpFeed, cancelCh)
 
-		logging.Infof("%s [%s:%s:%d] vb: %d kvAddr: %v Started up new dcp feed",
+		logging.Infof("%s [%s:%s:%d] vb: %d kvAddr: %v Started up new dcp feed. Spawned aggChan routine",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr)
 	}
 	c.hostDcpFeedRWMutex.Unlock()
@@ -852,6 +852,19 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 	if c.dcpFeedsClosed {
 		return errDcpFeedsClosed
 	}
+
+	c.vbsStreamRRWMutex.Lock()
+	if _, ok := c.vbStreamRequested[vbno]; !ok {
+		c.vbStreamRequested[vbno] = struct{}{}
+		logging.Infof("%s [%s:%s:%d] vb: %v Going to make DcpRequestStream call",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
+	} else {
+		c.vbsStreamRRWMutex.Unlock()
+		logging.Infof("%s [%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
+		return nil
+	}
+	c.vbsStreamRRWMutex.Unlock()
 
 	err = dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 	if err != nil {

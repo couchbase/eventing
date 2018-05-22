@@ -609,3 +609,25 @@ func (c *Consumer) VbSeqnoStats() map[int]map[string]interface{} {
 func (c *Consumer) Index() int {
 	return c.index
 }
+
+// VbEventingNodeAssignMapUpdate captures updated node to vbucket assignment
+func (c *Consumer) VbEventingNodeAssignMapUpdate(vbEventingNodeAssignMap map[uint16]string) {
+	c.vbEventingNodeAssignRWMutex.Lock()
+	defer c.vbEventingNodeAssignRWMutex.Unlock()
+
+	c.vbEventingNodeAssignMap = make(map[uint16]string)
+
+	for vb, node := range vbEventingNodeAssignMap {
+		c.vbEventingNodeAssignMap[vb] = node
+	}
+}
+
+// WorkerVbMapUpdate captures updated mapping of active consumers to vbuckets they should handle as per static planner
+func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
+	c.workerVbucketMapRWMutex.Lock()
+	defer c.workerVbucketMapRWMutex.Unlock()
+
+	for workerName, assignedVbs := range workerVbucketMap {
+		c.workerVbucketMap[workerName] = assignedVbs
+	}
+}

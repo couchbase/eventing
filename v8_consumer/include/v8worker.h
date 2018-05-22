@@ -171,24 +171,24 @@ public:
 
     if (debugger_started)
       return;
-    while (!shutdown_terminator) {
+    while (!shutdown_terminator_) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-      if (execute_flag) {
+      if (execute_flag_) {
         Time::time_point t = Time::now();
-        nsecs ns = std::chrono::duration_cast<nsecs>(t - execute_start_time);
+        nsecs ns = std::chrono::duration_cast<nsecs>(t - execute_start_time_);
 
         LOG(logTrace) << "ns.count(): " << ns.count()
-                     << "ns, max_task_duration: " << max_task_duration << "ns"
-                     << std::endl;
-        if (ns.count() > max_task_duration) {
+                      << "ns, max_task_duration: " << max_task_duration_ << "ns"
+                      << std::endl;
+        if (ns.count() > max_task_duration_) {
           if (isolate_) {
             LOG(logInfo) << "Task took: " << ns.count()
                          << "ns, terminating its execution" << std::endl;
 
             timeout_count++;
             v8::V8::TerminateExecution(isolate_);
-            execute_flag = false;
+            execute_flag_ = false;
           }
         }
       }
@@ -246,66 +246,67 @@ public:
   v8::Persistent<v8::Function> on_delete_;
 
   // lcb instances to source and metadata buckets
-  lcb_t cb_instance;
-  lcb_t meta_cb_instance;
-  lcb_t checkpoint_cb_instance; // Separate instance for checkpointing which
-                                // writes to metadata bucket. Avoiding sharing
-                                // of lcb instance
+  lcb_t cb_instance_;
+  lcb_t meta_cb_instance_;
+  lcb_t checkpoint_cb_instance_; // Separate instance for checkpointing which
+                                 // writes to metadata bucket. Avoiding sharing
+                                 // of lcb instance
 
   std::string app_name_;
   std::string handler_code_;
   std::string script_to_execute_;
   std::string source_map_;
-  std::string cb_source_bucket;
-  int64_t max_task_duration;
+  std::string cb_source_bucket_;
+  int64_t max_task_duration_;
 
-  server_settings_t *settings;
+  server_settings_t *settings_;
 
-  volatile bool execute_flag;
-  volatile bool shutdown_terminator;
+  volatile bool execute_flag_;
+  volatile bool shutdown_terminator_;
 
-  int64_t currently_processed_vb;
-  int64_t currently_processed_seqno;
-  Time::time_point execute_start_time;
+  int64_t currently_processed_vb_;
+  int64_t currently_processed_seqno_;
+  Time::time_point execute_start_time_;
 
-  std::thread checkpointing_thr;
-  std::thread processing_thr;
-  std::thread *terminator_thr;
-  Queue<doc_timer_msg_t> *doc_timer_queue;
-  Queue<worker_msg_t> *worker_queue;
+  std::thread checkpointing_thr_;
+  std::thread processing_thr_;
+  std::thread *terminator_thr_;
+  Queue<doc_timer_msg_t> *doc_timer_queue_;
+  Queue<worker_msg_t> *worker_queue_;
 
-  ConnectionPool *conn_pool;
-  JsException *js_exception;
+  ConnectionPool *conn_pool_;
+  JsException *js_exception_;
 
-  std::mutex lcb_exception_mtx;
-  std::map<int, int64_t> lcb_exceptions;
+  std::mutex lcb_exception_mtx_;
+  std::map<int, int64_t> lcb_exceptions_;
 
-  Histogram *histogram;
-  Data data;
+  Histogram *histogram_;
+  Data data_;
 
 private:
+  int UpdateVbSeqNumbers(const v8::Local<v8::Value> &metadata);
   std::vector<uv_buf_t> BuildResponse(const std::string &payload,
                                       int8_t msg_type, int8_t response_opcode);
-  std::string connstr;
-  std::string meta_connstr;
-  std::string src_path;
+  bool ExecuteScript(const v8::Local<v8::String> &script);
 
-  std::mutex doc_timer_mtx;
+  std::string connstr_;
+  std::string meta_connstr_;
+  std::string src_path_;
+
+  std::mutex doc_timer_mtx_;
   std::map<int, std::string>
-      doc_timer_checkpoint; // Access controlled by doc_timer_mtx
+      doc_timer_checkpoint_; // Access controlled by doc_timer_mtx
 
-  std::mutex cron_timer_mtx;
+  std::mutex cron_timer_mtx_;
   std::map<int, std::string>
-      cron_timer_checkpoint; // Access controlled by cron_timer_mtx
+      cron_timer_checkpoint_; // Access controlled by cron_timer_mtx
 
-  vb_seq_map_t vb_seq;
-
-  bool ExecuteScript(v8::Local<v8::String> script);
-  std::list<Bucket *> bucket_handles;
-  N1QL *n1ql_handle;
+  vb_seq_map_t vb_seq_;
+  std::list<Bucket *> bucket_handles_;
+  N1QL *n1ql_handle_;
   v8::Isolate *isolate_;
   v8::Platform *platform_;
-  inspector::Agent *agent;
+  inspector::Agent *agent_;
 };
 
 const char *GetUsername(void *cookie, const char *host, const char *port,

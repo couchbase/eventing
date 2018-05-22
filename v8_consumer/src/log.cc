@@ -12,8 +12,8 @@
 #include "log.h"
 #include <cstdlib>
 
-std::atomic_flag AtomicCerrLog::cerr_spin_lock = ATOMIC_FLAG_INIT;
-std::atomic_flag AtomicCoutLog::cout_spin_lock = ATOMIC_FLAG_INIT;
+std::atomic_flag AtomicCerrLog::cerr_spin_lock_ = ATOMIC_FLAG_INIT;
+std::atomic_flag AtomicCoutLog::cout_spin_lock_ = ATOMIC_FLAG_INIT;
 std::ostringstream app_log_os;
 
 std::string appName = "";

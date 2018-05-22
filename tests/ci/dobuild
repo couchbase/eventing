@@ -127,9 +127,14 @@ fi
 if [ "$GERRIT" != "" ]; then
   for patch_id in $GERRIT;
   do
+    curl -s -o- "http://review.couchbase.org/changes/$patch_id/" | grep -qs '"status": "NEW"'
+    if [ $? -ne 0 ]; then
+      echo "Patchset <a href='http://review.couchbase.org/#/c/$patch_id'>$patch_id</a> is closed, skipping"
+      continue
+    fi
     cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
     revspec=`git ls-remote -q http://review.couchbase.org/eventing refs/changes/*/$patch_id/* | awk '{print $2}' | sort -n -t/ -k5 | tail -1`
-    echo Pulling in uncommitted change "http://review.couchbase.org/eventing $revspec"
+    echo "Pulling in <a href='http://review.couchbase.org/#/c/$patch_id'>uncommitted change $patch_id</a> at $revspec"
     git fetch -q http://review.couchbase.org/eventing $revspec && git cherry-pick FETCH_HEAD
   done
 fi

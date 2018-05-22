@@ -53,29 +53,29 @@ inline LogLevel LevelFromString(const std::string &level) {
 class AtomicCerrLog {
 public:
   AtomicCerrLog() {
-    while (cerr_spin_lock.test_and_set(std::memory_order_acquire)) {
+    while (cerr_spin_lock_.test_and_set(std::memory_order_acquire)) {
     }
   }
 
   std::ostream &Cerr() { return std::cerr; }
 
-  ~AtomicCerrLog() { cerr_spin_lock.clear(std::memory_order_release); }
+  ~AtomicCerrLog() { cerr_spin_lock_.clear(std::memory_order_release); }
 
-  static std::atomic_flag cerr_spin_lock;
+  static std::atomic_flag cerr_spin_lock_;
 };
 
 class AtomicCoutLog {
 public:
   AtomicCoutLog() {
-    while (cout_spin_lock.test_and_set(std::memory_order_acquire)) {
+    while (cout_spin_lock_.test_and_set(std::memory_order_acquire)) {
     }
   }
 
   std::ostream &Cout() { return std::cout; }
 
-  ~AtomicCoutLog() { cout_spin_lock.clear(std::memory_order_release); }
+  ~AtomicCoutLog() { cout_spin_lock_.clear(std::memory_order_release); }
 
-  static std::atomic_flag cout_spin_lock;
+  static std::atomic_flag cout_spin_lock_;
 };
 
 #define APPLOG AtomicCoutLog().Cout()

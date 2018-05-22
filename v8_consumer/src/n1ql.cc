@@ -10,17 +10,18 @@
 // permissions and limitations under the License.
 
 #include "n1ql.h"
+#include "retry_util.h"
 #include "utils.h"
 
 ConnectionPool::ConnectionPool(v8::Isolate *isolate, int capacity,
                                std::string cb_kv_endpoint,
                                std::string cb_source_bucket)
-    : capacity(capacity), inst_count(0), isolate(isolate) {
+    : capacity_(capacity), inst_count_(0), isolate_(isolate) {
 
-  conn_str = "couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket +
-             "?select_bucket=true";
+  conn_str_ = "couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket +
+              "?select_bucket=true";
   if (IsIPv6()) {
-    conn_str += "&ipv6=allow";
+    conn_str_ += "&ipv6=allow";
   }
 }
 
@@ -32,7 +33,7 @@ void ConnectionPool::AddResource() {
   lcb_error_t err;
   memset(&options, 0, sizeof(options));
   options.version = 3;
-  options.v.v3.connstr = conn_str.c_str();
+  options.v.v3.connstr = conn_str_.c_str();
   options.v.v3.type = LCB_TYPE_BUCKET;
 
   lcb_t instance = nullptr;
@@ -43,7 +44,7 @@ void ConnectionPool::AddResource() {
   }
 
   auto auth = lcbauth_new();
-  err = lcbauth_set_callbacks(auth, isolate, GetUsernameCached,
+  err = lcbauth_set_callbacks(auth, isolate_, GetUsernameCached,
                               GetPasswordCached);
   if (err != LCB_SUCCESS) {
     init_success = false;
@@ -76,29 +77,29 @@ void ConnectionPool::AddResource() {
     Error(instance, "N1QL: Unable to get bootstrap status", err);
   }
 
-  ++inst_count;
-  instances.push(instance);
+  ++inst_count_;
+  instances_.push(instance);
   if (init_success) {
     LOG(logInfo) << "N1QL: lcb instance successfully initialized for "
-                 << RS(conn_str) << std::endl;
+                 << RS(conn_str_) << std::endl;
   } else {
     LOG(logError) << "N1QL: Unable to initialize lcb instance for "
-                  << RS(conn_str) << std::endl;
+                  << RS(conn_str_) << std::endl;
   }
 }
 
 lcb_t ConnectionPool::GetResource() {
   // Dynamically expand the pool size if it's within the pool capacity.
-  if (instances.empty()) {
-    if (inst_count >= capacity) {
+  if (instances_.empty()) {
+    if (inst_count_ >= capacity_) {
       throw "N1QL: Maximum pool capacity reached";
     } else {
       AddResource();
     }
   }
 
-  lcb_t instance = instances.front();
-  instances.pop();
+  lcb_t instance = instances_.front();
+  instances_.pop();
   return instance;
 }
 
@@ -107,44 +108,71 @@ void ConnectionPool::Error(lcb_t instance, const char *msg, lcb_error_t err) {
 }
 
 ConnectionPool::~ConnectionPool() {
-  while (!instances.empty()) {
-    lcb_t instance = instances.front();
+  while (!instances_.empty()) {
+    lcb_t instance = instances_.front();
     if (instance) {
       lcb_destroy(instance);
     }
 
-    instances.pop();
+    instances_.pop();
   }
 }
 
 void HashedStack::Push(QueryHandler &q_handler) {
-  qstack.push(q_handler);
-  qmap[q_handler.hash] = &q_handler;
+  qstack_.push(q_handler);
+  qmap_[q_handler.hash] = &q_handler;
 }
 
 void HashedStack::Pop() {
-  auto it = qmap.find(qstack.top().hash);
-  qmap.erase(it);
-  qstack.pop();
+  auto it = qmap_.find(qstack_.top().hash);
+  qmap_.erase(it);
+  qstack_.pop();
 }
 
 // Extracts error messages from the metadata JSON.
 std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata) {
-  v8::HandleScope handle_scope(isolate);
+  v8::HandleScope handle_scope(isolate_);
 
   std::vector<std::string> errors;
-  auto metadata_v8str = v8Str(isolate, metadata);
-  auto metadata_obj = v8::JSON::Parse(metadata_v8str).As<v8::Object>();
+  auto context = isolate_->GetCurrentContext();
+  v8::Local<v8::Value> metadata_val;
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, metadata)),
+                &metadata_val)) {
+    return errors;
+  }
+
+  v8::Local<v8::Object> metadata_obj;
+  if (!TO_LOCAL(metadata_val->ToObject(context), &metadata_obj)) {
+    return errors;
+  }
 
   if (!metadata_obj.IsEmpty()) {
-    auto errors_v8val = metadata_obj->Get(v8Str(isolate, "errors"));
-    auto errors_v8arr = errors_v8val.As<v8::Array>();
+    v8::Local<v8::Value> errors_v8val;
+    if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "errors")),
+                  &errors_v8val)) {
+      return errors;
+    }
 
+    auto errors_v8arr = errors_v8val.As<v8::Array>();
     for (uint32_t i = 0; i < errors_v8arr->Length(); ++i) {
-      auto error = errors_v8arr->Get(i).As<v8::Object>();
-      auto msg_v8str = error->Get(v8Str(isolate, "msg"));
-      v8::String::Utf8Value msg(msg_v8str);
-      errors.push_back(*msg);
+      v8::Local<v8::Value> error_val;
+      if (!TO_LOCAL(errors_v8arr->Get(context, i), &error_val)) {
+        return errors;
+      }
+
+      v8::Local<v8::Object> error_obj;
+      if (!TO_LOCAL(error_val->ToObject(context), &error_obj)) {
+        return errors;
+      }
+
+      v8::Local<v8::Value> msg_val;
+      if (!TO_LOCAL(error_obj->Get(context, v8Str(isolate_, "msg")),
+                    &msg_val)) {
+        return errors;
+      }
+
+      v8::String::Utf8Value msg(msg_val);
+      errors.emplace_back(*msg);
     }
   } else {
     LOG(logError)
@@ -180,12 +208,16 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
 
     // Execute the function callback passed in JavaScript.
     auto callback = q_handler.iter_handler->callback;
-    v8::TryCatch tryCatch(isolate);
+    v8::TryCatch try_catch(isolate);
+    RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                          IsTerminatingRetriable, IsExecutionTerminating,
+                          isolate);
+
     callback->Call(callback, 1, args);
-    if (tryCatch.HasCaught()) {
+    if (try_catch.HasCaught()) {
       // Cancel the query if an exception was thrown and re-throw the exception.
       lcb_n1ql_cancel(instance, cookie->handle);
-      tryCatch.ReThrow();
+      try_catch.ReThrow();
     }
 
     free(row_str);
@@ -249,7 +281,7 @@ void N1QL::HandleRowCallbackFailure(lcb_t instance, const lcb_RESPN1QL *resp,
 }
 
 template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
-  q_handler.instance = inst_pool->GetResource();
+  q_handler.instance = inst_pool_->GetResource();
 
   // Schedule the data to support query.
   qhandler_stack.Push(q_handler);
@@ -286,7 +318,7 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
 
   // Add the N1QL handle as cookie - allow for query cancellation.
   HandlerCookie cookie;
-  cookie.isolate = isolate;
+  cookie.isolate = isolate_;
   cookie.handle = handle;
   lcb_set_cookie(instance, &cookie);
   // Run the query.
@@ -298,27 +330,57 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   // Resource clean-up.
   lcb_set_cookie(instance, nullptr);
   qhandler_stack.Pop();
-  inst_pool->Restore(instance);
+  inst_pool_->Restore(instance);
 }
 
 std::unordered_map<std::string, std::string>
 ExtractNamedParams(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
-
-  auto options_v8obj =
-      args.This()->Get(v8Str(isolate, "options")).As<v8::Object>();
-  auto named_params_v8obj =
-      options_v8obj->Get(v8Str(isolate, "namedParams")).As<v8::Object>();
-  auto named_params_v8arr = named_params_v8obj->GetPropertyNames();
+  auto context = isolate->GetCurrentContext();
 
   std::unordered_map<std::string, std::string> named_params;
-  for (auto i = 0; i < named_params_v8arr->Length(); ++i) {
-    auto key_v8val = named_params_v8arr->Get(i);
-    auto val_v8val = named_params_v8obj->Get(key_v8val);
+  v8::Local<v8::Value> options_val;
+  if (!TO_LOCAL(args.This()->Get(context, v8Str(isolate, "options")),
+                &options_val)) {
+    return named_params;
+  }
 
-    v8::String::Utf8Value key_utf8(key_v8val);
-    v8::String::Utf8Value val_utf8(val_v8val);
+  v8::Local<v8::Object> options_obj;
+  if (!TO_LOCAL(options_val->ToObject(context), &options_obj)) {
+    return named_params;
+  }
+
+  v8::Local<v8::Value> named_params_val;
+  if (!TO_LOCAL(options_obj->Get(context, v8Str(isolate, "namedParams")),
+                &named_params_val)) {
+    return named_params;
+  }
+
+  v8::Local<v8::Object> named_params_obj;
+  if (!TO_LOCAL(named_params_val->ToObject(context), &named_params_obj)) {
+    return named_params;
+  }
+
+  v8::Local<v8::Array> named_params_arr;
+  if (!TO_LOCAL(named_params_obj->GetPropertyNames(context),
+                &named_params_arr)) {
+    return named_params;
+  }
+
+  for (uint32_t i = 0; i < named_params_arr->Length(); ++i) {
+    v8::Local<v8::Value> key;
+    if (!TO_LOCAL(named_params_arr->Get(context, i), &key)) {
+      return named_params;
+    }
+
+    v8::Local<v8::Value> value;
+    if (!TO_LOCAL(named_params_obj->Get(context, key), &value)) {
+      return named_params;
+    }
+
+    v8::String::Utf8Value key_utf8(key);
+    v8::String::Utf8Value val_utf8(value);
     named_params[*key_utf8] = *val_utf8;
   }
 
@@ -330,18 +392,23 @@ void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
   v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
 
   try {
     // Make the hash of N1QL instance in JavaScript unique.
     auto hash = SetUniqueHash(args);
 
     // Query to run.
-    auto query = args.This()->Get(v8Str(isolate, "query"));
+    v8::Local<v8::Value> query;
+    if (!TO_LOCAL(args.This()->Get(context, v8Str(isolate, "query")), &query)) {
+      return;
+    }
+
     v8::String::Utf8Value query_string(query);
     auto named_params = ExtractNamedParams(args);
 
     // Callback function to execute.
-    auto func = v8::Local<v8::Function>::Cast(args[0]);
+    auto func = args[0].As<v8::Function>();
 
     // Prepare data for query execution.
     IterQueryHandler iter_handler;
@@ -373,7 +440,12 @@ void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
   v8::EscapableHandleScope handle_scope(isolate);
-  auto arg = v8::Local<v8::Object>::Cast(args[0]);
+  auto context = isolate->GetCurrentContext();
+
+  v8::Local<v8::Object> arg;
+  if (!TO_LOCAL(args[0]->ToObject(context), &arg)) {
+    return;
+  }
 
   try {
     // Get the unique hash for this object that was set by
@@ -401,13 +473,18 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
   v8::Locker locker(isolate);
   v8::HandleScope handleScope(isolate);
+  auto context = isolate->GetCurrentContext();
 
   try {
     // Make the hash of N1QL instance in JavaScript unique.
     auto hash = SetUniqueHash(args);
 
     // Query to run.
-    auto query = args.This()->Get(v8Str(isolate, "query"));
+    v8::Local<v8::Value> query;
+    if (!TO_LOCAL(args.This()->Get(context, v8Str(isolate, "query")), &query)) {
+      return;
+    }
+
     v8::String::Utf8Value query_string(query);
     auto named_params = ExtractNamedParams(args);
 
@@ -427,7 +504,12 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     // Populate the result array with the rows of the result.
     for (std::string::size_type i = 0; i < rows.size(); ++i) {
-      auto json_row = v8::JSON::Parse(v8Str(isolate, rows[i].c_str()));
+      v8::Local<v8::Value> json_row;
+      if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, rows[i])),
+                    &json_row)) {
+        return;
+      }
+
       result_array->Set(static_cast<uint32_t>(i), json_row);
     }
 
@@ -451,11 +533,15 @@ inline void SetReturnValue(const v8::FunctionCallbackInfo<v8::Value> &args,
   auto context = isolate->GetCurrentContext();
 
   // return_obj contains the following properties.
-  const std::vector<std::string> props({"code", "args", "data"});
+  const std::vector<std::string> props{"code", "args", "data"};
 
-  for (std::string::size_type i = 0; i < props.size(); ++i) {
-    auto key = v8Str(isolate, props[i].c_str());
-    auto value = return_obj->Get(key);
+  for (const auto &prop : props) {
+    auto key = v8Str(isolate, prop);
+    v8::Local<v8::Value> value;
+    if (!TO_LOCAL(return_obj->Get(context, key), &value)) {
+      return;
+    }
+
     auto private_key = v8::Private::ForApi(isolate, key);
     args.This()->SetPrivate(context, private_key, value);
   }
@@ -475,7 +561,7 @@ void GetReturnValueFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto key = v8::Private::ForApi(isolate, v8Str(isolate, "return_value"));
   auto return_value = ToLocal(args.This()->GetPrivate(context, key));
 
-  auto do_concat = v8::Local<v8::Boolean>::Cast(args[0]);
+  auto do_concat = args[0].As<v8::Boolean>();
   // Concatenate 'code' and 'args' fields if [bool] is true.
   // Else, return the return_obj as it is.
   if (do_concat->Value()) {
@@ -489,9 +575,8 @@ void GetReturnValueFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     auto args_value =
         ToLocal(args.This()->GetPrivate(context, args_private_key));
 
-    auto return_value =
-        v8::String::Concat(v8::Local<v8::String>::Cast(code_value),
-                           v8::Local<v8::String>::Cast(args_value));
+    auto return_value = v8::String::Concat(code_value.As<v8::String>(),
+                                           args_value.As<v8::String>());
     args.GetReturnValue().Set(return_value);
   } else {
     args.GetReturnValue().Set(return_value);
@@ -502,12 +587,17 @@ template <typename HandlerType, typename ResultType>
 void AddQueryMetadata(HandlerType handler, v8::Isolate *isolate,
                       ResultType &result) {
   if (handler.metadata.length() > 0) {
-    // Query metadata.
-    auto metadata_key = v8Str(isolate, "metadata");
-    auto metadata = v8Str(isolate, handler.metadata);
-    auto metadata_json = v8::JSON::Parse(metadata);
+    v8::HandleScope handle_scope(isolate);
+    auto context = isolate->GetCurrentContext();
 
-    result->Set(metadata_key, metadata_json);
+    // Query metadata.
+    v8::Local<v8::Value> metadata_json;
+    if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, handler.metadata)),
+                  &metadata_json)) {
+      return;
+    }
+
+    result->Set(v8Str(isolate, "metadata"), metadata_json);
   }
 }
 
@@ -536,7 +626,7 @@ void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
   // onto it.
   if (exists) {
     auto stack = ToLocal(args.This()->GetPrivate(context, base_hash));
-    auto scope_stack = v8::Local<v8::Map>::Cast(stack);
+    auto scope_stack = stack.As<v8::Map>();
     auto result = scope_stack->Set(
         context, v8::Number::New(isolate, scope_stack->Size()), unique_hash);
     if (result.IsEmpty()) {
@@ -568,7 +658,7 @@ void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
     // If the base hash exists, then pop the unique hash from top of stack.
     if (exists) {
       auto stack = ToLocal(args.This()->GetPrivate(context, hash_key));
-      auto scope_stack = v8::Local<v8::Map>::Cast(stack);
+      auto scope_stack = stack.As<v8::Map>();
       auto result = scope_stack->Delete(
           context, v8::Number::New(isolate, scope_stack->Size() - 1));
       if (result.IsNothing()) {
@@ -601,7 +691,7 @@ std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
     // of stack.
     if (exists) {
       auto stack = ToLocal(args.This()->GetPrivate(context, base_hash));
-      auto scope_stack = v8::Local<v8::Map>::Cast(stack);
+      auto scope_stack = stack.As<v8::Map>();
       auto top_value = ToLocal(scope_stack->Get(
           context, v8::Number::New(isolate, scope_stack->Size() - 1)));
       v8::String::Utf8Value hash(top_value);
@@ -634,7 +724,7 @@ std::string SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
   } else {
     // Otherwise, base hash is itself unique.
     base_hash = AppendStackIndex(args.This()->GetIdentityHash(), isolate);
-    auto hash = v8Str(isolate, base_hash.c_str());
+    auto hash = v8Str(isolate, base_hash);
     auto key = v8::Private::ForApi(isolate, v8Str(isolate, "hash"));
     args.This()->SetPrivate(context, key, hash);
     PushScopeStack(args, base_hash, base_hash);
