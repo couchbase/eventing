@@ -406,9 +406,9 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 		if len(data) == 5 {
 			timerTs, callbackFn, docID, seqStr := data[0], data[1], data[2], data[4]
 
-			seqNo, err := strconv.ParseInt(seqStr, 10, 64)
+			seqNo, err := strconv.ParseUint(seqStr, 10, 64)
 			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] Failed to convert seqNo %v to int64, timerEntry: %v err: %v",
+				logging.Errorf("%s [%s:%s:%d] Failed to convert seqNo %v to uint64, timerEntry: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), seqStr, msg, err)
 				return
 			}
@@ -419,11 +419,12 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 				timerTs:    timerTs,
 				vb:         util.VbucketByKey([]byte(docID), c.numVbuckets),
 			}
-
-			c.vbProcessingStats.updateVbStat(pEntry.vb, "last_doc_timer_feedback_seqno", uint64(seqNo))
-			logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_doc_timer_feedback_seqno to seqNo: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), pEntry.vb, seqNo)
-
+			prevSeqNo := c.vbProcessingStats.getVbStat(pEntry.vb, "last_doc_timer_feedback_seqno").(uint64)
+			if seqNo > prevSeqNo {
+				c.vbProcessingStats.updateVbStat(pEntry.vb, "last_doc_timer_feedback_seqno", seqNo)
+				logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_doc_timer_feedback_seqno to seqNo: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), pEntry.vb, seqNo)
+			}
 			c.doctimerResponsesRecieved++
 			c.plasmaStoreCh <- pEntry
 		} else {
@@ -442,19 +443,21 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 		vbNoStr, seqNoStr := data[0], data[1]
 		vbNo, err := strconv.ParseUint(vbNoStr, 10, 16)
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Failed to convert vbNoStr %s to int64, msg: %v err: %v",
+			logging.Errorf("%s [%s:%s:%d] Failed to convert vbNoStr %s to uint64, msg: %v err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbNoStr, msg, err)
 			return
 		}
-		seqNo, err := strconv.ParseInt(seqNoStr, 10, 64)
+		seqNo, err := strconv.ParseUint(seqNoStr, 10, 64)
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to convert seqNoStr %s to int64, msg: %v err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), seqNoStr, msg, err)
 			return
 		}
-
-		c.vbProcessingStats.updateVbStat(uint16(vbNo), "last_processed_seq_no", uint64(seqNo))
-		logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_processed_seq_no to seqNo: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbNo, seqNo)
+		prevSeqNo := c.vbProcessingStats.getVbStat(uint16(vbNo), "last_processed_seq_no").(uint64)
+		if seqNo > prevSeqNo {
+			c.vbProcessingStats.updateVbStat(uint16(vbNo), "last_processed_seq_no", seqNo)
+			logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_processed_seq_no to seqNo: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbNo, seqNo)
+		}
 	}
 }

@@ -252,7 +252,7 @@ func (c *Consumer) SetFeedbackConnHandle(conn net.Conn) {
 
 	c.sockFeedbackReader = bufio.NewReader(c.feedbackConn)
 
-	go c.feedbackReadMessageLoop()
+	go c.feedbackReadMessageLoop(c.sockFeedbackReader)
 }
 
 // SignalBootstrapFinish is leveraged by Eventing.Producer instance to know

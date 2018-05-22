@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"bufio"
 	"encoding/binary"
 	"encoding/json"
 	"io"
@@ -565,7 +566,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 	return nil
 }
 
-func (c *Consumer) feedbackReadMessageLoop() {
+func (c *Consumer) feedbackReadMessageLoop(feedbackReader *bufio.Reader) {
 	logPrefix := "Consumer::feedbackReadMessageLoop"
 
 	defer func() {
@@ -578,7 +579,7 @@ func (c *Consumer) feedbackReadMessageLoop() {
 
 	for {
 		buffer := make([]byte, c.feedbackReadBufferSize)
-		bytesRead, err := c.sockFeedbackReader.Read(buffer)
+		bytesRead, err := feedbackReader.Read(buffer)
 
 		if err == io.EOF || bytesRead == 0 {
 			break

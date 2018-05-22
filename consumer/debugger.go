@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
@@ -15,14 +16,15 @@ import (
 	"github.com/couchbase/gocb"
 )
 
-func newDebugClient(c *Consumer, appName, eventingPort, ipcType, tcpPort, workerName string) *debugClient {
+func newDebugClient(c *Consumer, appName, debugTCPPort, eventingPort, feedbackTCPPort, ipcType, workerName string) *debugClient {
 	return &debugClient{
-		appName:        appName,
-		consumerHandle: c,
-		debugTCPPort:   tcpPort,
-		eventingPort:   eventingPort,
-		ipcType:        ipcType,
-		workerName:     workerName,
+		appName:              appName,
+		consumerHandle:       c,
+		debugTCPPort:         debugTCPPort,
+		eventingPort:         eventingPort,
+		debugFeedbackTCPPort: feedbackTCPPort,
+		ipcType:              ipcType,
+		workerName:           workerName,
 	}
 }
 
@@ -34,8 +36,10 @@ func (c *debugClient) Serve() {
 		c.appName,
 		c.ipcType,
 		c.debugTCPPort,
+		c.debugFeedbackTCPPort,
 		c.workerName,
 		strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
+		strconv.Itoa(c.consumerHandle.feedbackWriteBatchSize),
 		c.consumerHandle.diagDir,
 		util.GetIPMode(),
 		"true",
@@ -213,13 +217,28 @@ func (c *Consumer) startDebuggerServer() {
 	logPrefix := "Consumer::startDebuggerServer"
 
 	var err error
-	var ipcType string
 	udsSockPath := fmt.Sprintf("%s/debug_%s.sock", os.TempDir(), c.ConsumerName())
+	feedbackSockPath := fmt.Sprintf("%s/debug_feedback_%s.sock", os.TempDir(), c.ConsumerName())
 
-	if runtime.GOOS == "windows" || len(udsSockPath) > udsSockPathLimit {
+	if runtime.GOOS == "windows" || len(feedbackSockPath) > udsSockPathLimit {
+
+		c.debugFeedbackListener, err = net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to listen on feedbackListener while trying to start communication to C++ debugger, err: %v",
+				logPrefix, c.ConsumerName(), c.debugFeedbackTCPPort, c.Pid(), err)
+			return
+		}
+
+		_, c.debugFeedbackTCPPort, err = net.SplitHostPort(c.debugFeedbackListener.Addr().String())
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to parse debugFeedbackTCPPort in '%v', err: %v",
+				logPrefix, c.ConsumerName(), c.debugFeedbackTCPPort, c.Pid(), c.debugFeedbackListener.Addr(), err)
+			return
+		}
+
 		c.debugListener, err = net.Listen("tcp", ":0")
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
+			logging.Errorf("%s [%s:%s:%d] Failed to listen on debuglistener while trying to start communication to C++ debugger, err: %v",
 				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
 			return
 		}
@@ -229,15 +248,21 @@ func (c *Consumer) startDebuggerServer() {
 
 		_, c.debugTCPPort, err = net.SplitHostPort(c.debugListener.Addr().String())
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Failed to parse assigned port in '%v', err: %v",
+			logging.Errorf("%s [%s:%s:%d] Failed to parse  debugTCPPort in '%v', err: %v",
 				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), c.debugListener.Addr(), err)
 			return
 		}
-		ipcType = "af_inet"
+		c.debugIPCType = "af_inet"
 
 	} else {
-
 		os.Remove(udsSockPath)
+		os.Remove(feedbackSockPath)
+		c.debugFeedbackListener, err = net.Listen("unix", feedbackSockPath)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
+				logPrefix, c.ConsumerName(), c.debugFeedbackTCPPort, c.Pid(), err)
+		}
+		c.debugFeedbackTCPPort = feedbackSockPath
 
 		c.debugListener, err = net.Listen("unix", udsSockPath)
 		if err != nil {
@@ -245,16 +270,25 @@ func (c *Consumer) startDebuggerServer() {
 				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
 		}
 
-		ipcType = "af_unix"
+		c.debugIPCType = "af_unix"
 		c.debugTCPPort = udsSockPath
 	}
 
 	c.signalDebuggerConnectedCh = make(chan struct{}, 1)
-
+	c.signalDebuggerFeedbackCh = make(chan struct{}, 1)
 	go func(c *Consumer) {
 		for {
 			c.debugConn, err = c.debugListener.Accept()
 			c.signalDebuggerConnectedCh <- struct{}{}
+		}
+	}(c)
+
+	go func(c *Consumer) {
+		for {
+			c.debugFeedbackConn, _ = c.debugFeedbackListener.Accept()
+			feedbackReader := bufio.NewReader(c.debugFeedbackConn)
+			go c.feedbackReadMessageLoop(feedbackReader)
+			c.signalDebuggerFeedbackCh <- struct{}{}
 		}
 	}(c)
 
@@ -265,10 +299,12 @@ func (c *Consumer) startDebuggerServer() {
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 	}
 
-	c.debugClient = newDebugClient(c, c.app.AppName, c.eventingAdminPort, ipcType, c.debugTCPPort, c.workerName)
+	c.debugClient = newDebugClient(c, c.app.AppName, c.debugTCPPort, c.eventingAdminPort, c.debugFeedbackTCPPort, c.debugIPCType, c.workerName)
+
 	c.debugClientSupToken = c.consumerSup.Add(c.debugClient)
 
 	<-c.signalDebuggerConnectedCh
+	<-c.signalDebuggerFeedbackCh
 
 	c.sendLogLevel(c.logLevel, true)
 
@@ -330,4 +366,7 @@ func (c *Consumer) stopDebuggerServer() {
 
 	c.debugConn.Close()
 	c.debugListener.Close()
+
+	c.debugFeedbackConn.Close()
+	c.debugFeedbackListener.Close()
 }
