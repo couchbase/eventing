@@ -173,7 +173,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         // Show an alert upon successful deployment.
                         var warnings = null;
                         if (response.data && response.data.info) {
-                            var info = JSON.parse(response.data.info);
+                            var info = response.data.info;
                             if (info.warnings && info.warnings.length > 0) {
                                 warnings = info.warnings.join(". <br/>");
                                 showWarningAlert(warnings);
@@ -187,7 +187,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     })
                     .catch(function(errResponse) {
                         if (errResponse.data && (errResponse.data.name === 'ERR_HANDLER_COMPILATION')) {
-                            var info = JSON.parse(errResponse.data.runtime_info);
+                            var info = errResponse.data.runtime_info.info;
                             app.compilationInfo = info;
                             showErrorAlert(`Deployment failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
                         } else {

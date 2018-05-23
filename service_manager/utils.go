@@ -112,7 +112,7 @@ func (m *ServiceMgr) getSourceMap(appName string) string {
 
 func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
 	errInfo := m.errorCodes[runtimeInfo.Code]
-	errInfo.RuntimeInfo = runtimeInfo.Info
+	errInfo.RuntimeInfo = *runtimeInfo
 	response, err := json.Marshal(errInfo)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))

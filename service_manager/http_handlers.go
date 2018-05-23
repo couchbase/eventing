@@ -338,7 +338,7 @@ var getDeployedAppsCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	logging.Infof("Cluster wide deployed app status: %rm", *aggDeployedApps)
+	logging.Tracef("Cluster wide deployed app status: %rm", *aggDeployedApps)
 
 	return nil
 }
@@ -1207,15 +1207,8 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	c := &consumer.Consumer{}
 	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName, m.adminHTTPPort)
 	if err != nil || !compilationInfo.CompileSuccess {
-		res, mErr := json.Marshal(&compilationInfo)
-		if mErr != nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("App: %s Failed to marshal compilation status, err: %v", appName, mErr)
-			return
-		}
-
 		info.Code = m.statusCodes.errHandlerCompile.Code
-		info.Info = fmt.Sprintf("%v\n", string(res))
+		info.Info = compilationInfo
 		return
 	}
 
@@ -1264,15 +1257,8 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		wInfo.Warnings = append(wInfo.Warnings, msg)
 	}
 
-	wData, mErr := json.Marshal(&wInfo)
-	if mErr != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("App: %s Failed to marshal warnings err: %v", appName, mErr)
-		return
-	}
-
 	info.Code = m.statusCodes.ok.Code
-	info.Info = string(wData)
+	info.Info = wInfo
 
 	return
 }
