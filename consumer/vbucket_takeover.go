@@ -91,13 +91,15 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 				}
 
 				if vbBlob.NodeUUID != c.NodeUUID() && vbBlob.DCPStreamStatus == dcpStreamRunning {
-					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %v metadata  node uuid: %v dcp stream status: %v, skipping give up phase",
+					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d metadata node uuid: %d dcp stream status: %d, skipping give up phase",
 						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.NodeUUID, vbBlob.DCPStreamStatus)
 
+					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d Issuing dcp close stream",
+						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
 					c.RLock()
 					err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
 					if err != nil {
-						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %v Failed to close dcp stream, err: %v",
+						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %d Failed to close dcp stream, err: %v",
 							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
 					}
 					c.RUnlock()
@@ -114,7 +116,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					continue
 				}
 
-				logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %v uuid: %v vbStat uuid: %v owner node: %rs consumer name: %v",
+				logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d uuid: %d vbStat uuid: %d owner node: %rs consumer name: %d",
 					logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, c.NodeUUID(),
 					vbsts.getVbStat(vb, "node_uuid"),
 					vbsts.getVbStat(vb, "current_vb_owner"),
@@ -140,9 +142,11 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					// TODO: Retry loop for dcp close stream as it could fail and additional verification checks.
 					// Additional check needed to verify if vbBlob.NewOwner is the expected owner
 					// as per the vbEventingNodesAssignMap.
+					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d Issuing dcp close stream",
+						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
 					err := dcpStreamToClose.DcpCloseStream(vb, vb)
 					if err != nil {
-						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %v Failed to close dcp stream, err: %v",
+						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %d Failed to close dcp stream, err: %v",
 							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
 					}
 
@@ -151,7 +155,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
 					if !cUpdated {
-						logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %v updating metadata about dcp stream close",
+						logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d updating metadata about dcp stream close",
 							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
 
 						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, vbKey, &vbBlob, &cas, false)
@@ -177,7 +181,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 						return
 					}
 
-					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %v Metadata check, stream status: %s owner node: %s worker: %s",
+					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d Metadata check, stream status: %s owner node: %s worker: %s",
 						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus, vbBlob.CurrentVBOwner, vbBlob.AssignedWorker)
 
 					select {
@@ -210,7 +214,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 
 							goto retryVbMetaStateCheck
 						}
-						logging.Infof("%s [%s:giveup_r_%d:%s:%d] Gracefully exited vb ownership give-up routine, last vb handled: %d",
+						logging.Infof("%s [%s:giveup_r_%d:%s:%d] Gracefully exited vb ownership give-up routine, last handled vb: %d",
 							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
 					}
 				}
