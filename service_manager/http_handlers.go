@@ -1736,18 +1736,14 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			infoList := []*runtimeInfo{}
 			for _, app := range m.getTempStoreAll() {
 				audit.Log(auditevent.DeleteFunction, r, app.Name)
-
 				info := m.deletePrimaryStore(app.Name)
 				// Delete the application from temp store only if app does not exist in primary store
 				// or if the deletion succeeds on primary store
 				if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
 					audit.Log(auditevent.DeleteDrafts, r, app.Name)
-
-					info := m.deleteTempStore(app.Name)
-					infoList = append(infoList, info)
-				} else {
-					infoList = append(infoList, info)
+					info = m.deleteTempStore(app.Name)
 				}
+				infoList = append(infoList, info)
 			}
 
 			m.sendRuntimeInfoList(w, infoList)
@@ -1929,8 +1925,9 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 	for _, app := range *appList {
 		audit.Log(auditevent.CreateFunction, r, app.Name)
 
-		if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
-			infoList = append(infoList, info)
+		if infoVal := m.validateApplication(&app); infoVal.Code != m.statusCodes.ok.Code {
+			logging.Warnf("Validating %ru failed: %v", app, infoVal)
+			infoList = append(infoList, infoVal)
 			continue
 		}
 
@@ -1939,15 +1936,24 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			app.Settings["processing_status"] = false
 		}
 
-		info := m.savePrimaryStore(app)
-		infoList = append(infoList, info)
+		infoPri := m.savePrimaryStore(app)
+		if infoPri.Code != m.statusCodes.ok.Code {
+			logging.Warnf("Saving %ru to primary store failed: %v", app, infoPri)
+			infoList = append(infoList, infoPri)
+			continue
+		}
 
 		// Save to temp store only if saving to primary store succeeds
-		if info.Code == m.statusCodes.ok.Code {
-			audit.Log(auditevent.SaveDraft, r, app.Name)
-			info := m.saveTempStore(app)
-			infoList = append(infoList, info)
+		audit.Log(auditevent.SaveDraft, r, app.Name)
+		infoTmp := m.saveTempStore(app)
+		if infoTmp.Code != m.statusCodes.ok.Code {
+			logging.Warnf("Saving %ru to temporary store failed: %v", app, infoTmp)
+			infoList = append(infoList, infoTmp)
+			continue
 		}
+
+		// If everything succeeded, use infoPri as that has warnings, if any
+		infoList = append(infoList, infoPri)
 	}
 
 	return

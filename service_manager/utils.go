@@ -155,6 +155,21 @@ func (m *ServiceMgr) sendRuntimeInfoList(w http.ResponseWriter, runtimeInfoList 
 		return
 	}
 
+	allOK := true
+	allFail := true
+	for _, info := range runtimeInfoList {
+		allOK = allOK && (info.Code == m.statusCodes.ok.Code)
+		allFail = allFail && (info.Code != m.statusCodes.ok.Code)
+	}
+
+	if allOK {
+		w.WriteHeader(http.StatusOK)
+	} else if allFail {
+		w.WriteHeader(http.StatusBadRequest)
+	} else {
+		w.WriteHeader(http.StatusMultiStatus)
+	}
+
 	fmt.Fprintf(w, string(response))
 }
 
