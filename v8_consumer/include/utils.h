@@ -114,7 +114,9 @@ int WinSprintf(char **strp, const char *fmt, ...);
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const char *str);
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const std::string &str);
 v8::Local<v8::Name> v8Name(v8::Isolate *isolate, uint32_t key);
-std::string ObjectToString(v8::Local<v8::Value> value);
+v8::Local<v8::Array> v8Array(v8::Isolate *isolate,
+                             const std::vector<std::string> &from);
+
 std::string JSONStringify(v8::Isolate *isolate,
                           const v8::Local<v8::Value> &object);
 

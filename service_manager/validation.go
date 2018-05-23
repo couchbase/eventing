@@ -500,7 +500,8 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validatePossibleValues("dcp_stream_boundary", settings, []string{"everything", "from_now"}); info.Code != m.statusCodes.ok.Code {
+	dcpStreamBoundaryValues := []string{"everything", "from_now"}
+	if info = m.validatePossibleValues("dcp_stream_boundary", settings, dcpStreamBoundaryValues); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -532,11 +533,20 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
+	if info = m.validateStringArray("handler_headers", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateStringArray("handler_footers", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validatePositiveInteger("lcb_inst_capacity", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
-	if info = m.validatePossibleValues("log_level", settings, []string{"INFO", "ERROR", "WARNING", "DEBUG", "TRACE"}); info.Code != m.statusCodes.ok.Code {
+	logLevelValues := []string{"INFO", "ERROR", "WARNING", "DEBUG", "TRACE"}
+	if info = m.validatePossibleValues("log_level", settings, logLevelValues); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -663,6 +673,28 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 
 	if info = m.validatePositiveInteger("dcp_num_connections", settings); info.Code != m.statusCodes.ok.Code {
 		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) validateStringArray(field string, settings map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if val, ok := settings[field]; ok {
+		if values, ok := val.([]interface{}); ok {
+			for i, value := range values {
+				if _, ok := value.(string); !ok {
+					info.Info = fmt.Sprintf("In %s element at index %d must be a string", field, i)
+					return
+				}
+			}
+		} else {
+			info.Info = fmt.Sprintf("%s must be a list of strings", field)
+			return
+		}
 	}
 
 	info.Code = m.statusCodes.ok.Code

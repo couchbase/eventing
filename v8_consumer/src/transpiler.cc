@@ -13,8 +13,11 @@
 #include "n1ql.h"
 #include "retry_util.h"
 
-Transpiler::Transpiler(v8::Isolate *isolate, const std::string &transpiler_src)
-    : isolate_(isolate), transpiler_src_(transpiler_src) {
+Transpiler::Transpiler(v8::Isolate *isolate, const std::string &transpiler_src,
+                       const std::vector<std::string> &handler_headers,
+                       const std::vector<std::string> &handler_footers)
+    : isolate_(isolate), transpiler_src_(transpiler_src),
+      handler_headers_(handler_headers), handler_footers_(handler_footers) {
   auto global = v8::ObjectTemplate::New(isolate);
   global->Set(v8Str(isolate, "log"),
               v8::FunctionTemplate::New(isolate, Transpiler::Log));
@@ -82,9 +85,11 @@ CompilationInfo Transpiler::Compile(const std::string &n1ql_js_src) {
 
   // CommentN1QL went through fine, move ahead to check JavaScript errors
   v8::HandleScope handle_scope(isolate_);
-  v8::Local<v8::Value> args[1];
+  v8::Local<v8::Value> args[3];
   args[0] = v8Str(isolate_, cmt_info.handler_code);
-  auto result = ExecTranspiler("compile", args, 1);
+  args[1] = v8Array(isolate_, handler_headers_);
+  args[2] = v8Array(isolate_, handler_footers_);
+  auto result = ExecTranspiler("compile", args, 3);
   return ComposeCompilationInfo(result, cmt_info.insertions);
 }
 
@@ -110,10 +115,12 @@ std::string Transpiler::Transpile(const std::string &handler_code,
                                   const std::string &host_addr,
                                   const std::string &eventing_port) {
   v8::HandleScope handle_scope(isolate_);
-  v8::Local<v8::Value> args[2];
+  v8::Local<v8::Value> args[4];
   args[0] = v8Str(isolate_, handler_code);
   args[1] = v8Str(isolate_, src_filename);
-  auto result = ExecTranspiler("transpile", args, 2);
+  args[2] = v8Array(isolate_, handler_headers_);
+  args[3] = v8Array(isolate_, handler_footers_);
+  auto result = ExecTranspiler("transpile", args, 4);
   v8::String::Utf8Value utf8result(result);
 
   std::string src_transpiled = *utf8result;
@@ -270,6 +277,11 @@ CompilationInfo Transpiler::ComposeCompilationInfo(
     return info;
   }
 
+  v8::Local<v8::Value> area;
+  if (!TO_LOCAL(res_obj->Get(context, v8Str(isolate_, "area")), &area)) {
+    return info;
+  }
+
   v8::Local<v8::Value> compilation_status_val;
   if (!TO_LOCAL(res_obj->Get(context, v8Str(isolate_, "compileSuccess")),
                 &compilation_status_val)) {
@@ -320,18 +332,28 @@ CompilationInfo Transpiler::ComposeCompilationInfo(
     return info;
   }
 
-  info.compile_success = compilation_status->Value();
   v8::String::Utf8Value lang_str(language);
   info.language = *lang_str;
-  if (!info.compile_success) {
-    // Compilation failed, attach more info
-    v8::String::Utf8Value desc_str(description);
-    info.description = *desc_str;
-    info.index = static_cast<int32_t>(index->Value());
-    info.line_no = static_cast<int32_t>(line_no->Value());
-    info.col_no = static_cast<int32_t>(col_no->Value());
+  info.compile_success = compilation_status->Value();
 
-    // Rectify position info
+  if (info.compile_success) {
+    info.description = "Compilation success";
+    return info;
+  }
+
+  // Compilation failed, attach more info
+  v8::String::Utf8Value desc_str(description);
+  info.description = *desc_str;
+
+  v8::String::Utf8Value area_str(area);
+  info.area = *area_str;
+
+  info.index = static_cast<int32_t>(index->Value());
+  info.line_no = static_cast<int32_t>(line_no->Value());
+  info.col_no = static_cast<int32_t>(col_no->Value());
+
+  // Rectify position info only if error is in handler code
+  if (info.area == "handlerCode") {
     RectifyCompilationInfo(info, insertions);
   }
 

@@ -125,7 +125,7 @@ type EventingConsumer interface {
 	SignalConnected()
 	SignalFeedbackConnected()
 	SignalStopDebugger() error
-	SpawnCompilationWorker(appcode, appContent, appName, eventingPort string) (*CompileStatus, error)
+	SpawnCompilationWorker(appCode, appContent, appName, eventingPort string, handlerHeaders, handlerFooters []string) (*CompileStatus, error)
 	Stop()
 	String() string
 	TimerDebugStats() map[int]map[string]interface{}
@@ -218,6 +218,7 @@ type CompileStatus struct {
 	Description    string `json:"description"`
 	Version        string `json:"version"`
 	Level          string `json:"level"`
+	Area           string `json:"area"`
 }
 
 // PlannerNodeVbMapping captures the vbucket distribution across all
@@ -242,6 +243,8 @@ type HandlerConfig struct {
 	FeedbackQueueCap            int64
 	FeedbackReadBufferSize      int
 	FuzzOffset                  int
+	HandlerHeaders              []string
+	HandlerFooters              []string
 	LcbInstCapacity             int
 	LogLevel                    string
 	SkipTimerThreshold          int

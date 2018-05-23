@@ -106,6 +106,7 @@ struct CompilationInfo {
   std::string description;
   std::string version;
   std::string level;
+  std::string area;
 };
 
 // Data type for managing iterators.
@@ -196,7 +197,9 @@ private:
 
 class Transpiler {
 public:
-  Transpiler(v8::Isolate *isolate, const std::string &transpiler_src);
+  Transpiler(v8::Isolate *isolate, const std::string &transpiler_src,
+             const std::vector<std::string> &handler_headers,
+             const std::vector<std::string> &handler_footers);
   ~Transpiler();
 
   v8::Local<v8::Value> ExecTranspiler(const std::string &function,
@@ -231,6 +234,8 @@ private:
   v8::Persistent<v8::Context> context_;
   v8::Isolate *isolate_;
   std::string transpiler_src_;
+  std::vector<std::string> handler_headers_;
+  std::vector<std::string> handler_footers_;
 };
 
 // Function prototypes of jsify.lex

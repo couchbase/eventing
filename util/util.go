@@ -1057,6 +1057,20 @@ func ToStr(value bool) (strValue string) {
 	return
 }
 
+func ToStringArray(from interface{}) (to []string) {
+	if from == nil {
+		return
+	}
+
+	fromArray := from.([]interface{})
+	to = make([]string, len(fromArray))
+	for i := 0; i < len(fromArray); i++ {
+		to[i] = fromArray[i].(string)
+	}
+
+	return
+}
+
 func FloatEquals(a, b float64) bool {
 	return (a-b) < EPSILON && (b-a) < EPSILON
 }

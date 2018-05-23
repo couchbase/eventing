@@ -27,10 +27,8 @@
 #include <map>
 #include <regex>
 #include <sstream>
-#include <stdlib.h>
 #include <string>
 #include <thread>
-#include <time.h>
 #include <uv.h>
 #include <v8-debug.h>
 #include <v8.h>
@@ -62,7 +60,6 @@ typedef std::chrono::nanoseconds nsecs;
 #define HIST_WIDTH 1000
 
 #define LCB_OP_RETRY_INTERVAL 100 // in milliseconds
-#define LCB_OP_RETRY_COUNTER 3
 #define NUM_VBUCKETS 1024
 
 using atomic_ptr_t = std::shared_ptr<std::atomic<int64_t>>;
@@ -126,6 +123,8 @@ typedef struct handler_config_s {
   int lcb_inst_capacity;
   bool enable_recursive_mutation;
   bool skip_lcb_bootstrap;
+  std::vector<std::string> handler_headers;
+  std::vector<std::string> handler_footers;
 } handler_config_t;
 
 class Bucket;

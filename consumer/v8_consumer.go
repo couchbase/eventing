@@ -74,6 +74,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		filterVbEventsRWMutex:           &sync.RWMutex{},
 		fuzzOffset:                      hConfig.FuzzOffset,
 		gracefulShutdownChan:            make(chan struct{}, 1),
+		handlerFooters:                  hConfig.HandlerFooters,
+		handlerHeaders:                  hConfig.HandlerHeaders,
 		index:                           index,
 		ipcType:                         pConfig.IPCType,
 		iteratorRefreshCounter:          iteratorRefreshCounter,

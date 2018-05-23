@@ -131,6 +131,9 @@ type Consumer struct {
 	uuid        string
 	retryCount  *int64
 
+	handlerFooters []string
+	handlerHeaders []string
+
 	connMutex    *sync.RWMutex
 	conn         net.Conn // Access controlled by connMutex
 	feedbackConn net.Conn // Access controlled by connMutex

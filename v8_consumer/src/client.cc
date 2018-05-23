@@ -412,6 +412,11 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       handler_config->enable_recursive_mutation =
           payload->enable_recursive_mutation();
       handler_config->skip_lcb_bootstrap = payload->skip_lcb_bootstrap();
+      handler_config->handler_headers =
+          ToStringArray(payload->handler_headers());
+      handler_config->handler_footers =
+          ToStringArray(payload->handler_footers());
+
       server_settings->checkpoint_interval = payload->checkpoint_interval();
       checkpoint_interval_ =
           std::chrono::milliseconds(server_settings->checkpoint_interval);

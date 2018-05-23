@@ -18,6 +18,7 @@
 #include <uv.h>
 #include <vector>
 
+#include "parse_deployment.h"
 #include "v8worker.h"
 
 const size_t MAX_BUF_SIZE = 65536;
