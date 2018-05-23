@@ -142,16 +142,18 @@ type Consumer struct {
 	workerQueueCap    int64
 	workerQueueMemCap int64
 
-	cppThrPartitionMap map[int][]uint16
-	cppWorkerThrCount  int // No. of worker threads per CPP worker process
-	crcTable           *crc32.Table
-	curlTimeout        int64    // curl operation timeout in ms
-	debugConn          net.Conn // Interface to support communication between Go and C++ worker spawned for debugging
-	debugListener      net.Listener
-	diagDir            string // Location that will house minidumps from from crashed cpp workers
-	handlerCode        string // Handler code for V8 Debugger
-	sourceMap          string // source map to assist with V8 Debugger
-	sendMsgToDebugger  bool
+	cppThrPartitionMap    map[int][]uint16
+	cppWorkerThrCount     int // No. of worker threads per CPP worker process
+	crcTable              *crc32.Table
+	curlTimeout           int64    // curl operation timeout in ms
+	debugConn             net.Conn // Interface to support communication between Go and C++ worker spawned for debugging
+	debugFeedbackConn     net.Conn
+	debugFeedbackListener net.Listener
+	debugListener         net.Listener
+	diagDir               string // Location that will house minidumps from from crashed cpp workers
+	handlerCode           string // Handler code for V8 Debugger
+	sourceMap             string // source map to assist with V8 Debugger
+	sendMsgToDebugger     bool
 
 	aggDCPFeedMemCap            int64
 	aggDCPFeedMem               int64
@@ -336,11 +338,14 @@ type Consumer struct {
 	// Will be triggered in case of stop rebalance operation
 	stopVbOwnerTakeoverCh chan struct{}
 
-	debugTCPPort    string
-	feedbackTCPPort string
-	tcpPort         string
+	debugFeedbackTCPPort string
+	debugIPCType         string
+	debugTCPPort         string
+	feedbackTCPPort      string
+	tcpPort              string
 
 	signalDebuggerConnectedCh chan struct{}
+	signalDebuggerFeedbackCh  chan struct{}
 
 	msgProcessedRWMutex *sync.RWMutex
 	// Tracks DCP Opcodes processed per consumer
@@ -402,14 +407,15 @@ type byTimer struct {
 
 // For V8 worker spawned for debugging purpose
 type debugClient struct {
-	appName        string
-	cmd            *exec.Cmd
-	consumerHandle *Consumer
-	debugTCPPort   string
-	eventingPort   string
-	ipcType        string
-	osPid          int
-	workerName     string
+	appName              string
+	cmd                  *exec.Cmd
+	consumerHandle       *Consumer
+	debugFeedbackTCPPort string
+	debugTCPPort         string
+	eventingPort         string
+	ipcType              string
+	osPid                int
+	workerName           string
 }
 
 type client struct {

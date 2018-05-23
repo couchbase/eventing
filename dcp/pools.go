@@ -616,7 +616,7 @@ func (b *Bucket) Close() {
 
 func bucketFinalizer(b *Bucket) {
 	if b.connPools != nil {
-		logging.Warnf("Warning: Finalizing a bucket with active connections.")
+		logging.Debugf("Warning: Finalizing a bucket with active connections.")
 	}
 }
 

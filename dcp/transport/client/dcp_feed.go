@@ -584,7 +584,7 @@ func (feed *DcpFeed) doDcpOpen(
 			logging.Errorf(fmsg, prefix, opaque, err)
 			return err
 		}
-		logging.Infof("%v ##%x sending enable_noop", prefix, opaque)
+		logging.Debugf("%v ##%x sending enable_noop", prefix, opaque)
 		msg, ok := <-rcvch
 		if !ok {
 			fmsg := "%v ##%x doDcpOpen.DCP_CONTROL.rcvch (enable_noop) closed"
@@ -602,7 +602,7 @@ func (feed *DcpFeed) doDcpOpen(
 			logging.Errorf(fmsg, prefix, opaque, status)
 			return ErrorConnection
 		}
-		logging.Infof("%v ##%x received enable_noop response", prefix, opaque)
+		logging.Debugf("%v ##%x received enable_noop response", prefix, opaque)
 	}
 
 	// send a DCP control message to set_noop_interval
@@ -617,7 +617,7 @@ func (feed *DcpFeed) doDcpOpen(
 			logging.Errorf(fmsg, prefix, opaque, err)
 			return err
 		}
-		logging.Infof("%v ##%x sending set_noop_interval", prefix, opaque)
+		logging.Debugf("%v ##%x sending set_noop_interval", prefix, opaque)
 		msg, ok := <-rcvch
 		if !ok {
 			fmsg := "%v ##%x doDcpOpen.rcvch (set_noop_interval) closed"
@@ -636,7 +636,7 @@ func (feed *DcpFeed) doDcpOpen(
 			return ErrorConnection
 		}
 		fmsg := "%v ##%x received response for set_noop_interval"
-		logging.Infof(fmsg, prefix, opaque)
+		logging.Debugf(fmsg, prefix, opaque)
 	}
 	return nil
 }
@@ -1014,7 +1014,7 @@ loop:
 			break loop
 
 		} else if feed.isClosed() {
-			logging.Infof("%v doReceive(): connection closed\n", feed.logPrefix)
+			logging.Debugf("%v doReceive(): connection closed\n", feed.logPrefix)
 			break loop
 
 		} else if err != nil {

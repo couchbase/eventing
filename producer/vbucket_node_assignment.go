@@ -219,6 +219,9 @@ func (p *Producer) initWorkerVbMap() {
 	p.RLock()
 	defer p.RUnlock()
 
+	logging.Infof("%s [%s:%d] Sending workerVbucketMap: %v to all consumers",
+		logPrefix, p.appName, p.LenRunningConsumers(), workerVbucketMap)
+
 	for _, consumer := range p.runningConsumers {
 		consumer.WorkerVbMapUpdate(workerVbucketMap)
 	}

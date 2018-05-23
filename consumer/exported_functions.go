@@ -252,7 +252,7 @@ func (c *Consumer) SetFeedbackConnHandle(conn net.Conn) {
 
 	c.sockFeedbackReader = bufio.NewReader(c.feedbackConn)
 
-	go c.feedbackReadMessageLoop()
+	go c.feedbackReadMessageLoop(c.sockFeedbackReader)
 }
 
 // SignalBootstrapFinish is leveraged by Eventing.Producer instance to know
@@ -626,6 +626,8 @@ func (c *Consumer) VbEventingNodeAssignMapUpdate(vbEventingNodeAssignMap map[uin
 func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
 	c.workerVbucketMapRWMutex.Lock()
 	defer c.workerVbucketMapRWMutex.Unlock()
+
+	c.workerVbucketMap = make(map[string][]uint16)
 
 	for workerName, assignedVbs := range workerVbucketMap {
 		c.workerVbucketMap[workerName] = assignedVbs
