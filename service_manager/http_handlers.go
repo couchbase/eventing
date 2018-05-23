@@ -1958,3 +1958,30 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 
 	return
 }
+
+func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		return
+	}
+
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	count := 0
+
+	apps := m.getTempStoreAll()
+	for _, app := range apps {
+		if app.Settings["deployment_status"].(bool) != true {
+			continue
+		}
+		count += int(app.Settings["worker_count"].(float64))
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%v\n", count)
+}

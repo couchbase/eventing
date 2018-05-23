@@ -17,6 +17,11 @@
           <p>{{summaryCtrl.errorMessage}}</p>
         </div>
       </div>
+      <div ng-show="summaryCtrl.showWorkerAlert">
+        <div class="alert alert-warning">
+          <p>There are {{summaryCtrl.workerCount}} eventing workers configured to run. System performance may be impacted.</p>
+        </div>
+      </div>
     </mn-element-cargo>
     <div class="cbui-table">
       <div class="cbui-table-header" ng-if="!summaryCtrl.isAppListEmpty()">

@@ -7,8 +7,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.errorState = !ApplicationService.status.isErrorCodesLoaded();
             self.errorCode = 200;
             self.showErrorAlert = self.showSuccessAlert = self.showWarningAlert = false;
+            self.showWorkerAlert = false;
             self.serverNodes = serverNodes;
             self.isEventingRunning = isEventingRunning;
+            self.workerCount = 0;
             self.appList = ApplicationService.local.getAllApps();
             self.disableEditButton = false;
 
@@ -40,6 +42,15 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     .catch(function(errResponse) {
                         self.errorCode = errResponse && errResponse.status || 500;
                         console.error('Unable to get deployed apps', errResponse);
+                    });
+
+                ApplicationService.getWorkerCount()
+                    .then(function(response) {
+                        self.workerCount = response.data;
+                        self.showWorkerAlert = true;
+                    })
+                    .catch(function(errResponse) {
+                        self.showWorkerAlert = false;
                     });
             }
 
@@ -155,6 +166,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         app.settings.cleanup_timers = appClone.settings.cleanup_timers;
                         app.settings.deployment_status = appClone.settings.deployment_status;
                         app.settings.processing_status = appClone.settings.processing_status;
+
                         // Enable edit button as we got compilation info
                         self.disableEditButton = false;
 
@@ -958,6 +970,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     getDeployedApps: function() {
                         return $http.get('/_p/event/getDeployedApps');
                     }
+                },
+                getWorkerCount: function() {
+                    return $http.get('/_p/event/getWorkerCount');
                 },
                 debug: {
                     start: function(appName) {
