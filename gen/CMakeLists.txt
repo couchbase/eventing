@@ -31,7 +31,7 @@ IF(BUILD_ENTERPRISE)
   SET(TAGS "${TAGS} enterprise")
 ENDIF()
 
-MESSAGE(INFO "Eventing version is ${EVENTING_VER}")
+MESSAGE(STATUS "Eventing version is ${EVENTING_VER}")
 CONFIGURE_FILE(
   "${PROJECT_SOURCE_DIR}/util/version.in"
   "${PROJECT_SOURCE_DIR}/gen/version/version.go"
