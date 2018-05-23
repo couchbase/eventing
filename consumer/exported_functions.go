@@ -627,6 +627,8 @@ func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
 	c.workerVbucketMapRWMutex.Lock()
 	defer c.workerVbucketMapRWMutex.Unlock()
 
+	c.workerVbucketMap = make(map[string][]uint16)
+
 	for workerName, assignedVbs := range workerVbucketMap {
 		c.workerVbucketMap[workerName] = assignedVbs
 	}
