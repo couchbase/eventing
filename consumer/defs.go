@@ -95,6 +95,7 @@ const (
 	dcpStreamRunning       = "running"
 	dcpStreamStopped       = "stopped"
 	dcpStreamUninitialised = ""
+	metadataCorrected      = "metadata_corrected"
 )
 
 type xattrMetadata struct {
@@ -153,15 +154,14 @@ type Consumer struct {
 	debugListener         net.Listener
 	diagDir               string // Location that will house minidumps from from crashed cpp workers
 	handlerCode           string // Handler code for V8 Debugger
-	sourceMap             string // source map to assist with V8 Debugger
 	sendMsgToDebugger     bool
+	sourceMap             string // source map to assist with V8 Debugger
 
-	aggDCPFeedMemCap            int64
-	aggDCPFeedMem               int64
 	aggDCPFeed                  chan *cb.DcpEvent
+	aggDCPFeedMem               int64
+	aggDCPFeedMemCap            int64
 	cbBucket                    *couchbase.Bucket
 	checkpointInterval          time.Duration
-	idleCheckpointInterval      time.Duration
 	cleanupTimers               bool
 	compileInfo                 *common.CompileStatus
 	dcpEventsRemaining          uint64
@@ -170,13 +170,14 @@ type Consumer struct {
 	dcpFeedsClosed              bool
 	dcpFeedVbMap                map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
 	eventingAdminPort           string
-	eventingSSLPort             string
 	eventingDir                 string
+	eventingSSLPort             string
 	eventingNodeAddrs           []string
 	eventingNodeUUIDs           []string
 	executionTimeout            int
 	gocbBucket                  *gocb.Bucket
 	gocbMetaBucket              *gocb.Bucket
+	idleCheckpointInterval      time.Duration
 	index                       int
 	ipcType                     string // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
 	isRebalanceOngoing          bool
@@ -384,6 +385,7 @@ type Consumer struct {
 	backupVbStats     vbStats
 
 	checkpointTicker         *time.Ticker
+	checkMetadataStateTicker *time.Ticker
 	restartVbDcpStreamTicker *time.Ticker
 	statsTicker              *time.Ticker
 

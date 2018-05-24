@@ -302,6 +302,35 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	return err
 }
 
+var metadataCorrectionCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::metadataCorrectionCallback"
+
+	c := args[0].(*Consumer)
+	vbKey := args[1].(string)
+	ownershipEntry := args[2].(*OwnershipEntry)
+
+	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+		ArrayAppend("ownership_history", ownershipEntry, true).
+		UpsertEx("assigned_worker", c.ConsumerName(), gocb.SubdocFlagCreatePath).
+		UpsertEx("current_vb_owner", c.HostPortAddr(), gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_status", dcpStreamRunning, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid", c.NodeUUID(), gocb.SubdocFlagCreatePath).
+		Execute()
+
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while trying to update metadata, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+	}
+
+	return err
+}
+
 // Called when STYREAMREQ is sent from DCP Client to Producer
 var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::addOwnershipHistorySRRCallback"

@@ -227,6 +227,61 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 	wg.Wait()
 }
 
+func (c *Consumer) checkAndUpdateMetadataLoop() {
+	logPrefix := "Consumer::checkAndUpdateMetadataLoop"
+	c.checkMetadataStateTicker = time.NewTicker(restartVbDcpStreamTickInterval)
+
+	logging.Infof("%s [%s:%s:%d] Started up the routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
+
+	for {
+		select {
+		case <-c.checkMetadataStateTicker.C:
+			if !c.isRebalanceOngoing {
+				c.checkMetadataStateTicker.Stop()
+				logging.Infof("%s [%s:%s:%d] Exiting the routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
+				return
+			}
+
+			c.checkAndUpdateMetadata()
+		}
+	}
+}
+
+func (c *Consumer) checkAndUpdateMetadata() {
+	logPrefix := "Consumer::checkAndUpdateMetadata"
+	vbsOwned := c.getCurrentlyOwnedVbs()
+
+	var vbBlob vbucketKVBlob
+	var cas gocb.Cas
+
+	for _, vb := range vbsOwned {
+		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
+
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, vbKey, &vbBlob, &cas, false)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
+
+		if vbBlob.NodeUUID != c.NodeUUID() || vbBlob.DCPStreamStatus != dcpStreamRunning || vbBlob.AssignedWorker != c.ConsumerName() {
+			entry := OwnershipEntry{
+				AssignedWorker: c.ConsumerName(),
+				CurrentVBOwner: c.HostPortAddr(),
+				Operation:      metadataCorrected,
+				Timestamp:      time.Now().String(),
+			}
+
+			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, metadataCorrectionCallback, c, vbKey, &entry)
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+				return
+			}
+
+			logging.Infof("%s [%s:%s:%d] vb: %d Checked and updated metadata", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+		}
+	}
+}
+
 func (c *Consumer) vbsStateUpdate() {
 	logPrefix := "Consumer::vbsStateUpdate"
 
@@ -304,6 +359,8 @@ retryStreamUpdate:
 		}(c, i, vbsDistribution[i], &wg)
 	}
 
+	go c.checkAndUpdateMetadataLoop()
+
 	wg.Wait()
 
 	c.stopVbOwnerTakeoverCh = make(chan struct{}, c.vbOwnershipTakeoverRoutineCount)
@@ -330,6 +387,8 @@ retryStreamUpdate:
 	c.isRebalanceOngoing = false
 	logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
+
+	c.checkAndUpdateMetadata()
 }
 
 func (c *Consumer) doVbTakeover(vb uint16) error {
