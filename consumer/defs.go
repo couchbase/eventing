@@ -175,6 +175,8 @@ type Consumer struct {
 	eventingNodeAddrs           []string
 	eventingNodeUUIDs           []string
 	executionTimeout            int
+	filterVbEvents              map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
+	filterVbEventsRWMutex       *sync.RWMutex
 	gocbBucket                  *gocb.Bucket
 	gocbMetaBucket              *gocb.Bucket
 	idleCheckpointInterval      time.Duration

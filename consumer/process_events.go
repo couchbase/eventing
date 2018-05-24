@@ -58,6 +58,13 @@ func (c *Consumer) processEvents() {
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
 
+				c.filterVbEventsRWMutex.RLock()
+				if _, ok := c.filterVbEvents[e.VBucket]; ok {
+					c.filterVbEventsRWMutex.RUnlock()
+					continue
+				}
+				c.filterVbEventsRWMutex.RUnlock()
+
 				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 				logging.Tracef("%s [%s:%s:%d] Got DCP_MUTATION for key: %ru datatype: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
@@ -214,6 +221,13 @@ func (c *Consumer) processEvents() {
 
 			case mcd.DCP_DELETION:
 
+				c.filterVbEventsRWMutex.RLock()
+				if _, ok := c.filterVbEvents[e.VBucket]; ok {
+					c.filterVbEventsRWMutex.RUnlock()
+					continue
+				}
+				c.filterVbEventsRWMutex.RUnlock()
+
 				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 
 				if c.debuggerState == startDebug {
@@ -312,6 +326,10 @@ func (c *Consumer) processEvents() {
 						c.Lock()
 						c.vbsRemainingToClose = append(c.vbsRemainingToClose, e.VBucket)
 						c.Unlock()
+
+						c.filterVbEventsRWMutex.Lock()
+						c.filterVbEvents[e.VBucket] = struct{}{}
+						c.filterVbEventsRWMutex.Unlock()
 					}
 
 					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
@@ -379,6 +397,10 @@ func (c *Consumer) processEvents() {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 					return
 				}
+
+				c.filterVbEventsRWMutex.Lock()
+				delete(c.filterVbEvents, e.VBucket)
+				c.filterVbEventsRWMutex.Unlock()
 
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas

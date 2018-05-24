@@ -70,6 +70,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		feedbackReadBufferSize:          hConfig.FeedbackReadBufferSize,
 		feedbackTCPPort:                 pConfig.FeedbackSockIdentifier,
 		feedbackWriteBatchSize:          hConfig.FeedbackBatchSize,
+		filterVbEvents:                  make(map[uint16]struct{}),
+		filterVbEventsRWMutex:           &sync.RWMutex{},
 		fuzzOffset:                      hConfig.FuzzOffset,
 		gracefulShutdownChan:            make(chan struct{}, 1),
 		index:                           index,
