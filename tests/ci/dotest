@@ -193,5 +193,10 @@ cd $WORKSPACE/kv_engine
 git rev-parse HEAD > ~/kv_engine.good
 
 touch ~/.cigreen
+if [ "$CIBOT" = "true" ]; then
+  for patch_id in `cat ~/gerrit.list`; do
+    ssh review.couchbase.org gerrit review --code-review 1 -m "http://$CINAME.northscale.in/eventing-$TS.pass.html" $patch_id
+  done
+fi
 exit 0
 

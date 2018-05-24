@@ -7,6 +7,11 @@ if [ "$WORKSPACE" = "" ]; then
   exit 2
 fi
 
+if [ "$CIBOT" = "true" ]; then
+   sleep 60
+   exit 0
+fi
+
 for i in {1..240}; do
   cd $WORKSPACE
   sleep 60
