@@ -640,6 +640,40 @@ func (feed *DcpFeed) doDcpOpen(
 		fmsg := "%v ##%x received response for set_noop_interval"
 		logging.Debugf(fmsg, prefix, opaque)
 	}
+
+	if true /*send_stream_end_on_client_close_stream*/ {
+		rq := &transport.MCRequest{
+			Opcode: transport.DCP_CONTROL,
+			Key:    []byte("send_stream_end_on_client_close_stream"),
+			Body:   []byte("true"),
+		}
+		if err := feed.conn.Transmit(rq); err != nil {
+			fmsg := "%v ##%x doDcpOpen.Transmit(send_stream_end_on_client_close_stream): %v"
+			logging.Errorf(fmsg, prefix, opaque, err)
+			return err
+		}
+		logging.Debugf("%v ##%x sending send_stream_end_on_client_close_stream", prefix, opaque)
+		msg, ok := <-rcvch
+		if !ok {
+			fmsg := "%v ##%x doDcpOpen.rcvch (send_stream_end_on_client_close_stream) closed"
+			logging.Errorf(fmsg, prefix, opaque)
+			return ErrorConnection
+		}
+		pkt := msg[0].(*transport.MCRequest)
+		opcode, status := pkt.Opcode, transport.Status(pkt.VBucket)
+		if opcode != transport.DCP_CONTROL {
+			fmsg := "%v ##%x DCP_CONTROL (send_stream_end_on_client_close_stream) != #%v"
+			logging.Errorf(fmsg, prefix, opaque, opcode)
+			return ErrorConnection
+		} else if status != transport.SUCCESS {
+			fmsg := "%v ##%x doDcpOpen (send_stream_end_on_client_close_stream) response status %v"
+			logging.Errorf(fmsg, prefix, opaque, status)
+			return ErrorConnection
+		}
+		fmsg := "%v ##%x received response for send_stream_end_on_client_close_stream"
+		logging.Debugf(fmsg, prefix, opaque)
+
+	}
 	return nil
 }
 
