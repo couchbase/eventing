@@ -126,8 +126,14 @@ fi
 
 if [ "$CIBOT" = "true" ]; then
   > ~/gerrit.list
-  for patch_id in `curl -s -o- 'http://review.couchbase.org/changes/?q=project:eventing+status:open+is:mergeable+reviewer:1004336' | grep _number | sed 's/[ ,]*//g' | awk -F: '{print $2}'`
+  autolist="`curl -s -o- 'http://review.couchbase.org/changes/?q=project:eventing+status:open+reviewer:1004336' | grep _number | sed 's/[ ,]*//g' | awk -F: '{print $2}' | sort -n`"
+  for patch_id in $GERRIT $autolist
   do
+    curl -s -o- "http://review.couchbase.org/changes/$patch_id/" | grep -qs '"status": "NEW"'
+    if [ $? -ne 0 ]; then
+      echo "Patchset <a href='http://review.couchbase.org/#/c/$patch_id'>$patch_id</a> is closed, skipping"
+      continue
+    fi
     cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
     revspec=`git ls-remote -q http://review.couchbase.org/eventing refs/changes/*/$patch_id/* | awk '{print $2}' | sort -n -t/ -k5 | tail -1`
     echo "Pulling in <a href='http://review.couchbase.org/#/c/$patch_id'>uncommitted change $patch_id</a> at $revspec"
