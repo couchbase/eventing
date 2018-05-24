@@ -792,8 +792,16 @@ func (c *Consumer) clearUpOwnershipInfoFromMeta(vb uint16) error {
 	return nil
 }
 
-func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, start uint64) error {
+func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, start uint64) error {
 	logPrefix := "Consumer::dcpRequestStreamHandle"
+
+	if c.producer.IsPlannerRunning() {
+		logging.Infof("%s [%s:%s:%d] vb: %d Skipping stream request as planner is running", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+		c.Lock()
+		c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vb)
+		c.Unlock()
+		return errPlannerRunning
+	}
 
 	c.cbBucket.Refresh()
 
@@ -803,7 +811,7 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 		return common.ErrRetryTimeout
 	}
 
-	vbKvAddr := c.kvVbMap[vbno]
+	vbKvAddr := c.kvVbMap[vb]
 
 	// Closing feeds for KV hosts which are no more present in kv vb map
 	err = c.cleanupStaleDcpFeedHandles()
@@ -832,57 +840,57 @@ func (c *Consumer) dcpRequestStreamHandle(vbno uint16, vbBlob *vbucketKVBlob, st
 
 		c.addToAggChan(dcpFeed, cancelCh)
 
-		logging.Infof("%s [%s:%s:%d] vb: %d kvAddr: %v Started up new dcp feed. Spawned aggChan routine",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr)
+		logging.Infof("%s [%s:%s:%d] vb: %d kvAddr: %s Started up new dcp feed. Spawned aggChan routine",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbKvAddr)
 	}
 	c.hostDcpFeedRWMutex.Unlock()
 
 	c.Lock()
-	c.vbDcpFeedMap[vbno] = dcpFeed
+	c.vbDcpFeedMap[vb] = dcpFeed
 	c.Unlock()
 
-	opaque, flags := uint16(vbno), uint32(0)
+	opaque, flags := uint16(vb), uint32(0)
 	end := uint64(0xFFFFFFFFFFFFFFFF)
 
 	snapStart, snapEnd := start, start
 
 	logging.Infof("%s [%s:%s:%d] vb: %d DCP stream start vbKvAddr: %rs vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd)
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd)
 
 	if c.dcpFeedsClosed {
 		return errDcpFeedsClosed
 	}
 
 	c.vbsStreamRRWMutex.Lock()
-	if _, ok := c.vbStreamRequested[vbno]; !ok {
-		c.vbStreamRequested[vbno] = struct{}{}
+	if _, ok := c.vbStreamRequested[vb]; !ok {
+		c.vbStreamRequested[vb] = struct{}{}
 		logging.Infof("%s [%s:%s:%d] vb: %v Going to make DcpRequestStream call",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	} else {
 		c.vbsStreamRRWMutex.Unlock()
 		logging.Infof("%s [%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		return nil
 	}
 	c.vbsStreamRRWMutex.Unlock()
 
-	err = dcpFeed.DcpRequestStream(vbno, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
+	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno, dcpFeed.DcpFeedName(), err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.DcpFeedName(), err)
 
 		c.vbsStreamRRWMutex.Lock()
-		if _, ok := c.vbStreamRequested[vbno]; ok {
+		if _, ok := c.vbStreamRequested[vb]; ok {
 			logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 
-			delete(c.vbStreamRequested, vbno)
+			delete(c.vbStreamRequested, vb)
 		}
 		c.vbsStreamRRWMutex.Unlock()
 
-		if c.checkIfCurrentConsumerShouldOwnVb(vbno) {
+		if c.checkIfCurrentConsumerShouldOwnVb(vb) {
 			c.Lock()
-			c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbno)
+			c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vb)
 			c.Unlock()
 		}
 

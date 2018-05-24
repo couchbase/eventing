@@ -20,6 +20,7 @@ import (
 )
 
 var errDcpFeedsClosed = errors.New("dcp feeds are closed")
+var errPlannerRunning = errors.New("Planner running")
 var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
 var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another worker on same node")
 var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")

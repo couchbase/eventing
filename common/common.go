@@ -56,6 +56,7 @@ type EventingProducer interface {
 	GetSourceMap() string
 	InternalVbDistributionStats() map[string]string
 	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
+	IsPlannerRunning() bool
 	KillAndRespawnEventingConsumer(consumer EventingConsumer)
 	KvHostPorts() []string
 	LenRunningConsumers() int

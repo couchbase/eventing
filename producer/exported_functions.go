@@ -836,9 +836,18 @@ func (p *Producer) CleanupUDSs() {
 	}
 }
 
+// RemoveConsumerToken removes specified worker from supervisor tree
 func (p *Producer) RemoveConsumerToken(workerName string) {
+	p.workerNameConsumerMapRWMutex.RLock()
+	defer p.workerNameConsumerMapRWMutex.RUnlock()
+
 	if c, exists := p.workerNameConsumerMap[workerName]; exists {
 		p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[c])
 		delete(p.consumerSupervisorTokenMap, c)
 	}
+}
+
+// IsPlannerRunning returns planner execution status
+func (p *Producer) IsPlannerRunning() bool {
+	return p.isPlannerRunning
 }

@@ -106,11 +106,16 @@ func (p *Producer) Serve() {
 		return
 	}
 
+	p.isPlannerRunning = true
 	err = p.vbEventingNodeAssign()
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		p.isPlannerRunning = false
 		return
 	}
+
+	p.initWorkerVbMap()
+	p.isPlannerRunning = false
 
 	if err != nil {
 		logging.Fatalf("%s [%s:%d] Failure while assigning vbuckets to workers, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
@@ -175,7 +180,6 @@ func (p *Producer) Serve() {
 		return
 	}
 
-	p.initWorkerVbMap()
 	p.startBucket()
 
 	go p.persistPlasma()
@@ -197,9 +201,11 @@ func (p *Producer) Serve() {
 
 			switch msg.CType {
 			case common.StartRebalanceCType:
+				p.isPlannerRunning = true
 				err = p.vbEventingNodeAssign()
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+					p.isPlannerRunning = false
 					return
 				}
 				p.initWorkerVbMap()
@@ -212,6 +218,8 @@ func (p *Producer) Serve() {
 						eventingConsumer.NotifyClusterChange()
 					}
 				}()
+				p.isPlannerRunning = false
+
 			case common.StopRebalanceCType:
 				func() {
 					p.RLock()
