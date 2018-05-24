@@ -273,7 +273,6 @@ func (c *Consumer) processEvents() {
 					vbBlob.AssignedWorker = c.ConsumerName()
 					vbBlob.CurrentVBOwner = c.HostPortAddr()
 					vbBlob.DCPStreamStatus = dcpStreamRunning
-					vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 					vbBlob.LastSeqNoProcessed = seqNo
 					vbBlob.NodeUUID = c.uuid
 					vbBlob.VBuuid = vbuuid
@@ -289,10 +288,10 @@ func (c *Consumer) processEvents() {
 						CurrentVBOwner: c.HostPortAddr(),
 						Operation:      dcpStreamRunning,
 						StartSeqNo:     startSeqNo,
-						Timestamp:      time.Now().Format(time.RFC3339),
+						Timestamp:      time.Now().String(),
 					}
 
-					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRCallback, c, vbKey, &vbBlob, &entry)
+					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRSCallback, c, vbKey, &vbBlob, &entry)
 					if err == common.ErrRetryTimeout {
 						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 						return
@@ -751,7 +750,6 @@ func (c *Consumer) clearUpOwnershipInfoFromMeta(vb uint16) error {
 	vbBlob.AssignedWorker = ""
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
-	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 	vbBlob.NodeUUID = ""
 	vbBlob.PreviousAssignedWorker = c.ConsumerName()
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
@@ -904,6 +902,25 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		c.hostDcpFeedRWMutex.Lock()
 		delete(c.kvHostDcpFeedMap, vbKvAddr)
 		c.hostDcpFeedRWMutex.Unlock()
+	} else {
+
+		entry := OwnershipEntry{
+			AssignedWorker: c.ConsumerName(),
+			CurrentVBOwner: c.HostPortAddr(),
+			Operation:      dcpStreamRequested,
+			StartSeqNo:     start,
+			Timestamp:      time.Now().String(),
+		}
+
+		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRRCallback, c, vbKey, &entry)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return err
+		}
+
+		logging.Infof("%s [%s:%s:%d] vb: %d Updated checkpoint blob to indicate STREAMREQ was issued",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	}
 
 	return err

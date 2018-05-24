@@ -91,6 +91,7 @@ const (
 
 const (
 	dcpStreamBootstrap     = "bootstrap"
+	dcpStreamRequested     = "stream_requested"
 	dcpStreamRunning       = "running"
 	dcpStreamStopped       = "stopped"
 	dcpStreamUninitialised = ""
@@ -441,6 +442,7 @@ type vbucketKVBlob struct {
 	AssignedWorker            string           `json:"assigned_worker"`
 	CurrentVBOwner            string           `json:"current_vb_owner"`
 	DCPStreamStatus           string           `json:"dcp_stream_status"`
+	DCPStreamRequested        bool             `json:"dcp_stream_requested"`
 	LastCheckpointTime        string           `json:"last_checkpoint_time"`
 	LastDocTimerFeedbackSeqNo uint64           `json:"last_doc_timer_feedback_seqno"`
 	LastSeqNoProcessed        uint64           `json:"last_processed_seq_no"`

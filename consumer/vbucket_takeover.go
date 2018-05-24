@@ -20,7 +20,8 @@ import (
 )
 
 var errDcpFeedsClosed = errors.New("dcp feeds are closed")
-var errPlannerRunning = errors.New("Planner running")
+var errDcpStreamRequested = errors.New("another worker issued STREAMREQ")
+var errPlannerRunning = errors.New("planner running")
 var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
 var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another worker on same node")
 var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")
@@ -392,6 +393,12 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 	case dcpStreamStopped, dcpStreamUninitialised:
 
+		if vbBlob.DCPStreamRequested {
+			logging.Infof("%s [%s:%s:%d] vb: %d Another worker has issued STREAMREQ for the vbucket",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
+			return errDcpStreamRequested
+		}
+
 		logging.Infof("%s [%s:%s:%d] vb: %d vbblob stream status: %s, starting dcp stream",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
 
@@ -665,7 +672,6 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 	vbBlob.AssignedWorker = ""
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
-	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 	vbBlob.NodeUUID = ""
 	vbBlob.PreviousAssignedWorker = c.ConsumerName()
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
