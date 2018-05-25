@@ -992,14 +992,34 @@ func (c *Consumer) handleFailoverLog() {
 				if vbFlog.statusCode == mcd.ROLLBACK {
 					logging.Infof("%s [%s:%s:%d] vb: %v Rollback requested by DCP. Retrying DCP stream start vbuuid: %d startSeq: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
-					c.dcpRequestStreamHandle(vbFlog.vb, &vbBlob, vbFlog.seqNo)
-					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", vbFlog.seqNo)
-					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
+
+					var flogs couchbase.FailoverLog
+
+					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpAllVbucketsCallback, c, c.cbBucket, &flogs, vbFlog.vb)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return
+					}
+
+					if flog, ok := flogs[vbFlog.vb]; ok {
+						vbuuid, startSeqNo, err := flog.Latest()
+						if err != nil {
+							c.Lock()
+							c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbFlog.vb)
+							c.Unlock()
+							continue
+						}
+
+						vbBlob.VBuuid = vbuuid
+						c.dcpRequestStreamHandle(vbFlog.vb, &vbBlob, startSeqNo)
+						c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", startSeqNo)
+						c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
+					}
 				} else {
 					logging.Infof("%s [%s:%s:%d] vb: %v Retrying DCP stream start vbuuid: %d startSeq: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
 					c.dcpRequestStreamHandle(vbFlog.vb, &vbBlob, 0)
-					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", vbFlog.seqNo)
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", 0)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 				}
 
