@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -1212,6 +1213,11 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
+	m.checkVersionCompat(compilationInfo.Version, info)
+	if info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	settingsPath := metakvAppSettingsPath + appName
 	settings := app.Settings
 
@@ -1970,4 +1976,32 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "%v\n", count)
+}
+
+func (m *ServiceMgr) checkVersionCompat(required string, info *runtimeInfo) {
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
+	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	if err != nil {
+		info.Code = m.statusCodes.errConnectNsServer.Code
+		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
+		return
+	}
+
+	ok := false
+	major, minor := clusterInfo.GetClusterVersion()
+	switch required {
+	case "vulcan":
+		ok = (major >= 5 && minor >= 5)
+	}
+
+	if !ok {
+		info.Code = m.statusCodes.errClusterVersion.Code
+		info.Info = fmt.Sprintf("Handler requires '%v', but cluster is at '%v.%v'",
+			required, major, minor)
+		logging.Warnf("Version compat check failed: %v", info.Info)
+		return
+	}
+
+	logging.Infof("Handler need '%v' satisfied by cluster '%v.%v'", required, major, minor)
+	info.Code = m.statusCodes.ok.Code
 }
