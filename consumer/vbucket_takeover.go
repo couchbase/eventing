@@ -454,7 +454,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 		if vbBlob.DCPStreamRequested {
 			logging.Infof("%s [%s:%s:%d] vb: %d Another worker has issued STREAMREQ for the vbucket",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 			return errDcpStreamRequested
 		}
 

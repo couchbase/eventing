@@ -362,6 +362,15 @@ func (c *Consumer) processEvents() {
 						vb:             e.VBucket,
 					}
 
+					c.vbsStreamRRWMutex.Lock()
+					if _, ok := c.vbStreamRequested[e.VBucket]; ok {
+						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ failed. Purging entry from vbStreamRequested",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+
+						delete(c.vbStreamRequested, e.VBucket)
+					}
+					c.vbsStreamRRWMutex.Unlock()
+
 					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
 					c.vbFlogChan <- vbFlog
