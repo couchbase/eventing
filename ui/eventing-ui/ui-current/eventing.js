@@ -7,7 +7,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.errorState = !ApplicationService.status.isErrorCodesLoaded();
             self.errorCode = 200;
             self.showErrorAlert = self.showSuccessAlert = self.showWarningAlert = false;
-            self.showWorkerAlert = false;
             self.serverNodes = serverNodes;
             self.isEventingRunning = isEventingRunning;
             self.workerCount = 0;
@@ -46,11 +45,13 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                 ApplicationService.getWorkerCount()
                     .then(function(response) {
-                        self.workerCount = response.data;
-                        self.showWorkerAlert = true;
+                        if (response && response.data) {
+                            self.workerCount = response.data;
+                        }
                     })
                     .catch(function(errResponse) {
-                        self.showWorkerAlert = false;
+                        console.error('Unable to get worker count', errResponse);
+                       self.workerCount = 0;
                     });
             }
 

@@ -17,7 +17,7 @@
           <p>{{summaryCtrl.errorMessage}}</p>
         </div>
       </div>
-      <div ng-show="summaryCtrl.showWorkerAlert">
+      <div ng-show="summaryCtrl.workerCount > 10">
         <div class="alert alert-warning">
           <p>There are {{summaryCtrl.workerCount}} eventing workers configured to run. System performance may be impacted.</p>
         </div>
