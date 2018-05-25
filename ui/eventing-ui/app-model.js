@@ -119,7 +119,7 @@ ApplicationModel.prototype.getDefaultModel = function() {
             sock_batch_size: 100,
             tick_duration: 60000,
             checkpoint_interval: 10000,
-            worker_count: 3,
+            worker_count: 1,
             cleanup_timers: false,
             skip_timer_threshold: 86400,
             timer_processing_tick_interval: 500,
@@ -170,7 +170,7 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.settings = {};
     this.settings.checkpoint_interval = 10000;
     this.settings.sock_batch_size = 100;
-    this.settings.worker_count = 3;
+    this.settings.worker_count = 1;
     this.settings.skip_timer_threshold = 86400;
     this.settings.tick_duration = 60000;
     this.settings.timer_processing_tick_interval = 500;

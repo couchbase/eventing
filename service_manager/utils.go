@@ -52,7 +52,7 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "sock_batch_size", float64(100))
 	fillMissingDefault(settings, "tick_duration", float64(60000))
 	fillMissingDefault(settings, "timer_processing_tick_interval", float64(500))
-	fillMissingDefault(settings, "worker_count", float64(3))
+	fillMissingDefault(settings, "worker_count", float64(1))
 	fillMissingDefault(settings, "worker_feedback_queue_cap", float64(10*1000))
 	fillMissingDefault(settings, "worker_queue_cap", float64(100*1000))
 	fillMissingDefault(settings, "worker_queue_mem_cap", float64(1024))
@@ -112,7 +112,7 @@ func (m *ServiceMgr) getSourceMap(appName string) string {
 
 func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
 	errInfo := m.errorCodes[runtimeInfo.Code]
-	errInfo.RuntimeInfo = runtimeInfo.Info
+	errInfo.RuntimeInfo = *runtimeInfo
 	response, err := json.Marshal(errInfo)
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
@@ -153,6 +153,21 @@ func (m *ServiceMgr) sendRuntimeInfoList(w http.ResponseWriter, runtimeInfoList 
 		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
 		fmt.Fprintf(w, `{"error":"Failed to marshal error info, err: %v"}`, err)
 		return
+	}
+
+	allOK := true
+	allFail := true
+	for _, info := range runtimeInfoList {
+		allOK = allOK && (info.Code == m.statusCodes.ok.Code)
+		allFail = allFail && (info.Code != m.statusCodes.ok.Code)
+	}
+
+	if allOK {
+		w.WriteHeader(http.StatusOK)
+	} else if allFail {
+		w.WriteHeader(http.StatusBadRequest)
+	} else {
+		w.WriteHeader(http.StatusMultiStatus)
 	}
 
 	fmt.Fprintf(w, string(response))

@@ -338,7 +338,7 @@ var getDeployedAppsCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	logging.Infof("Cluster wide deployed app status: %rm", *aggDeployedApps)
+	logging.Tracef("Cluster wide deployed app status: %rm", *aggDeployedApps)
 
 	return nil
 }
@@ -1207,15 +1207,8 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	c := &consumer.Consumer{}
 	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName, m.adminHTTPPort)
 	if err != nil || !compilationInfo.CompileSuccess {
-		res, mErr := json.Marshal(&compilationInfo)
-		if mErr != nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("App: %s Failed to marshal compilation status, err: %v", appName, mErr)
-			return
-		}
-
 		info.Code = m.statusCodes.errHandlerCompile.Code
-		info.Info = fmt.Sprintf("%v\n", string(res))
+		info.Info = compilationInfo
 		return
 	}
 
@@ -1264,15 +1257,8 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		wInfo.Warnings = append(wInfo.Warnings, msg)
 	}
 
-	wData, mErr := json.Marshal(&wInfo)
-	if mErr != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("App: %s Failed to marshal warnings err: %v", appName, mErr)
-		return
-	}
-
 	info.Code = m.statusCodes.ok.Code
-	info.Info = string(wData)
+	info.Info = wInfo
 
 	return
 }
@@ -1736,18 +1722,14 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			infoList := []*runtimeInfo{}
 			for _, app := range m.getTempStoreAll() {
 				audit.Log(auditevent.DeleteFunction, r, app.Name)
-
 				info := m.deletePrimaryStore(app.Name)
 				// Delete the application from temp store only if app does not exist in primary store
 				// or if the deletion succeeds on primary store
 				if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
 					audit.Log(auditevent.DeleteDrafts, r, app.Name)
-
-					info := m.deleteTempStore(app.Name)
-					infoList = append(infoList, info)
-				} else {
-					infoList = append(infoList, info)
+					info = m.deleteTempStore(app.Name)
 				}
+				infoList = append(infoList, info)
 			}
 
 			m.sendRuntimeInfoList(w, infoList)
@@ -1929,8 +1911,9 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 	for _, app := range *appList {
 		audit.Log(auditevent.CreateFunction, r, app.Name)
 
-		if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
-			infoList = append(infoList, info)
+		if infoVal := m.validateApplication(&app); infoVal.Code != m.statusCodes.ok.Code {
+			logging.Warnf("Validating %ru failed: %v", app, infoVal)
+			infoList = append(infoList, infoVal)
 			continue
 		}
 
@@ -1939,16 +1922,52 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			app.Settings["processing_status"] = false
 		}
 
-		info := m.savePrimaryStore(app)
-		infoList = append(infoList, info)
+		infoPri := m.savePrimaryStore(app)
+		if infoPri.Code != m.statusCodes.ok.Code {
+			logging.Warnf("Saving %ru to primary store failed: %v", app, infoPri)
+			infoList = append(infoList, infoPri)
+			continue
+		}
 
 		// Save to temp store only if saving to primary store succeeds
-		if info.Code == m.statusCodes.ok.Code {
-			audit.Log(auditevent.SaveDraft, r, app.Name)
-			info := m.saveTempStore(app)
-			infoList = append(infoList, info)
+		audit.Log(auditevent.SaveDraft, r, app.Name)
+		infoTmp := m.saveTempStore(app)
+		if infoTmp.Code != m.statusCodes.ok.Code {
+			logging.Warnf("Saving %ru to temporary store failed: %v", app, infoTmp)
+			infoList = append(infoList, infoTmp)
+			continue
 		}
+
+		// If everything succeeded, use infoPri as that has warnings, if any
+		infoList = append(infoList, infoPri)
 	}
 
 	return
+}
+
+func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		return
+	}
+
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	count := 0
+
+	apps := m.getTempStoreAll()
+	for _, app := range apps {
+		if app.Settings["deployment_status"].(bool) != true {
+			continue
+		}
+		count += int(app.Settings["worker_count"].(float64))
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%v\n", count)
 }

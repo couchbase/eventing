@@ -20,16 +20,16 @@ type statusPayload struct {
 }
 
 type errorPayload struct {
-	Name        string   `json:"name"`
-	Code        int      `json:"code"`
-	Description string   `json:"description"`
-	Attributes  []string `json:"attributes"`
-	RuntimeInfo string   `json:"runtime_info"`
+	Name        string      `json:"name"`
+	Code        int         `json:"code"`
+	Description string      `json:"description"`
+	Attributes  []string    `json:"attributes"`
+	RuntimeInfo runtimeInfo `json:"runtime_info"`
 }
 
 type runtimeInfo struct {
-	Code int    `json:"code"`
-	Info string `json:"info"`
+	Code int         `json:"code"`
+	Info interface{} `json:"info"`
 }
 
 type warningsInfo struct {

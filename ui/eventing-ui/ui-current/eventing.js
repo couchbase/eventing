@@ -9,6 +9,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.showErrorAlert = self.showSuccessAlert = self.showWarningAlert = false;
             self.serverNodes = serverNodes;
             self.isEventingRunning = isEventingRunning;
+            self.workerCount = 0;
             self.appList = ApplicationService.local.getAllApps();
             self.disableEditButton = false;
 
@@ -40,6 +41,17 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     .catch(function(errResponse) {
                         self.errorCode = errResponse && errResponse.status || 500;
                         console.error('Unable to get deployed apps', errResponse);
+                    });
+
+                ApplicationService.getWorkerCount()
+                    .then(function(response) {
+                        if (response && response.data) {
+                            self.workerCount = response.data;
+                        }
+                    })
+                    .catch(function(errResponse) {
+                        console.error('Unable to get worker count', errResponse);
+                       self.workerCount = 0;
                     });
             }
 
@@ -155,13 +167,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         app.settings.cleanup_timers = appClone.settings.cleanup_timers;
                         app.settings.deployment_status = appClone.settings.deployment_status;
                         app.settings.processing_status = appClone.settings.processing_status;
+
                         // Enable edit button as we got compilation info
                         self.disableEditButton = false;
 
                         // Show an alert upon successful deployment.
                         var warnings = null;
                         if (response.data && response.data.info) {
-                            var info = JSON.parse(response.data.info);
+                            var info = response.data.info;
                             if (info.warnings && info.warnings.length > 0) {
                                 warnings = info.warnings.join(". <br/>");
                                 showWarningAlert(warnings);
@@ -175,7 +188,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     })
                     .catch(function(errResponse) {
                         if (errResponse.data && (errResponse.data.name === 'ERR_HANDLER_COMPILATION')) {
-                            var info = JSON.parse(errResponse.data.runtime_info);
+                            var info = errResponse.data.runtime_info.info;
                             app.compilationInfo = info;
                             showErrorAlert(`Deployment failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
                         } else {
@@ -958,6 +971,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     getDeployedApps: function() {
                         return $http.get('/_p/event/getDeployedApps');
                     }
+                },
+                getWorkerCount: function() {
+                    return $http.get('/_p/event/getWorkerCount');
                 },
                 debug: {
                     start: function(appName) {
