@@ -40,5 +40,7 @@ SET(V8INSPECTOR_LIBRARIES
 
 ADD_LIBRARY(eventing-inspector STATIC ${V8INSPECTOR_SOURCES})
 TARGET_LINK_LIBRARIES(eventing-inspector ${V8INSPECTOR_LIBRARIES})
-TARGET_COMPILE_OPTIONS(eventing-inspector PRIVATE -Wno-unused-variable -Wno-unused-function)
+IF (NOT WIN32)
+  TARGET_COMPILE_OPTIONS(eventing-inspector PRIVATE -Wno-unused-variable -Wno-unused-function)
+ENDIF ()
 ADD_DEPENDENCIES(eventing-inspector generated)
