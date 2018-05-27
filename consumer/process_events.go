@@ -292,9 +292,22 @@ func (c *Consumer) processEvents() {
 					vbBlob.VBuuid = vbuuid
 
 					var startSeqNo uint64
-					var ok bool
-					if _, ok = c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64); ok {
-						startSeqNo = uint64(c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64))
+					if seqNo, ok := c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64); ok {
+						startSeqNo = seqNo
+					}
+
+				retryCheckMetadataUpdated:
+					if metadataUpdated, ok := c.vbProcessingStats.getVbStat(e.VBucket, "vb_stream_request_metadata_updated").(bool); ok {
+						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated: %t",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, metadataUpdated)
+						if metadataUpdated {
+							c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
+						}
+					} else {
+						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated not found",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+						time.Sleep(time.Second)
+						goto retryCheckMetadataUpdated
 					}
 
 					entry := OwnershipEntry{
@@ -347,16 +360,10 @@ func (c *Consumer) processEvents() {
 					continue
 				}
 
-				if e.Status == mcd.EINVAL || e.Status == mcd.ROLLBACK || e.Status == mcd.ENOMEM || e.Status == mcd.NOT_MY_VBUCKET {
-					_, seqNo, err := e.FailoverLog.Latest()
-					if err != nil {
-						logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ Failure to get latest failover log, err: %v",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, err)
-					}
+				if e.Status != mcd.SUCCESS {
 
 					vbFlog := &vbFlogEntry{
 						flog:           e.FailoverLog,
-						seqNo:          seqNo,
 						statusCode:     e.Status,
 						streamReqRetry: true,
 						vb:             e.VBucket,
@@ -370,6 +377,21 @@ func (c *Consumer) processEvents() {
 						delete(c.vbStreamRequested, e.VBucket)
 					}
 					c.vbsStreamRRWMutex.Unlock()
+
+					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
+
+					entry := OwnershipEntry{
+						AssignedWorker: c.ConsumerName(),
+						CurrentVBOwner: c.HostPortAddr(),
+						Operation:      dcpStreamRequestFailed,
+						Timestamp:      time.Now().String(),
+					}
+
+					err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRFCallback, c, vbKey, &entry)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return
+					}
 
 					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
@@ -577,11 +599,13 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 	logging.Debugf("%s [%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
 
-	for vbno, flog := range flogs {
+	var vbs []uint16
+
+	for vb, flog := range flogs {
 
 		vbuuid, _, _ := flog.Latest()
 
-		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vbno)
+		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 		var vbBlob vbucketKVBlob
 		var start uint64
 		var cas gocb.Cas
@@ -598,7 +622,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 			// Storing vbuuid in metadata bucket, will be required for start
 			// stream later on
 			vbBlob.VBuuid = vbuuid
-			vbBlob.VBId = vbno
+			vbBlob.VBId = vb
 			vbBlob.AssignedWorker = c.ConsumerName()
 			vbBlob.CurrentVBOwner = c.HostPortAddr()
 
@@ -625,27 +649,57 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 				return common.ErrRetryTimeout
 			}
 
+			vbs = append(vbs, vb)
 			switch c.dcpStreamBoundary {
 			case common.DcpEverything:
-				start = uint64(0)
-				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
-				c.vbProcessingStats.updateVbStat(vbno, "start_seq_no", start)
-				c.vbProcessingStats.updateVbStat(vbno, "timestamp", time.Now().Format(time.RFC3339))
+				logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
+
+				c.reqStreamCh <- &streamRequestInfo{
+					vb:         vb,
+					vbBlob:     &vbBlob,
+					startSeqNo: uint64(0),
+				}
+				c.vbProcessingStats.updateVbStat(vb, "start_seq_no", start)
+				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
 			case common.DcpFromNow:
-				start = uint64(vbSeqnos[int(vbno)])
-				c.dcpRequestStreamHandle(vbno, &vbBlob, start)
-				c.vbProcessingStats.updateVbStat(vbno, "start_seq_no", start)
-				c.vbProcessingStats.updateVbStat(vbno, "timestamp", time.Now().Format(time.RFC3339))
+				logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
+				c.reqStreamCh <- &streamRequestInfo{
+					vb:         vb,
+					vbBlob:     &vbBlob,
+					startSeqNo: vbSeqnos[int(vb)],
+				}
+				c.vbProcessingStats.updateVbStat(vb, "start_seq_no", start)
+				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 			}
 		} else {
-			if vbBlob.NodeUUID == c.NodeUUID() {
-				c.dcpRequestStreamHandle(vbno, &vbBlob, vbBlob.LastSeqNoProcessed)
-				c.vbProcessingStats.updateVbStat(vbno, "start_seq_no", vbBlob.LastSeqNoProcessed)
-				c.vbProcessingStats.updateVbStat(vbno, "timestamp", time.Now().Format(time.RFC3339))
+			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
+				vbs = append(vbs, vb)
+
+				logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
+
+				c.reqStreamCh <- &streamRequestInfo{
+					vb:         vb,
+					vbBlob:     &vbBlob,
+					startSeqNo: vbBlob.LastSeqNoProcessed,
+				}
+				c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
+				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
 			}
+		}
+
+	}
+
+checkIfVbStreamsOpened:
+	for _, vb := range vbs {
+		if !c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+			time.Sleep(time.Second)
+			goto checkIfVbStreamsOpened
 		}
 	}
 
@@ -824,14 +878,6 @@ func (c *Consumer) clearUpOwnershipInfoFromMeta(vb uint16) error {
 func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, start uint64) error {
 	logPrefix := "Consumer::dcpRequestStreamHandle"
 
-	if c.producer.IsPlannerRunning() {
-		logging.Infof("%s [%s:%s:%d] vb: %d Skipping stream request as planner is running", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-		c.Lock()
-		c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vb)
-		c.Unlock()
-		return errPlannerRunning
-	}
-
 	c.cbBucket.Refresh()
 
 	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvVbMap, c)
@@ -950,6 +996,8 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 			return err
 		}
 
+		c.vbProcessingStats.updateVbStat(vb, "vb_stream_request_metadata_updated", true)
+
 		logging.Infof("%s [%s:%s:%d] vb: %d Updated checkpoint blob to indicate STREAMREQ was issued",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	}
@@ -965,6 +1013,7 @@ func (c *Consumer) handleFailoverLog() {
 		case vbFlog := <-c.vbFlogChan:
 			logging.Infof("%s [%s:%s:%d] vb: %d Got entry from vbFlogChan: %#v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbFlog)
+			c.reqStreamResponseCh <- vbFlog.vb
 
 			if vbFlog.signalStreamEnd {
 				logging.Infof("%s [%s:%s:%d] vb: %d Got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
@@ -1011,14 +1060,30 @@ func (c *Consumer) handleFailoverLog() {
 						}
 
 						vbBlob.VBuuid = vbuuid
-						c.dcpRequestStreamHandle(vbFlog.vb, &vbBlob, startSeqNo)
+						logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
+
+						c.reqStreamCh <- &streamRequestInfo{
+							vb:         vbFlog.vb,
+							vbBlob:     &vbBlob,
+							startSeqNo: startSeqNo,
+						}
+
 						c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", startSeqNo)
 						c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 					}
 				} else {
 					logging.Infof("%s [%s:%s:%d] vb: %v Retrying DCP stream start vbuuid: %d startSeq: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
-					c.dcpRequestStreamHandle(vbFlog.vb, &vbBlob, 0)
+
+					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
+
+					c.reqStreamCh <- &streamRequestInfo{
+						vb:         vbFlog.vb,
+						vbBlob:     &vbBlob,
+						startSeqNo: 0,
+					}
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", 0)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 				}
@@ -1057,4 +1122,82 @@ func (c *Consumer) cppWorkerThrPartitionMap() {
 	}
 
 	c.cppThrPartitionMap = util.VbucketDistribution(partitions, c.cppWorkerThrCount)
+}
+
+func (c *Consumer) processReqStreamMessages() {
+	logPrefix := "Consumer::processReqStreamMessages"
+
+	for {
+		select {
+		case msg, ok := <-c.reqStreamCh:
+			logging.Infof("%s [%s:%s:%d] vb: %d reqStreamCh size: %d reqStreamResponseCh size: %d Got request to stream",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb, len(c.reqStreamCh), len(c.reqStreamResponseCh))
+
+			if !ok {
+				logging.Infof("%s [%s:%s:%d] Returning streamReq processing routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
+				return
+			}
+
+			if !c.checkIfCurrentConsumerShouldOwnVb(msg.vb) {
+				logging.Infof("%s [%s:%s:%d] vb: %d Skipping stream request as worker isn't supposed to own it",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
+				continue
+			}
+
+			if c.checkIfVbAlreadyOwnedByCurrConsumer(msg.vb) {
+				logging.Infof("%s [%s:%s:%d] vb: %d Skipping stream request as vbucket is already owned by worker",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
+				continue
+			}
+
+			if c.producer.IsPlannerRunning() {
+				logging.Infof("%s [%s:%s:%d] vb: %d Skipping stream request as planner is running", logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
+
+				time.Sleep(time.Second)
+
+				c.Lock()
+				if !util.Contains(msg.vb, c.vbsRemainingToRestream) {
+					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, msg.vb)
+				}
+				c.Unlock()
+				continue
+			}
+
+			go func(msg *streamRequestInfo, c *Consumer, logPrefix string) {
+				err := c.dcpRequestStreamHandle(msg.vb, msg.vbBlob, msg.startSeqNo)
+				if err == common.ErrRetryTimeout {
+					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+					return
+				}
+
+				if err != nil {
+					c.Lock()
+					if !util.Contains(msg.vb, c.vbsRemainingToRestream) {
+						c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, msg.vb)
+					}
+					c.Unlock()
+
+					c.reqStreamResponseCh <- msg.vb
+				} else {
+					logging.Infof("%s [%s:%s:%d] vb: %d DCP stream successfully requested", logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
+				}
+			}(msg, c, logPrefix)
+
+			logging.Infof("%s [%s:%s:%d] vb: %d Waiting for message from proccessEvents loop",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
+
+		retryReadStreamResponseCh:
+			respMsg := <-c.reqStreamResponseCh
+			logging.Infof("%s [%s:%s:%d] vb: %d requested vb: %d, got response from DCP producer",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), respMsg, msg.vb)
+
+			if respMsg != msg.vb {
+				goto retryReadStreamResponseCh
+			}
+
+		case <-c.stopReqStreamProcessCh:
+			logging.Infof("%s [%s:%s:%d] Exiting streamReq processing routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
+	}
 }

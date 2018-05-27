@@ -282,12 +282,16 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
 		UpsertEx("node_uuid", vbBlob.NodeUUID, gocb.SubdocFlagCreatePath).
+		UpsertEx("node_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("previous_assigned_worker", vbBlob.PreviousAssignedWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("previous_node_uuid", vbBlob.PreviousNodeUUID, gocb.SubdocFlagCreatePath).
 		UpsertEx("previous_vb_owner", vbBlob.PreviousVBOwner, gocb.SubdocFlagCreatePath).
+		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
@@ -331,7 +335,7 @@ var metadataCorrectionCallback = func(args ...interface{}) error {
 	return err
 }
 
-// Called when STYREAMREQ is sent from DCP Client to Producer
+// Called when STREAMREQ is sent from DCP Client to Producer
 var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::addOwnershipHistorySRRCallback"
 
@@ -347,6 +351,9 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 		UpsertEx("dcp_stream_status", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
 		UpsertEx("node_uuid", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("node_requested_vb_stream", c.HostPortAddr(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid_requested_vb_stream", c.NodeUUID(), gocb.SubdocFlagCreatePath).
+		UpsertEx("worker_requested_vb_stream", c.ConsumerName(), gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if err == gocb.ErrShutdown {
@@ -355,6 +362,39 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post STREAMREQ from Consumer, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+	}
+
+	return err
+}
+
+// Called when STREAMREQ isn't successful
+var addOwnershipHistorySRFCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::addOwnershipHistorySRFCallback"
+
+	c := args[0].(*Consumer)
+	vbKey := args[1].(string)
+	ownershipEntry := args[2].(*OwnershipEntry)
+
+	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+		ArrayAppend("ownership_history", ownershipEntry, true).
+		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_status", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("node_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		Execute()
+
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post unsuccessful STREAMREQ from Consumer, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
 	}
 
@@ -404,6 +444,9 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
@@ -646,12 +689,12 @@ var checkKeyExistsCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::checkKeyExistsCallback"
 
 	c := args[0].(*Consumer)
-	docId := args[1].(string)
+	docID := args[1].(string)
 	exists := args[2].(*bool)
 	connShutdown := args[3].(*bool)
 	var value interface{}
 
-	_, err := c.gocbBucket.Get(docId, &value)
+	_, err := c.gocbBucket.Get(docID, &value)
 	if err == gocb.ErrShutdown {
 		*exists = false
 		*connShutdown = true
@@ -669,6 +712,6 @@ var checkKeyExistsCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	logging.Errorf("%s [%s:%s:%d] Key: %ru, err : %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), docId, err)
+	logging.Errorf("%s [%s:%s:%d] Key: %ru, err : %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), docID, err)
 	return err
 }

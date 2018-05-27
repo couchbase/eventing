@@ -21,7 +21,6 @@ import (
 
 var errDcpFeedsClosed = errors.New("dcp feeds are closed")
 var errDcpStreamRequested = errors.New("another worker issued STREAMREQ")
-var errPlannerRunning = errors.New("planner running")
 var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
 var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another worker on same node")
 var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")
@@ -118,7 +117,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					continue
 				}
 
-				logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d uuid: %d vbStat uuid: %d owner node: %rs consumer name: %d",
+				logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d uuid: %s vbStat uuid: %s owner node: %rs consumer name: %s",
 					logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, c.NodeUUID(),
 					vbsts.getVbStat(vb, "node_uuid"),
 					vbsts.getVbStat(vb, "current_vb_owner"),
@@ -198,7 +197,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 						// (a) DCP stream status isn't running
 						// (b) If NodeUUID and AssignedWorker are still mapping to Eventing.Consumer instance that just gave up the
 						//     ownership of that vbucket (could happen because metadata is only updated only when actual DCP_STREAMEND
-						//     is received)
+						//     is received). Happens in case of data rollback
 						if vbBlob.DCPStreamStatus != dcpStreamRunning || (vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName()) {
 							time.Sleep(retryVbMetaStateCheckInterval)
 
@@ -316,6 +315,8 @@ func (c *Consumer) vbsStateUpdate() {
 		util.Condense(c.vbsRemainingToOwn), util.Condense(c.vbsRemainingToGiveUp),
 		len(vbsOwned), util.Condense(vbsOwned))
 
+	go c.checkAndUpdateMetadataLoop()
+
 retryStreamUpdate:
 	vbsDistribution := util.VbucketDistribution(c.vbsRemainingToOwn, c.vbOwnershipTakeoverRoutineCount)
 
@@ -358,8 +359,6 @@ retryStreamUpdate:
 
 		}(c, i, vbsDistribution[i], &wg)
 	}
-
-	go c.checkAndUpdateMetadataLoop()
 
 	wg.Wait()
 
@@ -453,8 +452,9 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 	case dcpStreamStopped, dcpStreamUninitialised:
 
 		if vbBlob.DCPStreamRequested {
-			logging.Infof("%s [%s:%s:%d] vb: %d Another worker has issued STREAMREQ for the vbucket",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+			logging.Infof("%s [%s:%s:%d] vb: %d. STREAMREQ already issued by hostPort: %s worker: %s uuid: %s",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.NodeRequestedVbStream,
+				vbBlob.WorkerRequestedVbStream, vbBlob.NodeUUIDRequestedVbStream)
 			return errDcpStreamRequested
 		}
 
@@ -681,7 +681,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		if flog, ok := flogs[vb]; ok {
 			vbuuid, _, _ := flog.Latest()
 
-			logging.Infof("%s [%s:%s:%d] vb: %v starting DCP feed. Start seq no: %d end seq no: %d",
+			logging.Infof("%s [%s:%s:%d] vb: %v starting DCP feed for timer backfill. Start seq no: %d end seq no: %d",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, start, end)
 
 			opaque := uint16(vb)
@@ -712,14 +712,13 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
 	c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
-	err := c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
-	}
+	logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
-	if err != nil {
-		return err
+	c.reqStreamCh <- &streamRequestInfo{
+		vb:         vb,
+		vbBlob:     vbBlob,
+		startSeqNo: vbBlob.LastSeqNoProcessed,
 	}
 
 	return nil

@@ -92,6 +92,7 @@ const (
 const (
 	dcpStreamBootstrap     = "bootstrap"
 	dcpStreamRequested     = "stream_requested"
+	dcpStreamRequestFailed = "stream_request_failed"
 	dcpStreamRunning       = "running"
 	dcpStreamStopped       = "stopped"
 	dcpStreamUninitialised = ""
@@ -193,6 +194,8 @@ type Consumer struct {
 	kvVbMap                     map[uint16]string // Access controlled by default lock
 	logLevel                    string
 	numVbuckets                 int
+	reqStreamCh                 chan *streamRequestInfo
+	reqStreamResponseCh         chan uint16
 	statsTickDuration           time.Duration
 	superSup                    common.EventingSuperSup
 	vbDcpEventsRemaining        map[int]int64 // Access controlled by statsRWMutex
@@ -322,8 +325,9 @@ type Consumer struct {
 	// Chan used by signal update of app handler settings
 	signalSettingsChangeCh chan struct{}
 
-	stopHandleFailoverLogCh chan struct{}
 	stopControlRoutineCh    chan struct{}
+	stopHandleFailoverLogCh chan struct{}
+	stopReqStreamProcessCh  chan struct{}
 
 	// Populated when downstream tcp socket mapping to
 	// C++ v8 worker is down. Buffered channel to avoid deadlock
@@ -454,12 +458,15 @@ type vbucketKVBlob struct {
 	LastDocTimerFeedbackSeqNo uint64           `json:"last_doc_timer_feedback_seqno"`
 	LastSeqNoProcessed        uint64           `json:"last_processed_seq_no"`
 	NodeUUID                  string           `json:"node_uuid"`
+	NodeRequestedVbStream     string           `json:"node_requested_vb_stream"`
+	NodeUUIDRequestedVbStream string           `json:"node_uuid_requested_vb_stream"`
 	OwnershipHistory          []OwnershipEntry `json:"ownership_history"`
 	PreviousAssignedWorker    string           `json:"previous_assigned_worker"`
 	PreviousNodeUUID          string           `json:"previous_node_uuid"`
 	PreviousVBOwner           string           `json:"previous_vb_owner"`
 	VBId                      uint16           `json:"vb_id"`
 	VBuuid                    uint64           `json:"vb_uuid"`
+	WorkerRequestedVbStream   string           `json:"worker_requested_vb_stream"`
 
 	CurrentProcessedDocIDTimer   string `json:"currently_processed_doc_id_timer"`
 	LastCleanedUpDocIDTimerEvent string `json:"last_cleaned_up_doc_id_timer_event"`
@@ -523,4 +530,10 @@ type plasmaStoreEntry struct {
 	key          string
 	timerTs      string
 	vb           uint16
+}
+
+type streamRequestInfo struct {
+	startSeqNo uint64
+	vb         uint16
+	vbBlob     *vbucketKVBlob
 }

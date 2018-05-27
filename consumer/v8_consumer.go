@@ -90,6 +90,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		plasmaStoreCh:                   make(chan *plasmaStoreEntry, dcpConfig["genChanSize"].(int)),
 		plasmaStoreStopCh:               make(chan struct{}, 1),
 		producer:                        p,
+		reqStreamCh:                     make(chan *streamRequestInfo, numVbuckets*10),
+		reqStreamResponseCh:             make(chan uint16, numVbuckets*10),
 		restartVbDcpStreamTicker:        time.NewTicker(restartVbDcpStreamTickInterval),
 		retryCount:                      retryCount,
 		sendMsgBufferRWMutex:            &sync.RWMutex{},
@@ -117,6 +119,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		stopHandleFailoverLogCh:         make(chan struct{}, 1),
 		stopVbOwnerGiveupCh:             make(chan struct{}, rConfig.VBOwnershipGiveUpRoutineCount),
 		stopVbOwnerTakeoverCh:           make(chan struct{}, rConfig.VBOwnershipTakeoverRoutineCount),
+		stopReqStreamProcessCh:          make(chan struct{}, 1),
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
 		timerCleanupStopCh:              make(chan struct{}, 1),
@@ -225,6 +228,7 @@ func (c *Consumer) Serve() {
 	}
 
 	go c.handleFailoverLog()
+	go c.processReqStreamMessages()
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
 	logging.Infof("%s [%s:%s:%d] vbnos len: %d dump: %s",
@@ -448,6 +452,10 @@ func (c *Consumer) Stop() {
 
 	if c.socketWriteTicker != nil {
 		c.socketWriteTicker.Stop()
+	}
+
+	if c.stopReqStreamProcessCh != nil {
+		c.stopReqStreamProcessCh <- struct{}{}
 	}
 
 	if c.timerCleanupStopCh != nil {
