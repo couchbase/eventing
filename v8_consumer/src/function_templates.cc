@@ -17,10 +17,34 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
   v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
-
+  auto context = isolate->GetCurrentContext();
   std::string log_msg;
+
   for (auto i = 0; i < args.Length(); i++) {
-    log_msg += JSONStringify(isolate, args[i]);
+    if (args[i]->IsNativeError()) {
+      v8::Local<v8::Object> object;
+      if (!TO_LOCAL(args[i]->ToObject(context), &object)) {
+        return;
+      }
+
+      v8::Local<v8::Value> to_string_val;
+      if (!TO_LOCAL(object->Get(context, v8Str(isolate, "toString")),
+                    &to_string_val)) {
+        return;
+      }
+
+      auto to_string_func = to_string_val.As<v8::Function>();
+      v8::Local<v8::Value> stringified_val;
+      if (!TO_LOCAL(to_string_func->Call(context, object, 0, nullptr),
+                    &stringified_val)) {
+        return;
+      }
+
+      log_msg += JSONStringify(isolate, stringified_val);
+    } else {
+      log_msg += JSONStringify(isolate, args[i]);
+    }
+
     log_msg += " ";
   }
 
