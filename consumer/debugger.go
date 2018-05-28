@@ -111,7 +111,10 @@ func (c *Consumer) pollForDebuggerStart() {
 	dFlagKey := fmt.Sprintf("%s::%s", c.app.AppName, startDebuggerFlag)
 	dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
 
-	dFlagBlob := &common.StartDebugBlob{}
+	dFlagBlob := &common.StartDebugBlobVer{
+		common.StartDebugBlob{},
+		util.EventingVer(),
+	}
 	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
 	var cas gocb.Cas
 

@@ -60,6 +60,19 @@ struct NamedParamsInfo {
   std::vector<std::string> named_params;
 };
 
+class CURLHeaders {
+public:
+  explicit CURLHeaders(const std::vector<std::string> &headers);
+  ~CURLHeaders();
+
+  struct curl_slist *GetHeaders() const {
+    return headers_;
+  }
+
+private:
+  struct curl_slist *headers_;
+};
+
 class CURLClient {
 public:
   CURLClient();
@@ -80,7 +93,6 @@ private:
   CURLcode code_;
   CURL *curl_handle_;
   std::mutex curl_handle_lck_;
-  struct curl_slist *headers_;
 };
 
 // Channel to communicate to eventing-producer through CURL

@@ -372,3 +372,5 @@ bool IsTerminatingRetriable(bool retry) { return retry; }
 bool IsExecutionTerminating(v8::Isolate *isolate) {
   return isolate->IsExecutionTerminating();
 }
+
+std::string REventingVer() { return R"(")" + EventingVer() + R"(")"; }

@@ -1675,6 +1675,8 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			app.EventingVersion = util.EventingVer()
+
 			runtimeInfo := m.savePrimaryStore(app)
 			if runtimeInfo.Code == m.statusCodes.ok.Code {
 				audit.Log(auditevent.SaveDraft, r, appName)
@@ -1928,6 +1930,8 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			app.Settings["deployment_status"] = false
 			app.Settings["processing_status"] = false
 		}
+
+		app.EventingVersion = util.EventingVer()
 
 		infoPri := m.savePrimaryStore(app)
 		if infoPri.Code != m.statusCodes.ok.Code {

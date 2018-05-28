@@ -134,6 +134,7 @@ type application struct {
 	DeploymentConfig depCfg                 `json:"depcfg"`
 	AppHandlers      string                 `json:"appcode"`
 	Settings         map[string]interface{} `json:"settings"`
+	EventingVersion  string                 `json:"version"`
 }
 
 type depCfg struct {

@@ -277,9 +277,9 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             if (!resp_msg_->msg.empty()) {
               flatbuffers::FlatBufferBuilder builder;
 
-              auto msg_offset = builder.CreateString(resp_msg_->msg.c_str());
+              auto flatbuf_msg = builder.CreateString(resp_msg_->msg.c_str());
               auto r = flatbuf::response::CreateResponse(
-                  builder, resp_msg_->msg_type, resp_msg_->opcode, msg_offset);
+                  builder, resp_msg_->msg_type, resp_msg_->opcode, flatbuf_msg);
               builder.Finish(r);
 
               uint32_t s = builder.GetSize();
@@ -316,9 +316,9 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
               queue_stats << agg_queue_memory << "}";
 
               flatbuffers::FlatBufferBuilder builder;
-              auto msg_offset = builder.CreateString(queue_stats.str());
+              auto flatbuf_msg = builder.CreateString(queue_stats.str());
               auto r = flatbuf::response::CreateResponse(
-                  builder, mV8_Worker_Config, oQueueSize, msg_offset);
+                  builder, mV8_Worker_Config, oQueueSize, flatbuf_msg);
               builder.Finish(r);
 
               uint32_t s = builder.GetSize();

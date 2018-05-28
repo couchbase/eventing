@@ -203,10 +203,20 @@ type StartDebugBlob struct {
 	StartDebug bool `json:"start_debug"`
 }
 
+type StartDebugBlobVer struct {
+	StartDebugBlob
+	EventingVersion string `json:"version"`
+}
+
 type DebuggerInstanceAddrBlob struct {
 	ConsumerName string `json:"consumer_name"`
 	HostPortAddr string `json:"host_port_addr"`
 	NodeUUID     string `json:"uuid"`
+}
+
+type DebuggerInstanceAddrBlobVer struct {
+	DebuggerInstanceAddrBlob
+	EventingVersion string `json:"version"`
 }
 
 type CompileStatus struct {

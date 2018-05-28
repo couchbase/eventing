@@ -139,13 +139,16 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   // Store blob in KV store, blob structure:
   // {
   //    "callback_func": "CallbackFunc",
-  //    "payload": opaque
+  //    "payload": opaque,
+  //    "version": "5.5.0"
   // }
 
   value.assign(R"({"callback_func": ")");
   value.append(cb_func);
   value.append(R"(", "payload": )");
   value.append(opaque);
+  value.append(R"(, "version": )");
+  value.append(REventingVer());
   value.append("}");
 
   auto meta_cb_instance = UnwrapData(isolate)->meta_cb_instance;
@@ -221,8 +224,10 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   lcb_SDSPEC dspec = {0};
   dspec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-  LCB_SDSPEC_SET_PATH(&dspec, "version", 7);
-  LCB_SDSPEC_SET_VALUE(&dspec, "\"vulcan\"", 8);
+  auto version_path = "version";
+  auto version_value = REventingVer();
+  LCB_SDSPEC_SET_PATH(&dspec, version_path, strlen(version_path));
+  LCB_SDSPEC_SET_VALUE(&dspec, version_value.c_str(), version_value.length());
   specs.push_back(dspec);
 
   mcmd.specs = specs.data();
@@ -327,7 +332,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   std::string xattr_cas_path("eventing.cas");
   std::string xattr_digest_path("eventing.digest");
   std::string xattr_timer_path("eventing.timers");
-  std::string mutation_cas_macro("\"${Mutation.CAS}\"");
+  std::string eventing_ver_path("eventing.version");
+  std::string mutation_cas_macro(R"("${Mutation.CAS}")");
   std::string doc_exptime("$document.exptime");
   timer_entry += "Z::";
   timer_entry += cb_func;
@@ -429,13 +435,22 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
                   << std::endl;
 
     lcb_CMDSUBDOC mcmd = {0};
-    lcb_SDSPEC digest_spec, xattr_spec, tspec = {0};
+    lcb_SDSPEC digest_spec, xattr_spec, tspec, eventing_ver_spec = {0};
     LCB_CMD_SET_KEY(&mcmd, doc_id.c_str(), doc_id.size());
 
     std::vector<lcb_SDSPEC> specs;
 
     mcmd.cas = res.cas;
     mcmd.exptime = res.exptime;
+
+    auto eventing_ver_value = REventingVer();
+    eventing_ver_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+    eventing_ver_spec.options = LCB_SDSPEC_F_XATTRPATH;
+    LCB_SDSPEC_SET_PATH(&eventing_ver_spec, eventing_ver_path.c_str(),
+                        eventing_ver_path.size());
+    LCB_SDSPEC_SET_VALUE(&eventing_ver_spec, eventing_ver_value.c_str(),
+                         eventing_ver_value.size());
+    specs.push_back(eventing_ver_spec);
 
     digest_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
     digest_spec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;

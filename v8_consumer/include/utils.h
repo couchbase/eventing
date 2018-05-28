@@ -139,6 +139,7 @@ std::string GetTimestampNow();
 ParseInfo UnflattenParseInfo(std::unordered_map<std::string, std::string> &kv);
 
 std::string EventingVer();
+std::string REventingVer();
 bool IsRetriable(lcb_error_t error);
 bool IsTerminatingRetriable(bool retry);
 bool IsExecutionTerminating(v8::Isolate *isolate);

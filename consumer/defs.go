@@ -479,6 +479,11 @@ type vbucketKVBlob struct {
 	NextCronTimerToProcess      string `json:"next_cron_timer_to_process"`
 }
 
+type vbucketKVBlobVer struct {
+	vbucketKVBlob
+	EventingVersion string `json:"version"`
+}
+
 // OwnershipEntry captures the state of vbucket within the metadata blob
 type OwnershipEntry struct {
 	AssignedWorker string `json:"assigned_worker"`

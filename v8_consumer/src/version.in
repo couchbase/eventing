@@ -3,5 +3,5 @@
 #include <string>
 
 std::string EventingVer() {
-	return std::string("${EVENTING_VER}");
+  return "${EVENTING_VER}";
 }

@@ -563,7 +563,10 @@ func (c *Consumer) processEvents() {
 
 			// Reset debuggerInstanceAddr blob, otherwise next debugger session can't start
 			dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
-			dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
+			dInstAddrBlob := &common.DebuggerInstanceAddrBlobVer{
+				common.DebuggerInstanceAddrBlob{},
+				util.EventingVer(),
+			}
 			err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, dInstAddrKey, dInstAddrBlob)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -643,7 +646,11 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 			vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
 			vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
-			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlob)
+			vbBlobVer := vbucketKVBlobVer{
+				vbBlob,
+				util.EventingVer(),
+			}
+			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return common.ErrRetryTimeout
