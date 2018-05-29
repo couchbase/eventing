@@ -706,7 +706,7 @@ checkIfVbStreamsOpened:
 	return nil
 }
 
-func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan struct{}) {
+func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 	logPrefix := "Consumer::addToAggChan"
 
 	go func(dcpFeed *couchbase.DcpFeed) {
@@ -731,32 +731,22 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed, cancelCh <-chan stru
 					}
 					c.hostDcpFeedRWMutex.RUnlock()
 
-					logging.Infof("%s [%s:%s:%d] Closing dcp feed: %v for bucket: %s",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), c.bucket)
+					logging.Infof("%s [%s:%s:%d] Closing dcp feed: %v, count: %d for bucket: %s",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), len(dcpFeed.C), c.bucket)
 					c.hostDcpFeedRWMutex.Lock()
 					delete(c.kvHostDcpFeedMap, kvAddr)
 					c.hostDcpFeedRWMutex.Unlock()
-
 					return
 				}
 
 				if c.aggDCPFeedMem > c.aggDCPFeedMemCap {
-					logging.Infof("%s [%s:%s:%d] Throttling, aggDCPFeed memory : %v bytes aggDCPFeedMemCap : %v\n", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.aggDCPFeedMem, c.aggDCPFeedMemCap)
+					logging.Infof("%s [%s:%s:%d] Throttling, aggDCPFeed memory: %d bytes aggDCPFeedMemCap: %d\n",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), c.aggDCPFeedMem, c.aggDCPFeedMemCap)
 					time.Sleep(1 * time.Second)
-				}
-
-				if e.Opcode == mcd.DCP_STREAMEND || e.Opcode == mcd.DCP_STREAMREQ {
-					logging.Debugf("%s [%s:%s:%d] addToAggChan dcpFeed name: %v vb: %v Opcode: %v Status: %v",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), e.VBucket, e.Opcode, e.Status)
 				}
 
 				atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
 				c.aggDCPFeed <- e
-
-			case <-cancelCh:
-				logging.Infof("%s [%s:%s:%d] Exiting. Got cancel message related to dcp feed: %s for bucket: %s",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.DcpFeedName(), c.bucket)
-				return
 			}
 		}
 	}(dcpFeed)
@@ -907,13 +897,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 
 		dcpFeed = c.kvHostDcpFeedMap[vbKvAddr]
 
-		cancelCh := make(chan struct{})
-
-		c.dcpFeedCancelChsRWMutex.Lock()
-		c.dcpFeedCancelChs[dcpFeed] = cancelCh
-		c.dcpFeedCancelChsRWMutex.Unlock()
-
-		c.addToAggChan(dcpFeed, cancelCh)
+		c.addToAggChan(dcpFeed)
 
 		logging.Infof("%s [%s:%s:%d] vb: %d kvAddr: %s Started up new dcp feed. Spawned aggChan routine",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbKvAddr)
@@ -969,17 +953,19 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 			c.Unlock()
 		}
 
-		c.dcpFeedCancelChsRWMutex.Lock()
-		c.dcpFeedCancelChs[dcpFeed] <- struct{}{}
-		delete(c.dcpFeedCancelChs, dcpFeed)
-		c.dcpFeedCancelChsRWMutex.Unlock()
-
 		dcpFeed.Close()
 
 		c.hostDcpFeedRWMutex.Lock()
 		delete(c.kvHostDcpFeedMap, vbKvAddr)
 		c.hostDcpFeedRWMutex.Unlock()
+
+		logging.Infof("%s [%s:%s:%d] vb: %d Closed and deleted dcpfeed mapping to kvAddr: %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbKvAddr)
 	} else {
+
+		c.inflightDcpStreamsRWMutex.Lock()
+		c.inflightDcpStreams[vb] = struct{}{}
+		c.inflightDcpStreamsRWMutex.Unlock()
 
 		entry := OwnershipEntry{
 			AssignedWorker: c.ConsumerName(),
@@ -1013,7 +999,13 @@ func (c *Consumer) handleFailoverLog() {
 		case vbFlog := <-c.vbFlogChan:
 			logging.Infof("%s [%s:%s:%d] vb: %d Got entry from vbFlogChan: %#v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbFlog)
-			c.reqStreamResponseCh <- vbFlog.vb
+
+			c.inflightDcpStreamsRWMutex.Lock()
+			if _, exists := c.inflightDcpStreams[vbFlog.vb]; exists {
+				c.reqStreamResponseCh <- vbFlog.vb
+				delete(c.inflightDcpStreams, vbFlog.vb)
+			}
+			c.inflightDcpStreamsRWMutex.Unlock()
 
 			if vbFlog.signalStreamEnd {
 				logging.Infof("%s [%s:%s:%d] vb: %d Got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)

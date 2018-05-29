@@ -52,8 +52,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		cronTimerStopCh:                 make(chan struct{}, 1),
 		curlTimeout:                     hConfig.CurlTimeout,
 		dcpConfig:                       dcpConfig,
-		dcpFeedCancelChs:                make(map[*couchbase.DcpFeed]chan struct{}),
-		dcpFeedCancelChsRWMutex:         &sync.RWMutex{},
 		dcpFeedVbMap:                    make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:               hConfig.StreamBoundary,
 		debuggerStarted:                 false,
@@ -78,6 +76,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		handlerHeaders:                  hConfig.HandlerHeaders,
 		index:                           index,
 		ipcType:                         pConfig.IPCType,
+		inflightDcpStreams:              make(map[uint16]struct{}),
+		inflightDcpStreamsRWMutex:       &sync.RWMutex{},
 		iteratorRefreshCounter:          iteratorRefreshCounter,
 		hostDcpFeedRWMutex:              &sync.RWMutex{},
 		kvHostDcpFeedMap:                make(map[string]*couchbase.DcpFeed),
@@ -261,15 +261,10 @@ func (c *Consumer) Serve() {
 			return
 		}
 
-		cancelCh := make(chan struct{})
-		c.dcpFeedCancelChsRWMutex.Lock()
-		c.dcpFeedCancelChs[c.kvHostDcpFeedMap[kvHostPort]] = cancelCh
-		c.dcpFeedCancelChsRWMutex.Unlock()
-
 		logging.Infof("%s [%s:%s:%d] vbKvAddr: %s Spawned aggChan routine",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), kvHostPort)
 
-		c.addToAggChan(c.kvHostDcpFeedMap[kvHostPort], cancelCh)
+		c.addToAggChan(c.kvHostDcpFeedMap[kvHostPort])
 		c.hostDcpFeedRWMutex.Unlock()
 	}
 
@@ -514,19 +509,6 @@ func (c *Consumer) Stop() {
 	}
 
 	logging.Infof("%s [%s:%s:%d] Closed all dcpfeed handles",
-		logPrefix, c.workerName, c.tcpPort, c.Pid())
-
-	c.dcpFeedCancelChsRWMutex.RLock()
-	if c.dcpFeedCancelChs != nil {
-		for _, cancelCh := range c.dcpFeedCancelChs {
-			if cancelCh != nil {
-				cancelCh <- struct{}{}
-			}
-		}
-	}
-	c.dcpFeedCancelChsRWMutex.RUnlock()
-
-	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop dcp event forwarding routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	if c.stopHandleFailoverLogCh != nil {

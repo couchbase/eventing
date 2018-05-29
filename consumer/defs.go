@@ -169,8 +169,6 @@ type Consumer struct {
 	cleanupTimers               bool
 	compileInfo                 *common.CompileStatus
 	dcpEventsRemaining          uint64
-	dcpFeedCancelChs            map[*couchbase.DcpFeed]chan struct{} // Access controlled by dcpFeedCancelChsRWMutex
-	dcpFeedCancelChsRWMutex     *sync.RWMutex
 	dcpFeedsClosed              bool
 	dcpFeedVbMap                map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
 	eventingAdminPort           string
@@ -185,6 +183,8 @@ type Consumer struct {
 	gocbMetaBucket              *gocb.Bucket
 	idleCheckpointInterval      time.Duration
 	index                       int
+	inflightDcpStreams          map[uint16]struct{} // Access controlled by inflightDcpStreamsRWMutex
+	inflightDcpStreamsRWMutex   *sync.RWMutex
 	ipcType                     string // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
 	isRebalanceOngoing          bool
 	kvHostDcpFeedMap            map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
