@@ -257,7 +257,7 @@ func (c *Consumer) Serve() {
 			return
 		}
 
-		cancelCh := make(chan struct{}, 1)
+		cancelCh := make(chan struct{})
 		c.dcpFeedCancelChsRWMutex.Lock()
 		c.dcpFeedCancelChs[c.kvHostDcpFeedMap[kvHostPort]] = cancelCh
 		c.dcpFeedCancelChsRWMutex.Unlock()

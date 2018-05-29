@@ -861,7 +861,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 
 		dcpFeed = c.kvHostDcpFeedMap[vbKvAddr]
 
-		cancelCh := make(chan struct{}, 1)
+		cancelCh := make(chan struct{})
 
 		c.dcpFeedCancelChsRWMutex.Lock()
 		c.dcpFeedCancelChs[dcpFeed] = cancelCh
