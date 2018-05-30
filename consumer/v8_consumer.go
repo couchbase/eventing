@@ -142,6 +142,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbStreamRequested:               make(map[uint16]struct{}),
 		vbsStreamRRWMutex:               &sync.RWMutex{},
 		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
+		vbProcessingStats:               newVbProcessingStats(app.AppName, uint16(numVbuckets), uuid, fmt.Sprintf("worker_%s_%d", app.AppName, index)),
 		workerQueueCap:                  hConfig.WorkerQueueCap,
 		workerQueueMemCap:               hConfig.WorkerQueueMemCap,
 		workerVbucketMap:                workerVbucketMap,
@@ -175,7 +176,6 @@ func (c *Consumer) Serve() {
 	c.docCurrTimer = time.Now().UTC().Format(time.RFC3339)
 	c.docNextTimer = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
-	c.vbProcessingStats = newVbProcessingStats(c.app.AppName, uint16(c.numVbuckets), c.NodeUUID(), c.workerName)
 	c.statsTicker = time.NewTicker(c.statsTickDuration)
 	c.backupVbStats = newVbBackupStats(uint16(c.numVbuckets))
 
