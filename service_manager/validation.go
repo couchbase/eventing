@@ -613,6 +613,10 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
+	if info = m.validateBoolean("enable_applog_rotation", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	// Doc timer configurations for plasma
 	if info = m.validateBoolean("auto_swapper", settings); info.Code != m.statusCodes.ok.Code {
 		return

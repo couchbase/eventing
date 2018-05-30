@@ -82,6 +82,7 @@ type Producer struct {
 	appLogPath     string
 	appLogMaxSize  int64
 	appLogMaxFiles int
+	appLogRotation bool
 	appLogWriter   io.WriteCloser
 
 	// Plasma configs

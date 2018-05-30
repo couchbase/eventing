@@ -19,6 +19,7 @@ type appLogCloser struct {
 	lastNewlineIndex int64
 	closed           bool
 	writeErr         error
+	enableRotation   bool
 	mu               sync.Mutex
 }
 
@@ -167,7 +168,7 @@ func (wc *appLogCloser) Write(p []byte) (_ int, err error) {
 			return bytesWritten, err
 		}
 
-		if rotate {
+		if rotate && wc.enableRotation {
 			err = wc.rotate()
 			if err != nil {
 				return bytesWritten, err
@@ -190,7 +191,7 @@ func (wc *appLogCloser) Close() error {
 	return nil
 }
 
-func openAppLog(path string, perm os.FileMode, maxSize int64, maxFiles int) (io.WriteCloser, error) {
+func openAppLog(path string, perm os.FileMode, maxSize int64, maxFiles int, enableLogRotation bool) (io.WriteCloser, error) {
 	if maxSize < 1 {
 		return nil, fmt.Errorf("maxSize should be > 1")
 	}
@@ -248,5 +249,14 @@ func openAppLog(path string, perm os.FileMode, maxSize int64, maxFiles int) (io.
 		path:             path,
 		perm:             perm,
 		size:             size,
+		enableRotation:   enableLogRotation,
 	}, nil
+}
+
+func updateApplogSetting(wc *appLogCloser, maxFileCount int, maxFileSize int64, enableLogRotation bool) {
+	wc.mu.Lock()
+	defer wc.mu.Unlock()
+	wc.maxFiles = maxFileCount
+	wc.maxSize = maxFileSize
+	wc.enableRotation = enableLogRotation
 }

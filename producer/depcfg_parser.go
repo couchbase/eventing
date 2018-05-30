@@ -263,15 +263,20 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["app_log_max_size"]; ok {
 		p.appLogMaxSize = int64(val.(float64))
 	} else {
-		p.appLogMaxSize = 1024 * 1024 * 10
+		p.appLogMaxSize = 1024 * 1024 * 40
 	}
 
 	if val, ok := settings["app_log_max_files"]; ok {
 		p.appLogMaxFiles = int(val.(float64))
 	} else {
-		p.appLogMaxFiles = 10
+		p.appLogMaxFiles = int((^uint(0)) >> 1)
 	}
 
+	if val, ok := settings["enable_applog_rotation"]; ok {
+		p.appLogRotation = val.(bool)
+	} else {
+		p.appLogRotation = true
+	}
 	// Doc timer configurations for plasma
 
 	if val, ok := settings["auto_swapper"]; ok {
