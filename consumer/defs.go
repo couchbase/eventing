@@ -91,9 +91,12 @@ const (
 
 const (
 	dcpStreamBootstrap     = "bootstrap"
+	dcpStreamRequested     = "stream_requested"
+	dcpStreamRequestFailed = "stream_request_failed"
 	dcpStreamRunning       = "running"
 	dcpStreamStopped       = "stopped"
 	dcpStreamUninitialised = ""
+	metadataCorrected      = "metadata_corrected"
 )
 
 type xattrMetadata struct {
@@ -129,6 +132,9 @@ type Consumer struct {
 	uuid        string
 	retryCount  *int64
 
+	handlerFooters []string
+	handlerHeaders []string
+
 	connMutex    *sync.RWMutex
 	conn         net.Conn // Access controlled by connMutex
 	feedbackConn net.Conn // Access controlled by connMutex
@@ -152,31 +158,33 @@ type Consumer struct {
 	debugListener         net.Listener
 	diagDir               string // Location that will house minidumps from from crashed cpp workers
 	handlerCode           string // Handler code for V8 Debugger
-	sourceMap             string // source map to assist with V8 Debugger
 	sendMsgToDebugger     bool
+	sourceMap             string // source map to assist with V8 Debugger
 
-	aggDCPFeedMemCap            int64
-	aggDCPFeedMem               int64
 	aggDCPFeed                  chan *cb.DcpEvent
+	aggDCPFeedMem               int64
+	aggDCPFeedMemCap            int64
 	cbBucket                    *couchbase.Bucket
 	checkpointInterval          time.Duration
-	idleCheckpointInterval      time.Duration
 	cleanupTimers               bool
 	compileInfo                 *common.CompileStatus
 	dcpEventsRemaining          uint64
-	dcpFeedCancelChs            map[*couchbase.DcpFeed]chan struct{} // Access controlled by dcpFeedCancelChsRWMutex
-	dcpFeedCancelChsRWMutex     *sync.RWMutex
 	dcpFeedsClosed              bool
 	dcpFeedVbMap                map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
 	eventingAdminPort           string
-	eventingSSLPort             string
 	eventingDir                 string
+	eventingSSLPort             string
 	eventingNodeAddrs           []string
 	eventingNodeUUIDs           []string
 	executionTimeout            int
+	filterVbEvents              map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
+	filterVbEventsRWMutex       *sync.RWMutex
 	gocbBucket                  *gocb.Bucket
 	gocbMetaBucket              *gocb.Bucket
+	idleCheckpointInterval      time.Duration
 	index                       int
+	inflightDcpStreams          map[uint16]struct{} // Access controlled by inflightDcpStreamsRWMutex
+	inflightDcpStreamsRWMutex   *sync.RWMutex
 	ipcType                     string // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
 	isRebalanceOngoing          bool
 	kvHostDcpFeedMap            map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
@@ -186,6 +194,8 @@ type Consumer struct {
 	kvVbMap                     map[uint16]string // Access controlled by default lock
 	logLevel                    string
 	numVbuckets                 int
+	reqStreamCh                 chan *streamRequestInfo
+	reqStreamResponseCh         chan uint16
 	statsTickDuration           time.Duration
 	superSup                    common.EventingSuperSup
 	vbDcpEventsRemaining        map[int]int64 // Access controlled by statsRWMutex
@@ -315,8 +325,9 @@ type Consumer struct {
 	// Chan used by signal update of app handler settings
 	signalSettingsChangeCh chan struct{}
 
-	stopHandleFailoverLogCh chan struct{}
 	stopControlRoutineCh    chan struct{}
+	stopHandleFailoverLogCh chan struct{}
+	stopReqStreamProcessCh  chan struct{}
 
 	// Populated when downstream tcp socket mapping to
 	// C++ v8 worker is down. Buffered channel to avoid deadlock
@@ -383,6 +394,7 @@ type Consumer struct {
 	backupVbStats     vbStats
 
 	checkpointTicker         *time.Ticker
+	checkMetadataStateTicker *time.Ticker
 	restartVbDcpStreamTicker *time.Ticker
 	statsTicker              *time.Ticker
 
@@ -441,16 +453,20 @@ type vbucketKVBlob struct {
 	AssignedWorker            string           `json:"assigned_worker"`
 	CurrentVBOwner            string           `json:"current_vb_owner"`
 	DCPStreamStatus           string           `json:"dcp_stream_status"`
+	DCPStreamRequested        bool             `json:"dcp_stream_requested"`
 	LastCheckpointTime        string           `json:"last_checkpoint_time"`
 	LastDocTimerFeedbackSeqNo uint64           `json:"last_doc_timer_feedback_seqno"`
 	LastSeqNoProcessed        uint64           `json:"last_processed_seq_no"`
 	NodeUUID                  string           `json:"node_uuid"`
+	NodeRequestedVbStream     string           `json:"node_requested_vb_stream"`
+	NodeUUIDRequestedVbStream string           `json:"node_uuid_requested_vb_stream"`
 	OwnershipHistory          []OwnershipEntry `json:"ownership_history"`
 	PreviousAssignedWorker    string           `json:"previous_assigned_worker"`
 	PreviousNodeUUID          string           `json:"previous_node_uuid"`
 	PreviousVBOwner           string           `json:"previous_vb_owner"`
 	VBId                      uint16           `json:"vb_id"`
 	VBuuid                    uint64           `json:"vb_uuid"`
+	WorkerRequestedVbStream   string           `json:"worker_requested_vb_stream"`
 
 	CurrentProcessedDocIDTimer   string `json:"currently_processed_doc_id_timer"`
 	LastCleanedUpDocIDTimerEvent string `json:"last_cleaned_up_doc_id_timer_event"`
@@ -514,4 +530,10 @@ type plasmaStoreEntry struct {
 	key          string
 	timerTs      string
 	vb           uint16
+}
+
+type streamRequestInfo struct {
+	startSeqNo uint64
+	vb         uint16
+	vbBlob     *vbucketKVBlob
 }

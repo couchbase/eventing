@@ -78,6 +78,7 @@ type statusCodes struct {
 	errAppCodeSize         statusBase
 	errAppRetry            statusBase
 	errBucketMissing       statusBase
+	errClusterVersion      statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -152,7 +153,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusInternalServerError
 	case m.statusCodes.errBucketMissing.Code:
 		return http.StatusInternalServerError
-
+	case m.statusCodes.errClusterVersion.Code:
+		return http.StatusNotAcceptable
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -197,6 +199,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errAppCodeSize:         statusBase{"ERR_APPCODE_SIZE", 39},
 		errAppRetry:            statusBase{"ERR_APP_RETRY", 40},
 		errBucketMissing:       statusBase{"ERR_BUCKET_MISSING", 41},
+		errClusterVersion:      statusBase{"ERR_CLUSTER_VERSION", 42},
 	}
 
 	errors := []errorPayload{
@@ -397,6 +400,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errBucketMissing.Name,
 			Code:        m.statusCodes.errBucketMissing.Code,
 			Description: "Bucket does not exist in the cluster",
+		},
+		{
+			Name:        m.statusCodes.errClusterVersion.Name,
+			Code:        m.statusCodes.errClusterVersion.Code,
+			Description: "This handler syntax is unsupported on current cluster version",
 		},
 	}
 

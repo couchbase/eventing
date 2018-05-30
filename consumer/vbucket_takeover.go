@@ -20,6 +20,7 @@ import (
 )
 
 var errDcpFeedsClosed = errors.New("dcp feeds are closed")
+var errDcpStreamRequested = errors.New("another worker issued STREAMREQ")
 var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
 var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another worker on same node")
 var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")
@@ -116,7 +117,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					continue
 				}
 
-				logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d uuid: %d vbStat uuid: %d owner node: %rs consumer name: %d",
+				logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d uuid: %s vbStat uuid: %s owner node: %rs consumer name: %s",
 					logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, c.NodeUUID(),
 					vbsts.getVbStat(vb, "node_uuid"),
 					vbsts.getVbStat(vb, "current_vb_owner"),
@@ -196,7 +197,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 						// (a) DCP stream status isn't running
 						// (b) If NodeUUID and AssignedWorker are still mapping to Eventing.Consumer instance that just gave up the
 						//     ownership of that vbucket (could happen because metadata is only updated only when actual DCP_STREAMEND
-						//     is received)
+						//     is received). Happens in case of data rollback
 						if vbBlob.DCPStreamStatus != dcpStreamRunning || (vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName()) {
 							time.Sleep(retryVbMetaStateCheckInterval)
 
@@ -223,6 +224,61 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 	}
 
 	wg.Wait()
+}
+
+func (c *Consumer) checkAndUpdateMetadataLoop() {
+	logPrefix := "Consumer::checkAndUpdateMetadataLoop"
+	c.checkMetadataStateTicker = time.NewTicker(restartVbDcpStreamTickInterval)
+
+	logging.Infof("%s [%s:%s:%d] Started up the routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
+
+	for {
+		select {
+		case <-c.checkMetadataStateTicker.C:
+			if !c.isRebalanceOngoing {
+				c.checkMetadataStateTicker.Stop()
+				logging.Infof("%s [%s:%s:%d] Exiting the routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
+				return
+			}
+
+			c.checkAndUpdateMetadata()
+		}
+	}
+}
+
+func (c *Consumer) checkAndUpdateMetadata() {
+	logPrefix := "Consumer::checkAndUpdateMetadata"
+	vbsOwned := c.getCurrentlyOwnedVbs()
+
+	var vbBlob vbucketKVBlob
+	var cas gocb.Cas
+
+	for _, vb := range vbsOwned {
+		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
+
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, vbKey, &vbBlob, &cas, false)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
+
+		if vbBlob.NodeUUID != c.NodeUUID() || vbBlob.DCPStreamStatus != dcpStreamRunning || vbBlob.AssignedWorker != c.ConsumerName() {
+			entry := OwnershipEntry{
+				AssignedWorker: c.ConsumerName(),
+				CurrentVBOwner: c.HostPortAddr(),
+				Operation:      metadataCorrected,
+				Timestamp:      time.Now().String(),
+			}
+
+			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, metadataCorrectionCallback, c, vbKey, &entry)
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+				return
+			}
+
+			logging.Infof("%s [%s:%s:%d] vb: %d Checked and updated metadata", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+		}
+	}
 }
 
 func (c *Consumer) vbsStateUpdate() {
@@ -258,6 +314,8 @@ func (c *Consumer) vbsStateUpdate() {
 		logPrefix, c.workerName, c.tcpPort, c.Pid(),
 		util.Condense(c.vbsRemainingToOwn), util.Condense(c.vbsRemainingToGiveUp),
 		len(vbsOwned), util.Condense(vbsOwned))
+
+	go c.checkAndUpdateMetadataLoop()
 
 retryStreamUpdate:
 	vbsDistribution := util.VbucketDistribution(c.vbsRemainingToOwn, c.vbOwnershipTakeoverRoutineCount)
@@ -328,6 +386,8 @@ retryStreamUpdate:
 	c.isRebalanceOngoing = false
 	logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
+
+	c.checkAndUpdateMetadata()
 }
 
 func (c *Consumer) doVbTakeover(vb uint16) error {
@@ -374,9 +434,9 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 				logging.Infof("%s [%s:%s:%d] vb: %d vbblob stream status: %v starting dcp stream",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
 
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
 			}
-			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
+			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
 		}
 
 		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker != c.ConsumerName() {
@@ -391,10 +451,17 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 	case dcpStreamStopped, dcpStreamUninitialised:
 
+		if vbBlob.DCPStreamRequested {
+			logging.Infof("%s [%s:%s:%d] vb: %d. STREAMREQ already issued by hostPort: %s worker: %s uuid: %s",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.NodeRequestedVbStream,
+				vbBlob.WorkerRequestedVbStream, vbBlob.NodeUUIDRequestedVbStream)
+			return errDcpStreamRequested
+		}
+
 		logging.Infof("%s [%s:%s:%d] vb: %d vbblob stream status: %s, starting dcp stream",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
 
-		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
+		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
 
 	default:
 		return errUnexpectedVbStreamStatus
@@ -422,7 +489,7 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 	return false
 }
 
-func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob) error {
+func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob, backfillTimers bool) error {
 	logPrefix := "Consumer::updateVbOwnerAndStartDCPStream"
 
 	if c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
@@ -431,211 +498,213 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		return nil
 	}
 
-	seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-		return err
-	}
+	if backfillTimers {
+		seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+			return err
+		}
 
-	logging.Infof("%s [%s:%s:%d] vb: %v LastProcessedSeqNo: %d LastDocTimerFeedbackSeqNo: %d high seq no: %d",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastSeqNoProcessed, vbBlob.LastDocTimerFeedbackSeqNo, seqNos[int(vb)])
+		logging.Infof("%s [%s:%s:%d] vb: %v LastProcessedSeqNo: %d LastDocTimerFeedbackSeqNo: %d high seq no: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastSeqNoProcessed, vbBlob.LastDocTimerFeedbackSeqNo, seqNos[int(vb)])
 
-	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
-	}
+		err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return common.ErrRetryTimeout
+		}
 
-	var b *couchbase.Bucket
-	var dcpFeed *couchbase.DcpFeed
+		var b *couchbase.Bucket
+		var dcpFeed *couchbase.DcpFeed
 
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, commonConnectBucketOpCallback, c, &b)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
-	}
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, commonConnectBucketOpCallback, c, &b)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return common.ErrRetryTimeout
+		}
 
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startFeedFromKVNodesCallback, c, &b, vb, &dcpFeed, c.getKvNodes())
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
-	}
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startFeedFromKVNodesCallback, c, &b, vb, &dcpFeed, c.getKvNodes())
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return common.ErrRetryTimeout
+		}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+		var wg sync.WaitGroup
+		wg.Add(1)
 
-	var receivedTillEndSeqNo bool
+		var receivedTillEndSeqNo bool
 
-	go func(dcpFeed *couchbase.DcpFeed, wg *sync.WaitGroup, endSeqNo uint64, receivedTillEndSeqNo *bool) {
-		defer wg.Done()
+		go func(dcpFeed *couchbase.DcpFeed, wg *sync.WaitGroup, endSeqNo uint64, receivedTillEndSeqNo *bool) {
+			defer wg.Done()
 
-		statsTicker := time.NewTicker(c.statsTickDuration)
-		dcpMessagesProcessed := make(map[mcd.CommandCode]uint64)
+			statsTicker := time.NewTicker(c.statsTickDuration)
+			dcpMessagesProcessed := make(map[mcd.CommandCode]uint64)
 
-		defer statsTicker.Stop()
-		var seqNoReceived uint64
+			defer statsTicker.Stop()
+			var seqNoReceived uint64
 
-		for {
-			select {
-			case e, ok := <-dcpFeed.C:
-				if ok == false {
-					logging.Infof("%s [%s:%d] vb: %v Exiting doc timer recreate routine",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-					return
-				}
-
-				if _, ok := dcpMessagesProcessed[e.Opcode]; !ok {
-					dcpMessagesProcessed[e.Opcode] = 0
-				}
-				dcpMessagesProcessed[e.Opcode]++
-
-				if e.Seqno > seqNoReceived {
-					seqNoReceived = e.Seqno
-				}
-
-				logging.Tracef("%s [%s:%s:%d] vb: %v Opcode received: %v key: %ru datatype: %v seq no: %d",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, e.Opcode, string(e.Key), e.Datatype, e.Seqno)
-
-				switch e.Opcode {
-				case mcd.DCP_STREAMEND:
-					logging.Infof("%s [%s:%s:%d] vb: %v Stream end has been received. LastSeqNoReceived: %d endSeqNo: %d",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, endSeqNo)
-
-					if seqNoReceived >= endSeqNo {
-						*receivedTillEndSeqNo = true
-					} else {
-						logging.Errorf("%s [%s:%s:%d] vb: %v Received events till end seq no: %d desired: %d",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, endSeqNo)
+			for {
+				select {
+				case e, ok := <-dcpFeed.C:
+					if ok == false {
+						logging.Infof("%s [%s:%d] vb: %v Exiting doc timer recreate routine",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+						return
 					}
-					return
 
-				case mcd.DCP_MUTATION:
-					switch e.Datatype {
-					case dcpDatatypeJSONXattr:
-						totalXattrLen := binary.BigEndian.Uint32(e.Value[0:])
-						totalXattrData := e.Value[4 : 4+totalXattrLen-1]
+					if _, ok := dcpMessagesProcessed[e.Opcode]; !ok {
+						dcpMessagesProcessed[e.Opcode] = 0
+					}
+					dcpMessagesProcessed[e.Opcode]++
 
-						logging.Tracef("%s [%s:%s:%d] key: %ru totalXattrLen: %v totalXattrData: %v",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), totalXattrLen, totalXattrData)
+					if e.Seqno > seqNoReceived {
+						seqNoReceived = e.Seqno
+					}
 
-						var xMeta xattrMetadata
-						var bytesDecoded uint32
+					logging.Tracef("%s [%s:%s:%d] vb: %v Opcode received: %v key: %ru datatype: %v seq no: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, e.Opcode, string(e.Key), e.Datatype, e.Seqno)
 
-						// Try decoding all xattrs defined in io-vector encoding format
-						for bytesDecoded < totalXattrLen {
-							frameLength := binary.BigEndian.Uint32(totalXattrData)
-							bytesDecoded += 4
-							frameData := totalXattrData[4 : 4+frameLength-1]
-							bytesDecoded += frameLength
-							if bytesDecoded < totalXattrLen {
-								totalXattrData = totalXattrData[4+frameLength:]
-							}
+					switch e.Opcode {
+					case mcd.DCP_STREAMEND:
+						logging.Infof("%s [%s:%s:%d] vb: %v Stream end has been received. LastSeqNoReceived: %d endSeqNo: %d",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, endSeqNo)
 
-							if len(frameData) > len(xattrPrefix) {
-								if bytes.Compare(frameData[:len(xattrPrefix)], []byte(xattrPrefix)) == 0 {
-									toParse := frameData[len(xattrPrefix)+1:]
+						if seqNoReceived >= endSeqNo {
+							*receivedTillEndSeqNo = true
+						} else {
+							logging.Errorf("%s [%s:%s:%d] vb: %v Received events till end seq no: %d desired: %d",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, endSeqNo)
+						}
+						return
 
-									err := json.Unmarshal(toParse, &xMeta)
-									if err != nil {
-										logging.Errorf("%s [%s:%s:%d] Failed to unmarshal xattr metadata, err: %v",
-											logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-										continue
+					case mcd.DCP_MUTATION:
+						switch e.Datatype {
+						case dcpDatatypeJSONXattr:
+							totalXattrLen := binary.BigEndian.Uint32(e.Value[0:])
+							totalXattrData := e.Value[4 : 4+totalXattrLen-1]
+
+							logging.Tracef("%s [%s:%s:%d] key: %ru totalXattrLen: %v totalXattrData: %v",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), totalXattrLen, totalXattrData)
+
+							var xMeta xattrMetadata
+							var bytesDecoded uint32
+
+							// Try decoding all xattrs defined in io-vector encoding format
+							for bytesDecoded < totalXattrLen {
+								frameLength := binary.BigEndian.Uint32(totalXattrData)
+								bytesDecoded += 4
+								frameData := totalXattrData[4 : 4+frameLength-1]
+								bytesDecoded += frameLength
+								if bytesDecoded < totalXattrLen {
+									totalXattrData = totalXattrData[4+frameLength:]
+								}
+
+								if len(frameData) > len(xattrPrefix) {
+									if bytes.Compare(frameData[:len(xattrPrefix)], []byte(xattrPrefix)) == 0 {
+										toParse := frameData[len(xattrPrefix)+1:]
+
+										err := json.Unmarshal(toParse, &xMeta)
+										if err != nil {
+											logging.Errorf("%s [%s:%s:%d] Failed to unmarshal xattr metadata, err: %v",
+												logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+											continue
+										}
 									}
 								}
 							}
-						}
 
-						for _, timerEntry := range xMeta.Timers {
+							for _, timerEntry := range xMeta.Timers {
 
-							data := strings.Split(timerEntry, "::")
+								data := strings.Split(timerEntry, "::")
 
-							if len(data) == 3 {
-								pEntry := &plasmaStoreEntry{
-									callbackFn:   data[2],
-									fromBackfill: true,
-									key:          string(e.Key),
-									timerTs:      data[1],
-									vb:           e.VBucket,
+								if len(data) == 3 {
+									pEntry := &plasmaStoreEntry{
+										callbackFn:   data[2],
+										fromBackfill: true,
+										key:          string(e.Key),
+										timerTs:      data[1],
+										vb:           e.VBucket,
+									}
+
+									c.plasmaStoreCh <- pEntry
+									counter := c.vbProcessingStats.getVbStat(e.VBucket, "timers_recreated_from_dcp_backfill").(uint64)
+									c.vbProcessingStats.updateVbStat(e.VBucket, "timers_recreated_from_dcp_backfill", counter+1)
+
+									c.timersRecreatedFromDCPBackfill++
 								}
-
-								c.plasmaStoreCh <- pEntry
-								counter := c.vbProcessingStats.getVbStat(e.VBucket, "timers_recreated_from_dcp_backfill").(uint64)
-								c.vbProcessingStats.updateVbStat(e.VBucket, "timers_recreated_from_dcp_backfill", counter+1)
-
-								c.timersRecreatedFromDCPBackfill++
 							}
-						}
 
-						logging.Tracef("%s [%s:%s:%d] Inserting doc timer key: %ru into plasma",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+							logging.Tracef("%s [%s:%s:%d] Inserting doc timer key: %ru into plasma",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+
+						default:
+						}
 
 					default:
+						logging.Tracef("%s [%s:%s:%d] vb: %v Got opcode: %v",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, e.Opcode)
 					}
 
-				default:
-					logging.Tracef("%s [%s:%s:%d] vb: %v Got opcode: %v",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, e.Opcode)
+					if seqNoReceived >= endSeqNo {
+						logging.Infof("%s [%s:%s:%d] vb: %v Exiting as LastSeqNoReceived: %d endSeqNo: %d",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, endSeqNo)
+
+						*receivedTillEndSeqNo = true
+						return
+					}
+
+				case <-statsTicker.C:
+					countMsg, _, _ := util.SprintDCPCounts(dcpMessagesProcessed)
+					logging.Infof("%s [%s:%s:%d] vb: %d seqNoReceived: %d DCP events: %s",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, countMsg)
 				}
-
-				if seqNoReceived >= endSeqNo {
-					logging.Infof("%s [%s:%s:%d] vb: %v Exiting as LastSeqNoReceived: %d endSeqNo: %d",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, endSeqNo)
-
-					*receivedTillEndSeqNo = true
-					return
-				}
-
-			case <-statsTicker.C:
-				countMsg, _, _ := util.SprintDCPCounts(dcpMessagesProcessed)
-				logging.Infof("%s [%s:%s:%d] vb: %d seqNoReceived: %d DCP events: %s",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, countMsg)
 			}
+		}(dcpFeed, &wg, seqNos[vb], &receivedTillEndSeqNo)
+
+		var flogs couchbase.FailoverLog
+
+		// TODO: Can be improved by requesting failover log just for the vbucket for which stream is going to be requested
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpAllVbucketsCallback, c, b, &flogs, vb)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return common.ErrRetryTimeout
 		}
-	}(dcpFeed, &wg, seqNos[vb], &receivedTillEndSeqNo)
 
-	var flogs couchbase.FailoverLog
+		start, snapStart, snapEnd := uint64(0), uint64(0), seqNos[int(vb)]
+		flags := uint32(0)
+		end := seqNos[int(vb)]
 
-	// TODO: Can be improved by requesting failover log just for the vbucket for which stream is going to be requested
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpAllVbucketsCallback, c, b, &flogs, vb)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
-	}
+		logging.Infof("%s [%s:%s:%d] vb: %v Going to start backfill DCP feed from source bucket: %s start seq no: %d end seq no: %d KV nodes: %rs flog len: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket, start, end, c.getKvNodes(), len(flogs))
 
-	start, snapStart, snapEnd := uint64(0), uint64(0), seqNos[int(vb)]
-	flags := uint32(0)
-	end := seqNos[int(vb)]
+		if flog, ok := flogs[vb]; ok {
+			vbuuid, _, _ := flog.Latest()
 
-	logging.Infof("%s [%s:%s:%d] vb: %v Going to start backfill DCP feed from source bucket: %s start seq no: %d end seq no: %d KV nodes: %rs flog len: %d",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.bucket, start, end, c.getKvNodes(), len(flogs))
+			logging.Infof("%s [%s:%s:%d] vb: %v starting DCP feed for timer backfill. Start seq no: %d end seq no: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, start, end)
 
-	if flog, ok := flogs[vb]; ok {
-		vbuuid, _, _ := flog.Latest()
+			opaque := uint16(vb)
+			err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] vb: %v Failed to request stream for recreating doc timers, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 
-		logging.Infof("%s [%s:%s:%d] vb: %v starting DCP feed. Start seq no: %d end seq no: %d",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, start, end)
-
-		opaque := uint16(vb)
-		err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
-		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] vb: %v Failed to request stream for recreating doc timers, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-
-			dcpFeed.Close()
-			return err
+				dcpFeed.Close()
+				return err
+			}
+		} else {
+			logging.Errorf("%s [%s:%s:%d] vb: %v Failover log doesn't have entry for it",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		}
-	} else {
-		logging.Errorf("%s [%s:%s:%d] vb: %v Failover log doesn't have entry for it",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-	}
 
-	wg.Wait()
+		wg.Wait()
 
-	dcpFeed.Close()
+		dcpFeed.Close()
 
-	if !receivedTillEndSeqNo {
-		return fmt.Errorf("not received doc timer events till desired end seq no")
+		if !receivedTillEndSeqNo {
+			return fmt.Errorf("not received doc timer events till desired end seq no")
+		}
 	}
 
 	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
@@ -643,14 +712,13 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
 	c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
-	err = c.dcpRequestStreamHandle(vb, vbBlob, vbBlob.LastSeqNoProcessed)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
-	}
+	logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
-	if err != nil {
-		return err
+	c.reqStreamCh <- &streamRequestInfo{
+		vb:         vb,
+		vbBlob:     vbBlob,
+		startSeqNo: vbBlob.LastSeqNoProcessed,
 	}
 
 	return nil
@@ -662,7 +730,6 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 	vbBlob.AssignedWorker = ""
 	vbBlob.CurrentVBOwner = ""
 	vbBlob.DCPStreamStatus = dcpStreamStopped
-	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 	vbBlob.NodeUUID = ""
 	vbBlob.PreviousAssignedWorker = c.ConsumerName()
 	vbBlob.PreviousNodeUUID = c.NodeUUID()

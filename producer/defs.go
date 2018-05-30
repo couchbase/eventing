@@ -54,6 +54,7 @@ type Producer struct {
 	cleanupTimers          bool
 	cfgData                string
 	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
+	isPlannerRunning       bool
 	kvPort                 string
 	kvHostPorts            []string
 	metadatabucket         string

@@ -91,6 +91,22 @@ v8::Local<v8::Name> v8Name(v8::Isolate *isolate, uint32_t key) {
   return handle_scope.Escape(key_name);
 }
 
+v8::Local<v8::Array> v8Array(v8::Isolate *isolate,
+                             const std::vector<std::string> &from) {
+  v8::EscapableHandleScope handle_scope(isolate);
+
+  auto context = isolate->GetCurrentContext();
+  auto array = v8::Array::New(isolate, static_cast<int>(from.size()));
+  for (uint32_t i = 0; i < from.size(); ++i) {
+    auto success = false;
+    if (!TO(array->Set(context, i, v8Str(isolate, from[i])), &success)) {
+      return handle_scope.Escape(array);
+    }
+  }
+
+  return handle_scope.Escape(array);
+}
+
 std::string JSONStringify(v8::Isolate *isolate,
                           const v8::Local<v8::Value> &object) {
   if (IS_EMPTY(object)) {

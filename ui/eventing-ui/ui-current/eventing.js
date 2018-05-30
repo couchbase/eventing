@@ -1255,8 +1255,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Routes for the application.
-    .config(['$stateProvider', '$urlRouterProvider', 'mnPluggableUiRegistryProvider',
-        function($stateProvider, $urlRouterProvider, mnPluggableUiRegistryProvider) {
+    .config(['$stateProvider', '$urlRouterProvider', 'mnPluggableUiRegistryProvider', 'mnPermissionsProvider',
+        function($stateProvider, $urlRouterProvider, mnPluggableUiRegistryProvider, mnPermissionsProvider) {
             $urlRouterProvider.otherwise('/eventing');
             $stateProvider
                 .state('app.admin.eventing', {
@@ -1308,10 +1308,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     }
                 });
 
+            mnPermissionsProvider.set('cluster.eventing.functions!manage');
             mnPluggableUiRegistryProvider.registerConfig({
                 name: 'Eventing',
                 state: 'app.admin.eventing.summary',
                 plugIn: 'workbenchTab',
+                ngShow: "rbac.cluster.eventing.functions.manage",
                 index: 4,
                 responsiveHide: true
             });

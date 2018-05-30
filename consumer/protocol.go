@@ -176,6 +176,24 @@ func (c *Consumer) makeHeader(event int8, opcode int8, partition int16, meta str
 	return
 }
 
+func (c *Consumer) createHandlerHeaders(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+	for i := len(c.handlerHeaders) - 1; i >= 0; i-- {
+		builder.PrependUOffsetT(builder.CreateString(c.handlerHeaders[i]))
+	}
+
+	payload.PayloadStartHandlerHeadersVector(builder, len(c.handlerHeaders))
+	return builder.EndVector(len(c.handlerHeaders))
+}
+
+func (c *Consumer) createHandlerFooters(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+	for i := len(c.handlerFooters) - 1; i >= 0; i-- {
+		builder.PrependUOffsetT(builder.CreateString(c.handlerFooters[i]))
+	}
+
+	payload.PayloadStartHandlerFootersVector(builder, len(c.handlerFooters))
+	return builder.EndVector(len(c.handlerFooters))
+}
+
 func (c *Consumer) makeThrMapPayload(thrMap map[int][]uint16, partitionCount int) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
@@ -283,6 +301,8 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 	esp := builder.CreateString(eventingSSLPort)
 	dcfg := builder.CreateString(depCfg)
 	khp := builder.CreateString(kvHostPort)
+	handlerHeaders := c.createHandlerHeaders(builder)
+	handlerFooters := c.createHandlerFooters(builder)
 
 	rec := make([]byte, 1)
 	flatbuffers.WriteBool(rec, enableRecursiveMutation)
@@ -307,6 +327,8 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 	payload.PayloadAddCurlTimeout(builder, curlTimeout)
 	payload.PayloadAddEnableRecursiveMutation(builder, rec[0])
 	payload.PayloadAddSkipLcbBootstrap(builder, lcb[0])
+	payload.PayloadAddHandlerHeaders(builder, handlerHeaders)
+	payload.PayloadAddHandlerFooters(builder, handlerFooters)
 
 	msgPos := payload.PayloadEnd(builder)
 	builder.Finish(msgPos)

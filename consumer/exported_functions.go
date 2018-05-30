@@ -348,7 +348,7 @@ func (c *Consumer) GetLcbExceptionsStats() map[string]uint64 {
 }
 
 // SpawnCompilationWorker bring up a CPP worker to compile the user supplied handler code
-func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventingPort string) (*common.CompileStatus, error) {
+func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventingPort string, handlerHeaders, handlerFooters []string) (*common.CompileStatus, error) {
 	logPrefix := "Consumer::SpawnCompilationWorker"
 
 	listener, err := net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
@@ -477,9 +477,12 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 	c.sockReader = bufio.NewReader(c.conn)
 
 	c.sendWorkerThrCount(1, false)
+	logging.Infof("%s [%s:%s:%d] Handler headers %v", logPrefix, c.workerName, c.tcpPort, pid, c.handlerHeaders)
+	logging.Infof("%s [%s:%s:%d] Handler footers %v", logPrefix, c.workerName, c.tcpPort, pid, c.handlerFooters)
 
+	c.handlerHeaders = handlerHeaders
+	c.handlerFooters = handlerFooters
 	// Framing bare minimum V8 worker init payload
-	// TODO : Remove rbac user once RBAC issue is resolved
 	payload, pBuilder := c.makeV8InitPayload(appName, util.Localhost(), "", eventingPort, "",
 		"", appContent, 5, 10, 1, 30, 10*1000, true, true, 500)
 

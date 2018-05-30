@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"runtime/debug"
+	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
@@ -248,13 +249,13 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	vbBlob := args[2].(*vbucketKVBlob)
 
 	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
-		UpsertEx("last_cleaned_up_doc_id_timer_event", vbBlob.LastCleanedUpDocIDTimerEvent, gocb.SubdocFlagCreatePath).
-		UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_cron_timer", vbBlob.CurrentProcessedCronTimer, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+		UpsertEx("last_cleaned_up_doc_id_timer_event", vbBlob.LastCleanedUpDocIDTimerEvent, gocb.SubdocFlagCreatePath).
+		UpsertEx("next_cron_timer_to_process", vbBlob.NextCronTimerToProcess, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_doc_id_timer_sent_to_worker", vbBlob.LastDocIDTimerSentToWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess, gocb.SubdocFlagCreatePath).
-		UpsertEx("next_cron_timer_to_process", vbBlob.NextCronTimerToProcess, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_processed_seq_no", vbBlob.LastSeqNoProcessed, gocb.SubdocFlagCreatePath).
 		Execute()
@@ -281,12 +282,16 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath).
-		UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
 		UpsertEx("node_uuid", vbBlob.NodeUUID, gocb.SubdocFlagCreatePath).
+		UpsertEx("node_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("previous_assigned_worker", vbBlob.PreviousAssignedWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("previous_node_uuid", vbBlob.PreviousNodeUUID, gocb.SubdocFlagCreatePath).
 		UpsertEx("previous_vb_owner", vbBlob.PreviousVBOwner, gocb.SubdocFlagCreatePath).
+		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
@@ -301,8 +306,104 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	return err
 }
 
-var addOwnershipHistorySRCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::addOwnershipHistorySRCallback"
+var metadataCorrectionCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::metadataCorrectionCallback"
+
+	c := args[0].(*Consumer)
+	vbKey := args[1].(string)
+	ownershipEntry := args[2].(*OwnershipEntry)
+
+	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+		ArrayAppend("ownership_history", ownershipEntry, true).
+		UpsertEx("assigned_worker", c.ConsumerName(), gocb.SubdocFlagCreatePath).
+		UpsertEx("current_vb_owner", c.HostPortAddr(), gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_status", dcpStreamRunning, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid", c.NodeUUID(), gocb.SubdocFlagCreatePath).
+		Execute()
+
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while trying to update metadata, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+	}
+
+	return err
+}
+
+// Called when STREAMREQ is sent from DCP Client to Producer
+var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::addOwnershipHistorySRRCallback"
+
+	c := args[0].(*Consumer)
+	vbKey := args[1].(string)
+	ownershipEntry := args[2].(*OwnershipEntry)
+
+	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+		ArrayAppend("ownership_history", ownershipEntry, true).
+		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_requested", true, gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_status", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("node_requested_vb_stream", c.HostPortAddr(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid_requested_vb_stream", c.NodeUUID(), gocb.SubdocFlagCreatePath).
+		UpsertEx("worker_requested_vb_stream", c.ConsumerName(), gocb.SubdocFlagCreatePath).
+		Execute()
+
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post STREAMREQ from Consumer, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+	}
+
+	return err
+}
+
+// Called when STREAMREQ isn't successful
+var addOwnershipHistorySRFCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::addOwnershipHistorySRFCallback"
+
+	c := args[0].(*Consumer)
+	vbKey := args[1].(string)
+	ownershipEntry := args[2].(*OwnershipEntry)
+
+	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+		ArrayAppend("ownership_history", ownershipEntry, true).
+		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_status", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("node_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		Execute()
+
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post unsuccessful STREAMREQ from Consumer, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+	}
+
+	return err
+}
+
+// Called when STREAMREQ success response is received from DCP Producer
+var addOwnershipHistorySRSCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::addOwnershipHistorySRSCallback"
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(string)
@@ -313,8 +414,9 @@ var addOwnershipHistorySRCallback = func(args ...interface{}) error {
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath).
-		UpsertEx("last_checkpoint_time", vbBlob.LastCheckpointTime, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
 		UpsertEx("node_uuid", vbBlob.NodeUUID, gocb.SubdocFlagCreatePath).
 		UpsertEx("vb_uuid", vbBlob.VBuuid, gocb.SubdocFlagCreatePath).
 		Execute()
@@ -324,7 +426,7 @@ var addOwnershipHistorySRCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while performing ownership entry app post STREAMREQ, err: %v",
+		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post STREAMREQ SUCCESS from Producer, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
 	}
 
@@ -340,6 +442,11 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 
 	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
+		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
@@ -582,12 +689,12 @@ var checkKeyExistsCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::checkKeyExistsCallback"
 
 	c := args[0].(*Consumer)
-	docId := args[1].(string)
+	docID := args[1].(string)
 	exists := args[2].(*bool)
 	connShutdown := args[3].(*bool)
 	var value interface{}
 
-	_, err := c.gocbBucket.Get(docId, &value)
+	_, err := c.gocbBucket.Get(docID, &value)
 	if err == gocb.ErrShutdown {
 		*exists = false
 		*connShutdown = true
@@ -605,6 +712,6 @@ var checkKeyExistsCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	logging.Errorf("%s [%s:%s:%d] Key: %ru, err : %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), docId, err)
+	logging.Errorf("%s [%s:%s:%d] Key: %ru, err : %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), docID, err)
 	return err
 }

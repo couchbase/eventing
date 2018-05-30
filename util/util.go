@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/url"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -1027,9 +1028,15 @@ func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error)
 	return false, nil
 }
 
-func Contains(needle string, haystack []string) bool {
-	for _, item := range haystack {
-		if item == needle {
+func Contains(needle interface{}, haystack interface{}) bool {
+	s := reflect.ValueOf(haystack)
+
+	if s.Kind() != reflect.Slice {
+		panic("non-slice type provided")
+	}
+
+	for i := 0; i < s.Len(); i++ {
+		if s.Index(i).Interface() == needle {
 			return true
 		}
 	}
@@ -1052,6 +1059,20 @@ func ToStr(value bool) (strValue string) {
 		strValue = "1"
 	} else {
 		strValue = "0"
+	}
+
+	return
+}
+
+func ToStringArray(from interface{}) (to []string) {
+	if from == nil {
+		return
+	}
+
+	fromArray := from.([]interface{})
+	to = make([]string, len(fromArray))
+	for i := 0; i < len(fromArray); i++ {
+		to[i] = fromArray[i].(string)
 	}
 
 	return

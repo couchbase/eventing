@@ -152,6 +152,16 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.FuzzOffset = 0
 	}
 
+	if val, ok := settings["handler_footers"]; ok {
+		p.handlerConfig.HandlerFooters = util.ToStringArray(val)
+	}
+
+	if val, ok := settings["handler_headers"]; ok {
+		p.handlerConfig.HandlerHeaders = util.ToStringArray(val)
+	} else {
+		p.handlerConfig.HandlerHeaders = []string{"'use strict';"}
+	}
+
 	if val, ok := settings["lcb_inst_capacity"]; ok {
 		p.handlerConfig.LcbInstCapacity = int(val.(float64))
 	} else {

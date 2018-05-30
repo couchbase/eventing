@@ -33,44 +33,65 @@ var Context = {
     IterConsequent: 'iter_consequent'
 };
 
-function compile(code) {
-    console.log('Transpiler::Compile compiling now');
+function compile(code, headers, footers) {
+    var parsingProperties = {
+        range: true,
+        tokens: true,
+        comment: true,
+        sourceType: 'script',
+        loc: true
+    };
+
+    function ErrorInfo(error) {
+        this.language = 'JavaScript';
+        this.compileSuccess = false;
+        this.index = error.index;
+        this.lineNumber = error.lineNumber;
+        this.columnNumber = error.column;
+        this.description = error.description;
+        this.area = error.area;
+    }
+
     try {
-        var ast = esprima.parse(code, {
-                range: true,
-                tokens: true,
-                comment: true,
-                sourceType: 'script',
-                loc: true
-            }),
+        var ast = esprima.parse(code, parsingProperties),
             nodeUtils = new NodeUtils();
 
         nodeUtils.checkGlobals(ast);
-
         // TODO : Remove this check once UUID is used to create variables
         nodeUtils.checkForOfNodeRight(ast);
-
-        return {
-            language: 'JavaScript',
-            compileSuccess: true
-        };
     } catch (e) {
-        return {
-            language: 'JavaScript',
-            compileSuccess: false,
-            index: e.index,
-            lineNumber: e.lineNumber,
-            columnNumber: e.column,
-            description: e.description
-        }
+        e.area = 'handlerCode';
+        return new ErrorInfo(e);
     }
+
+    try {
+        var headerStatements = headers.join('\n');
+        esprima.parse(headerStatements, parsingProperties);
+    } catch (e) {
+        e.area = 'handlerHeaders';
+        return new ErrorInfo(e);
+    }
+
+    try {
+        var footerStatements = footers.join('\n');
+        esprima.parse(footerStatements, parsingProperties);
+    } catch (e) {
+        e.area = 'handlerFooters';
+        return new ErrorInfo(e);
+    }
+
+    return {
+        language: 'JavaScript',
+        compileSuccess: true
+    };
 }
 
-function transpile(code, sourceFileName) {
+function transpile(code, sourceFileName, headers, footers) {
     var ast = getAst(code, sourceFileName);
-    return escodegen.generate(ast, {
+    var transpiledCode = escodegen.generate(ast, {
         comment: true
     });
+    return AddHeadersAndFooters(transpiledCode, headers, footers);
 }
 
 function jsFormat(code) {
@@ -113,8 +134,10 @@ function isFuncCalled(methodName, code) {
 
 // Gets compatability level of code. Returns [<release>, <ga/beta/dp>]
 function getCodeVersion(code) {
-    var versions = ["vulcan"], vp = 0;
-    var levels = ["ga", "beta", "dp"], lp = 0;
+    var versions = ["vulcan"],
+        vp = 0;
+    var levels = ["ga", "beta", "dp"],
+        lp = 0;
 
     var ast = esprima.parse(code, {
         attachComment: true,
@@ -125,11 +148,10 @@ function getCodeVersion(code) {
         // todo: handle aliased functions, ex: var cn = cronTimer
         enter: function(node) {
             if (/CallExpression/.test(node.type)) {
-                if (node.callee.name === 'docTimer'  && lp < 1) lp = 1;
+                if (node.callee.name === 'docTimer' && lp < 1) lp = 1;
                 if (node.callee.name === 'cronTimer' && lp < 1) lp = 1;
-                if (node.callee.name === 'curl'      && lp < 2) lp = 2;
-            }
-            else if (/NewExpression/.test(node.type)) {
+                if (node.callee.name === 'curl' && lp < 2) lp = 2;
+            } else if (/NewExpression/.test(node.type)) {
                 if (node.callee.name === 'N1qlQuery' && lp < 1) lp = 1;
             }
         }
@@ -137,7 +159,6 @@ function getCodeVersion(code) {
 
     return [versions[vp], levels[lp]];
 }
-
 
 // Checks if the given statement is a valid JavaScript expression.
 function isJsExpression(stmt) {
@@ -163,6 +184,12 @@ function transpileQuery(query, namedParams, isSelectQuery) {
     // the JavaScript is uni-lined.
     var stmtAst = new N1QLQueryStmtAst(exprAst);
     return escodegen.generate(stmtAst);
+}
+
+function AddHeadersAndFooters(code, headers, footers) {
+    var headersCombined = headers.join('\n') + '\n';
+    var footersCombined = footers.join('\n') + '\n';
+    return headersCombined + code + footersCombined;
 }
 
 // A utility class for handling nodes of an AST.

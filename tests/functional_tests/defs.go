@@ -64,8 +64,8 @@ const (
 	sockBatchSize = 1
 	workerCount   = 3
 
-	deadlineTimeout  = 3
-	executionTimeout = 2
+	deadlineTimeout  = 6
+	executionTimeout = 5
 )
 
 const (

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -1132,9 +1133,8 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 
 // Saves application to metakv and returns appropriate success/error code
 func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
-	appName := app.Name
 	info = &runtimeInfo{}
-	logging.Infof("Saving application %v to primary store", appName)
+	logging.Infof("Saving application %s to primary store", app.Name)
 
 	if rebStatus := m.checkRebalanceStatus(); rebStatus.Code != m.statusCodes.ok.Code {
 		info.Code = rebStatus.Code
@@ -1142,9 +1142,9 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	if m.checkIfDeployed(appName) {
+	if m.checkIfDeployed(app.Name) {
 		info.Code = m.statusCodes.errAppDeployed.Code
-		info.Info = fmt.Sprintf("App with same name %s is already deployed, skipping save request", appName)
+		info.Info = fmt.Sprintf("App with same name %s is already deployed, skipping save request", app.Name)
 		return
 	}
 
@@ -1200,47 +1200,55 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 
 	if len(appContent) > maxHandlerSize {
 		info.Code = m.statusCodes.errAppCodeSize.Code
-		info.Info = fmt.Sprintf("App: %s Handler Code size is more than 128K", appName)
+		info.Info = fmt.Sprintf("App: %s Handler Code size is more than 128K", app.Name)
 		return
 	}
 
 	c := &consumer.Consumer{}
-	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), appName, m.adminHTTPPort)
+	handlerHeaders := util.ToStringArray(app.Settings["handler_headers"])
+	handlerFooters := util.ToStringArray(app.Settings["handler_footers"])
+	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), app.Name, m.adminHTTPPort,
+		handlerHeaders, handlerFooters)
 	if err != nil || !compilationInfo.CompileSuccess {
 		info.Code = m.statusCodes.errHandlerCompile.Code
 		info.Info = compilationInfo
 		return
 	}
 
-	settingsPath := metakvAppSettingsPath + appName
+	m.checkVersionCompat(compilationInfo.Version, info)
+	if info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	settingsPath := metakvAppSettingsPath + app.Name
 	settings := app.Settings
 
 	mData, mErr := json.Marshal(&settings)
 	if mErr != nil {
 		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("App: %s Failed to marshal settings, err: %v", appName, mErr)
+		info.Info = fmt.Sprintf("App: %s Failed to marshal settings, err: %v", app.Name, mErr)
 		return
 	}
 
 	mkvErr := util.MetakvSet(settingsPath, mData, nil)
 	if mkvErr != nil {
 		info.Code = m.statusCodes.errSetSettingsPs.Code
-		info.Info = fmt.Sprintf("App: %s Failed to store updated settings in metakv, err: %v", appName, mkvErr)
+		info.Info = fmt.Sprintf("App: %s Failed to store updated settings in metakv, err: %v", app.Name, mkvErr)
 		return
 	}
 
 	//Delete stale entry
-	err = util.DeleteStaleAppContent(metakvAppsPath, appName)
+	err = util.DeleteStaleAppContent(metakvAppsPath, app.Name)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppPs.Code
-		info.Info = fmt.Sprintf("Failed to clean up stale entry for app: %v err: %v", appName, err)
+		info.Info = fmt.Sprintf("Failed to clean up stale entry for app: %v err: %v", app.Name, err)
 		return
 	}
 
-	err = util.WriteAppContent(metakvAppsPath, metakvChecksumPath, appName, appContent)
+	err = util.WriteAppContent(metakvAppsPath, metakvChecksumPath, app.Name, appContent)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppPs.Code
-		info.Info = fmt.Sprintf("App: %v failed to write to metakv, err: %v", appName, err)
+		info.Info = fmt.Sprintf("App: %v failed to write to metakv, err: %v", app.Name, err)
 		return
 	}
 
@@ -1249,17 +1257,16 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 
 	switch strings.ToLower(compilationInfo.Level) {
 	case "dp":
-		msg := fmt.Sprintf("Handler '%v' uses Developer Preview features. Do not use in production environments", appName)
+		msg := fmt.Sprintf("Handler '%v' uses Developer Preview features. Do not use in production environments", app.Name)
 		wInfo.Warnings = append(wInfo.Warnings, msg)
 
 	case "beta":
-		msg := fmt.Sprintf("Handler '%v' uses Beta features. Do not use in production environments", appName)
+		msg := fmt.Sprintf("Handler '%v' uses Beta features. Do not use in production environments", app.Name)
 		wInfo.Warnings = append(wInfo.Warnings, msg)
 	}
 
 	info.Code = m.statusCodes.ok.Code
 	info.Info = wInfo
-
 	return
 }
 
@@ -1970,4 +1977,32 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "%v\n", count)
+}
+
+func (m *ServiceMgr) checkVersionCompat(required string, info *runtimeInfo) {
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
+	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	if err != nil {
+		info.Code = m.statusCodes.errConnectNsServer.Code
+		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
+		return
+	}
+
+	ok := false
+	major, minor := clusterInfo.GetClusterVersion()
+	switch required {
+	case "vulcan":
+		ok = (major >= 5 && minor >= 5)
+	}
+
+	if !ok {
+		info.Code = m.statusCodes.errClusterVersion.Code
+		info.Info = fmt.Sprintf("Handler requires '%v', but cluster is at '%v.%v'",
+			required, major, minor)
+		logging.Warnf("Version compat check failed: %v", info.Info)
+		return
+	}
+
+	logging.Infof("Handler need '%v' satisfied by cluster '%v.%v'", required, major, minor)
+	info.Code = m.statusCodes.ok.Code
 }

@@ -108,7 +108,6 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vbno uint16, vbBlob *vbuck
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
 	vbBlob.DCPStreamStatus = c.vbProcessingStats.getVbStat(vbno, "dcp_stream_status").(string)
-	vbBlob.LastCheckpointTime = time.Now().Format(time.RFC3339)
 	vbBlob.NodeUUID = c.NodeUUID()
 	vbBlob.VBId = vbno
 

@@ -92,8 +92,8 @@ func (c *Consumer) processDocTimerEvents() {
 			return
 		}
 
-		logging.Infof("%s [%s:%s:%d] vb: %v lastProcessedDocIDTimer: %v cTimer: %v nTimer: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastProcessedDocIDTimerEvent, c.docCurrTimer, c.docNextTimer)
+		// logging.Infof("%s [%s:%s:%d] vb: %v lastProcessedDocIDTimer: %v cTimer: %v nTimer: %v",
+		//	logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastProcessedDocIDTimerEvent, c.docCurrTimer, c.docNextTimer)
 
 		if vbBlob.LastProcessedDocIDTimerEvent == "" {
 			c.vbProcessingStats.updateVbStat(vb, "currently_processed_doc_id_timer", c.docCurrTimer)
@@ -436,8 +436,8 @@ func (c *Consumer) processCronTimerEvents() {
 			return
 		}
 
-		logging.Infof("%s [%s:%s:%d] vb: %v lastProcessedCronTimerEvent: %v cTimer: %v nTimer: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastProcessedCronTimerEvent, c.cronCurrTimer, c.cronNextTimer)
+		// logging.Infof("%s [%s:%s:%d] vb: %v lastProcessedCronTimerEvent: %v cTimer: %v nTimer: %v",
+		//	logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.LastProcessedCronTimerEvent, c.cronCurrTimer, c.cronNextTimer)
 
 		if vbBlob.LastProcessedCronTimerEvent == "" {
 			c.vbProcessingStats.updateVbStat(vb, "currently_processed_cron_timer", c.cronCurrTimer)

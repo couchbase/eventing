@@ -106,11 +106,20 @@ func (p *Producer) Serve() {
 		return
 	}
 
+	p.isPlannerRunning = true
+	logging.Infof("%s [%s:%d] Planner status: %t, before vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
+
 	err = p.vbEventingNodeAssign()
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		p.isPlannerRunning = false
+		logging.Infof("%s [%s:%d] Planner status: %t, after vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 		return
 	}
+
+	p.initWorkerVbMap()
+	p.isPlannerRunning = false
+	logging.Infof("%s [%s:%d] Planner status: %t, after vbucket to worker assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
 	if err != nil {
 		logging.Fatalf("%s [%s:%d] Failure while assigning vbuckets to workers, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
@@ -175,7 +184,6 @@ func (p *Producer) Serve() {
 		return
 	}
 
-	p.initWorkerVbMap()
 	p.startBucket()
 
 	go p.persistPlasma()
@@ -197,12 +205,23 @@ func (p *Producer) Serve() {
 
 			switch msg.CType {
 			case common.StartRebalanceCType:
+				p.isPlannerRunning = true
+				logging.Infof("%s [%s:%d] Planner status: %t, before vbucket to node assignment as part of rebalance",
+					logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
+
 				err = p.vbEventingNodeAssign()
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+					p.isPlannerRunning = false
+					logging.Infof("%s [%s:%d] Planner status: %t, after vbucket to node assignment post rebalance request",
+						logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 					return
 				}
 				p.initWorkerVbMap()
+				p.isPlannerRunning = false
+				logging.Infof("%s [%s:%d] Planner status: %t, post vbucket to worker assignment during rebalance",
+					logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
+
 				func() {
 					p.RLock()
 					defer p.RUnlock()
@@ -212,6 +231,7 @@ func (p *Producer) Serve() {
 						eventingConsumer.NotifyClusterChange()
 					}
 				}()
+
 			case common.StopRebalanceCType:
 				func() {
 					p.RLock()

@@ -307,7 +307,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   data_.comm = new Communicator(server_settings->host_addr, port, key.first,
                                 key.second, ssl);
 
-  data_.transpiler = new Transpiler(isolate_, GetTranspilerSrc());
+  data_.transpiler =
+      new Transpiler(isolate_, GetTranspilerSrc(), h_config->handler_headers,
+                     h_config->handler_footers);
   data_.fuzz_offset = h_config->fuzz_offset;
 
   execute_start_time_ = Time::now();
@@ -526,7 +528,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     on_delete_.Reset(isolate_, on_delete_fun);
   }
 
-  if (bucket_handles_.size() > 0) {
+  if (!bucket_handles_.empty()) {
     auto bucket_handle = bucket_handles_.begin();
 
     for (; bucket_handle != bucket_handles_.end(); bucket_handle++) {
@@ -1301,6 +1303,7 @@ std::string V8Worker::CompileHandler(std::string handler) {
                   v8::Int32::New(isolate_, info.col_no));
     info_obj->Set(v8Str(isolate_, "description"),
                   v8Str(isolate_, info.description));
+    info_obj->Set(v8Str(isolate_, "area"), v8Str(isolate_, info.area));
   } catch (const char *e) {
     LOG(logError) << e << std::endl;
     return "";
