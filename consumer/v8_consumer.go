@@ -290,14 +290,14 @@ func (c *Consumer) Serve() {
 	}
 	c.isBootstrapping = false
 
+	logging.Infof("%s [%s:%s:%d] vbsStateUpdateRunning: %t docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning, c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)
+
 	if !c.vbsStateUpdateRunning {
 		logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		go c.vbsStateUpdate()
 	}
-
-	logging.Infof("%s [%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)
 
 	// doc_id timer events
 	go c.processDocTimerEvents()
