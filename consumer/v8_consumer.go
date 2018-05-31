@@ -44,6 +44,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		cleanupTimers:                   hConfig.CleanupTimers,
 		clusterStateChangeNotifCh:       make(chan struct{}, ClusterChangeNotifChBufSize),
 		connMutex:                       &sync.RWMutex{},
+		controlRoutineWg:                &sync.WaitGroup{},
 		cppThrPartitionMap:              make(map[int][]uint16),
 		cppWorkerThrCount:               hConfig.CPPWorkerThrCount,
 		crcTable:                        crc32.MakeTable(crc32.Castagnoli),
@@ -173,6 +174,8 @@ func (c *Consumer) Serve() {
 		}
 	}()
 
+	c.isBootstrapping = true
+
 	c.cronCurrTimer = time.Now().Add(-time.Second * 10).UTC().Format(time.RFC3339)
 	c.cronNextTimer = time.Now().Add(-time.Second * 10).UTC().Format(time.RFC3339)
 
@@ -277,11 +280,15 @@ func (c *Consumer) Serve() {
 		return
 	}
 
+	c.controlRoutineWg.Add(1)
+	go c.controlRoutine()
+
 	err = c.startDcp(flogs)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
 	}
+	c.isBootstrapping = false
 
 	if !c.vbsStateUpdateRunning {
 		logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine",
@@ -312,13 +319,9 @@ func (c *Consumer) Serve() {
 
 	c.signalBootstrapFinishCh <- struct{}{}
 
-	err = c.controlRoutine()
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return
-	}
+	c.controlRoutineWg.Wait()
 
-	logging.Debugf("%s [%s:%s:%d] Exiting consumer init routine",
+	logging.Infof("%s [%s:%s:%d] Exiting consumer init routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }
 

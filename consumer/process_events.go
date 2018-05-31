@@ -702,12 +702,10 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 
 	}
 
-checkIfVbStreamsOpened:
-	for _, vb := range vbs {
-		if !c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
-			time.Sleep(time.Second)
-			goto checkIfVbStreamsOpened
-		}
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, checkIfVbStreamsOpenedCallback, c, vbs)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return common.ErrRetryTimeout
 	}
 
 	return nil

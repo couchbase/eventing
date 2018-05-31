@@ -715,3 +715,16 @@ var checkKeyExistsCallback = func(args ...interface{}) error {
 	logging.Errorf("%s [%s:%s:%d] Key: %ru, err : %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), docID, err)
 	return err
 }
+
+var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+	vbs := args[1].([]uint16)
+
+	for _, vb := range vbs {
+		if !c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+			return fmt.Errorf("vb: %d not owned by consumer yet", vb)
+		}
+	}
+
+	return nil
+}
