@@ -44,6 +44,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		cleanupTimers:                   hConfig.CleanupTimers,
 		clusterStateChangeNotifCh:       make(chan struct{}, ClusterChangeNotifChBufSize),
 		connMutex:                       &sync.RWMutex{},
+		controlRoutineWg:                &sync.WaitGroup{},
 		cppThrPartitionMap:              make(map[int][]uint16),
 		cppWorkerThrCount:               hConfig.CPPWorkerThrCount,
 		crcTable:                        crc32.MakeTable(crc32.Castagnoli),
@@ -173,6 +174,8 @@ func (c *Consumer) Serve() {
 		}
 	}()
 
+	c.isBootstrapping = true
+
 	c.cronCurrTimer = time.Now().Add(-time.Second * 10).UTC().Format(time.RFC3339)
 	c.cronNextTimer = time.Now().Add(-time.Second * 10).UTC().Format(time.RFC3339)
 
@@ -277,20 +280,24 @@ func (c *Consumer) Serve() {
 		return
 	}
 
+	c.controlRoutineWg.Add(1)
+	go c.controlRoutine()
+
 	err = c.startDcp(flogs)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
 	}
+	c.isBootstrapping = false
+
+	logging.Infof("%s [%s:%s:%d] vbsStateUpdateRunning: %t docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning, c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)
 
 	if !c.vbsStateUpdateRunning {
 		logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		go c.vbsStateUpdate()
 	}
-
-	logging.Infof("%s [%s:%s:%d] docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)
 
 	// doc_id timer events
 	go c.processDocTimerEvents()
@@ -312,13 +319,9 @@ func (c *Consumer) Serve() {
 
 	c.signalBootstrapFinishCh <- struct{}{}
 
-	err = c.controlRoutine()
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return
-	}
+	c.controlRoutineWg.Wait()
 
-	logging.Debugf("%s [%s:%s:%d] Exiting consumer init routine",
+	logging.Infof("%s [%s:%s:%d] Exiting consumer init routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }
 
@@ -384,6 +387,8 @@ func (c *Consumer) Stop() {
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 		}
 	}()
+
+	c.isTerminateRunning = true
 
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -603,7 +608,10 @@ func (c *Consumer) SignalStopDebugger() error {
 
 	// Reset the debugger instance blob
 	dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
-	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
+	dInstAddrBlob := &common.DebuggerInstanceAddrBlobVer{
+		common.DebuggerInstanceAddrBlob{},
+		util.EventingVer(),
+	}
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, dInstAddrKey, dInstAddrBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())

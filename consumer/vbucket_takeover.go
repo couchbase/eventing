@@ -285,8 +285,13 @@ func (c *Consumer) vbsStateUpdate() {
 	logPrefix := "Consumer::vbsStateUpdate"
 
 	c.vbsStateUpdateRunning = true
+	logging.Infof("%s [%s:%s:%d] Updated vbsStateUpdateRunning to %t",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning)
+
 	defer func() {
 		c.vbsStateUpdateRunning = false
+		logging.Infof("%s [%s:%s:%d] Updated vbsStateUpdateRunning to %t",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning)
 	}()
 
 	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
@@ -393,6 +398,12 @@ retryStreamUpdate:
 func (c *Consumer) doVbTakeover(vb uint16) error {
 	logPrefix := "Consumer::doVbTakeover"
 
+	if !c.isRebalanceOngoing {
+		logging.Infof("%s [%s:%s:%d] vb: %d Skipping vbTakeover as rebalance has been stopped",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+		return nil
+	}
+
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
 
@@ -452,6 +463,11 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 	case dcpStreamStopped, dcpStreamUninitialised:
 
 		if vbBlob.DCPStreamRequested {
+			if (vbBlob.NodeUUIDRequestedVbStream == c.NodeUUID() && vbBlob.WorkerRequestedVbStream == c.ConsumerName()) ||
+				(vbBlob.NodeUUIDRequestedVbStream == "" && vbBlob.WorkerRequestedVbStream == "") {
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+			}
+
 			logging.Infof("%s [%s:%s:%d] vb: %d. STREAMREQ already issued by hostPort: %s worker: %s uuid: %s",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.NodeRequestedVbStream,
 				vbBlob.WorkerRequestedVbStream, vbBlob.NodeUUIDRequestedVbStream)

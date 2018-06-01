@@ -100,7 +100,7 @@ func (p *Producer) Serve() {
 		p.seqsNoProcessed[i] = 0
 	}
 
-	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles)
+	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles, p.appLogRotation)
 	if err != nil {
 		logging.Fatalf("%s [%s:%d] Failure to open application log writer handle, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
@@ -167,8 +167,9 @@ func (p *Producer) Serve() {
 
 	// Write debugger blobs in metadata bucket
 	dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
-	debugBlob := &common.StartDebugBlob{
-		StartDebug: false,
+	debugBlob := &common.StartDebugBlobVer{
+		common.StartDebugBlob{StartDebug: false},
+		util.EventingVer(),
 	}
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, dFlagKey, debugBlob)
 	if err == common.ErrRetryTimeout {
@@ -176,7 +177,10 @@ func (p *Producer) Serve() {
 		return
 	}
 
-	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
+	debuggerInstBlob := &common.DebuggerInstanceAddrBlobVer{
+		common.DebuggerInstanceAddrBlob{},
+		util.EventingVer(),
+	}
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, dInstAddrKey, debuggerInstBlob)
 	if err == common.ErrRetryTimeout {
@@ -271,6 +275,7 @@ func (p *Producer) Serve() {
 
 			logLevel := settings["log_level"].(string)
 			logging.SetLogLevel(util.GetLogLevel(logLevel))
+			p.updateAppLogSetting(settings)
 
 		case <-p.pauseProducerCh:
 
@@ -661,8 +666,9 @@ func (p *Producer) SignalStartDebugger() error {
 	logPrefix := "Producer::SignalStartDebugger"
 
 	key := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
-	blob := &common.StartDebugBlob{
-		StartDebug: true,
+	blob := &common.StartDebugBlobVer{
+		common.StartDebugBlob{StartDebug: true},
+		util.EventingVer(),
 	}
 
 	// Check if debugger instance is already running somewhere
@@ -716,8 +722,9 @@ func (p *Producer) SignalStopDebugger() error {
 		if debuggerInstBlob.HostPortAddr == "" {
 			logging.Errorf("%s [%s:%d] Debugger hasn't started.", logPrefix, p.appName, p.LenRunningConsumers())
 
-			debugBlob := &common.StartDebugBlob{
-				StartDebug: false,
+			debugBlob := &common.StartDebugBlobVer{
+				common.StartDebugBlob{StartDebug: false},
+				util.EventingVer(),
 			}
 			dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
 
@@ -773,4 +780,21 @@ func (p *Producer) updateStats() {
 			return
 		}
 	}
+}
+
+func (p *Producer) updateAppLogSetting(settings map[string]interface{}) {
+	if val, ok := settings["app_log_max_size"]; ok {
+		p.appLogMaxSize = int64(val.(float64))
+	}
+
+	if val, ok := settings["app_log_max_files"]; ok {
+		p.appLogMaxFiles = int(val.(float64))
+	}
+
+	if val, ok := settings["enable_applog_rotation"]; ok {
+		p.appLogRotation = val.(bool)
+	}
+
+	logger := p.appLogWriter.(*appLogCloser)
+	updateApplogSetting(logger, p.appLogMaxFiles, p.appLogMaxSize, p.appLogRotation)
 }

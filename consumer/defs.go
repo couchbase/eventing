@@ -168,6 +168,7 @@ type Consumer struct {
 	checkpointInterval          time.Duration
 	cleanupTimers               bool
 	compileInfo                 *common.CompileStatus
+	controlRoutineWg            *sync.WaitGroup
 	dcpEventsRemaining          uint64
 	dcpFeedsClosed              bool
 	dcpFeedVbMap                map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
@@ -186,7 +187,9 @@ type Consumer struct {
 	inflightDcpStreams          map[uint16]struct{} // Access controlled by inflightDcpStreamsRWMutex
 	inflightDcpStreamsRWMutex   *sync.RWMutex
 	ipcType                     string // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
+	isBootstrapping             bool
 	isRebalanceOngoing          bool
+	isTerminateRunning          bool
 	kvHostDcpFeedMap            map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
 	hostDcpFeedRWMutex          *sync.RWMutex
 	kvNodes                     []string // Access controlled by kvNodesRWMutex
@@ -477,6 +480,11 @@ type vbucketKVBlob struct {
 	CurrentProcessedCronTimer   string `json:"currently_processed_cron_timer"`
 	LastProcessedCronTimerEvent string `json:"last_processed_cron_timer_event"`
 	NextCronTimerToProcess      string `json:"next_cron_timer_to_process"`
+}
+
+type vbucketKVBlobVer struct {
+	vbucketKVBlob
+	EventingVersion string `json:"version"`
 }
 
 // OwnershipEntry captures the state of vbucket within the metadata blob

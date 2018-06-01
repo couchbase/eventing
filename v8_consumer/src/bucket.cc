@@ -376,11 +376,14 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       lcb_CMDSUBDOC mcmd = {0};
       LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
 
-      lcb_SDSPEC digest_spec, xattr_spec, doc_spec = {0};
+      lcb_SDSPEC digest_spec, xattr_spec, doc_spec, eventing_ver_spec = {0};
       std::vector<lcb_SDSPEC> specs;
 
       digest_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
       digest_spec.options = LCB_SDSPEC_F_XATTRPATH;
+
+      eventing_ver_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+      eventing_ver_spec.options = LCB_SDSPEC_F_XATTRPATH;
 
       xattr_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
       xattr_spec.options =
@@ -388,7 +391,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
       std::string xattr_cas_path("eventing.cas");
       std::string xattr_digest_path("eventing.digest");
-      std::string mutation_cas_macro("\"${Mutation.CAS}\"");
+      std::string mutation_cas_macro(R"("${Mutation.CAS}")");
+      std::string eventing_ver_path("eventing.version");
 
       if (gres.rc == LCB_SUCCESS) {
         LCB_SDSPEC_SET_PATH(&digest_spec, xattr_digest_path.c_str(),
@@ -396,6 +400,13 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
         LCB_SDSPEC_SET_VALUE(&digest_spec, digest.c_str(), digest.size());
         specs.push_back(digest_spec);
       }
+
+      auto eventing_ver_value = REventingVer();
+      LCB_SDSPEC_SET_PATH(&eventing_ver_spec, eventing_ver_path.c_str(),
+                          eventing_ver_path.size());
+      LCB_SDSPEC_SET_VALUE(&eventing_ver_spec, eventing_ver_value.c_str(),
+                           eventing_ver_value.size());
+      specs.push_back(eventing_ver_spec);
 
       LCB_SDSPEC_SET_PATH(&xattr_spec, xattr_cas_path.c_str(),
                           xattr_cas_path.size());

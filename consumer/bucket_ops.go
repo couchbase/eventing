@@ -417,8 +417,11 @@ var addOwnershipHistorySRSCallback = func(args ...interface{}) error {
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("node_uuid", vbBlob.NodeUUID, gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("vb_uuid", vbBlob.VBuuid, gocb.SubdocFlagCreatePath).
+		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if err == gocb.ErrShutdown {
@@ -714,4 +717,17 @@ var checkKeyExistsCallback = func(args ...interface{}) error {
 
 	logging.Errorf("%s [%s:%s:%d] Key: %ru, err : %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), docID, err)
 	return err
+}
+
+var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
+	c := args[0].(*Consumer)
+	vbs := args[1].([]uint16)
+
+	for _, vb := range vbs {
+		if !c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+			return fmt.Errorf("vb: %d not owned by consumer yet", vb)
+		}
+	}
+
+	return nil
 }

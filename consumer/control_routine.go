@@ -15,6 +15,8 @@ import (
 func (c *Consumer) controlRoutine() error {
 	logPrefix := "Consumer::controlRoutine"
 
+	defer c.controlRoutineWg.Done()
+
 	for {
 		select {
 		case <-c.clusterStateChangeNotifCh:
@@ -36,8 +38,8 @@ func (c *Consumer) controlRoutine() error {
 			c.vbsStreamClosedRWMutex.Unlock()
 
 			c.isRebalanceOngoing = true
-			logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
+			logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t, vbsStateUpdateRunning: %t",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing, c.vbsStateUpdateRunning)
 
 			if !c.vbsStateUpdateRunning {
 				logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine",
@@ -103,7 +105,7 @@ func (c *Consumer) controlRoutine() error {
 			// for the ones which recently have returned STREAMEND. QE frequently does flush
 			// on source bucket right after undeploy
 			deployedApps := c.superSup.GetLocallyDeployedApps()
-			if _, ok := deployedApps[c.app.AppName]; !ok {
+			if _, ok := deployedApps[c.app.AppName]; !ok && !c.isBootstrapping {
 
 				c.Lock()
 				c.vbsRemainingToRestream = make([]uint16, 0)

@@ -563,7 +563,10 @@ func (c *Consumer) processEvents() {
 
 			// Reset debuggerInstanceAddr blob, otherwise next debugger session can't start
 			dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
-			dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
+			dInstAddrBlob := &common.DebuggerInstanceAddrBlobVer{
+				common.DebuggerInstanceAddrBlob{},
+				util.EventingVer(),
+			}
 			err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, dInstAddrKey, dInstAddrBlob)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -643,7 +646,11 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 			vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
 			vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
 
-			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlob)
+			vbBlobVer := vbucketKVBlobVer{
+				vbBlob,
+				util.EventingVer(),
+			}
+			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return common.ErrRetryTimeout
@@ -695,12 +702,10 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 
 	}
 
-checkIfVbStreamsOpened:
-	for _, vb := range vbs {
-		if !c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
-			time.Sleep(time.Second)
-			goto checkIfVbStreamsOpened
-		}
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, checkIfVbStreamsOpenedCallback, c, vbs)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return common.ErrRetryTimeout
 	}
 
 	return nil
@@ -739,14 +744,16 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 					return
 				}
 
-				if c.aggDCPFeedMem > c.aggDCPFeedMemCap {
-					logging.Infof("%s [%s:%s:%d] Throttling, aggDCPFeed memory: %d bytes aggDCPFeedMemCap: %d\n",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), c.aggDCPFeedMem, c.aggDCPFeedMemCap)
-					time.Sleep(1 * time.Second)
-				}
+				if !c.isTerminateRunning {
+					if c.aggDCPFeedMem > c.aggDCPFeedMemCap {
+						logging.Infof("%s [%s:%s:%d] Throttling, aggDCPFeed memory: %d bytes aggDCPFeedMemCap: %d\n",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.aggDCPFeedMem, c.aggDCPFeedMemCap)
+						time.Sleep(1 * time.Second)
+					}
 
-				atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
-				c.aggDCPFeed <- e
+					atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
+					c.aggDCPFeed <- e
+				}
 			}
 		}
 	}(dcpFeed)

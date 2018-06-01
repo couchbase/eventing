@@ -51,7 +51,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     })
                     .catch(function(errResponse) {
                         console.error('Unable to get worker count', errResponse);
-                       self.workerCount = 0;
+                        self.workerCount = 0;
                     });
             }
 
@@ -177,22 +177,22 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             var info = response.data.info;
                             if (info.warnings && info.warnings.length > 0) {
                                 warnings = info.warnings.join(". <br/>");
-                                showWarningAlert(warnings);
+                                ApplicationService.server.showWarningAlert(warnings);
                             }
                         }
                         if (warnings == null) {
-                            showSuccessAlert(`${app.appname} deployed successfully!`);
+                            ApplicationService.server.showSuccessAlert(`${app.appname} deployed successfully!`);
                         } else {
-                            showSuccessAlert(`${app.appname} deployed with warnings.`);
+                            ApplicationService.server.showSuccessAlert(`${app.appname} deployed with warnings.`);
                         }
                     })
                     .catch(function(errResponse) {
                         if (errResponse.data && (errResponse.data.name === 'ERR_HANDLER_COMPILATION')) {
                             var info = errResponse.data.runtime_info.info;
                             app.compilationInfo = info;
-                            showErrorAlert(`Deployment failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
+                            ApplicationService.server.showErrorAlert(`Deployment failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
                         } else {
-                            showErrorAlert(`Deployment failed: ${errResponse.data.runtime_info}`);
+                            ApplicationService.server.showErrorAlert(`Deployment failed: ${errResponse.data.runtime_info}`);
                         }
 
                         // Enable edit button as we got compilation info
@@ -212,7 +212,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     .then(function(response) {
                         // Check if the app is deployed completely before trying to undeploy.
                         if (!(app.appname in response.data)) {
-                            showErrorAlert(`Function "${app.appname}" may be undergoing bootstrap. Please try later.`);
+                            ApplicationService.server.showErrorAlert(`Function "${app.appname}" may be undergoing bootstrap. Please try later.`);
                             return $q.reject(`Unable to undeploy "${app.appname}". Possibly, bootstrap in progress`);
                         }
 
@@ -227,7 +227,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         console.log(response.data);
                         app.settings.deployment_status = false;
                         app.settings.processing_status = false;
-                        showSuccessAlert(`${app.appname} undeployed successfully!`);
+                        ApplicationService.server.showSuccessAlert(`${app.appname} undeployed successfully!`);
                     })
                     .catch(function(errResponse) {
                         console.error(errResponse);
@@ -280,39 +280,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     .then(function(response) {
                         // Delete the local copy of the app in the browser
                         ApplicationService.local.deleteApp(appName);
-                        showSuccessAlert(`${appName} deleted successfully!`);
+                        ApplicationService.server.showSuccessAlert(`${appName} deleted successfully!`);
                     })
                     .catch(function(errResponse) {
                         console.error(errResponse);
                     });
             };
-
-            // Utility function to show success alert.
-            function showSuccessAlert(message) {
-                self.successMessage = message;
-                self.showSuccessAlert = true;
-                $timeout(function() {
-                    self.showSuccessAlert = false;
-                }, 4000);
-            }
-
-            // Utility function to show warning alert.
-            function showWarningAlert(message) {
-                self.warningMessage = message;
-                self.showWarningAlert = true;
-                $timeout(function() {
-                    self.showWarningAlert = false;
-                }, 4000);
-            }
-
-            // Utility function to show error alert.
-            function showErrorAlert(message) {
-                self.errorMessage = message;
-                self.showErrorAlert = true;
-                $timeout(function() {
-                    self.showErrorAlert = false;
-                }, 4000);
-            }
         }
     ])
     // Controller for the buttons in header.
@@ -533,7 +506,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 var bindings = ApplicationService.convertBindingToConfig(self.bindings);
                 if (JSON.stringify(appModel.depcfg.buckets) !== JSON.stringify(bindings)) {
                     $scope.appModel.depcfg.buckets = bindings;
-                    showWarningAlert('Bindings changed. Deploy for changes to take effect.');
+                    ApplicationService.server.showWarningAlert('Bindings changed. Deploy for changes to take effect.');
                 }
 
                 // Deadline timeout must be greater than execution timeout.
@@ -564,22 +537,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 $scope.appModel.settings.cleanup_timers = String(appModel.settings.cleanup_timers);
                 dismissDialog('cancel');
             };
-
-            function showSuccessAlert(message) {
-                self.successMessage = message;
-                self.showSuccessAlert = true;
-                $timeout(function() {
-                    self.showSuccessAlert = false;
-                }, 4000);
-            }
-
-            function showWarningAlert(message) {
-                self.warningMessage = message;
-                self.showWarningAlert = true;
-                $timeout(function() {
-                    self.showWarningAlert = false;
-                }, 4000);
-            }
         }
     ])
     // Controller for editing handler code.
@@ -630,7 +587,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                 editor.on('focus', function(event) {
                     if (self.editorDisabled) {
-                        showWarningAlert('Undeploy the application to edit!');
+                        ApplicationService.server.showWarningAlert('Undeploy the application to edit!');
                     }
                 });
 
@@ -665,8 +622,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 app.appcode = self.handler;
                 ApplicationService.tempStore.saveApp(app)
                     .then(function(response) {
-                        showSuccessAlert('Code saved successfully!');
-                        showWarningAlert('Deploy for changes to take effect!');
+                        ApplicationService.server.showSuccessAlert('Code saved successfully!');
+                        ApplicationService.server.showWarningAlert('Deploy for changes to take effect!');
 
                         self.disableCancelButton = self.disableSaveButton = true;
                         self.disableDeployButton = false;
@@ -693,7 +650,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 ApplicationService.primaryStore.getDeployedApps()
                     .then(function(response) {
                         if (!(app.appname in response.data)) {
-                            showErrorAlert(`Function ${app.appname} may be undergoing bootstrap. Please try later.`);
+                            ApplicationService.server.showErrorAlert(`Function ${app.appname} may be undergoing bootstrap. Please try later.`);
                             return;
                         }
 
@@ -776,30 +733,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         console.error('Unable to start debugger', errResponse);
                     });
             };
-
-            function showSuccessAlert(message) {
-                self.successMessage = message;
-                self.showSuccessAlert = true;
-                $timeout(function() {
-                    self.showSuccessAlert = false;
-                }, 4000);
-            }
-
-            function showWarningAlert(message) {
-                self.warningMessage = message;
-                self.showWarningAlert = true;
-                $timeout(function() {
-                    self.showWarningAlert = false;
-                }, 4000);
-            }
-
-            function showErrorAlert(message) {
-                self.errorMessage = message;
-                self.showErrorAlert = true;
-                $timeout(function() {
-                    self.showErrorAlert = false;
-                }, 4000);
-            }
         }
     ])
     // Controller to copy the debug URL.
@@ -816,8 +749,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     }])
     // Service to manage the applications.
-    .factory('ApplicationService', ['$q', '$http', '$state', 'mnPoolDefault',
-        function($q, $http, $state, mnPoolDefault) {
+    .factory('ApplicationService', ['$q', '$http', '$state', 'mnPoolDefault', 'mnAlertsService',
+        function($q, $http, $state, mnPoolDefault, mnAlertsService) {
             var appManager = new ApplicationManager();
             var errHandler;
 
@@ -1064,6 +997,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             .catch(function(errResponse) {
                                 console.error('Unable to get server nodes', errResponse);
                             });
+                    },
+                    showSuccessAlert: function(message) {
+                        mnAlertsService.formatAndSetAlerts(message, 'success', 2500);
+                    },
+
+                    showWarningAlert: function(message) {
+                        mnAlertsService.formatAndSetAlerts(message, 'warning', 2500);
+                    },
+                    showErrorAlert: function(message) {
+                        mnAlertsService.formatAndSetAlerts(message, 'error', 2500);
                     }
                 },
                 convertBindingToConfig: function(bindings) {

@@ -11,9 +11,16 @@
 
 #include "utils.h"
 
-CURLClient::CURLClient() : headers_(nullptr) {
-  curl_handle_ = curl_easy_init();
+CURLHeaders::CURLHeaders(const std::vector<std::string> &headers) {
+  headers_ = nullptr;
+  for (const auto &header : headers) {
+    headers_ = curl_slist_append(headers_, header.c_str());
+  }
 }
+
+CURLHeaders::~CURLHeaders() { curl_slist_free_all(headers_); }
+
+CURLClient::CURLClient() { curl_handle_ = curl_easy_init(); }
 
 CURLClient::~CURLClient() { curl_easy_cleanup(curl_handle_); }
 
@@ -94,11 +101,9 @@ CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
     return response;
   }
 
-  for (const auto &header : header_list) {
-    headers_ = curl_slist_append(headers_, header.c_str());
-  }
-
-  code_ = curl_easy_setopt(curl_handle_, CURLOPT_HTTPHEADER, headers_);
+  auto curl_headers = CURLHeaders(header_list);
+  code_ = curl_easy_setopt(curl_handle_, CURLOPT_HTTPHEADER,
+                           curl_headers.GetHeaders());
   if (code_ != CURLE_OK) {
     response.is_error = true;
     response.response = "Unable to do set HTTP header(s): " +
