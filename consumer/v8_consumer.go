@@ -388,6 +388,8 @@ func (c *Consumer) Stop() {
 		}
 	}()
 
+	c.isTerminateRunning = true
+
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 

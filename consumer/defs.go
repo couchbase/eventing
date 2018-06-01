@@ -189,6 +189,7 @@ type Consumer struct {
 	ipcType                     string // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
 	isBootstrapping             bool
 	isRebalanceOngoing          bool
+	isTerminateRunning          bool
 	kvHostDcpFeedMap            map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
 	hostDcpFeedRWMutex          *sync.RWMutex
 	kvNodes                     []string // Access controlled by kvNodesRWMutex

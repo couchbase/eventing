@@ -744,14 +744,16 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 					return
 				}
 
-				if c.aggDCPFeedMem > c.aggDCPFeedMemCap {
-					logging.Infof("%s [%s:%s:%d] Throttling, aggDCPFeed memory: %d bytes aggDCPFeedMemCap: %d\n",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), c.aggDCPFeedMem, c.aggDCPFeedMemCap)
-					time.Sleep(1 * time.Second)
-				}
+				if !c.isTerminateRunning {
+					if c.aggDCPFeedMem > c.aggDCPFeedMemCap {
+						logging.Infof("%s [%s:%s:%d] Throttling, aggDCPFeed memory: %d bytes aggDCPFeedMemCap: %d\n",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.aggDCPFeedMem, c.aggDCPFeedMemCap)
+						time.Sleep(1 * time.Second)
+					}
 
-				atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
-				c.aggDCPFeed <- e
+					atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
+					c.aggDCPFeed <- e
+				}
 			}
 		}
 	}(dcpFeed)
