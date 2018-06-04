@@ -84,4 +84,5 @@ ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})
 ADD_DEPENDENCIES(eventing-consumer generated platform couchbase)
 
 TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES} couchbase)
+TARGET_COMPILE_OPTIONS(eventing-consumer PRIVATE ${CB_CXX_FLAGS_NO_OPTIMIZE})
 INSTALL(TARGETS eventing-consumer RUNTIME DESTINATION bin)
