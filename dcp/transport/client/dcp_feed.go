@@ -172,7 +172,7 @@ func (feed *DcpFeed) genServer(
 		logging.Infof("%v ##%x ... stopped\n", feed.logPrefix, opaque)
 	}()
 
-	latencyTick := int64(10 * 1000) // in milli-seconds
+	latencyTick := int64(60 * 1000) // in milli-seconds
 	if val, ok := config["latencyTick"]; ok && val != nil {
 		latencyTick = int64(val.(int)) // in milli-seconds
 	}
@@ -184,9 +184,12 @@ func (feed *DcpFeed) genServer(
 loop:
 	for {
 		select {
-		// case <-latencyTm.C:
-		//	fmsg := "%v dcp latency stats %v\n"
-		//	logging.Infof(fmsg, feed.logPrefix, feed.dcplatency)
+		case <-latencyTm.C:
+
+			fmsg := "%v dcp latency stats %v\n"
+			logging.Infof(fmsg, feed.logPrefix, feed.dcplatency)
+			fmsg = "%v dcp stats %#v\n"
+			logging.Infof(fmsg, feed.logPrefix, feed.stats)
 
 		case msg := <-reqch:
 			if feed.handleControlRequest(msg, rcvch) == "break" {
@@ -322,6 +325,7 @@ func (feed *DcpFeed) handlePacket(
 	case transport.DCP_STREAMREQ:
 		event = newDcpEvent(pkt, stream)
 		feed.handleStreamRequest(res, vb, stream, event)
+		feed.stats.TotalStreamReq++
 
 	case transport.DCP_MUTATION, transport.DCP_DELETION,
 		transport.DCP_EXPIRATION:
@@ -335,7 +339,8 @@ func (feed *DcpFeed) handlePacket(
 		sendAck = true
 		delete(feed.vbstreams, vb)
 		fmsg := "%v ##%x DCP_STREAMEND for vb %d\n"
-		logging.Debugf(fmsg, prefix, stream.AppOpaque, vb)
+		logging.Infof(fmsg, prefix, stream.AppOpaque, vb)
+		feed.stats.TotalStreamEnd++
 
 	case transport.DCP_SNAPSHOT:
 		event = newDcpEvent(pkt, stream)
@@ -372,7 +377,8 @@ func (feed *DcpFeed) handlePacket(
 		sendAck = true
 		delete(feed.vbstreams, vb)
 		fmsg := "%v ##%x DCP_CLOSESTREAM for vb %d\n"
-		logging.Debugf(fmsg, prefix, stream.AppOpaque, vb)
+		logging.Infof(fmsg, prefix, stream.AppOpaque, vb)
+		feed.stats.TotalCloseStream++
 
 	case transport.DCP_CONTROL, transport.DCP_BUFFERACK:
 		if res.Status != transport.SUCCESS {
@@ -807,7 +813,7 @@ func (feed *DcpFeed) handleStreamRequest(
 		event.FailoverLog = flog
 		stream.connected = true
 		fmsg := "%v ##%x STREAMREQ(%d) successful\n"
-		logging.Debugf(fmsg, prefix, stream.AppOpaque, vb)
+		logging.Infof(fmsg, prefix, stream.AppOpaque, vb)
 
 	default:
 		event.Status = res.Status
@@ -957,10 +963,23 @@ func (event *DcpEvent) String() string {
 
 // DcpStats on mutations/snapshots/buff-acks.
 type DcpStats struct {
-	TotalBytes         uint64
-	TotalMutation      uint64
 	TotalBufferAckSent uint64
+	TotalBytes         uint64
+	TotalCloseStream   uint64
+	TotalMutation      uint64
 	TotalSnapShot      uint64
+	TotalStreamReq     uint64
+	TotalStreamEnd     uint64
+}
+
+func (stats *DcpStats) String() string {
+	return fmt.Sprintf(
+		"bytes: %v buffack: %v streamreqs: %v snapshots: %v "+
+			"mutations: %v streamends: %v closestreams: %v",
+		stats.TotalBytes, stats.TotalBufferAckSent, stats.TotalStreamReq,
+		stats.TotalSnapShot, stats.TotalMutation, stats.TotalStreamEnd,
+		stats.TotalCloseStream,
+	)
 }
 
 // FailoverLog containing vvuid and sequnce number
@@ -1078,7 +1097,7 @@ loop:
 			break loop
 
 		} else if feed.isClosed() {
-			logging.Debugf("%v doReceive(): connection closed\n", feed.logPrefix)
+			logging.Infof("%v doReceive(): connection closed\n", feed.logPrefix)
 			break loop
 
 		} else if err != nil {
