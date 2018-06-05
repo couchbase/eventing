@@ -42,6 +42,7 @@ inline LogLevel LevelFromString(const std::string &level) {
 
 class SystemLog : public std::ostringstream {
 public:
+  static LogLevel level_;
   static void setLogLevel(LogLevel level);
   static bool getRedactOverride();
   static bool isDisabled(LogLevel check) { return check > level_; }
@@ -55,7 +56,6 @@ public:
 
 private:
   static std::mutex lock_;
-  static LogLevel level_;
   static bool redact_;
 };
 
