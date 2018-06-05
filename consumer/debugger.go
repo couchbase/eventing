@@ -280,19 +280,24 @@ func (c *Consumer) startDebuggerServer() {
 	c.signalDebuggerConnectedCh = make(chan struct{}, 1)
 	c.signalDebuggerFeedbackCh = make(chan struct{}, 1)
 	go func(c *Consumer) {
-		for {
-			c.debugConn, err = c.debugListener.Accept()
-			c.signalDebuggerConnectedCh <- struct{}{}
+		c.debugConn, err = c.debugListener.Accept()
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to accept debugger connection, err: %v",
+				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
 		}
+		c.signalDebuggerConnectedCh <- struct{}{}
 	}(c)
 
 	go func(c *Consumer) {
-		for {
-			c.debugFeedbackConn, _ = c.debugFeedbackListener.Accept()
+		c.debugFeedbackConn, err = c.debugFeedbackListener.Accept()
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to accept feedback debugger connection, err: %v",
+				logPrefix, c.ConsumerName(), c.debugFeedbackTCPPort, c.Pid(), err)
+		} else {
 			feedbackReader := bufio.NewReader(c.debugFeedbackConn)
 			go c.feedbackReadMessageLoop(feedbackReader)
-			c.signalDebuggerFeedbackCh <- struct{}{}
 		}
+		c.signalDebuggerFeedbackCh <- struct{}{}
 	}(c)
 
 	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", c.eventingDir, c.app.AppName)
@@ -367,9 +372,19 @@ func (c *Consumer) stopDebuggerServer() {
 	c.debuggerStarted = false
 	c.sendMsgToDebugger = false
 
-	c.debugConn.Close()
-	c.debugListener.Close()
+	if c.debugConn != nil {
+		c.debugConn.Close()
+	}
 
-	c.debugFeedbackConn.Close()
-	c.debugFeedbackListener.Close()
+	if c.debugListener != nil {
+		c.debugListener.Close()
+	}
+
+	if c.debugFeedbackConn != nil {
+		c.debugFeedbackConn.Close()
+	}
+
+	if c.debugFeedbackListener != nil {
+		c.debugFeedbackListener.Close()
+	}
 }
