@@ -39,7 +39,7 @@ note_version() {
   echo -n "$repo is at <a href='https://github.com/couchbase/$repo/commit/$current'>${current:0:7}</a>, changes since last good build: "
   if [ "$current" != "$good" ]; then
     echo
-    git log --pretty='format: <a href="https://github.com/couchbase/$repo/commit/%H">%h</a> %s' $good..HEAD
+    git log --pretty="format: <a href='https://github.com/couchbase/$repo/commit/%H'>%h</a> %s" $good..HEAD
     echo
   else
     echo "none"
@@ -57,7 +57,7 @@ if [ ! -d ~/.reference ]; then
   test $? -eq 0 || error_exit "Repo Init"
 fi
 
-echo "`date +'%Y/%m/%d %H:%M:%S'` Started Building"
+echo "Started building at `date +'%Y/%m/%d %H:%M:%S'`"
 test "$BLD_NUM" = "0" || echo "Using pegged server, $BLD_NUM build"
 echo "Calculating base"
 rm -rf ~/.manifests
@@ -87,7 +87,6 @@ test $WORKSPACE/cbbuild && test $WORKSPACE/voltron || error_exit "Unable to find
 
 cd $WORKSPACE
 chmod a+w CMakeLists.txt
-perl -pi -e 's/num_files, 10/num_files, 50/' $WORKSPACE/install/etc/couchbase/static_config
 perl -pi -e 's/ADD_SUBDIRECTORY (analytics)/# No analytics/' CMakeLists.txt
 perl -pi -e 's/ADD_SUBDIRECTORY (cbas-ui)/# No cbas-ui/' CMakeLists.txt
 

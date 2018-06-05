@@ -91,7 +91,7 @@ error_exit() {
 }
 
 # Setup workspace
-echo "`date +'%Y/%m/%d %H:%M:%S'` Started Testing"
+echo "Started testing at `date +'%Y/%m/%d %H:%M:%S'`"
 echo "Testing mode: $MODE"
 stop_cluster
 rm -f $WORKSPACE/logs.tar.* $WORKSPACE/test.log $WORKSPACE/run.log /tmp/core-*
@@ -170,11 +170,12 @@ if [ "$skiplist" != "" ]; then
 fi
 echo
 
+cd $WORKSPACE
 cat ~/repos.list | while read line ; do
    repo=`echo $line | awk '{print $1}'`
    loc=`echo $line | awk '{print $2}'`
    cd $loc
-   git rev-parse HEAD > $repo.good
+   git rev-parse HEAD > ~/$repo.good
 done
 
 if [ "$CIBOT" = "true" ]; then
