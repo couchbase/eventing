@@ -60,6 +60,7 @@ type ServiceMgr struct {
 	auth              string
 	certFile          string
 	config            util.ConfigHolder
+	credsCounter      int64
 	ejectNodeUUIDs    []string
 	eventingNodeAddrs []string
 	failoverNotif     bool
@@ -153,6 +154,7 @@ type backlogStat struct {
 }
 
 type stats struct {
+	CredsRequestCounter             interface{} `json:"creds_request_counter,omitempty"`
 	DocTimerDebugStats              interface{} `json:"doc_timer_debug_stats,omitempty"`
 	EventProcessingStats            interface{} `json:"event_processing_stats,omitempty"`
 	EventsRemaining                 interface{} `json:"events_remaining,omitempty"`

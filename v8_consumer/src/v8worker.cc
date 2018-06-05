@@ -56,8 +56,8 @@ enum RETURN_CODE {
 
 const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket) {
-  LOG(logInfo) << "Getting username for host " << RS(host) << " port " << port
-               << std::endl;
+  LOG(logDebug) << "Getting username for host " << RS(host) << " port " << port
+                << std::endl;
 
   auto endpoint = JoinHostPort(host, port);
   auto isolate = static_cast<v8::Isolate *>(cookie);
@@ -78,8 +78,8 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
 
 const char *GetPassword(void *cookie, const char *host, const char *port,
                         const char *bucket) {
-  LOG(logInfo) << "Getting password for host " << RS(host) << " port " << port
-               << std::endl;
+  LOG(logDebug) << "Getting password for host " << RS(host) << " port " << port
+                << std::endl;
 
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
