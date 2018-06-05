@@ -57,7 +57,7 @@ var startFeedCallback = func(args ...interface{}) error {
 	dcpFeed := args[2].(**couchbase.DcpFeed)
 	kvNodeAddrs := args[3].([]string)
 
-	feedName := couchbase.DcpFeedName("eventing:" + p.uuid + "_" + p.appName + "_undeploy")
+	feedName := couchbase.NewDcpFeedName(p.uuid + "_" + p.appName + "_undeploy")
 
 	var err error
 	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), 0, kvNodeAddrs, 0xABCD, p.dcpConfig)

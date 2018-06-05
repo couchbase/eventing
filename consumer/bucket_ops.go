@@ -537,7 +537,7 @@ var startFeedFromKVNodesCallback = func(args ...interface{}) error {
 	dcpFeed := args[3].(**couchbase.DcpFeed)
 	kvNodeAddrs := args[4].([]string)
 
-	feedName := couchbase.DcpFeedName(fmt.Sprintf("eventing:%s_%s_vb_%v_docTimer", c.HostPortAddr(), c.workerName, vb))
+	feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%s_%s_vb_%v_docTimer", c.HostPortAddr(), c.workerName, vb))
 	(*b).Refresh()
 
 	var err error
@@ -584,7 +584,7 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 		// a specific kv node(via GETSEQ opcode) and post that closing the feed.
 		// Can't do it on existing *couchbase.DcpFeed where STREAMREQ calls
 		// are made.
-		feedName := couchbase.DcpFeedName("eventing:" + c.HostPortAddr() + "_" + kvHost + "_" + c.workerName + "_GetSeqNos")
+		feedName := couchbase.NewDcpFeedName(c.HostPortAddr() + "_" + kvHost + "_" + c.workerName + "_GetSeqNos")
 		feed, err := c.cbBucket.StartDcpFeedOver(
 			feedName, uint32(0), includeXATTRs, []string{kvHost}, 0xABCD, c.dcpConfig)
 		if err != nil {

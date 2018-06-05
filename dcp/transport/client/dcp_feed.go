@@ -172,8 +172,7 @@ func (feed *DcpFeed) genServer(
 		logging.Infof("%v ##%x ... stopped\n", feed.logPrefix, opaque)
 	}()
 
-	prefix := feed.logPrefix
-	latencyTick := int64(10 * 1000) // in milli-seconds
+	latencyTick := int64(60 * 1000) // in milli-seconds
 	if val, ok := config["latencyTick"]; ok && val != nil {
 		latencyTick = int64(val.(int)) // in milli-seconds
 	}
@@ -185,59 +184,15 @@ func (feed *DcpFeed) genServer(
 loop:
 	for {
 		select {
-		// case <-latencyTm.C:
-		// 	fmsg := "%v dcp latency stats %v\n"
-		// 	logging.Infof(fmsg, prefix, feed.dcplatency)
+		case <-latencyTm.C:
+
+			fmsg := "%v dcp latency stats %v\n"
+			logging.Infof(fmsg, feed.logPrefix, feed.dcplatency)
+			fmsg = "%v dcp stats %#v\n"
+			logging.Infof(fmsg, feed.logPrefix, feed.stats)
 
 		case msg := <-reqch:
-			cmd := msg[0].(byte)
-			switch cmd {
-			case dfCmdOpen:
-				name, sequence := msg[1].(string), msg[2].(uint32)
-				flags := msg[3].(uint32)
-				bufsize, opaque := msg[4].(uint32), msg[5].(uint16)
-				respch := msg[6].(chan []interface{})
-				err := feed.doDcpOpen(
-					name, sequence, flags, bufsize, opaque, rcvch)
-				respch <- []interface{}{err}
-
-			case dfCmdGetFailoverlog:
-				opaque := msg[1].(uint16)
-				vblist, respch := msg[2].([]uint16), msg[3].(chan []interface{})
-				if len(feed.vbstreams) > 0 {
-					fmsg := "%v %##x active streams in doDcpGetFailoverLog"
-					logging.Errorf(fmsg, prefix, opaque)
-					respch <- []interface{}{nil, ErrorInvalidFeed}
-				}
-				flog, err := feed.doDcpGetFailoverLog(opaque, vblist, rcvch)
-				respch <- []interface{}{flog, err}
-
-			case dfCmdGetSeqnos:
-				respch := msg[1].(chan []interface{})
-				seqnos, err := feed.doDcpGetSeqnos(rcvch)
-				respch <- []interface{}{seqnos, err}
-
-			case dfCmdRequestStream:
-				vbno, opaqueMSB := msg[1].(uint16), msg[2].(uint16)
-				flags, vuuid := msg[3].(uint32), msg[4].(uint64)
-				startSequence, endSequence := msg[5].(uint64), msg[6].(uint64)
-				snapStart, snapEnd := msg[7].(uint64), msg[8].(uint64)
-				respch := msg[9].(chan []interface{})
-				err := feed.doDcpRequestStream(
-					vbno, opaqueMSB, flags, vuuid,
-					startSequence, endSequence, snapStart, snapEnd)
-				respch <- []interface{}{err}
-
-			case dfCmdCloseStream:
-				vbno, opaqueMSB := msg[1].(uint16), msg[2].(uint16)
-				respch := msg[3].(chan []interface{})
-				err := feed.doDcpCloseStream(vbno, opaqueMSB)
-				respch <- []interface{}{err}
-
-			case dfCmdClose:
-				feed.sendStreamEnd(feed.outch)
-				respch := msg[1].(chan []interface{})
-				respch <- []interface{}{nil}
+			if feed.handleControlRequest(msg, rcvch) == "break" {
 				break loop
 			}
 
@@ -247,13 +202,71 @@ loop:
 				break loop
 			}
 			pkt, bytes := resp[0].(*transport.MCRequest), resp[1].(int)
-			switch feed.handlePacket(pkt, bytes) {
+			switch feed.handlePacket(pkt, bytes, reqch, rcvch) {
+			case "break":
+				break loop
 			case "exit":
 				feed.sendStreamEnd(feed.outch)
 				break loop
 			}
 		}
 	}
+}
+
+func (feed *DcpFeed) handleControlRequest(
+	msg []interface{}, rcvch chan []interface{}) string {
+
+	prefix := feed.logPrefix
+	cmd := msg[0].(byte)
+	switch cmd {
+	case dfCmdOpen:
+		name, sequence := msg[1].(string), msg[2].(uint32)
+		flags := msg[3].(uint32)
+		bufsize, opaque := msg[4].(uint32), msg[5].(uint16)
+		respch := msg[6].(chan []interface{})
+		err := feed.doDcpOpen(name, sequence, flags, bufsize, opaque, rcvch)
+		respch <- []interface{}{err}
+
+	case dfCmdGetFailoverlog:
+		opaque := msg[1].(uint16)
+		vblist, respch := msg[2].([]uint16), msg[3].(chan []interface{})
+		if len(feed.vbstreams) > 0 {
+			fmsg := "%v %##x active streams in doDcpGetFailoverLog"
+			logging.Errorf(fmsg, prefix, opaque)
+			respch <- []interface{}{nil, ErrorInvalidFeed}
+		}
+		flog, err := feed.doDcpGetFailoverLog(opaque, vblist, rcvch)
+		respch <- []interface{}{flog, err}
+
+	case dfCmdGetSeqnos:
+		respch := msg[1].(chan []interface{})
+		seqnos, err := feed.doDcpGetSeqnos(rcvch)
+		respch <- []interface{}{seqnos, err}
+
+	case dfCmdRequestStream:
+		vbno, opaqueMSB := msg[1].(uint16), msg[2].(uint16)
+		flags, vuuid := msg[3].(uint32), msg[4].(uint64)
+		startSequence, endSequence := msg[5].(uint64), msg[6].(uint64)
+		snapStart, snapEnd := msg[7].(uint64), msg[8].(uint64)
+		respch := msg[9].(chan []interface{})
+		err := feed.doDcpRequestStream(
+			vbno, opaqueMSB, flags, vuuid,
+			startSequence, endSequence, snapStart, snapEnd)
+		respch <- []interface{}{err}
+
+	case dfCmdCloseStream:
+		vbno, opaqueMSB := msg[1].(uint16), msg[2].(uint16)
+		respch := msg[3].(chan []interface{})
+		err := feed.doDcpCloseStream(vbno, opaqueMSB)
+		respch <- []interface{}{err}
+
+	case dfCmdClose:
+		feed.sendStreamEnd(feed.outch)
+		respch := msg[1].(chan []interface{})
+		respch <- []interface{}{nil}
+		return "break"
+	}
+	return "ok"
 }
 
 func (feed *DcpFeed) isClosed() bool {
@@ -266,7 +279,8 @@ func (feed *DcpFeed) isClosed() bool {
 }
 
 func (feed *DcpFeed) handlePacket(
-	pkt *transport.MCRequest, bytes int) string {
+	pkt *transport.MCRequest, bytes int,
+	reqch, rcvch chan []interface{}) string {
 
 	var event *DcpEvent
 	feed.stats.TotalBytes += uint64(bytes)
@@ -311,6 +325,7 @@ func (feed *DcpFeed) handlePacket(
 	case transport.DCP_STREAMREQ:
 		event = newDcpEvent(pkt, stream)
 		feed.handleStreamRequest(res, vb, stream, event)
+		feed.stats.TotalStreamReq++
 
 	case transport.DCP_MUTATION, transport.DCP_DELETION,
 		transport.DCP_EXPIRATION:
@@ -324,7 +339,8 @@ func (feed *DcpFeed) handlePacket(
 		sendAck = true
 		delete(feed.vbstreams, vb)
 		fmsg := "%v ##%x DCP_STREAMEND for vb %d\n"
-		logging.Debugf(fmsg, prefix, stream.AppOpaque, vb)
+		logging.Infof(fmsg, prefix, stream.AppOpaque, vb)
+		feed.stats.TotalStreamEnd++
 
 	case transport.DCP_SNAPSHOT:
 		event = newDcpEvent(pkt, stream)
@@ -337,7 +353,10 @@ func (feed *DcpFeed) handlePacket(
 		sendAck = true
 		if (stream.Snapend - stream.Snapstart) > 50000 {
 			fmsg := "%v ##%x DCP_SNAPSHOT for vb %d snapshot {%v,%v}\n"
-			logging.Infof(fmsg, prefix, stream.AppOpaque, vb, stream.Snapstart, stream.Snapend)
+			logging.Infof(
+				fmsg, prefix, stream.AppOpaque, vb, stream.Snapstart,
+				stream.Snapend,
+			)
 		}
 		fmsg := "%v ##%x DCP_SNAPSHOT for vb %d\n"
 		logging.Debugf(fmsg, prefix, stream.AppOpaque, vb)
@@ -350,19 +369,23 @@ func (feed *DcpFeed) handlePacket(
 		if event.Opaque != stream.CloseOpaque {
 			fmsg := "%v ##%x DCP_CLOSESTREAM mismatch in opaque %v != %v\n"
 			logging.Fatalf(
-				fmsg, prefix, stream.AppOpaque, event.Opaque, stream.CloseOpaque)
+				fmsg, prefix, stream.AppOpaque, event.Opaque, stream.CloseOpaque,
+			)
 		}
 		event.Opcode = transport.DCP_STREAMEND // opcode re-write !!
 		event.Opaque = stream.AppOpaque        // opaque re-write !!
 		sendAck = true
 		delete(feed.vbstreams, vb)
 		fmsg := "%v ##%x DCP_CLOSESTREAM for vb %d\n"
-		logging.Debugf(fmsg, prefix, stream.AppOpaque, vb)
+		logging.Infof(fmsg, prefix, stream.AppOpaque, vb)
+		feed.stats.TotalCloseStream++
 
 	case transport.DCP_CONTROL, transport.DCP_BUFFERACK:
 		if res.Status != transport.SUCCESS {
 			fmsg := "%v ##%x opcode %v received status %v\n"
-			logging.Errorf(fmsg, prefix, stream.AppOpaque, pkt.Opcode, res.Status)
+			logging.Errorf(
+				fmsg, prefix, stream.AppOpaque, pkt.Opcode, res.Status,
+			)
 		}
 
 	case transport.DCP_ADDSTREAM:
@@ -374,11 +397,22 @@ func (feed *DcpFeed) handlePacket(
 		logging.Warnf(fmsg, prefix, pkt.Opcode, vb)
 	}
 
+	rc := "ok"
 	if event != nil {
-		feed.outch <- event
+	loop:
+		for {
+			select {
+			case msg := <-reqch:
+				if rc = feed.handleControlRequest(msg, rcvch); rc == "break" {
+					return rc
+				}
+			case feed.outch <- event:
+				break loop
+			}
+		}
 	}
 	feed.sendBufferAck(sendAck, uint32(bytes))
-	return "ok"
+	return rc
 }
 
 func (feed *DcpFeed) doDcpGetFailoverLog(
@@ -779,7 +813,7 @@ func (feed *DcpFeed) handleStreamRequest(
 		event.FailoverLog = flog
 		stream.connected = true
 		fmsg := "%v ##%x STREAMREQ(%d) successful\n"
-		logging.Debugf(fmsg, prefix, stream.AppOpaque, vb)
+		logging.Infof(fmsg, prefix, stream.AppOpaque, vb)
 
 	default:
 		event.Status = res.Status
@@ -929,10 +963,23 @@ func (event *DcpEvent) String() string {
 
 // DcpStats on mutations/snapshots/buff-acks.
 type DcpStats struct {
-	TotalBytes         uint64
-	TotalMutation      uint64
 	TotalBufferAckSent uint64
+	TotalBytes         uint64
+	TotalCloseStream   uint64
+	TotalMutation      uint64
 	TotalSnapShot      uint64
+	TotalStreamReq     uint64
+	TotalStreamEnd     uint64
+}
+
+func (stats *DcpStats) String() string {
+	return fmt.Sprintf(
+		"bytes: %v buffack: %v streamreqs: %v snapshots: %v "+
+			"mutations: %v streamends: %v closestreams: %v",
+		stats.TotalBytes, stats.TotalBufferAckSent, stats.TotalStreamReq,
+		stats.TotalSnapShot, stats.TotalMutation, stats.TotalStreamEnd,
+		stats.TotalCloseStream,
+	)
 }
 
 // FailoverLog containing vvuid and sequnce number
@@ -1050,7 +1097,7 @@ loop:
 			break loop
 
 		} else if feed.isClosed() {
-			logging.Debugf("%v doReceive(): connection closed\n", feed.logPrefix)
+			logging.Infof("%v doReceive(): connection closed\n", feed.logPrefix)
 			break loop
 
 		} else if err != nil {

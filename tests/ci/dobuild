@@ -28,7 +28,25 @@ error_exit() {
   exit 2
 }
 
-echo '</pre><h3>Building</h3><pre>'
+> ~/repos.list
+note_version() {
+  repo=$1; pos=$2
+  echo "$repo $pos" >> ~/repos.list
+  cd $pos
+  current="`git rev-parse HEAD`"
+  test -f ~/$repo.good || (echo $current > ~/$repo.good)
+  good="`cat ~/$repo.good`"
+  echo -n "$repo is at <a href='https://github.com/couchbase/$repo/commit/$current'>${current:0:7}</a>, changes since last good build: "
+  if [ "$current" != "$good" ]; then
+    echo
+    git log --pretty="format: <a href='https://github.com/couchbase/$repo/commit/%H'>%h</a> %s" $good..HEAD
+    echo
+  else
+    echo "none"
+  fi
+}
+
+echo "</pre><h3>Building</h3><pre>"
 > $WORKSPACE/versions.cfg
 > $WORKSPACE/make.log
 
@@ -39,6 +57,7 @@ if [ ! -d ~/.reference ]; then
   test $? -eq 0 || error_exit "Repo Init"
 fi
 
+echo "Started building at `date +'%Y/%m/%d %H:%M:%S'`"
 test "$BLD_NUM" = "0" || echo "Using pegged server, $BLD_NUM build"
 echo "Calculating base"
 rm -rf ~/.manifests
@@ -68,61 +87,28 @@ test $WORKSPACE/cbbuild && test $WORKSPACE/voltron || error_exit "Unable to find
 
 cd $WORKSPACE
 chmod a+w CMakeLists.txt
+perl -pi -e 's/ADD_SUBDIRECTORY (analytics)/# No analytics/' CMakeLists.txt
+perl -pi -e 's/ADD_SUBDIRECTORY (cbas-ui)/# No cbas-ui/' CMakeLists.txt
 
-cd $WORKSPACE/goproj/src/github.com/couchbase/plasma
-current="`git rev-parse HEAD`"
-test -f ~/plasma.good || (echo $current > ~/plasma.good)
-good="`cat ~/plasma.good`"
-echo -n "plasma is at <a href='https://github.com/couchbase/plasma/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/plasma/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/goproj/src/github.com/couchbase/nitro
-current="`git rev-parse HEAD`"
-test -f ~/nitro.good || (echo $current > ~/nitro.good)
-good="`cat ~/nitro.good`"
-echo -n "nitro is at <a href='https://github.com/couchbase/nitro/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/nitro/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/goproj/src/github.com/couchbase/indexing
-current="`git rev-parse HEAD`"
-test -f ~/indexing.good || (echo $current > ~/indexing.good)
-good="`cat ~/indexing.good`"
-echo -n "indexing is at <a href='https://github.com/couchbase/indexing/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/indexing/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
+note_version gocb         $WORKSPACE/godeps/src/github.com/couchbase/gocb
+note_version plasma       $WORKSPACE/goproj/src/github.com/couchbase/plasma
+note_version nitro        $WORKSPACE/goproj/src/github.com/couchbase/nitro
+note_version indexing     $WORKSPACE/goproj/src/github.com/couchbase/indexing
+note_version query        $WORKSPACE/goproj/src/github.com/couchbase/query
+note_version gometa       $WORKSPACE/goproj/src/github.com/couchbase/gometa
+note_version libcouchbase $WORKSPACE/libcouchbase
+note_version ns_server    $WORKSPACE/ns_server
+note_version couchdb      $WORKSPACE/couchdb
+note_version couchstore   $WORKSPACE/couchstore
+note_version forestdb     $WORKSPACE/forestdb
+note_version kv_engine    $WORKSPACE/kv_engine
+note_version testrunner   $WORKSPACE/testrunner
 
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
 echo "Switching eventing to $BRANCH"
 git checkout $BRANCH 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout $BRANCH"
 git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
-current="`git rev-parse HEAD`"
-test -f ~/eventing.good || (echo $current > ~/eventing.good)
-good="`cat ~/eventing.good`"
-echo -n "eventing is at <a href='https://github.com/couchbase/eventing/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/eventing/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
+note_version eventing $WORKSPACE/goproj/src/github.com/couchbase/eventing
 
 if [ "$CIBOT" = "true" ]; then
   > ~/gerrit.list
@@ -142,109 +128,6 @@ if [ "$CIBOT" = "true" ]; then
   done
 fi
 
-cd $WORKSPACE/goproj/src/github.com/couchbase/query
-current="`git rev-parse HEAD`"
-test -f ~/query.good || (echo $current > ~/query.good)
-good="`cat ~/query.good`"
-echo -n "query is at <a href='https://github.com/couchbase/query/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/query/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/goproj/src/github.com/couchbase/gometa
-current="`git rev-parse HEAD`"
-test -f ~/gometa.good || (echo $current > ~/gometa.good)
-good="`cat ~/gometa.good`"
-echo -n "gometa is at <a href='https://github.com/couchbase/gometa/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/gometa/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/ns_server
-current="`git rev-parse HEAD`"
-test -f ~/ns_server.good || (echo $current > ~/ns_server.good)
-good="`cat ~/ns_server.good`"
-echo -n "ns_server is at <a href='https://github.com/couchbase/ns_server/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/ns_server/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/couchdb
-current="`git rev-parse HEAD`"
-test -f ~/couchdb.good || (echo $current > ~/couchdb.good)
-good="`cat ~/couchdb.good`"
-echo -n "couchdb is at <a href='https://github.com/couchbase/couchdb/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/couchdb/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/couchstore
-current="`git rev-parse HEAD`"
-test -f ~/couchstore.good || (echo $current > ~/couchstore.good)
-good="`cat ~/couchstore.good`"
-echo -n "couchstore is at <a href='https://github.com/couchbase/couchstore/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/couchstore/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/forestdb
-current="`git rev-parse HEAD`"
-test -f ~/forestdb.good || (echo $current > ~/forestdb.good)
-good="`cat ~/forestdb.good`"
-echo -n "forestdb is at <a href='https://github.com/couchbase/forestdb/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/forestdb/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/kv_engine
-current="`git rev-parse HEAD`"
-test -f ~/kv_engine.good || (echo $current > ~/kv_engine.good)
-good="`cat ~/kv_engine.good`"
-echo -n "kv_engine is at <a href='https://github.com/couchbase/kv_engine/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/kv_engine/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/testrunner
-current="`git rev-parse HEAD`"
-test -f ~/testrunner.good || (echo $current > ~/testrunner.good)
-good="`cat ~/testrunner.good`"
-echo -n "testrunner is at <a href='https://github.com/couchbase/testrunner/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/testrunner/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
 
 cd $WORKSPACE
 PRODUCT_VERSION=${RELEASE}-${BLD_NUM}-rel

@@ -380,10 +380,12 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       std::vector<lcb_SDSPEC> specs;
 
       digest_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-      digest_spec.options = LCB_SDSPEC_F_XATTRPATH;
+      digest_spec.options =
+          LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
 
       eventing_ver_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-      eventing_ver_spec.options = LCB_SDSPEC_F_XATTRPATH;
+      eventing_ver_spec.options =
+          LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
 
       xattr_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
       xattr_spec.options =

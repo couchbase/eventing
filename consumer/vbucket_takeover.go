@@ -465,7 +465,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 		if vbBlob.DCPStreamRequested {
 			if (vbBlob.NodeUUIDRequestedVbStream == c.NodeUUID() && vbBlob.WorkerRequestedVbStream == c.ConsumerName()) ||
 				(vbBlob.NodeUUIDRequestedVbStream == "" && vbBlob.WorkerRequestedVbStream == "") {
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, false)
 			}
 
 			logging.Infof("%s [%s:%s:%d] vb: %d. STREAMREQ already issued by hostPort: %s worker: %s uuid: %s",

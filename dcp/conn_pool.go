@@ -221,10 +221,10 @@ func (cp *connectionPool) StartDcpFeed(
 	// Dont' count it against the connection pool capacity
 	<-cp.createsem
 
-	dcpf, err := memcached.NewDcpFeed(mc, string(name), outch, opaque, config)
+	dcpf, err := memcached.NewDcpFeed(mc, name.Raw(), outch, opaque, config)
 	if err == nil {
 		err = dcpf.DcpOpen(
-			string(name), sequence, flags, DEFAULT_WINDOW_SIZE, opaque,
+			name.Raw(), sequence, flags, DEFAULT_WINDOW_SIZE, opaque,
 		)
 		if err == nil {
 			return dcpf, err
@@ -242,7 +242,7 @@ func (cp *connectionPool) GetDcpConn(name DcpFeedName) (*memcached.Client, error
 
 	rq := &transport.MCRequest{
 		Opcode: transport.DCP_OPEN,
-		Key:    []byte(string(name)),
+		Key:    []byte(name.Raw()),
 		Opaque: 0,
 	}
 	rq.Extras = make([]byte, 8)

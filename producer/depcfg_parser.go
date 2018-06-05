@@ -358,6 +358,8 @@ func (p *Producer) parseDepcfg() error {
 		p.dcpConfig["dataChanSize"] = 50
 	}
 
+	p.dcpConfig["latencyTick"] = p.handlerConfig.StatsLogInterval
+
 	if val, ok := settings["dcp_gen_chan_size"]; ok {
 		p.dcpConfig["genChanSize"] = int(val.(float64))
 	} else {
