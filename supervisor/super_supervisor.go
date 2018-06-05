@@ -279,6 +279,11 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					}
 
 					s.appListRWMutex.Lock()
+					if _, ok := s.bootstrappingApps[appName]; ok {
+						logging.Infof("%s [%d] App: %s already bootstrapping", logPrefix, len(s.runningProducers), appName)
+						s.appListRWMutex.Unlock()
+						return nil
+					}
 					s.bootstrappingApps[appName] = time.Now().String()
 					s.appListRWMutex.Unlock()
 
@@ -443,6 +448,11 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 				logging.Infof("%s [%d] Bootstrapping app: %s", logPrefix, len(s.runningProducers), appName)
 
 				s.appListRWMutex.Lock()
+				if _, ok := s.bootstrappingApps[appName]; ok {
+					logging.Infof("%s [%d] App: %s already bootstrapping", logPrefix, len(s.runningProducers), appName)
+					s.appListRWMutex.Unlock()
+					return nil
+				}
 				s.bootstrappingApps[appName] = time.Now().String()
 				s.appListRWMutex.Unlock()
 
@@ -608,6 +618,11 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 				}
 
 				s.appListRWMutex.Lock()
+				if _, ok := s.bootstrappingApps[appName]; ok {
+					logging.Infof("%s [%d] App: %s already bootstrapping", logPrefix, len(s.runningProducers), appName)
+					s.appListRWMutex.Unlock()
+					continue
+				}
 				s.bootstrappingApps[appName] = time.Now().String()
 				s.appListRWMutex.Unlock()
 
