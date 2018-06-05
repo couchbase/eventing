@@ -445,7 +445,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     auto eventing_ver_value = REventingVer();
     eventing_ver_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-    eventing_ver_spec.options = LCB_SDSPEC_F_XATTRPATH;
+    eventing_ver_spec.options =
+        LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
     LCB_SDSPEC_SET_PATH(&eventing_ver_spec, eventing_ver_path.c_str(),
                         eventing_ver_path.size());
     LCB_SDSPEC_SET_VALUE(&eventing_ver_spec, eventing_ver_value.c_str(),
