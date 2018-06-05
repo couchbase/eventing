@@ -761,9 +761,14 @@ func (c *Consumer) storeDocTimerEvent(e *plasmaStoreEntry, writer *plasma.Writer
 	// Sample timer key: vb_<vb_no>::<app_name>::<timestamp in GMT>::<callback_func>::<doc_id>
 	timerKey := fmt.Sprintf("vb_%v::%v::%v::%v::%v", e.vb, c.app.AppName, e.timerTs, e.callbackFn, e.key)
 
-	v := byTimerEntry{
+	timerEntry := byTimerEntry{
 		DocID:      e.key,
 		CallbackFn: e.callbackFn,
+	}
+
+	v := &byTimerEntryVer{
+		timerEntry,
+		util.EventingVer(),
 	}
 
 	logging.Tracef("%s [%s:%s:%d] vb: %v doc-id timerKey: %ru byTimerEntry: %ru",

@@ -410,6 +410,11 @@ type byTimerEntry struct {
 	DocID      string
 }
 
+type byTimerEntryVer struct {
+	byTimerEntry
+	Version string `json:"version"`
+}
+
 type byTimerEntryMeta struct {
 	partition int32
 	timestamp string
