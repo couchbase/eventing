@@ -365,6 +365,9 @@ func (feed *DcpFeed) handlePacket(
 		event = newDcpEvent(pkt, stream) // special processing ?
 
 	case transport.DCP_CLOSESTREAM:
+		// since send_stream_end_on_client_close_stream is set in the
+		// control message. we will ignore the close_stream and wait for
+		// stream_end instead.
 		event = newDcpEvent(pkt, stream)
 		if event.Opaque != stream.CloseOpaque {
 			fmsg := "%v ##%x DCP_CLOSESTREAM mismatch in opaque %v != %v\n"
@@ -372,10 +375,7 @@ func (feed *DcpFeed) handlePacket(
 				fmsg, prefix, stream.AppOpaque, event.Opaque, stream.CloseOpaque,
 			)
 		}
-		event.Opcode = transport.DCP_STREAMEND // opcode re-write !!
-		event.Opaque = stream.AppOpaque        // opaque re-write !!
-		sendAck = true
-		delete(feed.vbstreams, vb)
+		event, sendAck = nil, true // IMPORTANT: make sure to nil event.
 		fmsg := "%v ##%x DCP_CLOSESTREAM for vb %d\n"
 		logging.Infof(fmsg, prefix, stream.AppOpaque, vb)
 		feed.stats.TotalCloseStream++
