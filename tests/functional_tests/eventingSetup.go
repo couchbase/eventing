@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
-	"testing"
 	"time"
 )
 
@@ -21,7 +20,7 @@ const (
 func getHandlerCode(filename string) (string, error) {
 	content, err := ioutil.ReadFile(handlerCodeDir + filename + ".js")
 	if err != nil {
-		fmt.Printf("Failed to open up file: %s, err: %v\n", filename, err)
+		log.Printf("Failed to open up file: %s, err: %v\n", filename, err)
 		return "", err
 	}
 
@@ -29,18 +28,18 @@ func getHandlerCode(filename string) (string, error) {
 }
 
 func postToTempStore(appName string, payload []byte) *restResponse {
-	return postToEventingEndpoint(tempStoreURL+appName, payload)
+	return postToEventingEndpoint("Post to temp store", tempStoreURL+appName, payload)
 }
 
 func postToMainStore(appName string, payload []byte) *restResponse {
-	return postToEventingEndpoint(deployURL+appName, payload)
+	return postToEventingEndpoint("Post to main store", deployURL+appName, payload)
 }
 
-func postToEventingEndpoint(url string, payload []byte) (response *restResponse) {
+func postToEventingEndpoint(context, url string, payload []byte) (response *restResponse) {
 	response = &restResponse{}
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {
-		fmt.Println("Post to eventing endpoint:", err)
+		log.Println("Post to eventing endpoint:", err)
 		return
 	}
 
@@ -49,18 +48,18 @@ func postToEventingEndpoint(url string, payload []byte) (response *restResponse)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Println("Post to eventing, http default client:", err)
+		log.Println("Post to eventing, http default client:", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	response.body, response.err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("Post to eventing, response read:", err)
+		log.Println("Post to eventing, response read:", err)
 		return
 	}
 
-	fmt.Println(string(response.body))
+	log.Printf("Context: %s, response code: %d dump: %s\n", context, resp.StatusCode, string(response.body))
 	return
 }
 
@@ -81,7 +80,7 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 	content, err := getHandlerCode(hFileName)
 	content = pad + content
 	if err != nil {
-		fmt.Println("Get handler code, err:", err)
+		log.Println("Get handler code, err:", err)
 		return
 	}
 
@@ -120,7 +119,7 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 	data, err := createFunction(true, true, 0, settings, aliases,
 		bnames, appName, content, metaBucket, srcBucket)
 	if err != nil {
-		fmt.Println("Create function, err:", err)
+		log.Println("Create function, err:", err)
 		return
 	}
 
@@ -224,7 +223,7 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 
 	encodedData, err := json.Marshal(&app)
 	if err != nil {
-		fmt.Printf("Failed to unmarshal, err: %v\n", err)
+		log.Printf("Failed to unmarshal, err: %v\n", err)
 		return []byte(""), err
 	}
 
@@ -271,13 +270,13 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 
 	data, err := json.Marshal(&settings)
 	if err != nil {
-		fmt.Println("Undeploy json marshal:", err)
+		log.Println("Undeploy json marshal:", err)
 		return
 	}
 
 	req, err := http.NewRequest("POST", settingsURL+appName, bytes.NewBuffer(data))
 	if err != nil {
-		fmt.Println("Undeploy request framing::", err)
+		log.Println("Undeploy request framing::", err)
 		return
 	}
 
@@ -285,11 +284,20 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Println("Undeploy response:", err)
+		log.Println("Undeploy response:", err)
 		return
 	}
 
 	defer resp.Body.Close()
+
+	data, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("Post to eventing, response read:", err)
+		return
+	}
+
+	log.Printf("Update settings, response code: %d dump: %s\n", resp.StatusCode, string(data))
+	return
 }
 
 func deleteFunction(appName string) {
@@ -298,17 +306,17 @@ func deleteFunction(appName string) {
 }
 
 func deleteFromTempStore(appName string) {
-	makeDeleteReq(deleteTempStoreURL + appName)
+	makeDeleteReq("Delete from temp store", deleteTempStoreURL+appName)
 }
 
 func deleteFromPrimaryStore(appName string) {
-	makeDeleteReq(deletePrimStoreURL + appName)
+	makeDeleteReq("Delete from primary store", deletePrimStoreURL+appName)
 }
 
-func makeDeleteReq(url string) {
+func makeDeleteReq(context, url string) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		fmt.Println("Delete req:", err)
+		log.Println("Delete req:", err)
 		return
 	}
 
@@ -316,10 +324,19 @@ func makeDeleteReq(url string) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Println("Delete resp:", err)
+		log.Println("Delete resp:", err)
 		return
 	}
 	defer resp.Body.Close()
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("Post to eventing, response read:", err)
+		return
+	}
+
+	log.Printf("%s request response code: %d dump: %s", context, resp.StatusCode, string(data))
+	return
 }
 
 func verifyBucketOps(count, retryCount int) int {
@@ -428,7 +445,7 @@ func getBucketItemCount(bucketName string) (int, error) {
 	bStatsURL := bucketStatsURL + bucketName + "/"
 	req, err := http.NewRequest("GET", bStatsURL, nil)
 	if err != nil {
-		fmt.Println("Bucket stats get request:", err)
+		log.Println("Bucket stats get request:", err)
 		return 0, err
 	}
 
@@ -436,7 +453,7 @@ func getBucketItemCount(bucketName string) (int, error) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Println("Bucket stats:", err)
+		log.Println("Bucket stats:", err)
 		return 0, err
 	}
 
@@ -444,14 +461,14 @@ func getBucketItemCount(bucketName string) (int, error) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("Bucket stats read:", err)
+		log.Println("Bucket stats read:", err)
 		return 0, err
 	}
 
 	var stats map[string]interface{}
 	err = json.Unmarshal(body, &stats)
 	if err != nil {
-		fmt.Println("Stats unmarshal:", err)
+		log.Println("Stats unmarshal:", err)
 		return 0, err
 	}
 
@@ -465,15 +482,9 @@ func getBucketItemCount(bucketName string) (int, error) {
 	return 0, fmt.Errorf("Stat not found")
 }
 
-func bucketFlushVerbose(bucketName string, t *testing.T) {
-	t.Logf("Flushing bucket %s", bucketName)
-	bucketFlush(bucketName)
-	t.Logf("Finished flushing bucket %s", bucketName)
-}
-
 func bucketFlush(bucketName string) {
 	flushEndpoint := fmt.Sprintf("http://127.0.0.1:9000/pools/default/buckets/%s/controller/doFlush", bucketName)
-	postToEventingEndpoint(flushEndpoint, nil)
+	postToEventingEndpoint("Bucket flush", flushEndpoint, nil)
 }
 
 func flushFunction(handler string) {
@@ -488,20 +499,6 @@ func flushFunctionAndBucket(handler string) {
 	bucketFlush("hello-world")
 }
 
-func flushFunctionAndBucketVerbose(handler string, t *testing.T) {
-	t.Logf("Flushing function %s", handler)
-	flushFunction(handler)
-	t.Logf("Finished flushing function %s", handler)
-
-	t.Logf("Flushing bucket %s", "default")
-	bucketFlush("default")
-	t.Logf("Finished flushing bucket %s", "default")
-
-	t.Logf("Flushing bucket %s", "hello-world")
-	bucketFlush("hello-world")
-	t.Logf("Finished flushing bucket %s", "hello-world")
-}
-
 func dumpStats() {
 	makeStatsRequest("Node0: Eventing stats", statsEndpointURL0)
 	makeStatsRequest("Node1: Eventing stats", statsEndpointURL1)
@@ -512,7 +509,7 @@ func dumpStats() {
 func makeStatsRequest(context, url string) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		fmt.Printf("Made request to url: %v err: %v\n", url, err)
+		log.Printf("Made request to url: %v err: %v\n", url, err)
 		return
 	}
 
@@ -520,32 +517,32 @@ func makeStatsRequest(context, url string) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Println("http call resp:", err)
+		log.Println("http call resp:", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("Read response: ", err)
+		log.Println("Read response: ", err)
 		return
 	}
 
 	var response interface{}
 	err = json.Unmarshal(data, &response)
 	if err != nil {
-		fmt.Println("Unmarshal stats response:", err)
+		log.Println("Unmarshal stats response:", err)
 		return
 	}
 
 	// Pretty print json
 	body, err := json.MarshalIndent(&response, "", "  ")
 	if err != nil {
-		fmt.Println("Pretty print json:", err)
+		log.Println("Pretty print json:", err)
 		return
 	}
 
-	fmt.Printf("%v::%s\n", context, string(body))
+	log.Printf("%v::%s\n", context, string(body))
 }
 
 func eventingConsumerPidsAlive() (bool, int) {
