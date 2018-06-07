@@ -16,6 +16,7 @@ func TestCRLF(t *testing.T) {
 	handler := "n1ql_newlines"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
 
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
