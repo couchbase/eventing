@@ -1979,7 +1979,12 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 		if app.Settings["deployment_status"].(bool) != true {
 			continue
 		}
-		count += int(app.Settings["worker_count"].(float64))
+		if val, ok := app.Settings["worker_count"].(float64); ok {
+			count += int(val)
+		} else {
+			// Picking up default worker count
+			count += 3
+		}
 	}
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
