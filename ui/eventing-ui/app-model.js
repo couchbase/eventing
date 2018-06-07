@@ -116,29 +116,11 @@ ApplicationModel.prototype.getDefaultModel = function() {
         settings: {
             log_level: 'INFO',
             dcp_stream_boundary: 'everything',
-            sock_batch_size: 100,
-            tick_duration: 60000,
-            checkpoint_interval: 10000,
-            worker_count: 1,
-            cleanup_timers: false,
-            skip_timer_threshold: 86400,
-            timer_processing_tick_interval: 500,
             processing_status: false,
             deployment_status: false,
-            enable_recursive_mutation: false,
-            lcb_inst_capacity: 5,
-            deadline_timeout: 2,
-            execution_timeout: 1,
             description: '',
-            cpp_worker_thread_count: 2,
-            vb_ownership_giveup_routine_count: 3,
-            vb_ownership_takeover_routine_count: 3,
-            xattr_doc_timer_entry_prune_threshold: 100,
-            app_log_max_size: 1024 * 1024 * 10,
-            app_log_max_files: 10,
-            curl_timeout: 500,
-            worker_queue_cap: 100 * 1000,
-            fuzz_offset: 0,
+            worker_count: 3,
+            execution_timeout: 1,
         }
     };
 };
@@ -168,15 +150,8 @@ ApplicationModel.prototype.fillWithMissingDefaults = function() {
 ApplicationModel.prototype.initializeDefaults = function() {
     this.depcfg = this.getDefaultModel().depcfg;
     this.settings = {};
-    this.settings.checkpoint_interval = 10000;
-    this.settings.sock_batch_size = 100;
-    this.settings.worker_count = 1;
-    this.settings.skip_timer_threshold = 86400;
-    this.settings.tick_duration = 60000;
-    this.settings.timer_processing_tick_interval = 500;
-    this.settings.deadline_timeout = 2;
+    this.settings.worker_count = 3;
     this.settings.execution_timeout = 1;
-    this.settings.cpp_worker_thread_count = 2;
 };
 
 // Prettifies the JavaScript code.
