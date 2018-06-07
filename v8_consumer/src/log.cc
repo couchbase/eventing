@@ -18,14 +18,12 @@ std::mutex ApplicationLog::lock_;
 bool SystemLog::redact_ = SystemLog::getRedactOverride();
 LogLevel SystemLog::level_ = logInfo;
 
-void SystemLog::setLogLevel(LogLevel level) {
-    level_ = level;
-}
+void SystemLog::setLogLevel(LogLevel level) { level_ = level; }
 
 bool SystemLog::getRedactOverride() {
-    const char* evar = std::getenv("CB_EVENTING_NOREDACT");
-    if (!evar) {
-        return true;
-    }
-    return (std::string(evar) != "true");
+  const char *evar = std::getenv("CB_EVENTING_NOREDACT");
+  if (!evar) {
+    return true;
+  }
+  return (std::string(evar) != "true");
 }

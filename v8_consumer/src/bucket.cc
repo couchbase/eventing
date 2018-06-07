@@ -391,9 +391,11 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       xattr_spec.options =
           LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
 
-      std::string xattr_cas_path("eventing.cas");
-      std::string xattr_digest_path("eventing.digest");
-      std::string xattr_eventing_ver_path("eventing.version");
+      auto v8worker = UnwrapData(isolate)->v8worker;
+      std::string handler_uuid = v8worker->GetHandlerUUID();
+      std::string xattr_cas_path = handler_uuid + ".cas";
+      std::string xattr_digest_path = handler_uuid + ".digest";
+      std::string xattr_eventing_ver_path = handler_uuid + ".version";
       std::string mutation_cas_macro(R"("${Mutation.CAS}")");
 
       if (gres.rc == LCB_SUCCESS) {

@@ -5,6 +5,7 @@ table Config {
   appCode:string;
   appName:string;
   depCfg:DepCfg;
+  HandlerUUID:uint;
 }
 
 table DepCfg {

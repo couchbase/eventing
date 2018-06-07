@@ -3,6 +3,7 @@ package util
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1095,4 +1096,13 @@ func DeepCopy(kv map[string]interface{}) (newKv map[string]interface{}) {
 func GetAppNameFromPath(path string) string {
 	split := strings.Split(path, "/")
 	return split[len(split)-1]
+}
+
+func GenerateHandlerUUID() (uint32, error) {
+	uuid := make([]byte, 16)
+	_, err := rand.Read(uuid)
+	if err != nil {
+		return 0, err
+	}
+	return crc32.ChecksumIEEE(uuid), nil
 }

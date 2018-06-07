@@ -159,7 +159,8 @@ void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     lcb_wait(instance);
     break;
   case LCB_SUCCESS:
-    LOG(logTrace) << "NValue " << RU(std::to_string(static_cast<int>(rg->nvalue)))
+    LOG(logTrace) << "NValue "
+                  << RU(std::to_string(static_cast<int>(rg->nvalue)))
                   << "Value " << RU(reinterpret_cast<const char *>(rg->value));
     break;
   default:
@@ -228,9 +229,12 @@ void startDebuggerFlag(bool started) {
 }
 
 V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
-                   server_settings_t *server_settings)
+                   server_settings_t *server_settings,
+                   const std::string &handler_name,
+                   const std::string &handler_uuid)
     : app_name_(h_config->app_name), settings_(server_settings),
-      platform_(platform) {
+      platform_(platform), handler_name_(handler_name),
+      handler_uuid_(handler_uuid) {
   enable_recursive_mutation = h_config->enable_recursive_mutation;
   curl_timeout = h_config->curl_timeout;
   histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);

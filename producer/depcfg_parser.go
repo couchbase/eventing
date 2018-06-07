@@ -41,7 +41,7 @@ func (p *Producer) parseDepcfg() error {
 	p.app.LastDeploy = time.Now().UTC().Format("2006-01-02T15:04:05.000000000-0700")
 	p.app.ID = int(config.Id())
 	p.app.Settings = make(map[string]interface{})
-
+	p.app.HandlerUUID = uint32(config.HandlerUUID())
 	d := new(cfg.DepCfg)
 	depcfg := config.DepCfg(d)
 

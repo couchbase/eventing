@@ -23,62 +23,60 @@
 
 enum LogLevel { logSilent, logError, logInfo, logWarning, logDebug, logTrace };
 
-inline LogLevel LevelFromString(const std::string& level) {
-    if (level == "SILENT")
-        return logSilent;
-    if (level == "INFO")
-        return logInfo;
-    if (level == "ERROR")
-        return logError;
-    if (level == "WARNING")
-        return logWarning;
-    if (level == "DEBUG")
-        return logDebug;
-    if (level == "TRACE")
-        return logTrace;
-
+inline LogLevel LevelFromString(const std::string &level) {
+  if (level == "SILENT")
+    return logSilent;
+  if (level == "INFO")
     return logInfo;
+  if (level == "ERROR")
+    return logError;
+  if (level == "WARNING")
+    return logWarning;
+  if (level == "DEBUG")
+    return logDebug;
+  if (level == "TRACE")
+    return logTrace;
+
+  return logInfo;
 }
 
 class SystemLog : public std::ostringstream {
 public:
-    static void setLogLevel(LogLevel level);
-    static bool getRedactOverride();
-    static bool isDisabled(LogLevel check) {
-        return check > level_;
-    }
-    static std::string redact(const std::string msg) {
-        return redact_ ? "<ud>" + msg + "</ud>" : msg;
-    }
-    ~SystemLog() {
-        std::lock_guard<std::mutex> guard(lock_);
-        std::cerr << str();
-    }
+  static void setLogLevel(LogLevel level);
+  static bool getRedactOverride();
+  static bool isDisabled(LogLevel check) { return check > level_; }
+  static std::string redact(const std::string msg) {
+    return redact_ ? "<ud>" + msg + "</ud>" : msg;
+  }
+  ~SystemLog() {
+    std::lock_guard<std::mutex> guard(lock_);
+    std::cerr << str();
+  }
 
 private:
-    static std::mutex lock_;
-    static LogLevel level_;
-    static bool redact_;
+  static std::mutex lock_;
+  static LogLevel level_;
+  static bool redact_;
 };
 
 class ApplicationLog : public std::ostringstream {
 public:
-    ~ApplicationLog() {
-        std::lock_guard<std::mutex> guard(lock_);
-        std::cout << str();
-    }
+  ~ApplicationLog() {
+    std::lock_guard<std::mutex> guard(lock_);
+    std::cout << str();
+  }
 
 private:
-    static std::mutex lock_;
+  static std::mutex lock_;
 };
 
 #define APPLOG ApplicationLog()
 
-#define LOG(level)                    \
-    if (SystemLog::isDisabled(level)) \
-        ;                             \
-    else                              \
-        SystemLog()
+#define LOG(level)                                                             \
+  if (SystemLog::isDisabled(level))                                            \
+    ;                                                                          \
+  else                                                                         \
+    SystemLog()
 
 #define RM(msg) msg
 #define RS(msg) msg

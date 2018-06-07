@@ -188,6 +188,7 @@ type AppConfig struct {
 	LastDeploy     string
 	ID             int
 	Settings       map[string]interface{}
+	HandlerUUID    uint32
 }
 
 type RebalanceProgress struct {

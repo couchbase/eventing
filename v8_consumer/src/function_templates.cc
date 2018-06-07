@@ -331,10 +331,12 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
    *   }
    * }
    * */
-  std::string xattr_cas_path("eventing.cas");
-  std::string xattr_digest_path("eventing.digest");
-  std::string xattr_timer_path("eventing.timers");
-  std::string xattr_eventing_ver_path("eventing.version");
+  std::string handler_uuid = v8worker->GetHandlerUUID();
+  std::string xattr_cas_path = handler_uuid + ".cas";
+  std::string xattr_digest_path = handler_uuid + ".digest";
+  std::string xattr_timer_path = handler_uuid + ".timers";
+  std::string xattr_eventing_ver_path = handler_uuid + ".version";
+
   std::string mutation_cas_macro(R"("${Mutation.CAS}")");
   std::string doc_exptime("$document.exptime");
   timer_entry += "Z::";

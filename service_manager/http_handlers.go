@@ -1192,6 +1192,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	cfg.ConfigAddAppCode(builder, appCode)
 	cfg.ConfigAddAppName(builder, aName)
 	cfg.ConfigAddDepCfg(builder, depcfg)
+	cfg.ConfigAddHandlerUUID(builder, app.HandlerUUID)
 	config := cfg.ConfigEnd(builder)
 
 	builder.Finish(config)
@@ -1686,8 +1687,16 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			var err error
 			app.EventingVersion = util.EventingVer()
-
+			app.HandlerUUID, err = util.GenerateHandlerUUID()
+			if err != nil {
+				info.Code = m.statusCodes.errUUIDGen.Code
+				info.Info = fmt.Sprintf("UUID generation failed for handler: %s", appName)
+				m.sendErrorInfo(w, info)
+				return
+			}
+			logging.Infof("HandlerUUID generated for handler: %s, UUID: %d", app.Name, app.HandlerUUID)
 			runtimeInfo := m.savePrimaryStore(app)
 			if runtimeInfo.Code == m.statusCodes.ok.Code {
 				audit.Log(auditevent.SaveDraft, r, appName)
@@ -1934,6 +1943,7 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 
 func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application, undeploy bool) (infoList []*runtimeInfo) {
 	infoList = []*runtimeInfo{}
+	var err error
 	for _, app := range *appList {
 		audit.Log(auditevent.CreateFunction, r, app.Name)
 
@@ -1949,6 +1959,15 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 		}
 
 		app.EventingVersion = util.EventingVer()
+		app.HandlerUUID, err = util.GenerateHandlerUUID()
+		if err != nil {
+			info := &runtimeInfo{}
+			info.Code = m.statusCodes.errUUIDGen.Code
+			info.Info = fmt.Sprintf("UUID generation failed for handler: %s", app.Name)
+			infoList = append(infoList, info)
+			continue
+		}
+		logging.Infof("HandlerUUID generated for handler: %s, UUID: %d", app.Name, app.HandlerUUID)
 
 		infoPri := m.savePrimaryStore(app)
 		if infoPri.Code != m.statusCodes.ok.Code {

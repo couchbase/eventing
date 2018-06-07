@@ -43,6 +43,7 @@ func (c *debugClient) Serve() {
 		c.consumerHandle.diagDir,
 		util.GetIPMode(),
 		"true",
+		strconv.Itoa(int(c.consumerHandle.app.HandlerUUID)),
 		c.eventingPort, // not read, for tagging
 		"debug")        // not read, for tagging
 
