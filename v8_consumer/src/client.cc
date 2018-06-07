@@ -92,6 +92,7 @@ std::vector<char> *AppWorker::GetReadBuffer() { return &read_buffer_; }
 
 void AppWorker::InitTcpSock(const std::string &handler_name,
                             const std::string &handler_uuid,
+                            const std::string &user_prefix,
                             const std::string &appname, const std::string &addr,
                             const std::string &worker_id, int bsize, int fbsize,
                             int feedback_port, int port) {
@@ -107,6 +108,7 @@ void AppWorker::InitTcpSock(const std::string &handler_name,
   }
   handler_name_ = handler_name;
   handler_uuid_ = handler_uuid;
+  user_prefix_ = user_prefix;
   app_name_ = appname;
   batch_size_ = bsize;
   feedback_batch_size_ = fbsize;
@@ -139,6 +141,7 @@ void AppWorker::InitTcpSock(const std::string &handler_name,
 
 void AppWorker::InitUDS(const std::string &handler_name,
                         const std::string &handler_uuid,
+                        const std::string &user_prefix,
                         const std::string &appname, const std::string &addr,
                         const std::string &worker_id, int bsize, int fbsize,
                         std::string feedback_sock_path,
@@ -148,6 +151,7 @@ void AppWorker::InitUDS(const std::string &handler_name,
 
   handler_name_ = handler_name;
   handler_uuid_ = handler_uuid;
+  user_prefix_ = user_prefix;
   app_name_ = appname;
   batch_size_ = bsize;
   feedback_batch_size_ = fbsize;
@@ -444,7 +448,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
       for (int16_t i = 0; i < thr_count_; i++) {
         V8Worker *w = new V8Worker(platform, handler_config, server_settings,
-                                   handler_name_, handler_uuid_);
+                                   handler_name_, handler_uuid_, user_prefix_);
 
         LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
         workers_[i] = w;
@@ -979,18 +983,23 @@ int main(int argc, char **argv) {
     setupBreakpad(diag_dir);
   }
 
+  std::string user_prefix;
+  if (argc >= 13) {
+    user_prefix = std::string(argv[12]);
+  }
+
   curl_global_init(CURL_GLOBAL_ALL);
   std::string handler_uuid(argv[11]);
   std::string handler_name(argv[1]);
   AppWorker *worker = AppWorker::GetAppWorker();
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
-    worker->InitUDS(handler_name, handler_uuid, appname, Localhost(false),
-                    worker_id, batch_size, feedback_batch_size,
-                    feedback_sock_path, uds_sock_path);
+    worker->InitUDS(handler_name, handler_uuid, user_prefix, appname,
+                    Localhost(false), worker_id, batch_size,
+                    feedback_batch_size, feedback_sock_path, uds_sock_path);
   } else {
-    worker->InitTcpSock(handler_name, handler_uuid, appname, Localhost(false),
-                        worker_id, batch_size, feedback_batch_size,
-                        feedback_port, port);
+    worker->InitTcpSock(handler_name, handler_uuid, user_prefix, appname,
+                        Localhost(false), worker_id, batch_size,
+                        feedback_batch_size, feedback_port, port);
   }
   worker->ReadStdinLoop();
   worker->stdin_read_thr_.join();

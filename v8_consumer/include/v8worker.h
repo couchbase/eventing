@@ -164,7 +164,7 @@ class V8Worker {
 public:
   V8Worker(v8::Platform *platform, handler_config_t *config,
            server_settings_t *settings, const std::string &handler_name,
-           const std::string &handler_uuid);
+           const std::string &handler_uuid, const std::string &user_prefix);
   ~V8Worker();
 
   void operator()() {
@@ -246,6 +246,8 @@ public:
 
   inline std::string GetHandlerUUID() const { return handler_uuid_; }
 
+  inline std::string GetUserPrefix() const { return user_prefix_; }
+
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
   v8::Persistent<v8::Function> on_update_;
@@ -314,6 +316,7 @@ private:
   inspector::Agent *agent_;
   std::string handler_name_;
   std::string handler_uuid_;
+  std::string user_prefix_;
 };
 
 const char *GetUsername(void *cookie, const char *host, const char *port,

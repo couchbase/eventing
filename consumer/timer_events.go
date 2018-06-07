@@ -86,7 +86,8 @@ func (c *Consumer) processDocTimerEvents() {
 		var vbBlob vbucketKVBlob
 		var cas gocb.Cas
 
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, vbKey, &vbBlob, &cas, false)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+			c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
@@ -284,7 +285,8 @@ func (c *Consumer) cleanupProcessedDocTimers() {
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
 
-				err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, vbKey, &vbBlob, &cas, false)
+				err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+					c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 					return
@@ -430,7 +432,8 @@ func (c *Consumer) processCronTimerEvents() {
 		var vbBlob vbucketKVBlob
 		var cas gocb.Cas
 
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, vbKey, &vbBlob, &cas, false)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+			c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
@@ -487,7 +490,8 @@ func (c *Consumer) processCronTimerEvents() {
 
 					timerDocID := fmt.Sprintf("%s::%s%d", c.app.AppName, currTimer, counter)
 
-					err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getCronTimerCallback, c, timerDocID, &val, true, &isNoEnt)
+					err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getCronTimerCallback,
+						c, c.producer.AddMetadataPrefix(timerDocID), &val, true, &isNoEnt)
 					if err == common.ErrRetryTimeout {
 						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 						return
@@ -568,7 +572,8 @@ func (c *Consumer) addCronTimersToCleanup() {
 			}
 
 			cronTimerCleanupKey := fmt.Sprintf("%s::cron_timer::vb::%v", c.app.AppName, e.vb)
-			err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, appendCronTimerCleanupCallback, c, cronTimerCleanupKey, e.docID)
+			err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, appendCronTimerCleanupCallback,
+				c, c.producer.AddMetadataPrefix(cronTimerCleanupKey), e.docID)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return
@@ -600,7 +605,8 @@ func (c *Consumer) cleanupProcessedCronTimers() {
 				var cas gocb.Cas
 				var isNoEnt bool
 
-				err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, vbKey, &vbBlob, &cas, false)
+				err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+					c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 					return
@@ -620,7 +626,8 @@ func (c *Consumer) cleanupProcessedCronTimers() {
 					cronTimerCleanupKey := fmt.Sprintf("%s::cron_timer::vb::%v", c.app.AppName, vb)
 
 					var cronTimerBlob []string
-					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, cronTimerCleanupKey, &cronTimerBlob, &cas, true, &isNoEnt)
+					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+						c, c.producer.AddMetadataPrefix(cronTimerCleanupKey), &cronTimerBlob, &cas, true, &isNoEnt)
 					if err == common.ErrRetryTimeout {
 						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 						return
@@ -640,13 +647,15 @@ func (c *Consumer) cleanupProcessedCronTimers() {
 							if lastProcessedTs.After(cleanupTs) {
 								logging.Tracef("%s [%s:%s:%d] vb: %d Cleaning up doc: %v",
 									logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, cleanupTsDocID)
-								err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, removeDocIDCallback, c, cleanupTsDocID)
+								err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, removeDocIDCallback,
+									c, c.producer.AddMetadataPrefix(cleanupTsDocID))
 								if err == common.ErrRetryTimeout {
 									logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 									return
 								}
 
-								err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, removeIndexCallback, c, cronTimerCleanupKey, 0)
+								err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, removeIndexCallback,
+									c, c.producer.AddMetadataPrefix(cronTimerCleanupKey), 0)
 								if err == common.ErrRetryTimeout {
 									logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 									return

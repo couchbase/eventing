@@ -130,7 +130,11 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
                 << " Fuzz timestamp: " << fuzz_ts << std::endl;
 
   auto v8worker = UnwrapData(isolate)->v8worker;
-  timer_entry.assign(v8worker->GetAppName());
+  timer_entry.assign(v8worker->GetUserPrefix());
+  timer_entry.append("::");
+  timer_entry.append(v8worker->GetHandlerUUID());
+  timer_entry.append("::");
+  timer_entry.append(v8worker->GetAppName());
   timer_entry.append("::");
   timer_entry.append(ConvertToISO8601(start_ts));
   timer_entry.append("Z");

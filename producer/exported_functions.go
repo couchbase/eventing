@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -267,7 +268,8 @@ func (p *Producer) SignalCheckpointBlobCleanup() error {
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p, vbKey)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
+			p, p.AddMetadataPrefix(vbKey))
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 			return common.ErrRetryTimeout
@@ -275,14 +277,16 @@ func (p *Producer) SignalCheckpointBlobCleanup() error {
 	}
 
 	dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p, dFlagKey)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
+		p, p.AddMetadataPrefix(dFlagKey))
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
 	}
 
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p, dInstAddrKey)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey))
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
@@ -448,7 +452,8 @@ func (p *Producer) vbDistributionStats() error {
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, vbKey, &vbBlob)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
+			p, p.AddMetadataPrefix(vbKey), &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 			return common.ErrRetryTimeout
@@ -517,7 +522,8 @@ func (p *Producer) getSeqsProcessed() error {
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, vbKey, &vbBlob)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
+			p, p.AddMetadataPrefix(vbKey), &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 			return common.ErrRetryTimeout
@@ -618,8 +624,7 @@ func (p *Producer) CleanupMetadataBucket() error {
 		defer wg.Done()
 
 		prefix := fmt.Sprintf("%s::", p.appName)
-		vbBlobPrefix := fmt.Sprintf("%s::vb::", p.appName)
-
+		keyPrefix := p.AddMetadataPrefix(prefix)
 		for {
 			select {
 			case e, ok := <-dcpFeed.C:
@@ -636,14 +641,15 @@ func (p *Producer) CleanupMetadataBucket() error {
 				switch e.Opcode {
 				case mcd.DCP_MUTATION:
 					docID := string(e.Key)
-					if strings.HasPrefix(docID, prefix) || strings.HasPrefix(docID, vbBlobPrefix) {
-						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p, docID)
+
+					if strings.HasPrefix(docID, keyPrefix.Raw()) {
+						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
+							p, p.AddMetadataPrefix(docID))
 						if err == common.ErrRetryTimeout {
 							logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 							return
 						}
 					}
-				default:
 				}
 			}
 		}
@@ -875,7 +881,7 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbBlob := make(map[string]interface{})
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, vbKey, &vbBlob)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, p.AddMetadataPrefix(vbKey), &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 			return nil
@@ -883,6 +889,9 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 
 		checkpointBlobDumps[vbKey] = vbBlob
 	}
-
 	return checkpointBlobDumps
+}
+
+func (p *Producer) AddMetadataPrefix(key string) common.Key {
+	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), key)
 }

@@ -139,13 +139,13 @@ var setOpCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::setOpCallback"
 
 	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
+	vbKey := args[1].(common.Key)
 	vbBlob := args[2]
 
-	_, err := c.gocbMetaBucket.Upsert(vbKey, vbBlob, 0)
+	_, err := c.gocbMetaBucket.Upsert(vbKey.Raw(), vbBlob, 0)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %s Bucket set failed, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
 	if err == gocb.ErrShutdown {
@@ -159,7 +159,7 @@ var getCronTimerCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::getCronTimerCallback"
 
 	c := args[0].(*Consumer)
-	key := args[1].(string)
+	key := args[1].(common.Key)
 	val := args[2].(*cronTimers)
 	checkEnoEnt := args[3].(bool)
 
@@ -168,7 +168,7 @@ var getCronTimerCallback = func(args ...interface{}) error {
 		isNoEnt = args[4].(*bool)
 	}
 
-	_, err := c.gocbMetaBucket.Get(key, val)
+	_, err := c.gocbMetaBucket.Get(key.Raw(), val)
 
 	if checkEnoEnt {
 		if gocb.IsKeyNotFoundError(err) {
@@ -187,7 +187,7 @@ var getCronTimerCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Bucket fetch failed for cron timer key: %ru val: %ru, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, val, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key.Raw(), val, err)
 	}
 
 	return err
@@ -197,7 +197,7 @@ var getOpCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::getOpCallback"
 
 	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
+	vbKey := args[1].(common.Key)
 	vbBlob := args[2]
 	cas := args[3].(*gocb.Cas)
 	skipEnoEnt := args[4].(bool)
@@ -208,7 +208,7 @@ var getOpCallback = func(args ...interface{}) error {
 	}
 
 	var err error
-	*cas, err = c.gocbMetaBucket.Get(vbKey, vbBlob)
+	*cas, err = c.gocbMetaBucket.Get(vbKey.Raw(), vbBlob)
 
 	if skipEnoEnt {
 		// 1. If vbKey metadata blob doesn't exist then return nil
@@ -222,7 +222,7 @@ var getOpCallback = func(args ...interface{}) error {
 			return nil
 		} else if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Bucket fetch failed for key: %ru, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 			return err
 		}
 		*isNoEnt = false
@@ -235,7 +235,7 @@ var getOpCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Bucket fetch failed for key: %ru, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
 	return err
@@ -245,10 +245,10 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::periodicCheckpointCallback"
 
 	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
+	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
 
-	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		UpsertEx("currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_cron_timer", vbBlob.CurrentProcessedCronTimer, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
@@ -266,7 +266,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %ru, subdoc operation failed while performing periodic checkpoint update, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
 	return err
@@ -276,10 +276,10 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::updateCheckpointCallback"
 
 	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
+	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
 
-	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
@@ -300,7 +300,7 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while performing checkpoint update post dcp stop stream, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
 	return err
@@ -310,10 +310,10 @@ var metadataCorrectionCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::metadataCorrectionCallback"
 
 	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
+	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
 
-	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", c.ConsumerName(), gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", c.HostPortAddr(), gocb.SubdocFlagCreatePath).
@@ -329,7 +329,7 @@ var metadataCorrectionCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while trying to update metadata, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
 	return err
@@ -340,10 +340,10 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::addOwnershipHistorySRRCallback"
 
 	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
+	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
 
-	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
@@ -362,7 +362,7 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post STREAMREQ from Consumer, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
 	return err
@@ -373,10 +373,10 @@ var addOwnershipHistorySRFCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::addOwnershipHistorySRFCallback"
 
 	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
+	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
 
-	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
@@ -395,7 +395,7 @@ var addOwnershipHistorySRFCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post unsuccessful STREAMREQ from Consumer, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
 	return err
@@ -406,11 +406,11 @@ var addOwnershipHistorySRSCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::addOwnershipHistorySRSCallback"
 
 	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
+	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
 	ownershipEntry := args[3].(*OwnershipEntry)
 
-	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
@@ -430,7 +430,7 @@ var addOwnershipHistorySRSCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post STREAMREQ SUCCESS from Producer, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
 	return err
@@ -440,10 +440,10 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::addOwnershipHistorySECallback"
 
 	c := args[0].(*Consumer)
-	vbKey := args[1].(string)
+	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
 
-	_, err := c.gocbMetaBucket.MutateIn(vbKey, 0, uint32(0)).
+	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
@@ -458,7 +458,7 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while performing ownership entry app post STREAMEND, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
 	return err
@@ -617,17 +617,17 @@ var appendCronTimerCleanupCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::appendCronTimerCleanupCallback"
 
 	c := args[0].(*Consumer)
-	docID := args[1].(string)
+	docID := args[1].(common.Key)
 	cronTimerDocID := args[2].(string)
 
-	_, err := c.gocbMetaBucket.MutateIn(docID, 0, uint32(0)).
+	_, err := c.gocbMetaBucket.MutateIn(docID.Raw(), 0, uint32(0)).
 		ArrayAppend("", cronTimerDocID, true).
 		Execute()
 
 	if gocb.IsKeyNotFoundError(err) {
 		var data []interface{}
 		data = append(data, cronTimerDocID)
-		c.gocbMetaBucket.Insert(docID, data, 0)
+		c.gocbMetaBucket.Insert(docID.Raw(), data, 0)
 		return nil
 	}
 
@@ -637,7 +637,7 @@ var appendCronTimerCleanupCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %ru, subdoc operation failed while appending cron timers to cleanup, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), docID, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), docID.Raw(), err)
 	}
 
 	return err
@@ -647,9 +647,9 @@ var removeDocIDCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::removeDocIDCallback"
 
 	c := args[0].(*Consumer)
-	key := args[1].(string)
+	key := args[1].(common.Key)
 
-	_, err := c.gocbMetaBucket.Remove(key, 0)
+	_, err := c.gocbMetaBucket.Remove(key.Raw(), 0)
 	if gocb.IsKeyNotFoundError(err) {
 		return nil
 	}
@@ -660,7 +660,7 @@ var removeDocIDCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %ru, failed to remove from metadata bucket, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key.Raw(), err)
 	}
 
 	return err
@@ -670,10 +670,10 @@ var removeIndexCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::removeIndexCallback"
 
 	c := args[0].(*Consumer)
-	key := args[1].(string)
+	key := args[1].(common.Key)
 	index := args[2].(int)
 
-	_, err := c.gocbMetaBucket.MutateIn(key, 0, 0).
+	_, err := c.gocbMetaBucket.MutateIn(key.Raw(), 0, 0).
 		Remove(fmt.Sprintf("[%d]", index)).
 		Execute()
 	if err == gocb.ErrShutdown {
@@ -682,7 +682,7 @@ var removeIndexCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %ru, failed to remove from metadata bucket, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key.Raw(), err)
 	}
 
 	return err
