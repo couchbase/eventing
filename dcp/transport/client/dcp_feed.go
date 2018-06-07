@@ -188,8 +188,8 @@ loop:
 
 			fmsg := "%v dcp latency stats %v\n"
 			logging.Infof(fmsg, feed.logPrefix, feed.dcplatency)
-			fmsg = "%v dcp stats %#v\n"
-			logging.Infof(fmsg, feed.logPrefix, feed.stats)
+			fmsg = "%v dcp stats %v\n"
+			logging.Infof(fmsg, feed.logPrefix, feed.stats.String(feed))
 
 		case msg := <-reqch:
 			if feed.handleControlRequest(msg, rcvch) == "break" {
@@ -972,13 +972,13 @@ type DcpStats struct {
 	TotalStreamEnd     uint64
 }
 
-func (stats *DcpStats) String() string {
+func (stats *DcpStats) String(feed *DcpFeed) string {
 	return fmt.Sprintf(
-		"bytes: %v buffack: %v streamreqs: %v snapshots: %v "+
-			"mutations: %v streamends: %v closestreams: %v",
-		stats.TotalBytes, stats.TotalBufferAckSent, stats.TotalStreamReq,
-		stats.TotalSnapShot, stats.TotalMutation, stats.TotalStreamEnd,
-		stats.TotalCloseStream,
+		"bytes: %v buffacks: %v toAckBytes: %v streamreqs: %v "+
+			"snapshots: %v mutations: %v streamends: %v closestreams: %v",
+		stats.TotalBytes, stats.TotalBufferAckSent, feed.toAckBytes,
+		stats.TotalStreamReq, stats.TotalSnapShot, stats.TotalMutation,
+		stats.TotalStreamEnd, stats.TotalCloseStream,
 	)
 }
 
@@ -1088,10 +1088,27 @@ func (feed *DcpFeed) doReceive(
 		tick.Stop()
 	}()
 
+	prefix := feed.logPrefix
 loop:
 	for {
 		pkt := transport.MCRequest{} // always a new instance.
 		bytes, err := pkt.Receive(conn.conn, headerBuf[:])
+
+		// Immediately respond to NOOP and listen for next message.
+		// NOOPs are not accounted for buffer-ack.
+		if pkt.Opcode == transport.DCP_NOOP {
+			noop := &transport.MCResponse{
+				Opcode: transport.DCP_NOOP, Opaque: pkt.Opaque,
+			}
+			if err := feed.conn.TransmitResponse(noop); err != nil {
+				logging.Errorf("%v NOOP.Transmit(): %v", prefix, err)
+			} else {
+				fmsg := "%v responded to NOOP ok ...\n"
+				logging.Tracef(fmsg, prefix)
+			}
+			continue loop
+		}
+
 		if err != nil && err == io.EOF {
 			logging.Infof("%v EOF received\n", feed.logPrefix)
 			break loop
