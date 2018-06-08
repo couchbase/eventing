@@ -393,8 +393,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
 
       std::string xattr_cas_path("eventing.cas");
       std::string xattr_digest_path("eventing.digest");
+      std::string xattr_eventing_ver_path("eventing.version");
       std::string mutation_cas_macro(R"("${Mutation.CAS}")");
-      std::string eventing_ver_path("eventing.version");
 
       if (gres.rc == LCB_SUCCESS) {
         LCB_SDSPEC_SET_PATH(&digest_spec, xattr_digest_path.c_str(),
@@ -404,8 +404,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       }
 
       auto eventing_ver_value = REventingVer();
-      LCB_SDSPEC_SET_PATH(&eventing_ver_spec, eventing_ver_path.c_str(),
-                          eventing_ver_path.size());
+      LCB_SDSPEC_SET_PATH(&eventing_ver_spec, xattr_eventing_ver_path.c_str(),
+                          xattr_eventing_ver_path.size());
       LCB_SDSPEC_SET_VALUE(&eventing_ver_spec, eventing_ver_value.c_str(),
                            eventing_ver_value.size());
       specs.push_back(eventing_ver_spec);

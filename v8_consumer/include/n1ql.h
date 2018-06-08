@@ -216,6 +216,7 @@ public:
                            const std::string &src_filename);
   std::string TranspileQuery(const std::string &query,
                              const NamedParamsInfo &info);
+  UniLineN1QLInfo UniLineN1QL(const std::string &handler_code);
   CodeVersion GetCodeVersion(const std::string &handler_code);
   bool IsTimerCalled(const std::string &handler_code);
   bool IsJsExpression(const std::string &str);
