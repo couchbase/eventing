@@ -52,7 +52,7 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "sock_batch_size", float64(100))
 	fillMissingDefault(settings, "tick_duration", float64(60000))
 	fillMissingDefault(settings, "timer_processing_tick_interval", float64(500))
-	fillMissingDefault(settings, "worker_count", float64(1))
+	fillMissingDefault(settings, "worker_count", float64(3))
 	fillMissingDefault(settings, "worker_feedback_queue_cap", float64(10*1000))
 	fillMissingDefault(settings, "worker_queue_cap", float64(100*1000))
 	fillMissingDefault(settings, "worker_queue_mem_cap", float64(1024))
@@ -62,8 +62,8 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "breakpad_on", true)
 
 	// Rebalance related configurations
-	fillMissingDefault(settings, "vb_ownership_giveup_routine_count", float64(3))
-	fillMissingDefault(settings, "vb_ownership_takeover_routine_count", float64(3))
+	fillMissingDefault(settings, "vb_ownership_giveup_routine_count", float64(1))
+	fillMissingDefault(settings, "vb_ownership_takeover_routine_count", float64(1))
 
 	// Application logging related configurations
 	fillMissingDefault(settings, "app_log_max_size", float64(1024*1024*40))

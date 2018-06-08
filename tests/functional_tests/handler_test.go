@@ -16,6 +16,7 @@ func TestCRLF(t *testing.T) {
 	handler := "n1ql_newlines"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
 
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -133,8 +134,8 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 		dumpStats()
 		log.Println("Undeploying app:", handler)
 		setSettings(handler, false, false, &commonSettings{})
-		bucketFlushVerbose("default", t)
-		bucketFlushVerbose("hello-world", t)
+		bucketFlush("default")
+		bucketFlush("hello-world")
 		time.Sleep(30 * time.Second)
 	}
 
@@ -182,7 +183,7 @@ func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
 func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 30)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucketVerbose(handler, t)
+	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
@@ -195,7 +196,7 @@ func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucketVerbose(handler, t)
+	flushFunctionAndBucket(handler)
 }
 
 func TestOnUpdateBucketOpDefaultSettings10K(t *testing.T) {
@@ -332,8 +333,8 @@ func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 		dumpStats()
 		log.Println("Undeploying app:", handler)
 		setSettings(handler, false, false, &commonSettings{})
-		bucketFlushVerbose("default", t)
-		bucketFlushVerbose("hello-world", t)
+		bucketFlush("default")
+		bucketFlush("hello-world")
 		time.Sleep(30 * time.Second)
 	}
 
@@ -375,8 +376,8 @@ func TestMultipleHandlers(t *testing.T) {
 	handler1 := "bucket_op_on_update"
 	handler2 := "bucket_op_on_delete"
 
-	flushFunctionAndBucketVerbose(handler1, t)
-	flushFunctionAndBucketVerbose(handler2, t)
+	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(handler2)
 
 	createAndDeployFunction(handler1, handler1, &commonSettings{})
 	createAndDeployFunction(handler2, handler2, &commonSettings{})
@@ -405,8 +406,8 @@ func TestMultipleHandlers(t *testing.T) {
 	setSettings(handler1, true, false, &commonSettings{})
 	setSettings(handler2, true, false, &commonSettings{})
 
-	flushFunctionAndBucketVerbose(handler1, t)
-	flushFunctionAndBucketVerbose(handler2, t)
+	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(handler2)
 }
 
 /* Disabling pause/resume tests as it's retired. Keeping the tests around as

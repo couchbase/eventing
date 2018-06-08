@@ -81,6 +81,7 @@ test $? -eq 0 || error_exit "Repo Init at $SHA"
 
 echo "Updating tree for run $TS"
 cd $WORKSPACE
+perl -pi -e 's/upstream=".*?"//' .repo/manifest.xml # temporary to workaround bad manifest upstream lines
 repo sync --jobs=32 1>>$WORKSPACE/make.log 2>&1
 test $? -eq 0 || error_exit "Updating tree"
 test $WORKSPACE/cbbuild && test $WORKSPACE/voltron || error_exit "Unable to find voltron"

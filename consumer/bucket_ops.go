@@ -731,3 +731,30 @@ var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
 
 	return nil
 }
+
+var checkIfReceivedTillEndSeqNoCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::checkIfRecievedTillEndSeqNoCallback"
+
+	c := args[0].(*Consumer)
+	vb := args[1].(uint16)
+	receivedTillEndSeqNo := args[2].(*bool)
+	dcpFeed := args[3].(*couchbase.DcpFeed)
+
+	if !c.isRebalanceOngoing {
+		logging.Infof("%s [%s:%s:%d] vb: %d closing feed: %s as rebalance has been stopped",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName())
+
+		dcpFeed.Close()
+		return nil
+	}
+
+	if !*receivedTillEndSeqNo {
+		return fmt.Errorf("Not recieved till supplied end seq no")
+	} else {
+		logging.Infof("%s [%s:%s:%d] vb: %d closing feed: %s, received events till end seq no",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName())
+
+		dcpFeed.Close()
+		return nil
+	}
+}
