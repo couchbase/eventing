@@ -564,7 +564,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 				select {
 				case e, ok := <-dcpFeed.C:
 					if ok == false {
-						logging.Infof("%s [%s:%d] vb: %v Exiting doc timer recreate routine",
+						logging.Infof("%s [%s:%s:%d] vb: %d Exiting doc timer recreate routine",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 						return
 					}
@@ -592,7 +592,6 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 							logging.Errorf("%s [%s:%s:%d] vb: %v Received events till end seq no: %d desired: %d",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, endSeqNo)
 						}
-						return
 
 					case mcd.DCP_MUTATION:
 						switch e.Datatype {
@@ -667,7 +666,6 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNoReceived, endSeqNo)
 
 						*receivedTillEndSeqNo = true
-						return
 					}
 
 				case <-statsTicker.C:
@@ -714,9 +712,13 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		}
 
-		wg.Wait()
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, checkIfReceivedTillEndSeqNoCallback, c, vb, &receivedTillEndSeqNo, dcpFeed)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return common.ErrRetryTimeout
+		}
 
-		dcpFeed.Close()
+		wg.Wait()
 
 		if !receivedTillEndSeqNo {
 			return fmt.Errorf("not received doc timer events till desired end seq no")
