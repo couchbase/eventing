@@ -962,6 +962,10 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 			c.Unlock()
 		}
 
+		if err == couchbase.ErrorInvalidVbucket {
+			return err
+		}
+
 		dcpFeed.Close()
 
 		c.hostDcpFeedRWMutex.Lock()
