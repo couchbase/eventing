@@ -131,9 +131,6 @@ retryRebProgress:
 					continue
 				}
 
-				logging.Infof("%s total vbs to shuffle: %v vbs remaining to shuffle: %v",
-					logPrefix, aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle)
-
 				if p.VbsRemainingToShuffle > aggProgress.VbsRemainingToShuffle {
 					aggProgress.VbsRemainingToShuffle = p.VbsRemainingToShuffle
 				}
@@ -147,6 +144,10 @@ retryRebProgress:
 				}
 
 				progress = 1.0 - workRemaining
+
+				logging.Infof("%s total vbs to shuffle: %d remaining to shuffle: %d progress: %d*100 % counter: %d cmp: %t",
+					logPrefix, aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle, progress, rebProgressCounter,
+					util.FloatEquals(progress, (1-workRemaining)))
 			}
 
 			if rebProgressCounter == rebalanceStalenessCounter {

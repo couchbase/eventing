@@ -1017,7 +1017,7 @@ func (c *Consumer) handleFailoverLog() {
 				c.reqStreamResponseCh <- vbFlog.vb
 
 				logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from inflightDcpStreams",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
 				delete(c.inflightDcpStreams, vbFlog.vb)
 			}
 			c.inflightDcpStreamsRWMutex.Unlock()

@@ -9,6 +9,7 @@ import (
 	"hash/crc32"
 	"io"
 	"io/ioutil"
+	"math"
 	"net/url"
 	"reflect"
 	"sort"
@@ -34,7 +35,7 @@ const (
 
 	HTTPRequestTimeout = time.Duration(5000) * time.Millisecond
 
-	EPSILON = 0.00000001
+	EPSILON = 1e-3
 )
 
 const (
@@ -1079,7 +1080,7 @@ func ToStringArray(from interface{}) (to []string) {
 }
 
 func FloatEquals(a, b float64) bool {
-	return (a-b) < EPSILON && (b-a) < EPSILON
+	return math.Abs(a-b) <= EPSILON
 }
 
 func DeepCopy(kv map[string]interface{}) (newKv map[string]interface{}) {
