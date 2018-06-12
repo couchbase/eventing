@@ -302,6 +302,8 @@ func (c *Consumer) processEvents() {
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, metadataUpdated)
 						if metadataUpdated {
 							c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
+						} else {
+							goto retryCheckMetadataUpdated
 						}
 					} else {
 						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated not found",
@@ -970,6 +972,9 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbKvAddr)
 	} else {
 
+		logging.Infof("%s [%s:%s:%d] vb: %d Adding entry into inflightDcpStreams",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+
 		c.inflightDcpStreamsRWMutex.Lock()
 		c.inflightDcpStreams[vb] = struct{}{}
 		c.inflightDcpStreamsRWMutex.Unlock()
@@ -1010,6 +1015,9 @@ func (c *Consumer) handleFailoverLog() {
 			c.inflightDcpStreamsRWMutex.Lock()
 			if _, exists := c.inflightDcpStreams[vbFlog.vb]; exists {
 				c.reqStreamResponseCh <- vbFlog.vb
+
+				logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from inflightDcpStreams",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 				delete(c.inflightDcpStreams, vbFlog.vb)
 			}
 			c.inflightDcpStreamsRWMutex.Unlock()
