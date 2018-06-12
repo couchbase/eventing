@@ -332,7 +332,7 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   std::string xattr_cas_path("eventing.cas");
   std::string xattr_digest_path("eventing.digest");
   std::string xattr_timer_path("eventing.timers");
-  std::string eventing_ver_path("eventing.version");
+  std::string xattr_eventing_ver_path("eventing.version");
   std::string mutation_cas_macro(R"("${Mutation.CAS}")");
   std::string doc_exptime("$document.exptime");
   timer_entry += "Z::";
@@ -447,8 +447,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     eventing_ver_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
     eventing_ver_spec.options =
         LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
-    LCB_SDSPEC_SET_PATH(&eventing_ver_spec, eventing_ver_path.c_str(),
-                        eventing_ver_path.size());
+    LCB_SDSPEC_SET_PATH(&eventing_ver_spec, xattr_eventing_ver_path.c_str(),
+                        xattr_eventing_ver_path.size());
     LCB_SDSPEC_SET_VALUE(&eventing_ver_spec, eventing_ver_value.c_str(),
                          eventing_ver_value.size());
     specs.push_back(eventing_ver_spec);

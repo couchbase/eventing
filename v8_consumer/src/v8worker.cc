@@ -458,9 +458,10 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
+  auto transpiler = UnwrapData(isolate_)->transpiler;
   v8::Context::Scope context_scope(context);
 
-  auto uniline_info = UniLineN1QL(script_to_execute);
+  auto uniline_info = transpiler->UniLineN1QL(script_to_execute);
   LOG(logTrace) << "code after Unilining N1QL: "
                 << RM(uniline_info.handler_code) << std::endl;
   if (uniline_info.code != kOK) {
@@ -482,7 +483,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   n1ql_handle_ = new N1QL(conn_pool_, isolate_);
   UnwrapData(isolate_)->n1ql_handle = n1ql_handle_;
 
-  auto transpiler = UnwrapData(isolate_)->transpiler;
   script_to_execute =
       transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
                             app_name_ + ".map.json", settings_->host_addr,
