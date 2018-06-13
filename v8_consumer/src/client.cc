@@ -703,7 +703,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   case eApp_Worker_Setting:
     switch (getAppWorkerSettingOpcode(parsed_header->opcode)) {
     case oLogLevel:
-      setLogLevel(LevelFromString(parsed_header->metadata));
+      SystemLog::setLogLevel(LevelFromString(parsed_header->metadata));
       LOG(logInfo) << "Configured log level: " << parsed_header->metadata
                    << std::endl;
       msg_priority_ = true;
@@ -973,8 +973,6 @@ int main(int argc, char **argv) {
 
   curl_global_init(CURL_GLOBAL_ALL);
 
-  setAppName(appname);
-  setWorkerID(worker_id);
   AppWorker *worker = AppWorker::GetAppWorker();
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
     worker->InitUDS(appname, Localhost(false), worker_id, batch_size,

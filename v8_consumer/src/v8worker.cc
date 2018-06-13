@@ -159,8 +159,8 @@ void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     lcb_wait(instance);
     break;
   case LCB_SUCCESS:
-    LOG(logTrace) << "NValue " << RU(static_cast<int>(rg->nvalue)) << "Value "
-                  << RU(reinterpret_cast<const char *>(rg->value));
+    LOG(logTrace) << "NValue " << RU(std::to_string(static_cast<int>(rg->nvalue)))
+                  << "Value " << RU(reinterpret_cast<const char *>(rg->value));
     break;
   default:
     LOG(logTrace) << "LCB_CALLBACK_GET: Operation failed, "
@@ -223,7 +223,7 @@ void startDebuggerFlag(bool started) {
 
   // Disable logging when inspector is running
   if (started) {
-    setLogLevel(logSilent);
+    SystemLog::setLogLevel(logSilent);
   }
 }
 
@@ -650,7 +650,7 @@ void V8Worker::Checkpoint() {
 
     for (auto &vbTimer : curr_dtimer_checkpoint) {
       std::stringstream vb_key;
-      vb_key << appName << "::vb::" << vbTimer.first;
+      vb_key << app_name_ << "::vb::" << vbTimer.first;
 
       lcb_CMDSUBDOC cmd = {0};
       LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());
@@ -709,7 +709,7 @@ void V8Worker::Checkpoint() {
 
     for (auto &vbTimer : curr_ctimer_checkpoint) {
       std::stringstream vb_key;
-      vb_key << appName << "::vb::" << vbTimer.first;
+      vb_key << app_name_ << "::vb::" << vbTimer.first;
 
       lcb_CMDSUBDOC cmd = {0};
       LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());

@@ -12,25 +12,20 @@
 #include "log.h"
 #include <cstdlib>
 
-std::atomic_flag AtomicCerrLog::cerr_spin_lock_ = ATOMIC_FLAG_INIT;
-std::atomic_flag AtomicCoutLog::cout_spin_lock_ = ATOMIC_FLAG_INIT;
-std::ostringstream app_log_os;
+std::mutex SystemLog::lock_;
+std::mutex ApplicationLog::lock_;
 
-std::string appName = "";
-LogLevel desiredLogLevel = LogLevel(0);
-std::string workerID = "";
+bool SystemLog::redact_ = SystemLog::getRedactOverride();
+LogLevel SystemLog::level_ = logInfo;
 
-void setAppName(std::string app) { appName = app; }
-
-void setLogLevel(LogLevel level) { desiredLogLevel = level; }
-
-void setWorkerID(std::string wID) { workerID = wID; }
-
-static bool isNoRedact() {
-  const char *evar = std::getenv("CB_EVENTING_NOREDACT");
-  if (!evar)
-    return false;
-  return (std::string(evar) == "true");
+void SystemLog::setLogLevel(LogLevel level) {
+    level_ = level;
 }
 
-bool noRedact = isNoRedact();
+bool SystemLog::getRedactOverride() {
+    const char* evar = std::getenv("CB_EVENTING_NOREDACT");
+    if (!evar) {
+        return true;
+    }
+    return (std::string(evar) != "true");
+}

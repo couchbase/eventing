@@ -129,7 +129,8 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   LOG(logTrace) << "Cron timer: Actual timestamp: " << actual_ts
                 << " Fuzz timestamp: " << fuzz_ts << std::endl;
 
-  timer_entry.assign(appName);
+  auto v8worker = UnwrapData(isolate)->v8worker;
+  timer_entry.assign(v8worker->GetAppName());
   timer_entry.append("::");
   timer_entry.append(ConvertToISO8601(start_ts));
   timer_entry.append("Z");
@@ -315,7 +316,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  timer_entry.assign(appName);
+  auto v8worker = UnwrapData(isolate)->v8worker;
+  timer_entry.assign(v8worker->GetAppName());
   timer_entry += "::";
   timer_entry += ConvertToISO8601(start_ts);
 

@@ -217,6 +217,10 @@ public:
   void AddLcbException(int err_code);
   void ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions);
 
+  std::string GetAppName() {
+    return app_name_;
+  }
+
   void UpdateHistogram(Time::time_point t);
 
   /**
