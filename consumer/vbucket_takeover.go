@@ -352,8 +352,14 @@ retryStreamUpdate:
 				default:
 				}
 
-				logging.Tracef("%s [%s:takeover_r_%d:%s:%d] vb: %d triggering vbTakeover",
-					logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
+				c.inflightDcpStreamsRWMutex.RLock()
+				if _, ok := c.inflightDcpStreams[vb]; ok {
+					logging.Infof("%s [%s:takeover_r_%d:%s:%d] vb: %d skipping vbTakeover as dcp request stream already in flight",
+						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
+					c.inflightDcpStreamsRWMutex.RUnlock()
+					continue
+				}
+				c.inflightDcpStreamsRWMutex.RUnlock()
 
 				err := util.Retry(util.NewFixedBackoff(vbTakeoverRetryInterval), c.retryCount, vbTakeoverCallback, c, vb)
 				if err == common.ErrRetryTimeout {
