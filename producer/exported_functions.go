@@ -851,3 +851,24 @@ func (p *Producer) RemoveConsumerToken(workerName string) {
 func (p *Producer) IsPlannerRunning() bool {
 	return p.isPlannerRunning
 }
+
+// CheckpointBlobDump returns state of metadata blobs stored in Couchbase bucket
+func (p *Producer) CheckpointBlobDump() map[string]interface{} {
+	logPrefix := "Producer::CheckpointBlobDump"
+
+	checkpointBlobDumps := make(map[string]interface{})
+	vbBlob := make(map[string]interface{})
+
+	for vb := 0; vb < p.numVbuckets; vb++ {
+		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, vbKey, &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+			return nil
+		}
+
+		checkpointBlobDumps[vbKey] = vbBlob
+	}
+
+	return checkpointBlobDumps
+}

@@ -1818,6 +1818,11 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 			stats.VbDistributionStatsFromMetadata = m.superSup.VbDistributionStatsFromMetadata(app.Name)
 
 			if fullStats {
+				checkpointBlobDump, err := m.superSup.CheckpointBlobDump(app.Name)
+				if err == nil {
+					stats.CheckpointBlobDump = checkpointBlobDump
+				}
+
 				stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
 
 				plasmaStats, err := m.superSup.GetPlasmaStats(app.Name)

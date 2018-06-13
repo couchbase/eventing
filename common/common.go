@@ -37,6 +37,7 @@ var ErrRetryTimeout = errors.New("retry timeout")
 type EventingProducer interface {
 	Auth() string
 	CfgData() string
+	CheckpointBlobDump() map[string]interface{}
 	CleanupMetadataBucket() error
 	CleanupUDSs()
 	ClearEventStats()
@@ -139,6 +140,7 @@ type EventingConsumer interface {
 
 type EventingSuperSup interface {
 	BootstrapAppList() map[string]string
+	CheckpointBlobDump(appName string) (interface{}, error)
 	ClearEventStats()
 	CleanupProducer(appName string) error
 	DeployedAppList() []string

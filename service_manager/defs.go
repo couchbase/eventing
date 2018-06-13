@@ -154,6 +154,7 @@ type backlogStat struct {
 }
 
 type stats struct {
+	CheckpointBlobDump              interface{} `json:"checkpoint_blob_dump,omitempty"`
 	CredsRequestCounter             interface{} `json:"creds_request_counter,omitempty"`
 	DocTimerDebugStats              interface{} `json:"doc_timer_debug_stats,omitempty"`
 	EventProcessingStats            interface{} `json:"event_processing_stats,omitempty"`
