@@ -201,6 +201,7 @@ type Consumer struct {
 	reqStreamResponseCh         chan uint16
 	statsTickDuration           time.Duration
 	superSup                    common.EventingSuperSup
+	usingDocTimer               bool
 	vbDcpEventsRemaining        map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                map[uint16]*couchbase.DcpFeed
 	vbEventingNodeAssignMap     map[uint16]string // Access controlled by vbEventingNodeAssignMapRWMutex

@@ -130,12 +130,13 @@ type cleanup struct {
 }
 
 type application struct {
-	Name             string                 `json:"appname"`
-	ID               int                    `json:"id"`
-	DeploymentConfig depCfg                 `json:"depcfg"`
 	AppHandlers      string                 `json:"appcode"`
-	Settings         map[string]interface{} `json:"settings"`
+	DeploymentConfig depCfg                 `json:"depcfg"`
 	EventingVersion  string                 `json:"version"`
+	ID               int                    `json:"id"`
+	Name             string                 `json:"appname"`
+	Settings         map[string]interface{} `json:"settings"`
+	UsingDocTimer    bool                   `json:"using_doc_timer"`
 }
 
 type depCfg struct {

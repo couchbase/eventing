@@ -92,7 +92,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 				}
 
 				if vbBlob.NodeUUID != c.NodeUUID() && vbBlob.DCPStreamStatus == dcpStreamRunning {
-					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d metadata node uuid: %d dcp stream status: %d, skipping give up phase",
+					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d metadata node uuid: %s dcp stream status: %s, skipping give up phase",
 						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.NodeUUID, vbBlob.DCPStreamStatus)
 
 					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d Issuing dcp close stream",
@@ -520,7 +520,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		return nil
 	}
 
-	if backfillTimers {
+	if backfillTimers && c.usingDocTimer {
 		seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",

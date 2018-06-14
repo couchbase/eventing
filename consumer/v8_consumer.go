@@ -131,6 +131,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbFlogChan:                      make(chan *vbFlogEntry),
 		vbnos:                           vbnos,
 		updateStatsStopCh:               make(chan struct{}, 1),
+		usingDocTimer:                   hConfig.UsingDocTimer,
 		vbDcpEventsRemaining:            make(map[int]int64),
 		vbEventingNodeAssignMap:         vbEventingNodeAssignMap,
 		vbEventingNodeAssignRWMutex:     &sync.RWMutex{},
@@ -234,8 +235,8 @@ func (c *Consumer) Serve() {
 	go c.processReqStreamMessages()
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
-	logging.Infof("%s [%s:%s:%d] vbnos len: %d dump: %s",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos), util.Condense(c.vbnos))
+	logging.Infof("%s [%s:%s:%d] using doc_timer: %t vbnos len: %d dump: %s",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.usingDocTimer, len(c.vbnos), util.Condense(c.vbnos))
 
 	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 	if err == common.ErrRetryTimeout {

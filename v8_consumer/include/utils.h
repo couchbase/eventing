@@ -61,6 +61,7 @@ struct Data {
 struct CodeVersion {
   std::string version;
   std::string level;
+  std::string using_doc_timer;
 };
 
 inline Data *UnwrapData(v8::Isolate *isolate) {

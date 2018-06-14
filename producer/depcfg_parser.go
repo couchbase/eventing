@@ -198,6 +198,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.TimerProcessingTickInterval = 500
 	}
 
+	if val, ok := settings["using_doc_timer"]; ok {
+		p.handlerConfig.UsingDocTimer = val.(bool)
+	} else {
+		p.handlerConfig.UsingDocTimer = true
+	}
+
 	if val, ok := settings["worker_count"]; ok {
 		p.handlerConfig.WorkerCount = int(val.(float64))
 	} else {
@@ -207,7 +213,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["worker_feedback_queue_cap"]; ok {
 		p.handlerConfig.FeedbackQueueCap = int64(val.(float64))
 	} else {
-		p.handlerConfig.FeedbackQueueCap = int64(10 * 1000)
+		p.handlerConfig.FeedbackQueueCap = int64(100 * 100)
 	}
 
 	if val, ok := settings["worker_queue_cap"]; ok {
@@ -241,13 +247,13 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
 		p.rebalanceConfig.VBOwnershipGiveUpRoutineCount = int(val.(float64))
 	} else {
-		p.rebalanceConfig.VBOwnershipGiveUpRoutineCount = 1
+		p.rebalanceConfig.VBOwnershipGiveUpRoutineCount = 3
 	}
 
 	if val, ok := settings["vb_ownership_takeover_routine_count"]; ok {
 		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = int(val.(float64))
 	} else {
-		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = 1
+		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = 3
 	}
 
 	// Application logging related configurations
