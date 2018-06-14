@@ -15,7 +15,7 @@ import (
 )
 
 const dcpMutationExtraLen = 16
-const bufferAckThreshold = 0.2
+const bufferAckThreshold = 0.1
 const opaqueOpen = 0xBEAF0001
 const opaqueFailover = 0xDEADBEEF
 const opaqueGetseqno = 0xDEADBEEF
@@ -1097,14 +1097,17 @@ loop:
 		// Immediately respond to NOOP and listen for next message.
 		// NOOPs are not accounted for buffer-ack.
 		if pkt.Opcode == transport.DCP_NOOP {
+			fmsg := "%v received NOOP from producer ...\n"
+			logging.Infof(fmsg, prefix)
+
 			noop := &transport.MCResponse{
 				Opcode: transport.DCP_NOOP, Opaque: pkt.Opaque,
 			}
 			if err := feed.conn.TransmitResponse(noop); err != nil {
 				logging.Errorf("%v NOOP.Transmit(): %v", prefix, err)
 			} else {
-				fmsg := "%v responded to NOOP ok ...\n"
-				logging.Tracef(fmsg, prefix)
+				fmsg = "%v responded to NOOP ok ...\n"
+				logging.Infof(fmsg, prefix)
 			}
 			continue loop
 		}
