@@ -506,8 +506,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 		}
 	}
 
-	logging.Infof("%s [%s:%s:%d] compilation status %v",
-		logPrefix, c.workerName, c.tcpPort, pid, c.compileInfo)
+	logging.Infof("%s [%s:%s:%d] compilation status %#v", logPrefix, c.workerName, c.tcpPort, pid, c.compileInfo)
 
 	return c.compileInfo, nil
 }

@@ -1215,6 +1215,15 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
+	logging.Infof("App: %s using doc_timers: %s", app.Name, compilationInfo.UsingDocTimer)
+
+	switch compilationInfo.UsingDocTimer {
+	case "true":
+		app.Settings["using_doc_timer"] = true
+	case "false":
+		app.Settings["using_doc_timer"] = false
+	}
+
 	m.checkVersionCompat(compilationInfo.Version, info)
 	if info.Code != m.statusCodes.ok.Code {
 		return
@@ -1241,14 +1250,14 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	err = util.DeleteStaleAppContent(metakvAppsPath, app.Name)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppPs.Code
-		info.Info = fmt.Sprintf("Failed to clean up stale entry for app: %v err: %v", app.Name, err)
+		info.Info = fmt.Sprintf("App: %s failed to clean up stale entry, err: %v", app.Name, err)
 		return
 	}
 
 	err = util.WriteAppContent(metakvAppsPath, metakvChecksumPath, app.Name, appContent)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppPs.Code
-		info.Info = fmt.Sprintf("App: %v failed to write to metakv, err: %v", app.Name, err)
+		info.Info = fmt.Sprintf("App: %s failed to write to metakv, err: %v", app.Name, err)
 		return
 	}
 
@@ -1818,6 +1827,11 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 			stats.VbDistributionStatsFromMetadata = m.superSup.VbDistributionStatsFromMetadata(app.Name)
 
 			if fullStats {
+				checkpointBlobDump, err := m.superSup.CheckpointBlobDump(app.Name)
+				if err == nil {
+					stats.CheckpointBlobDump = checkpointBlobDump
+				}
+
 				stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
 
 				plasmaStats, err := m.superSup.GetPlasmaStats(app.Name)

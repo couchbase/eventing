@@ -1174,6 +1174,15 @@ func (c *Consumer) processReqStreamMessages() {
 				continue
 			}
 
+			c.inflightDcpStreamsRWMutex.RLock()
+			if _, ok := c.inflightDcpStreams[msg.vb]; ok {
+				logging.Infof("%s [%s:%s:%d] vb: %d Skipping stream request as stream req for it is already in-flight",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
+				c.inflightDcpStreamsRWMutex.RUnlock()
+				continue
+			}
+			c.inflightDcpStreamsRWMutex.RUnlock()
+
 			go func(msg *streamRequestInfo, c *Consumer, logPrefix string) {
 				err := c.dcpRequestStreamHandle(msg.vb, msg.vbBlob, msg.startSeqNo)
 				if err == common.ErrRetryTimeout {

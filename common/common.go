@@ -37,6 +37,7 @@ var ErrRetryTimeout = errors.New("retry timeout")
 type EventingProducer interface {
 	Auth() string
 	CfgData() string
+	CheckpointBlobDump() map[string]interface{}
 	CleanupMetadataBucket() error
 	CleanupUDSs()
 	ClearEventStats()
@@ -139,6 +140,7 @@ type EventingConsumer interface {
 
 type EventingSuperSup interface {
 	BootstrapAppList() map[string]string
+	CheckpointBlobDump(appName string) (interface{}, error)
 	ClearEventStats()
 	CleanupProducer(appName string) error
 	DeployedAppList() []string
@@ -220,15 +222,16 @@ type DebuggerInstanceAddrBlobVer struct {
 }
 
 type CompileStatus struct {
-	Language       string `json:"language"`
-	CompileSuccess bool   `json:"compile_success"`
-	Index          int    `json:"index"`
-	Line           int    `json:"line_number"`
-	Column         int    `json:"column_number"`
-	Description    string `json:"description"`
-	Version        string `json:"version"`
-	Level          string `json:"level"`
 	Area           string `json:"area"`
+	Column         int    `json:"column_number"`
+	CompileSuccess bool   `json:"compile_success"`
+	Description    string `json:"description"`
+	Index          int    `json:"index"`
+	Language       string `json:"language"`
+	Level          string `json:"level"`
+	Line           int    `json:"line_number"`
+	UsingDocTimer  string `json:"using_doc_timer"`
+	Version        string `json:"version"`
 }
 
 // PlannerNodeVbMapping captures the vbucket distribution across all
@@ -264,6 +267,7 @@ type HandlerConfig struct {
 	StatsLogInterval            int
 	StreamBoundary              DcpStreamBoundary
 	TimerProcessingTickInterval int
+	UsingDocTimer               bool
 	WorkerCount                 int
 	WorkerQueueCap              int64
 	WorkerQueueMemCap           int64

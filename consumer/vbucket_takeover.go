@@ -92,7 +92,7 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 				}
 
 				if vbBlob.NodeUUID != c.NodeUUID() && vbBlob.DCPStreamStatus == dcpStreamRunning {
-					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d metadata node uuid: %d dcp stream status: %d, skipping give up phase",
+					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d metadata node uuid: %s dcp stream status: %s, skipping give up phase",
 						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.NodeUUID, vbBlob.DCPStreamStatus)
 
 					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d Issuing dcp close stream",
@@ -352,8 +352,14 @@ retryStreamUpdate:
 				default:
 				}
 
-				logging.Tracef("%s [%s:takeover_r_%d:%s:%d] vb: %d triggering vbTakeover",
-					logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
+				c.inflightDcpStreamsRWMutex.RLock()
+				if _, ok := c.inflightDcpStreams[vb]; ok {
+					logging.Infof("%s [%s:takeover_r_%d:%s:%d] vb: %d skipping vbTakeover as dcp request stream already in flight",
+						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
+					c.inflightDcpStreamsRWMutex.RUnlock()
+					continue
+				}
+				c.inflightDcpStreamsRWMutex.RUnlock()
 
 				err := util.Retry(util.NewFixedBackoff(vbTakeoverRetryInterval), c.retryCount, vbTakeoverCallback, c, vb)
 				if err == common.ErrRetryTimeout {
@@ -514,7 +520,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		return nil
 	}
 
-	if backfillTimers {
+	if backfillTimers && c.usingDocTimer {
 		seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",

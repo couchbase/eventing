@@ -742,7 +742,6 @@ func (s *SuperSupervisor) CleanupProducer(appName string) error {
 		if !ok {
 			p.StopRunningConsumers()
 			p.CleanupUDSs()
-			p.CleanupMetadataBucket()
 
 			err = p.CleanupMetadataBucket()
 			if err == common.ErrRetryTimeout {
