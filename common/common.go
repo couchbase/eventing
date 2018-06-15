@@ -180,15 +180,16 @@ type EventingServiceMgr interface {
 
 // AppConfig Application/Event handler configuration
 type AppConfig struct {
-	AppName        string
 	AppCode        string
 	AppDeployState string
+	AppName        string
 	AppState       string
 	AppVersion     string
-	LastDeploy     string
-	ID             int
-	Settings       map[string]interface{}
 	HandlerUUID    uint32
+	ID             int
+	LastDeploy     string
+	Settings       map[string]interface{}
+	UsingDocTimer  bool
 }
 
 type RebalanceProgress struct {

@@ -1131,29 +1131,7 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 	return
 }
 
-// Saves application to metakv and returns appropriate success/error code
-func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
-	info = &runtimeInfo{}
-	logging.Infof("Saving application %s to primary store", app.Name)
-
-	if rebStatus := m.checkRebalanceStatus(); rebStatus.Code != m.statusCodes.ok.Code {
-		info.Code = rebStatus.Code
-		info.Info = rebStatus.Info
-		return
-	}
-
-	if m.checkIfDeployed(app.Name) {
-		info.Code = m.statusCodes.errAppDeployed.Code
-		info.Info = fmt.Sprintf("App with same name %s is already deployed, skipping save request", app.Name)
-		return
-	}
-
-	if app.DeploymentConfig.SourceBucket == app.DeploymentConfig.MetadataBucket {
-		info.Code = m.statusCodes.errSrcMbSame.Code
-		info.Info = fmt.Sprintf("Source bucket same as metadata bucket. source_bucket : %s metadata_bucket : %s", app.DeploymentConfig.SourceBucket, app.DeploymentConfig.MetadataBucket)
-		return
-	}
-
+func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	var bNames []flatbuffers.UOffsetT
 
@@ -1193,11 +1171,43 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	cfg.ConfigAddAppName(builder, aName)
 	cfg.ConfigAddDepCfg(builder, depcfg)
 	cfg.ConfigAddHandlerUUID(builder, app.HandlerUUID)
+
+	udtp := byte(0x0)
+	if app.UsingDocTimer {
+		udtp = byte(0x1)
+	}
+	cfg.ConfigAddUsingDocTimer(builder, udtp)
 	config := cfg.ConfigEnd(builder)
 
 	builder.Finish(config)
 
-	appContent := builder.FinishedBytes()
+	return builder.FinishedBytes()
+}
+
+// Saves application to metakv and returns appropriate success/error code
+func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	logging.Infof("Saving application %s to primary store", app.Name)
+
+	if rebStatus := m.checkRebalanceStatus(); rebStatus.Code != m.statusCodes.ok.Code {
+		info.Code = rebStatus.Code
+		info.Info = rebStatus.Info
+		return
+	}
+
+	if m.checkIfDeployed(app.Name) {
+		info.Code = m.statusCodes.errAppDeployed.Code
+		info.Info = fmt.Sprintf("App with same name %s is already deployed, skipping save request", app.Name)
+		return
+	}
+
+	if app.DeploymentConfig.SourceBucket == app.DeploymentConfig.MetadataBucket {
+		info.Code = m.statusCodes.errSrcMbSame.Code
+		info.Info = fmt.Sprintf("Source bucket same as metadata bucket. source_bucket : %s metadata_bucket : %s", app.DeploymentConfig.SourceBucket, app.DeploymentConfig.MetadataBucket)
+		return
+	}
+
+	appContent := m.encodeAppPayload(&app)
 
 	if len(appContent) > maxHandlerSize {
 		info.Code = m.statusCodes.errAppCodeSize.Code
@@ -1221,9 +1231,13 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	switch compilationInfo.UsingDocTimer {
 	case "true":
 		app.Settings["using_doc_timer"] = true
+		app.UsingDocTimer = true
 	case "false":
 		app.Settings["using_doc_timer"] = false
+		app.UsingDocTimer = false
 	}
+
+	appContent = m.encodeAppPayload(&app)
 
 	m.checkVersionCompat(compilationInfo.Version, info)
 	if info.Code != m.statusCodes.ok.Code {
