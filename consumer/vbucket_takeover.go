@@ -489,8 +489,6 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 	default:
 		return errUnexpectedVbStreamStatus
 	}
-
-	return nil
 }
 
 func (c *Consumer) checkIfCurrentNodeShouldOwnVb(vb uint16) bool {

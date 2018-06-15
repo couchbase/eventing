@@ -552,7 +552,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 		err := MetakvSet(currpath, fragment, nil)
 		if err != nil {
 			//Delete existing entry from appspath
-			logging.Errorf("%s MetakvSet failed for fragments, fragment number: %d appName: %d err: %v", logPrefix, idx, appName, err)
+			logging.Errorf("%s MetakvSet failed for fragments, fragment number: %d appName: %s err: %v", logPrefix, idx, appName, err)
 			if errd := MetakvRecursiveDelete(appsPath); errd != nil {
 				logging.Errorf("%s MetakvSet::MetakvRecursiveDelete failed, fragment number: %d appName: %s err: %v", logPrefix, idx, appName, errd)
 				return errd

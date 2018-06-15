@@ -268,7 +268,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 				if state == common.AppStateUndeployed || state == common.AppStateDisabled {
 					if err := util.MetaKvDelete(MetakvAppsRetryPath+appName, nil); err != nil {
-						logging.Errorf("%s [%d] Failed to delete from metakv path, err : %v", err)
+						logging.Errorf("%s [%d] Failed to delete from metakv path, err : %v", logPrefix, len(s.runningProducers), err)
 						return err
 					}
 
@@ -577,7 +577,7 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 				d, err := os.Open(s.eventingDir)
 				if err != nil {
 					logging.Errorf("%s [%d] App: %s failed to open eventingDir: %s while trying to purge app logs, err: %v",
-						logPrefix, len(s.runningProducers), appName, err)
+						logPrefix, len(s.runningProducers), appName, s.eventingDir, err)
 					continue
 				}
 

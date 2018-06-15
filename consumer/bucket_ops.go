@@ -750,11 +750,10 @@ var checkIfReceivedTillEndSeqNoCallback = func(args ...interface{}) error {
 
 	if !*receivedTillEndSeqNo {
 		return fmt.Errorf("Not recieved till supplied end seq no")
-	} else {
-		logging.Infof("%s [%s:%s:%d] vb: %d closing feed: %s, received events till end seq no",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName())
-
-		dcpFeed.Close()
-		return nil
 	}
+	logging.Infof("%s [%s:%s:%d] vb: %d closing feed: %s, received events till end seq no",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName())
+
+	dcpFeed.Close()
+	return nil
 }
