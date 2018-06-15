@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -488,8 +489,6 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 	default:
 		return errUnexpectedVbStreamStatus
 	}
-
-	return nil
 }
 
 func (c *Consumer) checkIfCurrentNodeShouldOwnVb(vb uint16) bool {
@@ -562,7 +561,7 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 
 			statsTicker := time.NewTicker(c.statsTickDuration)
 			dcpMessagesProcessed := make(map[mcd.CommandCode]uint64)
-
+			xattrprefix := strconv.Itoa(int(c.app.HandlerUUID))
 			defer statsTicker.Stop()
 			var seqNoReceived uint64
 
@@ -621,9 +620,9 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 									totalXattrData = totalXattrData[4+frameLength:]
 								}
 
-								if len(frameData) > len(xattrPrefix) {
-									if bytes.Compare(frameData[:len(xattrPrefix)], []byte(xattrPrefix)) == 0 {
-										toParse := frameData[len(xattrPrefix)+1:]
+								if len(frameData) > len(xattrprefix) {
+									if bytes.Compare(frameData[:len(xattrprefix)], []byte(xattrprefix)) == 0 {
+										toParse := frameData[len(xattrprefix)+1:]
 
 										err := json.Unmarshal(toParse, &xMeta)
 										if err != nil {

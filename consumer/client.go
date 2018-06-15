@@ -44,6 +44,7 @@ func (c *client) Serve() {
 		c.consumerHandle.diagDir,
 		util.GetIPMode(),
 		strconv.FormatBool(c.consumerHandle.breakpadOn),
+		strconv.Itoa(int(c.consumerHandle.app.HandlerUUID)),
 		c.eventingPort) // Not read, for tagging
 
 	user, key := util.LocalKey()

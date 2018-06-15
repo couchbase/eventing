@@ -96,6 +96,7 @@ retryRebProgress:
 	}
 
 	var rebProgressCounter int
+	var progress float64
 
 	for {
 		select {
@@ -111,8 +112,6 @@ retryRebProgress:
 			} else if len(errMap) > 0 {
 				continue
 			}
-
-			var progress float64
 
 			if p.VbsOwnedPerPlan == 0 {
 				progress = 1.0
@@ -137,17 +136,17 @@ retryRebProgress:
 
 				workRemaining := (float64(p.VbsRemainingToShuffle)) / float64(aggProgress.VbsRemainingToShuffle)
 
-				if util.FloatEquals(progress, (1 - workRemaining)) {
+				if util.FloatEquals(progress, (1.0 - workRemaining)) {
 					rebProgressCounter++
 				} else {
 					rebProgressCounter = 0
 				}
 
-				progress = 1.0 - workRemaining
-
 				logging.Infof("%s total vbs to shuffle: %d remaining to shuffle: %d progress: %g counter: %d cmp: %t",
 					logPrefix, aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle, progress*100, rebProgressCounter,
-					util.FloatEquals(progress, (1-workRemaining)))
+					util.FloatEquals(progress, (1.0-workRemaining)))
+
+				progress = 1.0 - workRemaining
 			}
 
 			if rebProgressCounter == rebalanceStalenessCounter {

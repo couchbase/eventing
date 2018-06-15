@@ -79,6 +79,7 @@ type statusCodes struct {
 	errAppRetry            statusBase
 	errBucketMissing       statusBase
 	errClusterVersion      statusBase
+	errUUIDGen             statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -155,6 +156,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusInternalServerError
 	case m.statusCodes.errClusterVersion.Code:
 		return http.StatusNotAcceptable
+	case m.statusCodes.errUUIDGen.Code:
+		return http.StatusInternalServerError
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -200,6 +203,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errAppRetry:            statusBase{"ERR_APP_RETRY", 40},
 		errBucketMissing:       statusBase{"ERR_BUCKET_MISSING", 41},
 		errClusterVersion:      statusBase{"ERR_CLUSTER_VERSION", 42},
+		errUUIDGen:             statusBase{"ERR_UUID_GEN_FAILED", 43},
 	}
 
 	errors := []errorPayload{
@@ -405,6 +409,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errClusterVersion.Name,
 			Code:        m.statusCodes.errClusterVersion.Code,
 			Description: "This handler syntax is unsupported on current cluster version",
+		},
+		{
+			Name:        m.statusCodes.errUUIDGen.Name,
+			Code:        m.statusCodes.errUUIDGen.Code,
+			Description: "UUID generation failed",
 		},
 	}
 

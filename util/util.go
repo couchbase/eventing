@@ -3,6 +3,7 @@ package util
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -551,7 +552,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 		err := MetakvSet(currpath, fragment, nil)
 		if err != nil {
 			//Delete existing entry from appspath
-			logging.Errorf("%s MetakvSet failed for fragments, fragment number: %d appName: %d err: %v", logPrefix, idx, appName, err)
+			logging.Errorf("%s MetakvSet failed for fragments, fragment number: %d appName: %s err: %v", logPrefix, idx, appName, err)
 			if errd := MetakvRecursiveDelete(appsPath); errd != nil {
 				logging.Errorf("%s MetakvSet::MetakvRecursiveDelete failed, fragment number: %d appName: %s err: %v", logPrefix, idx, appName, errd)
 				return errd
@@ -1095,4 +1096,13 @@ func DeepCopy(kv map[string]interface{}) (newKv map[string]interface{}) {
 func GetAppNameFromPath(path string) string {
 	split := strings.Split(path, "/")
 	return split[len(split)-1]
+}
+
+func GenerateHandlerUUID() (uint32, error) {
+	uuid := make([]byte, 16)
+	_, err := rand.Read(uuid)
+	if err != nil {
+		return 0, err
+	}
+	return crc32.ChecksumIEEE(uuid), nil
 }
