@@ -164,7 +164,7 @@ retryRebProgress:
 				}
 
 				logging.Infof("%s total vbs to shuffle: %d remaining to shuffle: %d progress: %g counter: %d cmp: %t",
-					logPrefix, aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle, progress*100, rebProgressCounter,
+					logPrefix, aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle, (1.0-workRemaining)*100, rebProgressCounter,
 					util.FloatEquals(progress, (1.0-workRemaining)))
 
 				progress = 1.0 - workRemaining

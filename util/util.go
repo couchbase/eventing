@@ -36,7 +36,7 @@ const (
 
 	HTTPRequestTimeout = time.Duration(5000) * time.Millisecond
 
-	EPSILON = 1e-3
+	EPSILON = 1e-5
 )
 
 const (
