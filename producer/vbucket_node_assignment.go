@@ -110,8 +110,8 @@ func (p *Producer) vbEventingNodeAssign() error {
 		}
 	}
 
-	p.statsRWMutex.Lock()
-	defer p.statsRWMutex.Unlock()
+	p.plannerNodeMappingsRWMutex.Lock()
+	defer p.plannerNodeMappingsRWMutex.Unlock()
 	p.plannerNodeMappings = make([]*common.PlannerNodeVbMapping, 0)
 
 	for i, v := range vbCountPerNode {

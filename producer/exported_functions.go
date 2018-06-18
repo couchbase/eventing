@@ -410,8 +410,8 @@ func (p *Producer) InternalVbDistributionStats() map[string]string {
 
 // VbDistributionStatsFromMetadata dumps the state of vbucket distribution per metadata bucket
 func (p *Producer) VbDistributionStatsFromMetadata() map[string]map[string]string {
-	p.statsRWMutex.RLock()
-	defer p.statsRWMutex.RUnlock()
+	p.vbEventingNodeRWMutex.RLock()
+	defer p.vbEventingNodeRWMutex.RUnlock()
 
 	vbEventingNodeMap := make(map[string]map[string]string)
 	for node, nodeMap := range p.vbEventingNodeMap {
@@ -464,8 +464,8 @@ func (p *Producer) vbDistributionStats() error {
 			vbNodeMap[currentOwner][workerID], uint16(vb))
 	}
 
-	p.statsRWMutex.Lock()
-	defer p.statsRWMutex.Unlock()
+	p.vbEventingNodeRWMutex.Lock()
+	defer p.vbEventingNodeRWMutex.Unlock()
 	// Concise representation of vb mapping for eventing nodes
 	p.vbEventingNodeMap = make(map[string]map[string]string)
 
@@ -485,8 +485,8 @@ func (p *Producer) vbDistributionStats() error {
 // PlannerStats returns vbucket distribution as per planner running on local eventing
 // node for a given app
 func (p *Producer) PlannerStats() []*common.PlannerNodeVbMapping {
-	p.statsRWMutex.Lock()
-	defer p.statsRWMutex.Unlock()
+	p.plannerNodeMappingsRWMutex.RLock()
+	defer p.plannerNodeMappingsRWMutex.RUnlock()
 
 	plannerNodeMappings := make([]*common.PlannerNodeVbMapping, 0)
 
@@ -509,11 +509,11 @@ func (p *Producer) getSeqsProcessed() error {
 			return common.ErrRetryTimeout
 		}
 
-		p.statsRWMutex.Lock()
+		p.seqsNoProcessedRWMutex.Lock()
 		if _, ok := vbBlob["last_processed_seq_no"]; ok {
 			p.seqsNoProcessed[vb] = int64(vbBlob["last_processed_seq_no"].(float64))
 		}
-		p.statsRWMutex.Unlock()
+		p.seqsNoProcessedRWMutex.Unlock()
 	}
 
 	return nil
@@ -521,8 +521,8 @@ func (p *Producer) getSeqsProcessed() error {
 
 // GetSeqsProcessed returns vbucket specific sequence nos processed so far
 func (p *Producer) GetSeqsProcessed() map[int]int64 {
-	p.statsRWMutex.Lock()
-	defer p.statsRWMutex.Unlock()
+	p.seqsNoProcessedRWMutex.RLock()
+	defer p.seqsNoProcessedRWMutex.RUnlock()
 
 	seqNoProcessed := make(map[int]int64)
 	for k, v := range p.seqsNoProcessed {

@@ -24,33 +24,36 @@ import (
 func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
 	memoryQuota int64, numVbuckets int, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
-		appName:                appName,
-		bootstrapFinishCh:      make(chan struct{}, 1),
-		consumerListeners:      make(map[common.EventingConsumer]net.Listener),
-		dcpConfig:              make(map[string]interface{}),
-		ejectNodeUUIDs:         make([]string, 0),
-		eventingNodeUUIDs:      make([]string, 0),
-		feedbackListeners:      make(map[common.EventingConsumer]net.Listener),
-		handleV8ConsumerMutex:  &sync.Mutex{},
-		kvPort:                 kvPort,
-		listenerRWMutex:        &sync.RWMutex{},
-		metakvAppHostPortsPath: metakvAppHostPortsPath,
-		notifyInitCh:           make(chan struct{}, 2),
-		notifySettingsChangeCh: make(chan struct{}, 1),
-		notifySupervisorCh:     make(chan struct{}),
-		nsServerPort:           nsServerPort,
-		numVbuckets:            numVbuckets,
-		pauseProducerCh:        make(chan struct{}, 1),
-		plasmaMemQuota:         memoryQuota,
-		retryCount:             -1,
-		seqsNoProcessed:        make(map[int]int64),
-		signalStopPersistAllCh: make(chan struct{}, 1),
-		statsRWMutex:           &sync.RWMutex{},
-		superSup:               superSup,
-		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
-		updateStatsStopCh:      make(chan struct{}, 1),
-		uuid:                   uuid,
+		appName:                    appName,
+		bootstrapFinishCh:          make(chan struct{}, 1),
+		consumerListeners:          make(map[common.EventingConsumer]net.Listener),
+		dcpConfig:                  make(map[string]interface{}),
+		ejectNodeUUIDs:             make([]string, 0),
+		eventingNodeUUIDs:          make([]string, 0),
+		feedbackListeners:          make(map[common.EventingConsumer]net.Listener),
+		handleV8ConsumerMutex:      &sync.Mutex{},
+		kvPort:                     kvPort,
+		listenerRWMutex:            &sync.RWMutex{},
+		metakvAppHostPortsPath:     metakvAppHostPortsPath,
+		notifyInitCh:               make(chan struct{}, 2),
+		notifySettingsChangeCh:     make(chan struct{}, 1),
+		notifySupervisorCh:         make(chan struct{}),
+		nsServerPort:               nsServerPort,
+		numVbuckets:                numVbuckets,
+		pauseProducerCh:            make(chan struct{}, 1),
+		plannerNodeMappingsRWMutex: &sync.RWMutex{},
+		plasmaMemQuota:             memoryQuota,
+		retryCount:                 -1,
+		seqsNoProcessed:            make(map[int]int64),
+		seqsNoProcessedRWMutex:     &sync.RWMutex{},
+		signalStopPersistAllCh:     make(chan struct{}, 1),
+		statsRWMutex:               &sync.RWMutex{},
+		superSup:                   superSup,
+		topologyChangeCh:           make(chan *common.TopologyChangeMsg, 10),
+		updateStatsStopCh:          make(chan struct{}, 1),
+		uuid:                       uuid,
 		vbEventingNodeAssignRWMutex:  &sync.RWMutex{},
+		vbEventingNodeRWMutex:        &sync.RWMutex{},
 		workerNameConsumerMap:        make(map[string]common.EventingConsumer),
 		workerNameConsumerMapRWMutex: &sync.RWMutex{},
 		workerVbMapRWMutex:           &sync.RWMutex{},
@@ -96,9 +99,11 @@ func (p *Producer) Serve() {
 
 	logging.Infof("%s [%s:%d] number of vbuckets for %s: %d", logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)
 
+	p.seqsNoProcessedRWMutex.Lock()
 	for i := 0; i < p.numVbuckets; i++ {
 		p.seqsNoProcessed[i] = 0
 	}
+	p.seqsNoProcessedRWMutex.Unlock()
 
 	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles, p.appLogRotation)
 	if err != nil {

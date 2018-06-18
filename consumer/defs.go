@@ -198,7 +198,6 @@ type Consumer struct {
 	logLevel                    string
 	numVbuckets                 int
 	reqStreamCh                 chan *streamRequestInfo
-	reqStreamResponseCh         chan uint16
 	statsTickDuration           time.Duration
 	superSup                    common.EventingSuperSup
 	usingDocTimer               bool

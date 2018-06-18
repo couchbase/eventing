@@ -43,6 +43,27 @@ func (r *rebalancer) doRebalance() {
 	r.cb.done(nil, r.c)
 }
 
+func (r *rebalancer) storeRebalanceProgress(progress *common.RebalanceProgress) error {
+	logPrefix := "rebalancer::storeRebalanceProgress"
+
+	buf, err := json.Marshal(progress)
+	if err != nil {
+		logging.Errorf("%s Failed to marshal rebalance progress. Stopping rebalance.", logPrefix)
+		util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
+		return err
+	}
+
+	progressPath := fmt.Sprintf("%sprogress", metakvRebalanceProgress)
+	err = util.MetakvSet(progressPath, buf, nil)
+	if err != nil {
+		logging.Errorf("%s Failed to write rebalance init progress to metakv. Stopping rebalance.", logPrefix)
+		util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
+		return err
+	}
+
+	return nil
+}
+
 func (r *rebalancer) gatherProgress() {
 	logPrefix := "rebalancer::gatherProgress"
 
@@ -69,7 +90,7 @@ retryRebProgress:
 			goto retryRebProgress
 		} else {
 			util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
-			r.cb.done(fmt.Errorf("Failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
+			r.cb.done(fmt.Errorf("failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
 			return
 		}
 	} else if len(errMap) == 1 && len(r.keepNodes) == 1 {
@@ -77,23 +98,15 @@ retryRebProgress:
 			logPrefix, initProgress, errMap)
 		return
 	}
-
 	logging.Infof("%s initProgress dump: %rm", logPrefix, initProgress)
 
-	buf, err := json.Marshal(initProgress)
+	err := r.storeRebalanceProgress(initProgress)
 	if err != nil {
-		logging.Errorf("%s Failed to marshal rebalance progress. Retrying", logPrefix)
-		util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
+		r.cb.done(fmt.Errorf("failed to store initial progress token to metakv"), r.done)
 		return
 	}
 
 	progressPath := fmt.Sprintf("%sprogress", metakvRebalanceProgress)
-	err = util.MetakvSet(progressPath, buf, nil)
-	if err != nil {
-		logging.Errorf("%s Failed to write rebalance init progress to metakv. Retrying", logPrefix)
-		util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
-		return
-	}
 
 	var rebProgressCounter int
 	var progress float64
@@ -106,7 +119,7 @@ retryRebProgress:
 				logging.Errorf("%s Failed to capture cluster wide rebalance progress from all nodes, errMap dump: %rm", logPrefix, errMap)
 
 				util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
-				r.cb.done(fmt.Errorf("Failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
+				r.cb.done(fmt.Errorf("failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
 				progressTicker.Stop()
 				return
 			} else if len(errMap) > 0 {
@@ -115,10 +128,11 @@ retryRebProgress:
 
 			if p.VbsOwnedPerPlan == 0 {
 				progress = 1.0
+				logging.Infof("%s Rebalance completed", logPrefix)
 			} else {
 				aggProgress := &common.RebalanceProgress{}
 
-				buf, err = util.MetakvGet(progressPath)
+				buf, err := util.MetakvGet(progressPath)
 				if err != nil {
 					logging.Errorf("%s Failed to read rebalance init progress from metakv", logPrefix)
 					continue
@@ -132,6 +146,13 @@ retryRebProgress:
 
 				if p.VbsRemainingToShuffle > aggProgress.VbsRemainingToShuffle {
 					aggProgress.VbsRemainingToShuffle = p.VbsRemainingToShuffle
+
+					err := r.storeRebalanceProgress(aggProgress)
+					if err != nil {
+						progressTicker.Stop()
+						r.cb.done(fmt.Errorf("failed to store updated progress token to metakv"), r.done)
+						return
+					}
 				}
 
 				workRemaining := (float64(p.VbsRemainingToShuffle)) / float64(aggProgress.VbsRemainingToShuffle)
@@ -143,7 +164,7 @@ retryRebProgress:
 				}
 
 				logging.Infof("%s total vbs to shuffle: %d remaining to shuffle: %d progress: %g counter: %d cmp: %t",
-					logPrefix, aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle, progress*100, rebProgressCounter,
+					logPrefix, aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle, (1.0-workRemaining)*100, rebProgressCounter,
 					util.FloatEquals(progress, (1.0-workRemaining)))
 
 				progress = 1.0 - workRemaining
@@ -153,7 +174,7 @@ retryRebProgress:
 				logging.Errorf("%s Failing rebalance as progress hasn't made progress for past %d secs", logPrefix, rebProgressCounter*3)
 
 				util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
-				r.cb.done(fmt.Errorf("Eventing rebalance hasn't made progress for past %d secs", rebProgressCounter*3), r.done)
+				r.cb.done(fmt.Errorf("eventing rebalance hasn't made progress for past %d secs", rebProgressCounter*3), r.done)
 				progressTicker.Stop()
 				return
 			}
