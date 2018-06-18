@@ -493,10 +493,6 @@ func (c *Consumer) Stop() {
 		c.stopControlRoutineCh <- struct{}{}
 	}
 
-	if c.stopConsumerCh != nil {
-		c.stopConsumerCh <- struct{}{}
-	}
-
 	if c.signalStopDebuggerRoutineCh != nil {
 		c.signalStopDebuggerRoutineCh <- struct{}{}
 	}
@@ -524,6 +520,11 @@ func (c *Consumer) Stop() {
 	close(c.aggDCPFeed)
 	logging.Infof("%s [%s:%s:%d] Closing up aggDcpFeed channel",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
+
+	// Bail out processEvents loop only after couchbase.DcpFeed and aggChan are closed.
+	if c.stopConsumerCh != nil {
+		c.stopConsumerCh <- struct{}{}
+	}
 
 	if c.conn != nil {
 		c.conn.Close()
