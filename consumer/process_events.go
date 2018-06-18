@@ -1018,8 +1018,6 @@ func (c *Consumer) handleFailoverLog() {
 
 			c.inflightDcpStreamsRWMutex.Lock()
 			if _, exists := c.inflightDcpStreams[vbFlog.vb]; exists {
-				c.reqStreamResponseCh <- vbFlog.vb
-
 				logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from inflightDcpStreams",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
 				delete(c.inflightDcpStreams, vbFlog.vb)
@@ -1141,8 +1139,8 @@ func (c *Consumer) processReqStreamMessages() {
 	for {
 		select {
 		case msg, ok := <-c.reqStreamCh:
-			logging.Infof("%s [%s:%s:%d] vb: %d reqStreamCh size: %d reqStreamResponseCh size: %d Got request to stream",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb, len(c.reqStreamCh), len(c.reqStreamResponseCh))
+			logging.Infof("%s [%s:%s:%d] vb: %d reqStreamCh size: %d Got request to stream",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb, len(c.reqStreamCh))
 
 			if !ok {
 				logging.Infof("%s [%s:%s:%d] Returning streamReq processing routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -1197,7 +1195,6 @@ func (c *Consumer) processReqStreamMessages() {
 					}
 					c.Unlock()
 
-					c.reqStreamResponseCh <- msg.vb
 				} else {
 					logging.Infof("%s [%s:%s:%d] vb: %d DCP stream successfully requested", logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
 				}
@@ -1205,15 +1202,6 @@ func (c *Consumer) processReqStreamMessages() {
 
 			logging.Infof("%s [%s:%s:%d] vb: %d Waiting for message from proccessEvents loop",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
-
-		retryReadStreamResponseCh:
-			respMsg := <-c.reqStreamResponseCh
-			logging.Infof("%s [%s:%s:%d] vb: %d requested vb: %d, got response from DCP producer",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), respMsg, msg.vb)
-
-			if respMsg != msg.vb {
-				goto retryReadStreamResponseCh
-			}
 
 		case <-c.stopReqStreamProcessCh:
 			logging.Infof("%s [%s:%s:%d] Exiting streamReq processing routine", logPrefix, c.workerName, c.tcpPort, c.Pid())

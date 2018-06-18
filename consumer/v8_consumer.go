@@ -92,7 +92,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		plasmaStoreStopCh:               make(chan struct{}, 1),
 		producer:                        p,
 		reqStreamCh:                     make(chan *streamRequestInfo, numVbuckets*10),
-		reqStreamResponseCh:             make(chan uint16, numVbuckets*10),
 		restartVbDcpStreamTicker:        time.NewTicker(restartVbDcpStreamTickInterval),
 		retryCount:                      retryCount,
 		sendMsgBufferRWMutex:            &sync.RWMutex{},
