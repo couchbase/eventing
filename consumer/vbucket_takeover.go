@@ -817,7 +817,6 @@ func (c *Consumer) getVbRemainingToOwn() []uint16 {
 	var vbsRemainingToOwn []uint16
 
 	for vb := range c.vbEventingNodeAssignMap {
-
 		if (c.vbProcessingStats.getVbStat(vb, "node_uuid") != c.NodeUUID() ||
 			c.vbProcessingStats.getVbStat(vb, "assigned_worker") != c.ConsumerName()) &&
 			c.checkIfCurrentConsumerShouldOwnVb(vb) {
