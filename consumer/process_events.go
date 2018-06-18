@@ -33,7 +33,7 @@ func (c *Consumer) processEvents() {
 				logging.Infof("%s [%s:%s:%d] Throttling events to cpp worker, aggregate queue size: %v cap: %v feedback queue size: %v cap: %v aggregate queue memory: %v cap %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.AggQueueSize, c.workerQueueCap,
 					c.cppQueueSizes.DocTimerQueueSize, c.feedbackQueueCap, c.cppQueueSizes.AggQueueMemory, c.workerQueueMemCap)
-				time.Sleep(1 * time.Second)
+				time.Sleep(10 * time.Millisecond)
 			}
 		}
 
@@ -746,13 +746,13 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 					return
 				}
 
-				if !c.isTerminateRunning {
-					if c.aggDCPFeedMem > c.aggDCPFeedMemCap {
-						logging.Infof("%s [%s:%s:%d] Throttling, aggDCPFeed memory: %d bytes aggDCPFeedMemCap: %d\n",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.aggDCPFeedMem, c.aggDCPFeedMemCap)
-						time.Sleep(1 * time.Second)
-					}
+				if c.aggDCPFeedMem > c.aggDCPFeedMemCap {
+					logging.Infof("%s [%s:%s:%d] Throttling, aggDCPFeed memory: %d bytes aggDCPFeedMemCap: %d\n",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), c.aggDCPFeedMem, c.aggDCPFeedMemCap)
+					time.Sleep(10 * time.Millisecond)
+				}
 
+				if !c.isTerminateRunning {
 					atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
 					c.aggDCPFeed <- e
 				}
