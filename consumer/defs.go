@@ -368,6 +368,10 @@ type Consumer struct {
 	// Tracks V8 Opcodes processed per consumer
 	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by msgProcessedRWMutex
 
+	dcpCloseStreamCounter          uint64
+	dcpCloseStreamErrCounter       uint64
+	dcpStreamReqCounter            uint64
+	dcpStreamReqErrCounter         uint64
 	plasmaInsertCounter            uint64
 	plasmaDeleteCounter            uint64
 	plasmaLookupCounter            uint64
@@ -497,7 +501,7 @@ type OwnershipEntry struct {
 	AssignedWorker string `json:"assigned_worker"`
 	CurrentVBOwner string `json:"current_vb_owner"`
 	Operation      string `json:"operation"`
-	StartSeqNo     uint64 `json:"start_seq_no"`
+	SeqNo          uint64 `json:"seq_no"`
 	Timestamp      string `json:"timestamp"`
 }
 

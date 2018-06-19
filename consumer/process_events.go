@@ -316,7 +316,7 @@ func (c *Consumer) processEvents() {
 						AssignedWorker: c.ConsumerName(),
 						CurrentVBOwner: c.HostPortAddr(),
 						Operation:      dcpStreamRunning,
-						StartSeqNo:     startSeqNo,
+						SeqNo:          startSeqNo,
 						Timestamp:      time.Now().String(),
 					}
 
@@ -418,10 +418,13 @@ func (c *Consumer) processEvents() {
 				// Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
 
+				seqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_read_seq_no").(uint64)
+
 				entry := OwnershipEntry{
 					AssignedWorker: c.ConsumerName(),
 					CurrentVBOwner: c.HostPortAddr(),
 					Operation:      dcpStreamStopped,
+					SeqNo:          seqNo,
 					Timestamp:      time.Now().String(),
 				}
 
@@ -942,8 +945,10 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 	}
 	c.vbsStreamRRWMutex.Unlock()
 
+	c.dcpStreamReqCounter++
 	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 	if err != nil {
+		c.dcpStreamReqErrCounter++
 		logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName(), err)
 
@@ -987,7 +992,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 			AssignedWorker: c.ConsumerName(),
 			CurrentVBOwner: c.HostPortAddr(),
 			Operation:      dcpStreamRequested,
-			StartSeqNo:     start,
+			SeqNo:          start,
 			Timestamp:      time.Now().String(),
 		}
 

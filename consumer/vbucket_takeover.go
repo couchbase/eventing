@@ -98,9 +98,12 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 
 					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d Issuing dcp close stream",
 						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
+
+					c.dcpCloseStreamCounter++
 					c.RLock()
 					err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
 					if err != nil {
+						c.dcpCloseStreamErrCounter++
 						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %d Failed to close dcp stream, err: %v",
 							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
 					}
@@ -146,8 +149,11 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					// as per the vbEventingNodesAssignMap.
 					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d Issuing dcp close stream",
 						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
+
+					c.dcpCloseStreamCounter++
 					err := dcpStreamToClose.DcpCloseStream(vb, vb)
 					if err != nil {
+						c.dcpCloseStreamErrCounter++
 						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %d Failed to close dcp stream, err: %v",
 							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
 					}

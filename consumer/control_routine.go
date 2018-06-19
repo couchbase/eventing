@@ -131,10 +131,12 @@ func (c *Consumer) controlRoutine() error {
 				}
 
 				logging.Infof("%s [%s:%s:%d] vb: %d Issuing dcp close stream", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+				c.dcpCloseStreamCounter++
 				c.RLock()
 				err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
 				c.RUnlock()
 				if err != nil {
+					c.dcpCloseStreamErrCounter++
 					logging.Errorf("%s [%s:%s:%d] vb: %v Failed to close dcp stream, err: %v",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 				} else {

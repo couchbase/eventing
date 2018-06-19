@@ -94,7 +94,7 @@ func (p *Producer) Serve() {
 	}
 
 	p.persistAllTicker = time.NewTicker(time.Duration(p.persistInterval) * time.Millisecond)
-	p.statsTicker = time.NewTicker(time.Duration(p.handlerConfig.StatsLogInterval) * time.Millisecond)
+	p.statsTicker = time.NewTicker(time.Duration(p.handlerConfig.StatsLogInterval) * 12 * time.Millisecond)
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
 	logging.Infof("%s [%s:%d] number of vbuckets for %s: %d", logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)

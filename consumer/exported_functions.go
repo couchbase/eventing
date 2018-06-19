@@ -49,24 +49,53 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	for opcode, value := range c.dcpMessagesProcessed {
 		stats[mcd.CommandNames[opcode]] = value
 	}
-	if c.doctimerMessagesProcessed > 0 {
-		stats["DOC_TIMER_EVENTS"] = c.doctimerMessagesProcessed
+
+	if c.adhocDoctimerResponsesRecieved > 0 {
+		stats["ADHOC_DOC_TIMER_RESPONSES_RECEIVED"] = c.adhocDoctimerResponsesRecieved
+	}
+
+	if c.aggMessagesSentCounter > 0 {
+		stats["AGG_MESSAGES_SENT_TO_WORKER"] = c.aggMessagesSentCounter
 	}
 
 	if c.crontimerMessagesProcessed > 0 {
 		stats["CRON_TIMER_EVENTS"] = c.crontimerMessagesProcessed
 	}
 
-	if c.timersInPastCounter > 0 {
-		stats["TIMERS_IN_PAST"] = c.timersInPastCounter
+	if c.dcpDeletionCounter > 0 {
+		stats["DCP_DELETION_SENT_TO_WORKER"] = c.dcpDeletionCounter
 	}
 
-	if c.timersInPastFromBackfill > 0 {
-		stats["TIMERS_IN_PAST_FROM_BACKFILL"] = c.timersInPastFromBackfill
+	if c.dcpMutationCounter > 0 {
+		stats["DCP_MUTATION_SENT_TO_WORKER"] = c.dcpMutationCounter
 	}
 
-	if c.timersRecreatedFromDCPBackfill > 0 {
-		stats["TIMERS_RECREATED_FROM_DCP_BACKFILL"] = c.timersRecreatedFromDCPBackfill
+	if c.dcpCloseStreamCounter > 0 {
+		stats["DCP_STREAM_CLOSE_COUNTER"] = c.dcpCloseStreamCounter
+	}
+
+	if c.dcpCloseStreamErrCounter > 0 {
+		stats["DCP_STREAM_CLOSE_ERR_COUNTER"] = c.dcpCloseStreamErrCounter
+	}
+
+	if c.dcpStreamReqCounter > 0 {
+		stats["DCP_STREAM_REQ_COUNTER"] = c.dcpStreamReqCounter
+	}
+
+	if c.dcpStreamReqErrCounter > 0 {
+		stats["DCP_STREAM_REQ_ERR_COUNTER"] = c.dcpStreamReqErrCounter
+	}
+
+	if c.doctimerResponsesRecieved > 0 {
+		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.doctimerResponsesRecieved
+	}
+
+	if c.doctimerMessagesProcessed > 0 {
+		stats["DOC_TIMER_EVENTS"] = c.doctimerMessagesProcessed
+	}
+
+	if c.errorParsingDocTimerResponses > 0 {
+		stats["ERROR_PARSING_DOC_TIMER_RESPONSES"] = c.errorParsingDocTimerResponses
 	}
 
 	if c.plasmaDeleteCounter > 0 {
@@ -81,33 +110,80 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["PLASMA_LOOKUP_COUNTER"] = c.plasmaLookupCounter
 	}
 
-	if c.dcpMutationCounter > 0 {
-		stats["DCP_MUTATION_SENT_TO_WORKER"] = c.dcpMutationCounter
+	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
+	if len(vbsRemainingToGiveUp) > 0 {
+		stats["REB_VB_REMAINING_TO_GIVE_UP"] = uint64(len(vbsRemainingToGiveUp))
 	}
 
-	if c.dcpDeletionCounter > 0 {
-		stats["DCP_DELETION_SENT_TO_WORKER"] = c.dcpDeletionCounter
+	vbsRemainingToOwn := c.getVbRemainingToOwn()
+	if len(vbsRemainingToOwn) > 0 {
+		stats["REB_VB_REMAINING_TO_OWN"] = uint64(len(vbsRemainingToOwn))
 	}
 
-	if c.aggMessagesSentCounter > 0 {
-		stats["AGG_MESSAGES_SENT_TO_WORKER"] = c.aggMessagesSentCounter
+	if c.timersInPastCounter > 0 {
+		stats["TIMERS_IN_PAST"] = c.timersInPastCounter
 	}
 
-	if c.doctimerResponsesRecieved > 0 {
-		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.doctimerResponsesRecieved
+	if c.timersInPastFromBackfill > 0 {
+		stats["TIMERS_IN_PAST_FROM_BACKFILL"] = c.timersInPastFromBackfill
 	}
 
-	if c.errorParsingDocTimerResponses > 0 {
-		stats["ERROR_PARSING_DOC_TIMER_RESPONSES"] = c.errorParsingDocTimerResponses
+	if c.timersRecreatedFromDCPBackfill > 0 {
+		stats["TIMERS_RECREATED_FROM_DCP_BACKFILL"] = c.timersRecreatedFromDCPBackfill
 	}
 
-	if c.adhocDoctimerResponsesRecieved > 0 {
-		stats["ADHOC_DOC_TIMER_RESPONSES_RECEIVED"] = c.adhocDoctimerResponsesRecieved
+	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_START"]; ok {
+		if c.v8WorkerMessagesProcessed["DEBUG_START"] > 0 {
+			stats["DEBUG_START"] = c.v8WorkerMessagesProcessed["DEBUG_START"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_STOP"]; ok {
+		if c.v8WorkerMessagesProcessed["DEBUG_STOP"] > 0 {
+			stats["DEBUG_STOP"] = c.v8WorkerMessagesProcessed["DEBUG_STOP"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["EXECUTION_STATS"]; ok {
+		if c.v8WorkerMessagesProcessed["EXECUTION_STATS"] > 0 {
+			stats["EXECUTION_STATS"] = c.v8WorkerMessagesProcessed["EXECUTION_STATS"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["FAILURE_STATS"]; ok {
+		if c.v8WorkerMessagesProcessed["FAILURE_STATS"] > 0 {
+			stats["FAILURE_STATS"] = c.v8WorkerMessagesProcessed["FAILURE_STATS"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["HANDLER_CODE"]; ok {
+		if c.v8WorkerMessagesProcessed["HANDLER_CODE"] > 0 {
+			stats["HANDLER_CODE"] = c.v8WorkerMessagesProcessed["HANDLER_CODE"]
+
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["LATENCY_STATS"]; ok {
+		if c.v8WorkerMessagesProcessed["LATENCY_STATS"] > 0 {
+			stats["LATENCY_STATS"] = c.v8WorkerMessagesProcessed["LATENCY_STATS"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]; ok {
+		if c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"] > 0 {
+			stats["LCB_EXCEPTION_STATS"] = c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]
+		}
 	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["LOG_LEVEL"]; ok {
 		if c.v8WorkerMessagesProcessed["LOG_LEVEL"] > 0 {
 			stats["LOG_LEVEL"] = c.v8WorkerMessagesProcessed["LOG_LEVEL"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["SOURCE_MAP"]; ok {
+		if c.v8WorkerMessagesProcessed["SOURCE_MAP"] > 0 {
+			stats["SOURCE_MAP"] = c.v8WorkerMessagesProcessed["SOURCE_MAP"]
 		}
 	}
 
@@ -123,15 +199,9 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_START"]; ok {
-		if c.v8WorkerMessagesProcessed["DEBUG_START"] > 0 {
-			stats["DEBUG_START"] = c.v8WorkerMessagesProcessed["DEBUG_START"]
-		}
-	}
-
-	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_STOP"]; ok {
-		if c.v8WorkerMessagesProcessed["DEBUG_STOP"] > 0 {
-			stats["DEBUG_STOP"] = c.v8WorkerMessagesProcessed["DEBUG_STOP"]
+	if _, ok := c.v8WorkerMessagesProcessed["V8_COMPILE"]; ok {
+		if c.v8WorkerMessagesProcessed["V8_COMPILE"] > 0 {
+			stats["V8_COMPILE"] = c.v8WorkerMessagesProcessed["V8_COMPILE"]
 		}
 	}
 
@@ -141,52 +211,9 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["V8_COMPILE"]; ok {
-		if c.v8WorkerMessagesProcessed["V8_COMPILE"] > 0 {
-			stats["V8_COMPILE"] = c.v8WorkerMessagesProcessed["V8_COMPILE"]
-		}
-	}
-
 	if _, ok := c.v8WorkerMessagesProcessed["V8_LOAD"]; ok {
 		if c.v8WorkerMessagesProcessed["V8_LOAD"] > 0 {
 			stats["V8_LOAD"] = c.v8WorkerMessagesProcessed["V8_LOAD"]
-		}
-	}
-
-	if _, ok := c.v8WorkerMessagesProcessed["LATENCY_STATS"]; ok {
-		if c.v8WorkerMessagesProcessed["LATENCY_STATS"] > 0 {
-			stats["LATENCY_STATS"] = c.v8WorkerMessagesProcessed["LATENCY_STATS"]
-		}
-	}
-
-	if _, ok := c.v8WorkerMessagesProcessed["FAILURE_STATS"]; ok {
-		if c.v8WorkerMessagesProcessed["FAILURE_STATS"] > 0 {
-			stats["FAILURE_STATS"] = c.v8WorkerMessagesProcessed["FAILURE_STATS"]
-		}
-	}
-
-	if _, ok := c.v8WorkerMessagesProcessed["EXECUTION_STATS"]; ok {
-		if c.v8WorkerMessagesProcessed["EXECUTION_STATS"] > 0 {
-			stats["EXECUTION_STATS"] = c.v8WorkerMessagesProcessed["EXECUTION_STATS"]
-		}
-	}
-
-	if _, ok := c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]; ok {
-		if c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"] > 0 {
-			stats["LCB_EXCEPTION_STATS"] = c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]
-		}
-	}
-
-	if _, ok := c.v8WorkerMessagesProcessed["SOURCE_MAP"]; ok {
-		if c.v8WorkerMessagesProcessed["SOURCE_MAP"] > 0 {
-			stats["SOURCE_MAP"] = c.v8WorkerMessagesProcessed["SOURCE_MAP"]
-		}
-	}
-
-	if _, ok := c.v8WorkerMessagesProcessed["HANDLER_CODE"]; ok {
-		if c.v8WorkerMessagesProcessed["HANDLER_CODE"] > 0 {
-			stats["HANDLER_CODE"] = c.v8WorkerMessagesProcessed["HANDLER_CODE"]
-
 		}
 	}
 
