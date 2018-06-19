@@ -1200,9 +1200,6 @@ func (c *Consumer) processReqStreamMessages() {
 				}
 			}(msg, c, logPrefix)
 
-			logging.Infof("%s [%s:%s:%d] vb: %d Waiting for message from proccessEvents loop",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
-
 		case <-c.stopReqStreamProcessCh:
 			logging.Infof("%s [%s:%s:%d] Exiting streamReq processing routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
