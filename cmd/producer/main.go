@@ -8,6 +8,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/supervisor"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/gocb"
 )
 
 func main() {
@@ -25,6 +26,8 @@ func main() {
 		CertFile: flags.sslCertFile,
 		KeyFile:  flags.sslKeyFile,
 	}
+
+	gocb.SetLogger(&util.GocbLogger{})
 
 	s := supervisor.NewSuperSupervisor(adminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid, flags.diagDir, flags.numVbuckets)
 
