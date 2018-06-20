@@ -127,6 +127,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		uuid:                            uuid,
 		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),
+		vbEnqueuedForStreamReq:          make(map[uint16]struct{}),
+		vbEnqueuedForStreamReqRWMutex:   &sync.RWMutex{},
 		vbFlogChan:                      make(chan *vbFlogEntry),
 		vbnos:                           vbnos,
 		updateStatsStopCh:               make(chan struct{}, 1),

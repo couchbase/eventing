@@ -378,6 +378,10 @@ retryStreamUpdate:
 				}
 				c.inflightDcpStreamsRWMutex.RUnlock()
 
+				if c.checkIfAlreadyEnqueued(vb) {
+					continue
+				}
+
 				err := util.Retry(util.NewFixedBackoff(vbTakeoverRetryInterval), c.retryCount, vbTakeoverCallback, c, vb)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -535,6 +539,11 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		return nil
 	}
+
+	if c.checkIfAlreadyEnqueued(vb) {
+		return nil
+	}
+	c.addToEnqueueMap(vb)
 
 	if backfillTimers && c.usingDocTimer {
 		seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
