@@ -616,10 +616,16 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 	logging.Debugf("%s [%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
 
-	var vbs []uint16
+	flogVbs := make([]uint16, 0)
+	vbs := make([]uint16, 0)
 
-	for vb, flog := range flogs {
+	for vb := range flogs {
+		flogVbs = append(flogVbs, vb)
+	}
+	sort.Sort(util.Uint16Slice(flogVbs))
 
+	for _, vb := range flogVbs {
+		flog := flogs[vb]
 		vbuuid, _, _ := flog.Latest()
 
 		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
