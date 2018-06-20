@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -303,6 +304,7 @@ func (c *Consumer) processEvents() {
 						if metadataUpdated {
 							c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
 						} else {
+							time.Sleep(time.Second)
 							goto retryCheckMetadataUpdated
 						}
 					} else {
@@ -316,7 +318,7 @@ func (c *Consumer) processEvents() {
 						AssignedWorker: c.ConsumerName(),
 						CurrentVBOwner: c.HostPortAddr(),
 						Operation:      dcpStreamRunning,
-						StartSeqNo:     startSeqNo,
+						SeqNo:          startSeqNo,
 						Timestamp:      time.Now().String(),
 					}
 
@@ -418,10 +420,13 @@ func (c *Consumer) processEvents() {
 				// Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
 
+				seqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_read_seq_no").(uint64)
+
 				entry := OwnershipEntry{
 					AssignedWorker: c.ConsumerName(),
 					CurrentVBOwner: c.HostPortAddr(),
 					Operation:      dcpStreamStopped,
+					SeqNo:          seqNo,
 					Timestamp:      time.Now().String(),
 				}
 
@@ -942,8 +947,10 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 	}
 	c.vbsStreamRRWMutex.Unlock()
 
+	c.dcpStreamReqCounter++
 	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 	if err != nil {
+		c.dcpStreamReqErrCounter++
 		logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName(), err)
 
@@ -987,7 +994,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 			AssignedWorker: c.ConsumerName(),
 			CurrentVBOwner: c.HostPortAddr(),
 			Operation:      dcpStreamRequested,
-			StartSeqNo:     start,
+			SeqNo:          start,
 			Timestamp:      time.Now().String(),
 		}
 
@@ -1181,7 +1188,12 @@ func (c *Consumer) processReqStreamMessages() {
 			}
 			c.inflightDcpStreamsRWMutex.RUnlock()
 
-			go func(msg *streamRequestInfo, c *Consumer, logPrefix string) {
+			var streamReqWG sync.WaitGroup
+			streamReqWG.Add(1)
+
+			go func(msg *streamRequestInfo, c *Consumer, logPrefix string, streamReqWG *sync.WaitGroup) {
+				defer streamReqWG.Done()
+
 				err := c.dcpRequestStreamHandle(msg.vb, msg.vbBlob, msg.startSeqNo)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -1198,10 +1210,9 @@ func (c *Consumer) processReqStreamMessages() {
 				} else {
 					logging.Infof("%s [%s:%s:%d] vb: %d DCP stream successfully requested", logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
 				}
-			}(msg, c, logPrefix)
+			}(msg, c, logPrefix, &streamReqWG)
 
-			logging.Infof("%s [%s:%s:%d] vb: %d Waiting for message from proccessEvents loop",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
+			streamReqWG.Wait()
 
 		case <-c.stopReqStreamProcessCh:
 			logging.Infof("%s [%s:%s:%d] Exiting streamReq processing routine", logPrefix, c.workerName, c.tcpPort, c.Pid())

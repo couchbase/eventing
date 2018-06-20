@@ -94,7 +94,7 @@ func (p *Producer) Serve() {
 	}
 
 	p.persistAllTicker = time.NewTicker(time.Duration(p.persistInterval) * time.Millisecond)
-	p.statsTicker = time.NewTicker(time.Duration(p.handlerConfig.StatsLogInterval) * time.Millisecond)
+	p.statsTicker = time.NewTicker(time.Duration(p.handlerConfig.StatsLogInterval) * 12 * time.Millisecond)
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
 	logging.Infof("%s [%s:%d] number of vbuckets for %s: %d", logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)
@@ -351,6 +351,10 @@ func (p *Producer) Serve() {
 
 // Stop implements suptree.Service interface
 func (p *Producer) Stop() {
+	logPrefix := "Producer::Stop"
+
+	logging.Infof("%s [%s:%d] Gracefully shutting down producer routine",
+		logPrefix, p.appName, p.LenRunningConsumers())
 
 	p.listenerRWMutex.RLock()
 	if p.consumerListeners != nil {
@@ -360,6 +364,9 @@ func (p *Producer) Stop() {
 			}
 		}
 	}
+
+	logging.Infof("%s [%s:%d] Stopped main listener handles",
+		logPrefix, p.appName, p.LenRunningConsumers())
 
 	p.consumerListeners = make(map[common.EventingConsumer]net.Listener)
 
@@ -371,6 +378,9 @@ func (p *Producer) Stop() {
 		}
 	}
 
+	logging.Infof("%s [%s:%d] Stopped feedback listener handles",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
 	p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
 	p.listenerRWMutex.RUnlock()
 
@@ -378,21 +388,36 @@ func (p *Producer) Stop() {
 		p.metadataBucketHandle.Close()
 	}
 
+	logging.Infof("%s [%s:%d] Closed metadata bucket handle",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
 	if p.stopProducerCh != nil {
 		p.stopProducerCh <- struct{}{}
 	}
+
+	logging.Infof("%s [%s:%d] Signalled for Producer::Serve to exit",
+		logPrefix, p.appName, p.LenRunningConsumers())
 
 	if p.signalStopPersistAllCh != nil {
 		p.signalStopPersistAllCh <- struct{}{}
 	}
 
+	logging.Infof("%s [%s:%d] Signalled plasma persist routine to exit",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
 	if p.appLogWriter != nil {
 		p.appLogWriter.Close()
 	}
 
+	logging.Infof("%s [%s:%d] Closed app log writer handle",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
 	if p.updateStatsStopCh != nil {
 		p.updateStatsStopCh <- struct{}{}
 	}
+
+	logging.Infof("%s [%s:%d] Exiting from Producer::Stop routine",
+		logPrefix, p.appName, p.LenRunningConsumers())
 }
 
 // Implement fmt.Stringer interface for better debugging in case

@@ -1106,3 +1106,27 @@ func GenerateHandlerUUID() (uint32, error) {
 	}
 	return crc32.ChecksumIEEE(uuid), nil
 }
+
+type GocbLogger struct{}
+
+func (r *GocbLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
+	switch level {
+	case gocb.LogError:
+		logging.Errorf(format, v...)
+	case gocb.LogWarn:
+		logging.Warnf(format, v...)
+	case gocb.LogInfo:
+		logging.Infof(format, v...)
+	case gocb.LogDebug:
+		logging.Debugf(format, v...)
+	case gocb.LogTrace:
+		logging.Tracef(format, v...)
+	case gocb.LogSched:
+		logging.Tracef(format, v...)
+	case gocb.LogMaxVerbosity:
+		logging.Tracef(format, v...)
+	default:
+		logging.Tracef(format, v...)
+	}
+	return nil
+}
