@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -303,6 +304,7 @@ func (c *Consumer) processEvents() {
 						if metadataUpdated {
 							c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
 						} else {
+							time.Sleep(time.Second)
 							goto retryCheckMetadataUpdated
 						}
 					} else {
@@ -1186,7 +1188,12 @@ func (c *Consumer) processReqStreamMessages() {
 			}
 			c.inflightDcpStreamsRWMutex.RUnlock()
 
-			go func(msg *streamRequestInfo, c *Consumer, logPrefix string) {
+			var streamReqWG sync.WaitGroup
+			streamReqWG.Add(1)
+
+			go func(msg *streamRequestInfo, c *Consumer, logPrefix string, streamReqWG *sync.WaitGroup) {
+				defer streamReqWG.Done()
+
 				err := c.dcpRequestStreamHandle(msg.vb, msg.vbBlob, msg.startSeqNo)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -1203,7 +1210,9 @@ func (c *Consumer) processReqStreamMessages() {
 				} else {
 					logging.Infof("%s [%s:%s:%d] vb: %d DCP stream successfully requested", logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
 				}
-			}(msg, c, logPrefix)
+			}(msg, c, logPrefix, &streamReqWG)
+
+			streamReqWG.Wait()
 
 		case <-c.stopReqStreamProcessCh:
 			logging.Infof("%s [%s:%s:%d] Exiting streamReq processing routine", logPrefix, c.workerName, c.tcpPort, c.Pid())

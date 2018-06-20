@@ -300,21 +300,35 @@ func (p *Producer) PauseProducer() {
 
 // StopProducer cleans up resource handles
 func (p *Producer) StopProducer() {
+	logPrefix := "Producer::StopProducer"
+
 	if p.stopProducerCh != nil {
 		p.stopProducerCh <- struct{}{}
 	}
+
+	logging.Infof("%s [%s:%d] Signalled Producer::Serve to exit",
+		logPrefix, p.appName, p.LenRunningConsumers())
 
 	if p.metadataBucketHandle != nil {
 		p.metadataBucketHandle.Close()
 	}
 
+	logging.Infof("%s [%s:%d] Closed metadata bucket handle",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
 	if p.workerSupervisor != nil {
 		p.workerSupervisor.Stop()
 	}
 
+	logging.Infof("%s [%s:%d] Stopped supervisor tree",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
 	if p.vbPlasmaStore != nil {
 		p.vbPlasmaStore.Close()
 	}
+
+	logging.Infof("%s [%s:%d] Closed plasma store handle",
+		logPrefix, p.appName, p.LenRunningConsumers())
 }
 
 // GetDcpEventsRemainingToProcess returns remaining dcp events to process
@@ -857,9 +871,9 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 	logPrefix := "Producer::CheckpointBlobDump"
 
 	checkpointBlobDumps := make(map[string]interface{})
-	vbBlob := make(map[string]interface{})
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
+		vbBlob := make(map[string]interface{})
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
 		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, vbKey, &vbBlob)
 		if err == common.ErrRetryTimeout {

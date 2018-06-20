@@ -261,6 +261,10 @@ func (c *Consumer) checkAndUpdateMetadata() {
 	var cas gocb.Cas
 
 	for _, vb := range vbsOwned {
+		if !c.checkIfCurrentConsumerShouldOwnVb(vb) {
+			continue
+		}
+
 		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 
 		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, vbKey, &vbBlob, &cas, false)

@@ -541,7 +541,7 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Requested to stop supervisor for Eventing.Consumer",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	logging.Infof("%s [%s:%s:%d] Exiting Eventing.Consumer Stop routine",
+	logging.Infof("%s [%s:%s:%d] Exiting Consumer::Stop routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }
 
