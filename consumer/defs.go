@@ -161,64 +161,66 @@ type Consumer struct {
 	sendMsgToDebugger     bool
 	sourceMap             string // source map to assist with V8 Debugger
 
-	aggDCPFeed                  chan *cb.DcpEvent
-	aggDCPFeedMem               int64
-	aggDCPFeedMemCap            int64
-	cbBucket                    *couchbase.Bucket
-	checkpointInterval          time.Duration
-	cleanupTimers               bool
-	compileInfo                 *common.CompileStatus
-	controlRoutineWg            *sync.WaitGroup
-	dcpEventsRemaining          uint64
-	dcpFeedsClosed              bool
-	dcpFeedVbMap                map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
-	eventingAdminPort           string
-	eventingDir                 string
-	eventingSSLPort             string
-	eventingNodeAddrs           []string
-	eventingNodeUUIDs           []string
-	executionTimeout            int
-	filterVbEvents              map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
-	filterVbEventsRWMutex       *sync.RWMutex
-	gocbBucket                  *gocb.Bucket
-	gocbMetaBucket              *gocb.Bucket
-	idleCheckpointInterval      time.Duration
-	index                       int
-	inflightDcpStreams          map[uint16]struct{} // Access controlled by inflightDcpStreamsRWMutex
-	inflightDcpStreamsRWMutex   *sync.RWMutex
-	ipcType                     string // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
-	isBootstrapping             bool
-	isRebalanceOngoing          bool
-	isTerminateRunning          bool
-	kvHostDcpFeedMap            map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
-	hostDcpFeedRWMutex          *sync.RWMutex
-	kvNodes                     []string // Access controlled by kvNodesRWMutex
-	kvNodesRWMutex              *sync.RWMutex
-	kvVbMap                     map[uint16]string // Access controlled by default lock
-	logLevel                    string
-	numVbuckets                 int
-	reqStreamCh                 chan *streamRequestInfo
-	statsTickDuration           time.Duration
-	superSup                    common.EventingSuperSup
-	usingDocTimer               bool
-	vbDcpEventsRemaining        map[int]int64 // Access controlled by statsRWMutex
-	vbDcpFeedMap                map[uint16]*couchbase.DcpFeed
-	vbEventingNodeAssignMap     map[uint16]string // Access controlled by vbEventingNodeAssignMapRWMutex
-	vbEventingNodeAssignRWMutex *sync.RWMutex
-	vbnos                       []uint16
-	vbsRemainingToClose         []uint16 // Access controlled by default lock
-	vbsRemainingToGiveUp        []uint16
-	vbsRemainingToOwn           []uint16
-	vbsRemainingToRestream      []uint16 // Access controlled by default lock
-	vbsStateUpdateRunning       bool
-	vbsStreamClosed             map[uint16]bool // Access controlled by vbsStreamClosedRWMutex
-	vbsStreamClosedRWMutex      *sync.RWMutex
-	vbStreamRequested           map[uint16]struct{} // Access controlled by vbsStreamRRWMutex
-	vbsStreamRRWMutex           *sync.RWMutex
-	workerExited                bool
-	workerVbucketMap            map[string][]uint16 // Access controlled by workerVbucketMapRWMutex
-	workerVbucketMapRWMutex     *sync.RWMutex
-	xattrEntryPruneThreshold    int
+	aggDCPFeed                    chan *cb.DcpEvent
+	aggDCPFeedMem                 int64
+	aggDCPFeedMemCap              int64
+	cbBucket                      *couchbase.Bucket
+	checkpointInterval            time.Duration
+	cleanupTimers                 bool
+	compileInfo                   *common.CompileStatus
+	controlRoutineWg              *sync.WaitGroup
+	dcpEventsRemaining            uint64
+	dcpFeedsClosed                bool
+	dcpFeedVbMap                  map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
+	eventingAdminPort             string
+	eventingDir                   string
+	eventingSSLPort               string
+	eventingNodeAddrs             []string
+	eventingNodeUUIDs             []string
+	executionTimeout              int
+	filterVbEvents                map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
+	filterVbEventsRWMutex         *sync.RWMutex
+	gocbBucket                    *gocb.Bucket
+	gocbMetaBucket                *gocb.Bucket
+	idleCheckpointInterval        time.Duration
+	index                         int
+	inflightDcpStreams            map[uint16]struct{} // Access controlled by inflightDcpStreamsRWMutex
+	inflightDcpStreamsRWMutex     *sync.RWMutex
+	ipcType                       string // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
+	isBootstrapping               bool
+	isRebalanceOngoing            bool
+	isTerminateRunning            bool
+	kvHostDcpFeedMap              map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
+	hostDcpFeedRWMutex            *sync.RWMutex
+	kvNodes                       []string // Access controlled by kvNodesRWMutex
+	kvNodesRWMutex                *sync.RWMutex
+	kvVbMap                       map[uint16]string // Access controlled by default lock
+	logLevel                      string
+	numVbuckets                   int
+	reqStreamCh                   chan *streamRequestInfo
+	statsTickDuration             time.Duration
+	superSup                      common.EventingSuperSup
+	usingDocTimer                 bool
+	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
+	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed
+	vbEventingNodeAssignMap       map[uint16]string // Access controlled by vbEventingNodeAssignMapRWMutex
+	vbEventingNodeAssignRWMutex   *sync.RWMutex
+	vbnos                         []uint16
+	vbEnqueuedForStreamReq        map[uint16]struct{} // Access controlled by vbEnqueuedForStreamReqRWMutex
+	vbEnqueuedForStreamReqRWMutex *sync.RWMutex
+	vbsRemainingToClose           []uint16 // Access controlled by default lock
+	vbsRemainingToGiveUp          []uint16
+	vbsRemainingToOwn             []uint16
+	vbsRemainingToRestream        []uint16 // Access controlled by default lock
+	vbsStateUpdateRunning         bool
+	vbsStreamClosed               map[uint16]bool // Access controlled by vbsStreamClosedRWMutex
+	vbsStreamClosedRWMutex        *sync.RWMutex
+	vbStreamRequested             map[uint16]struct{} // Access controlled by vbsStreamRRWMutex
+	vbsStreamRRWMutex             *sync.RWMutex
+	workerExited                  bool
+	workerVbucketMap              map[string][]uint16 // Access controlled by workerVbucketMapRWMutex
+	workerVbucketMapRWMutex       *sync.RWMutex
+	xattrEntryPruneThreshold      int
 
 	executionStats    map[string]interface{} // Access controlled by statsRWMutex
 	failureStats      map[string]interface{} // Access controlled by statsRWMutex

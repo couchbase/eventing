@@ -165,6 +165,7 @@ type stats struct {
 	FailureStats                    interface{} `json:"failure_stats,omitempty"`
 	FunctionName                    interface{} `json:"function_name"`
 	InternalVbDistributionStats     interface{} `json:"internal_vb_distribution_stats,omitempty"`
+	LatencyPercentileStats          interface{} `json:"latency_percentile_stats,omitempty"`
 	LatencyStats                    interface{} `json:"latency_stats,omitempty"`
 	LcbExceptionStats               interface{} `json:"lcb_exception_stats,omitempty"`
 	PlannerStats                    interface{} `json:"planner_stats,omitempty"`

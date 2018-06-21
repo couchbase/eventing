@@ -616,10 +616,16 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 	logging.Debugf("%s [%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
 
-	var vbs []uint16
+	flogVbs := make([]uint16, 0)
+	vbs := make([]uint16, 0)
 
-	for vb, flog := range flogs {
+	for vb := range flogs {
+		flogVbs = append(flogVbs, vb)
+	}
+	sort.Sort(util.Uint16Slice(flogVbs))
 
+	for _, vb := range flogVbs {
+		flog := flogs[vb]
 		vbuuid, _, _ := flog.Latest()
 
 		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
@@ -672,6 +678,12 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 				return common.ErrRetryTimeout
 			}
 
+			if c.checkIfAlreadyEnqueued(vb) {
+				continue
+			} else {
+				c.addToEnqueueMap(vb)
+			}
+
 			vbs = append(vbs, vb)
 			switch c.dcpStreamBoundary {
 			case common.DcpEverything:
@@ -700,6 +712,13 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 			}
 		} else {
 			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
+
+				if c.checkIfAlreadyEnqueued(vb) {
+					continue
+				} else {
+					c.addToEnqueueMap(vb)
+				}
+
 				vbs = append(vbs, vb)
 
 				logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
@@ -1090,6 +1109,12 @@ func (c *Consumer) handleFailoverLog() {
 						}
 
 						vbBlob.VBuuid = vbuuid
+						if c.checkIfAlreadyEnqueued(vbFlog.vb) {
+							continue
+						} else {
+							c.addToEnqueueMap(vbFlog.vb)
+						}
+
 						logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
 
@@ -1103,8 +1128,14 @@ func (c *Consumer) handleFailoverLog() {
 						c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 					}
 				} else {
-					logging.Infof("%s [%s:%s:%d] vb: %v Retrying DCP stream start vbuuid: %d startSeq: %d",
+					logging.Infof("%s [%s:%s:%d] vb: %d Retrying DCP stream start vbuuid: %d startSeq: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
+
+					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
+						continue
+					} else {
+						c.addToEnqueueMap(vbFlog.vb)
+					}
 
 					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
@@ -1162,6 +1193,8 @@ func (c *Consumer) processReqStreamMessages() {
 		case msg, ok := <-c.reqStreamCh:
 			logging.Infof("%s [%s:%s:%d] vb: %d reqStreamCh size: %d Got request to stream",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb, len(c.reqStreamCh))
+
+			c.deleteFromEnqueueMap(msg.vb)
 
 			if !ok {
 				logging.Infof("%s [%s:%s:%d] Returning streamReq processing routine", logPrefix, c.workerName, c.tcpPort, c.Pid())

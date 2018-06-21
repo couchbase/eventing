@@ -127,6 +127,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		uuid:                            uuid,
 		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),
+		vbEnqueuedForStreamReq:          make(map[uint16]struct{}),
+		vbEnqueuedForStreamReqRWMutex:   &sync.RWMutex{},
 		vbFlogChan:                      make(chan *vbFlogEntry),
 		vbnos:                           vbnos,
 		updateStatsStopCh:               make(chan struct{}, 1),
@@ -299,7 +301,6 @@ func (c *Consumer) Serve() {
 		go c.vbsStateUpdate()
 	}
 
-	// doc_id timer events
 	go c.processDocTimerEvents()
 
 	go c.cleanupProcessedDocTimers()
@@ -314,7 +315,6 @@ func (c *Consumer) Serve() {
 
 	go c.doLastSeqNoCheckpoint()
 
-	// V8 Debugger polling routine
 	go c.pollForDebuggerStart()
 
 	c.signalBootstrapFinishCh <- struct{}{}
