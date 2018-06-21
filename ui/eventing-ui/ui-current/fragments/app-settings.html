@@ -36,12 +36,19 @@
       </div>
       <div class="formrow">
         <label class="inline">Metadata Bucket</label>
+        <span class="fa-stack icon-info"
+              uib-tooltip="This bucket is used to store system data and should not be used by other applications."
+              tooltip-placement="right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+        </span>
         <select
           ng-disabled="!formCtrl.isDialog"
           ng-model="appModel.depcfg.metadata_bucket"
           ng-options="bucket for bucket in formCtrl.metadataBuckets"
           name="metadata_bucket">
         </select>
+        <small>System data stored in this bucket will have the document ID prefixed with <strong>{{appModel.settings.user_prefix}}</strong></small>
         <div
           class="error field-error"
           ng-show="formCtrl.metadataBuckets.indexOf(appModel.depcfg.metadata_bucket) === -1">
@@ -92,7 +99,7 @@
           <label class="inline">System Log Level</label>
           <span
             class="fa-stack icon-info"
-            uib-tooltip="Granularity at which messages get logged."
+            uib-tooltip="Granularity of system events being captured in the log"
             tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
@@ -111,7 +118,7 @@
           <label class="inline">Workers</label>
           <span
             class="fa-stack icon-info"
-            uib-tooltip="Number of workers to take up the load."
+            uib-tooltip="Number of workers per node to process the events"
             tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
@@ -145,7 +152,7 @@
           </label>
           <span
             class="fa-stack icon-info"
-            uib-tooltip="Timeout for executing the function."
+            uib-tooltip="Time after which the Function's execution will be timed out"
             tooltip-placement="top">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>

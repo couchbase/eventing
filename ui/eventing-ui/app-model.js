@@ -121,6 +121,7 @@ ApplicationModel.prototype.getDefaultModel = function() {
             description: '',
             worker_count: 3,
             execution_timeout: 1,
+            user_prefix: 'eventing'
         }
     };
 };
@@ -152,6 +153,7 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.settings = {};
     this.settings.worker_count = 3;
     this.settings.execution_timeout = 1;
+    this.settings.user_prefix = 'eventing';
 };
 
 // Prettifies the JavaScript code.

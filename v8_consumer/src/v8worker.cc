@@ -231,10 +231,11 @@ void startDebuggerFlag(bool started) {
 V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    server_settings_t *server_settings,
                    const std::string &handler_name,
-                   const std::string &handler_uuid)
+                   const std::string &handler_uuid,
+                   const std::string &user_prefix)
     : app_name_(h_config->app_name), settings_(server_settings),
       platform_(platform), handler_name_(handler_name),
-      handler_uuid_(handler_uuid) {
+      handler_uuid_(handler_uuid), user_prefix_(user_prefix) {
   enable_recursive_mutation = h_config->enable_recursive_mutation;
   curl_timeout = h_config->curl_timeout;
   histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
@@ -654,7 +655,8 @@ void V8Worker::Checkpoint() {
 
     for (auto &vbTimer : curr_dtimer_checkpoint) {
       std::stringstream vb_key;
-      vb_key << app_name_ << "::vb::" << vbTimer.first;
+      vb_key << GetUserPrefix() << "::" << GetHandlerUUID() << "::" << app_name_
+             << "::vb::" << vbTimer.first;
 
       lcb_CMDSUBDOC cmd = {0};
       LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());
@@ -713,7 +715,8 @@ void V8Worker::Checkpoint() {
 
     for (auto &vbTimer : curr_ctimer_checkpoint) {
       std::stringstream vb_key;
-      vb_key << app_name_ << "::vb::" << vbTimer.first;
+      vb_key << GetUserPrefix() << "::" << GetHandlerUUID() << "::" << app_name_
+             << "::vb::" << vbTimer.first;
 
       lcb_CMDSUBDOC cmd = {0};
       LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());

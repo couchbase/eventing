@@ -613,7 +613,8 @@ func (c *Consumer) SignalStopDebugger() error {
 		common.DebuggerInstanceAddrBlob{},
 		util.EventingVer(),
 	}
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, dInstAddrKey, dInstAddrBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback,
+		c, c.producer.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return common.ErrRetryTimeout

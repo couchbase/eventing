@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -124,15 +125,15 @@ var setOpCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::setOpCallback"
 
 	p := args[0].(*Producer)
-	key := args[1].(string)
+	key := args[1].(common.Key)
 	blob := args[2]
 
-	_, err := p.metadataBucketHandle.Upsert(key, blob, 0)
+	_, err := p.metadataBucketHandle.Upsert(key.Raw(), blob, 0)
 	if err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
 		logging.Errorf("%s [%s:%d] Bucket set failed for key: %ru , err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
+			logPrefix, p.appName, p.LenRunningConsumers(), key.Raw(), err)
 	}
 	return err
 }
@@ -141,15 +142,15 @@ var getOpCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::getOpCallback"
 
 	p := args[0].(*Producer)
-	key := args[1].(string)
+	key := args[1].(common.Key)
 	blob := args[2]
 
-	_, err := p.metadataBucketHandle.Get(key, blob)
+	_, err := p.metadataBucketHandle.Get(key.Raw(), blob)
 	if gocb.IsKeyNotFoundError(err) || err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
 	} else if err != nil {
 		logging.Errorf("%s [%s:%d] Bucket get failed for key: %ru , err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
+			logPrefix, p.appName, p.LenRunningConsumers(), key.Raw(), err)
 	}
 
 	return err
@@ -159,14 +160,14 @@ var deleteOpCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::deleteOpCallback"
 
 	p := args[0].(*Producer)
-	key := args[1].(string)
+	key := args[1].(common.Key)
 
-	_, err := p.metadataBucketHandle.Remove(key, 0)
+	_, err := p.metadataBucketHandle.Remove(key.Raw(), 0)
 	if gocb.IsKeyNotFoundError(err) || err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
 		logging.Errorf("%s [%s:%d] Bucket delete failed for key: %ru, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
+			logPrefix, p.appName, p.LenRunningConsumers(), key.Raw(), err)
 	}
 	return err
 }

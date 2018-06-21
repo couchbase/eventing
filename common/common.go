@@ -35,6 +35,7 @@ var ErrRetryTimeout = errors.New("retry timeout")
 
 // EventingProducer interface to export functions from eventing_producer
 type EventingProducer interface {
+	AddMetadataPrefix(key string) Key
 	Auth() string
 	CfgData() string
 	CheckpointBlobDump() map[string]interface{}
@@ -190,6 +191,7 @@ type AppConfig struct {
 	LastDeploy     string
 	Settings       map[string]interface{}
 	UsingDocTimer  bool
+	UserPrefix     string
 }
 
 type RebalanceProgress struct {
@@ -290,4 +292,19 @@ type ProcessConfig struct {
 type RebalanceConfig struct {
 	VBOwnershipGiveUpRoutineCount   int
 	VBOwnershipTakeoverRoutineCount int
+}
+
+type Key struct {
+	metadataPrefix string
+	key            string
+	transformedKey string
+}
+
+func NewKey(userPrefix, clusterPrefix, key string) Key {
+	metadataPrefix := userPrefix + "::" + clusterPrefix
+	return Key{metadataPrefix, key, metadataPrefix + "::" + key}
+}
+
+func (k Key) Raw() string {
+	return k.transformedKey
 }

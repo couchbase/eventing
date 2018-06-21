@@ -176,7 +176,8 @@ func (p *Producer) Serve() {
 		common.StartDebugBlob{StartDebug: false},
 		util.EventingVer(),
 	}
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, dFlagKey, debugBlob)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
+		p, p.AddMetadataPrefix(dFlagKey), debugBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return
@@ -187,7 +188,8 @@ func (p *Producer) Serve() {
 		util.EventingVer(),
 	}
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, dInstAddrKey, debuggerInstBlob)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey), debuggerInstBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return
@@ -704,14 +706,16 @@ func (p *Producer) SignalStartDebugger() error {
 	// Check if debugger instance is already running somewhere
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, dInstAddrKey, dInstAddrBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
 	}
 
 	if dInstAddrBlob.NodeUUID == "" {
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, key, blob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
+			p, p.AddMetadataPrefix(key), blob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 			return common.ErrRetryTimeout
@@ -732,7 +736,8 @@ func (p *Producer) SignalStopDebugger() error {
 	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, dInstAddrKey, debuggerInstBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey), debuggerInstBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
@@ -758,7 +763,8 @@ func (p *Producer) SignalStopDebugger() error {
 			}
 			dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
 
-			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, dFlagKey, debugBlob)
+			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
+				p, p.AddMetadataPrefix(dFlagKey), debugBlob)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 				return common.ErrRetryTimeout
@@ -778,7 +784,8 @@ func (p *Producer) GetDebuggerURL() (string, error) {
 	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, dInstAddrKey, debuggerInstBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey), debuggerInstBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return "", common.ErrRetryTimeout

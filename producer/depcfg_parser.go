@@ -178,6 +178,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.LogLevel = "INFO"
 	}
 
+	if val, ok := settings["user_prefix"]; ok {
+		p.app.UserPrefix = val.(string)
+	} else {
+		p.app.UserPrefix = "eventing"
+	}
+
 	if val, ok := settings["skip_timer_threshold"]; ok {
 		p.handlerConfig.SkipTimerThreshold = int(val.(float64))
 	} else {

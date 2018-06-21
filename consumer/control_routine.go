@@ -184,7 +184,8 @@ func (c *Consumer) controlRoutine() error {
 
 				logging.Infof("%s [%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-				err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, vbKey, &vbBlob, &cas, false)
+				err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+					c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 					return common.ErrRetryTimeout
