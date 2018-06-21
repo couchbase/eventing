@@ -51,7 +51,7 @@ public:
   }
   ~SystemLog() {
     std::lock_guard<std::mutex> guard(lock_);
-    std::cerr << str();
+    std::cerr << str() << std::flush;
   }
 
 private:
@@ -63,7 +63,7 @@ class ApplicationLog : public std::ostringstream {
 public:
   ~ApplicationLog() {
     std::lock_guard<std::mutex> guard(lock_);
-    std::cout << str();
+    std::cout << str() << std::flush;
   }
 
 private:
