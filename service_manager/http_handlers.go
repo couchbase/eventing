@@ -12,6 +12,7 @@ import (
 	"path"
 	"regexp"
 	"runtime/trace"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1928,6 +1929,36 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func percentileN(latencyStats map[string]uint64, p int) int {
+	var samples sort.IntSlice
+	var numSamples uint64
+	for bin, binCount := range latencyStats {
+		sample, err := strconv.Atoi(bin)
+		if err == nil {
+			samples = append(samples, sample)
+			numSamples += binCount
+		}
+	}
+	sort.Sort(samples)
+	i := numSamples*uint64(p)/100 - 1
+
+	var counter uint64
+	var prevSample int
+	for _, sample := range samples {
+		if counter > i {
+			return prevSample
+		}
+		counter += latencyStats[strconv.Itoa(sample)]
+		prevSample = sample
+	}
+
+	if len(samples) > 0 {
+		return samples[len(samples)-1]
+	} else {
+		return 0
+	}
+}
+
 func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 	statsList := make([]stats, 0)
 	for _, app := range m.getTempStoreAll() {
@@ -1944,6 +1975,16 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 			stats.WorkerPids = m.superSup.GetEventingConsumerPids(app.Name)
 			stats.PlannerStats = m.superSup.PlannerStats(app.Name)
 			stats.VbDistributionStatsFromMetadata = m.superSup.VbDistributionStatsFromMetadata(app.Name)
+
+			latencyStats := m.superSup.GetLatencyStats(app.Name)
+			ls := make(map[string]int)
+			ls["50"] = percentileN(latencyStats, 50)
+			ls["80"] = percentileN(latencyStats, 80)
+			ls["90"] = percentileN(latencyStats, 90)
+			ls["95"] = percentileN(latencyStats, 95)
+			ls["99"] = percentileN(latencyStats, 99)
+			ls["100"] = percentileN(latencyStats, 100)
+			stats.LatencyPercentileStats = ls
 
 			if fullStats {
 				checkpointBlobDump, err := m.superSup.CheckpointBlobDump(app.Name)

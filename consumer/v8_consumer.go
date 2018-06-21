@@ -301,7 +301,6 @@ func (c *Consumer) Serve() {
 		go c.vbsStateUpdate()
 	}
 
-	// doc_id timer events
 	go c.processDocTimerEvents()
 
 	go c.cleanupProcessedDocTimers()
@@ -316,7 +315,6 @@ func (c *Consumer) Serve() {
 
 	go c.doLastSeqNoCheckpoint()
 
-	// V8 Debugger polling routine
 	go c.pollForDebuggerStart()
 
 	c.signalBootstrapFinishCh <- struct{}{}

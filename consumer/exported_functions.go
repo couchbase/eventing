@@ -98,6 +98,14 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["ERROR_PARSING_DOC_TIMER_RESPONSES"] = c.errorParsingDocTimerResponses
 	}
 
+	if c.isBootstrapping {
+		stats["IS_BOOTSTRAPPING"] = 1
+	}
+
+	if c.isRebalanceOngoing {
+		stats["IS_REBALANCE_ONGOING"] = 1
+	}
+
 	if c.plasmaDeleteCounter > 0 {
 		stats["PLASMA_DELETE_COUNTER"] = c.plasmaDeleteCounter
 	}
@@ -130,6 +138,10 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 
 	if c.timersRecreatedFromDCPBackfill > 0 {
 		stats["TIMERS_RECREATED_FROM_DCP_BACKFILL"] = c.timersRecreatedFromDCPBackfill
+	}
+
+	if c.vbsStateUpdateRunning {
+		stats["VBS_STATE_UPDATE_RUNNING"] = 1
 	}
 
 	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_START"]; ok {
