@@ -147,6 +147,8 @@ extern std::atomic<int64_t> on_delete_failure;
 
 extern std::atomic<int64_t> doc_timer_create_failure;
 
+extern std::atomic<int64_t> lcb_retry_failure;
+
 extern std::atomic<int64_t> messages_processed_counter;
 
 // DCP or Timer event counter

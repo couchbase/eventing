@@ -574,6 +574,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << doc_timer_responses_sent;
       estats << R"(, "uv_try_write_failure_counter":)";
       estats << uv_try_write_failure_counter;
+      estats << R"(, "lcb_retry_failure":)" << lcb_retry_failure;
 
       if (!workers_.empty()) {
         agg_queue_memory = agg_queue_size = feedback_queue_size = 0;
