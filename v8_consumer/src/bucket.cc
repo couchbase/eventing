@@ -325,6 +325,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_GET: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
   }
@@ -336,6 +337,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_GET: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
   }
@@ -408,6 +410,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
         LOG(logTrace)
             << "Bucket: Unable to get key for recursive_mutation=false"
             << std::endl;
+        lcb_retry_failure++;
       }
 
       lcb_sched_leave(*bucket_lcb_obj_ptr);
@@ -417,6 +420,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
         LOG(logTrace) << "Bucket: Unable to schedule call to get key for "
                          "recursive_mutation=false"
                       << std::endl;
+        lcb_retry_failure++;
       }
 
       switch (gres.rc) {
@@ -507,6 +511,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       if (err != LCB_SUCCESS) {
         LOG(logTrace) << "Bucket: Unable to set subdoc op for setting macro"
                       << std::endl;
+        lcb_retry_failure++;
       }
 
       err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait,
@@ -515,6 +520,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
         LOG(logTrace)
             << "Bucket: Unable to schedule subdoc op for setting macro"
             << std::endl;
+        lcb_retry_failure++;
       }
 
       switch (sres.rc) {
@@ -557,6 +563,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     if (err != LCB_SUCCESS) {
       LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
                     << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+      lcb_retry_failure++;
       HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
       return;
     }
@@ -567,6 +574,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     if (err != LCB_SUCCESS) {
       LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
                     << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+      lcb_retry_failure++;
       HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
       return;
     }
@@ -621,6 +629,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_REMOVE: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
   }
@@ -631,6 +640,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
   }
@@ -639,6 +649,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   if (result.rc != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: LCB_REMOVE call failed: " << result.rc
                   << std::endl;
+    lcb_retry_failure++;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.rc);
     return;
   }

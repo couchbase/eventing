@@ -32,6 +32,8 @@ std::atomic<int64_t> on_delete_failure = {0};
 
 std::atomic<int64_t> doc_timer_create_failure = {0};
 
+std::atomic<int64_t> lcb_retry_failure = {0};
+
 std::atomic<int64_t> messages_processed_counter = {0};
 
 std::atomic<int64_t> cron_timer_msg_counter = {0};

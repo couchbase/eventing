@@ -36,10 +36,10 @@ R RetryWithFixedBackoff(int max_retry_count, int64_t initial_delay_milliseconds,
       return status;
     }
 
-    LOG(logError) << "Callable execution failed and will be retried in "
+    LOG(logTrace) << "Callable execution failed and will be retried in "
                   << initial_delay_milliseconds << " milliseconds (attempt "
                   << (retry_count + 1) << " out of " << max_retry_count
-                  << "), caused by error: " << status;
+                  << "), caused by error: " << status << std::endl;
     std::this_thread::sleep_for(
         std::chrono::milliseconds(initial_delay_milliseconds));
     retry_count++;
@@ -75,10 +75,10 @@ R RetryWithExponentialBackoff(int max_retry_count,
       delay_milliseconds = std::min(initial_delay_milliseconds << retry_count,
                                     max_backoff_milliseconds);
     }
-    LOG(logError) << "Callable execution failed and will be retried in "
+    LOG(logTrace) << "Callable execution failed and will be retried in "
                   << delay_milliseconds << " milliseconds (attempt "
                   << (retry_count + 1) << " out of " << max_retry_count
-                  << "), caused by error: " << status;
+                  << "), caused by error: " << status << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(delay_milliseconds));
     retry_count++;
   }

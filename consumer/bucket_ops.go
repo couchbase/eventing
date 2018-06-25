@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -207,6 +209,11 @@ var getOpCallback = func(args ...interface{}) error {
 		isNoEnt = args[5].(*bool)
 	}
 
+	var createIfMissing bool
+	if len(args) == 7 {
+		createIfMissing = args[6].(bool)
+	}
+
 	var err error
 	*cas, err = c.gocbMetaBucket.Get(vbKey.Raw(), vbBlob)
 
@@ -229,6 +236,16 @@ var getOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
+	if err == gocb.ErrKeyNotFound && createIfMissing {
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return err
+		}
+
+		return nil
+	}
+
 	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
 	}
@@ -239,6 +256,73 @@ var getOpCallback = func(args ...interface{}) error {
 	}
 
 	return err
+}
+
+var recreateCheckpointBlobCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::recreateCheckpointBlobCallback"
+
+	c := args[0].(*Consumer)
+	vbKey := args[1].(common.Key)
+	vbBlob := args[2].(*vbucketKVBlob)
+
+	entries := strings.Split(vbKey.Raw(), "::")
+	vb, err := strconv.Atoi(entries[len(entries)-1])
+	if err != nil {
+		return err
+	}
+
+	var flogs couchbase.FailoverLog
+	var vbuuid uint64
+
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpAllVbucketsCallback, c, c.cbBucket, &flogs, uint16(vb))
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return err
+	}
+
+	logging.Infof("%s [%s:%s:%d] vb: %d Recreating missing checkpoint blob", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+
+	if flog, ok := flogs[uint16(vb)]; ok {
+		vbuuid, _, err = flog.Latest()
+
+		vbBlob.AssignedWorker = c.ConsumerName()
+		vbBlob.CurrentVBOwner = c.HostPortAddr()
+		vbBlob.DCPStreamRequested = false
+		vbBlob.DCPStreamStatus = dcpStreamStopped
+		vbBlob.VBuuid = vbuuid
+		vbBlob.VBId = uint16(vb)
+
+		// Assigning previous owner and worker to current consumer
+		vbBlob.PreviousAssignedWorker = c.ConsumerName()
+		vbBlob.PreviousNodeUUID = c.NodeUUID()
+		vbBlob.PreviousVBOwner = c.HostPortAddr()
+
+		entry := OwnershipEntry{
+			AssignedWorker: c.ConsumerName(),
+			CurrentVBOwner: c.HostPortAddr(),
+			Operation:      metadataRecreated,
+			Timestamp:      time.Now().String(),
+		}
+		vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
+
+		vbBlob.CurrentProcessedDocIDTimer = time.Now().UTC().Format(time.RFC3339)
+		vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
+		vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+
+		vbBlobVer := vbucketKVBlobVer{
+			*vbBlob,
+			util.EventingVer(),
+		}
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return common.ErrRetryTimeout
+		}
+	}
+
+	logging.Infof("%s [%s:%s:%d] vb: %d Recreated missing checkpoint blob", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+	return nil
+
 }
 
 var periodicCheckpointCallback = func(args ...interface{}) error {
@@ -260,6 +344,25 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 		UpsertEx("last_processed_seq_no", vbBlob.LastSeqNoProcessed, gocb.SubdocFlagCreatePath).
 		Execute()
 
+	if !c.isRebalanceOngoing && !c.vbsStateUpdateRunning && (vbBlob.NodeUUID == "" || vbBlob.CurrentVBOwner == "") {
+		entry := OwnershipEntry{
+			AssignedWorker: c.ConsumerName(),
+			CurrentVBOwner: c.HostPortAddr(),
+			Operation:      metadataUpdatedPeriodicCheck,
+			Timestamp:      time.Now().String(),
+		}
+
+		_, err = c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
+			ArrayAppend("ownership_history", entry, true).
+			UpsertEx("assigned_worker", c.ConsumerName(), gocb.SubdocFlagCreatePath).
+			UpsertEx("current_vb_owner", c.HostPortAddr(), gocb.SubdocFlagCreatePath).
+			UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
+			UpsertEx("dcp_stream_status", dcpStreamRunning, gocb.SubdocFlagCreatePath).
+			UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+			UpsertEx("node_uuid", c.NodeUUID(), gocb.SubdocFlagCreatePath).
+			Execute()
+	}
+
 	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
 	}
@@ -279,6 +382,8 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
 
+retryUpdateCheckpoint:
+
 	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
@@ -293,6 +398,18 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 		UpsertEx("previous_vb_owner", vbBlob.PreviousVBOwner, gocb.SubdocFlagCreatePath).
 		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		Execute()
+
+	if err == gocb.ErrKeyNotFound {
+		var vbBlob vbucketKVBlob
+
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return err
+		}
+
+		goto retryUpdateCheckpoint
+	}
 
 	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
@@ -313,6 +430,7 @@ var metadataCorrectionCallback = func(args ...interface{}) error {
 	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
 
+retryMetadataCorrection:
 	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", c.ConsumerName(), gocb.SubdocFlagCreatePath).
@@ -325,6 +443,18 @@ var metadataCorrectionCallback = func(args ...interface{}) error {
 
 	if err == gocb.ErrShutdown {
 		return nil
+	}
+
+	if err == gocb.ErrKeyNotFound {
+		var vbBlob vbucketKVBlob
+
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return err
+		}
+
+		goto retryMetadataCorrection
 	}
 
 	if err != nil {
@@ -343,6 +473,7 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
 
+retrySRRUpdate:
 	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
@@ -358,6 +489,18 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 
 	if err == gocb.ErrShutdown {
 		return nil
+	}
+
+	if err == gocb.ErrKeyNotFound {
+		var vbBlob vbucketKVBlob
+
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return err
+		}
+
+		goto retrySRRUpdate
 	}
 
 	if err != nil {
@@ -376,6 +519,7 @@ var addOwnershipHistorySRFCallback = func(args ...interface{}) error {
 	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
 
+retrySRFUpdate:
 	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
@@ -391,6 +535,18 @@ var addOwnershipHistorySRFCallback = func(args ...interface{}) error {
 
 	if err == gocb.ErrShutdown {
 		return nil
+	}
+
+	if err == gocb.ErrKeyNotFound {
+		var vbBlob vbucketKVBlob
+
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return err
+		}
+
+		goto retrySRFUpdate
 	}
 
 	if err != nil {
@@ -410,6 +566,7 @@ var addOwnershipHistorySRSCallback = func(args ...interface{}) error {
 	vbBlob := args[2].(*vbucketKVBlob)
 	ownershipEntry := args[3].(*OwnershipEntry)
 
+retrySRSUpdate:
 	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
@@ -428,8 +585,61 @@ var addOwnershipHistorySRSCallback = func(args ...interface{}) error {
 		return nil
 	}
 
+	if err == gocb.ErrKeyNotFound {
+		var vbBlob vbucketKVBlob
+
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return err
+		}
+
+		goto retrySRSUpdate
+	}
+
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post STREAMREQ SUCCESS from Producer, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
+	}
+
+	return err
+}
+
+var addOwnershipHistoryCSCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::addOwnershipHistoryCSCallback"
+
+	c := args[0].(*Consumer)
+	vbKey := args[1].(common.Key)
+	ownershipEntry := args[2].(*OwnershipEntry)
+
+retryCSUpdate:
+	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
+		ArrayAppend("ownership_history", ownershipEntry, true).
+		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		Execute()
+
+	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
+		return nil
+	}
+
+	if err == gocb.ErrKeyNotFound {
+		var vbBlob vbucketKVBlob
+
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return err
+		}
+
+		goto retryCSUpdate
+	}
+
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while performing ownership entry app post close stream, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
@@ -443,6 +653,7 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
 
+retrySEUpdate:
 	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
@@ -454,6 +665,18 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 
 	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
+	}
+
+	if err == gocb.ErrKeyNotFound {
+		var vbBlob vbucketKVBlob
+
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return err
+		}
+
+		goto retrySEUpdate
 	}
 
 	if err != nil {
