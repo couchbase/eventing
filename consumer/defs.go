@@ -90,13 +90,16 @@ const (
 )
 
 const (
-	dcpStreamBootstrap     = "bootstrap"
-	dcpStreamRequested     = "stream_requested"
-	dcpStreamRequestFailed = "stream_request_failed"
-	dcpStreamRunning       = "running"
-	dcpStreamStopped       = "stopped"
-	dcpStreamUninitialised = ""
-	metadataCorrected      = "metadata_corrected"
+	dcpCloseStream               = "stream_closed"
+	dcpStreamBootstrap           = "bootstrap"
+	dcpStreamRequested           = "stream_requested"
+	dcpStreamRequestFailed       = "stream_request_failed"
+	dcpStreamRunning             = "running"
+	dcpStreamStopped             = "stopped"
+	dcpStreamUninitialised       = ""
+	metadataCorrected            = "metadata_corrected"
+	metadataRecreated            = "metadata_recreated"
+	metadataUpdatedPeriodicCheck = "metadata_updated_periodic_checkpoint"
 )
 
 type xattrMetadata struct {

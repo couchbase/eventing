@@ -1,8 +1,9 @@
 package eventing
 
 const (
-	srcBucket = "default"
-	dstBucket = "hello-world"
+	srcBucket  = "default"
+	dstBucket  = "hello-world"
+	metaBucket = "eventing"
 )
 
 const (

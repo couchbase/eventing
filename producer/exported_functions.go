@@ -878,6 +878,10 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 
 	checkpointBlobDumps := make(map[string]interface{})
 
+	if p.metadataBucketHandle == nil {
+		return checkpointBlobDumps
+	}
+
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbBlob := make(map[string]interface{})
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)

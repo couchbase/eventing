@@ -257,6 +257,42 @@ func TestEventingSwapRebOnUpdateBucketOp(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestMetaRollbackWithEventingReb(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+
+	addNodeFromRest("127.0.0.1:9001", "eventing")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: rlOpsPSec,
+		count:   rlItemCount,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	addNodeFromRest("127.0.0.1:9002", "eventing")
+	rebalanceFromRest([]string{""})
+	go purgeCheckpointBlobs(handler, "eventing", 0, 1023)
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}
+
 /** OnUpdate Bucket op cases end **/
 
 /** OnUpdate doc/cron timer cases start - Disabled for now as in vulcan they are going as Beta**/

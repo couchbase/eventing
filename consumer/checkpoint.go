@@ -55,7 +55,6 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					}
 
 					if isNoEnt {
-
 						logging.Infof("%s [%s:%s:%d] vb: %d Creating the initial metadata blob entry",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), vbno)
 

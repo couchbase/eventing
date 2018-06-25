@@ -1,10 +1,12 @@
 package eventing
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
 
+	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/gocb"
 )
 
@@ -25,6 +27,47 @@ type opsType struct {
 
 func pumpBucketOps(ops opsType, rate *rateLimit) {
 	pumpBucketOpsSrc(ops, "default", rate)
+}
+
+func purgeCheckpointBlobs(appName, prefix string, start, end int) {
+	time.Sleep(15 * time.Second) // Hopefully enough time for bootstrap loop to exit on new node
+
+	cluster, _ := gocb.Connect("couchbase://127.0.0.1:12000")
+	cluster.Authenticate(gocb.PasswordAuthenticator{
+		Username: rbacuser,
+		Password: rbacpass,
+	})
+	bucket, err := cluster.OpenBucket(metaBucket, "")
+	if err != nil {
+		fmt.Println("Bucket open, err:", err)
+		return
+	}
+	defer bucket.Close()
+
+	// Grab handlerUUID from metakv
+	metakvPath := fmt.Sprintf("/eventing/tempApps/%s/0", appName)
+	data, _, err := metakv.Get(metakvPath)
+	if err != nil {
+		log.Printf("Metakv lookup failed, err: %v\n", err)
+		return
+	}
+
+	var app map[string]interface{}
+	err = json.Unmarshal(data, &app)
+	if err != nil {
+		log.Printf("Failed to unmarshal app content from metakv, err: %v\n", err)
+		return
+	}
+
+	for vb := start; vb <= end; vb++ {
+		docID := fmt.Sprintf("%s::%g::%s::vb::%d", prefix, app["handleruuid"], appName, vb)
+		_, err = bucket.Remove(docID, 0)
+		if err != nil {
+			log.Printf("DocID: %s err: %v\n", docID, err)
+		}
+	}
+
+	log.Printf("Purged checkpoint blobs from start vb: %d to end vb: %d\n", start, end)
 }
 
 func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
