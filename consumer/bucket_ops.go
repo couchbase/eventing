@@ -771,6 +771,13 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	feedName := args[1].(couchbase.DcpFeedName)
 	kvHostPort := args[2].(string)
 
+	err := c.cbBucket.Refresh()
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Bucket: %s kv node: %rs failed to refresh vbmap, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort, err)
+		return err
+	}
+
 	dcpFeed, err := c.cbBucket.StartDcpFeedOver(
 		feedName, uint32(0), includeXATTRs, []string{kvHostPort}, 0xABCD, c.dcpConfig)
 
