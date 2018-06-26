@@ -67,7 +67,7 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 
 	// Application logging related configurations
 	fillMissingDefault(settings, "app_log_max_size", float64(1024*1024*40))
-	fillMissingDefault(settings, "app_log_max_files", float64((^uint(0))>>1))
+	fillMissingDefault(settings, "app_log_max_files", float64(10))
 	fillMissingDefault(settings, "enable_applog_rotation", true)
 
 	// Doc timer configurations for plasma
