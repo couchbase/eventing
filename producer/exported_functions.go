@@ -899,3 +899,11 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 func (p *Producer) AddMetadataPrefix(key string) common.Key {
 	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), key)
 }
+
+func (p *Producer) GetVbOwner(vb uint16) (string, string, error) {
+	if info, ok := p.vbMapping[vb]; ok {
+		return info.ownerNode, info.assignedWorker, nil
+	}
+
+	return "", "", fmt.Errorf("owner not found")
+}

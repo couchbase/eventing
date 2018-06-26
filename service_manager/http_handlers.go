@@ -399,7 +399,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 	numEventingNodes := len(nodeAddrs)
 	if numEventingNodes <= 0 {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errNoEventingNodes.Code))
-		logging.Warnf("%s no eventing nodes found in cluster", logPrefix, err)
+		logging.Warnf("%s no eventing nodes found in cluster", logPrefix)
 		fmt.Fprintf(w, "")
 		return
 	}
