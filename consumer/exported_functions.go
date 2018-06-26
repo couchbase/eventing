@@ -44,8 +44,11 @@ func (c *Consumer) EventingNodeUUIDs() []string {
 
 // GetEventProcessingStats exposes dcp/timer processing stats
 func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
-	stats := make(map[string]uint64)
 	c.msgProcessedRWMutex.RLock()
+	defer c.msgProcessedRWMutex.RUnlock()
+
+	stats := make(map[string]uint64)
+
 	for opcode, value := range c.dcpMessagesProcessed {
 		stats[mcd.CommandNames[opcode]] = value
 	}
@@ -53,6 +56,16 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	if c.adhocDoctimerResponsesRecieved > 0 {
 		stats["ADHOC_DOC_TIMER_RESPONSES_RECEIVED"] = c.adhocDoctimerResponsesRecieved
 	}
+
+	if c.cppQueueSizes != nil {
+		stats["AGG_DOC_TIMER_FEEDBACK_QUEUE_SIZE"] = uint64(c.cppQueueSizes.DocTimerQueueSize)
+		stats["AGG_QUEUE_MEMORY"] = uint64(c.cppQueueSizes.AggQueueMemory)
+		stats["AGG_QUEUE_SIZE"] = uint64(c.cppQueueSizes.AggQueueSize)
+	}
+
+	stats["AGG_DOC_TIMER_FEEDBACK_QUEUE_CAP"] = uint64(c.feedbackQueueCap)
+	stats["AGG_QUEUE_MEMORY_CAP"] = uint64(c.workerQueueMemCap)
+	stats["AGG_QUEUE_SIZE_CAP"] = uint64(c.workerQueueCap)
 
 	if c.aggMessagesSentCounter > 0 {
 		stats["AGG_MESSAGES_SENT_TO_WORKER"] = c.aggMessagesSentCounter
@@ -228,8 +241,6 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 			stats["V8_LOAD"] = c.v8WorkerMessagesProcessed["V8_LOAD"]
 		}
 	}
-
-	c.msgProcessedRWMutex.RUnlock()
 
 	return stats
 }

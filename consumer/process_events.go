@@ -30,10 +30,9 @@ func (c *Consumer) processEvents() {
 	for {
 
 		if c.cppQueueSizes != nil {
-			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize || c.feedbackQueueCap < c.cppQueueSizes.DocTimerQueueSize || c.workerQueueMemCap < c.cppQueueSizes.AggQueueMemory {
-				logging.Infof("%s [%s:%s:%d] Throttling events to cpp worker, aggregate queue size: %v cap: %v feedback queue size: %v cap: %v aggregate queue memory: %v cap %v",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.AggQueueSize, c.workerQueueCap,
-					c.cppQueueSizes.DocTimerQueueSize, c.feedbackQueueCap, c.cppQueueSizes.AggQueueMemory, c.workerQueueMemCap)
+			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize ||
+				c.feedbackQueueCap < c.cppQueueSizes.DocTimerQueueSize ||
+				c.workerQueueMemCap < c.cppQueueSizes.AggQueueMemory {
 				time.Sleep(10 * time.Millisecond)
 			}
 		}
@@ -799,8 +798,6 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 				}
 
 				if c.aggDCPFeedMem > c.aggDCPFeedMemCap {
-					logging.Infof("%s [%s:%s:%d] Throttling, aggDCPFeed memory: %d bytes aggDCPFeedMemCap: %d\n",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), c.aggDCPFeedMem, c.aggDCPFeedMemCap)
 					time.Sleep(10 * time.Millisecond)
 				}
 
