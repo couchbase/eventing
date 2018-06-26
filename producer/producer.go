@@ -54,6 +54,8 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 		uuid:                       uuid,
 		vbEventingNodeAssignRWMutex:  &sync.RWMutex{},
 		vbEventingNodeRWMutex:        &sync.RWMutex{},
+		vbMapping:                    make(map[uint16]*vbNodeWorkerMapping),
+		vbMappingRWMutex:             &sync.RWMutex{},
 		workerNameConsumerMap:        make(map[string]common.EventingConsumer),
 		workerNameConsumerMapRWMutex: &sync.RWMutex{},
 		workerVbMapRWMutex:           &sync.RWMutex{},
@@ -121,6 +123,8 @@ func (p *Producer) Serve() {
 		logging.Infof("%s [%s:%d] Planner status: %t, after vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 		return
 	}
+
+	p.vbNodeWorkerMap()
 
 	p.initWorkerVbMap()
 	p.isPlannerRunning = false
@@ -228,6 +232,7 @@ func (p *Producer) Serve() {
 						logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 					return
 				}
+				p.vbNodeWorkerMap()
 				p.initWorkerVbMap()
 				p.isPlannerRunning = false
 				logging.Infof("%s [%s:%d] Planner status: %t, post vbucket to worker assignment during rebalance",

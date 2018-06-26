@@ -285,7 +285,7 @@ func (c *Consumer) processEvents() {
 						continue
 					}
 
-					// Update metadata with latest vbuuid and rolback seq no.
+					// Update metadata with latest vbuuid and rollback seq no
 					vbBlob.AssignedWorker = c.ConsumerName()
 					vbBlob.CurrentVBOwner = c.HostPortAddr()
 					vbBlob.DCPStreamStatus = dcpStreamRunning

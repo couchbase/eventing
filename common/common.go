@@ -53,6 +53,7 @@ type EventingProducer interface {
 	GetLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
 	GetNsServerPort() string
+	GetVbOwner(vb uint16) (string, string, error)
 	GetPlasmaStats() (map[string]interface{}, error)
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string

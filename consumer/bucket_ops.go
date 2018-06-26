@@ -465,6 +465,42 @@ retryMetadataCorrection:
 	return err
 }
 
+var metadataCorrectionAfterRollbackCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::metadataCorrectionAfterRollbackCallback"
+
+	c := args[0].(*Consumer)
+	vbKey := args[1].(common.Key)
+	ownershipEntry := args[2].(*OwnershipEntry)
+
+retryMetadataCorrection:
+	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
+		ArrayAppend("ownership_history", ownershipEntry, true).
+		Execute()
+
+	if err == gocb.ErrShutdown {
+		return nil
+	}
+
+	if err == gocb.ErrKeyNotFound {
+		var vbBlob vbucketKVBlob
+
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return err
+		}
+
+		goto retryMetadataCorrection
+	}
+
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while trying to correct metadata, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
+	}
+
+	return err
+}
+
 // Called when STREAMREQ is sent from DCP Client to Producer
 var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::addOwnershipHistorySRRCallback"

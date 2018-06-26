@@ -162,6 +162,9 @@ type Producer struct {
 	vbEventingNodeMap     map[string]map[string]string // Access controlled by vbEventingNodeRWMutex
 	vbEventingNodeRWMutex *sync.RWMutex
 
+	vbMapping        map[uint16]*vbNodeWorkerMapping // Access controlled by vbMappingRWMutex
+	vbMappingRWMutex *sync.RWMutex
+
 	// Map keeping track of vbuckets assigned to each worker(consumer)
 	workerVbucketMap   map[string][]uint16 // Access controlled by workerVbMapRWMutex
 	workerVbMapRWMutex *sync.RWMutex
@@ -171,4 +174,9 @@ type Producer struct {
 	workerSupervisor *suptree.Supervisor
 
 	sync.RWMutex
+}
+
+type vbNodeWorkerMapping struct {
+	ownerNode      string
+	assignedWorker string
 }

@@ -120,6 +120,37 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 					c.vbProcessingStats.updateVbStat(vb, "seq_no_after_close_stream", lastSeqNo)
 					c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
+					ownerNode, worker, err := c.producer.GetVbOwner(vb)
+					if err != nil {
+						logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d unable to find owner node and worker",
+							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
+					}
+
+					if vbBlob.DCPStreamStatus == dcpStreamRunning && (vbBlob.AssignedWorker != worker || vbBlob.CurrentVBOwner != ownerNode) {
+						logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d KV potentially rollbacked, rewriting after dcp close stream",
+							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
+
+						entry := OwnershipEntry{
+							AssignedWorker: c.ConsumerName(),
+							CurrentVBOwner: c.HostPortAddr(),
+							Operation:      metadataCorrectedAfterRollback,
+							Timestamp:      time.Now().String(),
+						}
+
+						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, metadataCorrectionAfterRollbackCallback,
+							c, c.producer.AddMetadataPrefix(vbKey), &entry)
+						if err == common.ErrRetryTimeout {
+							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+							return
+						}
+
+						err = c.updateCheckpoint(vbKey, vb, &vbBlob)
+						if err == common.ErrRetryTimeout {
+							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+							return
+						}
+					}
+
 					continue
 				}
 
@@ -210,8 +241,11 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 						return
 					}
 
-					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d Metadata check, stream status: %s owner node: %s worker: %s",
-						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus, vbBlob.CurrentVBOwner, vbBlob.AssignedWorker)
+					ownerNode, worker, _ := c.producer.GetVbOwner(vb)
+
+					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d Metadata check, stream status: %s owner node: %s worker: %s desired node: %s worker: %s",
+						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus, vbBlob.CurrentVBOwner, vbBlob.AssignedWorker,
+						ownerNode, worker)
 
 					select {
 					case <-c.stopVbOwnerGiveupCh:
@@ -220,6 +254,41 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 						return
 
 					default:
+
+						ownerNode, worker, err := c.producer.GetVbOwner(vb)
+						if err != nil {
+							logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d unable to find owner node and worker",
+								logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
+						}
+
+						if vbBlob.DCPStreamStatus == dcpStreamRunning && (vbBlob.AssignedWorker != worker || vbBlob.CurrentVBOwner != ownerNode) {
+							time.Sleep(retryVbMetaStateCheckInterval)
+
+							logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d KV potentially rollbacked, rewriting...",
+								logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
+
+							entry := OwnershipEntry{
+								AssignedWorker: c.ConsumerName(),
+								CurrentVBOwner: c.HostPortAddr(),
+								Operation:      metadataCorrectedAfterRollback,
+								Timestamp:      time.Now().String(),
+							}
+
+							err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, metadataCorrectionAfterRollbackCallback,
+								c, c.producer.AddMetadataPrefix(vbKey), &entry)
+							if err == common.ErrRetryTimeout {
+								logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+								return
+							}
+
+							err = c.updateCheckpoint(vbKey, vb, &vbBlob)
+							if err == common.ErrRetryTimeout {
+								logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+								return
+							}
+
+							goto retryVbMetaStateCheck
+						}
 
 						// Retry looking up metadata for vbucket whose ownership has been given up if:
 						// (a) DCP stream status isn't running
@@ -240,7 +309,6 @@ func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
 									return
 								}
 							}
-
 							goto retryVbMetaStateCheck
 						}
 						logging.Infof("%s [%s:giveup_r_%d:%s:%d] Gracefully exited vb ownership give-up routine, last handled vb: %d",
@@ -445,6 +513,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 	if !c.isRebalanceOngoing {
 		logging.Infof("%s [%s:%s:%d] vb: %d Skipping vbTakeover as rebalance has been stopped",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+		c.deleteFromEnqueueMap(vb)
 		return nil
 	}
 
