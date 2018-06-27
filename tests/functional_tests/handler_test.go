@@ -31,7 +31,7 @@ func TestCRLF(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-func TestDocTimerExpiredDocs(t *testing.T) {
+/*func TestDocTimerExpiredDocs(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	itemCount := 0
 	handler := "bucket_op_doc_timer_expired_docs"
@@ -50,7 +50,7 @@ func TestDocTimerExpiredDocs(t *testing.T) {
 
 	dumpStats()
 	flushFunctionAndBucket(handler)
-}
+}*/
 
 func TestImportExport(t *testing.T) {
 	time.Sleep(time.Second * 5)
@@ -275,7 +275,7 @@ func TestOnDeleteBucketOp5K(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-func TestDocTimerBucketOp(t *testing.T) {
+/*func TestDocTimerBucketOp(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "bucket_op_with_doc_timer"
 	flushFunctionAndBucket(handler)
@@ -312,6 +312,7 @@ func TestCronTimerBucketOp(t *testing.T) {
 	dumpStats()
 	flushFunctionAndBucket(handler)
 }
+*/
 
 func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 	time.Sleep(time.Second * 30)
