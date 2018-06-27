@@ -929,6 +929,14 @@ func (c *Consumer) clearUpOwnershipInfoFromMeta(vb uint16) error {
 func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, start uint64) error {
 	logPrefix := "Consumer::dcpRequestStreamHandle"
 
+	defer func() {
+		if r := recover(); r != nil {
+			trace := debug.Stack()
+			logging.Errorf("%s [%s:%s:%d] dcpRequestStreamHandle recover %rm stack trace: %rm",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
+		}
+	}()
+
 	c.cbBucket.Refresh()
 
 	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvVbMap, c)

@@ -397,10 +397,6 @@ func (c *Consumer) Stop() {
 		c.docTimerProcessingStopCh <- struct{}{}
 	}
 
-	if c.cbBucket != nil {
-		c.cbBucket.Close()
-	}
-
 	if c.gocbBucket != nil {
 		c.gocbBucket.Close()
 	}
@@ -464,6 +460,11 @@ func (c *Consumer) Stop() {
 
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop cron, doc routines",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
+
+	// Closing bucket feed handle after sending message on stopReqStreamProcessCh
+	if c.cbBucket != nil {
+		c.cbBucket.Close()
+	}
 
 	if c.updateStatsTicker != nil {
 		c.updateStatsTicker.Stop()
