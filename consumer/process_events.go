@@ -284,6 +284,8 @@ func (c *Consumer) processEvents() {
 						continue
 					}
 
+					c.vbProcessingStats.updateVbStat(e.VBucket, "vb_uuid", vbuuid)
+
 					// Update metadata with latest vbuuid and rollback seq no
 					vbBlob.AssignedWorker = c.ConsumerName()
 					vbBlob.CurrentVBOwner = c.HostPortAddr()
