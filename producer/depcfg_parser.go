@@ -123,7 +123,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["deadline_timeout"]; ok {
 		p.handlerConfig.SocketTimeout = int(val.(float64))
 	} else {
-		p.handlerConfig.SocketTimeout = 2
+		p.handlerConfig.SocketTimeout = 62
 	}
 
 	if val, ok := settings["enable_recursive_mutation"]; ok {
@@ -135,7 +135,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["execution_timeout"]; ok {
 		p.handlerConfig.ExecutionTimeout = int(val.(float64))
 	} else {
-		p.handlerConfig.ExecutionTimeout = 1
+		p.handlerConfig.ExecutionTimeout = 60
 	}
 
 	if val, ok := settings["feedback_batch_size"]; ok {
