@@ -237,7 +237,7 @@ var getOpCallback = func(args ...interface{}) error {
 	}
 
 	if err == gocb.ErrKeyNotFound && createIfMissing {
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
@@ -256,6 +256,63 @@ var getOpCallback = func(args ...interface{}) error {
 	}
 
 	return err
+}
+
+var recreateCheckpointBlobsFromVbStatsCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::recreateCheckpointBlobsFromVbStatsCallback"
+
+	c := args[0].(*Consumer)
+	vbKey := args[1].(common.Key)
+	vbBlob := args[2].(*vbucketKVBlob)
+
+	entries := strings.Split(vbKey.Raw(), "::")
+	vb, err := strconv.Atoi(entries[len(entries)-1])
+	if err != nil {
+		return err
+	}
+
+	vbuuid := c.vbProcessingStats.getVbStat(uint16(vb), "vb_uuid").(uint64)
+
+	vbBlob.AssignedWorker = c.ConsumerName()
+	vbBlob.CurrentVBOwner = c.HostPortAddr()
+	vbBlob.DCPStreamRequested = false
+	vbBlob.DCPStreamStatus = dcpStreamRunning
+	vbBlob.VBuuid = vbuuid
+	vbBlob.VBId = uint16(vb)
+
+	// Assigning previous owner and worker to current consumer
+	vbBlob.PreviousAssignedWorker = c.ConsumerName()
+	vbBlob.PreviousNodeUUID = c.NodeUUID()
+	vbBlob.PreviousVBOwner = c.HostPortAddr()
+
+	entry := OwnershipEntry{
+		AssignedWorker: c.ConsumerName(),
+		CurrentVBOwner: c.HostPortAddr(),
+		Operation:      metadataRecreated,
+		Timestamp:      time.Now().String(),
+	}
+	vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
+
+	vbBlob.CurrentProcessedDocIDTimer = time.Now().UTC().Format(time.RFC3339)
+	vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
+	vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+
+	vbBlobVer := vbucketKVBlobVer{
+		*vbBlob,
+		util.EventingVer(),
+	}
+
+	logging.Infof("%s [%s:%s:%d] vb: %d Recreating missing checkpoint blob", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return common.ErrRetryTimeout
+	}
+
+	logging.Infof("%s [%s:%s:%d] vb: %d Recreated missing checkpoint blob", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+
+	return nil
 }
 
 var recreateCheckpointBlobCallback = func(args ...interface{}) error {
@@ -342,6 +399,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 		UpsertEx("next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_processed_seq_no", vbBlob.LastSeqNoProcessed, gocb.SubdocFlagCreatePath).
+		UpsertEx("vb_uuid", vbBlob.VBuuid, gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if !c.isRebalanceOngoing && !c.vbsStateUpdateRunning && (vbBlob.NodeUUID == "" || vbBlob.CurrentVBOwner == "") {
@@ -360,6 +418,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 			UpsertEx("dcp_stream_status", dcpStreamRunning, gocb.SubdocFlagCreatePath).
 			UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
 			UpsertEx("node_uuid", c.NodeUUID(), gocb.SubdocFlagCreatePath).
+			UpsertEx("vb_uuid", vbBlob.VBuuid, gocb.SubdocFlagCreatePath).
 			Execute()
 	}
 
@@ -402,7 +461,7 @@ retryUpdateCheckpoint:
 	if err == gocb.ErrKeyNotFound {
 		var vbBlob vbucketKVBlob
 
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
@@ -624,7 +683,7 @@ retrySRSUpdate:
 	if err == gocb.ErrKeyNotFound {
 		var vbBlob vbucketKVBlob
 
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
@@ -665,7 +724,7 @@ retryCSUpdate:
 	if err == gocb.ErrKeyNotFound {
 		var vbBlob vbucketKVBlob
 
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
@@ -706,7 +765,7 @@ retrySEUpdate:
 	if err == gocb.ErrKeyNotFound {
 		var vbBlob vbucketKVBlob
 
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
