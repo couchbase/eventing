@@ -3,12 +3,14 @@ package util
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
+	"math"
 	"net/url"
 	"reflect"
 	"sort"
@@ -34,7 +36,7 @@ const (
 
 	HTTPRequestTimeout = time.Duration(5000) * time.Millisecond
 
-	EPSILON = 0.00000001
+	EPSILON = 1e-5
 )
 
 const (
@@ -550,7 +552,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 		err := MetakvSet(currpath, fragment, nil)
 		if err != nil {
 			//Delete existing entry from appspath
-			logging.Errorf("%s MetakvSet failed for fragments, fragment number: %d appName: %d err: %v", logPrefix, idx, appName, err)
+			logging.Errorf("%s MetakvSet failed for fragments, fragment number: %d appName: %s err: %v", logPrefix, idx, appName, err)
 			if errd := MetakvRecursiveDelete(appsPath); errd != nil {
 				logging.Errorf("%s MetakvSet::MetakvRecursiveDelete failed, fragment number: %d appName: %s err: %v", logPrefix, idx, appName, errd)
 				return errd
@@ -1079,7 +1081,7 @@ func ToStringArray(from interface{}) (to []string) {
 }
 
 func FloatEquals(a, b float64) bool {
-	return (a-b) < EPSILON && (b-a) < EPSILON
+	return math.Abs(a-b) <= EPSILON
 }
 
 func DeepCopy(kv map[string]interface{}) (newKv map[string]interface{}) {
@@ -1094,4 +1096,37 @@ func DeepCopy(kv map[string]interface{}) (newKv map[string]interface{}) {
 func GetAppNameFromPath(path string) string {
 	split := strings.Split(path, "/")
 	return split[len(split)-1]
+}
+
+func GenerateHandlerUUID() (uint32, error) {
+	uuid := make([]byte, 16)
+	_, err := rand.Read(uuid)
+	if err != nil {
+		return 0, err
+	}
+	return crc32.ChecksumIEEE(uuid), nil
+}
+
+type GocbLogger struct{}
+
+func (r *GocbLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
+	switch level {
+	case gocb.LogError:
+		logging.Errorf(format, v...)
+	case gocb.LogWarn:
+		logging.Warnf(format, v...)
+	case gocb.LogInfo:
+		logging.Infof(format, v...)
+	case gocb.LogDebug:
+		logging.Debugf(format, v...)
+	case gocb.LogTrace:
+		logging.Tracef(format, v...)
+	case gocb.LogSched:
+		logging.Tracef(format, v...)
+	case gocb.LogMaxVerbosity:
+		logging.Tracef(format, v...)
+	default:
+		logging.Tracef(format, v...)
+	}
+	return nil
 }

@@ -131,10 +131,12 @@ func (c *Consumer) controlRoutine() error {
 				}
 
 				logging.Infof("%s [%s:%s:%d] vb: %d Issuing dcp close stream", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+				c.dcpCloseStreamCounter++
 				c.RLock()
 				err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
 				c.RUnlock()
 				if err != nil {
+					c.dcpCloseStreamErrCounter++
 					logging.Errorf("%s [%s:%s:%d] vb: %v Failed to close dcp stream, err: %v",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 				} else {
@@ -178,11 +180,13 @@ func (c *Consumer) controlRoutine() error {
 
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
+				var isNoEnt bool
 				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 
 				logging.Infof("%s [%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-				err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, vbKey, &vbBlob, &cas, false)
+				err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+					c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, true, &isNoEnt, true)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 					return common.ErrRetryTimeout

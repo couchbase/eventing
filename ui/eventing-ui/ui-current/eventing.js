@@ -502,6 +502,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 return true;
             };
 
+            self.validateVariable = function(binding) {
+                if (binding && binding.value) {
+                    return FormValidationService.isValidVariable(binding.value);
+                }
+
+                return true;
+            };
+
             self.saveSettings = function(dismissDialog, closeDialog) {
                 var bindings = ApplicationService.convertBindingToConfig(self.bindings);
                 if (JSON.stringify(appModel.depcfg.buckets) !== JSON.stringify(bindings)) {

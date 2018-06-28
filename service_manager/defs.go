@@ -130,12 +130,14 @@ type cleanup struct {
 }
 
 type application struct {
-	Name             string                 `json:"appname"`
-	ID               int                    `json:"id"`
-	DeploymentConfig depCfg                 `json:"depcfg"`
 	AppHandlers      string                 `json:"appcode"`
-	Settings         map[string]interface{} `json:"settings"`
+	DeploymentConfig depCfg                 `json:"depcfg"`
 	EventingVersion  string                 `json:"version"`
+	HandlerUUID      uint32                 `json:"handleruuid"`
+	ID               int                    `json:"id"`
+	Name             string                 `json:"appname"`
+	Settings         map[string]interface{} `json:"settings"`
+	UsingDocTimer    bool                   `json:"using_doc_timer"`
 }
 
 type depCfg struct {
@@ -154,6 +156,7 @@ type backlogStat struct {
 }
 
 type stats struct {
+	CheckpointBlobDump              interface{} `json:"checkpoint_blob_dump,omitempty"`
 	CredsRequestCounter             interface{} `json:"creds_request_counter,omitempty"`
 	DocTimerDebugStats              interface{} `json:"doc_timer_debug_stats,omitempty"`
 	EventProcessingStats            interface{} `json:"event_processing_stats,omitempty"`
@@ -162,6 +165,7 @@ type stats struct {
 	FailureStats                    interface{} `json:"failure_stats,omitempty"`
 	FunctionName                    interface{} `json:"function_name"`
 	InternalVbDistributionStats     interface{} `json:"internal_vb_distribution_stats,omitempty"`
+	LatencyPercentileStats          interface{} `json:"latency_percentile_stats,omitempty"`
 	LatencyStats                    interface{} `json:"latency_stats,omitempty"`
 	LcbExceptionStats               interface{} `json:"lcb_exception_stats,omitempty"`
 	PlannerStats                    interface{} `json:"planner_stats,omitempty"`

@@ -129,7 +129,12 @@ void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   LOG(logTrace) << "Cron timer: Actual timestamp: " << actual_ts
                 << " Fuzz timestamp: " << fuzz_ts << std::endl;
 
-  timer_entry.assign(appName);
+  auto v8worker = UnwrapData(isolate)->v8worker;
+  timer_entry.assign(v8worker->GetUserPrefix());
+  timer_entry.append("::");
+  timer_entry.append(v8worker->GetHandlerUUID());
+  timer_entry.append("::");
+  timer_entry.append(v8worker->GetAppName());
   timer_entry.append("::");
   timer_entry.append(ConvertToISO8601(start_ts));
   timer_entry.append("Z");
@@ -315,7 +320,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  timer_entry.assign(appName);
+  auto v8worker = UnwrapData(isolate)->v8worker;
+  timer_entry.assign(v8worker->GetAppName());
   timer_entry += "::";
   timer_entry += ConvertToISO8601(start_ts);
 
@@ -329,10 +335,12 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
    *   }
    * }
    * */
-  std::string xattr_cas_path("eventing.cas");
-  std::string xattr_digest_path("eventing.digest");
-  std::string xattr_timer_path("eventing.timers");
-  std::string eventing_ver_path("eventing.version");
+  std::string handler_uuid = v8worker->GetHandlerUUID();
+  std::string xattr_cas_path = handler_uuid + ".cas";
+  std::string xattr_digest_path = handler_uuid + ".digest";
+  std::string xattr_timer_path = handler_uuid + ".timers";
+  std::string xattr_eventing_ver_path = handler_uuid + ".version";
+
   std::string mutation_cas_macro(R"("${Mutation.CAS}")");
   std::string doc_exptime("$document.exptime");
   timer_entry += "Z::";
@@ -447,8 +455,8 @@ void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
     eventing_ver_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
     eventing_ver_spec.options =
         LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
-    LCB_SDSPEC_SET_PATH(&eventing_ver_spec, eventing_ver_path.c_str(),
-                        eventing_ver_path.size());
+    LCB_SDSPEC_SET_PATH(&eventing_ver_spec, xattr_eventing_ver_path.c_str(),
+                        xattr_eventing_ver_path.size());
     LCB_SDSPEC_SET_VALUE(&eventing_ver_spec, eventing_ver_value.c_str(),
                          eventing_ver_value.size());
     specs.push_back(eventing_ver_spec);

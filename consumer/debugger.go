@@ -43,6 +43,8 @@ func (c *debugClient) Serve() {
 		c.consumerHandle.diagDir,
 		util.GetIPMode(),
 		"true",
+		strconv.Itoa(int(c.consumerHandle.app.HandlerUUID)),
+		c.consumerHandle.app.UserPrefix,
 		c.eventingPort, // not read, for tagging
 		"debug")        // not read, for tagging
 
@@ -130,7 +132,8 @@ func (c *Consumer) pollForDebuggerStart() {
 
 		c.debuggerState = debuggerOpcode
 
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, dFlagKey, dFlagBlob, &cas, false)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+			c, c.producer.AddMetadataPrefix(dFlagKey), dFlagBlob, &cas, false)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
@@ -158,7 +161,8 @@ func (c *Consumer) pollForDebuggerStart() {
 					dFlagKey := fmt.Sprintf("%s::%s", c.app.AppName, startDebuggerFlag)
 					dFlagBlob := &common.StartDebugBlob{}
 
-					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, dFlagKey, dFlagBlob, &cas, false)
+					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+						c, c.producer.AddMetadataPrefix(dFlagKey), dFlagBlob, &cas, false)
 					if err == common.ErrRetryTimeout {
 						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 						return
@@ -180,7 +184,8 @@ func (c *Consumer) pollForDebuggerStart() {
 			}
 
 		checkDInstAddrBlob:
-			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback, c, dInstAddrKey, dInstAddrBlob, &cas, false)
+			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+				c, c.producer.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob, &cas, false)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return
@@ -195,14 +200,15 @@ func (c *Consumer) pollForDebuggerStart() {
 				dInstAddrBlob.HostPortAddr = c.HostPortAddr()
 				dInstAddrBlob.NodeUUID = c.NodeUUID()
 
-				_, err := c.gocbMetaBucket.Replace(dInstAddrKey, dInstAddrBlob, gocb.Cas(cas), 0)
+				_, err := c.gocbMetaBucket.Replace(c.producer.AddMetadataPrefix(dInstAddrKey).Raw(), dInstAddrBlob, gocb.Cas(cas), 0)
 				if err != nil {
 					logging.Errorf("%s [%s:%s:%d] Bucket cas failed for debugger inst addr key: %rm, err: %v",
 						logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, err)
 					goto checkDInstAddrBlob
 				} else {
 					dFlagBlob.StartDebug = false
-					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, dFlagKey, dFlagBlob)
+					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback,
+						c, c.producer.AddMetadataPrefix(dFlagKey), dFlagBlob)
 					if err == common.ErrRetryTimeout {
 						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 						return

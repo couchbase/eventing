@@ -32,6 +32,8 @@ std::atomic<int64_t> on_delete_failure = {0};
 
 std::atomic<int64_t> doc_timer_create_failure = {0};
 
+std::atomic<int64_t> lcb_retry_failure = {0};
+
 std::atomic<int64_t> messages_processed_counter = {0};
 
 std::atomic<int64_t> cron_timer_msg_counter = {0};
@@ -159,8 +161,9 @@ void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     lcb_wait(instance);
     break;
   case LCB_SUCCESS:
-    LOG(logTrace) << "NValue " << RU(static_cast<int>(rg->nvalue)) << "Value "
-                  << RU(reinterpret_cast<const char *>(rg->value));
+    LOG(logTrace) << "NValue "
+                  << RU(std::to_string(static_cast<int>(rg->nvalue)))
+                  << "Value " << RU(reinterpret_cast<const char *>(rg->value));
     break;
   default:
     LOG(logTrace) << "LCB_CALLBACK_GET: Operation failed, "
@@ -223,14 +226,18 @@ void startDebuggerFlag(bool started) {
 
   // Disable logging when inspector is running
   if (started) {
-    setLogLevel(logSilent);
+    SystemLog::setLogLevel(logSilent);
   }
 }
 
 V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
-                   server_settings_t *server_settings)
+                   server_settings_t *server_settings,
+                   const std::string &handler_name,
+                   const std::string &handler_uuid,
+                   const std::string &user_prefix)
     : app_name_(h_config->app_name), settings_(server_settings),
-      platform_(platform) {
+      platform_(platform), handler_name_(handler_name),
+      handler_uuid_(handler_uuid), user_prefix_(user_prefix) {
   enable_recursive_mutation = h_config->enable_recursive_mutation;
   curl_timeout = h_config->curl_timeout;
   histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
@@ -458,9 +465,10 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
+  auto transpiler = UnwrapData(isolate_)->transpiler;
   v8::Context::Scope context_scope(context);
 
-  auto uniline_info = UniLineN1QL(script_to_execute);
+  auto uniline_info = transpiler->UniLineN1QL(script_to_execute);
   LOG(logTrace) << "code after Unilining N1QL: "
                 << RM(uniline_info.handler_code) << std::endl;
   if (uniline_info.code != kOK) {
@@ -482,7 +490,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   n1ql_handle_ = new N1QL(conn_pool_, isolate_);
   UnwrapData(isolate_)->n1ql_handle = n1ql_handle_;
 
-  auto transpiler = UnwrapData(isolate_)->transpiler;
   script_to_execute =
       transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
                             app_name_ + ".map.json", settings_->host_addr,
@@ -650,7 +657,8 @@ void V8Worker::Checkpoint() {
 
     for (auto &vbTimer : curr_dtimer_checkpoint) {
       std::stringstream vb_key;
-      vb_key << appName << "::vb::" << vbTimer.first;
+      vb_key << GetUserPrefix() << "::" << GetHandlerUUID() << "::" << app_name_
+             << "::vb::" << vbTimer.first;
 
       lcb_CMDSUBDOC cmd = {0};
       LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());
@@ -709,7 +717,8 @@ void V8Worker::Checkpoint() {
 
     for (auto &vbTimer : curr_ctimer_checkpoint) {
       std::stringstream vb_key;
-      vb_key << appName << "::vb::" << vbTimer.first;
+      vb_key << GetUserPrefix() << "::" << GetHandlerUUID() << "::" << app_name_
+             << "::vb::" << vbTimer.first;
 
       lcb_CMDSUBDOC cmd = {0};
       LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());
@@ -1314,6 +1323,8 @@ std::string V8Worker::CompileHandler(std::string handler) {
       auto ident = IdentifyVersion(handler);
       info_obj->Set(v8Str(isolate_, "version"), v8Str(isolate_, ident.version));
       info_obj->Set(v8Str(isolate_, "level"), v8Str(isolate_, ident.level));
+      info_obj->Set(v8Str(isolate_, "using_doc_timer"),
+                    v8Str(isolate_, ident.using_doc_timer));
     } catch (const char *e) {
       LOG(logError) << "Unable to identify version, ignoring:" << e
                     << std::endl;

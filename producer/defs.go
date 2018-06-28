@@ -151,13 +151,19 @@ type Producer struct {
 
 	statsRWMutex *sync.RWMutex
 
-	plannerNodeMappings []*common.PlannerNodeVbMapping // Access controlled by statsRWMutex
-	seqsNoProcessed     map[int]int64                  // Access controlled by statsRWMutex
-	updateStatsTicker   *time.Ticker
-	updateStatsStopCh   chan struct{}
+	plannerNodeMappings        []*common.PlannerNodeVbMapping // Access controlled by plannerNodeMappingsRWMutex
+	plannerNodeMappingsRWMutex *sync.RWMutex
+	seqsNoProcessed            map[int]int64 // Access controlled by seqsNoProcessedRWMutex
+	seqsNoProcessedRWMutex     *sync.RWMutex
+	updateStatsTicker          *time.Ticker
+	updateStatsStopCh          chan struct{}
 
 	// Captures vbucket assignment to different eventing nodes
-	vbEventingNodeMap map[string]map[string]string // Access controlled by statsRWMutex
+	vbEventingNodeMap     map[string]map[string]string // Access controlled by vbEventingNodeRWMutex
+	vbEventingNodeRWMutex *sync.RWMutex
+
+	vbMapping        map[uint16]*vbNodeWorkerMapping // Access controlled by vbMappingRWMutex
+	vbMappingRWMutex *sync.RWMutex
 
 	// Map keeping track of vbuckets assigned to each worker(consumer)
 	workerVbucketMap   map[string][]uint16 // Access controlled by workerVbMapRWMutex
@@ -168,4 +174,9 @@ type Producer struct {
 	workerSupervisor *suptree.Supervisor
 
 	sync.RWMutex
+}
+
+type vbNodeWorkerMapping struct {
+	ownerNode      string
+	assignedWorker string
 }

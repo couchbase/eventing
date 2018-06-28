@@ -110,8 +110,8 @@ func (p *Producer) vbEventingNodeAssign() error {
 		}
 	}
 
-	p.statsRWMutex.Lock()
-	defer p.statsRWMutex.Unlock()
+	p.plannerNodeMappingsRWMutex.Lock()
+	defer p.plannerNodeMappingsRWMutex.Unlock()
 	p.plannerNodeMappings = make([]*common.PlannerNodeVbMapping, 0)
 
 	for i, v := range vbCountPerNode {
@@ -145,6 +145,85 @@ func (p *Producer) vbEventingNodeAssign() error {
 	}
 
 	return nil
+}
+
+func (p *Producer) vbNodeWorkerMap() {
+	logPrefix := "Producer::vbNodeWorkerMap"
+
+	nodeVbsToHandle := make(map[string][]uint16)
+
+	func() {
+		p.vbEventingNodeAssignRWMutex.RLock()
+		defer p.vbEventingNodeAssignRWMutex.RUnlock()
+		for vb, node := range p.vbEventingNodeAssignMap {
+			if _, ok := nodeVbsToHandle[node]; !ok {
+				nodeVbsToHandle[node] = make([]uint16, 0)
+			}
+
+			nodeVbsToHandle[node] = append(nodeVbsToHandle[node], vb)
+		}
+
+		for node := range nodeVbsToHandle {
+			sort.Sort(util.Uint16Slice(nodeVbsToHandle[node]))
+
+			logging.Infof("%s [%s:%d] eventingAddr: %rs vbucketsToHandle, len: %d dump: %v",
+				logPrefix, p.appName, p.LenRunningConsumers(), node, len(nodeVbsToHandle[node]), util.Condense(nodeVbsToHandle[node]))
+		}
+	}()
+
+	p.vbMappingRWMutex.Lock()
+	defer p.vbMappingRWMutex.Unlock()
+
+	p.vbMapping = make(map[uint16]*vbNodeWorkerMapping)
+
+	for node, vbucketsToHandle := range nodeVbsToHandle {
+
+		logging.Infof("%s [%s:%d] eventingAddr: %rs vbs to handle len: %d dump: %s",
+			logPrefix, p.appName, p.LenRunningConsumers(), node, len(vbucketsToHandle), util.Condense(vbucketsToHandle))
+
+		vbucketPerWorker := len(vbucketsToHandle) / p.handlerConfig.WorkerCount
+		var startVbIndex int
+
+		vbCountPerWorker := make([]int, p.handlerConfig.WorkerCount)
+		for i := 0; i < p.handlerConfig.WorkerCount; i++ {
+			vbCountPerWorker[i] = vbucketPerWorker
+			startVbIndex += vbucketPerWorker
+		}
+
+		remainingVbs := len(vbucketsToHandle) - startVbIndex
+		if remainingVbs > 0 {
+			for i := 0; i < remainingVbs; i++ {
+				vbCountPerWorker[i] = vbCountPerWorker[i] + 1
+			}
+		}
+
+		startVbIndex = 0
+
+		for i := 0; i < p.handlerConfig.WorkerCount; i++ {
+			workerName := fmt.Sprintf("worker_%s_%d", p.appName, i)
+
+			for j := 0; j < vbCountPerWorker[i]; j++ {
+				p.vbMapping[vbucketsToHandle[startVbIndex]] = &vbNodeWorkerMapping{
+					ownerNode:      node,
+					assignedWorker: workerName,
+				}
+				startVbIndex++
+			}
+		}
+	}
+
+	vbs := make([]uint16, 0)
+
+	for vb := range p.vbMapping {
+		vbs = append(vbs, vb)
+	}
+	sort.Sort(util.Uint16Slice(vbs))
+
+	for _, vb := range vbs {
+		info := p.vbMapping[vb]
+		logging.Tracef("%s [%s:%d] vb: %d node: %s worker: %s",
+			logPrefix, p.appName, p.LenRunningConsumers(), vb, info.ownerNode, info.assignedWorker)
+	}
 }
 
 func (p *Producer) initWorkerVbMap() {

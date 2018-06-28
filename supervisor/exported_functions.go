@@ -355,9 +355,20 @@ func (s *SuperSupervisor) VbSeqnoStats(appName string) (map[int][]map[string]int
 	return nil, fmt.Errorf("Eventing.Producer isn't alive")
 }
 
+// RemoveProducerToken takes out appName from supervision tree
 func (s *SuperSupervisor) RemoveProducerToken(appName string) {
 	if p, exists := s.runningProducers[appName]; exists {
 		s.superSup.Remove(s.producerSupervisorTokenMap[p])
 		delete(s.producerSupervisorTokenMap, p)
 	}
+}
+
+// CheckpointBlobDump returns state of metadata blobs stored in Couchbase bucket
+func (s *SuperSupervisor) CheckpointBlobDump(appName string) (interface{}, error) {
+	p, ok := s.runningProducers[appName]
+	if ok {
+		return p.CheckpointBlobDump(), nil
+	}
+
+	return nil, fmt.Errorf("Eventing.Producer isn't alive")
 }

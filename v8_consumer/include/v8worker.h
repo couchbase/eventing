@@ -147,6 +147,8 @@ extern std::atomic<int64_t> on_delete_failure;
 
 extern std::atomic<int64_t> doc_timer_create_failure;
 
+extern std::atomic<int64_t> lcb_retry_failure;
+
 extern std::atomic<int64_t> messages_processed_counter;
 
 // DCP or Timer event counter
@@ -163,7 +165,8 @@ extern std::atomic<int64_t> enqueued_doc_timer_msg_counter;
 class V8Worker {
 public:
   V8Worker(v8::Platform *platform, handler_config_t *config,
-           server_settings_t *settings);
+           server_settings_t *settings, const std::string &handler_name,
+           const std::string &handler_uuid, const std::string &user_prefix);
   ~V8Worker();
 
   void operator()() {
@@ -217,6 +220,8 @@ public:
   void AddLcbException(int err_code);
   void ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions);
 
+  std::string GetAppName() { return app_name_; }
+
   void UpdateHistogram(Time::time_point t);
 
   /**
@@ -239,6 +244,12 @@ public:
   void GetBucketOpsMessages(std::vector<uv_buf_t> &messages,
                             std::vector<int> &length_prefix_sum);
 
+  inline std::string GetHandlerName() const { return handler_name_; }
+
+  inline std::string GetHandlerUUID() const { return handler_uuid_; }
+
+  inline std::string GetUserPrefix() const { return user_prefix_; }
+
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
   v8::Persistent<v8::Function> on_update_;
@@ -250,7 +261,6 @@ public:
   lcb_t checkpoint_cb_instance_; // Separate instance for checkpointing which
                                  // writes to metadata bucket. Avoiding sharing
                                  // of lcb instance
-
   std::string app_name_;
   std::string handler_code_;
   std::string script_to_execute_;
@@ -306,6 +316,9 @@ private:
   v8::Isolate *isolate_;
   v8::Platform *platform_;
   inspector::Agent *agent_;
+  std::string handler_name_;
+  std::string handler_uuid_;
+  std::string user_prefix_;
 };
 
 const char *GetUsername(void *cookie, const char *host, const char *port,

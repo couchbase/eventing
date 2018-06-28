@@ -84,6 +84,73 @@ static void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
                 << lcb_strerror(nullptr, result->rc) << std::endl;
 }
 
+#define EVT_LOG_MSG_SIZE 1024
+
+static void evt_log_formatter(char *buf, int buf_size, const char *subsystem,
+                              int srcline, unsigned int instance_id,
+                              const char *fmt, va_list ap) {
+  char msg[EVT_LOG_MSG_SIZE] = {};
+
+  vsnprintf(msg, EVT_LOG_MSG_SIZE, fmt, ap);
+  msg[EVT_LOG_MSG_SIZE - 1] = '\0';
+  for (int i = 0; i < EVT_LOG_MSG_SIZE; i++) {
+    if (msg[i] == '\n') {
+      msg[i] = ' ';
+    }
+  }
+  snprintf(buf, buf_size, "[lcb,%s L:%d I:%u] %s", subsystem, srcline,
+           instance_id, msg);
+}
+
+/**
+ * Conversion needed as libcouchbase using ascending order for level, while
+ * eventing is using reversed order.
+ */
+static LogLevel evt_log_map_level(int severity) {
+  switch (severity) {
+  case LCB_LOG_TRACE:
+    return logTrace;
+  case LCB_LOG_DEBUG:
+    return logDebug;
+  case LCB_LOG_INFO:
+    return logInfo;
+  case LCB_LOG_WARN:
+    return logWarning;
+  case LCB_LOG_ERROR:
+  case LCB_LOG_FATAL:
+  default:
+    return logError;
+  }
+}
+
+static bool evt_should_log(int severity, const char *subsys) {
+  if (evt_log_map_level(severity) <= SystemLog::level_) {
+    return true;
+  }
+  if (strcmp(subsys, "negotiation") == 0) {
+    return true;
+  }
+  return false;
+}
+
+static void evt_log_handler(struct lcb_logprocs_st *procs, unsigned int iid,
+                            const char *subsys, int severity,
+                            const char *srcfile, int srcline, const char *fmt,
+                            va_list ap) {
+  if (evt_should_log(severity, subsys)) {
+    char buf[EVT_LOG_MSG_SIZE] = {};
+    evt_log_formatter(buf, EVT_LOG_MSG_SIZE, subsys, srcline, iid, fmt, ap);
+    LOG(evt_log_map_level(severity)) << buf << std::endl;
+  }
+}
+
+struct lcb_logprocs_st evt_logger = {
+    0, /* version */
+    {
+        {evt_log_handler} /* v1 */
+    }                     /* v */
+};
+
 Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
                const char *alias, bool block_mutation)
     : block_mutation_(block_mutation), bucket_name_(bname), endpoint_(ep),
@@ -110,8 +177,15 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
 
   lcb_create(&bucket_lcb_obj_, &crst);
 
+  auto err =
+      lcb_cntl(bucket_lcb_obj_, LCB_CNTL_SET, LCB_CNTL_LOGGER, &evt_logger);
+  if (err != LCB_SUCCESS) {
+    init_success = false;
+    LOG(logError) << "Bucket: Unable to set logger hooks" << std::endl;
+  }
+
   auto auth = lcbauth_new();
-  auto err = lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
+  err = lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
   if (err != LCB_SUCCESS) {
     LOG(logError) << "Bucket: Unable to set auth callbacks" << std::endl;
     init_success = false;
@@ -251,6 +325,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_GET: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
   }
@@ -262,6 +337,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_GET: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
   }
@@ -334,6 +410,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
         LOG(logTrace)
             << "Bucket: Unable to get key for recursive_mutation=false"
             << std::endl;
+        lcb_retry_failure++;
       }
 
       lcb_sched_leave(*bucket_lcb_obj_ptr);
@@ -343,6 +420,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
         LOG(logTrace) << "Bucket: Unable to schedule call to get key for "
                          "recursive_mutation=false"
                       << std::endl;
+        lcb_retry_failure++;
       }
 
       switch (gres.rc) {
@@ -391,10 +469,12 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       xattr_spec.options =
           LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
 
-      std::string xattr_cas_path("eventing.cas");
-      std::string xattr_digest_path("eventing.digest");
+      auto v8worker = UnwrapData(isolate)->v8worker;
+      std::string handler_uuid = v8worker->GetHandlerUUID();
+      std::string xattr_cas_path = handler_uuid + ".cas";
+      std::string xattr_digest_path = handler_uuid + ".digest";
+      std::string xattr_eventing_ver_path = handler_uuid + ".version";
       std::string mutation_cas_macro(R"("${Mutation.CAS}")");
-      std::string eventing_ver_path("eventing.version");
 
       if (gres.rc == LCB_SUCCESS) {
         LCB_SDSPEC_SET_PATH(&digest_spec, xattr_digest_path.c_str(),
@@ -404,8 +484,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       }
 
       auto eventing_ver_value = REventingVer();
-      LCB_SDSPEC_SET_PATH(&eventing_ver_spec, eventing_ver_path.c_str(),
-                          eventing_ver_path.size());
+      LCB_SDSPEC_SET_PATH(&eventing_ver_spec, xattr_eventing_ver_path.c_str(),
+                          xattr_eventing_ver_path.size());
       LCB_SDSPEC_SET_VALUE(&eventing_ver_spec, eventing_ver_value.c_str(),
                            eventing_ver_value.size());
       specs.push_back(eventing_ver_spec);
@@ -431,6 +511,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       if (err != LCB_SUCCESS) {
         LOG(logTrace) << "Bucket: Unable to set subdoc op for setting macro"
                       << std::endl;
+        lcb_retry_failure++;
       }
 
       err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait,
@@ -439,6 +520,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
         LOG(logTrace)
             << "Bucket: Unable to schedule subdoc op for setting macro"
             << std::endl;
+        lcb_retry_failure++;
       }
 
       switch (sres.rc) {
@@ -481,6 +563,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     if (err != LCB_SUCCESS) {
       LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
                     << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+      lcb_retry_failure++;
       HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
       return;
     }
@@ -491,6 +574,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     if (err != LCB_SUCCESS) {
       LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
                     << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+      lcb_retry_failure++;
       HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
       return;
     }
@@ -545,6 +629,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_REMOVE: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
   }
@@ -555,6 +640,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
     return;
   }
@@ -563,6 +649,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   if (result.rc != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: LCB_REMOVE call failed: " << result.rc
                   << std::endl;
+    lcb_retry_failure++;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.rc);
     return;
   }

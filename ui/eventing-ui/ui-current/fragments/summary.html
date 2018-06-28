@@ -99,12 +99,21 @@
   </div>
 </div>
 <div ng-if="!summaryCtrl.isEventingRunning">
-  <p>The Eventing interface is only available on Couchbase nodes running the Eventing service.</p>
+  <p>The eventing interface is only available on Couchbase nodes running the eventing service.</p>
   <p ng-if="summaryCtrl.serverNodes.length === 0" class="error">No Eventing nodes were found on this cluster.</p>
   <div ng-if="summaryCtrl.serverNodes.length">
-    <p>The Eventing service was found on the following nodes:</p>
-    <ul class="nobullet">
-      <li ng-repeat="url in summaryCtrl.serverNodes"><a href="{{url}}">{{url}}</a></li>
-    </ul>
+    <p>The eventing service was found on the following nodes:</p>
+    <div class="indent-1" ng-repeat="url in summaryCtrl.serverNodes">
+    <a href="{{url}}">{{url}}</a>
+    </div>
+    <div class="row flex-left margin-top-1">
+      <p class="text-small fix-width-7">
+        <span class="icon fa-warning orange-3"></span>
+        Note that the above links are provided as a convenience. They may not work
+        if you are accessing the Web Console via a web proxy or if Couchbase Server
+        has been deployed in a split horizon DNS environment, with public and
+        private hostnames and IPs. In the event the links don't work, log directly into the node.
+      </p>
+    </div>
   </div>
 </div>

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -267,7 +268,8 @@ func (p *Producer) SignalCheckpointBlobCleanup() error {
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p, vbKey)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
+			p, p.AddMetadataPrefix(vbKey))
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 			return common.ErrRetryTimeout
@@ -275,14 +277,16 @@ func (p *Producer) SignalCheckpointBlobCleanup() error {
 	}
 
 	dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p, dFlagKey)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
+		p, p.AddMetadataPrefix(dFlagKey))
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
 	}
 
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p, dInstAddrKey)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey))
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
@@ -300,21 +304,35 @@ func (p *Producer) PauseProducer() {
 
 // StopProducer cleans up resource handles
 func (p *Producer) StopProducer() {
+	logPrefix := "Producer::StopProducer"
+
 	if p.stopProducerCh != nil {
 		p.stopProducerCh <- struct{}{}
 	}
+
+	logging.Infof("%s [%s:%d] Signalled Producer::Serve to exit",
+		logPrefix, p.appName, p.LenRunningConsumers())
 
 	if p.metadataBucketHandle != nil {
 		p.metadataBucketHandle.Close()
 	}
 
+	logging.Infof("%s [%s:%d] Closed metadata bucket handle",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
 	if p.workerSupervisor != nil {
 		p.workerSupervisor.Stop()
 	}
 
+	logging.Infof("%s [%s:%d] Stopped supervisor tree",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
 	if p.vbPlasmaStore != nil {
 		p.vbPlasmaStore.Close()
 	}
+
+	logging.Infof("%s [%s:%d] Closed plasma store handle",
+		logPrefix, p.appName, p.LenRunningConsumers())
 }
 
 // GetDcpEventsRemainingToProcess returns remaining dcp events to process
@@ -410,8 +428,8 @@ func (p *Producer) InternalVbDistributionStats() map[string]string {
 
 // VbDistributionStatsFromMetadata dumps the state of vbucket distribution per metadata bucket
 func (p *Producer) VbDistributionStatsFromMetadata() map[string]map[string]string {
-	p.statsRWMutex.RLock()
-	defer p.statsRWMutex.RUnlock()
+	p.vbEventingNodeRWMutex.RLock()
+	defer p.vbEventingNodeRWMutex.RUnlock()
 
 	vbEventingNodeMap := make(map[string]map[string]string)
 	for node, nodeMap := range p.vbEventingNodeMap {
@@ -434,7 +452,8 @@ func (p *Producer) vbDistributionStats() error {
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, vbKey, &vbBlob)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
+			p, p.AddMetadataPrefix(vbKey), &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 			return common.ErrRetryTimeout
@@ -464,8 +483,8 @@ func (p *Producer) vbDistributionStats() error {
 			vbNodeMap[currentOwner][workerID], uint16(vb))
 	}
 
-	p.statsRWMutex.Lock()
-	defer p.statsRWMutex.Unlock()
+	p.vbEventingNodeRWMutex.Lock()
+	defer p.vbEventingNodeRWMutex.Unlock()
 	// Concise representation of vb mapping for eventing nodes
 	p.vbEventingNodeMap = make(map[string]map[string]string)
 
@@ -485,8 +504,8 @@ func (p *Producer) vbDistributionStats() error {
 // PlannerStats returns vbucket distribution as per planner running on local eventing
 // node for a given app
 func (p *Producer) PlannerStats() []*common.PlannerNodeVbMapping {
-	p.statsRWMutex.Lock()
-	defer p.statsRWMutex.Unlock()
+	p.plannerNodeMappingsRWMutex.RLock()
+	defer p.plannerNodeMappingsRWMutex.RUnlock()
 
 	plannerNodeMappings := make([]*common.PlannerNodeVbMapping, 0)
 
@@ -503,17 +522,18 @@ func (p *Producer) getSeqsProcessed() error {
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, vbKey, &vbBlob)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
+			p, p.AddMetadataPrefix(vbKey), &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 			return common.ErrRetryTimeout
 		}
 
-		p.statsRWMutex.Lock()
+		p.seqsNoProcessedRWMutex.Lock()
 		if _, ok := vbBlob["last_processed_seq_no"]; ok {
 			p.seqsNoProcessed[vb] = int64(vbBlob["last_processed_seq_no"].(float64))
 		}
-		p.statsRWMutex.Unlock()
+		p.seqsNoProcessedRWMutex.Unlock()
 	}
 
 	return nil
@@ -521,8 +541,8 @@ func (p *Producer) getSeqsProcessed() error {
 
 // GetSeqsProcessed returns vbucket specific sequence nos processed so far
 func (p *Producer) GetSeqsProcessed() map[int]int64 {
-	p.statsRWMutex.Lock()
-	defer p.statsRWMutex.Unlock()
+	p.seqsNoProcessedRWMutex.RLock()
+	defer p.seqsNoProcessedRWMutex.RUnlock()
 
 	seqNoProcessed := make(map[int]int64)
 	for k, v := range p.seqsNoProcessed {
@@ -604,8 +624,7 @@ func (p *Producer) CleanupMetadataBucket() error {
 		defer wg.Done()
 
 		prefix := fmt.Sprintf("%s::", p.appName)
-		vbBlobPrefix := fmt.Sprintf("%s::vb::", p.appName)
-
+		keyPrefix := p.AddMetadataPrefix(prefix)
 		for {
 			select {
 			case e, ok := <-dcpFeed.C:
@@ -622,14 +641,15 @@ func (p *Producer) CleanupMetadataBucket() error {
 				switch e.Opcode {
 				case mcd.DCP_MUTATION:
 					docID := string(e.Key)
-					if strings.HasPrefix(docID, prefix) || strings.HasPrefix(docID, vbBlobPrefix) {
-						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p, docID)
+
+					if strings.HasPrefix(docID, keyPrefix.Raw()) {
+						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
+							p, p.AddMetadataPrefix(docID))
 						if err == common.ErrRetryTimeout {
 							logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 							return
 						}
 					}
-				default:
 				}
 			}
 		}
@@ -850,4 +870,40 @@ func (p *Producer) RemoveConsumerToken(workerName string) {
 // IsPlannerRunning returns planner execution status
 func (p *Producer) IsPlannerRunning() bool {
 	return p.isPlannerRunning
+}
+
+// CheckpointBlobDump returns state of metadata blobs stored in Couchbase bucket
+func (p *Producer) CheckpointBlobDump() map[string]interface{} {
+	logPrefix := "Producer::CheckpointBlobDump"
+
+	checkpointBlobDumps := make(map[string]interface{})
+
+	if p.metadataBucketHandle == nil {
+		return checkpointBlobDumps
+	}
+
+	for vb := 0; vb < p.numVbuckets; vb++ {
+		vbBlob := make(map[string]interface{})
+		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, p.AddMetadataPrefix(vbKey), &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+			return nil
+		}
+
+		checkpointBlobDumps[vbKey] = vbBlob
+	}
+	return checkpointBlobDumps
+}
+
+func (p *Producer) AddMetadataPrefix(key string) common.Key {
+	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), key)
+}
+
+func (p *Producer) GetVbOwner(vb uint16) (string, string, error) {
+	if info, ok := p.vbMapping[vb]; ok {
+		return info.ownerNode, info.assignedWorker, nil
+	}
+
+	return "", "", fmt.Errorf("owner not found")
 }

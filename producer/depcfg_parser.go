@@ -38,10 +38,14 @@ func (p *Producer) parseDepcfg() error {
 	p.app.AppName = string(config.AppName())
 	p.app.AppState = fmt.Sprintf("%v", appUndeployed)
 	p.app.AppVersion = util.GetHash(p.app.AppCode)
-	p.app.LastDeploy = time.Now().UTC().Format("2006-01-02T15:04:05.000000000-0700")
+	p.app.HandlerUUID = uint32(config.HandlerUUID())
 	p.app.ID = int(config.Id())
+	p.app.LastDeploy = time.Now().UTC().Format("2006-01-02T15:04:05.000000000-0700")
 	p.app.Settings = make(map[string]interface{})
 
+	if config.UsingDocTimer() == 0x1 {
+		p.app.UsingDocTimer = true
+	}
 	d := new(cfg.DepCfg)
 	depcfg := config.DepCfg(d)
 
@@ -174,6 +178,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.LogLevel = "INFO"
 	}
 
+	if val, ok := settings["user_prefix"]; ok {
+		p.app.UserPrefix = val.(string)
+	} else {
+		p.app.UserPrefix = "eventing"
+	}
+
 	if val, ok := settings["skip_timer_threshold"]; ok {
 		p.handlerConfig.SkipTimerThreshold = int(val.(float64))
 	} else {
@@ -198,6 +208,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.TimerProcessingTickInterval = 500
 	}
 
+	if val, ok := settings["using_doc_timer"]; ok {
+		p.handlerConfig.UsingDocTimer = val.(bool)
+	} else {
+		p.handlerConfig.UsingDocTimer = p.app.UsingDocTimer
+	}
+
 	if val, ok := settings["worker_count"]; ok {
 		p.handlerConfig.WorkerCount = int(val.(float64))
 	} else {
@@ -207,7 +223,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["worker_feedback_queue_cap"]; ok {
 		p.handlerConfig.FeedbackQueueCap = int64(val.(float64))
 	} else {
-		p.handlerConfig.FeedbackQueueCap = int64(10 * 1000)
+		p.handlerConfig.FeedbackQueueCap = int64(100 * 100)
 	}
 
 	if val, ok := settings["worker_queue_cap"]; ok {
@@ -241,13 +257,13 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
 		p.rebalanceConfig.VBOwnershipGiveUpRoutineCount = int(val.(float64))
 	} else {
-		p.rebalanceConfig.VBOwnershipGiveUpRoutineCount = 1
+		p.rebalanceConfig.VBOwnershipGiveUpRoutineCount = 3
 	}
 
 	if val, ok := settings["vb_ownership_takeover_routine_count"]; ok {
 		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = int(val.(float64))
 	} else {
-		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = 1
+		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = 3
 	}
 
 	// Application logging related configurations
@@ -269,7 +285,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["app_log_max_files"]; ok {
 		p.appLogMaxFiles = int(val.(float64))
 	} else {
-		p.appLogMaxFiles = int((^uint(0)) >> 1)
+		p.appLogMaxFiles = int(10)
 	}
 
 	if val, ok := settings["enable_applog_rotation"]; ok {

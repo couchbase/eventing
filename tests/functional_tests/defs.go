@@ -1,8 +1,9 @@
 package eventing
 
 const (
-	srcBucket = "default"
-	dstBucket = "hello-world"
+	srcBucket  = "default"
+	dstBucket  = "hello-world"
+	metaBucket = "eventing"
 )
 
 const (
@@ -131,4 +132,12 @@ type rateLimit struct {
 type restResponse struct {
 	body []byte
 	err  error
+}
+
+type OwnershipEntry struct {
+	AssignedWorker string `json:"assigned_worker"`
+	CurrentVBOwner string `json:"current_vb_owner"`
+	Operation      string `json:"operation"`
+	SeqNo          uint64 `json:"seq_no"`
+	Timestamp      string `json:"timestamp"`
 }

@@ -44,14 +44,18 @@ public:
 
   void FlushToConn(uv_stream_t *stream, char *buffer, int length);
 
-  void InitTcpSock(const std::string &appname, const std::string &addr,
-                   const std::string &worker_id, int batch_size,
-                   int feedback_batch_size, int feedback_port, int port);
+  void InitTcpSock(const std::string &handler_name,
+                   const std::string &handler_uuid,
+                   const std::string &user_prefix, const std::string &appname,
+                   const std::string &addr, const std::string &worker_id,
+                   int batch_size, int feedback_batch_size, int feedback_port,
+                   int port);
 
-  void InitUDS(const std::string &appname, const std::string &addr,
-               const std::string &worker_id, int batch_size,
-               int feedback_batch_size, std::string feedback_sock_path,
-               std::string uds_sock_path);
+  void InitUDS(const std::string &handler_name, const std::string &handler_uuid,
+               const std::string &user_prefix, const std::string &appname,
+               const std::string &addr, const std::string &worker_id,
+               int batch_size, int feedback_batch_size,
+               std::string feedback_sock_path, std::string uds_sock_path);
 
   void OnConnect(uv_connect_t *conn, int status);
   void OnFeedbackConnect(uv_connect_t *conn, int status);
@@ -114,6 +118,12 @@ private:
   uv_pipe_t uds_sock_;
 
   std::string app_name_;
+
+  std::string handler_name_;
+
+  std::string handler_uuid_;
+
+  std::string user_prefix_;
 
   std::string next_message_;
 

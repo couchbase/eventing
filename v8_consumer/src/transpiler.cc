@@ -121,14 +121,32 @@ std::string Transpiler::Transpile(const std::string &handler_code,
   args[2] = v8Array(isolate_, handler_headers_);
   args[3] = v8Array(isolate_, handler_footers_);
   auto result = ExecTranspiler("transpile", args, 4);
-  v8::String::Utf8Value utf8result(result);
 
+  v8::String::Utf8Value utf8result(result);
   std::string src_transpiled = *utf8result;
   src_transpiled += "\n//# sourceMappingURL=http://" +
                     JoinHostPort(host_addr, eventing_port) + "/debugging/" +
                     src_map_name;
 
   return src_transpiled;
+}
+
+UniLineN1QLInfo Transpiler::UniLineN1QL(const std::string &handler_code) {
+  auto info = ::UniLineN1QL(handler_code);
+  if (info.code != kOK) {
+    return info;
+  }
+
+  v8::HandleScope handle_scope(isolate_);
+  v8::Local<v8::Value> args[3];
+  args[0] = v8Str(isolate_, info.handler_code);
+  args[1] = v8Array(isolate_, handler_headers_);
+  args[2] = v8Array(isolate_, handler_footers_);
+  auto result = ExecTranspiler("AddHeadersAndFooters", args, 3);
+
+  v8::String::Utf8Value utf8result(result);
+  info.handler_code = *utf8result;
+  return info;
 }
 
 std::string Transpiler::JsFormat(const std::string &handler_code) {
@@ -196,9 +214,16 @@ CodeVersion Transpiler::GetCodeVersion(const std::string &handler_code) {
     return CodeVersion{};
   }
 
+  v8::Local<v8::Value> using_doc_timers_val;
+  if (!TO_LOCAL(ans->Get(context, 2), &using_doc_timers_val)) {
+    return CodeVersion{};
+  }
+
   v8::String::Utf8Value version(version_val);
   v8::String::Utf8Value level(level_val);
-  return CodeVersion{*version, *level};
+  v8::String::Utf8Value using_doc_timer(using_doc_timers_val);
+
+  return CodeVersion{*version, *level, *using_doc_timer};
 }
 
 bool Transpiler::IsTimerCalled(const std::string &handler_code) {

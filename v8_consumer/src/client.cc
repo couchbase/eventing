@@ -90,7 +90,10 @@ AppWorker *AppWorker::GetAppWorker() {
 
 std::vector<char> *AppWorker::GetReadBuffer() { return &read_buffer_; }
 
-void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
+void AppWorker::InitTcpSock(const std::string &handler_name,
+                            const std::string &handler_uuid,
+                            const std::string &user_prefix,
+                            const std::string &appname, const std::string &addr,
                             const std::string &worker_id, int bsize, int fbsize,
                             int feedback_port, int port) {
   uv_tcp_init(&feedback_loop_, &feedback_tcp_sock_);
@@ -103,7 +106,9 @@ void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
     uv_ip4_addr(addr.c_str(), feedback_port, &feedback_server_sock_.sock4);
     uv_ip4_addr(addr.c_str(), port, &server_sock_.sock4);
   }
-
+  handler_name_ = handler_name;
+  handler_uuid_ = handler_uuid;
+  user_prefix_ = user_prefix;
   app_name_ = appname;
   batch_size_ = bsize;
   feedback_batch_size_ = fbsize;
@@ -134,13 +139,19 @@ void AppWorker::InitTcpSock(const std::string &appname, const std::string &addr,
   main_uv_loop_thr_ = std::move(m_thr);
 }
 
-void AppWorker::InitUDS(const std::string &appname, const std::string &addr,
+void AppWorker::InitUDS(const std::string &handler_name,
+                        const std::string &handler_uuid,
+                        const std::string &user_prefix,
+                        const std::string &appname, const std::string &addr,
                         const std::string &worker_id, int bsize, int fbsize,
                         std::string feedback_sock_path,
                         std::string uds_sock_path) {
   uv_pipe_init(&feedback_loop_, &feedback_uds_sock_, 0);
   uv_pipe_init(&main_loop_, &uds_sock_, 0);
 
+  handler_name_ = handler_name;
+  handler_uuid_ = handler_uuid;
+  user_prefix_ = user_prefix;
   app_name_ = appname;
   batch_size_ = bsize;
   feedback_batch_size_ = fbsize;
@@ -436,7 +447,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       v8::V8::Initialize();
 
       for (int16_t i = 0; i < thr_count_; i++) {
-        V8Worker *w = new V8Worker(platform, handler_config, server_settings);
+        V8Worker *w = new V8Worker(platform, handler_config, server_settings,
+                                   handler_name_, handler_uuid_, user_prefix_);
 
         LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
         workers_[i] = w;
@@ -562,6 +574,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << doc_timer_responses_sent;
       estats << R"(, "uv_try_write_failure_counter":)";
       estats << uv_try_write_failure_counter;
+      estats << R"(, "lcb_retry_failure":)" << lcb_retry_failure;
 
       if (!workers_.empty()) {
         agg_queue_memory = agg_queue_size = feedback_queue_size = 0;
@@ -703,7 +716,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   case eApp_Worker_Setting:
     switch (getAppWorkerSettingOpcode(parsed_header->opcode)) {
     case oLogLevel:
-      setLogLevel(LevelFromString(parsed_header->metadata));
+      SystemLog::setLogLevel(LevelFromString(parsed_header->metadata));
       LOG(logInfo) << "Configured log level: " << parsed_header->metadata
                    << std::endl;
       msg_priority_ = true;
@@ -931,11 +944,11 @@ void AppWorker::StopUvLoop(uv_async_t *async) {
 
 int main(int argc, char **argv) {
 
-  if (argc < 8) {
+  if (argc < 11) {
     std::cerr
-        << "Need at least 10 arguments: appname, ipc_type, port, feedback_port"
+        << "Need at least 11 arguments: appname, ipc_type, port, feedback_port"
            "worker_id, batch_size, feedback_batch_size, diag_dir, ipv4/6, "
-           "breakpad_on"
+           "breakpad_on, handler_uuid"
         << std::endl;
     return 2;
   }
@@ -971,16 +984,22 @@ int main(int argc, char **argv) {
     setupBreakpad(diag_dir);
   }
 
-  curl_global_init(CURL_GLOBAL_ALL);
+  std::string user_prefix;
+  if (argc >= 13) {
+    user_prefix = std::string(argv[12]);
+  }
 
-  setAppName(appname);
-  setWorkerID(worker_id);
+  curl_global_init(CURL_GLOBAL_ALL);
+  std::string handler_uuid(argv[11]);
+  std::string handler_name(argv[1]);
   AppWorker *worker = AppWorker::GetAppWorker();
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
-    worker->InitUDS(appname, Localhost(false), worker_id, batch_size,
+    worker->InitUDS(handler_name, handler_uuid, user_prefix, appname,
+                    Localhost(false), worker_id, batch_size,
                     feedback_batch_size, feedback_sock_path, uds_sock_path);
   } else {
-    worker->InitTcpSock(appname, Localhost(false), worker_id, batch_size,
+    worker->InitTcpSock(handler_name, handler_uuid, user_prefix, appname,
+                        Localhost(false), worker_id, batch_size,
                         feedback_batch_size, feedback_port, port);
   }
   worker->ReadStdinLoop();

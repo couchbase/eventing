@@ -2,7 +2,6 @@ package producer
 
 import (
 	"bytes"
-	"compress/gzip"
 	"fmt"
 	"io"
 	"os"
@@ -10,25 +9,23 @@ import (
 )
 
 type appLogCloser struct {
-	path             string
-	perm             os.FileMode
-	maxSize          int64
-	maxFiles         int
-	file             *os.File
-	size             int64
-	lastNewlineIndex int64
-	closed           bool
-	writeErr         error
-	enableRotation   bool
-	mu               sync.Mutex
+	path           string
+	perm           os.FileMode
+	maxSize        int64
+	maxFiles       int
+	file           *os.File
+	size           int64
+	closed         bool
+	enableRotation bool
+	mu             sync.Mutex
 }
 
 func (wc *appLogCloser) rotate() error {
 
-	// find highest n such that <app_name>.<n>.gz exists
+	// find highest n such that <app_name>.<n> exists
 	n := 0
 	for {
-		_, err := os.Lstat(fmt.Sprintf("%s.%d.gz", wc.path, n+1))
+		_, err := os.Lstat(fmt.Sprintf("%s.%d", wc.path, n+1))
 		if err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -39,143 +36,72 @@ func (wc *appLogCloser) rotate() error {
 		}
 	}
 
-	// delete expired <app_name>.x.gz files
+	// delete expired <app_name>.x files
 	for ; n > wc.maxFiles-2 && n > 0; n-- {
-		err := os.Remove(fmt.Sprintf("%s.%d.gz", wc.path, n))
+		err := os.Remove(fmt.Sprintf("%s.%d", wc.path, n))
 		if err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
 
-	// move each <app_name>.x.gz file up one number
+	// move each <app_name>.x file up one number
 	for ; n > 0; n-- {
 		err := os.Rename(
-			fmt.Sprintf("%s.%d.gz", wc.path, n),
-			fmt.Sprintf("%s.%d.gz", wc.path, n+1))
+			fmt.Sprintf("%s.%d", wc.path, n),
+			fmt.Sprintf("%s.%d", wc.path, n+1))
 		if err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
 
-	// copy contents until last newline to <app_name>.1.gz
 	if wc.maxFiles > 1 {
-		w, err := os.OpenFile(
-			fmt.Sprintf("%s.1.gz", wc.path), os.O_WRONLY|os.O_CREATE, wc.perm)
-		if err != nil {
-			return err
-		}
-
-		gw := gzip.NewWriter(w)
-		err = func() error {
-			defer func() {
-				e := gw.Close()
-				if e != nil {
-					err = e
-				}
-				e = w.Close()
-				if e != nil {
-					err = e
-				}
-			}()
-			_, err = wc.file.Seek(0, 0)
-			if err != nil {
+		//Close file handle
+		if !wc.closed {
+			if err := wc.file.Close(); err != nil {
 				return err
 			}
-			_, err = io.CopyN(gw, wc.file, wc.lastNewlineIndex+1)
-			return err
-		}()
-
-		if err != nil {
+		}
+		if err := os.Rename(wc.path, fmt.Sprintf("%s.%d", wc.path, 1)); err != nil {
+			wc.closed = true
 			return err
 		}
+		//Create new file handle
+		if file, err := os.OpenFile(wc.path, os.O_APPEND|os.O_RDWR|os.O_CREATE, wc.perm); err != nil {
+			return err
+		} else {
+			wc.file = file
+			wc.size = 0
+		}
 	}
-
-	sr := io.NewSectionReader(
-		wc.file, wc.lastNewlineIndex+1, wc.size-wc.lastNewlineIndex-1)
-	_, err := wc.file.Seek(0, 0)
-	if err != nil {
-		return err
-	}
-
-	_, err = io.Copy(wc.file, sr)
-	if err != nil {
-		return err
-	}
-
-	err = wc.file.Truncate(wc.size - wc.lastNewlineIndex - 1)
-	if err != nil {
-		return err
-	}
-
-	wc.size = wc.size - wc.lastNewlineIndex - 1
-	wc.lastNewlineIndex = -1
 	return nil
 }
 
 func (wc *appLogCloser) Write(p []byte) (_ int, err error) {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
-	if wc.writeErr != nil {
-		return 0, fmt.Errorf("write failed, err: %v", wc.writeErr)
-	}
-
-	defer func() {
-		wc.writeErr = err
-	}()
-
 	if wc.closed {
 		return 0, fmt.Errorf("file handle is closed")
 	}
-
+	length := len(p)
 	bytesWritten := 0
-	bytesRead := 0
-
-	for ; len(p) > 0; p, bytesRead = p[bytesRead:], 0 {
-		for {
-			i := bytes.IndexByte(p[bytesRead:], '\n')
-			if i == -1 {
-				bytesRead += len(p[bytesRead:])
-				break
-			}
-			lnl := wc.size + int64(bytesRead+i)
-			if lnl < wc.maxSize || wc.lastNewlineIndex == -1 {
-				wc.lastNewlineIndex = lnl
-			}
-			bytesRead += i + 1
-			if wc.size+int64(bytesRead) > wc.maxSize {
-				break
-			}
-		}
-
-		rotate := false
-		if wc.lastNewlineIndex != -1 {
-			max := wc.lastNewlineIndex + 1
-			if wc.maxSize > max {
-				max = wc.maxSize
-			}
-
-			if wc.size+int64(bytesRead) > max {
-				bytesRead = int(max - wc.size)
-				rotate = true
-			}
-		}
-
-		var n int
-		n, err = wc.file.WriteAt(p[:bytesRead], wc.size)
-		bytesWritten += n
-		wc.size += int64(n)
-		if err != nil {
-			return bytesWritten, err
-		}
-
-		if rotate && wc.enableRotation {
-			err = wc.rotate()
-			if err != nil {
-				return bytesWritten, err
-			}
-		}
+	newlinePos := bytes.LastIndexByte(p, '\n')
+	if (wc.size+int64(length) < wc.maxSize) || newlinePos == -1 {
+		bytesWritten, err := wc.file.WriteAt(p, wc.size)
+		wc.size += int64(bytesWritten)
+		return bytesWritten, err
 	}
-	return bytesWritten, nil
+	bytesWritten, err = wc.file.WriteAt(p[:newlinePos+1], wc.size)
+	wc.size += int64(bytesWritten)
+	if err != nil {
+		return bytesWritten, err
+	}
+
+	if err = wc.rotate(); err != nil {
+		return bytesWritten, err
+	}
+	written, err := wc.file.WriteAt(p[newlinePos+1:], wc.size)
+	wc.size += int64(written)
+	return bytesWritten + written, err
 }
 
 func (wc *appLogCloser) Close() error {
@@ -219,37 +145,14 @@ func openAppLog(path string, perm os.FileMode, maxSize int64, maxFiles int, enab
 		return nil, err
 	}
 
-	// Determine last '\n' by reading the file backwards
-	var lastNewlineIndex int64 = -1
-	const bufExp = 13 // 8KB buffer
-	buf := make([]byte, 1<<bufExp)
-	offset := ((size - 1) >> bufExp) << bufExp
-	bufSz := size - offset
-
-	for offset >= 0 {
-		_, err = file.ReadAt(buf[:bufSz], offset)
-		if err != nil {
-			_ = file.Close()
-			return nil, err
-		}
-		i := bytes.LastIndexByte(buf[:bufSz], '\n')
-		if i != -1 {
-			lastNewlineIndex = offset + int64(i)
-			break
-		}
-		offset -= 1 << bufExp
-		bufSz = 1 << bufExp
-	}
-
 	return &appLogCloser{
-		file:             file,
-		lastNewlineIndex: lastNewlineIndex,
-		maxFiles:         maxFiles,
-		maxSize:          maxSize,
-		path:             path,
-		perm:             perm,
-		size:             size,
-		enableRotation:   enableLogRotation,
+		file:           file,
+		maxFiles:       maxFiles,
+		maxSize:        maxSize,
+		path:           path,
+		perm:           perm,
+		size:           size,
+		enableRotation: enableLogRotation,
 	}, nil
 }
 

@@ -24,33 +24,38 @@ import (
 func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
 	memoryQuota int64, numVbuckets int, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
-		appName:                appName,
-		bootstrapFinishCh:      make(chan struct{}, 1),
-		consumerListeners:      make(map[common.EventingConsumer]net.Listener),
-		dcpConfig:              make(map[string]interface{}),
-		ejectNodeUUIDs:         make([]string, 0),
-		eventingNodeUUIDs:      make([]string, 0),
-		feedbackListeners:      make(map[common.EventingConsumer]net.Listener),
-		handleV8ConsumerMutex:  &sync.Mutex{},
-		kvPort:                 kvPort,
-		listenerRWMutex:        &sync.RWMutex{},
-		metakvAppHostPortsPath: metakvAppHostPortsPath,
-		notifyInitCh:           make(chan struct{}, 2),
-		notifySettingsChangeCh: make(chan struct{}, 1),
-		notifySupervisorCh:     make(chan struct{}),
-		nsServerPort:           nsServerPort,
-		numVbuckets:            numVbuckets,
-		pauseProducerCh:        make(chan struct{}, 1),
-		plasmaMemQuota:         memoryQuota,
-		retryCount:             -1,
-		seqsNoProcessed:        make(map[int]int64),
-		signalStopPersistAllCh: make(chan struct{}, 1),
-		statsRWMutex:           &sync.RWMutex{},
-		superSup:               superSup,
-		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
-		updateStatsStopCh:      make(chan struct{}, 1),
-		uuid:                   uuid,
+		appName:                    appName,
+		bootstrapFinishCh:          make(chan struct{}, 1),
+		consumerListeners:          make(map[common.EventingConsumer]net.Listener),
+		dcpConfig:                  make(map[string]interface{}),
+		ejectNodeUUIDs:             make([]string, 0),
+		eventingNodeUUIDs:          make([]string, 0),
+		feedbackListeners:          make(map[common.EventingConsumer]net.Listener),
+		handleV8ConsumerMutex:      &sync.Mutex{},
+		kvPort:                     kvPort,
+		listenerRWMutex:            &sync.RWMutex{},
+		metakvAppHostPortsPath:     metakvAppHostPortsPath,
+		notifyInitCh:               make(chan struct{}, 2),
+		notifySettingsChangeCh:     make(chan struct{}, 1),
+		notifySupervisorCh:         make(chan struct{}),
+		nsServerPort:               nsServerPort,
+		numVbuckets:                numVbuckets,
+		pauseProducerCh:            make(chan struct{}, 1),
+		plannerNodeMappingsRWMutex: &sync.RWMutex{},
+		plasmaMemQuota:             memoryQuota,
+		retryCount:                 -1,
+		seqsNoProcessed:            make(map[int]int64),
+		seqsNoProcessedRWMutex:     &sync.RWMutex{},
+		signalStopPersistAllCh:     make(chan struct{}, 1),
+		statsRWMutex:               &sync.RWMutex{},
+		superSup:                   superSup,
+		topologyChangeCh:           make(chan *common.TopologyChangeMsg, 10),
+		updateStatsStopCh:          make(chan struct{}, 1),
+		uuid:                       uuid,
 		vbEventingNodeAssignRWMutex:  &sync.RWMutex{},
+		vbEventingNodeRWMutex:        &sync.RWMutex{},
+		vbMapping:                    make(map[uint16]*vbNodeWorkerMapping),
+		vbMappingRWMutex:             &sync.RWMutex{},
 		workerNameConsumerMap:        make(map[string]common.EventingConsumer),
 		workerNameConsumerMapRWMutex: &sync.RWMutex{},
 		workerVbMapRWMutex:           &sync.RWMutex{},
@@ -91,14 +96,16 @@ func (p *Producer) Serve() {
 	}
 
 	p.persistAllTicker = time.NewTicker(time.Duration(p.persistInterval) * time.Millisecond)
-	p.statsTicker = time.NewTicker(time.Duration(p.handlerConfig.StatsLogInterval) * time.Millisecond)
+	p.statsTicker = time.NewTicker(time.Duration(p.handlerConfig.StatsLogInterval) * 12 * time.Millisecond)
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
 	logging.Infof("%s [%s:%d] number of vbuckets for %s: %d", logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)
 
+	p.seqsNoProcessedRWMutex.Lock()
 	for i := 0; i < p.numVbuckets; i++ {
 		p.seqsNoProcessed[i] = 0
 	}
+	p.seqsNoProcessedRWMutex.Unlock()
 
 	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles, p.appLogRotation)
 	if err != nil {
@@ -116,6 +123,8 @@ func (p *Producer) Serve() {
 		logging.Infof("%s [%s:%d] Planner status: %t, after vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 		return
 	}
+
+	p.vbNodeWorkerMap()
 
 	p.initWorkerVbMap()
 	p.isPlannerRunning = false
@@ -171,7 +180,8 @@ func (p *Producer) Serve() {
 		common.StartDebugBlob{StartDebug: false},
 		util.EventingVer(),
 	}
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, dFlagKey, debugBlob)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
+		p, p.AddMetadataPrefix(dFlagKey), debugBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return
@@ -182,7 +192,8 @@ func (p *Producer) Serve() {
 		util.EventingVer(),
 	}
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, dInstAddrKey, debuggerInstBlob)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey), debuggerInstBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return
@@ -221,6 +232,7 @@ func (p *Producer) Serve() {
 						logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 					return
 				}
+				p.vbNodeWorkerMap()
 				p.initWorkerVbMap()
 				p.isPlannerRunning = false
 				logging.Infof("%s [%s:%d] Planner status: %t, post vbucket to worker assignment during rebalance",
@@ -346,6 +358,10 @@ func (p *Producer) Serve() {
 
 // Stop implements suptree.Service interface
 func (p *Producer) Stop() {
+	logPrefix := "Producer::Stop"
+
+	logging.Infof("%s [%s:%d] Gracefully shutting down producer routine",
+		logPrefix, p.appName, p.LenRunningConsumers())
 
 	p.listenerRWMutex.RLock()
 	if p.consumerListeners != nil {
@@ -355,6 +371,9 @@ func (p *Producer) Stop() {
 			}
 		}
 	}
+
+	logging.Infof("%s [%s:%d] Stopped main listener handles",
+		logPrefix, p.appName, p.LenRunningConsumers())
 
 	p.consumerListeners = make(map[common.EventingConsumer]net.Listener)
 
@@ -366,6 +385,9 @@ func (p *Producer) Stop() {
 		}
 	}
 
+	logging.Infof("%s [%s:%d] Stopped feedback listener handles",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
 	p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
 	p.listenerRWMutex.RUnlock()
 
@@ -373,21 +395,36 @@ func (p *Producer) Stop() {
 		p.metadataBucketHandle.Close()
 	}
 
+	logging.Infof("%s [%s:%d] Closed metadata bucket handle",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
 	if p.stopProducerCh != nil {
 		p.stopProducerCh <- struct{}{}
 	}
+
+	logging.Infof("%s [%s:%d] Signalled for Producer::Serve to exit",
+		logPrefix, p.appName, p.LenRunningConsumers())
 
 	if p.signalStopPersistAllCh != nil {
 		p.signalStopPersistAllCh <- struct{}{}
 	}
 
+	logging.Infof("%s [%s:%d] Signalled plasma persist routine to exit",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
 	if p.appLogWriter != nil {
 		p.appLogWriter.Close()
 	}
 
+	logging.Infof("%s [%s:%d] Closed app log writer handle",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
 	if p.updateStatsStopCh != nil {
 		p.updateStatsStopCh <- struct{}{}
 	}
+
+	logging.Infof("%s [%s:%d] Exiting from Producer::Stop routine",
+		logPrefix, p.appName, p.LenRunningConsumers())
 }
 
 // Implement fmt.Stringer interface for better debugging in case
@@ -674,14 +711,16 @@ func (p *Producer) SignalStartDebugger() error {
 	// Check if debugger instance is already running somewhere
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, dInstAddrKey, dInstAddrBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
 	}
 
 	if dInstAddrBlob.NodeUUID == "" {
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, key, blob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
+			p, p.AddMetadataPrefix(key), blob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 			return common.ErrRetryTimeout
@@ -702,7 +741,8 @@ func (p *Producer) SignalStopDebugger() error {
 	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, dInstAddrKey, debuggerInstBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey), debuggerInstBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
@@ -728,7 +768,8 @@ func (p *Producer) SignalStopDebugger() error {
 			}
 			dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
 
-			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, dFlagKey, debugBlob)
+			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
+				p, p.AddMetadataPrefix(dFlagKey), debugBlob)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 				return common.ErrRetryTimeout
@@ -748,7 +789,8 @@ func (p *Producer) GetDebuggerURL() (string, error) {
 	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, dInstAddrKey, debuggerInstBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey), debuggerInstBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return "", common.ErrRetryTimeout

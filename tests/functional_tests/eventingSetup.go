@@ -190,11 +190,11 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["dcp_stream_boundary"] = s.streamBoundary
 	}
 
-	/*if s.recursiveBehavior == "disable" || s.recursiveBehavior == "" {
+	if s.recursiveBehavior == "disable" || s.recursiveBehavior == "" {
 		settings["enable_recursive_mutation"] = false
 	} else {
 		settings["enable_recursive_mutation"] = true
-	}*/
+	}
 
 	if s.deadlineTimeout == 0 {
 		settings["deadline_timeout"] = deadlineTimeout

@@ -263,17 +263,18 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 			switch processingStatus {
 			case true:
-				logging.Infof("%s [%d] Begin deploy process of %v", logPrefix, len(s.runningProducers), appName)
+				logging.Infof("%s [%d] App: %s begin deployment process", logPrefix, len(s.runningProducers), appName)
 				state := s.GetAppState(appName)
 
 				if state == common.AppStateUndeployed || state == common.AppStateDisabled {
 					if err := util.MetaKvDelete(MetakvAppsRetryPath+appName, nil); err != nil {
-						logging.Errorf("%s [%d] Failed to delete from metakv path, err : %v", err)
+						logging.Errorf("%s [%d] Failed to delete from metakv path, err : %v", logPrefix, len(s.runningProducers), err)
 						return err
 					}
 
 					if state == common.AppStateDisabled {
 						if p, ok := s.runningProducers[appName]; ok {
+							logging.Infof("%s [%d] App: %s stopping running producer instance", logPrefix, len(s.runningProducers), appName)
 							p.StopProducer()
 						}
 					}
@@ -312,7 +313,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					s.supCmdCh <- msg
 				}
 
-				logging.Infof("%s [%d] End deploy process of %v", logPrefix, len(s.runningProducers), appName)
+				logging.Infof("%s [%d] App: %s deployment done", logPrefix, len(s.runningProducers), appName)
 
 			case false:
 
@@ -328,7 +329,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 						p.PauseProducer()
 						p.NotifySupervisor()
-						logging.Infof("%s [%d] Cleaned up running Eventing.Producer instance, app: %s", logPrefix, len(s.runningProducers), appName)
+						logging.Infof("%s [%d] App: %s Cleaned up running Eventing.Producer instance", logPrefix, len(s.runningProducers), appName)
 					}
 				}
 			}
@@ -337,10 +338,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 			switch processingStatus {
 			case true:
-				logging.Infof("%s [%d] App: %v Unexpected status requested", logPrefix, len(s.runningProducers), appName)
+				logging.Infof("%s [%d] App: %s Unexpected status requested", logPrefix, len(s.runningProducers), appName)
 
 			case false:
-				logging.Infof("%s [%d] Begin undeploy process of %v", logPrefix, len(s.runningProducers), appName)
+				logging.Infof("%s [%d] App: %s Begin undeploy process", logPrefix, len(s.runningProducers), appName)
 				state := s.GetAppState(appName)
 
 				if state == common.AppStateEnabled || state == common.AppStateDisabled {
@@ -361,7 +362,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					s.appListRWMutex.Unlock()
 				}
 
-				logging.Infof("%s [%d] End undeploy process of %v", logPrefix, len(s.runningProducers), appName)
+				logging.Infof("%s [%d] App: %s undeployment done", logPrefix, len(s.runningProducers), appName)
 			}
 		}
 
@@ -507,7 +508,7 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, 
 			return nil
 		}
 
-		logging.Infof("%s [%d] Notifying Eventing.Producer instances to update plasma memory quota to %v MB",
+		logging.Infof("%s [%d] Notifying Eventing.Producer instances to update plasma memory quota to %d MB",
 			logPrefix, len(s.runningProducers), config.RAMQuota)
 
 		s.plasmaMemQuota = config.RAMQuota
@@ -533,7 +534,7 @@ func (s *SuperSupervisor) AppsRetryCallback(path string, value []byte, rev inter
 		return err
 	}
 
-	logging.Infof("%s [%d] Setting retry for %s to %d", logPrefix, len(s.runningProducers), appName, retryValue)
+	logging.Infof("%s [%d] App: %s Setting retry to %d", logPrefix, len(s.runningProducers), appName, retryValue)
 
 	if p, exists := s.runningProducers[appName]; exists {
 		p.SetRetryCount(int64(retryValue))
@@ -572,12 +573,12 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 			switch msg.cmd {
 			case cmdAppDelete:
-				logging.Infof("%s [%d] Deleting app: %s", logPrefix, len(s.runningProducers), appName)
+				logging.Infof("%s [%d] App: %s deleting", logPrefix, len(s.runningProducers), appName)
 
 				d, err := os.Open(s.eventingDir)
 				if err != nil {
 					logging.Errorf("%s [%d] App: %s failed to open eventingDir: %s while trying to purge app logs, err: %v",
-						logPrefix, len(s.runningProducers), appName, err)
+						logPrefix, len(s.runningProducers), appName, s.eventingDir, err)
 					continue
 				}
 
@@ -602,20 +603,7 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 				d.Close()
 
 			case cmdAppLoad:
-				logging.Infof("%s [%d] Loading app: %s", logPrefix, len(s.runningProducers), appName)
-
-				// Clean previous running instance of app producers
-				if p, ok := s.runningProducers[appName]; ok {
-					logging.Infof("%s [%d] App: %s, cleaning up previous running instance", logPrefix, len(s.runningProducers), appName)
-					p.NotifyInit()
-
-					s.superSup.Remove(s.producerSupervisorTokenMap[p])
-					delete(s.producerSupervisorTokenMap, p)
-					delete(s.runningProducers, appName)
-
-					p.NotifySupervisor()
-					logging.Infof("%s [%d] Cleaned up previous running producer instance, app: %s", logPrefix, len(s.runningProducers), appName)
-				}
+				logging.Infof("%s [%d] App: %s bootstrapping", logPrefix, len(s.runningProducers), appName)
 
 				s.appListRWMutex.Lock()
 				if _, ok := s.bootstrappingApps[appName]; ok {
@@ -625,6 +613,19 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 				}
 				s.bootstrappingApps[appName] = time.Now().String()
 				s.appListRWMutex.Unlock()
+
+				// Clean previous running instance of app producers
+				if p, ok := s.runningProducers[appName]; ok {
+					logging.Infof("%s [%d] App: %s cleaning up previous running instance", logPrefix, len(s.runningProducers), appName)
+					p.NotifyInit()
+
+					s.superSup.Remove(s.producerSupervisorTokenMap[p])
+					delete(s.producerSupervisorTokenMap, p)
+					delete(s.runningProducers, appName)
+
+					p.NotifySupervisor()
+					logging.Infof("%s [%d] Cleaned up previous running producer instance, app: %s", logPrefix, len(s.runningProducers), appName)
+				}
 
 				s.spawnApp(appName)
 
@@ -742,7 +743,6 @@ func (s *SuperSupervisor) CleanupProducer(appName string) error {
 		if !ok {
 			p.StopRunningConsumers()
 			p.CleanupUDSs()
-			p.CleanupMetadataBucket()
 
 			err = p.CleanupMetadataBucket()
 			if err == common.ErrRetryTimeout {

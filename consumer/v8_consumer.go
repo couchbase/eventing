@@ -92,7 +92,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		plasmaStoreStopCh:               make(chan struct{}, 1),
 		producer:                        p,
 		reqStreamCh:                     make(chan *streamRequestInfo, numVbuckets*10),
-		reqStreamResponseCh:             make(chan uint16, numVbuckets*10),
 		restartVbDcpStreamTicker:        time.NewTicker(restartVbDcpStreamTickInterval),
 		retryCount:                      retryCount,
 		sendMsgBufferRWMutex:            &sync.RWMutex{},
@@ -128,9 +127,12 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		uuid:                            uuid,
 		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),
+		vbEnqueuedForStreamReq:          make(map[uint16]struct{}),
+		vbEnqueuedForStreamReqRWMutex:   &sync.RWMutex{},
 		vbFlogChan:                      make(chan *vbFlogEntry),
 		vbnos:                           vbnos,
 		updateStatsStopCh:               make(chan struct{}, 1),
+		usingDocTimer:                   hConfig.UsingDocTimer,
 		vbDcpEventsRemaining:            make(map[int]int64),
 		vbEventingNodeAssignMap:         vbEventingNodeAssignMap,
 		vbEventingNodeAssignRWMutex:     &sync.RWMutex{},
@@ -234,8 +236,8 @@ func (c *Consumer) Serve() {
 	go c.processReqStreamMessages()
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
-	logging.Infof("%s [%s:%s:%d] vbnos len: %d dump: %s",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos), util.Condense(c.vbnos))
+	logging.Infof("%s [%s:%s:%d] using doc_timer: %t vbnos len: %d dump: %s",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.usingDocTimer, len(c.vbnos), util.Condense(c.vbnos))
 
 	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 	if err == common.ErrRetryTimeout {
@@ -299,7 +301,6 @@ func (c *Consumer) Serve() {
 		go c.vbsStateUpdate()
 	}
 
-	// doc_id timer events
 	go c.processDocTimerEvents()
 
 	go c.cleanupProcessedDocTimers()
@@ -314,7 +315,6 @@ func (c *Consumer) Serve() {
 
 	go c.doLastSeqNoCheckpoint()
 
-	// V8 Debugger polling routine
 	go c.pollForDebuggerStart()
 
 	c.signalBootstrapFinishCh <- struct{}{}
@@ -397,10 +397,6 @@ func (c *Consumer) Stop() {
 		c.docTimerProcessingStopCh <- struct{}{}
 	}
 
-	if c.cbBucket != nil {
-		c.cbBucket.Close()
-	}
-
 	if c.gocbBucket != nil {
 		c.gocbBucket.Close()
 	}
@@ -465,6 +461,11 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop cron, doc routines",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
+	// Closing bucket feed handle after sending message on stopReqStreamProcessCh
+	if c.cbBucket != nil {
+		c.cbBucket.Close()
+	}
+
 	if c.updateStatsTicker != nil {
 		c.updateStatsTicker.Stop()
 	}
@@ -490,10 +491,6 @@ func (c *Consumer) Stop() {
 
 	if c.stopControlRoutineCh != nil {
 		c.stopControlRoutineCh <- struct{}{}
-	}
-
-	if c.stopConsumerCh != nil {
-		c.stopConsumerCh <- struct{}{}
 	}
 
 	if c.signalStopDebuggerRoutineCh != nil {
@@ -524,6 +521,11 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Closing up aggDcpFeed channel",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
+	// Bail out processEvents loop only after couchbase.DcpFeed and aggChan are closed.
+	if c.stopConsumerCh != nil {
+		c.stopConsumerCh <- struct{}{}
+	}
+
 	if c.conn != nil {
 		c.conn.Close()
 	}
@@ -540,7 +542,7 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Requested to stop supervisor for Eventing.Consumer",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	logging.Infof("%s [%s:%s:%d] Exiting Eventing.Consumer Stop routine",
+	logging.Infof("%s [%s:%s:%d] Exiting Consumer::Stop routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }
 
@@ -612,7 +614,8 @@ func (c *Consumer) SignalStopDebugger() error {
 		common.DebuggerInstanceAddrBlob{},
 		util.EventingVer(),
 	}
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, dInstAddrKey, dInstAddrBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback,
+		c, c.producer.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return common.ErrRetryTimeout

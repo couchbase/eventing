@@ -22,16 +22,6 @@
 #include <string>
 
 enum LogLevel { logSilent, logError, logInfo, logWarning, logDebug, logTrace };
-extern std::string appName;
-extern LogLevel desiredLogLevel;
-extern std::string workerID;
-extern bool noRedact;
-
-inline std::string NowTime();
-
-extern void setAppName(std::string appName);
-extern void setLogLevel(LogLevel level);
-extern void setWorkerID(std::string ID);
 
 inline LogLevel LevelFromString(const std::string &level) {
   if (level == "SILENT")
@@ -50,43 +40,46 @@ inline LogLevel LevelFromString(const std::string &level) {
   return logInfo;
 }
 
-class AtomicCerrLog {
+class SystemLog : public std::ostringstream {
 public:
-  AtomicCerrLog() {
-    while (cerr_spin_lock_.test_and_set(std::memory_order_acquire)) {
-    }
+  static LogLevel level_;
+  static void setLogLevel(LogLevel level);
+  static bool getRedactOverride();
+  static bool isDisabled(LogLevel check) { return check > level_; }
+  static std::string redact(const std::string msg) {
+    return redact_ ? "<ud>" + msg + "</ud>" : msg;
+  }
+  ~SystemLog() {
+    std::lock_guard<std::mutex> guard(lock_);
+    std::cerr << str() << std::flush;
   }
 
-  std::ostream &Cerr() { return std::cerr; }
-
-  ~AtomicCerrLog() { cerr_spin_lock_.clear(std::memory_order_release); }
-
-  static std::atomic_flag cerr_spin_lock_;
+private:
+  static std::mutex lock_;
+  static bool redact_;
 };
 
-class AtomicCoutLog {
+class ApplicationLog : public std::ostringstream {
 public:
-  AtomicCoutLog() {
-    while (cout_spin_lock_.test_and_set(std::memory_order_acquire)) {
-    }
+  ~ApplicationLog() {
+    std::lock_guard<std::mutex> guard(lock_);
+    std::cout << str() << std::flush;
   }
 
-  std::ostream &Cout() { return std::cout; }
-
-  ~AtomicCoutLog() { cout_spin_lock_.clear(std::memory_order_release); }
-
-  static std::atomic_flag cout_spin_lock_;
+private:
+  static std::mutex lock_;
 };
 
-#define APPLOG AtomicCoutLog().Cout()
+#define APPLOG ApplicationLog()
 
 #define LOG(level)                                                             \
-  if (level > desiredLogLevel)                                                 \
+  if (SystemLog::isDisabled(level))                                            \
     ;                                                                          \
   else                                                                         \
-    AtomicCerrLog().Cerr()
-#endif
+    SystemLog()
 
-#define RU(msg) (noRedact ? "" : "<ud>") << msg << (noRedact ? "" : "</ud>")
 #define RM(msg) msg
 #define RS(msg) msg
+#define RU(msg) SystemLog::redact(msg)
+
+#endif // LOG_H
