@@ -40,7 +40,9 @@ typedef union {
 class AppWorker {
 public:
   static AppWorker *GetAppWorker();
-  std::vector<char> *GetReadBuffer();
+  std::vector<char> *GetReadBufferMain();
+
+  std::vector<char> *GetReadBufferFeedback();
 
   void FlushToConn(uv_stream_t *stream, char *buffer, int length);
 
@@ -82,8 +84,7 @@ public:
 
 protected:
   void WriteResponseWithRetry(uv_stream_t *handle,
-                              const std::vector<uv_buf_t> &messages,
-                              const std::vector<int> &length_prefix_sum,
+                              std::vector<uv_buf_t> messages,
                               size_t batch_size);
 
 private:
@@ -143,7 +144,9 @@ private:
 
   bool msg_priority_;
 
-  std::vector<char> read_buffer_;
+  std::vector<char> read_buffer_main_;
+
+  std::vector<char> read_buffer_feedback_;
 
   std::atomic<bool> thread_exit_cond_;
 };
