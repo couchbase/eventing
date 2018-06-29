@@ -43,6 +43,8 @@ const (
 	metakvMaxDocSize = 4096 //Fragment size for Appcontent
 )
 
+var GocbCredsRequestCounter = 0
+
 type Uint16Slice []uint16
 
 func (s Uint16Slice) Len() int           { return len(s) }
@@ -941,8 +943,7 @@ func StripScheme(endpoint string) string {
 func (dynAuth *DynamicAuthenticator) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, error) {
 	logPrefix := "DynamicAuthenticator::Credentials"
 
-	logging.Infof("%s invoked by %s, authenticating endpoint: %rs bucket: %rm", logPrefix, dynAuth.Caller, req.Endpoint, req.Bucket)
-
+	GocbCredsRequestCounter++
 	strippedEndpoint := StripScheme(req.Endpoint)
 	username, password, err := cbauth.GetMemcachedServiceAuth(strippedEndpoint)
 	if err != nil {

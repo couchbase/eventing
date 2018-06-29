@@ -1454,7 +1454,7 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m.credsCounter++
+	m.lcbCredsCounter++
 
 	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -1964,13 +1964,14 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 	for _, app := range m.getTempStoreAll() {
 		if m.checkIfDeployed(app.Name) {
 			stats := stats{}
-			stats.CredsRequestCounter = m.credsCounter
 			stats.EventProcessingStats = m.superSup.GetEventProcessingStats(app.Name)
 			stats.EventsRemaining = backlogStat{DcpBacklog: m.superSup.GetDcpEventsRemainingToProcess(app.Name)}
 			stats.ExecutionStats = m.superSup.GetExecutionStats(app.Name)
 			stats.FailureStats = m.superSup.GetFailureStats(app.Name)
 			stats.FunctionName = app.Name
+			stats.GocbCredsRequestCounter = util.GocbCredsRequestCounter
 			stats.InternalVbDistributionStats = m.superSup.InternalVbDistributionStats(app.Name)
+			stats.LcbCredsRequestCounter = m.lcbCredsCounter
 			stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
 			stats.WorkerPids = m.superSup.GetEventingConsumerPids(app.Name)
 			stats.PlannerStats = m.superSup.PlannerStats(app.Name)
