@@ -111,6 +111,10 @@ git checkout $BRANCH 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout $BR
 git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
 note_version eventing $WORKSPACE/goproj/src/github.com/couchbase/eventing
 
+cd $WORKSPACE/testrunner
+echo "Pulling latest from testrunner"
+git pull couchbase master
+
 if [ "$CIBOT" = "true" ]; then
   > ~/gerrit.list
   autolist="`curl -s -o- 'http://review.couchbase.org/changes/?q=project:eventing+status:open+reviewer:1004336' | grep _number | sed 's/[ ,]*//g' | awk -F: '{print $2}' | sort -n`"
