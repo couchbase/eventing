@@ -272,10 +272,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
               v8::FunctionTemplate::New(isolate_, Curl));
   global->Set(v8::String::NewFromUtf8(isolate_, "log"),
               v8::FunctionTemplate::New(isolate_, Log));
-  global->Set(v8::String::NewFromUtf8(isolate_, "docTimer"),
-              v8::FunctionTemplate::New(isolate_, CreateDocTimer));
-  global->Set(v8::String::NewFromUtf8(isolate_, "cronTimer"),
-              v8::FunctionTemplate::New(isolate_, CreateCronTimer));
   global->Set(v8::String::NewFromUtf8(isolate_, "iter"),
               v8::FunctionTemplate::New(isolate_, IterFunction));
   global->Set(v8::String::NewFromUtf8(isolate_, "stopIter"),

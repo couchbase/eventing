@@ -632,7 +632,8 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	}
 	c.addToEnqueueMap(vb)
 
-	if backfillTimers && c.usingDocTimer {
+	// Commenting out backfill as we don't expose timers
+	if false {
 		seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",
