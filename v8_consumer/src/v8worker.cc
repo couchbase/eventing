@@ -1361,29 +1361,21 @@ CodeVersion V8Worker::IdentifyVersion(std::string handler) {
 }
 
 void V8Worker::GetDocTimerMessages(std::vector<uv_buf_t> &messages,
-                                   std::vector<int> &length_prefix_sum,
                                    size_t window_size) {
   int64_t doc_timer_count =
       std::min(doc_timer_queue_->Count(), static_cast<int64_t>(window_size));
-  int bytes_to_write =
-      (length_prefix_sum.size() == 0) ? 0 : length_prefix_sum.back();
 
   for (int64_t idx = 0; idx < doc_timer_count; ++idx) {
     auto doc_timer_msg = doc_timer_queue_->Pop();
     auto curr_messages = BuildResponse(doc_timer_msg.timer_entry,
                                        mDoc_Timer_Response, timerResponse);
     for (auto &msg : curr_messages) {
-      bytes_to_write += msg.len;
       messages.push_back(msg);
-      length_prefix_sum.push_back(bytes_to_write);
     }
   }
 }
 
-void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages,
-                                    std::vector<int> &length_prefix_sum) {
-  int bytes_to_write =
-      (length_prefix_sum.size() == 0) ? 0 : length_prefix_sum.back();
+void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages) {
   for (int vb = 0; vb < NUM_VBUCKETS; ++vb) {
     auto seq = vb_seq_[vb].get()->load(std::memory_order_seq_cst);
     if (seq > 0) {
@@ -1391,9 +1383,7 @@ void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages,
       auto curr_messages =
           BuildResponse(seq_no, mBucket_Ops_Response, checkpointResponse);
       for (auto &msg : curr_messages) {
-        bytes_to_write += msg.len;
         messages.push_back(msg);
-        length_prefix_sum.push_back(bytes_to_write);
       }
       // Reset the seq no of checkpointed vb to 0
       vb_seq_[vb].get()->compare_exchange_strong(seq, 0);

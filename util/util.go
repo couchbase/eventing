@@ -1110,6 +1110,7 @@ func GenerateHandlerUUID() (uint32, error) {
 type GocbLogger struct{}
 
 func (r *GocbLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
+	format = "[gocb] " + format
 	switch level {
 	case gocb.LogError:
 		logging.Errorf(format, v...)

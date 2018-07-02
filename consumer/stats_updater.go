@@ -54,6 +54,7 @@ func newVbProcessingStats(appName string, numVbuckets uint16, uuid, workerName s
 		vbsts[i].stats["seq_no_at_stream_end"] = uint64(0)
 		vbsts[i].stats["seq_no_after_close_stream"] = uint64(0)
 		vbsts[i].stats["timestamp"] = time.Now().UTC().Format(time.RFC3339)
+		vbsts[i].stats["vb_uuid"] = uint64(0)
 		vbsts[i].stats["worker_name"] = workerName
 	}
 	return vbsts

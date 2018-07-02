@@ -232,17 +232,14 @@ public:
    * @param length_prefix_sum
    * @param window_size
    */
-  void GetDocTimerMessages(std::vector<uv_buf_t> &messages,
-                           std::vector<int> &length_prefix_sum,
-                           size_t window_size);
+  void GetDocTimerMessages(std::vector<uv_buf_t> &messages, size_t window_size);
 
   /**
    * Read vb_seq map, serialize it and populate @param messages
    *
    * @param messages
    */
-  void GetBucketOpsMessages(std::vector<uv_buf_t> &messages,
-                            std::vector<int> &length_prefix_sum);
+  void GetBucketOpsMessages(std::vector<uv_buf_t> &messages);
 
   inline std::string GetHandlerName() const { return handler_name_; }
 

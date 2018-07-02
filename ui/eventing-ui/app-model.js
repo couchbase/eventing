@@ -120,7 +120,7 @@ ApplicationModel.prototype.getDefaultModel = function() {
             deployment_status: false,
             description: '',
             worker_count: 3,
-            execution_timeout: 1,
+            execution_timeout: 60,
             user_prefix: 'eventing'
         }
     };
@@ -152,7 +152,7 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.depcfg = this.getDefaultModel().depcfg;
     this.settings = {};
     this.settings.worker_count = 3;
-    this.settings.execution_timeout = 1;
+    this.settings.execution_timeout = 60;
     this.settings.user_prefix = 'eventing';
 };
 

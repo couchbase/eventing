@@ -28,9 +28,17 @@ std::atomic<int64_t> mutation_events_lost = {0};
 
 std::atomic<int64_t> uv_try_write_failure_counter = {0};
 
-static void alloc_buffer(uv_handle_t *handle, size_t suggested_size,
-                         uv_buf_t *buf) {
-  std::vector<char> *read_buffer = AppWorker::GetAppWorker()->GetReadBuffer();
+static void alloc_buffer_main(uv_handle_t *handle, size_t suggested_size,
+                              uv_buf_t *buf) {
+  std::vector<char> *read_buffer =
+      AppWorker::GetAppWorker()->GetReadBufferMain();
+  *buf = uv_buf_init(read_buffer->data(), read_buffer->capacity());
+}
+
+static void alloc_buffer_feedback(uv_handle_t *handle, size_t suggested_size,
+                                  uv_buf_t *buf) {
+  std::vector<char> *read_buffer =
+      AppWorker::GetAppWorker()->GetReadBufferFeedback();
   *buf = uv_buf_init(read_buffer->data(), read_buffer->capacity());
 }
 
@@ -88,7 +96,11 @@ AppWorker *AppWorker::GetAppWorker() {
   return &worker;
 }
 
-std::vector<char> *AppWorker::GetReadBuffer() { return &read_buffer_; }
+std::vector<char> *AppWorker::GetReadBufferMain() { return &read_buffer_main_; }
+
+std::vector<char> *AppWorker::GetReadBufferFeedback() {
+  return &read_buffer_feedback_;
+}
 
 void AppWorker::InitTcpSock(const std::string &handler_name,
                             const std::string &handler_uuid,
@@ -185,7 +197,7 @@ void AppWorker::OnConnect(uv_connect_t *conn, int status) {
   if (status == 0) {
     LOG(logInfo) << "Client connected" << std::endl;
 
-    uv_read_start(conn->handle, alloc_buffer,
+    uv_read_start(conn->handle, alloc_buffer_main,
                   [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
                     AppWorker::GetAppWorker()->OnRead(stream, nread, buf);
                   });
@@ -200,7 +212,7 @@ void AppWorker::OnFeedbackConnect(uv_connect_t *conn, int status) {
   if (status == 0) {
     LOG(logInfo) << "Client connected on feedback channel" << std::endl;
 
-    uv_read_start(conn->handle, alloc_buffer,
+    uv_read_start(conn->handle, alloc_buffer_feedback,
                   [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
                     AppWorker::GetAppWorker()->OnRead(stream, nread, buf);
                   });
@@ -809,21 +821,21 @@ void AppWorker::WriteResponses() {
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
   auto start = std::chrono::system_clock::now();
+  int batch_size = (feedback_batch_size_ & 1) ? (feedback_batch_size_ + 1)
+                                              : feedback_batch_size_;
   while (!thread_exit_cond_.load()) {
     auto sleep = true;
     // Update DocTimers Checkpoint
     for (const auto &w : workers_) {
       std::vector<uv_buf_t> messages;
       std::vector<int> length_prefix_sum;
-      w.second->GetDocTimerMessages(messages, length_prefix_sum,
-                                    feedback_batch_size_);
+      w.second->GetDocTimerMessages(messages, batch_size);
       if (messages.empty()) {
         continue;
       }
 
       sleep = false;
-      WriteResponseWithRetry(feedback_conn_handle_, messages, length_prefix_sum,
-                             2 * feedback_batch_size_);
+      WriteResponseWithRetry(feedback_conn_handle_, messages, batch_size);
       doc_timer_responses_sent += messages.size() / 2;
       for (auto &buf : messages) {
         delete buf.base;
@@ -845,13 +857,12 @@ void AppWorker::WriteResponses() {
     for (const auto &w : workers_) {
       std::vector<uv_buf_t> messages;
       std::vector<int> length_prefix_sum;
-      w.second->GetBucketOpsMessages(messages, length_prefix_sum);
+      w.second->GetBucketOpsMessages(messages);
       if (messages.empty()) {
         continue;
       }
 
-      WriteResponseWithRetry(feedback_conn_handle_, messages, length_prefix_sum,
-                             2 * feedback_batch_size_);
+      WriteResponseWithRetry(feedback_conn_handle_, messages, batch_size);
       for (auto &buf : messages) {
         delete buf.base;
       }
@@ -861,25 +872,27 @@ void AppWorker::WriteResponses() {
   }
 }
 
-void AppWorker::WriteResponseWithRetry(
-    uv_stream_t *handle, const std::vector<uv_buf_t> &messages,
-    const std::vector<int> &length_prefix_sum, size_t max_batch_size) {
+void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
+                                       std::vector<uv_buf_t> messages,
+                                       size_t max_batch_size) {
   size_t curr_idx = 0;
-  int total_bytes_written = 0;
   while (curr_idx < messages.size()) {
     size_t batch_size = std::min(max_batch_size, messages.size() - curr_idx);
     int bytes_written =
         uv_try_write(handle, messages.data() + curr_idx, batch_size);
-    if (bytes_written > 0) {
-      total_bytes_written += bytes_written;
-      auto iter =
-          std::upper_bound(length_prefix_sum.begin(), length_prefix_sum.end(),
-                           total_bytes_written);
-      if (iter == length_prefix_sum.end()) {
-        break;
-      }
+    if (bytes_written < 0) {
       uv_try_write_failure_counter++;
-      curr_idx = std::distance(length_prefix_sum.begin(), iter);
+    } else {
+      int written = bytes_written;
+      for (size_t idx = curr_idx; idx < messages.size(); idx++, curr_idx++) {
+        if (messages[idx].len > written) {
+          messages[idx].len -= written;
+          messages[idx].base += written;
+          break;
+        } else {
+          written -= messages[idx].len;
+        }
+      }
     }
   }
 }
@@ -893,7 +906,8 @@ AppWorker::AppWorker() : feedback_conn_handle_(nullptr), conn_handle_(nullptr) {
   uv_async_init(&feedback_loop_, &feedback_loop_async_, AppWorker::StopUvLoop);
   uv_async_init(&main_loop_, &main_loop_async_, AppWorker::StopUvLoop);
 
-  read_buffer_.resize(MAX_BUF_SIZE);
+  read_buffer_main_.resize(MAX_BUF_SIZE);
+  read_buffer_feedback_.resize(MAX_BUF_SIZE);
   resp_msg_ = new (resp_msg_t);
   msg_priority_ = false;
 
