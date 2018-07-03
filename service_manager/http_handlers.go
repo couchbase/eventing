@@ -486,8 +486,8 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
 		// if it occurs
 		appProgress, err := m.superSup.RebalanceTaskProgress(appName)
-		logging.Infof("%s rebalance progress from node with rest port: %rs progress: %v",
-			logPrefix, m.restPort, appProgress)
+		logging.Infof("%s App: %s rebalance progress from node with rest port: %rs progress: %v",
+			logPrefix, appName, m.restPort, appProgress)
 		if err == nil {
 			progress.VbsOwnedPerPlan += appProgress.VbsOwnedPerPlan
 			progress.VbsRemainingToShuffle += appProgress.VbsRemainingToShuffle
@@ -569,7 +569,7 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 
 	aggProgress, errMap := util.GetProgress("/getRebalanceProgress", m.eventingNodeAddrs)
 	if len(errMap) > 0 {
-		logging.Errorf("%s failed to get progress from all eventing nodes: %rs err: %rs",
+		logging.Errorf("%s failed to get progress from some/all eventing nodes: %rs err: %rs",
 			logPrefix, m.eventingNodeAddrs, errMap)
 		return
 	}
