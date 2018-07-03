@@ -283,9 +283,9 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	if val, ok := settings["app_log_max_files"]; ok {
-		p.appLogMaxFiles = int(val.(float64))
+		p.appLogMaxFiles = int64(val.(float64))
 	} else {
-		p.appLogMaxFiles = int(10)
+		p.appLogMaxFiles = int64(10)
 	}
 
 	if val, ok := settings["enable_applog_rotation"]; ok {
