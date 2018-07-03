@@ -213,11 +213,12 @@ func (c *Consumer) Serve() {
 		return
 	}
 
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, gocbConnectBucketCallback, c)
+	// Disabling socket bucket handle which was needed for doc timers
+	/*err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, gocbConnectBucketCallback, c)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
-	}
+	}*/
 
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, gocbConnectMetaBucketCallback, c)
 	if err == common.ErrRetryTimeout {
@@ -301,15 +302,12 @@ func (c *Consumer) Serve() {
 		go c.vbsStateUpdate()
 	}
 
-	go c.processDocTimerEvents()
-
-	go c.cleanupProcessedDocTimers()
-
-	go c.processCronTimerEvents()
-
-	go c.addCronTimersToCleanup()
-
-	go c.cleanupProcessedCronTimers()
+	// Disabling cron/doc timer processing/cleanup routines
+	// go c.processDocTimerEvents()
+	// go c.cleanupProcessedDocTimers()
+	// go c.processCronTimerEvents()
+	// go c.addCronTimersToCleanup()
+	// go c.cleanupProcessedCronTimers()
 
 	go c.updateWorkerStats()
 

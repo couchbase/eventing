@@ -21,10 +21,7 @@ import (
 )
 
 const (
-	xattrCasPath   = "eventing.cas"
-	xattrPrefix    = "eventing"
-	xattrTimerPath = "eventing.timers"
-	tsLayout       = "2006-01-02T15:04:05Z"
+	tsLayout = "2006-01-02T15:04:05Z"
 
 	metakvEventingPath    = "/eventing/"
 	metakvAppSettingsPath = metakvEventingPath + "appsettings/"
