@@ -788,7 +788,13 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	flogs := args[1].(*couchbase.FailoverLog)
 
-	var err error
+	err := c.cbBucket.Refresh()
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to refresh bucket handle, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+		return err
+	}
+
 	*flogs, err = c.cbBucket.GetFailoverLogs(0xABCD, c.vbnos, c.dcpConfig)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to get failover logs, err: %v",
@@ -812,14 +818,19 @@ var getFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
 		vbs = append(vbs, uint16(vb))
 	}
 
-	var err error
+	err := b.Refresh()
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] vb: %d failed to refresh vbmap, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+		return err
+	}
+
 	*flogs, err = b.GetFailoverLogs(0xABCD, vbs, c.dcpConfig)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] vb: %d Failed to get failover logs, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 	}
 
-	b.Refresh()
 	return err
 }
 
@@ -863,9 +874,14 @@ var startFeedFromKVNodesCallback = func(args ...interface{}) error {
 	kvNodeAddrs := args[4].([]string)
 
 	feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%s_%s_vb_%v_docTimer", c.HostPortAddr(), c.workerName, vb))
-	(*b).Refresh()
 
-	var err error
+	err := (*b).Refresh()
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] vb: %d failed to refresh vbmap, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+		return err
+	}
+
 	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), includeXATTRs, kvNodeAddrs, 0xABCD, c.dcpConfig)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to start dcp feed for bucket: %v kv nodes: %rs, err: %v",
@@ -910,6 +926,14 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 		// Can't do it on existing *couchbase.DcpFeed where STREAMREQ calls
 		// are made.
 		feedName := couchbase.NewDcpFeedName(c.HostPortAddr() + "_" + kvHost + "_" + c.workerName + "_GetSeqNos")
+
+		err := c.cbBucket.Refresh()
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] feed: %s failed to refresh vbmap, err: %v",
+				logPrefix, feedName.Raw(), c.workerName, c.tcpPort, c.Pid(), err)
+			return err
+		}
+
 		feed, err := c.cbBucket.StartDcpFeedOver(
 			feedName, uint32(0), includeXATTRs, []string{kvHost}, 0xABCD, c.dcpConfig)
 		if err != nil {

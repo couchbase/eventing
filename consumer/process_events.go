@@ -939,9 +939,14 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		}
 	}()
 
-	c.cbBucket.Refresh()
+	err := c.cbBucket.Refresh()
+	if err != nil {
+		logging.Infof("%s [%s:%s:%d] vb: %d failed to refresh vbmap",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+		return err
+	}
 
-	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvVbMap, c)
+	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvVbMap, c)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return common.ErrRetryTimeout
