@@ -1141,8 +1141,8 @@ func (c *Consumer) handleFailoverLog() {
 				}
 
 				if vbFlog.statusCode == mcd.ROLLBACK {
-					logging.Infof("%s [%s:%s:%d] vb: %v Rollback requested by DCP. Retrying DCP stream start vbuuid: %d startSeq: %d",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
+					logging.Infof("%s [%s:%s:%d] vb: %v Rollback requested by DCP. Retrying DCP stream start vbuuid: %d startSeq: %d flog startSeqNo: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo, startSeqNo)
 
 					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
 						continue
@@ -1156,7 +1156,7 @@ func (c *Consumer) handleFailoverLog() {
 					c.reqStreamCh <- &streamRequestInfo{
 						vb:         vbFlog.vb,
 						vbBlob:     &vbBlob,
-						startSeqNo: startSeqNo,
+						startSeqNo: vbFlog.seqNo,
 					}
 
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", startSeqNo)
@@ -1224,8 +1224,8 @@ func (c *Consumer) processReqStreamMessages() {
 	for {
 		select {
 		case msg, ok := <-c.reqStreamCh:
-			logging.Infof("%s [%s:%s:%d] vb: %d reqStreamCh size: %d Got request to stream",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb, len(c.reqStreamCh))
+			logging.Infof("%s [%s:%s:%d] vb: %d reqStreamCh size: %d msg: %v Got request to stream",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb, len(c.reqStreamCh), msg)
 
 			c.deleteFromEnqueueMap(msg.vb)
 
