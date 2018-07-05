@@ -127,9 +127,6 @@ static bool evt_should_log(int severity, const char *subsys) {
   if (evt_log_map_level(severity) <= SystemLog::level_) {
     return true;
   }
-  if (strcmp(subsys, "negotiation") == 0) {
-    return true;
-  }
   return false;
 }
 
