@@ -259,6 +259,23 @@ func (c *Consumer) processEvents() {
 				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMREQ status: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
 
+			retryCheckMetadataUpdated:
+				if metadataUpdated, ok := c.vbProcessingStats.getVbStat(e.VBucket, "vb_stream_request_metadata_updated").(bool); ok {
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated: %t",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, metadataUpdated)
+					if metadataUpdated {
+						c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
+					} else {
+						time.Sleep(time.Second)
+						goto retryCheckMetadataUpdated
+					}
+				} else {
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated not found",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+					time.Sleep(time.Second)
+					goto retryCheckMetadataUpdated
+				}
+
 				if e.Status == mcd.SUCCESS {
 
 					vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
@@ -297,23 +314,6 @@ func (c *Consumer) processEvents() {
 					var startSeqNo uint64
 					if seqNo, ok := c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64); ok {
 						startSeqNo = seqNo
-					}
-
-				retryCheckMetadataUpdated:
-					if metadataUpdated, ok := c.vbProcessingStats.getVbStat(e.VBucket, "vb_stream_request_metadata_updated").(bool); ok {
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated: %t",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, metadataUpdated)
-						if metadataUpdated {
-							c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
-						} else {
-							time.Sleep(time.Second)
-							goto retryCheckMetadataUpdated
-						}
-					} else {
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated not found",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
-						time.Sleep(time.Second)
-						goto retryCheckMetadataUpdated
 					}
 
 					entry := OwnershipEntry{
@@ -1235,7 +1235,7 @@ func (c *Consumer) processReqStreamMessages() {
 	for {
 		select {
 		case msg, ok := <-c.reqStreamCh:
-			logging.Infof("%s [%s:%s:%d] vb: %d reqStreamCh size: %d msg: %v Got request to stream",
+			logging.Infof("%s [%s:%s:%d] vb: %d reqStreamCh size: %d msg: %#v Got request to stream",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb, len(c.reqStreamCh), msg)
 
 			c.deleteFromEnqueueMap(msg.vb)
