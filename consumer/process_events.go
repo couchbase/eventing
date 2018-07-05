@@ -939,10 +939,21 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		}
 	}()
 
-	err := c.cbBucket.Refresh()
+	refreshMap := func() error {
+		c.cbBucketRWMutex.Lock()
+		defer c.cbBucketRWMutex.Unlock()
+
+		err := c.cbBucket.Refresh()
+		if err != nil {
+			logging.Infof("%s [%s:%s:%d] vb: %d failed to refresh vbmap",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+			return err
+		}
+		return nil
+	}
+
+	err := refreshMap()
 	if err != nil {
-		logging.Infof("%s [%s:%s:%d] vb: %d failed to refresh vbmap",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		return err
 	}
 
@@ -1122,7 +1133,7 @@ func (c *Consumer) handleFailoverLog() {
 				var startSeqNo uint64
 				var vbuuid uint64
 
-				err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpAllVbucketsCallback, c, c.cbBucket, &flogs, vbFlog.vb)
+				err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getEFFailoverLogOpAllVbucketsCallback, c, &flogs, vbFlog.vb)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 					return
