@@ -1,6 +1,7 @@
 package producer
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"math"
@@ -18,6 +19,7 @@ import (
 
 type filePtr struct {
 	ptr  *os.File
+	wptr *bufio.Writer
 	lock sync.Mutex
 }
 
@@ -41,7 +43,7 @@ func (wc *appLogCloser) Write(p []byte) (_ int, err error) {
 		fptr = (*filePtr)(atomic.LoadPointer(&wc.filePtr))
 		fptr.lock.Lock()
 	}
-	bytesWritten, err := fptr.ptr.Write(p)
+	bytesWritten, err := fptr.wptr.Write(p)
 	fptr.lock.Unlock()
 	atomic.AddInt64(&wc.size, int64(bytesWritten))
 	return bytesWritten, err
@@ -54,9 +56,17 @@ func (wc *appLogCloser) Close() error {
 		return nil
 	}
 	fptr.lock.Lock()
+	fptr.wptr.Flush()
 	err := fptr.ptr.Close()
 	fptr.lock.Unlock()
 	return err
+}
+
+func (wc *appLogCloser) Flush() {
+	fptr := (*filePtr)(atomic.LoadPointer(&wc.filePtr))
+	fptr.lock.Lock()
+	fptr.wptr.Flush()
+	fptr.lock.Unlock()
 }
 
 func (wc *appLogCloser) manageLogFiles() {
@@ -71,10 +81,12 @@ func (wc *appLogCloser) manageLogFiles() {
 		logging.Errorf("%s: File Open() failed err: %v", logPrefix, err)
 		return
 	}
+	w := bufio.NewWriter(fp)
 	oldFptr := (*filePtr)(atomic.LoadPointer(&wc.filePtr))
 	oldFptr.lock.Lock()
-	atomic.StorePointer(&wc.filePtr, unsafe.Pointer(&filePtr{ptr: fp}))
+	atomic.StorePointer(&wc.filePtr, unsafe.Pointer(&filePtr{ptr: fp, wptr: w}))
 	atomic.StoreInt64(&wc.size, 0)
+	oldFptr.wptr.Flush()
 	if err = oldFptr.ptr.Close(); err != nil {
 		logging.Errorf("%s: File Close() failed err: %v", logPrefix, err)
 	}
@@ -97,6 +109,7 @@ func (wc *appLogCloser) cleanupTask() {
 		if wc.maxSize <= atomic.LoadInt64(&wc.size) {
 			wc.manageLogFiles()
 		} else {
+			wc.Flush()
 			time.Sleep(500 * time.Millisecond)
 		}
 	}
@@ -155,12 +168,12 @@ func openAppLog(path string, perm os.FileMode, maxSize, maxFiles int64) (io.Writ
 	if err != nil {
 		return nil, err
 	}
-
+	w := bufio.NewWriter(file)
 	low, high := getFileIndexRange(path)
 
 	logger := &appLogCloser{
 		path:      path,
-		filePtr:   unsafe.Pointer(&filePtr{ptr: file}),
+		filePtr:   unsafe.Pointer(&filePtr{ptr: file, wptr: w}),
 		perm:      perm,
 		maxSize:   maxSize,
 		maxFiles:  maxFiles,
