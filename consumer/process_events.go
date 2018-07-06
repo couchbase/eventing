@@ -259,6 +259,23 @@ func (c *Consumer) processEvents() {
 				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMREQ status: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
 
+			retryCheckMetadataUpdated:
+				if metadataUpdated, ok := c.vbProcessingStats.getVbStat(e.VBucket, "vb_stream_request_metadata_updated").(bool); ok {
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated: %t",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, metadataUpdated)
+					if metadataUpdated {
+						c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
+					} else {
+						time.Sleep(time.Second)
+						goto retryCheckMetadataUpdated
+					}
+				} else {
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated not found",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+					time.Sleep(time.Second)
+					goto retryCheckMetadataUpdated
+				}
+
 				if e.Status == mcd.SUCCESS {
 
 					vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
@@ -297,23 +314,6 @@ func (c *Consumer) processEvents() {
 					var startSeqNo uint64
 					if seqNo, ok := c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64); ok {
 						startSeqNo = seqNo
-					}
-
-				retryCheckMetadataUpdated:
-					if metadataUpdated, ok := c.vbProcessingStats.getVbStat(e.VBucket, "vb_stream_request_metadata_updated").(bool); ok {
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated: %t",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, metadataUpdated)
-						if metadataUpdated {
-							c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
-						} else {
-							time.Sleep(time.Second)
-							goto retryCheckMetadataUpdated
-						}
-					} else {
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated not found",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
-						time.Sleep(time.Second)
-						goto retryCheckMetadataUpdated
 					}
 
 					entry := OwnershipEntry{
@@ -939,9 +939,25 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		}
 	}()
 
-	c.cbBucket.Refresh()
+	refreshMap := func() error {
+		c.cbBucketRWMutex.Lock()
+		defer c.cbBucketRWMutex.Unlock()
 
-	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvVbMap, c)
+		err := c.cbBucket.Refresh()
+		if err != nil {
+			logging.Infof("%s [%s:%s:%d] vb: %d failed to refresh vbmap",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+			return err
+		}
+		return nil
+	}
+
+	err := refreshMap()
+	if err != nil {
+		return err
+	}
+
+	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvVbMap, c)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return common.ErrRetryTimeout
@@ -1117,7 +1133,7 @@ func (c *Consumer) handleFailoverLog() {
 				var startSeqNo uint64
 				var vbuuid uint64
 
-				err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpAllVbucketsCallback, c, c.cbBucket, &flogs, vbFlog.vb)
+				err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getEFFailoverLogOpAllVbucketsCallback, c, &flogs, vbFlog.vb)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 					return
@@ -1136,8 +1152,8 @@ func (c *Consumer) handleFailoverLog() {
 				}
 
 				if vbFlog.statusCode == mcd.ROLLBACK {
-					logging.Infof("%s [%s:%s:%d] vb: %v Rollback requested by DCP. Retrying DCP stream start vbuuid: %d startSeq: %d",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
+					logging.Infof("%s [%s:%s:%d] vb: %v Rollback requested by DCP. Retrying DCP stream start vbuuid: %d startSeq: %d flog startSeqNo: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo, startSeqNo)
 
 					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
 						continue
@@ -1151,7 +1167,7 @@ func (c *Consumer) handleFailoverLog() {
 					c.reqStreamCh <- &streamRequestInfo{
 						vb:         vbFlog.vb,
 						vbBlob:     &vbBlob,
-						startSeqNo: startSeqNo,
+						startSeqNo: vbFlog.seqNo,
 					}
 
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", startSeqNo)
@@ -1219,8 +1235,8 @@ func (c *Consumer) processReqStreamMessages() {
 	for {
 		select {
 		case msg, ok := <-c.reqStreamCh:
-			logging.Infof("%s [%s:%s:%d] vb: %d reqStreamCh size: %d Got request to stream",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb, len(c.reqStreamCh))
+			logging.Infof("%s [%s:%s:%d] vb: %d reqStreamCh size: %d msg: %#v Got request to stream",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb, len(c.reqStreamCh), msg)
 
 			c.deleteFromEnqueueMap(msg.vb)
 
