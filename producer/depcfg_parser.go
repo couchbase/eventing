@@ -404,7 +404,7 @@ func (p *Producer) parseDepcfg() error {
 
 	p.nsServerHostPort = net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
-	p.kvHostPorts, err = util.KVNodesAddresses(p.auth, p.nsServerHostPort)
+	p.kvHostPorts, err = util.KVNodesAddresses(p.auth, p.nsServerHostPort, p.handlerConfig.SourceBucket)
 	if err != nil {
 		logging.Errorf("%s [%s] Failed to get list of kv nodes in the cluster, err: %v", logPrefix, p.appName, err)
 		return err

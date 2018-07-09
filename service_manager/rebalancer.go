@@ -126,7 +126,7 @@ retryRebProgress:
 				continue
 			}
 
-			if p.VbsOwnedPerPlan == 0 {
+			if p.VbsOwnedPerPlan == 0 && p.VbsRemainingToShuffle == 0 {
 				progress = 1.0
 				logging.Infof("%s Rebalance completed", logPrefix)
 			} else {

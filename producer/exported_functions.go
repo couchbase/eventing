@@ -573,7 +573,7 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 func (p *Producer) CleanupMetadataBucket() error {
 	logPrefix := "Producer::CleanupMetadataBucket"
 
-	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p)
+	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, p.metadatabucket)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout

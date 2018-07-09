@@ -53,10 +53,11 @@ var getKVNodesAddressesOpCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::getKVNodesAddressesOpCallback"
 
 	p := args[0].(*Producer)
+	bucket := args[1].(string)
 
 	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
-	kvNodeAddrs, err := util.KVNodesAddresses(p.auth, hostAddress)
+	kvNodeAddrs, err := util.KVNodesAddresses(p.auth, hostAddress, bucket)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get all KV nodes, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 	} else {
