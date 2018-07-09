@@ -243,7 +243,7 @@ func TestOnDeleteBucketOp(t *testing.T) {
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	pumpBucketOps(opsType{expiry: 1, delete: true}, &rateLimit{})
+	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "OnDeleteBucketOp",
@@ -262,7 +262,7 @@ func TestOnDeleteBucketOp5K(t *testing.T) {
 	flushFunctionAndBucket(handler)
 	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 5*1024)
 
-	pumpBucketOps(opsType{expiry: 1, delete: true}, &rateLimit{})
+	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "OnDeleteBucketOp",

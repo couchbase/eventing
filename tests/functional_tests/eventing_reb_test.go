@@ -172,6 +172,10 @@ func TestMetaRollbackWithEventingReb(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
+	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
 	rl.stopCh <- struct{}{}
 
 	flushFunctionAndBucket(handler)
@@ -205,6 +209,10 @@ func TestMetaPartialRollbackWithEventingReb(t *testing.T) {
 	addNodeFromRest("127.0.0.1:9002", "eventing")
 	rebalanceFromRest([]string{""})
 	go mangleCheckpointBlobs(handler, "eventing", 0, 1023)
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -403,7 +411,7 @@ func TestEventingSwapRebOnUpdateDocTimer(t *testing.T) {
 /** OnUpdate doc/cron timer cases end **/
 
 /** Multiple handlers cases start **/
-func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
+func TestEventingRebMultipleHandlersOneByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler1 := "sys_test_bucket_op"
 	handler2 := "bucket_op_on_update"
@@ -429,15 +437,6 @@ func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 	waitForDeployToFinish(handler2)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "eventing")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
-	waitForRebalanceFinish()
-	metaStateDump()
-
 	addAllNodesOneByOne("eventing")
 	removeAllNodesOneByOne()
 
@@ -447,7 +446,7 @@ func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 	flushFunctionAndBucket(handler2)
 }
 
-func TestEventingRebBucketOpAndDocTimerHandlersAllAtOnce(t *testing.T) {
+func TestEventingRebMultipleHandlersAllAtOnce(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler1 := "sys_test_bucket_op"
 	handler2 := "bucket_op_on_update"

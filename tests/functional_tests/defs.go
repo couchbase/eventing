@@ -134,7 +134,7 @@ type restResponse struct {
 	err  error
 }
 
-type OwnershipEntry struct {
+type ownershipEntry struct {
 	AssignedWorker string `json:"assigned_worker"`
 	CurrentVBOwner string `json:"current_vb_owner"`
 	Operation      string `json:"operation"`

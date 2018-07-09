@@ -83,7 +83,7 @@ func mangleCheckpointBlobs(appName, prefix string, start, end int) {
 		worker := possibleWorkers[random(0, len(possibleWorkers))]
 		ownerNode := possibleVbOwners[random(0, len(possibleVbOwners))]
 
-		entry := OwnershipEntry{
+		entry := ownershipEntry{
 			AssignedWorker: worker,
 			CurrentVBOwner: ownerNode,
 			Operation:      "mangling_checkpoint_blob",
@@ -175,18 +175,36 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 		for i := 0; i < ops.count; i++ {
 			u.ID = i + ops.startIndex
 			if !ops.writeXattrs {
-				bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
+
+			retryOp1:
+				_, err := bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
+				if err != nil {
+					time.Sleep(time.Second)
+					goto retryOp1
+				}
 			} else {
-				bucket.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), 0, uint32(ops.expiry)).
+
+			retryOp2:
+				_, err := bucket.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), 0, uint32(ops.expiry)).
 					UpsertEx(fmt.Sprintf("test_%s", ops.xattrPrefix), "user xattr test value", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
 					UpsertEx("normalproperty", "normal property value", gocb.SubdocFlagNone).
 					Execute()
+				if err != nil {
+					time.Sleep(time.Second)
+					goto retryOp2
+				}
 			}
 		}
 
 		if ops.delete {
 			for i := 0; i < ops.count; i++ {
-				bucket.Remove(fmt.Sprintf("doc_id_%d", i), 0)
+
+			retryOp3:
+				_, err := bucket.Remove(fmt.Sprintf("doc_id_%d", i), 0)
+				if err != nil && err != gocb.ErrKeyNotFound {
+					time.Sleep(time.Second)
+					goto retryOp3
+				}
 			}
 		}
 
@@ -198,15 +216,33 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 			case <-ticker.C:
 				u.ID = i + ops.startIndex
 				if ops.delete {
-					bucket.Remove(fmt.Sprintf("doc_id_%d", u.ID), 0)
+
+				retryOp4:
+					_, err := bucket.Remove(fmt.Sprintf("doc_id_%d", u.ID), 0)
+					if err != nil && err != gocb.ErrKeyNotFound {
+						time.Sleep(time.Second)
+						goto retryOp4
+					}
 				} else {
 					if !ops.writeXattrs {
-						bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
+
+					retryOp5:
+						_, err := bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
+						if err != nil {
+							time.Sleep(time.Second)
+							goto retryOp5
+						}
 					} else {
-						bucket.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), 0, uint32(ops.expiry)).
+
+					retryOp6:
+						_, err := bucket.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), 0, uint32(ops.expiry)).
 							UpsertEx(fmt.Sprintf("test_%s", ops.xattrPrefix), "user xattr test value", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
 							UpsertEx("normalproperty", "normal property value", gocb.SubdocFlagNone).
 							Execute()
+						if err != nil {
+							time.Sleep(time.Second)
+							goto retryOp6
+						}
 					}
 				}
 				i++
