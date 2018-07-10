@@ -486,8 +486,8 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
 		// if it occurs
 		appProgress, err := m.superSup.RebalanceTaskProgress(appName)
-		logging.Infof("%s rebalance progress from node with rest port: %rs progress: %v",
-			logPrefix, m.restPort, appProgress)
+		logging.Infof("%s App: %s rebalance progress from node with rest port: %rs progress: %v",
+			logPrefix, appName, m.restPort, appProgress)
 		if err == nil {
 			progress.VbsOwnedPerPlan += appProgress.VbsOwnedPerPlan
 			progress.VbsRemainingToShuffle += appProgress.VbsRemainingToShuffle
@@ -569,7 +569,7 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 
 	aggProgress, errMap := util.GetProgress("/getRebalanceProgress", m.eventingNodeAddrs)
 	if len(errMap) > 0 {
-		logging.Errorf("%s failed to get progress from all eventing nodes: %rs err: %rs",
+		logging.Errorf("%s failed to get progress from some/all eventing nodes: %rs err: %rs",
 			logPrefix, m.eventingNodeAddrs, errMap)
 		return
 	}
@@ -1454,7 +1454,7 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m.credsCounter++
+	m.lcbCredsCounter++
 
 	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -1964,13 +1964,14 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 	for _, app := range m.getTempStoreAll() {
 		if m.checkIfDeployed(app.Name) {
 			stats := stats{}
-			stats.CredsRequestCounter = m.credsCounter
 			stats.EventProcessingStats = m.superSup.GetEventProcessingStats(app.Name)
 			stats.EventsRemaining = backlogStat{DcpBacklog: m.superSup.GetDcpEventsRemainingToProcess(app.Name)}
 			stats.ExecutionStats = m.superSup.GetExecutionStats(app.Name)
 			stats.FailureStats = m.superSup.GetFailureStats(app.Name)
 			stats.FunctionName = app.Name
+			stats.GocbCredsRequestCounter = util.GocbCredsRequestCounter
 			stats.InternalVbDistributionStats = m.superSup.InternalVbDistributionStats(app.Name)
+			stats.LcbCredsRequestCounter = m.lcbCredsCounter
 			stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
 			stats.WorkerPids = m.superSup.GetEventingConsumerPids(app.Name)
 			stats.PlannerStats = m.superSup.PlannerStats(app.Name)

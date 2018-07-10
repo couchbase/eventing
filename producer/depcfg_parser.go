@@ -283,9 +283,9 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	if val, ok := settings["app_log_max_files"]; ok {
-		p.appLogMaxFiles = int(val.(float64))
+		p.appLogMaxFiles = int64(val.(float64))
 	} else {
-		p.appLogMaxFiles = int(10)
+		p.appLogMaxFiles = int64(10)
 	}
 
 	if val, ok := settings["enable_applog_rotation"]; ok {
@@ -404,7 +404,7 @@ func (p *Producer) parseDepcfg() error {
 
 	p.nsServerHostPort = net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
-	p.kvHostPorts, err = util.KVNodesAddresses(p.auth, p.nsServerHostPort)
+	p.kvHostPorts, err = util.KVNodesAddresses(p.auth, p.nsServerHostPort, p.handlerConfig.SourceBucket)
 	if err != nil {
 		logging.Errorf("%s [%s] Failed to get list of kv nodes in the cluster, err: %v", logPrefix, p.appName, err)
 		return err

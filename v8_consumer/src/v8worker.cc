@@ -272,10 +272,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
               v8::FunctionTemplate::New(isolate_, Curl));
   global->Set(v8::String::NewFromUtf8(isolate_, "log"),
               v8::FunctionTemplate::New(isolate_, Log));
-  global->Set(v8::String::NewFromUtf8(isolate_, "docTimer"),
-              v8::FunctionTemplate::New(isolate_, CreateDocTimer));
-  global->Set(v8::String::NewFromUtf8(isolate_, "cronTimer"),
-              v8::FunctionTemplate::New(isolate_, CreateCronTimer));
   global->Set(v8::String::NewFromUtf8(isolate_, "iter"),
               v8::FunctionTemplate::New(isolate_, IterFunction));
   global->Set(v8::String::NewFromUtf8(isolate_, "stopIter"),
@@ -605,7 +601,8 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     UnwrapData(isolate_)->meta_cb_instance = meta_cb_instance_;
   }
 
-  lcb_create_st crst;
+  // Disabling checkpoint for cron/doc timers
+  /* lcb_create_st crst;
 
   memset(&crst, 0, sizeof crst);
 
@@ -630,15 +627,15 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   lcb_cntl(checkpoint_cb_instance_, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT,
            &lcb_timeout);
 
+  std::thread c_thr(&V8Worker::Checkpoint, this);
+  checkpointing_thr_ = std::move(c_thr);*/
+
   // Spawning terminator thread to monitor the wall clock time for execution
   // of javascript code isn't going beyond max_task_duration. Passing
   // reference to current object instead of having terminator thread make a
   // copy of the object. Spawned thread will execute the terminator loop logic
   // in function call operator() for V8Worker class
   terminator_thr_ = new std::thread(std::ref(*this));
-
-  std::thread c_thr(&V8Worker::Checkpoint, this);
-  checkpointing_thr_ = std::move(c_thr);
 
   return kSuccess;
 }

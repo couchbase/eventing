@@ -40,7 +40,7 @@ func quotaSetup(indexQuota, memoryQuota int) ([]byte, error) {
 }
 
 func createBucket(name string, quota int) ([]byte, error) {
-	payload := strings.NewReader(fmt.Sprintf("ramQuotaMB=%d&name=%s&flushEnabled=1&replicaIndex=0&replicaNumber=0", quota, name))
+	payload := strings.NewReader(fmt.Sprintf("name=%s&bucketType=ephemeral&evictionPolicy=noEviction&replicaNumber=0&ramQuotaMB=%d&flushEnabled=1", name, quota))
 	return makeRequest("POST", payload, bucketSetupURL)
 }
 
@@ -547,8 +547,8 @@ func condense(vbs []int) string {
 
 func addAllNodesAtOnce(role string) {
 	addNodeFromRest("127.0.0.1:9001", role)
-	// addNodeFromRest("127.0.0.1:9002", role)
-	// addNodeFromRest("127.0.0.1:9003", role)
+	addNodeFromRest("127.0.0.1:9002", role)
+	addNodeFromRest("127.0.0.1:9003", role)
 
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
@@ -561,15 +561,15 @@ func addAllNodesOneByOne(role string) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	// addNodeFromRest("127.0.0.1:9002", role)
-	// rebalanceFromRest([]string{""})
-	// waitForRebalanceFinish()
-	// metaStateDump()
+	addNodeFromRest("127.0.0.1:9002", role)
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
 
-	// addNodeFromRest("127.0.0.1:9003", role)
-	// rebalanceFromRest([]string{""})
-	// waitForRebalanceFinish()
-	// metaStateDump()
+	addNodeFromRest("127.0.0.1:9003", role)
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
 }
 
 func removeAllNodesAtOnce() {

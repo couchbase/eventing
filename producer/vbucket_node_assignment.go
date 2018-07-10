@@ -20,7 +20,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 	// Adding a sleep to mitigate stale values from metakv
 	time.Sleep(5 * time.Second)
 
-	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p)
+	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, p.handlerConfig.SourceBucket)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
@@ -317,7 +317,14 @@ func (p *Producer) getKvVbMap() error {
 		return common.ErrRetryTimeout
 	}
 
-	kvAddrs := cinfo.GetNodesByServiceType(dataService)
+	kvAddrs, err := cinfo.GetNodesByBucket(p.handlerConfig.SourceBucket)
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Failed to get address of KV host housing source bucket: %s, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, err)
+		return err
+	}
+
+	logging.Infof("%s [%s:%d] kvAddrs: %v", logPrefix, p.appName, p.LenRunningConsumers(), kvAddrs)
 
 	p.kvVbMap = make(map[uint16]string)
 

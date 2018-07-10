@@ -596,7 +596,7 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   v8::Local<v8::Array> option_names;
-  if (!TO_LOCAL(option_names->GetOwnPropertyNames(context), &option_names)) {
+  if (!TO_LOCAL(options->GetOwnPropertyNames(context), &option_names)) {
     return;
   }
 
@@ -708,7 +708,7 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, curl_timeout);
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "couchbase-eventing/1.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "couchbase-eventing/5.5");
 
     if (strcmp(http_method.c_str(), "GET") == 0) {
       res = curl_easy_perform(curl);

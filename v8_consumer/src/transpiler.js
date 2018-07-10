@@ -99,7 +99,8 @@ function jsFormat(code) {
     return escodegen.generate(ast);
 }
 
-function getSourceMap(code, sourceFileName) {
+function getSourceMap(code, sourceFileName, headers, footers) {
+    code = AddHeadersAndFooters(code, headers, footers);
     var ast = getAst(code, sourceFileName);
     return escodegen.generate(ast, {
         sourceMap: true,

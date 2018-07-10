@@ -551,8 +551,8 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 				return errVbOwnedByAnotherWorker
 			}
 
-			logging.Infof("%s [%s:%s:%d] Node: %rs taking ownership of vb: %d old node: %rs isn't alive any more as per ns_server vbuuid: %s vblob.uuid: %s",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vb, vbBlob.CurrentVBOwner,
+			logging.Infof("%s [%s:%s:%d] vb: %d node: %rs taking ownership. Old node: %rs isn't alive any more as per ns_server vbuuid: %s vblob.uuid: %s",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.HostPortAddr(), vbBlob.CurrentVBOwner,
 				c.NodeUUID(), vbBlob.NodeUUID)
 
 			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
@@ -581,6 +581,15 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 			if (vbBlob.NodeUUIDRequestedVbStream == c.NodeUUID() && vbBlob.WorkerRequestedVbStream == c.ConsumerName()) ||
 				(vbBlob.NodeUUIDRequestedVbStream == "" && vbBlob.WorkerRequestedVbStream == "") {
 				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, false)
+			}
+
+			if vbBlob.NodeUUIDRequestedVbStream != c.NodeUUID() &&
+				!c.producer.IsEventingNodeAlive(vbBlob.NodeRequestedVbStream, vbBlob.NodeUUIDRequestedVbStream) {
+				logging.Infof("%s [%s:%s:%d] vb: %d node: %rs going to open dcp stream. "+
+					"Old node: %rs isn't alive any more as per ns_server vbuuid: %s node requested stream uuid: %s",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vb, vbBlob.NodeRequestedVbStream,
+					c.NodeUUID(), vbBlob.NodeUUIDRequestedVbStream)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
 			}
 
 			logging.Infof("%s [%s:%s:%d] vb: %d. STREAMREQ already issued by hostPort: %s worker: %s uuid: %s",
@@ -632,7 +641,8 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 	}
 	c.addToEnqueueMap(vb)
 
-	if backfillTimers && c.usingDocTimer {
+	// Commenting out backfill as we don't expose timers
+	if false {
 		seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",

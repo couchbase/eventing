@@ -162,10 +162,12 @@ std::string Transpiler::JsFormat(const std::string &handler_code) {
 std::string Transpiler::GetSourceMap(const std::string &handler_code,
                                      const std::string &src_filename) {
   v8::HandleScope handle_scope(isolate_);
-  v8::Local<v8::Value> args[2];
+  v8::Local<v8::Value> args[4];
   args[0] = v8Str(isolate_, handler_code);
   args[1] = v8Str(isolate_, src_filename);
-  auto result = ExecTranspiler("getSourceMap", args, 2);
+  args[2] = v8Array(isolate_, handler_headers_);
+  args[3] = v8Array(isolate_, handler_footers_);
+  auto result = ExecTranspiler("getSourceMap", args, 4);
   v8::String::Utf8Value utf8result(result);
 
   return *utf8result;

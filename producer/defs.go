@@ -81,7 +81,7 @@ type Producer struct {
 	// app log related configs
 	appLogPath     string
 	appLogMaxSize  int64
-	appLogMaxFiles int
+	appLogMaxFiles int64
 	appLogRotation bool
 	appLogWriter   io.WriteCloser
 

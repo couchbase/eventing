@@ -127,9 +127,6 @@ static bool evt_should_log(int severity, const char *subsys) {
   if (evt_log_map_level(severity) <= SystemLog::level_) {
     return true;
   }
-  if (strcmp(subsys, "negotiation") == 0) {
-    return true;
-  }
   return false;
 }
 
@@ -385,199 +382,38 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
   auto value = JSONStringify(isolate, value_obj);
 
   LOG(logTrace) << "Bucket: Set call Key: " << RU(key)
-                << " Value: " << RU(value)
-                << " enable_recursive_mutation: " << enable_recursive_mutation
-                << std::endl;
+                << " Value: " << RU(value) << std::endl;
 
   auto bucket_lcb_obj_ptr =
       UnwrapInternalField<lcb_t>(info.Holder(), LCB_INST_FIELD_NO);
   Result sres;
 
-  if (!enable_recursive_mutation) {
-    LOG(logTrace)
-        << "Bucket: Adding macro in xattr to avoid retriggering of handler "
-           "from recursive mutation, enable_recursive_mutation: "
-        << enable_recursive_mutation << std::endl;
+  lcb_CMDSTORE scmd = {0};
+  LCB_CMD_SET_KEY(&scmd, key.c_str(), key.length());
+  LCB_CMD_SET_VALUE(&scmd, value.c_str(), value.length());
+  scmd.operation = LCB_SET;
+  scmd.flags = 0x2000000;
 
-    while (true) {
-      Result gres;
-      lcb_CMDGET gcmd = {0};
-      LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
-      lcb_sched_enter(*bucket_lcb_obj_ptr);
-      auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_get3,
-                                       *bucket_lcb_obj_ptr, &gres, &gcmd);
-      if (err != LCB_SUCCESS) {
-        LOG(logTrace)
-            << "Bucket: Unable to get key for recursive_mutation=false"
-            << std::endl;
-        lcb_retry_failure++;
-      }
+  lcb_sched_enter(*bucket_lcb_obj_ptr);
+  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_store3,
+                                   *bucket_lcb_obj_ptr, &sres, &scmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
 
-      lcb_sched_leave(*bucket_lcb_obj_ptr);
-      err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait,
-                                  *bucket_lcb_obj_ptr);
-      if (err != LCB_SUCCESS) {
-        LOG(logTrace) << "Bucket: Unable to schedule call to get key for "
-                         "recursive_mutation=false"
-                      << std::endl;
-        lcb_retry_failure++;
-      }
-
-      switch (gres.rc) {
-      case LCB_KEY_ENOENT:
-        LOG(logTrace) << "Bucket: Key: " << RU(key)
-                      << " doesn't exist in bucket where mutation has "
-                         "to be written"
-                      << std::endl;
-        break;
-
-      case LCB_SUCCESS:
-        break;
-
-      default:
-        HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, gres.rc);
-        LOG(logTrace) << "Bucket: Failed to fetch full doc: " << RU(key)
-                      << " to calculate digest, res: "
-                      << lcb_strerror(*bucket_lcb_obj_ptr, gres.rc)
-                      << std::endl;
-        return;
-      }
-
-      std::string digest;
-      if (gres.rc == LCB_SUCCESS) {
-        uint32_t d = crc32c(0, gres.value.c_str(), gres.value.length());
-        digest.assign(std::to_string(d));
-        LOG(logTrace) << "Bucket: key: " << RU(key) << " digest: " << digest
-                      << " value: " << RU(gres.value) << std::endl;
-      }
-
-      lcb_CMDSUBDOC mcmd = {0};
-      LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
-
-      lcb_SDSPEC digest_spec, xattr_spec, doc_spec, eventing_ver_spec = {0};
-      std::vector<lcb_SDSPEC> specs;
-
-      digest_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-      digest_spec.options =
-          LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
-
-      eventing_ver_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-      eventing_ver_spec.options =
-          LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
-
-      xattr_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-      xattr_spec.options =
-          LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
-
-      auto v8worker = UnwrapData(isolate)->v8worker;
-      std::string handler_uuid = v8worker->GetHandlerUUID();
-      std::string xattr_cas_path = handler_uuid + ".cas";
-      std::string xattr_digest_path = handler_uuid + ".digest";
-      std::string xattr_eventing_ver_path = handler_uuid + ".version";
-      std::string mutation_cas_macro(R"("${Mutation.CAS}")");
-
-      if (gres.rc == LCB_SUCCESS) {
-        LCB_SDSPEC_SET_PATH(&digest_spec, xattr_digest_path.c_str(),
-                            xattr_digest_path.size());
-        LCB_SDSPEC_SET_VALUE(&digest_spec, digest.c_str(), digest.size());
-        specs.push_back(digest_spec);
-      }
-
-      auto eventing_ver_value = REventingVer();
-      LCB_SDSPEC_SET_PATH(&eventing_ver_spec, xattr_eventing_ver_path.c_str(),
-                          xattr_eventing_ver_path.size());
-      LCB_SDSPEC_SET_VALUE(&eventing_ver_spec, eventing_ver_value.c_str(),
-                           eventing_ver_value.size());
-      specs.push_back(eventing_ver_spec);
-
-      LCB_SDSPEC_SET_PATH(&xattr_spec, xattr_cas_path.c_str(),
-                          xattr_cas_path.size());
-      LCB_SDSPEC_SET_VALUE(&xattr_spec, mutation_cas_macro.c_str(),
-                           mutation_cas_macro.size());
-      specs.push_back(xattr_spec);
-
-      doc_spec.sdcmd = LCB_SDCMD_SET_FULLDOC;
-      LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
-      LCB_SDSPEC_SET_VALUE(&doc_spec, value.c_str(), value.length());
-      specs.push_back(doc_spec);
-
-      mcmd.specs = specs.data();
-      mcmd.nspecs = specs.size();
-      mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
-      mcmd.cas = gres.cas;
-
-      err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_subdoc3,
-                                  *bucket_lcb_obj_ptr, &sres, &mcmd);
-      if (err != LCB_SUCCESS) {
-        LOG(logTrace) << "Bucket: Unable to set subdoc op for setting macro"
-                      << std::endl;
-        lcb_retry_failure++;
-      }
-
-      err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait,
-                                  *bucket_lcb_obj_ptr);
-      if (err != LCB_SUCCESS) {
-        LOG(logTrace)
-            << "Bucket: Unable to schedule subdoc op for setting macro"
-            << std::endl;
-        lcb_retry_failure++;
-      }
-
-      switch (sres.rc) {
-      case LCB_SUCCESS:
-        LOG(logTrace) << "Bucket: Successfully wrote doc:" << RU(key)
-                      << std::endl;
-        info.GetReturnValue().Set(value_obj);
-        return;
-
-      case LCB_KEY_EEXISTS:
-        LOG(logTrace) << "Bucket: CAS mismatch for doc:" << RU(key)
-                      << std::endl;
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
-        break;
-
-      default:
-        LOG(logTrace) << "Bucket: Encountered error:"
-                      << lcb_strerror(*bucket_lcb_obj_ptr, sres.rc)
-                      << " for key:" << RU(key) << std::endl;
-
-        HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, gres.rc);
-        return;
-      }
-    }
-  } else {
-    LOG(logTrace)
-        << "Bucket: Performing recursive mutation, enable_recursive_mutation: "
-        << enable_recursive_mutation << std::endl;
-
-    lcb_CMDSTORE scmd = {0};
-    LCB_CMD_SET_KEY(&scmd, key.c_str(), key.length());
-    LCB_CMD_SET_VALUE(&scmd, value.c_str(), value.length());
-    scmd.operation = LCB_SET;
-    scmd.flags = 0x2000000;
-
-    lcb_sched_enter(*bucket_lcb_obj_ptr);
-    auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_store3,
-                                     *bucket_lcb_obj_ptr, &sres, &scmd);
-    if (err != LCB_SUCCESS) {
-      LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
-                    << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-      lcb_retry_failure++;
-      HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
-      return;
-    }
-
-    lcb_sched_leave(*bucket_lcb_obj_ptr);
-    err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait,
-                                *bucket_lcb_obj_ptr);
-    if (err != LCB_SUCCESS) {
-      LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
-                    << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-      lcb_retry_failure++;
-      HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
-      return;
-    }
+  lcb_sched_leave(*bucket_lcb_obj_ptr);
+  err =
+      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
   }
 
   // Throw an exception in JavaScript if the bucket set call failed.

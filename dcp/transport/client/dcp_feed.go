@@ -1097,17 +1097,17 @@ loop:
 		// Immediately respond to NOOP and listen for next message.
 		// NOOPs are not accounted for buffer-ack.
 		if pkt.Opcode == transport.DCP_NOOP {
-			fmsg := "%v received NOOP from producer ...\n"
-			logging.Infof(fmsg, prefix)
+			fmsg := "%v Opaque: %d received NOOP from producer ...\n"
+			logging.Infof(fmsg, prefix, pkt.Opaque)
 
 			noop := &transport.MCResponse{
 				Opcode: transport.DCP_NOOP, Opaque: pkt.Opaque,
 			}
 			if err := feed.conn.TransmitResponse(noop); err != nil {
-				logging.Errorf("%v NOOP.Transmit(): %v", prefix, err)
+				logging.Errorf("%v Opaque: %d NOOP.Transmit(): %v", prefix, pkt.Opaque, err)
 			} else {
-				fmsg = "%v responded to NOOP ok ...\n"
-				logging.Infof(fmsg, prefix)
+				fmsg = "%v Opaque: %d responded to NOOP ok ...\n"
+				logging.Infof(fmsg, prefix, pkt.Opaque)
 			}
 			continue loop
 		}
