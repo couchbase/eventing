@@ -38,6 +38,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		numVbuckets:                numVbuckets,
 		producerSupervisorTokenMap: make(map[common.EventingProducer]suptree.ServiceToken),
 		restPort:                   restPort,
+		retryCount:                 -1,
 		runningProducers:           make(map[string]common.EventingProducer),
 		supCmdCh:                   make(chan supCmdMsg, 10),
 		superSup:                   suptree.NewSimple("super_supervisor"),
@@ -162,10 +163,18 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 			return nil
 		}
 
-		if s.appProcessingStatus[appName] == false && processingStatus {
+		s.appRWMutex.RLock()
+		appProcessingStatus := s.appProcessingStatus[appName]
+		s.appRWMutex.RUnlock()
+
+		if appProcessingStatus == false && processingStatus {
 			s.supCmdCh <- msg
+
+			s.appRWMutex.Lock()
 			s.appProcessingStatus[appName] = true
 			s.appDeploymentStatus[appName] = true
+			s.appRWMutex.Unlock()
+
 		}
 	} else {
 
@@ -268,7 +277,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 				if state == common.AppStateUndeployed || state == common.AppStateDisabled {
 					if err := util.MetaKvDelete(MetakvAppsRetryPath+appName, nil); err != nil {
-						logging.Errorf("%s [%d] Failed to delete from metakv path, err : %v", logPrefix, len(s.runningProducers), err)
+						logging.Errorf("%s [%d] App: %s failed to delete from metakv path, err : %v",
+							logPrefix, len(s.runningProducers), appName, err)
 						return err
 					}
 
@@ -290,8 +300,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 					s.spawnApp(appName)
 
+					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
 					s.appProcessingStatus[appName] = processingStatus
+					s.appRWMutex.Unlock()
 
 					if eventingProducer, ok := s.runningProducers[appName]; ok {
 						eventingProducer.SignalBootstrapFinish()
@@ -300,6 +312,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						s.deployedApps[appName] = time.Now().String()
 						s.locallyDeployedApps[appName] = time.Now().String()
 						s.appListRWMutex.Unlock()
+
+						logging.Infof("%s [%d] App: %s added to deployed apps map", logPrefix, len(s.runningProducers), appName)
 
 						s.Lock()
 						delete(s.cleanedUpAppMap, appName)
@@ -320,8 +334,11 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 				state := s.GetAppState(appName)
 
 				if state == common.AppStateEnabled {
+
+					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
 					s.appProcessingStatus[appName] = processingStatus
+					s.appRWMutex.Unlock()
 
 					if p, ok := s.runningProducers[appName]; ok {
 						logging.Infof("%s [%d] App: %s, Stopping running instance of Eventing.Producer", logPrefix, len(s.runningProducers), appName)
@@ -341,13 +358,15 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 				logging.Infof("%s [%d] App: %s Unexpected status requested", logPrefix, len(s.runningProducers), appName)
 
 			case false:
-				logging.Infof("%s [%d] App: %s Begin undeploy process", logPrefix, len(s.runningProducers), appName)
 				state := s.GetAppState(appName)
+				logging.Infof("%s [%d] App: %s Begin undeploy process. Current state: %d", logPrefix, len(s.runningProducers), appName, state)
 
-				if state == common.AppStateEnabled || state == common.AppStateDisabled {
+				if state == common.AppStateEnabled || state == common.AppStateDisabled || state == common.AppStateUndeployed {
 
+					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
 					s.appProcessingStatus[appName] = processingStatus
+					s.appRWMutex.Unlock()
 
 					logging.Infof("%s [%d] App: %s enabled, settings change requesting undeployment",
 						logPrefix, len(s.runningProducers), appName)
@@ -356,10 +375,13 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					delete(s.locallyDeployedApps, appName)
 					s.appListRWMutex.Unlock()
 
-					s.CleanupProducer(appName)
+					s.CleanupProducer(appName, false)
 					s.appListRWMutex.Lock()
 					delete(s.deployedApps, appName)
 					s.appListRWMutex.Unlock()
+
+					logging.Infof("%s [%d] App: %s deleted from deployed apps map", logPrefix, len(s.runningProducers), appName)
+
 				}
 
 				logging.Infof("%s [%d] App: %s undeployment done", logPrefix, len(s.runningProducers), appName)
@@ -459,8 +481,10 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 				s.spawnApp(appName)
 
+				s.appRWMutex.Lock()
 				s.appDeploymentStatus[appName] = deploymentStatus
 				s.appProcessingStatus[appName] = processingStatus
+				s.appRWMutex.Unlock()
 
 				if eventingProducer, ok := s.runningProducers[appName]; ok {
 					eventingProducer.SignalBootstrapFinish()
@@ -471,6 +495,8 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					s.deployedApps[appName] = time.Now().String()
 					s.locallyDeployedApps[appName] = time.Now().String()
 					s.appListRWMutex.Unlock()
+
+					logging.Infof("%s [%d] App: %s added to deployed apps map", logPrefix, len(s.runningProducers), appName)
 
 					s.Lock()
 					delete(s.cleanedUpAppMap, appName)
@@ -535,6 +561,7 @@ func (s *SuperSupervisor) AppsRetryCallback(path string, value []byte, rev inter
 	}
 
 	logging.Infof("%s [%d] App: %s Setting retry to %d", logPrefix, len(s.runningProducers), appName, retryValue)
+	s.retryCount = int64(retryValue)
 
 	if p, exists := s.runningProducers[appName]; exists {
 		p.SetRetryCount(int64(retryValue))
@@ -645,6 +672,15 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					continue
 				}
 
+				deploymentStatus := settings["deployment_status"].(bool)
+				processingStatus := settings["processing_status"].(bool)
+
+				if !deploymentStatus && !processingStatus {
+					logging.Infof("%s [%d] App: %s skipping bootstrap as processing & deployment status suggests app isn't supposed to be deployed",
+						logPrefix, len(s.runningProducers), appName)
+					continue
+				}
+
 				settings["cleanup_timers"] = false
 
 				sData, err = json.Marshal(&settings)
@@ -668,6 +704,8 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					s.deployedApps[appName] = time.Now().String()
 					s.locallyDeployedApps[appName] = time.Now().String()
 					s.appListRWMutex.Unlock()
+
+					logging.Infof("%s [%d] App: %s added to deployed apps map", logPrefix, len(s.runningProducers), appName)
 
 					s.Lock()
 					delete(s.cleanedUpAppMap, appName)
@@ -710,27 +748,34 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []st
 	}
 }
 
-func (s *SuperSupervisor) CleanupProducer(appName string) error {
-	logPrefix := "SuperSupervisor::cleanupProducer"
+func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool) error {
+	logPrefix := "SuperSupervisor::CleanupProducer"
 
 	if p, ok := s.runningProducers[appName]; ok {
 		defer func() {
+			logging.Infof("%s [%d] App: %s stopping supervision of Eventing.Producer instance", logPrefix, len(s.runningProducers), appName)
+
 			s.superSup.Remove(s.producerSupervisorTokenMap[p])
 			delete(s.producerSupervisorTokenMap, p)
 
 			p.NotifySupervisor()
-			logging.Infof("%s [%d] Cleaned up running Eventing.Producer instance, app: %s", logPrefix, len(s.runningProducers), appName)
+			logging.Infof("%s [%d] App: %s cleaned up running Eventing.Producer instance", logPrefix, len(s.runningProducers), appName)
 		}()
 
-		logging.Infof("%s [%d] App: %s, Stopping running instance of Eventing.Producer", logPrefix, len(s.runningProducers), appName)
-		p.NotifyInit()
+		logging.Infof("%s [%d] App: %s stopping running instance of Eventing.Producer", logPrefix, len(s.runningProducers), appName)
+
+		if !skipMetaCleanup {
+			p.NotifyInit()
+		}
 
 		delete(s.runningProducers, appName)
 
-		err := p.SignalCheckpointBlobCleanup()
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, len(s.runningProducers))
-			return common.ErrRetryTimeout
+		if !skipMetaCleanup {
+			err := p.SignalCheckpointBlobCleanup()
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, len(s.runningProducers))
+				return common.ErrRetryTimeout
+			}
 		}
 
 		s.Lock()
@@ -744,16 +789,34 @@ func (s *SuperSupervisor) CleanupProducer(appName string) error {
 			p.StopRunningConsumers()
 			p.CleanupUDSs()
 
-			err = p.CleanupMetadataBucket()
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, len(s.runningProducers))
-				return common.ErrRetryTimeout
+			if !skipMetaCleanup {
+				err := p.CleanupMetadataBucket()
+				if err == common.ErrRetryTimeout {
+					logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, len(s.runningProducers))
+					return common.ErrRetryTimeout
+				}
 			}
 
-			logging.Infof("%s [%d] App: %s Purging timer entries from plasma", logPrefix, len(s.runningProducers), appName)
+			logging.Infof("%s [%d] App: %s purging timer entries from plasma", logPrefix, len(s.runningProducers), appName)
 			p.PurgePlasmaRecords()
-			logging.Infof("%s [%d] Purged timer entries for app: %s", logPrefix, len(s.runningProducers), appName)
+			logging.Infof("%s [%d] App: %s purged timer entries", logPrefix, len(s.runningProducers), appName)
 		}
+
+		s.appListRWMutex.Lock()
+		s.deployedApps[appName] = time.Now().String()
+		s.appListRWMutex.Unlock()
+
+		logging.Infof("%s [%d] App: %s added to deployed apps map", logPrefix, len(s.runningProducers), appName)
+
+		defer func() {
+			logging.Infof("%s [%d] App: %s deleting app from deployed apps map", logPrefix, len(s.runningProducers), appName)
+
+			s.appListRWMutex.Lock()
+			defer s.appListRWMutex.Unlock()
+			delete(s.deployedApps, appName)
+		}()
+
+		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 	}
 
 	return nil

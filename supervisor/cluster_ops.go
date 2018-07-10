@@ -1,8 +1,12 @@
 package supervisor
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
+	"time"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/logging"
@@ -74,5 +78,40 @@ var metakvGetCallback = func(args ...interface{}) error {
 		return err
 	}
 
+	return nil
+}
+
+var undeployFunctionCallback = func(args ...interface{}) error {
+	logPrefix := "Supervisor::undeployFunctionCallback"
+
+	s := args[0].(*SuperSupervisor)
+	appName := args[1].(string)
+
+	settings := make(map[string]interface{})
+	settings["deployment_status"] = false
+	settings["processing_status"] = false
+
+	data, err := json.Marshal(&settings)
+	if err != nil {
+		logging.Errorf("%s [%d] App: %s failed to marshal settings", logPrefix, len(s.runningProducers), appName)
+		return err
+	}
+
+	client := util.NewClient(5 * time.Second)
+	url := fmt.Sprintf("http://%s:%s/setSettings/?name=%s", util.Localhost(), s.adminPort.HTTPPort, appName)
+	resp, err := client.Post(url, "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		logging.Errorf("%s [%d] App: %s failed to send http request", logPrefix, len(s.runningProducers), appName)
+		return err
+	}
+	defer resp.Body.Close()
+
+	content, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		logging.Errorf("%s [%d] App: %s failed to read content", logPrefix, len(s.runningProducers), appName)
+		return err
+	}
+
+	logging.Infof("%s [%d] App: %s response from server: %s resp: %rs", logPrefix, len(s.runningProducers), appName, string(content), resp)
 	return nil
 }

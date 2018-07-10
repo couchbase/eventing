@@ -550,6 +550,10 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
+	if info = m.validatePositiveInteger("poll_bucket_interval", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validatePositiveInteger("skip_timer_threshold", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}

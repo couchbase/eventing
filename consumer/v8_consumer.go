@@ -130,7 +130,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),
 		vbEnqueuedForStreamReq:          make(map[uint16]struct{}),
 		vbEnqueuedForStreamReqRWMutex:   &sync.RWMutex{},
-		vbFlogChan:                      make(chan *vbFlogEntry),
+		vbFlogChan:                      make(chan *vbFlogEntry, 1024),
 		vbnos:                           vbnos,
 		updateStatsStopCh:               make(chan struct{}, 1),
 		usingDocTimer:                   hConfig.UsingDocTimer,
@@ -259,6 +259,10 @@ func (c *Consumer) Serve() {
 	}
 
 	for _, kvHostPort := range c.getKvNodes() {
+		if c.isTerminateRunning {
+			continue
+		}
+
 		feedName = couchbase.NewDcpFeedName(c.HostPortAddr() + "_" + kvHostPort + "_" + c.workerName)
 
 		c.hostDcpFeedRWMutex.Lock()
@@ -275,8 +279,10 @@ func (c *Consumer) Serve() {
 		c.hostDcpFeedRWMutex.Unlock()
 	}
 
-	c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
-	c.clientSupToken = c.consumerSup.Add(c.client)
+	if !c.isTerminateRunning {
+		c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
+		c.clientSupToken = c.consumerSup.Add(c.client)
+	}
 
 	err = c.doCleanupForPreviouslyOwnedVbs()
 	if err == common.ErrRetryTimeout {
@@ -297,7 +303,7 @@ func (c *Consumer) Serve() {
 	logging.Infof("%s [%s:%s:%d] vbsStateUpdateRunning: %t docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning, c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)
 
-	if !c.vbsStateUpdateRunning {
+	if !c.vbsStateUpdateRunning && !c.isTerminateRunning {
 		logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		go c.vbsStateUpdate()

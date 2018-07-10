@@ -61,21 +61,21 @@ var gocbConnectBucketCallback = func(args ...interface{}) error {
 	}
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Connect to cluster %rm failed, err: %v",
+		logging.Errorf("%s [%s:%d] Connect to cluster %rm failed, err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	err = cluster.Authenticate(&util.DynamicAuthenticator{Caller: logPrefix})
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %rm, err: %v",
+		logging.Errorf("%s [%s:%d] Failed to authenticate to the cluster %rm, err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	c.gocbBucket, err = cluster.OpenBucket(c.bucket, "")
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Failed to connect to bucket %s, err: %v",
+		logging.Errorf("%s [%s:%d] Failed to connect to bucket %s, err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, err)
 		return err
 	}
@@ -88,30 +88,45 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 
+	if c.isTerminateRunning {
+		logging.Infof("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
 	connStr := fmt.Sprintf("couchbase://%s", c.getKvNodes()[0])
 	if util.IsIPv6() {
 		connStr += "?ipv6=allow"
 	}
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Connect to cluster %rm failed, err: %v",
+		logging.Errorf("%s [%s:%d] Connect to cluster %rm failed, err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	err = cluster.Authenticate(&util.DynamicAuthenticator{Caller: logPrefix})
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %rm, err: %v",
+		logging.Errorf("%s [%s:%d] Failed to authenticate to the cluster %rm, err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	c.gocbMetaBucket, err = cluster.OpenBucket(c.producer.MetadataBucket(), "")
+	if err == gocb.ErrBadHosts {
+		logging.Errorf("%s [%s:%d] Failed to connect to metadata bucket %s (bucket got deleted?) , err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), err)
+		return nil
+	}
+
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Failed to connect to metadata bucket %s, err: %v",
+		logging.Errorf("%s [%s:%d] Failed to connect to metadata bucket %s, err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), err)
 		return err
 	}
+
+	logging.Infof("%s [%s:%d] Successfully connected to metadata bucket %s",
+		logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket())
 
 	return nil
 }
@@ -122,6 +137,12 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	b := args[1].(**couchbase.Bucket)
 
+	if c.isTerminateRunning {
+		logging.Infof("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
 	hostPortAddr := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
 
 	c.cbBucketRWMutex.Lock()
@@ -130,11 +151,11 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	var err error
 	*b, err = util.ConnectBucket(hostPortAddr, "default", c.bucket)
 	if err != nil {
-		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed, err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, err)
+		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed isTerminateRunning: %t , err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, c.isTerminateRunning, err)
 	} else {
-		logging.Infof("%s [%s:%d] Connected to bucket: %s",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket)
+		logging.Infof("%s [%s:%d] Connected to bucket: %s isTerminateRunning: %t",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, c.isTerminateRunning)
 	}
 
 	return err
@@ -215,6 +236,16 @@ var getOpCallback = func(args ...interface{}) error {
 	var createIfMissing bool
 	if len(args) == 7 {
 		createIfMissing = args[6].(bool)
+	}
+
+	if c.isTerminateRunning {
+		logging.Infof("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
+	if c.gocbMetaBucket == nil {
+		return nil
 	}
 
 	var err error
@@ -791,6 +822,12 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	flogs := args[1].(*couchbase.FailoverLog)
 
+	if c.isTerminateRunning {
+		logging.Infof("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
 	c.cbBucketRWMutex.Lock()
 	defer c.cbBucketRWMutex.Unlock()
 
@@ -878,6 +915,12 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	feedName := args[1].(couchbase.DcpFeedName)
 	kvHostPort := args[2].(string)
+
+	if c.isTerminateRunning {
+		logging.Infof("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
 
 	c.cbBucketRWMutex.Lock()
 	defer c.cbBucketRWMutex.Unlock()
@@ -1133,8 +1176,16 @@ var checkKeyExistsCallback = func(args ...interface{}) error {
 }
 
 var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::checkIfVbStreamsOpenedCallback"
+
 	c := args[0].(*Consumer)
 	vbs := args[1].([]uint16)
+
+	if c.isTerminateRunning {
+		logging.Infof("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
 
 	for _, vb := range vbs {
 		if !c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {

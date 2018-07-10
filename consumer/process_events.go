@@ -599,6 +599,10 @@ func (c *Consumer) processEvents() {
 func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 	logPrefix := "Consumer::startDcp"
 
+	if c.isTerminateRunning {
+		return fmt.Errorf("terminate routine is running")
+	}
+
 	logging.Infof("%s [%s:%s:%d] no. of vbs owned len: %d dump: %s",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos), util.Condense(c.vbnos))
 

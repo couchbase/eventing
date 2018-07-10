@@ -43,6 +43,7 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 		pauseProducerCh:            make(chan struct{}, 1),
 		plannerNodeMappingsRWMutex: &sync.RWMutex{},
 		plasmaMemQuota:             memoryQuota,
+		pollBucketStopCh:           make(chan struct{}, 1),
 		retryCount:                 -1,
 		seqsNoProcessed:            make(map[int]int64),
 		seqsNoProcessedRWMutex:     &sync.RWMutex{},
@@ -81,7 +82,7 @@ func (p *Producer) Serve() {
 			p.notifyInitCh <- struct{}{}
 			p.bootstrapFinishCh <- struct{}{}
 			p.superSup.RemoveProducerToken(p.appName)
-			p.superSup.CleanupProducer(p.appName)
+			p.superSup.CleanupProducer(p.appName, false)
 		}
 	}()
 	err := p.parseDepcfg()
@@ -106,6 +107,8 @@ func (p *Producer) Serve() {
 		p.seqsNoProcessed[i] = 0
 	}
 	p.seqsNoProcessedRWMutex.Unlock()
+
+	go p.pollForDeletedVbs()
 
 	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles)
 	if err != nil {
@@ -147,7 +150,7 @@ func (p *Producer) Serve() {
 		return
 	}
 
-	p.stopProducerCh = make(chan struct{})
+	p.stopProducerCh = make(chan struct{}, 1)
 	p.clusterStateChange = make(chan struct{})
 	p.consumerSupervisorTokenMap = make(map[common.EventingConsumer]suptree.ServiceToken)
 
@@ -363,6 +366,8 @@ func (p *Producer) Stop() {
 	logging.Infof("%s [%s:%d] Gracefully shutting down producer routine",
 		logPrefix, p.appName, p.LenRunningConsumers())
 
+	p.isTerminateRunning = true
+
 	p.listenerRWMutex.RLock()
 	if p.consumerListeners != nil {
 		for _, lHandle := range p.consumerListeners {
@@ -421,6 +426,10 @@ func (p *Producer) Stop() {
 
 	if p.updateStatsStopCh != nil {
 		p.updateStatsStopCh <- struct{}{}
+	}
+
+	if p.pollBucketStopCh != nil {
+		p.pollBucketStopCh <- struct{}{}
 	}
 
 	logging.Infof("%s [%s:%d] Exiting from Producer::Stop routine",
@@ -835,4 +844,36 @@ func (p *Producer) updateAppLogSetting(settings map[string]interface{}) {
 
 	logger := p.appLogWriter.(*appLogCloser)
 	updateApplogSetting(logger, p.appLogMaxFiles, p.appLogMaxSize)
+}
+
+func (p *Producer) pollForDeletedVbs() {
+	logPrefix := "Producer::pollForDeletedVbs"
+
+	p.pollBucketTicker = time.NewTicker(p.pollBucketInterval)
+
+	for {
+		select {
+		case <-p.pollBucketTicker.C:
+			hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+
+			srcBucketNodeCount := util.CountActiveKVNodes(p.handlerConfig.SourceBucket, hostAddress)
+			if srcBucketNodeCount == 0 {
+				logging.Infof("%s [%s:%d] SrcBucketNodeCount: %d Stopping running producer",
+					logPrefix, p.appName, p.LenRunningConsumers(), srcBucketNodeCount)
+				p.superSup.StopProducer(p.appName, false)
+				continue
+			}
+
+			metaBucketNodeCount := util.CountActiveKVNodes(p.metadatabucket, hostAddress)
+			if metaBucketNodeCount == 0 {
+				logging.Infof("%s [%s:%d] MetaBucketNodeCount: %d Stopping running producer",
+					logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)
+				p.superSup.StopProducer(p.appName, true)
+			}
+
+		case <-p.pollBucketStopCh:
+			p.pollBucketTicker.Stop()
+			return
+		}
+	}
 }

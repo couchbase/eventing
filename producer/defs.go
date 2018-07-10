@@ -55,6 +55,7 @@ type Producer struct {
 	cfgData                string
 	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
 	isPlannerRunning       bool
+	isTerminateRunning     bool
 	kvPort                 string
 	kvHostPorts            []string
 	metadatabucket         string
@@ -65,6 +66,9 @@ type Producer struct {
 	numVbuckets            int
 	pauseProducerCh        chan struct{}
 	persistAllTicker       *time.Ticker
+	pollBucketInterval     time.Duration
+	pollBucketTicker       *time.Ticker
+	pollBucketStopCh       chan struct{}
 	retryCount             int64
 	statsTicker            *time.Ticker
 	stopProducerCh         chan struct{}

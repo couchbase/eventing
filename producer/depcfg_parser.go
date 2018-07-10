@@ -178,10 +178,10 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.LogLevel = "INFO"
 	}
 
-	if val, ok := settings["user_prefix"]; ok {
-		p.app.UserPrefix = val.(string)
+	if val, ok := settings["poll_bucket_interval"]; ok {
+		p.pollBucketInterval = time.Duration(val.(float64)) * time.Second
 	} else {
-		p.app.UserPrefix = "eventing"
+		p.pollBucketInterval = 10 * time.Second
 	}
 
 	if val, ok := settings["skip_timer_threshold"]; ok {
@@ -206,6 +206,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.TimerProcessingTickInterval = int(val.(float64))
 	} else {
 		p.handlerConfig.TimerProcessingTickInterval = 500
+	}
+
+	if val, ok := settings["user_prefix"]; ok {
+		p.app.UserPrefix = val.(string)
+	} else {
+		p.app.UserPrefix = "eventing"
 	}
 
 	if val, ok := settings["using_doc_timer"]; ok {

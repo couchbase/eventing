@@ -14,8 +14,8 @@ const (
 	DefaultInitialInterval     = 1 * time.Second
 	DefaultRandomizationFactor = 0.5
 	DefaultMultiplier          = 1.5
-	DefaultMaxInterval         = 60 * time.Second
-	DefaultMaxElapsedTime      = 5 * time.Minute
+	DefaultMaxInterval         = 10 * time.Second
+	DefaultMaxElapsedTime      = time.Minute
 )
 
 type Backoff interface {
