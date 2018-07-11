@@ -1,4 +1,4 @@
-// +build all handler
+// +build all handler n1ql
 
 package eventing
 
