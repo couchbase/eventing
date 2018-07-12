@@ -1954,9 +1954,8 @@ func percentileN(latencyStats map[string]uint64, p int) int {
 
 	if len(samples) > 0 {
 		return samples[len(samples)-1]
-	} else {
-		return 0
 	}
+	return 0
 }
 
 func (m *ServiceMgr) populateStats(fullStats bool) []stats {

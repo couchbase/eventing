@@ -395,16 +395,14 @@ func (m *ServiceMgr) cancelRebalanceTaskLocked(task *service.Task) error {
 }
 
 func (m *ServiceMgr) cancelRunningRebalanceTaskLocked(task *service.Task) error {
+	logPrefix := "ServiceMgr::cancelRunningRebalanceTaskLocked"
+
 	m.rebalancer.cancel()
 	m.onRebalanceDoneLocked(nil)
 
-	path := metakvRebalanceTokenPath + task.ID
-	err := util.MetakvSet(path, []byte(stopRebalance), nil)
-	if err != nil {
-		logging.Errorf("ServiceMgr::cancelRunningRebalanceTaskLocked Failed to update rebalance token: %v in metakv as part of stop running rebalance, err: %v",
-			task.ID, err)
-		return err
-	}
+	util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, m.rebalancer, task.ID)
+
+	logging.Infof("%s Updated rebalance token: %s in metakv as part of stopping ongoing rebalance", logPrefix, task.ID)
 
 	return nil
 }

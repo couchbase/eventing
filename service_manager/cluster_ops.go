@@ -80,10 +80,11 @@ var stopRebalanceCallback = func(args ...interface{}) error {
 	logPrefix := "rebalancer::stopRebalanceCallback"
 
 	r := args[0].(*rebalancer)
+	taskID := args[1].(string)
 
 	logging.Infof("%s Updating metakv to signify rebalance cancellation", logPrefix)
 
-	path := metakvRebalanceTokenPath + r.change.ID
+	path := metakvRebalanceTokenPath + taskID
 	err := util.MetakvSet(path, []byte(stopRebalance), nil)
 	if err != nil {
 		logging.Errorf("%s Failed to update rebalance token: %v in metakv as part of cancelling rebalance, err: %v",
