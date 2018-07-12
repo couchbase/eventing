@@ -881,22 +881,12 @@ bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
 
 void V8Worker::AddLcbException(int err_code) {
   std::lock_guard<std::mutex> lock(lcb_exception_mtx_);
-
-  if (lcb_exceptions_.find(err_code) == lcb_exceptions_.end()) {
-    lcb_exceptions_[err_code] = 0;
-  }
-
   lcb_exceptions_[err_code]++;
 }
 
 void V8Worker::ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions) {
   std::lock_guard<std::mutex> lock(lcb_exception_mtx_);
-
   for (auto const &entry : lcb_exceptions_) {
-    if (agg_lcb_exceptions.find(entry.first) == agg_lcb_exceptions.end()) {
-      agg_lcb_exceptions[entry.first] = 0;
-    }
-
     agg_lcb_exceptions[entry.first] += entry.second;
   }
 }
