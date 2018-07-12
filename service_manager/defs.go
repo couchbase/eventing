@@ -107,6 +107,11 @@ type rebalancer struct {
 
 	adminPort string
 	keepNodes []string
+
+	RebalanceProgress     float64
+	RebalanceStartTs      string
+	TotalVbsToShuffle     int
+	VbsRemainingToShuffle int
 }
 
 type rebalanceContext struct {
@@ -171,6 +176,7 @@ type stats struct {
 	LcbExceptionStats               interface{} `json:"lcb_exception_stats,omitempty"`
 	PlannerStats                    interface{} `json:"planner_stats,omitempty"`
 	PlasmaStats                     interface{} `json:"plasma_stats,omitempty"`
+	RebalanceStats                  interface{} `json:"rebalance_stats,omitempty"`
 	SeqsProcessed                   interface{} `json:"seqs_processed,omitempty"`
 	VbDcpEventsRemaining            interface{} `json:"dcp_event_backlog_per_vb,omitempty"`
 	VbDistributionStatsFromMetadata interface{} `json:"vb_distribution_stats_from_metadata,omitempty"`

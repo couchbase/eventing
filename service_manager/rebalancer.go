@@ -16,14 +16,13 @@ func newRebalancer(eventingAdminPort string, change service.TopologyChange,
 	done doneCallback, progress progressCallback, keepNodes []string) *rebalancer {
 
 	r := &rebalancer{
-		cb:     callbacks{done, progress},
-		change: change,
-
-		c:    make(chan struct{}),
-		done: make(chan struct{}),
-
-		adminPort: eventingAdminPort,
-		keepNodes: keepNodes,
+		adminPort:        eventingAdminPort,
+		c:                make(chan struct{}),
+		cb:               callbacks{done, progress},
+		change:           change,
+		done:             make(chan struct{}),
+		keepNodes:        keepNodes,
+		RebalanceStartTs: time.Now().String(),
 	}
 
 	go r.doRebalance()
@@ -168,6 +167,9 @@ retryRebProgress:
 					util.FloatEquals(progress, (1.0-workRemaining)))
 
 				progress = 1.0 - workRemaining
+				r.RebalanceProgress = progress * 100
+				r.VbsRemainingToShuffle = p.VbsRemainingToShuffle
+				r.TotalVbsToShuffle = aggProgress.VbsRemainingToShuffle
 			}
 
 			if rebProgressCounter == rebalanceStalenessCounter {
