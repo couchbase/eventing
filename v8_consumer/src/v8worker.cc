@@ -409,49 +409,55 @@ V8Worker::~V8Worker() {
   delete js_exception_;
 }
 
-// TODO : Use v8::MaybeLocal types once MB-29560 is resolved
 // Re-compile and execute handler code for debugger
 bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
                             int args_len) {
   v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
   v8::TryCatch try_catch(isolate_);
 
-  // Need to construct origin for source-map to apply.
+  // Need to construct origin for source-map to apply
   auto origin_v8_str = v8Str(isolate_, src_path_);
   v8::ScriptOrigin origin(origin_v8_str);
-  auto context = context_.Get(isolate_);
-  auto source = v8Str(isolate_, script_to_execute_);
+
+  v8::Local<v8::Function> console_log_func;
+  if (!TO_LOCAL(
+          v8::FunctionTemplate::New(isolate_, ConsoleLog)->GetFunction(context),
+          &console_log_func)) {
+    return false;
+  }
 
   // Replace the usual log function with console.log
   auto global = context->Global();
-  global->Set(v8Str(isolate_, "log"),
-              v8::FunctionTemplate::New(isolate_, ConsoleLog)->GetFunction());
+  global->Set(v8Str(isolate_, "log"), console_log_func);
 
+  auto source = v8Str(isolate_, script_to_execute_);
   v8::Local<v8::Script> script;
-  if (!v8::Script::Compile(context, source, &origin).ToLocal(&script)) {
+  if (!TO_LOCAL(v8::Script::Compile(context, source, &origin), &script)) {
     return false;
-  } else {
-    v8::Local<v8::Value> result;
-    if (!script->Run(context).ToLocal(&result)) {
-      assert(try_catch.HasCaught());
-      return false;
-    } else {
-      assert(!try_catch.HasCaught());
-      auto func_v8_str = v8::String::NewFromUtf8(isolate_, func_name);
-      auto func_ref = context->Global()->Get(func_v8_str);
-      auto func = v8::Local<v8::Function>::Cast(func_ref);
-      RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
-                            IsTerminatingRetriable, IsExecutionTerminating,
-                            isolate_);
-
-      func->Call(v8::Null(isolate_), args_len, args);
-      if (try_catch.HasCaught()) {
-        agent_->FatalException(try_catch.Exception(), try_catch.Message());
-      }
-
-      return true;
-    }
   }
+
+  v8::Local<v8::Value> result;
+  if (!TO_LOCAL(script->Run(context), &result)) {
+    return false;
+  }
+
+  auto func_ref = global->Get(v8Str(isolate_, func_name));
+  auto func = func_ref.As<v8::Function>();
+  RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                        IsTerminatingRetriable, IsExecutionTerminating,
+                        isolate_);
+
+  if (!TO_LOCAL(func->Call(context, v8::Null(isolate_), args_len, args),
+                &result)) {
+    return false;
+  }
+
+  if (try_catch.HasCaught()) {
+    agent_->FatalException(try_catch.Exception(), try_catch.Message());
+  }
+
+  return true;
 }
 
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
