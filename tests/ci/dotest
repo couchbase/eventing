@@ -182,7 +182,7 @@ if [ "$CIBOT" = "true" ]; then
   cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
   git rev-parse couchbase/$BRANCH > ~/eventing.good
   for patch_id in `cat ~/gerrit.list`; do
-    ssh review.couchbase.org gerrit review --code-review 1 -m "http://$CINAME.northscale.in/eventing-$TS.pass.html" $patch_id
+    ssh review.couchbase.org gerrit review --code-review 1 -m "PASS $MODE. See http://$CINAME.northscale.in/eventing-$TS.pass.html" $patch_id
   done
 fi
 
