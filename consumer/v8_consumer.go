@@ -551,9 +551,10 @@ func (c *Consumer) Stop() {
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }
 
-// Implement fmt.Stringer interface to allow better debugging
-// if C++ V8 worker crashes
 func (c *Consumer) String() string {
+	c.msgProcessedRWMutex.RLock()
+	defer c.msgProcessedRWMutex.RUnlock()
+
 	countMsg, _, _ := util.SprintDCPCounts(c.dcpMessagesProcessed)
 	return fmt.Sprintf("consumer => app: %s name: %v tcpPort: %s ospid: %d"+
 		" dcpEventProcessed: %s v8EventProcessed: %s", c.app.AppName, c.ConsumerName(),
