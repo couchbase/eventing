@@ -123,6 +123,10 @@ if [[ "$MODE" == *"$phase"* ]]; then
   collect_logs
 fi
 
+stop_cluster
+
+start_cluster
+
 # Rebalance tests
 export phase=rebalance
 if [[ "$MODE" == *"$phase"* ]]; then
