@@ -103,7 +103,6 @@ note_version couchdb      $WORKSPACE/couchdb
 note_version couchstore   $WORKSPACE/couchstore
 note_version forestdb     $WORKSPACE/forestdb
 note_version kv_engine    $WORKSPACE/kv_engine
-note_version testrunner   $WORKSPACE/testrunner
 
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
 echo "Switching eventing to $BRANCH"
@@ -112,8 +111,10 @@ git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
 note_version eventing $WORKSPACE/goproj/src/github.com/couchbase/eventing
 
 cd $WORKSPACE/testrunner
-echo "Pulling latest from testrunner"
-git pull couchbase master
+echo "Switching testrunner to master"
+git checkout master 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout master"
+git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
+note_version testrunner $WORKSPACE/goproj/src/github.com/couchbase/eventing
 
 if [ "$CIBOT" = "true" ]; then
   > ~/gerrit.list
