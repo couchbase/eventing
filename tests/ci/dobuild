@@ -114,7 +114,7 @@ cd $WORKSPACE/testrunner
 echo "Switching testrunner to master"
 git checkout master 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout master"
 git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
-note_version testrunner $WORKSPACE/goproj/src/github.com/couchbase/eventing
+note_version testrunner $WORKSPACE/testrunner
 
 if [ "$CIBOT" = "true" ]; then
   > ~/gerrit.list
