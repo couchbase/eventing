@@ -540,7 +540,7 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, 
 		s.plasmaMemQuota = config.RAMQuota
 
 		for _, eventingProducer := range s.runningProducers {
-			eventingProducer.UpdatePlasmaMemoryQuota(config.RAMQuota)
+			eventingProducer.UpdateMemoryQuota(config.RAMQuota)
 		}
 	}
 
@@ -796,10 +796,6 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool) 
 					return common.ErrRetryTimeout
 				}
 			}
-
-			logging.Infof("%s [%d] App: %s purging timer entries from plasma", logPrefix, len(s.runningProducers), appName)
-			p.PurgePlasmaRecords()
-			logging.Infof("%s [%d] App: %s purged timer entries", logPrefix, len(s.runningProducers), appName)
 		}
 
 		s.appListRWMutex.Lock()

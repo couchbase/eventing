@@ -27,6 +27,7 @@
 
 #include "comm.h"
 #include "log.h"
+#include "timer.h"
 
 #define DATA_SLOT 0
 #define EXCEPTION_STR_SIZE 20
@@ -41,6 +42,8 @@ class N1QL;
 class V8Worker;
 class JsException;
 class Transpiler;
+class Utils;
+class Timer;
 
 // Struct for storing isolate data
 struct Data {
@@ -50,11 +53,8 @@ struct Data {
   JsException *js_exception;
   Communicator *comm;
   Transpiler *transpiler;
-
-  int fuzz_offset;
-  int cron_timers_per_doc;
-  lcb_t cb_instance;
-  lcb_t meta_cb_instance;
+  Utils *utils;
+  Timer *timer;
 };
 
 // Code version of handler
@@ -110,6 +110,26 @@ bool IsEmpty(const T &obj, const char *file = "", const char *caller = "",
   return false;
 }
 
+class Utils {
+public:
+  Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
+
+  virtual ~Utils();
+
+  v8::Local<v8::Value> GetMethodFromGlobal(const std::string &method_name);
+  v8::Local<v8::Value>
+  GetMethodFromObject(const v8::Local<v8::Value> &obj_v8val,
+                      const std::string &method_name);
+  std::string GetFunctionName(const v8::Local<v8::Value> &func_val);
+  std::string ToCPPString(const v8::Local<v8::Value> &str_val);
+  bool IsFuncGlobal(const v8::Local<v8::Value> &func);
+
+private:
+  v8::Isolate *isolate_;
+  v8::Persistent<v8::Context> context_;
+  v8::Persistent<v8::Object> global_;
+};
+
 int WinSprintf(char **strp, const char *fmt, ...);
 
 v8::Local<v8::String> v8Str(v8::Isolate *isolate, const char *str);
@@ -126,7 +146,6 @@ bool ToCBool(const v8::Local<v8::Boolean> &value);
 
 std::string ConvertToISO8601(std::string timestamp);
 std::string GetTranspilerSrc();
-bool isFuncReference(const v8::FunctionCallbackInfo<v8::Value> &args, int i);
 std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch);
 
 std::vector<std::string> split(const std::string &s, char delimiter);
@@ -140,7 +159,6 @@ std::string GetTimestampNow();
 ParseInfo UnflattenParseInfo(std::unordered_map<std::string, std::string> &kv);
 
 std::string EventingVer();
-std::string REventingVer();
 bool IsRetriable(lcb_error_t error);
 bool IsTerminatingRetriable(bool retry);
 bool IsExecutionTerminating(v8::Isolate *isolate);

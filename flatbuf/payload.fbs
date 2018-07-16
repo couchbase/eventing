@@ -37,10 +37,7 @@ table Payload {
 
   // Timer event related fields
   callback_fn:string; // timer event callback function
-  doc_id:string; // timer event doc_id
-  doc_ids_callback_fns:string; // non doc-id based timer event doc_id-callback_fn pairs
-  timer_partition:int; // vbucket timer event is mapped
-  timer_ts:string; // timestamp for timer event
+  context:string; // context for timer
 
   // CPP worker config
   partitionCount:short; // Virtual partitions for sharding workload among c++ workers

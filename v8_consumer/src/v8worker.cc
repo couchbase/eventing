@@ -13,6 +13,7 @@
 #include "bucket.h"
 #include "parse_deployment.h"
 #include "retry_util.h"
+#include "timer.h"
 #include "utils.h"
 
 #include "../../gen/js/builtin.h"
@@ -30,21 +31,18 @@ std::atomic<int64_t> on_update_failure = {0};
 std::atomic<int64_t> on_delete_success = {0};
 std::atomic<int64_t> on_delete_failure = {0};
 
-std::atomic<int64_t> doc_timer_create_failure = {0};
-
+std::atomic<int64_t> timer_create_failure = {0};
 std::atomic<int64_t> lcb_retry_failure = {0};
 
 std::atomic<int64_t> messages_processed_counter = {0};
 
-std::atomic<int64_t> cron_timer_msg_counter = {0};
 std::atomic<int64_t> dcp_delete_msg_counter = {0};
 std::atomic<int64_t> dcp_mutation_msg_counter = {0};
-std::atomic<int64_t> doc_timer_msg_counter = {0};
+std::atomic<int64_t> timer_msg_counter = {0};
 
-std::atomic<int64_t> enqueued_cron_timer_msg_counter = {0};
 std::atomic<int64_t> enqueued_dcp_delete_msg_counter = {0};
 std::atomic<int64_t> enqueued_dcp_mutation_msg_counter = {0};
-std::atomic<int64_t> enqueued_doc_timer_msg_counter = {0};
+std::atomic<int64_t> enqueued_timer_msg_counter = {0};
 
 enum RETURN_CODE {
   kSuccess = 0,
@@ -138,88 +136,6 @@ const char *GetPasswordCached(void *cookie, const char *host, const char *port,
   return password;
 }
 
-void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  // lcb_get calls against metadata bucket is only triggered for timer lookups
-  auto rg = reinterpret_cast<const lcb_RESPGET *>(rb);
-  const void *data = lcb_get_cookie(instance);
-
-  std::string ts;
-  std::string timestamp_marker("");
-  lcb_CMDSTORE acmd = {0};
-  Result res;
-
-  switch (rb->rc) {
-  case LCB_KEY_ENOENT:
-    ts.assign(reinterpret_cast<const char *>(data));
-
-    LCB_CMD_SET_KEY(&acmd, ts.c_str(), ts.length());
-    LCB_CMD_SET_VALUE(&acmd, timestamp_marker.c_str(),
-                      timestamp_marker.length());
-    acmd.operation = LCB_ADD;
-
-    lcb_store3(instance, &res, &acmd);
-    lcb_wait(instance);
-    break;
-  case LCB_SUCCESS:
-    LOG(logTrace) << "NValue "
-                  << RU(std::to_string(static_cast<int>(rg->nvalue)))
-                  << "Value " << RU(reinterpret_cast<const char *>(rg->value));
-    break;
-  default:
-    LOG(logTrace) << "LCB_CALLBACK_GET: Operation failed, "
-                  << lcb_strerror(nullptr, rb->rc) << " rc:" << rb->rc
-                  << std::endl;
-    break;
-  }
-}
-
-void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  auto rs = reinterpret_cast<const lcb_RESPSTORE *>(rb);
-  auto result = reinterpret_cast<Result *>(rb->cookie);
-  result->rc = rs->rc;
-}
-
-void sdmutate_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  auto res = reinterpret_cast<Result *>(rb->cookie);
-  res->rc = rb->rc;
-}
-
-void sdlookup_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  auto *res = reinterpret_cast<Result *>(rb->cookie);
-  res->cas = rb->cas;
-  res->rc = rb->rc;
-
-  if (rb->rc == LCB_SUCCESS) {
-    auto rg = reinterpret_cast<const lcb_RESPGET *>(rb);
-    res->value.assign(reinterpret_cast<const char *>(rg->value), rg->nvalue);
-
-    auto resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
-    lcb_SDENTRY ent;
-    size_t iter = 0;
-    int index = 0;
-    while (lcb_sdresult_next(resp, &ent, &iter)) {
-      res->value.assign(reinterpret_cast<const char *>(ent.value),
-                        static_cast<int>(ent.nvalue));
-
-      if (index == 0) {
-        std::string exptime(reinterpret_cast<const char *>(ent.value));
-        exptime.substr(0, static_cast<int>(ent.nvalue));
-
-        unsigned long long int ttl;
-        char *pEnd;
-        ttl = strtoull(exptime.c_str(), &pEnd, 10);
-        res->exptime = (uint32_t)ttl;
-      }
-
-      if (index == 1) {
-        res->value.assign(reinterpret_cast<const char *>(ent.value),
-                          static_cast<int>(ent.nvalue));
-      }
-      index++;
-    }
-  }
-}
-
 void startDebuggerFlag(bool started) {
   LOG(logInfo) << "debugger_started flag: " << debugger_started << std::endl;
   debugger_started = started;
@@ -280,6 +196,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
               v8::FunctionTemplate::New(isolate_, ExecQueryFunction));
   global->Set(v8::String::NewFromUtf8(isolate_, "getReturnValue"),
               v8::FunctionTemplate::New(isolate_, GetReturnValueFunction));
+  global->Set(v8::String::NewFromUtf8(isolate_, "createTimer"),
+              v8::FunctionTemplate::New(isolate_, CreateTimer));
 
   if (try_catch.HasCaught()) {
     LOG(logError) << "Exception logged:"
@@ -290,7 +208,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   context_.Reset(isolate_, context);
   js_exception_ = new JsException(isolate_);
   data_.js_exception = js_exception_;
-  data_.cron_timers_per_doc = h_config->cron_timers_per_doc;
 
   auto ssl = false;
   auto port = server_settings->eventing_port;
@@ -313,8 +230,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   data_.transpiler =
       new Transpiler(isolate_, GetTranspilerSrc(), h_config->handler_headers,
                      h_config->handler_footers);
-  data_.fuzz_offset = h_config->fuzz_offset;
-
+  data_.utils = new Utils(isolate_, context);
+  data_.timer = new Timer(isolate_, context);
   execute_start_time_ = Time::now();
 
   deployment_config *config = ParseDeployment(h_config->dep_cfg.c_str());
@@ -378,7 +295,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   delete config;
 
-  this->doc_timer_queue_ = new Queue<doc_timer_msg_t>();
+  this->timer_queue_ = new Queue<doc_timer_msg_t>();
   this->worker_queue_ = new Queue<worker_msg_t>();
 
   std::thread r_thr(&V8Worker::RouteMessage, this);
@@ -386,10 +303,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 }
 
 V8Worker::~V8Worker() {
-  if (checkpointing_thr_.joinable()) {
-    checkpointing_thr_.join();
-  }
-
   if (processing_thr_.joinable()) {
     processing_thr_.join();
   }
@@ -397,6 +310,8 @@ V8Worker::~V8Worker() {
   auto data = UnwrapData(isolate_);
   delete data->comm;
   delete data->transpiler;
+  delete data->utils;
+  delete data->timer;
 
   curl_global_cleanup();
   context_.Reset();
@@ -407,6 +322,8 @@ V8Worker::~V8Worker() {
   delete settings_;
   delete histogram_;
   delete js_exception_;
+  delete timer_queue_;
+  delete worker_queue_;
 }
 
 // Re-compile and execute handler code for debugger
@@ -550,92 +467,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     }
   }
 
-  auto auth = lcbauth_new();
-  lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
-  lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
-
-  lcb_U32 lcb_timeout = 2500000; // 2.5s
-
-  if (transpiler->IsTimerCalled(script_to_execute)) {
-    LOG(logDebug) << "Timer is called" << std::endl;
-
-    lcb_create_st crst;
-    memset(&crst, 0, sizeof crst);
-
-    crst.version = 3;
-    crst.v.v3.connstr = connstr_.c_str();
-    crst.v.v3.type = LCB_TYPE_BUCKET;
-    crst.v.v3.passwd = settings_->rbac_pass.c_str();
-
-    lcb_create(&cb_instance_, &crst);
-    lcb_set_auth(cb_instance_, auth);
-    lcb_error_t rc = lcb_connect(cb_instance_);
-    LOG(logDebug) << "LCB_CONNECT to " << RS(cb_instance_) << " returns " << rc
-                  << std::endl;
-    lcb_wait(cb_instance_);
-
-    lcb_install_callback3(cb_instance_, LCB_CALLBACK_GET, get_callback);
-    lcb_install_callback3(cb_instance_, LCB_CALLBACK_STORE, set_callback);
-    lcb_install_callback3(cb_instance_, LCB_CALLBACK_SDMUTATE,
-                          sdmutate_callback);
-    lcb_install_callback3(cb_instance_, LCB_CALLBACK_SDLOOKUP,
-                          sdlookup_callback);
-    lcb_cntl(cb_instance_, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
-    UnwrapData(isolate_)->cb_instance = cb_instance_;
-
-    memset(&crst, 0, sizeof crst);
-
-    crst.version = 3;
-    crst.v.v3.connstr = meta_connstr_.c_str();
-    crst.v.v3.type = LCB_TYPE_BUCKET;
-    crst.v.v3.passwd = settings_->rbac_pass.c_str();
-
-    lcb_create(&meta_cb_instance_, &crst);
-    lcb_set_auth(meta_cb_instance_, auth);
-    lcb_connect(meta_cb_instance_);
-    lcb_wait(meta_cb_instance_);
-
-    lcb_install_callback3(meta_cb_instance_, LCB_CALLBACK_GET, get_callback);
-    lcb_install_callback3(meta_cb_instance_, LCB_CALLBACK_STORE, set_callback);
-    lcb_install_callback3(meta_cb_instance_, LCB_CALLBACK_SDMUTATE,
-                          sdmutate_callback);
-    lcb_install_callback3(meta_cb_instance_, LCB_CALLBACK_SDLOOKUP,
-                          sdlookup_callback);
-    lcb_cntl(meta_cb_instance_, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT,
-             &lcb_timeout);
-
-    UnwrapData(isolate_)->meta_cb_instance = meta_cb_instance_;
-  }
-
-  // Disabling checkpoint for cron/doc timers
-  /* lcb_create_st crst;
-
-  memset(&crst, 0, sizeof crst);
-
-  crst.version = 3;
-  crst.v.v3.connstr = meta_connstr_.c_str();
-  crst.v.v3.type = LCB_TYPE_BUCKET;
-  crst.v.v3.passwd = settings_->rbac_pass.c_str();
-
-  lcb_create(&checkpoint_cb_instance_, &crst);
-  lcb_set_auth(checkpoint_cb_instance_, auth);
-  lcb_connect(checkpoint_cb_instance_);
-  lcb_wait(checkpoint_cb_instance_);
-
-  lcb_install_callback3(checkpoint_cb_instance_, LCB_CALLBACK_GET,
-                        get_callback);
-  lcb_install_callback3(checkpoint_cb_instance_, LCB_CALLBACK_STORE,
-                        set_callback);
-  lcb_install_callback3(checkpoint_cb_instance_, LCB_CALLBACK_SDMUTATE,
-                        sdmutate_callback);
-  lcb_install_callback3(checkpoint_cb_instance_, LCB_CALLBACK_SDLOOKUP,
-                        sdlookup_callback);
-  lcb_cntl(checkpoint_cb_instance_, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT,
-           &lcb_timeout);
-
-  std::thread c_thr(&V8Worker::Checkpoint, this);
-  checkpointing_thr_ = std::move(c_thr);*/
-
   // Spawning terminator thread to monitor the wall clock time for execution
   // of javascript code isn't going beyond max_task_duration. Passing
   // reference to current object instead of having terminator thread make a
@@ -646,139 +477,9 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   return kSuccess;
 }
 
-void V8Worker::Checkpoint() {
-  const auto checkpoint_interval =
-      std::chrono::milliseconds(settings_->checkpoint_interval);
-
-  while (true) {
-    std::string doc_timer_path("last_processed_doc_id_timer_event");
-
-    doc_timer_mtx_.lock();
-    std::map<int, std::string> curr_dtimer_checkpoint(
-        doc_timer_checkpoint_.begin(), doc_timer_checkpoint_.end());
-    doc_timer_mtx_.unlock();
-
-    for (auto &vbTimer : curr_dtimer_checkpoint) {
-      std::stringstream vb_key;
-      vb_key << GetUserPrefix() << "::" << GetHandlerUUID() << "::" << app_name_
-             << "::vb::" << vbTimer.first;
-
-      lcb_CMDSUBDOC cmd = {0};
-      LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());
-
-      lcb_SDSPEC dtimer_spec = {0};
-      dtimer_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-      dtimer_spec.options = LCB_SDSPEC_F_MKINTERMEDIATES;
-
-      // Prepend and append '"' to make value a valid json
-      vbTimer.second.insert(0, 1, '"');
-      vbTimer.second.append("\"");
-
-      LCB_SDSPEC_SET_PATH(&dtimer_spec, doc_timer_path.c_str(),
-                          doc_timer_path.length());
-      LCB_SDSPEC_SET_VALUE(&dtimer_spec, vbTimer.second.c_str(),
-                           vbTimer.second.length());
-
-      cmd.specs = &dtimer_spec;
-      cmd.nspecs = 1;
-
-      Result cres;
-      lcb_subdoc3(checkpoint_cb_instance_, &cres, &cmd);
-      lcb_wait(checkpoint_cb_instance_);
-
-      if (cres.rc == LCB_SUCCESS) {
-        doc_timer_mtx_.lock();
-        if (vbTimer.second.compare(1, vbTimer.second.length() - 2,
-                                   doc_timer_checkpoint_[vbTimer.first]) == 0) {
-          doc_timer_checkpoint_.erase(vbTimer.first);
-        }
-        doc_timer_mtx_.unlock();
-      }
-
-      auto sleep_duration = LCB_OP_RETRY_INTERVAL;
-
-      while (cres.rc != LCB_SUCCESS) {
-        checkpoint_failure_count++;
-        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
-        sleep_duration *= 1.5;
-
-        if (sleep_duration > 5000) {
-          sleep_duration = 5000;
-        };
-
-        lcb_subdoc3(checkpoint_cb_instance_, &cres, &cmd);
-        lcb_wait(checkpoint_cb_instance_);
-      }
-    }
-
-    std::string cron_timer_path("last_processed_cron_timer_event");
-
-    cron_timer_mtx_.lock();
-    std::map<int, std::string> curr_ctimer_checkpoint(
-        cron_timer_checkpoint_.begin(), cron_timer_checkpoint_.end());
-    cron_timer_mtx_.unlock();
-
-    for (auto &vbTimer : curr_ctimer_checkpoint) {
-      std::stringstream vb_key;
-      vb_key << GetUserPrefix() << "::" << GetHandlerUUID() << "::" << app_name_
-             << "::vb::" << vbTimer.first;
-
-      lcb_CMDSUBDOC cmd = {0};
-      LCB_CMD_SET_KEY(&cmd, vb_key.str().c_str(), vb_key.str().length());
-
-      lcb_SDSPEC ctimer_spec = {0};
-      ctimer_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-      ctimer_spec.options = LCB_SDSPEC_F_MKINTERMEDIATES;
-
-      // Prepend and append '"' to make value a valid json
-      vbTimer.second.insert(0, 1, '"');
-      vbTimer.second.append("\"");
-
-      LCB_SDSPEC_SET_PATH(&ctimer_spec, cron_timer_path.c_str(),
-                          cron_timer_path.length());
-      LCB_SDSPEC_SET_VALUE(&ctimer_spec, vbTimer.second.c_str(),
-                           vbTimer.second.length());
-
-      cmd.specs = &ctimer_spec;
-      cmd.nspecs = 1;
-
-      Result cres;
-      lcb_subdoc3(checkpoint_cb_instance_, &cres, &cmd);
-      lcb_wait(checkpoint_cb_instance_);
-
-      if (cres.rc == LCB_SUCCESS) {
-        cron_timer_mtx_.lock();
-        if (vbTimer.second.compare(1, vbTimer.second.length() - 2,
-                                   cron_timer_checkpoint_[vbTimer.first]) ==
-            0) {
-          cron_timer_checkpoint_.erase(vbTimer.first);
-        }
-        cron_timer_mtx_.unlock();
-      }
-
-      auto sleep_duration = LCB_OP_RETRY_INTERVAL;
-
-      while (cres.rc != LCB_SUCCESS) {
-        checkpoint_failure_count++;
-        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
-        sleep_duration *= 1.5;
-
-        if (sleep_duration > 5000) {
-          sleep_duration = 5000;
-        };
-
-        lcb_subdoc3(checkpoint_cb_instance_, &cres, &cmd);
-        lcb_wait(checkpoint_cb_instance_);
-      }
-    }
-
-    std::this_thread::sleep_for(checkpoint_interval);
-  }
-}
-
 void V8Worker::RouteMessage() {
   const flatbuf::payload::Payload *payload;
-  std::string key, val, timer_ts, doc_id, callback_fn, cron_cb_fns, metadata;
+  std::string key, val, context, callback, metadata;
 
   while (true) {
     auto msg = worker_queue_->Pop();
@@ -811,23 +512,13 @@ void V8Worker::RouteMessage() {
       break;
     case eTimer:
       switch (getTimerOpcode(msg.header->opcode)) {
-      case oDocTimer:
+      case oTimer:
         payload = flatbuf::payload::GetPayload(
             (const void *)msg.payload->payload.c_str());
-        callback_fn.assign(payload->callback_fn()->str());
-        doc_id.assign(payload->doc_id()->str());
-        timer_ts.assign(payload->timer_ts()->str());
-        doc_timer_msg_counter++;
-        this->SendDocTimer(callback_fn, doc_id, timer_ts,
-                           payload->timer_partition());
-        break;
-
-      case oCronTimer:
-        payload = flatbuf::payload::GetPayload(
-            (const void *)msg.payload->payload.c_str());
-        cron_cb_fns.assign(payload->doc_ids_callback_fns()->str());
-        timer_ts.assign(payload->timer_ts()->str());
-        this->SendCronTimer(cron_cb_fns, timer_ts, payload->timer_partition());
+        callback.assign(payload->callback_fn()->str());
+        context.assign(payload->context()->str());
+        timer_msg_counter++;
+        this->SendTimer(callback, context);
         break;
       default:
         break;
@@ -1085,17 +776,9 @@ int V8Worker::SendDelete(std::string meta) {
   }
 }
 
-void V8Worker::SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
-                             int32_t partition) {
-  /*
-   {"cron_timers":[
-                   {"callback_func":"timerCallback1", "payload": "doc_id1"},
-                   {"callback_func":"timerCallback2", "payload": "doc_id2"},
-                   ...
-                  ]
-    ,"version":"vulcan"}
- */
-  LOG(logTrace) << "cron timers: " << cron_cb_fns << std::endl;
+void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
+  LOG(logTrace) << "Got timer event, context:" << RU(timer_ctx)
+                << " callback:" << callback << std::endl;
 
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
@@ -1104,117 +787,22 @@ void V8Worker::SendCronTimer(std::string cron_cb_fns, std::string timer_ts,
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  v8::Local<v8::Value> data;
-  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, cron_cb_fns)),
-                &data)) {
-    return;
-  }
+  v8::Local<v8::Value> timer_ctx_val;
+  v8::Local<v8::Value> arg[1];
 
-  v8::Local<v8::Object> data_obj;
-  if (!TO_LOCAL(data->ToObject(context), &data_obj)) {
-    return;
-  }
-
-  v8::Local<v8::Value> cron_timer_entries;
-  if (!TO_LOCAL(data_obj->Get(context, v8Str(isolate_, "cron_timers")),
-                &cron_timer_entries)) {
-    return;
-  }
-
-  if (cron_timer_entries->IsArray()) {
-    v8::Local<v8::Object> entries;
-    if (!TO_LOCAL(cron_timer_entries->ToObject(context), &entries)) {
+  if (timer_ctx == "undefined") {
+    arg[0] = v8::Undefined(isolate_);
+  } else {
+    if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, timer_ctx)),
+                  &timer_ctx_val)) {
       return;
     }
-
-    auto entries_arr = entries.As<v8::Array>();
-    auto callback_fn = v8Str(isolate_, "callback_func");
-    auto payload = v8Str(isolate_, "payload");
-
-    for (uint32_t i = 0; i < entries_arr->Length(); i++) {
-      v8::Local<v8::Value> entry_val;
-      if (!TO_LOCAL(entries_arr->Get(context, i), &entry_val)) {
-        return;
-      }
-
-      v8::Local<v8::Object> entry_obj;
-      if (!TO_LOCAL(entry_val->ToObject(context), &entry_obj)) {
-        return;
-      }
-
-      v8::Local<v8::Value> cb_fn;
-      if (!TO_LOCAL(entry_obj->Get(context, callback_fn), &cb_fn)) {
-        return;
-      }
-
-      v8::Local<v8::Value> opaque;
-      if (!TO_LOCAL(entry_obj->Get(context, payload), &opaque)) {
-        return;
-      }
-
-      if (cb_fn->IsString() && opaque->IsString()) {
-        v8::String::Utf8Value fn(cb_fn);
-
-        v8::Local<v8::Value> fn_value;
-        if (!TO_LOCAL(context->Global()->Get(context, cb_fn), &fn_value)) {
-          return;
-        }
-
-        auto fn_handle = fn_value.As<v8::Function>();
-        v8::Local<v8::Value> arg[1];
-        arg[0] = opaque;
-
-        if (debugger_started) {
-          if (!agent_->IsStarted()) {
-            agent_->Start(isolate_, platform_, src_path_.c_str());
-          }
-
-          agent_->PauseOnNextJavascriptStatement("Break on start");
-          if (DebugExecute(*fn, arg, 1)) {
-            std::lock_guard<std::mutex> lck(cron_timer_mtx_);
-            cron_timer_checkpoint_[partition] = timer_ts;
-            return;
-          }
-        } else {
-          execute_flag_ = true;
-          execute_start_time_ = Time::now();
-          cron_timer_msg_counter++;
-          RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
-                                IsTerminatingRetriable, IsExecutionTerminating,
-                                isolate_);
-
-          fn_handle->Call(context->Global(), 1, arg);
-          std::lock_guard<std::mutex> lck(cron_timer_mtx_);
-          cron_timer_checkpoint_[partition] = timer_ts;
-          execute_flag_ = false;
-        }
-      }
-    }
-  }
-}
-
-void V8Worker::SendDocTimer(std::string callback_fn, std::string doc_id,
-                            std::string timer_ts, int32_t partition) {
-  v8::Locker locker(isolate_);
-  v8::Isolate::Scope isolate_scope(isolate_);
-  v8::HandleScope handle_scope(isolate_);
-
-  LOG(logTrace) << "Got timer event, doc_id:" << RU(doc_id)
-                << " callback_fn:" << callback_fn << std::endl;
-
-  auto context = context_.Get(isolate_);
-  v8::Context::Scope context_scope(context);
-
-  auto global = context->Global();
-  v8::Local<v8::Value> cb_fn_val;
-  if (!TO_LOCAL(global->Get(context, v8Str(isolate_, callback_fn)),
-                &cb_fn_val)) {
-    return;
+    arg[0] = timer_ctx_val;
   }
 
-  auto cb_fn = cb_fn_val.As<v8::Function>();
-  v8::Local<v8::Value> arg[1];
-  arg[0] = v8Str(isolate_, doc_id);
+  auto utils = UnwrapData(isolate_)->utils;
+  auto callback_func_val = utils->GetMethodFromGlobal(callback);
+  auto callback_func = callback_func_val.As<v8::Function>();
 
   if (debugger_started) {
     if (!agent_->IsStarted()) {
@@ -1222,11 +810,7 @@ void V8Worker::SendDocTimer(std::string callback_fn, std::string doc_id,
     }
 
     agent_->PauseOnNextJavascriptStatement("Break on start");
-    if (DebugExecute(callback_fn.c_str(), arg, 1)) {
-      std::lock_guard<std::mutex> lck(doc_timer_mtx_);
-      doc_timer_checkpoint_[partition] = timer_ts;
-      return;
-    }
+    DebugExecute(callback.c_str(), arg, 1);
   } else {
     execute_flag_ = true;
     execute_start_time_ = Time::now();
@@ -1234,10 +818,8 @@ void V8Worker::SendDocTimer(std::string callback_fn, std::string doc_id,
                           IsTerminatingRetriable, IsExecutionTerminating,
                           isolate_);
 
-    cb_fn->Call(global, 1, arg);
+    callback_func->Call(callback_func_val, 1, arg);
     execute_flag_ = false;
-    std::lock_guard<std::mutex> lck(doc_timer_mtx_);
-    doc_timer_checkpoint_[partition] = timer_ts;
   }
 }
 
@@ -1353,15 +935,15 @@ CodeVersion V8Worker::IdentifyVersion(std::string handler) {
   return ver;
 }
 
-void V8Worker::GetDocTimerMessages(std::vector<uv_buf_t> &messages,
-                                   size_t window_size) {
-  int64_t doc_timer_count =
-      std::min(doc_timer_queue_->Count(), static_cast<int64_t>(window_size));
+void V8Worker::GetTimerMessages(std::vector<uv_buf_t> &messages,
+                                size_t window_size) {
+  int64_t timer_count =
+      std::min(timer_queue_->Count(), static_cast<int64_t>(window_size));
 
-  for (int64_t idx = 0; idx < doc_timer_count; ++idx) {
-    auto doc_timer_msg = doc_timer_queue_->Pop();
-    auto curr_messages = BuildResponse(doc_timer_msg.timer_entry,
-                                       mDoc_Timer_Response, timerResponse);
+  for (int64_t idx = 0; idx < timer_count; ++idx) {
+    auto timer_msg = timer_queue_->Pop();
+    auto curr_messages =
+        BuildResponse(timer_msg.timer_entry, mTimer_Response, timerResponse);
     for (auto &msg : curr_messages) {
       messages.push_back(msg);
     }

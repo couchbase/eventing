@@ -29,12 +29,6 @@ func (c *Consumer) ClearEventStats() {
 	c.adhocDoctimerResponsesRecieved = 0
 	c.aggMessagesSentCounter = 0
 	c.crontimerMessagesProcessed = 0
-	c.dcpMutationCounter = 0
-	c.dcpStreamReqCounter = 0
-	c.doctimerMessagesProcessed = 0
-	c.plasmaDeleteCounter = 0
-	c.plasmaInsertCounter = 0
-	c.plasmaLookupCounter = 0
 	c.timersInPastCounter = 0
 }
 
@@ -105,8 +99,8 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["DCP_STREAM_REQ_ERR_COUNTER"] = c.dcpStreamReqErrCounter
 	}
 
-	if c.doctimerResponsesRecieved > 0 {
-		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.doctimerResponsesRecieved
+	if c.timerResponsesRecieved > 0 {
+		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.timerResponsesRecieved
 	}
 
 	if c.doctimerMessagesProcessed > 0 {
@@ -123,18 +117,6 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 
 	if c.isRebalanceOngoing {
 		stats["IS_REBALANCE_ONGOING"] = 1
-	}
-
-	if c.plasmaDeleteCounter > 0 {
-		stats["PLASMA_DELETE_COUNTER"] = c.plasmaDeleteCounter
-	}
-
-	if c.plasmaInsertCounter > 0 {
-		stats["PLASMA_INSERT_COUNTER"] = c.plasmaInsertCounter
-	}
-
-	if c.plasmaLookupCounter > 0 {
-		stats["PLASMA_LOOKUP_COUNTER"] = c.plasmaLookupCounter
 	}
 
 	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
@@ -682,6 +664,10 @@ func (c *Consumer) VbEventingNodeAssignMapUpdate(vbEventingNodeAssignMap map[uin
 
 // WorkerVbMapUpdate captures updated mapping of active consumers to vbuckets they should handle as per static planner
 func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
+	logPrefix := "Consumer::WorkerVbMapUpdate"
+
+	logging.Infof("%s here", logPrefix)
+
 	c.workerVbucketMapRWMutex.Lock()
 	defer c.workerVbucketMapRWMutex.Unlock()
 
@@ -689,5 +675,6 @@ func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
 
 	for workerName, assignedVbs := range workerVbucketMap {
 		c.workerVbucketMap[workerName] = assignedVbs
+		logging.Infof("%s %s %v", logPrefix, workerName, assignedVbs)
 	}
 }

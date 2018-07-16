@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -488,31 +487,6 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 									}
 								}
 							}
-
-							for _, timerEntry := range xMeta.Timers {
-
-								data := strings.Split(timerEntry, "::")
-
-								if len(data) == 3 {
-									pEntry := &plasmaStoreEntry{
-										callbackFn:   data[2],
-										fromBackfill: true,
-										key:          string(e.Key),
-										timerTs:      data[1],
-										vb:           e.VBucket,
-									}
-
-									c.plasmaStoreCh <- pEntry
-									counter := c.vbProcessingStats.getVbStat(e.VBucket, "timers_recreated_from_dcp_backfill").(uint64)
-									c.vbProcessingStats.updateVbStat(e.VBucket, "timers_recreated_from_dcp_backfill", counter+1)
-
-									c.timersRecreatedFromDCPBackfill++
-								}
-							}
-
-							logging.Tracef("%s [%s:%s:%d] Inserting doc timer key: %ru into plasma",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-
 						default:
 						}
 

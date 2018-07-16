@@ -251,16 +251,6 @@ func (s *SuperSupervisor) GetEventingConsumerPids(appName string) map[string]int
 	return nil
 }
 
-// GetPlasmaStats returns internal stats from plasma
-func (s *SuperSupervisor) GetPlasmaStats(appName string) (map[string]interface{}, error) {
-	p, ok := s.runningProducers[appName]
-	if ok {
-		return p.GetPlasmaStats()
-	}
-
-	return nil, fmt.Errorf("Eventing.Producer isn't alive")
-}
-
 // InternalVbDistributionStats returns internal state of vbucket ownership distribution on local eventing node
 func (s *SuperSupervisor) InternalVbDistributionStats(appName string) map[string]string {
 	p, ok := s.runningProducers[appName]
