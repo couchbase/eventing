@@ -66,6 +66,7 @@ type SuperSupervisor struct {
 	kvPort      string
 	numVbuckets int
 	restPort    string
+	retryCount  int64
 	superSup    *suptree.Supervisor
 	supCmdCh    chan supCmdMsg
 	uuid        string

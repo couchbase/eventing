@@ -190,6 +190,9 @@ func (s *SuperSupervisor) SignalStopDebugger(appName string) error {
 
 // GetAppState returns current state of app
 func (s *SuperSupervisor) GetAppState(appName string) int8 {
+	s.appRWMutex.RLock()
+	defer s.appRWMutex.RUnlock()
+
 	switch s.appDeploymentStatus[appName] {
 	case true:
 		switch s.appProcessingStatus[appName] {
@@ -199,7 +202,7 @@ func (s *SuperSupervisor) GetAppState(appName string) int8 {
 			return common.AppStateDisabled
 		}
 	case false:
-		switch s.appDeploymentStatus[appName] {
+		switch s.appProcessingStatus[appName] {
 		case true:
 			return common.AppStateUnexpected
 		case false:
@@ -371,4 +374,27 @@ func (s *SuperSupervisor) CheckpointBlobDump(appName string) (interface{}, error
 	}
 
 	return nil, fmt.Errorf("Eventing.Producer isn't alive")
+}
+
+func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool) {
+	logPrefix := "SuperSupervisor::StopProducer"
+
+	s.appRWMutex.Lock()
+	s.appDeploymentStatus[appName] = false
+	s.appProcessingStatus[appName] = false
+	s.appRWMutex.Unlock()
+
+	logging.Infof("%s [%d] App: %s stopping running producer instance",
+		logPrefix, len(s.runningProducers), appName)
+
+	s.appListRWMutex.Lock()
+	delete(s.locallyDeployedApps, appName)
+	s.appListRWMutex.Unlock()
+
+	s.CleanupProducer(appName, skipMetaCleanup)
+	s.appListRWMutex.Lock()
+	delete(s.deployedApps, appName)
+	s.appListRWMutex.Unlock()
+
+	logging.Infof("%s [%d] App: %s deleted from deployed apps map", logPrefix, len(s.runningProducers), appName)
 }

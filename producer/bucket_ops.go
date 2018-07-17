@@ -92,6 +92,10 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 
 	p := args[0].(*Producer)
 
+	if p.isTerminateRunning {
+		return nil
+	}
+
 	connStr := fmt.Sprintf("couchbase://%s", p.KvHostPorts()[0])
 	if util.IsIPv6() {
 		connStr += "?ipv6=allow"
@@ -99,21 +103,21 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Connect to cluster %rs failed, err: %v",
+		logging.Errorf("%s [%s:%d] Connect to cluster %rs failed, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	err = cluster.Authenticate(&util.DynamicAuthenticator{Caller: logPrefix})
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %rs failed, err: %v",
+		logging.Errorf("%s [%s:%d] Failed to authenticate to the cluster %rs failed, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	p.metadataBucketHandle, err = cluster.OpenBucket(p.metadatabucket, "")
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Failed to connect to bucket %s failed, err: %v",
+		logging.Errorf("%s [%s:%d] Failed to connect to bucket %s, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
 		return err
 	}
@@ -127,6 +131,16 @@ var setOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 	key := args[1].(common.Key)
 	blob := args[2]
+
+	if p.isTerminateRunning {
+		return nil
+	}
+
+	if p.metadataBucketHandle == nil {
+		logging.Errorf("%s [%s:%d] Bucket handle not initialized",
+			logPrefix, p.appName, p.LenRunningConsumers())
+		return nil
+	}
 
 	_, err := p.metadataBucketHandle.Upsert(key.Raw(), blob, 0)
 	if err == gocb.ErrShutdown {

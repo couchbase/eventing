@@ -47,6 +47,7 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "fuzz_offset", float64(0))
 	fillMissingDefault(settings, "lcb_inst_capacity", float64(5))
 	fillMissingDefault(settings, "log_level", "INFO")
+	fillMissingDefault(settings, "poll_bucket_interval", float64(10))
 	fillMissingDefault(settings, "skip_timer_threshold", float64(86400))
 	fillMissingDefault(settings, "sock_batch_size", float64(100))
 	fillMissingDefault(settings, "tick_duration", float64(60000))

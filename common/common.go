@@ -144,7 +144,7 @@ type EventingSuperSup interface {
 	BootstrapAppList() map[string]string
 	CheckpointBlobDump(appName string) (interface{}, error)
 	ClearEventStats()
-	CleanupProducer(appName string) error
+	CleanupProducer(appName string, skipMetaCleanup bool) error
 	DeployedAppList() []string
 	GetEventProcessingStats(appName string) map[string]uint64
 	GetAppCode(appName string) string
@@ -170,8 +170,9 @@ type EventingSuperSup interface {
 	RemoveProducerToken(appName string)
 	RestPort() string
 	SignalStartDebugger(appName string) error
-	TimerDebugStats(appName string) (map[int]map[string]interface{}, error)
 	SignalStopDebugger(appName string) error
+	StopProducer(appName string, skipMetaCleanup bool)
+	TimerDebugStats(appName string) (map[int]map[string]interface{}, error)
 	VbDcpEventsRemainingToProcess(appName string) map[int]int64
 	VbDistributionStatsFromMetadata(appName string) map[string]map[string]string
 	VbSeqnoStats(appName string) (map[int][]map[string]interface{}, error)

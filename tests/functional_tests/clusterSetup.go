@@ -44,6 +44,10 @@ func createBucket(name string, quota int) ([]byte, error) {
 	return makeRequest("POST", payload, bucketSetupURL)
 }
 
+func deleteBucket(name string) ([]byte, error) {
+	return makeRequest("DELETE", strings.NewReader(""), bucketSetupURL+"/"+name)
+}
+
 func createRbacUser() ([]byte, error) {
 	payload := strings.NewReader(fmt.Sprintf("password=%s&roles=admin", rbacpass))
 	return makeRequest("PUT", payload, fmt.Sprintf("%s/%s", rbacSetupURL, rbacuser))
@@ -492,7 +496,7 @@ retryQuotaSetup:
 	// buckets = append(buckets, "other-2")
 
 	for _, bucket := range buckets {
-		_, err = createBucket(bucket, 500)
+		_, err = createBucket(bucket, bucketmemQuota)
 		if err != nil {
 			fmt.Println("Create bucket:", err)
 			return

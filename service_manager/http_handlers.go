@@ -1954,9 +1954,8 @@ func percentileN(latencyStats map[string]uint64, p int) int {
 
 	if len(samples) > 0 {
 		return samples[len(samples)-1]
-	} else {
-		return 0
 	}
+	return 0
 }
 
 func (m *ServiceMgr) populateStats(fullStats bool) []stats {
@@ -1986,6 +1985,17 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 			ls["99"] = percentileN(latencyStats, 99)
 			ls["100"] = percentileN(latencyStats, 100)
 			stats.LatencyPercentileStats = ls
+
+			if m.rebalancer != nil {
+				rebalanceStats := make(map[string]interface{})
+				rebalanceStats["is_leader"] = true
+				rebalanceStats["rebalance_progress"] = m.rebalancer.RebalanceProgress
+				rebalanceStats["rebalance_start_ts"] = m.rebalancer.RebalanceStartTs
+				rebalanceStats["total_vbs_to_shuffle"] = m.rebalancer.TotalVbsToShuffle
+				rebalanceStats["vbs_remaining_to_shuffle"] = m.rebalancer.VbsRemainingToShuffle
+
+				stats.RebalanceStats = rebalanceStats
+			}
 
 			if fullStats {
 				checkpointBlobDump, err := m.superSup.CheckpointBlobDump(app.Name)

@@ -309,6 +309,10 @@ func (p *Producer) initWorkerVbMap() {
 func (p *Producer) getKvVbMap() error {
 	logPrefix := "Producer::getKvVbMap"
 
+	if p.isTerminateRunning {
+		return nil
+	}
+
 	var cinfo *util.ClusterInfoCache
 
 	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getClusterInfoCacheOpCallback, p, &cinfo)

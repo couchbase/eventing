@@ -11,7 +11,7 @@ import (
 )
 
 func TestCRLF(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	itemCount := 100
 	handler := "n1ql_newlines"
 	flushFunctionAndBucket(handler)
@@ -32,7 +32,7 @@ func TestCRLF(t *testing.T) {
 }
 
 /*func TestDocTimerExpiredDocs(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	itemCount := 0
 	handler := "bucket_op_doc_timer_expired_docs"
 	flushFunctionAndBucket(handler)
@@ -53,7 +53,7 @@ func TestCRLF(t *testing.T) {
 }*/
 
 func TestImportExport(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	n1qlHandler := "n1ql_insert_on_update"
 	flushFunctionAndBucket(n1qlHandler)
 	createAndDeployFunction(n1qlHandler, n1qlHandler, &commonSettings{})
@@ -115,7 +115,7 @@ func functionExists(name string, functionsList []map[string]interface{}) bool {
 }
 
 func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 
@@ -143,7 +143,7 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 }
 
 func TestOnUpdateN1QLOp(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "n1ql_insert_on_update"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
@@ -162,7 +162,7 @@ func TestOnUpdateN1QLOp(t *testing.T) {
 }
 
 func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
@@ -181,7 +181,7 @@ func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
 }
 
 func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
-	time.Sleep(time.Second * 30)
+	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77})
@@ -200,7 +200,7 @@ func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 }
 
 func TestOnUpdateBucketOpDefaultSettings10K(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 10*1024)
@@ -219,7 +219,7 @@ func TestOnUpdateBucketOpDefaultSettings10K(t *testing.T) {
 }
 
 func TestOnUpdateBucketOpDefaultSettings100K(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 100*1024)
@@ -238,12 +238,12 @@ func TestOnUpdateBucketOpDefaultSettings100K(t *testing.T) {
 }
 
 func TestOnDeleteBucketOp(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_delete"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	pumpBucketOps(opsType{expiry: 1, delete: true}, &rateLimit{})
+	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "OnDeleteBucketOp",
@@ -257,12 +257,12 @@ func TestOnDeleteBucketOp(t *testing.T) {
 }
 
 func TestOnDeleteBucketOp5K(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_delete"
 	flushFunctionAndBucket(handler)
 	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 5*1024)
 
-	pumpBucketOps(opsType{expiry: 1, delete: true}, &rateLimit{})
+	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
 		t.Error("For", "OnDeleteBucketOp",
@@ -276,7 +276,7 @@ func TestOnDeleteBucketOp5K(t *testing.T) {
 }
 
 /*func TestDocTimerBucketOp(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_doc_timer"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
@@ -295,7 +295,7 @@ func TestOnDeleteBucketOp5K(t *testing.T) {
 }
 
 func TestCronTimerBucketOp(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_cron_timer"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
@@ -315,7 +315,7 @@ func TestCronTimerBucketOp(t *testing.T) {
 */
 
 func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
-	time.Sleep(time.Second * 30)
+	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 
@@ -344,7 +344,7 @@ func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 
 /*
 func TestDeployUndeployLoopDocTimer(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_doc_timer"
 	flushFunctionAndBucket(handler)
 
@@ -373,7 +373,7 @@ func TestDeployUndeployLoopDocTimer(t *testing.T) {
 */
 
 func TestMultipleHandlers(t *testing.T) {
-	time.Sleep(time.Second * 30)
+	time.Sleep(5 * time.Second)
 	handler1 := "bucket_op_on_update"
 	handler2 := "bucket_op_on_delete"
 
@@ -475,7 +475,7 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 }*/
 
 func TestCommentUnCommentOnDelete(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "on_delete_bucket_op_comment"
 	appName := "comment_uncomment_test"
 	flushFunctionAndBucket(handler)
@@ -521,7 +521,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 because of 16 * 2 workers, each with 4 threads. Will selectively enable
 it with bit more tuning.
 func TestCPPWorkerCleanup(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{batchSize: 100, workerCount: 16})
@@ -541,7 +541,7 @@ func TestCPPWorkerCleanup(t *testing.T) {
 }*/
 
 func TestWithUserXattrs(t *testing.T) {
-	time.Sleep(time.Second * 5)
+	time.Sleep(5 * time.Second)
 	handler := "on_delete_bucket_op_comment"
 	flushFunctionAndBucket(handler)
 	pumpBucketOps(opsType{}, &rateLimit{})
@@ -559,6 +559,84 @@ func TestWithUserXattrs(t *testing.T) {
 	}
 
 	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
+func TestMetaBucketDelete(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	log.Println("Deleting metadata bucket:", metaBucket)
+	deleteBucket(metaBucket)
+	log.Println("Deleted metadata bucket:", metaBucket)
+
+	waitForUndeployToFinish(handler)
+
+	time.Sleep(10 * time.Second)
+	createBucket(metaBucket, bucketmemQuota)
+	flushFunctionAndBucket(handler)
+}
+
+func TestMetaBucketDeleteWithBootstrap(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+
+	go createAndDeployFunction(handler, handler, &commonSettings{})
+	time.Sleep(20 * time.Second) // let the boostrap process to make some progress
+
+	log.Println("Deleting metadata bucket:", metaBucket)
+	deleteBucket(metaBucket)
+	log.Println("Deleted metadata bucket:", metaBucket)
+
+	time.Sleep(10 * time.Second)
+	waitForUndeployToFinish(handler)
+
+	time.Sleep(10 * time.Second)
+	createBucket(metaBucket, bucketmemQuota)
+	flushFunctionAndBucket(handler)
+}
+
+func TestSourceBucketDelete(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	log.Println("Deleting source bucket:", srcBucket)
+	deleteBucket(srcBucket)
+	log.Println("Deleted source bucket:", srcBucket)
+
+	waitForUndeployToFinish(handler)
+
+	time.Sleep(10 * time.Second)
+	createBucket(srcBucket, bucketmemQuota)
+	flushFunctionAndBucket(handler)
+}
+
+func TestSourceBucketDeleteWithBootstrap(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+
+	go createAndDeployFunction(handler, handler, &commonSettings{})
+	time.Sleep(20 * time.Second) // let the boostrap process to make some progress
+
+	log.Println("Deleting source bucket:", srcBucket)
+	deleteBucket(srcBucket)
+	log.Println("Deleted source bucket:", srcBucket)
+
+	time.Sleep(10 * time.Second)
+	waitForUndeployToFinish(handler)
+
+	time.Sleep(10 * time.Second)
+	createBucket(metaBucket, bucketmemQuota)
 	flushFunctionAndBucket(handler)
 }
 
