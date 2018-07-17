@@ -43,7 +43,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         console.error('Unable to get deployed apps', errResponse);
                     });
 
-                ApplicationService.getWorkerCount()
+                ApplicationService.server.getWorkerCount()
                     .then(function(response) {
                         if (response && response.data) {
                             self.workerCount = response.data;
@@ -102,6 +102,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                     .catch(function(errResponse) {
                                         console.error('Unable to get deployed apps list', errResponse);
                                     });
+                            }
+                        ],
+                        logFileLocation: ['ApplicationService',
+                            function(ApplicationService) {
+                                return ApplicationService.server.getLogFileLocation();
                             }
                         ]
                     }
@@ -317,6 +322,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 function(ApplicationService) {
                                     return ApplicationService.tempStore.getAllApps();
                                 }
+                            ],
+                            logFileLocation: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.server.getLogFileLocation();
+                                }
                             ]
                         }
                     }).result
@@ -409,12 +419,13 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for creating an application.
-    .controller('CreateCtrl', ['$scope', 'FormValidationService', 'bucketsResolve', 'savedApps',
-        function($scope, FormValidationService, bucketsResolve, savedApps) {
+    .controller('CreateCtrl', ['$scope', 'FormValidationService', 'bucketsResolve', 'savedApps', 'logFileLocation',
+        function($scope, FormValidationService, bucketsResolve, savedApps, logFileLocation) {
             var self = this;
             self.isDialog = true;
 
             self.sourceBuckets = bucketsResolve;
+            self.logFileLocation = logFileLocation;
             self.metadataBuckets = bucketsResolve.reverse();
             self.savedApps = savedApps.getApplications();
 
@@ -458,8 +469,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for settings.
-    .controller('SettingsCtrl', ['$q', '$timeout', '$scope', 'ApplicationService', 'FormValidationService', 'appName', 'bucketsResolve', 'savedApps', 'isAppDeployed',
-        function($q, $timeout, $scope, ApplicationService, FormValidationService, appName, bucketsResolve, savedApps, isAppDeployed) {
+    .controller('SettingsCtrl', ['$q', '$timeout', '$scope', 'ApplicationService', 'FormValidationService',
+        'appName', 'bucketsResolve', 'savedApps', 'isAppDeployed', 'logFileLocation',
+        function($q, $timeout, $scope, ApplicationService, FormValidationService,
+            appName, bucketsResolve, savedApps, isAppDeployed, logFileLocation) {
             var self = this,
                 appModel = ApplicationService.local.getAppByName(appName);
 
@@ -467,6 +480,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.showSuccessAlert = false;
             self.showWarningAlert = false;
             self.isAppDeployed = isAppDeployed;
+            self.logFileLocation = logFileLocation;
             self.sourceAndBindingSame = false;
 
             // Need to initialize buckets if they are empty,
@@ -913,9 +927,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         return $http.get('/_p/event/getDeployedApps');
                     }
                 },
-                getWorkerCount: function() {
-                    return $http.get('/_p/event/getWorkerCount');
-                },
                 debug: {
                     start: function(appName) {
                         return $http({
@@ -969,6 +980,18 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     }
                 },
                 server: {
+                    getLogFileLocation: function() {
+                        return $http.get('/_p/event/logFileLocation')
+                            .then(function(response) {
+                                return response.data.log_dir;
+                            })
+                            .catch(function(errResponse) {
+                                console.error('Unable to get logFileLocation', errResponse.data);
+                            });
+                    },
+                    getWorkerCount: function() {
+                        return $http.get('/_p/event/getWorkerCount');
+                    },
                     getLatestBuckets: function() {
                         // Getting the list of buckets.
                         var poolDefault = mnPoolDefault.latestValue().value;

@@ -274,6 +274,22 @@ func (m *ServiceMgr) getLocalDebugURL(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%v", string(u))
 }
 
+func (m *ServiceMgr) logFileLocation(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	c := m.config.Load()
+	fmt.Fprintf(w, `{"log_dir":"%v"}`, c["eventing_dir"])
+}
+
 func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
