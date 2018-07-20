@@ -210,55 +210,55 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errDelAppPs.Name,
 			Code:        m.statusCodes.errDelAppPs.Code,
-			Description: "Unable to delete application from primary store",
+			Description: "Unable to delete function from primary store",
 		},
 		{
 			Name:        m.statusCodes.errDelAppTs.Name,
 			Code:        m.statusCodes.errDelAppTs.Code,
-			Description: "Unable to delete application from temporary store",
+			Description: "Unable to delete function from temporary store",
 		},
 		{
 			Name:        m.statusCodes.errGetAppPs.Name,
 			Code:        m.statusCodes.errGetAppPs.Code,
-			Description: "Unable to get application from primary store",
+			Description: "Unable to get function from primary store",
 			Attributes:  []string{"retry"},
 		},
 		{
 			Name:        m.statusCodes.getAppTs.Name,
 			Code:        m.statusCodes.getAppTs.Code,
-			Description: "Unable to get application from temporary store",
+			Description: "Unable to get function from temporary store",
 			Attributes:  []string{"retry"},
 		},
 		{
 			Name:        m.statusCodes.errSaveAppPs.Name,
 			Code:        m.statusCodes.errSaveAppPs.Code,
-			Description: "Unable to save application to primary store",
+			Description: "Unable to save function to primary store",
 		},
 		{
 			Name:        m.statusCodes.errSaveAppTs.Name,
 			Code:        m.statusCodes.errSaveAppTs.Code,
-			Description: "Unable to save application to temporary store",
+			Description: "Unable to save function to temporary store",
 			Attributes:  []string{"retry"},
 		},
 		{
 			Name:        m.statusCodes.errSetSettingsPs.Name,
 			Code:        m.statusCodes.errSetSettingsPs.Code,
-			Description: "Unable to set application settings in primary store",
+			Description: "Unable to set function settings in primary store",
 		},
 		{
 			Name:        m.statusCodes.errDelAppSettingsPs.Name,
 			Code:        m.statusCodes.errDelAppSettingsPs.Code,
-			Description: "Unable to delete app settings",
+			Description: "Unable to delete function settings",
 		},
 		{
 			Name:        m.statusCodes.errAppNotDeployed.Name,
 			Code:        m.statusCodes.errAppNotDeployed.Code,
-			Description: "Application not deployed",
+			Description: "Function not deployed",
 		},
 		{
 			Name:        m.statusCodes.errAppNotFoundTs.Name,
 			Code:        m.statusCodes.errAppNotFoundTs.Code,
-			Description: "Application not found in temporary store",
+			Description: "Function not found in temporary store",
 		},
 		{
 			Name:        m.statusCodes.errMarshalResp.Name,
@@ -293,17 +293,17 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errAppDeployed.Name,
 			Code:        m.statusCodes.errAppDeployed.Code,
-			Description: "App is already deployed",
+			Description: "Function already deployed",
 		},
 		{
 			Name:        m.statusCodes.errAppNotInit.Name,
 			Code:        m.statusCodes.errAppNotInit.Code,
-			Description: "App hasn't bootstrapped",
+			Description: "Function hasn't bootstrapped",
 		},
 		{
 			Name:        m.statusCodes.errAppNotUndeployed.Name,
 			Code:        m.statusCodes.errAppNotUndeployed.Code,
-			Description: "App hasn't been undeployed",
+			Description: "Function hasn't undeployed",
 		},
 		{
 			Name:        m.statusCodes.errStatusesNotFound.Name,
@@ -328,7 +328,7 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errHandlerCompile.Name,
 			Code:        m.statusCodes.errHandlerCompile.Code,
-			Description: "Handler compilation failed",
+			Description: "Function compilation failed",
 		},
 		{
 			Name:        m.statusCodes.errRbacCreds.Name,
@@ -378,7 +378,7 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errRebOngoing.Name,
 			Code:        m.statusCodes.errRebOngoing.Code,
-			Description: "Rebalance ongoing on some/all Eventing nodes, creating new apps or changing settings for existing apps isn't allowed",
+			Description: "Rebalance ongoing on some/all Eventing nodes, creating new functions or changing settings for existing functions isn't allowed",
 		},
 		{
 			Name:        m.statusCodes.errActiveEventingNodes.Name,
@@ -393,7 +393,7 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errAppCodeSize.Name,
 			Code:        m.statusCodes.errAppCodeSize.Code,
-			Description: "Handler Code size is more than 128k",
+			Description: "Function Code size is more than 128k",
 		},
 		{
 			Name:        m.statusCodes.errAppRetry.Name,
@@ -408,7 +408,7 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errClusterVersion.Name,
 			Code:        m.statusCodes.errClusterVersion.Code,
-			Description: "This handler syntax is unsupported on current cluster version",
+			Description: "This function syntax is unsupported on current cluster version",
 		},
 		{
 			Name:        m.statusCodes.errUUIDGen.Name,

@@ -112,6 +112,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getSeqsProcessed", m.getSeqsProcessed)
 	http.HandleFunc("/getLocalDebugUrl/", m.getLocalDebugURL)
 	http.HandleFunc("/getWorkerCount", m.getWorkerCount)
+	http.HandleFunc("/logFileLocation", m.logFileLocation)
 	http.HandleFunc("/parseQuery", m.parseQueryHandler)
 	http.HandleFunc("/saveAppTempStore/", m.saveTempStoreHandler)
 	http.HandleFunc("/setApplication/", m.savePrimaryStoreHandler)

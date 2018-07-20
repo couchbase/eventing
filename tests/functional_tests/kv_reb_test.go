@@ -31,15 +31,6 @@ func TestKVRebOnUpdateBucketOpOneByOne(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "kv")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
-	waitForRebalanceFinish()
-	metaStateDump()
-
 	addAllNodesOneByOne("kv")
 	removeAllNodesOneByOne()
 
@@ -369,14 +360,8 @@ func TestKVRebalanceWithMultipleHandlers(t *testing.T) {
 	waitForDeployToFinish(handler2)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "kv")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
-	waitForRebalanceFinish()
-	metaStateDump()
+	addAllNodesOneByOne("kv")
+	removeAllNodesOneByOne()
 
 	rl.stopCh <- struct{}{}
 

@@ -49,34 +49,35 @@ func (c *Consumer) dcpEventsRemainingToProcess() error {
 	}
 
 	c.statsRWMutex.Lock()
-	c.statsRWMutex.Unlock()
 	c.vbDcpEventsRemaining = make(map[int]int64)
+	c.statsRWMutex.Unlock()
 
 	seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		c.dcpEventsRemaining = 0
-		return nil
+		return err
 	}
 
 	var eventsProcessed, totalEvents uint64
 
-	for _, vbno := range vbsTohandle {
-		seqNo := c.vbProcessingStats.getVbStat(uint16(vbno), "last_read_seq_no").(uint64)
+	for _, vb := range vbsTohandle {
+		seqNo := c.vbProcessingStats.getVbStat(uint16(vb), "last_read_seq_no").(uint64)
 
-		if seqNos[int(vbno)] > seqNo {
+		if seqNos[int(vb)] > seqNo {
 			c.statsRWMutex.Lock()
-			c.vbDcpEventsRemaining[int(vbno)] = int64(seqNos[int(vbno)] - seqNo)
+			c.vbDcpEventsRemaining[int(vb)] = int64(seqNos[int(vb)] - seqNo)
 			c.statsRWMutex.Unlock()
-		}
 
-		eventsProcessed += seqNo
-		totalEvents += seqNos[int(vbno)]
+			eventsProcessed += seqNo
+			totalEvents += seqNos[int(vb)]
+		}
 	}
 
 	if eventsProcessed > totalEvents {
 		c.dcpEventsRemaining = 0
+		return nil
 	}
 
 	c.dcpEventsRemaining = totalEvents - eventsProcessed

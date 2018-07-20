@@ -185,7 +185,11 @@ func (b Bucket) Nodes() []Node {
 }
 
 func (b Bucket) getConnPools() []*connectionPool {
-	return *(*[]*connectionPool)(atomic.LoadPointer(&b.connPools))
+	ptr := atomic.LoadPointer(&b.connPools)
+	if ptr != nil {
+		return *(*[]*connectionPool)(ptr)
+	}
+	return nil
 }
 
 func (b *Bucket) replaceConnPools(with []*connectionPool) {
@@ -212,12 +216,21 @@ func (b Bucket) getConnPool(i int) *connectionPool {
 	return nil
 }
 
-func (b Bucket) getMasterNode(i int) string {
+func (b Bucket) getMasterNode(i int) (host string) {
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Errorf("bucket(%v) getMasterNode crashed: %v\n", b.Name, r)
+			logging.Errorf("%s", logging.StackTrace())
+			host = ""
+		}
+	}()
+
+	host = ""
 	p := b.getConnPools()
 	if len(p) > i {
-		return p[i].host
+		host = p[i].host
 	}
-	return ""
+	return host
 }
 
 func (b Bucket) authHandler() (ah AuthHandler) {
@@ -604,18 +617,20 @@ func (c *Client) GetPoolServices(name string) (ps PoolServices, err error) {
 // Close marks this bucket as no longer needed, closing connections it
 // may have open.
 func (b *Bucket) Close() {
-	if b.connPools != nil {
-		for _, c := range b.getConnPools() {
+	connPools := b.getConnPools()
+	if connPools != nil {
+		for _, c := range connPools {
 			if c != nil {
 				c.Close()
 			}
 		}
-		b.connPools = nil
+		atomic.StorePointer(&b.connPools, nil)
 	}
 }
 
 func bucketFinalizer(b *Bucket) {
-	if b.connPools != nil {
+	connPools := b.getConnPools()
+	if connPools != nil {
 		logging.Debugf("Warning: Finalizing a bucket with active connections.")
 	}
 }
