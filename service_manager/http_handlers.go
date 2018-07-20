@@ -825,12 +825,6 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 	info = &runtimeInfo{}
 	logging.Infof("Function: %s Set settings", appName)
 
-	if rebStatus := m.checkRebalanceStatus(); rebStatus.Code != m.statusCodes.ok.Code {
-		info.Code = rebStatus.Code
-		info.Info = rebStatus.Info
-		return
-	}
-
 	var settings map[string]interface{}
 	err := json.Unmarshal(data, &settings)
 	if err != nil {
@@ -1266,12 +1260,6 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 
 	info = &runtimeInfo{}
 	logging.Infof("Function: %s saving to primary store", app.Name)
-
-	if rebStatus := m.checkRebalanceStatus(); rebStatus.Code != m.statusCodes.ok.Code {
-		info.Code = rebStatus.Code
-		info.Info = rebStatus.Info
-		return
-	}
 
 	if m.checkIfDeployed(app.Name) {
 		info.Code = m.statusCodes.errAppDeployed.Code

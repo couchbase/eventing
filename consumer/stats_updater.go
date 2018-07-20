@@ -14,7 +14,10 @@ func newVbProcessingStats(appName string, numVbuckets uint16, uuid, workerName s
 		}
 		vbsts[i].stats["assigned_worker"] = ""
 		vbsts[i].stats["dcp_stream_status"] = dcpStreamStopped
-		vbsts[i].stats["requesting_worker"] = ""
+
+		vbsts[i].stats["dcp_stream_requested"] = false
+		vbsts[i].stats["dcp_stream_requested_worker"] = ""
+		vbsts[i].stats["dcp_stream_requested_node_uuid"] = ""
 
 		vbsts[i].stats["plasma_last_seq_no_stored"] = uint64(0)
 		vbsts[i].stats["plasma_last_seq_no_persisted"] = uint64(0)
@@ -88,45 +91,6 @@ func (vbs vbStats) updateVbStat(vb uint16, statName string, val interface{}) {
 	vbstat.Lock()
 	defer vbstat.Unlock()
 	vbstat.stats[statName] = val
-}
-
-func (vbs vbStats) copyVbStats(numVbuckets uint16) vbStats {
-	vbsts := make(vbStats, numVbuckets)
-	for i := uint16(0); i < numVbuckets; i++ {
-		vbsts[i] = &vbStat{
-			stats: make(map[string]interface{}),
-		}
-
-		// params to copy over
-		vbsts[i].stats["assigned_worker"] = vbs.getVbStat(i, "assigned_worker")
-		vbsts[i].stats["current_vb_owner"] = vbs.getVbStat(i, "current_vb_owner")
-		vbsts[i].stats["currently_processed_doc_id_timer"] = vbs.getVbStat(i, "currently_processed_doc_id_timer")
-		vbsts[i].stats["currently_processed_cron_timer"] = vbs.getVbStat(i, "currently_processed_cron_timer")
-		vbsts[i].stats["dcp_stream_status"] = vbs.getVbStat(i, "dcp_stream_status")
-
-		vbsts[i].stats["last_cleaned_up_doc_id_timer_event"] = vbs.getVbStat(i, "last_cleaned_up_doc_id_timer_event")
-		vbsts[i].stats["last_doc_id_timer_sent_to_worker"] = vbs.getVbStat(i, "last_doc_id_timer_sent_to_worker")
-		vbsts[i].stats["last_processed_doc_id_timer_event"] = vbs.getVbStat(i, "last_processed_doc_id_timer_event")
-		vbsts[i].stats["next_doc_id_timer_to_process"] = vbs.getVbStat(i, "next_doc_id_timer_to_process")
-
-		vbsts[i].stats["last_processed_seq_no"] = vbs.getVbStat(i, "last_processed_seq_no")
-		vbsts[i].stats["last_doc_timer_feedback_seqno"] = vbs.getVbStat(i, "last_doc_timer_feedback_seqno")
-
-		vbsts[i].stats["next_cron_timer_to_process"] = vbs.getVbStat(i, "next_cron_timer_to_process")
-		vbsts[i].stats["last_processed_cron_timer_event"] = vbs.getVbStat(i, "last_processed_cron_timer_event")
-
-		vbsts[i].stats["node_uuid"] = vbs.getVbStat(i, "node_uuid")
-
-		vbsts[i].stats["deleted_during_cleanup_counter"] = vbs.getVbStat(i, "deleted_during_cleanup_counter")
-		vbsts[i].stats["removed_during_rebalance_counter"] = vbs.getVbStat(i, "removed_during_rebalance_counter")
-		vbsts[i].stats["sent_to_worker_counter"] = vbs.getVbStat(i, "sent_to_worker_counter")
-		vbsts[i].stats["timer_create_counter"] = vbs.getVbStat(i, "timer_create_counter")
-		vbsts[i].stats["timers_in_past_counter"] = vbs.getVbStat(i, "timers_in_past_counter")
-		vbsts[i].stats["timers_in_past_from_backfill_counter"] = vbs.getVbStat(i, "timers_in_past_from_backfill_counter")
-		vbsts[i].stats["timers_recreated_from_dcp_backfill"] = vbs.getVbStat(i, "timers_recreated_from_dcp_backfill")
-
-	}
-	return vbsts
 }
 
 func (c *Consumer) updateWorkerStats() {

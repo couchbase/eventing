@@ -98,6 +98,7 @@ const (
 	metadataRecreated              = "metadata_recreated"
 	metadataUpdatedPeriodicCheck   = "metadata_updated_periodic_checkpoint"
 	metadataCorrectedAfterRollback = "metadata_corrected_after_rollback"
+	undoMetadataCorrection         = "undo_metadata_correction"
 )
 
 type xattrMetadata struct {

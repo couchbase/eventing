@@ -55,273 +55,6 @@ func (c *Consumer) reclaimVbOwnership(vb uint16) error {
 	return fmt.Errorf("Failed to reclaim vb ownership")
 }
 
-// Vbucket ownership give-up routine
-func (c *Consumer) vbGiveUpRoutine(vbsts vbStats, giveupWg *sync.WaitGroup) {
-	logPrefix := "Consumer::vbGiveUpRoutine"
-
-	defer giveupWg.Done()
-
-	if len(c.vbsRemainingToGiveUp) == 0 {
-		logging.Tracef("%s [%s:%s:%d] No vbuckets remaining to give up",
-			logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return
-	}
-
-	vbsDistribution := util.VbucketDistribution(c.vbsRemainingToGiveUp, c.vbOwnershipGiveUpRoutineCount)
-
-	for k, v := range vbsDistribution {
-		logging.Infof("%s [%s:%s:%d] vb give up routine id: %d, vbs assigned len: %d dump: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, len(v), util.Condense(v))
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(c.vbOwnershipGiveUpRoutineCount)
-
-	for i := 0; i < c.vbOwnershipGiveUpRoutineCount; i++ {
-		go func(c *Consumer, i int, vbsRemainingToGiveUp []uint16, wg *sync.WaitGroup, vbsts vbStats) {
-
-			defer wg.Done()
-
-			var vbBlob vbucketKVBlob
-			var cas gocb.Cas
-
-			for _, vb := range vbsRemainingToGiveUp {
-				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
-				err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-					c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
-				if err == common.ErrRetryTimeout {
-					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return
-				}
-
-				if (vbBlob.NodeUUID != c.NodeUUID() || vbBlob.AssignedWorker != c.ConsumerName()) && vbBlob.DCPStreamStatus == dcpStreamRunning {
-					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d metadata node uuid: %s dcp stream status: %s, skipping give up phase",
-						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.NodeUUID, vbBlob.DCPStreamStatus)
-
-					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d Issuing dcp close stream",
-						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
-
-					c.dcpCloseStreamCounter++
-					c.RLock()
-					err := c.vbDcpFeedMap[vb].DcpCloseStream(vb, vb)
-					if err != nil {
-						c.dcpCloseStreamErrCounter++
-						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %d stream status running. Failed to close dcp stream, err: %v",
-							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
-					}
-					c.RUnlock()
-
-					c.vbProcessingStats.updateVbStat(vb, "assigned_worker", "")
-					c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", "")
-					c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", dcpStreamStopped)
-					c.vbProcessingStats.updateVbStat(vb, "node_uuid", "")
-
-					lastSeqNo := c.vbProcessingStats.getVbStat(uint16(vb), "last_read_seq_no").(uint64)
-					c.vbProcessingStats.updateVbStat(vb, "seq_no_after_close_stream", lastSeqNo)
-					c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
-
-					ownerNode, worker, err := c.producer.GetVbOwner(vb)
-					if err != nil {
-						logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d unable to find owner node and worker",
-							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
-					}
-
-					if vbBlob.DCPStreamStatus == dcpStreamRunning && (vbBlob.AssignedWorker != worker || vbBlob.CurrentVBOwner != ownerNode) {
-						logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d KV potentially rollbacked, rewriting after dcp close stream",
-							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
-
-						entry := OwnershipEntry{
-							AssignedWorker: c.ConsumerName(),
-							CurrentVBOwner: c.HostPortAddr(),
-							Operation:      metadataCorrectedAfterRollback,
-							Timestamp:      time.Now().String(),
-						}
-
-						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, metadataCorrectionAfterRollbackCallback,
-							c, c.producer.AddMetadataPrefix(vbKey), &entry)
-						if err == common.ErrRetryTimeout {
-							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-							return
-						}
-
-						err = c.updateCheckpoint(vbKey, vb, &vbBlob)
-						if err == common.ErrRetryTimeout {
-							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-							return
-						}
-					}
-
-					continue
-				}
-
-				logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d uuid: %s vbStat uuid: %s owner node: %rs consumer name: %s",
-					logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, c.NodeUUID(),
-					vbsts.getVbStat(vb, "node_uuid"),
-					vbsts.getVbStat(vb, "current_vb_owner"),
-					vbsts.getVbStat(vb, "assigned_worker"))
-
-				if vbsts.getVbStat(vb, "node_uuid") == c.NodeUUID() &&
-					vbsts.getVbStat(vb, "assigned_worker") == c.ConsumerName() {
-
-					c.vbsStreamClosedRWMutex.Lock()
-					_, cUpdated := c.vbsStreamClosed[vb]
-					if !cUpdated {
-						c.vbsStreamClosed[vb] = true
-					}
-					c.vbsStreamClosedRWMutex.Unlock()
-
-					var dcpStreamToClose *couchbase.DcpFeed
-					func() {
-						c.RLock()
-						dcpStreamToClose = c.vbDcpFeedMap[vb]
-						c.RUnlock()
-					}()
-
-					// TODO: Retry loop for dcp close stream as it could fail and additional verification checks.
-					// Additional check needed to verify if vbBlob.NewOwner is the expected owner
-					// as per the vbEventingNodesAssignMap.
-					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d Issuing dcp close stream",
-						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
-
-					c.dcpCloseStreamCounter++
-					err := dcpStreamToClose.DcpCloseStream(vb, vb)
-					if err != nil {
-						c.dcpCloseStreamErrCounter++
-						logging.Errorf("%s [%s:giveup_r_%d:%s:%d] vb: %d Failed to close dcp stream, err: %v",
-							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, err)
-					}
-
-					lastSeqNo := c.vbProcessingStats.getVbStat(uint16(vb), "last_read_seq_no").(uint64)
-					c.vbProcessingStats.updateVbStat(vb, "seq_no_after_close_stream", lastSeqNo)
-					c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
-
-					if !cUpdated {
-						logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d updating metadata about dcp stream close",
-							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
-
-						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-							c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
-						if err == common.ErrRetryTimeout {
-							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-							return
-						}
-
-						seqNo := c.vbProcessingStats.getVbStat(vb, "last_read_seq_no").(uint64)
-
-						entry := OwnershipEntry{
-							AssignedWorker: c.ConsumerName(),
-							CurrentVBOwner: c.HostPortAddr(),
-							Operation:      dcpCloseStream,
-							SeqNo:          seqNo,
-							Timestamp:      time.Now().String(),
-						}
-
-						err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistoryCSCallback,
-							c, c.producer.AddMetadataPrefix(vbKey), &entry)
-						if err == common.ErrRetryTimeout {
-							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-							return
-						}
-
-						err = c.updateCheckpoint(vbKey, vb, &vbBlob)
-						if err == common.ErrRetryTimeout {
-							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-							return
-						}
-					}
-
-					// Check if another node has taken up ownership of vbucket for which
-					// ownership was given up above. Metadata is updated about ownership give up only after
-					// DCP_STREAMEND is received from DCP producer
-				retryVbMetaStateCheck:
-					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-						c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
-					if err == common.ErrRetryTimeout {
-						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-						return
-					}
-
-					ownerNode, worker, _ := c.producer.GetVbOwner(vb)
-
-					logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d Metadata check, stream status: %s owner node: %s worker: %s desired node: %s worker: %s",
-						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus, vbBlob.CurrentVBOwner, vbBlob.AssignedWorker,
-						ownerNode, worker)
-
-					select {
-					case <-c.stopVbOwnerGiveupCh:
-						logging.Infof("%s [%s:giveup_r_%d:%s:%d] Exiting vb ownership give-up routine, last vb handled: %d",
-							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
-						return
-
-					default:
-
-						ownerNode, worker, err := c.producer.GetVbOwner(vb)
-						if err != nil {
-							logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d unable to find owner node and worker",
-								logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
-						}
-
-						if vbBlob.DCPStreamStatus == dcpStreamRunning && (vbBlob.AssignedWorker != worker || vbBlob.CurrentVBOwner != ownerNode) {
-							time.Sleep(retryVbMetaStateCheckInterval)
-
-							logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d KV potentially rollbacked, rewriting...",
-								logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
-
-							entry := OwnershipEntry{
-								AssignedWorker: c.ConsumerName(),
-								CurrentVBOwner: c.HostPortAddr(),
-								Operation:      metadataCorrectedAfterRollback,
-								Timestamp:      time.Now().String(),
-							}
-
-							err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, metadataCorrectionAfterRollbackCallback,
-								c, c.producer.AddMetadataPrefix(vbKey), &entry)
-							if err == common.ErrRetryTimeout {
-								logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-								return
-							}
-
-							err = c.updateCheckpoint(vbKey, vb, &vbBlob)
-							if err == common.ErrRetryTimeout {
-								logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-								return
-							}
-
-							goto retryVbMetaStateCheck
-						}
-
-						// Retry looking up metadata for vbucket whose ownership has been given up if:
-						// (a) DCP stream status isn't running
-						// (b) If NodeUUID and AssignedWorker are still mapping to Eventing.Consumer instance that just gave up the
-						//     ownership of that vbucket (could happen because metadata is only updated only when actual DCP_STREAMEND
-						//     is received). Happens in case of data rollback
-						if vbBlob.DCPStreamStatus != dcpStreamRunning || (vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName()) {
-							time.Sleep(retryVbMetaStateCheckInterval)
-
-							// Handling the case where KV rollbacks the checkpoint data update post DcpCloseStream
-							if vbBlob.DCPStreamStatus == dcpStreamRunning && vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
-
-								logging.Infof("%s [%s:giveup_r_%d:%s:%d] vb: %d KV potentially lost checkpoint data update post DcpCloseStream call, rewriting...",
-									logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
-								err = c.updateCheckpoint(vbKey, vb, &vbBlob)
-								if err == common.ErrRetryTimeout {
-									logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-									return
-								}
-							}
-							goto retryVbMetaStateCheck
-						}
-						logging.Infof("%s [%s:giveup_r_%d:%s:%d] Gracefully exited vb ownership give-up routine, last handled vb: %d",
-							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
-					}
-				}
-			}
-		}(c, i, vbsDistribution[i], &wg, vbsts)
-	}
-
-	wg.Wait()
-}
-
 func (c *Consumer) checkAndUpdateMetadataLoop() {
 	logPrefix := "Consumer::checkAndUpdateMetadataLoop"
 	c.checkMetadataStateTicker = time.NewTicker(restartVbDcpStreamTickInterval)
@@ -364,10 +97,13 @@ func (c *Consumer) checkAndUpdateMetadata() {
 		}
 
 		if vbBlob.NodeUUID != c.NodeUUID() || vbBlob.DCPStreamStatus != dcpStreamRunning || vbBlob.AssignedWorker != c.ConsumerName() {
+			lastSeqNo := c.vbProcessingStats.getVbStat(vb, "last_read_seq_no").(uint64)
+
 			entry := OwnershipEntry{
 				AssignedWorker: c.ConsumerName(),
 				CurrentVBOwner: c.HostPortAddr(),
 				Operation:      metadataCorrected,
+				SeqNo:          lastSeqNo,
 				Timestamp:      time.Now().String(),
 			}
 
@@ -379,6 +115,28 @@ func (c *Consumer) checkAndUpdateMetadata() {
 			}
 
 			logging.Infof("%s [%s:%s:%d] vb: %d Checked and updated metadata", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+
+			if !c.checkIfCurrentConsumerShouldOwnVb(vb) {
+				lastSeqNo := c.vbProcessingStats.getVbStat(vb, "last_read_seq_no").(uint64)
+
+				entry := OwnershipEntry{
+					AssignedWorker: c.ConsumerName(),
+					CurrentVBOwner: c.HostPortAddr(),
+					Operation:      undoMetadataCorrection,
+					SeqNo:          lastSeqNo,
+					Timestamp:      time.Now().String(),
+				}
+
+				err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, undoMetadataCorrectionCallback,
+					c, c.producer.AddMetadataPrefix(vbKey), &entry)
+				if err == common.ErrRetryTimeout {
+					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+					return
+				}
+
+				logging.Infof("%s [%s:%s:%d] vb: %d Reverted metadata correction", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+			}
+
 		}
 	}
 }
@@ -407,12 +165,6 @@ func (c *Consumer) vbsStateUpdate() {
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
 		return
 	}
-
-	vbsts := c.vbProcessingStats.copyVbStats(uint16(c.numVbuckets))
-
-	var giveupWg sync.WaitGroup
-	giveupWg.Add(1)
-	go c.vbGiveUpRoutine(vbsts, &giveupWg)
 
 	vbsOwned := c.getCurrentlyOwnedVbs()
 	sort.Sort(util.Uint16Slice(vbsOwned))
@@ -496,8 +248,6 @@ retryStreamUpdate:
 			goto retryStreamUpdate
 		}
 	}
-
-	giveupWg.Wait()
 
 	// reset the flag
 	c.isRebalanceOngoing = false
@@ -988,6 +738,40 @@ func (c *Consumer) getVbRemainingToGiveUp() []uint16 {
 	return vbsRemainingToGiveUp
 }
 
+func (c *Consumer) getVbRemainingToStreamReq() []uint16 {
+	c.vbEventingNodeAssignRWMutex.RLock()
+	defer c.vbEventingNodeAssignRWMutex.RUnlock()
+
+	var vbRemainingToStreamReq []uint16
+
+	for vb := range c.vbEventingNodeAssignMap {
+		if (c.vbProcessingStats.getVbStat(vb, "dcp_stream_requested_node_uuid") != c.NodeUUID() ||
+			c.vbProcessingStats.getVbStat(vb, "dcp_stream_requested_worker") != c.ConsumerName()) &&
+			c.checkIfCurrentConsumerShouldOwnVb(vb) {
+			vbRemainingToStreamReq = append(vbRemainingToStreamReq, vb)
+		}
+	}
+
+	sort.Sort(util.Uint16Slice(vbRemainingToStreamReq))
+
+	return vbRemainingToStreamReq
+}
+
+func (c *Consumer) getVbRemainingToCloseStream() []uint16 {
+	var vbsRemainingToCloseStream []uint16
+
+	for vb := range c.vbProcessingStats {
+		if c.ConsumerName() == c.vbProcessingStats.getVbStat(vb, "dcp_stream_requested_worker") &&
+			!c.checkIfCurrentConsumerShouldOwnVb(vb) {
+			vbsRemainingToCloseStream = append(vbsRemainingToCloseStream, vb)
+		}
+	}
+
+	sort.Sort(util.Uint16Slice(vbsRemainingToCloseStream))
+
+	return vbsRemainingToCloseStream
+}
+
 func (c *Consumer) verifyVbsCurrentlyOwned(vbsToMigrate []uint16) []uint16 {
 	var vbsCurrentlyOwned []uint16
 
@@ -1046,4 +830,42 @@ func (c *Consumer) doCleanupForPreviouslyOwnedVbs() error {
 	}
 
 	return nil
+}
+
+func (c *Consumer) closeAllRunningDcpFeeds() {
+	logPrefix := "Consumer::closeAllRunningDcpFeeds"
+
+	runningDcpFeeds := make([]*couchbase.DcpFeed, 0)
+
+	c.hostDcpFeedRWMutex.RLock()
+	for _, dcpFeed := range c.kvHostDcpFeedMap {
+		runningDcpFeeds = append(runningDcpFeeds, dcpFeed)
+	}
+	c.hostDcpFeedRWMutex.RUnlock()
+
+	logging.Infof("%s [%s:%s:%d] Going to close all active dcp feeds. Active feed count: %d",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(runningDcpFeeds))
+
+	for _, dcpFeed := range runningDcpFeeds {
+		func() {
+			c.cbBucketRWMutex.Lock()
+			defer c.cbBucketRWMutex.Unlock()
+
+			err := dcpFeed.Close()
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] DCP feed: %s failed to close connection",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.GetName(), err)
+			} else {
+				logging.Infof("%s [%s:%s:%d] DCP feed: %s closed connection",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.GetName())
+			}
+		}()
+	}
+
+	for vb := range c.vbProcessingStats {
+		c.vbProcessingStats.updateVbStat(vb, "dcp_stream_requested", false)
+		c.vbProcessingStats.updateVbStat(vb, "dcp_stream_requested_worker", "")
+		c.vbProcessingStats.updateVbStat(vb, "dcp_stream_requested_node_uuid", "")
+	}
+
 }
