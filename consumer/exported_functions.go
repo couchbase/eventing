@@ -21,15 +21,21 @@ import (
 // ClearEventStats flushes event processing stats
 func (c *Consumer) ClearEventStats() {
 	c.msgProcessedRWMutex.Lock()
+	defer c.msgProcessedRWMutex.Unlock()
+
 	c.dcpMessagesProcessed = make(map[mcd.CommandCode]uint64)
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
-	c.doctimerMessagesProcessed = 0
+
+	c.adhocDoctimerResponsesRecieved = 0
+	c.aggMessagesSentCounter = 0
 	c.crontimerMessagesProcessed = 0
+	c.dcpMutationCounter = 0
+	c.dcpStreamReqCounter = 0
+	c.doctimerMessagesProcessed = 0
 	c.plasmaDeleteCounter = 0
 	c.plasmaInsertCounter = 0
 	c.plasmaLookupCounter = 0
 	c.timersInPastCounter = 0
-	c.msgProcessedRWMutex.Unlock()
 }
 
 // ConsumerName returns consumer name e.q <event_handler_name>_worker_1
