@@ -295,7 +295,6 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
             // Reset the message priority flag
             msg_priority_ = false;
-
             if (!resp_msg_->msg.empty()) {
               flatbuffers::FlatBufferBuilder builder;
 
@@ -684,6 +683,24 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       break;
     }
     break;
+  case eFilter:
+    worker_index = partition_thr_map_[parsed_header->partition];
+    if (workers_[worker_index] != nullptr) {
+      workers_[worker_index]->UpdateVbFilter(parsed_header->metadata);
+      LOG(logInfo) << "Received filter event from Go "
+                   << parsed_header->metadata << std::endl;
+      int vb_no = 0;
+      int64_t seq_no = 0;
+      if (kSuccess == workers_[worker_index]->ParseMetadata(
+                          parsed_header->metadata, vb_no, seq_no)) {
+        auto bucketops_seqno = workers_[worker_index]->GetBucketopsSeqno(vb_no);
+        SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno);
+      }
+    } else {
+      LOG(logError) << "Filter event lost: worker " << worker_index
+                    << " is null" << std::endl;
+    }
+    break;
   case eTimer:
     switch (getTimerOpcode(parsed_header->opcode)) {
     case oTimer:
@@ -807,7 +824,6 @@ void AppWorker::WriteResponses() {
     // Update DocTimers Checkpoint
     for (const auto &w : workers_) {
       std::vector<uv_buf_t> messages;
-      std::vector<int> length_prefix_sum;
       w.second->GetTimerMessages(messages, batch_size);
       if (messages.empty()) {
         continue;
@@ -933,6 +949,21 @@ void AppWorker::ReadStdinLoop() {
 void AppWorker::StopUvLoop(uv_async_t *async) {
   uv_loop_t *handle = (uv_loop_t *)async->data;
   uv_stop(handle);
+}
+
+void AppWorker::SendFilterAck(int opcode, int msgtype, int vb_no,
+                              int64_t seq_no) {
+  std::ostringstream filter_ack;
+  filter_ack << R"({"vb":)";
+  filter_ack << vb_no << R"(, "seq":)";
+  filter_ack << seq_no << "}";
+
+  resp_msg_->msg.assign(filter_ack.str());
+  resp_msg_->msg_type = msgtype;
+  resp_msg_->opcode = opcode;
+  msg_priority_ = true;
+  LOG(logInfo) << "Send filter ACK to GO, vb:" << vb_no << ", seq: " << seq_no
+               << std::endl;
 }
 
 int main(int argc, char **argv) {

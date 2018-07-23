@@ -19,6 +19,7 @@ const (
 	appWorkerSetting
 	timerEvent
 	debuggerEvent
+	filterEvent
 )
 
 const (
@@ -30,6 +31,11 @@ const (
 const (
 	timerOpcode int8 = iota
 	timer
+)
+
+const (
+	filterOpcode int8 = iota
+	vbFilter
 )
 
 const (
@@ -66,6 +72,7 @@ const (
 	respV8WorkerConfig
 	docTimerResponse
 	bucketOpsResponse
+	bucketOpsFilterAck
 )
 
 const (
@@ -90,6 +97,10 @@ const (
 	bucketOpsResponseOpcode int8 = iota
 )
 
+const (
+	bucketOpsFilterAckOpCode int8 = iota
+)
+
 type message struct {
 	Header  []byte
 	Payload []byte
@@ -109,6 +120,14 @@ func (c *Consumer) makeDcpDeletionHeader(partition int16, deletionMeta string) (
 
 func (c *Consumer) makeDcpHeader(opcode int8, partition int16, meta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(dcpEvent, opcode, partition, meta)
+}
+
+func (c *Consumer) filterEventHeader(opcode int8, partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(filterEvent, opcode, partition, meta)
+}
+
+func (c *Consumer) makeVbFilterHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.filterEventHeader(vbFilter, partition, meta)
 }
 
 func (c *Consumer) makeV8DebuggerStartHeader() ([]byte, *flatbuffers.Builder) {
@@ -438,5 +457,19 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			logging.Tracef("%s [%s:%s:%d] vb: %d Updating last_processed_seq_no to seqNo: %d",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNo)
 		}
+	case bucketOpsFilterAck:
+		var ack vbFilterData
+		err := json.Unmarshal([]byte(msg), &ack)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal filter ack, msg: %v err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			return
+		}
+		logging.Infof("%s [%s:%s:%d] Recieved filter ack from C++, vb: %d, seqNo: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), ack.Vbucket, ack.SeqNo)
+		c.filterDataCh <- &ack
+	default:
+		logging.Infof("%s [%s:%s:%d] Unknown message %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
 	}
 }

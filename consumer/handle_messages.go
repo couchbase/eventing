@@ -419,6 +419,38 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	c.sendMessage(msg)
 }
 
+func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
+
+	data := vbFilterData{
+		SeqNo:   seqNo,
+		Vbucket: e.VBucket,
+	}
+
+	metadata, err := json.Marshal(&data)
+	if err != nil {
+		logging.Errorf("[%s:%s:%s:%d] key: %ru failed to marshal metadata",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+		return
+	}
+
+	partition := int16(util.VbucketByKey(e.Key, cppWorkerPartitionCount))
+
+	filterHeader, hBuilder := c.makeVbFilterHeader(partition, string(metadata))
+
+	msg := &msgToTransmit{
+		msg: &message{
+			Header: filterHeader,
+		},
+		sendToDebugger: false,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(msg)
+	logging.Infof("[%s:%s:%s:%d] Sent filter data to C++, vb:%d seqno:%d",
+		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket, seqNo)
+}
+
 func (c *Consumer) sendMessageLoop() {
 	logPrefix := "Consumer::sendMessageLoop"
 

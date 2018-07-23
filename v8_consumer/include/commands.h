@@ -21,6 +21,7 @@ enum event_type {
   eApp_Worker_Setting,
   eTimer,
   eDebugger,
+  eFilter,
   Event_Unknown
 };
 
@@ -41,6 +42,8 @@ enum v8_worker_opcode {
 };
 
 enum dcp_opcode { oDelete, oMutation, DCP_Opcode_Unknown };
+
+enum filter_opcode { oVbFilter, Filter_Opcode_Unknown };
 
 enum app_worker_setting_opcode {
   oLogLevel,
@@ -66,6 +69,7 @@ enum msg_type {
   mV8_Worker_Config,
   mTimer_Response,
   mBucket_Ops_Response,
+  mFilterAck,
   Msg_Unknown
 };
 
