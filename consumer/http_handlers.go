@@ -12,19 +12,19 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 
 	progress := &cm.RebalanceProgress{}
 
-	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
-	vbsRemainingToOwn := c.getVbRemainingToOwn()
+	vbsRemainingToCloseStream := c.getVbRemainingToCloseStream()
+	vbsRemainingToStreamReq := c.getVbRemainingToStreamReq()
 
-	logging.Infof("%s [%s:%s:%d] vbsRemainingToGiveUp len: %d dump: %v vbsRemainingToOwn len: %d dump: %v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsRemainingToGiveUp),
-		util.Condense(vbsRemainingToGiveUp), len(vbsRemainingToOwn),
-		util.Condense(vbsRemainingToOwn))
+	logging.Infof("%s [%s:%s:%d] vbsRemainingToCloseStream len: %d dump: %v vbsRemainingToStreamReq len: %d dump: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsRemainingToCloseStream),
+		util.Condense(vbsRemainingToCloseStream), len(vbsRemainingToStreamReq),
+		util.Condense(vbsRemainingToStreamReq))
 
-	if len(vbsRemainingToGiveUp) > 0 || len(vbsRemainingToOwn) > 0 {
+	if len(vbsRemainingToCloseStream) > 0 || len(vbsRemainingToStreamReq) > 0 {
 		vbsOwnedPerPlan := c.getVbsOwned()
 
 		progress.VbsOwnedPerPlan = len(vbsOwnedPerPlan)
-		progress.VbsRemainingToShuffle = len(vbsRemainingToOwn) + len(vbsRemainingToGiveUp)
+		progress.VbsRemainingToShuffle = len(vbsRemainingToCloseStream) + len(vbsRemainingToStreamReq)
 	}
 
 	return progress

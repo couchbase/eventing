@@ -75,8 +75,6 @@ const (
 
 	restartVbDcpStreamTickInterval = time.Duration(3000) * time.Millisecond
 
-	retryVbMetaStateCheckInterval = time.Duration(1000) * time.Millisecond
-
 	vbTakeoverRetryInterval = time.Duration(1000) * time.Millisecond
 
 	retryInterval = time.Duration(1000) * time.Millisecond
@@ -98,6 +96,7 @@ const (
 	metadataRecreated              = "metadata_recreated"
 	metadataUpdatedPeriodicCheck   = "metadata_updated_periodic_checkpoint"
 	metadataCorrectedAfterRollback = "metadata_corrected_after_rollback"
+	undoMetadataCorrection         = "undo_metadata_correction"
 )
 
 type xattrMetadata struct {

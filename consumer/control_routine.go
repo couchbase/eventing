@@ -27,6 +27,8 @@ func (c *Consumer) controlRoutine() error {
 				return common.ErrRetryTimeout
 			}
 
+			c.closeAllRunningDcpFeeds()
+
 			c.stopVbOwnerGiveupCh = make(chan struct{}, c.vbOwnershipGiveUpRoutineCount)
 			c.stopVbOwnerTakeoverCh = make(chan struct{}, c.vbOwnershipTakeoverRoutineCount)
 

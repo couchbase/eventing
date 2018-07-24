@@ -50,39 +50,6 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 	return err
 }
 
-var gocbConnectBucketCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::gocbConnectBucketCallback"
-
-	c := args[0].(*Consumer)
-
-	connStr := fmt.Sprintf("couchbase://%s", c.getKvNodes()[0])
-	if util.IsIPv6() {
-		connStr += "?ipv6=allow"
-	}
-	cluster, err := gocb.Connect(connStr)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Connect to cluster %rm failed, err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
-		return err
-	}
-
-	err = cluster.Authenticate(&util.DynamicAuthenticator{Caller: logPrefix})
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to authenticate to the cluster %rm, err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
-		return err
-	}
-
-	c.gocbBucket, err = cluster.OpenBucket(c.bucket, "")
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to connect to bucket %s, err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, err)
-		return err
-	}
-
-	return nil
-}
-
 var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::gocbConnectMetaBucketCallback"
 
@@ -558,16 +525,22 @@ retryMetadataCorrection:
 	return err
 }
 
-var metadataCorrectionAfterRollbackCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::metadataCorrectionAfterRollbackCallback"
+var undoMetadataCorrectionCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::undoMetadataCorrectionCallback"
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
 
-retryMetadataCorrection:
+retryUndoMetadataCorrection:
 	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
+		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_status", dcpStreamStopped, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid", "", gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if err == gocb.ErrShutdown {
@@ -583,11 +556,11 @@ retryMetadataCorrection:
 			return err
 		}
 
-		goto retryMetadataCorrection
+		goto retryUndoMetadataCorrection
 	}
 
 	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while trying to correct metadata, err: %v",
+		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while trying to update metadata, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
@@ -728,47 +701,6 @@ retrySRSUpdate:
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post STREAMREQ SUCCESS from Producer, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
-	}
-
-	return err
-}
-
-var addOwnershipHistoryCSCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::addOwnershipHistoryCSCallback"
-
-	c := args[0].(*Consumer)
-	vbKey := args[1].(common.Key)
-	ownershipEntry := args[2].(*OwnershipEntry)
-
-retryCSUpdate:
-	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
-		ArrayAppend("ownership_history", ownershipEntry, true).
-		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
-		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
-		UpsertEx("node_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
-		UpsertEx("node_uuid_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
-		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
-		Execute()
-
-	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
-		return nil
-	}
-
-	if err == gocb.ErrKeyNotFound {
-		var vbBlob vbucketKVBlob
-
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, &vbBlob)
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return err
-		}
-
-		goto retryCSUpdate
-	}
-
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while performing ownership entry app post close stream, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 

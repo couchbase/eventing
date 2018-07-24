@@ -410,7 +410,7 @@ func (c *Consumer) processEvents() {
 				// which will allow vbTakeOver background routine to start up new stream from
 				// new KV node, where the vbucket has been migrated
 
-				logging.Infof("%s [%s:%s:%d] vb: %v, got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+				logging.Infof("%s [%s:%s:%d] vb: %d, got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
 				c.vbsStreamRRWMutex.Lock()
 				if _, ok := c.vbStreamRequested[e.VBucket]; ok {
@@ -421,7 +421,6 @@ func (c *Consumer) processEvents() {
 				}
 				c.vbsStreamRRWMutex.Unlock()
 
-				// Store the latest state of vbucket processing stats in the metadata bucket
 				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
 
 				seqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_read_seq_no").(uint64)
@@ -448,37 +447,33 @@ func (c *Consumer) processEvents() {
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
 
-				c.vbsStreamClosedRWMutex.Lock()
-				_, cUpdated := c.vbsStreamClosed[e.VBucket]
-				if !cUpdated {
-					c.vbsStreamClosed[e.VBucket] = true
-				}
-				c.vbsStreamClosedRWMutex.Unlock()
-
 				lastSeqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_read_seq_no").(uint64)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "seq_no_at_stream_end", lastSeqNo)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
 
-				if !cUpdated {
-					logging.Infof("%s [%s:%s:%d] vb: %v updating metadata about dcp stream close",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+				logging.Infof("%s [%s:%s:%d] vb: %d updating metadata about dcp stream end",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
-					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-						c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
-					if err == common.ErrRetryTimeout {
-						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-						return
-					}
-
-					err = c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
-					if err == common.ErrRetryTimeout {
-						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-						return
-					}
+				err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+					c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
+				if err == common.ErrRetryTimeout {
+					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+					return
 				}
 
+				err = c.updateCheckpoint(vbKey, e.VBucket, &vbBlob)
+				if err == common.ErrRetryTimeout {
+					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+					return
+				}
+
+				c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", "")
+				c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", "")
+				c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamStopped)
+				c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", "")
+
 				if c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
-					logging.Infof("%s [%s:%s:%d] vb: %v got STREAMEND, needs to be reclaimed",
+					logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND, needs to be reclaimed",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
 					vbFlog := &vbFlogEntry{signalStreamEnd: true, vb: e.VBucket}
@@ -862,8 +857,8 @@ func (c *Consumer) cleanupStaleDcpFeedHandles() error {
 		delete(c.kvHostDcpFeedMap, kvAddr)
 		c.hostDcpFeedRWMutex.Unlock()
 
-		for _, vbno := range vbsMetadataToUpdate {
-			err := c.clearUpOwnershipInfoFromMeta(vbno)
+		for _, vb := range vbsMetadataToUpdate {
+			err := c.clearUpOwnershipInfoFromMeta(vb)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return common.ErrRetryTimeout
@@ -902,27 +897,18 @@ func (c *Consumer) clearUpOwnershipInfoFromMeta(vb uint16) error {
 		Timestamp:      time.Now().String(),
 	}
 
-	c.vbsStreamClosedRWMutex.Lock()
-	_, cUpdated := c.vbsStreamClosed[vb]
-	if !cUpdated {
-		c.vbsStreamClosed[vb] = true
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySECallback,
+		c, c.producer.AddMetadataPrefix(vbKey), &entry)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return common.ErrRetryTimeout
 	}
-	c.vbsStreamClosedRWMutex.Unlock()
 
-	if !cUpdated {
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySECallback,
-			c, c.producer.AddMetadataPrefix(vbKey), &entry)
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return common.ErrRetryTimeout
-		}
-
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, updateCheckpointCallback,
-			c, c.producer.AddMetadataPrefix(vbKey), &vbBlob)
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return common.ErrRetryTimeout
-		}
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, updateCheckpointCallback,
+		c, c.producer.AddMetadataPrefix(vbKey), &vbBlob)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return common.ErrRetryTimeout
 	}
 
 	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
@@ -1084,6 +1070,10 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		}
 
 		c.vbProcessingStats.updateVbStat(vb, "vb_stream_request_metadata_updated", true)
+
+		c.vbProcessingStats.updateVbStat(vb, "dcp_stream_requested", true)
+		c.vbProcessingStats.updateVbStat(vb, "dcp_stream_requested_worker", c.ConsumerName())
+		c.vbProcessingStats.updateVbStat(vb, "dcp_stream_requested_node_uuid", c.NodeUUID())
 
 		logging.Infof("%s [%s:%s:%d] vb: %d Updated checkpoint blob to indicate STREAMREQ was issued",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
