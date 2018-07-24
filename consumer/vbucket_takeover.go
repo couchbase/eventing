@@ -55,26 +55,6 @@ func (c *Consumer) reclaimVbOwnership(vb uint16) error {
 	return fmt.Errorf("Failed to reclaim vb ownership")
 }
 
-func (c *Consumer) checkAndUpdateMetadataLoop() {
-	logPrefix := "Consumer::checkAndUpdateMetadataLoop"
-	c.checkMetadataStateTicker = time.NewTicker(restartVbDcpStreamTickInterval)
-
-	logging.Infof("%s [%s:%s:%d] Started up the routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
-
-	for {
-		select {
-		case <-c.checkMetadataStateTicker.C:
-			if !c.isRebalanceOngoing {
-				c.checkMetadataStateTicker.Stop()
-				logging.Infof("%s [%s:%s:%d] Exiting the routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
-				return
-			}
-
-			c.checkAndUpdateMetadata()
-		}
-	}
-}
-
 func (c *Consumer) checkAndUpdateMetadata() {
 	logPrefix := "Consumer::checkAndUpdateMetadata"
 	vbsOwned := c.getCurrentlyOwnedVbs()
@@ -174,8 +154,6 @@ func (c *Consumer) vbsStateUpdate() {
 		util.Condense(c.vbsRemainingToOwn), util.Condense(c.vbsRemainingToGiveUp),
 		len(vbsOwned), util.Condense(vbsOwned))
 
-	go c.checkAndUpdateMetadataLoop()
-
 retryStreamUpdate:
 	vbsDistribution := util.VbucketDistribution(c.vbsRemainingToOwn, c.vbOwnershipTakeoverRoutineCount)
 
@@ -216,6 +194,10 @@ retryStreamUpdate:
 				c.inflightDcpStreamsRWMutex.RUnlock()
 
 				if c.checkIfAlreadyEnqueued(vb) {
+					continue
+				}
+
+				if !c.checkIfCurrentConsumerShouldOwnVb(vb) {
 					continue
 				}
 
