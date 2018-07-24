@@ -425,7 +425,7 @@ func GetEventProcessingStats(urlSuffix string, nodeAddrs []string) (map[string]i
 	return pStats, nil
 }
 
-func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, map[string]error) {
+func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, map[string]interface{}, map[string]error) {
 	logPrefix := "util::GetProgress"
 
 	aggProgress := &cm.RebalanceProgress{}
@@ -433,6 +433,8 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 	netClient := NewClient(HTTPRequestTimeout)
 
 	errMap := make(map[string]error)
+
+	progressMap := make(map[string]interface{})
 
 	for _, nodeAddr := range nodeAddrs {
 		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
@@ -463,11 +465,25 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 		logging.Infof("%s endpointURL: %rs VbsRemainingToShuffle: %d VbsOwnedPerPlan: %d",
 			logPrefix, endpointURL, progress.VbsRemainingToShuffle, progress.VbsOwnedPerPlan)
 
+		rebProgress := make(map[string]interface{})
+		rebProgress["close_stream_vbs_len"] = progress.CloseStreamVbsLen
+		rebProgress["stream_req_vbs_len"] = progress.StreamReqVbsLen
+		rebProgress["vbs_owned_per_plan"] = progress.VbsOwnedPerPlan
+		rebProgress["vbs_remaining_to_shuffle"] = progress.VbsRemainingToShuffle
+
+		progressMap[nodeAddr] = rebProgress
+
 		aggProgress.VbsRemainingToShuffle += progress.VbsRemainingToShuffle
 		aggProgress.VbsOwnedPerPlan += progress.VbsOwnedPerPlan
+
+		if urlSuffix == "/getAggRebalanceProgress" {
+			aggProgress.NodeLevelStats = progress.NodeLevelStats
+			logging.Infof("%s Added progress node level stats endpointURL: %rs progress: %#v",
+				logPrefix, endpointURL, progress)
+		}
 	}
 
-	return aggProgress, errMap
+	return aggProgress, progressMap, errMap
 }
 
 func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {

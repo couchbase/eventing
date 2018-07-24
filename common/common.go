@@ -197,8 +197,11 @@ type AppConfig struct {
 }
 
 type RebalanceProgress struct {
+	CloseStreamVbsLen     int
+	StreamReqVbsLen       int
 	VbsRemainingToShuffle int
 	VbsOwnedPerPlan       int
+	NodeLevelStats        interface{}
 }
 
 type EventProcessingStats struct {

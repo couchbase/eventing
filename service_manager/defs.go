@@ -108,8 +108,10 @@ type rebalancer struct {
 	adminPort string
 	keepNodes []string
 
+	NodeLevelStats        interface{}
 	RebalanceProgress     float64
 	RebalanceStartTs      string
+	RebProgressCounter    int
 	TotalVbsToShuffle     int
 	VbsRemainingToShuffle int
 }

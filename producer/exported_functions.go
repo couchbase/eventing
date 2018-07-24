@@ -555,11 +555,16 @@ func (p *Producer) GetSeqsProcessed() map[int]int64 {
 // RebalanceTaskProgress reports vbuckets remaining to be transferred as per planner
 // during the course of rebalance
 func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
-	producerLevelProgress := &common.RebalanceProgress{}
 	p.RLock()
 	defer p.RUnlock()
+
+	producerLevelProgress := &common.RebalanceProgress{}
+
 	for _, consumer := range p.runningConsumers {
 		consumerProgress := consumer.RebalanceTaskProgress()
+
+		producerLevelProgress.CloseStreamVbsLen += consumerProgress.CloseStreamVbsLen
+		producerLevelProgress.StreamReqVbsLen += consumerProgress.StreamReqVbsLen
 
 		producerLevelProgress.VbsRemainingToShuffle += consumerProgress.VbsRemainingToShuffle
 		producerLevelProgress.VbsOwnedPerPlan += consumerProgress.VbsOwnedPerPlan
