@@ -10,7 +10,7 @@ import (
 
 const (
 	opsPSec    = 3000
-	rItemCount = 1000 * 1000
+	rItemCount = 200 * 1000
 )
 
 // Tests mimicking testrunner functional tests
@@ -57,7 +57,7 @@ func TestEventingRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) 
 	pumpBucketOps(opsType{count: rItemCount, delete: true}, &rateLimit{})
 
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
-	log.Printf("Post DELETE ops. Expected item count: %d got %d", rItemCount, eventCount)
+	log.Printf("Post DELETE ops. Expected item count: %d got %d", 0, eventCount)
 
 	// if eventCount != 0 {
 	// 	t.Error("For", "TestEventingRebInWhenExistingEventingNodeProcessingMutations",
@@ -111,7 +111,7 @@ func TestEventingRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T)
 	pumpBucketOps(opsType{count: rItemCount, delete: true}, &rateLimit{})
 
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
-	log.Printf("Post DELETE ops. Expected item count: %d got %d", rItemCount, eventCount)
+	log.Printf("Post DELETE ops. Expected item count: %d got %d", 0, eventCount)
 
 	// if eventCount != 0 {
 	// 	t.Error("For", "TestEventingRebOutWhenExistingEventingNodeProcessingMutations",
@@ -171,7 +171,7 @@ func TestEventingSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T
 	pumpBucketOps(opsType{count: rItemCount, delete: true}, &rateLimit{})
 
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
-	log.Printf("Post DELETE ops. Expected item count: %d got %d", rItemCount, eventCount)
+	log.Printf("Post DELETE ops. Expected item count: %d got %d", 0, eventCount)
 
 	// if eventCount != 0 {
 	// 	t.Error("For", "TestEventingSwapRebWhenExistingEventingNodeProcessingMutations",
@@ -225,7 +225,7 @@ func TestKVRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	pumpBucketOps(opsType{count: rItemCount, delete: true}, &rateLimit{})
 
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
-	log.Printf("Post DELETE ops. Expected item count: %d got %d", rItemCount, eventCount)
+	log.Printf("Post DELETE ops. Expected item count: %d got %d", 0, eventCount)
 
 	// if eventCount != 0 {
 	// 	t.Error("For", "TestKVRebInWhenExistingEventingNodeProcessingMutations",
@@ -279,7 +279,7 @@ func TestKVRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	pumpBucketOps(opsType{count: rItemCount, delete: true}, &rateLimit{})
 
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
-	log.Printf("Post DELETE ops. Expected item count: %d got %d", rItemCount, eventCount)
+	log.Printf("Post DELETE ops. Expected item count: %d got %d", 0, eventCount)
 
 	// if eventCount != 0 {
 	// 	t.Error("For", "TestKVRebOutWhenExistingEventingNodeProcessingMutations",
@@ -339,7 +339,7 @@ func TestKVSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T) {
 	pumpBucketOps(opsType{count: rItemCount, delete: true}, &rateLimit{})
 
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
-	log.Printf("Post DELETE ops. Expected item count: %d got %d", rItemCount, eventCount)
+	log.Printf("Post DELETE ops. Expected item count: %d got %d", 0, eventCount)
 
 	// if eventCount != 0 {
 	// 	t.Error("For", "TestKVSwapRebWhenExistingEventingNodeProcessingMutations",
