@@ -948,7 +948,7 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 			err := c.cbBucket.Refresh()
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] feed: %s failed to refresh vbmap, err: %v",
-					logPrefix, feedName.Raw(), c.workerName, c.tcpPort, c.Pid(), err)
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), feedName.Raw(), err)
 				return err
 			}
 			return nil

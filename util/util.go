@@ -478,8 +478,6 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 
 		if urlSuffix == "/getAggRebalanceProgress" {
 			aggProgress.NodeLevelStats = progress.NodeLevelStats
-			logging.Infof("%s Added progress node level stats endpointURL: %rs progress: %#v",
-				logPrefix, endpointURL, progress)
 		}
 	}
 

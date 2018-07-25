@@ -75,7 +75,7 @@ func (wc *appLogCloser) manageLogFiles() {
 		logging.Errorf("%s: File Rename() failed err: %v", logPrefix, err)
 		return
 	}
-	wc.highIndex += 1
+	wc.highIndex++
 	fp, err := openFile(wc.path, wc.perm)
 	if err != nil {
 		logging.Errorf("%s: File Open() failed err: %v", logPrefix, err)
