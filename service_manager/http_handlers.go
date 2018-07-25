@@ -2209,7 +2209,7 @@ func (m *ServiceMgr) checkVersionCompat(required string, info *runtimeInfo) {
 	major, minor := clusterInfo.GetClusterVersion()
 	switch required {
 	case "vulcan":
-		ok = (major >= 5 && minor >= 5)
+		ok = major > 5 || major == 5 && minor >= 5
 	}
 
 	if !ok {
