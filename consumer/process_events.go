@@ -454,6 +454,14 @@ func (c *Consumer) processEvents() {
 				logging.Infof("%s [%s:%s:%d] vb: %d updating metadata about dcp stream end",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
+				c.inflightDcpStreamsRWMutex.Lock()
+				if _, exists := c.inflightDcpStreams[e.VBucket]; exists {
+					logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from inflightDcpStreams",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+					delete(c.inflightDcpStreams, e.VBucket)
+				}
+				c.inflightDcpStreamsRWMutex.Unlock()
+
 				err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
 					c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
 				if err == common.ErrRetryTimeout {
