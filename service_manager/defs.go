@@ -38,10 +38,7 @@ const (
 	maxApplicationNameLength = 100
 	maxAliasLength           = 20 // Technically, there isn't any limit on a JavaScript variable length.
 
-	// Rebalance progress ticker ticks at every 3s, 1200 ticks would amount to 1hr.
-	// If rebalance is stuck are specific progress % for longer than 1hr, rebalance
-	// would be failed.
-	rebalanceStalenessCounter = 1200
+	rebalanceStalenessCounter = 200
 )
 
 const (
