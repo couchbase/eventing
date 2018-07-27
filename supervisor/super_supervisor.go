@@ -622,8 +622,8 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					if strings.HasPrefix(name, prefix) {
 						err = os.RemoveAll(filepath.Join(s.eventingDir, name))
 						if err != nil {
-							logging.Errorf("%s [%d] Failed to remove app log: %s, err: %v",
-								logPrefix, len(s.runningProducers), name, err)
+							logging.Errorf("%s [%d] App: %s Failed to remove app log: %s, err: %v",
+								logPrefix, len(s.runningProducers), appName, name, err)
 						}
 					}
 				}

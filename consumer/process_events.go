@@ -701,7 +701,6 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 
 			}
 		}
-
 	}
 
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, checkIfVbStreamsOpenedCallback, c, vbs)

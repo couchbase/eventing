@@ -448,6 +448,15 @@ func (c *Consumer) checkIfVbAlreadyOwnedByCurrConsumer(vb uint16) bool {
 	return false
 }
 
+func (c *Consumer) checkIfVbAlreadyRequestedByCurrConsumer(vb uint16) bool {
+	if c.vbProcessingStats.getVbStat(vb, "dcp_stream_requested_node_uuid") == c.NodeUUID() &&
+		c.vbProcessingStats.getVbStat(vb, "dcp_stream_requested_worker") == c.ConsumerName() {
+		return true
+	}
+
+	return false
+}
+
 func (c *Consumer) getVbRemainingToOwn() []uint16 {
 	c.vbEventingNodeAssignRWMutex.RLock()
 	defer c.vbEventingNodeAssignRWMutex.RUnlock()
