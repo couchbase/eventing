@@ -835,7 +835,7 @@ func (c *Consumer) closeAllRunningDcpFeeds() {
 
 			err := dcpFeed.Close()
 			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] DCP feed: %s failed to close connection",
+				logging.Errorf("%s [%s:%s:%d] DCP feed: %s failed to close connection, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.GetName(), err)
 			} else {
 				logging.Infof("%s [%s:%s:%d] DCP feed: %s closed connection",

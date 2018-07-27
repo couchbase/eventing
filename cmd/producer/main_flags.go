@@ -18,6 +18,7 @@ type Flags struct {
 	eventingDir   string
 	kvPort        string
 	restPort      string
+	debugPort     string
 	uuid          string
 	diagDir       string
 	ipv6          bool
@@ -65,6 +66,10 @@ func initFlags() {
 	fset.StringVar(&flags.uuid,
 		"uuid", "",
 		"UUID supplied by ns_server")
+
+	fset.StringVar(&flags.debugPort,
+		"debugPort", "9140",
+		"Port assigned to debugger")
 
 	fset.BoolVar(&flags.ipv6,
 		"ipv6", false,

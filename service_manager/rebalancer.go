@@ -78,7 +78,7 @@ func (r *rebalancer) gatherProgress() {
 	retryCounter := 0
 
 retryRebProgress:
-	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
+	initProgress, _, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 	if len(errMap) > 0 && len(r.keepNodes) > 1 {
 		logging.Warnf(" %s Failed to capture cluster wide rebalance progress from all nodes. Retry counter: %d initProgress: %v errMap dump: %rm",
 			logPrefix, retryCounter, initProgress, errMap)
@@ -113,7 +113,7 @@ retryRebProgress:
 	for {
 		select {
 		case <-progressTicker.C:
-			p, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
+			p, _, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 			if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
 				logging.Errorf("%s Failed to capture cluster wide rebalance progress from all nodes, errMap dump: %rm", logPrefix, errMap)
 
@@ -124,6 +124,8 @@ retryRebProgress:
 			} else if len(errMap) > 0 {
 				continue
 			}
+
+			r.NodeLevelStats = p.NodeLevelStats
 
 			if p.VbsOwnedPerPlan == 0 && p.VbsRemainingToShuffle == 0 {
 				progress = 1.0
@@ -161,6 +163,8 @@ retryRebProgress:
 				} else {
 					rebProgressCounter = 0
 				}
+
+				r.RebProgressCounter = rebProgressCounter
 
 				logging.Infof("%s total vbs to shuffle: %d remaining to shuffle: %d progress: %g counter: %d cmp: %t",
 					logPrefix, aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle, (1.0-workRemaining)*100, rebProgressCounter,

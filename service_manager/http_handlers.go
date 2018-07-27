@@ -505,6 +505,9 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		logging.Infof("%s Function: %s rebalance progress from node with rest port: %rs progress: %v",
 			logPrefix, appName, m.restPort, appProgress)
 		if err == nil {
+			progress.CloseStreamVbsLen += appProgress.CloseStreamVbsLen
+			progress.StreamReqVbsLen += appProgress.StreamReqVbsLen
+
 			progress.VbsOwnedPerPlan += appProgress.VbsOwnedPerPlan
 			progress.VbsRemainingToShuffle += appProgress.VbsRemainingToShuffle
 		}
@@ -583,12 +586,14 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 	logging.Infof("%s going to query eventing nodes: %rs for rebalance progress",
 		logPrefix, m.eventingNodeAddrs)
 
-	aggProgress, errMap := util.GetProgress("/getRebalanceProgress", m.eventingNodeAddrs)
+	aggProgress, progressMap, errMap := util.GetProgress("/getRebalanceProgress", m.eventingNodeAddrs)
 	if len(errMap) > 0 {
 		logging.Errorf("%s failed to get progress from some/all eventing nodes: %rs err: %rs",
 			logPrefix, m.eventingNodeAddrs, errMap)
 		return
 	}
+
+	aggProgress.NodeLevelStats = progressMap
 
 	buf, err := json.Marshal(aggProgress)
 	if err != nil {
@@ -1993,7 +1998,9 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 			if m.rebalancer != nil {
 				rebalanceStats := make(map[string]interface{})
 				rebalanceStats["is_leader"] = true
+				rebalanceStats["node_level_stats"] = m.rebalancer.NodeLevelStats
 				rebalanceStats["rebalance_progress"] = m.rebalancer.RebalanceProgress
+				rebalanceStats["rebalance_progress_counter"] = m.rebalancer.RebProgressCounter
 				rebalanceStats["rebalance_start_ts"] = m.rebalancer.RebalanceStartTs
 				rebalanceStats["total_vbs_to_shuffle"] = m.rebalancer.TotalVbsToShuffle
 				rebalanceStats["vbs_remaining_to_shuffle"] = m.rebalancer.VbsRemainingToShuffle

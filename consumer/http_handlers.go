@@ -23,6 +23,9 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 	if len(vbsRemainingToCloseStream) > 0 || len(vbsRemainingToStreamReq) > 0 {
 		vbsOwnedPerPlan := c.getVbsOwned()
 
+		progress.CloseStreamVbsLen = len(vbsRemainingToCloseStream)
+		progress.StreamReqVbsLen = len(vbsRemainingToStreamReq)
+
 		progress.VbsOwnedPerPlan = len(vbsOwnedPerPlan)
 		progress.VbsRemainingToShuffle = len(vbsRemainingToCloseStream) + len(vbsRemainingToStreamReq)
 	}
