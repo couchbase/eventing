@@ -516,3 +516,40 @@ func TestKVFailoverOnUpdateBucketOp(t *testing.T) {
 
 	flushFunctionAndBucket(handler)
 }
+
+func TestBootstrapAfterKVHardFailover(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+
+	addNodeFromRest("127.0.0.1:9001", "kv")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+
+	failoverFromRest([]string{"127.0.0.1:9001"})
+	time.Sleep(30 * time.Second)
+
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: rlOpsPSec,
+		count:   rlItemCount,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
+
+	go func() {
+		rebalanceFromRest([]string{""})
+	}()
+
+	waitForDeployToFinish(handler)
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}
