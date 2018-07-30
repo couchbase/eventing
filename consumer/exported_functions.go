@@ -26,10 +26,8 @@ func (c *Consumer) ClearEventStats() {
 	c.dcpMessagesProcessed = make(map[mcd.CommandCode]uint64)
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
 
-	c.adhocDoctimerResponsesRecieved = 0
+	c.adhocTimerResponsesRecieved = 0
 	c.aggMessagesSentCounter = 0
-	c.crontimerMessagesProcessed = 0
-	c.timersInPastCounter = 0
 }
 
 // ConsumerName returns consumer name e.q <event_handler_name>_worker_1
@@ -53,8 +51,8 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats[mcd.CommandNames[opcode]] = value
 	}
 
-	if c.adhocDoctimerResponsesRecieved > 0 {
-		stats["ADHOC_DOC_TIMER_RESPONSES_RECEIVED"] = c.adhocDoctimerResponsesRecieved
+	if c.adhocTimerResponsesRecieved > 0 {
+		stats["ADHOC_TIMER_RESPONSES_RECEIVED"] = c.adhocTimerResponsesRecieved
 	}
 
 	if c.cppQueueSizes != nil {
@@ -69,10 +67,6 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 
 	if c.aggMessagesSentCounter > 0 {
 		stats["AGG_MESSAGES_SENT_TO_WORKER"] = c.aggMessagesSentCounter
-	}
-
-	if c.crontimerMessagesProcessed > 0 {
-		stats["CRON_TIMER_EVENTS"] = c.crontimerMessagesProcessed
 	}
 
 	if c.dcpDeletionCounter > 0 {
@@ -103,12 +97,12 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.timerResponsesRecieved
 	}
 
-	if c.doctimerMessagesProcessed > 0 {
-		stats["DOC_TIMER_EVENTS"] = c.doctimerMessagesProcessed
+	if c.timerMessagesProcessed > 0 {
+		stats["TIMER_EVENTS"] = c.timerMessagesProcessed
 	}
 
-	if c.errorParsingDocTimerResponses > 0 {
-		stats["ERROR_PARSING_DOC_TIMER_RESPONSES"] = c.errorParsingDocTimerResponses
+	if c.errorParsingTimerResponses > 0 {
+		stats["ERROR_PARSING_TIMER_RESPONSES"] = c.errorParsingTimerResponses
 	}
 
 	if c.isBootstrapping {
@@ -127,18 +121,6 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	vbsRemainingToOwn := c.getVbRemainingToOwn()
 	if len(vbsRemainingToOwn) > 0 {
 		stats["REB_VB_REMAINING_TO_OWN"] = uint64(len(vbsRemainingToOwn))
-	}
-
-	if c.timersInPastCounter > 0 {
-		stats["TIMERS_IN_PAST"] = c.timersInPastCounter
-	}
-
-	if c.timersInPastFromBackfill > 0 {
-		stats["TIMERS_IN_PAST_FROM_BACKFILL"] = c.timersInPastFromBackfill
-	}
-
-	if c.timersRecreatedFromDCPBackfill > 0 {
-		stats["TIMERS_RECREATED_FROM_DCP_BACKFILL"] = c.timersRecreatedFromDCPBackfill
 	}
 
 	if c.vbsStateUpdateRunning {
@@ -522,7 +504,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 	c.handlerFooters = handlerFooters
 	// Framing bare minimum V8 worker init payload
 	payload, pBuilder := c.makeV8InitPayload(appName, util.Localhost(), "", eventingPort, "",
-		"", appContent, 5, 10, 1, 30, 10*1000, true, true, 500)
+		"", appContent, 5, 10, 10*1000, true, true, 500)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 
@@ -664,10 +646,6 @@ func (c *Consumer) VbEventingNodeAssignMapUpdate(vbEventingNodeAssignMap map[uin
 
 // WorkerVbMapUpdate captures updated mapping of active consumers to vbuckets they should handle as per static planner
 func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
-	logPrefix := "Consumer::WorkerVbMapUpdate"
-
-	logging.Infof("%s here", logPrefix)
-
 	c.workerVbucketMapRWMutex.Lock()
 	defer c.workerVbucketMapRWMutex.Unlock()
 
@@ -675,6 +653,5 @@ func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
 
 	for workerName, assignedVbs := range workerVbucketMap {
 		c.workerVbucketMap[workerName] = assignedVbs
-		logging.Infof("%s %s %v", logPrefix, workerName, assignedVbs)
 	}
 }

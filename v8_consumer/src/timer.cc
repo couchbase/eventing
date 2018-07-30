@@ -72,10 +72,9 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_info.reference = utils->ToCPPString(args[2]);
   timer_info.context = JSONStringify(isolate_, args[3]);
 
-  doc_timer_msg_t msg;
+  timer_msg_t msg;
   msg.timer_entry = timer_info.ToJSON(isolate_, context);
   v8worker->timer_queue_->Push(msg);
-
   return true;
 }
 

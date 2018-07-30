@@ -260,12 +260,10 @@ type HandlerConfig struct {
 	FeedbackBatchSize           int
 	FeedbackQueueCap            int64
 	FeedbackReadBufferSize      int
-	FuzzOffset                  int
 	HandlerHeaders              []string
 	HandlerFooters              []string
 	LcbInstCapacity             int
 	LogLevel                    string
-	SkipTimerThreshold          int
 	SocketWriteBatchSize        int
 	SocketTimeout               int
 	SourceBucket                string

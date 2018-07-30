@@ -76,10 +76,6 @@ func (c *Consumer) controlRoutine() error {
 				c.sendLogLevel(c.logLevel, false)
 			}
 
-			if val, ok := settings["skip_timer_threshold"]; ok {
-				c.skipTimerThreshold = int(val.(float64))
-			}
-
 			if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
 				c.vbOwnershipGiveUpRoutineCount = int(val.(float64))
 			}

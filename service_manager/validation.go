@@ -492,10 +492,6 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validatePositiveInteger("cron_timers_per_doc", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
 	if info = m.validatePositiveInteger("curl_timeout", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -529,10 +525,6 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validateZeroOrPositiveInteger("fuzz_offset", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
 	if info = m.validateStringArray("handler_headers", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -554,19 +546,11 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validatePositiveInteger("skip_timer_threshold", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
 	if info = m.validatePositiveInteger("sock_batch_size", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
 	if info = m.validatePositiveInteger("tick_duration", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("timer_processing_tick_interval", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -618,51 +602,6 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 	}
 
 	if info = m.validateBoolean("enable_applog_rotation", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	// Doc timer configurations for plasma
-	if info = m.validateBoolean("auto_swapper", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validateBoolean("enable_snapshot_smr", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("iterator_refresh_counter", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("lss_cleaner_max_threshold", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("lss_cleaner_threshold", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("lss_read_ahead_size", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("max_delta_chain_len", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("max_page_items", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("min_page_items", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("persist_interval", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validateBoolean("use_memory_manager", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

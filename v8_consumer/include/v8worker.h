@@ -59,18 +59,17 @@ typedef std::chrono::nanoseconds nsecs;
 #define HIST_TILL 1000 * 1000 * 10
 #define HIST_WIDTH 1000
 
-#define LCB_OP_RETRY_INTERVAL 100 // in milliseconds
 #define NUM_VBUCKETS 1024
 
 using atomic_ptr_t = std::shared_ptr<std::atomic<int64_t>>;
 // Used for checkpointing of vbucket seq nos
 typedef std::map<int64_t, atomic_ptr_t> vb_seq_map_t;
 
-typedef struct doc_timer_msg_s {
+typedef struct timer_msg_s {
   std::size_t GetSize() const { return timer_entry.length(); }
 
   std::string timer_entry;
-} doc_timer_msg_t;
+} timer_msg_t;
 
 // Header frame structure for messages from Go world
 typedef struct header_s {
@@ -108,17 +107,13 @@ typedef struct server_settings_s {
   std::string eventing_sslport;
   std::string host_addr;
   std::string kv_host_port;
-  std::string rbac_user;
-  std::string rbac_pass;
 } server_settings_t;
 
 typedef struct handler_config_s {
   std::string app_name;
-  int cron_timers_per_doc;
   long curl_timeout;
   std::string dep_cfg;
   int execution_timeout;
-  int fuzz_offset;
   int lcb_inst_capacity;
   bool enable_recursive_mutation;
   bool skip_lcb_bootstrap;
@@ -255,7 +250,7 @@ public:
 
   std::thread processing_thr_;
   std::thread *terminator_thr_;
-  Queue<doc_timer_msg_t> *timer_queue_;
+  Queue<timer_msg_t> *timer_queue_;
   Queue<worker_msg_t> *worker_queue_;
 
   ConnectionPool *conn_pool_;

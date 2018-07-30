@@ -31,27 +31,6 @@ func TestCRLF(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-/*func TestDocTimerExpiredDocs(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	itemCount := 0
-	handler := "bucket_op_doc_timer_expired_docs"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
-
-	pumpBucketOps(opsType{expiry: 1}, &rateLimit{})
-	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
-	if itemCount != eventCount {
-		t.Error("For", "TestDocTimerExpiredDocs",
-			"expected", itemCount,
-			"got", eventCount,
-		)
-	}
-
-	dumpStats()
-	flushFunctionAndBucket(handler)
-}*/
-
 func TestImportExport(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	n1qlHandler := "n1ql_insert_on_update"
@@ -275,16 +254,16 @@ func TestOnDeleteBucketOp5K(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-/*func TestDocTimerBucketOp(t *testing.T) {
+func TestTimerBucketOp(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "bucket_op_with_doc_timer"
+	handler := "bucket_op_with_timer"
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "DocTimerBucketOp",
+		t.Error("For", "TimerBucketOp",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -294,27 +273,7 @@ func TestOnDeleteBucketOp5K(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-func TestCronTimerBucketOp(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "bucket_op_with_cron_timer"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-
-	pumpBucketOps(opsType{}, &rateLimit{})
-	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
-	if itemCount != eventCount {
-		t.Error("For", "CronTimerBucketOp",
-			"expected", itemCount,
-			"got", eventCount,
-		)
-	}
-
-	dumpStats()
-	flushFunctionAndBucket(handler)
-}
-*/
-
-func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
+/*func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(handler)
@@ -341,11 +300,11 @@ func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
 
 	deleteFunction(handler)
 }
+*/
 
-/*
-func TestDeployUndeployLoopDocTimer(t *testing.T) {
+func TestDeployUndeployLoopTimer(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "bucket_op_with_doc_timer"
+	handler := "bucket_op_with_timer"
 	flushFunctionAndBucket(handler)
 
 	for i := 0; i < 5; i++ {
@@ -354,7 +313,7 @@ func TestDeployUndeployLoopDocTimer(t *testing.T) {
 		pumpBucketOps(opsType{}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 		if itemCount != eventCount {
-			t.Error("For", "DeployUndeployLoopDocTimer",
+			t.Error("For", "DeployUndeployLoopTimer",
 				"expected", itemCount,
 				"got", eventCount,
 			)
@@ -370,7 +329,6 @@ func TestDeployUndeployLoopDocTimer(t *testing.T) {
 
 	deleteFunction(handler)
 }
-*/
 
 func TestMultipleHandlers(t *testing.T) {
 	time.Sleep(5 * time.Second)

@@ -426,11 +426,9 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       server_settings = new server_settings_t;
 
       handler_config->app_name.assign(payload->app_name()->str());
-      handler_config->cron_timers_per_doc = payload->cron_timers_per_doc();
       handler_config->curl_timeout = long(payload->curl_timeout());
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();
-      handler_config->fuzz_offset = payload->fuzz_offset();
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
       handler_config->enable_recursive_mutation =
           payload->enable_recursive_mutation();
@@ -567,11 +565,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << on_delete_success << R"(, "on_delete_failure":)";
       estats << on_delete_failure << R"(, "timer_create_failure":)";
       estats << timer_create_failure << R"(, "messages_parsed":)";
-      estats << messages_parsed <<  R"(, "dcp_delete_msg_counter":)";
+      estats << messages_parsed << R"(, "dcp_delete_msg_counter":)";
       estats << dcp_delete_msg_counter << R"(, "dcp_mutation_msg_counter":)";
       estats << dcp_mutation_msg_counter << R"(, "timer_msg_counter":)";
-      estats << timer_msg_counter
-             << R"(, "enqueued_dcp_delete_msg_counter":)";
+      estats << timer_msg_counter << R"(, "enqueued_dcp_delete_msg_counter":)";
       estats << enqueued_dcp_delete_msg_counter
              << R"(, "enqueued_dcp_mutation_msg_counter":)";
       estats << enqueued_dcp_mutation_msg_counter
@@ -588,8 +585,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
         for (const auto &w : workers_) {
           agg_queue_size += w.second->worker_queue_->Count();
           feedback_queue_size += w.second->timer_queue_->Count();
-          agg_queue_memory += w.second->worker_queue_->Size() +
-                              w.second->timer_queue_->Size();
+          agg_queue_memory +=
+              w.second->worker_queue_->Size() + w.second->timer_queue_->Size();
         }
 
         estats << R"(, "agg_queue_size":)" << agg_queue_size;
@@ -697,7 +694,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
         enqueued_timer_msg_counter++;
         workers_[worker_index]->Enqueue(parsed_header, parsed_message);
       } else {
-        LOG(logError) << "Timer event lost: worker " << worker_index << " is null" << std::endl;
+        LOG(logError) << "Timer event lost: worker " << worker_index
+                      << " is null" << std::endl;
         ++timer_events_lost;
       }
       break;

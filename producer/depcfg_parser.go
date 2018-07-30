@@ -150,12 +150,6 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.FeedbackReadBufferSize = 65536
 	}
 
-	if val, ok := settings["fuzz_offset"]; ok {
-		p.handlerConfig.FuzzOffset = int(val.(float64))
-	} else {
-		p.handlerConfig.FuzzOffset = 0
-	}
-
 	if val, ok := settings["handler_footers"]; ok {
 		p.handlerConfig.HandlerFooters = util.ToStringArray(val)
 	}
@@ -182,12 +176,6 @@ func (p *Producer) parseDepcfg() error {
 		p.pollBucketInterval = time.Duration(val.(float64)) * time.Second
 	} else {
 		p.pollBucketInterval = 10 * time.Second
-	}
-
-	if val, ok := settings["skip_timer_threshold"]; ok {
-		p.handlerConfig.SkipTimerThreshold = int(val.(float64))
-	} else {
-		p.handlerConfig.SkipTimerThreshold = 86400
 	}
 
 	if val, ok := settings["sock_batch_size"]; ok {

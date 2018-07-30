@@ -262,7 +262,7 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 }
 
 func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, eventingSSLPort, kvHostPort, depCfg string,
-	capacity, cronTimerPerDoc, executionTimeout, fuzzOffset, checkpointInterval int, enableRecursiveMutation, skipLcbBootstrap bool,
+	capacity, executionTimeout, checkpointInterval int, enableRecursiveMutation, skipLcbBootstrap bool,
 	curlTimeout int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
@@ -292,9 +292,7 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 	payload.PayloadAddDepcfg(builder, dcfg)
 	payload.PayloadAddKvHostPort(builder, khp)
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
-	payload.PayloadAddCronTimersPerDoc(builder, int32(cronTimerPerDoc))
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))
-	payload.PayloadAddFuzzOffset(builder, int32(fuzzOffset))
 	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))
 	payload.PayloadAddCurlTimeout(builder, curlTimeout)
 	payload.PayloadAddEnableRecursiveMutation(builder, rec[0])
@@ -401,7 +399,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal timer info, err : %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-			c.errorParsingDocTimerResponses++
+			c.errorParsingTimerResponses++
 			return
 		}
 

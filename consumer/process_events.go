@@ -464,13 +464,13 @@ func (c *Consumer) processEvents() {
 
 		case e, ok := <-c.fireTimerCh:
 			if ok == false {
-				logging.Infof("%s [%s:%s:%d] Closing fire timer channel", logPrefix, c.workerName, c.tcpPort, c.Pid())
-
+				logging.Infof("%s [%s:%s:%d] Closing fire timer channel",
+					logPrefix, c.workerName, c.tcpPort, c.Pid())
 				c.stopCheckpointingCh <- struct{}{}
 				return
 			}
 
-			c.doctimerMessagesProcessed++
+			c.timerMessagesProcessed++
 			c.sendTimerEvent(e, c.sendMsgToDebugger)
 
 		case <-c.statsTicker.C:
@@ -484,8 +484,8 @@ func (c *Consumer) processEvents() {
 				diff := tStamp.Sub(c.opsTimestamp)
 
 				dcpOpsDiff := dcpOpCount - c.dcpOpsProcessed
-				timerOpsDiff := (c.doctimerMessagesProcessed + c.crontimerMessagesProcessed) - timerMsgCounter
-				timerMsgCounter = (c.doctimerMessagesProcessed + c.crontimerMessagesProcessed)
+				timerOpsDiff := c.timerMessagesProcessed - timerMsgCounter
+				timerMsgCounter = c.timerMessagesProcessed
 
 				seconds := int(diff.Nanoseconds() / (1000 * 1000 * 1000))
 				if seconds > 0 {
@@ -493,9 +493,9 @@ func (c *Consumer) processEvents() {
 					c.timerMessagesProcessedPSec = int(timerOpsDiff) / seconds
 				}
 
-				logging.Infof("%s [%s:%s:%d] DCP events: %s V8 events: %s Timer events: Doc: %v Cron: %v, vbs owned len: %d vbs owned: %v",
+				logging.Infof("%s [%s:%s:%d] DCP events: %s V8 events: %s Timer events: Doc: %v, vbs owned len: %d vbs owned: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
-					c.doctimerMessagesProcessed, c.crontimerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned))
+					c.timerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned))
 
 				c.statsRWMutex.Lock()
 				estats, eErr := json.Marshal(&c.executionStats)

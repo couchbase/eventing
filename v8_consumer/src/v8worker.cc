@@ -266,13 +266,11 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   LOG(logInfo) << "Initialised V8Worker handle, app_name: "
                << h_config->app_name
                << " curr_host: " << RS(settings_->host_addr)
-               << " cron_timers_per_doc: " << h_config->cron_timers_per_doc
                << " curr_eventing_port: " << RS(settings_->eventing_port)
                << " curr_eventing_sslport: " << RS(settings_->eventing_sslport)
                << " kv_host_port: " << RS(settings_->kv_host_port)
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
-               << " fuzz offset: " << h_config->fuzz_offset
                << " enable_recursive_mutation: " << enable_recursive_mutation
                << " curl_timeout: " << curl_timeout
                << " version: " << EventingVer() << std::endl;
@@ -295,7 +293,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   delete config;
 
-  this->timer_queue_ = new Queue<doc_timer_msg_t>();
+  this->timer_queue_ = new Queue<timer_msg_t>();
   this->worker_queue_ = new Queue<worker_msg_t>();
 
   std::thread r_thr(&V8Worker::RouteMessage, this);

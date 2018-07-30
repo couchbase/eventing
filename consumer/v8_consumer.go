@@ -65,7 +65,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		feedbackWriteBatchSize:          hConfig.FeedbackBatchSize,
 		filterVbEvents:                  make(map[uint16]struct{}),
 		filterVbEventsRWMutex:           &sync.RWMutex{},
-		fuzzOffset:                      hConfig.FuzzOffset,
 		gracefulShutdownChan:            make(chan struct{}, 1),
 		handlerFooters:                  hConfig.HandlerFooters,
 		handlerHeaders:                  hConfig.HandlerHeaders,
@@ -101,7 +100,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		signalStopDebuggerCh:            make(chan struct{}, 1),
 		signalStopDebuggerRoutineCh:     make(chan struct{}, 1),
 		signalUpdateDebuggerInstBlobCh:  make(chan struct{}, 1),
-		skipTimerThreshold:              hConfig.SkipTimerThreshold,
 		socketTimeout:                   time.Duration(hConfig.SocketTimeout) * time.Second,
 		socketWriteBatchSize:            hConfig.SocketWriteBatchSize,
 		socketWriteLoopStopAckCh:        make(chan struct{}, 1),
@@ -340,9 +338,9 @@ func (c *Consumer) HandleV8Worker() error {
 		}
 	}
 
-	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
-		c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
-		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
+	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
+		c.eventingSSLPort, c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
+		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)
 
 	logging.Infof("%s [%s:%s:%d] V8 worker init enable_recursive_mutation flag: %t",

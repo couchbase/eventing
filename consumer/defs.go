@@ -238,10 +238,7 @@ type Consumer struct {
 	debuggerState                  int8
 	debuggerStarted                bool
 
-	// TODO : Remove this
-	fuzzOffset         int
-	skipTimerThreshold int
-	socketTimeout      time.Duration
+	socketTimeout time.Duration
 
 	enableRecursiveMutation bool
 
@@ -337,26 +334,22 @@ type Consumer struct {
 	// Tracks V8 Opcodes processed per consumer
 	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by msgProcessedRWMutex
 
-	dcpCloseStreamCounter          uint64
-	dcpCloseStreamErrCounter       uint64
-	dcpStreamReqCounter            uint64
-	dcpStreamReqErrCounter         uint64
-	timersInPastCounter            uint64
-	timersInPastFromBackfill       uint64
-	timersRecreatedFromDCPBackfill uint64
+	dcpCloseStreamCounter    uint64
+	dcpCloseStreamErrCounter uint64
+	dcpStreamReqCounter      uint64
+	dcpStreamReqErrCounter   uint64
 
 	// TODO : Remove these stats
-	adhocDoctimerResponsesRecieved uint64
-	doctimerMessagesProcessed      uint64
-	crontimerMessagesProcessed     uint64
+	adhocTimerResponsesRecieved uint64
+	timerMessagesProcessed      uint64
 
 	// DCP and timer related counters
-	timerResponsesRecieved        uint64
-	aggMessagesSentCounter        uint64
-	dcpDeletionCounter            uint64
-	dcpMutationCounter            uint64
-	errorParsingDocTimerResponses uint64
-	timerMessagesProcessedPSec    int
+	timerResponsesRecieved     uint64
+	aggMessagesSentCounter     uint64
+	dcpDeletionCounter         uint64
+	dcpMutationCounter         uint64
+	errorParsingTimerResponses uint64
+	timerMessagesProcessedPSec int
 
 	// capture dcp operation stats, granularity of these stats depend on statsTickInterval
 	dcpOpsProcessed     uint64

@@ -28,18 +28,26 @@ func (c *Consumer) scanTimers() {
 func (c *Consumer) scanTimersForVB(vb uint16) {
 	logPrefix := "Consumer::scanTimersForVB"
 
+	// TODO : Remove the sleep once we parallelize the scan
 	time.Sleep(100 * time.Millisecond)
-	store, _ := timers.Fetch(c.app.AppName, int(vb))
+
+	store, found := timers.Fetch(c.app.AppName, int(vb))
+	if !found {
+		logging.Errorf("%s [%s:%s:%d] Unable to get store for VB : %v err : %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+		return
+	}
+
 	iterator, err := store.ScanDue()
 	if err != nil {
-		logging.Infof("%s [%s:%s:%d] Unable to get iterator for VB : %v err : %v",
+		logging.Errorf("%s [%s:%s:%d] Unable to get iterator for VB : %v err : %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 		return
 	}
 
 	for entry, err := iterator.ScanNext(); entry != nil; entry, err = iterator.ScanNext() {
 		if err != nil {
-			logging.Infof("%s [%s:%s:%d] Unable to get timer entry for VB : %v err : %v",
+			logging.Errorf("%s [%s:%s:%d] Unable to get timer entry for VB : %v err : %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 			continue
 		}
@@ -54,7 +62,7 @@ func (c *Consumer) scanTimersForVB(vb uint16) {
 		c.fireTimerCh <- timer
 		err = store.Delete(entry)
 		if err != nil {
-			logging.Infof("%s [%s:%s:%d] Unable to delete timer entry for VB : %v err : %v",
+			logging.Errorf("%s [%s:%s:%d] Unable to delete timer entry for VB : %v err : %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 		}
 	}
@@ -72,7 +80,7 @@ func (c *Consumer) createTimer() {
 			c.createTimerImpl(e)
 
 		case <-c.createTimerStopCh:
-			logging.Infof("%s [%s:%s:%d] Exiting doc timer store routine",
+			logging.Errorf("%s [%s:%s:%d] Exiting timer store routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
