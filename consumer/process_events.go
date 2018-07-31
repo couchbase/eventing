@@ -725,6 +725,12 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 		}()
 
 		for {
+			if dcpFeed == nil {
+				logging.Infof("%s [%s:%s:%d] DCP feed has been closed, bailing out",
+					logPrefix, c.workerName, c.tcpPort, c.Pid())
+				return
+			}
+
 			select {
 			case e, ok := <-dcpFeed.C:
 				if ok == false {
