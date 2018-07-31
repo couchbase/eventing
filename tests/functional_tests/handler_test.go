@@ -609,12 +609,12 @@ func TestUndeployDuringBootstrap(t *testing.T) {
 	time.Sleep(15 * time.Second)
 
 	dumpStats()
-	flushFunction(handler)
+	setSettings(handler, false, false, &commonSettings{})
 
 	// Double check needed because of a logic on supersupervisor, that
 	// handles bucket deletion.
 	waitForUndeployToFinish(handler)
-	time.Sleep(5 * time.Second)
+	time.Sleep(20 * time.Second)
 	waitForUndeployToFinish(handler)
 
 	flushFunctionAndBucket(handler)
