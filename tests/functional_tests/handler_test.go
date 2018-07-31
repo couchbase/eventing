@@ -598,6 +598,28 @@ func TestSourceBucketDeleteWithBootstrap(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestUndeployDuringBootstrap(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{workerCount: 1})
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+
+	time.Sleep(15 * time.Second)
+
+	dumpStats()
+	flushFunction(handler)
+
+	// Double check needed because of a logic on supersupervisor, that
+	// handles bucket deletion.
+	waitForUndeployToFinish(handler)
+	time.Sleep(5 * time.Second)
+	waitForUndeployToFinish(handler)
+
+	flushFunctionAndBucket(handler)
+}
+
 // Disabling as for the time being source bucket mutations aren't allowed
 /* func TestSourceBucketMutations(t *testing.T) {
 	time.Sleep(time.Second * 5)
