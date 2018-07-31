@@ -71,6 +71,7 @@ type Span struct {
 type storeSpan struct {
 	Span
 	empty   bool
+	dirty   bool
 	spanCas gocb.Cas
 	lock    sync.Mutex
 }
@@ -83,7 +84,6 @@ type TimerStore struct {
 	partn   int
 	log     string
 	span    storeSpan
-	sync    *time.Ticker
 }
 
 type TimerIter struct {
@@ -94,8 +94,11 @@ type TimerIter struct {
 }
 
 func Create(prefix, handler string, partn int, connstr string, bucket string) error {
-	_, ok := Fetch(handler, partn)
-	if ok {
+	stores.lock.Lock()
+	defer stores.lock.Unlock()
+
+	_, found := stores.entries[mapLocator(handler, partn)]
+	if found {
 		logging.Warnf("Asked to create store %v:%v which exists. Reusing", handler, partn)
 		return nil
 	}
@@ -103,8 +106,6 @@ func Create(prefix, handler string, partn int, connstr string, bucket string) er
 	if err != nil {
 		return err
 	}
-	stores.lock.Lock()
-	defer stores.lock.Unlock()
 	stores.entries[mapLocator(handler, partn)] = store
 	return nil
 }
@@ -122,9 +123,9 @@ func Fetch(handler string, partn int) (store *TimerStore, found bool) {
 
 func (r *TimerStore) Free() {
 	stores.lock.Lock()
-	defer stores.lock.Unlock()
-	r.sync.Stop()
 	delete(stores.entries, mapLocator(r.handler, r.partn))
+	stores.lock.Unlock()
+	r.syncSpan()
 }
 
 func (r *TimerStore) Set(due int64, ref string, context interface{}) error {
@@ -375,9 +376,11 @@ func (r *TimerStore) expandSpan(point int64) {
 	defer r.span.lock.Unlock()
 	if r.span.Start > point {
 		r.span.Start = point
+		r.span.dirty = true
 	}
 	if r.span.Stop < point {
 		r.span.Stop = point
+		r.span.dirty = true
 	}
 }
 
@@ -386,10 +389,21 @@ func (r *TimerStore) shrinkSpan(start int64) {
 	defer r.span.lock.Unlock()
 	if r.span.Start < start {
 		r.span.Start = start
+		r.span.dirty = true
 	}
 }
 
 func (r *TimerStore) syncSpan() error {
+	logging.Tracef("%v syncSpan called", r.log)
+
+	r.span.lock.Lock()
+	defer r.span.lock.Unlock()
+
+	if !r.span.dirty && !r.span.empty {
+		return nil
+	}
+
+	r.span.dirty = false
 	kv := Pool(r.connstr)
 	pos := r.kvLocatorSpan()
 	extspan := Span{}
@@ -398,9 +412,6 @@ func (r *TimerStore) syncSpan() error {
 	if err != nil {
 		return err
 	}
-
-	r.span.lock.Lock()
-	defer r.span.lock.Unlock()
 
 	switch {
 	// brand new
@@ -429,11 +440,19 @@ func (r *TimerStore) syncSpan() error {
 
 	// we have data and see external changes
 	case r.span.spanCas != rcas:
-		logging.Warnf("%v Span was changed externally, merging %+v and %+v", r.log, extspan, r.span)
+		// external changes have no impact
+		if r.span.Start <= extspan.Start && r.span.Stop >= extspan.Stop {
+			logging.Tracef("%v Span changed externally but no impact:  %+v and %+v", r.log, extspan, r.span)
+			r.span.spanCas = rcas
+		}
+		// external has moved start backwards
 		if r.span.Start > extspan.Start {
+			logging.Warnf("%v Span changed externally at start, merging %+v and %+v", r.log, extspan, r.span)
 			r.span.Start = extspan.Start
 		}
+		// external has moved stop forwards
 		if r.span.Stop < extspan.Stop {
+			logging.Warnf("%v Span changed externally at stop, merging %+v and %+v", r.log, extspan, r.span)
 			r.span.Stop = extspan.Stop
 		}
 
@@ -461,12 +480,20 @@ func (r *TimerStore) syncSpan() error {
 	return nil
 }
 
-func (r *TimerStore) syncRoutine() {
-	for _ = range r.sync.C {
-		err := r.syncSpan()
-		if err != nil {
-			return
+func (r *storeMap) syncRoutine() {
+	for {
+		dirty := make([]*TimerStore, 0)
+		r.lock.RLock()
+		for _, store := range r.entries {
+			if store.span.dirty {
+				dirty = append(dirty, store)
+			}
 		}
+		r.lock.RUnlock()
+		for _, store := range dirty {
+			store.syncSpan()
+		}
+		time.Sleep(time.Duration(Resolution) * time.Second)
 	}
 }
 
@@ -478,16 +505,13 @@ func newTimerStore(prefix, handler string, partn int, connstr string, bucket str
 		handler: handler,
 		partn:   partn,
 		log:     fmt.Sprintf("timerstore:%v:%v:%v", prefix, handler, partn),
-		sync:    time.NewTicker(time.Duration(Resolution) * time.Second),
-		span:    storeSpan{empty: true},
+		span:    storeSpan{empty: true, dirty: false},
 	}
 
 	err := timerstore.syncSpan()
 	if err != nil {
 		return nil, err
 	}
-
-	go timerstore.syncRoutine()
 
 	logging.Infof("%v Initialized timerdata store", timerstore.log)
 	return &timerstore, nil
@@ -537,10 +561,12 @@ func formatTime(tm int64) string {
 }
 
 func newStores() *storeMap {
-	return &storeMap{
+	smap := &storeMap{
 		entries: make(map[string]*TimerStore),
 		lock:    sync.RWMutex{},
 	}
+	go smap.syncRoutine()
+	return smap
 }
 
 func roundUp(val int64) int64 {
