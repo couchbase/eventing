@@ -180,7 +180,7 @@ retryStreamUpdate:
 
 				c.inflightDcpStreamsRWMutex.RLock()
 				if _, ok := c.inflightDcpStreams[vb]; ok {
-					logging.Infof("%s [%s:takeover_r_%d:%s:%d] vb: %d skipping vbTakeover as dcp request stream already in flight",
+					logging.Tracef("%s [%s:takeover_r_%d:%s:%d] vb: %d skipping vbTakeover as dcp request stream already in flight",
 						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
 					c.inflightDcpStreamsRWMutex.RUnlock()
 					continue
