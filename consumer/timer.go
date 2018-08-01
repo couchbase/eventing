@@ -31,7 +31,7 @@ func (c *Consumer) scanTimersForVB(vb uint16) {
 	// TODO : Remove the sleep once we parallelize the scan
 	time.Sleep(100 * time.Millisecond)
 
-	store, found := timers.Fetch(c.app.AppName, int(vb))
+	store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
 	if !found {
 		logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
@@ -90,8 +90,12 @@ func (c *Consumer) createTimer() {
 }
 
 func (c *Consumer) createTimerImpl(timer *TimerInfo) {
-	store, found := timers.Fetch(c.app.AppName, int(timer.Vb))
+	logPrefix := "Consumer::createTimerImpl"
+
+	store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(timer.Vb))
 	if !found {
+		logging.Errorf("%s [%s:%s:%d] Unable to get store for VB : %v err : %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb)
 		return
 	}
 

@@ -109,8 +109,8 @@ func (p *Producer) Serve() {
 	p.seqsNoProcessedRWMutex.Lock()
 	for i := 0; i < p.numVbuckets; i++ {
 		p.seqsNoProcessed[i] = 0
-		err = timers.Create(p.AddMetadataPrefix(p.app.AppName+"::").Raw(),
-			p.appName, i, connStr, p.metadatabucket)
+		err = timers.Create(p.AddMetadataPrefix(p.app.AppName).Raw(),
+			i, connStr, p.metadatabucket)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout",
 				logPrefix, p.appName, p.LenRunningConsumers())
@@ -442,7 +442,7 @@ func (p *Producer) Stop() {
 	}
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
-		store, found := timers.Fetch(p.app.AppName, vb)
+		store, found := timers.Fetch(p.AddMetadataPrefix(p.app.AppName).Raw(), vb)
 		if !found {
 			continue
 		}

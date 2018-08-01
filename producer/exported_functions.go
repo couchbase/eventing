@@ -587,13 +587,12 @@ func (p *Producer) CleanupMetadataBucket() error {
 
 		defer wg.Done()
 
-		prefix := fmt.Sprintf("%s::", p.appName)
-		keyPrefix := p.AddMetadataPrefix(prefix)
+		prefix := p.AddMetadataPrefix(p.appName)
 		for {
 			select {
 			case e, ok := <-dcpFeed.C:
 				if ok == false {
-					logging.Infof("%s [%s:%d] Exiting cron timer cleanup routine, mutations till high vb seqnos received",
+					logging.Infof("%s [%s:%d] Exiting timer cleanup routine, mutations till high vb seqnos received",
 						logPrefix, p.appName, p.LenRunningConsumers())
 					return
 				}
@@ -605,11 +604,13 @@ func (p *Producer) CleanupMetadataBucket() error {
 				switch e.Opcode {
 				case mcd.DCP_MUTATION:
 					docID := string(e.Key)
-					if strings.HasPrefix(docID, keyPrefix.Raw()) {
-						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
-							p, p.AddMetadataPrefix(prefix+strings.TrimPrefix(docID, keyPrefix.Raw())))
+					if strings.HasPrefix(docID, prefix.Raw()) {
+						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval),
+							&p.retryCount, deleteOpCallback, p,
+							p.AddMetadataPrefix(p.appName+strings.TrimPrefix(docID, prefix.Raw())))
 						if err == common.ErrRetryTimeout {
-							logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+							logging.Errorf("%s [%s:%d] Exiting due to timeout",
+								logPrefix, p.appName, p.LenRunningConsumers())
 							return
 						}
 					}
