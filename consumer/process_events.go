@@ -9,7 +9,6 @@ import (
 	"runtime/debug"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -156,54 +155,7 @@ func (c *Consumer) processEvents() {
 									c.dcpMutationCounter++
 									go c.sendDcpEvent(e, c.sendMsgToDebugger)
 								}
-							} else {
-
-								logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be stored in plasma",
-									logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-
-								// Enabling it until MB-28779 gets resolved
-								for _, timerEntry := range xMeta.Timers {
-
-									data := strings.Split(timerEntry, "::")
-
-									if len(data) == 3 {
-										pEntry := &plasmaStoreEntry{
-											callbackFn: data[2],
-											key:        string(e.Key),
-											timerTs:    data[1],
-											vb:         e.VBucket,
-										}
-
-										c.plasmaStoreCh <- pEntry
-										logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be stored in plasma, timer entry: %v pEntry: %#v",
-											logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), timerEntry, pEntry)
-									}
-								}
 							}
-						} else {
-
-							// Enabling it until MB-28779 gets resolved
-							for _, timerEntry := range xMeta.Timers {
-
-								data := strings.Split(timerEntry, "::")
-
-								if len(data) == 3 {
-									pEntry := &plasmaStoreEntry{
-										callbackFn: data[2],
-										key:        string(e.Key),
-										timerTs:    data[1],
-										vb:         e.VBucket,
-									}
-
-									c.plasmaStoreCh <- pEntry
-									logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be stored in plasma, timer entry: %v pEntry: %#v",
-										logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), timerEntry, pEntry)
-								}
-							}
-
-							logging.Tracef("%s [%s:%s:%d] Skipping recursive mutation for key: %ru vb: %v, xmeta: %ru",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.VBucket, fmt.Sprintf("%#v", xMeta))
-
 						}
 					} else {
 						e.Value = e.Value[4+totalXattrLen:]
@@ -510,27 +462,16 @@ func (c *Consumer) processEvents() {
 			default:
 			}
 
-		case e, ok := <-c.docTimerEntryCh:
+		case e, ok := <-c.fireTimerCh:
 			if ok == false {
-				logging.Infof("%s [%s:%s:%d] Closing doc timer chan", logPrefix, c.workerName, c.tcpPort, c.Pid())
-
+				logging.Infof("%s [%s:%s:%d] Closing fire timer channel",
+					logPrefix, c.workerName, c.tcpPort, c.Pid())
 				c.stopCheckpointingCh <- struct{}{}
 				return
 			}
 
-			c.doctimerMessagesProcessed++
-			c.sendDocTimerEvent(e, c.sendMsgToDebugger)
-
-		case e, ok := <-c.cronTimerEntryCh:
-			if ok == false {
-				logging.Infof("%s [%s:%s:%d] Closing non_doc timer chan", logPrefix, c.workerName, c.tcpPort, c.Pid())
-
-				c.stopCheckpointingCh <- struct{}{}
-				return
-			}
-
-			c.crontimerMessagesProcessed += uint64(e.msgCount)
-			c.sendCronTimerEvent(e, c.sendMsgToDebugger)
+			c.timerMessagesProcessed++
+			c.sendTimerEvent(e, c.sendMsgToDebugger)
 
 		case <-c.statsTicker.C:
 
@@ -543,8 +484,8 @@ func (c *Consumer) processEvents() {
 				diff := tStamp.Sub(c.opsTimestamp)
 
 				dcpOpsDiff := dcpOpCount - c.dcpOpsProcessed
-				timerOpsDiff := (c.doctimerMessagesProcessed + c.crontimerMessagesProcessed) - timerMsgCounter
-				timerMsgCounter = (c.doctimerMessagesProcessed + c.crontimerMessagesProcessed)
+				timerOpsDiff := c.timerMessagesProcessed - timerMsgCounter
+				timerMsgCounter = c.timerMessagesProcessed
 
 				seconds := int(diff.Nanoseconds() / (1000 * 1000 * 1000))
 				if seconds > 0 {
@@ -552,10 +493,9 @@ func (c *Consumer) processEvents() {
 					c.timerMessagesProcessedPSec = int(timerOpsDiff) / seconds
 				}
 
-				logging.Infof("%s [%s:%s:%d] DCP events: %s V8 events: %s Timer events: Doc: %v Cron: %v, vbs owned len: %d vbs owned: %v Plasma stats: Insert: %v Delete: %v Lookup: %v",
+				logging.Infof("%s [%s:%s:%d] DCP events: %s V8 events: %s Timer events: Doc: %v, vbs owned len: %d vbs owned: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
-					c.doctimerMessagesProcessed, c.crontimerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned),
-					c.plasmaInsertCounter, c.plasmaDeleteCounter, c.plasmaLookupCounter)
+					c.timerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned))
 
 				c.statsRWMutex.Lock()
 				estats, eErr := json.Marshal(&c.executionStats)

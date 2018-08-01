@@ -148,44 +148,6 @@ var setOpCallback = func(args ...interface{}) error {
 	return err
 }
 
-var getCronTimerCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::getCronTimerCallback"
-
-	c := args[0].(*Consumer)
-	key := args[1].(common.Key)
-	val := args[2].(*cronTimers)
-	checkEnoEnt := args[3].(bool)
-
-	var isNoEnt *bool
-	if checkEnoEnt {
-		isNoEnt = args[4].(*bool)
-	}
-
-	_, err := c.gocbMetaBucket.Get(key.Raw(), val)
-
-	if checkEnoEnt {
-		if gocb.IsKeyNotFoundError(err) {
-			*isNoEnt = true
-			return nil
-		} else if err == nil {
-			*isNoEnt = false
-			return nil
-		}
-	}
-
-	if err == gocb.ErrShutdown {
-		*isNoEnt = true
-		return nil
-	}
-
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Bucket fetch failed for cron timer key: %ru val: %ru, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), key.Raw(), val, err)
-	}
-
-	return err
-}
-
 var getOpCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::getOpCallback"
 
@@ -999,36 +961,6 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	}
 
 	return nil
-}
-
-var appendCronTimerCleanupCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::appendCronTimerCleanupCallback"
-
-	c := args[0].(*Consumer)
-	docID := args[1].(common.Key)
-	cronTimerDocID := args[2].(string)
-
-	_, err := c.gocbMetaBucket.MutateIn(docID.Raw(), 0, uint32(0)).
-		ArrayAppend("", cronTimerDocID, true).
-		Execute()
-
-	if gocb.IsKeyNotFoundError(err) {
-		var data []interface{}
-		data = append(data, cronTimerDocID)
-		c.gocbMetaBucket.Insert(docID.Raw(), data, 0)
-		return nil
-	}
-
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %ru, subdoc operation failed while appending cron timers to cleanup, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), docID.Raw(), err)
-	}
-
-	return err
 }
 
 var removeDocIDCallback = func(args ...interface{}) error {

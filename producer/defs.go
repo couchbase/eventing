@@ -9,7 +9,6 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/gocb"
-	"github.com/couchbase/plasma"
 )
 
 const (
@@ -39,7 +38,6 @@ type appStatus uint16
 
 const (
 	appUndeployed appStatus = iota
-	appDeployed
 )
 
 type startDebugBlob struct {
@@ -51,7 +49,6 @@ type Producer struct {
 	appName                string
 	app                    *common.AppConfig
 	auth                   string
-	cleanupTimers          bool
 	cfgData                string
 	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
 	isPlannerRunning       bool
@@ -90,6 +87,7 @@ type Producer struct {
 	appLogWriter   io.WriteCloser
 
 	// Plasma configs
+	// TODO : Remove these
 	autoSwapper            bool
 	enableSnapshotSMR      bool
 	iteratorRefreshCounter int
@@ -141,8 +139,7 @@ type Producer struct {
 	vbEventingNodeAssignMap     map[uint16]string // Access controlled by vbEventingNodeAssignRWMutex
 	vbEventingNodeAssignRWMutex *sync.RWMutex
 
-	plasmaMemQuota int64
-	vbPlasmaStore  *plasma.Plasma
+	MemoryQuota int64
 
 	// copy of KV vbmap, needed while opening up dcp feed
 	kvVbMap map[uint16]string

@@ -64,7 +64,7 @@
             <button
               class="outline"
               ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
-              ng-disabled="app.settings.processing_status || app.settings.deployment_status">
+              ng-disabled="app.settings.processing_status || app.settings.deployment_status || app.uiState === 'healthy'">
               Delete
             </button>
             <button

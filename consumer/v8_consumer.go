@@ -17,20 +17,18 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/plasma"
 	"github.com/google/flatbuffers/go"
 )
 
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, rConfig *common.RebalanceConfig,
 	index int, uuid string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
-	dcpConfig map[string]interface{}, p common.EventingProducer, s common.EventingSuperSup, vbPlasmaStore *plasma.Plasma,
-	iteratorRefreshCounter, numVbuckets int, retryCount *int64, vbEventingNodeAssignMap map[uint16]string,
+	dcpConfig map[string]interface{}, p common.EventingProducer, s common.EventingSuperSup,
+	numVbuckets int, retryCount *int64, vbEventingNodeAssignMap map[uint16]string,
 	workerVbucketMap map[string][]uint16) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
-		addCronTimerStopCh:              make(chan struct{}, 1),
 		app:                             app,
 		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpConfig["dataChanSize"].(int)),
 		aggDCPFeedMemCap:                hConfig.AggDCPFeedMemCap,
@@ -40,8 +38,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		cbBucketRWMutex:                 &sync.RWMutex{},
 		checkpointInterval:              time.Duration(hConfig.CheckpointInterval) * time.Millisecond,
 		idleCheckpointInterval:          time.Duration(hConfig.IdleCheckpointInterval) * time.Millisecond,
-		cleanupCronTimerCh:              make(chan *cronTimerToCleanup, dcpConfig["genChanSize"].(int)),
-		cleanupCronTimerStopCh:          make(chan struct{}, 1),
 		cleanupTimers:                   hConfig.CleanupTimers,
 		clusterStateChangeNotifCh:       make(chan struct{}, ClusterChangeNotifChBufSize),
 		connMutex:                       &sync.RWMutex{},
@@ -49,17 +45,14 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		cppThrPartitionMap:              make(map[int][]uint16),
 		cppWorkerThrCount:               hConfig.CPPWorkerThrCount,
 		crcTable:                        crc32.MakeTable(crc32.Castagnoli),
-		cronTimerEntryCh:                make(chan *timerMsg, dcpConfig["genChanSize"].(int)),
 		cronTimersPerDoc:                hConfig.CronTimersPerDoc,
-		cronTimerStopCh:                 make(chan struct{}, 1),
 		curlTimeout:                     hConfig.CurlTimeout,
 		dcpConfig:                       dcpConfig,
 		dcpFeedVbMap:                    make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:               hConfig.StreamBoundary,
 		debuggerStarted:                 false,
 		diagDir:                         pConfig.DiagDir,
-		docTimerEntryCh:                 make(chan *byTimer, dcpConfig["genChanSize"].(int)),
-		docTimerProcessingStopCh:        make(chan struct{}, 1),
+		fireTimerCh:                     make(chan *timerContext, dcpConfig["genChanSize"].(int)),
 		enableRecursiveMutation:         hConfig.EnableRecursiveMutation,
 		eventingAdminPort:               pConfig.EventingPort,
 		eventingSSLPort:                 pConfig.EventingSSLPort,
@@ -72,7 +65,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		feedbackWriteBatchSize:          hConfig.FeedbackBatchSize,
 		filterVbEvents:                  make(map[uint16]struct{}),
 		filterVbEventsRWMutex:           &sync.RWMutex{},
-		fuzzOffset:                      hConfig.FuzzOffset,
 		gracefulShutdownChan:            make(chan struct{}, 1),
 		handlerFooters:                  hConfig.HandlerFooters,
 		handlerHeaders:                  hConfig.HandlerHeaders,
@@ -80,7 +72,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		ipcType:                         pConfig.IPCType,
 		inflightDcpStreams:              make(map[uint16]struct{}),
 		inflightDcpStreamsRWMutex:       &sync.RWMutex{},
-		iteratorRefreshCounter:          iteratorRefreshCounter,
 		hostDcpFeedRWMutex:              &sync.RWMutex{},
 		kvHostDcpFeedMap:                make(map[string]*couchbase.DcpFeed),
 		kvNodesRWMutex:                  &sync.RWMutex{},
@@ -89,8 +80,9 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		msgProcessedRWMutex:             &sync.RWMutex{},
 		numVbuckets:                     numVbuckets,
 		opsTimestamp:                    time.Now(),
-		plasmaStoreCh:                   make(chan *plasmaStoreEntry, dcpConfig["genChanSize"].(int)),
-		plasmaStoreStopCh:               make(chan struct{}, 1),
+		createTimerCh:                   make(chan *TimerInfo, dcpConfig["genChanSize"].(int)),
+		createTimerStopCh:               make(chan struct{}, 1),
+		scanTimerStopCh:                 make(chan struct{}, 1),
 		producer:                        p,
 		reqStreamCh:                     make(chan *streamRequestInfo, numVbuckets*10),
 		restartVbDcpStreamTicker:        time.NewTicker(restartVbDcpStreamTickInterval),
@@ -108,7 +100,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		signalStopDebuggerCh:            make(chan struct{}, 1),
 		signalStopDebuggerRoutineCh:     make(chan struct{}, 1),
 		signalUpdateDebuggerInstBlobCh:  make(chan struct{}, 1),
-		skipTimerThreshold:              hConfig.SkipTimerThreshold,
 		socketTimeout:                   time.Duration(hConfig.SocketTimeout) * time.Second,
 		socketWriteBatchSize:            hConfig.SocketWriteBatchSize,
 		socketWriteLoopStopAckCh:        make(chan struct{}, 1),
@@ -123,8 +114,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		stopReqStreamProcessCh:          make(chan struct{}, 1),
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
-		timerCleanupStopCh:              make(chan struct{}, 1),
-		timerProcessingTickInterval:     time.Duration(hConfig.TimerProcessingTickInterval) * time.Millisecond,
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		uuid:                            uuid,
 		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),
@@ -133,13 +122,11 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbFlogChan:                      make(chan *vbFlogEntry, 1024),
 		vbnos:                           vbnos,
 		updateStatsStopCh:               make(chan struct{}, 1),
-		usingDocTimer:                   hConfig.UsingDocTimer,
 		vbDcpEventsRemaining:            make(map[int]int64),
 		vbEventingNodeAssignMap:         vbEventingNodeAssignMap,
 		vbEventingNodeAssignRWMutex:     &sync.RWMutex{},
 		vbOwnershipGiveUpRoutineCount:   rConfig.VBOwnershipGiveUpRoutineCount,
 		vbOwnershipTakeoverRoutineCount: rConfig.VBOwnershipTakeoverRoutineCount,
-		vbPlasmaStore:                   vbPlasmaStore,
 		vbsRemainingToClose:             make([]uint16, 0),
 		vbsRemainingToGiveUp:            make([]uint16, 0),
 		vbsRemainingToOwn:               make([]uint16, 0),
@@ -178,13 +165,6 @@ func (c *Consumer) Serve() {
 	}()
 
 	c.isBootstrapping = true
-
-	c.cronCurrTimer = time.Now().Add(-time.Second * 10).UTC().Format(time.RFC3339)
-	c.cronNextTimer = time.Now().Add(-time.Second * 10).UTC().Format(time.RFC3339)
-
-	c.docCurrTimer = time.Now().UTC().Format(time.RFC3339)
-	c.docNextTimer = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
-
 	c.statsTicker = time.NewTicker(c.statsTickDuration)
 	c.backupVbStats = newVbBackupStats(uint16(c.numVbuckets))
 
@@ -238,8 +218,8 @@ func (c *Consumer) Serve() {
 	go c.processReqStreamMessages()
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
-	logging.Infof("%s [%s:%s:%d] using doc_timer: %t vbnos len: %d dump: %s",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.usingDocTimer, len(c.vbnos), util.Condense(c.vbnos))
+	logging.Infof("%s [%s:%s:%d] vbnos len: %d dump: %s",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos), util.Condense(c.vbnos))
 
 	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 	if err == common.ErrRetryTimeout {
@@ -300,8 +280,8 @@ func (c *Consumer) Serve() {
 	}
 	c.isBootstrapping = false
 
-	logging.Infof("%s [%s:%s:%d] vbsStateUpdateRunning: %t docCurrTimer: %s docNextTimer: %v cronCurrTimer: %v cronNextTimer: %v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning, c.docCurrTimer, c.docNextTimer, c.cronCurrTimer, c.cronNextTimer)
+	logging.Infof("%s [%s:%s:%d] vbsStateUpdateRunning: %t",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning)
 
 	if !c.vbsStateUpdateRunning && !c.isTerminateRunning {
 		logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine",
@@ -310,7 +290,7 @@ func (c *Consumer) Serve() {
 	}
 
 	// Disabling cron/doc timer processing/cleanup routines
-	// go c.processDocTimerEvents()
+	go c.scanTimers()
 	// go c.cleanupProcessedDocTimers()
 	// go c.processCronTimerEvents()
 	// go c.addCronTimersToCleanup()
@@ -358,9 +338,9 @@ func (c *Consumer) HandleV8Worker() error {
 		}
 	}
 
-	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
-		c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
-		c.cronTimersPerDoc, c.executionTimeout, c.fuzzOffset, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
+	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
+		c.eventingSSLPort, c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
+		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)
 
 	logging.Infof("%s [%s:%s:%d] V8 worker init enable_recursive_mutation flag: %t",
@@ -375,7 +355,7 @@ func (c *Consumer) HandleV8Worker() error {
 
 	c.workerExited = false
 
-	go c.storeDocTimerEventLoop()
+	go c.createTimer()
 
 	go c.processEvents()
 	return nil
@@ -397,10 +377,6 @@ func (c *Consumer) Stop() {
 
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
-
-	if c.docTimerProcessingStopCh != nil {
-		c.docTimerProcessingStopCh <- struct{}{}
-	}
 
 	if c.gocbBucket != nil {
 		c.gocbBucket.Close()
@@ -435,14 +411,6 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Stopped checkpoint, restart vb dcp stream and stats tickers",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	if c.addCronTimerStopCh != nil {
-		c.addCronTimerStopCh <- struct{}{}
-	}
-
-	if c.cleanupCronTimerStopCh != nil {
-		c.cleanupCronTimerStopCh <- struct{}{}
-	}
-
 	if c.socketWriteLoopStopCh != nil {
 		c.socketWriteLoopStopCh <- struct{}{}
 	}
@@ -457,10 +425,6 @@ func (c *Consumer) Stop() {
 
 	if c.stopReqStreamProcessCh != nil {
 		c.stopReqStreamProcessCh <- struct{}{}
-	}
-
-	if c.timerCleanupStopCh != nil {
-		c.timerCleanupStopCh <- struct{}{}
 	}
 
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop cron, doc routines",
@@ -482,16 +446,16 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Sent signal to stop cpp worker stat collection routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	if c.plasmaStoreStopCh != nil {
-		c.plasmaStoreStopCh <- struct{}{}
+	if c.createTimerStopCh != nil {
+		c.createTimerStopCh <- struct{}{}
+	}
+
+	if c.scanTimerStopCh != nil {
+		c.scanTimerStopCh <- struct{}{}
 	}
 
 	if c.stopCheckpointingCh != nil {
 		c.stopCheckpointingCh <- struct{}{}
-	}
-
-	if c.cronTimerStopCh != nil {
-		c.cronTimerStopCh <- struct{}{}
 	}
 
 	if c.stopControlRoutineCh != nil {
@@ -549,6 +513,7 @@ func (c *Consumer) Stop() {
 
 	logging.Infof("%s [%s:%s:%d] Exiting Consumer::Stop routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
+
 }
 
 func (c *Consumer) String() string {

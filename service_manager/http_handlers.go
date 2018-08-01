@@ -2015,12 +2015,6 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 				}
 
 				stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
-
-				plasmaStats, err := m.superSup.GetPlasmaStats(app.Name)
-				if err == nil {
-					stats.PlasmaStats = plasmaStats
-				}
-
 				stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
 				stats.VbDcpEventsRemaining = m.superSup.VbDcpEventsRemainingToProcess(app.Name)
 				debugStats, err := m.superSup.TimerDebugStats(app.Name)

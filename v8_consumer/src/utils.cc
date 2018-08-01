@@ -153,14 +153,6 @@ const char *ToCString(const v8::String::Utf8Value &value) {
   return *value ? *value : "<std::string conversion failed>";
 }
 
-bool ToCBool(const v8::Local<v8::Boolean> &value) {
-  if (value.IsEmpty()) {
-    LOG(logError) << "Failed to convert to bool" << std::endl;
-  }
-
-  return value->Value();
-}
-
 std::string ConvertToISO8601(std::string timestamp) {
   std::lock_guard<std::mutex> lock(convert_to_iso8601_mutex);
 
@@ -184,50 +176,6 @@ std::string ConvertToISO8601(std::string timestamp) {
     buf_s.assign(buf);
   }
   return buf_s;
-}
-
-bool isFuncReference(const v8::FunctionCallbackInfo<v8::Value> &args, int i) {
-  v8::Isolate *isolate = args.GetIsolate();
-  v8::HandleScope handle_scope(isolate);
-  auto js_exception = UnwrapData(isolate)->js_exception;
-
-  if (args[i]->IsFunction()) {
-    auto func_ref = args[i].As<v8::Function>();
-    v8::String::Utf8Value func_name(func_ref->GetName());
-
-    if (func_name.length()) {
-      auto context = isolate->GetCurrentContext();
-      auto global = context->Global();
-
-      v8::Local<v8::Value> timer_func_ref_val;
-      if (!TO_LOCAL(global->Get(context, func_ref->GetName()),
-                    &timer_func_ref_val)) {
-        // TODO : Throw an exception here
-        return false;
-      }
-
-      auto timer_func_ref = timer_func_ref_val.As<v8::Function>();
-      if (timer_func_ref->IsUndefined()) {
-        auto exception_msg =
-            std::string(*func_name) + " is not defined in global scope";
-        js_exception->Throw(exception_msg);
-        LOG(logError) << exception_msg << std::endl;
-        return false;
-      }
-    } else {
-      auto exception_msg = "Invalid arg: Anonymous function is not allowed";
-      js_exception->Throw(exception_msg);
-      LOG(logError) << exception_msg << std::endl;
-      return false;
-    }
-  } else {
-    auto exception_msg = "Invalid arg: Function reference expected";
-    js_exception->Throw(exception_msg);
-    LOG(logError) << exception_msg << std::endl;
-    return false;
-  }
-
-  return true;
 }
 
 // Exception details will be appended to the first argument.
@@ -373,4 +321,95 @@ bool IsExecutionTerminating(v8::Isolate *isolate) {
   return isolate->IsExecutionTerminating();
 }
 
-std::string REventingVer() { return R"(")" + EventingVer() + R"(")"; }
+Utils::Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context)
+    : isolate_(isolate) {
+  context_.Reset(isolate_, context);
+  global_.Reset(isolate_, context->Global());
+}
+
+Utils::~Utils() {
+  context_.Reset();
+  global_.Reset();
+}
+
+v8::Local<v8::Value>
+Utils::GetMethodFromGlobal(const std::string &method_name) {
+  v8::EscapableHandleScope handle_scope(isolate_);
+
+  auto context = context_.Get(isolate_);
+  auto global = global_.Get(isolate_);
+
+  auto method_name_v8str = v8Str(isolate_, method_name.c_str());
+  v8::Local<v8::Value> method;
+  if (!TO_LOCAL(global->Get(context, method_name_v8str), &method)) {
+    return handle_scope.Escape(method);
+  }
+
+  return handle_scope.Escape(method);
+}
+
+v8::Local<v8::Value>
+Utils::GetMethodFromObject(const v8::Local<v8::Value> &obj_v8val,
+                           const std::string &method_name) {
+  v8::EscapableHandleScope handle_scope(isolate_);
+
+  auto context = context_.Get(isolate_);
+  v8::Local<v8::Value> method;
+
+  v8::Local<v8::Object> obj_local;
+  if (!TO_LOCAL(obj_v8val->ToObject(context), &obj_local)) {
+    return handle_scope.Escape(method);
+  }
+
+  auto method_name_v8str = v8Str(isolate_, method_name.c_str());
+  if (!TO_LOCAL(obj_local->Get(context, method_name_v8str), &method)) {
+    return handle_scope.Escape(method);
+  }
+
+  return handle_scope.Escape(method);
+}
+
+std::string Utils::GetFunctionName(const v8::Local<v8::Value> &func_val) {
+  v8::HandleScope handle_scope(isolate_);
+
+  auto func = func_val.As<v8::Function>();
+  return ToCPPString(func->GetName());
+}
+
+std::string Utils::ToCPPString(const v8::Local<v8::Value> &str_val) {
+  v8::HandleScope handle_scope(isolate_);
+
+  v8::String::Utf8Value utf8(str_val);
+  std::string str = *utf8;
+  return str;
+}
+
+bool Utils::IsFuncGlobal(const v8::Local<v8::Value> &func) {
+  v8::HandleScope handle_scope(isolate_);
+
+  auto js_exception = UnwrapData(isolate_)->js_exception;
+  if (!func->IsFunction()) {
+    auto message = "Invalid arg: Function reference expected";
+    js_exception->Throw(message);
+    return false;
+  }
+
+  auto func_ref = func.As<v8::Function>();
+  auto func_name = ToCPPString(func_ref->GetName());
+
+  if (func_name.empty()) {
+    auto message = "Invalid arg: Anonymous function is not allowed";
+    js_exception->Throw(message);
+    return false;
+  }
+
+  auto global_func_val = GetMethodFromGlobal(func_name);
+  auto global_func = global_func_val.As<v8::Function>();
+  if (global_func->IsUndefined()) {
+    auto message = func_name + " is not accessible from global scope";
+    js_exception->Throw(message);
+    return false;
+  }
+
+  return true;
+}

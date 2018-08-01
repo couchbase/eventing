@@ -1,0 +1,30 @@
+{
+	"appcode": "function OnUpdate(doc, meta) {\n    let fireAt = new Date();\n    fireAt.setSeconds(fireAt.getSeconds() + 20);\n    \n    let context = {docID : meta.id};\n    createTimer(Callback, fireAt, meta.id, context);\n}\n\nfunction OnDelete(meta) {\n}\n\nfunction Callback(context) {\n    destination[context.docID] = 'From callback';\n}",
+	"depcfg": {
+		"buckets": [{
+			"alias": "destination",
+			"bucket_name": "destination"
+		}],
+		"metadata_bucket": "metadata",
+		"source_bucket": "source"
+	},
+	"version": "evt-5.5.0-0000-ee",
+	"handleruuid": 2485394821,
+	"id": 0,
+	"appname": "timers-new-api",
+	"settings": {
+		"cleanup_timers": false,
+		"dcp_stream_boundary": "everything",
+		"deadline_timeout": 62,
+		"deployment_status": true,
+		"description": "",
+		"execution_timeout": 60,
+		"log_level": "INFO",
+		"processing_status": true,
+		"user_prefix": "eventing",
+		"using_doc_timer": false,
+		"worker_count": 3
+	},
+	"using_doc_timer": false
+}
+

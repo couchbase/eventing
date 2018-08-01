@@ -54,7 +54,6 @@ type EventingProducer interface {
 	GetLcbExceptionsStats() map[string]uint64
 	GetNsServerPort() string
 	GetVbOwner(vb uint16) (string, string, error)
-	GetPlasmaStats() (map[string]interface{}, error)
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
 	InternalVbDistributionStats() map[string]string
@@ -73,7 +72,6 @@ type EventingProducer interface {
 	NsServerNodeCount() int
 	PauseProducer()
 	PlannerStats() []*PlannerNodeVbMapping
-	PurgePlasmaRecords()
 	RebalanceStatus() bool
 	RebalanceTaskProgress() *RebalanceProgress
 	RemoveConsumerToken(workerName string)
@@ -88,7 +86,7 @@ type EventingProducer interface {
 	StopRunningConsumers()
 	String() string
 	TimerDebugStats() map[int]map[string]interface{}
-	UpdatePlasmaMemoryQuota(quota int64)
+	UpdateMemoryQuota(quota int64)
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbDistributionStatsFromMetadata() map[string]map[string]string
 	VbSeqnoStats() map[int][]map[string]interface{}
@@ -118,7 +116,6 @@ type EventingConsumer interface {
 	NotifyRebalanceStop()
 	NotifySettingsChange()
 	Pid() int
-	PurgePlasmaRecords(vb uint16) error
 	RebalanceStatus() bool
 	RebalanceTaskProgress() *RebalanceProgress
 	Serve()
@@ -159,7 +156,6 @@ type EventingSuperSup interface {
 	GetLatencyStats(appName string) map[string]uint64
 	GetLcbExceptionsStats(appName string) map[string]uint64
 	GetLocallyDeployedApps() map[string]string
-	GetPlasmaStats(appName string) (map[string]interface{}, error)
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
 	InternalVbDistributionStats(appName string) map[string]string
@@ -264,12 +260,10 @@ type HandlerConfig struct {
 	FeedbackBatchSize           int
 	FeedbackQueueCap            int64
 	FeedbackReadBufferSize      int
-	FuzzOffset                  int
 	HandlerHeaders              []string
 	HandlerFooters              []string
 	LcbInstCapacity             int
 	LogLevel                    string
-	SkipTimerThreshold          int
 	SocketWriteBatchSize        int
 	SocketTimeout               int
 	SourceBucket                string
@@ -300,7 +294,7 @@ type RebalanceConfig struct {
 }
 
 type Key struct {
-	metadataPrefix string
+	prefix         string
 	key            string
 	transformedKey string
 }

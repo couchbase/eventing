@@ -9,7 +9,6 @@ import (
 	"github.com/couchbase/eventing/gen/flatbuf/payload"
 	"github.com/couchbase/eventing/gen/flatbuf/response"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
 )
 
@@ -30,8 +29,7 @@ const (
 
 const (
 	timerOpcode int8 = iota
-	docTimer
-	cronTimer
+	timer
 )
 
 const (
@@ -97,12 +95,8 @@ type message struct {
 	Payload []byte
 }
 
-func (c *Consumer) makeDocTimerEventHeader(partition int16) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(timerEvent, docTimer, partition, "")
-}
-
-func (c *Consumer) makeCronTimerEventHeader(partition int16) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(timerEvent, cronTimer, partition, "")
+func (c *Consumer) makeTimerEventHeader(partition int16) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(timerEvent, timer, partition, "")
 }
 
 func (c *Consumer) makeDcpMutationHeader(partition int16, mutationMeta string) ([]byte, *flatbuffers.Builder) {
@@ -231,38 +225,16 @@ func (c *Consumer) makeThrMapPayload(thrMap map[int][]uint16, partitionCount int
 	return
 }
 
-func (c *Consumer) makeDocTimerPayload(e *byTimer) (encodedPayload []byte, builder *flatbuffers.Builder) {
+func (c *Consumer) makeTimerPayload(e *timerContext) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
-	callbackFnPos := builder.CreateString(e.entry.CallbackFn)
-	docIDPos := builder.CreateString(e.entry.DocID)
-	docIDTsPos := builder.CreateString(e.meta.timestamp)
+	callbackFnPos := builder.CreateString(e.Callback)
+	contextPos := builder.CreateString(e.Context)
 
 	payload.PayloadStart(builder)
 
 	payload.PayloadAddCallbackFn(builder, callbackFnPos)
-	payload.PayloadAddDocId(builder, docIDPos)
-	payload.PayloadAddTimerTs(builder, docIDTsPos)
-	payload.PayloadAddTimerPartition(builder, e.meta.partition)
-
-	payloadPos := payload.PayloadEnd(builder)
-	builder.Finish(payloadPos)
-
-	encodedPayload = builder.FinishedBytes()
-	return
-}
-
-func (c *Consumer) makeCronTimerPayload(e *timerMsg) (encodedPayload []byte, builder *flatbuffers.Builder) {
-	builder = c.getBuilder()
-
-	pPos := builder.CreateString(e.payload)
-	tPos := builder.CreateString(e.timestamp)
-
-	payload.PayloadStart(builder)
-
-	payload.PayloadAddDocIdsCallbackFns(builder, pPos)
-	payload.PayloadAddTimerTs(builder, tPos)
-	payload.PayloadAddTimerPartition(builder, e.partition)
+	payload.PayloadAddContext(builder, contextPos)
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
@@ -290,7 +262,7 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 }
 
 func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, eventingSSLPort, kvHostPort, depCfg string,
-	capacity, cronTimerPerDoc, executionTimeout, fuzzOffset, checkpointInterval int, enableRecursiveMutation, skipLcbBootstrap bool,
+	capacity, executionTimeout, checkpointInterval int, enableRecursiveMutation, skipLcbBootstrap bool,
 	curlTimeout int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
@@ -320,9 +292,7 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 	payload.PayloadAddDepcfg(builder, dcfg)
 	payload.PayloadAddKvHostPort(builder, khp)
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
-	payload.PayloadAddCronTimersPerDoc(builder, int32(cronTimerPerDoc))
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))
-	payload.PayloadAddFuzzOffset(builder, int32(fuzzOffset))
 	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))
 	payload.PayloadAddCurlTimeout(builder, curlTimeout)
 	payload.PayloadAddEnableRecursiveMutation(builder, rec[0])
@@ -424,36 +394,25 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			}
 		}
 	case docTimerResponse:
-		data := strings.Split(msg, "::")
-		if len(data) == 5 {
-			timerTs, callbackFn, docID, seqStr := data[0], data[1], data[2], data[4]
-
-			seqNo, err := strconv.ParseUint(seqStr, 10, 64)
-			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] Failed to convert seqNo %v to uint64, timerEntry: %v err: %v",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), seqStr, msg, err)
-				return
-			}
-
-			pEntry := &plasmaStoreEntry{
-				callbackFn: callbackFn,
-				key:        docID,
-				timerTs:    timerTs,
-				vb:         util.VbucketByKey([]byte(docID), c.numVbuckets),
-			}
-			prevSeqNo := c.vbProcessingStats.getVbStat(pEntry.vb, "last_doc_timer_feedback_seqno").(uint64)
-			if seqNo > prevSeqNo {
-				c.vbProcessingStats.updateVbStat(pEntry.vb, "last_doc_timer_feedback_seqno", seqNo)
-				logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_doc_timer_feedback_seqno to seqNo: %v",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), pEntry.vb, seqNo)
-			}
-			c.doctimerResponsesRecieved++
-			c.plasmaStoreCh <- pEntry
-		} else {
-			logging.Errorf("%s [%s:%s:%d] Invalid doc timer message received: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
-			c.errorParsingDocTimerResponses++
+		var info TimerInfo
+		err := json.Unmarshal([]byte(msg), &info)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal timer info, err : %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+			c.errorParsingTimerResponses++
+			return
 		}
+
+		prevSeqNum := c.vbProcessingStats.getVbStat(uint16(info.Vb), "last_doc_timer_feedback_seqno").(uint64)
+		if info.SeqNum > prevSeqNum {
+			c.vbProcessingStats.updateVbStat(uint16(info.Vb), "last_doc_timer_feedback_seqno", info.SeqNum)
+			logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_doc_timer_feedback_seqno to seqNo: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), info.Vb, info.SeqNum)
+		}
+
+		c.timerResponsesRecieved++
+		c.createTimerCh <- &info
+
 	case bucketOpsResponse:
 		data := strings.Split(msg, "::")
 		if len(data) != 2 {

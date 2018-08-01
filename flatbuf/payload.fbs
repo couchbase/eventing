@@ -10,13 +10,11 @@ table Payload {
   // Handler config
   app_name:string;
   checkpoint_interval:int; // Controls how frequently checkpoint will be updated in metadata bucket
-  cron_timers_per_doc:int; // Cron timers to store per KV doc
   curl_timeout:long;
   depcfg:string;
   enable_recursive_mutation:bool;
   enable_v8_debugger:bool;
   execution_timeout:int; // Execution timeout for handler code execution
-  fuzz_offset:int; // Needed for cron timers.
   lcb_inst_capacity:int; // Nested iterator related fields
   skip_lcb_bootstrap:bool; // Control bootstrap of lcb handles.
                            // In some case we need to skip lcb connects i.e. while checking for
@@ -37,10 +35,7 @@ table Payload {
 
   // Timer event related fields
   callback_fn:string; // timer event callback function
-  doc_id:string; // timer event doc_id
-  doc_ids_callback_fns:string; // non doc-id based timer event doc_id-callback_fn pairs
-  timer_partition:int; // vbucket timer event is mapped
-  timer_ts:string; // timestamp for timer event
+  context:string; // context for timer
 
   // CPP worker config
   partitionCount:short; // Virtual partitions for sharding workload among c++ workers

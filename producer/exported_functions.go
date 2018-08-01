@@ -1,7 +1,6 @@
 package producer
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -17,7 +16,6 @@ import (
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/plasma"
 )
 
 // Auth returns username:password combination for the cluster
@@ -326,13 +324,6 @@ func (p *Producer) StopProducer() {
 
 	logging.Infof("%s [%s:%d] Stopped supervisor tree",
 		logPrefix, p.appName, p.LenRunningConsumers())
-
-	if p.vbPlasmaStore != nil {
-		p.vbPlasmaStore.Close()
-	}
-
-	logging.Infof("%s [%s:%d] Closed plasma store handle",
-		logPrefix, p.appName, p.LenRunningConsumers())
 }
 
 // GetDcpEventsRemainingToProcess returns remaining dcp events to process
@@ -377,42 +368,10 @@ func (p *Producer) GetEventingConsumerPids() map[string]int {
 	return workerPidMapping
 }
 
-// PurgePlasmaRecords cleans up the plasma data store housing doc id timer related data
-// Given plasma records are for a specific app, we could simply purge the store from disk
-func (p *Producer) PurgePlasmaRecords() {
-	logPrefix := "Producer::PurgePlasmaRecords"
-
-	vbPlasmaDir := fmt.Sprintf("%v/%v_timer.data", p.processConfig.EventingDir, p.app.AppName)
-
-	p.vbPlasmaStore.Close()
-	err := os.RemoveAll(vbPlasmaDir)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Got err: %v while trying to purge timer records",
-			logPrefix, p.appName, p.LenRunningConsumers(), err)
-	}
-}
-
 // WriteAppLog dumps the application specific log message to configured file
 func (p *Producer) WriteAppLog(log string) {
 	ts := time.Now().Format("2006-01-02T15:04:05.000-07:00")
 	fmt.Fprintf(p.appLogWriter, "%s [INFO] %s\n", ts, log)
-}
-
-// GetPlasmaStats returns internal stats from plasma
-func (p *Producer) GetPlasmaStats() (map[string]interface{}, error) {
-	if p.vbPlasmaStore == nil {
-		return nil, fmt.Errorf("Plasma store not initialized")
-	}
-
-	stats := p.vbPlasmaStore.GetStats()
-
-	var res map[string]interface{}
-	err := json.Unmarshal([]byte(stats.String()), &res)
-	if err != nil {
-		return nil, err
-	}
-
-	return res, nil
 }
 
 // InternalVbDistributionStats returns internal state of vbucket ownership distribution on local eventing node
@@ -646,10 +605,9 @@ func (p *Producer) CleanupMetadataBucket() error {
 				switch e.Opcode {
 				case mcd.DCP_MUTATION:
 					docID := string(e.Key)
-
 					if strings.HasPrefix(docID, keyPrefix.Raw()) {
 						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
-							p, p.AddMetadataPrefix(docID))
+							p, p.AddMetadataPrefix(prefix+strings.TrimPrefix(docID, keyPrefix.Raw())))
 						if err == common.ErrRetryTimeout {
 							logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 							return
@@ -741,14 +699,13 @@ func (p *Producer) CleanupMetadataBucket() error {
 }
 
 // UpdatePlasmaMemoryQuota allows tuning of memory quota for timers
-func (p *Producer) UpdatePlasmaMemoryQuota(quota int64) {
+func (p *Producer) UpdateMemoryQuota(quota int64) {
 	logPrefix := "Producer::UpdatePlasmaMemoryQuota"
 
 	logging.Infof("%s [%s:%d] Updating plasma memory quota to %d MB",
 		logPrefix, p.appName, p.LenRunningConsumers(), quota)
 
-	p.plasmaMemQuota = quota // in MB
-	plasma.SetMemoryQuota(p.plasmaMemQuota * 1024 * 1024)
+	p.MemoryQuota = quota // in MB
 }
 
 // TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance

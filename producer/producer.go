@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -42,7 +43,7 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 		numVbuckets:                numVbuckets,
 		pauseProducerCh:            make(chan struct{}, 1),
 		plannerNodeMappingsRWMutex: &sync.RWMutex{},
-		plasmaMemQuota:             memoryQuota,
+		MemoryQuota:                memoryQuota,
 		pollBucketStopCh:           make(chan struct{}, 1),
 		retryCount:                 -1,
 		seqsNoProcessed:            make(map[int]int64),
@@ -100,11 +101,26 @@ func (p *Producer) Serve() {
 	p.statsTicker = time.NewTicker(time.Duration(p.handlerConfig.StatsLogInterval) * 12 * time.Millisecond)
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
-	logging.Infof("%s [%s:%d] number of vbuckets for %s: %d", logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)
+	logging.Infof("%s [%s:%d] number of vbuckets for %s: %d",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)
+
+	connStr := fmt.Sprintf("couchbase://%s", p.KvHostPorts()[0])
 
 	p.seqsNoProcessedRWMutex.Lock()
 	for i := 0; i < p.numVbuckets; i++ {
 		p.seqsNoProcessed[i] = 0
+		err = timers.Create(p.AddMetadataPrefix(p.app.AppName+"::").Raw(),
+			p.appName, i, connStr, p.metadatabucket)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%d] Exiting due to timeout",
+				logPrefix, p.appName, p.LenRunningConsumers())
+			return
+		}
+		if err != nil {
+			logging.Errorf("%s [%s:%d] vb: %d unable to create metastore, err: %v",
+				logPrefix, p.appName, p.LenRunningConsumers(), i, err)
+			continue
+		}
 	}
 	p.seqsNoProcessedRWMutex.Unlock()
 
@@ -112,7 +128,8 @@ func (p *Producer) Serve() {
 
 	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles)
 	if err != nil {
-		logging.Fatalf("%s [%s:%d] Failure to open application log writer handle, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		logging.Fatalf("%s [%s:%d] Failure to open application log writer handle, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
 	}
 
@@ -135,12 +152,6 @@ func (p *Producer) Serve() {
 
 	if err != nil {
 		logging.Fatalf("%s [%s:%d] Failure while assigning vbuckets to workers, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
-		return
-	}
-
-	err = p.openPlasmaStore()
-	if err != nil {
-		logging.Fatalf("%s [%s:%d] Failure opening up plasma instance, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
 	}
 
@@ -203,8 +214,6 @@ func (p *Producer) Serve() {
 	}
 
 	p.startBucket()
-
-	go p.persistPlasma()
 
 	p.bootstrapFinishCh <- struct{}{}
 
@@ -432,6 +441,15 @@ func (p *Producer) Stop() {
 		p.pollBucketStopCh <- struct{}{}
 	}
 
+	for vb := 0; vb < p.numVbuckets; vb++ {
+		store, found := timers.Fetch(p.app.AppName, vb)
+		if !found {
+			continue
+		}
+
+		store.Free()
+	}
+
 	logging.Infof("%s [%s:%d] Exiting from Producer::Stop routine",
 		logPrefix, p.appName, p.LenRunningConsumers())
 }
@@ -546,7 +564,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	}()
 
 	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid,
-		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.vbPlasmaStore, p.iteratorRefreshCounter, p.numVbuckets,
+		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.numVbuckets,
 		&p.retryCount, vbEventingNodeAssignMap, workerVbucketMap)
 
 	p.listenerRWMutex.Lock()

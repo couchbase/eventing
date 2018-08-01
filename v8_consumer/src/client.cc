@@ -12,7 +12,7 @@
 #include "client.h"
 #include "breakpad.h"
 
-uint64_t doc_timer_responses_sent(0);
+uint64_t timer_responses_sent(0);
 uint64_t messages_parsed(0);
 
 std::atomic<int64_t> e_app_worker_setting_lost = {0};
@@ -23,7 +23,7 @@ std::atomic<int64_t> e_v8_worker_lost = {0};
 
 std::atomic<int64_t> cron_timer_events_lost = {0};
 std::atomic<int64_t> delete_events_lost = {0};
-std::atomic<int64_t> doc_timer_events_lost = {0};
+std::atomic<int64_t> timer_events_lost = {0};
 std::atomic<int64_t> mutation_events_lost = {0};
 
 std::atomic<int64_t> uv_try_write_failure_counter = {0};
@@ -327,9 +327,9 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
                       agg_queue_memory = 0;
               for (const auto &w : workers_) {
                 agg_queue_size += w.second->worker_queue_->Count();
-                feedback_queue_size += w.second->doc_timer_queue_->Count();
+                feedback_queue_size += w.second->timer_queue_->Count();
                 agg_queue_memory += w.second->worker_queue_->Size() +
-                                    w.second->doc_timer_queue_->Size();
+                                    w.second->timer_queue_->Size();
               }
 
               std::ostringstream queue_stats;
@@ -426,11 +426,9 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       server_settings = new server_settings_t;
 
       handler_config->app_name.assign(payload->app_name()->str());
-      handler_config->cron_timers_per_doc = payload->cron_timers_per_doc();
       handler_config->curl_timeout = long(payload->curl_timeout());
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();
-      handler_config->fuzz_offset = payload->fuzz_offset();
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
       handler_config->enable_recursive_mutation =
           payload->enable_recursive_mutation();
@@ -549,9 +547,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       fstats << R"("debugger_events_lost": )" << e_debugger_lost << ",";
       fstats << R"("mutation_events_lost": )" << mutation_events_lost << ",";
       fstats << R"("delete_events_lost": )" << delete_events_lost << ",";
-      fstats << R"("cron_timer_events_lost": )" << cron_timer_events_lost
-             << ",";
-      fstats << R"("doc_timer_events_lost": )" << doc_timer_events_lost << ",";
+      fstats << R"("timer_events_lost": )" << timer_events_lost << ",";
       fstats << R"("timestamp" : ")" << GetTimestampNow() << R"(")";
       fstats << "}";
       LOG(logTrace) << "v8worker failure stats : " << fstats.str() << std::endl;
@@ -567,23 +563,19 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << on_update_success << R"(, "on_update_failure":)";
       estats << on_update_failure << R"(, "on_delete_success":)";
       estats << on_delete_success << R"(, "on_delete_failure":)";
-      estats << on_delete_failure << R"(, "doc_timer_create_failure":)";
-      estats << doc_timer_create_failure << R"(, "messages_parsed":)";
-      estats << messages_parsed << R"(, "cron_timer_msg_counter":)";
-      estats << cron_timer_msg_counter << R"(, "dcp_delete_msg_counter":)";
+      estats << on_delete_failure << R"(, "timer_create_failure":)";
+      estats << timer_create_failure << R"(, "messages_parsed":)";
+      estats << messages_parsed << R"(, "dcp_delete_msg_counter":)";
       estats << dcp_delete_msg_counter << R"(, "dcp_mutation_msg_counter":)";
-      estats << dcp_mutation_msg_counter << R"(, "doc_timer_msg_counter":)";
-      estats << doc_timer_msg_counter
-             << R"(, "enqueued_cron_timer_msg_counter":)";
-      estats << enqueued_cron_timer_msg_counter
-             << R"(, "enqueued_dcp_delete_msg_counter":)";
+      estats << dcp_mutation_msg_counter << R"(, "timer_msg_counter":)";
+      estats << timer_msg_counter << R"(, "enqueued_dcp_delete_msg_counter":)";
       estats << enqueued_dcp_delete_msg_counter
              << R"(, "enqueued_dcp_mutation_msg_counter":)";
       estats << enqueued_dcp_mutation_msg_counter
-             << R"(, "enqueued_doc_timer_msg_counter":)";
-      estats << enqueued_doc_timer_msg_counter;
-      estats << R"(, "doc_timer_responses_sent":)";
-      estats << doc_timer_responses_sent;
+             << R"(, "enqueued_timer_msg_counter":)";
+      estats << enqueued_timer_msg_counter;
+      estats << R"(, "timer_responses_sent":)";
+      estats << timer_responses_sent;
       estats << R"(, "uv_try_write_failure_counter":)";
       estats << uv_try_write_failure_counter;
       estats << R"(, "lcb_retry_failure":)" << lcb_retry_failure;
@@ -592,9 +584,9 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
         agg_queue_memory = agg_queue_size = feedback_queue_size = 0;
         for (const auto &w : workers_) {
           agg_queue_size += w.second->worker_queue_->Count();
-          feedback_queue_size += w.second->doc_timer_queue_->Count();
-          agg_queue_memory += w.second->worker_queue_->Size() +
-                              w.second->doc_timer_queue_->Size();
+          feedback_queue_size += w.second->timer_queue_->Count();
+          agg_queue_memory +=
+              w.second->worker_queue_->Size() + w.second->timer_queue_->Size();
         }
 
         estats << R"(, "agg_queue_size":)" << agg_queue_size;
@@ -696,26 +688,15 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     break;
   case eTimer:
     switch (getTimerOpcode(parsed_header->opcode)) {
-    case oDocTimer:
+    case oTimer:
       worker_index = partition_thr_map_[parsed_header->partition];
       if (workers_[worker_index] != nullptr) {
-        enqueued_doc_timer_msg_counter++;
+        enqueued_timer_msg_counter++;
         workers_[worker_index]->Enqueue(parsed_header, parsed_message);
       } else {
-        LOG(logError) << "Doc timer event lost: worker " << worker_index
+        LOG(logError) << "Timer event lost: worker " << worker_index
                       << " is null" << std::endl;
-        ++doc_timer_events_lost;
-      }
-      break;
-    case oCronTimer:
-      worker_index = partition_thr_map_[parsed_header->partition];
-      if (workers_[worker_index] != nullptr) {
-        enqueued_cron_timer_msg_counter++;
-        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
-      } else {
-        LOG(logError) << "Cron timer event lost: worker " << worker_index
-                      << " is null" << std::endl;
-        ++cron_timer_events_lost;
+        ++timer_events_lost;
       }
       break;
     default:
@@ -829,14 +810,14 @@ void AppWorker::WriteResponses() {
     for (const auto &w : workers_) {
       std::vector<uv_buf_t> messages;
       std::vector<int> length_prefix_sum;
-      w.second->GetDocTimerMessages(messages, batch_size);
+      w.second->GetTimerMessages(messages, batch_size);
       if (messages.empty()) {
         continue;
       }
 
       sleep = false;
       WriteResponseWithRetry(feedback_conn_handle_, messages, batch_size);
-      doc_timer_responses_sent += messages.size() / 2;
+      timer_responses_sent += messages.size() / 2;
       for (auto &buf : messages) {
         delete buf.base;
       }

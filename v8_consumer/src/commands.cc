@@ -71,9 +71,7 @@ app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
 
 timer_opcode getTimerOpcode(int8_t opcode) {
   if (opcode == 1)
-    return oDocTimer;
-  if (opcode == 2)
-    return oCronTimer;
+    return oTimer;
   return Timer_Opcode_Unknown;
 }
 

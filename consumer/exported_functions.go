@@ -26,16 +26,8 @@ func (c *Consumer) ClearEventStats() {
 	c.dcpMessagesProcessed = make(map[mcd.CommandCode]uint64)
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
 
-	c.adhocDoctimerResponsesRecieved = 0
+	c.adhocTimerResponsesRecieved = 0
 	c.aggMessagesSentCounter = 0
-	c.crontimerMessagesProcessed = 0
-	c.dcpMutationCounter = 0
-	c.dcpStreamReqCounter = 0
-	c.doctimerMessagesProcessed = 0
-	c.plasmaDeleteCounter = 0
-	c.plasmaInsertCounter = 0
-	c.plasmaLookupCounter = 0
-	c.timersInPastCounter = 0
 }
 
 // ConsumerName returns consumer name e.q <event_handler_name>_worker_1
@@ -59,8 +51,8 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats[mcd.CommandNames[opcode]] = value
 	}
 
-	if c.adhocDoctimerResponsesRecieved > 0 {
-		stats["ADHOC_DOC_TIMER_RESPONSES_RECEIVED"] = c.adhocDoctimerResponsesRecieved
+	if c.adhocTimerResponsesRecieved > 0 {
+		stats["ADHOC_TIMER_RESPONSES_RECEIVED"] = c.adhocTimerResponsesRecieved
 	}
 
 	if c.cppQueueSizes != nil {
@@ -75,10 +67,6 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 
 	if c.aggMessagesSentCounter > 0 {
 		stats["AGG_MESSAGES_SENT_TO_WORKER"] = c.aggMessagesSentCounter
-	}
-
-	if c.crontimerMessagesProcessed > 0 {
-		stats["CRON_TIMER_EVENTS"] = c.crontimerMessagesProcessed
 	}
 
 	if c.dcpDeletionCounter > 0 {
@@ -105,16 +93,16 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["DCP_STREAM_REQ_ERR_COUNTER"] = c.dcpStreamReqErrCounter
 	}
 
-	if c.doctimerResponsesRecieved > 0 {
-		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.doctimerResponsesRecieved
+	if c.timerResponsesRecieved > 0 {
+		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.timerResponsesRecieved
 	}
 
-	if c.doctimerMessagesProcessed > 0 {
-		stats["DOC_TIMER_EVENTS"] = c.doctimerMessagesProcessed
+	if c.timerMessagesProcessed > 0 {
+		stats["TIMER_EVENTS"] = c.timerMessagesProcessed
 	}
 
-	if c.errorParsingDocTimerResponses > 0 {
-		stats["ERROR_PARSING_DOC_TIMER_RESPONSES"] = c.errorParsingDocTimerResponses
+	if c.errorParsingTimerResponses > 0 {
+		stats["ERROR_PARSING_TIMER_RESPONSES"] = c.errorParsingTimerResponses
 	}
 
 	if c.isBootstrapping {
@@ -125,18 +113,6 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["IS_REBALANCE_ONGOING"] = 1
 	}
 
-	if c.plasmaDeleteCounter > 0 {
-		stats["PLASMA_DELETE_COUNTER"] = c.plasmaDeleteCounter
-	}
-
-	if c.plasmaInsertCounter > 0 {
-		stats["PLASMA_INSERT_COUNTER"] = c.plasmaInsertCounter
-	}
-
-	if c.plasmaLookupCounter > 0 {
-		stats["PLASMA_LOOKUP_COUNTER"] = c.plasmaLookupCounter
-	}
-
 	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
 	if len(vbsRemainingToGiveUp) > 0 {
 		stats["REB_VB_REMAINING_TO_GIVE_UP"] = uint64(len(vbsRemainingToGiveUp))
@@ -145,18 +121,6 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	vbsRemainingToOwn := c.getVbRemainingToOwn()
 	if len(vbsRemainingToOwn) > 0 {
 		stats["REB_VB_REMAINING_TO_OWN"] = uint64(len(vbsRemainingToOwn))
-	}
-
-	if c.timersInPastCounter > 0 {
-		stats["TIMERS_IN_PAST"] = c.timersInPastCounter
-	}
-
-	if c.timersInPastFromBackfill > 0 {
-		stats["TIMERS_IN_PAST_FROM_BACKFILL"] = c.timersInPastFromBackfill
-	}
-
-	if c.timersRecreatedFromDCPBackfill > 0 {
-		stats["TIMERS_RECREATED_FROM_DCP_BACKFILL"] = c.timersRecreatedFromDCPBackfill
 	}
 
 	if c.vbsStateUpdateRunning {
@@ -540,7 +504,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 	c.handlerFooters = handlerFooters
 	// Framing bare minimum V8 worker init payload
 	payload, pBuilder := c.makeV8InitPayload(appName, util.Localhost(), "", eventingPort, "",
-		"", appContent, 5, 10, 1, 30, 10*1000, true, true, 500)
+		"", appContent, 5, 10, 10*1000, true, true, 500)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 

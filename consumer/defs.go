@@ -16,13 +16,10 @@ import (
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/gocb"
-	"github.com/couchbase/plasma"
 	"github.com/google/flatbuffers/go"
 )
 
 const (
-	tsLayout = "2006-01-02T15:04:05Z"
-
 	metakvEventingPath    = "/eventing/"
 	metakvAppSettingsPath = metakvEventingPath + "appsettings/"
 )
@@ -31,16 +28,6 @@ const (
 	dcpDatatypeJSON      = uint8(1)
 	dcpDatatypeJSONXattr = uint8(5)
 	includeXATTRs        = uint32(4)
-)
-
-// plasma related constants
-const (
-	maxDeltaChainLen       = 200
-	maxPageItems           = 400
-	minPageItems           = 50
-	lssCleanerMaxThreshold = 70
-	lssCleanerThreshold    = 30
-	lssReadAheadSize       = 1024 * 1024
 )
 
 const (
@@ -69,9 +56,6 @@ const (
 
 	// Interval for retrying failed cluster related operations
 	clusterOpRetryInterval = time.Duration(1000) * time.Millisecond
-
-	// Interval for retrying failed plasma operations
-	plasmaOpRetryInterval = time.Duration(1000) * time.Millisecond
 
 	restartVbDcpStreamTickInterval = time.Duration(3000) * time.Millisecond
 
@@ -201,7 +185,6 @@ type Consumer struct {
 	reqStreamCh                   chan *streamRequestInfo
 	statsTickDuration             time.Duration
 	superSup                      common.EventingSuperSup
-	usingDocTimer                 bool
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed
 	vbEventingNodeAssignMap       map[uint16]string // Access controlled by vbEventingNodeAssignMapRWMutex
@@ -240,20 +223,10 @@ type Consumer struct {
 	// N1QL Transpiler related nested iterator config params
 	lcbInstCapacity int
 
-	cronCurrTimer string
-	cronNextTimer string
-	docCurrTimer  string
-	docNextTimer  string
-
-	docTimerEntryCh  chan *byTimer
-	cronTimerEntryCh chan *timerMsg
-
-	iteratorRefreshCounter int // Refresh interval for plasma iterator to allow garbage to be cleared up
-	timerAddrs             map[string]map[string]string
-	vbPlasmaStore          *plasma.Plasma
-
-	plasmaStoreCh     chan *plasmaStoreEntry
-	plasmaStoreStopCh chan struct{}
+	fireTimerCh       chan *timerContext
+	createTimerCh     chan *TimerInfo
+	createTimerStopCh chan struct{}
+	scanTimerStopCh   chan struct{}
 
 	// Signals V8 consumer to start V8 Debugger agent
 	signalStartDebuggerCh          chan struct{}
@@ -265,17 +238,7 @@ type Consumer struct {
 	debuggerState                  int8
 	debuggerStarted                bool
 
-	fuzzOffset                  int
-	addCronTimerStopCh          chan struct{}
-	cleanupCronTimerCh          chan *cronTimerToCleanup
-	cleanupCronTimerStopCh      chan struct{}
-	cronTimerProcessingTicker   *time.Ticker
-	cronTimerStopCh             chan struct{}
-	docTimerProcessingStopCh    chan struct{}
-	skipTimerThreshold          int
-	socketTimeout               time.Duration
-	timerCleanupStopCh          chan struct{}
-	timerProcessingTickInterval time.Duration
+	socketTimeout time.Duration
 
 	enableRecursiveMutation bool
 
@@ -371,27 +334,21 @@ type Consumer struct {
 	// Tracks V8 Opcodes processed per consumer
 	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by msgProcessedRWMutex
 
-	dcpCloseStreamCounter          uint64
-	dcpCloseStreamErrCounter       uint64
-	dcpStreamReqCounter            uint64
-	dcpStreamReqErrCounter         uint64
-	plasmaInsertCounter            uint64
-	plasmaDeleteCounter            uint64
-	plasmaLookupCounter            uint64
-	timersInPastCounter            uint64
-	timersInPastFromBackfill       uint64
-	timersRecreatedFromDCPBackfill uint64
+	dcpCloseStreamCounter    uint64
+	dcpCloseStreamErrCounter uint64
+	dcpStreamReqCounter      uint64
+	dcpStreamReqErrCounter   uint64
 
-	// DCP and Timer event related counters
-	adhocDoctimerResponsesRecieved uint64
-	aggMessagesSentCounter         uint64
-	crontimerMessagesProcessed     uint64
-	dcpDeletionCounter             uint64
-	dcpMutationCounter             uint64
-	doctimerMessagesProcessed      uint64
-	doctimerResponsesRecieved      uint64
-	errorParsingDocTimerResponses  uint64
+	// TODO : Remove these stats
+	adhocTimerResponsesRecieved uint64
+	timerMessagesProcessed      uint64
 
+	// DCP and timer related counters
+	timerResponsesRecieved     uint64
+	aggMessagesSentCounter     uint64
+	dcpDeletionCounter         uint64
+	dcpMutationCounter         uint64
+	errorParsingTimerResponses uint64
 	timerMessagesProcessedPSec int
 
 	// capture dcp operation stats, granularity of these stats depend on statsTickInterval
@@ -410,26 +367,6 @@ type Consumer struct {
 
 	updateStatsTicker *time.Ticker
 	updateStatsStopCh chan struct{}
-}
-
-type byTimerEntry struct {
-	CallbackFn string
-	DocID      string
-}
-
-type byTimerEntryVer struct {
-	byTimerEntry
-	Version string `json:"version"`
-}
-
-type byTimerEntryMeta struct {
-	partition int32
-	timestamp string
-}
-
-type byTimer struct {
-	entry *byTimerEntry
-	meta  *byTimerEntryMeta
 }
 
 // For V8 worker spawned for debugging purpose
@@ -508,28 +445,6 @@ type OwnershipEntry struct {
 	Timestamp      string `json:"timestamp"`
 }
 
-type cronTimerEntry struct {
-	CallbackFunc string `json:"callback_func"`
-	Payload      string `json:"payload"`
-}
-
-type cronTimers struct {
-	CronTimers []cronTimerEntry `json:"cron_timers"`
-	Version    string           `json:"version"`
-}
-
-type timerMsg struct {
-	msgCount  int
-	payload   string
-	partition int32
-	timestamp string
-}
-
-type cronTimerToCleanup struct {
-	vb    uint16
-	docID string
-}
-
 type msgToTransmit struct {
 	msg            *message
 	sendToDebugger bool
@@ -544,16 +459,27 @@ type cppQueueSize struct {
 	AggQueueMemory    int64 `json:"agg_queue_memory"`
 }
 
-type plasmaStoreEntry struct {
-	callbackFn   string
-	fromBackfill bool
-	key          string
-	timerTs      string
-	vb           uint16
-}
-
 type streamRequestInfo struct {
 	startSeqNo uint64
 	vb         uint16
 	vbBlob     *vbucketKVBlob
+}
+
+// This is the struct sent by C++ worker
+// to create the timer
+type TimerInfo struct {
+	Epoch     int64  `json:"epoch"`
+	Vb        uint64 `json:"vb"`
+	SeqNum    uint64 `json:"seq_num"`
+	Callback  string `json:"callback"`
+	Reference string `json:"reference"`
+	Context   string `json:"context"`
+}
+
+// This is struct that will be stored in
+// the meta store as the timer's context
+type timerContext struct {
+	Callback string `json:"callback"`
+	Vb       uint64 `json:"vb"`
+	Context  string `json:"context"` // This is the context provided by the user
 }

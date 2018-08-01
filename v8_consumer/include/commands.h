@@ -49,7 +49,7 @@ enum app_worker_setting_opcode {
   App_Worker_Setting_Opcode_Unknown
 };
 
-enum timer_opcode { oDocTimer, oCronTimer, Timer_Opcode_Unknown };
+enum timer_opcode { oTimer, oCronTimer, Timer_Opcode_Unknown };
 
 enum debugger_opcode { oDebuggerStart, oDebuggerStop, Debugger_Opcode_Unknown };
 
@@ -64,7 +64,7 @@ debugger_opcode getDebuggerOpcode(int8_t opcode);
 enum msg_type {
   mType,
   mV8_Worker_Config,
-  mDoc_Timer_Response,
+  mTimer_Response,
   mBucket_Ops_Response,
   Msg_Unknown
 };
