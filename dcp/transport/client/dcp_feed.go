@@ -404,6 +404,7 @@ func (feed *DcpFeed) handlePacket(
 			select {
 			case msg := <-reqch:
 				if rc = feed.handleControlRequest(msg, rcvch); rc == "break" {
+					feed.outch <- event
 					return rc
 				}
 			case feed.outch <- event:

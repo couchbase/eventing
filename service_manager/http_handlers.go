@@ -785,38 +785,7 @@ func (m *ServiceMgr) getSettings(appName string) (*map[string]interface{}, *runt
 		return nil, status
 	}
 
-	// State validation - app must be in deployed state
-	deployedApps := m.superSup.GetDeployedApps()
-	processingStatus, pOk := app.Settings["processing_status"].(bool)
-	deploymentStatus, dOk := app.Settings["deployment_status"].(bool)
 	info := runtimeInfo{}
-
-	if pOk && dOk {
-		// Check for disable processing
-		if deploymentStatus == true && processingStatus == false {
-			if _, ok := deployedApps[appName]; !ok {
-				info.Code = m.statusCodes.errAppNotInit.Code
-				info.Info = fmt.Sprintf("Function: %s not processing mutations. Operation not permitted. Fetch function definition instead", appName)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				return nil, &info
-			}
-		}
-
-		// Check for undeploy
-		if deploymentStatus == false && processingStatus == false {
-			if _, ok := deployedApps[appName]; !ok {
-				info.Code = m.statusCodes.errAppNotInit.Code
-				info.Info = fmt.Sprintf("Function: %s not bootstrapped. Operation not permitted. Fetch function definition instead", appName)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				return nil, &info
-			}
-		}
-	} else {
-		info.Code = m.statusCodes.errStatusesNotFound.Code
-		info.Info = fmt.Sprintf("Functio: %s missing processing or deployment statuses or both", appName)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		return nil, &info
-	}
 
 	info.Code = m.statusCodes.ok.Code
 	info.Info = fmt.Sprintf("Function: %s fetched settings", appName)
@@ -860,16 +829,6 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 			if _, ok := deployedApps[appName]; !ok {
 				info.Code = m.statusCodes.errAppNotInit.Code
 				info.Info = fmt.Sprintf("Function: %s not processing mutations. Operation is not permitted. Edit function instead", appName)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				return
-			}
-		}
-
-		// Check for undeploy
-		if deploymentStatus == false && processingStatus == false {
-			if _, ok := deployedApps[appName]; !ok {
-				info.Code = m.statusCodes.errAppNotInit.Code
-				info.Info = fmt.Sprintf("Function: %s not bootstrapped. Operation not permitted. Edit function instead", appName)
 				logging.Errorf("%s %s", logPrefix, info.Info)
 				return
 			}

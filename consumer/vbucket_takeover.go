@@ -180,7 +180,7 @@ retryStreamUpdate:
 
 				c.inflightDcpStreamsRWMutex.RLock()
 				if _, ok := c.inflightDcpStreams[vb]; ok {
-					logging.Infof("%s [%s:takeover_r_%d:%s:%d] vb: %d skipping vbTakeover as dcp request stream already in flight",
+					logging.Tracef("%s [%s:takeover_r_%d:%s:%d] vb: %d skipping vbTakeover as dcp request stream already in flight",
 						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
 					c.inflightDcpStreamsRWMutex.RUnlock()
 					continue
@@ -442,6 +442,15 @@ func (c *Consumer) checkIfVbAlreadyOwnedByCurrConsumer(vb uint16) bool {
 	if c.vbProcessingStats.getVbStat(vb, "node_uuid") == c.uuid &&
 		c.vbProcessingStats.getVbStat(vb, "assigned_worker") == c.ConsumerName() &&
 		c.vbProcessingStats.getVbStat(vb, "dcp_stream_status") == dcpStreamRunning {
+		return true
+	}
+
+	return false
+}
+
+func (c *Consumer) checkIfVbAlreadyRequestedByCurrConsumer(vb uint16) bool {
+	if c.vbProcessingStats.getVbStat(vb, "dcp_stream_requested_node_uuid") == c.NodeUUID() &&
+		c.vbProcessingStats.getVbStat(vb, "dcp_stream_requested_worker") == c.ConsumerName() {
 		return true
 	}
 

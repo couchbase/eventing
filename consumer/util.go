@@ -11,7 +11,7 @@ func (c *Consumer) checkIfAlreadyEnqueued(vb uint16) bool {
 	defer c.vbEnqueuedForStreamReqRWMutex.RUnlock()
 
 	if _, ok := c.vbEnqueuedForStreamReq[vb]; ok {
-		logging.Infof("%s [%s:%s:%d] vb: %d already enqueued",
+		logging.Tracef("%s [%s:%s:%d] vb: %d already enqueued",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		return true
 	}
