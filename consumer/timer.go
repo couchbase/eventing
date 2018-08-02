@@ -33,21 +33,21 @@ func (c *Consumer) scanTimersForVB(vb uint16) {
 
 	store, found := timers.Fetch(c.app.AppName, int(vb))
 	if !found {
-		logging.Errorf("%s [%s:%s:%d] Unable to get store for VB : %v err : %v",
+		logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		return
 	}
 
 	iterator, err := store.ScanDue()
 	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Unable to get iterator for VB : %v err : %v",
+		logging.Errorf("%s [%s:%s:%d] vb: %d unable to get iterator, err : %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 		return
 	}
 
 	for entry, err := iterator.ScanNext(); entry != nil; entry, err = iterator.ScanNext() {
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Unable to get timer entry for VB : %v err : %v",
+			logging.Errorf("%s [%s:%s:%d] vb: %d unable to get timer entry, err : %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 			continue
 		}
@@ -60,9 +60,11 @@ func (c *Consumer) scanTimersForVB(vb uint16) {
 		}
 
 		c.fireTimerCh <- timer
+
+		// TODO: Implement ack channel
 		err = store.Delete(entry)
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Unable to delete timer entry for VB : %v err : %v",
+			logging.Errorf("%s [%s:%s:%d] vb: %d unable to delete timer entry, err : %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 		}
 	}
@@ -88,7 +90,11 @@ func (c *Consumer) createTimer() {
 }
 
 func (c *Consumer) createTimerImpl(timer *TimerInfo) {
-	store, _ := timers.Fetch(c.app.AppName, int(timer.Vb))
+	store, found := timers.Fetch(c.app.AppName, int(timer.Vb))
+	if !found {
+		return
+	}
+
 	context := &timerContext{
 		Callback: timer.Callback,
 		Context:  timer.Context,
