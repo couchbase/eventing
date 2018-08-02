@@ -18,7 +18,7 @@
 
 #include "../../gen/js/builtin.h"
 
-bool debugger_started = false;
+bool V8Worker::debugger_started_ = false;
 bool enable_recursive_mutation = false;
 
 std::atomic<int64_t> bucket_op_exception_count = {0};
@@ -134,16 +134,6 @@ const char *GetPasswordCached(void *cookie, const char *host, const char *port,
   }
 
   return password;
-}
-
-void startDebuggerFlag(bool started) {
-  LOG(logInfo) << "debugger_started flag: " << debugger_started << std::endl;
-  debugger_started = started;
-
-  // Disable logging when inspector is running
-  if (started) {
-    SystemLog::setLogLevel(logSilent);
-  }
 }
 
 V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
@@ -265,6 +255,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: "
                << h_config->app_name
+               << " debugger port: " << RS(settings_->debugger_port)
                << " curr_host: " << RS(settings_->host_addr)
                << " curr_eventing_port: " << RS(settings_->eventing_port)
                << " curr_eventing_sslport: " << RS(settings_->eventing_sslport)
@@ -675,38 +666,35 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
            << std::endl;
   }
 
-  if (debugger_started) {
+  if (debugger_started_) {
     if (!agent_->IsStarted()) {
       agent_->Start(isolate_, platform_, src_path_.c_str());
     }
 
     agent_->PauseOnNextJavascriptStatement("Break on start");
-    if (DebugExecute("OnUpdate", args, 2)) {
-      return kSuccess;
-    }
-    return kOnUpdateCallFail;
-  } else {
-    auto on_doc_update = on_update_.Get(isolate_);
-    execute_flag_ = true;
-    execute_start_time_ = Time::now();
-    RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
-                          IsTerminatingRetriable, IsExecutionTerminating,
-                          isolate_);
-
-    on_doc_update->Call(context->Global(), 2, args);
-    execute_flag_ = false;
-    if (try_catch.HasCaught()) {
-      APPLOG << "OnUpdate Exception: " << ExceptionString(isolate_, &try_catch)
-             << std::endl;
-      UpdateHistogram(start_time);
-      on_update_failure++;
-      return kOnUpdateCallFail;
-    }
-
-    on_update_success++;
-    UpdateHistogram(start_time);
-    return kSuccess;
+    return DebugExecute("OnUpdate", args, 2) ? kSuccess : kOnUpdateCallFail;
   }
+
+  auto on_doc_update = on_update_.Get(isolate_);
+  execute_flag_ = true;
+  execute_start_time_ = Time::now();
+  RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                        IsTerminatingRetriable, IsExecutionTerminating,
+                        isolate_);
+
+  on_doc_update->Call(context->Global(), 2, args);
+  execute_flag_ = false;
+  if (try_catch.HasCaught()) {
+    APPLOG << "OnUpdate Exception: " << ExceptionString(isolate_, &try_catch)
+           << std::endl;
+    UpdateHistogram(start_time);
+    on_update_failure++;
+    return kOnUpdateCallFail;
+  }
+
+  on_update_success++;
+  UpdateHistogram(start_time);
+  return kSuccess;
 }
 
 int V8Worker::SendDelete(std::string meta) {
@@ -739,39 +727,36 @@ int V8Worker::SendDelete(std::string meta) {
 
   assert(!try_catch.HasCaught());
 
-  if (debugger_started) {
+  if (debugger_started_) {
     if (!agent_->IsStarted()) {
       agent_->Start(isolate_, platform_, src_path_.c_str());
     }
 
     agent_->PauseOnNextJavascriptStatement("Break on start");
-    if (DebugExecute("OnDelete", args, 1)) {
-      return kSuccess;
-    }
-    return kOnDeleteCallFail;
-  } else {
-    auto on_doc_delete = on_delete_.Get(isolate_);
-
-    execute_flag_ = true;
-    execute_start_time_ = Time::now();
-    RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
-                          IsTerminatingRetriable, IsExecutionTerminating,
-                          isolate_);
-
-    on_doc_delete->Call(context->Global(), 1, args);
-    execute_flag_ = false;
-    if (try_catch.HasCaught()) {
-      APPLOG << "OnDelete Exception: " << ExceptionString(isolate_, &try_catch)
-             << std::endl;
-      UpdateHistogram(start_time);
-      on_delete_failure++;
-      return kOnDeleteCallFail;
-    }
-
-    UpdateHistogram(start_time);
-    on_delete_success++;
-    return kSuccess;
+    return DebugExecute("OnDelete", args, 1) ? kSuccess : kOnDeleteCallFail;
   }
+
+  auto on_doc_delete = on_delete_.Get(isolate_);
+
+  execute_flag_ = true;
+  execute_start_time_ = Time::now();
+  RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                        IsTerminatingRetriable, IsExecutionTerminating,
+                        isolate_);
+
+  on_doc_delete->Call(context->Global(), 1, args);
+  execute_flag_ = false;
+  if (try_catch.HasCaught()) {
+    APPLOG << "OnDelete Exception: " << ExceptionString(isolate_, &try_catch)
+           << std::endl;
+    UpdateHistogram(start_time);
+    on_delete_failure++;
+    return kOnDeleteCallFail;
+  }
+
+  UpdateHistogram(start_time);
+  on_delete_success++;
+  return kSuccess;
 }
 
 void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
@@ -802,47 +787,56 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
   auto callback_func_val = utils->GetMethodFromGlobal(callback);
   auto callback_func = callback_func_val.As<v8::Function>();
 
-  if (debugger_started) {
+  if (debugger_started_) {
     if (!agent_->IsStarted()) {
       agent_->Start(isolate_, platform_, src_path_.c_str());
     }
 
     agent_->PauseOnNextJavascriptStatement("Break on start");
     DebugExecute(callback.c_str(), arg, 1);
-  } else {
-    execute_flag_ = true;
-    execute_start_time_ = Time::now();
-    RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
-                          IsTerminatingRetriable, IsExecutionTerminating,
-                          isolate_);
-
-    callback_func->Call(callback_func_val, 1, arg);
-    execute_flag_ = false;
   }
+
+  execute_flag_ = true;
+  execute_start_time_ = Time::now();
+  RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                        IsTerminatingRetriable, IsExecutionTerminating,
+                        isolate_);
+
+  callback_func->Call(callback_func_val, 1, arg);
+  execute_flag_ = false;
 }
 
 void V8Worker::StartDebugger() {
-  if (debugger_started) {
+  if (debugger_started_) {
     LOG(logError) << "Debugger already started" << std::endl;
     return;
   }
 
-  LOG(logInfo) << "Starting Debugger" << std::endl;
-  startDebuggerFlag(true);
-  agent_ = new inspector::Agent(settings_->host_addr, settings_->eventing_dir +
-                                                          "/" + app_name_ +
-                                                          "_frontend.url");
+  int port = 0;
+  try {
+    port = std::stoi(settings_->debugger_port);
+  } catch (const std::exception &e) {
+    LOG(logError) << "Invalid port : " << e.what() << std::endl;
+    LOG(logWarning) << "Starting debugger with an ephemeral port" << std::endl;
+  }
+
+  LOG(logInfo) << "Starting debugger on port: " << RS(port) << std::endl;
+  debugger_started_ = true;
+  agent_ = new inspector::Agent(
+      settings_->host_addr,
+      settings_->eventing_dir + "/" + app_name_ + "_frontend.url", port);
 }
 
 void V8Worker::StopDebugger() {
-  if (debugger_started) {
-    LOG(logInfo) << "Stopping Debugger" << std::endl;
-    startDebuggerFlag(false);
-    agent_->Stop();
-    delete agent_;
-  } else {
+  if (!debugger_started_) {
     LOG(logError) << "Debugger wasn't started" << std::endl;
+    return;
   }
+
+  LOG(logInfo) << "Stopping Debugger" << std::endl;
+  debugger_started_ = false;
+  agent_->Stop();
+  delete agent_;
 }
 
 void V8Worker::Enqueue(header_t *h, message_t *p) {

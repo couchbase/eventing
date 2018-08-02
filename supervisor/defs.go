@@ -53,10 +53,11 @@ type supCmdMsg struct {
 
 // AdminPortConfig captures settings supplied by cluster manager
 type AdminPortConfig struct {
-	HTTPPort string
-	SslPort  string
-	CertFile string
-	KeyFile  string
+	DebuggerPort string
+	HTTPPort     string
+	SslPort      string
+	CertFile     string
+	KeyFile      string
 }
 
 // SuperSupervisor is responsible for managing/supervising all producer instances

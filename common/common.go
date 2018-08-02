@@ -281,6 +281,7 @@ type HandlerConfig struct {
 
 type ProcessConfig struct {
 	BreakpadOn             bool
+	DebuggerPort           string
 	DiagDir                string
 	EventingDir            string
 	EventingPort           string

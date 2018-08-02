@@ -102,6 +102,7 @@ typedef struct worker_msg_s {
 
 typedef struct server_settings_s {
   int checkpoint_interval;
+  std::string debugger_port;
   std::string eventing_dir;
   std::string eventing_port;
   std::string eventing_sslport;
@@ -125,8 +126,6 @@ class Bucket;
 class N1QL;
 class ConnectionPool;
 class V8Worker;
-
-extern bool debugger_started;
 
 extern bool enable_recursive_mutation;
 extern std::atomic<int64_t> bucket_op_exception_count;
@@ -163,7 +162,7 @@ public:
 
   void operator()() {
 
-    if (debugger_started)
+    if (debugger_started_)
       return;
     while (!shutdown_terminator_) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -243,6 +242,7 @@ public:
 
   volatile bool execute_flag_;
   volatile bool shutdown_terminator_;
+  static bool debugger_started_;
 
   int64_t currently_processed_vb_;
   int64_t currently_processed_seqno_;

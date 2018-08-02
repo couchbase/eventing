@@ -261,12 +261,14 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 	return
 }
 
-func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, eventingSSLPort, kvHostPort, depCfg string,
-	capacity, executionTimeout, checkpointInterval int, enableRecursiveMutation, skipLcbBootstrap bool,
-	curlTimeout int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
+func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDir, eventingPort,
+	eventingSSLPort, kvHostPort, depCfg string, capacity, executionTimeout, checkpointInterval int,
+	enableRecursiveMutation, skipLcbBootstrap bool, curlTimeout int64) (encodedPayload []byte,
+	builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
 	app := builder.CreateString(appName)
+	dp := builder.CreateString(debuggerPort)
 	ch := builder.CreateString(currHost)
 	ed := builder.CreateString(eventingDir)
 	ep := builder.CreateString(eventingPort)
@@ -285,6 +287,7 @@ func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPor
 	payload.PayloadStart(builder)
 
 	payload.PayloadAddAppName(builder, app)
+	payload.PayloadAddDebuggerPort(builder, dp)
 	payload.PayloadAddCurrHost(builder, ch)
 	payload.PayloadAddEventingDir(builder, ed)
 	payload.PayloadAddCurrEventingPort(builder, ep)

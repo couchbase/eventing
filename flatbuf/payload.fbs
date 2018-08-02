@@ -13,7 +13,7 @@ table Payload {
   curl_timeout:long;
   depcfg:string;
   enable_recursive_mutation:bool;
-  enable_v8_debugger:bool;
+  debugger_port:string;
   execution_timeout:int; // Execution timeout for handler code execution
   lcb_inst_capacity:int; // Nested iterator related fields
   skip_lcb_bootstrap:bool; // Control bootstrap of lcb handles.

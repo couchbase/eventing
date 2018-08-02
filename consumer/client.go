@@ -153,12 +153,10 @@ func (c *client) Stop() {
 	logging.Infof("%s [%s:%s:%d] Exiting c++ worker", logPrefix, c.workerName, c.tcpPort, c.osPid)
 
 	c.consumerHandle.workerExited = true
-
-	if c.osPid > 1 {
-		ps, err := os.FindProcess(c.osPid)
-		if err == nil {
-			ps.Kill()
-		}
+	err := util.KillProcess(c.osPid)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Unable to kill C++ worker, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.osPid, err)
 	}
 }
 

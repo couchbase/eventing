@@ -190,11 +190,11 @@ private:
 
 InspectorIo::InspectorIo(Isolate *isolate, Platform *platform,
                          const std::string &path, std::string host_name,
-                         bool wait_for_connect, std::string file_path)
+                         bool wait_for_connect, std::string file_path, int port)
     : thread_(), delegate_(nullptr), state_(State::kNew), thread_req_(),
       platform_(platform), isolate_(isolate), dispatching_messages_(false),
       session_id_(0), script_name_(path), host_name_(host_name),
-      file_path_(file_path), wait_for_connect_(wait_for_connect), port_(0) {
+      file_path_(file_path), wait_for_connect_(wait_for_connect), port_(port) {
   main_thread_req_ = new AsyncAndAgent(
       {uv_async_t(), reinterpret_cast<Agent *>(isolate->GetData(1))});
   assert(0 == uv_async_init(uv_default_loop(), &main_thread_req_->first,
