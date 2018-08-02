@@ -94,7 +94,7 @@ func (c *Consumer) createTimerImpl(timer *TimerInfo) {
 
 	store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(timer.Vb))
 	if !found {
-		logging.Errorf("%s [%s:%s:%d] Unable to get store for VB : %v err : %v",
+		logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb)
 		return
 	}

@@ -547,6 +547,7 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, 
 	return nil
 }
 
+// AppsRetryCallback informs all running functions to update the retry counter
 func (s *SuperSupervisor) AppsRetryCallback(path string, value []byte, rev interface{}) error {
 	logPrefix := "SuperSupervisor::AppsRetryCallback"
 	if value == nil {
@@ -748,6 +749,7 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []st
 	}
 }
 
+// CleanupProducer purges all metadata  related to a function from couchbase bucket
 func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool) error {
 	logPrefix := "SuperSupervisor::CleanupProducer"
 

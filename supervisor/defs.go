@@ -13,6 +13,8 @@ const (
 	// MetakvAppsPath refers to path under metakv where app handlers are stored
 	MetakvAppsPath = metakvEventingPath + "apps/"
 
+	// MetakvAppsRetryPath refers to path where retry counter for bailing out
+	// from operations that are retried upon failure
 	MetakvAppsRetryPath = metakvEventingPath + "retry/"
 
 	// MetakvAppSettingsPath refers to path under metakv where app settings are stored
@@ -28,7 +30,9 @@ const (
 
 	// Store list of eventing keepNodes
 	metakvConfigKeepNodes = metakvEventingPath + "config/keepNodes"
-	MetakvChecksumPath    = metakvEventingPath + "checksum/"
+
+	// MetakvChecksumPath within metakv is updated when new function definition is loaded
+	MetakvChecksumPath = metakvEventingPath + "checksum/"
 )
 
 const (

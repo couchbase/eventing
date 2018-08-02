@@ -366,6 +366,7 @@ func (s *SuperSupervisor) CheckpointBlobDump(appName string) (interface{}, error
 	return nil, fmt.Errorf("Eventing.Producer isn't alive")
 }
 
+// StopProducer tries to gracefully stop running producer instance for a function
 func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool) {
 	logPrefix := "SuperSupervisor::StopProducer"
 
