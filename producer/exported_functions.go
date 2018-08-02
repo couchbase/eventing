@@ -2,6 +2,7 @@ package producer
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"sort"
 	"strconv"
@@ -264,6 +265,16 @@ func (p *Producer) SignalBootstrapFinish() {
 // SignalCheckpointBlobCleanup cleans up eventing app related blobs from metadata bucket
 func (p *Producer) SignalCheckpointBlobCleanup() error {
 	logPrefix := "Producer::SignalCheckpointBlobCleanup"
+
+	// Bail out early if metadata bucket is dropped/deleted
+	hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+
+	metaBucketNodeCount := util.CountActiveKVNodes(p.metadatabucket, hostAddress)
+	if metaBucketNodeCount == 0 {
+		logging.Errorf("%s [%s:%d] MetaBucketNodeCount: %d exiting from cleanup routine",
+			logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)
+		return nil
+	}
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
@@ -537,6 +548,15 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 // metadata bucket post undeploy
 func (p *Producer) CleanupMetadataBucket() error {
 	logPrefix := "Producer::CleanupMetadataBucket"
+
+	hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+
+	metaBucketNodeCount := util.CountActiveKVNodes(p.metadatabucket, hostAddress)
+	if metaBucketNodeCount == 0 {
+		logging.Infof("%s [%s:%d] MetaBucketNodeCount: %d exiting",
+			logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)
+		return nil
+	}
 
 	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, p.metadatabucket)
 	if err == common.ErrRetryTimeout {
