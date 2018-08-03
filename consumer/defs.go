@@ -351,6 +351,15 @@ type Consumer struct {
 	errorParsingTimerResponses uint64
 	timerMessagesProcessedPSec int
 
+	// metastore related timer stats
+	metastoreDeleteCounter      uint64
+	metastoreDeleteErrCounter   uint64
+	metastoreNotFoundErrCounter uint64
+	metastoreScanCounter        uint64
+	metastoreScanErrCounter     uint64
+	metastoreSetCounter         uint64
+	metastoreSetErrCounter      uint64
+
 	// capture dcp operation stats, granularity of these stats depend on statsTickInterval
 	dcpOpsProcessed     uint64
 	opsTimestamp        time.Time
