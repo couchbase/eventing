@@ -465,8 +465,7 @@ type streamRequestInfo struct {
 	vbBlob     *vbucketKVBlob
 }
 
-// This is the struct sent by C++ worker
-// to create the timer
+// TimerInfo is the struct sent by C++ worker to create the timer
 type TimerInfo struct {
 	Epoch     int64  `json:"epoch"`
 	Vb        uint64 `json:"vb"`

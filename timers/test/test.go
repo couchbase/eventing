@@ -11,7 +11,7 @@ import (
 	"github.com/couchbase/eventing/timers"
 )
 
-func run(pfx string, partn int, load int, pwg *sync.WaitGroup) {
+func run(partn int, load int, pwg *sync.WaitGroup) {
 	defer pwg.Done()
 
 	logging.Infof("Partition %v started", partn)
@@ -19,8 +19,9 @@ func run(pfx string, partn int, load int, pwg *sync.WaitGroup) {
 
 	db := make(map[string]time.Time)
 	dbl := sync.Mutex{}
-	timers.Create(pfx, "timer-test", partn, "couchbase://localhost", "default")
-	store, present := timers.Fetch("timer-test", partn)
+	uid := "timertest-" + strconv.FormatInt(time.Now().Unix(), 36)
+	timers.Create(uid, partn, "couchbase://localhost", "default")
+	store, present := timers.Fetch(uid, partn)
 	if !present {
 		panic("store was absent")
 	}
@@ -134,20 +135,19 @@ func run(pfx string, partn int, load int, pwg *sync.WaitGroup) {
 	}
 
 	store.Free()
-	logging.Infof("Successful Match %v: created=%v fired=%v cancelled=%v", pfx, created, fired, cancelled)
+	logging.Infof("Successful Match: created=%v fired=%v cancelled=%v", created, fired, cancelled)
 }
 
 func main() {
 	load := 10000
 	pwg := sync.WaitGroup{}
-	pfx := "pfx-" + strconv.FormatInt(time.Now().Unix(), 36)
 
 	logging.SetLogLevel(logging.Info)
 	timers.SetTestAuth("Administrator", "asdasd")
 
 	for partn := 0; partn <= load/1000; partn++ {
 		pwg.Add(1)
-		go run(pfx, partn, load, &pwg)
+		go run(partn, load, &pwg)
 	}
 	pwg.Wait()
 }

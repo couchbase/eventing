@@ -19,7 +19,7 @@ const (
 	Resolution  = int64(7) // seconds
 	init_seq    = int64(128)
 	dict        = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*&"
-	encode_base = 10
+	encode_base = 36
 )
 
 // Globals
@@ -71,6 +71,7 @@ type Span struct {
 type storeSpan struct {
 	Span
 	empty   bool
+	dirty   bool
 	spanCas gocb.Cas
 	lock    sync.Mutex
 }
@@ -78,12 +79,10 @@ type storeSpan struct {
 type TimerStore struct {
 	connstr string
 	bucket  string
-	prefix  string
-	handler string
+	uid     string
 	partn   int
 	log     string
 	span    storeSpan
-	sync    *time.Ticker
 }
 
 type TimerIter struct {
@@ -93,28 +92,29 @@ type TimerIter struct {
 	entry *TimerEntry
 }
 
-func Create(prefix, handler string, partn int, connstr string, bucket string) error {
-	_, ok := Fetch(handler, partn)
-	if ok {
-		logging.Warnf("Asked to create store %v:%v which exists. Reusing", handler, partn)
+func Create(uid string, partn int, connstr string, bucket string) error {
+	stores.lock.Lock()
+	defer stores.lock.Unlock()
+
+	_, found := stores.entries[mapLocator(uid, partn)]
+	if found {
+		logging.Warnf("Asked to create store %v:%v which exists. Reusing", uid, partn)
 		return nil
 	}
-	store, err := newTimerStore(prefix, handler, partn, connstr, bucket)
+	store, err := newTimerStore(uid, partn, connstr, bucket)
 	if err != nil {
 		return err
 	}
-	stores.lock.Lock()
-	defer stores.lock.Unlock()
-	stores.entries[mapLocator(handler, partn)] = store
+	stores.entries[mapLocator(uid, partn)] = store
 	return nil
 }
 
-func Fetch(handler string, partn int) (store *TimerStore, found bool) {
+func Fetch(uid string, partn int) (store *TimerStore, found bool) {
 	stores.lock.RLock()
 	defer stores.lock.RUnlock()
-	store, found = stores.entries[mapLocator(handler, partn)]
+	store, found = stores.entries[mapLocator(uid, partn)]
 	if !found {
-		logging.Infof("Store not defined: " + mapLocator(handler, partn))
+		logging.Infof("Store not defined: " + mapLocator(uid, partn))
 		return nil, false
 	}
 	return
@@ -122,15 +122,15 @@ func Fetch(handler string, partn int) (store *TimerStore, found bool) {
 
 func (r *TimerStore) Free() {
 	stores.lock.Lock()
-	defer stores.lock.Unlock()
-	r.sync.Stop()
-	delete(stores.entries, mapLocator(r.handler, r.partn))
+	delete(stores.entries, mapLocator(r.uid, r.partn))
+	stores.lock.Unlock()
+	r.syncSpan()
 }
 
 func (r *TimerStore) Set(due int64, ref string, context interface{}) error {
 	now := time.Now().Unix()
 	if due-now <= Resolution {
-		logging.Warnf("%v Moving too close/past timer to next period: %v context %ru", r.log, formatTime(due), context)
+		logging.Warnf("%v Moving too close/past timer to next period: %v context %ru", r.log, formatInt(due), context)
 		due = now + Resolution
 	}
 	due = roundUp(due)
@@ -157,7 +157,7 @@ func (r *TimerStore) Set(due int64, ref string, context interface{}) error {
 		return err
 	}
 
-	logging.Tracef("%v Creating timer at %v seq %v with ref %ru and context %ru", r.log, seq, formatTime(due), ref, context)
+	logging.Tracef("%v Creating timer at %v seq %v with ref %ru and context %ru", r.log, seq, formatInt(due), ref, context)
 	r.expandSpan(due)
 	return nil
 }
@@ -234,6 +234,8 @@ func (r *TimerStore) Cancel(ref string) error {
 	if absent {
 		logging.Tracef("%v Timer asked to cancel %ru cref %v does not exist", r.log, ref, cref)
 	}
+
+	// TODO: if all items were canceled, need to remove top
 
 	return nil
 }
@@ -375,9 +377,11 @@ func (r *TimerStore) expandSpan(point int64) {
 	defer r.span.lock.Unlock()
 	if r.span.Start > point {
 		r.span.Start = point
+		r.span.dirty = true
 	}
 	if r.span.Stop < point {
 		r.span.Stop = point
+		r.span.dirty = true
 	}
 }
 
@@ -386,10 +390,21 @@ func (r *TimerStore) shrinkSpan(start int64) {
 	defer r.span.lock.Unlock()
 	if r.span.Start < start {
 		r.span.Start = start
+		r.span.dirty = true
 	}
 }
 
 func (r *TimerStore) syncSpan() error {
+	logging.Tracef("%v syncSpan called", r.log)
+
+	r.span.lock.Lock()
+	defer r.span.lock.Unlock()
+
+	if !r.span.dirty && !r.span.empty {
+		return nil
+	}
+
+	r.span.dirty = false
 	kv := Pool(r.connstr)
 	pos := r.kvLocatorSpan()
 	extspan := Span{}
@@ -398,9 +413,6 @@ func (r *TimerStore) syncSpan() error {
 	if err != nil {
 		return err
 	}
-
-	r.span.lock.Lock()
-	defer r.span.lock.Unlock()
 
 	switch {
 	// brand new
@@ -429,11 +441,19 @@ func (r *TimerStore) syncSpan() error {
 
 	// we have data and see external changes
 	case r.span.spanCas != rcas:
-		logging.Warnf("%v Span was changed externally, merging %+v and %+v", r.log, extspan, r.span)
+		// external changes have no impact
+		if r.span.Start <= extspan.Start && r.span.Stop >= extspan.Stop {
+			logging.Tracef("%v Span changed externally but no impact:  %+v and %+v", r.log, extspan, r.span)
+			r.span.spanCas = rcas
+		}
+		// external has moved start backwards
 		if r.span.Start > extspan.Start {
+			logging.Warnf("%v Span changed externally at start, merging %+v and %+v", r.log, extspan, r.span)
 			r.span.Start = extspan.Start
 		}
+		// external has moved stop forwards
 		if r.span.Stop < extspan.Stop {
+			logging.Warnf("%v Span changed externally at stop, merging %+v and %+v", r.log, extspan, r.span)
 			r.span.Stop = extspan.Stop
 		}
 
@@ -461,25 +481,31 @@ func (r *TimerStore) syncSpan() error {
 	return nil
 }
 
-func (r *TimerStore) syncRoutine() {
-	for _ = range r.sync.C {
-		err := r.syncSpan()
-		if err != nil {
-			return
+func (r *storeMap) syncRoutine() {
+	for {
+		dirty := make([]*TimerStore, 0)
+		r.lock.RLock()
+		for _, store := range r.entries {
+			if store.span.dirty {
+				dirty = append(dirty, store)
+			}
 		}
+		r.lock.RUnlock()
+		for _, store := range dirty {
+			store.syncSpan()
+		}
+		time.Sleep(time.Duration(Resolution) * time.Second)
 	}
 }
 
-func newTimerStore(prefix, handler string, partn int, connstr string, bucket string) (*TimerStore, error) {
+func newTimerStore(uid string, partn int, connstr string, bucket string) (*TimerStore, error) {
 	timerstore := TimerStore{
 		connstr: connstr,
 		bucket:  bucket,
-		prefix:  prefix,
-		handler: handler,
+		uid:     uid,
 		partn:   partn,
-		log:     fmt.Sprintf("timerstore:%v:%v:%v", prefix, handler, partn),
-		sync:    time.NewTicker(time.Duration(Resolution) * time.Second),
-		span:    storeSpan{empty: true},
+		log:     fmt.Sprintf("timerstore:%v:%v", uid, partn),
+		span:    storeSpan{empty: true, dirty: false},
 	}
 
 	err := timerstore.syncSpan()
@@ -487,44 +513,45 @@ func newTimerStore(prefix, handler string, partn int, connstr string, bucket str
 		return nil, err
 	}
 
-	go timerstore.syncRoutine()
-
 	logging.Infof("%v Initialized timerdata store", timerstore.log)
 	return &timerstore, nil
 }
 
 func (r *TimerStore) kvLocatorRoot(due int64) string {
-	return fmt.Sprintf("%v:timerstore:%v:%v:root:%v", r.prefix, r.handler, r.partn, formatTime(due))
+	return fmt.Sprintf("%v:timerstore:%v:root:%v", r.uid, r.partn, formatInt(due))
 }
 
 func (r *TimerStore) kvLocatorAlarm(due int64, seq int64) string {
-	return fmt.Sprintf("%v:timerstore:%v:%v:alarm:%v:%v", r.prefix, r.handler, r.partn, formatTime(due), seq)
+	return fmt.Sprintf("%v:timerstore:%v:alarm:%v:%v", r.uid, r.partn, formatInt(due), seq)
 }
 
-func (r *TimerStore) kvLocatorContext(ref string) string {
-	Assert(64 == len(dict))
+func hash(val string) string {
 	ripe := ripemd160.New()
-	ripe.Write([]byte(ref))
-	bits := asn1.BitString{Bytes: ripe.Sum(nil), BitLength: 160}
-	hash := ""
-	for i := 0; i < 160; i += 5 {
+	ripe.Write([]byte(val))
+	padsum := append(ripe.Sum(nil), 0)
+	bits := asn1.BitString{Bytes: padsum, BitLength: 168}
+	hash := make([]byte, 28, 28)
+	for i := 0; i < 168; i += 6 {
 		pos := 0
-		for j := 0; j < 5; j++ {
+		for j := 0; j < 6; j++ {
 			pos = pos<<1 | bits.At(i+j)
 		}
 		Assert(pos >= 0 && pos < len(dict))
-		hash += string(dict[pos])
-
+		hash[i/6] = dict[pos]
 	}
-	return fmt.Sprintf("%v:timerstore:%v:%v:context:%v", r.prefix, r.handler, r.partn, hash)
+	return string(hash)
+}
+
+func (r *TimerStore) kvLocatorContext(ref string) string {
+	return fmt.Sprintf("%v:timerstore:%v:context:%v", r.uid, r.partn, hash(ref))
 }
 
 func (r *TimerStore) kvLocatorSpan() string {
-	return fmt.Sprintf("%v:timerstore:%v:%v:span", r.prefix, r.handler, r.partn)
+	return fmt.Sprintf("%v:timerstore:%v:span", r.uid, r.partn)
 }
 
-func mapLocator(handler string, partn int) string {
-	return handler + ":" + strconv.FormatInt(int64(partn), encode_base)
+func mapLocator(uid string, partn int) string {
+	return uid + ":" + formatInt(int64(partn))
 }
 
 func (r *ContextRecord) String() string {
@@ -532,15 +559,17 @@ func (r *ContextRecord) String() string {
 	return fmt.Sprintf(format, r.AlarmRef, r.Context)
 }
 
-func formatTime(tm int64) string {
+func formatInt(tm int64) string {
 	return strconv.FormatInt(tm, encode_base)
 }
 
 func newStores() *storeMap {
-	return &storeMap{
+	smap := &storeMap{
 		entries: make(map[string]*TimerStore),
 		lock:    sync.RWMutex{},
 	}
+	go smap.syncRoutine()
+	return smap
 }
 
 func roundUp(val int64) int64 {

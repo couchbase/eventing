@@ -192,7 +192,7 @@ loop:
 			logging.Infof(fmsg, feed.logPrefix, feed.stats.String(feed))
 
 		case msg := <-reqch:
-			if feed.handleControlRequest(msg, rcvch) == "break" {
+			if feed.handleControlRequest(msg, rcvch, nil) == "break" {
 				break loop
 			}
 
@@ -214,7 +214,7 @@ loop:
 }
 
 func (feed *DcpFeed) handleControlRequest(
-	msg []interface{}, rcvch chan []interface{}) string {
+	msg []interface{}, rcvch chan []interface{}, event *DcpEvent) string {
 
 	prefix := feed.logPrefix
 	cmd := msg[0].(byte)
@@ -263,6 +263,9 @@ func (feed *DcpFeed) handleControlRequest(
 	case dfCmdClose:
 		feed.sendStreamEnd(feed.outch)
 		respch := msg[1].(chan []interface{})
+		if event != nil {
+			feed.outch <- event
+		}
 		respch <- []interface{}{nil}
 		return "break"
 	}
@@ -403,8 +406,8 @@ func (feed *DcpFeed) handlePacket(
 		for {
 			select {
 			case msg := <-reqch:
-				if rc = feed.handleControlRequest(msg, rcvch); rc == "break" {
-					feed.outch <- event
+				rc = feed.handleControlRequest(msg, rcvch, event)
+				if rc == "break" {
 					return rc
 				}
 			case feed.outch <- event:
