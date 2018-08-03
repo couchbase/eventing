@@ -1,9 +1,9 @@
 package consumer
 
 import (
+	"fmt"
 	"time"
 
-	"fmt"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timers"
 )
@@ -22,15 +22,14 @@ func (c *Consumer) scanTimers() {
 			for _, vb := range c.getCurrentlyOwnedVbs() {
 				c.scanTimersForVB(vb)
 			}
+
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
 
 func (c *Consumer) scanTimersForVB(vb uint16) {
 	logPrefix := "Consumer::scanTimersForVB"
-
-	// TODO : Remove the sleep once we parallelize the scan
-	time.Sleep(100 * time.Millisecond)
 
 	store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
 	if !found {
@@ -40,16 +39,16 @@ func (c *Consumer) scanTimersForVB(vb uint16) {
 		return
 	}
 
-	iterator, err := store.ScanDue()
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %d unable to get iterator, err : %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+	iterator := store.ScanDue()
+	if iterator == nil {
+		logging.Tracef("%s [%s:%s:%d] vb: %d no timers to fire",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		return
 	}
 
 	for entry, err := iterator.ScanNext(); entry != nil; entry, err = iterator.ScanNext() {
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] vb: %d unable to get timer entry, err : %v",
+			logging.Errorf("%s [%s:%s:%d] vb: %d unable to get timer entry, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 			c.metastoreScanErrCounter++
 			continue
@@ -68,7 +67,7 @@ func (c *Consumer) scanTimersForVB(vb uint16) {
 		// TODO: Implement ack channel
 		err = store.Delete(entry)
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] vb: %d unable to delete timer entry, err : %v",
+			logging.Errorf("%s [%s:%s:%d] vb: %d unable to delete timer entry, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 			c.metastoreDeleteErrCounter++
 		} else {
