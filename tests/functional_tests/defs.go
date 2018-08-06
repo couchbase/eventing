@@ -61,6 +61,7 @@ const (
 	statsLookupRetryCounter = 60
 
 	cppthrCount              = 1
+	executeTimerRoutineCount = 3
 	lcbCap                   = 5
 	sockBatchSize            = 1
 	timerStorageRoutineCount = 3
@@ -111,6 +112,7 @@ type commonSettings struct {
 	aliasSources             []string
 	batchSize                int
 	deadlineTimeout          int
+	executeTimerRoutineCount int
 	executionTimeout         int
 	lcbInstCap               int
 	logLevel                 string

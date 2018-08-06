@@ -1,11 +1,13 @@
 package consumer
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timers"
+	"github.com/couchbase/eventing/util"
 )
 
 func (c *Consumer) scanTimers() {
@@ -19,32 +21,49 @@ func (c *Consumer) scanTimers() {
 			return
 
 		default:
-			for _, vb := range c.getCurrentlyOwnedVbs() {
-				c.scanTimersForVB(vb)
+			vbs := c.getCurrentlyOwnedVbs()
+			workerVbMapping := util.VbucketDistribution(vbs, c.executeTimerRoutineCount)
+
+			var wg sync.WaitGroup
+			wg.Add(c.executeTimerRoutineCount)
+
+			for i := 0; i < c.executeTimerRoutineCount; i++ {
+				go c.executeTimers(workerVbMapping[i], &wg)
 			}
 
+			wg.Wait()
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
 
-func (c *Consumer) scanTimersForVB(vb uint16) {
-	logPrefix := "Consumer::scanTimersForVB"
+func (c *Consumer) executeTimers(vbs []uint16, wg *sync.WaitGroup) {
+	logPrefix := "Consumer::executeTimers"
 
-	store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
-	if !found {
-		logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-		atomic.AddUint64(&c.metastoreNotFoundErrCounter, 1)
-		return
-	}
+	defer wg.Done()
 
-	iterator := store.ScanDue()
-	if iterator == nil {
-		logging.Tracef("%s [%s:%s:%d] vb: %d no timers to fire",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-		return
+	for _, vb := range vbs {
+		store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
+		if !found {
+			logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+			atomic.AddUint64(&c.metastoreNotFoundErrCounter, 1)
+			continue
+		}
+
+		iterator := store.ScanDue()
+		if iterator == nil {
+			logging.Tracef("%s [%s:%s:%d] vb: %d no timers to fire",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+			continue
+		} else {
+			c.executeTimersImpl(store, iterator, vb)
+		}
 	}
+}
+
+func (c *Consumer) executeTimersImpl(store *timers.TimerStore, iterator *timers.TimerIter, vb uint16) {
+	logPrefix := "Consumer::executeTimersImpl"
 
 	for entry, err := iterator.ScanNext(); entry != nil; entry, err = iterator.ScanNext() {
 		if err != nil {

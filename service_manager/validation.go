@@ -571,6 +571,10 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 	}
 
 	// metastore related configuration
+	if info = m.validatePositiveInteger("execute_timer_routine_count", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validatePositiveInteger("timer_storage_routine_count", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}

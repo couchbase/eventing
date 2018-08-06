@@ -58,6 +58,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		eventingSSLPort:                 pConfig.EventingSSLPort,
 		eventingDir:                     pConfig.EventingDir,
 		eventingNodeUUIDs:               eventingNodeUUIDs,
+		executeTimerRoutineCount:        hConfig.ExecuteTimerRoutineCount,
 		executionTimeout:                hConfig.ExecutionTimeout,
 		feedbackQueueCap:                hConfig.FeedbackQueueCap,
 		feedbackReadBufferSize:          hConfig.FeedbackReadBufferSize,

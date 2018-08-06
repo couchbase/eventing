@@ -256,6 +256,7 @@ type HandlerConfig struct {
 	CronTimersPerDoc            int
 	CurlTimeout                 int64
 	EnableRecursiveMutation     bool
+	ExecuteTimerRoutineCount    int
 	ExecutionTimeout            int
 	FeedbackBatchSize           int
 	FeedbackQueueCap            int64

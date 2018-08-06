@@ -162,6 +162,7 @@ type Consumer struct {
 	eventingSSLPort               string
 	eventingNodeAddrs             []string
 	eventingNodeUUIDs             []string
+	executeTimerRoutineCount      int
 	executionTimeout              int
 	filterVbEvents                map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
 	filterVbEventsRWMutex         *sync.RWMutex

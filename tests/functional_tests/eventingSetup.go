@@ -172,6 +172,12 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["sock_batch_size"] = s.batchSize
 	}
 
+	if s.executeTimerRoutineCount == 0 {
+		settings["execute_timer_routine_count"] = executeTimerRoutineCount
+	} else {
+		settings["execute_timer_routine_count"] = s.executeTimerRoutineCount
+	}
+
 	if s.timerStorageRoutineCount == 0 {
 		settings["timer_storage_routine_count"] = timerStorageRoutineCount
 	} else {
