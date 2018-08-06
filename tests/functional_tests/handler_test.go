@@ -598,6 +598,30 @@ func TestSourceBucketDeleteWithBootstrap(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestSourceAndMetaBucketDeleteWithBootstrap(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+
+	go createAndDeployFunction(handler, handler, &commonSettings{})
+	time.Sleep(20 * time.Second) // let the boostrap process to make some progress
+
+	log.Println("Deleting source bucket:", srcBucket)
+	deleteBucket(srcBucket)
+	log.Println("Deleted source bucket:", srcBucket)
+
+	log.Println("Deleting metadata bucket:", metaBucket)
+	deleteBucket(srcBucket)
+	log.Println("Deleted metadata bucket:", metaBucket)
+
+	time.Sleep(10 * time.Second)
+	waitForUndeployToFinish(handler)
+
+	time.Sleep(10 * time.Second)
+	createBucket(metaBucket, bucketmemQuota)
+	flushFunctionAndBucket(handler)
+}
+
 func TestUndeployDuringBootstrap(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"

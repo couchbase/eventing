@@ -289,12 +289,7 @@ func (c *Consumer) Serve() {
 		go c.vbsStateUpdate()
 	}
 
-	// Disabling cron/doc timer processing/cleanup routines
 	go c.scanTimers()
-	// go c.cleanupProcessedDocTimers()
-	// go c.processCronTimerEvents()
-	// go c.addCronTimersToCleanup()
-	// go c.cleanupProcessedCronTimers()
 
 	go c.updateWorkerStats()
 
@@ -508,12 +503,8 @@ func (c *Consumer) Stop() {
 		c.consumerSup.Stop()
 	}
 
-	logging.Infof("%s [%s:%s:%d] Requested to stop supervisor for Eventing.Consumer",
+	logging.Infof("%s [%s:%s:%d] Requested to stop supervisor for Eventing.Consumer. Exiting Consumer::Stop",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
-
-	logging.Infof("%s [%s:%s:%d] Exiting Consumer::Stop routine",
-		logPrefix, c.workerName, c.tcpPort, c.Pid())
-
 }
 
 func (c *Consumer) String() string {

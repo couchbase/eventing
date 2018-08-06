@@ -3,6 +3,7 @@ package consumer
 import (
 	"time"
 
+	"fmt"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timers"
 )
@@ -35,6 +36,7 @@ func (c *Consumer) scanTimersForVB(vb uint16) {
 	if !found {
 		logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+		c.metastoreNotFoundErrCounter++
 		return
 	}
 
@@ -49,8 +51,10 @@ func (c *Consumer) scanTimersForVB(vb uint16) {
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] vb: %d unable to get timer entry, err : %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+			c.metastoreScanErrCounter++
 			continue
 		}
+		c.metastoreScanCounter++
 
 		e := entry.Context.(map[string]interface{})
 		timer := &timerContext{
@@ -66,6 +70,9 @@ func (c *Consumer) scanTimersForVB(vb uint16) {
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] vb: %d unable to delete timer entry, err : %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+			c.metastoreDeleteErrCounter++
+		} else {
+			c.metastoreDeleteCounter++
 		}
 	}
 }
@@ -89,14 +96,15 @@ func (c *Consumer) createTimer() {
 	}
 }
 
-func (c *Consumer) createTimerImpl(timer *TimerInfo) {
+func (c *Consumer) createTimerImpl(timer *TimerInfo) error {
 	logPrefix := "Consumer::createTimerImpl"
 
 	store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(timer.Vb))
 	if !found {
-		logging.Errorf("%s [%s:%s:%d] Unable to get store for VB : %v err : %v",
+		logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb)
-		return
+		c.metastoreNotFoundErrCounter++
+		return fmt.Errorf("store not found")
 	}
 
 	context := &timerContext{
@@ -104,5 +112,14 @@ func (c *Consumer) createTimerImpl(timer *TimerInfo) {
 		Context:  timer.Context,
 		Vb:       timer.Vb,
 	}
-	store.Set(timer.Epoch, timer.Reference, context)
+
+	err := store.Set(timer.Epoch, timer.Reference, context)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] vb: %d seq: %d failed to store",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb, timer.SeqNum)
+		c.metastoreSetErrCounter++
+		return err
+	}
+	c.metastoreSetCounter++
+	return nil
 }

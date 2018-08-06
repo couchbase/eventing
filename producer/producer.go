@@ -101,26 +101,12 @@ func (p *Producer) Serve() {
 	p.statsTicker = time.NewTicker(time.Duration(p.handlerConfig.StatsLogInterval) * 12 * time.Millisecond)
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
-	logging.Infof("%s [%s:%d] number of vbuckets for %s: %d",
+	logging.Infof("%s [%s:%d] Source bucket: %s vbucket count: %d",
 		logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)
-
-	connStr := fmt.Sprintf("couchbase://%s", p.KvHostPorts()[0])
 
 	p.seqsNoProcessedRWMutex.Lock()
 	for i := 0; i < p.numVbuckets; i++ {
 		p.seqsNoProcessed[i] = 0
-		err = timers.Create(p.AddMetadataPrefix(p.app.AppName).Raw(),
-			i, connStr, p.metadatabucket)
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%d] Exiting due to timeout",
-				logPrefix, p.appName, p.LenRunningConsumers())
-			return
-		}
-		if err != nil {
-			logging.Errorf("%s [%s:%d] vb: %d unable to create metastore, err: %v",
-				logPrefix, p.appName, p.LenRunningConsumers(), i, err)
-			continue
-		}
 	}
 	p.seqsNoProcessedRWMutex.Unlock()
 

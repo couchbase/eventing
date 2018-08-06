@@ -56,12 +56,12 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	}
 
 	if c.cppQueueSizes != nil {
-		stats["AGG_DOC_TIMER_FEEDBACK_QUEUE_SIZE"] = uint64(c.cppQueueSizes.DocTimerQueueSize)
+		stats["AGG_TIMER_FEEDBACK_QUEUE_SIZE"] = uint64(c.cppQueueSizes.DocTimerQueueSize)
 		stats["AGG_QUEUE_MEMORY"] = uint64(c.cppQueueSizes.AggQueueMemory)
 		stats["AGG_QUEUE_SIZE"] = uint64(c.cppQueueSizes.AggQueueSize)
 	}
 
-	stats["AGG_DOC_TIMER_FEEDBACK_QUEUE_CAP"] = uint64(c.feedbackQueueCap)
+	stats["AGG_TIMER_FEEDBACK_QUEUE_CAP"] = uint64(c.feedbackQueueCap)
 	stats["AGG_QUEUE_MEMORY_CAP"] = uint64(c.workerQueueMemCap)
 	stats["AGG_QUEUE_SIZE_CAP"] = uint64(c.workerQueueCap)
 
@@ -94,7 +94,7 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	}
 
 	if c.timerResponsesRecieved > 0 {
-		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.timerResponsesRecieved
+		stats["TIMER_RESPONSES_RECEIVED"] = c.timerResponsesRecieved
 	}
 
 	if c.timerMessagesProcessed > 0 {
@@ -111,6 +111,35 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 
 	if c.isRebalanceOngoing {
 		stats["IS_REBALANCE_ONGOING"] = 1
+	}
+
+	// metastore related stats
+	if c.metastoreDeleteCounter > 0 {
+		stats["METASTORE_DELETES"] = c.metastoreDeleteCounter
+	}
+
+	if c.metastoreDeleteErrCounter > 0 {
+		stats["METASTORE_DELETE_ERR"] = c.metastoreDeleteErrCounter
+	}
+
+	if c.metastoreNotFoundErrCounter > 0 {
+		stats["METASTORE_ENOENTS"] = c.metastoreNotFoundErrCounter
+	}
+
+	if c.metastoreScanCounter > 0 {
+		stats["METASTORE_SCANS"] = c.metastoreScanCounter
+	}
+
+	if c.metastoreScanErrCounter > 0 {
+		stats["METASTORE_SCAN_ERR"] = c.metastoreScanErrCounter
+	}
+
+	if c.metastoreSetCounter > 0 {
+		stats["METATSTORE_SETS"] = c.metastoreSetCounter
+	}
+
+	if c.metastoreSetErrCounter > 0 {
+		stats["METASTORE_SET_ERR"] = c.metastoreSetErrCounter
 	}
 
 	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()

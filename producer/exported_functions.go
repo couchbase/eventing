@@ -2,6 +2,7 @@ package producer
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"sort"
 	"strconv"
@@ -232,6 +233,7 @@ func (p *Producer) NsServerNodeCount() int {
 	return 0
 }
 
+// SetRetryCount changes the retry count for early bail out from retry ops
 func (p *Producer) SetRetryCount(retryCount int64) {
 	p.retryCount = retryCount
 }
@@ -263,6 +265,16 @@ func (p *Producer) SignalBootstrapFinish() {
 // SignalCheckpointBlobCleanup cleans up eventing app related blobs from metadata bucket
 func (p *Producer) SignalCheckpointBlobCleanup() error {
 	logPrefix := "Producer::SignalCheckpointBlobCleanup"
+
+	// Bail out early if metadata bucket is dropped/deleted
+	hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+
+	metaBucketNodeCount := util.CountActiveKVNodes(p.metadatabucket, hostAddress)
+	if metaBucketNodeCount == 0 {
+		logging.Errorf("%s [%s:%d] MetaBucketNodeCount: %d exiting from cleanup routine",
+			logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)
+		return nil
+	}
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
@@ -537,6 +549,15 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 func (p *Producer) CleanupMetadataBucket() error {
 	logPrefix := "Producer::CleanupMetadataBucket"
 
+	hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+
+	metaBucketNodeCount := util.CountActiveKVNodes(p.metadatabucket, hostAddress)
+	if metaBucketNodeCount == 0 {
+		logging.Infof("%s [%s:%d] MetaBucketNodeCount: %d exiting",
+			logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)
+		return nil
+	}
+
 	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, p.metadatabucket)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
@@ -699,11 +720,11 @@ func (p *Producer) CleanupMetadataBucket() error {
 	return nil
 }
 
-// UpdatePlasmaMemoryQuota allows tuning of memory quota for timers
+// UpdateMemoryQuota allows tuning of memory quota for Eventing
 func (p *Producer) UpdateMemoryQuota(quota int64) {
-	logPrefix := "Producer::UpdatePlasmaMemoryQuota"
+	logPrefix := "Producer::UpdateMemoryQuota"
 
-	logging.Infof("%s [%s:%d] Updating plasma memory quota to %d MB",
+	logging.Infof("%s [%s:%d] Updating eventing memory quota to %d MB",
 		logPrefix, p.appName, p.LenRunningConsumers(), quota)
 
 	p.MemoryQuota = quota // in MB
@@ -859,10 +880,13 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 	return checkpointBlobDumps
 }
 
+// AddMetadataPrefix prepends user prefix and handler UUID to namespacing
+// within metadata bucket
 func (p *Producer) AddMetadataPrefix(key string) common.Key {
 	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), key)
 }
 
+// GetVbOwner returns assigned eventing nodes and worker for a vbucket
 func (p *Producer) GetVbOwner(vb uint16) (string, string, error) {
 	if info, ok := p.vbMapping[vb]; ok {
 		return info.ownerNode, info.assignedWorker, nil
