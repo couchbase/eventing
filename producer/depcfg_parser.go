@@ -232,10 +232,18 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.WorkerQueueMemCap = 1024 * 1024 * 1024
 	}
 
-	if val, ok := settings["xattr_doc_timer_entry_prune_threshold"]; ok {
-		p.handlerConfig.XattrEntryPruneThreshold = int(val.(float64))
+	// Metastore related configuration
+
+	if val, ok := settings["timer_storage_routine_count"]; ok {
+		p.handlerConfig.TimerStorageRoutineCount = int(val.(float64))
 	} else {
-		p.handlerConfig.XattrEntryPruneThreshold = 100
+		p.handlerConfig.TimerStorageRoutineCount = 3
+	}
+
+	if val, ok := settings["timer_storage_chan_size"]; ok {
+		p.handlerConfig.TimerStorageChanSize = int(val.(float64))
+	} else {
+		p.handlerConfig.TimerStorageChanSize = 10 * 1000
 	}
 
 	// Process related configuration
@@ -286,73 +294,6 @@ func (p *Producer) parseDepcfg() error {
 		p.appLogRotation = val.(bool)
 	} else {
 		p.appLogRotation = true
-	}
-	// Doc timer configurations for plasma
-
-	if val, ok := settings["auto_swapper"]; ok {
-		p.autoSwapper = val.(bool)
-	} else {
-		p.autoSwapper = true
-	}
-
-	if val, ok := settings["enable_snapshot_smr"]; ok {
-		p.enableSnapshotSMR = val.(bool)
-	} else {
-		p.enableSnapshotSMR = false
-	}
-
-	if val, ok := settings["iterator_refresh_counter"]; ok {
-		p.iteratorRefreshCounter = val.(int)
-	} else {
-		p.iteratorRefreshCounter = 10 * 1000
-	}
-
-	if val, ok := settings["lss_cleaner_max_threshold"]; ok {
-		p.lssCleanerMaxThreshold = int(val.(float64))
-	} else {
-		p.lssCleanerMaxThreshold = 70
-	}
-
-	if val, ok := settings["lss_cleaner_threshold"]; ok {
-		p.lssCleanerThreshold = int(val.(float64))
-	} else {
-		p.lssCleanerThreshold = 30
-	}
-
-	if val, ok := settings["lss_read_ahead_size"]; ok {
-		p.lssReadAheadSize = int64(val.(float64))
-	} else {
-		p.lssReadAheadSize = 1024 * 1024
-	}
-
-	if val, ok := settings["max_delta_chain_len"]; ok {
-		p.maxDeltaChainLen = int(val.(float64))
-	} else {
-		p.maxDeltaChainLen = 200
-	}
-
-	if val, ok := settings["max_page_items"]; ok {
-		p.maxPageItems = int(val.(float64))
-	} else {
-		p.maxPageItems = 400
-	}
-
-	if val, ok := settings["min_page_items"]; ok {
-		p.minPageItems = int(val.(float64))
-	} else {
-		p.minPageItems = 50
-	}
-
-	if val, ok := settings["persist_interval"]; ok {
-		p.persistInterval = int(val.(float64))
-	} else {
-		p.persistInterval = 5000
-	}
-
-	if val, ok := settings["use_memory_manager"]; ok {
-		p.useMemoryMgmt = val.(bool)
-	} else {
-		p.useMemoryMgmt = true
 	}
 
 	// DCP connection related configurations

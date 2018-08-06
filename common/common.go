@@ -270,11 +270,12 @@ type HandlerConfig struct {
 	StatsLogInterval            int
 	StreamBoundary              DcpStreamBoundary
 	TimerProcessingTickInterval int
+	TimerStorageRoutineCount    int
+	TimerStorageChanSize        int
 	UsingDocTimer               bool
 	WorkerCount                 int
 	WorkerQueueCap              int64
 	WorkerQueueMemCap           int64
-	XattrEntryPruneThreshold    int
 }
 
 type ProcessConfig struct {

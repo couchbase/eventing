@@ -97,8 +97,6 @@ func (p *Producer) Serve() {
 		return
 	}
 
-	p.persistAllTicker = time.NewTicker(time.Duration(p.persistInterval) * time.Millisecond)
-	p.statsTicker = time.NewTicker(time.Duration(p.handlerConfig.StatsLogInterval) * 12 * time.Millisecond)
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
 	logging.Infof("%s [%s:%d] Source bucket: %s vbucket count: %d",

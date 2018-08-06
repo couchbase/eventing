@@ -62,12 +62,10 @@ type Producer struct {
 	nsServerHostPort       string
 	numVbuckets            int
 	pauseProducerCh        chan struct{}
-	persistAllTicker       *time.Ticker
 	pollBucketInterval     time.Duration
 	pollBucketTicker       *time.Ticker
 	pollBucketStopCh       chan struct{}
 	retryCount             int64
-	statsTicker            *time.Ticker
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
 	uuid                   string

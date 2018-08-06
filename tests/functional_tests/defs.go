@@ -60,10 +60,11 @@ const (
 	itemCount               = 5000
 	statsLookupRetryCounter = 60
 
-	cppthrCount   = 1
-	lcbCap        = 5
-	sockBatchSize = 1
-	workerCount   = 3
+	cppthrCount              = 1
+	lcbCap                   = 5
+	sockBatchSize            = 1
+	timerStorageRoutineCount = 3
+	workerCount              = 3
 
 	deadlineTimeout  = 6
 	executionTimeout = 5
@@ -106,19 +107,20 @@ type bucket struct {
 }
 
 type commonSettings struct {
-	aliasHandles      []string
-	aliasSources      []string
-	batchSize         int
-	deadlineTimeout   int
-	executionTimeout  int
-	lcbInstCap        int
-	logLevel          string
-	metaBucket        string
-	recursiveBehavior string
-	sourceBucket      string
-	streamBoundary    string
-	thrCount          int
-	workerCount       int
+	aliasHandles             []string
+	aliasSources             []string
+	batchSize                int
+	deadlineTimeout          int
+	executionTimeout         int
+	lcbInstCap               int
+	logLevel                 string
+	metaBucket               string
+	recursiveBehavior        string
+	sourceBucket             string
+	streamBoundary           string
+	thrCount                 int
+	timerStorageRoutineCount int
+	workerCount              int
 }
 
 type rateLimit struct {
