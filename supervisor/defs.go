@@ -92,7 +92,7 @@ type SuperSupervisor struct {
 	// to signify app has been undeployed. Access controlled by appListRWMutex
 	locallyDeployedApps map[string]string
 
-	plasmaMemQuota int64 // In MB
+	memoryQuota int64 // In MB
 
 	cleanedUpAppMap            map[string]struct{} // Access controlled by default lock
 	mu                         *sync.RWMutex

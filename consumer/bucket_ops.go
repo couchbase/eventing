@@ -56,12 +56,21 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 
 	if c.isTerminateRunning {
-		logging.Infof("%s [%s:%s:%d] Exiting as worker is terminating",
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
 	}
 
-	connStr := fmt.Sprintf("couchbase://%s", c.getKvNodes()[0])
+	kvNodes := c.getKvNodes()
+
+	connStr := "couchbase://"
+	for index, kvNode := range kvNodes {
+		if index != 0 {
+			connStr = connStr + ","
+		}
+		connStr = connStr + kvNode
+	}
+
 	if util.IsIPv6() {
 		connStr += "?ipv6=allow"
 	}
@@ -83,7 +92,7 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	if err == gocb.ErrBadHosts {
 		logging.Errorf("%s [%s:%d] Failed to connect to metadata bucket %s (bucket got deleted?) , err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), err)
-		return nil
+		return err
 	}
 
 	if err != nil {
@@ -92,8 +101,8 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	logging.Infof("%s [%s:%d] Successfully connected to metadata bucket %s",
-		logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket())
+	logging.Infof("%s [%s:%d] Successfully connected to metadata bucket %s connStr: %rs",
+		logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), connStr)
 
 	return nil
 }
@@ -105,7 +114,7 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	b := args[1].(**couchbase.Bucket)
 
 	if c.isTerminateRunning {
-		logging.Infof("%s [%s:%s:%d] Exiting as worker is terminating",
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
 	}
@@ -168,7 +177,7 @@ var getOpCallback = func(args ...interface{}) error {
 	}
 
 	if c.isTerminateRunning {
-		logging.Infof("%s [%s:%s:%d] Exiting as worker is terminating",
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
 	}
@@ -717,7 +726,7 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	flogs := args[1].(*couchbase.FailoverLog)
 
 	if c.isTerminateRunning {
-		logging.Infof("%s [%s:%s:%d] Exiting as worker is terminating",
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
 	}
@@ -811,7 +820,7 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	kvHostPort := args[2].(string)
 
 	if c.isTerminateRunning {
-		logging.Infof("%s [%s:%s:%d] Exiting as worker is terminating",
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
 	}
@@ -837,6 +846,7 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	logging.Infof("%s [%s:%s:%d] Started up dcp feed for bucket: %v from kv node: %rs",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort)
 
+	// Lock not needed as caller already has grabbed write lock
 	c.kvHostDcpFeedMap[kvHostPort] = dcpFeed
 
 	return nil
@@ -1046,7 +1056,7 @@ var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
 	vbs := args[1].([]uint16)
 
 	if c.isTerminateRunning {
-		logging.Infof("%s [%s:%s:%d] Exiting as worker is terminating",
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
 	}

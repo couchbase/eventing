@@ -152,7 +152,7 @@ retryStreamUpdate:
 	vbsDistribution := util.VbucketDistribution(c.vbsRemainingToOwn, c.vbOwnershipTakeoverRoutineCount)
 
 	for k, v := range vbsDistribution {
-		logging.Infof("%s [%s:%s:%d] vb takeover routine id: %d, vbs assigned len: %d dump: %v",
+		logging.Tracef("%s [%s:%s:%d] vb takeover routine id: %d, vbs assigned len: %d dump: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), k, len(v), util.Condense(v))
 	}
 

@@ -1,7 +1,6 @@
 package producer
 
 import (
-	"fmt"
 	"net"
 
 	"github.com/couchbase/eventing/common"
@@ -96,7 +95,16 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	connStr := fmt.Sprintf("couchbase://%s", p.KvHostPorts()[0])
+	kvNodes := p.KvHostPorts()
+
+	connStr := "couchbase://"
+	for index, kvNode := range kvNodes {
+		if index != 0 {
+			connStr = connStr + ","
+		}
+		connStr = connStr + kvNode
+	}
+
 	if util.IsIPv6() {
 		connStr += "?ipv6=allow"
 	}
@@ -121,6 +129,9 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
 		return err
 	}
+
+	logging.Infof("%s [%s:%d] Connected to metadata bucket %s connStr: %s",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, connStr)
 
 	return nil
 }

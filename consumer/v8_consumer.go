@@ -58,6 +58,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		eventingSSLPort:                 pConfig.EventingSSLPort,
 		eventingDir:                     pConfig.EventingDir,
 		eventingNodeUUIDs:               eventingNodeUUIDs,
+		executeTimerRoutineCount:        hConfig.ExecuteTimerRoutineCount,
 		executionTimeout:                hConfig.ExecutionTimeout,
 		feedbackQueueCap:                hConfig.FeedbackQueueCap,
 		feedbackReadBufferSize:          hConfig.FeedbackReadBufferSize,
@@ -114,6 +115,10 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		stopReqStreamProcessCh:          make(chan struct{}, 1),
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
+		timerStorageChanSize:            hConfig.TimerStorageChanSize,
+		timerStorageMetaChsRWMutex:      &sync.RWMutex{},
+		timerStorageRoutineCount:        hConfig.TimerStorageRoutineCount,
+		timerStorageRoutineMetaChs:      make([]chan *TimerInfo, hConfig.TimerStorageRoutineCount),
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		uuid:                            uuid,
 		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),
@@ -141,7 +146,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		workerQueueMemCap:               hConfig.WorkerQueueMemCap,
 		workerVbucketMap:                workerVbucketMap,
 		workerVbucketMapRWMutex:         &sync.RWMutex{},
-		xattrEntryPruneThreshold:        hConfig.XattrEntryPruneThreshold,
 	}
 
 	consumer.builderPool = &sync.Pool{
@@ -193,13 +197,6 @@ func (c *Consumer) Serve() {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
 	}
-
-	// Disabling socket bucket handle which was needed for doc timers
-	/*err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, gocbConnectBucketCallback, c)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return
-	}*/
 
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, gocbConnectMetaBucketCallback, c)
 	if err == common.ErrRetryTimeout {
@@ -350,7 +347,7 @@ func (c *Consumer) HandleV8Worker() error {
 
 	c.workerExited = false
 
-	go c.createTimer()
+	go c.routeTimers()
 
 	go c.processEvents()
 	return nil
@@ -422,7 +419,17 @@ func (c *Consumer) Stop() {
 		c.stopReqStreamProcessCh <- struct{}{}
 	}
 
-	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop cron, doc routines",
+	c.timerStorageMetaChsRWMutex.Lock()
+	for i := 0; i < c.timerStorageRoutineCount; i++ {
+		if c.timerStorageRoutineMetaChs[i] != nil {
+			close(c.timerStorageRoutineMetaChs[i])
+		}
+	}
+
+	c.timerStorageRoutineMetaChs = make([]chan *TimerInfo, 0)
+	c.timerStorageMetaChsRWMutex.Unlock()
+
+	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop timer routines",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	// Closing bucket feed handle after sending message on stopReqStreamProcessCh
@@ -461,18 +468,23 @@ func (c *Consumer) Stop() {
 		c.signalStopDebuggerRoutineCh <- struct{}{}
 	}
 
-	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop plasma store, checkpointing, cron timer processing routines",
+	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop checkpointing routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.dcpFeedsClosed = true
 
-	if c.kvHostDcpFeedMap != nil {
-		for _, dcpFeed := range c.kvHostDcpFeedMap {
-			if dcpFeed != nil {
-				dcpFeed.Close()
+	func() {
+		c.hostDcpFeedRWMutex.RLock()
+		defer c.hostDcpFeedRWMutex.RUnlock()
+
+		if c.kvHostDcpFeedMap != nil {
+			for _, dcpFeed := range c.kvHostDcpFeedMap {
+				if dcpFeed != nil {
+					dcpFeed.Close()
+				}
 			}
 		}
-	}
+	}()
 
 	logging.Infof("%s [%s:%s:%d] Closed all dcpfeed handles",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())

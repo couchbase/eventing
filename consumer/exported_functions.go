@@ -114,33 +114,13 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	}
 
 	// metastore related stats
-	if c.metastoreDeleteCounter > 0 {
-		stats["METASTORE_DELETES"] = c.metastoreDeleteCounter
-	}
-
-	if c.metastoreDeleteErrCounter > 0 {
-		stats["METASTORE_DELETE_ERR"] = c.metastoreDeleteErrCounter
-	}
-
-	if c.metastoreNotFoundErrCounter > 0 {
-		stats["METASTORE_ENOENTS"] = c.metastoreNotFoundErrCounter
-	}
-
-	if c.metastoreScanCounter > 0 {
-		stats["METASTORE_SCANS"] = c.metastoreScanCounter
-	}
-
-	if c.metastoreScanErrCounter > 0 {
-		stats["METASTORE_SCAN_ERR"] = c.metastoreScanErrCounter
-	}
-
-	if c.metastoreSetCounter > 0 {
-		stats["METATSTORE_SETS"] = c.metastoreSetCounter
-	}
-
-	if c.metastoreSetErrCounter > 0 {
-		stats["METASTORE_SET_ERR"] = c.metastoreSetErrCounter
-	}
+	stats["METASTORE_DELETES"] = atomic.LoadUint64(&c.metastoreDeleteCounter)
+	stats["METASTORE_DELETE_ERR"] = atomic.LoadUint64(&c.metastoreDeleteErrCounter)
+	stats["METASTORE_ENOENTS"] = atomic.LoadUint64(&c.metastoreNotFoundErrCounter)
+	stats["METASTORE_SCANS"] = atomic.LoadUint64(&c.metastoreScanCounter)
+	stats["METASTORE_SCAN_ERR"] = atomic.LoadUint64(&c.metastoreScanErrCounter)
+	stats["METATSTORE_SETS"] = atomic.LoadUint64(&c.metastoreSetCounter)
+	stats["METASTORE_SET_ERR"] = atomic.LoadUint64(&c.metastoreSetErrCounter)
 
 	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
 	if len(vbsRemainingToGiveUp) > 0 {

@@ -56,7 +56,11 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "worker_feedback_queue_cap", float64(10*1000))
 	fillMissingDefault(settings, "worker_queue_cap", float64(100*1000))
 	fillMissingDefault(settings, "worker_queue_mem_cap", float64(1024))
-	fillMissingDefault(settings, "xattr_doc_timer_entry_prune_threshold", float64(100))
+
+	// metastore related configuration
+	fillMissingDefault(settings, "execute_timer_routine_count", float64(3))
+	fillMissingDefault(settings, "timer_storage_routine_count", float64(3))
+	fillMissingDefault(settings, "timer_storage_chan_size", float64(100*1000))
 
 	// Process related configuration
 	fillMissingDefault(settings, "breakpad_on", true)
@@ -69,18 +73,6 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "app_log_max_size", float64(1024*1024*40))
 	fillMissingDefault(settings, "app_log_max_files", float64(10))
 	fillMissingDefault(settings, "enable_applog_rotation", true)
-
-	// Doc timer configurations for plasma
-	fillMissingDefault(settings, "auto_swapper", true)
-	fillMissingDefault(settings, "enable_snapshot_smr", false)
-	fillMissingDefault(settings, "lss_cleaner_max_threshold", float64(70))
-	fillMissingDefault(settings, "lss_cleaner_threshold", float64(30))
-	fillMissingDefault(settings, "lss_read_ahead_size", float64(1024*1024))
-	fillMissingDefault(settings, "max_delta_chain_len", float64(200))
-	fillMissingDefault(settings, "max_page_items", float64(400))
-	fillMissingDefault(settings, "min_page_items", float64(50))
-	fillMissingDefault(settings, "persist_interval", float64(5000))
-	fillMissingDefault(settings, "use_memory_manager", true)
 
 	// DCP connection related configurations
 	fillMissingDefault(settings, "agg_dcp_feed_mem_cap", float64(1024))

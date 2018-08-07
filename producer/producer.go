@@ -17,7 +17,6 @@ import (
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -48,7 +47,6 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 		retryCount:                 -1,
 		seqsNoProcessed:            make(map[int]int64),
 		seqsNoProcessedRWMutex:     &sync.RWMutex{},
-		signalStopPersistAllCh:     make(chan struct{}, 1),
 		statsRWMutex:               &sync.RWMutex{},
 		superSup:                   superSup,
 		topologyChangeCh:           make(chan *common.TopologyChangeMsg, 10),
@@ -97,8 +95,6 @@ func (p *Producer) Serve() {
 		return
 	}
 
-	p.persistAllTicker = time.NewTicker(time.Duration(p.persistInterval) * time.Millisecond)
-	p.statsTicker = time.NewTicker(time.Duration(p.handlerConfig.StatsLogInterval) * 12 * time.Millisecond)
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
 	logging.Infof("%s [%s:%d] Source bucket: %s vbucket count: %d",
@@ -159,9 +155,6 @@ func (p *Producer) Serve() {
 		}
 	}
 
-	// Increasing the timeouts for Stop() routine of workers under supervision,
-	// their cleanup up involves stopping all plasma related operations, stopping
-	// all active dcp streams and more. So graceful shutdown might take time.
 	spec := suptree.Spec{
 		Timeout: supervisorTimeout,
 	}
@@ -317,8 +310,6 @@ func (p *Producer) Serve() {
 			p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
 			p.listenerRWMutex.Unlock()
 
-			p.signalStopPersistAllCh <- struct{}{}
-
 			p.notifySupervisorCh <- struct{}{}
 
 		case <-p.stopProducerCh:
@@ -405,13 +396,6 @@ func (p *Producer) Stop() {
 	logging.Infof("%s [%s:%d] Signalled for Producer::Serve to exit",
 		logPrefix, p.appName, p.LenRunningConsumers())
 
-	if p.signalStopPersistAllCh != nil {
-		p.signalStopPersistAllCh <- struct{}{}
-	}
-
-	logging.Infof("%s [%s:%d] Signalled plasma persist routine to exit",
-		logPrefix, p.appName, p.LenRunningConsumers())
-
 	if p.appLogWriter != nil {
 		p.appLogWriter.Close()
 	}
@@ -425,15 +409,6 @@ func (p *Producer) Stop() {
 
 	if p.pollBucketStopCh != nil {
 		p.pollBucketStopCh <- struct{}{}
-	}
-
-	for vb := 0; vb < p.numVbuckets; vb++ {
-		store, found := timers.Fetch(p.AddMetadataPrefix(p.app.AppName).Raw(), vb)
-		if !found {
-			continue
-		}
-
-		store.Free()
 	}
 
 	logging.Infof("%s [%s:%d] Exiting from Producer::Stop routine",
@@ -823,16 +798,28 @@ func (p *Producer) updateStats() {
 			err := p.vbDistributionStats()
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+				p.updateStatsTicker.Stop()
 				return
 			}
 
 			err = p.getSeqsProcessed()
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+				p.updateStatsTicker.Stop()
 				return
 			}
+
 		case <-p.updateStatsStopCh:
+			p.updateStatsTicker.Stop()
 			return
+
+		default:
+			if p.isTerminateRunning {
+				logging.Infof("%s [%s:%d] Terminate running, exiting", logPrefix, p.appName, p.LenRunningConsumers())
+				p.updateStatsTicker.Stop()
+				return
+			}
+
 		}
 	}
 }

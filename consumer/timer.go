@@ -1,11 +1,13 @@
 package consumer
 
 import (
+	"sync"
+	"sync/atomic"
 	"time"
 
-	"fmt"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timers"
+	"github.com/couchbase/eventing/util"
 )
 
 func (c *Consumer) scanTimers() {
@@ -19,42 +21,58 @@ func (c *Consumer) scanTimers() {
 			return
 
 		default:
-			for _, vb := range c.getCurrentlyOwnedVbs() {
-				c.scanTimersForVB(vb)
+			vbs := c.getCurrentlyOwnedVbs()
+			workerVbMapping := util.VbucketDistribution(vbs, c.executeTimerRoutineCount)
+
+			var wg sync.WaitGroup
+			wg.Add(c.executeTimerRoutineCount)
+
+			for i := 0; i < c.executeTimerRoutineCount; i++ {
+				go c.executeTimers(workerVbMapping[i], &wg)
 			}
+
+			wg.Wait()
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
 
-func (c *Consumer) scanTimersForVB(vb uint16) {
-	logPrefix := "Consumer::scanTimersForVB"
+func (c *Consumer) executeTimers(vbs []uint16, wg *sync.WaitGroup) {
+	logPrefix := "Consumer::executeTimers"
 
-	// TODO : Remove the sleep once we parallelize the scan
-	time.Sleep(100 * time.Millisecond)
+	defer wg.Done()
 
-	store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
-	if !found {
-		logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-		c.metastoreNotFoundErrCounter++
-		return
+	for _, vb := range vbs {
+		store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
+		if !found {
+			logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+			atomic.AddUint64(&c.metastoreNotFoundErrCounter, 1)
+			continue
+		}
+
+		iterator := store.ScanDue()
+		if iterator == nil {
+			logging.Tracef("%s [%s:%s:%d] vb: %d no timers to fire",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+			continue
+		} else {
+			c.executeTimersImpl(store, iterator, vb)
+		}
 	}
+}
 
-	iterator, err := store.ScanDue()
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %d unable to get iterator, err : %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-		return
-	}
+func (c *Consumer) executeTimersImpl(store *timers.TimerStore, iterator *timers.TimerIter, vb uint16) {
+	logPrefix := "Consumer::executeTimersImpl"
 
 	for entry, err := iterator.ScanNext(); entry != nil; entry, err = iterator.ScanNext() {
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] vb: %d unable to get timer entry, err : %v",
+			logging.Errorf("%s [%s:%s:%d] vb: %d unable to get timer entry, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-			c.metastoreScanErrCounter++
+			atomic.AddUint64(&c.metastoreScanErrCounter, 1)
 			continue
 		}
-		c.metastoreScanCounter++
+		atomic.AddUint64(&c.metastoreScanCounter, 1)
 
 		e := entry.Context.(map[string]interface{})
 		timer := &timerContext{
@@ -68,58 +86,84 @@ func (c *Consumer) scanTimersForVB(vb uint16) {
 		// TODO: Implement ack channel
 		err = store.Delete(entry)
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] vb: %d unable to delete timer entry, err : %v",
+			logging.Errorf("%s [%s:%s:%d] vb: %d unable to delete timer entry, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-			c.metastoreDeleteErrCounter++
+			atomic.AddUint64(&c.metastoreDeleteErrCounter, 1)
 		} else {
-			c.metastoreDeleteCounter++
+			atomic.AddUint64(&c.metastoreDeleteCounter, 1)
 		}
 	}
 }
 
-func (c *Consumer) createTimer() {
-	logPrefix := "Consumer::createTimer"
+func (c *Consumer) routeTimers() {
+	logPrefix := "Consumer::routeTimers"
+
+	c.timerStorageMetaChsRWMutex.Lock()
+	for i := 0; i < c.timerStorageRoutineCount; i++ {
+		c.timerStorageRoutineMetaChs[i] = make(chan *TimerInfo, c.timerStorageChanSize/c.timerStorageRoutineCount)
+		go c.storeTimers(i, c.timerStorageRoutineMetaChs[i])
+	}
+	c.timerStorageMetaChsRWMutex.Unlock()
 
 	for {
 		select {
 		case e, ok := <-c.createTimerCh:
 			if !ok {
+				logging.Infof("%s [%s:%s:%d] Chan closed. Exiting timer routing routine",
+					logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return
 			}
-			c.createTimerImpl(e)
+
+			partition := int(e.Vb) % c.timerStorageRoutineCount
+			func() {
+				c.timerStorageMetaChsRWMutex.RLock()
+				defer c.timerStorageMetaChsRWMutex.RUnlock()
+
+				c.timerStorageRoutineMetaChs[partition] <- e
+			}()
 
 		case <-c.createTimerStopCh:
-			logging.Errorf("%s [%s:%s:%d] Exiting timer store routine",
+			logging.Infof("%s [%s:%s:%d] Exiting timer store routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
 	}
 }
 
-func (c *Consumer) createTimerImpl(timer *TimerInfo) error {
-	logPrefix := "Consumer::createTimerImpl"
+func (c *Consumer) storeTimers(index int, timerCh chan *TimerInfo) {
+	logPrefix := "Consumer::storeTimers"
 
-	store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(timer.Vb))
-	if !found {
-		logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb)
-		c.metastoreNotFoundErrCounter++
-		return fmt.Errorf("store not found")
-	}
+	for {
+		select {
+		case timer, ok := <-timerCh:
+			if !ok {
+				logging.Infof("%s [%s:%s:%d] Routine id: %d chan closed. Exiting timer storage routine",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), index)
+				return
+			}
 
-	context := &timerContext{
-		Callback: timer.Callback,
-		Context:  timer.Context,
-		Vb:       timer.Vb,
-	}
+			store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(timer.Vb))
+			if !found {
+				logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb)
+				atomic.AddUint64(&c.metastoreNotFoundErrCounter, 1)
+				continue
+			}
 
-	err := store.Set(timer.Epoch, timer.Reference, context)
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %d seq: %d failed to store",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb, timer.SeqNum)
-		c.metastoreSetErrCounter++
-		return err
+			context := &timerContext{
+				Callback: timer.Callback,
+				Context:  timer.Context,
+				Vb:       timer.Vb,
+			}
+
+			err := store.Set(timer.Epoch, timer.Reference, context)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] vb: %d seq: %d failed to store",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb, timer.SeqNum)
+				atomic.AddUint64(&c.metastoreSetErrCounter, 1)
+				continue
+			}
+			atomic.AddUint64(&c.metastoreSetCounter, 1)
+		}
 	}
-	c.metastoreSetCounter++
-	return nil
 }

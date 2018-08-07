@@ -231,7 +231,16 @@ func (c *Consumer) processEvents() {
 
 				if e.Status == mcd.SUCCESS {
 
-					connStr := fmt.Sprintf("couchbase://%s", c.getKvNodes()[0])
+					kvNodes := c.getKvNodes()
+
+					connStr := "couchbase://"
+					for index, kvNode := range kvNodes {
+						if index != 0 {
+							connStr = connStr + ","
+						}
+						connStr = connStr + kvNode
+					}
+
 					if util.IsIPv6() {
 						connStr += "?ipv6=allow"
 					}

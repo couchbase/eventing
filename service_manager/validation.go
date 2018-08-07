@@ -570,7 +570,16 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validatePositiveInteger("xattr_doc_timer_entry_prune_threshold", settings); info.Code != m.statusCodes.ok.Code {
+	// metastore related configuration
+	if info = m.validatePositiveInteger("execute_timer_routine_count", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("timer_storage_routine_count", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("timer_storage_chan_size", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

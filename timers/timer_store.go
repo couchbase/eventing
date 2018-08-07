@@ -240,13 +240,13 @@ func (r *TimerStore) Cancel(ref string) error {
 	return nil
 }
 
-func (r *TimerStore) ScanDue() (*TimerIter, error) {
+func (r *TimerStore) ScanDue() *TimerIter {
 	span := r.readSpan()
 	now := roundDown(time.Now().Unix())
 
 	if span.Start == span.Stop && now-span.Stop > 3*Resolution {
 		logging.Tracef("%v No more timers. Not creating iterator: %+v", r.log, span)
-		return nil, nil
+		return nil
 	}
 
 	stop := now
@@ -266,7 +266,7 @@ func (r *TimerStore) ScanDue() (*TimerIter, error) {
 	}
 
 	logging.Tracef("%v Created iterator: %+v", r.log, iter)
-	return &iter, nil
+	return &iter
 }
 
 func (r *TimerIter) ScanNext() (*TimerEntry, error) {

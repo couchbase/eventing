@@ -162,6 +162,7 @@ type Consumer struct {
 	eventingSSLPort               string
 	eventingNodeAddrs             []string
 	eventingNodeUUIDs             []string
+	executeTimerRoutineCount      int
 	executionTimeout              int
 	filterVbEvents                map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
 	filterVbEventsRWMutex         *sync.RWMutex
@@ -185,7 +186,11 @@ type Consumer struct {
 	reqStreamCh                   chan *streamRequestInfo
 	statsTickDuration             time.Duration
 	superSup                      common.EventingSuperSup
-	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
+	timerStorageChanSize          int
+	timerStorageMetaChsRWMutex    *sync.RWMutex
+	timerStorageRoutineCount      int
+	timerStorageRoutineMetaChs    []chan *TimerInfo // Access controlled by timerStorageMetaChsRWMutex
+	vbDcpEventsRemaining          map[int]int64     // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed
 	vbEventingNodeAssignMap       map[uint16]string // Access controlled by vbEventingNodeAssignMapRWMutex
 	vbEventingNodeAssignRWMutex   *sync.RWMutex
@@ -204,7 +209,6 @@ type Consumer struct {
 	workerExited                  bool
 	workerVbucketMap              map[string][]uint16 // Access controlled by workerVbucketMapRWMutex
 	workerVbucketMapRWMutex       *sync.RWMutex
-	xattrEntryPruneThreshold      int
 
 	executionStats    map[string]interface{} // Access controlled by statsRWMutex
 	failureStats      map[string]interface{} // Access controlled by statsRWMutex
