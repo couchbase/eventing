@@ -534,10 +534,10 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, 
 			return nil
 		}
 
-		logging.Infof("%s [%d] Notifying Eventing.Producer instances to update plasma memory quota to %d MB",
+		logging.Infof("%s [%d] Notifying Eventing.Producer instances to update memory quota to %d MB",
 			logPrefix, len(s.runningProducers), config.RAMQuota)
 
-		s.plasmaMemQuota = config.RAMQuota
+		s.memoryQuota = config.RAMQuota
 
 		for _, eventingProducer := range s.runningProducers {
 			eventingProducer.UpdateMemoryQuota(config.RAMQuota)
@@ -577,7 +577,7 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
 	p := producer.NewProducer(appName, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
-		s.restPort, s.uuid, s.diagDir, s.plasmaMemQuota, s.numVbuckets, s)
+		s.restPort, s.uuid, s.diagDir, s.memoryQuota, s.numVbuckets, s)
 
 	logging.Infof("%s [%d] Spawning up app: %s", logPrefix, len(s.runningProducers), appName)
 

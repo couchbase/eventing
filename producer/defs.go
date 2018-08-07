@@ -84,20 +84,6 @@ type Producer struct {
 	appLogRotation bool
 	appLogWriter   io.WriteCloser
 
-	// Plasma configs
-	// TODO : Remove these
-	autoSwapper            bool
-	enableSnapshotSMR      bool
-	iteratorRefreshCounter int
-	lssCleanerMaxThreshold int
-	lssCleanerThreshold    int
-	lssReadAheadSize       int64
-	maxDeltaChainLen       int
-	maxPageItems           int
-	minPageItems           int
-	persistInterval        int //in ms
-	useMemoryMgmt          bool
-
 	// Chan used to signal if Eventing.Producer has finished bootstrap
 	// i.e. started up all it's child routines
 	bootstrapFinishCh chan struct{}
@@ -141,8 +127,6 @@ type Producer struct {
 
 	// copy of KV vbmap, needed while opening up dcp feed
 	kvVbMap map[uint16]string
-
-	signalStopPersistAllCh chan struct{}
 
 	// topologyChangeCh used by super_supervisor to notify producer
 	// about topology change

@@ -421,7 +421,9 @@ func (c *Consumer) Stop() {
 
 	c.timerStorageMetaChsRWMutex.Lock()
 	for i := 0; i < c.timerStorageRoutineCount; i++ {
-		close(c.timerStorageRoutineMetaChs[i])
+		if c.timerStorageRoutineMetaChs[i] != nil {
+			close(c.timerStorageRoutineMetaChs[i])
+		}
 	}
 
 	c.timerStorageRoutineMetaChs = make([]chan *TimerInfo, 0)
@@ -466,7 +468,7 @@ func (c *Consumer) Stop() {
 		c.signalStopDebuggerRoutineCh <- struct{}{}
 	}
 
-	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop plasma store, checkpointing, cron timer processing routines",
+	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop checkpointing routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.dcpFeedsClosed = true
