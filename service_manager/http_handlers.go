@@ -523,7 +523,7 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		if err != nil {
 			logging.Errorf("%s failed to unmarshal stats, err: %v", logPrefix, err)
 		} else {
-			logging.Infof("%s no more vbucket remaining to shuffle. Stats dump: %v", logPrefix, string(data))
+			logging.Tracef("%s no more vbucket remaining to shuffle. Stats dump: %v", logPrefix, string(data))
 		}
 
 		m.statsWritten = true
