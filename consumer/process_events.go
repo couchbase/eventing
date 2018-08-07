@@ -916,6 +916,10 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		}
 	}()
 
+	if c.isTerminateRunning {
+		return nil
+	}
+
 	refreshMap := func() error {
 		c.cbBucketRWMutex.Lock()
 		defer c.cbBucketRWMutex.Unlock()

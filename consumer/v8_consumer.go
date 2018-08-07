@@ -113,7 +113,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		stopHandleFailoverLogCh:         make(chan struct{}, 1),
 		stopVbOwnerGiveupCh:             make(chan struct{}, rConfig.VBOwnershipGiveUpRoutineCount),
 		stopVbOwnerTakeoverCh:           make(chan struct{}, rConfig.VBOwnershipTakeoverRoutineCount),
-		stopReqStreamProcessCh:          make(chan struct{}, 1),
+		stopReqStreamProcessCh:          make(chan struct{}),
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
 		timerStorageChanSize:            hConfig.TimerStorageChanSize,
