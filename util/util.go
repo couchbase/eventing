@@ -27,6 +27,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
+	"os"
 )
 
 const (
@@ -1173,4 +1174,17 @@ func (r *GocbLogger) Log(level gocb.LogLevel, offset int, format string, v ...in
 		logging.Tracef(format, v...)
 	}
 	return nil
+}
+
+func KillProcess(pid int) error {
+	if pid < 1 {
+		return errors.New(fmt.Sprintf("Can not kill %d", pid))
+	}
+
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+
+	return process.Kill()
 }

@@ -157,6 +157,7 @@ type Consumer struct {
 	dcpEventsRemaining            uint64
 	dcpFeedsClosed                bool
 	dcpFeedVbMap                  map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
+	debuggerPort                  string
 	eventingAdminPort             string
 	eventingDir                   string
 	eventingSSLPort               string

@@ -8,12 +8,18 @@ import (
 	"os/exec"
 	"runtime"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
+)
+
+var (
+	previousAppName string
+	debuggerMutex   *sync.Mutex = &sync.Mutex{}
 )
 
 func newDebugClient(c *Consumer, appName, debugTCPPort, eventingPort, feedbackTCPPort, ipcType, workerName string) *debugClient {
@@ -73,6 +79,7 @@ func (c *debugClient) Serve() {
 			logPrefix, c.workerName, c.debugTCPPort, c.osPid)
 	}
 
+	c.osPid = c.cmd.Process.Pid
 	err = c.cmd.Wait()
 	if err != nil {
 		logging.Warnf("%s [%s:%s:%d] Exiting c++ debug worker with error: %v",
@@ -88,18 +95,13 @@ func (c *debugClient) Stop() {
 
 	logging.Debugf("%s [%s:%s:%d] Stopping C++ worker spawned for debugger",
 		logPrefix, c.workerName, c.debugTCPPort, c.osPid)
-
 	c.consumerHandle.sendMsgToDebugger = false
-
 	c.consumerHandle.debugListener.Close()
-
-	if c.osPid > 1 {
-		ps, err := os.FindProcess(c.osPid)
-		if err == nil {
-			ps.Kill()
-		}
+	err := util.KillProcess(c.osPid)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Unable to kill C++ worker spawned for debugger, err: %v",
+			logPrefix, c.workerName, c.debugTCPPort, c.osPid, err)
 	}
-
 }
 
 func (c *debugClient) String() string {
@@ -121,7 +123,6 @@ func (c *Consumer) pollForDebuggerStart() {
 	var cas gocb.Cas
 
 	for {
-
 		select {
 		case <-c.signalStopDebuggerRoutineCh:
 			logging.Infof("%s [%s:%s:%d] Exiting debugger blob polling routine",
@@ -313,9 +314,19 @@ func (c *Consumer) startDebuggerServer() {
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 	}
 
-	c.debugClient = newDebugClient(c, c.app.AppName, c.debugTCPPort, c.eventingAdminPort, c.debugFeedbackTCPPort, c.debugIPCType, c.workerName)
+	debuggerMutex.Lock()
+	if previousAppName != "" {
+		logging.Infof("%s [%s:%s:%d] Stopping debugger for previously spawned %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), previousAppName)
+		c.superSup.SignalStopDebugger(previousAppName)
+		time.Sleep(1 * time.Second)
+	}
 
+	c.debugClient = newDebugClient(c, c.app.AppName, c.debugTCPPort,
+		c.eventingAdminPort, c.debugFeedbackTCPPort, c.debugIPCType, c.workerName)
 	c.debugClientSupToken = c.consumerSup.Add(c.debugClient)
+	previousAppName = c.app.AppName
+	debuggerMutex.Unlock()
 
 	<-c.signalDebuggerConnectedCh
 	<-c.signalDebuggerFeedbackCh
@@ -352,7 +363,7 @@ func (c *Consumer) startDebuggerServer() {
 		return
 	}
 
-	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
+	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort, currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
 		c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)

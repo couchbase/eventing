@@ -21,7 +21,6 @@ std::atomic<int64_t> e_debugger_lost = {0};
 std::atomic<int64_t> e_timer_lost = {0};
 std::atomic<int64_t> e_v8_worker_lost = {0};
 
-std::atomic<int64_t> cron_timer_events_lost = {0};
 std::atomic<int64_t> delete_events_lost = {0};
 std::atomic<int64_t> timer_events_lost = {0};
 std::atomic<int64_t> mutation_events_lost = {0};
@@ -441,6 +440,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       server_settings->checkpoint_interval = payload->checkpoint_interval();
       checkpoint_interval_ =
           std::chrono::milliseconds(server_settings->checkpoint_interval);
+      server_settings->debugger_port = payload->debugger_port()->str();
       server_settings->eventing_dir.assign(payload->eventing_dir()->str());
       server_settings->eventing_port.assign(
           payload->curr_eventing_port()->str());

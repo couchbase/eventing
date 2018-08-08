@@ -158,8 +158,6 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	// default settings
 	settings := make(map[string]interface{})
 
-	settings["checkpoint_interval"] = 10000
-
 	if s.thrCount == 0 {
 		settings["cpp_worker_thread_count"] = cppthrCount
 	} else {
@@ -229,6 +227,7 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
 	settings["description"] = "Sample app"
+	settings["user_prefix"] = "eventing"
 	settings["breakpad_on"] = false
 
 	app.Settings = settings

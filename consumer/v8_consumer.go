@@ -54,6 +54,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		diagDir:                         pConfig.DiagDir,
 		fireTimerCh:                     make(chan *timerContext, dcpConfig["genChanSize"].(int)),
 		enableRecursiveMutation:         hConfig.EnableRecursiveMutation,
+		debuggerPort:                    pConfig.DebuggerPort,
 		eventingAdminPort:               pConfig.EventingPort,
 		eventingSSLPort:                 pConfig.EventingSSLPort,
 		eventingDir:                     pConfig.EventingDir,
@@ -112,7 +113,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		stopHandleFailoverLogCh:         make(chan struct{}, 1),
 		stopVbOwnerGiveupCh:             make(chan struct{}, rConfig.VBOwnershipGiveUpRoutineCount),
 		stopVbOwnerTakeoverCh:           make(chan struct{}, rConfig.VBOwnershipTakeoverRoutineCount),
-		stopReqStreamProcessCh:          make(chan struct{}, 1),
+		stopReqStreamProcessCh:          make(chan struct{}),
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
 		timerStorageChanSize:            hConfig.TimerStorageChanSize,
@@ -330,7 +331,7 @@ func (c *Consumer) HandleV8Worker() error {
 		}
 	}
 
-	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort,
+	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort, currHost, c.eventingDir, c.eventingAdminPort,
 		c.eventingSSLPort, c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		c.enableRecursiveMutation, false, c.curlTimeout)

@@ -1,11 +1,9 @@
 #include "inspector_agent.h"
-
 #include "inspector_io.h"
+#include "libplatform/libplatform.h"
 #include "v8-inspector.h"
 #include "v8-platform.h"
 #include "zlib.h"
-
-#include "libplatform/libplatform.h"
 #ifndef STANDALONE_BUILD
 extern void(assert)(int);
 #else
@@ -204,9 +202,9 @@ private:
   std::unique_ptr<ChannelImpl> channel_;
 };
 
-Agent::Agent(std::string host_name, std::string file_path)
+Agent::Agent(std::string host_name, std::string file_path, int port)
     : client_(nullptr), platform_(nullptr), isolate_(nullptr), enabled_(false),
-      host_name_(host_name), file_path_(file_path) {}
+      port_(port), host_name_(host_name), file_path_(file_path) {}
 
 // Destructor needs to be defined here in implementation file as the header
 // does not have full definition of some classes.
@@ -225,11 +223,8 @@ bool Agent::Start(Isolate *isolate, Platform *platform, const char *path) {
   start_io_thread_async.data = this;
   uv_unref(reinterpret_cast<uv_handle_t *>(&start_io_thread_async));
 
-  if (true) {
-    // This will return false if listen failed on the inspector port.
-    return StartIoThread(true);
-  }
-  return true;
+  // This will return false if listen failed on the inspector port.
+  return StartIoThread(true);
 }
 
 bool Agent::StartIoThread(bool wait_for_connect) {
@@ -240,7 +235,7 @@ bool Agent::StartIoThread(bool wait_for_connect) {
 
   enabled_ = true;
   io_ = std::unique_ptr<InspectorIo>(new InspectorIo(
-      isolate_, platform_, path_, host_name_, true, file_path_));
+      isolate_, platform_, path_, host_name_, true, file_path_, port_));
   if (!io_->Start()) {
     client_.reset();
     return false;

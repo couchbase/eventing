@@ -21,7 +21,8 @@ import (
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
-func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
+func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingDir, kvPort,
+	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
 	memoryQuota int64, numVbuckets int, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                    appName,
@@ -64,6 +65,7 @@ func NewProducer(appName, eventingPort, eventingSSLPort, eventingDir, kvPort, me
 		rebalanceConfig:              &common.RebalanceConfig{},
 	}
 
+	p.processConfig.DebuggerPort = debuggerPort
 	p.processConfig.DiagDir = diagDir
 	p.processConfig.EventingDir = eventingDir
 	p.processConfig.EventingPort = eventingPort
@@ -699,25 +701,27 @@ func (p *Producer) SignalStartDebugger() error {
 	// Check if debugger instance is already running somewhere
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
-		p, p.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval),
+		&p.retryCount, getOpCallback, p, p.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		logging.Errorf("%s [%s:%d] Exiting due to timeout",
+			logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
 	}
 
 	if dInstAddrBlob.NodeUUID == "" {
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
-			p, p.AddMetadataPrefix(key), blob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval),
+			&p.retryCount, setOpCallback, p, p.AddMetadataPrefix(key), blob)
 		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+			logging.Errorf("%s [%s:%d] Exiting due to timeout",
+				logPrefix, p.appName, p.LenRunningConsumers())
 			return common.ErrRetryTimeout
 		}
 	} else {
 		logging.Errorf("%s [%s:%d] Debugger already started. Host: %rs Worker: %v uuid: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), dInstAddrBlob.HostPortAddr, dInstAddrBlob.ConsumerName, dInstAddrBlob.NodeUUID)
+			logPrefix, p.appName, p.LenRunningConsumers(), dInstAddrBlob.HostPortAddr,
+			dInstAddrBlob.ConsumerName, dInstAddrBlob.NodeUUID)
 	}
-
 	return nil
 }
 
@@ -819,7 +823,7 @@ func (p *Producer) updateStats() {
 				p.updateStatsTicker.Stop()
 				return
 			}
-
+			time.Sleep(time.Second)
 		}
 	}
 }

@@ -423,6 +423,32 @@ func (m *ServiceMgr) validateNumber(field string, settings map[string]interface{
 	return
 }
 
+func (m *ServiceMgr) validateStringMustExist(field string, maxLength int, settings map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if val, ok := settings[field]; ok {
+		var valStr string
+		if valStr, ok = val.(string); !ok {
+			info.Info = fmt.Sprintf("%s must be a string", field)
+			return
+		}
+
+		if len(valStr) == 0 {
+			info.Info = fmt.Sprintf("%s must not be empty", field)
+			return
+		}
+
+		if len(valStr) > maxLength {
+			info.Info = fmt.Sprintf("%s must have no more than %d characters", field, maxLength)
+			return
+		}
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) validatePositiveInteger(field string, settings map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
@@ -468,6 +494,10 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 	fillMissingWithDefaults(settings)
 
 	// Handler related configurations
+	if info = m.validateStringMustExist("user_prefix", maxPrefixLength, settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validateBoolean("processing_status", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}

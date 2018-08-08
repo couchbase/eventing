@@ -512,7 +512,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 	c.handlerHeaders = handlerHeaders
 	c.handlerFooters = handlerFooters
 	// Framing bare minimum V8 worker init payload
-	payload, pBuilder := c.makeV8InitPayload(appName, util.Localhost(), "", eventingPort, "",
+	payload, pBuilder := c.makeV8InitPayload(appName, c.debuggerPort, util.Localhost(), "", eventingPort, "",
 		"", appContent, 5, 10, 10*1000, true, true, 500)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
@@ -528,14 +528,14 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 	c.conn.Close()
 	listener.Close()
 
-	if pid > 1 {
-		ps, err := os.FindProcess(pid)
-		if err == nil {
-			ps.Kill()
-		}
+	err = util.KillProcess(pid)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Unable to kill C++ worker spawned for compilation, err: %v",
+			logPrefix, c.workerName, c.tcpPort, pid, err)
 	}
 
-	logging.Infof("%s [%s:%s:%d] compilation status %#v", logPrefix, c.workerName, c.tcpPort, pid, c.compileInfo)
+	logging.Infof("%s [%s:%s:%d] compilation status %#v",
+		logPrefix, c.workerName, c.tcpPort, pid, c.compileInfo)
 
 	return c.compileInfo, nil
 }

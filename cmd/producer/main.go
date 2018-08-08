@@ -21,10 +21,11 @@ func main() {
 	audit.Init(flags.restPort)
 
 	adminPort := supervisor.AdminPortConfig{
-		HTTPPort: flags.adminHTTPPort,
-		SslPort:  flags.adminSSLPort,
-		CertFile: flags.sslCertFile,
-		KeyFile:  flags.sslKeyFile,
+		DebuggerPort: flags.debugPort,
+		HTTPPort:     flags.adminHTTPPort,
+		SslPort:      flags.adminSSLPort,
+		CertFile:     flags.sslCertFile,
+		KeyFile:      flags.sslKeyFile,
 	}
 
 	gocb.SetLogger(&util.GocbLogger{})
