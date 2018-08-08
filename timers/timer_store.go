@@ -130,7 +130,7 @@ func (r *TimerStore) Free() {
 func (r *TimerStore) Set(due int64, ref string, context interface{}) error {
 	now := time.Now().Unix()
 	if due-now <= Resolution {
-		logging.Warnf("%v Moving too close/past timer to next period: %v context %ru", r.log, formatInt(due), context)
+		logging.Tracef("%v Moving too close/past timer to next period: %v context %ru", r.log, formatInt(due), context)
 		due = now + Resolution
 	}
 	due = roundUp(due)

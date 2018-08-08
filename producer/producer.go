@@ -823,7 +823,7 @@ func (p *Producer) updateStats() {
 				p.updateStatsTicker.Stop()
 				return
 			}
-
+			time.Sleep(time.Second)
 		}
 	}
 }
