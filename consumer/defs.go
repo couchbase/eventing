@@ -375,7 +375,6 @@ type Consumer struct {
 	backupVbStats     vbStats
 
 	checkpointTicker         *time.Ticker
-	checkMetadataStateTicker *time.Ticker
 	restartVbDcpStreamTicker *time.Ticker
 	statsTicker              *time.Ticker
 

@@ -19,7 +19,7 @@ import (
 
 var (
 	previousAppName string
-	debuggerMutex   *sync.Mutex = &sync.Mutex{}
+	debuggerMutex   = &sync.Mutex{}
 )
 
 func newDebugClient(c *Consumer, appName, debugTCPPort, eventingPort, feedbackTCPPort, ipcType, workerName string) *debugClient {

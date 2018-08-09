@@ -32,7 +32,8 @@ func (c *Consumer) scanTimers() {
 			}
 
 			wg.Wait()
-			time.Sleep(100 * time.Millisecond)
+
+			time.Sleep(time.Duration(time.Now().Unix()%timers.Resolution) * time.Second)
 		}
 	}
 }
@@ -43,6 +44,14 @@ func (c *Consumer) executeTimers(vbs []uint16, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for _, vb := range vbs {
+		if !c.checkIfCurrentConsumerShouldOwnVb(vb) {
+			continue
+		}
+
+		if !c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+			continue
+		}
+
 		store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
 		if !found {
 			logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
@@ -140,6 +149,10 @@ func (c *Consumer) storeTimers(index int, timerCh chan *TimerInfo) {
 				logging.Infof("%s [%s:%s:%d] Routine id: %d chan closed. Exiting timer storage routine",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), index)
 				return
+			}
+
+			if !c.checkIfCurrentConsumerShouldOwnVb(uint16(timer.Vb)) {
+				continue
 			}
 
 			store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(timer.Vb))

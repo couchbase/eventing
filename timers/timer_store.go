@@ -171,7 +171,7 @@ func (r *TimerStore) Delete(entry *TimerEntry) error {
 		return err
 	}
 	if absent {
-		logging.Warnf("%v Timer %v seq %v is missing alarm in del: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
+		logging.Tracef("%v Timer %v seq %v is missing alarm in del: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
 	}
 
 	_, _, mismatch, err := kv.MustRemove(r.bucket, entry.ContextRef, entry.ctxCas)
@@ -179,7 +179,7 @@ func (r *TimerStore) Delete(entry *TimerEntry) error {
 		return err
 	}
 	if mismatch {
-		logging.Warnf("%v Timer %v seq %v was either cancelled or overriden after it fired: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
+		logging.Tracef("%v Timer %v seq %v was either cancelled or overriden after it fired: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
 		return nil
 	}
 
@@ -243,6 +243,10 @@ func (r *TimerStore) Cancel(ref string) error {
 func (r *TimerStore) ScanDue() *TimerIter {
 	span := r.readSpan()
 	now := roundDown(time.Now().Unix())
+
+	if span.Start > now {
+		return nil
+	}
 
 	if span.Start == span.Stop && now-span.Stop > 3*Resolution {
 		logging.Tracef("%v No more timers. Not creating iterator: %+v", r.log, span)
@@ -448,12 +452,12 @@ func (r *TimerStore) syncSpan() error {
 		}
 		// external has moved start backwards
 		if r.span.Start > extspan.Start {
-			logging.Warnf("%v Span changed externally at start, merging %+v and %+v", r.log, extspan, r.span)
+			logging.Tracef("%v Span changed externally at start, merging %+v and %+v", r.log, extspan, r.span)
 			r.span.Start = extspan.Start
 		}
 		// external has moved stop forwards
 		if r.span.Stop < extspan.Stop {
-			logging.Warnf("%v Span changed externally at stop, merging %+v and %+v", r.log, extspan, r.span)
+			logging.Tracef("%v Span changed externally at stop, merging %+v and %+v", r.log, extspan, r.span)
 			r.span.Stop = extspan.Stop
 		}
 
@@ -472,7 +476,7 @@ func (r *TimerStore) syncSpan() error {
 		return err
 	}
 	if absent || mismatch {
-		logging.Warnf("%v Span was changed again externally, not commiting merged span %+v", r.log, r.span)
+		logging.Tracef("%v Span was changed again externally, not commiting merged span %+v", r.log, r.span)
 		return nil
 	}
 
