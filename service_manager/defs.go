@@ -75,9 +75,8 @@ type ServiceMgr struct {
 	rebalancer       *rebalancer
 	rebalanceRunning bool
 
-	rebUpdateTicker *time.Ticker
-	restPort        string
-	servers         []service.NodeID
+	restPort string
+	servers  []service.NodeID
 	state
 
 	superSup common.EventingSuperSup

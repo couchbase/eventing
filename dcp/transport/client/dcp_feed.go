@@ -263,7 +263,7 @@ func (feed *DcpFeed) handleControlRequest(
 	case dfCmdClose:
 		feed.sendStreamEnd(feed.outch)
 		respch := msg[1].(chan []interface{})
-		if event != nil {
+		if event != nil && event.Opcode == transport.DCP_STREAMEND {
 			feed.outch <- event
 		}
 		respch <- []interface{}{nil}

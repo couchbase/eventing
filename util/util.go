@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"math"
 	"net/url"
+	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -27,7 +28,6 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
-	"os"
 )
 
 const (

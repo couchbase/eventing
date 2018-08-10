@@ -3,7 +3,7 @@
 pushd .
 while [ "$top" != "`pwd`" ]; do top="`pwd`"; if [ -d tlm ]; then break; fi; cd ..; done
 if [ ! -d "$top/tlm" ]; then echo "Expected to be in build tree"; exit 1; fi
-gover="`grep -A20 'SET(GOVERSION ' $top/goproj/src/github.com/couchbase/eventing/CMakeLists.txt  | grep GOVERSION | head -1 | sed 's/^.*\([0-9]\.[0-9].[0-9]\).*$/\1/'`"
+gover="`grep -A20 'SET(GOVERSION ' $top/goproj/src/github.com/couchbase/eventing/CMakeLists.txt  | grep GOVERSION | head -1 | sed 's/^.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*$/\1/'`"
 export GOROOT="$HOME/.cbdepscache/exploded/x86_64/go-$gover/go"
 export GOPATH="$top/build/gotmp:$top/goproj:$top/godeps"
 export LD_LIBRARY_PATH="$top/install/lib"
@@ -14,9 +14,9 @@ export PATH=$PATH:$GOROOT/bin
 
 set -e
 cd $top/goproj/src/github.com/couchbase/eventing/timers/test
-go install -ldflags "-s -extldflags '-Wl,-rpath,@executable_path/../lib'" -tags 'jemalloc enterprise' 
-go build -ldflags "-s -extldflags '-Wl,-rpath,@executable_path/../lib'" -tags 'jemalloc enterprise' test.go
-./test
-rm test
+go install -ldflags "-s -extldflags '-Wl,-rpath,@executable_path/../lib'" -tags 'jemalloc enterprise'
+go build -ldflags "-s -extldflags '-Wl,-rpath,@executable_path/../lib'" -tags 'jemalloc enterprise' storetest.go
+./storetest $*
+rm storetest
 popd
 

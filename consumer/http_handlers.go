@@ -66,7 +66,7 @@ func (c *Consumer) dcpEventsRemainingToProcess() error {
 	var eventsProcessed, totalEvents uint64
 
 	for _, vb := range vbsTohandle {
-		seqNo := c.vbProcessingStats.getVbStat(uint16(vb), "last_read_seq_no").(uint64)
+		seqNo := c.vbProcessingStats.getVbStat(vb, "last_read_seq_no").(uint64)
 
 		if seqNos[int(vb)] > seqNo {
 			c.statsRWMutex.Lock()

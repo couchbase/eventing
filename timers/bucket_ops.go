@@ -51,7 +51,7 @@ func Pool(connstr string) *kvPool {
 	}
 
 	if singlePool.ident != connstr {
-		logging.Warnf("Pool created against %v but now renaming to %v", singlePool.ident, connstr)
+		logging.Tracef("Pool created against %v but now renaming to %v", singlePool.ident, connstr)
 		singlePool.ident = connstr
 	}
 
@@ -277,7 +277,7 @@ func MustRun(fn func() error) error {
 		}
 		e = fn()
 		if e == nil || e == common.ErrRetryTimeout {
-			logging.Infof("Call to %v finally succeded (or timed out) after %v", fname, delay)
+			logging.Tracef("Call to %v finally succeded (or timed out) after %v", fname, delay)
 			return e
 		}
 		logging.Warnf("Call %v failed due to %v, will retry", fname, e)

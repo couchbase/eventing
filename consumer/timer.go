@@ -27,12 +27,18 @@ func (c *Consumer) scanTimers() {
 			var wg sync.WaitGroup
 			wg.Add(c.executeTimerRoutineCount)
 
+			startTs := time.Now()
+
 			for i := 0; i < c.executeTimerRoutineCount; i++ {
 				go c.executeTimers(workerVbMapping[i], &wg)
 			}
 
 			wg.Wait()
-			time.Sleep(100 * time.Millisecond)
+
+			delta := timers.Resolution - int64(time.Now().Sub(startTs).Seconds())
+			if delta > 0 {
+				time.Sleep(time.Duration(delta) * time.Second)
+			}
 		}
 	}
 }
@@ -43,6 +49,14 @@ func (c *Consumer) executeTimers(vbs []uint16, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for _, vb := range vbs {
+		if !c.checkIfCurrentConsumerShouldOwnVb(vb) {
+			continue
+		}
+
+		if !c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+			continue
+		}
+
 		store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
 		if !found {
 			logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
@@ -52,6 +66,8 @@ func (c *Consumer) executeTimers(vbs []uint16, wg *sync.WaitGroup) {
 		}
 
 		iterator := store.ScanDue()
+		atomic.AddUint64(&c.metastoreScanDueCounter, 1)
+
 		if iterator == nil {
 			logging.Tracef("%s [%s:%s:%d] vb: %d no timers to fire",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
@@ -142,6 +158,10 @@ func (c *Consumer) storeTimers(index int, timerCh chan *TimerInfo) {
 				return
 			}
 
+			if !c.checkIfCurrentConsumerShouldOwnVb(uint16(timer.Vb)) {
+				continue
+			}
+
 			store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(timer.Vb))
 			if !found {
 				logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
@@ -156,7 +176,7 @@ func (c *Consumer) storeTimers(index int, timerCh chan *TimerInfo) {
 				Vb:       timer.Vb,
 			}
 
-			err := store.Set(timer.Epoch, timer.Reference, context)
+			err := store.Set(timer.Epoch, timer.Callback +":"+ timer.Reference, context)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] vb: %d seq: %d failed to store",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb, timer.SeqNum)

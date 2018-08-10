@@ -152,8 +152,7 @@ func (c *Consumer) isVbIdle(vbno uint16, checkpointTime *time.Time) bool {
 		currentTime.Sub(*checkpointTime) < c.idleCheckpointInterval &&
 		c.backupVbStats.getVbStat(vbno, "last_processed_seq_no").(uint64) == c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64) &&
 		c.backupVbStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64) == c.vbProcessingStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64) &&
-		c.backupVbStats.getVbStat(vbno, "sent_to_worker_counter").(uint64) == c.vbProcessingStats.getVbStat(vbno, "sent_to_worker_counter").(uint64) &&
-		c.backupVbStats.getVbStat(vbno, "processed_crontimer_counter").(uint64) == c.vbProcessingStats.getVbStat(vbno, "processed_crontimer_counter").(uint64) {
+		c.backupVbStats.getVbStat(vbno, "sent_to_worker_counter").(uint64) == c.vbProcessingStats.getVbStat(vbno, "sent_to_worker_counter").(uint64) {
 		return true
 	}
 	*checkpointTime = currentTime

@@ -118,6 +118,7 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	stats["METASTORE_DELETE_ERR"] = atomic.LoadUint64(&c.metastoreDeleteErrCounter)
 	stats["METASTORE_ENOENTS"] = atomic.LoadUint64(&c.metastoreNotFoundErrCounter)
 	stats["METASTORE_SCANS"] = atomic.LoadUint64(&c.metastoreScanCounter)
+	stats["METASTORE_SCAN_DUE"] = atomic.LoadUint64(&c.metastoreScanDueCounter)
 	stats["METASTORE_SCAN_ERR"] = atomic.LoadUint64(&c.metastoreScanErrCounter)
 	stats["METATSTORE_SETS"] = atomic.LoadUint64(&c.metastoreSetCounter)
 	stats["METASTORE_SET_ERR"] = atomic.LoadUint64(&c.metastoreSetErrCounter)

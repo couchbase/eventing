@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"math/rand"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -20,7 +20,11 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 	db := make(map[string]time.Time)
 	dbl := sync.Mutex{}
 	uid := "timertest-" + strconv.FormatInt(time.Now().Unix(), 36)
-	timers.Create(uid, partn, "couchbase://localhost", "default")
+	cstr := "couchbase://localhost"
+	if len(os.Args) == 2 {
+		cstr = os.Args[1]
+	}
+	timers.Create(uid, partn, cstr, "default")
 	store, present := timers.Fetch(uid, partn)
 	if !present {
 		panic("store was absent")
@@ -80,10 +84,10 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 	scan := func() {
 		defer wait.Done()
 		for {
-			iter, _ := store.ScanDue()
+			iter := store.ScanDue()
 			for entry, _ := iter.ScanNext(); entry != nil; entry, _ = iter.ScanNext() {
 				if entry.AlarmDue > time.Now().Unix() {
-					panic(fmt.Sprintf("Timer in future fired: %v at %v", entry, time.Now().Unix()))
+					logging.Errorf("Timer in future fired: %v at %v", entry, time.Now().Unix())
 				}
 				logging.Debugf("Fired timer %v, deleting it now", entry)
 				ctx := entry.Context.(map[string]interface{})
@@ -91,22 +95,22 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 				ref := ctx["Ref"].(string)
 				due, err := strconv.ParseInt(sdue, 10, 64)
 				if err != nil {
-					panic(fmt.Sprintf("Parse failed of ctx[Due] on %v: %v", sdue, err))
+					logging.Errorf("Parse failed of ctx[Due] on %v: %v", sdue, err)
 				}
 				dbl.Lock()
 				dbe, found := db[ref]
 				dbl.Unlock()
 				if !found {
-					panic(fmt.Sprintf("Timer %v was not in db at %v", entry, ref))
+					logging.Errorf("Timer %v was not in db at %v", entry, ref)
 				}
 				if dbe.Unix() > time.Now().Unix() {
-					panic(fmt.Sprintf("Timer %v fired too early at %v", entry, time.Now().Unix()))
+					logging.Errorf("Timer %v fired too early at %v", entry, time.Now().Unix())
 				}
 				if time.Now().Unix()-dbe.Unix() > int64((load/3000)+1)*timers.Resolution {
-					panic(fmt.Sprintf("Timer %v was too late: %+v", dbe.Unix(), entry))
+					logging.Errorf("Timer %v was too late: %+v", dbe.Unix(), entry)
 				}
 				if dbe.Unix() != due {
-					panic(fmt.Sprintf("Timer %v context was mismatching in db time %v", dbe.Unix(), due))
+					logging.Errorf("Timer %v context was mismatching in db time %v", dbe.Unix(), due)
 				}
 				dbl.Lock()
 				delete(db, ref)
@@ -131,7 +135,7 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 	scan()
 
 	if created-fired-cancelled != 0 {
-		panic(fmt.Sprintf("mismatch: created=%v fired=%v cancelled=%v", created, fired, cancelled))
+		logging.Errorf("mismatch: created=%v fired=%v cancelled=%v", created, fired, cancelled)
 	}
 
 	store.Free()

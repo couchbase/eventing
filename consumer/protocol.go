@@ -419,29 +419,29 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 	case bucketOpsResponse:
 		data := strings.Split(msg, "::")
 		if len(data) != 2 {
-			logging.Errorf("%s [%s:%s:%d] Invalid bucket ops message received: %v",
+			logging.Errorf("%s [%s:%s:%d] Invalid bucket ops message received: %s",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
 			return
 		}
 
-		vbNoStr, seqNoStr := data[0], data[1]
-		vbNo, err := strconv.ParseUint(vbNoStr, 10, 16)
+		vbStr, seqNoStr := data[0], data[1]
+		vb, err := strconv.ParseUint(vbStr, 10, 16)
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Failed to convert vbNoStr %s to uint64, msg: %v err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbNoStr, msg, err)
+			logging.Errorf("%s [%s:%s:%d] Failed to convert vbStr: %s to uint64, msg: %s err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbStr, msg, err)
 			return
 		}
 		seqNo, err := strconv.ParseUint(seqNoStr, 10, 64)
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Failed to convert seqNoStr %s to int64, msg: %v err: %v",
+			logging.Errorf("%s [%s:%s:%d] Failed to convert seqNoStr: %s to int64, msg: %s err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), seqNoStr, msg, err)
 			return
 		}
-		prevSeqNo := c.vbProcessingStats.getVbStat(uint16(vbNo), "last_processed_seq_no").(uint64)
+		prevSeqNo := c.vbProcessingStats.getVbStat(uint16(vb), "last_processed_seq_no").(uint64)
 		if seqNo > prevSeqNo {
-			c.vbProcessingStats.updateVbStat(uint16(vbNo), "last_processed_seq_no", seqNo)
-			logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_processed_seq_no to seqNo: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbNo, seqNo)
+			c.vbProcessingStats.updateVbStat(uint16(vb), "last_processed_seq_no", seqNo)
+			logging.Tracef("%s [%s:%s:%d] vb: %d Updating last_processed_seq_no to seqNo: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNo)
 		}
 	}
 }

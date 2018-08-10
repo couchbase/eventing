@@ -361,6 +361,7 @@ type Consumer struct {
 	metastoreDeleteErrCounter   uint64
 	metastoreNotFoundErrCounter uint64
 	metastoreScanCounter        uint64
+	metastoreScanDueCounter     uint64
 	metastoreScanErrCounter     uint64
 	metastoreSetCounter         uint64
 	metastoreSetErrCounter      uint64
@@ -375,7 +376,6 @@ type Consumer struct {
 	backupVbStats     vbStats
 
 	checkpointTicker         *time.Ticker
-	checkMetadataStateTicker *time.Ticker
 	restartVbDcpStreamTicker *time.Ticker
 	statsTicker              *time.Ticker
 
