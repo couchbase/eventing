@@ -14,6 +14,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
 )
@@ -113,16 +114,6 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["IS_REBALANCE_ONGOING"] = 1
 	}
 
-	// metastore related stats
-	stats["METASTORE_DELETES"] = atomic.LoadUint64(&c.metastoreDeleteCounter)
-	stats["METASTORE_DELETE_ERR"] = atomic.LoadUint64(&c.metastoreDeleteErrCounter)
-	stats["METASTORE_ENOENTS"] = atomic.LoadUint64(&c.metastoreNotFoundErrCounter)
-	stats["METASTORE_SCANS"] = atomic.LoadUint64(&c.metastoreScanCounter)
-	stats["METASTORE_SCAN_DUE"] = atomic.LoadUint64(&c.metastoreScanDueCounter)
-	stats["METASTORE_SCAN_ERR"] = atomic.LoadUint64(&c.metastoreScanErrCounter)
-	stats["METATSTORE_SETS"] = atomic.LoadUint64(&c.metastoreSetCounter)
-	stats["METASTORE_SET_ERR"] = atomic.LoadUint64(&c.metastoreSetErrCounter)
-
 	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
 	if len(vbsRemainingToGiveUp) > 0 {
 		stats["REB_VB_REMAINING_TO_GIVE_UP"] = uint64(len(vbsRemainingToGiveUp))
@@ -219,6 +210,38 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	if _, ok := c.v8WorkerMessagesProcessed["V8_LOAD"]; ok {
 		if c.v8WorkerMessagesProcessed["V8_LOAD"] > 0 {
 			stats["V8_LOAD"] = c.v8WorkerMessagesProcessed["V8_LOAD"]
+		}
+	}
+
+	return stats
+}
+
+// GetMetaStoreStats exposes timer store related stat counters
+func (c *Consumer) GetMetaStoreStats() map[string]uint64 {
+	stats := make(map[string]uint64)
+
+	stats["metastore_deletes"] = atomic.LoadUint64(&c.metastoreDeleteCounter)
+	stats["metastore_delete_err"] = atomic.LoadUint64(&c.metastoreDeleteErrCounter)
+	stats["metastore_not_found"] = atomic.LoadUint64(&c.metastoreNotFoundErrCounter)
+	stats["metastore_scan"] = atomic.LoadUint64(&c.metastoreScanCounter)
+	stats["metastore_scan_due"] = atomic.LoadUint64(&c.metastoreScanDueCounter)
+	stats["metastore_scan_err"] = atomic.LoadUint64(&c.metastoreScanErrCounter)
+	stats["metastore_set"] = atomic.LoadUint64(&c.metastoreSetCounter)
+	stats["metastore_set_err"] = atomic.LoadUint64(&c.metastoreSetErrCounter)
+
+	for _, vb := range c.getCurrentlyOwnedVbs() {
+		store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
+		if !found {
+			atomic.AddUint64(&c.metastoreNotFoundErrCounter, 1)
+			continue
+		}
+
+		storeStats := store.Stats()
+		for stat, counter := range storeStats {
+			if _, ok := stats[stat]; !ok {
+				stats[stat] = 0
+			}
+			stats[stat] += counter
 		}
 	}
 

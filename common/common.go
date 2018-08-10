@@ -52,6 +52,7 @@ type EventingProducer interface {
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
+	GetMetaStoreStats() map[string]uint64
 	GetNsServerPort() string
 	GetVbOwner(vb uint16) (string, string, error)
 	GetSeqsProcessed() map[int]int64
@@ -106,6 +107,7 @@ type EventingConsumer interface {
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
+	GetMetaStoreStats() map[string]uint64
 	GetSourceMap() string
 	HandleV8Worker() error
 	HostPortAddr() string
@@ -156,6 +158,7 @@ type EventingSuperSup interface {
 	GetLatencyStats(appName string) map[string]uint64
 	GetLcbExceptionsStats(appName string) map[string]uint64
 	GetLocallyDeployedApps() map[string]string
+	GetMetaStoreStats(appName string) map[string]uint64
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
 	InternalVbDistributionStats(appName string) map[string]string

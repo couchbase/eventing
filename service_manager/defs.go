@@ -174,7 +174,7 @@ type stats struct {
 	LcbCredsRequestCounter          interface{} `json:"lcb_creds_request_counter,omitempty"`
 	LcbExceptionStats               interface{} `json:"lcb_exception_stats,omitempty"`
 	PlannerStats                    interface{} `json:"planner_stats,omitempty"`
-	PlasmaStats                     interface{} `json:"plasma_stats,omitempty"`
+	MetastoreStats                  interface{} `json:"metastore_stats,omitempty"`
 	RebalanceStats                  interface{} `json:"rebalance_stats,omitempty"`
 	SeqsProcessed                   interface{} `json:"seqs_processed,omitempty"`
 	VbDcpEventsRemaining            interface{} `json:"dcp_event_backlog_per_vb,omitempty"`

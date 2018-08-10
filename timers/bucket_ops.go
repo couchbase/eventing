@@ -30,6 +30,13 @@ type kvPool struct {
 	cluster  *gocb.Cluster
 	pool     map[string]*gocb.Bucket
 	poolLock sync.RWMutex
+
+	incrCounter    uint64
+	insertCounter  uint64
+	lookupCounter  uint64
+	replaceCounter uint64
+	removeCounter  uint64
+	upsertCounter  uint64
 }
 
 func Pool(connstr string) *kvPool {
@@ -56,6 +63,17 @@ func Pool(connstr string) *kvPool {
 	}
 
 	return singlePool
+}
+
+func PoolStats() map[string]uint64 {
+	stats := make(map[string]uint64)
+	stats["kvpool_incr"] = atomic.LoadUint64(&singlePool.incrCounter)
+	stats["kvpool_insert"] = atomic.LoadUint64(&singlePool.insertCounter)
+	stats["kvpool_get"] = atomic.LoadUint64(&singlePool.lookupCounter)
+	stats["kvpool_replace"] = atomic.LoadUint64(&singlePool.replaceCounter)
+	stats["kvpool_remove"] = atomic.LoadUint64(&singlePool.removeCounter)
+	stats["kvpool_upsert"] = atomic.LoadUint64(&singlePool.upsertCounter)
+	return stats
 }
 
 func (r *kvPool) getConn(bucket string) (*gocb.Bucket, error) {
@@ -108,6 +126,7 @@ func (r *kvPool) Upsert(bucket, key string, value interface{}, expiry uint32) (c
 	if err != nil {
 		return
 	}
+	atomic.AddUint64(&r.upsertCounter, 1)
 	cas, err = conn.Upsert(key, value, expiry)
 	return
 }
@@ -121,6 +140,7 @@ func (r *kvPool) Counter(bucket, key string, delta, initial int64, expiry uint32
 	if err != nil {
 		return
 	}
+	atomic.AddUint64(&r.incrCounter, 1)
 	ucount, cas, err := conn.Counter(key, delta, initial, expiry)
 	Assert(ucount <= math.MaxInt64)
 	count = int64(ucount)
@@ -136,6 +156,7 @@ func (r *kvPool) Get(bucket, key string, valuePtr interface{}) (cas gocb.Cas, ab
 	if err != nil {
 		return
 	}
+	atomic.AddUint64(&r.lookupCounter, 1)
 	cas, err = conn.Get(key, valuePtr)
 	if err != nil && gocb.IsKeyNotFoundError(err) {
 		absent = true
@@ -153,6 +174,7 @@ func (r *kvPool) Insert(bucket, key string, value interface{}, expiry uint32) (r
 	if err != nil {
 		return
 	}
+	atomic.AddUint64(&r.insertCounter, 1)
 	rcas, err = conn.Insert(key, value, expiry)
 	if err != nil && gocb.IsKeyNotFoundError(err) {
 		mismatch = true
@@ -170,6 +192,7 @@ func (r *kvPool) Replace(bucket, key string, value interface{}, cas gocb.Cas, ex
 	if err != nil {
 		return
 	}
+	atomic.AddUint64(&r.replaceCounter, 1)
 	rcas, err = conn.Replace(key, value, cas, expiry)
 	if err != nil && gocb.IsKeyExistsError(err) {
 		mismatch = true
@@ -191,6 +214,7 @@ func (r *kvPool) Remove(bucket, key string, cas gocb.Cas) (rcas gocb.Cas, absent
 	if err != nil {
 		return
 	}
+	atomic.AddUint64(&r.removeCounter, 1)
 	rcas, err = conn.Remove(key, cas)
 	if err != nil && gocb.IsKeyExistsError(err) {
 		mismatch = true

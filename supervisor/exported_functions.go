@@ -5,6 +5,7 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/timers"
 )
 
 // ClearEventStats flushes event processing stats
@@ -388,4 +389,15 @@ func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool) {
 	s.appListRWMutex.Unlock()
 
 	logging.Infof("%s [%d] App: %s deleted from deployed apps map", logPrefix, len(s.runningProducers), appName)
+}
+
+func (s *SuperSupervisor) GetMetaStoreStats(appName string) map[string]uint64 {
+	if p, ok := s.runningProducers[appName]; ok {
+		stats := p.GetMetaStoreStats()
+		for stat, counter := range timers.PoolStats() {
+			stats[stat] = counter
+		}
+		return stats
+	}
+	return nil
 }

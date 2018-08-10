@@ -1940,6 +1940,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 			stats.InternalVbDistributionStats = m.superSup.InternalVbDistributionStats(app.Name)
 			stats.LcbCredsRequestCounter = m.lcbCredsCounter
 			stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
+			stats.MetastoreStats = m.superSup.GetMetaStoreStats(app.Name)
 			stats.WorkerPids = m.superSup.GetEventingConsumerPids(app.Name)
 			stats.PlannerStats = m.superSup.PlannerStats(app.Name)
 			stats.VbDistributionStatsFromMetadata = m.superSup.VbDistributionStatsFromMetadata(app.Name)
