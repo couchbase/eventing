@@ -20,35 +20,6 @@ var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
 var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another worker on same node")
 var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")
 
-func (c *Consumer) reclaimVbOwnership(vb uint16) error {
-	logPrefix := "Consumer::reclaimVbOwnership"
-
-	var vbBlob vbucketKVBlob
-	var cas gocb.Cas
-
-	err := c.doVbTakeover(vb)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
-	}
-
-	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-		c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
-	}
-
-	if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
-		logging.Debugf("%s [%s:%s:%d] vb: %d successfully reclaimed ownership",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-		return nil
-	}
-
-	return fmt.Errorf("Failed to reclaim vb ownership")
-}
-
 func (c *Consumer) checkAndUpdateMetadata() {
 	logPrefix := "Consumer::checkAndUpdateMetadata"
 	vbsOwned := c.getCurrentlyOwnedVbs()

@@ -27,13 +27,18 @@ func (c *Consumer) scanTimers() {
 			var wg sync.WaitGroup
 			wg.Add(c.executeTimerRoutineCount)
 
+			startTs := time.Now()
+
 			for i := 0; i < c.executeTimerRoutineCount; i++ {
 				go c.executeTimers(workerVbMapping[i], &wg)
 			}
 
 			wg.Wait()
 
-			time.Sleep(time.Duration(time.Now().Unix()%timers.Resolution) * time.Second)
+			delta := timers.Resolution - int64(time.Now().Sub(startTs).Seconds())
+			if delta > 0 {
+				time.Sleep(time.Duration(delta) * time.Second)
+			}
 		}
 	}
 }
@@ -61,6 +66,8 @@ func (c *Consumer) executeTimers(vbs []uint16, wg *sync.WaitGroup) {
 		}
 
 		iterator := store.ScanDue()
+		atomic.AddUint64(&c.metastoreScanDueCounter, 1)
+
 		if iterator == nil {
 			logging.Tracef("%s [%s:%s:%d] vb: %d no timers to fire",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)

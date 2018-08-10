@@ -391,7 +391,7 @@ func (c *Consumer) processEvents() {
 				// which will allow vbTakeOver background routine to start up new stream from
 				// new KV node, where the vbucket has been migrated
 
-				logging.Infof("%s [%s:%s:%d] vb: %d, got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
 				c.vbsStreamRRWMutex.Lock()
 				if _, ok := c.vbStreamRequested[e.VBucket]; ok {
@@ -1091,7 +1091,7 @@ func (c *Consumer) handleFailoverLog() {
 			c.inflightDcpStreamsRWMutex.Unlock()
 
 			if vbFlog.signalStreamEnd {
-				logging.Infof("%s [%s:%s:%d] vb: %d Got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
+				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
 				continue
 			}
 
