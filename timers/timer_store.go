@@ -248,11 +248,6 @@ func (r *TimerStore) ScanDue() *TimerIter {
 		return nil
 	}
 
-	if span.Start == span.Stop && now-span.Stop > 3*Resolution {
-		logging.Tracef("%v No more timers. Not creating iterator: %+v", r.log, span)
-		return nil
-	}
-
 	stop := now
 	if stop > span.Stop {
 		stop = span.Stop
