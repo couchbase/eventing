@@ -6,7 +6,7 @@ table Config {
   depCfg:DepCfg;
   handlerUUID:uint;
   id:uint;
-  usingDocTimer:bool;
+  usingTimer:bool;
 }
 
 table DepCfg {

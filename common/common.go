@@ -191,7 +191,7 @@ type AppConfig struct {
 	ID             int
 	LastDeploy     string
 	Settings       map[string]interface{}
-	UsingDocTimer  bool
+	UsingTimer     bool
 	UserPrefix     string
 }
 
@@ -238,7 +238,7 @@ type CompileStatus struct {
 	Language       string `json:"language"`
 	Level          string `json:"level"`
 	Line           int    `json:"line_number"`
-	UsingDocTimer  string `json:"using_doc_timer"`
+	UsingTimer     string `json:"using_timer"`
 	Version        string `json:"version"`
 }
 
@@ -276,7 +276,7 @@ type HandlerConfig struct {
 	TimerProcessingTickInterval int
 	TimerStorageRoutineCount    int
 	TimerStorageChanSize        int
-	UsingDocTimer               bool
+	UsingTimer                  bool
 	WorkerCount                 int
 	WorkerQueueCap              int64
 	WorkerQueueMemCap           int64

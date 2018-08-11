@@ -141,7 +141,7 @@ type application struct {
 	ID               int                    `json:"id"`
 	Name             string                 `json:"appname"`
 	Settings         map[string]interface{} `json:"settings"`
-	UsingDocTimer    bool                   `json:"using_doc_timer"`
+	UsingTimer       bool                   `json:"using_timer"`
 }
 
 type depCfg struct {

@@ -220,6 +220,10 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 func (c *Consumer) GetMetaStoreStats() map[string]uint64 {
 	stats := make(map[string]uint64)
 
+	if !c.usingTimer {
+		return nil
+	}
+
 	stats["metastore_deletes"] = atomic.LoadUint64(&c.metastoreDeleteCounter)
 	stats["metastore_delete_err"] = atomic.LoadUint64(&c.metastoreDeleteErrCounter)
 	stats["metastore_not_found"] = atomic.LoadUint64(&c.metastoreNotFoundErrCounter)

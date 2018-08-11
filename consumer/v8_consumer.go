@@ -121,6 +121,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		timerStorageRoutineCount:        hConfig.TimerStorageRoutineCount,
 		timerStorageRoutineMetaChs:      make([]chan *TimerInfo, hConfig.TimerStorageRoutineCount),
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
+		usingTimer:                      hConfig.UsingTimer,
 		uuid:                            uuid,
 		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),
 		vbEnqueuedForStreamReq:          make(map[uint16]struct{}),
@@ -216,8 +217,8 @@ func (c *Consumer) Serve() {
 	go c.processReqStreamMessages()
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
-	logging.Infof("%s [%s:%s:%d] vbnos len: %d dump: %s",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbnos), util.Condense(c.vbnos))
+	logging.Infof("%s [%s:%s:%d] using timer: %t vbnos len: %d dump: %s",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.usingTimer, len(c.vbnos), util.Condense(c.vbnos))
 
 	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 	if err == common.ErrRetryTimeout {
@@ -287,7 +288,9 @@ func (c *Consumer) Serve() {
 		go c.vbsStateUpdate()
 	}
 
-	go c.scanTimers()
+	if c.usingTimer {
+		go c.scanTimers()
+	}
 
 	go c.updateWorkerStats()
 
@@ -348,7 +351,9 @@ func (c *Consumer) HandleV8Worker() error {
 
 	c.workerExited = false
 
-	go c.routeTimers()
+	if c.usingTimer {
+		go c.routeTimers()
+	}
 
 	go c.processEvents()
 	return nil

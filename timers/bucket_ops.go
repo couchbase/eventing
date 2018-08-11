@@ -66,6 +66,10 @@ func Pool(connstr string) *kvPool {
 }
 
 func PoolStats() map[string]uint64 {
+	if singlePool == nil {
+		return nil
+	}
+
 	stats := make(map[string]uint64)
 	stats["kvpool_incr"] = atomic.LoadUint64(&singlePool.incrCounter)
 	stats["kvpool_insert"] = atomic.LoadUint64(&singlePool.insertCounter)

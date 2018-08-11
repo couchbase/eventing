@@ -26,7 +26,8 @@ struct EpochInfo {
 struct TimerInfo {
   TimerInfo() : epoch(0), vb(0), seq_num(0) {}
 
-  std::string ToJSON(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
+  std::string ToJSON(v8::Isolate *isolate,
+                     const v8::Local<v8::Context> &context);
 
   int64_t epoch;
   int64_t vb;

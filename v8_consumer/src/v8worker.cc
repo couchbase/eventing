@@ -890,8 +890,8 @@ std::string V8Worker::CompileHandler(std::string handler) {
       auto ident = IdentifyVersion(handler);
       info_obj->Set(v8Str(isolate_, "version"), v8Str(isolate_, ident.version));
       info_obj->Set(v8Str(isolate_, "level"), v8Str(isolate_, ident.level));
-      info_obj->Set(v8Str(isolate_, "using_doc_timer"),
-                    v8Str(isolate_, ident.using_doc_timer));
+      info_obj->Set(v8Str(isolate_, "using_timer"),
+                    v8Str(isolate_, ident.using_timer));
     } catch (const char *e) {
       LOG(logError) << "Unable to identify version, ignoring:" << e
                     << std::endl;

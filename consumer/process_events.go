@@ -245,18 +245,18 @@ func (c *Consumer) processEvents() {
 						connStr += "?ipv6=allow"
 					}
 
-					err := timers.Create(c.producer.AddMetadataPrefix(c.app.AppName).Raw(),
-						int(e.VBucket), connStr, c.producer.MetadataBucket())
-
-					c.producer.AddMetadataPrefix(c.app.AppName).Raw()
-					if err == common.ErrRetryTimeout {
-						logging.Infof("%s [%s:%s:%d] Exiting due to timeout",
-							logPrefix, c.workerName, c.tcpPort, c.Pid())
-						return
-					}
-					if err != nil {
-						logging.Errorf("%s [%s:%s:%d] vb: %d unable to create metastore, err: %v",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, err)
+					if c.usingTimer {
+						err := timers.Create(c.producer.AddMetadataPrefix(c.app.AppName).Raw(),
+							int(e.VBucket), connStr, c.producer.MetadataBucket())
+						if err == common.ErrRetryTimeout {
+							logging.Infof("%s [%s:%s:%d] Exiting due to timeout",
+								logPrefix, c.workerName, c.tcpPort, c.Pid())
+							return
+						}
+						if err != nil {
+							logging.Errorf("%s [%s:%s:%d] vb: %d unable to create metastore, err: %v",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, err)
+						}
 					}
 
 					vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
@@ -266,7 +266,7 @@ func (c *Consumer) processEvents() {
 
 					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
 
-					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+					err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
 						c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
 					if err == common.ErrRetryTimeout {
 						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -402,9 +402,11 @@ func (c *Consumer) processEvents() {
 				}
 				c.vbsStreamRRWMutex.Unlock()
 
-				store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(e.VBucket))
-				if found {
-					store.Free()
+				if c.usingTimer {
+					store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(e.VBucket))
+					if found {
+						store.Free()
+					}
 				}
 
 				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)

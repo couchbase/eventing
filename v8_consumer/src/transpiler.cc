@@ -216,16 +216,16 @@ CodeVersion Transpiler::GetCodeVersion(const std::string &handler_code) {
     return CodeVersion{};
   }
 
-  v8::Local<v8::Value> using_doc_timers_val;
-  if (!TO_LOCAL(ans->Get(context, 2), &using_doc_timers_val)) {
+  v8::Local<v8::Value> using_timer_val;
+  if (!TO_LOCAL(ans->Get(context, 2), &using_timer_val)) {
     return CodeVersion{};
   }
 
   v8::String::Utf8Value version(version_val);
   v8::String::Utf8Value level(level_val);
-  v8::String::Utf8Value using_doc_timer(using_doc_timers_val);
+  v8::String::Utf8Value using_timer(using_timer_val);
 
-  return CodeVersion{*version, *level, *using_doc_timer};
+  return CodeVersion{*version, *level, *using_timer};
 }
 
 bool Transpiler::IsTimerCalled(const std::string &handler_code) {
