@@ -176,7 +176,7 @@ func (c *Consumer) storeTimers(index int, timerCh chan *TimerInfo) {
 				Vb:       timer.Vb,
 			}
 
-			err := store.Set(timer.Epoch, timer.Callback +":"+ timer.Reference, context)
+			err := store.Set(timer.Epoch, timer.Callback+":"+timer.Reference, context)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] vb: %d seq: %d failed to store",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb, timer.SeqNum)

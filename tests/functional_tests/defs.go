@@ -122,6 +122,7 @@ type commonSettings struct {
 	streamBoundary           string
 	thrCount                 int
 	timerStorageRoutineCount int
+	undeployedState          bool
 	workerCount              int
 }
 

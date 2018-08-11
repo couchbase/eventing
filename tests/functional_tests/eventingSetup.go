@@ -116,8 +116,16 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 	// Source bucket bindings disallowed
 	// bnames = append(bnames, "default")
 
-	data, err := createFunction(true, true, 0, settings, aliases,
-		bnames, appName, content, metaBucket, srcBucket)
+	var data []byte
+
+	if settings.undeployedState {
+		data, err = createFunction(false, false, 0, settings, aliases,
+			bnames, appName, content, metaBucket, srcBucket)
+	} else {
+		data, err = createFunction(true, true, 0, settings, aliases,
+			bnames, appName, content, metaBucket, srcBucket)
+	}
+
 	if err != nil {
 		log.Println("Create function, err:", err)
 		return

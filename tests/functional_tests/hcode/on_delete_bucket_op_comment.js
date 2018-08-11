@@ -1,5 +1,5 @@
 function OnUpdate(doc, meta) {
-    var doc_id = meta.id; // GET operation
+    let doc_id = meta.id; // GET operation
     log('creating document for : ', doc);
     dst_bucket[doc_id] = {'doc_id' : doc_id}; // SET operation
 }
