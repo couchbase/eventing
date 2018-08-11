@@ -12,7 +12,6 @@ table Payload {
   checkpoint_interval:int; // Controls how frequently checkpoint will be updated in metadata bucket
   curl_timeout:long;
   depcfg:string;
-  enable_recursive_mutation:bool;
   debugger_port:string;
   execution_timeout:int; // Execution timeout for handler code execution
   lcb_inst_capacity:int; // Nested iterator related fields

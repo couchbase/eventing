@@ -251,35 +251,32 @@ type PlannerNodeVbMapping struct {
 }
 
 type HandlerConfig struct {
-	AggDCPFeedMemCap            int64
-	CheckpointInterval          int
-	IdleCheckpointInterval      int
-	CleanupTimers               bool
-	CPPWorkerThrCount           int
-	CronTimersPerDoc            int
-	CurlTimeout                 int64
-	EnableRecursiveMutation     bool
-	ExecuteTimerRoutineCount    int
-	ExecutionTimeout            int
-	FeedbackBatchSize           int
-	FeedbackQueueCap            int64
-	FeedbackReadBufferSize      int
-	HandlerHeaders              []string
-	HandlerFooters              []string
-	LcbInstCapacity             int
-	LogLevel                    string
-	SocketWriteBatchSize        int
-	SocketTimeout               int
-	SourceBucket                string
-	StatsLogInterval            int
-	StreamBoundary              DcpStreamBoundary
-	TimerProcessingTickInterval int
-	TimerStorageRoutineCount    int
-	TimerStorageChanSize        int
-	UsingTimer                  bool
-	WorkerCount                 int
-	WorkerQueueCap              int64
-	WorkerQueueMemCap           int64
+	AggDCPFeedMemCap         int64
+	CheckpointInterval       int
+	IdleCheckpointInterval   int
+	CleanupTimers            bool
+	CPPWorkerThrCount        int
+	CurlTimeout              int64
+	ExecuteTimerRoutineCount int
+	ExecutionTimeout         int
+	FeedbackBatchSize        int
+	FeedbackQueueCap         int64
+	FeedbackReadBufferSize   int
+	HandlerHeaders           []string
+	HandlerFooters           []string
+	LcbInstCapacity          int
+	LogLevel                 string
+	SocketWriteBatchSize     int
+	SocketTimeout            int
+	SourceBucket             string
+	StatsLogInterval         int
+	StreamBoundary           DcpStreamBoundary
+	TimerStorageRoutineCount int
+	TimerStorageChanSize     int
+	UsingTimer               bool
+	WorkerCount              int
+	WorkerQueueCap           int64
+	WorkerQueueMemCap        int64
 }
 
 type ProcessConfig struct {

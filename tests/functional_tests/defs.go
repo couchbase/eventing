@@ -8,11 +8,6 @@ const (
 
 const (
 	handlerCodeDir     = "hcode/"
-	deployURL          = "http://127.0.0.1:9000/_p/event/setApplication/?name="
-	tempStoreURL       = "http://127.0.0.1:9000/_p/event/saveAppTempStore/?name="
-	settingsURL        = "http://127.0.0.1:9000/_p/event/setSettings/?name="
-	deleteTempStoreURL = "http://127.0.0.1:9000/_p/event/deleteAppTempStore/?name="
-	deletePrimStoreURL = "http://127.0.0.1:9000/_p/event/deleteApplication/?name="
 	deployedAppsURL    = "http://127.0.0.1:9300/getDeployedApps"
 	exportFunctionsURL = "http://127.0.0.1:9300/api/v1/export"
 	importFunctionsURL = "http://127.0.0.1:9300/api/v1/import"
@@ -84,15 +79,15 @@ const (
 const (
 	indexMemQuota  = 300
 	bucketmemQuota = 500
-	bucketType     = "membase"
-	replicas       = 1
+	bucketType     = "ephemeral"
+	replicas       = 0
 )
 
 type application struct {
+	AppHandlers      string                 `json:"appcode"`
+	DeploymentConfig depCfg                 `json:"depcfg"`
 	Name             string                 `json:"appname"`
 	ID               int                    `json:"id"`
-	DeploymentConfig depCfg                 `json:"depcfg"`
-	AppHandlers      string                 `json:"appcode"`
 	Settings         map[string]interface{} `json:"settings"`
 }
 
@@ -117,7 +112,6 @@ type commonSettings struct {
 	lcbInstCap               int
 	logLevel                 string
 	metaBucket               string
-	recursiveBehavior        string
 	sourceBucket             string
 	streamBoundary           string
 	thrCount                 int

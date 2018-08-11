@@ -127,7 +127,6 @@ type Consumer struct {
 	// Within a single CPP worker process, the number of V8Worker instance is equal
 	// to number of worker threads spawned
 	cppQueueSizes     *cppQueueSize
-	cronTimersPerDoc  int
 	feedbackQueueCap  int64
 	workerQueueCap    int64
 	workerQueueMemCap int64
@@ -245,8 +244,6 @@ type Consumer struct {
 	debuggerStarted                bool
 
 	socketTimeout time.Duration
-
-	enableRecursiveMutation bool
 
 	dcpStreamBoundary common.DcpStreamBoundary
 

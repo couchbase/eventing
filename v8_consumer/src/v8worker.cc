@@ -19,7 +19,6 @@
 #include "../../gen/js/builtin.h"
 
 bool V8Worker::debugger_started_ = false;
-bool enable_recursive_mutation = false;
 
 std::atomic<int64_t> bucket_op_exception_count = {0};
 std::atomic<int64_t> n1ql_op_exception_count = {0};
@@ -144,7 +143,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
     : app_name_(h_config->app_name), settings_(server_settings),
       platform_(platform), handler_name_(handler_name),
       handler_uuid_(handler_uuid), user_prefix_(user_prefix) {
-  enable_recursive_mutation = h_config->enable_recursive_mutation;
   curl_timeout = h_config->curl_timeout;
   histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
 
@@ -262,7 +260,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " kv_host_port: " << RS(settings_->kv_host_port)
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
-               << " enable_recursive_mutation: " << enable_recursive_mutation
                << " curl_timeout: " << curl_timeout
                << " version: " << EventingVer() << std::endl;
 

@@ -45,7 +45,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		cppThrPartitionMap:              make(map[int][]uint16),
 		cppWorkerThrCount:               hConfig.CPPWorkerThrCount,
 		crcTable:                        crc32.MakeTable(crc32.Castagnoli),
-		cronTimersPerDoc:                hConfig.CronTimersPerDoc,
 		curlTimeout:                     hConfig.CurlTimeout,
 		dcpConfig:                       dcpConfig,
 		dcpFeedVbMap:                    make(map[*couchbase.DcpFeed][]uint16),
@@ -53,7 +52,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		debuggerStarted:                 false,
 		diagDir:                         pConfig.DiagDir,
 		fireTimerCh:                     make(chan *timerContext, dcpConfig["genChanSize"].(int)),
-		enableRecursiveMutation:         hConfig.EnableRecursiveMutation,
 		debuggerPort:                    pConfig.DebuggerPort,
 		eventingAdminPort:               pConfig.EventingPort,
 		eventingSSLPort:                 pConfig.EventingSSLPort,
@@ -334,13 +332,10 @@ func (c *Consumer) HandleV8Worker() error {
 		}
 	}
 
-	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort, currHost, c.eventingDir, c.eventingAdminPort,
-		c.eventingSSLPort, c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
-		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
-		c.enableRecursiveMutation, false, c.curlTimeout)
-
-	logging.Infof("%s [%s:%s:%d] V8 worker init enable_recursive_mutation flag: %t",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.enableRecursiveMutation)
+	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort, currHost,
+		c.eventingDir, c.eventingAdminPort, c.eventingSSLPort, c.getKvNodes()[0],
+		c.producer.CfgData(), c.lcbInstCapacity, c.executionTimeout,
+		int(c.checkpointInterval.Nanoseconds()/(1000*1000)), false, c.curlTimeout)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 

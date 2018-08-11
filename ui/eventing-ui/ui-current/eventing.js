@@ -780,7 +780,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             // It results in 404 page not found for 'getErrorCodes/'
             var loaderPromise = $http.get('/_p/event/getErrorCodes')
                 .then(function(response) {
-                    console.log('Obtained error codes');
 
                     errHandler = new ErrorHandler(response.data);
                     return $http.get('/_p/event/getAppTempStore/');
@@ -795,8 +794,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }, getAppTempStore, errMsg, responseCode);
                         return $q.reject(errMsg);
                     }
-
-                    console.log('Got applications from TempStore');
 
                     // Add apps to appManager.
                     for (var app of response.data) {
@@ -1014,7 +1011,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         return mnPoolDefault.get()
                             .then(function(response) {
                                 var isEventingRunning = _.indexOf(response.thisNode.services, 'eventing') > -1;
-                                console.log('isEventingRunning', isEventingRunning);
                                 return isEventingRunning;
                             }).catch(function(errResponse) {
                                 console.error('Unable to get server nodes', errResponse);

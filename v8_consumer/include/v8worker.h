@@ -116,7 +116,6 @@ typedef struct handler_config_s {
   std::string dep_cfg;
   int execution_timeout;
   int lcb_inst_capacity;
-  bool enable_recursive_mutation;
   bool skip_lcb_bootstrap;
   std::vector<std::string> handler_headers;
   std::vector<std::string> handler_footers;
@@ -127,7 +126,6 @@ class N1QL;
 class ConnectionPool;
 class V8Worker;
 
-extern bool enable_recursive_mutation;
 extern std::atomic<int64_t> bucket_op_exception_count;
 extern std::atomic<int64_t> n1ql_op_exception_count;
 extern std::atomic<int64_t> timeout_count;

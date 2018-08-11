@@ -36,22 +36,19 @@ func encodeRev(rev uint64) service.Revision {
 func fillMissingWithDefaults(settings map[string]interface{}) {
 	// Handler related configurations
 	fillMissingDefault(settings, "checkpoint_interval", float64(60000))
+	fillMissingDefault(settings, "cleanup_timers", false)
 	fillMissingDefault(settings, "cpp_worker_thread_count", float64(2))
-	fillMissingDefault(settings, "cron_timers_per_doc", float64(1000))
 	fillMissingDefault(settings, "curl_timeout", float64(500))
 	fillMissingDefault(settings, "deadline_timeout", float64(62))
-	fillMissingDefault(settings, "enable_recursive_mutation", true)
 	fillMissingDefault(settings, "execution_timeout", float64(60))
 	fillMissingDefault(settings, "feedback_batch_size", float64(100))
 	fillMissingDefault(settings, "feedback_read_buffer_size", float64(65536))
-	fillMissingDefault(settings, "fuzz_offset", float64(0))
+	fillMissingDefault(settings, "idle_checkpoint_interval", float64(30000))
 	fillMissingDefault(settings, "lcb_inst_capacity", float64(5))
 	fillMissingDefault(settings, "log_level", "INFO")
 	fillMissingDefault(settings, "poll_bucket_interval", float64(10))
-	fillMissingDefault(settings, "skip_timer_threshold", float64(86400))
 	fillMissingDefault(settings, "sock_batch_size", float64(100))
 	fillMissingDefault(settings, "tick_duration", float64(60000))
-	fillMissingDefault(settings, "timer_processing_tick_interval", float64(500))
 	fillMissingDefault(settings, "worker_count", float64(3))
 	fillMissingDefault(settings, "worker_feedback_queue_cap", float64(10*1000))
 	fillMissingDefault(settings, "worker_queue_cap", float64(100*1000))
@@ -60,14 +57,14 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	// metastore related configuration
 	fillMissingDefault(settings, "execute_timer_routine_count", float64(3))
 	fillMissingDefault(settings, "timer_storage_routine_count", float64(3))
-	fillMissingDefault(settings, "timer_storage_chan_size", float64(100*1000))
+	fillMissingDefault(settings, "timer_storage_chan_size", float64(10*1000))
 
 	// Process related configuration
 	fillMissingDefault(settings, "breakpad_on", true)
 
 	// Rebalance related configurations
-	fillMissingDefault(settings, "vb_ownership_giveup_routine_count", float64(1))
-	fillMissingDefault(settings, "vb_ownership_takeover_routine_count", float64(1))
+	fillMissingDefault(settings, "vb_ownership_giveup_routine_count", float64(3))
+	fillMissingDefault(settings, "vb_ownership_takeover_routine_count", float64(3))
 
 	// Application logging related configurations
 	fillMissingDefault(settings, "app_log_max_size", float64(1024*1024*40))

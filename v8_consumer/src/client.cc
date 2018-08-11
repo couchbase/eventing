@@ -429,8 +429,6 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
-      handler_config->enable_recursive_mutation =
-          payload->enable_recursive_mutation();
       handler_config->skip_lcb_bootstrap = payload->skip_lcb_bootstrap();
       handler_config->handler_headers =
           ToStringArray(payload->handler_headers());

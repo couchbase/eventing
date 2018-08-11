@@ -84,12 +84,6 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.CheckpointInterval = 60000
 	}
 
-	if val, ok := settings["idle_checkpoint_interval"]; ok {
-		p.handlerConfig.IdleCheckpointInterval = int(val.(float64))
-	} else {
-		p.handlerConfig.IdleCheckpointInterval = 30000
-	}
-
 	if val, ok := settings["cleanup_timers"]; ok {
 		p.handlerConfig.CleanupTimers = val.(bool)
 	} else {
@@ -100,12 +94,6 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.CPPWorkerThrCount = int(val.(float64))
 	} else {
 		p.handlerConfig.CPPWorkerThrCount = 2
-	}
-
-	if val, ok := settings["cron_timers_per_doc"]; ok {
-		p.handlerConfig.CronTimersPerDoc = int(val.(float64))
-	} else {
-		p.handlerConfig.CronTimersPerDoc = 1000
 	}
 
 	if val, ok := settings["curl_timeout"]; ok {
@@ -124,12 +112,6 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.SocketTimeout = int(val.(float64))
 	} else {
 		p.handlerConfig.SocketTimeout = 62
-	}
-
-	if val, ok := settings["enable_recursive_mutation"]; ok {
-		p.handlerConfig.EnableRecursiveMutation = val.(bool)
-	} else {
-		p.handlerConfig.EnableRecursiveMutation = true
 	}
 
 	if val, ok := settings["execution_timeout"]; ok {
@@ -160,6 +142,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.HandlerHeaders = []string{"'use strict';"}
 	}
 
+	if val, ok := settings["idle_checkpoint_interval"]; ok {
+		p.handlerConfig.IdleCheckpointInterval = int(val.(float64))
+	} else {
+		p.handlerConfig.IdleCheckpointInterval = 30000
+	}
+
 	if val, ok := settings["lcb_inst_capacity"]; ok {
 		p.handlerConfig.LcbInstCapacity = int(val.(float64))
 	} else {
@@ -187,13 +175,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["tick_duration"]; ok {
 		p.handlerConfig.StatsLogInterval = int(val.(float64))
 	} else {
-		p.handlerConfig.StatsLogInterval = 300 * 1000
-	}
-
-	if val, ok := settings["timer_processing_tick_interval"]; ok {
-		p.handlerConfig.TimerProcessingTickInterval = int(val.(float64))
-	} else {
-		p.handlerConfig.TimerProcessingTickInterval = 500
+		p.handlerConfig.StatsLogInterval = 60 * 1000
 	}
 
 	if val, ok := settings["user_prefix"]; ok {
@@ -217,7 +199,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["worker_feedback_queue_cap"]; ok {
 		p.handlerConfig.FeedbackQueueCap = int64(val.(float64))
 	} else {
-		p.handlerConfig.FeedbackQueueCap = int64(100 * 100)
+		p.handlerConfig.FeedbackQueueCap = int64(10 * 1000)
 	}
 
 	if val, ok := settings["worker_queue_cap"]; ok {
