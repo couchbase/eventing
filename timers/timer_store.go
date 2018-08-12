@@ -92,6 +92,7 @@ type TimerStore struct {
 	setCounter                  uint64
 	setSuccessCounter           uint64
 	timerInPastCounter          uint64
+	timerInFutureFiredCounter   uint64
 	alarmMissingCounter         uint64
 	contextMissingCounter       uint64
 	cancelAlarmMissingCounter   uint64
@@ -313,11 +314,15 @@ func (r *TimerIter) ScanNext() (*TimerEntry, error) {
 	}
 
 	for {
+		logging.Tracef("Scan next iterator: %+v", r)
 		found, err := r.nextColumn()
 		if err != nil {
 			return nil, err
 		}
 		if found {
+			if r.entry.AlarmDue > time.Now().Unix() {
+				atomic.AddUint64(&r.store.timerInFutureFiredCounter, 1)
+			}
 			return r.entry, nil
 		}
 		found, err = r.nextRow()
@@ -353,6 +358,7 @@ func (r *TimerIter) nextRow() (bool, error) {
 		}
 	}
 	logging.Tracef("%v Found no rows looking until %v", r.store.log, r.row.stop)
+	r.store.shrinkSpan(r.row.stop - Resolution)
 	return false, nil
 }
 
@@ -607,7 +613,8 @@ func (r *TimerStore) Stats() map[string]uint64 {
 	stats["meta_del_success"] = atomic.LoadUint64(&r.delSuccessCounter)
 	stats["meta_set"] = atomic.LoadUint64(&r.setCounter)
 	stats["meta_set_success"] = atomic.LoadUint64(&r.setSuccessCounter)
-	stats["meta_timers_in_past"] = atomic.LoadUint64(&r.timerInPastCounter)
+	stats["meta_timer_in_past"] = atomic.LoadUint64(&r.timerInPastCounter)
+	stats["meta_timer_in_future_fired"] = atomic.LoadUint64(&r.timerInFutureFiredCounter)
 	stats["meta_alarm_missing"] = atomic.LoadUint64(&r.alarmMissingCounter)
 	stats["meta_context_missing"] = atomic.LoadUint64(&r.contextMissingCounter)
 	stats["meta_cancel_alarm_missing"] = atomic.LoadUint64(&r.cancelAlarmMissingCounter)
