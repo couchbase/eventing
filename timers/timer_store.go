@@ -279,6 +279,10 @@ func (r *TimerStore) Cancel(ref string) error {
 	return nil
 }
 
+func (r *TimerStore) Partition() int {
+	return r.partn
+}
+
 func (r *TimerStore) ScanDue() *TimerIter {
 	span := r.readSpan()
 	now := roundDown(time.Now().Unix())
@@ -471,7 +475,7 @@ func (r *TimerStore) syncSpan() error {
 		r.span.Span = Span{Start: roundDown(now), Stop: roundUp(now)}
 		r.span.empty = false
 		r.span.spanCas = 0
-		logging.Infof("%v Span initialized for the first time %+v", r.log, r.span)
+		logging.Tracef("%v Span initialized for the first time %+v", r.log, r.span)
 
 	// never persisted, but we have data
 	case absent && !r.span.empty:
@@ -496,6 +500,7 @@ func (r *TimerStore) syncSpan() error {
 			atomic.AddUint64(&r.externalSpanChangeCounter, 1)
 			logging.Tracef("%v Span changed externally but no impact:  %+v and %+v", r.log, extspan, r.span)
 			r.span.spanCas = rcas
+			return nil
 		}
 		// external has moved start backwards
 		if r.span.Start > extspan.Start {
@@ -567,7 +572,7 @@ func newTimerStore(uid string, partn int, connstr string, bucket string) (*Timer
 		return nil, err
 	}
 
-	logging.Infof("%v Initialized timerdata store", timerstore.log)
+	logging.Tracef("%v Initialized timerdata store", timerstore.log)
 	return &timerstore, nil
 }
 

@@ -990,7 +990,7 @@ func (dynAuth *DynamicAuthenticator) Credentials(req gocb.AuthCredsRequest) ([]g
 	strippedEndpoint := StripScheme(req.Endpoint)
 	username, password, err := cbauth.GetMemcachedServiceAuth(strippedEndpoint)
 	if err != nil {
-		logging.Errorf("%s invoked by %s, failed to get auth from cbauth", logPrefix, dynAuth.Caller)
+		logging.Errorf("%s invoked by %s, failed to get auth from cbauth, err: %v", logPrefix, dynAuth.Caller, err)
 		return []gocb.UserPassPair{{}}, err
 	}
 
