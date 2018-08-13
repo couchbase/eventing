@@ -273,6 +273,7 @@ type HandlerConfig struct {
 	StreamBoundary           DcpStreamBoundary
 	TimerStorageRoutineCount int
 	TimerStorageChanSize     int
+	UndeployRoutineCount     int
 	UsingTimer               bool
 	WorkerCount              int
 	WorkerQueueCap           int64

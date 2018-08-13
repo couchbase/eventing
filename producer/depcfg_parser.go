@@ -234,6 +234,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.TimerStorageChanSize = 10 * 1000
 	}
 
+	if val, ok := settings["undeploy_routine_count"]; ok {
+		p.handlerConfig.UndeployRoutineCount = int(val.(float64))
+	} else {
+		p.handlerConfig.UndeployRoutineCount = 6
+	}
+
 	// Process related configuration
 
 	if val, ok := settings["breakpad_on"]; ok {

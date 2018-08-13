@@ -609,6 +609,10 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
+	if info = m.validatePositiveInteger("undeploy_routine_count", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	// Process related configuration
 	if info = m.validateBoolean("breakpad_on", settings); info.Code != m.statusCodes.ok.Code {
 		return

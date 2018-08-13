@@ -1,6 +1,7 @@
 package producer
 
 import (
+	"fmt"
 	"net"
 
 	"github.com/couchbase/eventing/common"
@@ -49,15 +50,16 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	return err
 }
 
-var startFeedCallback = func(args ...interface{}) error {
-	logPrefix := "Producer::startFeedCallback"
+var cleanupMetadataCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::cleanupMetadataCallback"
 
 	p := args[0].(*Producer)
 	b := args[1].(**couchbase.Bucket)
 	dcpFeed := args[2].(**couchbase.DcpFeed)
 	kvNodeAddrs := args[3].([]string)
+	workerID := args[4].(int)
 
-	feedName := couchbase.NewDcpFeedName(p.uuid + "_" + p.appName + "_undeploy")
+	feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%s_%s_%d_undeploy", p.uuid, p.appName, workerID))
 
 	var err error
 	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), 0, kvNodeAddrs, 0xABCD, p.dcpConfig)
@@ -79,7 +81,7 @@ var dcpGetSeqNosCallback = func(args ...interface{}) error {
 	var err error
 	*vbSeqNos, err = (*dcpFeed).DcpGetSeqnos()
 	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to get dcp seqnos for metadata bucket: %v, err: %v",
+		logging.Errorf("%s [%s:%d] Failed to get dcp seqnos for metadata bucket: %s, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
 	}
 

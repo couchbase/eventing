@@ -483,7 +483,7 @@ func bucketFlush(bucketName string) {
 
 func flushFunction(handler string) {
 	setSettings(handler, false, false, &commonSettings{})
-	time.Sleep(5 * time.Second)
+	waitForUndeployToFinish(handler)
 	deleteFunction(handler)
 }
 
