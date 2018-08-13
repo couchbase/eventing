@@ -990,6 +990,11 @@ func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtim
 
 			if app.Name == appName {
 				info.Code = m.statusCodes.ok.Code
+
+				// Hide some internal settings from being exported
+				app.UsingTimer = false
+				delete(app.Settings, "handler_uuid")
+				delete(app.Settings, "using_timers")
 				return
 			}
 		}
@@ -1207,10 +1212,10 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	cfg.ConfigAddHandlerUUID(builder, app.HandlerUUID)
 
 	udtp := byte(0x0)
-	if app.UsingDocTimer {
+	if app.UsingTimer {
 		udtp = byte(0x1)
 	}
-	cfg.ConfigAddUsingDocTimer(builder, udtp)
+	cfg.ConfigAddUsingTimer(builder, udtp)
 	config := cfg.ConfigEnd(builder)
 
 	builder.Finish(config)
@@ -1260,15 +1265,15 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	logging.Infof("Function: %s using doc_timers: %s", app.Name, compilationInfo.UsingDocTimer)
+	logging.Infof("Function: %s using_timer: %s", app.Name, compilationInfo.UsingTimer)
 
-	switch compilationInfo.UsingDocTimer {
+	switch compilationInfo.UsingTimer {
 	case "true":
-		app.Settings["using_doc_timer"] = true
-		app.UsingDocTimer = true
+		app.Settings["using_timer"] = true
+		app.UsingTimer = true
 	case "false":
-		app.Settings["using_doc_timer"] = false
-		app.UsingDocTimer = false
+		app.Settings["using_timer"] = false
+		app.UsingTimer = false
 	}
 
 	appContent = m.encodeAppPayload(&app)
@@ -1940,6 +1945,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 			stats.InternalVbDistributionStats = m.superSup.InternalVbDistributionStats(app.Name)
 			stats.LcbCredsRequestCounter = m.lcbCredsCounter
 			stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
+			stats.MetastoreStats = m.superSup.GetMetaStoreStats(app.Name)
 			stats.WorkerPids = m.superSup.GetEventingConsumerPids(app.Name)
 			stats.PlannerStats = m.superSup.PlannerStats(app.Name)
 			stats.VbDistributionStatsFromMetadata = m.superSup.VbDistributionStatsFromMetadata(app.Name)

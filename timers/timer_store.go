@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/logging"
@@ -24,7 +25,7 @@ const (
 
 // Globals
 var (
-	stores *storeMap = newStores()
+	stores = newStores()
 )
 
 type storeMap struct {
@@ -83,6 +84,29 @@ type TimerStore struct {
 	partn   int
 	log     string
 	span    storeSpan
+
+	cancelCounter               uint64
+	cancelSuccessCounter        uint64
+	delCounter                  uint64
+	delSuccessCounter           uint64
+	setCounter                  uint64
+	setSuccessCounter           uint64
+	timerInPastCounter          uint64
+	timerInFutureFiredCounter   uint64
+	alarmMissingCounter         uint64
+	contextMissingCounter       uint64
+	cancelAlarmMissingCounter   uint64
+	cancelContextMissingCounter uint64
+	scanDueCounter              uint64
+	scanRowCounter              uint64
+	scanRowLookupCounter        uint64
+	scanColumnCounter           uint64
+	scanColumnLookupCounter     uint64
+	syncSpanCounter             uint64
+	externalSpanChangeCounter   uint64
+	spanStartChangeCounter      uint64
+	spanStopChangeCounter       uint64
+	spanCasMismatchCounter      uint64
 }
 
 type TimerIter struct {
@@ -129,7 +153,10 @@ func (r *TimerStore) Free() {
 
 func (r *TimerStore) Set(due int64, ref string, context interface{}) error {
 	now := time.Now().Unix()
+	atomic.AddUint64(&r.setCounter, 1)
+
 	if due-now <= Resolution {
+		atomic.AddUint64(&r.timerInPastCounter, 1)
 		logging.Tracef("%v Moving too close/past timer to next period: %v context %ru", r.log, formatInt(due), context)
 		due = now + Resolution
 	}
@@ -159,11 +186,13 @@ func (r *TimerStore) Set(due int64, ref string, context interface{}) error {
 
 	logging.Tracef("%v Creating timer at %v seq %v with ref %ru and context %ru", r.log, seq, formatInt(due), ref, context)
 	r.expandSpan(due)
+	atomic.AddUint64(&r.setSuccessCounter, 1)
 	return nil
 }
 
 func (r *TimerStore) Delete(entry *TimerEntry) error {
 	logging.Tracef("%v Deleting timer %+v", r.log, entry)
+	atomic.AddUint64(&r.delCounter, 1)
 	kv := Pool(r.connstr)
 
 	_, absent, _, err := kv.MustRemove(r.bucket, entry.AlarmRef, 0)
@@ -174,12 +203,16 @@ func (r *TimerStore) Delete(entry *TimerEntry) error {
 		logging.Tracef("%v Timer %v seq %v is missing alarm in del: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
 	}
 
-	_, _, mismatch, err := kv.MustRemove(r.bucket, entry.ContextRef, entry.ctxCas)
+	_, absent, mismatch, err := kv.MustRemove(r.bucket, entry.ContextRef, entry.ctxCas)
 	if err != nil {
 		return err
 	}
+	if absent {
+		atomic.AddUint64(&r.contextMissingCounter, 1)
+	}
+
 	if mismatch {
-		logging.Tracef("%v Timer %v seq %v was either cancelled or overriden after it fired: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
+		logging.Tracef("%v Timer %v seq %v was either cancelled or overridden after it fired: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
 		return nil
 	}
 
@@ -195,14 +228,17 @@ func (r *TimerStore) Delete(entry *TimerEntry) error {
 		return err
 	}
 	if absent || mismatch {
+		atomic.AddUint64(&r.alarmMissingCounter, 1)
 		logging.Tracef("%v Concurrency on %v absent:%v mismatch:%v", r.log, pos, absent, mismatch)
 	}
 
 	r.shrinkSpan(entry.AlarmDue)
+	atomic.AddUint64(&r.delSuccessCounter, 1)
 	return nil
 }
 
 func (r *TimerStore) Cancel(ref string) error {
+	atomic.AddUint64(&r.cancelCounter, 1)
 	logging.Tracef("%v Cancelling timer ref %ru", r.log, ref)
 
 	kv := Pool(r.connstr)
@@ -214,6 +250,7 @@ func (r *TimerStore) Cancel(ref string) error {
 		return nil
 	}
 	if absent {
+		atomic.AddUint64(&r.cancelContextMissingCounter, 1)
 		logging.Tracef("%v Timer asked to cancel %ru cref %v does not exist", r.log, ref, cref)
 		return nil
 	}
@@ -223,6 +260,7 @@ func (r *TimerStore) Cancel(ref string) error {
 		return nil
 	}
 	if absent {
+		atomic.AddUint64(&r.cancelAlarmMissingCounter, 1)
 		logging.Tracef("%v Timer asked to cancel %ru alarmref %v does not exist", r.log, ref, crecord.AlarmRef)
 		return nil
 	}
@@ -237,6 +275,7 @@ func (r *TimerStore) Cancel(ref string) error {
 
 	// TODO: if all items were canceled, need to remove top
 
+	atomic.AddUint64(&r.cancelSuccessCounter, 1)
 	return nil
 }
 
@@ -244,6 +283,7 @@ func (r *TimerStore) ScanDue() *TimerIter {
 	span := r.readSpan()
 	now := roundDown(time.Now().Unix())
 
+	atomic.AddUint64(&r.scanDueCounter, 1)
 	if span.Start > now {
 		return nil
 	}
@@ -274,11 +314,15 @@ func (r *TimerIter) ScanNext() (*TimerEntry, error) {
 	}
 
 	for {
+		logging.Tracef("Scan next iterator: %+v", r)
 		found, err := r.nextColumn()
 		if err != nil {
 			return nil, err
 		}
 		if found {
+			if r.entry.AlarmDue > time.Now().Unix() {
+				atomic.AddUint64(&r.store.timerInFutureFiredCounter, 1)
+			}
 			return r.entry, nil
 		}
 		found, err = r.nextRow()
@@ -289,6 +333,7 @@ func (r *TimerIter) ScanNext() (*TimerEntry, error) {
 }
 
 func (r *TimerIter) nextRow() (bool, error) {
+	atomic.AddUint64(&r.store.scanRowCounter, 1)
 	logging.Tracef("%v Looking for row after %+v", r.store.log, r.row)
 	kv := Pool(r.store.connstr)
 
@@ -300,6 +345,7 @@ func (r *TimerIter) nextRow() (bool, error) {
 		r.row.current += Resolution
 
 		pos := r.store.kvLocatorRoot(r.row.current)
+		atomic.AddUint64(&r.store.scanRowLookupCounter, 1)
 		cas, absent, err := kv.MustGet(r.store.bucket, pos, &col.stop)
 		if err != nil {
 			return false, err
@@ -312,10 +358,12 @@ func (r *TimerIter) nextRow() (bool, error) {
 		}
 	}
 	logging.Tracef("%v Found no rows looking until %v", r.store.log, r.row.stop)
+	r.store.shrinkSpan(r.row.stop - Resolution)
 	return false, nil
 }
 
 func (r *TimerIter) nextColumn() (bool, error) {
+	atomic.AddUint64(&r.store.scanColumnCounter, 1)
 	logging.Tracef("%v Looking for column after %+v in row %+v", r.store.log, r.col, r.row)
 	r.entry = nil
 
@@ -333,6 +381,7 @@ func (r *TimerIter) nextColumn() (bool, error) {
 
 		key := r.store.kvLocatorAlarm(r.row.current, current)
 
+		atomic.AddUint64(&r.store.scanColumnLookupCounter, 1)
 		_, absent, err := kv.MustGet(r.store.bucket, key, &alarm)
 		if err != nil {
 			return false, err
@@ -342,13 +391,14 @@ func (r *TimerIter) nextColumn() (bool, error) {
 			continue
 		}
 
+		atomic.AddUint64(&r.store.scanColumnLookupCounter, 1)
 		cas, absent, err := kv.MustGet(r.store.bucket, alarm.ContextRef, &context)
 		if err != nil {
 			return false, err
 		}
 		if absent || context.AlarmRef != key {
-			// Alarm canceled if absent, or superceded if AlarmRef != key
-			logging.Debugf("%v Alarm canceled or superceded %v by context %ru", r.store.log, alarm, context)
+			// Alarm canceled if absent, or superseded if AlarmRef != key
+			logging.Debugf("%v Alarm canceled or superseded %v by context %ru", r.store.log, alarm, context)
 			continue
 		}
 
@@ -394,6 +444,7 @@ func (r *TimerStore) shrinkSpan(start int64) {
 }
 
 func (r *TimerStore) syncSpan() error {
+	atomic.AddUint64(&r.syncSpanCounter, 1)
 	logging.Tracef("%v syncSpan called", r.log)
 
 	r.span.lock.Lock()
@@ -442,16 +493,19 @@ func (r *TimerStore) syncSpan() error {
 	case r.span.spanCas != rcas:
 		// external changes have no impact
 		if r.span.Start <= extspan.Start && r.span.Stop >= extspan.Stop {
+			atomic.AddUint64(&r.externalSpanChangeCounter, 1)
 			logging.Tracef("%v Span changed externally but no impact:  %+v and %+v", r.log, extspan, r.span)
 			r.span.spanCas = rcas
 		}
 		// external has moved start backwards
 		if r.span.Start > extspan.Start {
+			atomic.AddUint64(&r.spanStartChangeCounter, 1)
 			logging.Tracef("%v Span changed externally at start, merging %+v and %+v", r.log, extspan, r.span)
 			r.span.Start = extspan.Start
 		}
 		// external has moved stop forwards
 		if r.span.Stop < extspan.Stop {
+			atomic.AddUint64(&r.spanStopChangeCounter, 1)
 			logging.Tracef("%v Span changed externally at stop, merging %+v and %+v", r.log, extspan, r.span)
 			r.span.Stop = extspan.Stop
 		}
@@ -471,6 +525,7 @@ func (r *TimerStore) syncSpan() error {
 		return err
 	}
 	if absent || mismatch {
+		atomic.AddUint64(&r.spanCasMismatchCounter, 1)
 		logging.Tracef("%v Span was changed again externally, not commiting merged span %+v", r.log, r.span)
 		return nil
 	}
@@ -547,6 +602,35 @@ func (r *TimerStore) kvLocatorContext(ref string) string {
 
 func (r *TimerStore) kvLocatorSpan() string {
 	return fmt.Sprintf("%v:timerstore:%v:span", r.uid, r.partn)
+}
+
+func (r *TimerStore) Stats() map[string]uint64 {
+	stats := make(map[string]uint64)
+
+	stats["meta_cancel"] = atomic.LoadUint64(&r.cancelCounter)
+	stats["meta_cancel_success"] = atomic.LoadUint64(&r.cancelSuccessCounter)
+	stats["meta_del"] = atomic.LoadUint64(&r.delCounter)
+	stats["meta_del_success"] = atomic.LoadUint64(&r.delSuccessCounter)
+	stats["meta_set"] = atomic.LoadUint64(&r.setCounter)
+	stats["meta_set_success"] = atomic.LoadUint64(&r.setSuccessCounter)
+	stats["meta_timer_in_past"] = atomic.LoadUint64(&r.timerInPastCounter)
+	stats["meta_timer_in_future_fired"] = atomic.LoadUint64(&r.timerInFutureFiredCounter)
+	stats["meta_alarm_missing"] = atomic.LoadUint64(&r.alarmMissingCounter)
+	stats["meta_context_missing"] = atomic.LoadUint64(&r.contextMissingCounter)
+	stats["meta_cancel_alarm_missing"] = atomic.LoadUint64(&r.cancelAlarmMissingCounter)
+	stats["meta_cancel_context_missing"] = atomic.LoadUint64(&r.cancelContextMissingCounter)
+	stats["meta_scan_due"] = atomic.LoadUint64(&r.scanDueCounter)
+	stats["meta_scan_row"] = atomic.LoadUint64(&r.scanRowCounter)
+	stats["meta_scan_row_lookup"] = atomic.LoadUint64(&r.scanRowLookupCounter)
+	stats["meta_scan_column"] = atomic.LoadUint64(&r.scanColumnCounter)
+	stats["meta_scan_column_lookup"] = atomic.LoadUint64(&r.scanColumnLookupCounter)
+	stats["meta_sync_span"] = atomic.LoadUint64(&r.syncSpanCounter)
+	stats["meta_external_span_change"] = atomic.LoadUint64(&r.externalSpanChangeCounter)
+	stats["meta_span_start_change"] = atomic.LoadUint64(&r.spanStartChangeCounter)
+	stats["meta_span_stop_change"] = atomic.LoadUint64(&r.spanStopChangeCounter)
+	stats["meta_span_cas_mismatch"] = atomic.LoadUint64(&r.spanCasMismatchCounter)
+
+	return stats
 }
 
 func mapLocator(uid string, partn int) string {

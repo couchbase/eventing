@@ -273,34 +273,24 @@ func TestTimerBucketOp(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-/*func TestDeployUndeployLoopDefaultSettings(t *testing.T) {
+func TestTimerInPastBucketOp(t *testing.T) {
 	time.Sleep(5 * time.Second)
-	handler := "bucket_op_on_update"
+	handler := "bucket_op_with_timer_in_past"
 	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
 
-	for i := 0; i < 5; i++ {
-		createAndDeployFunction(handler, handler, &commonSettings{})
-
-		pumpBucketOps(opsType{}, &rateLimit{})
-		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
-		if itemCount != eventCount {
-			t.Error("For", "DeployUndeployLoopDefaultSettings",
-				"expected", itemCount,
-				"got", eventCount,
-			)
-		}
-
-		dumpStats()
-		log.Println("Undeploying app:", handler)
-		setSettings(handler, false, false, &commonSettings{})
-		bucketFlush("default")
-		bucketFlush("hello-world")
-		time.Sleep(30 * time.Second)
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "TestTimerInPastBucketOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
 	}
 
-	deleteFunction(handler)
+	dumpStats()
+	flushFunctionAndBucket(handler)
 }
-*/
 
 func TestDeployUndeployLoopTimer(t *testing.T) {
 	time.Sleep(5 * time.Second)
@@ -475,9 +465,6 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
-/* With multi node, this seems to put more pressure on CI node,
-because of 16 * 2 workers, each with 4 threads. Will selectively enable
-it with bit more tuning.
 func TestCPPWorkerCleanup(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
@@ -496,7 +483,7 @@ func TestCPPWorkerCleanup(t *testing.T) {
 	dumpStats()
 	flushFunctionAndBucket(handler)
 	time.Sleep(30 * time.Second)
-}*/
+}
 
 func TestWithUserXattrs(t *testing.T) {
 	time.Sleep(5 * time.Second)

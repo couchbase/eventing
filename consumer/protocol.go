@@ -263,8 +263,7 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 
 func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDir, eventingPort,
 	eventingSSLPort, kvHostPort, depCfg string, capacity, executionTimeout, checkpointInterval int,
-	enableRecursiveMutation, skipLcbBootstrap bool, curlTimeout int64) (encodedPayload []byte,
-	builder *flatbuffers.Builder) {
+	skipLcbBootstrap bool, curlTimeout int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
 	app := builder.CreateString(appName)
@@ -277,9 +276,6 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	khp := builder.CreateString(kvHostPort)
 	handlerHeaders := c.createHandlerHeaders(builder)
 	handlerFooters := c.createHandlerFooters(builder)
-
-	rec := make([]byte, 1)
-	flatbuffers.WriteBool(rec, enableRecursiveMutation)
 
 	lcb := make([]byte, 1)
 	flatbuffers.WriteBool(lcb, skipLcbBootstrap)
@@ -298,7 +294,6 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))
 	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))
 	payload.PayloadAddCurlTimeout(builder, curlTimeout)
-	payload.PayloadAddEnableRecursiveMutation(builder, rec[0])
 	payload.PayloadAddSkipLcbBootstrap(builder, lcb[0])
 	payload.PayloadAddHandlerHeaders(builder, handlerHeaders)
 	payload.PayloadAddHandlerFooters(builder, handlerFooters)

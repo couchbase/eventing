@@ -894,3 +894,21 @@ func (p *Producer) GetVbOwner(vb uint16) (string, string, error) {
 
 	return "", "", fmt.Errorf("owner not found")
 }
+
+// GetMetaStoreStats exposes timer store related stat counters
+func (p *Producer) GetMetaStoreStats() map[string]uint64 {
+	metaStats := make(map[string]uint64)
+	p.RLock()
+	defer p.RUnlock()
+	for _, consumer := range p.runningConsumers {
+		stats := consumer.GetMetaStoreStats()
+		for stat, value := range stats {
+			if _, ok := metaStats[stat]; !ok {
+				metaStats[stat] = 0
+			}
+			metaStats[stat] += value
+		}
+	}
+
+	return metaStats
+}

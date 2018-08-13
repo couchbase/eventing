@@ -127,7 +127,6 @@ type Consumer struct {
 	// Within a single CPP worker process, the number of V8Worker instance is equal
 	// to number of worker threads spawned
 	cppQueueSizes     *cppQueueSize
-	cronTimersPerDoc  int
 	feedbackQueueCap  int64
 	workerQueueCap    int64
 	workerQueueMemCap int64
@@ -191,7 +190,8 @@ type Consumer struct {
 	timerStorageMetaChsRWMutex    *sync.RWMutex
 	timerStorageRoutineCount      int
 	timerStorageRoutineMetaChs    []chan *TimerInfo // Access controlled by timerStorageMetaChsRWMutex
-	vbDcpEventsRemaining          map[int]int64     // Access controlled by statsRWMutex
+	usingTimer                    bool
+	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed
 	vbEventingNodeAssignMap       map[uint16]string // Access controlled by vbEventingNodeAssignMapRWMutex
 	vbEventingNodeAssignRWMutex   *sync.RWMutex
@@ -244,8 +244,6 @@ type Consumer struct {
 	debuggerStarted                bool
 
 	socketTimeout time.Duration
-
-	enableRecursiveMutation bool
 
 	dcpStreamBoundary common.DcpStreamBoundary
 

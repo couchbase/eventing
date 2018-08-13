@@ -363,13 +363,11 @@ func (c *Consumer) startDebuggerServer() {
 		return
 	}
 
-	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort, currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
+	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort,
+		currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
 		c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
-		c.enableRecursiveMutation, false, c.curlTimeout)
-
-	logging.Debugf("%s [%s:%s:%d] Debug enabled V8 worker init enable_recursive_mutation flag: %v",
-		logPrefix, c.workerName, c.debugTCPPort, c.Pid(), c.enableRecursiveMutation)
+		false, c.curlTimeout)
 
 	c.sendInitV8Worker(payload, true, pBuilder)
 

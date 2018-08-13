@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"math/rand"
 	"os"
 	"strconv"
@@ -9,6 +10,11 @@ import (
 
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timers"
+)
+
+var (
+	stats     = make(map[string]uint64)
+	statsLock = &sync.RWMutex{}
 )
 
 func run(partn int, load int, pwg *sync.WaitGroup) {
@@ -85,6 +91,7 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 		defer wait.Done()
 		for {
 			iter := store.ScanDue()
+
 			for entry, _ := iter.ScanNext(); entry != nil; entry, _ = iter.ScanNext() {
 				if entry.AlarmDue > time.Now().Unix() {
 					logging.Errorf("Timer in future fired: %v at %v", entry, time.Now().Unix())
@@ -125,10 +132,33 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 		}
 	}
 
+	done := make(chan struct{})
+	go func(store *timers.TimerStore, done chan struct{}) {
+		ticker := time.NewTicker(time.Duration(timers.Resolution) * time.Second)
+
+		for {
+			select {
+			case <-ticker.C:
+				statsLock.Lock()
+				for k, v := range store.Stats() {
+					if _, ok := stats[k]; !ok {
+						stats[k] = 0
+					}
+					stats[k] += v
+				}
+				statsLock.Unlock()
+			case <-done:
+				ticker.Stop()
+				return
+			}
+		}
+	}(store, done)
+
 	wait.Add(1)
 	go scan()
 
 	wait.Wait()
+	done <- struct{}{}
 
 	logging.Infof("Looking for any stray timers")
 	wait.Add(1)
@@ -142,6 +172,19 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 	logging.Infof("Successful Match: created=%v fired=%v cancelled=%v", created, fired, cancelled)
 }
 
+func printStats() {
+	statsLock.Lock()
+	for k, v := range timers.PoolStats() {
+		stats[k] = v
+	}
+
+	data, err := json.Marshal(&stats)
+	if err == nil {
+		logging.Infof(string(data))
+	}
+	statsLock.Unlock()
+}
+
 func main() {
 	load := 10000
 	pwg := sync.WaitGroup{}
@@ -153,5 +196,24 @@ func main() {
 		pwg.Add(1)
 		go run(partn, load, &pwg)
 	}
+
+	done := make(chan struct{})
+	go func(done chan struct{}) {
+		ticker := time.NewTicker(time.Duration(timers.Resolution) * time.Second)
+
+		for {
+			select {
+			case <-ticker.C:
+				printStats()
+
+			case <-done:
+				ticker.Stop()
+				printStats()
+				return
+			}
+		}
+	}(done)
+
 	pwg.Wait()
+	done <- struct{}{}
 }

@@ -52,6 +52,7 @@ type EventingProducer interface {
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
+	GetMetaStoreStats() map[string]uint64
 	GetNsServerPort() string
 	GetVbOwner(vb uint16) (string, string, error)
 	GetSeqsProcessed() map[int]int64
@@ -106,6 +107,7 @@ type EventingConsumer interface {
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
+	GetMetaStoreStats() map[string]uint64
 	GetSourceMap() string
 	HandleV8Worker() error
 	HostPortAddr() string
@@ -156,6 +158,7 @@ type EventingSuperSup interface {
 	GetLatencyStats(appName string) map[string]uint64
 	GetLcbExceptionsStats(appName string) map[string]uint64
 	GetLocallyDeployedApps() map[string]string
+	GetMetaStoreStats(appName string) map[string]uint64
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
 	InternalVbDistributionStats(appName string) map[string]string
@@ -188,7 +191,7 @@ type AppConfig struct {
 	ID             int
 	LastDeploy     string
 	Settings       map[string]interface{}
-	UsingDocTimer  bool
+	UsingTimer     bool
 	UserPrefix     string
 }
 
@@ -235,7 +238,7 @@ type CompileStatus struct {
 	Language       string `json:"language"`
 	Level          string `json:"level"`
 	Line           int    `json:"line_number"`
-	UsingDocTimer  string `json:"using_doc_timer"`
+	UsingTimer     string `json:"using_timer"`
 	Version        string `json:"version"`
 }
 
@@ -248,35 +251,32 @@ type PlannerNodeVbMapping struct {
 }
 
 type HandlerConfig struct {
-	AggDCPFeedMemCap            int64
-	CheckpointInterval          int
-	IdleCheckpointInterval      int
-	CleanupTimers               bool
-	CPPWorkerThrCount           int
-	CronTimersPerDoc            int
-	CurlTimeout                 int64
-	EnableRecursiveMutation     bool
-	ExecuteTimerRoutineCount    int
-	ExecutionTimeout            int
-	FeedbackBatchSize           int
-	FeedbackQueueCap            int64
-	FeedbackReadBufferSize      int
-	HandlerHeaders              []string
-	HandlerFooters              []string
-	LcbInstCapacity             int
-	LogLevel                    string
-	SocketWriteBatchSize        int
-	SocketTimeout               int
-	SourceBucket                string
-	StatsLogInterval            int
-	StreamBoundary              DcpStreamBoundary
-	TimerProcessingTickInterval int
-	TimerStorageRoutineCount    int
-	TimerStorageChanSize        int
-	UsingDocTimer               bool
-	WorkerCount                 int
-	WorkerQueueCap              int64
-	WorkerQueueMemCap           int64
+	AggDCPFeedMemCap         int64
+	CheckpointInterval       int
+	IdleCheckpointInterval   int
+	CleanupTimers            bool
+	CPPWorkerThrCount        int
+	CurlTimeout              int64
+	ExecuteTimerRoutineCount int
+	ExecutionTimeout         int
+	FeedbackBatchSize        int
+	FeedbackQueueCap         int64
+	FeedbackReadBufferSize   int
+	HandlerHeaders           []string
+	HandlerFooters           []string
+	LcbInstCapacity          int
+	LogLevel                 string
+	SocketWriteBatchSize     int
+	SocketTimeout            int
+	SourceBucket             string
+	StatsLogInterval         int
+	StreamBoundary           DcpStreamBoundary
+	TimerStorageRoutineCount int
+	TimerStorageChanSize     int
+	UsingTimer               bool
+	WorkerCount              int
+	WorkerQueueCap           int64
+	WorkerQueueMemCap        int64
 }
 
 type ProcessConfig struct {

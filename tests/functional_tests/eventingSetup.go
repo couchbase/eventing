@@ -27,14 +27,6 @@ func getHandlerCode(filename string) (string, error) {
 	return string(content), nil
 }
 
-func postToTempStore(appName string, payload []byte) *restResponse {
-	return postToEventingEndpoint("Post to temp store", tempStoreURL+appName, payload)
-}
-
-func postToMainStore(appName string, payload []byte) *restResponse {
-	return postToEventingEndpoint("Post to main store", deployURL+appName, payload)
-}
-
 func postToEventingEndpoint(context, url string, payload []byte) (response *restResponse) {
 	response = &restResponse{}
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
@@ -71,9 +63,8 @@ func createPadding(paddingCount int) string {
 	return "/*" + string(pad) + "*/"
 }
 
-func createAndDeployLargeFunction(appName, hFileName string, settings *commonSettings, paddingCount int) (tempStoreResponse, mainStoreResponse *restResponse) {
-	tempStoreResponse = &restResponse{}
-	mainStoreResponse = &restResponse{}
+func createAndDeployLargeFunction(appName, hFileName string, settings *commonSettings, paddingCount int) (storeResponse *restResponse) {
+	storeResponse = &restResponse{}
 
 	log.Printf("Deploying app: %s", appName)
 	pad := createPadding(paddingCount)
@@ -116,19 +107,26 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 	// Source bucket bindings disallowed
 	// bnames = append(bnames, "default")
 
-	data, err := createFunction(true, true, 0, settings, aliases,
-		bnames, appName, content, metaBucket, srcBucket)
+	var data []byte
+
+	if settings.undeployedState {
+		data, err = createFunction(false, false, 0, settings, aliases,
+			bnames, appName, content, metaBucket, srcBucket)
+	} else {
+		data, err = createFunction(true, true, 0, settings, aliases,
+			bnames, appName, content, metaBucket, srcBucket)
+	}
+
 	if err != nil {
 		log.Println("Create function, err:", err)
 		return
 	}
 
-	tempStoreResponse = postToTempStore(appName, data)
-	mainStoreResponse = postToMainStore(appName, data)
+	storeResponse = postToEventingEndpoint("Post to main store", functionsURL+"/"+appName, data)
 	return
 }
 
-func createAndDeployFunction(appName, hFileName string, settings *commonSettings) (*restResponse, *restResponse) {
+func createAndDeployFunction(appName, hFileName string, settings *commonSettings) *restResponse {
 	return createAndDeployLargeFunction(appName, hFileName, settings, 0)
 }
 
@@ -198,12 +196,6 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["dcp_stream_boundary"] = "everything"
 	} else {
 		settings["dcp_stream_boundary"] = s.streamBoundary
-	}
-
-	if s.recursiveBehavior == "disable" || s.recursiveBehavior == "" {
-		settings["enable_recursive_mutation"] = false
-	} else {
-		settings["enable_recursive_mutation"] = true
 	}
 
 	if s.deadlineTimeout == 0 {
@@ -285,7 +277,7 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 		return
 	}
 
-	req, err := http.NewRequest("POST", settingsURL+appName, bytes.NewBuffer(data))
+	req, err := http.NewRequest("POST", functionsURL+"/"+appName+"/settings", bytes.NewBuffer(data))
 	if err != nil {
 		log.Println("Undeploy request framing::", err)
 		return
@@ -312,20 +304,11 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 }
 
 func deleteFunction(appName string) {
-	deleteFromTempStore(appName)
-	deleteFromPrimaryStore(appName)
-}
-
-func deleteFromTempStore(appName string) {
-	makeDeleteReq("Delete from temp store", deleteTempStoreURL+appName)
-}
-
-func deleteFromPrimaryStore(appName string) {
-	makeDeleteReq("Delete from primary store", deletePrimStoreURL+appName)
+	makeDeleteReq("Delete from main store", functionsURL+"/"+appName)
 }
 
 func makeDeleteReq(context, url string) {
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
 		log.Println("Delete req:", err)
 		return

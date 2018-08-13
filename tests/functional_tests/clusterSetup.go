@@ -40,7 +40,8 @@ func quotaSetup(indexQuota, memoryQuota int) ([]byte, error) {
 }
 
 func createBucket(name string, quota int) ([]byte, error) {
-	payload := strings.NewReader(fmt.Sprintf("name=%s&bucketType=ephemeral&evictionPolicy=noEviction&replicaNumber=0&ramQuotaMB=%d&flushEnabled=1", name, quota))
+	payload := strings.NewReader(fmt.Sprintf("name=%s&bucketType=%s&evictionPolicy=noEviction&replicaNumber=%d&ramQuotaMB=%d&flushEnabled=1",
+		name, bucketType, replicas, quota))
 	return makeRequest("POST", payload, bucketSetupURL)
 }
 

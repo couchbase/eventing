@@ -1,7 +1,7 @@
 function OnUpdate(doc,meta) {
-    var expiry = Math.round((new Date()).getTime() / 1000) + 5;
+    let expiry = Math.round((new Date()).getTime() / 1000) + 5;
     docTimer(timerCallback, expiry, meta.id);
 }
-function timerCallback(docid) {
+function timerCallback(meta) {
     INSERT INTO `hello-world` ( KEY, VALUE ) VALUES ( UUID() ,'timerCallback');
 }
