@@ -199,7 +199,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["worker_feedback_queue_cap"]; ok {
 		p.handlerConfig.FeedbackQueueCap = int64(val.(float64))
 	} else {
-		p.handlerConfig.FeedbackQueueCap = int64(10 * 1000)
+		p.handlerConfig.FeedbackQueueCap = int64(500)
 	}
 
 	if val, ok := settings["worker_queue_cap"]; ok {
