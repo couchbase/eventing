@@ -87,7 +87,6 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/clearEventStats", m.clearEventStats)
 	http.HandleFunc("/deleteApplication/", m.deletePrimaryStoreHandler)
 	http.HandleFunc("/deleteAppTempStore/", m.deleteTempStoreHandler)
-	http.HandleFunc("/debugging/", m.debugging)
 	http.HandleFunc("/getAggBootstrappingApps", m.getAggBootstrappingApps)
 	http.HandleFunc("/getAggEventProcessingStats", m.getAggEventProcessingStats)
 	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"regexp"
 	"runtime"
 	"runtime/trace"
@@ -82,36 +81,6 @@ func (m *ServiceMgr) getNodeVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	logging.Debugf("Got request to fetch version from host %s", r.Host)
 	fmt.Fprintf(w, "%v", util.EventingVer())
-}
-
-func (m *ServiceMgr) debugging(w http.ResponseWriter, r *http.Request) {
-	logging.Debugf("Got debugging fetch %v", r.URL)
-	jsFile := path.Base(r.URL.Path)
-	if strings.HasSuffix(jsFile, srcCodeExt) {
-		appName := jsFile[:len(jsFile)-len(srcCodeExt)]
-		handler := m.getHandler(appName)
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s", handler)
-		if handler == "" {
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-			fmt.Fprintf(w, "Function: %s not deployed", appName)
-		}
-	} else if strings.HasSuffix(jsFile, srcMapExt) {
-		appName := jsFile[:len(jsFile)-len(srcMapExt)]
-		sourceMap := m.getSourceMap(appName)
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s", sourceMap)
-
-		if sourceMap == "" {
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-			fmt.Fprintf(w, "Function: %s not deployed", appName)
-		}
-	} else {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errInvalidExt.Code))
-		fmt.Fprintf(w, "Invalid extension for %s", jsFile)
-	}
 }
 
 func (m *ServiceMgr) deletePrimaryStoreHandler(w http.ResponseWriter, r *http.Request) {

@@ -349,9 +349,6 @@ func (c *Consumer) HandleV8Worker() error {
 
 	c.sendLoadV8Worker(c.app.AppCode, false)
 
-	c.sendGetSourceMap(false)
-	c.sendGetHandlerCode(false)
-
 	c.workerExited = false
 
 	if c.usingTimer {
