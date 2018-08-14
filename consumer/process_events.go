@@ -1003,6 +1003,11 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 	}
 	c.vbsStreamRRWMutex.Unlock()
 
+	err = refreshMap()
+	if err != nil {
+		return err
+	}
+
 	c.dcpStreamReqCounter++
 	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 	if err != nil {

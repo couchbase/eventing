@@ -168,7 +168,6 @@ func (feed *DcpFeed) genServer(
 		}
 		close(feed.finch)
 		feed.conn.Close()
-		feed.conn = nil
 		logging.Infof("%v ##%x ... stopped\n", feed.logPrefix, opaque)
 	}()
 
