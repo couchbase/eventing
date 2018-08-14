@@ -135,6 +135,9 @@ func (c *Consumer) routeTimers() {
 				c.timerStorageMetaChsRWMutex.RLock()
 				defer c.timerStorageMetaChsRWMutex.RUnlock()
 
+				if c.isTerminateRunning {
+					return
+				}
 				c.timerStorageRoutineMetaChs[partition] <- e
 			}()
 

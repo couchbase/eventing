@@ -441,6 +441,10 @@ func (c *Consumer) sendMessageLoop() {
 		select {
 		case <-c.socketWriteTicker.C:
 			if c.sendMsgCounter > 0 && c.conn != nil {
+				if c.isTerminateRunning {
+					return
+				}
+
 				c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
 
 				func() {

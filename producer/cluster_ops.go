@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -64,6 +65,13 @@ var getKVNodesAddressesOpCallback = func(args ...interface{}) error {
 		atomic.StorePointer(
 			(*unsafe.Pointer)(unsafe.Pointer(&p.kvNodeAddrs)), unsafe.Pointer(&kvNodeAddrs))
 		logging.Infof("%s [%s:%d] Got KV nodes: %rs", logPrefix, p.appName, p.LenRunningConsumers(), kvNodeAddrs)
+	}
+
+	bucketNodeCount := util.CountActiveKVNodes(bucket, hostAddress)
+	if bucketNodeCount == 0 {
+		logging.Infof("%s [%s:%d] Bucket: %s bucketNodeCount: %d exiting",
+			logPrefix, p.appName, p.LenRunningConsumers(), bucket, bucketNodeCount)
+		return common.ErrRetryTimeout
 	}
 
 	return err

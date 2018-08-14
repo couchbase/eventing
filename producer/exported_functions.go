@@ -558,9 +558,58 @@ func (p *Producer) CleanupMetadataBucket() error {
 		return nil
 	}
 
+	// Distribute vbuckets to cleanup based on planner
+	err := p.vbEventingNodeAssign()
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Failed to get vb to node assignment, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
+		return err
+	}
+
+	eventingNodeAddr, err := util.CurrentEventingNodeAddress(p.auth, hostAddress)
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Failed to get address for current eventing node, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
+		return err
+	}
+
+	vbsToCleanup := make([]uint16, 0)
+	p.vbEventingNodeAssignRWMutex.RLock()
+	for vb, node := range p.vbEventingNodeAssignMap {
+		if node == eventingNodeAddr {
+			vbsToCleanup = append(vbsToCleanup, vb)
+		}
+	}
+	p.vbEventingNodeAssignRWMutex.RUnlock()
+
+	sort.Sort(util.Uint16Slice(vbsToCleanup))
+	logging.Infof("%s [%s:%d] Eventing node: %s vbs to cleanup len: %d dump: %s",
+		logPrefix, p.appName, p.LenRunningConsumers(), eventingNodeAddr, len(vbsToCleanup), util.Condense(vbsToCleanup))
+
+	vbsDistribution := util.VbucketNodeAssignment(vbsToCleanup, p.handlerConfig.UndeployRoutineCount)
+
+	var undeployWG sync.WaitGroup
+	undeployWG.Add(p.handlerConfig.UndeployRoutineCount)
+
+	for i := 0; i < p.handlerConfig.UndeployRoutineCount; i++ {
+		go p.cleanupMetadataImpl(i, vbsDistribution[i], &undeployWG)
+	}
+
+	undeployWG.Wait()
+	return nil
+}
+
+func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG *sync.WaitGroup) error {
+	logPrefix := "Producer::cleanupMetadataImpl"
+	defer undeployWG.Done()
+
+	sort.Sort(util.Uint16Slice(vbsToCleanup))
+	logging.Infof("%s [%s:%d:id_%d] vbs to cleanup len: %d dump: %s",
+		logPrefix, p.appName, p.LenRunningConsumers(), id, len(vbsToCleanup), util.Condense(vbsToCleanup))
+
 	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, p.metadatabucket)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
 		return common.ErrRetryTimeout
 	}
 
@@ -570,29 +619,36 @@ func (p *Producer) CleanupMetadataBucket() error {
 	var dcpFeed *couchbase.DcpFeed
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, commonConnectBucketOpCallback, p, &b)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
 		return common.ErrRetryTimeout
 	}
 
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, startFeedCallback, p, &b, &dcpFeed, kvNodeAddrs)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, cleanupMetadataCallback, p, &b, &dcpFeed, kvNodeAddrs, id)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
 		return common.ErrRetryTimeout
 	}
 
-	logging.Infof("%s [%s:%d] Started up dcpFeed to cleanup artifacts from metadata bucket: %v",
-		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket)
+	logging.Infof("%s [%s:%d:id_%d] Started up dcpfeed to cleanup artifacts from metadata bucket: %s",
+		logPrefix, p.appName, p.LenRunningConsumers(), id, p.metadatabucket)
 
 	var vbSeqNos map[uint16]uint64
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, dcpGetSeqNosCallback, p, &dcpFeed, &vbSeqNos)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
 		return common.ErrRetryTimeout
+	}
+
+	cleanupVbs := make(map[uint16]bool)
+	for _, vb := range vbsToCleanup {
+		cleanupVbs[vb] = true
 	}
 
 	vbs := make([]uint16, 0)
 	for vb := range vbSeqNos {
-		vbs = append(vbs, vb)
+		if cleanupVbs[vb] {
+			vbs = append(vbs, vb)
+		}
 	}
 
 	sort.Sort(util.Uint16Slice(vbs))
@@ -613,8 +669,8 @@ func (p *Producer) CleanupMetadataBucket() error {
 			select {
 			case e, ok := <-dcpFeed.C:
 				if ok == false {
-					logging.Infof("%s [%s:%d] Exiting timer cleanup routine, mutations till high vb seqnos received",
-						logPrefix, p.appName, p.LenRunningConsumers())
+					logging.Infof("%s [%s:%d:id_%d] Exiting timer cleanup routine, mutations till high vb seqnos received",
+						logPrefix, p.appName, p.LenRunningConsumers(), id)
 					return
 				}
 
@@ -625,13 +681,14 @@ func (p *Producer) CleanupMetadataBucket() error {
 				switch e.Opcode {
 				case mcd.DCP_MUTATION:
 					docID := string(e.Key)
+
 					if strings.HasPrefix(docID, prefix.Raw()) {
-						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval),
-							&p.retryCount, deleteOpCallback, p,
+						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p,
 							p.AddMetadataPrefix(p.appName+strings.TrimPrefix(docID, prefix.Raw())))
+
 						if err == common.ErrRetryTimeout {
-							logging.Errorf("%s [%s:%d] Exiting due to timeout",
-								logPrefix, p.appName, p.LenRunningConsumers())
+							logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout",
+								logPrefix, p.appName, p.LenRunningConsumers(), id)
 							return
 						}
 					}
@@ -643,7 +700,7 @@ func (p *Producer) CleanupMetadataBucket() error {
 	var flogs couchbase.FailoverLog
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getFailoverLogOpCallback, p, &b, &flogs, vbs)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
 		return common.ErrRetryTimeout
 	}
 
@@ -651,20 +708,23 @@ func (p *Producer) CleanupMetadataBucket() error {
 	flags := uint32(0)
 	end := uint64(0xFFFFFFFFFFFFFFFF)
 
-	logging.Infof("%s [%s:%d] Going to start DCP streams from metadata bucket: %v, vbs len: %v dump: %v",
-		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, len(vbs), util.Condense(vbs))
+	logging.Infof("%s [%s:%d:id_%d] Going to start DCP streams from metadata bucket: %v, vbs len: %v dump: %s",
+		logPrefix, p.appName, p.LenRunningConsumers(), id, p.metadatabucket, len(vbs), util.Condense(vbs))
 
 	for vb, flog := range flogs {
+		if !cleanupVbs[vb] {
+			continue
+		}
 		vbuuid, _, _ := flog.Latest()
 
-		logging.Debugf("%s [%s:%d] vb: %v starting DCP feed",
-			logPrefix, p.appName, p.LenRunningConsumers(), vb)
+		logging.Debugf("%s [%s:%d:id_%d] vb: %d starting DCP feed",
+			logPrefix, p.appName, p.LenRunningConsumers(), id, vb)
 
 		opaque := uint16(vb)
 		err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
 		if err != nil {
-			logging.Errorf("%s [%s:%d] Failed to stream vb: %v",
-				logPrefix, p.appName, p.LenRunningConsumers(), vb)
+			logging.Errorf("%s [%s:%d:id_%d] vb: %d failed to request stream",
+				logPrefix, p.appName, p.LenRunningConsumers(), id, vb)
 		}
 	}
 
@@ -685,9 +745,13 @@ func (p *Producer) CleanupMetadataBucket() error {
 				}
 				rw.RUnlock()
 
+				sort.Sort(util.Uint16Slice(receivedVbs))
+				sort.Sort(util.Uint16Slice(vbs))
+
 				if len(receivedVbs) < len(vbs) {
-					logging.Debugf("%s [%s:%d] len of receivedVbs: %v len of vbs: %v",
-						logPrefix, p.appName, p.LenRunningConsumers(), len(receivedVbs), len(vbs))
+					logging.Infof("%s [%s:%d:id_%d] Received vbs len: %d dump: %s vbs to cleanup len: %d dump: %s",
+						logPrefix, p.appName, p.LenRunningConsumers(), id, len(receivedVbs), util.Condense(receivedVbs),
+						len(vbs), util.Condense(vbs))
 					continue
 				}
 
@@ -695,6 +759,10 @@ func (p *Producer) CleanupMetadataBucket() error {
 
 				rw.RLock()
 				for vb, seqNo := range vbSeqNos {
+					if !cleanupVbs[vb] {
+						continue
+					}
+
 					if receivedVbSeqNos[vb] < seqNo {
 						receivedAllMutations = false
 						break
@@ -707,8 +775,8 @@ func (p *Producer) CleanupMetadataBucket() error {
 				}
 
 				dcpFeed.Close()
-				logging.Infof("%s [%s:%d] Closed dcpFeed spawned for cleaning up metadata bucket artifacts",
-					logPrefix, p.appName, p.LenRunningConsumers())
+				logging.Infof("%s [%s:%d:%id_%d] Closed dcpFeed spawned for cleaning up metadata bucket artifacts",
+					logPrefix, p.appName, p.LenRunningConsumers(), id)
 
 				ticker.Stop()
 				return

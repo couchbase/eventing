@@ -199,7 +199,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["worker_feedback_queue_cap"]; ok {
 		p.handlerConfig.FeedbackQueueCap = int64(val.(float64))
 	} else {
-		p.handlerConfig.FeedbackQueueCap = int64(10 * 1000)
+		p.handlerConfig.FeedbackQueueCap = int64(500)
 	}
 
 	if val, ok := settings["worker_queue_cap"]; ok {
@@ -232,6 +232,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.TimerStorageChanSize = int(val.(float64))
 	} else {
 		p.handlerConfig.TimerStorageChanSize = 10 * 1000
+	}
+
+	if val, ok := settings["undeploy_routine_count"]; ok {
+		p.handlerConfig.UndeployRoutineCount = int(val.(float64))
+	} else {
+		p.handlerConfig.UndeployRoutineCount = 6
 	}
 
 	// Process related configuration

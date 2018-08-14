@@ -49,8 +49,9 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "poll_bucket_interval", float64(10))
 	fillMissingDefault(settings, "sock_batch_size", float64(100))
 	fillMissingDefault(settings, "tick_duration", float64(60000))
+	fillMissingDefault(settings, "undeploy_routine_count", float64(6))
 	fillMissingDefault(settings, "worker_count", float64(3))
-	fillMissingDefault(settings, "worker_feedback_queue_cap", float64(10*1000))
+	fillMissingDefault(settings, "worker_feedback_queue_cap", float64(500))
 	fillMissingDefault(settings, "worker_queue_cap", float64(100*1000))
 	fillMissingDefault(settings, "worker_queue_mem_cap", float64(1024))
 

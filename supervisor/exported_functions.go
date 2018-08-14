@@ -392,12 +392,12 @@ func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool) {
 }
 
 func (s *SuperSupervisor) GetMetaStoreStats(appName string) map[string]uint64 {
+	stats := make(map[string]uint64)
 	if p, ok := s.runningProducers[appName]; ok {
-		stats := p.GetMetaStoreStats()
-		for stat, counter := range timers.PoolStats() {
-			stats[stat] = counter
-		}
-		return stats
+		stats = p.GetMetaStoreStats()
+	}
+	for stat, counter := range timers.PoolStats() {
+		stats[stat] = counter
 	}
 	return nil
 }
