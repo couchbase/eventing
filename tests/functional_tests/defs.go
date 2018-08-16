@@ -140,3 +140,12 @@ type ownershipEntry struct {
 	SeqNo          uint64 `json:"seq_no"`
 	Timestamp      string `json:"timestamp"`
 }
+
+type responseSchema struct {
+	Name             string      `json:"name"`
+	Code             int         `json:"code"`
+	Description      string      `json:"description"`
+	Attributes       []string    `json:"attributes"`
+	RuntimeInfo      interface{} `json:"runtime_info"`
+	httpResponseCode int
+}

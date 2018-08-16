@@ -303,11 +303,12 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 	return
 }
 
-func deleteFunction(appName string) {
-	makeDeleteReq("Delete from main store", functionsURL+"/"+appName)
+func deleteFunction(appName string) (*responseSchema, error) {
+	return makeDeleteReq("Delete from main store", functionsURL+"/"+appName)
 }
 
-func makeDeleteReq(context, url string) {
+func makeDeleteReq(context, url string) (response *responseSchema, err error) {
+	response = &responseSchema{}
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
 		log.Println("Delete req:", err)
@@ -330,6 +331,9 @@ func makeDeleteReq(context, url string) {
 	}
 
 	log.Printf("%s request response code: %d dump: %s", context, resp.StatusCode, string(data))
+
+	err = json.Unmarshal(data, &response)
+	response.httpResponseCode = resp.StatusCode
 	return
 }
 
