@@ -775,7 +775,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 				}
 
 				dcpFeed.Close()
-				logging.Infof("%s [%s:%d:%id_%d] Closed dcpFeed spawned for cleaning up metadata bucket artifacts",
+				logging.Infof("%s [%s:%d:id_%d] Closed dcpFeed spawned for cleaning up metadata bucket artifacts",
 					logPrefix, p.appName, p.LenRunningConsumers(), id)
 
 				ticker.Stop()

@@ -518,7 +518,8 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 	}
 
 	if progress.VbsRemainingToShuffle == 0 && progress.VbsOwnedPerPlan == 0 && !m.statsWritten {
-		statsList := m.populateStats(true)
+		// Picking up subset of the stats
+		statsList := m.populateStats(false)
 		data, err := json.Marshal(statsList)
 		if err != nil {
 			logging.Errorf("%s failed to unmarshal stats, err: %v", logPrefix, err)

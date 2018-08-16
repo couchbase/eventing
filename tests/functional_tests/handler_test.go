@@ -598,13 +598,14 @@ func TestSourceAndMetaBucketDeleteWithBootstrap(t *testing.T) {
 	log.Println("Deleted source bucket:", srcBucket)
 
 	log.Println("Deleting metadata bucket:", metaBucket)
-	deleteBucket(srcBucket)
+	deleteBucket(metaBucket)
 	log.Println("Deleted metadata bucket:", metaBucket)
 
 	time.Sleep(10 * time.Second)
 	waitForUndeployToFinish(handler)
 
 	time.Sleep(10 * time.Second)
+	createBucket(srcBucket, bucketmemQuota)
 	createBucket(metaBucket, bucketmemQuota)
 	flushFunctionAndBucket(handler)
 }
