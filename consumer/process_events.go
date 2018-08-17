@@ -323,6 +323,9 @@ func (c *Consumer) processEvents() {
 					c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
 					c.vbProcessingStats.updateVbStat(e.VBucket, "worker_name", c.ConsumerName())
 
+					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_requested_node_uuid", c.NodeUUID())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_requested_worker", c.ConsumerName())
+
 					if !c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 						c.Lock()
 						c.vbsRemainingToClose = append(c.vbsRemainingToClose, e.VBucket)
@@ -1002,6 +1005,11 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		return nil
 	}
 	c.vbsStreamRRWMutex.Unlock()
+
+	err = refreshMap()
+	if err != nil {
+		return err
+	}
 
 	c.dcpStreamReqCounter++
 	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)

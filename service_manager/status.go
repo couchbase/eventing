@@ -80,6 +80,7 @@ type statusCodes struct {
 	errBucketMissing       statusBase
 	errClusterVersion      statusBase
 	errUUIDGen             statusBase
+	errAppDelete           statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -158,6 +159,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusNotAcceptable
 	case m.statusCodes.errUUIDGen.Code:
 		return http.StatusInternalServerError
+	case m.statusCodes.errAppDelete.Code:
+		return http.StatusBadRequest
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -204,6 +207,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errBucketMissing:       statusBase{"ERR_BUCKET_MISSING", 41},
 		errClusterVersion:      statusBase{"ERR_CLUSTER_VERSION", 42},
 		errUUIDGen:             statusBase{"ERR_UUID_GEN_FAILED", 43},
+		errAppDelete:           statusBase{"ERR_APP_DELETE_NOT_ALLOWED", 44},
 	}
 
 	errors := []errorPayload{
@@ -414,6 +418,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errUUIDGen.Name,
 			Code:        m.statusCodes.errUUIDGen.Code,
 			Description: "UUID generation failed",
+		},
+		{
+			Name:        m.statusCodes.errAppDelete.Name,
+			Code:        m.statusCodes.errAppDelete.Code,
+			Description: "Function needs to be undeployed before it can be deleted",
 		},
 	}
 

@@ -507,8 +507,11 @@ func (c *Consumer) Stop() {
 		c.conn.Close()
 	}
 
-	if c.debugClient != nil {
+	if c.debugConn != nil {
 		c.debugConn.Close()
+	}
+
+	if c.debugListener != nil {
 		c.debugListener.Close()
 	}
 

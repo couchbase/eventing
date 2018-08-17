@@ -598,13 +598,14 @@ func TestSourceAndMetaBucketDeleteWithBootstrap(t *testing.T) {
 	log.Println("Deleted source bucket:", srcBucket)
 
 	log.Println("Deleting metadata bucket:", metaBucket)
-	deleteBucket(srcBucket)
+	deleteBucket(metaBucket)
 	log.Println("Deleted metadata bucket:", metaBucket)
 
 	time.Sleep(10 * time.Second)
 	waitForUndeployToFinish(handler)
 
 	time.Sleep(10 * time.Second)
+	createBucket(srcBucket, bucketmemQuota)
 	createBucket(metaBucket, bucketmemQuota)
 	flushFunctionAndBucket(handler)
 }
@@ -628,6 +629,29 @@ func TestUndeployDuringBootstrap(t *testing.T) {
 	time.Sleep(20 * time.Second)
 	waitForUndeployToFinish(handler)
 
+	flushFunctionAndBucket(handler)
+}
+
+func TestDeleteBeforeUndeploy(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_with_timer"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+
+	setSettings(handler, false, false, &commonSettings{})
+	resp, _ := deleteFunction(handler)
+	if resp.httpResponseCode == 200 {
+		t.Error("Expected non 200 response code")
+	}
+
+	if resp.httpResponseCode != 200 && resp.Name != "ERR_APP_DELETE_NOT_ALLOWED" {
+		t.Error("Expected ERR_APP_DELETE_NOT_ALLOWED got", resp.Name)
+	}
+
+	waitForUndeployToFinish(handler)
 	flushFunctionAndBucket(handler)
 }
 

@@ -309,12 +309,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					if eventingProducer, ok := s.runningProducers[appName]; ok {
 						eventingProducer.SignalBootstrapFinish()
 
-						s.appListRWMutex.Lock()
-						s.deployedApps[appName] = time.Now().String()
-						s.locallyDeployedApps[appName] = time.Now().String()
-						s.appListRWMutex.Unlock()
-
-						logging.Infof("%s [%d] App: %s added to deployed apps map", logPrefix, len(s.runningProducers), appName)
+						s.addToDeployedApps(appName)
+						s.addToLocallyDeployedApps(appName)
 
 						s.Lock()
 						delete(s.cleanedUpAppMap, appName)
@@ -372,17 +368,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					logging.Infof("%s [%d] App: %s enabled, settings change requesting undeployment",
 						logPrefix, len(s.runningProducers), appName)
 
-					s.appListRWMutex.Lock()
-					delete(s.locallyDeployedApps, appName)
-					s.appListRWMutex.Unlock()
+					s.deleteFromLocallyDeployedApps(appName)
 
 					s.CleanupProducer(appName, false)
-					s.appListRWMutex.Lock()
-					delete(s.deployedApps, appName)
-					s.appListRWMutex.Unlock()
-
-					logging.Infof("%s [%d] App: %s deleted from deployed apps map", logPrefix, len(s.runningProducers), appName)
-
+					s.deleteFromDeployedApps(appName)
 				}
 
 				logging.Infof("%s [%d] App: %s undeployment done", logPrefix, len(s.runningProducers), appName)
@@ -492,12 +481,8 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 					logging.Infof("%s [%d] Bootstrap finished for app: %s", logPrefix, len(s.runningProducers), appName)
 
-					s.appListRWMutex.Lock()
-					s.deployedApps[appName] = time.Now().String()
-					s.locallyDeployedApps[appName] = time.Now().String()
-					s.appListRWMutex.Unlock()
-
-					logging.Infof("%s [%d] App: %s added to deployed apps map", logPrefix, len(s.runningProducers), appName)
+					s.addToDeployedApps(appName)
+					s.addToLocallyDeployedApps(appName)
 
 					s.Lock()
 					delete(s.cleanedUpAppMap, appName)
@@ -702,10 +687,8 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					eventingProducer.SignalBootstrapFinish()
 					logging.Infof("%s [%d] Loading app: %s", logPrefix, len(s.runningProducers), appName)
 
-					s.appListRWMutex.Lock()
-					s.deployedApps[appName] = time.Now().String()
-					s.locallyDeployedApps[appName] = time.Now().String()
-					s.appListRWMutex.Unlock()
+					s.addToDeployedApps(appName)
+					s.addToLocallyDeployedApps(appName)
 
 					logging.Infof("%s [%d] App: %s added to deployed apps map", logPrefix, len(s.runningProducers), appName)
 
@@ -800,20 +783,6 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool) 
 				}
 			}
 		}
-
-		s.appListRWMutex.Lock()
-		s.deployedApps[appName] = time.Now().String()
-		s.appListRWMutex.Unlock()
-
-		logging.Infof("%s [%d] App: %s added to deployed apps map", logPrefix, len(s.runningProducers), appName)
-
-		defer func() {
-			logging.Infof("%s [%d] App: %s deleting app from deployed apps map", logPrefix, len(s.runningProducers), appName)
-
-			s.appListRWMutex.Lock()
-			defer s.appListRWMutex.Unlock()
-			delete(s.deployedApps, appName)
-		}()
 
 		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 	}

@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
@@ -379,18 +380,45 @@ func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool) {
 	logging.Infof("%s [%d] App: %s stopping running producer instance",
 		logPrefix, len(s.runningProducers), appName)
 
-	s.appListRWMutex.Lock()
-	delete(s.locallyDeployedApps, appName)
-	s.appListRWMutex.Unlock()
+	s.deleteFromLocallyDeployedApps(appName)
 
 	s.CleanupProducer(appName, skipMetaCleanup)
-	s.appListRWMutex.Lock()
-	delete(s.deployedApps, appName)
-	s.appListRWMutex.Unlock()
-
-	logging.Infof("%s [%d] App: %s deleted from deployed apps map", logPrefix, len(s.runningProducers), appName)
+	s.deleteFromDeployedApps(appName)
 }
 
+func (s *SuperSupervisor) addToDeployedApps(appName string) {
+	logPrefix := "SuperSupervisor::addToDeployedApps"
+	s.appListRWMutex.Lock()
+	defer s.appListRWMutex.Unlock()
+	logging.Infof("%s [%d] App: %s adding to deployed apps map", logPrefix, len(s.runningProducers), appName)
+	s.deployedApps[appName] = time.Now().String()
+}
+
+func (s *SuperSupervisor) addToLocallyDeployedApps(appName string) {
+	logPrefix := "SuperSupervisor::addToLocallyDeployedApps"
+	s.appListRWMutex.Lock()
+	defer s.appListRWMutex.Unlock()
+	logging.Infof("%s [%d] App: %s adding to locally deployed apps map", logPrefix, len(s.runningProducers), appName)
+	s.locallyDeployedApps[appName] = time.Now().String()
+}
+
+func (s *SuperSupervisor) deleteFromDeployedApps(appName string) {
+	logPrefix := "SuperSupervisor::deleteFromDeployedApps"
+	s.appListRWMutex.Lock()
+	defer s.appListRWMutex.Unlock()
+	logging.Infof("%s [%d] App: %s deleting from deployed apps map", logPrefix, len(s.runningProducers), appName)
+	delete(s.deployedApps, appName)
+}
+
+func (s *SuperSupervisor) deleteFromLocallyDeployedApps(appName string) {
+	logPrefix := "SuperSupervisor::deleteFromLocallyDeployedApps"
+	s.appListRWMutex.Lock()
+	defer s.appListRWMutex.Unlock()
+	logging.Infof("%s [%d] App: %s deleting from locally deployed apps map", logPrefix, len(s.runningProducers), appName)
+	delete(s.locallyDeployedApps, appName)
+}
+
+// GetMetaStoreStats returns metastore related stats from all running functions on current node
 func (s *SuperSupervisor) GetMetaStoreStats(appName string) map[string]uint64 {
 	stats := make(map[string]uint64)
 	if p, ok := s.runningProducers[appName]; ok {
