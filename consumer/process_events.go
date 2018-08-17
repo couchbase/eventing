@@ -323,6 +323,9 @@ func (c *Consumer) processEvents() {
 					c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
 					c.vbProcessingStats.updateVbStat(e.VBucket, "worker_name", c.ConsumerName())
 
+					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_requested_node_uuid", c.NodeUUID())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_requested_worker", c.ConsumerName())
+
 					if !c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 						c.Lock()
 						c.vbsRemainingToClose = append(c.vbsRemainingToClose, e.VBucket)
