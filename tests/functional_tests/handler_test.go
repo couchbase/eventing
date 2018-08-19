@@ -581,7 +581,7 @@ func TestSourceBucketDeleteWithBootstrap(t *testing.T) {
 	waitForUndeployToFinish(handler)
 
 	time.Sleep(10 * time.Second)
-	createBucket(metaBucket, bucketmemQuota)
+	createBucket(srcBucket, bucketmemQuota)
 	flushFunctionAndBucket(handler)
 }
 

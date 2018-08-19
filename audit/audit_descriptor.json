@@ -235,6 +235,19 @@
        "user" : {"source" : "", "user" : ""}
       },
       "optional_fields" : {"context" : ""}
+   },
+   {
+     "id" : 32786,
+     "name" : "List Running",
+     "description" : "Eventing running function list was read",
+     "sync" : false,
+     "enabled" : false,
+     "filtering_permitted" : true,
+     "mandatory_fields" : {
+       "timestamp" : "",
+       "user" : {"source" : "", "user" : ""}
+     },
+     "optional_fields" : {"context" : ""}
    }
   ]
 }

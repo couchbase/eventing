@@ -307,14 +307,14 @@ func waitForUndeployToFinish(appName string) {
 	for {
 		time.Sleep(5 * time.Second)
 
-		log.Printf("Waiting for app: %v to get un-deployed\n", appName)
+		log.Printf("Waiting for app: %s to get un-deployed\n", appName)
 
-		deployedApps, err := getDeployedApps()
+		runningApps, err := getRunningApps()
 		if err != nil {
 			continue
 		}
 
-		if _, exists := deployedApps[appName]; !exists {
+		if _, exists := runningApps[appName]; !exists {
 			log.Printf("App: %v got un-deployed\n", appName)
 			return
 		}
@@ -329,6 +329,19 @@ func getDeployedApps() (map[string]string, error) {
 	err = json.Unmarshal(r, &res)
 	if err != nil {
 		fmt.Println("deployed apps fetch error", err)
+		return nil, err
+	}
+
+	return res, nil
+}
+
+func getRunningApps() (map[string]string, error) {
+	r, err := makeRequest("GET", strings.NewReader(""), runningAppsURL)
+
+	var res map[string]string
+	err = json.Unmarshal(r, &res)
+	if err != nil {
+		fmt.Println("running apps fetch error", err)
 		return nil, err
 	}
 
