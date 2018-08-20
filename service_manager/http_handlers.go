@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"runtime"
 	"runtime/trace"
 	"sort"
 	"strconv"
@@ -2215,6 +2216,23 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 	}
 
 	return
+}
+
+func (m *ServiceMgr) getCpuCount(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		return
+	}
+
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%v\n", runtime.NumCPU())
 }
 
 func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
