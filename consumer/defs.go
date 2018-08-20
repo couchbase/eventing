@@ -191,6 +191,7 @@ type Consumer struct {
 	numVbuckets                   int
 	reqStreamCh                   chan *streamRequestInfo
 	statsTickDuration             time.Duration
+	stoppingConsumer              bool
 	superSup                      common.EventingSuperSup
 	timerStorageChanSize          int
 	timerStorageMetaChsRWMutex    *sync.RWMutex
@@ -204,6 +205,7 @@ type Consumer struct {
 	vbnos                         []uint16
 	vbEnqueuedForStreamReq        map[uint16]struct{} // Access controlled by vbEnqueuedForStreamReqRWMutex
 	vbEnqueuedForStreamReqRWMutex *sync.RWMutex
+	vbsRemainingToCleanup         []uint16 // Access controlled by default lock
 	vbsRemainingToClose           []uint16 // Access controlled by default lock
 	vbsRemainingToGiveUp          []uint16
 	vbsRemainingToOwn             []uint16

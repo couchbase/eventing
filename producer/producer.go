@@ -435,11 +435,11 @@ func (p *Producer) startBucket() {
 		vbsAssigned := p.workerVbucketMap[workerName]
 		p.workerVbMapRWMutex.RUnlock()
 
-		p.handleV8Consumer(workerName, vbsAssigned, i)
+		p.handleV8Consumer(workerName, vbsAssigned, i, false)
 	}
 }
 
-func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int) {
+func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int, notifyRebalance bool) {
 	logPrefix := "Producer::handleV8Consumer"
 
 	p.handleV8ConsumerMutex.Lock()
@@ -529,6 +529,12 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid,
 		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.numVbuckets,
 		&p.retryCount, vbEventingNodeAssignMap, workerVbucketMap)
+
+	if notifyRebalance {
+		logging.Infof("%s [%s:%d] Consumer: %s notifying about cluster state change",
+			logPrefix, p.appName, p.LenRunningConsumers(), workerName)
+		c.SetRebalanceStatus(true)
+	}
 
 	p.listenerRWMutex.Lock()
 	p.consumerListeners[c] = listener
@@ -620,14 +626,14 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 	p.feedbackListeners[c].Close()
 	p.listenerRWMutex.RUnlock()
 
-	logging.Infof("%s [%s:%d] ConsumerIndex: %d Respawning the Eventing.Consumer instance",
+	logging.Infof("%s [%s:%d] ConsumerIndex: %d respawning the Eventing.Consumer instance",
 		logPrefix, p.appName, p.LenRunningConsumers(), consumerIndex)
 	workerName := fmt.Sprintf("worker_%s_%d", p.appName, consumerIndex)
 	p.workerVbMapRWMutex.RLock()
 	vbsAssigned := p.workerVbucketMap[workerName]
 	p.workerVbMapRWMutex.RUnlock()
 
-	p.handleV8Consumer(workerName, vbsAssigned, consumerIndex)
+	p.handleV8Consumer(workerName, vbsAssigned, consumerIndex, true)
 }
 
 func (p *Producer) getEventingNodeAddrs() []string {

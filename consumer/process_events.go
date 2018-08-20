@@ -1243,6 +1243,13 @@ func (c *Consumer) processReqStreamMessages() {
 			if !c.checkIfCurrentConsumerShouldOwnVb(msg.vb) {
 				logging.Infof("%s [%s:%s:%d] vb: %d Skipping stream request as worker isn't supposed to own it",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
+
+				err := c.cleanupVbMetadata(msg.vb)
+				if err == common.ErrRetryTimeout {
+					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+					return
+				}
+
 				continue
 			}
 
@@ -1261,7 +1268,12 @@ func (c *Consumer) processReqStreamMessages() {
 				if !util.Contains(msg.vb, c.vbsRemainingToRestream) {
 					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, msg.vb)
 				}
+
+				if !util.Contains(msg.vb, c.vbsRemainingToCleanup) {
+					c.vbsRemainingToCleanup = append(c.vbsRemainingToCleanup, msg.vb)
+				}
 				c.Unlock()
+
 				continue
 			}
 

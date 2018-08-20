@@ -133,6 +133,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbEventingNodeAssignRWMutex:     &sync.RWMutex{},
 		vbOwnershipGiveUpRoutineCount:   rConfig.VBOwnershipGiveUpRoutineCount,
 		vbOwnershipTakeoverRoutineCount: rConfig.VBOwnershipTakeoverRoutineCount,
+		vbsRemainingToCleanup:           make([]uint16, 0),
 		vbsRemainingToClose:             make([]uint16, 0),
 		vbsRemainingToGiveUp:            make([]uint16, 0),
 		vbsRemainingToOwn:               make([]uint16, 0),
@@ -260,6 +261,12 @@ func (c *Consumer) Serve() {
 	if !c.isTerminateRunning {
 		c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
 		c.clientSupToken = c.consumerSup.Add(c.client)
+	}
+
+checkIfPlannerRunning:
+	if c.producer.IsPlannerRunning() {
+		time.Sleep(time.Second)
+		goto checkIfPlannerRunning
 	}
 
 	err = c.doCleanupForPreviouslyOwnedVbs()

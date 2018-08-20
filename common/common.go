@@ -123,6 +123,7 @@ type EventingConsumer interface {
 	Serve()
 	SetConnHandle(net.Conn)
 	SetFeedbackConnHandle(net.Conn)
+	SetRebalanceStatus(status bool)
 	SignalBootstrapFinish()
 	SignalConnected()
 	SignalFeedbackConnected()

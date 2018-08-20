@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"runtime/debug"
 	"strconv"
@@ -447,7 +448,7 @@ func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
 	}
 
 	c.sendMessage(msg)
-	logging.Infof("[%s:%s:%s:%d] Sent filter data to C++, vb:%d seqno:%d",
+	logging.Infof("[%s:%s:%s:%d] vb: %d seqNo: %d sending filter data to C++",
 		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket, seqNo)
 }
 
@@ -473,7 +474,7 @@ func (c *Consumer) sendMessageLoop() {
 		select {
 		case <-c.socketWriteTicker.C:
 			if c.sendMsgCounter > 0 && c.conn != nil {
-				if c.isTerminateRunning {
+				if c.isTerminateRunning || c.stoppingConsumer {
 					return
 				}
 
@@ -486,6 +487,8 @@ func (c *Consumer) sendMessageLoop() {
 					if err != nil {
 						logging.Errorf("%s [%s:%s:%d] Write to downstream socket failed, err: %v",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+						c.stoppingConsumer = true
+						c.producer.KillAndRespawnEventingConsumer(c)
 					}
 
 					// Reset the sendMessage buffer and message counter
@@ -514,6 +517,10 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 			c.putBuilder(m.payloadBuilder)
 		}
 	}()
+
+	if c.isTerminateRunning || c.stoppingConsumer {
+		return fmt.Errorf("Eventing.Consumer instance is terminating")
+	}
 
 	// Protocol encoding format:
 	//<headerSize><payloadSize><Header><Payload>
@@ -561,6 +568,8 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Write to downstream socket failed, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+				c.stoppingConsumer = true
+				c.producer.KillAndRespawnEventingConsumer(c)
 				return err
 			}
 		} else if c.debugConn != nil {

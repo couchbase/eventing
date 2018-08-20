@@ -551,27 +551,38 @@ func (c *Consumer) doCleanupForPreviouslyOwnedVbs() error {
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsNotSupposedToOwn), util.Condense(vbsNotSupposedToOwn))
 
 	for _, vb := range vbsNotSupposedToOwn {
-
-		vbKey := fmt.Sprintf("%s::vb::%v", c.app.AppName, vb)
-
-		var vbBlob vbucketKVBlob
-		var cas gocb.Cas
-
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-			c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
+		err := c.cleanupVbMetadata(vb)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return common.ErrRetryTimeout
 		}
+	}
 
-		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() && vbBlob.DCPStreamStatus == dcpStreamRunning {
-			err = c.updateCheckpoint(vbKey, vb, &vbBlob)
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-				return common.ErrRetryTimeout
-			}
-			logging.Infof("%s [%s:%s:%d] vb: %v Cleaned up ownership", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+	return nil
+}
+
+func (c *Consumer) cleanupVbMetadata(vb uint16) error {
+	logPrefix := "Consumer::cleanupVbMetadata"
+
+	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
+
+	var vbBlob vbucketKVBlob
+	var cas gocb.Cas
+
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+		c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return common.ErrRetryTimeout
+	}
+
+	if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() && vbBlob.DCPStreamStatus == dcpStreamRunning {
+		err = c.updateCheckpoint(vbKey, vb, &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return common.ErrRetryTimeout
 		}
+		logging.Infof("%s [%s:%s:%d] vb: %d cleaned up ownership", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	}
 
 	return nil

@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -498,17 +499,17 @@ func flushFunctionAndBucket(handler string) {
 }
 
 func dumpStats() {
-	makeStatsRequest("Node0: Eventing stats", statsEndpointURL0)
-	makeStatsRequest("Node1: Eventing stats", statsEndpointURL1)
-	makeStatsRequest("Node2: Eventing stats", statsEndpointURL2)
-	makeStatsRequest("Node3: Eventing stats", statsEndpointURL3)
+	makeStatsRequest("Node0: Eventing stats", statsEndpointURL0, true)
+	makeStatsRequest("Node1: Eventing stats", statsEndpointURL1, true)
+	makeStatsRequest("Node2: Eventing stats", statsEndpointURL2, true)
+	makeStatsRequest("Node3: Eventing stats", statsEndpointURL3, true)
 }
 
-func makeStatsRequest(context, url string) {
+func makeStatsRequest(context, url string, printStats bool) (interface{}, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Printf("Made request to url: %v err: %v\n", url, err)
-		return
+		return nil, err
 	}
 
 	req.SetBasicAuth(username, password)
@@ -516,31 +517,35 @@ func makeStatsRequest(context, url string) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println("http call resp:", err)
-		return
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("Read response: ", err)
-		return
+		return nil, err
 	}
 
 	var response interface{}
 	err = json.Unmarshal(data, &response)
 	if err != nil {
 		log.Println("Unmarshal stats response:", err)
-		return
+		return nil, err
 	}
 
 	// Pretty print json
 	body, err := json.MarshalIndent(&response, "", "  ")
 	if err != nil {
 		log.Println("Pretty print json:", err)
-		return
+		return nil, err
 	}
 
-	log.Printf("%v::%s\n", context, string(body))
+	if printStats {
+		log.Printf("%v::%s\n", context, string(body))
+	}
+
+	return response, nil
 }
 
 func eventingConsumerPidsAlive() (bool, int) {
@@ -555,4 +560,48 @@ func eventingConsumerPidsAlive() (bool, int) {
 	}
 
 	return false, 0
+}
+
+func eventingConsumerPids(port int, fnName string) ([]int, error) {
+	pids := make([]int, 0)
+	statsURL := fmt.Sprintf("http://127.0.0.1:%d/api/v1/stats", port)
+
+	statsDump, err := makeStatsRequest("Node0: Eventing stats", statsURL, false)
+	if err != nil {
+		return pids, err
+	}
+
+	stats, ok := statsDump.([]interface{})
+	if !ok {
+		return pids, fmt.Errorf("failed type assertion")
+	}
+
+	for _, v := range stats {
+		fnStats, ok := v.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if _, ok := fnStats["function_name"]; ok && fnStats["function_name"] == fnName {
+			consumerPids := fnStats["worker_pids"].(map[string]interface{})
+			for _, pid := range consumerPids {
+				pids = append(pids, int(pid.(float64)))
+			}
+		}
+	}
+
+	return pids, nil
+}
+
+func killPid(pid int) error {
+	if pid < 1 {
+		return fmt.Errorf("Can not kill %d", pid)
+	}
+
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+
+	return process.Kill()
 }
