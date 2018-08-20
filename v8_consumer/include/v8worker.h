@@ -121,6 +121,16 @@ typedef struct handler_config_s {
   std::vector<std::string> handler_footers;
 } handler_config_t;
 
+enum RETURN_CODE {
+  kSuccess = 0,
+  kFailedToCompileJs,
+  kNoHandlersDefined,
+  kFailedInitBucketHandle,
+  kOnUpdateCallFail,
+  kOnDeleteCallFail,
+  kToLocalFailed
+};
+
 class Bucket;
 class N1QL;
 class ConnectionPool;
@@ -212,7 +222,6 @@ public:
    * populate @param messages.
    *
    * @param messages
-   * @param length_prefix_sum
    * @param window_size
    */
   void GetTimerMessages(std::vector<uv_buf_t> &messages, size_t window_size);
@@ -223,6 +232,18 @@ public:
    * @param messages
    */
   void GetBucketOpsMessages(std::vector<uv_buf_t> &messages);
+
+  int UpdateVbFilter(const std::string &metadata);
+
+  int64_t GetVbFilter(int vb_no);
+
+  void EraseVbFilter(int vb_no);
+
+  void UpdateBucketopsSeqno(int vb_no, int64_t seq_no);
+
+  int64_t GetBucketopsSeqno(int vb_no);
+
+  int ParseMetadata(const std::string &metadata, int &vb_no, int64_t &seq_no);
 
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
@@ -261,7 +282,6 @@ public:
   Data data_;
 
 private:
-  int UpdateVbSeqNumbers(const v8::Local<v8::Value> &metadata);
   std::vector<uv_buf_t> BuildResponse(const std::string &payload,
                                       int8_t msg_type, int8_t response_opcode);
   bool ExecuteScript(const v8::Local<v8::String> &script);
@@ -271,6 +291,13 @@ private:
   std::string src_path_;
 
   vb_seq_map_t vb_seq_;
+
+  std::vector<int64_t> vbfilter_map_;
+  std::mutex vbfilter_lock_;
+
+  std::vector<int64_t> processed_bucketops_;
+  std::mutex bucketops_lock_;
+
   std::list<Bucket *> bucket_handles_;
   N1QL *n1ql_handle_;
   v8::Isolate *isolate_;

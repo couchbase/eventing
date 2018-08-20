@@ -43,16 +43,6 @@ std::atomic<int64_t> enqueued_dcp_delete_msg_counter = {0};
 std::atomic<int64_t> enqueued_dcp_mutation_msg_counter = {0};
 std::atomic<int64_t> enqueued_timer_msg_counter = {0};
 
-enum RETURN_CODE {
-  kSuccess = 0,
-  kFailedToCompileJs,
-  kNoHandlersDefined,
-  kFailedInitBucketHandle,
-  kOnUpdateCallFail,
-  kOnDeleteCallFail,
-  kToLocalFailed
-};
-
 const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket) {
   LOG(logDebug) << "Getting username for host " << RS(host) << " port " << port
@@ -149,7 +139,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   for (int i = 0; i < NUM_VBUCKETS; i++) {
     vb_seq_[i] = atomic_ptr_t(new std::atomic<int64_t>(0));
   }
-
+  vbfilter_map_.resize(NUM_VBUCKETS, -1);
+  processed_bucketops_.resize(NUM_VBUCKETS, 0);
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
@@ -199,17 +190,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   auto ssl = false;
   auto port = server_settings->eventing_port;
-
-  // Temporarily disabling ssl as requests to eventing-producer
-  // are having problem with ssl.
-  /*
-  auto ssl = true;
-  auto port = server_settings->eventing_sslport;
-  if (port.length() < 1) {
-    LOG(logError) << "SSL not available, using plain HTTP" << std::endl;
-    port = server_settings->eventing_port;
-    ssl = false;
-  }*/
 
   auto key = GetLocalKey();
   data_.comm = new Communicator(server_settings->host_addr, port, key.first,
@@ -477,12 +457,24 @@ void V8Worker::RouteMessage() {
                   << " metadata: " << RU(msg.header->metadata)
                   << " partition: " << msg.header->partition << std::endl;
 
+    int vb_no = 0;
+    int64_t seq_no = 0;
+
     switch (getEvent(msg.header->event)) {
     case eDCP:
       switch (getDCPOpcode(msg.header->opcode)) {
       case oDelete:
         dcp_delete_msg_counter++;
-        this->SendDelete(msg.header->metadata);
+        if (kSuccess == ParseMetadata(msg.header->metadata, vb_no, seq_no)) {
+          auto filter_seq_no = GetVbFilter(vb_no);
+          if (filter_seq_no != -1 && seq_no <= filter_seq_no) {
+            if (seq_no == filter_seq_no) {
+              EraseVbFilter(vb_no);
+            }
+          } else {
+            this->SendDelete(msg.header->metadata);
+          }
+        }
         break;
       case oMutation:
         payload = flatbuf::payload::GetPayload(
@@ -490,7 +482,16 @@ void V8Worker::RouteMessage() {
         val.assign(payload->value()->str());
         metadata.assign(msg.header->metadata);
         dcp_mutation_msg_counter++;
-        this->SendUpdate(val, metadata, "json");
+        if (kSuccess == ParseMetadata(msg.header->metadata, vb_no, seq_no)) {
+          auto filter_seq_no = GetVbFilter(vb_no);
+          if (filter_seq_no != -1 && seq_no <= filter_seq_no) {
+            if (seq_no == filter_seq_no) {
+              EraseVbFilter(vb_no);
+            }
+          } else {
+            this->SendUpdate(val, metadata, "json");
+          }
+        }
         break;
       default:
         break;
@@ -580,46 +581,6 @@ void V8Worker::UpdateHistogram(Time::time_point start_time) {
   histogram_->Add(ns.count() / 1000);
 }
 
-int V8Worker::UpdateVbSeqNumbers(const v8::Local<v8::Value> &metadata) {
-  v8::HandleScope handle_scope(isolate_);
-  auto context = context_.Get(isolate_);
-
-  // Look for vbucket and corresponding seq no in metadata
-  v8::Local<v8::Object> metadata_obj;
-  if (!TO_LOCAL(metadata->ToObject(context), &metadata_obj)) {
-    return kToLocalFailed;
-  }
-
-  v8::Local<v8::Value> seq_val;
-  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "seq")), &seq_val)) {
-    return kToLocalFailed;
-  }
-
-  v8::Local<v8::Value> vb_val;
-  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "vb")), &vb_val)) {
-    return kToLocalFailed;
-  }
-
-  if (seq_val->IsNumber() && vb_val->IsNumber()) {
-    v8::Local<v8::Integer> vb_val_int;
-    if (!TO_LOCAL(vb_val->ToInteger(context), &vb_val_int)) {
-      return kToLocalFailed;
-    }
-
-    v8::Local<v8::Integer> seq_val_int;
-    if (!TO_LOCAL(seq_val->ToInteger(context), &seq_val_int)) {
-      return kToLocalFailed;
-    }
-
-    currently_processed_vb_ = vb_val_int->Value();
-    currently_processed_seqno_ = seq_val_int->Value();
-    vb_seq_[currently_processed_vb_]->store(currently_processed_seqno_,
-                                            std::memory_order_seq_cst);
-  }
-
-  return kSuccess;
-}
-
 int V8Worker::SendUpdate(std::string value, std::string meta,
                          std::string doc_type) {
   Time::time_point start_time = Time::now();
@@ -647,12 +608,16 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[1])) {
     return kToLocalFailed;
   }
-
-  auto update_status = UpdateVbSeqNumbers(args[1]);
+  int vb_no = 0;
+  int64_t seq_no = 0;
+  auto update_status = ParseMetadata(meta, vb_no, seq_no);
   if (update_status != kSuccess) {
     return update_status;
   }
-
+  currently_processed_vb_ = vb_no;
+  currently_processed_seqno_ = seq_no;
+  vb_seq_[vb_no]->store(seq_no, std::memory_order_seq_cst);
+  UpdateBucketopsSeqno(vb_no, seq_no);
   if (on_update_.IsEmpty()) {
     UpdateHistogram(start_time);
     return kOnUpdateCallFail;
@@ -711,12 +676,16 @@ int V8Worker::SendDelete(std::string meta) {
   if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[0])) {
     return kToLocalFailed;
   }
-
-  auto update_status = UpdateVbSeqNumbers(args[0]);
+  int vb_no = 0;
+  int64_t seq_no = 0;
+  auto update_status = ParseMetadata(meta, vb_no, seq_no);
   if (update_status != kSuccess) {
     return update_status;
   }
-
+  currently_processed_vb_ = vb_no;
+  currently_processed_seqno_ = seq_no;
+  vb_seq_[vb_no]->store(seq_no, std::memory_order_seq_cst);
+  UpdateBucketopsSeqno(vb_no, seq_no);
   if (on_delete_.IsEmpty()) {
     UpdateHistogram(start_time);
     return kOnDeleteCallFail;
@@ -977,4 +946,86 @@ std::vector<uv_buf_t> V8Worker::BuildResponse(const std::string &payload,
   messages.emplace_back(uv_buf_init(msg, length));
 
   return messages;
+}
+
+int V8Worker::ParseMetadata(const std::string &metadata, int &vb_no,
+                            int64_t &seq_no) {
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
+
+  auto context = context_.Get(isolate_);
+  v8::Context::Scope context_scope(context);
+
+  v8::Local<v8::Value> metadata_val;
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, metadata)),
+                &metadata_val)) {
+    return kToLocalFailed;
+  }
+
+  v8::Local<v8::Object> metadata_obj;
+
+  if (!TO_LOCAL(metadata_val->ToObject(context), &metadata_obj)) {
+    return kToLocalFailed;
+  }
+
+  v8::Local<v8::Value> seq_val;
+  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "seq")), &seq_val)) {
+    return kToLocalFailed;
+  }
+
+  v8::Local<v8::Value> vb_val;
+  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "vb")), &vb_val)) {
+    return kToLocalFailed;
+  }
+
+  if (seq_val->IsNumber() && vb_val->IsNumber()) {
+    v8::Local<v8::Integer> vb_val_int;
+    if (!TO_LOCAL(vb_val->ToInteger(context), &vb_val_int)) {
+      return kToLocalFailed;
+    }
+
+    v8::Local<v8::Integer> seq_val_int;
+    if (!TO_LOCAL(seq_val->ToInteger(context), &seq_val_int)) {
+      return kToLocalFailed;
+    }
+
+    vb_no = vb_val_int->Value();
+    seq_no = seq_val_int->Value();
+  }
+  return kSuccess;
+}
+
+int V8Worker::UpdateVbFilter(const std::string &metadata) {
+  int vb_no = 0;
+  int64_t seq_no = 0;
+  auto update_status = ParseMetadata(metadata, vb_no, seq_no);
+  if (update_status != kSuccess) {
+    return update_status;
+  }
+  std::lock_guard<std::mutex> lock(vbfilter_lock_);
+  vbfilter_map_[vb_no] = seq_no;
+  return kSuccess;
+}
+
+int64_t V8Worker::GetVbFilter(int vb_no) {
+  std::lock_guard<std::mutex> lock(vbfilter_lock_);
+  return vbfilter_map_[vb_no];
+}
+
+void V8Worker::EraseVbFilter(int vb_no) {
+  std::lock_guard<std::mutex> lock(vbfilter_lock_);
+  vbfilter_map_[vb_no] = -1;
+}
+
+void V8Worker::UpdateBucketopsSeqno(int vb_no, int64_t seq_no) {
+  std::lock_guard<std::mutex> lock(bucketops_lock_);
+  processed_bucketops_[vb_no] = seq_no;
+}
+
+int64_t V8Worker::GetBucketopsSeqno(int vb_no) {
+  // Reset the seq no of checkpointed vb to 0
+  vb_seq_[vb_no]->store(0, std::memory_order_seq_cst);
+  std::lock_guard<std::mutex> lock(bucketops_lock_);
+  return processed_bucketops_[vb_no];
 }

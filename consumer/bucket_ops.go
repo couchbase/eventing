@@ -428,6 +428,7 @@ retryUpdateCheckpoint:
 		UpsertEx("previous_node_uuid", vbBlob.PreviousNodeUUID, gocb.SubdocFlagCreatePath).
 		UpsertEx("previous_vb_owner", vbBlob.PreviousVBOwner, gocb.SubdocFlagCreatePath).
 		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("last_processed_seq_no", vbBlob.LastSeqNoProcessed, gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if err == gocb.ErrKeyNotFound {

@@ -107,6 +107,11 @@ type dcpMetadata struct {
 	SeqNo   uint64 `json:"seq"`
 }
 
+type vbFilterData struct {
+	SeqNo   uint64 `json:"seq"`
+	Vbucket uint16 `json:"vb"`
+}
+
 // Consumer is responsible interacting with c++ v8 worker over local tcp port
 type Consumer struct {
 	app         *common.AppConfig
@@ -166,6 +171,7 @@ type Consumer struct {
 	executionTimeout              int
 	filterVbEvents                map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
 	filterVbEventsRWMutex         *sync.RWMutex
+	filterDataCh                  chan *vbFilterData
 	gocbBucket                    *gocb.Bucket
 	gocbMetaBucket                *gocb.Bucket
 	idleCheckpointInterval        time.Duration

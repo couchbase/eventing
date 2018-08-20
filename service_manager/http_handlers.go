@@ -405,22 +405,15 @@ var getDeployedAppsCallback = func(args ...interface{}) error {
 	return nil
 }
 
-// Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
-func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getDeployedApps"
-
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
-	audit.Log(auditevent.ListDeployed, r, nil)
+func (m *ServiceMgr) getAppList(w http.ResponseWriter, r *http.Request) (map[string]int, int, error) {
+	logPrefix := "ServiceMgr::getAppList"
 
 	nodeAddrs, err := m.getActiveNodeAddrs()
 	if err != nil {
 		logging.Warnf("%s failed to fetch active Eventing nodes, err: %v", logPrefix, err)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errActiveEventingNodes.Code))
 		fmt.Fprintf(w, "")
-		return
+		return nil, 0, err
 	}
 
 	aggDeployedApps := make(map[string]map[string]string)
@@ -433,16 +426,33 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 			if _, ok := appDeployedNodesCounter[app]; !ok {
 				appDeployedNodesCounter[app] = 0
 			}
-
 			appDeployedNodesCounter[app]++
 		}
 	}
 
 	numEventingNodes := len(nodeAddrs)
-	if numEventingNodes <= 0 {
+	if numEventingNodes == 0 {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errNoEventingNodes.Code))
 		logging.Warnf("%s no eventing nodes found in cluster", logPrefix)
 		fmt.Fprintf(w, "")
+		return nil, 0, err
+	}
+
+	return appDeployedNodesCounter, numEventingNodes, nil
+}
+
+// Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
+func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::getDeployedApps"
+
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	audit.Log(auditevent.ListDeployed, r, nil)
+
+	appDeployedNodesCounter, numEventingNodes, err := m.getAppList(w, r)
+	if err != nil {
 		return
 	}
 
@@ -453,7 +463,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	buf, err := json.Marshal(deployedApps)
+	data, err := json.Marshal(deployedApps)
 	if err != nil {
 		logging.Errorf("%s failed to marshal list of deployed apps, err: %v", logPrefix, err)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
@@ -462,7 +472,42 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s", string(buf))
+	fmt.Fprintf(w, "%s", string(data))
+}
+
+// Returns list of apps that are running i.e. they may be undergoing undeploy(one ore more nodes)
+// or are deployed on all nodes
+func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::getRunningApps"
+
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	audit.Log(auditevent.ListRunning, r, nil)
+
+	appDeployedNodesCounter, numEventingNodes, err := m.getAppList(w, r)
+	if err != nil {
+		return
+	}
+
+	runningApps := make(map[string]string)
+	for app, numNodesDeployed := range appDeployedNodesCounter {
+		if numNodesDeployed <= numEventingNodes {
+			runningApps[app] = ""
+		}
+	}
+
+	data, err := json.Marshal(runningApps)
+	if err != nil {
+		logging.Errorf("%s failed to marshal list of running apps, err: %v", logPrefix, err)
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		fmt.Fprintf(w, "")
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", string(data))
 }
 
 func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Request) {

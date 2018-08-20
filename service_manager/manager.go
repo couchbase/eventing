@@ -109,6 +109,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/getNamedParams", m.getNamedParamsHandler)
 	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
 	http.HandleFunc("/getRebalanceStatus", m.getRebalanceStatus)
+	http.HandleFunc("/getRunningApps", m.getRunningApps)
 	http.HandleFunc("/getSeqsProcessed", m.getSeqsProcessed)
 	http.HandleFunc("/getLocalDebugUrl/", m.getLocalDebugURL)
 	http.HandleFunc("/getWorkerCount", m.getWorkerCount)

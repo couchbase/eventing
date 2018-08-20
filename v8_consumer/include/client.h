@@ -78,6 +78,8 @@ public:
 
   static void StopUvLoop(uv_async_t *);
 
+  void SendFilterAck(int opcode, int msgtype, int vb_no, int64_t seq_no);
+
   std::thread main_uv_loop_thr_;
   std::thread feedback_uv_loop_thr_;
   std::thread stdin_read_thr_;

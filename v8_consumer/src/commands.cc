@@ -22,6 +22,8 @@ event_type getEvent(int8_t event) {
     return eTimer;
   if (event == 5)
     return eDebugger;
+  if (event == 6)
+    return eFilter;
   return Event_Unknown;
 }
 

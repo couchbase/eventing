@@ -378,7 +378,7 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 	c.vbProcessingStats.updateVbStat(vb, "current_vb_owner", vbBlob.CurrentVBOwner)
 	c.vbProcessingStats.updateVbStat(vb, "dcp_stream_status", vbBlob.DCPStreamStatus)
 	c.vbProcessingStats.updateVbStat(vb, "node_uuid", vbBlob.NodeUUID)
-
+	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)
 	logging.Tracef("%s [%s:%s:%d] vb: %v Stopped dcp stream, updated checkpoint blob in bucket",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	return nil
