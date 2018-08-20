@@ -26,6 +26,7 @@ const (
 
 const (
 	rebalanceProgressUpdateTickInterval = time.Duration(3000) * time.Millisecond
+	metakvOpRetryInterval               = time.Duration(1000) * time.Millisecond
 )
 
 const (
@@ -181,11 +182,6 @@ type stats struct {
 	VbDistributionStatsFromMetadata interface{} `json:"vb_distribution_stats_from_metadata,omitempty"`
 	VbSeqnoStats                    interface{} `json:"vb_seq_no_stats,omitempty"`
 	WorkerPids                      interface{} `json:"worker_pids,omitempty"`
-}
-
-type config struct {
-	RAMQuota       int    `json:"ram_quota"`
-	MetadataBucket string `json:"metadata_bucket"`
 }
 
 type configResponse struct {

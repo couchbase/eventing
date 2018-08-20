@@ -514,24 +514,39 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, 
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if value != nil {
-		var config eventingConfig
-		err := json.Unmarshal(value, &config)
-		if err != nil {
-			logging.Errorf("%s [%d] Failed to unmarshal supplied config, err: %v", logPrefix, s.runningFnsCount(), err)
-			return nil
-		}
-
-		logging.Infof("%s [%d] Notifying Eventing.Producer instances to update memory quota to %d MB",
-			logPrefix, s.runningFnsCount(), config.RAMQuota)
-
-		s.memoryQuota = config.RAMQuota
-
-		for _, eventingProducer := range s.runningFns() {
-			eventingProducer.UpdateMemoryQuota(config.RAMQuota)
-		}
+	if value == nil {
+		logging.Errorf("%s [%d] Got empty value for global config",
+			logPrefix, len(s.runningProducers))
+		return nil
 	}
 
+	var config common.Config
+	err := json.Unmarshal(value, &config)
+	if err != nil {
+		logging.Errorf("%s [%d] Failed to unmarshal supplied config, err: %v",
+			logPrefix, len(s.runningProducers), err)
+		return err
+	}
+
+	return s.HandleGlobalConfigChange(config)
+}
+
+func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
+	logPrefix := "SuperSupervisor::HandleGlobalConfigChange"
+
+	for key, value := range config {
+		switch key {
+		case "ram_quota":
+			s.memoryQuota = int64(value.(float64))
+
+			logging.Infof("%s [%d] Notifying Eventing.Producer instances to update memory quota to %d MB",
+				logPrefix, len(s.runningProducers), s.memoryQuota)
+			for _, p := range s.runningFns() {
+				p.UpdateMemoryQuota(s.memoryQuota)
+			}
+		}
+		return nil
+	}
 	return nil
 }
 

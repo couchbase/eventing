@@ -81,6 +81,7 @@ type statusCodes struct {
 	errClusterVersion      statusBase
 	errUUIDGen             statusBase
 	errAppDelete           statusBase
+	errDebuggerDisabled    statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -161,6 +162,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusInternalServerError
 	case m.statusCodes.errAppDelete.Code:
 		return http.StatusBadRequest
+	case m.statusCodes.errDebuggerDisabled.Code:
+		return http.StatusInternalServerError
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -208,6 +211,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errClusterVersion:      statusBase{"ERR_CLUSTER_VERSION", 42},
 		errUUIDGen:             statusBase{"ERR_UUID_GEN_FAILED", 43},
 		errAppDelete:           statusBase{"ERR_APP_DELETE_NOT_ALLOWED", 44},
+		errDebuggerDisabled:    statusBase{"ERR_DEBUGGER_DISABLED", 45},
 	}
 
 	errors := []errorPayload{
@@ -423,6 +427,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errAppDelete.Name,
 			Code:        m.statusCodes.errAppDelete.Code,
 			Description: "Function needs to be undeployed before it can be deleted",
+		},
+		{
+			Name:        m.statusCodes.errDebuggerDisabled.Name,
+			Code:        m.statusCodes.errDebuggerDisabled.Code,
+			Description: "Unable to start debugger as it has been disabled",
 		},
 	}
 

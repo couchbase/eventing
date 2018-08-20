@@ -93,6 +93,7 @@ type SuperSupervisor struct {
 	// to signify app has been undeployed. Access controlled by appListRWMutex
 	locallyDeployedApps map[string]string
 
+	// Global config
 	memoryQuota int64 // In MB
 
 	cleanedUpAppMap            map[string]struct{} // Access controlled by default lock
@@ -105,9 +106,4 @@ type SuperSupervisor struct {
 
 	serviceMgr common.EventingServiceMgr
 	sync.RWMutex
-}
-
-type eventingConfig struct {
-	RAMQuota       int64  `json:"ram_quota"`
-	MetadataBucket string `json:"metadata_bucket"`
 }

@@ -1188,3 +1188,16 @@ func KillProcess(pid int) error {
 
 	return process.Kill()
 }
+
+func SuperImpose(source, on map[string]interface{}) map[string]interface{} {
+	m := make(map[string]interface{})
+	for key := range on {
+		m[key] = on[key]
+	}
+
+	for key := range source {
+		m[key] = source[key]
+	}
+
+	return m
+}

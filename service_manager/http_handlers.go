@@ -284,20 +284,33 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	logging.Infof("%s Function: %s got request to start V8 debugger", logPrefix, appName)
+	logging.Infof("%s Function: %s got request to start debugger", logPrefix, appName)
 	audit.Log(auditevent.StartDebug, r, appName)
 
-	if m.checkIfDeployed(appName) {
-		m.superSup.SignalStartDebugger(appName)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "Function: %s Started Debugger", appName)
+	config, info := m.getConfig()
+	if info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
 		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	respString := fmt.Sprintf("Function: %s not deployed")
-	fmt.Fprintf(w, respString)
-	logging.Infof("%s %s", logPrefix, respString)
+	enabled, exists := config["enable_debugger"]
+	if !exists || !enabled.(bool) {
+		info.Code = m.statusCodes.errDebuggerDisabled.Code
+		info.Info = "Debugger is not enabled"
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if !m.checkIfDeployed(appName) {
+		info.Code = m.statusCodes.errAppNotDeployed.Code
+		info.Info = fmt.Sprintf("Function: %s not deployed", appName)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	m.superSup.SignalStartDebugger(appName)
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "Function: %s Started Debugger", appName)
 }
 
 func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
@@ -1544,7 +1557,7 @@ func (m *ServiceMgr) parseQueryHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s", response.Encode())
 }
 
-func (m *ServiceMgr) getConfig() (c config, info *runtimeInfo) {
+func (m *ServiceMgr) getConfig() (c common.Config, info *runtimeInfo) {
 	logPrefix := "ServiceMgr::getConfig"
 
 	info = &runtimeInfo{}
@@ -1571,11 +1584,16 @@ func (m *ServiceMgr) getConfig() (c config, info *runtimeInfo) {
 	return
 }
 
-func (m *ServiceMgr) saveConfig(c config) (info *runtimeInfo) {
+func (m *ServiceMgr) saveConfig(c common.Config) (info *runtimeInfo) {
 	logPrefix := "ServiceMgr::saveConfig"
 
 	info = &runtimeInfo{}
-	data, err := json.Marshal(c)
+	storedConfig, info := m.getConfig()
+	if info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	data, err := json.Marshal(util.SuperImpose(c, storedConfig))
 	if err != nil {
 		info.Code = m.statusCodes.errMarshalResp.Code
 		info.Info = fmt.Sprintf("failed to marshal config, err: %v", err)
@@ -1584,14 +1602,8 @@ func (m *ServiceMgr) saveConfig(c config) (info *runtimeInfo) {
 	}
 
 	logging.Infof("%s Saving config into metakv: %v", logPrefix, c)
-	err = util.MetakvSet(metakvConfigPath, data, nil)
-	if err != nil {
-		info.Code = m.statusCodes.errSaveConfig.Code
-		info.Info = fmt.Sprintf("failed to store config to meta kv, err: %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		return
-	}
-
+	util.Retry(util.NewFixedBackoff(metakvOpRetryInterval),
+		nil, metakvSetCallback, metakvConfigPath, data)
 	info.Code = m.statusCodes.ok.Code
 	return
 }
@@ -1640,7 +1652,7 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		var c config
+		var c common.Config
 		err = json.Unmarshal(data, &c)
 		if err != nil {
 			info.Code = m.statusCodes.errUnmarshalPld.Code
@@ -1650,8 +1662,14 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if info := m.validateConfig(c); info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
 		if info = m.saveConfig(c); info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
+			return
 		}
 
 		response := configResponse{false}
