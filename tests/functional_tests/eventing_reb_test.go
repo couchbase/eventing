@@ -223,7 +223,7 @@ func TestMetaPartialRollbackWithEventingReb(t *testing.T) {
 
 /** OnUpdate Bucket op cases end **/
 
-/** OnUpdate doc/cron timer cases start - Disabled for now as in vulcan they are going as Beta**/
+/** OnUpdate doc/cron timer cases start - Disabled for now as signatures have changed**/
 /*func TestEventingRebKVOpsOnUpdateDocTimerOnyByOne(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_doc_timer"

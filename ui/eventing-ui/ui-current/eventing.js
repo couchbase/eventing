@@ -208,8 +208,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             var info = errResponse.data.runtime_info.info;
                             app.compilationInfo = info;
                             ApplicationService.server.showErrorAlert(`Deployment failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
+                        } else if (errResponse.data && (errResponse.data.name === 'ERR_CLUSTER_VERSION')) {
+                            var data = errResponse.data;
+                            ApplicationService.server.showErrorAlert(`Deployment failed: ${data.description} - ${data.runtime_info.info}`);
                         } else {
-                            ApplicationService.server.showErrorAlert(`Deployment failed: ${errResponse.data.runtime_info}`);
+                            var info = errResponse.data.runtime_info;
+                            ApplicationService.server.showErrorAlert(`Deployment failed: ` + JSON.stringify(info));
                         }
 
                         // Enable edit button as we got compilation info
