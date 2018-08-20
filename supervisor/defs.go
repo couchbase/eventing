@@ -97,8 +97,10 @@ type SuperSupervisor struct {
 
 	cleanedUpAppMap            map[string]struct{} // Access controlled by default lock
 	mu                         *sync.RWMutex
-	producerSupervisorTokenMap map[common.EventingProducer]suptree.ServiceToken
-	runningProducers           map[string]common.EventingProducer
+	producerSupervisorTokenMap map[common.EventingProducer]suptree.ServiceToken // Access controlled by tokenMapRWMutex
+	tokenMapRWMutex            *sync.RWMutex
+	runningProducers           map[string]common.EventingProducer // Access controlled by runningProducersRWMutex
+	runningProducersRWMutex    *sync.RWMutex
 	vbucketsToOwn              []uint16
 
 	serviceMgr common.EventingServiceMgr

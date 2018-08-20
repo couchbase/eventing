@@ -404,7 +404,7 @@ func (c *Consumer) processEvents() {
 				c.stopCheckpointingCh <- struct{}{}
 				return
 			}
-			logging.Infof("%s [%s:%s:%d] Recieved filterdata on filterDataCh, vb: %d, seqNo: %d",
+			logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d received on filterDataCh",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket, e.SeqNo)
 			c.vbsStreamRRWMutex.Lock()
 			if _, ok := c.vbStreamRequested[e.Vbucket]; ok {

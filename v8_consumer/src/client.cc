@@ -962,8 +962,8 @@ void AppWorker::SendFilterAck(int opcode, int msgtype, int vb_no,
   resp_msg_->msg_type = msgtype;
   resp_msg_->opcode = opcode;
   msg_priority_ = true;
-  LOG(logInfo) << "Send filter ACK to GO, vb:" << vb_no << ", seq: " << seq_no
-               << std::endl;
+  LOG(logInfo) << "vb: " << vb_no << " seqNo: " << seq_no
+               << " sending filter ack to Go" << std::endl;
 }
 
 int main(int argc, char **argv) {

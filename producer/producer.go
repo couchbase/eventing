@@ -402,7 +402,7 @@ func (p *Producer) Stop() {
 		p.appLogWriter.Close()
 	}
 
-	logging.Infof("%s [%s:%d] Closed app log writer handle",
+	logging.Infof("%s [%s:%d] Closed function log writer handle",
 		logPrefix, p.appName, p.LenRunningConsumers())
 
 	if p.updateStatsStopCh != nil {
@@ -420,7 +420,7 @@ func (p *Producer) Stop() {
 // Implement fmt.Stringer interface for better debugging in case
 // producer routine crashes and supervisor has to respawn it
 func (p *Producer) String() string {
-	return fmt.Sprintf("Producer => app: %s tcpPort: %s", p.appName, p.processConfig.SockIdentifier)
+	return fmt.Sprintf("Producer => function: %s tcpPort: %s", p.appName, p.processConfig.SockIdentifier)
 }
 
 func (p *Producer) startBucket() {
