@@ -624,8 +624,8 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   }
 
   if (try_catch.HasCaught()) {
-    APPLOG << "OnUpdate Exception: " << ExceptionString(isolate_, &try_catch)
-           << std::endl;
+    LOG(logError) << "OnUpdate Exception: "
+                  << ExceptionString(isolate_, &try_catch) << std::endl;
   }
 
   if (debugger_started_) {
@@ -647,8 +647,8 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   on_doc_update->Call(context->Global(), 2, args);
   execute_flag_ = false;
   if (try_catch.HasCaught()) {
-    APPLOG << "OnUpdate Exception: " << ExceptionString(isolate_, &try_catch)
-           << std::endl;
+    LOG(logError) << "OnUpdate Exception: "
+                  << ExceptionString(isolate_, &try_catch) << std::endl;
     UpdateHistogram(start_time);
     on_update_failure++;
     return kOnUpdateCallFail;
@@ -713,8 +713,8 @@ int V8Worker::SendDelete(std::string meta) {
   on_doc_delete->Call(context->Global(), 1, args);
   execute_flag_ = false;
   if (try_catch.HasCaught()) {
-    APPLOG << "OnDelete Exception: " << ExceptionString(isolate_, &try_catch)
-           << std::endl;
+    LOG(logError) << "OnDelete Exception: "
+                  << ExceptionString(isolate_, &try_catch) << std::endl;
     UpdateHistogram(start_time);
     on_delete_failure++;
     return kOnDeleteCallFail;
