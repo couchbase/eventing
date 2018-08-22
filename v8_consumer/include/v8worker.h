@@ -199,8 +199,9 @@ public:
   int V8WorkerLoad(std::string source_s);
   void RouteMessage();
 
-  int SendUpdate(std::string value, std::string meta, std::string doc_type);
-  int SendDelete(std::string meta);
+  int SendUpdate(std::string value, std::string meta, int vb_no, int64_t seq_no,
+                 std::string doc_type);
+  int SendDelete(std::string meta, int vb_no, int64_t seq_no);
   void SendTimer(std::string callback, std::string timer_ctx);
   std::string CompileHandler(std::string handler);
   CodeVersion IdentifyVersion(std::string handler);

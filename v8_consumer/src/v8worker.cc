@@ -445,7 +445,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
 void V8Worker::RouteMessage() {
   const flatbuf::payload::Payload *payload;
-  std::string key, val, context, callback, metadata;
+  std::string val, context, callback;
 
   while (true) {
     auto msg = worker_queue_->Pop();
@@ -472,7 +472,7 @@ void V8Worker::RouteMessage() {
               EraseVbFilter(vb_no);
             }
           } else {
-            this->SendDelete(msg.header->metadata);
+            this->SendDelete(msg.header->metadata, vb_no, seq_no);
           }
         }
         break;
@@ -480,7 +480,6 @@ void V8Worker::RouteMessage() {
         payload = flatbuf::payload::GetPayload(
             (const void *)msg.payload->payload.c_str());
         val.assign(payload->value()->str());
-        metadata.assign(msg.header->metadata);
         dcp_mutation_msg_counter++;
         if (kSuccess == ParseMetadata(msg.header->metadata, vb_no, seq_no)) {
           auto filter_seq_no = GetVbFilter(vb_no);
@@ -489,7 +488,7 @@ void V8Worker::RouteMessage() {
               EraseVbFilter(vb_no);
             }
           } else {
-            this->SendUpdate(val, metadata, "json");
+            this->SendUpdate(val, msg.header->metadata, vb_no, seq_no, "json");
           }
         }
         break;
@@ -581,8 +580,8 @@ void V8Worker::UpdateHistogram(Time::time_point start_time) {
   histogram_->Add(ns.count() / 1000);
 }
 
-int V8Worker::SendUpdate(std::string value, std::string meta,
-                         std::string doc_type) {
+int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
+                         int64_t seq_no, std::string doc_type) {
   Time::time_point start_time = Time::now();
 
   v8::Locker locker(isolate_);
@@ -608,12 +607,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[1])) {
     return kToLocalFailed;
   }
-  int vb_no = 0;
-  int64_t seq_no = 0;
-  auto update_status = ParseMetadata(meta, vb_no, seq_no);
-  if (update_status != kSuccess) {
-    return update_status;
-  }
+
   currently_processed_vb_ = vb_no;
   currently_processed_seqno_ = seq_no;
   vb_seq_[vb_no]->store(seq_no, std::memory_order_seq_cst);
@@ -659,7 +653,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta,
   return kSuccess;
 }
 
-int V8Worker::SendDelete(std::string meta) {
+int V8Worker::SendDelete(std::string meta, int vb_no, int64_t seq_no) {
   Time::time_point start_time = Time::now();
 
   v8::Locker locker(isolate_);
@@ -676,12 +670,7 @@ int V8Worker::SendDelete(std::string meta) {
   if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[0])) {
     return kToLocalFailed;
   }
-  int vb_no = 0;
-  int64_t seq_no = 0;
-  auto update_status = ParseMetadata(meta, vb_no, seq_no);
-  if (update_status != kSuccess) {
-    return update_status;
-  }
+
   currently_processed_vb_ = vb_no;
   currently_processed_seqno_ = seq_no;
   vb_seq_[vb_no]->store(seq_no, std::memory_order_seq_cst);
