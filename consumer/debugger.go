@@ -59,8 +59,13 @@ func (c *debugClient) Serve() {
 		fmt.Sprintf("CBEVT_CALLBACK_USR=%s", user),
 		fmt.Sprintf("CBEVT_CALLBACK_KEY=%s", key))
 
-	c.cmd.Stderr = os.Stderr
-	c.cmd.Stdout = os.Stdout
+	errPipe, err := c.cmd.StderrPipe()
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to open stderr pipe, err: %v",
+			c.appName, c.workerName, c.debugTCPPort, c.osPid, err)
+		return
+	}
+	defer errPipe.Close()
 
 	inPipe, err := c.cmd.StdinPipe()
 	if err != nil {
@@ -70,6 +75,14 @@ func (c *debugClient) Serve() {
 	}
 	defer inPipe.Close()
 
+	outPipe, err := c.cmd.StdoutPipe()
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to open stdout pipe, err: %v",
+			logPrefix, c.workerName, c.debugTCPPort, c.osPid, err)
+		return
+	}
+	defer outPipe.Close()
+
 	err = c.cmd.Start()
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to spawn c++ worker for debugger",
@@ -78,6 +91,35 @@ func (c *debugClient) Serve() {
 		logging.Infof("%s [%s:%s:%d] C++ worker launched for debugger",
 			logPrefix, c.workerName, c.debugTCPPort, c.osPid)
 	}
+
+	bufErr := bufio.NewReader(errPipe)
+	bufOut := bufio.NewReader(outPipe)
+
+	go func(bufErr *bufio.Reader) {
+		defer errPipe.Close()
+		for {
+			msg, _, err := bufErr.ReadLine()
+			if err != nil {
+				logging.Warnf("%s [%s:%s:%d] Failed to read from stderr pipe, err: %v",
+					logPrefix, c.workerName, c.debugTCPPort, c.osPid, err)
+				return
+			}
+			logging.Infof("eventing-debug-consumer [%s:%s:%d] %s", c.workerName, c.debugTCPPort, c.osPid, string(msg))
+		}
+	}(bufErr)
+
+	go func(bufOut *bufio.Reader) {
+		defer outPipe.Close()
+		for {
+			msg, _, err := bufOut.ReadLine()
+			if err != nil {
+				logging.Warnf("%s [%s:%s:%d] Failed to read from stdout pipe, err: %v",
+					logPrefix, c.workerName, c.debugTCPPort, c.osPid, err)
+				return
+			}
+			c.consumerHandle.producer.WriteAppLog(string(msg))
+		}
+	}(bufOut)
 
 	c.osPid = c.cmd.Process.Pid
 	err = c.cmd.Wait()
@@ -381,8 +423,8 @@ func (c *Consumer) startDebuggerServer() {
 func (c *Consumer) stopDebuggerServer() {
 	logPrefix := "Consumer::stopDebuggerServer"
 
-	logging.Infof("%s [%s:%s:%d] Closing connection to C++ worker for debugger. Local addr: %v, remote addr: %v",
-		logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), c.debugConn.LocalAddr().String(), c.debugConn.RemoteAddr().String())
+	logging.Infof("%s [%s:%s:%d] Closing connection to C++ worker for debugger",
+		logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid())
 
 	c.debuggerStarted = false
 	c.sendMsgToDebugger = false
