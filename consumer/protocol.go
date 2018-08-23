@@ -465,7 +465,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			return
 		}
-		logging.Infof("%s [%s:%s:%d] Recieved filter ack from C++, vb: %d, seqNo: %d",
+		logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d received filter ack from C++",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), ack.Vbucket, ack.SeqNo)
 		c.filterDataCh <- &ack
 	default:

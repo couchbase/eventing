@@ -11,7 +11,7 @@ import (
 
 // ClearEventStats flushes event processing stats
 func (s *SuperSupervisor) ClearEventStats() {
-	for _, p := range s.runningProducers {
+	for _, p := range s.runningFns() {
 		p.ClearEventStats()
 	}
 }
@@ -20,7 +20,7 @@ func (s *SuperSupervisor) ClearEventStats() {
 func (s *SuperSupervisor) DeployedAppList() []string {
 	appList := make([]string, 0)
 
-	for app := range s.runningProducers {
+	for app := range s.runningFns() {
 		appList = append(appList, app)
 	}
 
@@ -29,7 +29,7 @@ func (s *SuperSupervisor) DeployedAppList() []string {
 
 // GetEventProcessingStats returns dcp/timer event processing stats
 func (s *SuperSupervisor) GetEventProcessingStats(appName string) map[string]uint64 {
-	if p, ok := s.runningProducers[appName]; ok {
+	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetEventProcessingStats()
 	}
 	return nil
@@ -39,8 +39,8 @@ func (s *SuperSupervisor) GetEventProcessingStats(appName string) map[string]uin
 func (s *SuperSupervisor) GetAppCode(appName string) string {
 	logPrefix := "SuperSupervisor::GetAppCode"
 
-	logging.Infof("%s [%d] Request for app: %v", logPrefix, len(s.runningProducers), appName)
-	if p, ok := s.runningProducers[appName]; ok {
+	logging.Infof("%s [%d] Function: %s request function code", logPrefix, s.runningFnsCount(), appName)
+	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetAppCode()
 	}
 	return ""
@@ -50,8 +50,8 @@ func (s *SuperSupervisor) GetAppCode(appName string) string {
 func (s *SuperSupervisor) GetDebuggerURL(appName string) (string, error) {
 	logPrefix := "SuperSupervisor::GetDebuggerURL"
 
-	logging.Infof("%s [%d] Request for app: %v", logPrefix, len(s.runningProducers), appName)
-	if p, ok := s.runningProducers[appName]; ok {
+	logging.Infof("%s [%d] Function: %s request for debugger URL", logPrefix, s.runningFnsCount(), appName)
+	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetDebuggerURL()
 	}
 
@@ -75,8 +75,8 @@ func (s *SuperSupervisor) GetDeployedApps() map[string]string {
 func (s *SuperSupervisor) GetHandlerCode(appName string) string {
 	logPrefix := "SuperSupervisor::GetHandlerCode"
 
-	logging.Infof("%s [%d] Request for app: %v", logPrefix, len(s.runningProducers), appName)
-	if p, ok := s.runningProducers[appName]; ok {
+	logging.Infof("%s [%d] Function: %s request for handler code", logPrefix, s.runningFnsCount(), appName)
+	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetHandlerCode()
 	}
 	return ""
@@ -84,7 +84,7 @@ func (s *SuperSupervisor) GetHandlerCode(appName string) string {
 
 // GetLatencyStats dumps stats from cpp world
 func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
-	if p, ok := s.runningProducers[appName]; ok {
+	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetLatencyStats()
 	}
 	return nil
@@ -105,7 +105,7 @@ func (s *SuperSupervisor) GetLocallyDeployedApps() map[string]string {
 
 // GetExecutionStats returns aggregated failure stats from Eventing.Producer instance
 func (s *SuperSupervisor) GetExecutionStats(appName string) map[string]interface{} {
-	if p, ok := s.runningProducers[appName]; ok {
+	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetExecutionStats()
 	}
 	return nil
@@ -113,7 +113,7 @@ func (s *SuperSupervisor) GetExecutionStats(appName string) map[string]interface
 
 // GetFailureStats returns aggregated failure stats from Eventing.Producer instance
 func (s *SuperSupervisor) GetFailureStats(appName string) map[string]interface{} {
-	if p, ok := s.runningProducers[appName]; ok {
+	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetFailureStats()
 	}
 	return nil
@@ -121,7 +121,7 @@ func (s *SuperSupervisor) GetFailureStats(appName string) map[string]interface{}
 
 // GetLcbExceptionsStats returns libcouchbase exception stats from CPP workers
 func (s *SuperSupervisor) GetLcbExceptionsStats(appName string) map[string]uint64 {
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		return p.GetLcbExceptionsStats()
 	}
@@ -130,7 +130,7 @@ func (s *SuperSupervisor) GetLcbExceptionsStats(appName string) map[string]uint6
 
 // GetSeqsProcessed returns vbucket specific sequence nos processed so far
 func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
-	if p, ok := s.runningProducers[appName]; ok {
+	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetSeqsProcessed()
 	}
 	return nil
@@ -140,8 +140,8 @@ func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
 func (s *SuperSupervisor) GetSourceMap(appName string) string {
 	logPrefix := "SuperSupervisor::GetSourceMap"
 
-	logging.Infof("%s [%d] Request for app: %v", logPrefix, len(s.runningProducers), appName)
-	if p, ok := s.runningProducers[appName]; ok {
+	logging.Infof("%s [%d] Function: %s request for source map", logPrefix, s.runningFnsCount(), appName)
+	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetSourceMap()
 	}
 	return ""
@@ -156,16 +156,16 @@ func (s *SuperSupervisor) RestPort() string {
 func (s *SuperSupervisor) SignalStartDebugger(appName string) error {
 	logPrefix := "SuperSupervisor::SignalStartDebugger"
 
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		err := p.SignalStartDebugger()
 		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, len(s.runningProducers))
+			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
 			return common.ErrRetryTimeout
 		}
 	} else {
-		logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
-			logPrefix, len(s.runningProducers), appName)
+		logging.Errorf("%s [%d] Function: %s request didn't go through as Eventing.Producer instance isn't alive",
+			logPrefix, s.runningFnsCount(), appName)
 	}
 
 	return nil
@@ -175,16 +175,16 @@ func (s *SuperSupervisor) SignalStartDebugger(appName string) error {
 func (s *SuperSupervisor) SignalStopDebugger(appName string) error {
 	logPrefix := "SuperSupervisor::SignalStopDebugger"
 
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		err := p.SignalStopDebugger()
 		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, len(s.runningProducers))
+			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
 			return common.ErrRetryTimeout
 		}
 	} else {
-		logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
-			logPrefix, len(s.runningProducers), appName)
+		logging.Errorf("%s [%d] Function: %s request didn't go through as Eventing.Producer instance isn't alive",
+			logPrefix, s.runningFnsCount(), appName)
 	}
 
 	return nil
@@ -218,12 +218,12 @@ func (s *SuperSupervisor) GetAppState(appName string) int8 {
 func (s *SuperSupervisor) GetDcpEventsRemainingToProcess(appName string) uint64 {
 	logPrefix := "SuperSupervisor::GetDcpEventsRemainingToProcess"
 
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		return p.GetDcpEventsRemainingToProcess()
 	}
-	logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
-		logPrefix, len(s.runningProducers), appName)
+	logging.Errorf("%s [%d] Function: %s request didn't go through as Eventing.Producer instance isn't alive",
+		logPrefix, s.runningFnsCount(), appName)
 	return 0
 }
 
@@ -231,12 +231,12 @@ func (s *SuperSupervisor) GetDcpEventsRemainingToProcess(appName string) uint64 
 func (s *SuperSupervisor) VbDcpEventsRemainingToProcess(appName string) map[int]int64 {
 	logPrefix := "SuperSupervisor::VbDcpEventsRemainingToProcess"
 
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		return p.VbDcpEventsRemainingToProcess()
 	}
-	logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
-		logPrefix, len(s.runningProducers), appName)
+	logging.Errorf("%s [%d] Function: %s request didn't go through as Eventing.Producer instance isn't alive",
+		logPrefix, s.runningFnsCount(), appName)
 	return nil
 }
 
@@ -244,18 +244,18 @@ func (s *SuperSupervisor) VbDcpEventsRemainingToProcess(appName string) map[int]
 func (s *SuperSupervisor) GetEventingConsumerPids(appName string) map[string]int {
 	logPrefix := "SuperSupervisor::GetEventingConsumerPids"
 
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		return p.GetEventingConsumerPids()
 	}
-	logging.Errorf("%s [%d] Request for app: %v didn't go through as Eventing.Producer instance isn't alive",
-		logPrefix, len(s.runningProducers), appName)
+	logging.Errorf("%s [%d] Function: %s request didn't go through as Eventing.Producer instance isn't alive",
+		logPrefix, s.runningFnsCount(), appName)
 	return nil
 }
 
 // InternalVbDistributionStats returns internal state of vbucket ownership distribution on local eventing node
 func (s *SuperSupervisor) InternalVbDistributionStats(appName string) map[string]string {
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		return p.InternalVbDistributionStats()
 	}
@@ -265,7 +265,7 @@ func (s *SuperSupervisor) InternalVbDistributionStats(appName string) map[string
 
 // VbDistributionStatsFromMetadata returns vbucket distribution across eventing nodes from metadata bucket
 func (s *SuperSupervisor) VbDistributionStatsFromMetadata(appName string) map[string]map[string]string {
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		return p.VbDistributionStatsFromMetadata()
 	}
@@ -276,7 +276,7 @@ func (s *SuperSupervisor) VbDistributionStatsFromMetadata(appName string) map[st
 // PlannerStats returns vbucket distribution as per planner running on local eventing
 // node for a given app
 func (s *SuperSupervisor) PlannerStats(appName string) []*common.PlannerNodeVbMapping {
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		return p.PlannerStats()
 	}
@@ -287,7 +287,7 @@ func (s *SuperSupervisor) PlannerStats(appName string) []*common.PlannerNodeVbMa
 // RebalanceTaskProgress reports vbuckets remaining to be transferred as per planner
 // during the course of rebalance
 func (s *SuperSupervisor) RebalanceTaskProgress(appName string) (*common.RebalanceProgress, error) {
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		return p.RebalanceTaskProgress(), nil
 	}
@@ -297,7 +297,7 @@ func (s *SuperSupervisor) RebalanceTaskProgress(appName string) (*common.Rebalan
 
 // TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
 func (s *SuperSupervisor) TimerDebugStats(appName string) (map[int]map[string]interface{}, error) {
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		return p.TimerDebugStats(), nil
 	}
@@ -310,12 +310,12 @@ func (s *SuperSupervisor) RebalanceStatus() bool {
 	logPrefix := "SuperSupervisor::RebalanceStatus"
 
 	rebalanceStatuses := make(map[string]bool)
-	for appName, p := range s.runningProducers {
+	for appName, p := range s.runningFns() {
 		rebalanceStatuses[appName] = p.RebalanceStatus()
 	}
 
 	logging.Infof("%s [%d] Rebalance status from all running applications: %#v",
-		logPrefix, len(s.runningProducers), rebalanceStatuses)
+		logPrefix, s.runningFnsCount(), rebalanceStatuses)
 
 	for _, rebStatus := range rebalanceStatuses {
 		if rebStatus {
@@ -342,7 +342,7 @@ func (s *SuperSupervisor) BootstrapAppList() map[string]string {
 
 // VbSeqnoStats returns seq no stats, which can be useful in figuring out missed events during rebalance
 func (s *SuperSupervisor) VbSeqnoStats(appName string) (map[int][]map[string]interface{}, error) {
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		return p.VbSeqnoStats(), nil
 	}
@@ -352,15 +352,14 @@ func (s *SuperSupervisor) VbSeqnoStats(appName string) (map[int][]map[string]int
 
 // RemoveProducerToken takes out appName from supervision tree
 func (s *SuperSupervisor) RemoveProducerToken(appName string) {
-	if p, exists := s.runningProducers[appName]; exists {
-		s.superSup.Remove(s.producerSupervisorTokenMap[p])
-		delete(s.producerSupervisorTokenMap, p)
+	if p, exists := s.runningFns()[appName]; exists {
+		s.stopAndDeleteProducer(p)
 	}
 }
 
 // CheckpointBlobDump returns state of metadata blobs stored in Couchbase bucket
 func (s *SuperSupervisor) CheckpointBlobDump(appName string) (interface{}, error) {
-	p, ok := s.runningProducers[appName]
+	p, ok := s.runningFns()[appName]
 	if ok {
 		return p.CheckpointBlobDump(), nil
 	}
@@ -377,8 +376,8 @@ func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool) {
 	s.appProcessingStatus[appName] = false
 	s.appRWMutex.Unlock()
 
-	logging.Infof("%s [%d] App: %s stopping running producer instance",
-		logPrefix, len(s.runningProducers), appName)
+	logging.Infof("%s [%d] Function: %s stopping running producer instance",
+		logPrefix, s.runningFnsCount(), appName)
 
 	s.deleteFromLocallyDeployedApps(appName)
 
@@ -390,7 +389,7 @@ func (s *SuperSupervisor) addToDeployedApps(appName string) {
 	logPrefix := "SuperSupervisor::addToDeployedApps"
 	s.appListRWMutex.Lock()
 	defer s.appListRWMutex.Unlock()
-	logging.Infof("%s [%d] App: %s adding to deployed apps map", logPrefix, len(s.runningProducers), appName)
+	logging.Infof("%s [%d] Function: %s adding to deployed apps map", logPrefix, s.runningFnsCount(), appName)
 	s.deployedApps[appName] = time.Now().String()
 }
 
@@ -398,7 +397,7 @@ func (s *SuperSupervisor) addToLocallyDeployedApps(appName string) {
 	logPrefix := "SuperSupervisor::addToLocallyDeployedApps"
 	s.appListRWMutex.Lock()
 	defer s.appListRWMutex.Unlock()
-	logging.Infof("%s [%d] App: %s adding to locally deployed apps map", logPrefix, len(s.runningProducers), appName)
+	logging.Infof("%s [%d] Function: %s adding to locally deployed apps map", logPrefix, s.runningFnsCount(), appName)
 	s.locallyDeployedApps[appName] = time.Now().String()
 }
 
@@ -406,7 +405,7 @@ func (s *SuperSupervisor) deleteFromDeployedApps(appName string) {
 	logPrefix := "SuperSupervisor::deleteFromDeployedApps"
 	s.appListRWMutex.Lock()
 	defer s.appListRWMutex.Unlock()
-	logging.Infof("%s [%d] App: %s deleting from deployed apps map", logPrefix, len(s.runningProducers), appName)
+	logging.Infof("%s [%d] Function: %s deleting from deployed apps map", logPrefix, s.runningFnsCount(), appName)
 	delete(s.deployedApps, appName)
 }
 
@@ -414,18 +413,48 @@ func (s *SuperSupervisor) deleteFromLocallyDeployedApps(appName string) {
 	logPrefix := "SuperSupervisor::deleteFromLocallyDeployedApps"
 	s.appListRWMutex.Lock()
 	defer s.appListRWMutex.Unlock()
-	logging.Infof("%s [%d] App: %s deleting from locally deployed apps map", logPrefix, len(s.runningProducers), appName)
+	logging.Infof("%s [%d] Function: %s deleting from locally deployed apps map", logPrefix, s.runningFnsCount(), appName)
 	delete(s.locallyDeployedApps, appName)
 }
 
 // GetMetaStoreStats returns metastore related stats from all running functions on current node
 func (s *SuperSupervisor) GetMetaStoreStats(appName string) map[string]uint64 {
 	stats := make(map[string]uint64)
-	if p, ok := s.runningProducers[appName]; ok {
+	if p, ok := s.runningFns()[appName]; ok {
 		stats = p.GetMetaStoreStats()
 	}
 	for stat, counter := range timers.PoolStats() {
 		stats[stat] = counter
 	}
-	return nil
+	return stats
+}
+
+func (s *SuperSupervisor) runningFnsCount() int {
+	s.runningProducersRWMutex.RLock()
+	defer s.runningProducersRWMutex.RUnlock()
+	return len(s.runningProducers)
+}
+
+func (s *SuperSupervisor) runningFns() map[string]common.EventingProducer {
+	runningFns := make(map[string]common.EventingProducer)
+
+	s.runningProducersRWMutex.RLock()
+	s.runningProducersRWMutex.RUnlock()
+	for k, v := range s.runningProducers {
+		runningFns[k] = v
+	}
+
+	return runningFns
+}
+
+func (s *SuperSupervisor) deleteFromRunningProducers(appName string) {
+	s.runningProducersRWMutex.Lock()
+	defer s.runningProducersRWMutex.Unlock()
+	delete(s.runningProducers, appName)
+}
+
+func (s *SuperSupervisor) addToRunningProducers(appName string, p common.EventingProducer) {
+	s.runningProducersRWMutex.Lock()
+	defer s.runningProducersRWMutex.Unlock()
+	s.runningProducers[appName] = p
 }

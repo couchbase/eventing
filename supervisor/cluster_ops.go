@@ -74,7 +74,7 @@ var metakvGetCallback = func(args ...interface{}) error {
 	var err error
 	*cfgData, err = util.MetakvGet(path)
 	if err != nil {
-		logging.Errorf("%s [%d] Failed to lookup path: %v from metakv, err: %v", logPrefix, len(s.runningProducers), path, err)
+		logging.Errorf("%s [%d] Failed to lookup path: %v from metakv, err: %v", logPrefix, s.runningFnsCount(), path, err)
 		return err
 	}
 
@@ -93,7 +93,7 @@ var undeployFunctionCallback = func(args ...interface{}) error {
 
 	data, err := json.Marshal(&settings)
 	if err != nil {
-		logging.Errorf("%s [%d] App: %s failed to marshal settings", logPrefix, len(s.runningProducers), appName)
+		logging.Errorf("%s [%d] Function: %s failed to marshal settings", logPrefix, s.runningFnsCount(), appName)
 		return err
 	}
 
@@ -101,17 +101,17 @@ var undeployFunctionCallback = func(args ...interface{}) error {
 	url := fmt.Sprintf("http://%s:%s/setSettings/?name=%s", util.Localhost(), s.adminPort.HTTPPort, appName)
 	resp, err := client.Post(url, "application/json", bytes.NewBuffer(data))
 	if err != nil {
-		logging.Errorf("%s [%d] App: %s failed to send http request", logPrefix, len(s.runningProducers), appName)
+		logging.Errorf("%s [%d] Function: %s failed to send http request", logPrefix, s.runningFnsCount(), appName)
 		return err
 	}
 	defer resp.Body.Close()
 
 	content, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		logging.Errorf("%s [%d] App: %s failed to read content", logPrefix, len(s.runningProducers), appName)
+		logging.Errorf("%s [%d] Function: %s failed to read content", logPrefix, s.runningFnsCount(), appName)
 		return err
 	}
 
-	logging.Infof("%s [%d] App: %s response from server: %s resp: %rs", logPrefix, len(s.runningProducers), appName, string(content), resp)
+	logging.Infof("%s [%d] Function: %s response from server: %s resp: %rs", logPrefix, s.runningFnsCount(), appName, string(content), resp)
 	return nil
 }

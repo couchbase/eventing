@@ -46,6 +46,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		MemoryQuota:                memoryQuota,
 		pollBucketStopCh:           make(chan struct{}, 1),
 		retryCount:                 -1,
+		runningConsumersRWMutex:    &sync.RWMutex{},
 		seqsNoProcessed:            make(map[int]int64),
 		seqsNoProcessedRWMutex:     &sync.RWMutex{},
 		statsRWMutex:               &sync.RWMutex{},
@@ -148,6 +149,7 @@ func (p *Producer) Serve() {
 	p.stopProducerCh = make(chan struct{}, 1)
 	p.clusterStateChange = make(chan struct{})
 	p.consumerSupervisorTokenMap = make(map[common.EventingConsumer]suptree.ServiceToken)
+	p.tokenRWMutex = &sync.RWMutex{}
 
 	if p.auth != "" {
 		up := strings.Split(p.auth, ":")
@@ -231,37 +233,27 @@ func (p *Producer) Serve() {
 				logging.Infof("%s [%s:%d] Planner status: %t, post vbucket to worker assignment during rebalance",
 					logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
-				func() {
-					p.RLock()
-					defer p.RUnlock()
-					for _, eventingConsumer := range p.runningConsumers {
-						logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer",
-							logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
-						eventingConsumer.NotifyClusterChange()
-					}
-				}()
+				for _, eventingConsumer := range p.getConsumers() {
+					logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer",
+						logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
+					eventingConsumer.NotifyClusterChange()
+				}
 
 			case common.StopRebalanceCType:
-				func() {
-					p.RLock()
-					defer p.RUnlock()
-					for _, eventingConsumer := range p.runningConsumers {
-						logging.Infof("%s [%s:%d] Consumer: %s sent stop rebalance message from producer",
-							logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
-						eventingConsumer.NotifyRebalanceStop()
-					}
-				}()
+				for _, eventingConsumer := range p.getConsumers() {
+					logging.Infof("%s [%s:%d] Consumer: %s sent stop rebalance message from producer",
+						logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
+					eventingConsumer.NotifyRebalanceStop()
+				}
 			}
 
 		case <-p.notifySettingsChangeCh:
 			logging.Infof("%s [%s:%d] Notifying consumers about settings change", logPrefix, p.appName, p.LenRunningConsumers())
-			func() {
-				p.RLock()
-				defer p.RUnlock()
-				for _, eventingConsumer := range p.runningConsumers {
-					eventingConsumer.NotifySettingsChange()
-				}
-			}()
+
+			for _, eventingConsumer := range p.getConsumers() {
+				eventingConsumer.NotifySettingsChange()
+			}
+
 			settingsPath := metakvAppSettingsPath + p.app.AppName
 			sData, err := util.MetakvGet(settingsPath)
 			if err != nil {
@@ -287,15 +279,15 @@ func (p *Producer) Serve() {
 			// This routine cleans up everything apart from metadataBucketHandle,
 			// which would be needed to clean up metadata bucket
 			logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
-			func() {
-				p.Lock()
-				defer p.Unlock()
-				for _, eventingConsumer := range p.runningConsumers {
-					p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[eventingConsumer])
-					delete(p.consumerSupervisorTokenMap, eventingConsumer)
-				}
-				p.runningConsumers = nil
-			}()
+
+			for _, c := range p.getConsumers() {
+				p.stopAndDeleteConsumer(c)
+			}
+
+			p.runningConsumersRWMutex.Lock()
+			p.runningConsumers = nil
+			p.runningConsumersRWMutex.Unlock()
+
 			p.workerNameConsumerMapRWMutex.Lock()
 			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
 			p.workerNameConsumerMapRWMutex.Unlock()
@@ -316,15 +308,15 @@ func (p *Producer) Serve() {
 
 		case <-p.stopProducerCh:
 			logging.Infof("%s [%s:%d] Explicitly asked to shutdown producer routine", logPrefix, p.appName, p.LenRunningConsumers())
-			func() {
-				p.Lock()
-				defer p.Unlock()
-				for _, eventingConsumer := range p.runningConsumers {
-					p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[eventingConsumer])
-					delete(p.consumerSupervisorTokenMap, eventingConsumer)
-				}
-				p.runningConsumers = nil
-			}()
+
+			for _, c := range p.getConsumers() {
+				p.stopAndDeleteConsumer(c)
+			}
+
+			p.runningConsumersRWMutex.Lock()
+			p.runningConsumers = nil
+			p.runningConsumersRWMutex.Unlock()
+
 			p.workerNameConsumerMapRWMutex.Lock()
 			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
 			p.workerNameConsumerMapRWMutex.Unlock()
@@ -402,7 +394,7 @@ func (p *Producer) Stop() {
 		p.appLogWriter.Close()
 	}
 
-	logging.Infof("%s [%s:%d] Closed app log writer handle",
+	logging.Infof("%s [%s:%d] Closed function log writer handle",
 		logPrefix, p.appName, p.LenRunningConsumers())
 
 	if p.updateStatsStopCh != nil {
@@ -420,7 +412,7 @@ func (p *Producer) Stop() {
 // Implement fmt.Stringer interface for better debugging in case
 // producer routine crashes and supervisor has to respawn it
 func (p *Producer) String() string {
-	return fmt.Sprintf("Producer => app: %s tcpPort: %s", p.appName, p.processConfig.SockIdentifier)
+	return fmt.Sprintf("Producer => function: %s tcpPort: %s", p.appName, p.processConfig.SockIdentifier)
 }
 
 func (p *Producer) startBucket() {
@@ -435,11 +427,11 @@ func (p *Producer) startBucket() {
 		vbsAssigned := p.workerVbucketMap[workerName]
 		p.workerVbMapRWMutex.RUnlock()
 
-		p.handleV8Consumer(workerName, vbsAssigned, i)
+		p.handleV8Consumer(workerName, vbsAssigned, i, false)
 	}
 }
 
-func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int) {
+func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int, notifyRebalance bool) {
 	logPrefix := "Producer::handleV8Consumer"
 
 	p.handleV8ConsumerMutex.Lock()
@@ -530,6 +522,12 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.numVbuckets,
 		&p.retryCount, vbEventingNodeAssignMap, workerVbucketMap)
 
+	if notifyRebalance {
+		logging.Infof("%s [%s:%d] Consumer: %s notifying about cluster state change",
+			logPrefix, p.appName, p.LenRunningConsumers(), workerName)
+		c.SetRebalanceStatus(true)
+	}
+
 	p.listenerRWMutex.Lock()
 	p.consumerListeners[c] = listener
 	p.feedbackListeners[c] = feedbackListener
@@ -539,11 +537,12 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	p.workerNameConsumerMap[workerName] = c
 	p.workerNameConsumerMapRWMutex.Unlock()
 
-	p.Lock()
-	serviceToken := p.workerSupervisor.Add(c)
+	token := p.workerSupervisor.Add(c)
+	p.addToSupervisorTokenMap(c, token)
+
+	p.runningConsumersRWMutex.Lock()
 	p.runningConsumers = append(p.runningConsumers, c)
-	p.consumerSupervisorTokenMap[c] = serviceToken
-	p.Unlock()
+	p.runningConsumersRWMutex.Unlock()
 
 	go func(listener net.Listener, c *consumer.Consumer) {
 		for {
@@ -585,23 +584,23 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 
 	consumerIndex := c.Index()
 
-	p.Lock()
 	var indexToPurge int
-	for i, val := range p.runningConsumers {
+	for i, val := range p.getConsumers() {
 		if val == c {
 			indexToPurge = i
 		}
 	}
 
 	if p.LenRunningConsumers() > 1 {
+		p.runningConsumersRWMutex.Lock()
 		p.runningConsumers = append(p.runningConsumers[:indexToPurge],
 			p.runningConsumers[indexToPurge+1:]...)
+		p.runningConsumersRWMutex.Unlock()
 	} else {
+		p.runningConsumersRWMutex.Lock()
 		p.runningConsumers = nil
+		p.runningConsumersRWMutex.Unlock()
 	}
-
-	serviceToken := p.consumerSupervisorTokenMap[c]
-	p.Unlock()
 
 	p.workerNameConsumerMapRWMutex.Lock()
 	delete(p.workerNameConsumerMap, c.ConsumerName())
@@ -610,7 +609,8 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 	logging.Infof("%s [%s:%d] IndexToPurge: %d ConsumerIndex: %d Shutting down Eventing.Consumer instance: %v",
 		logPrefix, p.appName, p.LenRunningConsumers(), indexToPurge, consumerIndex, c)
 
-	p.workerSupervisor.Remove(serviceToken)
+	token := p.getSupervisorToken(c)
+	p.workerSupervisor.Remove(token)
 
 	logging.Infof("%s [%s:%d] IndexToPurge: %d ConsumerIndex: %d Closing down listener handles",
 		logPrefix, p.appName, p.LenRunningConsumers(), indexToPurge, consumerIndex)
@@ -620,14 +620,14 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 	p.feedbackListeners[c].Close()
 	p.listenerRWMutex.RUnlock()
 
-	logging.Infof("%s [%s:%d] ConsumerIndex: %d Respawning the Eventing.Consumer instance",
+	logging.Infof("%s [%s:%d] ConsumerIndex: %d respawning the Eventing.Consumer instance",
 		logPrefix, p.appName, p.LenRunningConsumers(), consumerIndex)
 	workerName := fmt.Sprintf("worker_%s_%d", p.appName, consumerIndex)
 	p.workerVbMapRWMutex.RLock()
 	vbsAssigned := p.workerVbucketMap[workerName]
 	p.workerVbMapRWMutex.RUnlock()
 
-	p.handleV8Consumer(workerName, vbsAssigned, consumerIndex)
+	p.handleV8Consumer(workerName, vbsAssigned, consumerIndex, true)
 }
 
 func (p *Producer) getEventingNodeAddrs() []string {
@@ -681,7 +681,7 @@ func (p *Producer) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string) {
 	p.ejectNodeUUIDs = ejectNodes
 	p.eventingNodeUUIDs = keepNodes
 
-	for _, eventingConsumer := range p.runningConsumers {
+	for _, eventingConsumer := range p.getConsumers() {
 		eventingConsumer.UpdateEventingNodesUUIDs(keepNodes)
 	}
 
@@ -741,7 +741,7 @@ func (p *Producer) SignalStopDebugger() error {
 	}
 
 	if debuggerInstBlob.NodeUUID == p.uuid {
-		for _, c := range p.runningConsumers {
+		for _, c := range p.getConsumers() {
 			if c.ConsumerName() == debuggerInstBlob.ConsumerName {
 				err = c.SignalStopDebugger()
 				if err == common.ErrRetryTimeout {
@@ -871,4 +871,17 @@ func (p *Producer) pollForDeletedVbs() {
 			return
 		}
 	}
+}
+
+func (p *Producer) getConsumers() []common.EventingConsumer {
+	workers := make([]common.EventingConsumer, 0)
+
+	p.runningConsumersRWMutex.RLock()
+	defer p.runningConsumersRWMutex.RUnlock()
+
+	for _, worker := range p.runningConsumers {
+		workers = append(workers, worker)
+	}
+
+	return workers
 }

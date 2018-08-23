@@ -783,36 +783,6 @@ var getEFFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
 	return err
 }
 
-// Fetches failover log from feed created during rebalance
-var getFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::getFailoverLogOpAllVbucketsCallback"
-
-	c := args[0].(*Consumer)
-	b := args[1].(*couchbase.Bucket)
-	flogs := args[2].(*couchbase.FailoverLog)
-	vb := args[3].(uint16)
-
-	vbs := make([]uint16, 0)
-	for vb := 0; vb < c.numVbuckets; vb++ {
-		vbs = append(vbs, uint16(vb))
-	}
-
-	err := b.Refresh()
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %d failed to refresh vbmap, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-		return err
-	}
-
-	*flogs, err = b.GetFailoverLogs(0xABCD, vbs, c.dcpConfig)
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %d Failed to get failover logs, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-	}
-
-	return err
-}
-
 var startDCPFeedOpCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::startDCPFeedOpCallback"
 
@@ -851,33 +821,6 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	c.kvHostDcpFeedMap[kvHostPort] = dcpFeed
 
 	return nil
-}
-
-var startFeedFromKVNodesCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::startFeedFromKVNodesCallback"
-
-	c := args[0].(*Consumer)
-	b := args[1].(**couchbase.Bucket)
-	vb := args[2].(uint16)
-	dcpFeed := args[3].(**couchbase.DcpFeed)
-	kvNodeAddrs := args[4].([]string)
-
-	feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%s_%s_vb_%v_docTimer", c.HostPortAddr(), c.workerName, vb))
-
-	err := (*b).Refresh()
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %d failed to refresh vbmap, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-		return err
-	}
-
-	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), includeXATTRs, kvNodeAddrs, 0xABCD, c.dcpConfig)
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Failed to start dcp feed for bucket: %v kv nodes: %rs, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvNodeAddrs, err)
-	}
-
-	return err
 }
 
 var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {

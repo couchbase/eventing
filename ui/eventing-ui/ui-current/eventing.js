@@ -10,6 +10,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.serverNodes = serverNodes;
             self.isEventingRunning = isEventingRunning;
             self.workerCount = 0;
+            self.cpuCount = 0;
             self.appList = ApplicationService.local.getAllApps();
             self.disableEditButton = false;
 
@@ -52,6 +53,17 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     .catch(function(errResponse) {
                         console.error('Unable to get worker count', errResponse);
                         self.workerCount = 0;
+                    });
+
+                ApplicationService.server.getCpuCount()
+                    .then(function(response) {
+                        if (response && response.data) {
+                            self.cpuCount = response.data;
+                        }
+                    })
+                    .catch(function(errResponse) {
+                        console.error('Unable to get cpu count', errResponse);
+                        self.cpuCount = 0;
                     });
             }
 
@@ -196,8 +208,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             var info = errResponse.data.runtime_info.info;
                             app.compilationInfo = info;
                             ApplicationService.server.showErrorAlert(`Deployment failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
+                        } else if (errResponse.data && (errResponse.data.name === 'ERR_CLUSTER_VERSION')) {
+                            var data = errResponse.data;
+                            ApplicationService.server.showErrorAlert(`Deployment failed: ${data.description} - ${data.runtime_info.info}`);
                         } else {
-                            ApplicationService.server.showErrorAlert(`Deployment failed: ${errResponse.data.runtime_info}`);
+                            var info = errResponse.data.runtime_info;
+                            ApplicationService.server.showErrorAlert(`Deployment failed: ` + JSON.stringify(info));
                         }
 
                         // Enable edit button as we got compilation info
@@ -988,6 +1004,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     },
                     getWorkerCount: function() {
                         return $http.get('/_p/event/getWorkerCount');
+                    },
+                    getCpuCount: function() {
+                        return $http.get('/_p/event/getCpuCount');
                     },
                     getLatestBuckets: function() {
                         // Getting the list of buckets.

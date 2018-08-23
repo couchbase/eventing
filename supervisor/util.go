@@ -58,5 +58,5 @@ func (s *SuperSupervisor) assignVbucketsToOwn(addrs []string, currNodeAddr strin
 	}
 
 	logging.Infof("SSUP[%d] currNodeAddr: %rs vbucketsToOwn len: %v dump: %v",
-		len(s.runningProducers), currNodeAddr, len(s.vbucketsToOwn), util.Condense(s.vbucketsToOwn))
+		s.runningFnsCount(), currNodeAddr, len(s.vbucketsToOwn), util.Condense(s.vbucketsToOwn))
 }

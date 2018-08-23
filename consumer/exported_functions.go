@@ -636,6 +636,15 @@ func (c *Consumer) RebalanceStatus() bool {
 	return c.isRebalanceOngoing
 }
 
+// SetRebalanceStatus update rebalance status for consumer instance
+func (c *Consumer) SetRebalanceStatus(status bool) {
+	logPrefix := "Consumer::SetRebalanceStatus"
+
+	c.isRebalanceOngoing = status
+	logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), status)
+}
+
 // VbSeqnoStats returns seq no stats, which can be useful in figuring out missed events during rebalance
 func (c *Consumer) VbSeqnoStats() map[int]map[string]interface{} {
 	seqnoStats := make(map[int]map[string]interface{})

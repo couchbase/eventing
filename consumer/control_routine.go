@@ -93,9 +93,12 @@ func (c *Consumer) controlRoutine() error {
 
 			vbsRemainingToClose := make([]uint16, len(c.vbsRemainingToClose))
 			copy(vbsRemainingToClose, c.vbsRemainingToClose)
+
+			vbsRemainingToCleanup := make([]uint16, len(c.vbsRemainingToCleanup))
+			copy(vbsRemainingToCleanup, c.vbsRemainingToCleanup)
 			c.RUnlock()
 
-			if len(vbsToRestream) == 0 && len(vbsRemainingToClose) == 0 {
+			if len(vbsToRestream) == 0 && len(vbsRemainingToClose) == 0 && len(vbsRemainingToCleanup) == 0 {
 				continue
 			}
 
@@ -114,6 +117,40 @@ func (c *Consumer) controlRoutine() error {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream), util.Condense(vbsRemainingToClose))
 				continue
 			}
+
+			sort.Sort(util.Uint16Slice(vbsRemainingToCleanup))
+			logging.Infof("%s [%s:%s:%d] vbsRemainingToCleanup len: %d dump: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsRemainingToCleanup), util.Condense(vbsRemainingToCleanup))
+
+			metadataCorrectedVbs := make([]uint16, 0)
+			for _, vb := range vbsRemainingToCleanup {
+				if c.producer.IsPlannerRunning() {
+					continue
+				}
+
+				if !c.checkIfCurrentConsumerShouldOwnVb(vb) {
+					err := c.cleanupVbMetadata(vb)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return err
+					}
+
+					if err == nil {
+						metadataCorrectedVbs = append(metadataCorrectedVbs, vb)
+					}
+				}
+			}
+
+			c.Lock()
+			diff := util.VbsSliceDiff(metadataCorrectedVbs, c.vbsRemainingToCleanup)
+			c.vbsRemainingToCleanup = diff
+
+			sort.Sort(util.Uint16Slice(c.vbsRemainingToCleanup))
+			if len(c.vbsRemainingToCleanup) > 0 {
+				logging.Infof("%s [%s:%s:%d] vbsRemainingToCleanup => remaining len: %d dump: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbsRemainingToCleanup), util.Condense(c.vbsRemainingToCleanup))
+			}
+			c.Unlock()
 
 			sort.Sort(util.Uint16Slice(vbsRemainingToClose))
 			logging.Infof("%s [%s:%s:%d] vbsRemainingToClose len: %d dump: %v",
@@ -215,7 +252,7 @@ func (c *Consumer) controlRoutine() error {
 			vbsToRestream = util.VbsSliceDiff(vbsFailedToStartStream, vbsToRestream)
 
 			c.Lock()
-			diff := util.VbsSliceDiff(vbsToRestream, c.vbsRemainingToRestream)
+			diff = util.VbsSliceDiff(vbsToRestream, c.vbsRemainingToRestream)
 			c.vbsRemainingToRestream = diff
 			vbsRemainingToRestream := len(c.vbsRemainingToRestream)
 			c.Unlock()

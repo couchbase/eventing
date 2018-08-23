@@ -581,7 +581,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 	if length%metakvMaxDocSize != 0 {
 		fragmentCount++
 	}
-	logging.Infof("%s App: %s number of fragments: %d payload size: %d", logPrefix, appName, fragmentCount, length)
+	logging.Infof("%s Function: %s number of fragments: %d payload size: %d", logPrefix, appName, fragmentCount, length)
 	for idx := 0; idx < fragmentCount; idx++ {
 		currpath := appsPath + strconv.Itoa(int(idx))
 		curridx := idx * metakvMaxDocSize
@@ -593,9 +593,9 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 		err := MetakvSet(currpath, fragment, nil)
 		if err != nil {
 			//Delete existing entry from appspath
-			logging.Errorf("%s App: %s metakv set failed for fragments, fragment number: %d, err: %v", logPrefix, appName, idx, err)
+			logging.Errorf("%s Function: %s metakv set failed for fragments, fragment number: %d, err: %v", logPrefix, appName, idx, err)
 			if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-				logging.Errorf("%s App: %s metakv recursive delete failed, fragment number: %d, err: %v", logPrefix, appName, idx, errd)
+				logging.Errorf("%s Function: %s metakv recursive delete failed, fragment number: %d, err: %v", logPrefix, appName, idx, errd)
 				return errd
 			}
 			return err
@@ -605,10 +605,10 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 	//Compute MD5 hash and Update it to metakv
 	payloadhash := PayloadHash{}
 	if err := payloadhash.Update(payload, metakvMaxDocSize); err != nil {
-		logging.Errorf("%s App: %s updating payload hash failed err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s updating payload hash failed err: %v", logPrefix, appName, err)
 		//Delete existing entry from appspath
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-			logging.Errorf("%s App: %s payload hash metakv recursive delete failed, err: %v", logPrefix, appName, errd)
+			logging.Errorf("%s Function: %s payload hash metakv recursive delete failed, err: %v", logPrefix, appName, errd)
 			return errd
 		}
 		return err
@@ -618,9 +618,9 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 	hashdata, err := json.Marshal(&payloadhash)
 	if err != nil {
 		//Delete existing entry from appspath
-		logging.Errorf("%s App: %s marshal failed, err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s marshal failed, err: %v", logPrefix, appName, err)
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-			logging.Errorf("%s App: %s unmarshal failed, err: %v", logPrefix, appName, errd)
+			logging.Errorf("%s Function: %s unmarshal failed, err: %v", logPrefix, appName, errd)
 			return errd
 		}
 		return err
@@ -628,9 +628,9 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 
 	if err = MetakvSet(checksumPath, hashdata, nil); err != nil {
 		//Delete existing entry from appspath
-		logging.Errorf("%s App: %s metakv set failed for checksum, err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv set failed for checksum, err: %v", logPrefix, appName, err)
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-			logging.Errorf("%s App: %s checksum metakv recursive delete, err: %v", logPrefix, appName, errd)
+			logging.Errorf("%s Function: %s checksum metakv recursive delete, err: %v", logPrefix, appName, errd)
 			return errd
 		}
 		return err
@@ -646,11 +646,11 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 	checksumPath += appName
 	var payloadhash PayloadHash
 	if hashdata, err := MetakvGet(checksumPath); err != nil {
-		logging.Errorf("%s App: %s metakv get failed for checksum, err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv get failed for checksum, err: %v", logPrefix, appName, err)
 		return nil, err
 	} else {
 		if err := json.Unmarshal(hashdata, &payloadhash); err != nil {
-			logging.Errorf("%s App: %s unmarshal failed for checksum", logPrefix, appName)
+			logging.Errorf("%s Function: %s unmarshal failed for checksum", logPrefix, appName)
 			return nil, err
 		}
 	}
@@ -662,24 +662,24 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 		path := appsPath + "/" + strconv.Itoa(int(idx))
 		data, err := MetakvGet(path)
 		if err != nil {
-			logging.Errorf("%s App: %s metakv get failed for fragments, fragment number: %d fragment count: %d, err: %v",
+			logging.Errorf("%s Function: %s metakv get failed for fragments, fragment number: %d fragment count: %d, err: %v",
 				logPrefix, appName, idx, payloadhash.Fragmentcnt, err)
 			return nil, err
 		}
 
 		if data == nil {
-			logging.Errorf("%s App: %s metakv get data is empty, fragment number: %d fragment count: %d",
+			logging.Errorf("%s Function: %s metakv get data is empty, fragment number: %d fragment count: %d",
 				logPrefix, appName, idx, payloadhash.Fragmentcnt)
 			return nil, errors.New("Reading stale data")
 		}
 
 		if fragmenthash, err := ComputeMD5(data); err != nil {
-			logging.Errorf("%s App: %s metakv get MD5 computation failed, fragment number: %d fragment count: %d, err: %v",
+			logging.Errorf("%s Function: %s metakv get MD5 computation failed, fragment number: %d fragment count: %d, err: %v",
 				logPrefix, appName, idx, payloadhash.Fragmentcnt, err)
 			return nil, err
 		} else {
 			if bytes.Equal(fragmenthash, payloadhash.Fragmenthash[idx]) != true {
-				logging.Errorf("%s App: %s metakv get checksum mismatch, fragment number: %d fragment count: %d",
+				logging.Errorf("%s Function: %s metakv get checksum mismatch, fragment number: %d fragment count: %d",
 					logPrefix, appName, idx, payloadhash.Fragmentcnt)
 				return nil, errors.New("checksum mismatch for payload fragments")
 			}
@@ -695,7 +695,7 @@ func DeleteAppContent(appPath, checksumPath, appName string) error {
 	logPrefix := "util::DeleteAppContent"
 	checksumPath += appName
 	if err := MetaKvDelete(checksumPath, nil); err != nil {
-		logging.Errorf("%s App: %s metakv delete failed for checksum, err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv delete failed for checksum, err: %v", logPrefix, appName, err)
 		return err
 	}
 
@@ -703,7 +703,7 @@ func DeleteAppContent(appPath, checksumPath, appName string) error {
 	appPath += appName
 	appPath += "/"
 	if err := MetakvRecursiveDelete(appPath); err != nil {
-		logging.Errorf("%s App: %s metakv recursive delete failed, err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv recursive delete failed, err: %v", logPrefix, appName, err)
 		return err
 	}
 	return nil
@@ -716,7 +716,7 @@ func DeleteStaleAppContent(appPath, appName string) error {
 	appPath += appName
 	appPath += "/"
 	if err := MetakvRecursiveDelete(appPath); err != nil {
-		logging.Errorf("%s App: %s metakv recursive delete failed, err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv recursive delete failed, err: %v", logPrefix, appName, err)
 		return err
 	}
 	return nil

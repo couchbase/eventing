@@ -113,8 +113,10 @@ type Producer struct {
 	clusterStateChange chan struct{}
 
 	// List of running consumers, will be needed if we want to gracefully shut them down
-	runningConsumers           []common.EventingConsumer // Access controlled by default lock
-	consumerSupervisorTokenMap map[common.EventingConsumer]suptree.ServiceToken
+	runningConsumers           []common.EventingConsumer // Access controlled by runningConsumersRWMutex
+	runningConsumersRWMutex    *sync.RWMutex
+	consumerSupervisorTokenMap map[common.EventingConsumer]suptree.ServiceToken // Access controlled by tokenRWMutex
+	tokenRWMutex               *sync.RWMutex
 
 	workerNameConsumerMap        map[string]common.EventingConsumer // Access controlled by workerNameConsumerMapRWMutex
 	workerNameConsumerMapRWMutex *sync.RWMutex
@@ -155,8 +157,6 @@ type Producer struct {
 	// Supervisor of workers responsible for
 	// pipelining messages to V8
 	workerSupervisor *suptree.Supervisor
-
-	sync.RWMutex
 }
 
 type vbNodeWorkerMapping struct {

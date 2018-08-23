@@ -324,7 +324,7 @@ func (p *Producer) parseDepcfg() error {
 	logLevel := settings["log_level"].(string)
 	logging.SetLogLevel(util.GetLogLevel(logLevel))
 
-	logging.Infof("%s [%s] Loaded app => wc: %v bucket: %v statsTickD: %v",
+	logging.Infof("%s [%s] Loaded function => wc: %v bucket: %v statsTickD: %v",
 		logPrefix, p.appName, p.handlerConfig.WorkerCount, p.handlerConfig.SourceBucket, p.handlerConfig.StatsLogInterval)
 
 	if p.handlerConfig.WorkerCount <= 0 {

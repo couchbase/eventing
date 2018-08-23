@@ -135,12 +135,12 @@ function isFuncCalled(methodName, code) {
 
 // Gets compatability level of code. Returns [<release>, <ga/beta/dp>, <using_timer>]
 function getCodeVersion(code) {
-    var versions = ["vulcan"],
+    var versions = ["vulcan", "alice"],
         vp = 0;
     var levels = ["ga", "beta", "dp"],
         lp = 0;
     var using_timer = ["false", "true"],
-        dp = 0;
+        tp = 0;
 
     var ast = esprima.parse(code, {
         attachComment: true,
@@ -151,7 +151,10 @@ function getCodeVersion(code) {
         // todo: handle aliased functions, ex: var cn = cronTimer
         enter: function(node) {
             if (/CallExpression/.test(node.type)) {
-                if (node.callee.name === 'createTimer') dp = 1;
+                if (node.callee.name === 'createTimer') {
+                        tp = 1;
+                        if (vp < 1) vp = 1;
+                }
                 if (node.callee.name === 'curl' && lp < 2) lp = 2;
             } else if (/NewExpression/.test(node.type)) {
                 if (node.callee.name === 'N1qlQuery' && lp < 1) lp = 1;
@@ -159,7 +162,7 @@ function getCodeVersion(code) {
         }
     });
 
-    return [versions[vp], levels[lp], using_timer[dp]];
+    return [versions[vp], levels[lp], using_timer[tp]];
 }
 
 // Checks if the given statement is a valid JavaScript expression.

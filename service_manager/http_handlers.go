@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"runtime"
 	"runtime/trace"
 	"sort"
 	"strconv"
@@ -2217,6 +2218,23 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 	return
 }
 
+func (m *ServiceMgr) getCpuCount(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		return
+	}
+
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%v\n", runtime.NumCPU())
+}
+
 func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
@@ -2249,6 +2267,25 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%v\n", count)
 }
 
+type version struct {
+	major int
+	minor int
+}
+
+var verMap = map[string]version{
+	"vulcan": {5, 5},
+	"alice":  {6, 0},
+}
+
+func (r version) satisfies(need version) bool {
+	return r.major > need.major ||
+		r.major == need.major && r.minor >= need.minor
+}
+
+func (r version) String() string {
+	return fmt.Sprintf("%v.%v", r.major, r.minor)
+}
+
 func (m *ServiceMgr) checkVersionCompat(required string, info *runtimeInfo) {
 	logPrefix := "ServiceMgr::checkVersionCompat"
 
@@ -2261,21 +2298,17 @@ func (m *ServiceMgr) checkVersionCompat(required string, info *runtimeInfo) {
 		return
 	}
 
-	ok := false
-	major, minor := clusterInfo.GetClusterVersion()
-	switch required {
-	case "vulcan":
-		ok = major > 5 || major == 5 && minor >= 5
-	}
+	var need, have version
+	have.major, have.minor = clusterInfo.GetClusterVersion()
+	need, ok := verMap[required]
 
-	if !ok {
+	if !ok || !have.satisfies(need) {
 		info.Code = m.statusCodes.errClusterVersion.Code
-		info.Info = fmt.Sprintf("Function requires '%v', but cluster is at '%v.%v'",
-			required, major, minor)
+		info.Info = fmt.Sprintf("Function requires %v but cluster is at %v", need, have)
 		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
 		return
 	}
 
-	logging.Infof("%s Function need '%v' satisfied by cluster '%v.%v'", logPrefix, required, major, minor)
+	logging.Infof("%s Function need %v satisfied by cluster %v", logPrefix, have, need)
 	info.Code = m.statusCodes.ok.Code
 }
