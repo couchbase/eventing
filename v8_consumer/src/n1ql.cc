@@ -309,9 +309,16 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   }
 
   lcb_n1p_mkcmd(n1ql_params, &cmd);
+
   err = lcb_n1ql_query(instance, nullptr, &cmd);
   if (err != LCB_SUCCESS) {
-    ConnectionPool::Error(instance, "N1QL: Unable to set query", err);
+    // for example: when there is no query node
+    ConnectionPool::Error(instance, "N1QL: Unable to schedule N1QL query", err);
+    std::vector<std::string> vec;
+    vec.push_back("N1QL: Unable to schedule N1QL query");
+
+    auto js_exception = UnwrapData(isolate_)->js_exception;
+    js_exception->Throw(instance, err, vec);
   }
 
   lcb_n1p_free(n1ql_params);
@@ -321,7 +328,8 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   cookie.isolate = isolate_;
   cookie.handle = handle;
   lcb_set_cookie(instance, &cookie);
-  // Run the query.
+
+  // Run the query
   err = lcb_wait(instance);
   if (err != LCB_SUCCESS) {
     ConnectionPool::Error(instance, "N1QL: Query execution failed", err);
