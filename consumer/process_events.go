@@ -414,12 +414,13 @@ func (c *Consumer) processEvents() {
 			}
 			c.vbsStreamRRWMutex.Unlock()
 
-			if c.usingTimer {
+			// Disabling until store.Dormant() api is available
+			/*if c.usingTimer {
 				store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(e.Vbucket))
 				if found {
 					store.Free()
 				}
-			}
+			}*/
 			vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.Vbucket)
 
 			seqNo := c.vbProcessingStats.getVbStat(e.Vbucket, "last_read_seq_no").(uint64)

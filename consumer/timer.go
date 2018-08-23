@@ -161,10 +161,6 @@ func (c *Consumer) storeTimers(index int, timerCh chan *TimerInfo) {
 				return
 			}
 
-			if !c.checkIfCurrentConsumerShouldOwnVb(uint16(timer.Vb)) {
-				continue
-			}
-
 			store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(timer.Vb))
 			if !found {
 				logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
