@@ -426,7 +426,7 @@ func (s *SuperSupervisor) GetMetaStoreStats(appName string) map[string]uint64 {
 	for stat, counter := range timers.PoolStats() {
 		stats[stat] = counter
 	}
-	return nil
+	return stats
 }
 
 func (s *SuperSupervisor) runningFnsCount() int {

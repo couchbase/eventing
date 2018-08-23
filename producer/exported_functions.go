@@ -16,38 +16,32 @@ import (
 	"github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
 )
 
 // Auth returns username:password combination for the cluster
 func (p *Producer) Auth() string {
-	p.RLock()
-	defer p.RUnlock()
 	return p.auth
 }
 
 // CfgData returns deployment descriptor content
 func (p *Producer) CfgData() string {
-	p.RLock()
-	defer p.RUnlock()
 	return p.cfgData
 }
 
 // ClearEventStats flushes event processing stats
 func (p *Producer) ClearEventStats() {
-	p.RLock()
-	defer p.RUnlock()
-	for _, c := range p.runningConsumers {
+	for _, c := range p.getConsumers() {
 		c.ClearEventStats()
 	}
 }
 
 // GetLatencyStats returns latency stats for event handlers from from cpp world
 func (p *Producer) GetLatencyStats() map[string]uint64 {
-	p.RLock()
-	defer p.RUnlock()
 	latencyStats := make(map[string]uint64)
-	for _, c := range p.runningConsumers {
+
+	for _, c := range p.getConsumers() {
 		clStats := c.GetLatencyStats()
 		for k, v := range clStats {
 			if _, ok := latencyStats[k]; !ok {
@@ -63,9 +57,8 @@ func (p *Producer) GetLatencyStats() map[string]uint64 {
 func (p *Producer) GetExecutionStats() map[string]interface{} {
 	executionStats := make(map[string]interface{})
 	executionStats["timestamp"] = make(map[int]string)
-	p.RLock()
-	defer p.RUnlock()
-	for _, c := range p.runningConsumers {
+
+	for _, c := range p.getConsumers() {
 		for k, v := range c.GetExecutionStats() {
 			if k == "timestamp" {
 				executionStats["timestamp"].(map[int]string)[c.Pid()] = v.(string)
@@ -87,9 +80,8 @@ func (p *Producer) GetExecutionStats() map[string]interface{} {
 func (p *Producer) GetFailureStats() map[string]interface{} {
 	failureStats := make(map[string]interface{})
 	failureStats["timestamp"] = make(map[int]string)
-	p.RLock()
-	defer p.RUnlock()
-	for _, c := range p.runningConsumers {
+
+	for _, c := range p.getConsumers() {
 		for k, v := range c.GetFailureStats() {
 			if k == "timestamp" {
 				failureStats["timestamp"].(map[int]string)[c.Pid()] = v.(string)
@@ -110,9 +102,8 @@ func (p *Producer) GetFailureStats() map[string]interface{} {
 // GetLcbExceptionsStats returns libcouchbase exception stats from CPP workers
 func (p *Producer) GetLcbExceptionsStats() map[string]uint64 {
 	exceptionStats := make(map[string]uint64)
-	p.RLock()
-	defer p.RUnlock()
-	for _, c := range p.runningConsumers {
+
+	for _, c := range p.getConsumers() {
 		leStats := c.GetLcbExceptionsStats()
 		for k, v := range leStats {
 			if _, ok := exceptionStats[k]; !ok {
@@ -132,9 +123,8 @@ func (p *Producer) GetAppCode() string {
 // GetEventProcessingStats exposes dcp/timer processing stats
 func (p *Producer) GetEventProcessingStats() map[string]uint64 {
 	aggStats := make(map[string]uint64)
-	p.RLock()
-	defer p.RUnlock()
-	for _, consumer := range p.runningConsumers {
+
+	for _, consumer := range p.getConsumers() {
 		stats := consumer.GetEventProcessingStats()
 		for stat, value := range stats {
 			if _, ok := aggStats[stat]; !ok {
@@ -150,8 +140,10 @@ func (p *Producer) GetEventProcessingStats() map[string]uint64 {
 // GetHandlerCode returns handler code to assist V8 Debugger
 func (p *Producer) GetHandlerCode() string {
 	logPrefix := "Producer::GetHandlerCode"
-	p.RLock()
-	defer p.RUnlock()
+
+	p.runningConsumersRWMutex.RLock()
+	defer p.runningConsumersRWMutex.RUnlock()
+
 	if len(p.runningConsumers) > 0 {
 		return p.runningConsumers[0].GetHandlerCode()
 	}
@@ -167,8 +159,10 @@ func (p *Producer) GetNsServerPort() string {
 // GetSourceMap return source map to assist V8 Debugger
 func (p *Producer) GetSourceMap() string {
 	logPrefix := "Producer::GetSourceMap"
-	p.RLock()
-	defer p.RUnlock()
+
+	p.runningConsumersRWMutex.RLock()
+	defer p.runningConsumersRWMutex.RUnlock()
+
 	if len(p.runningConsumers) > 0 {
 		return p.runningConsumers[0].GetSourceMap()
 	}
@@ -198,13 +192,13 @@ func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bo
 
 // KvHostPorts returns host:port combination for kv service
 func (p *Producer) KvHostPorts() []string {
-	p.RLock()
-	defer p.RUnlock()
 	return p.kvHostPorts
 }
 
 // LenRunningConsumers returns the number of actively running consumers for a given app's producer
 func (p *Producer) LenRunningConsumers() int {
+	p.runningConsumersRWMutex.RLock()
+	defer p.runningConsumersRWMutex.RUnlock()
 	return len(p.runningConsumers)
 }
 
@@ -243,18 +237,10 @@ func (p *Producer) SetRetryCount(retryCount int64) {
 func (p *Producer) SignalBootstrapFinish() {
 	logPrefix := "Producer::SignalBootstrapFinish"
 
-	runningConsumers := make([]common.EventingConsumer, 0)
-
 	logging.Infof("%s [%s:%d] Got request to signal bootstrap status", logPrefix, p.appName, p.LenRunningConsumers())
 	<-p.bootstrapFinishCh
 
-	p.RLock()
-	for _, c := range p.runningConsumers {
-		runningConsumers = append(runningConsumers, c)
-	}
-	p.RUnlock()
-
-	for _, c := range runningConsumers {
+	for _, c := range p.getConsumers() {
 		if c == nil {
 			continue
 		}
@@ -341,9 +327,8 @@ func (p *Producer) StopProducer() {
 // GetDcpEventsRemainingToProcess returns remaining dcp events to process
 func (p *Producer) GetDcpEventsRemainingToProcess() uint64 {
 	var remainingEvents uint64
-	p.RLock()
-	defer p.RUnlock()
-	for _, consumer := range p.runningConsumers {
+
+	for _, consumer := range p.getConsumers() {
 		remainingEvents += consumer.DcpEventsRemainingToProcess()
 	}
 
@@ -354,7 +339,7 @@ func (p *Producer) GetDcpEventsRemainingToProcess() uint64 {
 func (p *Producer) VbDcpEventsRemainingToProcess() map[int]int64 {
 	vbDcpEventsRemaining := make(map[int]int64)
 
-	for _, consumer := range p.runningConsumers {
+	for _, consumer := range p.getConsumers() {
 		eventsRemaining := consumer.VbDcpEventsRemainingToProcess()
 		for vb, count := range eventsRemaining {
 
@@ -372,9 +357,8 @@ func (p *Producer) VbDcpEventsRemainingToProcess() map[int]int64 {
 // GetEventingConsumerPids returns map of Eventing.Consumer worker name and it's os pid
 func (p *Producer) GetEventingConsumerPids() map[string]int {
 	workerPidMapping := make(map[string]int)
-	p.RLock()
-	defer p.RUnlock()
-	for _, consumer := range p.runningConsumers {
+
+	for _, consumer := range p.getConsumers() {
 		workerPidMapping[consumer.ConsumerName()] = consumer.Pid()
 	}
 	return workerPidMapping
@@ -389,9 +373,8 @@ func (p *Producer) WriteAppLog(log string) {
 // InternalVbDistributionStats returns internal state of vbucket ownership distribution on local eventing node
 func (p *Producer) InternalVbDistributionStats() map[string]string {
 	distributionStats := make(map[string]string)
-	p.RLock()
-	defer p.RUnlock()
-	for _, consumer := range p.runningConsumers {
+
+	for _, consumer := range p.getConsumers() {
 		distributionStats[consumer.ConsumerName()] = util.Condense(consumer.InternalVbDistributionStats())
 	}
 	return distributionStats
@@ -512,10 +495,11 @@ func (p *Producer) getSeqsProcessed() error {
 
 // GetSeqsProcessed returns vbucket specific sequence nos processed so far
 func (p *Producer) GetSeqsProcessed() map[int]int64 {
+	seqNoProcessed := make(map[int]int64)
+
 	p.seqsNoProcessedRWMutex.RLock()
 	defer p.seqsNoProcessedRWMutex.RUnlock()
 
-	seqNoProcessed := make(map[int]int64)
 	for k, v := range p.seqsNoProcessed {
 		seqNoProcessed[k] = v
 	}
@@ -526,12 +510,10 @@ func (p *Producer) GetSeqsProcessed() map[int]int64 {
 // RebalanceTaskProgress reports vbuckets remaining to be transferred as per planner
 // during the course of rebalance
 func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
-	p.RLock()
-	defer p.RUnlock()
 
 	producerLevelProgress := &common.RebalanceProgress{}
 
-	for _, consumer := range p.runningConsumers {
+	for _, consumer := range p.getConsumers() {
 		consumerProgress := consumer.RebalanceTaskProgress()
 
 		producerLevelProgress.CloseStreamVbsLen += consumerProgress.CloseStreamVbsLen
@@ -801,9 +783,8 @@ func (p *Producer) UpdateMemoryQuota(quota int64) {
 // TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
 func (p *Producer) TimerDebugStats() map[int]map[string]interface{} {
 	aggStats := make(map[int]map[string]interface{})
-	p.RLock()
-	defer p.RUnlock()
-	for _, consumer := range p.runningConsumers {
+
+	for _, consumer := range p.getConsumers() {
 		workerStats := consumer.TimerDebugStats()
 
 		for vb, stats := range workerStats {
@@ -836,25 +817,25 @@ func (p *Producer) TimerDebugStats() map[int]map[string]interface{} {
 // StopRunningConsumers stops all running instances of Eventing.Consumer
 func (p *Producer) StopRunningConsumers() {
 	logPrefix := "Producer::StopRunningConsumers"
-	p.Lock()
-	defer p.Unlock()
+
 	logging.Infof("%s [%s:%d] Stopping running instances of Eventing.Consumer",
 		logPrefix, p.appName, p.LenRunningConsumers())
 
-	for _, eventingConsumer := range p.runningConsumers {
-		p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[eventingConsumer])
-		delete(p.consumerSupervisorTokenMap, eventingConsumer)
+	for _, c := range p.getConsumers() {
+		p.stopAndDeleteConsumer(c)
 	}
+
+	p.runningConsumersRWMutex.Lock()
 	p.runningConsumers = nil
+	p.runningConsumersRWMutex.Unlock()
 }
 
 // RebalanceStatus returns state of rebalance for all running consumer instances
 func (p *Producer) RebalanceStatus() bool {
 	logPrefix := "Producer::RebalanceStatus"
-	p.RLock()
-	defer p.RUnlock()
+
 	consumerRebStatuses := make(map[string]bool)
-	for _, c := range p.runningConsumers {
+	for _, c := range p.getConsumers() {
 		consumerRebStatuses[c.ConsumerName()] = c.RebalanceStatus()
 	}
 
@@ -873,9 +854,8 @@ func (p *Producer) RebalanceStatus() bool {
 // VbSeqnoStats returns seq no stats, which can be useful in figuring out missed events during rebalance
 func (p *Producer) VbSeqnoStats() map[int][]map[string]interface{} {
 	seqnoStats := make(map[int][]map[string]interface{})
-	p.RLock()
-	defer p.RUnlock()
-	for _, consumer := range p.runningConsumers {
+
+	for _, consumer := range p.getConsumers() {
 		workerStats := consumer.VbSeqnoStats()
 
 		for vb, stats := range workerStats {
@@ -896,9 +876,8 @@ func (p *Producer) VbSeqnoStats() map[int][]map[string]interface{} {
 // CleanupUDSs clears up UDS created for communication between Go and eventing-consumer
 func (p *Producer) CleanupUDSs() {
 	if p.processConfig.IPCType == "af_unix" {
-		p.RLock()
-		defer p.RUnlock()
-		for _, c := range p.runningConsumers {
+
+		for _, c := range p.getConsumers() {
 			udsSockPath := fmt.Sprintf("%s/%s_%s.sock", os.TempDir(), p.nsServerHostPort, c.ConsumerName())
 			feedbackSockPath := fmt.Sprintf("%s/feedback_%s_%s.sock", os.TempDir(), p.nsServerHostPort, c.ConsumerName())
 
@@ -913,10 +892,33 @@ func (p *Producer) RemoveConsumerToken(workerName string) {
 	p.workerNameConsumerMapRWMutex.RLock()
 	defer p.workerNameConsumerMapRWMutex.RUnlock()
 
+	// TODO: Eventing.Consumer entry isn't cleaned up from runningConsumer list
 	if c, exists := p.workerNameConsumerMap[workerName]; exists {
-		p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[c])
-		delete(p.consumerSupervisorTokenMap, c)
+		p.stopAndDeleteConsumer(c)
 	}
+}
+
+func (p *Producer) stopAndDeleteConsumer(c common.EventingConsumer) {
+	p.tokenRWMutex.RLock()
+	token := p.consumerSupervisorTokenMap[c]
+	p.tokenRWMutex.RUnlock()
+	p.workerSupervisor.Remove(token)
+
+	p.tokenRWMutex.Lock()
+	delete(p.consumerSupervisorTokenMap, c)
+	p.tokenRWMutex.Unlock()
+}
+
+func (p *Producer) addToSupervisorTokenMap(c common.EventingConsumer, token suptree.ServiceToken) {
+	p.tokenRWMutex.Lock()
+	defer p.tokenRWMutex.Unlock()
+	p.consumerSupervisorTokenMap[c] = token
+}
+
+func (p *Producer) getSupervisorToken(c common.EventingConsumer) suptree.ServiceToken {
+	p.tokenRWMutex.RLock()
+	defer p.tokenRWMutex.RUnlock()
+	return p.consumerSupervisorTokenMap[c]
 }
 
 // IsPlannerRunning returns planner execution status
@@ -966,9 +968,8 @@ func (p *Producer) GetVbOwner(vb uint16) (string, string, error) {
 // GetMetaStoreStats exposes timer store related stat counters
 func (p *Producer) GetMetaStoreStats() map[string]uint64 {
 	metaStats := make(map[string]uint64)
-	p.RLock()
-	defer p.RUnlock()
-	for _, consumer := range p.runningConsumers {
+
+	for _, consumer := range p.getConsumers() {
 		stats := consumer.GetMetaStoreStats()
 		for stat, value := range stats {
 			if _, ok := metaStats[stat]; !ok {

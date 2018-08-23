@@ -137,10 +137,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 		vbEventingNodeAssignMap[vb] = node
 	}
 
-	p.RLock()
-	defer p.RUnlock()
-
-	for _, consumer := range p.runningConsumers {
+	for _, consumer := range p.getConsumers() {
 		consumer.VbEventingNodeAssignMapUpdate(vbEventingNodeAssignMap)
 	}
 
@@ -295,13 +292,10 @@ func (p *Producer) initWorkerVbMap() {
 		workerVbucketMap[workerName] = assignedVbs
 	}
 
-	p.RLock()
-	defer p.RUnlock()
-
 	logging.Infof("%s [%s:%d] Sending workerVbucketMap: %v to all consumers",
 		logPrefix, p.appName, p.LenRunningConsumers(), workerVbucketMap)
 
-	for _, consumer := range p.runningConsumers {
+	for _, consumer := range p.getConsumers() {
 		consumer.WorkerVbMapUpdate(workerVbucketMap)
 	}
 }
