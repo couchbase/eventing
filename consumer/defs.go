@@ -197,6 +197,7 @@ type Consumer struct {
 	timerStorageMetaChsRWMutex    *sync.RWMutex
 	timerStorageRoutineCount      int
 	timerStorageRoutineMetaChs    []chan *TimerInfo // Access controlled by timerStorageMetaChsRWMutex
+	timerStorageStopChs           []chan struct{}   // Access controlled by timerStorageMetaChsRWMutex
 	usingTimer                    bool
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed

@@ -178,8 +178,8 @@ type EventingSuperSup interface {
 	VbSeqnoStats(appName string) (map[int][]map[string]interface{}, error)
 }
 
-type EventingServiceMgr interface {
-}
+type EventingServiceMgr interface{}
+type Config map[string]interface{}
 
 // AppConfig Application/Event handler configuration
 type AppConfig struct {

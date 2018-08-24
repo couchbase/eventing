@@ -228,6 +228,22 @@ func (m *ServiceMgr) validateBucketExists(bucketName string) (info *runtimeInfo)
 	return
 }
 
+func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if info = m.validateBoolean("enable_debugger", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("ram_quota", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) validateNonMemcached(bucketName string) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 

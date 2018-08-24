@@ -354,18 +354,16 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::Context::Scope context_scope(context);
 
   auto uniline_info = transpiler->UniLineN1QL(script_to_execute);
-  LOG(logTrace) << "code after Unilining N1QL: "
-                << RM(uniline_info.handler_code) << std::endl;
+  LOG(logInfo) << "code after Unilining N1QL: " << RM(uniline_info.handler_code)
+               << std::endl;
   if (uniline_info.code != kOK) {
     LOG(logError) << "failed to uniline N1QL: " << RM(uniline_info.code)
                   << std::endl;
     return uniline_info.code;
   }
 
-  handler_code_ = uniline_info.handler_code;
-
   auto jsify_info = Jsify(script_to_execute);
-  LOG(logTrace) << "jsified code: " << RM(jsify_info.handler_code) << std::endl;
+  LOG(logInfo) << "jsified code: " << RM(jsify_info.handler_code) << std::endl;
   if (jsify_info.code != kOK) {
     LOG(logError) << "failed to jsify: " << RM(jsify_info.handler_code)
                   << std::endl;
@@ -377,13 +375,9 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
   script_to_execute =
       transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
-                            app_name_ + ".map.json", settings_->host_addr,
-                            settings_->eventing_port) +
+                            uniline_info.handler_code) +
       '\n';
   script_to_execute += std::string((const char *)js_builtin) + '\n';
-  source_map_ =
-      transpiler->GetSourceMap(jsify_info.handler_code, app_name_ + ".js");
-  LOG(logTrace) << "source map:" << RM(source_map_) << std::endl;
 
   auto source = v8Str(isolate_, script_to_execute);
   script_to_execute_ = script_to_execute;
@@ -862,20 +856,23 @@ CodeVersion V8Worker::IdentifyVersion(std::string handler) {
   v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
+  auto transpiler = UnwrapData(isolate_)->transpiler;
   v8::Context::Scope context_scope(context);
+
+  auto uniline_info = transpiler->UniLineN1QL(handler);
+  if (uniline_info.code != kOK) {
+    throw "Unline N1QL failed when trying to identify version";
+  }
 
   auto jsify_info = Jsify(handler);
   if (jsify_info.code != kOK) {
     throw "Jsify failed when trying to identify version";
   }
 
-  auto transpiler = UnwrapData(isolate_)->transpiler;
   auto script_to_execute =
       transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
-                            app_name_ + ".map.json", settings_->host_addr,
-                            settings_->eventing_port) +
+                            uniline_info.handler_code) +
       '\n';
-
   script_to_execute += std::string((const char *)js_builtin) + '\n';
 
   auto ver = transpiler->GetCodeVersion(script_to_execute);

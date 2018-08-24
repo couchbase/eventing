@@ -655,6 +655,27 @@ func TestDeleteBeforeUndeploy(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestUndeployWhenTimersAreFired(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_with_timer_with_large_context"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	go pumpBucketOps(opsType{count: itemCount * 8}, &rateLimit{})
+
+	time.Sleep(30 * time.Second)
+	setSettings(handler, false, false, &commonSettings{})
+	waitForUndeployToFinish(handler)
+	time.Sleep(100 * time.Second)
+	itemCount, err := getBucketItemCount(metaBucket)
+	if itemCount != 0 && err == nil {
+		t.Error("Item count in metadata bucket after undeploy", itemCount)
+	}
+
+	flushFunctionAndBucket(handler)
+}
+
 // Disabling as for the time being source bucket mutations aren't allowed
 /* func TestSourceBucketMutations(t *testing.T) {
 	time.Sleep(time.Second * 5)

@@ -303,50 +303,6 @@ func (c *Consumer) sendGetLcbExceptionStats(sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
-func (c *Consumer) sendGetSourceMap(sendToDebugger bool) {
-	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerSourceMap, 0, "")
-
-	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["SOURCE_MAP"]; !ok {
-		c.v8WorkerMessagesProcessed["SOURCE_MAP"] = 0
-	}
-	c.v8WorkerMessagesProcessed["SOURCE_MAP"]++
-	c.msgProcessedRWMutex.Unlock()
-
-	m := &msgToTransmit{
-		msg: &message{
-			Header: header,
-		},
-		sendToDebugger: sendToDebugger,
-		prioritize:     true,
-		headerBuilder:  hBuilder,
-	}
-
-	c.sendMessage(m)
-}
-
-func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) {
-	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerHandlerCode, 0, "")
-
-	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["HANDLER_CODE"]; !ok {
-		c.v8WorkerMessagesProcessed["HANDLER_CODE"] = 0
-	}
-	c.v8WorkerMessagesProcessed["HANDLER_CODE"]++
-	c.msgProcessedRWMutex.Unlock()
-
-	m := &msgToTransmit{
-		msg: &message{
-			Header: header,
-		},
-		sendToDebugger: sendToDebugger,
-		prioritize:     true,
-		headerBuilder:  hBuilder,
-	}
-
-	c.sendMessage(m)
-}
-
 func (c *Consumer) sendTimerEvent(e *timerContext, sendToDebugger bool) {
 	partition := int16(e.Vb)
 	timerHeader, hBuilder := c.makeTimerEventHeader(partition)
@@ -421,6 +377,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 }
 
 func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
+	logPrefix := "Consumer::sendVbFilterData"
 
 	data := vbFilterData{
 		SeqNo:   seqNo,
@@ -448,8 +405,8 @@ func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
 	}
 
 	c.sendMessage(msg)
-	logging.Infof("[%s:%s:%s:%d] vb: %d seqNo: %d sending filter data to C++",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket, seqNo)
+	logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d sending filter data to C++",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, seqNo)
 }
 
 func (c *Consumer) sendMessageLoop() {

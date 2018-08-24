@@ -692,6 +692,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             return;
                         }
 
+                        return ApplicationService.public.getConfig();
+                    })
+                    .then(function(response) {
+                        if (!response.data.enable_debugger) {
+                            ApplicationService.server.showErrorAlert('Unable to start debugger as it is disabled. Please enable it under cluster settings');
+                            return;
+                        }
+
                         if (!isDebugOn) {
                             debugScope.url = 'Waiting for mutation';
                             debugScope.urlReceived = false;
@@ -706,7 +714,18 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                         return $q.reject(errMsg);
                                     }
 
-                                    console.log('Start debug:', response.data);
+                                    // Open the dialog to show the URL for debugging.
+                                    $uibModal.open({
+                                            templateUrl: '../_p/ui/event/ui-current/dialogs/app-debug.html',
+                                            scope: debugScope
+                                        }).result
+                                        .then(function(response) {
+                                            // Stop debugger agent.
+                                            return stopDebugger();
+                                        })
+                                        .catch(function(errResponse) {
+                                            return stopDebugger();
+                                        });
 
                                     // Poll till we get the URL for debugging.
                                     function getDebugUrl() {
@@ -735,7 +754,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 })
                                 .catch(function(errResponse) {
                                     console.error('Failed to start debugger', errResponse);
-                                })
+                                });
                         }
 
                         function stopDebugger() {
@@ -753,19 +772,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                     debugScope.urlReceived = false;
                                 });
                         }
-
-                        // Open the dialog to show the URL for debugging.
-                        $uibModal.open({
-                                templateUrl: '../_p/ui/event/ui-current/dialogs/app-debug.html',
-                                scope: debugScope
-                            }).result
-                            .then(function(response) {
-                                // Stop debugger agent.
-                                return stopDebugger();
-                            })
-                            .catch(function(errResponse) {
-                                return stopDebugger();
-                            });
                     })
                     .catch(function(errResponse) {
                         console.error('Unable to start debugger', errResponse);
@@ -883,6 +889,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             },
                             data: settings
                         });
+                    },
+                    getConfig: function() {
+                        return $http.get('/_p/event/api/v1/config');
                     }
                 },
                 tempStore: {

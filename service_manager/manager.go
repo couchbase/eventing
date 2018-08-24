@@ -82,12 +82,13 @@ func (m *ServiceMgr) initService() {
 		}
 	}(m)
 
+	m.enableDebugger()
+
 	// Internal REST APIs
 	http.HandleFunc("/cleanupEventing", m.cleanupEventing)
 	http.HandleFunc("/clearEventStats", m.clearEventStats)
 	http.HandleFunc("/deleteApplication/", m.deletePrimaryStoreHandler)
 	http.HandleFunc("/deleteAppTempStore/", m.deleteTempStoreHandler)
-	http.HandleFunc("/debugging/", m.debugging)
 	http.HandleFunc("/getAggBootstrappingApps", m.getAggBootstrappingApps)
 	http.HandleFunc("/getAggEventProcessingStats", m.getAggEventProcessingStats)
 	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
@@ -223,6 +224,27 @@ func (m *ServiceMgr) initService() {
 				}
 			}
 		}()
+	}
+}
+
+func (m *ServiceMgr) enableDebugger() {
+	logPrefix := "ServiceMgr::enableDebugger"
+
+	config, info := m.getConfig()
+	if info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if _, exists := config["enable_debugger"]; exists {
+		logging.Tracef("%s enable_debugger field exists , not making any change", logPrefix)
+		return
+	}
+
+	logging.Tracef("%s enable_debugger field does not exist, enabling it", logPrefix)
+
+	config["enable_debugger"] = true
+	if info := m.saveConfig(config); info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("Unable to enable debugger by default, err: %v", info.Info)
 	}
 }
 

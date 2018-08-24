@@ -184,9 +184,8 @@ std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch) {
   char scratch[EXCEPTION_STR_SIZE]; // just some scratch space for sprintf
 
   v8::HandleScope handle_scope(isolate);
-  v8::String::Utf8Value exception(try_catch->Exception());
-  const char *exception_string = ToCString(exception);
-
+  const char *exception_string =
+      JSONStringify(isolate, try_catch->Exception()).c_str();
   v8::Handle<v8::Message> message = try_catch->Message();
 
   if (message.IsEmpty()) {
