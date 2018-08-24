@@ -279,6 +279,7 @@ type HandlerConfig struct {
 	WorkerCount              int
 	WorkerQueueCap           int64
 	WorkerQueueMemCap        int64
+	WorkerResponseTimeout    int
 }
 
 type ProcessConfig struct {

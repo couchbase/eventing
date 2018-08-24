@@ -214,6 +214,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.WorkerQueueMemCap = 1024 * 1024 * 1024
 	}
 
+	if val, ok := settings["worker_response_timeout"]; ok {
+		p.handlerConfig.WorkerResponseTimeout = int(val.(float64))
+	} else {
+		p.handlerConfig.WorkerResponseTimeout = 300 // in seconds
+	}
+
 	// Metastore related configuration
 
 	if val, ok := settings["execute_timer_routine_count"]; ok {

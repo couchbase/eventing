@@ -111,6 +111,25 @@ func (c *Consumer) updateWorkerStats() {
 			c.sendGetLatencyStats(false)
 			c.sendGetLcbExceptionStats(false)
 
+			val := c.workerRespMainLoopTs.Load()
+			if val == nil {
+				continue
+			} else {
+				if lastTs, ok := val.(time.Time); ok {
+					if int(time.Now().Sub(lastTs).Seconds()) > c.workerRespMainLoopThreshold {
+
+						if c.stoppingConsumer {
+							logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t last response received at %s",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, lastTs.String())
+							return
+						}
+
+						c.stoppingConsumer = true
+						c.producer.KillAndRespawnEventingConsumer(c)
+					}
+				}
+			}
+
 		case <-c.updateStatsStopCh:
 			logging.Infof("%s [%s:%s:%d] Exiting cpp worker stats updater routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())

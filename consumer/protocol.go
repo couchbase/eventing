@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/couchbase/eventing/gen/flatbuf/header"
 	"github.com/couchbase/eventing/gen/flatbuf/payload"
@@ -366,6 +367,8 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 		case handlerCode:
 			c.handlerCode = msg
 		case latencyStats:
+			c.workerRespMainLoopTs.Store(time.Now())
+
 			c.statsRWMutex.Lock()
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.latencyStats)
@@ -374,6 +377,8 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case failureStats:
+			c.workerRespMainLoopTs.Store(time.Now())
+
 			c.statsRWMutex.Lock()
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.failureStats)
@@ -382,6 +387,8 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case executionStats:
+			c.workerRespMainLoopTs.Store(time.Now())
+
 			c.statsRWMutex.Lock()
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.executionStats)
@@ -396,12 +403,16 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case queueSize:
+			c.workerRespMainLoopTs.Store(time.Now())
+
 			err := json.Unmarshal([]byte(msg), &c.cppQueueSizes)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal cpp queue sizes, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case lcbExceptions:
+			c.workerRespMainLoopTs.Store(time.Now())
+
 			c.statsRWMutex.Lock()
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.lcbExceptionStats)
