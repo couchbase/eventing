@@ -202,9 +202,11 @@ private:
   std::unique_ptr<ChannelImpl> channel_;
 };
 
-Agent::Agent(std::string host_name, std::string file_path, int port)
-    : client_(nullptr), platform_(nullptr), isolate_(nullptr), enabled_(false),
-      port_(port), host_name_(host_name), file_path_(file_path) {}
+Agent::Agent(std::string host_name, std::string file_path, int port,
+             PostURLCallback on_connect)
+    : client_(nullptr), on_connect_(on_connect), platform_(nullptr),
+      isolate_(nullptr), enabled_(false), port_(port), host_name_(host_name),
+      file_path_(file_path) {}
 
 // Destructor needs to be defined here in implementation file as the header
 // does not have full definition of some classes.
@@ -234,8 +236,9 @@ bool Agent::StartIoThread(bool wait_for_connect) {
   assert(client_ != nullptr);
 
   enabled_ = true;
-  io_ = std::unique_ptr<InspectorIo>(new InspectorIo(
-      isolate_, platform_, path_, host_name_, true, file_path_, port_));
+  io_ = std::unique_ptr<InspectorIo>(
+      new InspectorIo(isolate_, platform_, path_, host_name_, true, file_path_,
+                      port_, on_connect_));
   if (!io_->Start()) {
     client_.reset();
     return false;

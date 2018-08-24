@@ -99,12 +99,14 @@ private:
 class Communicator {
 public:
   Communicator(const std::string &host_ip, const std::string &host_port,
-               const std::string &usr, const std::string &key, bool ssl);
+               const std::string &usr, const std::string &key, bool ssl,
+               const std::string &app_name);
 
   CredsInfo GetCreds(const std::string &endpoint);
   CredsInfo GetCredsCached(const std::string &endpoint);
   NamedParamsInfo GetNamedParams(const std::string &query);
   ParseInfo ParseQuery(const std::string &query);
+  void WriteDebuggerURL(const std::string &url);
   void Refresh();
 
 private:
@@ -114,11 +116,13 @@ private:
 
   std::unordered_map<std::string, CredsInfo> creds_cache_;
   CURLClient curl_;
+  std::string app_name_;
   std::string get_creds_url_;
   std::string get_named_params_url_;
   std::string lo_key_;
   std::string lo_usr_;
   std::string parse_query_url_;
+  std::string write_debugger_url_;
 };
 
 #endif

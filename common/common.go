@@ -31,6 +31,21 @@ const (
 	AppStateUnexpected
 )
 
+const (
+	WaitingForMutation = "WaitingForMutation" // Debugger has been started and consumers are waiting to trap
+	MutationTrapped    = "MutationTrapped"    // One of the consumers have trapped the mutation
+	DebuggerTokenKey   = "debugger"
+	MetakvEventingPath = "/eventing/"
+	MetakvDebuggerPath = MetakvEventingPath + "debugger/"
+)
+
+type DebuggerInstance struct {
+	Token  string `json:"token"`  // An ID for a debugging session
+	Host   string `json:"host"`   // The node where debugger has been spawned
+	Status string `json:"status"` // Possible values are WaitingForMutation, MutationTrapped
+	URL    string `json:"url"`    // Chrome-Devtools URL for debugging
+}
+
 var ErrRetryTimeout = errors.New("retry timeout")
 
 // EventingProducer interface to export functions from eventing_producer
@@ -57,6 +72,7 @@ type EventingProducer interface {
 	GetVbOwner(vb uint16) (string, string, error)
 	GetSeqsProcessed() map[int]int64
 	GetSourceMap() string
+	GetDebuggerToken() string
 	InternalVbDistributionStats() map[string]string
 	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
 	IsPlannerRunning() bool
@@ -77,7 +93,7 @@ type EventingProducer interface {
 	RebalanceTaskProgress() *RebalanceProgress
 	RemoveConsumerToken(workerName string)
 	SignalBootstrapFinish()
-	SignalStartDebugger() error
+	SignalStartDebugger(token string) error
 	SignalStopDebugger() error
 	SetRetryCount(retryCount int64)
 	Serve()
@@ -86,11 +102,15 @@ type EventingProducer interface {
 	StopRunningConsumers()
 	String() string
 	TimerDebugStats() map[int]map[string]interface{}
+	IsTrapEvent() bool
+	SetTrapEvent(value bool)
 	UpdateMemoryQuota(quota int64)
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbDistributionStatsFromMetadata() map[string]map[string]string
 	VbSeqnoStats() map[int][]map[string]interface{}
 	WriteAppLog(log string)
+	WriteDebuggerURL(url string)
+	WriteDebuggerToken(token string) error
 }
 
 // EventingConsumer interface to export functions from eventing_consumer
@@ -169,13 +189,14 @@ type EventingSuperSup interface {
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
 	RemoveProducerToken(appName string)
 	RestPort() string
-	SignalStartDebugger(appName string) error
 	SignalStopDebugger(appName string) error
 	StopProducer(appName string, skipMetaCleanup bool)
 	TimerDebugStats(appName string) (map[int]map[string]interface{}, error)
 	VbDcpEventsRemainingToProcess(appName string) map[int]int64
 	VbDistributionStatsFromMetadata(appName string) map[string]map[string]string
 	VbSeqnoStats(appName string) (map[int][]map[string]interface{}, error)
+	WriteDebuggerURL(appName, url string)
+	WriteDebuggerToken(appName, token string)
 }
 
 type EventingServiceMgr interface{}
@@ -208,26 +229,6 @@ type EventProcessingStats struct {
 	DcpEventsProcessedPSec   int    `json:"dcp_events_processed_psec"`
 	TimerEventsProcessedPSec int    `json:"timer_events_processed_psec"`
 	Timestamp                string `json:"timestamp"`
-}
-
-type StartDebugBlob struct {
-	StartDebug bool `json:"start_debug"`
-}
-
-type StartDebugBlobVer struct {
-	StartDebugBlob
-	EventingVersion string `json:"version"`
-}
-
-type DebuggerInstanceAddrBlob struct {
-	ConsumerName string `json:"consumer_name"`
-	HostPortAddr string `json:"host_port_addr"`
-	NodeUUID     string `json:"uuid"`
-}
-
-type DebuggerInstanceAddrBlobVer struct {
-	DebuggerInstanceAddrBlob
-	EventingVersion string `json:"version"`
 }
 
 type CompileStatus struct {

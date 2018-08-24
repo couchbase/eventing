@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
-	"os"
 	"runtime/debug"
 	"sort"
 	"sync"
@@ -50,7 +49,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		dcpConfig:                       dcpConfig,
 		dcpFeedVbMap:                    make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:               hConfig.StreamBoundary,
-		debuggerStarted:                 false,
 		diagDir:                         pConfig.DiagDir,
 		fireTimerCh:                     make(chan *timerContext, dcpConfig["genChanSize"].(int)),
 		debuggerPort:                    pConfig.DebuggerPort,
@@ -91,17 +89,10 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		retryCount:                      retryCount,
 		sendMsgBufferRWMutex:            &sync.RWMutex{},
 		sendMsgCounter:                  0,
-		sendMsgToDebugger:               false,
 		signalBootstrapFinishCh:         make(chan struct{}, 1),
 		signalConnectedCh:               make(chan struct{}, 1),
-		signalDebugBlobDebugStopCh:      make(chan struct{}, 1),
 		signalFeedbackConnectedCh:       make(chan struct{}, 1),
-		signalInstBlobCasOpFinishCh:     make(chan struct{}, 1),
 		signalSettingsChangeCh:          make(chan struct{}, 1),
-		signalStartDebuggerCh:           make(chan struct{}, 1),
-		signalStopDebuggerCh:            make(chan struct{}, 1),
-		signalStopDebuggerRoutineCh:     make(chan struct{}, 1),
-		signalUpdateDebuggerInstBlobCh:  make(chan struct{}, 1),
 		socketTimeout:                   time.Duration(hConfig.SocketTimeout) * time.Second,
 		socketWriteBatchSize:            hConfig.SocketWriteBatchSize,
 		socketWriteLoopStopAckCh:        make(chan struct{}, 1),
@@ -305,8 +296,6 @@ checkIfPlannerRunning:
 
 	go c.doLastSeqNoCheckpoint()
 
-	go c.pollForDebuggerStart()
-
 	c.signalBootstrapFinishCh <- struct{}{}
 
 	c.controlRoutineWg.Wait()
@@ -469,10 +458,6 @@ func (c *Consumer) Stop() {
 		c.stopControlRoutineCh <- struct{}{}
 	}
 
-	if c.signalStopDebuggerRoutineCh != nil {
-		c.signalStopDebuggerRoutineCh <- struct{}{}
-	}
-
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop checkpointing routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
@@ -579,37 +564,14 @@ func (c *Consumer) NotifySettingsChange() {
 	c.signalSettingsChangeCh <- struct{}{}
 }
 
-// SignalStopDebugger signal C++ V8 consumer to stop Debugger Agent
+// SignalStopDebugger signal C++ consumer to stop debugger
 func (c *Consumer) SignalStopDebugger() error {
 	logPrefix := "Consumer::SignalStopDebugger"
 
-	logging.Infof("%s [%s:%s:%d] Got signal to stop V8 Debugger Agent",
+	logging.Infof("%s [%s:%s:%d] Got signal to stop debugger",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	c.signalStopDebuggerCh <- struct{}{}
-
-	c.stopDebuggerServer()
-
-	// Reset the debugger instance blob
-	dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
-	dInstAddrBlob := &common.DebuggerInstanceAddrBlobVer{
-		common.DebuggerInstanceAddrBlob{},
-		util.EventingVer(),
-	}
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback,
-		c, c.producer.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
-	}
-
-	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", c.eventingDir, c.app.AppName)
-	err = os.Remove(frontendURLFilePath)
-	if err != nil {
-		logging.Infof("%s [%s:%s:%d] Failed to remove frontend.url file, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-	}
-
+	c.stopDebugger()
 	return nil
 }
 

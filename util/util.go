@@ -316,7 +316,7 @@ func Console(clusterAddr string, format string, v ...interface{}) error {
 	return err
 }
 
-func StopDebugger(urlSuffix, nodeAddr, appName string) {
+func StopDebugger(nodeAddr, appName string) {
 	endpointURL := fmt.Sprintf("http://%s/stopDebugger/?name=%s", nodeAddr, appName)
 	netClient := NewClient(HTTPRequestTimeout)
 
@@ -328,34 +328,6 @@ func StopDebugger(urlSuffix, nodeAddr, appName string) {
 
 	defer res.Body.Close()
 	return
-}
-
-func GetDebuggerURL(urlSuffix, nodeAddr, appName string) string {
-	logPrefix := "util::GetDebuggerURL"
-
-	if nodeAddr == "" {
-		logging.Verbosef("%s Debugger host not found. Debugger not started", logPrefix)
-		return ""
-	}
-
-	endpointURL := fmt.Sprintf("http://%s/%s/?name=%s", nodeAddr, urlSuffix, appName)
-
-	netClient := NewClient(HTTPRequestTimeout)
-
-	res, err := netClient.Get(endpointURL)
-	if err != nil {
-		logging.Errorf("%s Failed to capture v8 debugger url from url: %rs, err: %v", logPrefix, endpointURL, err)
-		return ""
-	}
-
-	buf, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		logging.Errorf("%s Failed to read v8 debugger url response from url: %rs, err: %v", logPrefix, endpointURL, err)
-		return ""
-	}
-	defer res.Body.Close()
-
-	return string(buf)
 }
 
 func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) (map[string]string, error) {

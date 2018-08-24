@@ -193,7 +193,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   auto key = GetLocalKey();
   data_.comm = new Communicator(server_settings->host_addr, port, key.first,
-                                key.second, ssl);
+                                key.second, ssl, app_name_);
 
   data_.transpiler =
       new Transpiler(isolate_, GetTranspilerSrc(), h_config->handler_headers,
@@ -771,9 +771,15 @@ void V8Worker::StartDebugger() {
 
   LOG(logInfo) << "Starting debugger on port: " << RS(port) << std::endl;
   debugger_started_ = true;
-  agent_ = new inspector::Agent(
-      settings_->host_addr,
-      settings_->eventing_dir + "/" + app_name_ + "_frontend.url", port);
+  auto on_connect = [this](const std::string &url) -> void {
+    auto comm = UnwrapData(isolate_)->comm;
+    comm->WriteDebuggerURL(url);
+  };
+
+  agent_ = new inspector::Agent(settings_->host_addr,
+                                settings_->eventing_dir + "/" + app_name_ +
+                                    "_frontend.url",
+                                port, on_connect);
 }
 
 void V8Worker::StopDebugger() {

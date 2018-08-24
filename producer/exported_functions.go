@@ -970,3 +970,44 @@ func (p *Producer) GetMetaStoreStats() map[string]uint64 {
 
 	return metaStats
 }
+
+func (p *Producer) WriteDebuggerToken(token string) error {
+	logPrefix := "Producer::WriteDebuggerToken"
+
+	data := &common.DebuggerInstance{
+		Token:  token,
+		Status: common.WaitingForMutation,
+	}
+	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
+		setOpCallback, p, key, data)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout",
+			logPrefix, p.appName, p.LenRunningConsumers())
+		return common.ErrRetryTimeout
+	}
+	return nil
+}
+
+func (p *Producer) WriteDebuggerURL(url string) {
+	logPrefix := "Producer::WriteDebuggerURL"
+
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
+		writeDebuggerURLCallback, p, url)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout",
+			logPrefix, p.appName, p.LenRunningConsumers())
+	}
+}
+
+func (p *Producer) SetTrapEvent(value bool) {
+	p.trapEvent = value
+}
+
+func (p *Producer) IsTrapEvent() bool {
+	return p.trapEvent
+}
+
+func (p *Producer) GetDebuggerToken() string {
+	return p.debuggerToken
+}

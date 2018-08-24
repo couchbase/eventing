@@ -34,7 +34,7 @@ class InspectorIo {
 public:
   InspectorIo(Isolate *isolate, Platform *platform, const std::string &path,
               std::string host_name, bool wait_for_connect,
-              std::string file_path_, int port);
+              std::string file_path_, int port, PostURLCallback on_connect);
 
   ~InspectorIo();
   // Start the inspector agent thread, waiting for it to initialize,
@@ -98,6 +98,7 @@ private:
   // Broadcast incoming_message_cond_
   void NotifyMessageReceived();
 
+  PostURLCallback on_connect_;
   // The IO thread runs its own uv_loop to implement the TCP server off
   // the main thread.
   uv_thread_t thread_;

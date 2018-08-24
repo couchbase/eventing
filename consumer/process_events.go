@@ -16,6 +16,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
+	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
@@ -69,32 +70,10 @@ func (c *Consumer) processEvents() {
 				logging.Tracef("%s [%s:%s:%d] Got DCP_MUTATION for key: %ru datatype: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
 
-				if c.debuggerState == startDebug {
-
-					c.signalUpdateDebuggerInstBlobCh <- struct{}{}
-
-					select {
-					case <-c.signalInstBlobCasOpFinishCh:
-						select {
-						case <-c.signalStartDebuggerCh:
-							go c.startDebuggerServer()
-							c.sendMsgToDebugger = true
-						default:
-						}
-					}
-
-					c.debuggerState = stopDebug
-				}
-
 				switch e.Datatype {
 				case dcpDatatypeJSON:
-					if !c.sendMsgToDebugger {
-						c.dcpMutationCounter++
-						c.sendDcpEvent(e, c.sendMsgToDebugger)
-					} else {
-						c.dcpMutationCounter++
-						go c.sendDcpEvent(e, c.sendMsgToDebugger)
-					}
+					c.dcpMutationCounter++
+					c.sendEvent(e)
 				case dcpDatatypeJSONXattr:
 					totalXattrLen := binary.BigEndian.Uint32(e.Value[0:])
 					totalXattrData := e.Value[4 : 4+totalXattrLen-1]
@@ -146,33 +125,22 @@ func (c *Consumer) processEvents() {
 							e.Value = e.Value[4+totalXattrLen:]
 
 							if crc32.Update(0, c.crcTable, e.Value) != xMeta.Digest {
-								if !c.sendMsgToDebugger {
-									logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers as cas & crc have mismatched",
-										logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-									c.dcpMutationCounter++
-									c.sendDcpEvent(e, c.sendMsgToDebugger)
-								} else {
-									c.dcpMutationCounter++
-									go c.sendDcpEvent(e, c.sendMsgToDebugger)
-								}
+								logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers as cas & crc have mismatched",
+									logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+								c.dcpMutationCounter++
+								c.sendEvent(e)
 							}
 						}
 					} else {
 						e.Value = e.Value[4+totalXattrLen:]
-						if !c.sendMsgToDebugger {
-							logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers because no eventing xattrs",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-							c.dcpMutationCounter++
-							c.sendDcpEvent(e, c.sendMsgToDebugger)
-						} else {
-							c.dcpMutationCounter++
-							go c.sendDcpEvent(e, c.sendMsgToDebugger)
-						}
+						logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers because no eventing xattrs",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+						c.dcpMutationCounter++
+						c.sendEvent(e)
 					}
 				}
 
 			case mcd.DCP_DELETION:
-
 				c.filterVbEventsRWMutex.RLock()
 				if _, ok := c.filterVbEvents[e.VBucket]; ok {
 					c.filterVbEventsRWMutex.RUnlock()
@@ -181,30 +149,8 @@ func (c *Consumer) processEvents() {
 				c.filterVbEventsRWMutex.RUnlock()
 
 				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
-
-				if c.debuggerState == startDebug {
-
-					c.signalUpdateDebuggerInstBlobCh <- struct{}{}
-
-					select {
-					case <-c.signalInstBlobCasOpFinishCh:
-						select {
-						case <-c.signalStartDebuggerCh:
-							go c.startDebuggerServer()
-							c.sendMsgToDebugger = true
-						default:
-						}
-					}
-					c.debuggerState = stopDebug
-				}
-
-				if !c.sendMsgToDebugger {
-					c.dcpDeletionCounter++
-					c.sendDcpEvent(e, c.sendMsgToDebugger)
-				} else {
-					c.dcpDeletionCounter++
-					go c.sendDcpEvent(e, c.sendMsgToDebugger)
-				}
+				c.dcpDeletionCounter++
+				c.sendEvent(e)
 
 			case mcd.DCP_STREAMREQ:
 
@@ -509,7 +455,7 @@ func (c *Consumer) processEvents() {
 			}
 
 			c.timerMessagesProcessed++
-			c.sendTimerEvent(e, c.sendMsgToDebugger)
+			c.sendTimerEvent(e, false)
 
 		case <-c.statsTicker.C:
 
@@ -548,25 +494,6 @@ func (c *Consumer) processEvents() {
 				c.opsTimestamp = tStamp
 				c.dcpOpsProcessed = dcpOpCount
 				c.msgProcessedRWMutex.RUnlock()
-			}
-
-		case <-c.signalStopDebuggerCh:
-			c.debuggerState = stopDebug
-			c.consumerSup.Remove(c.debugClientSupToken)
-
-			c.debuggerState = debuggerOpcode
-
-			// Reset debuggerInstanceAddr blob, otherwise next debugger session can't start
-			dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
-			dInstAddrBlob := &common.DebuggerInstanceAddrBlobVer{
-				common.DebuggerInstanceAddrBlob{},
-				util.EventingVer(),
-			}
-			err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback,
-				c, c.producer.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob)
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-				return
 			}
 
 		case <-c.stopConsumerCh:
@@ -1225,6 +1152,34 @@ func (c *Consumer) cppWorkerThrPartitionMap() {
 	}
 
 	c.cppThrPartitionMap = util.VbucketDistribution(partitions, c.cppWorkerThrCount)
+}
+
+func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
+	logPrefix := "Consumer::processTrappedEvent"
+
+	if !c.producer.IsTrapEvent() {
+		c.sendDcpEvent(e, false)
+		return nil
+	}
+
+	logging.Infof("%s [%s:%s:%d] Trying to trap an event",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
+
+	var success bool
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount,
+		acquireDebuggerTokenCallback, c, c.producer.GetDebuggerToken(), &success)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return common.ErrRetryTimeout
+	}
+
+	if success {
+		c.startDebugger(e)
+	} else {
+		c.sendDcpEvent(e, false)
+	}
+	return nil
 }
 
 func (c *Consumer) processReqStreamMessages() {

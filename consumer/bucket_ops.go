@@ -943,6 +943,57 @@ var removeDocIDCallback = func(args ...interface{}) error {
 	return err
 }
 
+var acquireDebuggerTokenCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::acquireDebuggerTokenCallback"
+
+	c := args[0].(*Consumer)
+	token := args[1].(string)
+	success := args[2].(*bool)
+
+	key := c.producer.AddMetadataPrefix(c.app.AppName).Raw() + "::" + common.DebuggerTokenKey
+	var instance common.DebuggerInstance
+	cas, err := c.gocbMetaBucket.Get(key, &instance)
+	if err == gocb.ErrKeyNotFound || err == gocb.ErrShutdown {
+		logging.Errorf("%s [%s:%s:%d] Key: %s, debugger token not found or bucket is closed, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
+		*success = false
+		return nil
+	}
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Key: %s, failed to get doc from metadata bucket, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
+		return err
+	}
+
+	// Some other consumer has acquired the token
+	if instance.Status == common.MutationTrapped || instance.Token != token {
+		logging.Infof("%s [%s:%s:%d] Some other consumer acquired the debugger token or token is stale",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		*success = false
+		return nil
+	}
+
+	instance.Host = c.HostPortAddr()
+	instance.Status = common.MutationTrapped
+	_, err = c.gocbMetaBucket.Replace(key, instance, cas, 0)
+	if err == nil {
+		logging.Infof("%s [%s:%s:%d] Debugger token acquired",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		*success = true
+		return nil
+	}
+	// Check for CAS mismatch
+	if gocb.IsKeyExistsError(err) {
+		*success = false
+		logging.Infof("%s [%s:%s:%d] Some other consumer acquired the debugger token",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+	logging.Errorf("%s [%s:%s:%d] Failed to acquire token, err: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+	return err
+}
+
 var removeIndexCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::removeIndexCallback"
 

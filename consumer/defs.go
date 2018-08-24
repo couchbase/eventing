@@ -33,11 +33,6 @@ const (
 const (
 	udsSockPathLimit = 100
 
-	// KV blob suffixes to assist in choose right consumer instance
-	// for instantiating V8 Debugger instance
-	startDebuggerFlag    = "startDebugger"
-	debuggerInstanceAddr = "debuggerInstAddr"
-
 	// To decode messages from c++ world to Go
 	headerFragmentSize = 4
 
@@ -45,8 +40,6 @@ const (
 	ClusterChangeNotifChBufSize = 10
 
 	cppWorkerPartitionCount = 1024
-
-	debuggerFlagCheckInterval = time.Duration(5000) * time.Millisecond
 
 	// Interval for retrying failed bucket operations using go-couchbase
 	bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
@@ -60,8 +53,6 @@ const (
 	restartVbDcpStreamTickInterval = time.Duration(3000) * time.Millisecond
 
 	vbTakeoverRetryInterval = time.Duration(1000) * time.Millisecond
-
-	retryInterval = time.Duration(1000) * time.Millisecond
 
 	socketWriteTimerInterval = time.Duration(5000) * time.Millisecond
 
@@ -146,7 +137,6 @@ type Consumer struct {
 	debugListener         net.Listener
 	diagDir               string // Location that will house minidumps from from crashed cpp workers
 	handlerCode           string // Handler code for V8 Debugger
-	sendMsgToDebugger     bool
 	sourceMap             string // source map to assist with V8 Debugger
 
 	aggDCPFeed                    chan *cb.DcpEvent
@@ -246,16 +236,6 @@ type Consumer struct {
 	createTimerStopCh chan struct{}
 	scanTimerStopCh   chan struct{}
 
-	// Signals V8 consumer to start V8 Debugger agent
-	signalStartDebuggerCh          chan struct{}
-	signalStopDebuggerCh           chan struct{}
-	signalInstBlobCasOpFinishCh    chan struct{}
-	signalUpdateDebuggerInstBlobCh chan struct{}
-	signalDebugBlobDebugStopCh     chan struct{}
-	signalStopDebuggerRoutineCh    chan struct{}
-	debuggerState                  int8
-	debuggerStarted                bool
-
 	socketTimeout time.Duration
 
 	dcpStreamBoundary common.DcpStreamBoundary
@@ -290,9 +270,8 @@ type Consumer struct {
 	osPid atomic.Value
 
 	// C++ v8 worker cmd handle, would be required to killing worker that are no more needed
-	client              *client
-	debugClient         *debugClient // C++ V8 worker spawned for debugging purpose
-	debugClientSupToken suptree.ServiceToken
+	client      *client
+	debugClient *debugClient // C++ V8 worker spawned for debugging purpose
 
 	consumerSup    *suptree.Supervisor
 	clientSupToken suptree.ServiceToken

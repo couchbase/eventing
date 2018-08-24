@@ -324,15 +324,6 @@ func (c *Consumer) sendTimerEvent(e *timerContext, sendToDebugger bool) {
 }
 
 func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
-
-	if sendToDebugger {
-	checkDebuggerStarted:
-		if !c.debuggerStarted {
-			time.Sleep(retryInterval)
-			goto checkDebuggerStarted
-		}
-	}
-
 	m := dcpMetadata{
 		Cas:     e.Cas,
 		DocID:   string(e.Key),
@@ -555,7 +546,6 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 				c.debugConn.Close()
 				return err
 			}
-			c.sendMsgToDebugger = false
 		}
 
 		// Reset the sendMessage buffer and message counter

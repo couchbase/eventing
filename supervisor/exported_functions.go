@@ -152,25 +152,6 @@ func (s *SuperSupervisor) RestPort() string {
 	return s.restPort
 }
 
-// SignalStartDebugger kicks off V8 Debugger for a specific deployed lambda
-func (s *SuperSupervisor) SignalStartDebugger(appName string) error {
-	logPrefix := "SuperSupervisor::SignalStartDebugger"
-
-	p, ok := s.runningFns()[appName]
-	if ok {
-		err := p.SignalStartDebugger()
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
-			return common.ErrRetryTimeout
-		}
-	} else {
-		logging.Errorf("%s [%d] Function: %s request didn't go through as Eventing.Producer instance isn't alive",
-			logPrefix, s.runningFnsCount(), appName)
-	}
-
-	return nil
-}
-
 // SignalStopDebugger stops V8 Debugger for a specific deployed lambda
 func (s *SuperSupervisor) SignalStopDebugger(appName string) error {
 	logPrefix := "SuperSupervisor::SignalStopDebugger"
@@ -427,6 +408,30 @@ func (s *SuperSupervisor) GetMetaStoreStats(appName string) map[string]uint64 {
 		stats[stat] = counter
 	}
 	return stats
+}
+
+func (s *SuperSupervisor) WriteDebuggerToken(appName, token string) {
+	logPrefix := "SuperSupervisor::WriteDebuggerToken"
+
+	p, exists := s.runningFns()[appName]
+	if !exists {
+		logging.Errorf("%s [%d] Function %s not found",
+			logPrefix, s.runningFnsCount(), appName)
+		return
+	}
+	p.WriteDebuggerToken(token)
+}
+
+func (s *SuperSupervisor) WriteDebuggerURL(appName, url string) {
+	logPrefix := "SuperSupervisor::WriteDebuggerURL"
+
+	p, exists := s.runningFns()[appName]
+	if !exists {
+		logging.Errorf("%s [%d] Function %s not found",
+			logPrefix, s.runningFnsCount(), appName)
+		return
+	}
+	p.WriteDebuggerURL(url)
 }
 
 func (s *SuperSupervisor) runningFnsCount() int {
