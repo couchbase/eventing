@@ -377,6 +377,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 }
 
 func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
+	logPrefix := "Consumer::sendVbFilterData"
 
 	data := vbFilterData{
 		SeqNo:   seqNo,
@@ -404,8 +405,8 @@ func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
 	}
 
 	c.sendMessage(msg)
-	logging.Infof("[%s:%s:%s:%d] vb: %d seqNo: %d sending filter data to C++",
-		c.app.AppName, c.workerName, c.tcpPort, c.Pid(), e.VBucket, seqNo)
+	logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d sending filter data to C++",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, seqNo)
 }
 
 func (c *Consumer) sendMessageLoop() {

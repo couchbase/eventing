@@ -425,10 +425,22 @@ func (c *Consumer) Stop() {
 		c.stopReqStreamProcessCh <- struct{}{}
 	}
 
+	if c.createTimerStopCh != nil {
+		c.createTimerStopCh <- struct{}{}
+	}
+
+	if c.scanTimerStopCh != nil {
+		c.scanTimerStopCh <- struct{}{}
+	}
+
 	c.timerStorageMetaChsRWMutex.Lock()
 	for i := 0; i < c.timerStorageRoutineCount; i++ {
 		if c.timerStorageRoutineMetaChs[i] != nil {
 			close(c.timerStorageRoutineMetaChs[i])
+		}
+
+		if c.timerStorageStopChs[i] != nil {
+			c.timerStorageStopChs[i] <- struct{}{}
 		}
 	}
 
@@ -453,14 +465,6 @@ func (c *Consumer) Stop() {
 
 	logging.Infof("%s [%s:%s:%d] Sent signal to stop cpp worker stat collection routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
-
-	if c.createTimerStopCh != nil {
-		c.createTimerStopCh <- struct{}{}
-	}
-
-	if c.scanTimerStopCh != nil {
-		c.scanTimerStopCh <- struct{}{}
-	}
 
 	if c.stopCheckpointingCh != nil {
 		c.stopCheckpointingCh <- struct{}{}

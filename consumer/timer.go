@@ -16,7 +16,7 @@ func (c *Consumer) scanTimers() {
 	for {
 		select {
 		case <-c.scanTimerStopCh:
-			logging.Errorf("%s [%s:%s:%d] Exiting timer scanning routine",
+			logging.Infof("%s [%s:%s:%d] Exiting timer scanning routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 
@@ -115,9 +115,14 @@ func (c *Consumer) routeTimers() {
 	logPrefix := "Consumer::routeTimers"
 
 	c.timerStorageMetaChsRWMutex.Lock()
+	c.timerStorageStopChs = make([]chan struct{}, 0)
+
 	for i := 0; i < c.timerStorageRoutineCount; i++ {
 		c.timerStorageRoutineMetaChs[i] = make(chan *TimerInfo, c.timerStorageChanSize/c.timerStorageRoutineCount)
-		go c.storeTimers(i, c.timerStorageRoutineMetaChs[i])
+
+		stopCh := make(chan struct{})
+		c.timerStorageStopChs = append(c.timerStorageStopChs, stopCh)
+		go c.storeTimers(i, c.timerStorageRoutineMetaChs[i], stopCh)
 	}
 	c.timerStorageMetaChsRWMutex.Unlock()
 
@@ -149,7 +154,7 @@ func (c *Consumer) routeTimers() {
 	}
 }
 
-func (c *Consumer) storeTimers(index int, timerCh chan *TimerInfo) {
+func (c *Consumer) storeTimers(index int, timerCh chan *TimerInfo, stopCh chan struct{}) {
 	logPrefix := "Consumer::storeTimers"
 
 	for {
@@ -183,6 +188,11 @@ func (c *Consumer) storeTimers(index int, timerCh chan *TimerInfo) {
 				continue
 			}
 			atomic.AddUint64(&c.metastoreSetCounter, 1)
+
+		case <-stopCh:
+			logging.Infof("%s [%s:%s:%d] Routine id: %d got message on stop chan. Exiting timer storage routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), index)
+			return
 		}
 	}
 }

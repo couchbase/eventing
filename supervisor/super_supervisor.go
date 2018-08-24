@@ -257,7 +257,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 		}
 		s.appRWMutex.Unlock()
 
-		logging.Infof("%s [%d] Function: %s, current state: %v requested status for deployment: %v processing: %v",
+		logging.Infof("%s [%d] Function: %s current state: %d requested status for deployment: %t processing: %t",
 			logPrefix, s.runningFnsCount(), appName, s.GetAppState(appName), deploymentStatus, processingStatus)
 
 		/*
