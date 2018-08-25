@@ -252,7 +252,9 @@ public:
   v8::Persistent<v8::Function> on_delete_;
 
   std::string app_name_;
+  std::string handler_code_;
   std::string script_to_execute_;
+  std::string source_map_;
   std::string cb_source_bucket_;
   int64_t max_task_duration_;
 
