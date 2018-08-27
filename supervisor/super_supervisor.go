@@ -774,14 +774,6 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool) 
 
 		s.deleteFromRunningProducers(appName)
 
-		if !skipMetaCleanup {
-			err := p.SignalCheckpointBlobCleanup()
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
-				return common.ErrRetryTimeout
-			}
-		}
-
 		s.Lock()
 		_, ok := s.cleanedUpAppMap[appName]
 		if !ok {

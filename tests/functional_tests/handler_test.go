@@ -676,6 +676,39 @@ func TestUndeployWhenTimersAreFired(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestUndeployWithKVFailover(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_with_timer"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "TimerBucketOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	addNodeFromRest("127.0.0.1:9003", "kv")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+
+	failoverFromRest([]string{"127.0.0.1:9003"})
+	time.Sleep(10 * time.Second)
+
+	setSettings(handler, false, false, &commonSettings{})
+
+	time.Sleep(60 * time.Second)
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	waitForUndeployToFinish(handler)
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
 // Disabling as for the time being source bucket mutations aren't allowed
 /* func TestSourceBucketMutations(t *testing.T) {
 	time.Sleep(time.Second * 5)

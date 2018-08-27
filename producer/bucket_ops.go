@@ -61,10 +61,16 @@ var cleanupMetadataCallback = func(args ...interface{}) error {
 
 	feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%s_%s_%d_undeploy", p.uuid, p.appName, workerID))
 
-	var err error
+	err := (*b).Refresh()
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Failed to refresh vb map for bucket: %s, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+		return err
+	}
+
 	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), 0, kvNodeAddrs, 0xABCD, p.dcpConfig)
 	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to start dcp feed for bucket: %v, err: %v",
+		logging.Errorf("%s [%s:%d] Failed to start dcp feed for bucket: %s, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
 	}
 

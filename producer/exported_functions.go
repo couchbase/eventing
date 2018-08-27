@@ -252,51 +252,6 @@ func (p *Producer) SignalBootstrapFinish() {
 	}
 }
 
-// SignalCheckpointBlobCleanup cleans up eventing app related blobs from metadata bucket
-func (p *Producer) SignalCheckpointBlobCleanup() error {
-	logPrefix := "Producer::SignalCheckpointBlobCleanup"
-
-	// Bail out early if metadata bucket is dropped/deleted
-	hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
-
-	metaBucketNodeCount := util.CountActiveKVNodes(p.metadatabucket, hostAddress)
-	if metaBucketNodeCount == 0 {
-		logging.Errorf("%s [%s:%d] MetaBucketNodeCount: %d exiting from cleanup routine",
-			logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)
-		return nil
-	}
-
-	for vb := 0; vb < p.numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
-			p, p.AddMetadataPrefix(vbKey))
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-			return common.ErrRetryTimeout
-		}
-	}
-
-	dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
-		p, p.AddMetadataPrefix(dFlagKey))
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
-	}
-
-	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback,
-		p, p.AddMetadataPrefix(dInstAddrKey))
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
-	}
-
-	logging.Infof("%s [%s:%d] Purged all owned checkpoint & debugger blobs from metadata bucket: %s",
-		logPrefix, p.appName, p.LenRunningConsumers(), p.metadataBucketHandle.Name())
-	return nil
-}
-
 // PauseProducer pauses the execution of Eventing.Producer and corresponding Eventing.Consumer instances
 func (p *Producer) PauseProducer() {
 	p.pauseProducerCh <- struct{}{}
@@ -679,6 +634,26 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 							return
 						}
 					}
+
+				case mcd.DCP_STREAMREQ:
+					if e.Status != mcd.SUCCESS {
+						logging.Infof("%s [%s:%d:id_%d] vb: %d STREAMREQ wasn't successful. feed: %s status: %v",
+							logPrefix, p.appName, p.LenRunningConsumers(), id, e.VBucket, dcpFeed.GetName(), e.Status)
+
+						rw.Lock()
+						// Setting it to high value to bail out routine waiting for
+						// received_seq_no >= high_seq_no_at_feed_spawn
+						receivedVbSeqNos[e.VBucket] = uint64(0xFFFFFFFFFFFFFFFF)
+						rw.Unlock()
+					}
+
+				case mcd.DCP_STREAMEND:
+					logging.Infof("%s [%s:%d:id_%d] vb: %d got STREAMEND, feed: %s",
+						logPrefix, p.appName, p.LenRunningConsumers(), id, e.VBucket, dcpFeed.GetName())
+
+					rw.Lock()
+					receivedVbSeqNos[e.VBucket] = uint64(0xFFFFFFFFFFFFFFFF)
+					rw.Unlock()
 				}
 			}
 		}
@@ -695,7 +670,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 	flags := uint32(0)
 	end := uint64(0xFFFFFFFFFFFFFFFF)
 
-	logging.Infof("%s [%s:%d:id_%d] Going to start DCP streams from metadata bucket: %v, vbs len: %v dump: %s",
+	logging.Infof("%s [%s:%d:id_%d] Going to start DCP streams from metadata bucket: %s, vbs len: %d dump: %s",
 		logPrefix, p.appName, p.LenRunningConsumers(), id, p.metadatabucket, len(vbs), util.Condense(vbs))
 
 	for vb, flog := range flogs {

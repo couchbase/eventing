@@ -77,7 +77,6 @@ type EventingProducer interface {
 	RebalanceTaskProgress() *RebalanceProgress
 	RemoveConsumerToken(workerName string)
 	SignalBootstrapFinish()
-	SignalCheckpointBlobCleanup() error
 	SignalStartDebugger() error
 	SignalStopDebugger() error
 	SetRetryCount(retryCount int64)
