@@ -77,7 +77,6 @@ type EventingProducer interface {
 	RebalanceTaskProgress() *RebalanceProgress
 	RemoveConsumerToken(workerName string)
 	SignalBootstrapFinish()
-	SignalCheckpointBlobCleanup() error
 	SignalStartDebugger() error
 	SignalStopDebugger() error
 	SetRetryCount(retryCount int64)
@@ -279,6 +278,7 @@ type HandlerConfig struct {
 	WorkerCount              int
 	WorkerQueueCap           int64
 	WorkerQueueMemCap        int64
+	WorkerResponseTimeout    int
 }
 
 type ProcessConfig struct {

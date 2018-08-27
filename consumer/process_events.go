@@ -1012,6 +1012,10 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		return err
 	}
 
+	if c.isTerminateRunning {
+		return fmt.Errorf("function is terminating")
+	}
+
 	c.dcpStreamReqCounter++
 	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
 	if err != nil {

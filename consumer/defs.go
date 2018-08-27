@@ -226,6 +226,10 @@ type Consumer struct {
 	lcbExceptionStats map[string]uint64      // Access controlled by statsRWMutex
 	statsRWMutex      *sync.RWMutex
 
+	// Time when last response from CPP worker was received on main loop
+	workerRespMainLoopTs        atomic.Value
+	workerRespMainLoopThreshold int
+
 	// DCP config, as they need to be tunable
 	dcpConfig map[string]interface{}
 

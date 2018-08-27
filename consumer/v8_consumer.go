@@ -146,6 +146,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbProcessingStats:               newVbProcessingStats(app.AppName, uint16(numVbuckets), uuid, fmt.Sprintf("worker_%s_%d", app.AppName, index)),
 		workerQueueCap:                  hConfig.WorkerQueueCap,
 		workerQueueMemCap:               hConfig.WorkerQueueMemCap,
+		workerRespMainLoopThreshold:     hConfig.WorkerResponseTimeout,
 		workerVbucketMap:                workerVbucketMap,
 		workerVbucketMapRWMutex:         &sync.RWMutex{},
 	}
@@ -349,9 +350,6 @@ func (c *Consumer) HandleV8Worker() error {
 
 	c.sendLoadV8Worker(c.app.AppCode, false)
 
-	c.sendGetSourceMap(false)
-	c.sendGetHandlerCode(false)
-
 	c.workerExited = false
 
 	if c.usingTimer {
@@ -437,17 +435,9 @@ func (c *Consumer) Stop() {
 	}
 
 	c.timerStorageMetaChsRWMutex.Lock()
-	for i := 0; i < c.timerStorageRoutineCount; i++ {
-		if c.timerStorageRoutineMetaChs[i] != nil {
-			close(c.timerStorageRoutineMetaChs[i])
-		}
-
-		if c.timerStorageStopChs[i] != nil {
-			c.timerStorageStopChs[i] <- struct{}{}
-		}
+	for _, stopCh := range c.timerStorageStopChs {
+		stopCh <- struct{}{}
 	}
-
-	c.timerStorageRoutineMetaChs = make([]chan *TimerInfo, 0)
 	c.timerStorageMetaChsRWMutex.Unlock()
 
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop timer routines",

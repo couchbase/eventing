@@ -69,6 +69,7 @@ type Producer struct {
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
 	uuid                   string
+	workerSpawnCounter     uint64
 
 	handlerConfig   *common.HandlerConfig
 	processConfig   *common.ProcessConfig

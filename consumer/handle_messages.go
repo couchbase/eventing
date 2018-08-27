@@ -303,50 +303,6 @@ func (c *Consumer) sendGetLcbExceptionStats(sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
-func (c *Consumer) sendGetSourceMap(sendToDebugger bool) {
-	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerSourceMap, 0, "")
-
-	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["SOURCE_MAP"]; !ok {
-		c.v8WorkerMessagesProcessed["SOURCE_MAP"] = 0
-	}
-	c.v8WorkerMessagesProcessed["SOURCE_MAP"]++
-	c.msgProcessedRWMutex.Unlock()
-
-	m := &msgToTransmit{
-		msg: &message{
-			Header: header,
-		},
-		sendToDebugger: sendToDebugger,
-		prioritize:     true,
-		headerBuilder:  hBuilder,
-	}
-
-	c.sendMessage(m)
-}
-
-func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) {
-	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerHandlerCode, 0, "")
-
-	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["HANDLER_CODE"]; !ok {
-		c.v8WorkerMessagesProcessed["HANDLER_CODE"] = 0
-	}
-	c.v8WorkerMessagesProcessed["HANDLER_CODE"]++
-	c.msgProcessedRWMutex.Unlock()
-
-	m := &msgToTransmit{
-		msg: &message{
-			Header: header,
-		},
-		sendToDebugger: sendToDebugger,
-		prioritize:     true,
-		headerBuilder:  hBuilder,
-	}
-
-	c.sendMessage(m)
-}
-
 func (c *Consumer) sendTimerEvent(e *timerContext, sendToDebugger bool) {
 	partition := int16(e.Vb)
 	timerHeader, hBuilder := c.makeTimerEventHeader(partition)
@@ -486,8 +442,13 @@ func (c *Consumer) sendMessageLoop() {
 					defer c.sendMsgBufferRWMutex.Unlock()
 					err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
 					if err != nil {
-						logging.Errorf("%s [%s:%s:%d] Write to downstream socket failed, err: %v",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+						logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, err)
+
+						if c.stoppingConsumer {
+							return
+						}
+
 						c.stoppingConsumer = true
 						c.producer.KillAndRespawnEventingConsumer(c)
 					}
@@ -567,8 +528,13 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 
 			err = binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
 			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] Write to downstream socket failed, err: %v",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+				logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, err)
+
+				if c.stoppingConsumer {
+					return fmt.Errorf("consumer is already getting respawned")
+				}
+
 				c.stoppingConsumer = true
 				c.producer.KillAndRespawnEventingConsumer(c)
 				return err

@@ -12,6 +12,7 @@
 #include "log.h"
 #include "n1ql.h"
 #include "retry_util.h"
+#include "utils.h"
 
 Transpiler::Transpiler(v8::Isolate *isolate, const std::string &transpiler_src,
                        const std::vector<std::string> &handler_headers,
@@ -109,26 +110,26 @@ void Transpiler::RectifyCompilationInfo(
   }
 }
 
-std::string Transpiler::Transpile(const std::string &handler_code,
+std::string Transpiler::Transpile(const std::string &jsified_code,
                                   const std::string &src_filename,
-                                  const std::string &src_map_name,
-                                  const std::string &host_addr,
-                                  const std::string &eventing_port) {
+                                  const std::string &handler_code) {
   v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
   v8::Local<v8::Value> args[4];
-  args[0] = v8Str(isolate_, handler_code);
+  args[0] = v8Str(isolate_, jsified_code);
   args[1] = v8Str(isolate_, src_filename);
   args[2] = v8Array(isolate_, handler_headers_);
   args[3] = v8Array(isolate_, handler_footers_);
   auto result = ExecTranspiler("transpile", args, 4);
 
-  v8::String::Utf8Value utf8result(result);
-  std::string src_transpiled = *utf8result;
-  src_transpiled += "\n//# sourceMappingURL=http://" +
-                    JoinHostPort(host_addr, eventing_port) + "/debugging/" +
-                    src_map_name;
+  TranspiledInfo info(isolate_, context, result);
+  if (!info.ReplaceSource(handler_code)) {
+    LOG(logError) << "Transpiler: Unable to replace sources in source map"
+                  << std::endl;
+  }
 
-  return src_transpiled;
+  return AppendSourceMap(info);
 }
 
 UniLineN1QLInfo Transpiler::UniLineN1QL(const std::string &handler_code) {
@@ -465,4 +466,70 @@ std::string Transpiler::ComposeDescription(int code) {
 
   std::string description = keyword + " is a reserved name in N1QLJs";
   return description;
+}
+
+std::string Transpiler::AppendSourceMap(const TranspiledInfo &info) {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  Utils utils(isolate_, context);
+
+  auto source_map_encoded = base64Encode(info.source_map);
+  std::string prefix = "\n//# sourceMappingURL=data:application/json;base64,";
+  return info.transpiled_code + prefix + source_map_encoded + "\n";
+}
+
+TranspiledInfo::TranspiledInfo(v8::Isolate *isolate,
+                               const v8::Local<v8::Context> &context,
+                               const v8::Local<v8::Value> &transpiler_result)
+    : isolate_(isolate) {
+  v8::HandleScope handle_scope(isolate);
+  Utils utils(isolate, context);
+
+  auto code_val = utils.GetMethodFromObject(transpiler_result, "code");
+  v8::String::Utf8Value code_utf8(code_val);
+  transpiled_code = *code_utf8;
+
+  auto map_val = utils.GetMethodFromObject(transpiler_result, "map");
+  v8::String::Utf8Value map_utf8(map_val);
+  source_map = *map_utf8;
+
+  context_.Reset(isolate, context);
+}
+
+TranspiledInfo::~TranspiledInfo() { context_.Reset(); }
+
+bool TranspiledInfo::ReplaceSource(const std::string &handler_code) {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  v8::Local<v8::Value> source_map_val;
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, source_map)),
+                &source_map_val)) {
+    return false;
+  }
+
+  v8::Local<v8::Object> source_map_obj;
+  if (!TO_LOCAL(source_map_val->ToObject(context), &source_map_obj)) {
+    return false;
+  }
+
+  v8::Local<v8::Value> sources_val;
+  if (!TO_LOCAL(source_map_obj->Get(context, v8Str(isolate_, "sources")),
+                &sources_val)) {
+    return false;
+  }
+
+  Utils utils(isolate_, context);
+  std::string prefix = "data:text/plain;base64,";
+  auto handler_code_encoded =
+      v8Str(isolate_, prefix + base64Encode(handler_code));
+
+  auto sources_arr = sources_val.As<v8::Array>();
+  auto success = false;
+  if (!TO(sources_arr->Set(context, 0, handler_code_encoded), &success)) {
+    return false;
+  }
+
+  source_map = JSONStringify(isolate_, source_map_obj);
+  return true;
 }
