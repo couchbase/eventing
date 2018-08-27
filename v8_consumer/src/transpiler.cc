@@ -9,8 +9,6 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include <platform/base64.h>
-
 #include "log.h"
 #include "n1ql.h"
 #include "retry_util.h"
@@ -475,7 +473,7 @@ std::string Transpiler::AppendSourceMap(const TranspiledInfo &info) {
   auto context = context_.Get(isolate_);
   Utils utils(isolate_, context);
 
-  auto source_map_encoded = cb::base64::encode(info.source_map, false);
+  auto source_map_encoded = base64Encode(info.source_map);
   std::string prefix = "\n//# sourceMappingURL=data:application/json;base64,";
   return info.transpiled_code + prefix + source_map_encoded + "\n";
 }
@@ -524,7 +522,7 @@ bool TranspiledInfo::ReplaceSource(const std::string &handler_code) {
   Utils utils(isolate_, context);
   std::string prefix = "data:text/plain;base64,";
   auto handler_code_encoded =
-      v8Str(isolate_, prefix + cb::base64::encode(handler_code, false));
+      v8Str(isolate_, prefix + base64Encode(handler_code));
 
   auto sources_arr = sources_val.As<v8::Array>();
   auto success = false;
