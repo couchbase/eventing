@@ -478,6 +478,18 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       break;
     case oTerminate:
       break;
+    case oGetSourceMap:
+      resp_msg_->msg = workers_[0]->source_map_;
+      resp_msg_->msg_type = mV8_Worker_Config;
+      resp_msg_->opcode = oSourceMap;
+      msg_priority_ = true;
+      break;
+    case oGetHandlerCode:
+      resp_msg_->msg = workers_[0]->handler_code_;
+      resp_msg_->msg_type = mV8_Worker_Config;
+      resp_msg_->opcode = oHandlerCode;
+      msg_priority_ = true;
+      break;
     case oGetLatencyStats:
       latency_buckets = workers_[0]->histogram_->Buckets();
       agg_hgram.assign(latency_buckets, 0);

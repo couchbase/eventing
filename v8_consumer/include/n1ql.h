@@ -195,20 +195,6 @@ private:
   ConnectionPool *inst_pool_;
 };
 
-struct TranspiledInfo {
-  TranspiledInfo(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
-                 const v8::Local<v8::Value> &transpiler_result);
-  ~TranspiledInfo();
-  bool ReplaceSource(const std::string &handler_code);
-
-  std::string transpiled_code;
-  std::string source_map;
-
-private:
-  v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
-};
-
 class Transpiler {
 public:
   Transpiler(v8::Isolate *isolate, const std::string &transpiler_src,
@@ -220,9 +206,11 @@ public:
                                       v8::Local<v8::Value> args[],
                                       const int &args_len);
   CompilationInfo Compile(const std::string &plain_js);
-  std::string Transpile(const std::string &jsified_code,
+  std::string Transpile(const std::string &handler_code,
                         const std::string &src_filename,
-                        const std::string &handler_code);
+                        const std::string &src_map_name,
+                        const std::string &host_addr,
+                        const std::string &eventing_port);
   std::string JsFormat(const std::string &handler_code);
   std::string GetSourceMap(const std::string &handler_code,
                            const std::string &src_filename);
@@ -235,7 +223,6 @@ public:
   static void LogCompilationInfo(const CompilationInfo &info);
 
 private:
-  std::string AppendSourceMap(const TranspiledInfo &info);
   static void Log(const v8::FunctionCallbackInfo<v8::Value> &args);
   void RectifyCompilationInfo(CompilationInfo &info,
                               const std::list<InsertedCharsInfo> &n1ql_pos);

@@ -303,6 +303,50 @@ func (c *Consumer) sendGetLcbExceptionStats(sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
+func (c *Consumer) sendGetSourceMap(sendToDebugger bool) {
+	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerSourceMap, 0, "")
+
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.v8WorkerMessagesProcessed["SOURCE_MAP"]; !ok {
+		c.v8WorkerMessagesProcessed["SOURCE_MAP"] = 0
+	}
+	c.v8WorkerMessagesProcessed["SOURCE_MAP"]++
+	c.msgProcessedRWMutex.Unlock()
+
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(m)
+}
+
+func (c *Consumer) sendGetHandlerCode(sendToDebugger bool) {
+	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerHandlerCode, 0, "")
+
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.v8WorkerMessagesProcessed["HANDLER_CODE"]; !ok {
+		c.v8WorkerMessagesProcessed["HANDLER_CODE"] = 0
+	}
+	c.v8WorkerMessagesProcessed["HANDLER_CODE"]++
+	c.msgProcessedRWMutex.Unlock()
+
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(m)
+}
+
 func (c *Consumer) sendTimerEvent(e *timerContext, sendToDebugger bool) {
 	partition := int16(e.Vb)
 	timerHeader, hBuilder := c.makeTimerEventHeader(partition)

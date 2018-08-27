@@ -86,19 +86,26 @@ function compile(code, headers, footers) {
     };
 }
 
+function transpile(code, sourceFileName, headers, footers) {
+    var ast = getAst(code, sourceFileName);
+    var transpiledCode = escodegen.generate(ast, {
+        comment: true
+    });
+    return AddHeadersAndFooters(transpiledCode, headers, footers);
+}
+
 function jsFormat(code) {
     var ast = esprima.parse(code);
     return escodegen.generate(ast);
 }
 
-function transpile(code, sourceFileName, headers, footers) {
+function getSourceMap(code, sourceFileName, headers, footers) {
     code = AddHeadersAndFooters(code, headers, footers);
     var ast = getAst(code, sourceFileName);
     return escodegen.generate(ast, {
         sourceMap: true,
-        sourceMapWithCode: true,
-        comment: true
-    });
+        sourceMapWithCode: true
+    }).map;
 }
 
 function isTimerCalled(code) {
@@ -145,8 +152,8 @@ function getCodeVersion(code) {
         enter: function(node) {
             if (/CallExpression/.test(node.type)) {
                 if (node.callee.name === 'createTimer') {
-                    tp = 1;
-                    if (vp < 1) vp = 1;
+                        tp = 1;
+                        if (vp < 1) vp = 1;
                 }
                 if (node.callee.name === 'curl' && lp < 2) lp = 2;
             } else if (/NewExpression/.test(node.type)) {
