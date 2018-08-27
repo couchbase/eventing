@@ -134,6 +134,10 @@ func (p *Producer) GetEventProcessingStats() map[string]uint64 {
 		}
 	}
 
+	if p.workerSpawnCounter > 0 {
+		aggStats["WORKER_SPAWN_COUNTER"] = p.workerSpawnCounter
+	}
+
 	return aggStats
 }
 
@@ -361,6 +365,7 @@ func (p *Producer) GetEventingConsumerPids() map[string]int {
 	for _, consumer := range p.getConsumers() {
 		workerPidMapping[consumer.ConsumerName()] = consumer.Pid()
 	}
+
 	return workerPidMapping
 }
 
