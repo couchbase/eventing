@@ -11,10 +11,12 @@ export C_INCLUDE_PATH="$top/install/platform/include:$top/install/include:$top/f
 export CGO_CFLAGS="-DJEMALLOC=1"
 export CGO_LDFLAGS="-L $top/install/lib"
 export PATH=$PATH:$GOROOT/bin
-export CBAUTH_REVRPC_URL="http://Administrator:asdasd@127.0.0.1:9000/_metakv"
 
 set -e
-cd $top/goproj/src/github.com/couchbase/eventing/timers/functional_tests
-go test -v
+cd $top/goproj/src/github.com/couchbase/eventing/timers/test/store
+go install -ldflags "-s -extldflags '-Wl,-rpath,@executable_path/../lib'" -tags 'jemalloc enterprise'
+go build -ldflags "-s -extldflags '-Wl,-rpath,@executable_path/../lib'" -tags 'jemalloc enterprise' storetest.go
+./storetest $*
+rm storetest
 popd
 

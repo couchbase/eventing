@@ -3,7 +3,6 @@ package timers
 /* This module returns only common.ErrRetryTimeout error */
 
 import (
-	"encoding/asn1"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -36,12 +35,12 @@ type storeMap struct {
 
 type AlarmRecord struct {
 	AlarmDue   int64  `json:"due"`
-	ContextRef string `json:"context_ref"`
+	ContextRef string `json:"cxr"`
 }
 
 type ContextRecord struct {
-	Context  interface{} `json:"context"`
-	AlarmRef string      `json:"alarm_ref"`
+	Context  interface{} `json:"ctx"`
+	AlarmRef string      `json:"alr"`
 }
 
 type TimerEntry struct {
@@ -66,8 +65,8 @@ type colIter struct {
 }
 
 type Span struct {
-	Start int64 `json:"start"`
-	Stop  int64 `json:"stop"`
+	Start int64 `json:"sta"`
+	Stop  int64 `json:"stp"`
 }
 
 type storeSpan struct {
@@ -587,37 +586,38 @@ func newTimerStore(uid string, partn int, connstr string, bucket string) (*Timer
 	return &timerstore, nil
 }
 
-func (r *TimerStore) kvLocatorRoot(due int64) string {
-	return fmt.Sprintf("%v:timerstore:%v:root:%v", r.uid, r.partn, formatInt(due))
-}
-
-func (r *TimerStore) kvLocatorAlarm(due int64, seq int64) string {
-	return fmt.Sprintf("%v:timerstore:%v:alarm:%v:%v", r.uid, r.partn, formatInt(due), seq)
-}
-
 func hash(val string) string {
 	ripe := ripemd160.New()
 	ripe.Write([]byte(val))
-	padsum := append(ripe.Sum(nil), 0)
-	bits := asn1.BitString{Bytes: padsum, BitLength: 168}
-	hash := make([]byte, 28, 28)
-	for i := 0; i < 168; i += 6 {
-		pos := 0
-		for j := 0; j < 6; j++ {
-			pos = pos<<1 | bits.At(i+j)
+	sum := ripe.Sum(nil)
+	hash := make([]byte, 27, 27)
+	char := byte(0)
+	for pos := 0; pos < 160; pos++ {
+		bit := (sum[pos/8] >> uint(pos%8)) & 1
+		char = char<<1 | bit
+		if pos%6 == 5 {
+			hash[pos/6] = dict[char]
+			char = 0
 		}
-		Assert(pos >= 0 && pos < len(dict))
-		hash[i/6] = dict[pos]
 	}
+	hash[26] = dict[char]
 	return string(hash)
 }
 
+func (r *TimerStore) kvLocatorRoot(due int64) string {
+	return fmt.Sprintf("%v:tm:%v:rt:%v", r.uid, r.partn, formatInt(due))
+}
+
+func (r *TimerStore) kvLocatorAlarm(due int64, seq int64) string {
+	return fmt.Sprintf("%v:tm:%v:al:%v:%v", r.uid, r.partn, formatInt(due), seq)
+}
+
 func (r *TimerStore) kvLocatorContext(ref string) string {
-	return fmt.Sprintf("%v:timerstore:%v:context:%v", r.uid, r.partn, hash(ref))
+	return fmt.Sprintf("%v:tm:%v:cx:%v", r.uid, r.partn, hash(ref))
 }
 
 func (r *TimerStore) kvLocatorSpan() string {
-	return fmt.Sprintf("%v:timerstore:%v:span", r.uid, r.partn)
+	return fmt.Sprintf("%v:tm:%v:sp", r.uid, r.partn)
 }
 
 func (r *TimerStore) Stats() map[string]uint64 {
@@ -633,7 +633,7 @@ func (r *TimerStore) Stats() map[string]uint64 {
 }
 
 func mapLocator(uid string, partn int) string {
-	return uid + ":" + formatInt(int64(partn))
+	return fmt.Sprintf("%v:%v", uid, partn)
 }
 
 func (r *ContextRecord) String() string {
