@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -1200,4 +1201,18 @@ func SuperImpose(source, on map[string]interface{}) map[string]interface{} {
 	}
 
 	return m
+}
+
+func CPUCount(log bool) int {
+	logPrefix := "util::GetCPUCount"
+
+	cpuCount := runtime.NumCPU()
+	if cpuCount == 0 {
+		if log {
+			logging.Errorf("%s CPU count reported as 0", logPrefix)
+		}
+		return 3
+	}
+
+	return cpuCount
 }

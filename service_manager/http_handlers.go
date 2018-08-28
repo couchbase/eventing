@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"runtime"
 	"runtime/trace"
 	"sort"
 	"strconv"
@@ -25,7 +24,7 @@ import (
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/google/flatbuffers/go"
 )
 
 func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
@@ -2219,7 +2218,7 @@ func (m *ServiceMgr) getCpuCount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%v\n", runtime.NumCPU())
+	fmt.Fprintf(w, "%v\n", util.CPUCount(false))
 }
 
 func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {

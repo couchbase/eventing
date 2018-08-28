@@ -243,7 +243,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["undeploy_routine_count"]; ok {
 		p.handlerConfig.UndeployRoutineCount = int(val.(float64))
 	} else {
-		p.handlerConfig.UndeployRoutineCount = 6
+		p.handlerConfig.UndeployRoutineCount = util.CPUCount(true)
 	}
 
 	// Process related configuration
