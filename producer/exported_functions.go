@@ -758,6 +758,15 @@ func (p *Producer) UpdateMemoryQuota(quota int64) {
 		logPrefix, p.appName, p.LenRunningConsumers(), quota)
 
 	p.MemoryQuota = quota // in MB
+
+	for _, c := range p.getConsumers() {
+		wc := int64(p.handlerConfig.WorkerCount)
+		if wc > 0 {
+			c.UpdateWorkerQueueMemCap(p.MemoryQuota / wc)
+		} else {
+			c.UpdateWorkerQueueMemCap(p.MemoryQuota)
+		}
+	}
 }
 
 // TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance

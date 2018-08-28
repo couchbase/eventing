@@ -132,6 +132,7 @@ type EventingConsumer interface {
 	String() string
 	TimerDebugStats() map[int]map[string]interface{}
 	UpdateEventingNodesUUIDs(uuids []string)
+	UpdateWorkerQueueMemCap(quota int64)
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbEventingNodeAssignMapUpdate(map[uint16]string)
 	VbProcessingStats() map[uint16]map[string]interface{}

@@ -218,8 +218,9 @@ func (c *Consumer) Serve() {
 	go c.processReqStreamMessages()
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
-	logging.Infof("%s [%s:%s:%d] using timer: %t vbnos len: %d dump: %s",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.usingTimer, len(c.vbnos), util.Condense(c.vbnos))
+	logging.Infof("%s [%s:%s:%d] using timer: %t vbnos len: %d dump: %s memory quota for worker and dcp queues each: %d MB",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.usingTimer, len(c.vbnos), util.Condense(c.vbnos),
+		c.workerQueueMemCap/(1024*1024))
 
 	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 	if err == common.ErrRetryTimeout {

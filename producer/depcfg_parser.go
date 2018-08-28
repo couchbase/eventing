@@ -211,7 +211,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["worker_queue_mem_cap"]; ok {
 		p.handlerConfig.WorkerQueueMemCap = int64(val.(float64)) * 1024 * 1024
 	} else {
-		p.handlerConfig.WorkerQueueMemCap = 1024 * 1024 * 1024
+		p.handlerConfig.WorkerQueueMemCap = p.consumerMemQuota()
 	}
 
 	if val, ok := settings["worker_response_timeout"]; ok {
@@ -300,7 +300,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["agg_dcp_feed_mem_cap"]; ok {
 		p.handlerConfig.AggDCPFeedMemCap = int64(val.(float64)) * 1024 * 1024
 	} else {
-		p.handlerConfig.AggDCPFeedMemCap = 1024 * 1024 * 1024
+		p.handlerConfig.AggDCPFeedMemCap = p.consumerMemQuota()
 	}
 
 	if val, ok := settings["data_chan_size"]; ok {
@@ -346,4 +346,16 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	return nil
+}
+
+func (p *Producer) consumerMemQuota() int64 {
+	wc := int64(p.handlerConfig.WorkerCount)
+	if wc > 0 {
+		// Divided by 2 because it's accounting for just 2 queues for each worker:
+		// (a) dcp feed queue
+		// (b) timer_feedback_queue + main_queue on eventing-consumer
+		return (p.MemoryQuota / (wc * 2)) * 1024 * 1024
+	}
+	return 1024 * 1024 * 1024
+
 }
