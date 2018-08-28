@@ -336,7 +336,7 @@ func (m *ServiceMgr) validateDirPath(field string, settings map[string]interface
 	return
 }
 
-func (m *ServiceMgr) validateLessThan(field1, field2 string, settings map[string]interface{}) (info *runtimeInfo) {
+func (m *ServiceMgr) validateLessThan(field1, field2 string, multiplier int, settings map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
@@ -350,7 +350,7 @@ func (m *ServiceMgr) validateLessThan(field1, field2 string, settings map[string
 		return
 	}
 
-	if settings[field1].(float64) >= settings[field2].(float64) {
+	if int(settings[field1].(float64)) >= int(settings[field2].(float64))*multiplier {
 		info.Info = fmt.Sprintf("%s must be less than %s", field1, field2)
 		return
 	}
@@ -551,7 +551,15 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validateLessThan("execution_timeout", "deadline_timeout", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateLessThan("curl_timeout", "deadline_timeout", 1000, settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateLessThan("curl_timeout", "execution_timeout", 1000, settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateLessThan("execution_timeout", "deadline_timeout", 1, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

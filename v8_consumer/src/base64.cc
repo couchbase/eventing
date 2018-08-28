@@ -9,9 +9,9 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include <string>
 #include <platform/base64.h>
+#include <string>
 
-std::string base64Encode(const std::string & data) {
+std::string base64Encode(const std::string &data) {
   return cb::base64::encode(data, false);
 }
