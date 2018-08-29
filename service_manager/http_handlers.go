@@ -2238,7 +2238,8 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 
 	apps := m.getTempStoreAll()
 	for _, app := range apps {
-		if app.Settings["deployment_status"].(bool) != true {
+		deployed, ok := app.Settings["deployment_status"].(bool)
+		if !ok || !deployed {
 			continue
 		}
 		if val, ok := app.Settings["worker_count"].(float64); ok {
