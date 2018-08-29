@@ -618,8 +618,19 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 		logPrefix, p.appName, p.LenRunningConsumers(), indexToPurge, consumerIndex)
 
 	p.listenerRWMutex.RLock()
-	p.consumerListeners[c].Close()
-	p.feedbackListeners[c].Close()
+	if conn, ok := p.consumerListeners[c]; ok {
+		if conn != nil {
+			conn.Close()
+		}
+		delete(p.consumerListeners, c)
+	}
+
+	if conn, ok := p.feedbackListeners[c]; ok {
+		if conn != nil {
+			conn.Close()
+		}
+		delete(p.feedbackListeners, c)
+	}
 	p.listenerRWMutex.RUnlock()
 
 	logging.Infof("%s [%s:%d] ConsumerIndex: %d respawning the Eventing.Consumer instance",
