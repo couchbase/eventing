@@ -61,6 +61,8 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "execute_timer_routine_count", float64(3))
 	fillMissingDefault(settings, "timer_storage_routine_count", float64(3))
 	fillMissingDefault(settings, "timer_storage_chan_size", float64(10*1000))
+	fillMissingDefault(settings, "timer_queue_mem_cap", float64(50))
+	fillMissingDefault(settings, "timer_queue_size", float64(10000))
 
 	// Process related configuration
 	fillMissingDefault(settings, "breakpad_on", true)

@@ -240,6 +240,18 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.TimerStorageChanSize = 10 * 1000
 	}
 
+	if val, ok := settings["timer_queue_mem_cap"]; ok {
+		p.handlerConfig.TimerQueueMemCap = int64(val.(float64)) * 1024 * 1024
+	} else {
+		p.handlerConfig.TimerQueueMemCap = 50 * 1024 * 1024
+	}
+
+	if val, ok := settings["timer_queue_size"]; ok {
+		p.handlerConfig.TimerQueueSize = int64(val.(float64))
+	} else {
+		p.handlerConfig.TimerQueueSize = 10000
+	}
+
 	if val, ok := settings["undeploy_routine_count"]; ok {
 		p.handlerConfig.UndeployRoutineCount = int(val.(float64))
 	} else {

@@ -569,6 +569,10 @@ func (c *Consumer) feedbackReadMessageLoop(feedbackReader *bufio.Reader) {
 	}()
 
 	for {
+		if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+			return
+		}
+
 		buffer := make([]byte, c.feedbackReadBufferSize)
 		bytesRead, err := feedbackReader.Read(buffer)
 

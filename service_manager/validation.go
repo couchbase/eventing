@@ -637,6 +637,14 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
+	if info = m.validatePositiveInteger("timer_queue_mem_cap", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("timer_queue_size", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validatePositiveInteger("undeploy_routine_count", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}

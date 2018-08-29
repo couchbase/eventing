@@ -50,7 +50,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		dcpFeedVbMap:                    make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:               hConfig.StreamBoundary,
 		diagDir:                         pConfig.DiagDir,
-		fireTimerCh:                     make(chan *timerContext, dcpConfig["genChanSize"].(int)),
+		fireTimerQueue:                  util.NewBoundedQueue(hConfig.TimerQueueSize, hConfig.TimerQueueMemCap),
 		debuggerPort:                    pConfig.DebuggerPort,
 		eventingAdminPort:               pConfig.EventingPort,
 		eventingSSLPort:                 pConfig.EventingSSLPort,
@@ -80,7 +80,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		msgProcessedRWMutex:             &sync.RWMutex{},
 		numVbuckets:                     numVbuckets,
 		opsTimestamp:                    time.Now(),
-		createTimerCh:                   make(chan *TimerInfo, dcpConfig["genChanSize"].(int)),
+		createTimerQueue:                util.NewBoundedQueue(hConfig.TimerQueueSize, hConfig.TimerQueueMemCap),
 		createTimerStopCh:               make(chan struct{}, 1),
 		scanTimerStopCh:                 make(chan struct{}, 1),
 		producer:                        p,
@@ -107,10 +107,12 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		stopReqStreamProcessCh:          make(chan struct{}),
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
+		timerQueueSize:                  hConfig.TimerQueueSize,
+		timerQueueMemCap:                hConfig.TimerQueueMemCap,
 		timerStorageChanSize:            hConfig.TimerStorageChanSize,
 		timerStorageMetaChsRWMutex:      &sync.RWMutex{},
 		timerStorageRoutineCount:        hConfig.TimerStorageRoutineCount,
-		timerStorageRoutineMetaChs:      make([]chan *TimerInfo, hConfig.TimerStorageRoutineCount),
+		timerStorageQueues:              make([]*util.BoundedQueue, hConfig.TimerStorageRoutineCount),
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		usingTimer:                      hConfig.UsingTimer,
 		uuid:                            uuid,
@@ -345,6 +347,7 @@ func (c *Consumer) HandleV8Worker() error {
 
 	if c.usingTimer {
 		go c.routeTimers()
+		go c.processTimerEvents()
 	}
 
 	go c.processEvents()
@@ -417,12 +420,18 @@ func (c *Consumer) Stop() {
 		c.stopReqStreamProcessCh <- struct{}{}
 	}
 
+	if c.createTimerQueue != nil {
+		c.createTimerQueue.Close()
+	}
+
 	if c.createTimerStopCh != nil {
 		c.createTimerStopCh <- struct{}{}
 	}
 
-	if c.scanTimerStopCh != nil {
-		c.scanTimerStopCh <- struct{}{}
+	for _, q := range c.timerStorageQueues {
+		if q != nil {
+			q.Close()
+		}
 	}
 
 	c.timerStorageMetaChsRWMutex.Lock()
@@ -430,6 +439,14 @@ func (c *Consumer) Stop() {
 		stopCh <- struct{}{}
 	}
 	c.timerStorageMetaChsRWMutex.Unlock()
+
+	if c.fireTimerQueue != nil {
+		c.fireTimerQueue.Close()
+	}
+
+	if c.scanTimerStopCh != nil {
+		c.scanTimerStopCh <- struct{}{}
+	}
 
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop timer routines",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())

@@ -9,12 +9,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 	"github.com/google/flatbuffers/go"
 )
@@ -184,10 +186,12 @@ type Consumer struct {
 	stoppingConsumer              bool
 	superSup                      common.EventingSuperSup
 	timerStorageChanSize          int
+	timerQueueSize                int64
+	timerQueueMemCap              int64
 	timerStorageMetaChsRWMutex    *sync.RWMutex
 	timerStorageRoutineCount      int
-	timerStorageRoutineMetaChs    []chan *TimerInfo // Access controlled by timerStorageMetaChsRWMutex
-	timerStorageStopChs           []chan struct{}   // Access controlled by timerStorageMetaChsRWMutex
+	timerStorageQueues            []*util.BoundedQueue // Access controlled by timerStorageMetaChsRWMutex
+	timerStorageStopChs           []chan struct{}      // Access controlled by timerStorageMetaChsRWMutex
 	usingTimer                    bool
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed
@@ -231,8 +235,8 @@ type Consumer struct {
 	// N1QL Transpiler related nested iterator config params
 	lcbInstCapacity int
 
-	fireTimerCh       chan *timerContext
-	createTimerCh     chan *TimerInfo
+	fireTimerQueue    *util.BoundedQueue
+	createTimerQueue  *util.BoundedQueue
 	createTimerStopCh chan struct{}
 	scanTimerStopCh   chan struct{}
 
@@ -479,10 +483,19 @@ type TimerInfo struct {
 	Context   string `json:"context"`
 }
 
+func (info *TimerInfo) Size() int64 {
+	return int64(unsafe.Sizeof(*info)) + int64(len(info.Callback)) +
+		int64(len(info.Reference)) + int64(len(info.Context))
+}
+
 // This is struct that will be stored in
 // the meta store as the timer's context
 type timerContext struct {
 	Callback string `json:"callback"`
 	Vb       uint64 `json:"vb"`
 	Context  string `json:"context"` // This is the context provided by the user
+}
+
+func (ctx *timerContext) Size() int64 {
+	return int64(unsafe.Sizeof(*ctx)) + int64(len(ctx.Callback)) + int64(len(ctx.Context))
 }

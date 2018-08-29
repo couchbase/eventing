@@ -446,17 +446,6 @@ func (c *Consumer) processEvents() {
 				c.Unlock()
 			}
 
-		case e, ok := <-c.fireTimerCh:
-			if ok == false {
-				logging.Infof("%s [%s:%s:%d] Closing fire timer channel",
-					logPrefix, c.workerName, c.tcpPort, c.Pid())
-				c.stopCheckpointingCh <- struct{}{}
-				return
-			}
-
-			c.timerMessagesProcessed++
-			c.sendTimerEvent(e, false)
-
 		case <-c.statsTicker.C:
 
 			vbsOwned := c.getCurrentlyOwnedVbs()
@@ -501,6 +490,21 @@ func (c *Consumer) processEvents() {
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
+	}
+}
+
+func (c *Consumer) processTimerEvents() {
+	logPrefix := "Consumer::processTimerEvents"
+	for {
+		ev, err := c.fireTimerQueue.Pop()
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to pop from fireTimerQueue, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+			c.stopCheckpointingCh <- struct{}{}
+			return
+		}
+		timer := ev.(*timerContext)
+		c.timerMessagesProcessed++
+		c.sendTimerEvent(timer, false)
 	}
 }
 

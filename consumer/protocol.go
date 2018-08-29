@@ -439,7 +439,11 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 		}
 
 		c.timerResponsesRecieved++
-		c.createTimerCh <- &info
+		if err = c.createTimerQueue.Push(&info); err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to write to createTimerQueue, err : %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+			return
+		}
 
 	case bucketOpsResponse:
 		data := strings.Split(msg, "::")
