@@ -314,6 +314,7 @@ func queryRestAPI(
 	if err = d.Decode(&out); err != nil {
 		return err
 	}
+	logging.Tracef("Query %v returns %+v", u.String(), out)
 	return nil
 }
 
