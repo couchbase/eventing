@@ -361,7 +361,7 @@ func (c *Consumer) processEvents() {
 
 					c.vbsStreamRRWMutex.Lock()
 					if _, ok := c.vbStreamRequested[e.VBucket]; ok {
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ failed. Purging entry from vbStreamRequested",
+						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ failed, purging entry from vbStreamRequested",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
 						delete(c.vbStreamRequested, e.VBucket)
@@ -406,21 +406,23 @@ func (c *Consumer) processEvents() {
 			}
 			logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d received on filterDataCh",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket, e.SeqNo)
+
 			c.vbsStreamRRWMutex.Lock()
 			if _, ok := c.vbStreamRequested[e.Vbucket]; ok {
-				logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
+				logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket)
 				delete(c.vbStreamRequested, e.Vbucket)
 			}
 			c.vbsStreamRRWMutex.Unlock()
 
-			// Disabling until store.Dormant() api is available
-			/*if c.usingTimer {
-				store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(e.Vbucket))
-				if found {
-					store.Free()
-				}
-			}*/
+			c.inflightDcpStreamsRWMutex.Lock()
+			if _, exists := c.inflightDcpStreams[e.Vbucket]; exists {
+				logging.Infof("%s [%s:%s:%d] vb: %d purging entry from inflightDcpStreams",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket)
+				delete(c.inflightDcpStreams, e.Vbucket)
+			}
+			c.inflightDcpStreamsRWMutex.Unlock()
+
 			vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.Vbucket)
 
 			seqNo := c.vbProcessingStats.getVbStat(e.Vbucket, "last_read_seq_no").(uint64)
@@ -475,14 +477,6 @@ func (c *Consumer) processEvents() {
 				logging.Infof("%s [%s:%s:%d] vb: %d STREAMEND Inserting entry: %#v to vbFlogChan",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket, vbFlog)
 				c.vbFlogChan <- vbFlog
-
-				c.inflightDcpStreamsRWMutex.Lock()
-				if _, exists := c.inflightDcpStreams[e.Vbucket]; exists {
-					logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from inflightDcpStreams",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket)
-					delete(c.inflightDcpStreams, e.Vbucket)
-				}
-				c.inflightDcpStreamsRWMutex.Unlock()
 
 				err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
 					c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
@@ -1025,7 +1019,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 
 		c.vbsStreamRRWMutex.Lock()
 		if _, ok := c.vbStreamRequested[vb]; ok {
-			logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
+			logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 
 			delete(c.vbStreamRequested, vb)
@@ -1099,7 +1093,7 @@ func (c *Consumer) handleFailoverLog() {
 
 			c.inflightDcpStreamsRWMutex.Lock()
 			if _, exists := c.inflightDcpStreams[vbFlog.vb]; exists {
-				logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from inflightDcpStreams",
+				logging.Infof("%s [%s:%s:%d] vb: %d purging entry from inflightDcpStreams",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
 				delete(c.inflightDcpStreams, vbFlog.vb)
 			}

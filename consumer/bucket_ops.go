@@ -39,7 +39,7 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 
 		c.vbsStreamRRWMutex.Lock()
 		if _, ok := c.vbStreamRequested[vb]; ok {
-			logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
+			logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 
 			delete(c.vbStreamRequested, vb)

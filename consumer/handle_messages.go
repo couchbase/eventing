@@ -440,6 +440,12 @@ func (c *Consumer) sendMessageLoop() {
 				func() {
 					c.sendMsgBufferRWMutex.Lock()
 					defer c.sendMsgBufferRWMutex.Unlock()
+					if c.conn == nil {
+						logging.Infof("%s [%s:%s:%d] connection socket closed, bailing out",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer)
+						return
+					}
+
 					err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
 					if err != nil {
 						logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
