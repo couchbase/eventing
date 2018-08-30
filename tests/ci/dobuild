@@ -28,7 +28,25 @@ error_exit() {
   exit 2
 }
 
-echo '</pre><h3>Building</h3><pre>'
+> ~/repos.list
+note_version() {
+  repo=$1; pos=$2
+  echo "$repo $pos" >> ~/repos.list
+  cd $pos
+  current="`git rev-parse HEAD`"
+  test -f ~/$repo.good || (echo $current > ~/$repo.good)
+  good="`cat ~/$repo.good`"
+  echo -n "$repo is at <a href='https://github.com/couchbase/$repo/commit/$current'>${current:0:7}</a>, changes since last good build: "
+  if [ "$current" != "$good" ]; then
+    echo
+    git log --pretty="format: <a href='https://github.com/couchbase/$repo/commit/%H'>%h</a> %s" $good..HEAD
+    echo
+  else
+    echo "none"
+  fi
+}
+
+echo "</pre><h3>Building</h3><pre>"
 > $WORKSPACE/versions.cfg
 > $WORKSPACE/make.log
 
@@ -39,6 +57,7 @@ if [ ! -d ~/.reference ]; then
   test $? -eq 0 || error_exit "Repo Init"
 fi
 
+echo "Started building at `date +'%Y/%m/%d %H:%M:%S'`"
 test "$BLD_NUM" = "0" || echo "Using pegged server, $BLD_NUM build"
 echo "Calculating base"
 rm -rf ~/.manifests
@@ -62,173 +81,59 @@ test $? -eq 0 || error_exit "Repo Init at $SHA"
 
 echo "Updating tree for run $TS"
 cd $WORKSPACE
+perl -pi -e 's/upstream=".*?"//' .repo/manifest.xml # temporary to workaround bad manifest upstream lines
 repo sync --jobs=32 1>>$WORKSPACE/make.log 2>&1
 test $? -eq 0 || error_exit "Updating tree"
 test $WORKSPACE/cbbuild && test $WORKSPACE/voltron || error_exit "Unable to find voltron"
 
 cd $WORKSPACE
 chmod a+w CMakeLists.txt
-perl -pi -e 's/CB_ENABLE_EVENTING (.*) OFF/CB_ENABLE_EVENTING \1 ON/' $WORKSPACE/CMakeLists.txt
-echo "Enabled option CB_ENABLE_EVENTING"
+perl -pi -e 's/ADD_SUBDIRECTORY (analytics)/# No analytics/' CMakeLists.txt
+perl -pi -e 's/ADD_SUBDIRECTORY (cbas-ui)/# No cbas-ui/' CMakeLists.txt
 
-cd $WORKSPACE/goproj/src/github.com/couchbase/plasma
-current="`git rev-parse HEAD`"
-test -f ~/plasma.good || (echo $current > ~/plasma.good)
-good="`cat ~/plasma.good`"
-echo -n "plasma is at <a href='https://github.com/couchbase/plasma/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/plasma/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/goproj/src/github.com/couchbase/nitro
-current="`git rev-parse HEAD`"
-test -f ~/nitro.good || (echo $current > ~/nitro.good)
-good="`cat ~/nitro.good`"
-echo -n "nitro is at <a href='https://github.com/couchbase/nitro/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/nitro/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/goproj/src/github.com/couchbase/indexing
-current="`git rev-parse HEAD`"
-test -f ~/indexing.good || (echo $current > ~/indexing.good)
-good="`cat ~/indexing.good`"
-echo -n "indexing is at <a href='https://github.com/couchbase/indexing/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/indexing/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
+note_version gocb         $WORKSPACE/godeps/src/github.com/couchbase/gocb
+note_version plasma       $WORKSPACE/goproj/src/github.com/couchbase/plasma
+note_version nitro        $WORKSPACE/goproj/src/github.com/couchbase/nitro
+note_version indexing     $WORKSPACE/goproj/src/github.com/couchbase/indexing
+note_version query        $WORKSPACE/goproj/src/github.com/couchbase/query
+note_version gometa       $WORKSPACE/goproj/src/github.com/couchbase/gometa
+note_version libcouchbase $WORKSPACE/libcouchbase
+note_version ns_server    $WORKSPACE/ns_server
+note_version couchdb      $WORKSPACE/couchdb
+note_version couchstore   $WORKSPACE/couchstore
+note_version forestdb     $WORKSPACE/forestdb
+note_version kv_engine    $WORKSPACE/kv_engine
 
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
-echo "Switching eventing to unstable"
-git checkout unstable 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout unstable"
+echo "Switching eventing to $BRANCH"
+git checkout $BRANCH 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout $BRANCH"
 git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
-current="`git rev-parse HEAD`"
-test -f ~/eventing.good || (echo $current > ~/eventing.good)
-good="`cat ~/eventing.good`"
-echo -n "eventing is at <a href='https://github.com/couchbase/eventing/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/eventing/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/goproj/src/github.com/couchbase/query
-current="`git rev-parse HEAD`"
-test -f ~/query.good || (echo $current > ~/query.good)
-good="`cat ~/query.good`"
-echo -n "query is at <a href='https://github.com/couchbase/query/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/query/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/goproj/src/github.com/couchbase/gometa
-current="`git rev-parse HEAD`"
-test -f ~/gometa.good || (echo $current > ~/gometa.good)
-good="`cat ~/gometa.good`"
-echo -n "gometa is at <a href='https://github.com/couchbase/gometa/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/gometa/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/ns_server
-current="`git rev-parse HEAD`"
-test -f ~/ns_server.good || (echo $current > ~/ns_server.good)
-good="`cat ~/ns_server.good`"
-echo -n "ns_server is at <a href='https://github.com/couchbase/ns_server/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/ns_server/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/couchdb
-current="`git rev-parse HEAD`"
-test -f ~/couchdb.good || (echo $current > ~/couchdb.good)
-good="`cat ~/couchdb.good`"
-echo -n "couchdb is at <a href='https://github.com/couchbase/couchdb/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/couchdb/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/couchstore
-current="`git rev-parse HEAD`"
-test -f ~/couchstore.good || (echo $current > ~/couchstore.good)
-good="`cat ~/couchstore.good`"
-echo -n "couchstore is at <a href='https://github.com/couchbase/couchstore/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/couchstore/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/forestdb
-current="`git rev-parse HEAD`"
-test -f ~/forestdb.good || (echo $current > ~/forestdb.good)
-good="`cat ~/forestdb.good`"
-echo -n "forestdb is at <a href='https://github.com/couchbase/forestdb/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/forestdb/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
-
-cd $WORKSPACE/kv_engine
-current="`git rev-parse HEAD`"
-test -f ~/kv_engine.good || (echo $current > ~/kv_engine.good)
-good="`cat ~/kv_engine.good`"
-echo -n "kv_engine is at <a href='https://github.com/couchbase/kv_engine/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/kv_engine/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
-fi
+note_version eventing $WORKSPACE/goproj/src/github.com/couchbase/eventing
 
 cd $WORKSPACE/testrunner
-current="`git rev-parse HEAD`"
-test -f ~/testrunner.good || (echo $current > ~/testrunner.good)
-good="`cat ~/testrunner.good`"
-echo -n "testrunner is at <a href='https://github.com/couchbase/testrunner/commit/$current'>${current:0:7}</a>, changes since last good build: "
-if [ "$current" != "$good" ]; then
-  echo
-  git log --pretty='format: <a href="https://github.com/couchbase/testrunner/commit/%H">%h</a> %s' $good..HEAD
-  echo
-else
-  echo "none"
+echo "Switching testrunner to master"
+git checkout master 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout master"
+git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
+note_version testrunner $WORKSPACE/testrunner
+
+if [ "$CIBOT" = "true" ]; then
+  > ~/gerrit.list
+  autolist="`curl -s -o- "http://review.couchbase.org/changes/?q=project:eventing+status:open+branch:$BRANCH+reviewer:1004336" | grep _number | sed 's/[ ,]*//g' | awk -F: '{print $2}' | sort -n`"
+  for patch_id in $GERRIT $autolist
+  do
+    curl -s -o- "http://review.couchbase.org/changes/$patch_id/" | grep -qs '"status": "NEW"'
+    if [ $? -ne 0 ]; then
+      echo "Patchset <a href='http://review.couchbase.org/#/c/$patch_id'>$patch_id</a> is closed, skipping"
+      continue
+    fi
+    cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
+    revspec=`git ls-remote -q http://review.couchbase.org/eventing refs/changes/*/$patch_id/* | awk '{print $2}' | sort -n -t/ -k5 | tail -1`
+    echo "Pulling in <a href='http://review.couchbase.org/#/c/$patch_id'>uncommitted change $patch_id</a> at $revspec"
+    git fetch -q http://review.couchbase.org/eventing $revspec && git cherry-pick FETCH_HEAD
+    test $? -eq 0 && echo "$revspec" | awk -F/ '{print $4 "," $5}' >> ~/gerrit.list
+  done
 fi
+
 
 cd $WORKSPACE
 PRODUCT_VERSION=${RELEASE}-${BLD_NUM}-rel

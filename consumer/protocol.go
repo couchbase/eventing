@@ -1,10 +1,10 @@
 package consumer
 
 import (
-	"encoding/binary"
-	"fmt"
-	"log"
-	"runtime/debug"
+	"encoding/json"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/couchbase/eventing/gen/flatbuf/header"
 	"github.com/couchbase/eventing/gen/flatbuf/payload"
@@ -16,11 +16,11 @@ import (
 const (
 	eventType int8 = iota
 	dcpEvent
-	httpEvent
 	v8WorkerEvent
 	appWorkerSetting
 	timerEvent
 	debuggerEvent
+	filterEvent
 )
 
 const (
@@ -31,8 +31,12 @@ const (
 
 const (
 	timerOpcode int8 = iota
-	docTimer
-	nonDocTimer
+	timer
+)
+
+const (
+	filterOpcode int8 = iota
+	vbFilter
 )
 
 const (
@@ -43,6 +47,11 @@ const (
 	v8WorkerTerminate
 	v8WorkerSourceMap
 	v8WorkerHandlerCode
+	v8WorkerLatencyStats
+	v8WorkerFailureStats
+	v8WorkerExecutionStats
+	v8WorkerCompile
+	v8WorkerLcbExceptions
 )
 
 const (
@@ -62,13 +71,35 @@ const (
 const (
 	respMsgType int8 = iota
 	respV8WorkerConfig
+	docTimerResponse
+	bucketOpsResponse
+	bucketOpsFilterAck
 )
 
 const (
 	respV8WorkerConfigOpcode int8 = iota
 	sourceMap
 	handlerCode
-	logMessage
+	appLogMessage
+	sysLogMessage
+	latencyStats
+	failureStats
+	executionStats
+	compileInfo
+	queueSize
+	lcbExceptions
+)
+
+const (
+	docTimerResponseOpcode int8 = iota
+)
+
+const (
+	bucketOpsResponseOpcode int8 = iota
+)
+
+const (
+	bucketOpsFilterAckOpCode int8 = iota
 )
 
 type message struct {
@@ -76,65 +107,73 @@ type message struct {
 	Payload []byte
 }
 
-func makeDocTimerEventHeader(partition int16) []byte {
-	return makeHeader(timerEvent, docTimer, partition, "")
+func (c *Consumer) makeTimerEventHeader(partition int16) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(timerEvent, timer, partition, "")
 }
 
-func makeNonDocTimerEventHeader(partition int16) []byte {
-	return makeHeader(timerEvent, nonDocTimer, partition, "")
+func (c *Consumer) makeDcpMutationHeader(partition int16, mutationMeta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeDcpHeader(dcpMutation, partition, mutationMeta)
 }
 
-func makeDcpMutationHeader(partition int16, mutationMeta string) []byte {
-	return makeDcpHeader(dcpMutation, partition, mutationMeta)
+func (c *Consumer) makeDcpDeletionHeader(partition int16, deletionMeta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeDcpHeader(dcpDeletion, partition, deletionMeta)
 }
 
-func makeDcpDeletionHeader(partition int16, deletionMeta string) []byte {
-	return makeDcpHeader(dcpDeletion, partition, deletionMeta)
+func (c *Consumer) makeDcpHeader(opcode int8, partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(dcpEvent, opcode, partition, meta)
 }
 
-func makeDcpHeader(opcode int8, partition int16, meta string) []byte {
-	return makeHeader(dcpEvent, opcode, partition, meta)
+func (c *Consumer) filterEventHeader(opcode int8, partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(filterEvent, opcode, partition, meta)
 }
 
-func makeV8DebuggerStartHeader() []byte {
-	return makeV8DebuggerHeader(startDebug, "")
+func (c *Consumer) makeVbFilterHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.filterEventHeader(vbFilter, partition, meta)
 }
 
-func makeV8DebuggerStopHeader() []byte {
-	return makeV8DebuggerHeader(stopDebug, "")
+func (c *Consumer) makeV8DebuggerStartHeader() ([]byte, *flatbuffers.Builder) {
+	return c.makeV8DebuggerHeader(startDebug, "")
 }
 
-func makeV8DebuggerHeader(opcode int8, meta string) []byte {
-	return makeHeader(debuggerEvent, opcode, 0, meta)
+func (c *Consumer) makeV8DebuggerStopHeader() ([]byte, *flatbuffers.Builder) {
+	return c.makeV8DebuggerHeader(stopDebug, "")
 }
 
-func makeV8InitOpcodeHeader() []byte {
-	return makeV8EventHeader(v8WorkerInit, "")
+func (c *Consumer) makeV8DebuggerHeader(opcode int8, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(debuggerEvent, opcode, 0, meta)
 }
 
-func makeV8LoadOpcodeHeader(appCode string) []byte {
-	return makeV8EventHeader(v8WorkerLoad, appCode)
+func (c *Consumer) makeV8InitOpcodeHeader() ([]byte, *flatbuffers.Builder) {
+	return c.makeV8EventHeader(v8WorkerInit, "")
 }
 
-func makeV8EventHeader(opcode int8, meta string) []byte {
-	return makeHeader(v8WorkerEvent, opcode, 0, meta)
+func (c *Consumer) makeV8CompileOpcodeHeader(appCode string) ([]byte, *flatbuffers.Builder) {
+	return c.makeV8EventHeader(v8WorkerCompile, appCode)
 }
 
-func makeLogLevelHeader(meta string) []byte {
-	return makeHeader(appWorkerSetting, logLevel, 0, meta)
+func (c *Consumer) makeV8LoadOpcodeHeader(appCode string) ([]byte, *flatbuffers.Builder) {
+	return c.makeV8EventHeader(v8WorkerLoad, appCode)
 }
 
-func makeThrCountHeader(meta string) []byte {
-	return makeHeader(appWorkerSetting, workerThreadCount, 0, meta)
+func (c *Consumer) makeV8EventHeader(opcode int8, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(v8WorkerEvent, opcode, 0, meta)
 }
 
-func makeThrMapHeader() []byte {
-	return makeHeader(appWorkerSetting, workerThreadPartitionMap, 0, "")
+func (c *Consumer) makeLogLevelHeader(meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(appWorkerSetting, logLevel, 0, meta)
 }
 
-func makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte) {
-	builder := flatbuffers.NewBuilder(0)
-	builder.Reset()
+func (c *Consumer) makeThrCountHeader(meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(appWorkerSetting, workerThreadCount, 0, meta)
+}
+
+func (c *Consumer) makeThrMapHeader() ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(appWorkerSetting, workerThreadPartitionMap, 0, "")
+}
+
+func (c *Consumer) makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte, builder *flatbuffers.Builder) {
+	builder = c.getBuilder()
+
 	metadata := builder.CreateString(meta)
 
 	header.HeaderStart(builder)
@@ -146,13 +185,31 @@ func makeHeader(event int8, opcode int8, partition int16, meta string) (encodedH
 
 	headerPos := header.HeaderEnd(builder)
 	builder.Finish(headerPos)
-	encodedHeader = builder.Bytes[builder.Head():]
-	return builder.Bytes[builder.Head():]
+
+	encodedHeader = builder.FinishedBytes()
+	return
 }
 
-func makeThrMapPayload(thrMap map[int][]uint16, partitionCount int) []byte {
-	builder := flatbuffers.NewBuilder(0)
-	builder.Reset()
+func (c *Consumer) createHandlerHeaders(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+	for i := len(c.handlerHeaders) - 1; i >= 0; i-- {
+		builder.PrependUOffsetT(builder.CreateString(c.handlerHeaders[i]))
+	}
+
+	payload.PayloadStartHandlerHeadersVector(builder, len(c.handlerHeaders))
+	return builder.EndVector(len(c.handlerHeaders))
+}
+
+func (c *Consumer) createHandlerFooters(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+	for i := len(c.handlerFooters) - 1; i >= 0; i-- {
+		builder.PrependUOffsetT(builder.CreateString(c.handlerFooters[i]))
+	}
+
+	payload.PayloadStartHandlerFootersVector(builder, len(c.handlerFooters))
+	return builder.EndVector(len(c.handlerFooters))
+}
+
+func (c *Consumer) makeThrMapPayload(thrMap map[int][]uint16, partitionCount int) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	builder = c.getBuilder()
 
 	tMaps := make([]flatbuffers.UOffsetT, 0)
 
@@ -184,42 +241,31 @@ func makeThrMapPayload(thrMap map[int][]uint16, partitionCount int) []byte {
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
 
-	return builder.Bytes[builder.Head():]
+	encodedPayload = builder.FinishedBytes()
+	return
 }
 
-func makeDocTimerPayload(docID, callbackFn string) []byte {
-	builder := flatbuffers.NewBuilder(0)
-	builder.Reset()
-	docIDPos := builder.CreateString(docID)
-	callbackFnPos := builder.CreateString(callbackFn)
+func (c *Consumer) makeTimerPayload(e *timerContext) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	builder = c.getBuilder()
+
+	callbackFnPos := builder.CreateString(e.Callback)
+	contextPos := builder.CreateString(e.Context)
 
 	payload.PayloadStart(builder)
 
-	payload.PayloadAddDocId(builder, docIDPos)
 	payload.PayloadAddCallbackFn(builder, callbackFnPos)
+	payload.PayloadAddContext(builder, contextPos)
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
-	return builder.Bytes[builder.Head():]
+
+	encodedPayload = builder.FinishedBytes()
+	return
 }
 
-func makeNonDocTimerPayload(data string) []byte {
-	builder := flatbuffers.NewBuilder(0)
-	builder.Reset()
-	pPos := builder.CreateString(data)
+func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	builder = c.getBuilder()
 
-	payload.PayloadStart(builder)
-
-	payload.PayloadAddDocIdsCallbackFns(builder, pPos)
-
-	payloadPos := payload.PayloadEnd(builder)
-	builder.Finish(payloadPos)
-	return builder.Bytes[builder.Head():]
-}
-
-func makeDcpPayload(key, value []byte) []byte {
-	builder := flatbuffers.NewBuilder(0)
-	builder.Reset()
 	keyPos := builder.CreateByteString(key)
 	valPos := builder.CreateByteString(value)
 
@@ -230,43 +276,53 @@ func makeDcpPayload(key, value []byte) []byte {
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
-	return builder.Bytes[builder.Head():]
+
+	encodedPayload = builder.FinishedBytes()
+	return
 }
 
-func makeV8InitPayload(appName, currHost, eventingDir, eventingPort, kvHostPort, depCfg, rbacUser, rbacPass string,
-	capacity, executionTimeout int, enableRecursiveMutation bool) []byte {
-	builder := flatbuffers.NewBuilder(0)
-	builder.Reset()
+func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDir, eventingPort,
+	eventingSSLPort, kvHostPort, depCfg string, capacity, executionTimeout, checkpointInterval int,
+	skipLcbBootstrap bool, curlTimeout int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	builder = c.getBuilder()
 
 	app := builder.CreateString(appName)
+	dp := builder.CreateString(debuggerPort)
 	ch := builder.CreateString(currHost)
 	ed := builder.CreateString(eventingDir)
 	ep := builder.CreateString(eventingPort)
+	esp := builder.CreateString(eventingSSLPort)
 	dcfg := builder.CreateString(depCfg)
 	khp := builder.CreateString(kvHostPort)
-	rUser := builder.CreateString(rbacUser)
-	rPass := builder.CreateString(rbacPass)
+	handlerHeaders := c.createHandlerHeaders(builder)
+	handlerFooters := c.createHandlerFooters(builder)
 
-	buf := make([]byte, 1)
-	flatbuffers.WriteBool(buf, enableRecursiveMutation)
+	lcb := make([]byte, 1)
+	flatbuffers.WriteBool(lcb, skipLcbBootstrap)
 
 	payload.PayloadStart(builder)
 
 	payload.PayloadAddAppName(builder, app)
+	payload.PayloadAddDebuggerPort(builder, dp)
 	payload.PayloadAddCurrHost(builder, ch)
 	payload.PayloadAddEventingDir(builder, ed)
 	payload.PayloadAddCurrEventingPort(builder, ep)
+	payload.PayloadAddCurrEventingSslport(builder, esp)
 	payload.PayloadAddDepcfg(builder, dcfg)
 	payload.PayloadAddKvHostPort(builder, khp)
-	payload.PayloadAddRbacUser(builder, rUser)
-	payload.PayloadAddRbacPass(builder, rPass)
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))
-	payload.PayloadAddEnableRecursiveMutation(builder, buf[0])
+	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))
+	payload.PayloadAddCurlTimeout(builder, curlTimeout)
+	payload.PayloadAddSkipLcbBootstrap(builder, lcb[0])
+	payload.PayloadAddHandlerHeaders(builder, handlerHeaders)
+	payload.PayloadAddHandlerFooters(builder, handlerFooters)
 
 	msgPos := payload.PayloadEnd(builder)
 	builder.Finish(msgPos)
-	return builder.Bytes[builder.Head():]
+
+	encodedPayload = builder.FinishedBytes()
+	return
 }
 
 func readHeader(buf []byte) int8 {
@@ -276,7 +332,7 @@ func readHeader(buf []byte) int8 {
 	opcode := headerPos.Opcode()
 	metadata := string(headerPos.Metadata())
 
-	log.Printf(" ReadHeader => event: %d opcode: %d meta: %s\n",
+	logging.Infof(" ReadHeader => event: %d opcode: %d meta: %ru\n",
 		event, opcode, metadata)
 	return event
 }
@@ -287,41 +343,22 @@ func readPayload(buf []byte) {
 	key := string(payloadPos.Key())
 	val := string(payloadPos.Value())
 
-	log.Printf("ReadPayload => key: %s val: %s\n", key, val)
+	logging.Infof("ReadPayload => key: %ru val: %ru\n", key, val)
 }
 
-func (c *Consumer) parseWorkerResponse(m []byte, start int) {
-	defer func() {
-		if r := recover(); r != nil {
-			trace := debug.Stack()
-			logging.Errorf("CRDP[%s:%s:%s:%d] parseWorkerResponse: panic and recover, %v stack trace: %v",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
-		}
-	}()
+func (c *Consumer) parseWorkerResponse(msg []byte) {
+	r := response.GetRootAsResponse(msg, 0)
 
-	msg := m[start:]
+	msgType := r.MsgType()
+	opcode := r.Opcode()
+	message := string(r.Msg())
 
-	if len(msg) > headerFragmentSize {
-		size := binary.LittleEndian.Uint32(msg[0:headerFragmentSize])
-
-		if len(msg) >= int(headerFragmentSize+size) {
-
-			r := response.GetRootAsResponse(msg[headerFragmentSize:headerFragmentSize+size], 0)
-
-			msgType := r.MsgType()
-			opcode := r.Opcode()
-			message := string(r.Msg())
-
-			c.routeResponse(msgType, opcode, message)
-
-			if len(msg) > 2*headerFragmentSize+int(size) {
-				c.parseWorkerResponse(msg, int(size)+headerFragmentSize)
-			}
-		}
-	}
+	c.routeResponse(msgType, opcode, message)
 }
 
 func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
+	logPrefix := "Consumer::routeResponse"
+
 	switch msgType {
 	case respV8WorkerConfig:
 		switch opcode {
@@ -329,8 +366,121 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			c.sourceMap = msg
 		case handlerCode:
 			c.handlerCode = msg
-		case logMessage:
-			fmt.Printf("%s", msg)
+		case latencyStats:
+			c.workerRespMainLoopTs.Store(time.Now())
+
+			c.statsRWMutex.Lock()
+			defer c.statsRWMutex.Unlock()
+			err := json.Unmarshal([]byte(msg), &c.latencyStats)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal latency stats, msg: %v err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+		case failureStats:
+			c.workerRespMainLoopTs.Store(time.Now())
+
+			c.statsRWMutex.Lock()
+			defer c.statsRWMutex.Unlock()
+			err := json.Unmarshal([]byte(msg), &c.failureStats)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal failure stats, msg: %v err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+		case executionStats:
+			c.workerRespMainLoopTs.Store(time.Now())
+
+			c.statsRWMutex.Lock()
+			defer c.statsRWMutex.Unlock()
+			err := json.Unmarshal([]byte(msg), &c.executionStats)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal execution stats, msg: %v err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+		case compileInfo:
+			err := json.Unmarshal([]byte(msg), &c.compileInfo)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal compilation stats, msg: %v err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+		case queueSize:
+			c.workerRespMainLoopTs.Store(time.Now())
+
+			err := json.Unmarshal([]byte(msg), &c.cppQueueSizes)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal cpp queue sizes, msg: %v err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+		case lcbExceptions:
+			c.workerRespMainLoopTs.Store(time.Now())
+
+			c.statsRWMutex.Lock()
+			defer c.statsRWMutex.Unlock()
+			err := json.Unmarshal([]byte(msg), &c.lcbExceptionStats)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal lcb exception stats, msg: %v err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
 		}
+	case docTimerResponse:
+		var info TimerInfo
+		err := json.Unmarshal([]byte(msg), &info)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal timer info, err : %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+			c.errorParsingTimerResponses++
+			return
+		}
+
+		prevSeqNum := c.vbProcessingStats.getVbStat(uint16(info.Vb), "last_doc_timer_feedback_seqno").(uint64)
+		if info.SeqNum > prevSeqNum {
+			c.vbProcessingStats.updateVbStat(uint16(info.Vb), "last_doc_timer_feedback_seqno", info.SeqNum)
+			logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_doc_timer_feedback_seqno to seqNo: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), info.Vb, info.SeqNum)
+		}
+
+		c.timerResponsesRecieved++
+		c.createTimerCh <- &info
+
+	case bucketOpsResponse:
+		data := strings.Split(msg, "::")
+		if len(data) != 2 {
+			logging.Errorf("%s [%s:%s:%d] Invalid bucket ops message received: %s",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
+			return
+		}
+
+		vbStr, seqNoStr := data[0], data[1]
+		vb, err := strconv.ParseUint(vbStr, 10, 16)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to convert vbStr: %s to uint64, msg: %s err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbStr, msg, err)
+			return
+		}
+		seqNo, err := strconv.ParseUint(seqNoStr, 10, 64)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to convert seqNoStr: %s to int64, msg: %s err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), seqNoStr, msg, err)
+			return
+		}
+		prevSeqNo := c.vbProcessingStats.getVbStat(uint16(vb), "last_processed_seq_no").(uint64)
+		if seqNo > prevSeqNo {
+			c.vbProcessingStats.updateVbStat(uint16(vb), "last_processed_seq_no", seqNo)
+			logging.Tracef("%s [%s:%s:%d] vb: %d Updating last_processed_seq_no to seqNo: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNo)
+		}
+	case bucketOpsFilterAck:
+		var ack vbFilterData
+		err := json.Unmarshal([]byte(msg), &ack)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal filter ack, msg: %v err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			return
+		}
+		logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d received filter ack from C++",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), ack.Vbucket, ack.SeqNo)
+		c.filterDataCh <- &ack
+	default:
+		logging.Infof("%s [%s:%s:%d] Unknown message %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
 	}
 }

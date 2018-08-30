@@ -2,11 +2,16 @@
 
 if [ ! -f ~/.cienv ]; then
 cat > ~/.cienv <<EOF
+    export CINAME=ci-eventing
     export WORKSPACE=/opt/build
-    export RELEASE=5.0.0
-    export MANIFEST="couchbase-server/spock.xml"
-    export MODE="test"
-    #export PEGGED=3277
+    export RELEASE=5.5.0
+    export MANIFEST="couchbase-server/vulcan.xml"
+    export MODE="functional,integration"
+    export BRANCH="unstable"
+    #export CIBOT=true
+    #export GERRIT="9101 9102"
+    #export WATCHERS="somebody@couchbase.com nobody@couchbase.com"
+    #export PEGGED=1979
 EOF
 fi
 source ~/.cienv

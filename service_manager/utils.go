@@ -2,9 +2,26 @@ package servicemanager
 
 import (
 	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"strconv"
 
 	"github.com/couchbase/cbauth/service"
+	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
+
+func (m *ServiceMgr) checkIfDeployed(appName string) bool {
+	deployedApps := m.superSup.DeployedAppList()
+	for _, app := range deployedApps {
+		if app == appName {
+			return true
+		}
+	}
+	return false
+}
 
 func decodeRev(b service.Revision) uint64 {
 	return binary.BigEndian.Uint64(b)
@@ -15,4 +32,200 @@ func encodeRev(rev uint64) service.Revision {
 	binary.BigEndian.PutUint64(ext, rev)
 
 	return ext
+}
+
+func fillMissingWithDefaults(settings map[string]interface{}) {
+	// Handler related configurations
+	fillMissingDefault(settings, "checkpoint_interval", float64(60000))
+	fillMissingDefault(settings, "cleanup_timers", false)
+	fillMissingDefault(settings, "cpp_worker_thread_count", float64(2))
+	fillMissingDefault(settings, "curl_timeout", float64(10000))
+	fillMissingDefault(settings, "deadline_timeout", float64(62))
+	fillMissingDefault(settings, "execution_timeout", float64(60))
+	fillMissingDefault(settings, "feedback_batch_size", float64(100))
+	fillMissingDefault(settings, "feedback_read_buffer_size", float64(65536))
+	fillMissingDefault(settings, "idle_checkpoint_interval", float64(30000))
+	fillMissingDefault(settings, "lcb_inst_capacity", float64(5))
+	fillMissingDefault(settings, "log_level", "INFO")
+	fillMissingDefault(settings, "poll_bucket_interval", float64(10))
+	fillMissingDefault(settings, "sock_batch_size", float64(100))
+	fillMissingDefault(settings, "tick_duration", float64(60000))
+	fillMissingDefault(settings, "undeploy_routine_count", float64(6))
+	fillMissingDefault(settings, "worker_count", float64(3))
+	fillMissingDefault(settings, "worker_feedback_queue_cap", float64(500))
+	fillMissingDefault(settings, "worker_queue_cap", float64(100*1000))
+	fillMissingDefault(settings, "worker_queue_mem_cap", float64(1024))
+	fillMissingDefault(settings, "worker_response_timeout", float64(300))
+
+	// metastore related configuration
+	fillMissingDefault(settings, "execute_timer_routine_count", float64(3))
+	fillMissingDefault(settings, "timer_storage_routine_count", float64(3))
+	fillMissingDefault(settings, "timer_storage_chan_size", float64(10*1000))
+
+	// Process related configuration
+	fillMissingDefault(settings, "breakpad_on", true)
+
+	// Rebalance related configurations
+	fillMissingDefault(settings, "vb_ownership_giveup_routine_count", float64(3))
+	fillMissingDefault(settings, "vb_ownership_takeover_routine_count", float64(3))
+
+	// Application logging related configurations
+	fillMissingDefault(settings, "app_log_max_size", float64(1024*1024*40))
+	fillMissingDefault(settings, "app_log_max_files", float64(10))
+	fillMissingDefault(settings, "enable_applog_rotation", true)
+
+	// DCP connection related configurations
+	fillMissingDefault(settings, "agg_dcp_feed_mem_cap", float64(1024))
+	fillMissingDefault(settings, "data_chan_size", float64(50))
+	fillMissingDefault(settings, "dcp_gen_chan_size", float64(10000))
+	fillMissingDefault(settings, "dcp_num_connections", float64(1))
+}
+
+func fillMissingDefault(settings map[string]interface{}, field string, defaultValue interface{}) {
+	if _, ok := settings[field]; !ok {
+		settings[field] = defaultValue
+	}
+}
+
+func (m *ServiceMgr) getHandler(appName string) string {
+	if m.checkIfDeployed(appName) {
+		return m.superSup.GetHandlerCode(appName)
+	}
+
+	return ""
+}
+
+func (m *ServiceMgr) getSourceMap(appName string) string {
+	if m.checkIfDeployed(appName) {
+		return m.superSup.GetSourceMap(appName)
+	}
+
+	return ""
+}
+
+func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
+	errInfo := m.errorCodes[runtimeInfo.Code]
+	errInfo.RuntimeInfo = *runtimeInfo
+	response, err := json.Marshal(errInfo)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
+		fmt.Fprintf(w, `{"error":"Failed to marshal error info, err: %v"}`, err)
+		return
+	}
+
+	if runtimeInfo.Code != m.statusCodes.ok.Code {
+		w.WriteHeader(m.getDisposition(runtimeInfo.Code))
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(errInfo.Code))
+	fmt.Fprintf(w, string(response))
+}
+
+func (m *ServiceMgr) sendRuntimeInfo(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
+	if runtimeInfo.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, runtimeInfo)
+		return
+	}
+
+	response, err := json.Marshal(runtimeInfo)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
+		fmt.Fprintf(w, `{"error":"Failed to marshal error info, err: %v"}`, err)
+		return
+	}
+
+	fmt.Fprintf(w, string(response))
+}
+
+func (m *ServiceMgr) sendRuntimeInfoList(w http.ResponseWriter, runtimeInfoList []*runtimeInfo) {
+	response, err := json.Marshal(runtimeInfoList)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
+		fmt.Fprintf(w, `{"error":"Failed to marshal error info, err: %v"}`, err)
+		return
+	}
+
+	allOK := true
+	allFail := true
+	for _, info := range runtimeInfoList {
+		allOK = allOK && (info.Code == m.statusCodes.ok.Code)
+		allFail = allFail && (info.Code != m.statusCodes.ok.Code)
+	}
+
+	if allOK {
+		w.WriteHeader(http.StatusOK)
+	} else if allFail {
+		w.WriteHeader(http.StatusBadRequest)
+	} else {
+		w.WriteHeader(http.StatusMultiStatus)
+	}
+
+	fmt.Fprintf(w, string(response))
+}
+
+func (m *ServiceMgr) unmarshalApp(r *http.Request) (app application, info *runtimeInfo) {
+	logPrefix := "ServiceMgr::unmarshalApp"
+	info = &runtimeInfo{}
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	err = json.Unmarshal(data, &app)
+	if err != nil {
+		info.Code = m.statusCodes.errUnmarshalPld.Code
+		info.Info = fmt.Sprintf("Failed to unmarshal payload err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	info.Info = "OK"
+	return
+}
+
+// Unmarshals list of application and returns application objects
+func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) (appList *[]application, info *runtimeInfo) {
+	logPrefix := "ServiceMgr::unmarshalAppList"
+	appList = &[]application{}
+	info = &runtimeInfo{}
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	err = json.Unmarshal(data, &appList)
+	if err != nil {
+		info.Code = m.statusCodes.errUnmarshalPld.Code
+		info.Info = fmt.Sprintf("Failed to unmarshal payload err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+var metakvSetCallback = func(args ...interface{}) error {
+	logPrefix := "ServiceMgr::metakvSetCallback"
+
+	metakvPath := args[0].(string)
+	data := args[1].([]byte)
+
+	err := util.MetakvSet(metakvPath, data, nil)
+	if err != nil {
+		logging.Errorf("%s metakv set failed, err: %v", logPrefix, err)
+	}
+	return err
 }

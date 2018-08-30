@@ -1,63 +1,149 @@
 package consumer
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/gocb"
 )
 
-func newDebugClient(c *Consumer, appName, eventingPort, tcpPort, workerName string) *debugClient {
+var (
+	previousAppName string
+	debuggerMutex   = &sync.Mutex{}
+)
+
+func newDebugClient(c *Consumer, appName, debugTCPPort, eventingPort, feedbackTCPPort, ipcType, workerName string) *debugClient {
 	return &debugClient{
-		appName:        appName,
-		consumerHandle: c,
-		debugTCPPort:   tcpPort,
-		eventingPort:   eventingPort,
-		workerName:     workerName,
+		appName:              appName,
+		consumerHandle:       c,
+		debugTCPPort:         debugTCPPort,
+		eventingPort:         eventingPort,
+		debugFeedbackTCPPort: feedbackTCPPort,
+		ipcType:              ipcType,
+		workerName:           workerName,
 	}
 }
 
 func (c *debugClient) Serve() {
-	c.cmd = exec.Command("eventing-consumer", c.appName, c.debugTCPPort, c.workerName,
-		strconv.Itoa(c.consumerHandle.socketWriteBatchSize), c.eventingPort, "debug")
+	logPrefix := "debugClient::Serve"
 
-	err := c.cmd.Start()
+	c.cmd = exec.Command(
+		"eventing-consumer",
+		c.appName,
+		c.ipcType,
+		c.debugTCPPort,
+		c.debugFeedbackTCPPort,
+		c.workerName,
+		strconv.Itoa(c.consumerHandle.socketWriteBatchSize),
+		strconv.Itoa(c.consumerHandle.feedbackWriteBatchSize),
+		c.consumerHandle.diagDir,
+		util.GetIPMode(),
+		"true",
+		strconv.Itoa(int(c.consumerHandle.app.HandlerUUID)),
+		c.consumerHandle.app.UserPrefix,
+		c.eventingPort, // not read, for tagging
+		"debug")        // not read, for tagging
+
+	user, key := util.LocalKey()
+	c.cmd.Env = append(os.Environ(),
+		fmt.Sprintf("CBEVT_CALLBACK_USR=%s", user),
+		fmt.Sprintf("CBEVT_CALLBACK_KEY=%s", key))
+
+	errPipe, err := c.cmd.StderrPipe()
 	if err != nil {
-		logging.Errorf("CRDCL[%s:%s:%s:%d] Failed to spawn c++ worker for debugger",
-			c.appName, c.workerName, c.debugTCPPort, c.osPid)
+		logging.Errorf("%s [%s:%s:%d] Failed to open stderr pipe, err: %v",
+			c.appName, c.workerName, c.debugTCPPort, c.osPid, err)
+		return
+	}
+	defer errPipe.Close()
+
+	inPipe, err := c.cmd.StdinPipe()
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to open stdin pipe, err: %v",
+			c.appName, c.workerName, c.debugTCPPort, c.osPid, err)
+		return
+	}
+	defer inPipe.Close()
+
+	outPipe, err := c.cmd.StdoutPipe()
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to open stdout pipe, err: %v",
+			logPrefix, c.workerName, c.debugTCPPort, c.osPid, err)
+		return
+	}
+	defer outPipe.Close()
+
+	err = c.cmd.Start()
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to spawn c++ worker for debugger",
+			logPrefix, c.workerName, c.debugTCPPort, c.osPid)
 	} else {
-		logging.Infof("CRDCL[%s:%s:%s:%d] C++ worker launched for debugger",
-			c.appName, c.workerName, c.debugTCPPort, c.osPid)
+		logging.Infof("%s [%s:%s:%d] C++ worker launched for debugger",
+			logPrefix, c.workerName, c.debugTCPPort, c.osPid)
 	}
 
-	c.cmd.Wait()
+	bufErr := bufio.NewReader(errPipe)
+	bufOut := bufio.NewReader(outPipe)
 
-	logging.Debugf("CRDCL[%s:%s:%s:%d] Exiting C++ worker spawned for debugger",
-		c.appName, c.workerName, c.debugTCPPort, c.osPid)
+	go func(bufErr *bufio.Reader) {
+		defer errPipe.Close()
+		for {
+			msg, _, err := bufErr.ReadLine()
+			if err != nil {
+				logging.Warnf("%s [%s:%s:%d] Failed to read from stderr pipe, err: %v",
+					logPrefix, c.workerName, c.debugTCPPort, c.osPid, err)
+				return
+			}
+			logging.Infof("eventing-debug-consumer [%s:%s:%d] %s", c.workerName, c.debugTCPPort, c.osPid, string(msg))
+		}
+	}(bufErr)
+
+	go func(bufOut *bufio.Reader) {
+		defer outPipe.Close()
+		for {
+			msg, _, err := bufOut.ReadLine()
+			if err != nil {
+				logging.Warnf("%s [%s:%s:%d] Failed to read from stdout pipe, err: %v",
+					logPrefix, c.workerName, c.debugTCPPort, c.osPid, err)
+				return
+			}
+			c.consumerHandle.producer.WriteAppLog(string(msg))
+		}
+	}(bufOut)
+
+	c.osPid = c.cmd.Process.Pid
+	err = c.cmd.Wait()
+	if err != nil {
+		logging.Warnf("%s [%s:%s:%d] Exiting c++ debug worker with error: %v",
+			logPrefix, c.workerName, c.debugTCPPort, c.osPid, err)
+	}
+
+	logging.Debugf("%s [%s:%s:%d] Exiting C++ worker spawned for debugger",
+		logPrefix, c.workerName, c.debugTCPPort, c.osPid)
 }
 
 func (c *debugClient) Stop() {
-	logging.Debugf("CRDCL[%s:%s:%s:%d] Stopping C++ worker spawned for debugger",
-		c.appName, c.workerName, c.debugTCPPort, c.osPid)
+	logPrefix := "debugClient::Stop"
 
+	logging.Debugf("%s [%s:%s:%d] Stopping C++ worker spawned for debugger",
+		logPrefix, c.workerName, c.debugTCPPort, c.osPid)
 	c.consumerHandle.sendMsgToDebugger = false
-
 	c.consumerHandle.debugListener.Close()
-
-	if c.osPid > 1 {
-		ps, err := os.FindProcess(c.osPid)
-		if err == nil {
-			ps.Kill()
-		}
+	err := util.KillProcess(c.osPid)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Unable to kill C++ worker spawned for debugger, err: %v",
+			logPrefix, c.workerName, c.debugTCPPort, c.osPid, err)
 	}
-
 }
 
 func (c *debugClient) String() string {
@@ -66,24 +152,36 @@ func (c *debugClient) String() string {
 }
 
 func (c *Consumer) pollForDebuggerStart() {
+	logPrefix := "Consumer::pollForDebuggerStart"
+
 	dFlagKey := fmt.Sprintf("%s::%s", c.app.AppName, startDebuggerFlag)
 	dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
 
-	dFlagBlob := &common.StartDebugBlob{}
+	dFlagBlob := &common.StartDebugBlobVer{
+		common.StartDebugBlob{},
+		util.EventingVer(),
+	}
 	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
-	var cas uint64
+	var cas gocb.Cas
 
 	for {
-
 		select {
 		case <-c.signalStopDebuggerRoutineCh:
+			logging.Infof("%s [%s:%s:%d] Exiting debugger blob polling routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		default:
 		}
 
 		c.debuggerState = debuggerOpcode
 
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, dFlagKey, dFlagBlob, &cas, false)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+			c, c.producer.AddMetadataPrefix(dFlagKey), dFlagBlob, &cas, false)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
+
 		if !dFlagBlob.StartDebug {
 			time.Sleep(debuggerFlagCheckInterval)
 			continue
@@ -106,7 +204,13 @@ func (c *Consumer) pollForDebuggerStart() {
 					dFlagKey := fmt.Sprintf("%s::%s", c.app.AppName, startDebuggerFlag)
 					dFlagBlob := &common.StartDebugBlob{}
 
-					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, dFlagKey, dFlagBlob, &cas, false)
+					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+						c, c.producer.AddMetadataPrefix(dFlagKey), dFlagBlob, &cas, false)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return
+					}
+
 					if !dFlagBlob.StartDebug {
 						c.signalDebugBlobDebugStopCh <- struct{}{}
 						return
@@ -123,10 +227,15 @@ func (c *Consumer) pollForDebuggerStart() {
 			}
 
 		checkDInstAddrBlob:
-			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, c, dInstAddrKey, dInstAddrBlob, &cas, false)
+			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+				c, c.producer.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob, &cas, false)
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+				return
+			}
 
-			logging.Infof("CRPS[%s:%s:%s:%d] Debugger inst addr key: %s dump: %#v",
-				c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, dInstAddrBlob)
+			logging.Infof("%s [%s:%s:%d] Debugger inst addr key: %rm dump: %rm",
+				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, fmt.Sprintf("%#v", dInstAddrBlob))
 
 			if dInstAddrBlob.HostPortAddr == "" {
 
@@ -134,14 +243,19 @@ func (c *Consumer) pollForDebuggerStart() {
 				dInstAddrBlob.HostPortAddr = c.HostPortAddr()
 				dInstAddrBlob.NodeUUID = c.NodeUUID()
 
-				_, err := c.metadataBucketHandle.Cas(dInstAddrKey, 0, cas, dInstAddrBlob)
+				_, err := c.gocbMetaBucket.Replace(c.producer.AddMetadataPrefix(dInstAddrKey).Raw(), dInstAddrBlob, gocb.Cas(cas), 0)
 				if err != nil {
-					logging.Errorf("CRPS[%s:%s:%s:%d] Bucket cas failed for debugger inst addr key: %s, err: %v",
-						c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, err)
+					logging.Errorf("%s [%s:%s:%d] Bucket cas failed for debugger inst addr key: %rm, err: %v",
+						logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, err)
 					goto checkDInstAddrBlob
 				} else {
 					dFlagBlob.StartDebug = false
-					util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, c, dFlagKey, dFlagBlob)
+					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback,
+						c, c.producer.AddMetadataPrefix(dFlagKey), dFlagBlob)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return
+					}
 
 					c.signalStartDebuggerCh <- struct{}{}
 				}
@@ -152,31 +266,112 @@ func (c *Consumer) pollForDebuggerStart() {
 }
 
 func (c *Consumer) startDebuggerServer() {
+	logPrefix := "Consumer::startDebuggerServer"
+
 	var err error
-	c.debugListener, err = net.Listen("tcp", ":0")
-	if err != nil {
-		logging.Errorf("CRSD[%s:%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
-			c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
-		return
+	udsSockPath := fmt.Sprintf("%s/debug_%s.sock", os.TempDir(), c.ConsumerName())
+	feedbackSockPath := fmt.Sprintf("%s/debug_feedback_%s.sock", os.TempDir(), c.ConsumerName())
+
+	if runtime.GOOS == "windows" || len(feedbackSockPath) > udsSockPathLimit {
+
+		c.debugFeedbackListener, err = net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to listen on feedbackListener while trying to start communication to C++ debugger, err: %v",
+				logPrefix, c.ConsumerName(), c.debugFeedbackTCPPort, c.Pid(), err)
+			return
+		}
+
+		_, c.debugFeedbackTCPPort, err = net.SplitHostPort(c.debugFeedbackListener.Addr().String())
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to parse debugFeedbackTCPPort in '%v', err: %v",
+				logPrefix, c.ConsumerName(), c.debugFeedbackTCPPort, c.Pid(), c.debugFeedbackListener.Addr(), err)
+			return
+		}
+
+		c.debugListener, err = net.Listen("tcp", ":0")
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to listen on debuglistener while trying to start communication to C++ debugger, err: %v",
+				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
+			return
+		}
+
+		logging.Infof("%s [%s:%s:%d] Start server on addr: %rs for communication to C++ debugger",
+			logPrefix, c.ConsumerName(), c.tcpPort, c.Pid(), c.debugListener.Addr().String())
+
+		_, c.debugTCPPort, err = net.SplitHostPort(c.debugListener.Addr().String())
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to parse  debugTCPPort in '%v', err: %v",
+				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), c.debugListener.Addr(), err)
+			return
+		}
+		c.debugIPCType = "af_inet"
+
+	} else {
+		os.Remove(udsSockPath)
+		os.Remove(feedbackSockPath)
+		c.debugFeedbackListener, err = net.Listen("unix", feedbackSockPath)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
+				logPrefix, c.ConsumerName(), c.debugFeedbackTCPPort, c.Pid(), err)
+		}
+		c.debugFeedbackTCPPort = feedbackSockPath
+
+		c.debugListener, err = net.Listen("unix", udsSockPath)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to listen while trying to start communication to C++ debugger, err: %v",
+				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
+		}
+
+		c.debugIPCType = "af_unix"
+		c.debugTCPPort = udsSockPath
 	}
 
-	logging.Infof("CRSD[%s:%s:%s:%d] Start server on addr: %v for communication to C++ debugger",
-		c.app.AppName, c.ConsumerName(), c.tcpPort, c.Pid(), c.debugListener.Addr().String())
-
 	c.signalDebuggerConnectedCh = make(chan struct{}, 1)
-
+	c.signalDebuggerFeedbackCh = make(chan struct{}, 1)
 	go func(c *Consumer) {
-		for {
-			c.debugConn, err = c.debugListener.Accept()
-			c.signalDebuggerConnectedCh <- struct{}{}
+		c.debugConn, err = c.debugListener.Accept()
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to accept debugger connection, err: %v",
+				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), err)
 		}
+		c.signalDebuggerConnectedCh <- struct{}{}
 	}(c)
 
-	c.debugTCPPort = strings.Split(c.debugListener.Addr().String(), ":")[3]
-	c.debugClient = newDebugClient(c, c.app.AppName, c.eventingAdminPort, c.debugTCPPort, c.workerName)
+	go func(c *Consumer) {
+		c.debugFeedbackConn, err = c.debugFeedbackListener.Accept()
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to accept feedback debugger connection, err: %v",
+				logPrefix, c.ConsumerName(), c.debugFeedbackTCPPort, c.Pid(), err)
+		} else {
+			feedbackReader := bufio.NewReader(c.debugFeedbackConn)
+			go c.feedbackReadMessageLoop(feedbackReader)
+		}
+		c.signalDebuggerFeedbackCh <- struct{}{}
+	}(c)
+
+	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", c.eventingDir, c.app.AppName)
+	err = os.Remove(frontendURLFilePath)
+	if err != nil {
+		logging.Infof("%s [%s:%s:%d] Failed to remove frontend.url file, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+	}
+
+	debuggerMutex.Lock()
+	if previousAppName != "" {
+		logging.Infof("%s [%s:%s:%d] Stopping debugger for previously spawned %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), previousAppName)
+		c.superSup.SignalStopDebugger(previousAppName)
+		time.Sleep(1 * time.Second)
+	}
+
+	c.debugClient = newDebugClient(c, c.app.AppName, c.debugTCPPort,
+		c.eventingAdminPort, c.debugFeedbackTCPPort, c.debugIPCType, c.workerName)
 	c.debugClientSupToken = c.consumerSup.Add(c.debugClient)
+	previousAppName = c.app.AppName
+	debuggerMutex.Unlock()
 
 	<-c.signalDebuggerConnectedCh
+	<-c.signalDebuggerFeedbackCh
 
 	c.sendLogLevel(c.logLevel, true)
 
@@ -189,22 +384,34 @@ func (c *Consumer) startDebuggerServer() {
 
 	c.sendWorkerThrCount(1, true) // Spawn just one thread when debugger is spawned to avoid complexity
 
-	util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), getEventingNodeAddrOpCallback, c)
-
-	var currHost string
-	h := c.HostPortAddr()
-	if h != "" {
-		currHost = strings.Split(h, ":")[0]
-	} else {
-		currHost = "127.0.0.1"
+	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
 	}
 
-	payload := makeV8InitPayload(c.app.AppName, currHost, c.eventingDir, c.eventingAdminPort, c.producer.KvHostPorts()[0], c.producer.CfgData(),
-		c.producer.RbacUser(), c.producer.RbacPass(), c.lcbInstCapacity, c.executionTimeout, c.enableRecursiveMutation)
-	logging.Debugf("CRSD[%s:%s:%s:%d] Debug enabled V8 worker init enable_recursive_mutation flag: %v",
-		c.app.AppName, c.workerName, c.debugTCPPort, c.Pid(), c.enableRecursiveMutation)
+	currHost := util.Localhost()
+	h := c.HostPortAddr()
+	if h != "" {
+		currHost, _, err = net.SplitHostPort(h)
+		if err != nil {
+			logging.Errorf("Unable to split hostport %v: %v", h, err)
+		}
+	}
 
-	c.sendInitV8Worker(payload, true)
+	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
+
+	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort,
+		currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
+		c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
+		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
+		false, c.curlTimeout)
+
+	c.sendInitV8Worker(payload, true, pBuilder)
 
 	c.sendDebuggerStart()
 
@@ -214,12 +421,27 @@ func (c *Consumer) startDebuggerServer() {
 }
 
 func (c *Consumer) stopDebuggerServer() {
-	logging.Infof("CRSD[%s:%s:%s:%d] Closing connection to C++ worker for debugger. Local addr: %v, remote addr: %v",
-		c.app.AppName, c.ConsumerName(), c.debugTCPPort, c.Pid(), c.debugConn.LocalAddr().String(), c.debugConn.RemoteAddr().String())
+	logPrefix := "Consumer::stopDebuggerServer"
+
+	logging.Infof("%s [%s:%s:%d] Closing connection to C++ worker for debugger",
+		logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid())
 
 	c.debuggerStarted = false
 	c.sendMsgToDebugger = false
 
-	c.debugConn.Close()
-	c.debugListener.Close()
+	if c.debugConn != nil {
+		c.debugConn.Close()
+	}
+
+	if c.debugListener != nil {
+		c.debugListener.Close()
+	}
+
+	if c.debugFeedbackConn != nil {
+		c.debugFeedbackConn.Close()
+	}
+
+	if c.debugFeedbackListener != nil {
+		c.debugFeedbackListener.Close()
+	}
 }

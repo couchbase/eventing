@@ -1,11 +1,11 @@
 package supervisor
 
 import (
-	// "bytes"
 	"encoding/json"
 	"fmt"
-	"net"
-	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,57 +16,114 @@ import (
 	"github.com/couchbase/eventing/service_manager"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/plasma"
+	"github.com/pkg/errors"
 )
 
 // NewSuperSupervisor creates the super_supervisor handle
-func NewSuperSupervisor(eventingAdminPort, eventingDir, kvPort, restPort, uuid string) *SuperSupervisor {
+func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string, numVbuckets int) *SuperSupervisor {
 	s := &SuperSupervisor{
-		appStatus:                    make(map[string]bool),
-		CancelCh:                     make(chan struct{}, 1),
-		eventingAdminPort:            eventingAdminPort,
-		eventingDir:                  eventingDir,
-		kvPort:                       kvPort,
-		plasmaCloseSignalMap:         make(map[uint16]int),
-		producerSupervisorTokenMap:   make(map[common.EventingProducer]suptree.ServiceToken),
-		restPort:                     restPort,
-		runningProducers:             make(map[string]common.EventingProducer),
-		runningProducersHostPortAddr: make(map[string]string),
-		supCmdCh:                     make(chan supCmdMsg, 10),
-		superSup:                     suptree.NewSimple("super_supervisor"),
-		timerDataTransferReq:         make(map[uint16]struct{}),
-		timerDataTransferReqCh:       make(chan uint16, numTimerVbMoves),
-		plasmaRWMutex:                &sync.RWMutex{},
-		uuid:                         uuid,
-		vbPlasmaStoreMap:             make(map[uint16]*plasma.Plasma),
-		vbucketsToSkipPlasmaClose:    make(map[uint16]struct{}),
+		adminPort:                  adminPort,
+		appDeploymentStatus:        make(map[string]bool),
+		appProcessingStatus:        make(map[string]bool),
+		bootstrappingApps:          make(map[string]string),
+		CancelCh:                   make(chan struct{}, 1),
+		cleanedUpAppMap:            make(map[string]struct{}),
+		deployedApps:               make(map[string]string),
+		diagDir:                    diagDir,
+		ejectNodes:                 make([]string, 0),
+		eventingDir:                eventingDir,
+		keepNodes:                  make([]string, 0),
+		kvPort:                     kvPort,
+		locallyDeployedApps:        make(map[string]string),
+		numVbuckets:                numVbuckets,
+		producerSupervisorTokenMap: make(map[common.EventingProducer]suptree.ServiceToken),
+		restPort:                   restPort,
+		retryCount:                 -1,
+		runningProducers:           make(map[string]common.EventingProducer),
+		runningProducersRWMutex:    &sync.RWMutex{},
+		supCmdCh:                   make(chan supCmdMsg, 10),
+		superSup:                   suptree.NewSimple("super_supervisor"),
+		tokenMapRWMutex:            &sync.RWMutex{},
+		uuid:                       uuid,
 	}
 	s.appRWMutex = &sync.RWMutex{}
+	s.appListRWMutex = &sync.RWMutex{}
 	s.mu = &sync.RWMutex{}
 	go s.superSup.ServeBackground()
 
 	config, _ := util.NewConfig(nil)
 	config.Set("uuid", s.uuid)
-	config.Set("eventing_admin_port", s.eventingAdminPort)
+	config.Set("eventing_admin_http_port", s.adminPort.HTTPPort)
+	config.Set("eventing_admin_debugger_port", s.adminPort.DebuggerPort)
+	config.Set("eventing_admin_ssl_port", s.adminPort.SslPort)
+	config.Set("eventing_admin_ssl_cert", s.adminPort.CertFile)
+	config.Set("eventing_admin_ssl_key", s.adminPort.KeyFile)
 	config.Set("eventing_dir", s.eventingDir)
 	config.Set("rest_port", s.restPort)
 
 	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s)
 
+	s.keepNodes = append(s.keepNodes, uuid)
+
 	var user, password string
-	util.Retry(util.NewFixedBackoff(time.Second), getHTTPServiceAuth, s, &user, &password)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getHTTPServiceAuth, s, &user, &password)
 	s.auth = fmt.Sprintf("%s:%s", user, password)
 
+	go func() {
+		tick := time.NewTicker(time.Minute)
+		defer tick.Stop()
+
+		for {
+			select {
+			case <-tick.C:
+				printMemoryStats()
+			}
+		}
+	}()
 	return s
+}
+
+func (s *SuperSupervisor) checkIfNodeInCluster() bool {
+	logPrefix := "SuperSupervisor::checkIfNodeInCluster"
+
+	var data []byte
+	var keepNodes []string
+
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, metakvConfigKeepNodes, &data)
+	err := json.Unmarshal(data, &keepNodes)
+	if err != nil {
+		logging.Errorf("%s [%d] Failed to unmarshal keepNodes, err: %v", logPrefix, s.runningFnsCount(), err)
+		return false
+	}
+
+	var nodeInCluster bool
+	for _, uuid := range keepNodes {
+		if uuid == s.uuid {
+			nodeInCluster = true
+		}
+	}
+
+	if !nodeInCluster {
+		logging.Infof("%s [%d] Node not part of cluster. Current node uuid: %v keepNodes: %v", logPrefix, s.runningFnsCount(), s.uuid, keepNodes)
+		return false
+	}
+
+	return true
 }
 
 // EventHandlerLoadCallback is registered as callback from metakv observe calls on event handlers path
 func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, rev interface{}) error {
-	logging.Infof("SSUP[%d] EventHandlerLoadCallback: path => %s encoded value size => %v\n", len(s.runningProducers), path, len(value))
+	logPrefix := "SuperSupervisor::EventHandlerLoadCallback"
+
+	logging.Infof("%s [%d] path => %s encoded value size => %v", logPrefix, s.runningFnsCount(), path, len(value))
+
+	if !s.checkIfNodeInCluster() && s.runningFnsCount() == 0 {
+		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, s.runningFnsCount())
+		return nil
+	}
 
 	if value != nil {
-		splitRes := strings.Split(path, "/")
-		appName := splitRes[len(splitRes)-1]
+		appName := util.GetAppNameFromPath(path)
 		msg := supCmdMsg{
 			ctx: appName,
 			cmd: cmdAppLoad,
@@ -75,30 +132,64 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 		settingsPath := MetakvAppSettingsPath + appName
 		sData, err := util.MetakvGet(settingsPath)
 		if err != nil {
-			logging.Errorf("SSUP[%d] App: %s Failed to fetch updated settings from metakv, err: %v",
-				len(s.runningProducers), appName, err)
+			logging.Errorf("%s [%d] Function: %s Failed to fetch updated settings from metakv, err: %v",
+				logPrefix, s.runningFnsCount(), appName, err)
 		}
 
 		settings := make(map[string]interface{})
 		err = json.Unmarshal(sData, &settings)
 		if err != nil {
-			logging.Errorf("SSUP[%d] App: %s Failed to unmarshal settings received, err: %v",
-				len(s.runningProducers), appName, err)
+			logging.Errorf("%s [%d] Function: %s Failed to unmarshal settings received, err: %v",
+				logPrefix, s.runningFnsCount(), appName, err)
 		}
 
 		s.appRWMutex.Lock()
-		if _, ok := s.appStatus[appName]; !ok {
-			s.appStatus[appName] = false
+		if _, ok := s.appDeploymentStatus[appName]; !ok {
+			s.appDeploymentStatus[appName] = false
 		}
 
-		if processingStatus, ok := settings["processing_status"].(bool); ok {
-			if s.appStatus[appName] == false && processingStatus {
-				s.supCmdCh <- msg
-				s.appStatus[appName] = true
-			}
+		if _, ok := s.appProcessingStatus[appName]; !ok {
+			s.appProcessingStatus[appName] = false
 		}
 		s.appRWMutex.Unlock()
 
+		val, ok := settings["processing_status"]
+		if !ok {
+			logging.Errorf("%s [%d] Missing processing_status", logPrefix, s.runningFnsCount())
+			return nil
+		}
+
+		processingStatus, ok := val.(bool)
+		if !ok {
+			logging.Errorf("%s [%d] Supplied processing_status unexpected", logPrefix, s.runningFnsCount())
+			return nil
+		}
+
+		val, ok = settings["deployment_status"]
+		if !ok {
+			logging.Errorf("%s [%d] Missing deployment_status", logPrefix, s.runningFnsCount())
+			return nil
+		}
+
+		_, ok = val.(bool)
+		if !ok {
+			logging.Errorf("%s [%d] Supplied deployment_status unexpected", logPrefix, s.runningFnsCount())
+			return nil
+		}
+
+		s.appRWMutex.RLock()
+		appProcessingStatus := s.appProcessingStatus[appName]
+		s.appRWMutex.RUnlock()
+
+		if appProcessingStatus == false && processingStatus {
+			s.supCmdCh <- msg
+
+			s.appRWMutex.Lock()
+			s.appProcessingStatus[appName] = true
+			s.appDeploymentStatus[appName] = true
+			s.appRWMutex.Unlock()
+
+		}
 	} else {
 
 		// Delete application request
@@ -109,84 +200,197 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 			cmd: cmdAppDelete,
 		}
 
-		if !s.appStatus[appName] {
-			s.supCmdCh <- msg
-		} else {
-			logging.Errorf("SSUP[%d] App: %s, got request to delete the app but app isn't un-deployed. Ignoring delete request",
-				len(s.runningProducers), appName)
-		}
+		s.supCmdCh <- msg
 	}
 	return nil
 }
 
 // SettingsChangeCallback is registered as callback from metakv observe calls on event handler settings path
 func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev interface{}) error {
-	logging.Infof("SSUP[%d] SettingsChangeCallback: path => %s value => %s", len(s.runningProducers), path, string(value))
+	logPrefix := "SuperSupervisor::SettingsChangeCallback"
+
+	if !s.checkIfNodeInCluster() && s.runningFnsCount() == 0 {
+		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, s.runningFnsCount())
+		return nil
+	}
 
 	if value != nil {
-		splitRes := strings.Split(path, "/")
-		appName := splitRes[len(splitRes)-1]
+		sValue := make(map[string]interface{})
+		err := json.Unmarshal(value, &sValue)
+		if err != nil {
+			logging.Errorf("%s [%d] Failed to unmarshal settings received, err: %v",
+				logPrefix, s.runningFnsCount(), err)
+			return nil
+		}
+
+		logging.Infof("%s [%d] Path => %s value => %#v", logPrefix, s.runningFnsCount(), path, sValue)
+
+		appName := util.GetAppNameFromPath(path)
 		msg := supCmdMsg{
 			ctx: appName,
 			cmd: cmdSettingsUpdate,
 		}
 
 		settings := make(map[string]interface{})
-		err := json.Unmarshal(value, &settings)
-		if err != nil {
-			logging.Errorf("SSUP[%d] App: %s Failed to unmarshal settings received, err: %v",
-				len(s.runningProducers), appName, err)
+		json.Unmarshal(value, &settings)
+
+		val, ok := settings["processing_status"]
+		if !ok {
+			logging.Errorf("%s [%d] Missing processing_status", logPrefix, s.runningFnsCount())
+			return nil
 		}
 
-		processingStatus := settings["processing_status"].(bool)
+		processingStatus, ok := val.(bool)
+		if !ok {
+			logging.Errorf("%s [%d] Supplied processing_status unexpected", logPrefix, s.runningFnsCount())
+			return nil
+		}
+
+		val, ok = settings["deployment_status"]
+		if !ok {
+			logging.Errorf("%s [%d] Missing deployment_status", logPrefix, s.runningFnsCount())
+			return nil
+		}
+
+		deploymentStatus, ok := val.(bool)
+		if !ok {
+			logging.Errorf("%s [%d] Supplied deployment_status unexpected", logPrefix, s.runningFnsCount())
+			return nil
+		}
 
 		s.appRWMutex.Lock()
-		if _, ok := s.appStatus[appName]; !ok {
-			s.appStatus[appName] = false
+		if _, ok := s.appDeploymentStatus[appName]; !ok {
+			s.appDeploymentStatus[appName] = false
 		}
 
-		switch s.appStatus[appName] {
+		if _, ok := s.appProcessingStatus[appName]; !ok {
+			s.appProcessingStatus[appName] = false
+		}
+		s.appRWMutex.Unlock()
+
+		logging.Infof("%s [%d] Function: %s current state: %d requested status for deployment: %t processing: %t",
+			logPrefix, s.runningFnsCount(), appName, s.GetAppState(appName), deploymentStatus, processingStatus)
+
+		/*
+			State 1(Deployment status = False, Processing status = False)
+			State 2 (Deployment status = True, Processing status = True)
+			State 3 (Deployment status = True,  Processing status = False)
+
+			Possible state transitions:
+
+			S1 <==> S2 <==> S3 ==> S1
+		*/
+
+		switch deploymentStatus {
 		case true:
+
 			switch processingStatus {
 			case true:
-				logging.Infof("SSUP[%d] App: %s already enabled. Passing settings change message to Eventing.Consumer",
-					len(s.runningProducers), appName)
+				logging.Infof("%s [%d] Function: %s begin deployment process", logPrefix, s.runningFnsCount(), appName)
+				state := s.GetAppState(appName)
 
-				s.supCmdCh <- msg
+				if state == common.AppStateUndeployed || state == common.AppStateDisabled {
+					if err := util.MetaKvDelete(MetakvAppsRetryPath+appName, nil); err != nil {
+						logging.Errorf("%s [%d] Function: %s failed to delete from metakv path, err : %v",
+							logPrefix, s.runningFnsCount(), appName, err)
+						return err
+					}
+
+					if state == common.AppStateDisabled {
+						if p, ok := s.runningFns()[appName]; ok {
+							logging.Infof("%s [%d] Function: %s stopping running producer instance", logPrefix, s.runningFnsCount(), appName)
+							p.StopProducer()
+						}
+					}
+
+					s.appListRWMutex.Lock()
+					if _, ok := s.bootstrappingApps[appName]; ok {
+						logging.Infof("%s [%d] Function: %s already bootstrapping", logPrefix, s.runningFnsCount(), appName)
+						s.appListRWMutex.Unlock()
+						return nil
+					}
+					s.bootstrappingApps[appName] = time.Now().String()
+					s.appListRWMutex.Unlock()
+
+					s.spawnApp(appName)
+
+					s.appRWMutex.Lock()
+					s.appDeploymentStatus[appName] = deploymentStatus
+					s.appProcessingStatus[appName] = processingStatus
+					s.appRWMutex.Unlock()
+
+					if eventingProducer, ok := s.runningFns()[appName]; ok {
+						eventingProducer.SignalBootstrapFinish()
+
+						s.addToDeployedApps(appName)
+						s.addToLocallyDeployedApps(appName)
+
+						s.Lock()
+						delete(s.cleanedUpAppMap, appName)
+						s.Unlock()
+
+						s.appListRWMutex.Lock()
+						delete(s.bootstrappingApps, appName)
+						s.appListRWMutex.Unlock()
+					}
+				} else {
+					s.supCmdCh <- msg
+				}
+
+				logging.Infof("%s [%d] Function: %s deployment done", logPrefix, s.runningFnsCount(), appName)
 
 			case false:
-				logging.Infof("SSUP[%d] App: %s enabled, settings change requesting for disabling processing for it",
-					len(s.runningProducers), appName)
 
-				if p, ok := s.runningProducers[appName]; ok {
-					logging.Infof("SSUP[%d] App: %s, Stopping running instance of Eventing.Producer", len(s.runningProducers), appName)
-					p.NotifyInit()
+				state := s.GetAppState(appName)
 
-					s.superSup.Remove(s.producerSupervisorTokenMap[p])
-					delete(s.producerSupervisorTokenMap, p)
+				if state == common.AppStateEnabled {
 
-					p.NotifySupervisor()
-					logging.Infof("SSUP[%d] Cleaned up running Eventing.Producer instance, app: %s", len(s.runningProducers), appName)
+					s.appRWMutex.Lock()
+					s.appDeploymentStatus[appName] = deploymentStatus
+					s.appProcessingStatus[appName] = processingStatus
+					s.appRWMutex.Unlock()
+
+					if p, ok := s.runningFns()[appName]; ok {
+						logging.Infof("%s [%d] Function: %s, Stopping running instance of Eventing.Producer", logPrefix, s.runningFnsCount(), appName)
+						p.NotifyInit()
+
+						p.PauseProducer()
+						p.NotifySupervisor()
+						logging.Infof("%s [%d] Function: %s Cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
+					}
 				}
-				s.appStatus[appName] = false
 			}
 
 		case false:
+
 			switch processingStatus {
 			case true:
-				logging.Infof("SSUP[%d] App: %s disabled currently, settings change requesting to enable processing for it",
-					len(s.runningProducers), appName)
-
-				s.spawnApp(appName)
-				s.appStatus[appName] = true
+				logging.Infof("%s [%d] Function: %s Unexpected status requested", logPrefix, s.runningFnsCount(), appName)
 
 			case false:
-				logging.Infof("SSUP[%d] App: %s disabled currently, settings change requesting for disabling it again. Ignoring",
-					len(s.runningProducers), appName)
+				state := s.GetAppState(appName)
+				logging.Infof("%s [%d] Function: %s Begin undeploy process. Current state: %d", logPrefix, s.runningFnsCount(), appName, state)
+
+				if state == common.AppStateEnabled || state == common.AppStateDisabled || state == common.AppStateUndeployed {
+
+					s.appRWMutex.Lock()
+					s.appDeploymentStatus[appName] = deploymentStatus
+					s.appProcessingStatus[appName] = processingStatus
+					s.appRWMutex.Unlock()
+
+					logging.Infof("%s [%d] Function: %s enabled, settings change requesting undeployment",
+						logPrefix, s.runningFnsCount(), appName)
+
+					s.deleteFromLocallyDeployedApps(appName)
+
+					s.CleanupProducer(appName, false)
+					s.deleteFromDeployedApps(appName)
+				}
+
+				s.updateQuotaForRunningFns()
+				logging.Infof("%s [%d] Function: %s undeployment done", logPrefix, s.runningFnsCount(), appName)
 			}
 		}
-
-		s.appRWMutex.Unlock()
 
 	}
 	return nil
@@ -194,7 +398,14 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 // TopologyChangeNotifCallback is registered to notify any changes in MetaKvRebalanceTokenPath
 func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte, rev interface{}) error {
-	logging.Infof("SSUP[%d] TopologyChangeNotifCallback: path => %s value => %s\n", len(s.runningProducers), path, string(value))
+	logPrefix := "SuperSupervisor::TopologyChangeNotifCallback"
+
+	logging.Infof("%s [%d] Path => %s value => %s", logPrefix, s.runningFnsCount(), path, string(value))
+
+	if !s.checkIfNodeInCluster() && s.runningFnsCount() == 0 {
+		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, s.runningFnsCount())
+		return nil
+	}
 
 	topologyChangeMsg := &common.TopologyChangeMsg{}
 
@@ -207,8 +418,99 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			topologyChangeMsg.CType = common.StartRebalanceCType
 		}
 
-		for _, producer := range s.runningProducers {
-			producer.NotifyTopologyChange(topologyChangeMsg)
+		// On topology change notification, lookup up in metakv if there are any any apps
+		// that haven't been deployed on current node. Case where this is needed: Eventing node
+		// n_1 is added to cluster while an app was bootstrapping, rebalance would be failed as
+		// one app is doing bootstrap. When next rebalance request comes in, on n_1 it needs to
+		// deploy the missing apps that aren't running on it.
+
+		appsInPrimaryStore := util.ListChildren(MetakvAppsPath)
+		logging.Infof("%s [%d] Apps in primary store: %v, running apps: %v",
+			logPrefix, s.runningFnsCount(), appsInPrimaryStore, s.runningFns())
+
+		for _, appName := range appsInPrimaryStore {
+
+			path := MetakvAppSettingsPath + appName
+			sData, err := util.MetakvGet(path)
+			if err != nil {
+				logging.Errorf("%s [%d] Function: %s failed to fetch settings, err: %v", logPrefix, s.runningFnsCount(), appName, err)
+				return nil
+			}
+
+			settings := make(map[string]interface{})
+			err = json.Unmarshal(sData, &settings)
+			if err != nil {
+				logging.Errorf("%s [%d] Failed to unmarshal application settings, err: %v", logPrefix, s.runningFnsCount(), err)
+			}
+
+			val, ok := settings["processing_status"]
+			if !ok {
+				logging.Errorf("%s [%d] Missing processing_status", logPrefix, s.runningFnsCount())
+				return nil
+			}
+
+			processingStatus, ok := val.(bool)
+			if !ok {
+				logging.Errorf("%s [%d] Supplied processing_status unexpected", logPrefix, s.runningFnsCount())
+				return nil
+			}
+
+			val, ok = settings["deployment_status"]
+			if !ok {
+				logging.Errorf("%s [%d] Missing deployment_status", logPrefix, s.runningFnsCount())
+				return nil
+			}
+
+			deploymentStatus, ok := val.(bool)
+			if !ok {
+				logging.Errorf("%s [%d] Supplied deployment_status unexpected", logPrefix, s.runningFnsCount())
+				return nil
+			}
+
+			logging.Infof("%s [%d] Function: %s deployment_status: %v processing_status: %v runningProducer: %v",
+				logPrefix, s.runningFnsCount(), appName, deploymentStatus, processingStatus, s.runningFns()[appName])
+
+			if _, ok := s.runningFns()[appName]; deploymentStatus == true && processingStatus == true && !ok {
+
+				logging.Infof("%s [%d] Function: %s bootstrapping", logPrefix, s.runningFnsCount(), appName)
+
+				s.appListRWMutex.Lock()
+				if _, ok := s.bootstrappingApps[appName]; ok {
+					logging.Infof("%s [%d] Function: %s already bootstrapping", logPrefix, s.runningFnsCount(), appName)
+					s.appListRWMutex.Unlock()
+					return nil
+				}
+				s.bootstrappingApps[appName] = time.Now().String()
+				s.appListRWMutex.Unlock()
+
+				s.spawnApp(appName)
+
+				s.appRWMutex.Lock()
+				s.appDeploymentStatus[appName] = deploymentStatus
+				s.appProcessingStatus[appName] = processingStatus
+				s.appRWMutex.Unlock()
+
+				if eventingProducer, ok := s.runningFns()[appName]; ok {
+					eventingProducer.SignalBootstrapFinish()
+
+					logging.Infof("%s [%d] Function: %s bootstrap finished", logPrefix, s.runningFnsCount(), appName)
+
+					s.addToDeployedApps(appName)
+					s.addToLocallyDeployedApps(appName)
+
+					s.Lock()
+					delete(s.cleanedUpAppMap, appName)
+					s.Unlock()
+
+					s.appListRWMutex.Lock()
+					delete(s.bootstrappingApps, appName)
+					s.appListRWMutex.Unlock()
+				}
+			}
+		}
+
+		for _, eventingProducer := range s.runningFns() {
+			eventingProducer.NotifyTopologyChange(topologyChangeMsg)
 		}
 
 	}
@@ -216,59 +518,118 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 	return nil
 }
 
+// GlobalConfigChangeCallback observes the metakv path where Eventing related global configs are written to
+func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "SuperSupervisor::GlobalConfigChangeCallback"
+
+	logging.Infof("%s [%d] Path => %s value => %s", logPrefix, s.runningFnsCount(), path, string(value))
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if value == nil {
+		logging.Errorf("%s [%d] Got empty value for global config",
+			logPrefix, len(s.runningProducers))
+		return nil
+	}
+
+	var config common.Config
+	err := json.Unmarshal(value, &config)
+	if err != nil {
+		logging.Errorf("%s [%d] Failed to unmarshal supplied config, err: %v",
+			logPrefix, len(s.runningProducers), err)
+		return err
+	}
+
+	return s.HandleGlobalConfigChange(config)
+}
+
+func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
+	logPrefix := "SuperSupervisor::HandleGlobalConfigChange"
+
+	for key, value := range config {
+		logging.Infof("%s [%d] Config key: %v value: %v", logPrefix, len(s.runningProducers), key, value)
+
+		switch key {
+		case "ram_quota":
+			s.memoryQuota = int64(value.(float64))
+			s.updateQuotaForRunningFns()
+		}
+	}
+
+	return nil
+}
+
+func (s *SuperSupervisor) updateQuotaForRunningFns() {
+	logPrefix := "SuperSupervisor::updateQuotaForRunningFns"
+
+	if s.memoryQuota <= 0 {
+		return
+	}
+
+	for _, p := range s.runningFns() {
+		fnCount := int64(s.runningFnsCount())
+		if fnCount > 0 {
+			logging.Infof("%s [%d] Notifying Eventing.Producer instances to update memory quota to %d MB",
+				logPrefix, len(s.runningProducers), s.memoryQuota)
+			p.UpdateMemoryQuota(s.memoryQuota / fnCount)
+		} else {
+			p.UpdateMemoryQuota(s.memoryQuota)
+		}
+	}
+}
+
+// AppsRetryCallback informs all running functions to update the retry counter
+func (s *SuperSupervisor) AppsRetryCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "SuperSupervisor::AppsRetryCallback"
+	if value == nil {
+		return errors.New("value is empty")
+	}
+
+	appName := util.GetAppNameFromPath(path)
+	retryValue, err := strconv.Atoi(string(value))
+	if err != nil {
+		logging.Infof("%s [%d] Unable to parse retry value as a number, err : %v", logPrefix, s.runningFnsCount(), retryValue)
+		return err
+	}
+
+	logging.Infof("%s [%d] Function: %s Setting retry to %d", logPrefix, s.runningFnsCount(), appName, retryValue)
+	s.retryCount = int64(retryValue)
+
+	if p, exists := s.runningFns()[appName]; exists {
+		p.SetRetryCount(int64(retryValue))
+	}
+
+	return nil
+}
+
 func (s *SuperSupervisor) spawnApp(appName string) {
+	logPrefix := "SuperSupervisor::spawnApp"
+
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
-	p := producer.NewProducer(appName, s.eventingAdminPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
-		s.restPort, s.uuid, s)
+	p := producer.NewProducer(appName, s.adminPort.DebuggerPort, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
+		s.restPort, s.uuid, s.diagDir, s.memoryQuota, s.numVbuckets, s)
+
+	logging.Infof("%s [%d] Function: %s spawning up, memory quota: %d", logPrefix, s.runningFnsCount(), appName, s.memoryQuota)
 
 	token := s.superSup.Add(p)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.runningProducers[appName] = p
+	s.addToRunningProducers(appName, p)
+
+	s.tokenMapRWMutex.Lock()
 	s.producerSupervisorTokenMap[p] = token
+	s.tokenMapRWMutex.Unlock()
 
-	go func(p *producer.Producer, s *SuperSupervisor, appName, metakvAppHostPortsPath string) {
-		var err error
-		p.ProducerListener, err = net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			logging.Fatalf("SSUP[%d] Listen failed with error: %v", len(s.runningProducers), err)
-			return
-		}
+	logging.Infof("%s [%d] Function: %s spawned up", logPrefix, s.runningFnsCount(), appName)
 
-		addr := p.ProducerListener.Addr().String()
-		logging.Infof("SSUP[%d] Listening on host string %s app: %s", len(s.runningProducers), addr, appName)
-		s.runningProducersHostPortAddr[appName] = addr
+	p.NotifyPrepareTopologyChange(s.ejectNodes, s.keepNodes)
 
-		h := http.NewServeMux()
-
-		h.HandleFunc("/getEventsPSec", p.EventsProcessedPSec)
-		h.HandleFunc("/getNodeMap", p.GetNodeMap)
-		h.HandleFunc("/getRebalanceStatus", p.RebalanceStatus)
-		h.HandleFunc("/getRemainingEvents", p.DcpEventsRemainingToProcess)
-		h.HandleFunc("/getSettings", p.GetSettings)
-		h.HandleFunc("/getVbStats", p.GetConsumerVbProcessingStats)
-		h.HandleFunc("/getWorkerMap", p.GetWorkerMap)
-		h.HandleFunc("/updateSettings", p.UpdateSettings)
-
-		http.Serve(p.ProducerListener, h)
-	}(p, s, appName, metakvAppHostPortsPath)
-
-	// Presently there are 3 observe callbacks registered against metakv:
-	// MetakvAppsPath, MetakvAppSettingsPath and MetaKvRebalanceTokenPath
-	// There isn't any ordering for execution of these callbacks. As a result,
-	// when a new eventing node is added to cluster or when a new app handler
-	// is deployed - it might not be aware of eventing nodes that are existing.
-	// (case when callback against MetakvAppsPath is triggered and callback for
-	// MetaKvRebalanceTokenPath is delayed). Hence mimicking rebalance trigger on
-	// app spawn
-	topologyChangeMsg := &common.TopologyChangeMsg{}
-	topologyChangeMsg.CType = common.StartRebalanceCType
-	p.NotifyTopologyChange(topologyChangeMsg)
+	s.updateQuotaForRunningFns()
 }
 
 // HandleSupCmdMsg handles control commands like app (re)deploy, settings update
 func (s *SuperSupervisor) HandleSupCmdMsg() {
+	logPrefix := "SuperSupervisor::HandleSupCmdMsg"
+
 	for {
 		select {
 		case msg := <-s.supCmdCh:
@@ -276,73 +637,57 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 			switch msg.cmd {
 			case cmdAppDelete:
-				logging.Infof("SSUP[%d] Deleting app: %s", len(s.runningProducers), appName)
-				// Signal all producer to signal all running consumers to purge all checkpoint
-				// blobs in metadata bucket
-				appProducer, ok := s.runningProducers[appName]
-				if ok {
-					appProducer.SignalCheckpointBlobCleanup()
+				logging.Infof("%s [%d] Function: %s deleting", logPrefix, s.runningFnsCount(), appName)
+
+				d, err := os.Open(s.eventingDir)
+				if err != nil {
+					logging.Errorf("%s [%d] Function: %s failed to open eventingDir: %s while trying to purge app logs, err: %v",
+						logPrefix, s.runningFnsCount(), appName, s.eventingDir, err)
+					continue
 				}
 
-				s.superSup.Remove(s.producerSupervisorTokenMap[appProducer])
+				names, err := d.Readdirnames(-1)
+				if err != nil {
+					logging.Errorf("%s [%d] Function: %s failed to list contents of eventingDir: %s, err: %v",
+						logPrefix, s.runningFnsCount(), appName, s.eventingDir, err)
+					d.Close()
+					continue
+				}
 
-				// Spawning another routine to process cleanup of plasma store, otherwise
-				// it would block (re)deploy of new lambdas
-				go func(s *SuperSupervisor) {
-					var addrs []string
-					var currNodeAddr string
-
-					util.Retry(util.NewFixedBackoff(time.Second), getEventingNodeAddrsCallback, s, &addrs)
-
-					util.Retry(util.NewFixedBackoff(time.Second), getCurrentEventingNodeAddrCallback, s, &currNodeAddr)
-
-					s.assignVbucketsToOwn(addrs, currNodeAddr)
-
-					logging.Infof("SSUP[%d] App: %v Purging timer entries from plasma", len(s.runningProducers), appName)
-
-					// Purge entries for deleted apps from plasma store
-					/*
-						for _, vb := range s.vbucketsToOwn {
-							s.plasmaRWMutex.RLock()
-							store := s.vbPlasmaStoreMap[vb]
-							s.plasmaRWMutex.RUnlock()
-
-							r := store.NewReader()
-							w := store.NewWriter()
-							snapshot := store.NewSnapshot()
-							defer snapshot.Close()
-
-							itr, err := r.NewSnapshotIterator(snapshot)
-							if err != nil {
-								logging.Errorf("SSUP[%d] App: %s Failed to open snapshot iterator to purge doc id timer entries, err: %v",
-									len(s.runningProducers), appName, err)
-								return
-							}
-
-							for itr.SeekFirst(); itr.Valid(); itr.Next() {
-								if bytes.Compare(itr.Key(), []byte(appName)) > 0 {
-									w.DeleteKV(itr.Key())
-								}
-							}
+				prefix := fmt.Sprintf("%s.log", appName)
+				for _, name := range names {
+					if strings.HasPrefix(name, prefix) {
+						err = os.RemoveAll(filepath.Join(s.eventingDir, name))
+						if err != nil {
+							logging.Errorf("%s [%d] Function: %s failed to remove app log: %s, err: %v",
+								logPrefix, s.runningFnsCount(), appName, name, err)
 						}
-					*/
-					logging.Infof("SSUP[%d] Purged timer entries for app: %s", len(s.runningProducers), appName)
-				}(s)
+					}
+				}
+				d.Close()
 
 			case cmdAppLoad:
-				logging.Infof("SSUP[%d] Loading app: %s", len(s.runningProducers), appName)
+				logging.Infof("%s [%d] Function: %s bootstrapping", logPrefix, s.runningFnsCount(), appName)
+
+				s.appListRWMutex.Lock()
+				if _, ok := s.bootstrappingApps[appName]; ok {
+					logging.Infof("%s [%d] Function: %s already bootstrapping", logPrefix, s.runningFnsCount(), appName)
+					s.appListRWMutex.Unlock()
+					continue
+				}
+				s.bootstrappingApps[appName] = time.Now().String()
+				s.appListRWMutex.Unlock()
 
 				// Clean previous running instance of app producers
-				if p, ok := s.runningProducers[appName]; ok {
-					logging.Infof("SSUP[%d] App: %s, cleaning up previous running instance", len(s.runningProducers), appName)
+				if p, ok := s.runningFns()[appName]; ok {
+					logging.Infof("%s [%d] Function: %s cleaning up previous running instance", logPrefix, s.runningFnsCount(), appName)
 					p.NotifyInit()
 
-					s.superSup.Remove(s.producerSupervisorTokenMap[p])
-					delete(s.producerSupervisorTokenMap, p)
-					delete(s.runningProducers, appName)
+					s.stopAndDeleteProducer(p)
+					s.deleteFromRunningProducers(appName)
 
 					p.NotifySupervisor()
-					logging.Infof("SSUP[%d] Cleaned up previous running producer instance, app: %s", len(s.runningProducers), appName)
+					logging.Infof("%s [%d] Function: %s cleaned up previous running producer instance", logPrefix, s.runningFnsCount(), appName)
 				}
 
 				s.spawnApp(appName)
@@ -352,14 +697,23 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 				path := MetakvAppSettingsPath + appName
 				sData, err := util.MetakvGet(path)
 				if err != nil {
-					logging.Errorf("SSUP[%d] Failed to fetch settings for app: %s, err: %v", len(s.runningProducers), appName, err)
+					logging.Errorf("%s [%d] Function: %s failed to fetch settings, err: %v", logPrefix, s.runningFnsCount(), appName, err)
 					continue
 				}
 
 				settings := make(map[string]interface{})
 				err = json.Unmarshal(sData, &settings)
 				if err != nil {
-					logging.Errorf("SSUP[%d] Failed to unmarshal settings for app: %s, err: %v", len(s.runningProducers), appName, err)
+					logging.Errorf("%s [%d] Function: %s failed to unmarshal settings, err: %v", logPrefix, s.runningFnsCount(), appName, err)
+					continue
+				}
+
+				deploymentStatus := settings["deployment_status"].(bool)
+				processingStatus := settings["processing_status"].(bool)
+
+				if !deploymentStatus && !processingStatus {
+					logging.Infof("%s [%d] Function: %s skipping bootstrap as processing & deployment status suggests function isn't supposed to be deployed",
+						logPrefix, s.runningFnsCount(), appName)
 					continue
 				}
 
@@ -367,21 +721,39 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 				sData, err = json.Marshal(&settings)
 				if err != nil {
-					logging.Errorf("SSUP[%d] Failed to marshal updated settings for app: %s, err: %v", len(s.runningProducers), appName, err)
+					logging.Errorf("%s [%d] Function: %s failed to marshal updated settings, err: %v", logPrefix, s.runningFnsCount(), appName, err)
 					continue
 				}
 
 				err = util.MetakvSet(path, sData, nil)
 				if err != nil {
-					logging.Errorf("SSUP[%d] Failed to store updated settings for app: %s in metakv, err: %v",
-						len(s.runningProducers), appName, err)
+					logging.Errorf("%s [%d] Function: %s failed to store updated settings in metakv, err: %v",
+						logPrefix, s.runningFnsCount(), appName, err)
 					continue
 				}
 
+				if eventingProducer, ok := s.runningFns()[appName]; ok {
+					eventingProducer.SignalBootstrapFinish()
+					logging.Infof("%s [%d] Function: %s loading", logPrefix, s.runningFnsCount(), appName)
+
+					s.addToDeployedApps(appName)
+					s.addToLocallyDeployedApps(appName)
+
+					logging.Infof("%s [%d] Function: %s added to deployed apps map", logPrefix, s.runningFnsCount(), appName)
+
+					s.Lock()
+					delete(s.cleanedUpAppMap, appName)
+					s.Unlock()
+
+					s.appListRWMutex.Lock()
+					delete(s.bootstrappingApps, appName)
+					s.appListRWMutex.Unlock()
+				}
+
 			case cmdSettingsUpdate:
-				if p, ok := s.runningProducers[appName]; ok {
-					logging.Infof("SSUP[%d] App: %s, Notifying running producer instance of settings change",
-						len(s.runningProducers), appName)
+				if p, ok := s.runningFns()[appName]; ok {
+					logging.Infof("%s [%d] Function: %s, Notifying running producer instance of settings change",
+						logPrefix, s.runningFnsCount(), appName)
 
 					p.NotifySettingsChange()
 				}
@@ -392,120 +764,80 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 // NotifyPrepareTopologyChange notifies each producer instance running on current eventing nodes
 // about keepNodes supplied by ns_server
-func (s *SuperSupervisor) NotifyPrepareTopologyChange(keepNodes []string) {
-	for _, producer := range s.runningProducers {
-		logging.Infof("SSUP[%d] NotifyPrepareTopologyChange to producer %p, keepNodes => %v", len(s.runningProducers), producer, keepNodes)
-		producer.NotifyPrepareTopologyChange(keepNodes)
+func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string) {
+	logPrefix := "SuperSupervisor::NotifyPrepareTopologyChange"
+
+	s.ejectNodes = ejectNodes
+
+	if len(keepNodes) == 0 {
+		logging.Errorf("%s [%d] 0 eventing nodes supplied as keepNodes", logPrefix, s.runningFnsCount())
+	} else {
+		logging.Infof("%s [%d] Updating keepNodes %v", logPrefix, s.runningFnsCount(), keepNodes)
+		s.keepNodes = keepNodes
+	}
+
+	for _, eventingProducer := range s.runningFns() {
+		logging.Infof("%s [%d] Updating producer %p, keepNodes => %v", logPrefix, s.runningFnsCount(), eventingProducer, keepNodes)
+		eventingProducer.NotifyPrepareTopologyChange(s.ejectNodes, s.keepNodes)
 	}
 }
 
-// AppProducerHostPortAddr returns hostPortAddr for producer specific to an app
-func (s *SuperSupervisor) AppProducerHostPortAddr(appName string) string {
-	return s.runningProducersHostPortAddr[appName]
-}
+// CleanupProducer purges all metadata  related to a function from couchbase bucket
+func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool) error {
+	logPrefix := "SuperSupervisor::CleanupProducer"
 
-// AppTimerTransferHostPortAddrs returns all running net.Listener instances of timer transfer
-// routines on current node
-func (s *SuperSupervisor) AppTimerTransferHostPortAddrs(appName string) (map[string]string, error) {
+	if p, ok := s.runningFns()[appName]; ok {
+		defer func() {
+			logging.Infof("%s [%d] Function: %s stopping supervision of Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
 
-	if _, ok := s.runningProducers[appName]; ok {
-		return s.runningProducers[appName].TimerTransferHostPortAddrs(), nil
+			s.stopAndDeleteProducer(p)
+
+			p.NotifySupervisor()
+			logging.Infof("%s [%d] Function: %s cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
+		}()
+
+		logging.Infof("%s [%d] Function: %s stopping running instance of Eventing.Producer", logPrefix, s.runningFnsCount(), appName)
+
+		if !skipMetaCleanup {
+			p.NotifyInit()
+		}
+
+		s.deleteFromRunningProducers(appName)
+
+		s.Lock()
+		_, ok := s.cleanedUpAppMap[appName]
+		if !ok {
+			s.cleanedUpAppMap[appName] = struct{}{}
+		}
+		s.Unlock()
+
+		if !ok {
+			p.StopRunningConsumers()
+			p.CleanupUDSs()
+
+			if !skipMetaCleanup {
+				err := p.CleanupMetadataBucket()
+				if err == common.ErrRetryTimeout {
+					logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
+					return common.ErrRetryTimeout
+				}
+			}
+		}
+
+		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 	}
 
-	logging.Errorf("SSUP[%d] app: %v No running producer instance found",
-		len(s.runningProducers), appName)
-
-	return nil, fmt.Errorf("No running producer instance found")
-}
-
-// ProducerHostPortAddrs returns the list of hostPortAddr for http server instances running
-// on current eventing node
-func (s *SuperSupervisor) ProducerHostPortAddrs() []string {
-	var hostPortAddrs []string
-
-	for _, hostPortAddr := range s.runningProducersHostPortAddr {
-		hostPortAddrs = append(hostPortAddrs, hostPortAddr)
-	}
-
-	return hostPortAddrs
-}
-
-// RestPort returns ns_server port(typically 8091/9000)
-func (s *SuperSupervisor) RestPort() string {
-	return s.restPort
-}
-
-// ClearEventStats flushes event processing stats
-func (s *SuperSupervisor) ClearEventStats() {
-	for _, p := range s.runningProducers {
-		p.ClearEventStats()
-	}
-}
-
-// DeployedAppList returns list of deployed lambdas running under super_supervisor
-func (s *SuperSupervisor) DeployedAppList() []string {
-	appList := make([]string, 0)
-
-	for app := range s.runningProducers {
-		appList = append(appList, app)
-	}
-
-	return appList
-}
-
-// SignalStartDebugger kicks off V8 Debugger for a specific deployed lambda
-func (s *SuperSupervisor) SignalStartDebugger(appName string) {
-	p := s.runningProducers[appName]
-	p.SignalStartDebugger()
-}
-
-// SignalStopDebugger stops V8 Debugger for a specific deployed lambda
-func (s *SuperSupervisor) SignalStopDebugger(appName string) {
-	p := s.runningProducers[appName]
-	p.SignalStopDebugger()
-}
-
-// GetAppCode returns handler code for requested appname
-func (s *SuperSupervisor) GetAppCode(appName string) string {
-	logging.Infof("SSUP[%d] GetAppCode request for app: %v", len(s.runningProducers), appName)
-	if p, ok := s.runningProducers[appName]; ok {
-		return p.GetAppCode()
-	}
-	return ""
-}
-
-// GetDebuggerURL returns the v8 debugger url for supplied appname
-func (s *SuperSupervisor) GetDebuggerURL(appName string) string {
-	logging.Infof("SSUP[%d] GetDebuggerURL request for app: %v", len(s.runningProducers), appName)
-	if p, ok := s.runningProducers[appName]; ok {
-		return p.GetDebuggerURL()
-	}
-	return ""
-}
-
-// GetSourceMap returns source map for requested appname
-func (s *SuperSupervisor) GetSourceMap(appName string) string {
-	logging.Infof("SSUP[%d] GetSourceMap request for app: %v", len(s.runningProducers), appName)
-	if p, ok := s.runningProducers[appName]; ok {
-		return p.GetSourceMap()
-	}
-	return ""
-}
-
-// GetHandlerCode returns handler code for requested appname
-func (s *SuperSupervisor) GetHandlerCode(appName string) string {
-	logging.Infof("SSUP[%d] GetHandlerCode request for app: %v", len(s.runningProducers), appName)
-	if p, ok := s.runningProducers[appName]; ok {
-		return p.GetHandlerCode()
-	}
-	return ""
-}
-
-// GetSeqsProcessed returns vbucket specific sequence nos processed so far
-func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
-	logging.Infof("SSUP[%d] GetSeqsProcessed request for app: %v", len(s.runningProducers), appName)
-	if p, ok := s.runningProducers[appName]; ok {
-		return p.GetSeqsProcessed()
-	}
 	return nil
+}
+
+func (s *SuperSupervisor) stopAndDeleteProducer(p common.EventingProducer) {
+	s.tokenMapRWMutex.RLock()
+	token := s.producerSupervisorTokenMap[p]
+	s.tokenMapRWMutex.RUnlock()
+
+	s.superSup.Remove(token)
+
+	s.tokenMapRWMutex.Lock()
+	delete(s.producerSupervisorTokenMap, p)
+	s.tokenMapRWMutex.Unlock()
 }

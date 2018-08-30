@@ -3,20 +3,24 @@ package servicemanager
 import (
 	"bytes"
 	"os"
+	"time"
 
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 )
 
 // GetNodeInfo callback for cbauth service.Manager
 func (m *ServiceMgr) GetNodeInfo() (*service.NodeInfo, error) {
-	logging.Debugf("SMRB ServiceMgr::GetNodeInfo s.nodeInfo: %#v", m.nodeInfo)
+	logPrefix := "ServiceMgr::GetNodeInfo"
+
+	logging.Infof("%s nodeInfo: %#v", logPrefix, m.nodeInfo)
 	return m.nodeInfo, nil
 }
 
 // Shutdown callback for cbauth service.Manager
 func (m *ServiceMgr) Shutdown() error {
-	logging.Debugf("SMRB ServiceMgr::Shutdown")
+	logging.Infof("ServiceMgr::Shutdown")
 
 	os.Exit(0)
 
@@ -25,7 +29,9 @@ func (m *ServiceMgr) Shutdown() error {
 
 // GetTaskList callback for cbauth service.Manager
 func (m *ServiceMgr) GetTaskList(rev service.Revision, cancel service.Cancel) (*service.TaskList, error) {
-	logging.Debugf("SMRB ServiceMgr::GetTaskList rev: %#v", rev)
+	logPrefix := "ServiceMgr::GetTaskList"
+
+	logging.Infof("%s rev: %#v", logPrefix, rev)
 
 	state, err := m.wait(rev, cancel)
 	if err != nil {
@@ -33,17 +39,19 @@ func (m *ServiceMgr) GetTaskList(rev service.Revision, cancel service.Cancel) (*
 	}
 
 	taskList := stateToTaskList(state)
-	logging.Debugf("SMRB ServiceMgr::GetTaskList tasklist: %#v", taskList)
+	logging.Debugf("%s tasklist: %#v", logPrefix, taskList)
 
 	return taskList, nil
 }
 
 // CancelTask callback for cbauth service.Manager
 func (m *ServiceMgr) CancelTask(id string, rev service.Revision) error {
+	logPrefix := "ServiceMgr::CancelTask"
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	logging.Debugf("SMRB ServiceMgr::CancelTask id: %#v rev: %#v", id, rev)
+	logging.Infof("%s id: %s rev: %#v", logPrefix, id, rev)
 
 	tasks := stateToTaskList(m.state).Tasks
 	task := (*service.Task)(nil)
@@ -74,7 +82,9 @@ func (m *ServiceMgr) CancelTask(id string, rev service.Revision) error {
 
 // GetCurrentTopology callback for cbauth service.Manager
 func (m *ServiceMgr) GetCurrentTopology(rev service.Revision, cancel service.Cancel) (*service.Topology, error) {
-	logging.Debugf("SMRB ServiceMgr::GetCurrentTopology rev: %#v", rev)
+	logPrefix := "ServiceMgr::GetCurrentTopology"
+
+	logging.Infof("%s rev: %#v", logPrefix, rev)
 
 	state, err := m.wait(rev, cancel)
 	if err != nil {
@@ -82,7 +92,7 @@ func (m *ServiceMgr) GetCurrentTopology(rev service.Revision, cancel service.Can
 	}
 
 	topology := m.stateToTopology(state)
-	logging.Debugf("ServiceMgr::GetCurrentTopology topology: %#v", topology)
+	logging.Debugf("%s topology: %#v", logPrefix, topology)
 
 	return topology, nil
 
@@ -90,46 +100,66 @@ func (m *ServiceMgr) GetCurrentTopology(rev service.Revision, cancel service.Can
 
 // PrepareTopologyChange callback for cbauth service.Manager
 func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error {
+	logPrefix := "ServiceMgr::PrepareTopologyChange"
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	logging.Debugf("SMRB ServiceMgr::PrepareTopologyChange change: %#v", change)
+	logging.Infof("%s change: %#v", logPrefix, change)
 
-	var keepNodeUUIDs []string
+	m.ejectNodeUUIDs = make([]string, 0)
 
-	for _, node := range change.KeepNodes {
-		keepNodeUUIDs = append(keepNodeUUIDs, string(node.NodeInfo.NodeID))
+	for _, node := range change.EjectNodes {
+		m.ejectNodeUUIDs = append(m.ejectNodeUUIDs, string(node.NodeID))
 	}
 
-	logging.Infof("SMRB ServiceMgr::PrepareTopologyChange keepNodeUUIDs: %v", keepNodeUUIDs)
+	m.keepNodeUUIDs = make([]string, 0)
+
+	for _, node := range change.KeepNodes {
+		m.keepNodeUUIDs = append(m.keepNodeUUIDs, string(node.NodeInfo.NodeID))
+	}
+
+	nodeList := make([]service.NodeID, 0)
+	for _, n := range change.KeepNodes {
+		nodeList = append(nodeList, n.NodeInfo.NodeID)
+	}
+
+	for _, n := range change.EjectNodes {
+		nodeList = append(nodeList, n.NodeID)
+	}
+
+	logging.Infof("%s ejectNodeUUIDs: %v keepNodeUUIDs: %v", logPrefix, m.ejectNodeUUIDs, m.keepNodeUUIDs)
 
 	m.updateStateLocked(func(s *state) {
 		m.rebalanceID = change.ID
+		m.servers = nodeList
 	})
 
-	m.superSup.NotifyPrepareTopologyChange(keepNodeUUIDs)
+	m.superSup.NotifyPrepareTopologyChange(m.ejectNodeUUIDs, m.keepNodeUUIDs)
 
 	return nil
 }
 
 // StartTopologyChange callback for cbauth service.Manager
 func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
+	logPrefix := "ServiceMgr::StartTopologyChange"
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	logging.Debugf("SMRB ServiceMgr::StartTopologyChange change: %#v", change)
+	logging.Infof("%s change: %#v", logPrefix, change)
 
 	if m.state.rebalanceID != change.ID || m.rebalancer != nil {
-		logging.Errorf("SMRB ServiceMgr::StartTopologyChange returning errConflict, rebalanceID: %v change id: %v rebalancer dump: %#v",
-			m.state.rebalanceID, change.ID, m.rebalancer)
+		logging.Errorf("%s Returning errConflict, rebalanceID: %v change id: %v rebalancer dump: %#v",
+			logPrefix, m.state.rebalanceID, change.ID, m.rebalancer)
 		return service.ErrConflict
 	}
 
 	if change.CurrentTopologyRev != nil {
 		haveRev := decodeRev(change.CurrentTopologyRev)
 		if haveRev != m.state.rev {
-			logging.Errorf("SMRB ServiceMgr::StartTopologyChange returning errConflict, state rev: %v haveRev: %v",
-				m.state.rev, haveRev)
+			logging.Errorf("%s Returning errConflict, state rev: %v haveRev: %v",
+				logPrefix, m.state.rev, haveRev)
 			return service.ErrConflict
 		}
 	}
@@ -143,11 +173,18 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 
 	switch change.Type {
 	case service.TopologyChangeTypeFailover:
+		util.Retry(util.NewFixedBackoff(time.Second), nil, storeKeepNodesCallback, m.keepNodeUUIDs)
 		m.failoverNotif = true
+
 	case service.TopologyChangeTypeRebalance:
+		util.Retry(util.NewFixedBackoff(time.Second), nil, storeKeepNodesCallback, m.keepNodeUUIDs)
+
 		m.startRebalance(change)
 
-		rebalancer := newRebalancer(m.eventingAdminPort, change, m.rebalanceDoneCallback, m.rebalanceProgressCallback)
+		logging.Infof("%s Starting up rebalancer", logPrefix)
+
+		rebalancer := newRebalancer(m.adminHTTPPort, change, m.rebalanceDoneCallback, m.rebalanceProgressCallback,
+			m.keepNodeUUIDs)
 		m.rebalancer = rebalancer
 
 	default:

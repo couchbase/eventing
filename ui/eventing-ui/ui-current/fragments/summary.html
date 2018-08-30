@@ -1,10 +1,25 @@
 <!--This is the summary page-->
-<div ng-if="!summaryCtrl.errorState">
-  <div ng-if="summaryCtrl.serverNodes.length">
+<div ng-if="summaryCtrl.isEventingRunning">
+  <div ng-if="!summaryCtrl.errorState">
     <mn-element-cargo depot="alerts">
       <div ng-show="summaryCtrl.showSuccessAlert">
         <div class="alert alert-success">
-          <p>{{summaryCtrl.alertMessage}}</p>
+          <p>{{summaryCtrl.successMessage}}</p>
+        </div>
+      </div>
+      <div ng-show="summaryCtrl.showWarningAlert">
+        <div class="alert alert-warning">
+          <p>{{summaryCtrl.warningMessage}}</p>
+        </div>
+      </div>
+      <div ng-show="summaryCtrl.showErrorAlert">
+        <div class="alert alert-error">
+          <p>{{summaryCtrl.errorMessage}}</p>
+        </div>
+      </div>
+      <div ng-show="summaryCtrl.workerCount > 2 * summaryCtrl.cpuCount">
+        <div class="alert alert-warning">
+          <p>There are {{summaryCtrl.workerCount}} eventing workers configured to run on {{summaryCtrl.cpuCount}} cores. This may not be optimal.</p>
         </div>
       </div>
     </mn-element-cargo>
@@ -14,31 +29,32 @@
         <span class="cbui-table-cell">status</span>
         <span class="cbui-table-cell"></span>
       </div>
-<!-- TO DO
-     add to <section> element: ng-class="['dynamic_' + someStatus]" where "someStatus" returns healthy/unhealthy/warmup,
-     remove "dynamic_healthy from the normal class below (it's a placeholder) -->
+      <!-- TO DO
+        add to <section> element: ng-class="['dynamic_' + someStatus]" where "someStatus" returns healthy/unhealthy/warmup,
+        remove "dynamic_healthy from the normal class below (it's a placeholder) -->
       <section
-         class="has-hover dynamic_healthy"
-         ng-repeat="(appname, app) in summaryCtrl.appList"
-         ng-click="app.toggleActionsVisibility()">
+        class="has-hover"
+        ng-repeat="(appname, app) in summaryCtrl.appList"
+        ng-class="['dynamic_' + app.uiState]"
+        ng-click="app.toggleActionsVisibility()">
         <div class="cbui-tablerow">
           <span class="cbui-table-cell cbui-tablerow-title">{{appname}}</span>
           <span class="cbui-table-cell row flex-left">
             <div class="fix-width-1 margin-right-3">
-              <span class="icon fa-fw" ng-class="app.getDeploymentStatus() == 'deployed' ? 'fa-check green-3':'fa-warning orange-1'"></span>
+              <span class="icon fa-fw"
+                    ng-class="app.getDeploymentStatus() == 'deployed' ? 'fa-check green-3':'fa-warning orange-1'"></span>
               {{app.getDeploymentStatus()}}
             </div>
             <span>
-              <span class="icon fa-fw" ng-class="app.getProcessingStatus() == 'running' ? 'fa-check green-3':'fa-warning orange-1'"></span>
-              {{app.getProcessingStatus()}}
+            <span class="icon fa-fw"
+                  ng-class="app.uiState == 'healthy' ? 'fa-check green-3':'fa-warning orange-1'"></span>
+            {{summaryCtrl.getAppUiProcessingState(app)}}
             </span>
           </span>
           <span class="cbui-table-cell text-right">
-            <a
-               ui-sref="app.admin.eventing.settings({appName:app.appname})"
-               ng-click="$event.stopPropagation();">
-              Settings
-            </a>
+          <a ng-click="$event.stopPropagation();summaryCtrl.openSettings(appname);">
+          Settings
+          </a>
           </span>
         </div>
         <div class="cbui-tablerow-expanded"
@@ -46,44 +62,58 @@
           <p class="width-6">{{app.settings.description}}</p>
           <div class="width-12 text-right">
             <button
-               class="outline"
-               ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
-               ng-disabled="app.settings.processing_status || app.settings.deployment_status">
+              class="outline"
+              ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
+              ng-disabled="app.settings.processing_status || app.settings.deployment_status || app.uiState === 'healthy'">
               Delete
             </button>
             <button
-               class="outline"
-               ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname)">
+              class="outline"
+              ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname)">
               Export
             </button>
             <button
-               class="outline"
-               ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
+              class="outline"
+              ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
               {{app.getDeploymentStatus(true)}}
             </button>
             <button
-               class="outline"
-               ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)"
-               ng-disabled="!app.settings.deployment_status">
-              {{app.getProcessingStatus(true)}}
-            </button>
-            <button
-               ng-click="$event.stopPropagation();"
-               ui-sref="app.admin.eventing.handler({appName:app.appname})">
+              ng-click="$event.stopPropagation();"
+              ui-sref="app.admin.eventing.handler({appName:app.appname})"
+              ng-disabled="summaryCtrl.disableEditButton">
               Edit JavaScript
             </button>
           </div>
         </div>
       </section>
     </div>
+    <div ng-if="summaryCtrl.isAppListEmpty()">
+      <p class="zero-content">No Functions running currently. Import or use ADD above to begin.</p>
+    </div>
   </div>
-  <div ng-if="summaryCtrl.serverNodes.length === 0">
-    <p>No Functions nodes found in this cluster.</p>
+  <div ng-if="summaryCtrl.errorState">
+    <p>Something went wrong with the Eventing service.</p>
   </div>
-  <div ng-if="summaryCtrl.isAppListEmpty()">
-    <p class="zero-content">No Functions running currently. Import or use ADD above to begin.</p>
+  <div ng-if="summaryCtrl.errorCode && summaryCtrl.errorCode == 403">
+    <p>User does not have sufficient privileges to access eventing UI.</p>
   </div>
 </div>
-<div ng-if="summaryCtrl.errorState">
-  <p>Something went wrong with the Functions service.</p>
+<div ng-if="!summaryCtrl.isEventingRunning">
+  <p>The eventing interface is only available on Couchbase nodes running the eventing service.</p>
+  <p ng-if="summaryCtrl.serverNodes.length === 0" class="error">No Eventing nodes were found on this cluster.</p>
+  <div ng-if="summaryCtrl.serverNodes.length">
+    <p>The eventing service was found on the following nodes:</p>
+    <div class="indent-1" ng-repeat="url in summaryCtrl.serverNodes">
+    <a href="{{url}}">{{url}}</a>
+    </div>
+    <div class="row flex-left margin-top-1">
+      <p class="text-small fix-width-7">
+        <span class="icon fa-warning orange-3"></span>
+        Note that the above links are provided as a convenience. They may not work
+        if you are accessing the Web Console via a web proxy or if Couchbase Server
+        has been deployed in a split horizon DNS environment, with public and
+        private hostnames and IPs. In the event the links don't work, log directly into the node.
+      </p>
+    </div>
+  </div>
 </div>

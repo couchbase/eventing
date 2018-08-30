@@ -9,321 +9,384 @@
 // BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
-	/*
-	* Input:	JavaScript code embedded with N1QL statements.
 
-	* Output:	Syntactically and semantically valid JavaScript code.
+    #include <list>
+    #include <algorithm>
+    #include "n1ql.h"
+    #include "utils.h"
 
-	* TODO:		Escape the DSTR strings - necessary for esprima.
-	*/
-	#include <iostream>
-	#include <fstream>
-        #include "n1ql.h"
-
-	std::string parse(const char*);
-	lex_op_code lex_op;
-	void handle_str_start(int state);
-	void handle_str_stop(int state);
-	bool is_esc();
-
-	// Contains the output plain JavaScript code.
-	std::string js_code;
-	// Storing the state for resuming on switch.
-	int previous_state;
+    lex_op_code lex_op;
+    int pos_type_len[2];
+    std::list<InsertedCharsInfo> *insertions;
+    ParseInfo parse_info;
+    // Contains the output plain JavaScript code.
+    std::string js_code, n1ql_query;
+    // Storing the state for resuming on switch.
+    int previous_state;
 %}
+%option nounput
 %x N1QL MLCMT SLCMT DSTR SSTR TSTR
 %%
 	previous_state=YYSTATE;
 "/*"	{
-		/* Start of a multi-line comment */
-		previous_state = YYSTATE;
-		BEGIN MLCMT;
-		js_code += "/*";
-	}
+        /* Start of a multi-line comment */
+        previous_state = YYSTATE;
+        BEGIN MLCMT;
+        js_code += "/*";
+    }
 <MLCMT>"*/"	{
-		/* Stop of a multi-line comment */
-		js_code += "*/";
-		BEGIN previous_state;
-	}
-<MLCMT>\n	{js_code += "\n";}
+        /* Stop of a multi-line comment */
+        BEGIN previous_state;
+        js_code += "*/";
+    }
+<MLCMT>\r\n |
+<MLCMT>\n   |
+<MLCMT>\r   {js_code += std::string(yytext);}
 "//"	{
-		/* Single-line comment */
-		previous_state = YYSTATE;
-		BEGIN SLCMT;
-		js_code += "//";
-	}
-<SLCMT>\n	{
-		BEGIN previous_state;
-		js_code += "\n";
-	}
-["]	{handle_str_start(DSTR); /* Handling double-quoted string */}
-<DSTR>["]	{handle_str_stop(DSTR);}
-[']	{handle_str_start(SSTR); /* Handling single-quoted string */}
-<SSTR>[']	{handle_str_stop(SSTR);}
-[`]	{handle_str_start(TSTR); /* Handling templated string */}
-<TSTR>[`]	{handle_str_stop(TSTR);}
-(var|function)[ \t\n]+[aA][lL][tT][eE][rR][ \t\n;=(]|[aA][lL][tT][eE][rR][ \t\n]*:[ \t\n]*\{	{return kKeywordAlter; /* Checking the constraints in this section */}
-(var|function)[ \t\n]+[bB][uU][iI][lL][dD][ \t\n;=(]|[bB][uU][iI][lL][dD][ \t\n]*:[ \t\n]*\{	{return kKeywordBuild;}
-(var|function)[ \t\n]+[cC][rR][eE][aA][tT][eE][ \t\n;=(]|[cC][rR][eE][aA][tT][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordCreate;}
-(var|function)[ \t\n]+[dD][eE][lL][eE][tT][eE][ \t\n;=(]|[dD][eE][lL][eE][tT][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordDelete;}
-(var|function)[ \t\n]+[dD][rR][oO][pP][ \t\n;=(]|[dD][rR][oO][pP][ \t\n]*:[ \t\n]*\{	{return kKeywordDrop;}
-(var|function)[ \t\n]+[eE][xX][eE][cC][uU][tT][eE][ \t\n;=(]|[eE][xX][eE][cC][uU][tT][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordExecute;}
-(var|function)[ \t\n]+[eE][xX][pP][lL][aA][iI][nN][ \t\n;=(]|[eE][xX][pP][lL][aA][iI][nN][ \t\n]*:[ \t\n]*\{	{return kKeywordExplain;}
-(var|function)[ \t\n]+[gG][rR][aA][nN][tT][ \t\n;=(]|[gG][rR][aA][nN][tT][ \t\n]*:[ \t\n]*\{	{return kKeywordGrant;}
-(var|function)[ \t\n]+[iI][nN][fF][eE][rR][ \t\n;=(]|[iI][nN][fF][eE][rR][ \t\n]*:[ \t\n]*\{	{return kKeywordInfer;}
-(var|function)[ \t\n]+[iI][nN][sS][eE][rR][tT][ \t\n;=(]|[iI][nN][sS][eE][rR][tT][ \t\n]*:[ \t\n]*\{	{return kKeywordInsert;}
-(var|function)[ \t\n]+[mM][eE][rR][gG][eE][ \t\n;=(]|[mM][eE][rR][gG][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordMerge;}
-(var|function)[ \t\n]+[pP][rR][eE][pP][aA][rR][eE][ \t\n;=(]|[pP][rR][eE][pP][aA][rR][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordPrepare;}
-(var|function)[ \t\n]+[rR][eE][nN][aA][mM][eE][ \t\n;=(]|[rR][eE][nN][aA][mM][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordRename;}
-(var|function)[ \t\n]+[sS][eE][lL][eE][cC][tT][ \t\n;=(]|[sS][eE][lL][eE][cC][tT][ \t\n]*:[ \t\n]*\{	{return kKeywordSelect;}
-(var|function)[ \t\n]+[rR][eE][vV][oO][kK][eE][ \t\n;=(]|[rR][eE][vV][oO][kK][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordRevoke;}
-(var|function)[ \t\n]+[uU][pP][dD][aA][tT][eE][ \t\n;=(]|[uU][pP][dD][aA][tT][eE][ \t\n]*:[ \t\n]*\{	{return kKeywordUpdate;}
-(var|function)[ \t\n]+[uU][pP][sS][eE][rR][tT][ \t\n;=(]|[uU][pP][sS][eE][rR][tT][ \t\n]*:[ \t\n]*\{	{return kKeywordUpsert;}
-[aA][lL][tT][eE][rR][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`alter ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[bB][uU][iI][lL][dD][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`build ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[cC][rR][eE][aA][tT][eE][ \t\n][ \t\n]? {
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`create ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[dD][eE][lL][eE][tT][eE][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`delete ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[dD][rR][oO][pP][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`drop ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[eE][xX][eE][cC][uU][tT][eE][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`execute ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[eE][xX][pP][lL][aA][iI][nN][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`explain ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[gG][rR][aA][nN][tT][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`grant ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[iI][nN][fF][eE][rR][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`infer ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[iI][nN][sS][eE][rR][tT][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`insert ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[mM][eE][rR][gG][eE][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`merge ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[pP][rR][eE][pP][aA][rR][eE][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`prepare ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[rR][eE][nN][aA][mM][eE][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`rename ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[sS][eE][lL][eE][cC][tT][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`select ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[rR][eE][vV][oO][kK][eE][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`revoke ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[uU][pP][dD][aA][tT][eE][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`update ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-[uU][pP][sS][eE][rR][tT][ \t\n][ \t\n]?	{
-		BEGIN N1QL;
-		if(lex_op == kJsify) {
-			js_code += "new N1qlQuery(`upsert ";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += std::string(yytext);
-		}
-	}
-<N1QL>";"	{
-		BEGIN INITIAL;
-		if(lex_op == kJsify) {
-			js_code+="`);";
-		} else if(lex_op == kUniLineN1QL) {
-			js_code += ";";
-		}
-	}
-<N1QL>.	{
-		if(yytext[0] == '`' && !is_esc() && lex_op == kJsify) {
-			js_code += "\\";
-		}
+        /* Single-line comment */
+        previous_state = YYSTATE;
+        BEGIN SLCMT;
+        js_code += "//";
+    }
+<SLCMT>\r\n   |
+<SLCMT>\n   |
+<SLCMT>\r {
+        BEGIN previous_state;
+        js_code += std::string(yytext);
+    }
+["]	{HandleStrStart(DSTR); /* Handling double-quoted string */}
+<DSTR>["]	{HandleStrStop(DSTR);}
+[']	{HandleStrStart(SSTR); /* Handling single-quoted string */}
+<SSTR>[']	{HandleStrStop(SSTR);}
+[`]	{HandleStrStart(TSTR); /* Handling templated string */}
+<TSTR>[`]	{HandleStrStop(TSTR);}
+(var|function)[ \t\r\n]+[aA][lL][tT][eE][rR][ \t\r\n;=(]|[aA][lL][tT][eE][rR][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordAlter; /* Checking the constraints in this section */}
+(var|function)[ \t\r\n]+[bB][uU][iI][lL][dD][ \t\r\n;=(]|[bB][uU][iI][lL][dD][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordBuild;}
+(var|function)[ \t\r\n]+[cC][rR][eE][aA][tT][eE][ \t\r\n;=(]|[cC][rR][eE][aA][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordCreate;}
+(var|function)[ \t\r\n]+[dD][eE][lL][eE][tT][eE][ \t\r\n;=(]|[dD][eE][lL][eE][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordDelete;}
+(var|function)[ \t\r\n]+[dD][rR][oO][pP][ \t\r\n;=(]|[dD][rR][oO][pP][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordDrop;}
+(var|function)[ \t\r\n]+[eE][xX][eE][cC][uU][tT][eE][ \t\r\n;=(]|[eE][xX][eE][cC][uU][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordExecute;}
+(var|function)[ \t\r\n]+[eE][xX][pP][lL][aA][iI][nN][ \t\r\n;=(]|[eE][xX][pP][lL][aA][iI][nN][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordExplain;}
+(var|function)[ \t\r\n]+[fF][rR][oO][mM][ \t\r\n;=(]|[fF][rR][oO][mM][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordFrom;}
+(var|function)[ \t\r\n]+[gG][rR][aA][nN][tT][ \t\r\n;=(]|[gG][rR][aA][nN][tT][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordGrant;}
+(var|function)[ \t\r\n]+[iI][nN][fF][eE][rR][ \t\r\n;=(]|[iI][nN][fF][eE][rR][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordInfer;}
+(var|function)[ \t\r\n]+[iI][nN][sS][eE][rR][tT][ \t\r\n;=(]|[iI][nN][sS][eE][rR][tT][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordInsert;}
+(var|function)[ \t\r\n]+[mM][eE][rR][gG][eE][ \t\r\n;=(]|[mM][eE][rR][gG][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordMerge;}
+(var|function)[ \t\r\n]+[pP][rR][eE][pP][aA][rR][eE][ \t\r\n;=(]|[pP][rR][eE][pP][aA][rR][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordPrepare;}
+(var|function)[ \t\r\n]+[rR][eE][nN][aA][mM][eE][ \t\r\n;=(]|[rR][eE][nN][aA][mM][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordRename;}
+(var|function)[ \t\r\n]+[sS][eE][lL][eE][cC][tT][ \t\r\n;=(]|[sS][eE][lL][eE][cC][tT][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordSelect;}
+(var|function)[ \t\r\n]+[rR][eE][vV][oO][kK][eE][ \t\r\n;=(]|[rR][eE][vV][oO][kK][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordRevoke;}
+(var|function)[ \t\r\n]+[uU][pP][dD][aA][tT][eE][ \t\r\n;=(]|[uU][pP][dD][aA][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordUpdate;}
+(var|function)[ \t\r\n]+[uU][pP][sS][eE][rR][tT][ \t\r\n;=(]|[uU][pP][sS][eE][rR][tT][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordUpsert;}
+[aA][lL][tT][eE][rR][ \t\r\n][ \t\r\n]?	|
+[bB][uU][iI][lL][dD][ \t\r\n][ \t\r\n]?	|
+[cC][rR][eE][aA][tT][eE][ \t\r\n][ \t\r\n]? |
+[dD][eE][lL][eE][tT][eE][ \t\r\n][ \t\r\n]?	|
+[dD][rR][oO][pP][ \t\r\n][ \t\r\n]?	|
+[eE][xX][eE][cC][uU][tT][eE][ \t\r\n][ \t\r\n]?	|
+[eE][xX][pP][lL][aA][iI][nN][ \t\r\n][ \t\r\n]?	|
+[fF][rR][oO][mM][ \t\r\n][ \t\r\n]?	|
+[gG][rR][aA][nN][tT][ \t\r\n][ \t\r\n]?	|
+[iI][nN][fF][eE][rR][ \t\r\n][ \t\r\n]?	|
+[iI][nN][sS][eE][rR][tT][ \t\r\n][ \t\r\n]?	|
+[mM][eE][rR][gG][eE][ \t\r\n][ \t\r\n]?	|
+[pP][rR][eE][pP][aA][rR][eE][ \t\r\n][ \t\r\n]?	|
+[rR][eE][nN][aA][mM][eE][ \t\r\n][ \t\r\n]?	|
+[sS][eE][lL][eE][cC][tT][ \t\r\n][ \t\r\n]?	|
+[rR][eE][vV][oO][kK][eE][ \t\r\n][ \t\r\n]?	|
+[uU][pP][dD][aA][tT][eE][ \t\r\n][ \t\r\n]?	|
+[uU][pP][sS][eE][rR][tT][ \t\r\n][ \t\r\n]?	{
+        BEGIN N1QL;
 
-		js_code += std::string(yytext);
-	}
+        n1ql_query = std::string(yytext);
+
+        if(lex_op == kCommentN1QL) {
+            UpdatePos(insert_type::kN1QLBegin);
+        } else {
+            // The '\n' might be consumed by the regex above
+            // It's essential to replace it with a space as multi-line string with single-quotes isn't possible in JavaScript
+            ReplaceRecentChar(n1ql_query, '\n', ' ');
+            ReplaceRecentChar(n1ql_query, '\r', ' ');
+        }
+    }
+<N1QL>";"	{
+        BEGIN INITIAL;
+
+        n1ql_query += ";";
+        switch(lex_op) {
+            case kUniLineN1QL:
+                js_code += n1ql_query;
+                break;
+
+            case kJsify:
+            case kCommentN1QL: {
+                    auto isolate = v8::Isolate::GetCurrent();
+                    parse_info = ParseQuery(n1ql_query);
+                    if(parse_info.is_valid) {
+                        // If the query is DML, it should not execute on the source bucket
+                        if(parse_info.is_dml_query) {
+                            auto source = UnwrapData(isolate)->v8worker->cb_source_bucket_;
+                            if(source == parse_info.keyspace_name) {
+                                parse_info.is_valid = false;
+                                parse_info.info = R"(Can not execute DML query on bucket ")" + source + R"(")";
+                                return kN1QLParserError;
+                            }
+                        }
+
+                        // It's a valid N1QL query, transpile and add to code
+                        js_code += TranspileQuery(n1ql_query);
+                    } else {
+                        // It's not a N1QL query, maybe it's a JS expression
+                        auto transpiler = UnwrapData(isolate)->transpiler;
+                        if(!transpiler->IsJsExpression(n1ql_query)) {
+                            // Neither a N1QL query nor a JS expression
+                            return kN1QLParserError;
+                        }
+
+                        // It's a JS expression, no need to transpile
+                        js_code += n1ql_query;
+                    }
+
+                    if(lex_op == kCommentN1QL) {
+                        UpdatePos(insert_type::kN1QLEnd);
+                    }
+                }
+                break;
+        }
+    }
+<N1QL>\r\n  |
+<N1QL>\n    |
+<N1QL>\r    |
+<N1QL>. {
+        std::string str(yytext);
+        if(lex_op == kCommentN1QL) {
+            n1ql_query += str;
+        } else {
+            ReplaceRecentChar(str, '\n', ' ');
+            ReplaceRecentChar(str, '\r', ' ');
+            n1ql_query += str;
+        }
+    }
 <MLCMT,SLCMT,DSTR,SSTR,TSTR>.	{js_code += std::string(yytext);}
-.	{js_code += std::string(yytext);}
-\n	{js_code += "\n";}
+\r\n    |
+\n  |
+\r  |
+.   {js_code += std::string(yytext);}
 %%
 // Parses the given input string.
-int TransformSource(const char* input, std::string *output)
-{
-	// Set the input stream.
-	yy_scan_string(input);
+int TransformSource(const char* input, std::string *output, Pos *last_pos) {
+    // Set the input stream.
+    yy_scan_string(input);
 
-	// Begin lexer.
-	int code=yylex();
+    // pos_type_len represents the length that each insert_type will take
+    pos_type_len[static_cast<std::size_t>(insert_type::kN1QLBegin)] = 2;
+    pos_type_len[static_cast<std::size_t>(insert_type::kN1QLEnd)] = 3;
 
-	// Clear the buffer allocation after the lex.
-	yy_delete_buffer(YY_CURRENT_BUFFER);
+    // Reset flex state for the subsequent calls.
+    BEGIN INITIAL;
+    int code = yylex();
 
-	// Copy the output;
-	*output=js_code;
+    // Clear the buffer allocation after the lex.
+    yy_delete_buffer(YY_CURRENT_BUFFER);
 
-	// Clear the global variable for the next input.
-	js_code="";
+    *output = js_code;
+    if(last_pos != nullptr) {
+        UpdatePos(last_pos);
+    }
 
-	return code;
+    // Clear the global variable for the next input.
+    n1ql_query = js_code = "";
+    return code;
 }
 
 // Converts N1QL embedded JS to native JS.
-int Jsify(const char* input, std::string *output)
-{
-	lex_op = kJsify;
-	return TransformSource(input, output);
+JsifyInfo Jsify(const std::string &input) {
+    lex_op = kJsify;
+    JsifyInfo info;
+
+    info.code = TransformSource(input.c_str(), &info.handler_code, &info.last_pos);
+    return info;
 }
 
 // Unilines Multiline N1QL embeddings.
-int UniLineN1QL(const char *input, std::string *output)
-{
-	lex_op = kUniLineN1QL;
-	return TransformSource(input, output);
+UniLineN1QLInfo UniLineN1QL(const std::string &input) {
+    lex_op = kUniLineN1QL;
+    UniLineN1QLInfo info;
+
+    info.code = TransformSource(input.c_str(), &info.handler_code, &info.last_pos);
+    return info;
+}
+
+// Comments out N1QL statements and substitutes $ in its place
+CommentN1QLInfo CommentN1QL(const std::string &input) {
+    lex_op = kCommentN1QL;
+    CommentN1QLInfo info;
+
+    insertions = &info.insertions;
+    info.code = TransformSource(input.c_str(), &info.handler_code, &info.last_pos);
+    info.parse_info = parse_info;
+    return info;
+}
+
+// Update line number, column number and index based on the current value of js_code
+void UpdatePos(Pos *pos) {
+    pos->line_no = CountNewLines(js_code) + 1;
+    for(auto c = js_code.crbegin(); (c != js_code.crend()) && (*c != '\r') && (*c != '\n'); ++c) {
+        ++pos->col_no;
+    }
+
+    // To make col_no atleast 1
+    ++pos->col_no;
+    pos->index = js_code.length() == 0 ? 0 : js_code.length() - 1;
+}
+
+// Adds an entry to keep track of N1QL queries in the js_code
+void UpdatePos(insert_type type) {
+    InsertedCharsInfo pos(type);
+    if(!insertions->empty()) {
+        pos = insertions->back();
+    }
+
+    // Count the number of newlines since the previously updated pos
+    pos.line_no = CountNewLines(js_code, pos.line_no) + 1;
+    switch(type) {
+        case insert_type::kN1QLBegin:
+            pos.index = js_code.length();
+            pos.type = insert_type::kN1QLBegin;
+            pos.type_len = pos_type_len[static_cast<std::size_t>(insert_type::kN1QLBegin)];
+            break;
+
+        case insert_type::kN1QLEnd:
+            pos.index = js_code.length() - 1;
+            pos.type = insert_type::kN1QLEnd;
+            pos.type_len = pos_type_len[static_cast<std::size_t>(insert_type::kN1QLEnd)];
+            break;
+    }
+
+    insertions->push_back(pos);
 }
 
 // Handles the concatenation of different types of strings.
 // It tries to escape the quote of the same kind.
-void handle_str_start(int state)
-{
-	previous_state=YYSTATE;
+void HandleStrStart(int state) {
+    previous_state=YYSTATE;
 
-	switch (state)
-	{
-	case DSTR:
-		BEGIN DSTR;
-		js_code += "\"";
-		break;
+    switch (state) {
+        case DSTR:
+            BEGIN DSTR;
+            js_code += "\"";
+            break;
 
-	case SSTR:
-		BEGIN SSTR;
-		js_code += "'";
-		break;
+        case SSTR:
+            BEGIN SSTR;
+            js_code += "'";
+            break;
 
-	case TSTR:
-		BEGIN TSTR;
-		js_code += "`";
-		break;
-	}
+        case TSTR:
+            BEGIN TSTR;
+            js_code += "`";
+            break;
+    }
 }
 
 // Restores the previous state and adds the appropriate closing quote.
-void handle_str_stop(int state)
-{
-	if(!is_esc())
-		BEGIN previous_state;
+void HandleStrStop(int state) {
+    if(!IsEsc(js_code)) {
+        BEGIN previous_state;
+    }
 
-	switch(state)
-	{
-	case DSTR:
-		js_code += "\"";
-		break;
+    switch(state) {
+        case DSTR:
+            js_code += "\"";
+            break;
 
-	case SSTR:
-		js_code += "'";
-		break;
+        case SSTR:
+            js_code += "'";
+            break;
 
-	case TSTR:
-		js_code += "`";
-		break;
-	}
+        case TSTR:
+            js_code += "`";
+            break;
+    }
 }
 
-// Tests whether the current character is an escape character.
-bool is_esc()
-{
-	return js_code.length() > 0 ? js_code[js_code.length() - 1] == '\\' : 0;
+// Tests whether the quote character is escaped.
+bool IsEsc(const std::string &str) {
+    auto escaped = false;
+    auto i = str.length();
+    while(i-- > 0) {
+        if(str[i] != '\\') {
+            break;
+        }
+
+        escaped = !escaped;
+    }
+
+    return escaped;
 }
 
 // A default yywrap
-extern "C" int yywrap()
-{
-	return 1;
+extern "C" int yywrap() {
+    return 1;
+}
+
+// Transpiles the given N1QL query into a JavaScript expression - "new N1qlQuery('...')"
+std::string TranspileQuery(const std::string &query) {
+    switch(lex_op) {
+        case kJsify: {
+                auto isolate = v8::Isolate::GetCurrent();
+                auto comm = UnwrapData(isolate)->comm;
+                auto transpiler = UnwrapData(isolate)->transpiler;
+
+                auto info = comm->GetNamedParams(query);
+                parse_info = info.p_info;
+                return transpiler->TranspileQuery(query, info);
+            }
+
+        case kCommentN1QL: {
+                // For kCommentN1QL, instead of appending the character read, we substitute a '*'
+                // This is done because it will be ambiguous to JavaScript parser if it sees comment in N1QL query.
+                std::string query_transpiled = "/*";
+                for(const auto &c: query) {
+                    query_transpiled += (c == '\r' || c == '\n'? c : '*');
+                }
+
+                query_transpiled += "*/$;";
+                return query_transpiled;
+            }
+
+        default:
+            throw "Transpile Query not handled for this lex_op";
+    }
+}
+
+// Replaces the recent occurrence of char m in str with char n
+void ReplaceRecentChar(std::string &str, char m, char n) {
+    auto find = str.rfind(m);
+    if(find != std::string::npos) {
+        str[find] = n;
+    }
+}
+
+// Parse the N1QL query and return the parser result
+ParseInfo ParseQuery(const std::string &query) {
+    auto isolate = v8::Isolate::GetCurrent();
+    auto comm = UnwrapData(isolate)->comm;
+    return comm->ParseQuery(query);
+}
+
+// Returns the number of the logically equivalent newlines in str
+int32_t CountNewLines(const std::string &str, const int32_t from) {
+    return CountStr("\r", str, from) + CountStr("\n", str, from) - CountStr("\r\n", str, from);
+}
+
+// Returns the number of needles in haystack
+int32_t CountStr(const std::string &needle, const std::string &haystack, const int32_t from) {
+  int32_t count = 0;
+  for (auto i = haystack.find(needle, static_cast<std::size_t>(from)); i != std::string::npos;
+       i = haystack.find(needle, i + 1)) {
+    ++count;
+  }
+
+  return count;
 }

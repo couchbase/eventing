@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
+	"github.com/google/flatbuffers/go"
 )
 
 var c *Consumer
@@ -68,22 +70,36 @@ func BenchmarkOnDelete(b *testing.B) {
 }
 
 func init() {
-	cfgData, _ := ioutil.ReadFile("../cmd/producer/apps/credit_score")
+	cfgData, _ := ioutil.ReadFile("../cmd/producer/apps/test_app1")
 	config := cfg.GetRootAsConfig(cfgData, 0)
 	appCode := string(config.AppCode())
 
 	listener, _ := net.Listen("tcp", "127.0.0.1:20000")
-	port := strings.Split(listener.Addr().String(), ":")[1]
+	_, port, _ := net.SplitHostPort(listener.Addr().String())
 
 	c = &Consumer{}
-	c.vbProcessingStats = newVbProcessingStats("credit_score")
+	c.vbProcessingStats = newVbProcessingStats("test_app1", c.numVbuckets)
 	c.app = &common.AppConfig{}
 	c.socketWriteBatchSize = 100
-	c.writeBatchSeqnoMap = make(map[uint16]uint64)
+	c.ipcType = "af_inet"
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
-	c.socketTimeout = 5 * time.Second
+	c.socketTimeout = 1 * time.Second
 	c.executionTimeout = 1
 	c.cppWorkerThrCount = 1
+	c.connMutex = &sync.RWMutex{}
+	c.msgProcessedRWMutex = &sync.RWMutex{}
+	c.statsRWMutex = &sync.RWMutex{}
+	c.socketWriteTicker = time.NewTicker(1 * time.Second)
+	c.socketWriteLoopStopAckCh = make(chan struct{}, 1)
+	c.socketWriteLoopStopCh = make(chan struct{}, 1)
+	c.socketWriteLoopStopAckCh <- struct{}{}
+	c.sendMsgBufferRWMutex = &sync.RWMutex{}
+
+	c.builderPool = &sync.Pool{
+		New: func() interface{} {
+			return flatbuffers.NewBuilder(0)
+		},
+	}
 
 	client := newClient(c, "credit_score", port, "worker_0", "25000")
 	go client.Serve()
@@ -97,8 +113,10 @@ func init() {
 	c.sendWorkerThrMap(nil, false)
 	c.sendWorkerThrCount(0, false)
 
-	payload := makeV8InitPayload("credit_score", "localhost", "/tmp", "25000", "localhost:12000", string(cfgData),
-		"eventing", "asdasd", 5, 1, false)
-	c.sendInitV8Worker(payload, false)
+	payload, pBuilder := c.makeV8InitPayload("credit_score", "localhost", "/tmp", "25000", "", "localhost:12000", string(cfgData),
+		5, 1, 30, 1000, false)
+	c.sendInitV8Worker(payload, false, pBuilder)
 	c.sendLoadV8Worker(appCode, false)
+	c.sendGetSourceMap(false)
+	c.sendGetHandlerCode(false)
 }

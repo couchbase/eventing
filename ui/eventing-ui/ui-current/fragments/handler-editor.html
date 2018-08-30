@@ -2,28 +2,32 @@
   <mn-element-cargo depot="alerts">
     <div ng-show="handlerCtrl.showSuccessAlert">
       <div class="animate-alert enable-ng-animation alert alert-success">
-        <p>{{handlerCtrl.alertMessage}}</p>
+        <p>{{handlerCtrl.successMessage}}</p>
       </div>
     </div>
     <div ng-show="handlerCtrl.showWarningAlert"
          class="animate-alert alert enable-ng-animation ng-scope alert-warning">
       <p class="ng-binding">{{handlerCtrl.warningMessage}}</p>
     </div>
+    <div ng-show="handlerCtrl.showErrorAlert"
+         class="animate-alert alert enable-ng-animation ng-scope alert-error">
+      <p class="ng-binding">{{handlerCtrl.errorMessage}}</p>
+    </div>
   </mn-element-cargo>
   <form name="formHandler">
     <div class="functions-editor-wrapper">
-    <div class="functions-editor" name="handlerEditor" id="handler-editor"
-         ng-model="handlerCtrl.handler"
-         ng-readonly="handlerCtrl.editorDisabled"
-         ui-ace="{onLoad: aceLoaded, onChange: aceChanged, useWrapMode: true, showGutter: true, mode: 'javascript', require: ['ace/ext/language_tools'], advanced: {enableSnippets: true, enableBasicAutocompletion: true, enableLiveAutocompletion: true}}">
+      <div class="functions-editor" name="handlerEditor" id="handler-editor"
+           ng-model="handlerCtrl.handler"
+           ng-readonly="handlerCtrl.editorDisabled"
+           ui-ace="{onLoad: aceLoaded, onChange: aceChanged, useWrapMode: true, showGutter: true, mode: 'javascript', require: ['ace/ext/language_tools'], advanced: {enableSnippets: true, enableBasicAutocompletion: true, enableLiveAutocompletion: true}}">
+      </div>
     </div>
-  </div>
   </form>
   <div class="panel-footer spaced">
     <div class="flex-left">
       <button
-         ng-click="handlerCtrl.debugApp()"
-         ng-disabled="handlerCtrl.debugDisabled">
+        ng-click="handlerCtrl.debugApp()"
+        ng-disabled="handlerCtrl.debugDisabled">
         Debug
       </button>
       <span class="fa-stack icon-info"
@@ -35,7 +39,7 @@
 
     <div>
       <a ng-click="handlerCtrl.cancelEdit()"
-              ng-disabled="formHandler.handlerEditor.$pristine || handlerCtrl.disableCancelButton">
+         ng-disabled="formHandler.handlerEditor.$pristine || handlerCtrl.disableCancelButton">
         Cancel
       </a>
       <button ng-click="handlerCtrl.saveEdit()"

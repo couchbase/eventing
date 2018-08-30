@@ -1,5 +1,6 @@
 PROJECT (eventing)
-
+SET(GOVERSION "1.10.3")
+SET (EVENTING_VER "evt-${PRODUCT_VERSION}-ee")
 ADD_SUBDIRECTORY(gen)
 ADD_SUBDIRECTORY(third_party/inspector)
 ADD_SUBDIRECTORY(v8_consumer)

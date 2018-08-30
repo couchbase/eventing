@@ -9,14 +9,17 @@
 # or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-PROJECT (eventing-consumer)
+PROJECT(eventing-consumer)
 
 INCLUDE (FindCouchbaseJemalloc)
 INCLUDE (FindCouchbaseLibuv)
-INCLUDE (FindCouchbaseLibCouchbase)
 INCLUDE (FindCouchbaseV8)
+INCLUDE (FindCouchbaseBreakpad)
 
-INCLUDE_DIRECTORIES(BEFORE ${LIBCOUCHBASE_INCLUDE_DIR} ${LIBUV_INCLUDE_DIR})
+INCLUDE_DIRECTORIES(BEFORE
+                     "${libcouchbase_SOURCE_DIR}/include"
+                     "${libcouchbase_BINARY_DIR}/generated"
+                     "${LIBUV_INCLUDE_DIR}")
 
 INCLUDE_DIRECTORIES(AFTER
                      ${ICU_INCLUDE_DIR}
@@ -30,29 +33,61 @@ INCLUDE_DIRECTORIES(AFTER
                      ${CMAKE_INSTALL_PREFIX}/include
                      ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector)
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DYY_NEVER_INTERACTIVE")
+IF (NOT WIN32)
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer -msse4.2 -DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT")
+ELSE ()
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT")
+ENDIF ()
+
+IF(BUILD_ENTERPRISE)
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DENTERPRISE")
+ENDIF()
 
 SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc PROPERTIES GENERATED TRUE)
 
 SET(EVENTING_SOURCES
-    src/client.cc src/commands.cc src/message.cc
-    src/v8worker.cc src/assert.cc src/bucket.cc
-    src/n1ql.cc src/parse_deployment.cc src/crc32c.cc
-    src/log.cc src/transpiler.cc src/js_exception.cc
-    src/utils.cc src/function_templates.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc)
+    src/base64.cc
+    src/client.cc
+    src/comm.cc
+    src/commands.cc
+    src/v8worker.cc
+    src/assert.cc
+    src/bucket.cc
+    src/n1ql.cc
+    src/parse_deployment.cc
+    src/crc32c.cc
+    src/log.cc
+    src/transpiler.cc
+    src/js_exception.cc
+    src/utils.cc
+    src/function_templates.cc
+    src/breakpad.cc
+    src/timer.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../gen/version/version.cc)
 
 SET(EVENTING_LIBRARIES
-      ${V8_LIBRARIES} ${ICU_LIBRARIES} ${JEMALLOC_LIBRARIES}
-      ${CURL_LIBRARIES} ${LIBCOUCHBASE_LIBRARIES} ${LIBUV_LIBRARIES}
-      eventing-inspector platform)
+    ${V8_LIBRARIES}
+    ${ICU_LIBRARIES}
+    ${JEMALLOC_LIBRARIES}
+    ${CURL_LIBRARIES}
+    ${LIBUV_LIBRARIES}
+    ${ZLIB_LIBRARIES}
+    eventing-inspector
+    platform)
 
 IF(APPLE)
   SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} ${FLEX_LIBRARIES})
 ENDIF()
 
-ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})
-ADD_DEPENDENCIES(eventing-consumer generated)
+IF(BREAKPAD_FOUND)
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBREAKPAD_FOUND")
+  SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} ${BREAKPAD_LIBRARIES})
+  INCLUDE_DIRECTORIES(AFTER ${BREAKPAD_INCLUDE_DIR})
+ENDIF()
 
-TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES})
+ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})
+ADD_DEPENDENCIES(eventing-consumer generated platform couchbase)
+
+TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES} couchbase)
 INSTALL(TARGETS eventing-consumer RUNTIME DESTINATION bin)

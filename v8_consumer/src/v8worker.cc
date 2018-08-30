@@ -9,157 +9,138 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
-#include <fstream>
-#include <mutex>
-#include <regex>
-#include <sstream>
-#include <thread>
-#include <typeinfo>
-#include <vector>
-
-#include "../include/bucket.h"
-#include "../include/n1ql.h"
-#include "../include/parse_deployment.h"
+#include "v8worker.h"
+#include "bucket.h"
+#include "parse_deployment.h"
+#include "retry_util.h"
+#include "timer.h"
+#include "utils.h"
 
 #include "../../gen/js/builtin.h"
-#include "../../gen/js/escodegen.h"
-#include "../../gen/js/esprima.h"
-#include "../../gen/js/estraverse.h"
-#include "../../gen/js/source-map.h"
-#include "../../gen/js/transpiler.h"
 
-#define BUFSIZE 100
+bool V8Worker::debugger_started_ = false;
 
-bool enable_recursive_mutation = false;
+std::atomic<int64_t> bucket_op_exception_count = {0};
+std::atomic<int64_t> n1ql_op_exception_count = {0};
+std::atomic<int64_t> timeout_count = {0};
+std::atomic<int16_t> checkpoint_failure_count = {0};
 
-N1QL *n1ql_handle;
-JsException V8Worker::exception;
+std::atomic<int64_t> on_update_success = {0};
+std::atomic<int64_t> on_update_failure = {0};
+std::atomic<int64_t> on_delete_success = {0};
+std::atomic<int64_t> on_delete_failure = {0};
 
-enum RETURN_CODE {
-  kSuccess = 0,
-  kFailedToCompileJs,
-  kNoHandlersDefined,
-  kFailedInitBucketHandle,
-  kFailedInitN1QLHandle,
-  kOnUpdateCallFail,
-  kOnDeleteCallFail
-};
+std::atomic<int64_t> timer_create_failure = {0};
+std::atomic<int64_t> lcb_retry_failure = {0};
 
-template <typename... Args>
-std::string string_sprintf(const char *format, Args... args) {
-  int length = std::snprintf(nullptr, 0, format, args...);
-  assert(length >= 0);
+std::atomic<int64_t> messages_processed_counter = {0};
 
-  char *buf = new char[length + 1];
-  std::snprintf(buf, length + 1, format, args...);
+std::atomic<int64_t> dcp_delete_msg_counter = {0};
+std::atomic<int64_t> dcp_mutation_msg_counter = {0};
+std::atomic<int64_t> timer_msg_counter = {0};
 
-  std::string str(buf);
-  delete[] buf;
-  return std::move(str);
-}
+std::atomic<int64_t> enqueued_dcp_delete_msg_counter = {0};
+std::atomic<int64_t> enqueued_dcp_mutation_msg_counter = {0};
+std::atomic<int64_t> enqueued_timer_msg_counter = {0};
 
-void get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  // lcb_get calls against metadata bucket is only triggered for timer lookups
-  const lcb_RESPGET *rg = reinterpret_cast<const lcb_RESPGET *>(rb);
-  const void *data = lcb_get_cookie(instance);
+const char *GetUsername(void *cookie, const char *host, const char *port,
+                        const char *bucket) {
+  LOG(logDebug) << "Getting username for host " << RS(host) << " port " << port
+                << std::endl;
 
-  std::string ts;
-  std::string timestamp_marker("");
-  lcb_CMDSTORE acmd = {0};
-
-  switch (rb->rc) {
-  case LCB_KEY_ENOENT:
-    ts.assign(reinterpret_cast<const char *>(data));
-
-    LCB_CMD_SET_KEY(&acmd, ts.c_str(), ts.length());
-    LCB_CMD_SET_VALUE(&acmd, timestamp_marker.c_str(),
-                      timestamp_marker.length());
-    acmd.operation = LCB_ADD;
-
-    lcb_store3(instance, NULL, &acmd);
-    lcb_wait(instance);
-    break;
-  case LCB_SUCCESS:
-    LOG(logTrace) << string_sprintf("Value %.*s", static_cast<int>(rg->nvalue),
-                                    reinterpret_cast<const char *>(rg->value));
-    break;
-  default:
-    LOG(logTrace) << "LCB_CALLBACK_GET: Operation failed, "
-                  << lcb_strerror(NULL, rb->rc) << " rc:" << rb->rc << '\n';
-    break;
+  auto endpoint = JoinHostPort(host, port);
+  auto isolate = static_cast<v8::Isolate *>(cookie);
+  auto comm = UnwrapData(isolate)->comm;
+  auto info = comm->GetCreds(endpoint);
+  if (!info.is_valid) {
+    LOG(logError) << "Failed to get username for " << RS(host) << ":" << port
+                  << " err: " << info.msg << std::endl;
   }
-}
 
-void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  const lcb_RESPSTORE *rs = reinterpret_cast<const lcb_RESPSTORE *>(rb);
-  Result *result = reinterpret_cast<Result *>(rb->cookie);
-  result->rc = rs->rc;
-}
-
-void sdmutate_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  const lcb_RESPSUBDOC *resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
-  lcb_SDENTRY ent;
-  size_t iter = 0;
-
-  Result *res = reinterpret_cast<Result *>(rb->cookie);
-  res->rc = rb->rc;
-
-  if (lcb_sdresult_next(resp, &ent, &iter)) {
-    LOG(logTrace) << string_sprintf("Status: 0x%x. Value: %.*s\n", ent.status,
-                                    static_cast<int>(ent.nvalue),
-                                    reinterpret_cast<const char *>(ent.value));
+  static const char *username = "";
+  if (info.username != username) {
+    username = strdup(info.username.c_str());
   }
+
+  return username;
 }
 
-void sdlookup_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  Result *res = reinterpret_cast<Result *>(rb->cookie);
-  res->cas = rb->cas;
-  res->rc = rb->rc;
+const char *GetPassword(void *cookie, const char *host, const char *port,
+                        const char *bucket) {
+  LOG(logDebug) << "Getting password for host " << RS(host) << " port " << port
+                << std::endl;
 
-  if (rb->rc == LCB_SUCCESS) {
-    const lcb_RESPGET *rg = reinterpret_cast<const lcb_RESPGET *>(rb);
-    res->value.assign(reinterpret_cast<const char *>(rg->value), rg->nvalue);
-
-    const lcb_RESPSUBDOC *resp = reinterpret_cast<const lcb_RESPSUBDOC *>(rb);
-    lcb_SDENTRY ent;
-    size_t iter = 0;
-    int index = 0;
-    while (lcb_sdresult_next(resp, &ent, &iter)) {
-      LOG(logTrace) << string_sprintf(
-          "Status: 0x%x. Value: %.*s\n", ent.status,
-          static_cast<int>(ent.nvalue),
-          reinterpret_cast<const char *>(ent.value));
-
-      if (index == 0) {
-        std::string exptime(reinterpret_cast<const char *>(ent.value));
-        exptime.substr(0, static_cast<int>(ent.nvalue));
-
-        unsigned long long int ttl;
-        char *pEnd;
-        ttl = strtoull(exptime.c_str(), &pEnd, 10);
-        res->exptime = (uint32_t)ttl;
-      }
-
-      if (index == 1) {
-        res->value.assign(reinterpret_cast<const char *>(ent.value),
-                          static_cast<int>(ent.nvalue));
-      }
-      index++;
-    }
+  auto isolate = static_cast<v8::Isolate *>(cookie);
+  auto comm = UnwrapData(isolate)->comm;
+  auto endpoint = JoinHostPort(host, port);
+  auto info = comm->GetCreds(endpoint);
+  if (!info.is_valid) {
+    LOG(logError) << "Failed to get password for " << RS(host) << ":" << port
+                  << " err: " << info.msg << std::endl;
   }
+
+  static const char *password = "";
+  if (info.password != password) {
+    password = strdup(info.password.c_str());
+  }
+
+  return password;
 }
 
-void enableRecursiveMutation(bool state) { enable_recursive_mutation = state; }
+const char *GetUsernameCached(void *cookie, const char *host, const char *port,
+                              const char *bucket) {
+  auto isolate = static_cast<v8::Isolate *>(cookie);
+  auto comm = UnwrapData(isolate)->comm;
+  auto endpoint = JoinHostPort(host, port);
+  auto info = comm->GetCredsCached(endpoint);
+  if (!info.is_valid) {
+    LOG(logError) << "Failed to get username for " << RS(host) << ":" << port
+                  << " err: " << info.msg << std::endl;
+  }
+
+  static const char *username = "";
+  if (info.username != username) {
+    username = strdup(info.username.c_str());
+  }
+
+  return username;
+}
+
+const char *GetPasswordCached(void *cookie, const char *host, const char *port,
+                              const char *bucket) {
+  auto isolate = static_cast<v8::Isolate *>(cookie);
+  auto comm = UnwrapData(isolate)->comm;
+  auto endpoint = JoinHostPort(host, port);
+  auto info = comm->GetCredsCached(endpoint);
+  if (!info.is_valid) {
+    LOG(logError) << "Failed to get password for " << RS(host) << ":" << port
+                  << " err: " << info.msg << std::endl;
+  }
+
+  static const char *password = "";
+  if (info.password != password) {
+    password = strdup(info.password.c_str());
+  }
+
+  return password;
+}
 
 V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
-                   server_settings_t *server_settings)
-    : settings(server_settings), platform_(platform) {
-  enableRecursiveMutation(h_config->enable_recursive_mutation);
+                   server_settings_t *server_settings,
+                   const std::string &handler_name,
+                   const std::string &handler_uuid,
+                   const std::string &user_prefix)
+    : app_name_(h_config->app_name), settings_(server_settings),
+      platform_(platform), handler_name_(handler_name),
+      handler_uuid_(handler_uuid), user_prefix_(user_prefix) {
+  curl_timeout = h_config->curl_timeout;
+  histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
 
+  for (int i = 0; i < NUM_VBUCKETS; i++) {
+    vb_seq_[i] = atomic_ptr_t(new std::atomic<int64_t>(0));
+  }
+  vbfilter_map_.resize(NUM_VBUCKETS, -1);
+  processed_bucketops_.resize(NUM_VBUCKETS, 0);
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
@@ -169,322 +150,341 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::HandleScope handle_scope(isolate_);
 
+  isolate_->SetData(DATA_SLOT, &data_);
   isolate_->SetCaptureStackTraceForUncaughtExceptions(true);
-  isolate_->SetData(0, this);
-  v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(GetIsolate());
+  data_.v8worker = this;
 
-  v8::TryCatch try_catch;
-
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "log"),
-              v8::FunctionTemplate::New(GetIsolate(), Log));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "docTimer"),
-              v8::FunctionTemplate::New(GetIsolate(), CreateDocTimer));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "nonDocTimer"),
-              v8::FunctionTemplate::New(GetIsolate(), CreateNonDocTimer));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "iter"),
-              v8::FunctionTemplate::New(GetIsolate(), IterFunction));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "stopIter"),
-              v8::FunctionTemplate::New(GetIsolate(), StopIterFunction));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "execQuery"),
-              v8::FunctionTemplate::New(GetIsolate(), ExecQueryFunction));
-  global->Set(v8::String::NewFromUtf8(GetIsolate(), "getReturnValue"),
-              v8::FunctionTemplate::New(GetIsolate(), GetReturnValueFunction));
-
-  if (try_catch.HasCaught()) {
-    last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Last expection: " << last_exception << '\n';
+  curl_global_init(CURL_GLOBAL_ALL);
+  CURL *curl = curl_easy_init();
+  if (curl) {
+    UnwrapData(isolate_)->curl_handle = curl;
   }
 
-  v8::Local<v8::Context> context = v8::Context::New(GetIsolate(), NULL, global);
-  context_.Reset(GetIsolate(), context);
-  exception = JsException(isolate_);
+  auto global = v8::ObjectTemplate::New(isolate_);
+  v8::TryCatch try_catch;
 
-  app_name_ = h_config->app_name;
-  execute_start_time = Time::now();
+  global->Set(v8::String::NewFromUtf8(isolate_, "curl"),
+              v8::FunctionTemplate::New(isolate_, Curl));
+  global->Set(v8::String::NewFromUtf8(isolate_, "log"),
+              v8::FunctionTemplate::New(isolate_, Log));
+  global->Set(v8::String::NewFromUtf8(isolate_, "iter"),
+              v8::FunctionTemplate::New(isolate_, IterFunction));
+  global->Set(v8::String::NewFromUtf8(isolate_, "stopIter"),
+              v8::FunctionTemplate::New(isolate_, StopIterFunction));
+  global->Set(v8::String::NewFromUtf8(isolate_, "execQuery"),
+              v8::FunctionTemplate::New(isolate_, ExecQueryFunction));
+  global->Set(v8::String::NewFromUtf8(isolate_, "getReturnValue"),
+              v8::FunctionTemplate::New(isolate_, GetReturnValueFunction));
+  global->Set(v8::String::NewFromUtf8(isolate_, "createTimer"),
+              v8::FunctionTemplate::New(isolate_, CreateTimer));
+
+  if (try_catch.HasCaught()) {
+    LOG(logError) << "Exception logged:"
+                  << ExceptionString(isolate_, &try_catch) << std::endl;
+  }
+
+  auto context = v8::Context::New(isolate_, nullptr, global);
+  context_.Reset(isolate_, context);
+  js_exception_ = new JsException(isolate_);
+  data_.js_exception = js_exception_;
+
+  auto ssl = false;
+  auto port = server_settings->eventing_port;
+
+  auto key = GetLocalKey();
+  data_.comm = new Communicator(server_settings->host_addr, port, key.first,
+                                key.second, ssl);
+
+  data_.transpiler =
+      new Transpiler(isolate_, GetTranspilerSrc(), h_config->handler_headers,
+                     h_config->handler_footers);
+  data_.utils = new Utils(isolate_, context);
+  data_.timer = new Timer(isolate_, context);
+  execute_start_time_ = Time::now();
 
   deployment_config *config = ParseDeployment(h_config->dep_cfg.c_str());
 
-  cb_source_bucket.assign(config->source_bucket);
-
-  std::map<std::string,
-           std::map<std::string, std::vector<std::string>>>::iterator it =
-      config->component_configs.begin();
+  cb_source_bucket_.assign(config->source_bucket);
 
   Bucket *bucket_handle = nullptr;
-  debugger_started = false;
-  execute_flag = false;
-  shutdown_terminator = false;
-  max_task_duration = SECS_TO_NS * h_config->execution_timeout;
+  execute_flag_ = false;
+  shutdown_terminator_ = false;
+  max_task_duration_ = SECS_TO_NS * h_config->execution_timeout;
 
-  for (; it != config->component_configs.end(); it++) {
-    if (it->first == "buckets") {
-      std::map<std::string, std::vector<std::string>>::iterator bucket =
-          config->component_configs["buckets"].begin();
-      for (; bucket != config->component_configs["buckets"].end(); bucket++) {
-        std::string bucket_alias = bucket->first;
-        std::string bucket_name =
-            config->component_configs["buckets"][bucket_alias][0];
+  if (!h_config->skip_lcb_bootstrap) {
+    for (auto it = config->component_configs.begin();
+         it != config->component_configs.end(); it++) {
+      if (it->first == "buckets") {
+        auto bucket = config->component_configs["buckets"].begin();
+        for (; bucket != config->component_configs["buckets"].end(); bucket++) {
+          std::string bucket_alias = bucket->first;
+          std::string bucket_name =
+              config->component_configs["buckets"][bucket_alias][0];
 
-        bucket_handle = new Bucket(
-            this, bucket_name.c_str(), settings->kv_host_port.c_str(),
-            bucket_alias.c_str(), settings->rbac_user, settings->rbac_pass);
+          bucket_handle = new Bucket(
+              this, bucket_name.c_str(), settings_->kv_host_port.c_str(),
+              bucket_alias.c_str(), cb_source_bucket_ == bucket_name);
 
-        bucket_handles.push_back(bucket_handle);
+          bucket_handles_.push_back(bucket_handle);
+        }
       }
     }
   }
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: "
-               << h_config->app_name << " curr_host: " << settings->host_addr
-               << " curr_eventing_port: " << settings->eventing_port
-               << " kv_host_port: " << settings->kv_host_port
-               << " rbac_user: " << settings->rbac_user
-               << " rbac_pass: " << settings->rbac_pass
+               << h_config->app_name
+               << " debugger port: " << RS(settings_->debugger_port)
+               << " curr_host: " << RS(settings_->host_addr)
+               << " curr_eventing_port: " << RS(settings_->eventing_port)
+               << " curr_eventing_sslport: " << RS(settings_->eventing_sslport)
+               << " kv_host_port: " << RS(settings_->kv_host_port)
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
-               << " enable_recursive_mutation: " << enable_recursive_mutation
-               << '\n';
+               << " curl_timeout: " << curl_timeout
+               << " version: " << EventingVer() << std::endl;
 
-  connstr = "couchbase://" + settings->kv_host_port + "/" +
-            cb_source_bucket.c_str() + "?username=" + settings->rbac_user +
-            "&select_bucket=true";
+  connstr_ = "couchbase://" + settings_->kv_host_port + "/" +
+             cb_source_bucket_ + "?select_bucket=true";
+  meta_connstr_ = "couchbase://" + settings_->kv_host_port + "/" +
+                  config->metadata_bucket + "?select_bucket=true";
 
-  meta_connstr = "couchbase://" + settings->kv_host_port + "/" +
-                 config->metadata_bucket.c_str() +
-                 "?username=" + settings->rbac_user + "&select_bucket=true";
+  if (IsIPv6()) {
+    connstr_ += "&ipv6=allow";
+    meta_connstr_ += "&ipv6=allow";
+  }
 
-  conn_pool = new ConnectionPool(h_config->lcb_inst_capacity,
-                                 settings->kv_host_port, cb_source_bucket,
-                                 settings->rbac_user, settings->rbac_pass);
-  src_path = settings->eventing_dir + "/" + app_name_ + ".t.js";
+  if (!h_config->skip_lcb_bootstrap) {
+    conn_pool_ = new ConnectionPool(isolate_, h_config->lcb_inst_capacity,
+                                    settings_->kv_host_port, cb_source_bucket_);
+  }
+  src_path_ = settings_->eventing_dir + "/" + app_name_ + ".t.js";
 
   delete config;
 
-  this->worker_queue = new Queue<worker_msg_t>();
+  this->timer_queue_ = new Queue<timer_msg_t>();
+  this->worker_queue_ = new Queue<worker_msg_t>();
 
-  std::thread th(&V8Worker::RouteMessage, this);
-  processing_thr = std::move(th);
+  std::thread r_thr(&V8Worker::RouteMessage, this);
+  processing_thr_ = std::move(r_thr);
 }
 
 V8Worker::~V8Worker() {
-  if (processing_thr.joinable()) {
-    processing_thr.join();
+  if (processing_thr_.joinable()) {
+    processing_thr_.join();
   }
+
+  auto data = UnwrapData(isolate_);
+  delete data->comm;
+  delete data->transpiler;
+  delete data->utils;
+  delete data->timer;
+
+  curl_global_cleanup();
   context_.Reset();
   on_update_.Reset();
   on_delete_.Reset();
-  delete conn_pool;
-  delete n1ql_handle;
+  delete conn_pool_;
+  delete n1ql_handle_;
+  delete settings_;
+  delete histogram_;
+  delete js_exception_;
+  delete timer_queue_;
+  delete worker_queue_;
 }
 
 // Re-compile and execute handler code for debugger
 bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
                             int args_len) {
   v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
   v8::TryCatch try_catch(isolate_);
 
-  // Need to construct origin for source-map to apply.
-  auto origin_v8_str = v8::String::NewFromUtf8(isolate_, src_path.c_str());
+  // Need to construct origin for source-map to apply
+  auto origin_v8_str = v8Str(isolate_, src_path_);
   v8::ScriptOrigin origin(origin_v8_str);
-  auto context = context_.Get(isolate_);
-  auto source = v8::String::NewFromUtf8(isolate_, script_to_execute_.c_str());
+
+  v8::Local<v8::Function> console_log_func;
+  if (!TO_LOCAL(
+          v8::FunctionTemplate::New(isolate_, ConsoleLog)->GetFunction(context),
+          &console_log_func)) {
+    return false;
+  }
 
   // Replace the usual log function with console.log
   auto global = context->Global();
-  global->Set(v8::String::NewFromUtf8(isolate_, "log"),
-              v8::FunctionTemplate::New(isolate_, ConsoleLog)->GetFunction());
+  global->Set(v8Str(isolate_, "log"), console_log_func);
 
+  auto source = v8Str(isolate_, script_to_execute_);
   v8::Local<v8::Script> script;
-  if (!v8::Script::Compile(context, source, &origin).ToLocal(&script)) {
+  if (!TO_LOCAL(v8::Script::Compile(context, source, &origin), &script)) {
     return false;
-  } else {
-    v8::Local<v8::Value> result;
-    if (!script->Run(context).ToLocal(&result)) {
-      assert(try_catch.HasCaught());
-      return false;
-    } else {
-      assert(!try_catch.HasCaught());
-      auto func_v8_str = v8::String::NewFromUtf8(isolate_, func_name);
-      auto func_ref = context->Global()->Get(func_v8_str);
-      auto func = v8::Local<v8::Function>::Cast(func_ref);
-      func->Call(v8::Null(isolate_), args_len, args);
-      if (try_catch.HasCaught()) {
-        agent->FatalException(try_catch.Exception(), try_catch.Message());
-      }
-
-      return true;
-    }
   }
+
+  v8::Local<v8::Value> result;
+  if (!TO_LOCAL(script->Run(context), &result)) {
+    return false;
+  }
+
+  auto func_ref = global->Get(v8Str(isolate_, func_name));
+  auto func = func_ref.As<v8::Function>();
+  RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                        IsTerminatingRetriable, IsExecutionTerminating,
+                        isolate_);
+
+  if (!TO_LOCAL(func->Call(context, v8::Null(isolate_), args_len, args),
+                &result)) {
+    return false;
+  }
+
+  if (try_catch.HasCaught()) {
+    agent_->FatalException(try_catch.Exception(), try_catch.Message());
+  }
+
+  return true;
 }
 
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
-  LOG(logInfo) << "Eventing dir: " << settings->eventing_dir << '\n';
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
+  LOG(logInfo) << "Eventing dir: " << RS(settings_->eventing_dir) << std::endl;
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
+  auto transpiler = UnwrapData(isolate_)->transpiler;
   v8::Context::Scope context_scope(context);
 
-  v8::TryCatch try_catch;
-  std::string plain_js;
-  int code = UniLineN1QL(script_to_execute.c_str(), &plain_js);
-  LOG(logTrace) << "code after Unilining N1QL: " << plain_js << '\n';
-  if (code != kOK) {
-    LOG(logError) << "failed to uniline N1QL: " << code << '\n';
-    return code;
+  auto uniline_info = transpiler->UniLineN1QL(script_to_execute);
+  LOG(logInfo) << "code after Unilining N1QL: " << RM(uniline_info.handler_code)
+               << std::endl;
+  if (uniline_info.code != kOK) {
+    LOG(logError) << "failed to uniline N1QL: " << RM(uniline_info.code)
+                  << std::endl;
+    return uniline_info.code;
   }
 
-  handler_code_ = plain_js;
-
-  code = Jsify(script_to_execute.c_str(), &plain_js);
-  LOG(logTrace) << "jsified code: " << plain_js << '\n';
-  if (code != kOK) {
-    LOG(logError) << "failed to jsify: " << code << '\n';
-    return code;
+  auto jsify_info = Jsify(script_to_execute);
+  LOG(logInfo) << "jsified code: " << RM(jsify_info.handler_code) << std::endl;
+  if (jsify_info.code != kOK) {
+    LOG(logError) << "failed to jsify: " << RM(jsify_info.handler_code)
+                  << std::endl;
+    return jsify_info.code;
   }
 
-  plain_js += std::string((const char *)js_builtin) + '\n';
+  n1ql_handle_ = new N1QL(conn_pool_, isolate_);
+  UnwrapData(isolate_)->n1ql_handle = n1ql_handle_;
 
-  std::string transpiler_js_src =
-      std::string((const char *)js_esprima) + '\n' +
-      std::string((const char *)js_escodegen) + '\n' +
-      std::string((const char *)js_estraverse) + '\n' +
-      std::string((const char *)js_transpiler) + '\n' +
-      std::string((const char *)js_source_map);
-
-  n1ql_handle = new N1QL(conn_pool);
-
-  Transpiler transpiler(transpiler_js_src);
   script_to_execute =
-      transpiler.Transpile(plain_js, app_name_ + ".js", app_name_ + ".map.json",
-                           settings->host_addr, settings->eventing_port) +
+      transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
+                            uniline_info.handler_code) +
       '\n';
-  source_map_ = transpiler.GetSourceMap(plain_js, app_name_ + ".js");
-  LOG(logTrace) << "source map:" << source_map_ << '\n';
+  script_to_execute += std::string((const char *)js_builtin) + '\n';
 
-  v8::Local<v8::String> source =
-      v8::String::NewFromUtf8(GetIsolate(), script_to_execute.c_str());
-
+  auto source = v8Str(isolate_, script_to_execute);
   script_to_execute_ = script_to_execute;
-  LOG(logTrace) << "script to execute: " << script_to_execute << '\n';
+  LOG(logTrace) << "script to execute: " << RM(script_to_execute) << std::endl;
 
-  if (!ExecuteScript(source))
+  if (!ExecuteScript(source)) {
     return kFailedToCompileJs;
+  }
 
-  v8::Local<v8::String> on_update = v8Str(GetIsolate(), "OnUpdate");
-  v8::Local<v8::String> on_delete = v8Str(GetIsolate(), "OnDelete");
+  auto global = context->Global();
+  v8::Local<v8::Value> on_update_def;
+  if (!TO_LOCAL(global->Get(context, v8Str(isolate_, "OnUpdate")),
+                &on_update_def)) {
+    return kToLocalFailed;
+  }
 
-  v8::Local<v8::Value> on_update_val;
-  v8::Local<v8::Value> on_delete_val;
+  v8::Local<v8::Value> on_delete_def;
+  if (!TO_LOCAL(global->Get(context, v8Str(isolate_, "OnDelete")),
+                &on_delete_def)) {
+    return kToLocalFailed;
+  }
 
-  if (!context->Global()->Get(context, on_update).ToLocal(&on_update_val) ||
-      !context->Global()->Get(context, on_delete).ToLocal(&on_delete_val)) {
+  if (!on_update_def->IsFunction() && !on_delete_def->IsFunction()) {
     return kNoHandlersDefined;
   }
 
-  v8::Local<v8::Function> on_update_fun =
-      v8::Local<v8::Function>::Cast(on_update_val);
-  on_update_.Reset(GetIsolate(), on_update_fun);
+  if (on_update_def->IsFunction()) {
+    auto on_update_fun = on_update_def.As<v8::Function>();
+    on_update_.Reset(isolate_, on_update_fun);
+  }
 
-  v8::Local<v8::Function> on_delete_fun =
-      v8::Local<v8::Function>::Cast(on_delete_val);
-  on_delete_.Reset(GetIsolate(), on_delete_fun);
+  if (on_delete_def->IsFunction()) {
+    auto on_delete_fun = on_delete_def.As<v8::Function>();
+    on_delete_.Reset(isolate_, on_delete_fun);
+  }
 
-  if (bucket_handles.size() > 0) {
-    std::list<Bucket *>::iterator bucket_handle = bucket_handles.begin();
+  if (!bucket_handles_.empty()) {
+    auto bucket_handle = bucket_handles_.begin();
 
-    for (; bucket_handle != bucket_handles.end(); bucket_handle++) {
+    for (; bucket_handle != bucket_handles_.end(); bucket_handle++) {
       if (*bucket_handle) {
-        std::map<std::string, std::string> data_bucket;
-        if (!(*bucket_handle)->Initialize(this, &data_bucket)) {
-          LOG(logError) << "Error initializing bucket handle" << '\n';
+        if (!(*bucket_handle)->Initialize(this)) {
+          LOG(logError) << "Error initializing bucket handle" << std::endl;
           return kFailedInitBucketHandle;
         }
       }
     }
   }
 
-  if (transpiler.IsTimerCalled(script_to_execute)) {
-    LOG(logDebug) << "Timer is called" << '\n';
-
-    lcb_create_st crst;
-    memset(&crst, 0, sizeof crst);
-
-    crst.version = 3;
-    crst.v.v3.connstr = connstr.c_str();
-    crst.v.v3.type = LCB_TYPE_BUCKET;
-    crst.v.v3.passwd = settings->rbac_pass.c_str();
-
-    lcb_create(&cb_instance, &crst);
-    lcb_connect(cb_instance);
-    lcb_wait(cb_instance);
-
-    lcb_install_callback3(cb_instance, LCB_CALLBACK_GET, get_callback);
-    lcb_install_callback3(cb_instance, LCB_CALLBACK_STORE, set_callback);
-    lcb_install_callback3(cb_instance, LCB_CALLBACK_SDMUTATE,
-                          sdmutate_callback);
-    lcb_install_callback3(cb_instance, LCB_CALLBACK_SDLOOKUP,
-                          sdlookup_callback);
-
-    this->GetIsolate()->SetData(1, (void *)(&cb_instance));
-
-    crst.version = 3;
-    crst.v.v3.connstr = meta_connstr.c_str();
-    crst.v.v3.type = LCB_TYPE_BUCKET;
-    crst.v.v3.passwd = settings->rbac_pass.c_str();
-
-    lcb_create(&meta_cb_instance, &crst);
-    lcb_connect(meta_cb_instance);
-    lcb_wait(meta_cb_instance);
-
-    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_GET, get_callback);
-    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_STORE, set_callback);
-    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDMUTATE,
-                          sdmutate_callback);
-    lcb_install_callback3(meta_cb_instance, LCB_CALLBACK_SDLOOKUP,
-                          sdlookup_callback);
-    this->GetIsolate()->SetData(2, (void *)(&meta_cb_instance));
-  }
-
-  // Spawning terminator thread to monitor the wall clock time for execution of
-  // javascript code isn't going beyond max_task_duration. Passing reference to
-  // current object instead of having terminator thread make a copy of the
-  // object.
-  // Spawned thread will execute the terminator loop logic in function call
-  // operator() for V8Worker class
-  terminator_thr = new std::thread(std::ref(*this));
+  // Spawning terminator thread to monitor the wall clock time for execution
+  // of javascript code isn't going beyond max_task_duration. Passing
+  // reference to current object instead of having terminator thread make a
+  // copy of the object. Spawned thread will execute the terminator loop logic
+  // in function call operator() for V8Worker class
+  terminator_thr_ = new std::thread(std::ref(*this));
 
   return kSuccess;
 }
 
 void V8Worker::RouteMessage() {
   const flatbuf::payload::Payload *payload;
-  std::string key, val, doc_id, callback_fn, doc_ids_cb_fns, metadata;
+  std::string val, context, callback;
 
   while (true) {
-    worker_msg_t msg;
-    msg = worker_queue->pop();
+    auto msg = worker_queue_->Pop();
     payload = flatbuf::payload::GetPayload(
         (const void *)msg.payload->payload.c_str());
 
     LOG(logTrace) << " event: " << static_cast<int16_t>(msg.header->event)
                   << " opcode: " << static_cast<int16_t>(msg.header->opcode)
-                  << " metadata: " << msg.header->metadata
-                  << " partition: " << msg.header->partition << '\n';
+                  << " metadata: " << RU(msg.header->metadata)
+                  << " partition: " << msg.header->partition << std::endl;
+
+    int vb_no = 0;
+    int64_t seq_no = 0;
 
     switch (getEvent(msg.header->event)) {
     case eDCP:
       switch (getDCPOpcode(msg.header->opcode)) {
       case oDelete:
-        this->SendDelete(msg.header->metadata);
+        dcp_delete_msg_counter++;
+        if (kSuccess == ParseMetadata(msg.header->metadata, vb_no, seq_no)) {
+          auto filter_seq_no = GetVbFilter(vb_no);
+          if (filter_seq_no != -1 && seq_no <= filter_seq_no) {
+            if (seq_no == filter_seq_no) {
+              EraseVbFilter(vb_no);
+            }
+          } else {
+            this->SendDelete(msg.header->metadata, vb_no, seq_no);
+          }
+        }
         break;
       case oMutation:
         payload = flatbuf::payload::GetPayload(
             (const void *)msg.payload->payload.c_str());
         val.assign(payload->value()->str());
-        metadata.assign(msg.header->metadata);
-        this->SendUpdate(val, metadata, "json");
+        dcp_mutation_msg_counter++;
+        if (kSuccess == ParseMetadata(msg.header->metadata, vb_no, seq_no)) {
+          auto filter_seq_no = GetVbFilter(vb_no);
+          if (filter_seq_no != -1 && seq_no <= filter_seq_no) {
+            if (seq_no == filter_seq_no) {
+              EraseVbFilter(vb_no);
+            }
+          } else {
+            this->SendUpdate(val, msg.header->metadata, vb_no, seq_no, "json");
+          }
+        }
         break;
       default:
         break;
@@ -492,19 +492,13 @@ void V8Worker::RouteMessage() {
       break;
     case eTimer:
       switch (getTimerOpcode(msg.header->opcode)) {
-      case oDocTimer:
+      case oTimer:
         payload = flatbuf::payload::GetPayload(
             (const void *)msg.payload->payload.c_str());
-        doc_id.assign(payload->doc_id()->str());
-        callback_fn.assign(payload->callback_fn()->str());
-        this->SendDocTimer(doc_id, callback_fn);
-        break;
-
-      case oNonDocTimer:
-        payload = flatbuf::payload::GetPayload(
-            (const void *)msg.payload->payload.c_str());
-        doc_ids_cb_fns.assign(payload->doc_ids_callback_fns()->str());
-        this->SendNonDocTimer(doc_ids_cb_fns);
+        callback.assign(payload->callback_fn()->str());
+        context.assign(payload->context()->str());
+        timer_msg_counter++;
+        this->SendTimer(callback, context);
         break;
       default:
         break;
@@ -524,24 +518,28 @@ void V8Worker::RouteMessage() {
     default:
       break;
     }
+
+    delete msg.header;
+    delete msg.payload;
+
+    messages_processed_counter++;
   }
 }
 
-bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
-  v8::HandleScope handle_scope(GetIsolate());
-  v8::TryCatch try_catch(GetIsolate());
+bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
+  v8::HandleScope handle_scope(isolate_);
+  v8::TryCatch try_catch(isolate_);
 
   auto context = context_.Get(isolate_);
-  auto script_name =
-      v8::String::NewFromUtf8(isolate_, (app_name_ + ".js").c_str());
+  auto script_name = v8Str(isolate_, app_name_ + ".js");
   v8::ScriptOrigin origin(script_name);
 
   v8::Local<v8::Script> compiled_script;
   if (!v8::Script::Compile(context, script, &origin)
            .ToLocal(&compiled_script)) {
     assert(try_catch.HasCaught());
-    last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Exception logged:" << last_exception << '\n';
+    LOG(logError) << "Exception logged:"
+                  << ExceptionString(isolate_, &try_catch) << std::endl;
     // The script failed to compile; bail out.
     return false;
   }
@@ -549,8 +547,8 @@ bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
   v8::Local<v8::Value> result;
   if (!compiled_script->Run(context).ToLocal(&result)) {
     assert(try_catch.HasCaught());
-    last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Exception logged:" << last_exception << '\n';
+    LOG(logError) << "Exception logged:"
+                  << ExceptionString(isolate_, &try_catch) << std::endl;
     // Running the script failed; bail out.
     return false;
   }
@@ -558,219 +556,240 @@ bool V8Worker::ExecuteScript(v8::Local<v8::String> script) {
   return true;
 }
 
-int V8Worker::SendUpdate(std::string value, std::string meta,
-                         std::string doc_type) {
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
+void V8Worker::AddLcbException(int err_code) {
+  std::lock_guard<std::mutex> lock(lcb_exception_mtx_);
+  lcb_exceptions_[err_code]++;
+}
 
-  auto context = context_.Get(isolate_);
-  v8::Context::Scope context_scope(context);
-
-  LOG(logTrace) << "value: " << value << " meta: " << meta
-                << " doc_type: " << doc_type << '\n';
-  v8::TryCatch try_catch(GetIsolate());
-
-  v8::Handle<v8::Value> args[2];
-  if (doc_type.compare("json") == 0) {
-    args[0] =
-        v8::JSON::Parse(v8::String::NewFromUtf8(GetIsolate(), value.c_str()));
-  } else {
-    args[0] = v8::String::NewFromUtf8(GetIsolate(), value.c_str());
-  }
-
-  args[1] =
-      v8::JSON::Parse(v8::String::NewFromUtf8(GetIsolate(), meta.c_str()));
-
-  if (try_catch.HasCaught()) {
-    last_exception = ExceptionString(GetIsolate(), &try_catch);
-    LOG(logError) << "Last exception: " << last_exception << '\n';
-  }
-
-  if (debugger_started) {
-    if (!agent->IsStarted()) {
-      agent->Start(isolate_, platform_, src_path.c_str());
-    }
-
-    agent->PauseOnNextJavascriptStatement("Break on start");
-    if (DebugExecute("OnUpdate", args, 2)) {
-      return kSuccess;
-    }
-    return kOnUpdateCallFail;
-  } else {
-    auto on_doc_update = on_update_.Get(isolate_);
-
-    execute_flag = true;
-    execute_start_time = Time::now();
-    on_doc_update->Call(context->Global(), 2, args);
-    execute_flag = false;
-
-    if (try_catch.HasCaught()) {
-      LOG(logDebug) << "Exception message: "
-                    << ExceptionString(GetIsolate(), &try_catch) << '\n';
-      return kOnUpdateCallFail;
-    }
-
-    return kSuccess;
+void V8Worker::ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions) {
+  std::lock_guard<std::mutex> lock(lcb_exception_mtx_);
+  for (auto const &entry : lcb_exceptions_) {
+    agg_lcb_exceptions[entry.first] += entry.second;
   }
 }
 
-int V8Worker::SendDelete(std::string meta) {
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
+void V8Worker::UpdateHistogram(Time::time_point start_time) {
+  Time::time_point t = Time::now();
+  nsecs ns = std::chrono::duration_cast<nsecs>(t - start_time);
+  histogram_->Add(ns.count() / 1000);
+}
+
+int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
+                         int64_t seq_no, std::string doc_type) {
+  Time::time_point start_time = Time::now();
+
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  LOG(logTrace) << " meta: " << meta << '\n';
-  v8::TryCatch try_catch(GetIsolate());
+  LOG(logTrace) << "value: " << RU(value) << " meta: " << RU(meta)
+                << " doc_type: " << doc_type << std::endl;
+  v8::TryCatch try_catch(isolate_);
+
+  v8::Local<v8::Value> args[2];
+  if (doc_type == "json") {
+    if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, value)), &args[0])) {
+      return kToLocalFailed;
+    }
+  } else {
+    args[0] = v8Str(isolate_, value);
+  }
+
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[1])) {
+    return kToLocalFailed;
+  }
+
+  currently_processed_vb_ = vb_no;
+  currently_processed_seqno_ = seq_no;
+  vb_seq_[vb_no]->store(seq_no, std::memory_order_seq_cst);
+  UpdateBucketopsSeqno(vb_no, seq_no);
+  if (on_update_.IsEmpty()) {
+    UpdateHistogram(start_time);
+    return kOnUpdateCallFail;
+  }
+
+  if (try_catch.HasCaught()) {
+    LOG(logError) << "OnUpdate Exception: "
+                  << ExceptionString(isolate_, &try_catch) << std::endl;
+  }
+
+  if (debugger_started_) {
+    if (!agent_->IsStarted()) {
+      agent_->Start(isolate_, platform_, src_path_.c_str());
+    }
+
+    agent_->PauseOnNextJavascriptStatement("Break on start");
+    return DebugExecute("OnUpdate", args, 2) ? kSuccess : kOnUpdateCallFail;
+  }
+
+  auto on_doc_update = on_update_.Get(isolate_);
+  execute_flag_ = true;
+  execute_start_time_ = Time::now();
+  RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                        IsTerminatingRetriable, IsExecutionTerminating,
+                        isolate_);
+
+  on_doc_update->Call(context->Global(), 2, args);
+  execute_flag_ = false;
+  if (try_catch.HasCaught()) {
+    LOG(logError) << "OnUpdate Exception: "
+                  << ExceptionString(isolate_, &try_catch) << std::endl;
+    UpdateHistogram(start_time);
+    on_update_failure++;
+    return kOnUpdateCallFail;
+  }
+
+  on_update_success++;
+  UpdateHistogram(start_time);
+  return kSuccess;
+}
+
+int V8Worker::SendDelete(std::string meta, int vb_no, int64_t seq_no) {
+  Time::time_point start_time = Time::now();
+
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
+
+  auto context = context_.Get(isolate_);
+  v8::Context::Scope context_scope(context);
+
+  LOG(logTrace) << " meta: " << RU(meta) << std::endl;
+  v8::TryCatch try_catch(isolate_);
 
   v8::Local<v8::Value> args[1];
-  args[0] =
-      v8::JSON::Parse(v8::String::NewFromUtf8(GetIsolate(), meta.c_str()));
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[0])) {
+    return kToLocalFailed;
+  }
+
+  currently_processed_vb_ = vb_no;
+  currently_processed_seqno_ = seq_no;
+  vb_seq_[vb_no]->store(seq_no, std::memory_order_seq_cst);
+  UpdateBucketopsSeqno(vb_no, seq_no);
+  if (on_delete_.IsEmpty()) {
+    UpdateHistogram(start_time);
+    return kOnDeleteCallFail;
+  }
 
   assert(!try_catch.HasCaught());
 
-  if (debugger_started) {
-    if (!agent->IsStarted()) {
-      agent->Start(isolate_, platform_, src_path.c_str());
+  if (debugger_started_) {
+    if (!agent_->IsStarted()) {
+      agent_->Start(isolate_, platform_, src_path_.c_str());
     }
 
-    agent->PauseOnNextJavascriptStatement("Break on start");
-    if (DebugExecute("OnDelete", args, 1)) {
-      return kSuccess;
-    }
+    agent_->PauseOnNextJavascriptStatement("Break on start");
+    return DebugExecute("OnDelete", args, 1) ? kSuccess : kOnDeleteCallFail;
+  }
+
+  auto on_doc_delete = on_delete_.Get(isolate_);
+
+  execute_flag_ = true;
+  execute_start_time_ = Time::now();
+  RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                        IsTerminatingRetriable, IsExecutionTerminating,
+                        isolate_);
+
+  on_doc_delete->Call(context->Global(), 1, args);
+  execute_flag_ = false;
+  if (try_catch.HasCaught()) {
+    LOG(logError) << "OnDelete Exception: "
+                  << ExceptionString(isolate_, &try_catch) << std::endl;
+    UpdateHistogram(start_time);
+    on_delete_failure++;
     return kOnDeleteCallFail;
-  } else {
-    auto on_doc_delete = on_delete_.Get(isolate_);
-
-    execute_flag = true;
-    execute_start_time = Time::now();
-    on_doc_delete->Call(context->Global(), 1, args);
-    execute_flag = false;
-
-    if (try_catch.HasCaught()) {
-      LOG(logError) << "Exception message"
-                    << ExceptionString(GetIsolate(), &try_catch) << '\n';
-      return kOnDeleteCallFail;
-    }
-
-    return kSuccess;
   }
+
+  UpdateHistogram(start_time);
+  on_delete_success++;
+  return kSuccess;
 }
 
-void V8Worker::SendNonDocTimer(std::string doc_ids_cb_fns) {
-  std::vector<std::string> entries = split(doc_ids_cb_fns, ';');
-  char tstamp[BUFSIZE], fn[BUFSIZE];
+void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
+  LOG(logTrace) << "Got timer event, context:" << RU(timer_ctx)
+                << " callback:" << callback << std::endl;
 
-  if (entries.size() > 0) {
-    v8::Locker locker(GetIsolate());
-    v8::Isolate::Scope isolate_scope(GetIsolate());
-    v8::HandleScope handle_scope(GetIsolate());
-
-    auto context = context_.Get(isolate_);
-    v8::Context::Scope context_scope(context);
-
-    for (auto entry : entries) {
-      if (entry.length() > 0) {
-        sscanf(entry.c_str(),
-               "{\"callback_func\": \"%[^\"]\", \"start_ts\": \"%[^\"]\"}", fn,
-               tstamp);
-        LOG(logTrace) << "Non doc timer event for callback_fn: " << fn
-                      << " tstamp: " << tstamp << '\n';
-
-        v8::Handle<v8::Value> val =
-            context->Global()->Get(v8Str(GetIsolate(), fn));
-        v8::Handle<v8::Function> cb_func = v8::Handle<v8::Function>::Cast(val);
-
-        v8::Handle<v8::Value> arg[1];
-
-        if (debugger_started) {
-          if (!agent->IsStarted()) {
-            agent->Start(isolate_, platform_, src_path.c_str());
-          }
-
-          agent->PauseOnNextJavascriptStatement("Break on start");
-          if (DebugExecute(fn, arg, 0)) {
-            return;
-          }
-        } else {
-          execute_flag = true;
-          execute_start_time = Time::now();
-          cb_func->Call(context->Global(), 0, arg);
-          execute_flag = false;
-        }
-      }
-    }
-  }
-}
-
-void V8Worker::SendDocTimer(std::string doc_id, std::string callback_fn) {
-  v8::Locker locker(GetIsolate());
-  v8::Isolate::Scope isolate_scope(GetIsolate());
-  v8::HandleScope handle_scope(GetIsolate());
-
-  LOG(logTrace) << "Got timer event, doc_id:" << doc_id
-                << " callback_fn:" << callback_fn << '\n';
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  v8::Handle<v8::Value> val = context->Global()->Get(
-      v8::String::NewFromUtf8(GetIsolate(), callback_fn.c_str(),
-                              v8::NewStringType::kNormal)
-          .ToLocalChecked());
-  v8::Handle<v8::Function> cb_fn = v8::Handle<v8::Function>::Cast(val);
+  v8::Local<v8::Value> timer_ctx_val;
+  v8::Local<v8::Value> arg[1];
 
-  v8::Handle<v8::Value> arg[1];
-  arg[0] = v8::String::NewFromUtf8(GetIsolate(), doc_id.c_str());
-
-  if (debugger_started) {
-    if (!agent->IsStarted()) {
-      agent->Start(isolate_, platform_, src_path.c_str());
-    }
-
-    agent->PauseOnNextJavascriptStatement("Break on start");
-    if (DebugExecute(callback_fn.c_str(), arg, 1)) {
+  if (timer_ctx == "undefined") {
+    arg[0] = v8::Undefined(isolate_);
+  } else {
+    if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, timer_ctx)),
+                  &timer_ctx_val)) {
       return;
     }
-  } else {
-    execute_flag = true;
-    execute_start_time = Time::now();
-    cb_fn->Call(context->Global(), 1, arg);
-    execute_flag = false;
+    arg[0] = timer_ctx_val;
   }
+
+  auto utils = UnwrapData(isolate_)->utils;
+  auto callback_func_val = utils->GetMethodFromGlobal(callback);
+  auto callback_func = callback_func_val.As<v8::Function>();
+
+  if (debugger_started_) {
+    if (!agent_->IsStarted()) {
+      agent_->Start(isolate_, platform_, src_path_.c_str());
+    }
+
+    agent_->PauseOnNextJavascriptStatement("Break on start");
+    DebugExecute(callback.c_str(), arg, 1);
+  }
+
+  execute_flag_ = true;
+  execute_start_time_ = Time::now();
+  RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
+                        IsTerminatingRetriable, IsExecutionTerminating,
+                        isolate_);
+
+  callback_func->Call(callback_func_val, 1, arg);
+  execute_flag_ = false;
 }
 
 void V8Worker::StartDebugger() {
-  if (debugger_started) {
-    LOG(logError) << "Debugger already started" << '\n';
+  if (debugger_started_) {
+    LOG(logError) << "Debugger already started" << std::endl;
     return;
   }
 
-  LOG(logInfo) << "Starting Debugger" << '\n';
-  debugger_started = true;
-  agent = new inspector::Agent(settings->host_addr, settings->eventing_dir +
-                                                        "/" + app_name_ +
-                                                        "_frontend.url");
+  int port = 0;
+  try {
+    port = std::stoi(settings_->debugger_port);
+  } catch (const std::exception &e) {
+    LOG(logError) << "Invalid port : " << e.what() << std::endl;
+    LOG(logWarning) << "Starting debugger with an ephemeral port" << std::endl;
+  }
+
+  LOG(logInfo) << "Starting debugger on port: " << RS(port) << std::endl;
+  debugger_started_ = true;
+  agent_ = new inspector::Agent(
+      settings_->host_addr,
+      settings_->eventing_dir + "/" + app_name_ + "_frontend.url", port);
 }
 
 void V8Worker::StopDebugger() {
-  if (debugger_started) {
-    LOG(logInfo) << "Stopping Debugger" << '\n';
-    debugger_started = false;
-    agent->Stop();
-    delete agent;
-  } else {
-    LOG(logError) << "Debugger wasn't started" << '\n';
+  if (!debugger_started_) {
+    LOG(logError) << "Debugger wasn't started" << std::endl;
+    return;
   }
+
+  LOG(logInfo) << "Stopping Debugger" << std::endl;
+  debugger_started_ = false;
+  agent_->Stop();
+  delete agent_;
 }
 
 void V8Worker::Enqueue(header_t *h, message_t *p) {
-  const flatbuf::payload::Payload *payload;
   std::string key, val;
-  payload = flatbuf::payload::GetPayload((const void *)p->payload.c_str());
 
   worker_msg_t msg;
   msg.header = h;
@@ -778,14 +797,221 @@ void V8Worker::Enqueue(header_t *h, message_t *p) {
   LOG(logTrace) << "Inserting event: " << static_cast<int16_t>(h->event)
                 << " opcode: " << static_cast<int16_t>(h->opcode)
                 << " partition: " << h->partition
-                << " metadata: " << h->metadata << '\n';
-  worker_queue->push(msg);
+                << " metadata: " << RU(h->metadata) << std::endl;
+  worker_queue_->Push(msg);
 }
 
-const char *V8Worker::V8WorkerLastException() { return last_exception.c_str(); }
+std::string V8Worker::CompileHandler(std::string handler) {
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
-const char *V8Worker::V8WorkerVersion() { return v8::V8::GetVersion(); }
+  auto context = context_.Get(isolate_);
+  v8::Context::Scope context_scope(context);
+  auto info_obj = v8::Object::New(isolate_);
 
-void V8Worker::V8WorkerTerminateExecution() {
-  v8::V8::TerminateExecution(GetIsolate());
+  CompilationInfo info;
+
+  try {
+    auto transpiler = UnwrapData(isolate_)->transpiler;
+    info = transpiler->Compile(handler);
+    Transpiler::LogCompilationInfo(info);
+
+    info_obj->Set(v8Str(isolate_, "language"), v8Str(isolate_, info.language));
+    info_obj->Set(v8Str(isolate_, "compile_success"),
+                  v8::Boolean::New(isolate_, info.compile_success));
+    info_obj->Set(v8Str(isolate_, "index"),
+                  v8::Int32::New(isolate_, info.index));
+    info_obj->Set(v8Str(isolate_, "line_number"),
+                  v8::Int32::New(isolate_, info.line_no));
+    info_obj->Set(v8Str(isolate_, "column_number"),
+                  v8::Int32::New(isolate_, info.col_no));
+    info_obj->Set(v8Str(isolate_, "description"),
+                  v8Str(isolate_, info.description));
+    info_obj->Set(v8Str(isolate_, "area"), v8Str(isolate_, info.area));
+  } catch (const char *e) {
+    LOG(logError) << e << std::endl;
+    return "";
+  }
+
+  if (info.compile_success) {
+    try {
+      auto ident = IdentifyVersion(handler);
+      info_obj->Set(v8Str(isolate_, "version"), v8Str(isolate_, ident.version));
+      info_obj->Set(v8Str(isolate_, "level"), v8Str(isolate_, ident.level));
+      info_obj->Set(v8Str(isolate_, "using_timer"),
+                    v8Str(isolate_, ident.using_timer));
+    } catch (const char *e) {
+      LOG(logError) << "Unable to identify version, ignoring:" << e
+                    << std::endl;
+    }
+  }
+
+  return JSONStringify(isolate_, info_obj);
+}
+
+CodeVersion V8Worker::IdentifyVersion(std::string handler) {
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
+
+  auto context = context_.Get(isolate_);
+  auto transpiler = UnwrapData(isolate_)->transpiler;
+  v8::Context::Scope context_scope(context);
+
+  auto uniline_info = transpiler->UniLineN1QL(handler);
+  if (uniline_info.code != kOK) {
+    throw "Unline N1QL failed when trying to identify version";
+  }
+
+  auto jsify_info = Jsify(handler);
+  if (jsify_info.code != kOK) {
+    throw "Jsify failed when trying to identify version";
+  }
+
+  auto script_to_execute =
+      transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
+                            uniline_info.handler_code) +
+      '\n';
+  script_to_execute += std::string((const char *)js_builtin) + '\n';
+
+  auto ver = transpiler->GetCodeVersion(script_to_execute);
+  return ver;
+}
+
+void V8Worker::GetTimerMessages(std::vector<uv_buf_t> &messages,
+                                size_t window_size) {
+  int64_t timer_count =
+      std::min(timer_queue_->Count(), static_cast<int64_t>(window_size));
+
+  for (int64_t idx = 0; idx < timer_count; ++idx) {
+    auto timer_msg = timer_queue_->Pop();
+    auto curr_messages =
+        BuildResponse(timer_msg.timer_entry, mTimer_Response, timerResponse);
+    for (auto &msg : curr_messages) {
+      messages.push_back(msg);
+    }
+  }
+}
+
+void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages) {
+  for (int vb = 0; vb < NUM_VBUCKETS; ++vb) {
+    auto seq = vb_seq_[vb].get()->load(std::memory_order_seq_cst);
+    if (seq > 0) {
+      std::string seq_no = std::to_string(vb) + "::" + std::to_string(seq);
+      auto curr_messages =
+          BuildResponse(seq_no, mBucket_Ops_Response, checkpointResponse);
+      for (auto &msg : curr_messages) {
+        messages.push_back(msg);
+      }
+      // Reset the seq no of checkpointed vb to 0
+      vb_seq_[vb].get()->compare_exchange_strong(seq, 0);
+    }
+  }
+}
+
+std::vector<uv_buf_t> V8Worker::BuildResponse(const std::string &payload,
+                                              int8_t msg_type,
+                                              int8_t response_opcode) {
+  std::vector<uv_buf_t> messages;
+  flatbuffers::FlatBufferBuilder builder;
+  auto msg_offset = builder.CreateString(payload);
+  auto r = flatbuf::response::CreateResponse(builder, msg_type, response_opcode,
+                                             msg_offset);
+  builder.Finish(r);
+  uint32_t length = builder.GetSize();
+
+  char *header_buffer = new char[sizeof(uint32_t)];
+  char *length_ptr = (char *)&length;
+  std::copy(length_ptr, length_ptr + sizeof(uint32_t), header_buffer);
+  messages.emplace_back(uv_buf_init(header_buffer, sizeof(uint32_t)));
+
+  char *response = reinterpret_cast<char *>(builder.GetBufferPointer());
+  char *msg = new char[length];
+  std::copy(response, response + length, msg);
+  messages.emplace_back(uv_buf_init(msg, length));
+
+  return messages;
+}
+
+int V8Worker::ParseMetadata(const std::string &metadata, int &vb_no,
+                            int64_t &seq_no) {
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
+
+  auto context = context_.Get(isolate_);
+  v8::Context::Scope context_scope(context);
+
+  v8::Local<v8::Value> metadata_val;
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, metadata)),
+                &metadata_val)) {
+    return kToLocalFailed;
+  }
+
+  v8::Local<v8::Object> metadata_obj;
+
+  if (!TO_LOCAL(metadata_val->ToObject(context), &metadata_obj)) {
+    return kToLocalFailed;
+  }
+
+  v8::Local<v8::Value> seq_val;
+  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "seq")), &seq_val)) {
+    return kToLocalFailed;
+  }
+
+  v8::Local<v8::Value> vb_val;
+  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "vb")), &vb_val)) {
+    return kToLocalFailed;
+  }
+
+  if (seq_val->IsNumber() && vb_val->IsNumber()) {
+    v8::Local<v8::Integer> vb_val_int;
+    if (!TO_LOCAL(vb_val->ToInteger(context), &vb_val_int)) {
+      return kToLocalFailed;
+    }
+
+    v8::Local<v8::Integer> seq_val_int;
+    if (!TO_LOCAL(seq_val->ToInteger(context), &seq_val_int)) {
+      return kToLocalFailed;
+    }
+
+    vb_no = vb_val_int->Value();
+    seq_no = seq_val_int->Value();
+  }
+  return kSuccess;
+}
+
+int V8Worker::UpdateVbFilter(const std::string &metadata) {
+  int vb_no = 0;
+  int64_t seq_no = 0;
+  auto update_status = ParseMetadata(metadata, vb_no, seq_no);
+  if (update_status != kSuccess) {
+    return update_status;
+  }
+  std::lock_guard<std::mutex> lock(vbfilter_lock_);
+  vbfilter_map_[vb_no] = seq_no;
+  return kSuccess;
+}
+
+int64_t V8Worker::GetVbFilter(int vb_no) {
+  std::lock_guard<std::mutex> lock(vbfilter_lock_);
+  return vbfilter_map_[vb_no];
+}
+
+void V8Worker::EraseVbFilter(int vb_no) {
+  std::lock_guard<std::mutex> lock(vbfilter_lock_);
+  vbfilter_map_[vb_no] = -1;
+}
+
+void V8Worker::UpdateBucketopsSeqno(int vb_no, int64_t seq_no) {
+  std::lock_guard<std::mutex> lock(bucketops_lock_);
+  processed_bucketops_[vb_no] = seq_no;
+}
+
+int64_t V8Worker::GetBucketopsSeqno(int vb_no) {
+  // Reset the seq no of checkpointed vb to 0
+  vb_seq_[vb_no]->store(0, std::memory_order_seq_cst);
+  std::lock_guard<std::mutex> lock(bucketops_lock_);
+  return processed_bucketops_[vb_no];
 }

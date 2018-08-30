@@ -1,10 +1,12 @@
 namespace flatbuf.cfg;
 
 table Config {
-  id:uint;
   appCode:string;
   appName:string;
   depCfg:DepCfg;
+  handlerUUID:uint;
+  id:uint;
+  usingTimer:bool;
 }
 
 table DepCfg {

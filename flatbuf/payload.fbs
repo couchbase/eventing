@@ -9,19 +9,24 @@ table Payload {
 
   // Handler config
   app_name:string;
+  checkpoint_interval:int; // Controls how frequently checkpoint will be updated in metadata bucket
+  curl_timeout:long;
   depcfg:string;
-  enable_recursive_mutation:bool;
-  enable_v8_debugger:bool;
+  debugger_port:string;
   execution_timeout:int; // Execution timeout for handler code execution
   lcb_inst_capacity:int; // Nested iterator related fields
+  skip_lcb_bootstrap:bool; // Control bootstrap of lcb handles.
+                           // In some case we need to skip lcb connects i.e. while checking for
+                           // compilation issues in supplied handler code.
+  handler_headers: [string]; // List of statements that will prefixed to handler code post code constraint checks
+  handler_footers: [string]; // List of statements that will appended to handler code post code constraint checks
 
   // Server settings
   curr_host:string;
   curr_eventing_port:string;
+  curr_eventing_sslport:string;
   eventing_dir:string;
   kv_host_port:string;
-  rbac_pass:string;
-  rbac_user:string;
 
   // DCP event related fields
   key:string; // dcp mutation key
@@ -29,8 +34,7 @@ table Payload {
 
   // Timer event related fields
   callback_fn:string; // timer event callback function
-  doc_id:string; // timer event doc_id
-  doc_ids_callback_fns:string; // non doc-id based timer event doc_id-callback_fn pairs
+  context:string; // context for timer
 
   // CPP worker config
   partitionCount:short; // Virtual partitions for sharding workload among c++ workers

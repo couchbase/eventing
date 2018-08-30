@@ -9,21 +9,21 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "../include/log.h"
+#include "log.h"
+#include <cstdlib>
 
-#include <iostream>
-#include <sstream>
+std::mutex SystemLog::lock_;
+std::mutex ApplicationLog::lock_;
 
-std::ostringstream os;
+bool SystemLog::redact_ = SystemLog::getRedactOverride();
+LogLevel SystemLog::level_ = logInfo;
 
-std::string appName = "";
-LogLevel desiredLogLevel = LogLevel(0);
-std::string workerID = "";
+void SystemLog::setLogLevel(LogLevel level) { level_ = level; }
 
-std::mutex log_mutex;
-
-void setAppName(std::string app) { appName = app; }
-
-void setLogLevel(LogLevel level) { desiredLogLevel = level; }
-
-void setWorkerID(std::string wID) { workerID = wID; }
+bool SystemLog::getRedactOverride() {
+  const char *evar = std::getenv("CB_EVENTING_NOREDACT");
+  if (!evar) {
+    return true;
+  }
+  return (std::string(evar) != "true");
+}

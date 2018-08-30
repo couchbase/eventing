@@ -1,30 +1,42 @@
 package main
 
 import (
-	"flag"
-	"os"
 	"time"
 
 	"github.com/couchbase/cbauth/metakv"
-	"github.com/couchbase/eventing/supervisor"
+	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/supervisor"
+	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/gocb"
 )
 
 func main() {
-	flag.Parse()
+	initFlags()
 
-	if flags.help {
-		flag.Usage()
-		os.Exit(2)
+	logging.Infof("Started eventing producer version: %v", util.EventingVer())
+
+	util.SetIPv6(flags.ipv6)
+
+	audit.Init(flags.restPort)
+
+	adminPort := supervisor.AdminPortConfig{
+		DebuggerPort: flags.debugPort,
+		HTTPPort:     flags.adminHTTPPort,
+		SslPort:      flags.adminSSLPort,
+		CertFile:     flags.sslCertFile,
+		KeyFile:      flags.sslKeyFile,
 	}
 
-	s := supervisor.NewSuperSupervisor(flags.eventingAdminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid)
+	gocb.SetLogger(&util.GocbLogger{})
+
+	s := supervisor.NewSuperSupervisor(adminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid, flags.diagDir, flags.numVbuckets)
 
 	// For app reloads
 	go func(s *supervisor.SuperSupervisor) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildren(supervisor.MetakvAppsPath, s.EventHandlerLoadCallback, cancelCh)
+			err := metakv.RunObserveChildren(supervisor.MetakvChecksumPath, s.EventHandlerLoadCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("Eventing::main metakv observe error for event handler code, err: %v. Retrying...", err)
 				time.Sleep(2 * time.Second)
@@ -51,6 +63,30 @@ func main() {
 			err := metakv.RunObserveChildren(supervisor.MetakvRebalanceTokenPath, s.TopologyChangeNotifCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("Eventing::main metakv observe error for rebalance token, err: %v. Retrying...", err)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}(s)
+
+	// For global Eventing related configs
+	go func(s *supervisor.SuperSupervisor) {
+		cancelCh := make(chan struct{})
+		for {
+			err := metakv.RunObserveChildren(supervisor.MetakvClusterSettings, s.GlobalConfigChangeCallback, cancelCh)
+			if err != nil {
+				logging.Errorf("Eventing::main metakv observe error for global config, err: %v. Retrying...", err)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}(s)
+
+	// For aborting the retries during bootstrap
+	go func(s *supervisor.SuperSupervisor) {
+		cancelCh := make(chan struct{})
+		for {
+			err := metakv.RunObserveChildren(supervisor.MetakvAppsRetryPath, s.AppsRetryCallback, cancelCh)
+			if err != nil {
+				logging.Errorf("Eventing::main metakv observe error for apps retry, err: %v. Retrying.", err)
 				time.Sleep(2 * time.Second)
 			}
 		}

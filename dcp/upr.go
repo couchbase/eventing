@@ -3,7 +3,9 @@ package couchbase
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/dcp/transport/client"
@@ -33,11 +35,44 @@ const DCP_ADD_STREAM_ACTIVE_VB_ONLY = uint32(0x10) // 16
 // FailoverLog for list of vbuckets.
 type FailoverLog map[uint16]memcached.FailoverLog
 
-// Make a valid DCP feed name. These always begin with secidx:
-type DcpFeedName string
+// Ensure feed names are unique
+var (
+	feedPrefix  string
+	feedCounter int64
+)
 
+func init() {
+	dict := []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890")
+	buf := make([]byte, 8, 8)
+	_, err := rand.Read(buf)
+	if err != nil {
+		panic(err)
+	}
+	for i := 0; i < len(buf); i++ {
+		pos := int(buf[i]) % len(dict)
+		buf[i] = dict[pos]
+	}
+	feedPrefix = string(buf)
+	feedCounter = 1
+}
+
+type DcpFeedName struct {
+	name string
+}
+
+func (f *DcpFeedName) Raw() string {
+	return f.name
+}
+
+// Make a valid DCP feed name. These always begin with eventing:
 func NewDcpFeedName(name string) DcpFeedName {
-	return DcpFeedName("secidx:" + name)
+	seq := atomic.AddInt64(&feedCounter, 1)
+	id := fmt.Sprintf("%v:%v-%v:%v", "eventing", feedPrefix, seq, name)
+	if len(id) > 250 {
+		logging.Warnf("Feed name too long. Will truncated to 250 chars: %v", id)
+		id = id[:250]
+	}
+	return DcpFeedName{name: id}
 }
 
 // GetFailoverLogs get the failover logs for a set of vbucket ids
@@ -77,7 +112,7 @@ func (b *Bucket) GetFailoverLogs(
 			continue
 		}
 
-		name := DcpFeedName(fmt.Sprintf("getfailoverlog-%s-%v", b.Name, time.Now().UnixNano()))
+		name := NewDcpFeedName(fmt.Sprintf("getfailoverlog-%s", b.Name))
 		flags := uint32(0x0)
 		singleFeed, err := serverConn.StartDcpFeed(
 			name, 0, flags, nil, opaque, config)
@@ -163,7 +198,7 @@ func (b *Bucket) StartDcpFeedOver(
 		logPrefix: fmt.Sprintf("DCP[%v]", name),
 	}
 	feed.numConnections = config["numConnections"].(int)
-	// feed.activeVbOnly = config["activeVbOnly"].(bool)
+	feed.activeVbOnly = config["activeVbOnly"].(bool)
 
 	feed.C = feed.output
 	if feed.connectToNodes(kvaddrs, opaque, flags, config) != nil {
@@ -212,8 +247,8 @@ func (feed *DcpFeed) DcpCloseStream(vb, opaqueMSB uint16) error {
 }
 
 // DcpFeedName returns feed name
-func (feed *DcpFeed) DcpFeedName() string {
-	return string(feed.name)
+func (feed *DcpFeed) GetName() DcpFeedName {
+	return feed.name
 }
 
 // DcpGetSeqnos return the list of seqno for vbuckets,
@@ -322,13 +357,13 @@ func (feed *DcpFeed) connectToNodes(
 		// and continue to spawn a new one ...
 
 		var name DcpFeedName
-		if feed.name == "" {
+		if feed.name.Raw() == "" {
 			name = NewDcpFeedName("DefaultDcpClient")
 		} else {
 			name = feed.name
 		}
 		for i := 0; i < feed.numConnections; i++ {
-			feedname := DcpFeedName(fmt.Sprintf("%v/%d", name, i))
+			feedname := NewDcpFeedName(fmt.Sprintf("%v/%d", name, i))
 			singleFeed, err := serverConn.StartDcpFeed(
 				feedname, feed.sequence, flags, feed.output, opaque, config)
 			if err != nil {

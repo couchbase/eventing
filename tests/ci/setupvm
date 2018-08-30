@@ -1,0 +1,8 @@
+#!/bin/bash -xv
+set -e
+sudo rm -rf /var/www/lost+found
+sudo rm -rf /opt/build/lost+found
+sudo cp -r ~admin/xvdb/.htaccess /var/www/
+sudo cp -r ~admin/xvdb/var/www/* /var/www/
+sudo chown -r buildbot.buildbot /var/www
+sudo chown -r buildbot.buildbot /opt/build

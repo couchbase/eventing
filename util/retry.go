@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 )
 
@@ -13,8 +14,8 @@ const (
 	DefaultInitialInterval     = 1 * time.Second
 	DefaultRandomizationFactor = 0.5
 	DefaultMultiplier          = 1.5
-	DefaultMaxInterval         = 60 * time.Second
-	DefaultMaxElapsedTime      = 5 * time.Minute
+	DefaultMaxInterval         = 10 * time.Second
+	DefaultMaxElapsedTime      = time.Minute
 )
 
 type Backoff interface {
@@ -56,13 +57,20 @@ func (b *FixedBackoff) Reset() {
 
 type CallbackFunc func(arg ...interface{}) error
 
-func Retry(b Backoff, callback CallbackFunc, args ...interface{}) error {
-	var err error
+func Retry(b Backoff, retryCount *int64, callback CallbackFunc, args ...interface{}) error {
 	var next time.Duration
+	retries := int64(0)
 
 	for {
-		if err = callback(args...); err == nil {
+		err := callback(args...)
+
+		if err == nil {
 			return nil
+		}
+
+		if (err == common.ErrRetryTimeout) ||
+			(retryCount != nil && *retryCount != -1 && retries >= *retryCount) {
+			return common.ErrRetryTimeout
 		}
 
 		if next = b.NextBackoff(); next == Stop {
@@ -71,6 +79,7 @@ func Retry(b Backoff, callback CallbackFunc, args ...interface{}) error {
 
 		logging.Debugf("RTLP Retrying after %vs", next.Seconds())
 		time.Sleep(next)
+		retries++
 	}
 }
 

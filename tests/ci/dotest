@@ -18,6 +18,28 @@ if [ "$TS" = "" ]; then
   TS="adhoc"
 fi
 
+start_cluster() {
+  echo "Starting server"
+  for a in {1..3}; do
+    echo "Starting server: attempt $a"
+    stop_cluster
+    cd $WORKSPACE/ns_server
+    ./cluster_run -n4 1>$WORKSPACE/run.log 2>&1 &
+    disown
+    for i in {1..120}; do
+      grep -qs 'Couchbase Server has started' logs/n_0/info.log && \
+        grep -qs 'Couchbase Server has started' logs/n_1/info.log && \
+          wget -qO- http://localhost:9000/ &>/dev/null &&
+            wget -qO- http://localhost:9001/ &>/dev/null &&
+              ok_run=1 && break
+      sleep 3
+    done
+    sleep 30
+    test "$ok_run" && break
+  done
+  test "$ok_run" || error_exit "Server startup failed even after 3 tries"
+}
+
 stop_cluster() {
   killall -ABRT eventing-consumer 1>/dev/null 2>&1
   killall -ABRT eventing-producer 1>/dev/null 2>&1
@@ -43,99 +65,101 @@ collect_logs() {
   tar -C $WORKSPACE --transform "s/^/logs-$phase-/" -uf $WORKSPACE/logs.tar run.log 1>/dev/null 2>&1
 }
 
+error_email() {
+  if [ ! -f ~/.cigreen ]; then return; fi
+  rm ~/.cigreen
+
+  if test "`find ~ -maxdepth 1 -name .cinotify -mmin -1440`"; then return; fi
+  touch ~/.cinotify
+
+  if [ "$WATCHERS" = "" ]; then return; fi
+  cat /var/www/eventing-current.html | \
+     sendemail -q \
+       -s west.smtp.mx.exch029.serverdata.net:25 \
+       -f 'Eventing CI <community_admin@couchbase.com>' \
+       -t $WATCHERS \
+       -u "Eventing CI $CINAME broke"
+}
+
 error_exit() {
   echo "</pre><h4>Testing Failed: $1</h4><pre>"
   echo "$2"
   collect_logs
   stop_cluster
+  error_email
   exit 2
 }
 
 # Setup workspace
+echo "Started testing at `date +'%Y/%m/%d %H:%M:%S'`"
 echo "Testing mode: $MODE"
-
 stop_cluster
 rm -f $WORKSPACE/logs.tar.* $WORKSPACE/test.log $WORKSPACE/run.log /tmp/core-*
-find ~/testdata/* -mtime +1 -exec rm {} \; 1>/dev/null 2>&1
-warmed="never"
 > $WORKSPACE/test.log
 
-# Test the base
-echo "</pre><h4>Simple Test</h4><pre>"
-export phase=sanity
-cd $WORKSPACE/testrunner
-(timeout 1h make simple-test 2>&1 | ts) | tee -a $WORKSPACE/test.log | egrep 'pass|fail|summary|ok$'
+# Below tests need a cluster running
+start_cluster
 
-# Core dumps
 export GOTRACEBACK=crash
 ulimit -c 2097152
 sudo bash -c "echo /tmp/core-%e.$TS.%p > /proc/sys/kernel/core_pattern"
 perl -pi -e 's/num_files, 10/num_files, 50/' $WORKSPACE/install/etc/couchbase/static_config
-
-# Start server
-echo "</pre><h4>Starting server</h4><pre>"
-
-for a in {1..3}; do
-  echo "Starting server: attempt $a"
-  stop_cluster
-  cd $WORKSPACE/ns_server
-  ./cluster_run -n2 1>$WORKSPACE/run.log 2>&1 &
-  disown
-  for i in {1..120}; do
-    grep -qs 'Couchbase Server has started' logs/n_0/info.log && \
-      grep -qs 'Couchbase Server has started' logs/n_1/info.log && \
-        wget -qO- http://localhost:9000/ &>/dev/null &&
-          wget -qO- http://localhost:9001/ &>/dev/null &&
-            ok_run=1 && break
-    sleep 3
-  done
-  test "$ok_run" || continue
-  sleep 30
-  ./cluster_connect -n2 -s 1500 -I 1500 -T n0:kv,n1:kv+index >$WORKSPACE/run.log 2>&1 &
-  for i in {1..120}; do
-    grep -qs 'Bucket "default" marked as warmed' logs/n_0/info.log && \
-      grep -qs 'Bucket "default" marked as warmed' logs/n_1/info.log && \
-        ok_connect=1 && break
-    sleep 3
-  done
-  test "$ok_connect" || continue
-  break
-done
-
-test "$ok_run" || error_exit "Server startup failed even after 3 tries"
-test "$ok_connect" || error_exit "Server connect failed even after 3 tries"
-warmed="`date`"
-sleep 30
-
-cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
-gover="`grep -A20 'SET(GOVERSION ' CMakeLists.txt  | grep GOVERSION | head -1 | sed 's/^.*\([0-9]\.[0-9].[0-9]\).*$/\1/'`"
-
-mkdir -p "$WORKSPACE/go" 
+cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/
+gover="`grep -A20 'SET(GOVERSION ' CMakeLists.txt  | grep GOVERSION | head -1 | sed 's/^.*\([0-9]\.[0-9]*.[0-9]\).*$/\1/'`"
+mkdir -p "$WORKSPACE/go"
 export GOROOT=$HOME/.cbdepscache/exploded/x86_64/go-$gover/go
 export GOPATH=$WORKSPACE/go:$WORKSPACE/godeps:$WORKSPACE/goproj
 export PATH=$PATH:$GOROOT/bin
-export C_INCLUDE_PATH=$WORKSPACE/platform/include/:$WORKSPACE/install/include/:$WORKSPACE/forestdb/include:$WORKSPACE/build/tlm/deps/curl.exploded/include:$WORKSPACE/sigar/include
-export CGO_LDFLAGS="-L $WORKSPACE/install/lib"
-export LD_LIBRARY_PATH=$WORKSPACE/install/lib
 
-cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests
-go get -t ./... 1>/dev/null 2>&1
+cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
+$GOROOT/bin/go get -t ./... 1>/dev/null 2>&1
 
-# Unit tests
-echo "</pre><h4>Functional tests</h4><pre>"
+# Functional tests
 export phase=functional
-export CBAUTH_REVRPC_URL="http://Administrator:asdasd@127.0.0.1:9000/query"
-cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests
-GOMAXPROCS=16 echo "TODO: Plug in here: go test -timeout 4h -v" 2>&1 | tee -a $WORKSPACE/test.log
-collect_logs
+if [[ "$MODE" == *"$phase"* ]]; then
+  echo "</pre><h4>${phase^} tests</h4><pre>"
+  echo "`date +'%Y/%m/%d %H:%M:%S'` Started $phase"
+  cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
+  GOMAXPROCS=16 $GOROOT/bin/go test -timeout 2h -tags handler -v 2>&1 | tee -a $WORKSPACE/test.log
+  collect_logs
+fi
+
+# N1QL tests
+export phase=n1ql
+if [[ "$MODE" == *"$phase"* ]]; then
+  echo "</pre><h4>${phase^} tests</h4><pre>"
+  echo "`date +'%Y/%m/%d %H:%M:%S'` Started $phase"
+  cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
+  GOMAXPROCS=16 $GOROOT/bin/go test -timeout 2h -tags n1ql -v 2>&1 | tee -a $WORKSPACE/test.log
+  collect_logs
+fi
+
+stop_cluster
+
+start_cluster
+
+# Rebalance tests
+export phase=rebalance
+if [[ "$MODE" == *"$phase"* ]]; then
+  echo "</pre><h4>${phase^} tests</h4><pre>"
+  echo "`date +'%Y/%m/%d %H:%M:%S'` Started $phase"
+  cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
+  GOMAXPROCS=16 $GOROOT/bin/go test -timeout 24h -tags "eventing_reb testrunner_reb kv_reb duplicate_events" -v 2>&1 | tee -a $WORKSPACE/test.log
+  collect_logs
+fi
+
+# Below tests start their own cluster, so stop ours
 stop_cluster
 
 # Integration tests
-echo "</pre><h4>Integration tests</h4><pre>"
 export phase=integration
-cd $WORKSPACE/testrunner
-(timeout 1h echo "TODO: Plug in here: make eventing-integration-tests PARAMS=foo" 2>&1 | ts) | tee -a $WORKSPACE/test.log
-collect_logs
+if [[ "$MODE" == *"$phase"* ]]; then
+  echo "</pre><h4>${phase^} tests</h4><pre>"
+  echo "`date +'%Y/%m/%d %H:%M:%S'` Started $phase"
+  cd $WORKSPACE/testrunner
+  (timeout 2h make test-eventing-sanity-tests 2>&1 | ts) | tee -a $WORKSPACE/test.log
+  collect_logs
+fi
 
 # Verify results
 > /tmp/fail.log
@@ -161,29 +185,21 @@ if [ "$skiplist" != "" ]; then
 fi
 echo
 
-# Note versions
-cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
-git rev-parse HEAD > ~/eventing.good
-cd $WORKSPACE/goproj/src/github.com/couchbase/indexing
-git rev-parse HEAD > ~/indexing.good
-cd $WORKSPACE/goproj/src/github.com/couchbase/query
-git rev-parse HEAD > ~/query.good
-cd $WORKSPACE/goproj/src/github.com/couchbase/gometa
-git rev-parse HEAD > ~/gometa.good
-cd $WORKSPACE/ns_server
-git rev-parse HEAD > ~/ns_server.good
-cd $WORKSPACE/couchdb
-git rev-parse HEAD > ~/couchdb.good
-cd $WORKSPACE/couchstore
-git rev-parse HEAD > ~/couchstore.good
-cd $WORKSPACE/goproj/src/github.com/couchbase/plasma
-git rev-parse HEAD > ~/plasma.good
-cd $WORKSPACE/goproj/src/github.com/couchbase/nitro
-git rev-parse HEAD > ~/nitro.good
-cd $WORKSPACE/testrunner
-git rev-parse HEAD > ~/testrunner.good
-cd $WORKSPACE/kv_engine
-git rev-parse HEAD > ~/kv_engine.good
+cd $WORKSPACE
+cat ~/repos.list | while read line ; do
+   repo=`echo $line | awk '{print $1}'`
+   loc=`echo $line | awk '{print $2}'`
+   cd $loc
+   git rev-parse HEAD > ~/$repo.good
+done
 
+if [ "$CIBOT" = "true" ]; then
+  cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
+  git rev-parse couchbase/$BRANCH > ~/eventing.good
+  for patch_id in `cat ~/gerrit.list`; do
+    ssh review.couchbase.org gerrit review --code-review 1 -m "'PASS $MODE. See http://$CINAME.northscale.in/eventing-$TS.pass.html'" $patch_id
+  done
+fi
+
+touch ~/.cigreen
 exit 0
-

@@ -9,7 +9,7 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "../include/parse_deployment.h"
+#include "parse_deployment.h"
 
 deployment_config *ParseDeployment(const char *app_code) {
   deployment_config *config = new deployment_config();
@@ -34,4 +34,14 @@ deployment_config *ParseDeployment(const char *app_code) {
   config->component_configs["buckets"] = buckets_info;
 
   return config;
+}
+
+std::vector<std::string> ToStringArray(
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *from) {
+  std::vector<std::string> handler_headers(from->size());
+  for (flatbuffers::uoffset_t i = 0; i < from->size(); ++i) {
+    handler_headers[i] = from->Get(i)->str();
+  }
+
+  return handler_headers;
 }

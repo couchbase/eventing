@@ -13,23 +13,30 @@
 #define V8WORKER_H
 
 #include <atomic>
+#include <cassert>
 #include <chrono>
 #include <cstdio>
-#include <list>
-#include <map>
-#include <string>
-#include <thread>
-
-#include <libplatform/libplatform.h>
-#include <v8-debug.h>
-#include <v8.h>
-
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <fstream>
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
+#include <libplatform/libplatform.h>
+#include <list>
+#include <map>
+#include <regex>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <uv.h>
+#include <v8-debug.h>
+#include <v8.h>
 
 #include "commands.h"
 #include "crc32c.h"
 #include "function_templates.h"
+#include "histogram.h"
 #include "inspector_agent.h"
 #include "js_exception.h"
 #include "log.h"
@@ -41,19 +48,36 @@
 #include "../../gen/flatbuf/payload_generated.h"
 #include "../../gen/flatbuf/response_generated.h"
 
-#ifndef STANDALONE_BUILD
-extern void(assert)(int);
-#else
-#include <cassert>
-#endif
-
 typedef std::chrono::high_resolution_clock Time;
 typedef std::chrono::nanoseconds nsecs;
 
 #define SECS_TO_NS 1000 * 1000 * 1000ULL
 
+// Histogram to capture latency stats. Latency buckets have granularity of 1ms,
+// starting from 100us to 10s
+#define HIST_FROM 100
+#define HIST_TILL 1000 * 1000 * 10
+#define HIST_WIDTH 1000
+
+#define NUM_VBUCKETS 1024
+
+using atomic_ptr_t = std::shared_ptr<std::atomic<int64_t>>;
+// Used for checkpointing of vbucket seq nos
+typedef std::map<int64_t, atomic_ptr_t> vb_seq_map_t;
+
+typedef struct timer_msg_s {
+  std::size_t GetSize() const { return timer_entry.length(); }
+
+  std::string timer_entry;
+} timer_msg_t;
+
 // Header frame structure for messages from Go world
 typedef struct header_s {
+  std::size_t GetSize() const {
+    return metadata.length() + sizeof(event) + sizeof(opcode) +
+           sizeof(partition) + metadata.length();
+  }
+
   uint8_t event;
   uint8_t opcode;
   int16_t partition;
@@ -62,63 +86,110 @@ typedef struct header_s {
 
 // Flatbuffer encoded message from Go world
 typedef struct message_s {
+  std::size_t GetSize() const { return header.length() + payload.length(); }
+
   std::string header;
   std::string payload;
 } message_t;
 
 // Struct to contain flatbuffer decoded message from Go world
 typedef struct worker_msg_s {
+  std::size_t GetSize() const { return header->GetSize() + payload->GetSize(); }
+
   header_t *header;
   message_t *payload;
 } worker_msg_t;
 
 typedef struct server_settings_s {
+  int checkpoint_interval;
+  std::string debugger_port;
   std::string eventing_dir;
   std::string eventing_port;
+  std::string eventing_sslport;
   std::string host_addr;
   std::string kv_host_port;
-  std::string rbac_pass;
-  std::string rbac_user;
 } server_settings_t;
 
 typedef struct handler_config_s {
   std::string app_name;
+  long curl_timeout;
   std::string dep_cfg;
   int execution_timeout;
   int lcb_inst_capacity;
-  bool enable_recursive_mutation;
+  bool skip_lcb_bootstrap;
+  std::vector<std::string> handler_headers;
+  std::vector<std::string> handler_footers;
 } handler_config_t;
 
+enum RETURN_CODE {
+  kSuccess = 0,
+  kFailedToCompileJs,
+  kNoHandlersDefined,
+  kFailedInitBucketHandle,
+  kOnUpdateCallFail,
+  kOnDeleteCallFail,
+  kToLocalFailed
+};
+
 class Bucket;
+class N1QL;
 class ConnectionPool;
 class V8Worker;
 
-extern bool enable_recursive_mutation;
+extern std::atomic<int64_t> bucket_op_exception_count;
+extern std::atomic<int64_t> n1ql_op_exception_count;
+extern std::atomic<int64_t> timeout_count;
+extern std::atomic<int16_t> checkpoint_failure_count;
+
+extern std::atomic<int64_t> on_update_success;
+extern std::atomic<int64_t> on_update_failure;
+extern std::atomic<int64_t> on_delete_success;
+extern std::atomic<int64_t> on_delete_failure;
+
+extern std::atomic<int64_t> timer_create_failure;
+
+extern std::atomic<int64_t> lcb_retry_failure;
+
+extern std::atomic<int64_t> messages_processed_counter;
+
+// DCP or Timer event counter
+extern std::atomic<int64_t> dcp_delete_msg_counter;
+extern std::atomic<int64_t> dcp_mutation_msg_counter;
+extern std::atomic<int64_t> timer_msg_counter;
+
+extern std::atomic<int64_t> enqueued_dcp_delete_msg_counter;
+extern std::atomic<int64_t> enqueued_dcp_mutation_msg_counter;
+extern std::atomic<int64_t> enqueued_timer_msg_counter;
 
 class V8Worker {
 public:
   V8Worker(v8::Platform *platform, handler_config_t *config,
-           server_settings_t *settings);
+           server_settings_t *settings, const std::string &handler_name,
+           const std::string &handler_uuid, const std::string &user_prefix);
   ~V8Worker();
 
-  void operator()() const {
-    if (debugger_started)
+  void operator()() {
+
+    if (debugger_started_)
       return;
-    while (!shutdown_terminator) {
+    while (!shutdown_terminator_) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-      if (execute_flag) {
+      if (execute_flag_) {
         Time::time_point t = Time::now();
-        nsecs ns = std::chrono::duration_cast<nsecs>(t - execute_start_time);
+        nsecs ns = std::chrono::duration_cast<nsecs>(t - execute_start_time_);
 
         LOG(logTrace) << "ns.count(): " << ns.count()
-                      << "ns, max_task_duration: " << max_task_duration << "ns"
-                      << '\n';
-        if (ns.count() > max_task_duration) {
+                      << "ns, max_task_duration: " << max_task_duration_ << "ns"
+                      << std::endl;
+        if (ns.count() > max_task_duration_) {
           if (isolate_) {
-            LOG(logTrace) << "Task took: " << ns.count()
-                          << "ns, terminating it's execution" << '\n';
+            LOG(logInfo) << "Task took: " << ns.count()
+                         << "ns, terminating its execution" << std::endl;
+
+            timeout_count++;
             v8::V8::TerminateExecution(isolate_);
+            execute_flag_ = false;
           }
         }
       }
@@ -128,13 +199,12 @@ public:
   int V8WorkerLoad(std::string source_s);
   void RouteMessage();
 
-  const char *V8WorkerLastException();
-  const char *V8WorkerVersion();
-
-  int SendUpdate(std::string value, std::string meta, std::string doc_type);
-  int SendDelete(std::string meta);
-  void SendDocTimer(std::string doc_id, std::string callback_fn);
-  void SendNonDocTimer(std::string doc_ids_cb_fns);
+  int SendUpdate(std::string value, std::string meta, int vb_no, int64_t seq_no,
+                 std::string doc_type);
+  int SendDelete(std::string meta, int vb_no, int64_t seq_no);
+  void SendTimer(std::string callback, std::string timer_ctx);
+  std::string CompileHandler(std::string handler);
+  CodeVersion IdentifyVersion(std::string handler);
 
   void StartDebugger();
   void StopDebugger();
@@ -143,55 +213,106 @@ public:
 
   void Enqueue(header_t *header, message_t *payload);
 
-  void V8WorkerDispose();
-  void V8WorkerTerminateExecution();
+  void AddLcbException(int err_code);
+  void ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions);
+
+  void UpdateHistogram(Time::time_point t);
+
+  /**
+   * Remove item from doc_timer_queue, serialize it and
+   * populate @param messages.
+   *
+   * @param messages
+   * @param window_size
+   */
+  void GetTimerMessages(std::vector<uv_buf_t> &messages, size_t window_size);
+
+  /**
+   * Read vb_seq map, serialize it and populate @param messages
+   *
+   * @param messages
+   */
+  void GetBucketOpsMessages(std::vector<uv_buf_t> &messages);
+
+  int UpdateVbFilter(const std::string &metadata);
+
+  int64_t GetVbFilter(int vb_no);
+
+  void EraseVbFilter(int vb_no);
+
+  void UpdateBucketopsSeqno(int vb_no, int64_t seq_no);
+
+  int64_t GetBucketopsSeqno(int vb_no);
+
+  int ParseMetadata(const std::string &metadata, int &vb_no, int64_t &seq_no);
 
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
-
   v8::Persistent<v8::Function> on_update_;
   v8::Persistent<v8::Function> on_delete_;
 
-  v8::Global<v8::ObjectTemplate> worker_template;
-
-  // lcb instances to source and metadata buckets
-  lcb_t cb_instance;
-  lcb_t meta_cb_instance;
-
   std::string app_name_;
-  std::string handler_code_;
   std::string script_to_execute_;
-  std::string source_map_;
+  std::string cb_source_bucket_;
+  int64_t max_task_duration_;
 
-  std::string cb_source_bucket;
-  int64_t max_task_duration;
+  server_settings_t *settings_;
 
-  server_settings_t *settings;
+  volatile bool execute_flag_;
+  volatile bool shutdown_terminator_;
+  static bool debugger_started_;
 
-  volatile bool execute_flag;
-  volatile bool shutdown_terminator;
-  volatile bool debugger_started;
+  int64_t currently_processed_vb_;
+  int64_t currently_processed_seqno_;
+  Time::time_point execute_start_time_;
 
-  Time::time_point execute_start_time;
+  std::thread processing_thr_;
+  std::thread *terminator_thr_;
+  Queue<timer_msg_t> *timer_queue_;
+  Queue<worker_msg_t> *worker_queue_;
 
-  std::thread *terminator_thr;
-  std::thread processing_thr;
-  Queue<worker_msg_t> *worker_queue;
+  ConnectionPool *conn_pool_;
+  JsException *js_exception_;
 
-  ConnectionPool *conn_pool;
-  static JsException exception;
+  std::mutex lcb_exception_mtx_;
+  std::map<int, int64_t> lcb_exceptions_;
+
+  Histogram *histogram_;
+  Data data_;
 
 private:
-  std::string connstr;
-  std::string meta_connstr;
-  std::string src_path;
+  std::vector<uv_buf_t> BuildResponse(const std::string &payload,
+                                      int8_t msg_type, int8_t response_opcode);
+  bool ExecuteScript(const v8::Local<v8::String> &script);
 
-  bool ExecuteScript(v8::Local<v8::String> script);
-  std::list<Bucket *> bucket_handles;
-  std::string last_exception;
+  std::string connstr_;
+  std::string meta_connstr_;
+  std::string src_path_;
+
+  vb_seq_map_t vb_seq_;
+
+  std::vector<int64_t> vbfilter_map_;
+  std::mutex vbfilter_lock_;
+
+  std::vector<int64_t> processed_bucketops_;
+  std::mutex bucketops_lock_;
+
+  std::list<Bucket *> bucket_handles_;
+  N1QL *n1ql_handle_;
   v8::Isolate *isolate_;
   v8::Platform *platform_;
-  inspector::Agent *agent;
+  inspector::Agent *agent_;
+  std::string handler_name_;
+  std::string handler_uuid_;
+  std::string user_prefix_;
 };
 
+const char *GetUsername(void *cookie, const char *host, const char *port,
+                        const char *bucket);
+const char *GetPassword(void *cookie, const char *host, const char *port,
+                        const char *bucket);
+const char *GetUsernameCached(void *cookie, const char *host, const char *port,
+                              const char *bucket);
+const char *GetPasswordCached(void *cookie, const char *host, const char *port,
+                              const char *bucket);
 #endif

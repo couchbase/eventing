@@ -1,48 +1,43 @@
 package producer
 
 import (
+	"io"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
-	cbbucket "github.com/couchbase/go-couchbase"
-	"github.com/couchbase/plasma"
+	"github.com/couchbase/gocb"
 )
 
 const (
 	metakvEventingPath    = "/eventing/"
 	metakvAppsPath        = metakvEventingPath + "apps/"
-	metakvAppSettingsPath = metakvEventingPath + "settings/"
+	metakvAppSettingsPath = metakvEventingPath + "appsettings/"
+	metakvConfigKeepNodes = metakvEventingPath + "config/keepNodes" // Store list of eventing keepNodes
+	metakvChecksumPath    = metakvEventingPath + "checksum/"
 )
 
 const (
 	bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
 
+	udsSockPathLimit = 100
+
 	dataService = "kv"
 
-	numVbuckets = 1024
-
-	supervisorTimeout = 60
+	supervisorTimeout = 60 * time.Second
 
 	// KV blob suffixes to assist in choose right consumer instance
 	// for instantiating V8 Debugger instance
 	startDebuggerFlag    = "startDebugger"
 	debuggerInstanceAddr = "debuggerInstAddr"
-
-	// Plasma related constants
-	autoLssCleaning  = false
-	maxDeltaChainLen = 30
-	maxPageItems     = 100
-	minPageItems     = 10
 )
 
 type appStatus uint16
 
 const (
 	appUndeployed appStatus = iota
-	appDeployed
 )
 
 type startDebugBlob struct {
@@ -54,73 +49,57 @@ type Producer struct {
 	appName                string
 	app                    *common.AppConfig
 	auth                   string
-	bucket                 string
-	cleanupTimers          bool
 	cfgData                string
-	cppWorkerThrCount      int // No. of worker threads per CPP worker process
-	eventingAdminPort      string
-	eventingDir            string
+	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
+	isPlannerRunning       bool
+	isTerminateRunning     bool
 	kvPort                 string
 	kvHostPorts            []string
-	listenerHandles        []*abatableListener
-	logLevel               string
-	rbacpass               string
-	rbacuser               string
 	metadatabucket         string
-	metadataBucketHandle   *cbbucket.Bucket
+	metadataBucketHandle   *gocb.Bucket
 	metakvAppHostPortsPath string
 	nsServerPort           string
 	nsServerHostPort       string
-	tcpPort                string
+	numVbuckets            int
+	pauseProducerCh        chan struct{}
+	pollBucketInterval     time.Duration
+	pollBucketTicker       *time.Ticker
+	pollBucketStopCh       chan struct{}
+	retryCount             int64
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
 	uuid                   string
-	workerCount            int
+	workerSpawnCounter     uint64
 
-	// Routines to control parallel vbucket ownership transfer
-	// during rebalance
-	vbOwnershipGiveUpRoutineCount   int
-	vbOwnershipTakeoverRoutineCount int
+	handlerConfig   *common.HandlerConfig
+	processConfig   *common.ProcessConfig
+	rebalanceConfig *common.RebalanceConfig
 
-	// N1QL Transpiler related nested iterator config params
-	lcbInstCapacity int
+	// DCP config, as they need to be tunable
+	dcpConfig map[string]interface{}
 
-	enableRecursiveMutation bool
+	// app log related configs
+	appLogPath     string
+	appLogMaxSize  int64
+	appLogMaxFiles int64
+	appLogRotation bool
+	appLogWriter   io.WriteCloser
 
-	// Controls read and write deadline timeout for communication
-	// between Go and C++ process
-	socketTimeout time.Duration
-
-	// Caps wall clock time allowed for execution of Javascript handler
-	// code by V8 runtime(in seconds)
-	executionTimeout int
-
-	// Controls start seq no for vb dcp stream
-	// currently supports:
-	// everything - start from beginning and listen forever
-	// from_now - start from current vb seq no and listen forever
-	dcpStreamBoundary common.DcpStreamBoundary
-
-	// skipTimerThreshold controls the threshold beyond which if timer event
-	// trigger is delayed, it's execution will be skipped
-	skipTimerThreshold int
-
-	// Timer event processing worker count per Eventing.Consumer instance
-	timerWorkerPoolSize int
+	// Chan used to signal if Eventing.Producer has finished bootstrap
+	// i.e. started up all it's child routines
+	bootstrapFinishCh chan struct{}
 
 	// stats gathered from ClusterInfo
 	localAddress      string
 	eventingNodeAddrs []string
 	kvNodeAddrs       []string
 	nsServerNodeAddrs []string
+	ejectNodeUUIDs    []string
 	eventingNodeUUIDs []string
 
-	consumerListeners []net.Listener
-	ProducerListener  net.Listener
-
-	// For performance reasons, Golang writes dcp events to tcp socket in batches
-	// socketWriteBatchSize controls the batch size
-	socketWriteBatchSize int
+	consumerListeners map[common.EventingConsumer]net.Listener // Access controlled by listenerRWMutex
+	feedbackListeners map[common.EventingConsumer]net.Listener // Access controlled by listenerRWMutex
+	listenerRWMutex   *sync.RWMutex
 
 	// Chan used to signify update of app level settings
 	notifySettingsChangeCh chan struct{}
@@ -135,14 +114,19 @@ type Producer struct {
 	clusterStateChange chan struct{}
 
 	// List of running consumers, will be needed if we want to gracefully shut them down
-	runningConsumers           []common.EventingConsumer
-	consumerSupervisorTokenMap map[common.EventingConsumer]suptree.ServiceToken
-	workerNameConsumerMap      map[string]common.EventingConsumer
+	runningConsumers           []common.EventingConsumer // Access controlled by runningConsumersRWMutex
+	runningConsumersRWMutex    *sync.RWMutex
+	consumerSupervisorTokenMap map[common.EventingConsumer]suptree.ServiceToken // Access controlled by tokenRWMutex
+	tokenRWMutex               *sync.RWMutex
+
+	workerNameConsumerMap        map[string]common.EventingConsumer // Access controlled by workerNameConsumerMapRWMutex
+	workerNameConsumerMapRWMutex *sync.RWMutex
 
 	// vbucket to eventing node assignment
-	vbEventingNodeAssignMap map[uint16]string
+	vbEventingNodeAssignMap     map[uint16]string // Access controlled by vbEventingNodeAssignRWMutex
+	vbEventingNodeAssignRWMutex *sync.RWMutex
 
-	vbPlasmaStore *plasma.Plasma
+	MemoryQuota int64
 
 	// copy of KV vbmap, needed while opening up dcp feed
 	kvVbMap map[uint16]string
@@ -151,15 +135,32 @@ type Producer struct {
 	// about topology change
 	topologyChangeCh chan *common.TopologyChangeMsg
 
-	// time.Ticker duration for dumping consumer stats
-	statsTickDuration time.Duration
+	statsRWMutex *sync.RWMutex
+
+	plannerNodeMappings        []*common.PlannerNodeVbMapping // Access controlled by plannerNodeMappingsRWMutex
+	plannerNodeMappingsRWMutex *sync.RWMutex
+	seqsNoProcessed            map[int]int64 // Access controlled by seqsNoProcessedRWMutex
+	seqsNoProcessedRWMutex     *sync.RWMutex
+	updateStatsTicker          *time.Ticker
+	updateStatsStopCh          chan struct{}
+
+	// Captures vbucket assignment to different eventing nodes
+	vbEventingNodeMap     map[string]map[string]string // Access controlled by vbEventingNodeRWMutex
+	vbEventingNodeRWMutex *sync.RWMutex
+
+	vbMapping        map[uint16]*vbNodeWorkerMapping // Access controlled by vbMappingRWMutex
+	vbMappingRWMutex *sync.RWMutex
 
 	// Map keeping track of vbuckets assigned to each worker(consumer)
-	workerVbucketMap map[string][]uint16
+	workerVbucketMap   map[string][]uint16 // Access controlled by workerVbMapRWMutex
+	workerVbMapRWMutex *sync.RWMutex
 
 	// Supervisor of workers responsible for
 	// pipelining messages to V8
 	workerSupervisor *suptree.Supervisor
+}
 
-	sync.RWMutex
+type vbNodeWorkerMapping struct {
+	ownerNode      string
+	assignedWorker string
 }

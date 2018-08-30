@@ -1,10 +1,10 @@
 {
    "views" : {
         "view1": {
-          "map" : "function(doc, meta){emit([doc.current_vb_owner, doc.assigned_worker, doc.node_uuid], doc.dcp_stream_status);}"
+          "map" : "function(doc, meta){ if ('vb_id' in doc) emit([doc.current_vb_owner, doc.assigned_worker, doc.node_uuid], doc.dcp_stream_status);}"
         },
         "view2": {
-            "map" : "function (doc, meta) { if ('vb_id' in doc) emit([doc.vb_id, doc.current_vb_owner, doc.assigned_worker], [doc.currently_processed_doc_id_timer, doc.next_doc_id_timer_to_process, doc.last_processed_doc_id_timer_event, doc.currently_processed_non_doc_timer, doc.next_non_doc_timer_to_process]);}"
+            "map" : "function (doc, meta) { if ('vb_id' in doc) emit([doc.vb_id, doc.current_vb_owner, doc.assigned_worker], [doc.last_processed_seq_no, doc.currently_processed_doc_id_timer, doc.next_doc_id_timer_to_process, doc.last_processed_doc_id_timer_event, doc.currently_processed_cron_timer, doc.next_cron_timer_to_process]);}"
         }
    }
 }

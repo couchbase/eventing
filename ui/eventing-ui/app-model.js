@@ -104,7 +104,7 @@ function ApplicationModel(app) {
 }
 
 ApplicationModel.prototype.getDefaultModel = function() {
-    var code = 'function OnUpdate(doc, meta){log(\'document\', doc);} function OnDelete(doc){}';
+    var code = 'function OnUpdate(doc, meta){log(\'document\', doc);} function OnDelete(meta){}';
     return {
         appname: 'Application name',
         appcode: formatCode(code),
@@ -114,28 +114,16 @@ ApplicationModel.prototype.getDefaultModel = function() {
             source_bucket: 'default'
         },
         settings: {
-            log_level: 'TRACE',
+            log_level: 'INFO',
             dcp_stream_boundary: 'everything',
-            sock_batch_size: 1,
-            tick_duration: 5000,
-            checkpoint_interval: 10000,
-            worker_count: 3,
-            cleanup_timers: false,
-            timer_worker_pool_size: 3,
-            skip_timer_threshold: 86400,
-            timer_processing_tick_interval: 500,
-            rbacuser: 'eventing',
-            rbacpass: 'asdasd',
-            rbacrole: 'admin',
             processing_status: false,
             deployment_status: false,
-            enable_recursive_mutation: false,
-            lcb_inst_capacity: 5,
-            deadline_timeout: 2,
-            execution_timeout: 1,
-            description: ''
+            description: '',
+            worker_count: 3,
+            execution_timeout: 60,
+            user_prefix: 'eventing'
         }
-    }
+    };
 };
 
 // Fills the Missing parameters in the model with default values.
@@ -163,15 +151,9 @@ ApplicationModel.prototype.fillWithMissingDefaults = function() {
 ApplicationModel.prototype.initializeDefaults = function() {
     this.depcfg = this.getDefaultModel().depcfg;
     this.settings = {};
-    this.settings.checkpoint_interval = 10000;
-    this.settings.sock_batch_size = 1;
     this.settings.worker_count = 3;
-    this.settings.skip_timer_threshold = 86400;
-    this.settings.tick_duration = 5000;
-    this.settings.timer_processing_tick_interval = 500;
-    this.settings.timer_worker_pool_size = 3;
-    this.settings.deadline_timeout = 2;
-    this.settings.execution_timeout = 1;
+    this.settings.execution_timeout = 60;
+    this.settings.user_prefix = 'eventing';
 };
 
 // Prettifies the JavaScript code.

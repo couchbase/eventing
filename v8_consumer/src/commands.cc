@@ -9,21 +9,21 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "../include/commands.h"
+#include "commands.h"
 
 event_type getEvent(int8_t event) {
   if (event == 1)
     return eDCP;
   if (event == 2)
-    return eHTTP;
-  if (event == 3)
     return eV8_Worker;
-  if (event == 4)
+  if (event == 3)
     return eApp_Worker_Setting;
-  if (event == 5)
+  if (event == 4)
     return eTimer;
-  if (event == 6)
+  if (event == 5)
     return eDebugger;
+  if (event == 6)
+    return eFilter;
   return Event_Unknown;
 }
 
@@ -40,6 +40,16 @@ v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
     return oGetSourceMap;
   if (opcode == 6)
     return oGetHandlerCode;
+  if (opcode == 7)
+    return oGetLatencyStats;
+  if (opcode == 8)
+    return oGetFailureStats;
+  if (opcode == 9)
+    return oGetExecutionStats;
+  if (opcode == 10)
+    return oGetCompileInfo;
+  if (opcode == 11)
+    return oGetLcbExceptions;
   return V8_Worker_Opcode_Unknown;
 }
 
@@ -49,14 +59,6 @@ dcp_opcode getDCPOpcode(int8_t opcode) {
   if (opcode == 2)
     return oMutation;
   return DCP_Opcode_Unknown;
-}
-
-http_opcode getHTTPOpcode(int8_t opcode) {
-  if (opcode == 1)
-    return oGet;
-  if (opcode == 2)
-    return oPost;
-  return HTTP_Opcode_Unknown;
 }
 
 app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
@@ -71,9 +73,7 @@ app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
 
 timer_opcode getTimerOpcode(int8_t opcode) {
   if (opcode == 1)
-    return oDocTimer;
-  if (opcode == 2)
-    return oNonDocTimer;
+    return oTimer;
   return Timer_Opcode_Unknown;
 }
 

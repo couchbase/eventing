@@ -6,11 +6,13 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"runtime"
 	"strconv"
+	"sync"
 	"time"
 
-	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/go-couchbase"
 )
 
 const (
@@ -78,7 +80,7 @@ retry:
 }
 
 func main() {
-	connStr, _ := argParse()
+	connStr := argParse()
 
 	conn, err := couchbase.ConnectWithAuthCreds(connStr, options.rbacUser, options.rbacPass)
 	if err != nil {
@@ -121,6 +123,7 @@ loop:
 
 			content, err := json.Marshal(&blob)
 			if err != nil {
+				fmt.Println(err)
 				continue
 			}
 
@@ -136,29 +139,48 @@ loop:
 		}
 
 	case "travel_sample":
-		for i := 0; i < options.itemCount; i++ {
-			blob := travelSampleBlob{
-				Type:        "travel_sample",
-				ID:          i,
-				Source:      "BLR",
-				Destination: "DEL",
-			}
+		workerCount := runtime.NumCPU()
+		dis := distributeWork(workerCount, options.itemCount)
+		ratePerWorker := options.opsPSec / workerCount
 
-			content, err := json.Marshal(&blob)
-			if err != nil {
-				continue
-			}
+		wg := sync.WaitGroup{}
+		for w := 0; w < workerCount; w++ {
+			wg.Add(1)
 
-			key := fmt.Sprintf("ts_%d", i)
-			err = bucketHandle.SetRaw(key, options.expiry, content)
-			if err != nil {
-				continue
-			}
+			go func(wg *sync.WaitGroup, se *startEndIndex, ratePerWorker int) {
+				defer wg.Done()
+
+				ticker := time.NewTicker(time.Second / time.Duration(ratePerWorker))
+
+				for i := se.Start; i < se.End; i++ {
+
+					select {
+					case <-ticker.C:
+					}
+
+					blob := travelSampleBlob{
+						Type:        "travel_sample",
+						ID:          i,
+						Source:      "BLR",
+						Destination: "DEL",
+					}
+
+					content, err := json.Marshal(&blob)
+					if err != nil {
+						continue
+					}
+
+					key := fmt.Sprintf("ts_%d", i)
+					err = bucketHandle.SetRaw(key, options.expiry, content)
+					if err != nil {
+						continue
+					}
+				}
+
+			}(&wg, dis[w], ratePerWorker)
 		}
 
-		if options.loop {
-			goto loop
-		}
+		wg.Wait()
 
 	case "cpu_op":
 		for i := 0; i < options.itemCount; i++ {
@@ -238,4 +260,27 @@ loop:
 func random(min, max int) int {
 	rand.Seed(time.Now().Unix())
 	return rand.Intn(max-min) + min
+}
+
+func distributeWork(workerCount, itemCount int) map[int]*startEndIndex {
+	dis := make(map[int]*startEndIndex)
+
+	itemsPerWorker := itemCount / workerCount
+
+	var startIndex, endIndex int
+	for i := 0; i < workerCount; i++ {
+		startIndex = endIndex
+		endIndex += itemsPerWorker
+
+		dis[i] = &startEndIndex{
+			Start: startIndex,
+			End:   endIndex,
+		}
+	}
+
+	if itemCount-endIndex > 0 {
+		dis[workerCount-1].End += itemCount - endIndex
+	}
+
+	return dis
 }

@@ -9,41 +9,52 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "../include/function_templates.h"
+#include "function_templates.h"
 
-const char *JSONStringify(v8::Isolate *isolate, v8::Handle<v8::Value> object) {
-  v8::HandleScope handle_scope(isolate);
-
-  v8::Local<v8::Context> context = isolate->GetCurrentContext();
-  v8::Local<v8::Object> global = context->Global();
-
-  v8::Local<v8::Object> JSON =
-      global->Get(v8::String::NewFromUtf8(isolate, "JSON"))->ToObject();
-  v8::Local<v8::Function> JSON_stringify = v8::Local<v8::Function>::Cast(
-      JSON->Get(v8::String::NewFromUtf8(isolate, "stringify")));
-
-  v8::Local<v8::Value> result;
-  v8::Local<v8::Value> args[1];
-  args[0] = {object};
-  result = JSON_stringify->Call(global, 1, args);
-  v8::String::Utf8Value str(result->ToString());
-
-  return ToCString(str);
-}
+long curl_timeout = 10000L; // Default curl timeout in ms
 
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  v8::Locker locker(isolate);
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
   std::string log_msg;
-  for (int i = 0; i < args.Length(); i++) {
-    log_msg += JSONStringify(args.GetIsolate(), args[i]);
-    log_msg += ' ';
+
+  for (auto i = 0; i < args.Length(); i++) {
+    if (args[i]->IsNativeError()) {
+      v8::Local<v8::Object> object;
+      if (!TO_LOCAL(args[i]->ToObject(context), &object)) {
+        return;
+      }
+
+      v8::Local<v8::Value> to_string_val;
+      if (!TO_LOCAL(object->Get(context, v8Str(isolate, "toString")),
+                    &to_string_val)) {
+        return;
+      }
+
+      auto to_string_func = to_string_val.As<v8::Function>();
+      v8::Local<v8::Value> stringified_val;
+      if (!TO_LOCAL(to_string_func->Call(context, object, 0, nullptr),
+                    &stringified_val)) {
+        return;
+      }
+
+      log_msg += JSONStringify(isolate, stringified_val);
+    } else {
+      log_msg += JSONStringify(isolate, args[i]);
+    }
+
+    log_msg += " ";
   }
 
-  LOG(logDebug) << log_msg << '\n';
+  APPLOG << log_msg << std::endl;
 }
 
 // console.log for debugger - also logs to eventing.log
 void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  v8::Isolate *isolate = args.GetIsolate();
+  auto isolate = args.GetIsolate();
+  v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
 
@@ -70,240 +81,189 @@ void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 }
 
-void CreateNonDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  v8::Isolate *isolate = args.GetIsolate();
-  v8::HandleScope handle_scope(isolate);
+size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb,
+                           void *userp) {
+  size_t realsize = size * nmemb;
+  struct CurlResult *mem = static_cast<struct CurlResult *>(userp);
 
-  std::string cb_func;
-  if (isFuncReference(args, 0)) {
-    v8::Local<v8::Function> func_ref = args[0].As<v8::Function>();
-    v8::String::Utf8Value func_name(func_ref->GetName());
-    cb_func.assign(std::string(*func_name));
-  } else {
-    return;
+  mem->memory =
+      static_cast<char *>(realloc(mem->memory, mem->size + realsize + 1));
+  if (mem->memory == nullptr) {
+    LOG(logError) << "not enough memory (realloc returned NULL)" << std::endl;
+    return 0;
   }
 
-  v8::String::Utf8Value ts(args[1]);
+  memcpy(&(mem->memory[mem->size]), contents, realsize);
+  mem->size += realsize;
+  mem->memory[mem->size] = 0;
 
-  std::string start_ts, timer_entry, value;
-  start_ts.assign(std::string(*ts));
-
-  if (atoi(start_ts.c_str()) <= 0) {
-    LOG(logError)
-        << "Skipping non-doc_id timer callback setup, invalid start timestamp"
-        << '\n';
-    return;
-  }
-
-  timer_entry.assign(appName);
-  timer_entry.append("::");
-  timer_entry.append(ConvertToISO8601(start_ts));
-  timer_entry.append("Z");
-  LOG(logTrace) << "Request to register non-doc_id timer, callback_func:"
-                << cb_func << "start_ts : " << timer_entry << '\n';
-
-  // Store blob in KV store, blob structure:
-  // {
-  //    "callback_func": CallbackFunc,
-  //    "start_ts": timestamp
-  // }
-
-  // prepending delimiter ";"
-  value.assign(";{\"callback_func\": \"");
-  value.append(cb_func);
-  value.append("\", \"start_ts\": \"");
-  value.append(timer_entry);
-  value.append("\"}");
-
-  lcb_t *meta_cb_instance =
-      reinterpret_cast<lcb_t *>(args.GetIsolate()->GetData(2));
-
-  // Append doc_id to key that keeps tracks of doc_ids for which
-  // callbacks need to be triggered at any given point in time
-  lcb_CMDGET gcmd = {0};
-  LCB_CMD_SET_KEY(&gcmd, timer_entry.c_str(), timer_entry.length());
-  lcb_get3(*meta_cb_instance, NULL, &gcmd);
-  lcb_set_cookie(*meta_cb_instance, timer_entry.c_str());
-  lcb_wait(*meta_cb_instance);
-  lcb_set_cookie(*meta_cb_instance, NULL);
-
-  Result result;
-  lcb_CMDSTORE cmd = {0};
-  cmd.operation = LCB_APPEND;
-
-  LOG(logTrace) << "Non doc_id timer entry to append: " << value << '\n';
-  LCB_CMD_SET_KEY(&cmd, timer_entry.c_str(), timer_entry.length());
-  LCB_CMD_SET_VALUE(&cmd, value.c_str(), value.length());
-  lcb_sched_enter(*meta_cb_instance);
-  lcb_store3(*meta_cb_instance, &result, &cmd);
-  lcb_sched_leave(*meta_cb_instance);
-  lcb_wait(*meta_cb_instance);
-
-  if (result.rc != LCB_SUCCESS) {
-    V8Worker::exception.Throw(*meta_cb_instance, result.rc);
-    return;
-  }
+  return realsize;
 }
 
-void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  v8::Isolate *isolate = args.GetIsolate();
+void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
 
-  std::string cb_func;
-  if (isFuncReference(args, 0)) {
-    v8::Local<v8::Function> func_ref = args[0].As<v8::Function>();
-    v8::String::Utf8Value func_name(func_ref->GetName());
-    cb_func.assign(std::string(*func_name));
-  } else {
+  std::string auth, data, http_method, mime_type, url, url_suffix;
+  struct curl_slist *headers = nullptr;
+  v8::String::Utf8Value u(args[0]);
+
+  url.assign(*u);
+
+  auto context = isolate->GetCurrentContext();
+  v8::Local<v8::Object> options;
+  if (!TO_LOCAL(args[1]->ToObject(context), &options)) {
     return;
   }
 
-  v8::String::Utf8Value doc(args[1]);
-  v8::String::Utf8Value ts(args[2]);
-
-  std::string doc_id, start_ts, timer_entry;
-  doc_id.assign(std::string(*doc));
-  start_ts.assign(std::string(*ts));
-
-  // If the doc not supposed to expire, skip
-  // setting up timer callback for it
-  if (atoi(start_ts.c_str()) == 0) {
-    LOG(logError) << "Skipping timer callback setup for doc_id:" << doc_id
-                  << ", won't expire" << '\n';
+  v8::Local<v8::Array> option_names;
+  if (!TO_LOCAL(options->GetOwnPropertyNames(context), &option_names)) {
     return;
   }
 
-  timer_entry.assign(appName);
-  timer_entry += "::";
-  timer_entry += ConvertToISO8601(start_ts);
-
-  /* Perform XATTR operations, XATTR structure with timers:
-   *
-   * {
-   * "eventing": {
-   *              "timers": ["appname::2017-04-30ZT12:00:00::callback_func",
-   * ...],
-   *              "cas": ${Mutation.CAS},
-   *   }
-   * }
-   * */
-  std::string xattr_cas_path("eventing.cas");
-  std::string xattr_digest_path("eventing.digest");
-  std::string xattr_timer_path("eventing.timers");
-  std::string mutation_cas_macro("\"${Mutation.CAS}\"");
-  std::string doc_exptime("$document.exptime");
-  timer_entry += "Z::";
-  timer_entry += cb_func;
-  timer_entry += "\"";
-  timer_entry.insert(0, 1, '"');
-  LOG(logTrace) << "Request to register doc timer, callback_func:" << cb_func
-                << " doc_id:" << doc_id << " start_ts:" << timer_entry << '\n';
-
-  while (true) {
-    lcb_t *cb_instance =
-        reinterpret_cast<lcb_t *>(args.GetIsolate()->GetData(1));
-
-    lcb_CMDSUBDOC gcmd = {0};
-    LCB_CMD_SET_KEY(&gcmd, doc_id.c_str(), doc_id.size());
-
-    // Fetch document expiration using virtual extended attributes
-    Result res;
-    std::vector<lcb_SDSPEC> gspecs;
-    lcb_SDSPEC exp_spec, fdoc_spec = {0};
-
-    exp_spec.sdcmd = LCB_SDCMD_GET;
-    exp_spec.options = LCB_SDSPEC_F_XATTRPATH;
-    LCB_SDSPEC_SET_PATH(&exp_spec, doc_exptime.c_str(), doc_exptime.size());
-    gspecs.push_back(exp_spec);
-
-    fdoc_spec.sdcmd = LCB_SDCMD_GET_FULLDOC;
-    gspecs.push_back(fdoc_spec);
-
-    gcmd.specs = gspecs.data();
-    gcmd.nspecs = gspecs.size();
-    lcb_subdoc3(*cb_instance, &res, &gcmd);
-    lcb_wait(*cb_instance);
-
-    if (res.rc != LCB_SUCCESS) {
-      LOG(logError)
-          << "Failed to while performing lookup for fulldoc and exptime"
-          << lcb_strerror(NULL, res.rc) << '\n';
+  for (uint32_t i = 0; i < option_names->Length(); i++) {
+    v8::Local<v8::Value> key;
+    if (!TO_LOCAL(option_names->Get(context, i), &key)) {
       return;
     }
 
-    uint32_t d = crc32c(0, res.value.c_str(), res.value.length());
-    std::string digest = std::to_string(d);
-
-    LOG(logTrace) << "CreateDocTimer cas: " << res.cas
-                  << " exptime: " << res.exptime << " digest: " << digest
-                  << '\n';
-
-    lcb_CMDSUBDOC mcmd = {0};
-    lcb_SDSPEC digest_spec, xattr_spec, tspec = {0};
-    LCB_CMD_SET_KEY(&mcmd, doc_id.c_str(), doc_id.size());
-
-    std::vector<lcb_SDSPEC> specs;
-
-    mcmd.cas = res.cas;
-    mcmd.exptime = res.exptime;
-
-    digest_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-    digest_spec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
-
-    LCB_SDSPEC_SET_PATH(&digest_spec, xattr_digest_path.c_str(),
-                        xattr_digest_path.size());
-    LCB_SDSPEC_SET_VALUE(&digest_spec, digest.c_str(), digest.size());
-    specs.push_back(digest_spec);
-
-    xattr_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-    xattr_spec.options =
-        LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
-
-    LCB_SDSPEC_SET_PATH(&xattr_spec, xattr_cas_path.c_str(),
-                        xattr_cas_path.size());
-    LCB_SDSPEC_SET_VALUE(&xattr_spec, mutation_cas_macro.c_str(),
-                         mutation_cas_macro.size());
-    specs.push_back(xattr_spec);
-
-    tspec.sdcmd = LCB_SDCMD_ARRAY_ADD_LAST;
-    tspec.options = LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
-    LCB_SDSPEC_SET_PATH(&tspec, xattr_timer_path.c_str(),
-                        xattr_timer_path.size());
-    LCB_SDSPEC_SET_VALUE(&tspec, timer_entry.c_str(), timer_entry.size());
-    specs.push_back(tspec);
-
-    mcmd.specs = specs.data();
-    mcmd.nspecs = specs.size();
-
-    lcb_error_t rc = lcb_subdoc3(*cb_instance, &res, &mcmd);
-    if (rc != LCB_SUCCESS) {
-      LOG(logError) << "Failed to update timer related xattr fields for doc_id:"
-                    << doc_id << " return code:" << rc
-                    << " msg:" << lcb_strerror(NULL, rc) << '\n';
+    v8::Local<v8::Value> value;
+    if (!TO_LOCAL(options->Get(context, key), &value)) {
       return;
     }
 
-    lcb_wait(*cb_instance);
-    if (res.rc != LCB_SUCCESS) {
-      V8Worker::exception.Throw(*cb_instance, res.rc);
-      return;
+    if (key->IsString()) {
+      v8::String::Utf8Value utf8_key(key);
+
+      if ((strcmp(*utf8_key, "method") == 0) && value->IsString()) {
+        v8::String::Utf8Value method(value);
+        http_method.assign(*method);
+
+      } else if ((strcmp(*utf8_key, "auth") == 0) && value->IsString()) {
+        v8::String::Utf8Value creds(value);
+        auto creds_vec = split(*creds, ':');
+        if (creds_vec.size() == 2) {
+          auth.assign(*creds);
+        } else {
+          LOG(logError) << "Credentials vector size: " << creds_vec.size()
+                        << std::endl;
+        }
+
+      } else if (strcmp(*utf8_key, "data") == 0) {
+        if (value->IsString()) {
+          v8::String::Utf8Value payload(value);
+          data.assign(*payload);
+
+          headers = curl_slist_append(
+              headers, "Content-Type: application/x-www-form-urlencoded");
+
+        } else if (value->IsObject()) {
+          data.assign(JSONStringify(args.GetIsolate(), value));
+          headers =
+              curl_slist_append(headers, "Content-Type: application/json");
+        }
+      } else if (strcmp(*utf8_key, "parameters") == 0) {
+        v8::Local<v8::Object> parameters;
+        if (!TO_LOCAL(value->ToObject(context), &parameters)) {
+          return;
+        }
+
+        auto parameter_fields = parameters.As<v8::Array>();
+        for (uint32_t j = 0; j < parameter_fields->Length(); j++) {
+          v8::Local<v8::Value> param;
+          if (!TO_LOCAL(parameter_fields->Get(context, j), &param)) {
+            return;
+          }
+
+          if (param->IsString()) {
+            v8::String::Utf8Value param_str(param);
+            if (j > 0) {
+              url_suffix += "&" + std::string(*param_str);
+            } else {
+              url_suffix += "?" + std::string(*param_str);
+            }
+          }
+        }
+      } else if (strcmp(*utf8_key, "headers") == 0) {
+        if (value->IsString()) {
+          v8::String::Utf8Value m(value);
+          mime_type.assign(*m);
+        }
+      }
+    }
+  }
+
+  url += url_suffix;
+
+  LOG(logTrace) << "method: " << http_method << " data: " << data
+                << " url: " << url << std::endl;
+
+  if (http_method.empty()) {
+    http_method.assign("GET");
+  }
+
+  CURLcode res;
+  CURL *curl = UnwrapData(isolate)->curl_handle;
+
+  if ((strcmp(http_method.c_str(), "GET") == 0 ||
+       strcmp(http_method.c_str(), "POST") == 0) &&
+      curl) {
+    // Initialize common bootstrap code
+    struct CurlResult chunk;
+    chunk.memory = static_cast<char *>(malloc(1));
+    chunk.size = 0;
+
+    curl_easy_reset(curl);
+
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+
+    if (!auth.empty()) {
+      curl_easy_setopt(curl, CURLOPT_HTTPAUTH, (long)CURLAUTH_ANY);
+      curl_easy_setopt(curl, CURLOPT_USERPWD, auth.c_str());
     }
 
-    if (res.rc == LCB_SUCCESS) {
-      LOG(logTrace) << "Stored doc_id timer_entry: " << timer_entry
-                    << " for doc_id: " << doc_id << '\n';
-      return;
-    } else if (res.rc == LCB_KEY_EEXISTS) {
-      LOG(logTrace) << "CAS Mismatch for " << doc_id << ". Retrying" << '\n';
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(LCB_OP_RETRY_INTERVAL));
-      break;
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPIDLE, 120L); // Idle time of 120s
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPINTVL, 60L); // probe interval of 60s
+
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, curl_timeout);
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "couchbase-eventing/5.5");
+
+    if (strcmp(http_method.c_str(), "GET") == 0) {
+      res = curl_easy_perform(curl);
+
     } else {
-      LOG(logTrace) << "Couldn't store xattr update as part of doc_id based "
-                       "timer for doc_id:"
-                    << doc_id << " return code: " << res.rc
-                    << " msg: " << lcb_strerror(NULL, res.rc) << '\n';
+      if (mime_type.empty()) {
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+      } else {
+        curl_slist_free_all(headers);
+        headers = curl_slist_append(headers, mime_type.c_str());
+      }
+
+      curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data.c_str());
+      curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)data.size());
+
+      res = curl_easy_perform(curl);
+      curl_slist_free_all(headers);
+    }
+
+    LOG(logTrace) << "Response code from curl call: " << static_cast<int>(res)
+                  << std::endl;
+    if (res != CURLE_OK) {
+      auto js_exception = UnwrapData(isolate)->js_exception;
+      js_exception->Throw(res);
       return;
     }
+
+    v8::Local<v8::Value> response;
+    if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, chunk.memory)),
+                  &response)) {
+      return;
+    }
+
+    args.GetReturnValue().Set(response);
   }
 }

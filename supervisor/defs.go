@@ -5,7 +5,6 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/plasma"
 )
 
 const (
@@ -14,23 +13,30 @@ const (
 	// MetakvAppsPath refers to path under metakv where app handlers are stored
 	MetakvAppsPath = metakvEventingPath + "apps/"
 
+	// MetakvAppsRetryPath refers to path where retry counter for bailing out
+	// from operations that are retried upon failure
+	MetakvAppsRetryPath = metakvEventingPath + "retry/"
+
 	// MetakvAppSettingsPath refers to path under metakv where app settings are stored
-	MetakvAppSettingsPath       = metakvEventingPath + "settings/"
+	MetakvAppSettingsPath       = metakvEventingPath + "appsettings/"
 	metakvProducerHostPortsPath = metakvEventingPath + "hostports/"
+
+	// MetakvClusterSettings houses global configs related to Eventing
+	MetakvClusterSettings = metakvEventingPath + "settings/"
 
 	// MetakvRebalanceTokenPath refers to path under metakv where rebalance tokens are stored
 	MetakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	stopRebalance            = "stopRebalance"
+
+	// Store list of eventing keepNodes
+	metakvConfigKeepNodes = metakvEventingPath + "config/keepNodes"
+
+	// MetakvChecksumPath within metakv is updated when new function definition is loaded
+	MetakvChecksumPath = metakvEventingPath + "checksum/"
 )
 
 const (
-	rebalanceRunning = "RebalanceRunning"
-	autoLssCleaning  = false
-	maxDeltaChainLen = 30
-	maxPageItems     = 100
-	minPageItems     = 10
-	numVbuckets      = 1024
-	numTimerVbMoves  = 10
+	numVbuckets = 1024
 )
 
 const (
@@ -45,35 +51,58 @@ type supCmdMsg struct {
 	ctx string
 }
 
+// AdminPortConfig captures settings supplied by cluster manager
+type AdminPortConfig struct {
+	DebuggerPort string
+	HTTPPort     string
+	SslPort      string
+	CertFile     string
+	KeyFile      string
+}
+
 // SuperSupervisor is responsible for managing/supervising all producer instances
 type SuperSupervisor struct {
-	auth              string
-	CancelCh          chan struct{}
-	eventingAdminPort string
-	eventingDir       string
-	kvPort            string
-	restPort          string
-	superSup          *suptree.Supervisor
-	supCmdCh          chan supCmdMsg
-	uuid              string
+	auth        string
+	CancelCh    chan struct{}
+	adminPort   AdminPortConfig
+	ejectNodes  []string
+	eventingDir string
+	keepNodes   []string
+	kvPort      string
+	numVbuckets int
+	restPort    string
+	retryCount  int64
+	superSup    *suptree.Supervisor
+	supCmdCh    chan supCmdMsg
+	uuid        string
+	diagDir     string
 
 	appRWMutex *sync.RWMutex
 
-	// Captures if the app is enabled or not
-	appStatus map[string]bool // Access controlled by appRWMutex
+	appDeploymentStatus map[string]bool // Access controlled by appRWMutex
+	appProcessingStatus map[string]bool // Access controlled by appRWMutex
 
-	mu                           *sync.RWMutex
-	plasmaCloseSignalMap         map[uint16]int // Access controlled by plasmaRWMutex
-	producerSupervisorTokenMap   map[common.EventingProducer]suptree.ServiceToken
-	runningProducers             map[string]common.EventingProducer
-	runningProducersHostPortAddr map[string]string
-	timerDataTransferReq         map[uint16]struct{} // Access controlled by default lock
-	timerDataTransferReqCh       chan uint16
-	vbPlasmaStoreMap             map[uint16]*plasma.Plasma // Access controlled by plasmaRWMutex
-	vbucketsToOwn                []uint16
-	vbucketsToSkipPlasmaClose    map[uint16]struct{} // Access controlled by default lock
+	appListRWMutex    *sync.RWMutex
+	bootstrappingApps map[string]string // Captures list of apps undergoing bootstrap, access controlled by appListRWMutex
 
-	plasmaRWMutex *sync.RWMutex
+	// Captures list of deployed apps and their last deployment time. Leveraged to report deployed app status
+	// via rest endpoints. Access controlled by appListRWMutex
+	deployedApps map[string]string
+
+	// Captures list of deployed apps. Similar to "deployedApps" but it's used internally by Eventing.Consumer
+	// to signify app has been undeployed. Access controlled by appListRWMutex
+	locallyDeployedApps map[string]string
+
+	// Global config
+	memoryQuota int64 // In MB
+
+	cleanedUpAppMap            map[string]struct{} // Access controlled by default lock
+	mu                         *sync.RWMutex
+	producerSupervisorTokenMap map[common.EventingProducer]suptree.ServiceToken // Access controlled by tokenMapRWMutex
+	tokenMapRWMutex            *sync.RWMutex
+	runningProducers           map[string]common.EventingProducer // Access controlled by runningProducersRWMutex
+	runningProducersRWMutex    *sync.RWMutex
+	vbucketsToOwn              []uint16
 
 	serviceMgr common.EventingServiceMgr
 	sync.RWMutex

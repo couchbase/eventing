@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
+	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -15,29 +18,59 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/plasma"
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
-func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostPortsPath, nsServerPort, uuid string,
-	superSup common.EventingSuperSup) *Producer {
+func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingDir, kvPort,
+	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
+	memoryQuota int64, numVbuckets int, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
-		appName:                appName,
-		eventingAdminPort:      eventingAdminPort,
-		eventingDir:            eventingDir,
-		eventingNodeUUIDs:      make([]string, 0),
-		kvPort:                 kvPort,
-		listenerHandles:        make([]*abatableListener, 0),
-		metakvAppHostPortsPath: metakvAppHostPortsPath,
-		notifyInitCh:           make(chan struct{}, 1),
-		notifySettingsChangeCh: make(chan struct{}, 1),
-		notifySupervisorCh:     make(chan struct{}),
-		nsServerPort:           nsServerPort,
-		superSup:               superSup,
-		topologyChangeCh:       make(chan *common.TopologyChangeMsg, 10),
-		uuid:                   uuid,
-		workerNameConsumerMap: make(map[string]common.EventingConsumer),
+		appName:                    appName,
+		bootstrapFinishCh:          make(chan struct{}, 1),
+		consumerListeners:          make(map[common.EventingConsumer]net.Listener),
+		dcpConfig:                  make(map[string]interface{}),
+		ejectNodeUUIDs:             make([]string, 0),
+		eventingNodeUUIDs:          make([]string, 0),
+		feedbackListeners:          make(map[common.EventingConsumer]net.Listener),
+		handleV8ConsumerMutex:      &sync.Mutex{},
+		kvPort:                     kvPort,
+		listenerRWMutex:            &sync.RWMutex{},
+		metakvAppHostPortsPath:     metakvAppHostPortsPath,
+		notifyInitCh:               make(chan struct{}, 2),
+		notifySettingsChangeCh:     make(chan struct{}, 1),
+		notifySupervisorCh:         make(chan struct{}),
+		nsServerPort:               nsServerPort,
+		numVbuckets:                numVbuckets,
+		pauseProducerCh:            make(chan struct{}, 1),
+		plannerNodeMappingsRWMutex: &sync.RWMutex{},
+		MemoryQuota:                memoryQuota,
+		pollBucketStopCh:           make(chan struct{}, 1),
+		retryCount:                 -1,
+		runningConsumersRWMutex:    &sync.RWMutex{},
+		seqsNoProcessed:            make(map[int]int64),
+		seqsNoProcessedRWMutex:     &sync.RWMutex{},
+		statsRWMutex:               &sync.RWMutex{},
+		superSup:                   superSup,
+		topologyChangeCh:           make(chan *common.TopologyChangeMsg, 10),
+		updateStatsStopCh:          make(chan struct{}, 1),
+		uuid:                       uuid,
+		vbEventingNodeAssignRWMutex:  &sync.RWMutex{},
+		vbEventingNodeRWMutex:        &sync.RWMutex{},
+		vbMapping:                    make(map[uint16]*vbNodeWorkerMapping),
+		vbMappingRWMutex:             &sync.RWMutex{},
+		workerNameConsumerMap:        make(map[string]common.EventingConsumer),
+		workerNameConsumerMapRWMutex: &sync.RWMutex{},
+		workerVbMapRWMutex:           &sync.RWMutex{},
+		handlerConfig:                &common.HandlerConfig{},
+		processConfig:                &common.ProcessConfig{},
+		rebalanceConfig:              &common.RebalanceConfig{},
 	}
+
+	p.processConfig.DebuggerPort = debuggerPort
+	p.processConfig.DiagDir = diagDir
+	p.processConfig.EventingDir = eventingDir
+	p.processConfig.EventingPort = eventingPort
+	p.processConfig.EventingSSLPort = eventingSSLPort
 
 	p.eventingNodeUUIDs = append(p.eventingNodeUUIDs, uuid)
 	return p
@@ -45,129 +78,260 @@ func NewProducer(appName, eventingAdminPort, eventingDir, kvPort, metakvAppHostP
 
 // Serve implements suptree.Service interface
 func (p *Producer) Serve() {
+	logPrefix := "Producer::Serve"
+	defer func() {
+		if p.retryCount >= 0 {
+			p.notifyInitCh <- struct{}{}
+			p.bootstrapFinishCh <- struct{}{}
+			p.superSup.RemoveProducerToken(p.appName)
+			p.superSup.CleanupProducer(p.appName, false)
+		}
+	}()
 	err := p.parseDepcfg()
-	if err != nil {
-		logging.Fatalf("PRDR[%s:%d] Failure parsing depcfg, err: %v", p.appName, p.LenRunningConsumers(), err)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return
 	}
+
+	if err != nil {
+		logging.Fatalf("%s [%s:%d] Failure parsing depcfg, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		return
+	}
+
+	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
+
+	logging.Infof("%s [%s:%d] Source bucket: %s vbucket count: %d",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)
+
+	p.seqsNoProcessedRWMutex.Lock()
+	for i := 0; i < p.numVbuckets; i++ {
+		p.seqsNoProcessed[i] = 0
+	}
+	p.seqsNoProcessedRWMutex.Unlock()
+
+	go p.pollForDeletedVbs()
+
+	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles)
+	if err != nil {
+		logging.Fatalf("%s [%s:%d] Failure to open application log writer handle, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
+		return
+	}
+
+	p.isPlannerRunning = true
+	logging.Infof("%s [%s:%d] Planner status: %t, before vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
 	err = p.vbEventingNodeAssign()
-	if err != nil {
-		logging.Fatalf("PRDR[%s:%d] Failure while assigning vbuckets to workers, err: %v", p.appName, p.LenRunningConsumers(), err)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		p.isPlannerRunning = false
+		logging.Infof("%s [%s:%d] Planner status: %t, after vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 		return
 	}
 
-	err = p.openPlasmaStore()
+	p.vbNodeWorkerMap()
+
+	p.initWorkerVbMap()
+	p.isPlannerRunning = false
+	logging.Infof("%s [%s:%d] Planner status: %t, after vbucket to worker assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
+
 	if err != nil {
-		logging.Fatalf("PRDR[%s:%d] Failure opening up plasma instance, err: %v", p.appName, p.LenRunningConsumers(), err)
+		logging.Fatalf("%s [%s:%d] Failure while assigning vbuckets to workers, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
 	}
 
-	p.getKvVbMap()
+	err = p.getKvVbMap()
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return
+	}
 
-	p.stopProducerCh = make(chan struct{})
+	p.stopProducerCh = make(chan struct{}, 1)
 	p.clusterStateChange = make(chan struct{})
 	p.consumerSupervisorTokenMap = make(map[common.EventingConsumer]suptree.ServiceToken)
+	p.tokenRWMutex = &sync.RWMutex{}
 
 	if p.auth != "" {
 		up := strings.Split(p.auth, ":")
 		if _, err := cbauth.InternalRetryDefaultInit(p.nsServerHostPort,
 			up[0], up[1]); err != nil {
-			logging.Fatalf("PRDR[%s:%d] Failed to initialise cbauth, err: %v", p.appName, p.LenRunningConsumers(), err)
+			logging.Fatalf("%s [%s:%d] Failed to initialise cbauth, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		}
 	}
 
-	// Increasing the timeouts for Stop() routine of workers under supervision,
-	// their cleanup up involves stopping all plasma related operations, stopping
-	// all active dcp streams and more. So graceful shutdown might take time.
 	spec := suptree.Spec{
 		Timeout: supervisorTimeout,
 	}
 	p.workerSupervisor = suptree.New(p.appName, spec)
 	go p.workerSupervisor.ServeBackground()
 
-	p.initMetadataBucketHandle()
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, gocbConnectMetaBucketCallback, p)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return
+	}
+
 	// Write debugger blobs in metadata bucket
 	dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
-	debugBlob := &common.StartDebugBlob{
-		StartDebug: false,
+	debugBlob := &common.StartDebugBlobVer{
+		common.StartDebugBlob{StartDebug: false},
+		util.EventingVer(),
 	}
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, p, dFlagKey, debugBlob)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
+		p, p.AddMetadataPrefix(dFlagKey), debugBlob)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return
+	}
 
-	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
+	debuggerInstBlob := &common.DebuggerInstanceAddrBlobVer{
+		common.DebuggerInstanceAddrBlob{},
+		util.EventingVer(),
+	}
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, p, dInstAddrKey, debuggerInstBlob)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey), debuggerInstBlob)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return
+	}
 
-	p.initWorkerVbMap()
 	p.startBucket()
 
-	p.notifyInitCh <- struct{}{}
+	p.bootstrapFinishCh <- struct{}{}
+
+	go p.updateStats()
+
+	// Inserting twice because producer can be stopped either because of pause/undeploy
+	for i := 0; i < 2; i++ {
+		p.notifyInitCh <- struct{}{}
+	}
 
 	for {
 		select {
 		case msg := <-p.topologyChangeCh:
-			logging.Infof("PRDR[%s:%d] Got topology change msg: %v from super_supervisor",
-				p.appName, p.LenRunningConsumers(), msg)
+			logging.Infof("%s [%s:%d] Got topology change msg: %rm from super_supervisor",
+				logPrefix, p.appName, p.LenRunningConsumers(), msg)
 
 			switch msg.CType {
 			case common.StartRebalanceCType:
-				p.vbEventingNodeAssign()
-				p.initWorkerVbMap()
+				p.isPlannerRunning = true
+				logging.Infof("%s [%s:%d] Planner status: %t, before vbucket to node assignment as part of rebalance",
+					logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
-				for _, consumer := range p.runningConsumers {
-					logging.Infof("PRDR[%s:%d] Consumer: %s sent cluster state change message from producer",
-						p.appName, p.LenRunningConsumers(), consumer.ConsumerName())
-					consumer.NotifyClusterChange()
+				err = p.vbEventingNodeAssign()
+				if err == common.ErrRetryTimeout {
+					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+					p.isPlannerRunning = false
+					logging.Infof("%s [%s:%d] Planner status: %t, after vbucket to node assignment post rebalance request",
+						logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
+					return
+				}
+				p.vbNodeWorkerMap()
+				p.initWorkerVbMap()
+				p.isPlannerRunning = false
+				logging.Infof("%s [%s:%d] Planner status: %t, post vbucket to worker assignment during rebalance",
+					logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
+
+				for _, eventingConsumer := range p.getConsumers() {
+					logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer",
+						logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
+					eventingConsumer.NotifyClusterChange()
 				}
 
 			case common.StopRebalanceCType:
-				for _, consumer := range p.runningConsumers {
-					logging.Infof("PRDR[%s:%d] Consumer: %s sent stop rebalance message from producer",
-						p.appName, p.LenRunningConsumers(), consumer.ConsumerName())
-					consumer.NotifyRebalanceStop()
+				for _, eventingConsumer := range p.getConsumers() {
+					logging.Infof("%s [%s:%d] Consumer: %s sent stop rebalance message from producer",
+						logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
+					eventingConsumer.NotifyRebalanceStop()
 				}
 			}
 
 		case <-p.notifySettingsChangeCh:
-			logging.Infof("PRDR[%s:%d] Notifying consumers about settings change", p.appName, p.LenRunningConsumers())
+			logging.Infof("%s [%s:%d] Notifying consumers about settings change", logPrefix, p.appName, p.LenRunningConsumers())
 
-			for _, consumer := range p.runningConsumers {
-				consumer.NotifySettingsChange()
+			for _, eventingConsumer := range p.getConsumers() {
+				eventingConsumer.NotifySettingsChange()
 			}
 
 			settingsPath := metakvAppSettingsPath + p.app.AppName
 			sData, err := util.MetakvGet(settingsPath)
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Failed to fetch updated settings from metakv, err: %v",
-					p.appName, p.LenRunningConsumers(), err)
+				logging.Errorf("%s [%s:%d] Failed to fetch updated settings from metakv, err: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), err)
 				continue
 			}
 
 			settings := make(map[string]interface{})
 			err = json.Unmarshal(sData, &settings)
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Failed to unmarshal settings received from metakv, err: %v",
-					p.appName, p.LenRunningConsumers(), err)
+				logging.Errorf("%s [%s:%d] Failed to unmarshal settings received from metakv, err: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), err)
 				continue
 			}
 
 			logLevel := settings["log_level"].(string)
 			logging.SetLogLevel(util.GetLogLevel(logLevel))
+			p.updateAppLogSetting(settings)
 
-		case <-p.stopProducerCh:
-			logging.Infof("PRDR[%s:%d] Explicitly asked to shutdown producer routine", p.appName, p.LenRunningConsumers())
+		case <-p.pauseProducerCh:
 
-			for _, consumer := range p.runningConsumers {
-				p.workerSupervisor.Remove(p.consumerSupervisorTokenMap[consumer])
-				delete(p.consumerSupervisorTokenMap, consumer)
+			// This routine cleans up everything apart from metadataBucketHandle,
+			// which would be needed to clean up metadata bucket
+			logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
+
+			for _, c := range p.getConsumers() {
+				p.stopAndDeleteConsumer(c)
 			}
-			p.runningConsumers = p.runningConsumers[:0]
-			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
 
+			p.runningConsumersRWMutex.Lock()
+			p.runningConsumers = nil
+			p.runningConsumersRWMutex.Unlock()
+
+			p.workerNameConsumerMapRWMutex.Lock()
+			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
+			p.workerNameConsumerMapRWMutex.Unlock()
+
+			p.listenerRWMutex.Lock()
 			for _, listener := range p.consumerListeners {
 				listener.Close()
 			}
-			p.consumerListeners = p.consumerListeners[:0]
+			p.consumerListeners = make(map[common.EventingConsumer]net.Listener)
+
+			for _, listener := range p.feedbackListeners {
+				listener.Close()
+			}
+			p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
+			p.listenerRWMutex.Unlock()
+
+			p.notifySupervisorCh <- struct{}{}
+
+		case <-p.stopProducerCh:
+			logging.Infof("%s [%s:%d] Explicitly asked to shutdown producer routine", logPrefix, p.appName, p.LenRunningConsumers())
+
+			for _, c := range p.getConsumers() {
+				p.stopAndDeleteConsumer(c)
+			}
+
+			p.runningConsumersRWMutex.Lock()
+			p.runningConsumers = nil
+			p.runningConsumersRWMutex.Unlock()
+
+			p.workerNameConsumerMapRWMutex.Lock()
+			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
+			p.workerNameConsumerMapRWMutex.Unlock()
+
+			p.listenerRWMutex.Lock()
+			for _, listener := range p.consumerListeners {
+				listener.Close()
+			}
+			p.consumerListeners = make(map[common.EventingConsumer]net.Listener)
+
+			for _, listener := range p.feedbackListeners {
+				listener.Close()
+			}
+			p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
+			p.listenerRWMutex.Unlock()
 
 			p.notifySupervisorCh <- struct{}{}
 			return
@@ -177,158 +341,306 @@ func (p *Producer) Serve() {
 
 // Stop implements suptree.Service interface
 func (p *Producer) Stop() {
-	// Cleanup all consumer listen handles
-	for _, lHandle := range p.listenerHandles {
-		lHandle.Stop()
+	logPrefix := "Producer::Stop"
+
+	logging.Infof("%s [%s:%d] Gracefully shutting down producer routine",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
+	p.isTerminateRunning = true
+
+	p.listenerRWMutex.RLock()
+	if p.consumerListeners != nil {
+		for _, lHandle := range p.consumerListeners {
+			if lHandle != nil {
+				lHandle.Close()
+			}
+		}
 	}
 
-	p.stopProducerCh <- struct{}{}
-	p.ProducerListener.Close()
+	logging.Infof("%s [%s:%d] Stopped main listener handles",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
+	p.consumerListeners = make(map[common.EventingConsumer]net.Listener)
+
+	if p.feedbackListeners != nil {
+		for _, fHandle := range p.feedbackListeners {
+			if fHandle != nil {
+				fHandle.Close()
+			}
+		}
+	}
+
+	logging.Infof("%s [%s:%d] Stopped feedback listener handles",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
+	p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
+	p.listenerRWMutex.RUnlock()
+
+	if p.metadataBucketHandle != nil {
+		p.metadataBucketHandle.Close()
+	}
+
+	logging.Infof("%s [%s:%d] Closed metadata bucket handle",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
+	if p.stopProducerCh != nil {
+		p.stopProducerCh <- struct{}{}
+	}
+
+	logging.Infof("%s [%s:%d] Signalled for Producer::Serve to exit",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
+	if p.appLogWriter != nil {
+		p.appLogWriter.Close()
+	}
+
+	logging.Infof("%s [%s:%d] Closed function log writer handle",
+		logPrefix, p.appName, p.LenRunningConsumers())
+
+	if p.updateStatsStopCh != nil {
+		p.updateStatsStopCh <- struct{}{}
+	}
+
+	if p.pollBucketStopCh != nil {
+		p.pollBucketStopCh <- struct{}{}
+	}
+
+	logging.Infof("%s [%s:%d] Exiting from Producer::Stop routine",
+		logPrefix, p.appName, p.LenRunningConsumers())
 }
 
 // Implement fmt.Stringer interface for better debugging in case
 // producer routine crashes and supervisor has to respawn it
 func (p *Producer) String() string {
-	return fmt.Sprintf("Producer => app: %s tcpPort: %s", p.appName, p.tcpPort)
+	return fmt.Sprintf("Producer => function: %s tcpPort: %s", p.appName, p.processConfig.SockIdentifier)
 }
 
 func (p *Producer) startBucket() {
+	logPrefix := "Producer::startBucket"
 
-	logging.Infof("PRDR[%s:%d] Connecting with bucket: %q", p.appName, p.LenRunningConsumers(), p.bucket)
+	logging.Infof("%s [%s:%d] Connecting with bucket: %q", logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket)
 
-	for i := 0; i < p.workerCount; i++ {
+	for i := 0; i < p.handlerConfig.WorkerCount; i++ {
 		workerName := fmt.Sprintf("worker_%s_%d", p.appName, i)
-		p.handleV8Consumer(workerName, p.workerVbucketMap[workerName], i)
+
+		p.workerVbMapRWMutex.RLock()
+		vbsAssigned := p.workerVbucketMap[workerName]
+		p.workerVbMapRWMutex.RUnlock()
+
+		p.handleV8Consumer(workerName, vbsAssigned, i, false)
 	}
 }
 
-func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int) {
+func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int, notifyRebalance bool) {
+	logPrefix := "Producer::handleV8Consumer"
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to listen on tcp port, err: %v", p.appName, p.LenRunningConsumers(), err)
+	p.handleV8ConsumerMutex.Lock()
+	defer p.handleV8ConsumerMutex.Unlock()
+
+	// Separate out of band socket to pipeline data from Eventing-consumer to Eventing-producer
+	var feedbackListener net.Listener
+
+	var listener net.Listener
+	var err error
+
+	// For windows use tcp socket based communication
+	// For linux/macos use unix domain sockets
+	// https://github.com/golang/go/issues/6895 - uds pathname limited to 108 chars
+
+	// Adding host port in uds path in order to make it across different nodes on a cluster_run setup
+	udsSockPath := fmt.Sprintf("%s/%s_%s.sock", os.TempDir(), p.nsServerHostPort, workerName)
+	feedbackSockPath := fmt.Sprintf("%s/feedback_%s_%s.sock", os.TempDir(), p.nsServerHostPort, workerName)
+
+	if runtime.GOOS == "windows" || len(feedbackSockPath) > udsSockPathLimit {
+		feedbackListener, err = net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
+		if err != nil {
+			logging.Errorf("%s [%s:%d] Failed to listen on feedback tcp port, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		}
+
+		_, p.processConfig.FeedbackSockIdentifier, err = net.SplitHostPort(feedbackListener.Addr().String())
+		if err != nil {
+			logging.Errorf("%s [%s:%d] Failed to parse feedback tcp port, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		}
+
+		listener, err = net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
+		if err != nil {
+			logging.Errorf("%s [%s:%d] Failed to listen on tcp port, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		}
+
+		_, p.processConfig.SockIdentifier, err = net.SplitHostPort(listener.Addr().String())
+		if err != nil {
+			logging.Errorf("%s [%s:%d] Failed to parse tcp port, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		}
+
+		p.processConfig.IPCType = "af_inet"
+
+	} else {
+		os.Remove(udsSockPath)
+		os.Remove(feedbackSockPath)
+
+		feedbackListener, err = net.Listen("unix", feedbackSockPath)
+		if err != nil {
+			logging.Errorf("%s [%s:%d] Failed to listen on feedback unix domain socket, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		}
+		p.processConfig.FeedbackSockIdentifier = feedbackSockPath
+
+		listener, err = net.Listen("unix", udsSockPath)
+		if err != nil {
+			logging.Errorf("%s [%s:%d] Failed to listen on unix domain socket, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		}
+		p.processConfig.SockIdentifier = udsSockPath
+
+		p.processConfig.IPCType = "af_unix"
 	}
 
-	p.tcpPort = strings.Split(listener.Addr().String(), ":")[1]
-	logging.Infof("PRDR[%s:%d] Started server on port: %s", p.appName, p.LenRunningConsumers(), p.tcpPort)
+	logging.Infof("%s [%s:%d] Spawning consumer to listen on socket: %rs feedback socket: %rs index: %d vbs len: %d dump: %s",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.processConfig.SockIdentifier, p.processConfig.FeedbackSockIdentifier,
+		index, len(vbnos), util.Condense(vbnos))
 
-	c := consumer.NewConsumer(p.dcpStreamBoundary, p.cleanupTimers, p.enableRecursiveMutation,
-		p.executionTimeout, index, p.lcbInstCapacity, p.skipTimerThreshold, p.socketWriteBatchSize,
-		p.timerWorkerPoolSize, p.cppWorkerThrCount, p.vbOwnershipGiveUpRoutineCount,
-		p.vbOwnershipTakeoverRoutineCount, p.bucket, p.eventingAdminPort, p.eventingDir, p.logLevel,
-		p.tcpPort, p.uuid, p.eventingNodeUUIDs, vbnos, p.app, p, p.superSup, p.vbPlasmaStore,
-		p.socketTimeout)
+	vbEventingNodeAssignMap := make(map[uint16]string)
+	workerVbucketMap := make(map[string][]uint16)
 
-	p.Lock()
-	p.consumerListeners = append(p.consumerListeners, listener)
-	serviceToken := p.workerSupervisor.Add(c)
-	p.runningConsumers = append(p.runningConsumers, c)
+	func() {
+		p.vbEventingNodeAssignRWMutex.RLock()
+		defer p.vbEventingNodeAssignRWMutex.RUnlock()
+
+		for vb, node := range p.vbEventingNodeAssignMap {
+			vbEventingNodeAssignMap[vb] = node
+		}
+	}()
+
+	func() {
+		p.workerVbMapRWMutex.RLock()
+		defer p.workerVbMapRWMutex.RUnlock()
+
+		for workerName, assignedVbs := range p.workerVbucketMap {
+			workerVbucketMap[workerName] = assignedVbs
+		}
+	}()
+
+	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid,
+		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.numVbuckets,
+		&p.retryCount, vbEventingNodeAssignMap, workerVbucketMap)
+
+	if notifyRebalance {
+		logging.Infof("%s [%s:%d] Consumer: %s notifying about cluster state change",
+			logPrefix, p.appName, p.LenRunningConsumers(), workerName)
+		c.SetRebalanceStatus(true)
+	}
+
+	p.listenerRWMutex.Lock()
+	p.consumerListeners[c] = listener
+	p.feedbackListeners[c] = feedbackListener
+	p.listenerRWMutex.Unlock()
+
+	p.workerNameConsumerMapRWMutex.Lock()
 	p.workerNameConsumerMap[workerName] = c
-	p.consumerSupervisorTokenMap[c] = serviceToken
-	p.Unlock()
+	p.workerNameConsumerMapRWMutex.Unlock()
 
-	al, err := newAbatableListener(listener)
-	if err != nil {
-		logging.Errorf("PRDR[%s:%d] Failed to create instance of interruptible tcp server, err: %v", p.appName, p.LenRunningConsumers(), err)
-		return
-	}
+	token := p.workerSupervisor.Add(c)
+	p.addToSupervisorTokenMap(c, token)
 
-	p.listenerHandles = append(p.listenerHandles, al)
+	p.runningConsumersRWMutex.Lock()
+	p.runningConsumers = append(p.runningConsumers, c)
+	p.runningConsumersRWMutex.Unlock()
 
-	go func(al *abatableListener, c *consumer.Consumer) {
+	go func(listener net.Listener, c *consumer.Consumer) {
 		for {
-			conn, err := al.Accept()
+			conn, err := listener.Accept()
 			if err != nil {
-				logging.Errorf("PRDR[%s:%d] Error on accept, err: %v", p.appName, p.LenRunningConsumers(), err)
 				return
 			}
+
+			logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, conn: %v",
+				logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), conn)
 			c.SetConnHandle(conn)
 			c.SignalConnected()
-			c.HandleV8Worker()
+			err = c.HandleV8Worker()
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+				return
+			}
 		}
-	}(al, c)
+	}(listener, c)
+
+	go func(feedbackListener net.Listener, c *consumer.Consumer) {
+		for {
+			conn, err := feedbackListener.Accept()
+			if err != nil {
+				return
+			}
+			logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, feedback conn: %v",
+				logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), conn)
+
+			c.SetFeedbackConnHandle(conn)
+			c.SignalFeedbackConnected()
+		}
+	}(feedbackListener, c)
 }
 
-// LenRunningConsumers returns the number of actively running consumers for a given app's producer
-func (p *Producer) LenRunningConsumers() int {
-	return len(p.runningConsumers)
-}
+// KillAndRespawnEventingConsumer cleans up a dead consumer handle from list of active running consumers
+func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
+	logPrefix := "Producer::KillAndRespawnEventingConsumer"
 
-// CleanupDeadConsumer cleans up a dead consumer handle from list of active running consumers
-func (p *Producer) CleanupDeadConsumer(c common.EventingConsumer) {
-	p.Lock()
-	defer p.Unlock()
+	p.workerSpawnCounter++
+
+	consumerIndex := c.Index()
+
 	var indexToPurge int
-	for i, val := range p.runningConsumers {
+	for i, val := range p.getConsumers() {
 		if val == c {
 			indexToPurge = i
 		}
 	}
 
 	if p.LenRunningConsumers() > 1 {
+		p.runningConsumersRWMutex.Lock()
 		p.runningConsumers = append(p.runningConsumers[:indexToPurge],
 			p.runningConsumers[indexToPurge+1:]...)
+		p.runningConsumersRWMutex.Unlock()
 	} else {
-		p.runningConsumers = p.runningConsumers[:0]
+		p.runningConsumersRWMutex.Lock()
+		p.runningConsumers = nil
+		p.runningConsumersRWMutex.Unlock()
 	}
 
+	p.workerNameConsumerMapRWMutex.Lock()
 	delete(p.workerNameConsumerMap, c.ConsumerName())
-}
+	p.workerNameConsumerMapRWMutex.Unlock()
 
-// VbEventingNodeAssignMap returns the vbucket to evening node mapping
-func (p *Producer) VbEventingNodeAssignMap() map[uint16]string {
-	p.RLock()
-	defer p.RUnlock()
-	return p.vbEventingNodeAssignMap
-}
+	logging.Infof("%s [%s:%d] IndexToPurge: %d ConsumerIndex: %d Shutting down Eventing.Consumer instance: %v",
+		logPrefix, p.appName, p.LenRunningConsumers(), indexToPurge, consumerIndex, c)
 
-// IsEventingNodeAlive verifies if a hostPortAddr combination is an active eventing node
-func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr string) bool {
-	eventingNodeAddrs := (*[]string)(atomic.LoadPointer(
-		(*unsafe.Pointer)(unsafe.Pointer(&p.eventingNodeAddrs))))
-	if eventingNodeAddrs != nil {
-		for _, v := range *eventingNodeAddrs {
-			if v == eventingHostPortAddr {
-				return true
-			}
+	token := p.getSupervisorToken(c)
+	p.workerSupervisor.Remove(token)
+
+	logging.Infof("%s [%s:%d] IndexToPurge: %d ConsumerIndex: %d Closing down listener handles",
+		logPrefix, p.appName, p.LenRunningConsumers(), indexToPurge, consumerIndex)
+
+	p.listenerRWMutex.RLock()
+	if conn, ok := p.consumerListeners[c]; ok {
+		if conn != nil {
+			conn.Close()
 		}
+		delete(p.consumerListeners, c)
 	}
-	return false
-}
 
-// WorkerVbMap returns mapping of active consumers to vbuckets they should handle as per static planner
-func (p *Producer) WorkerVbMap() map[string][]uint16 {
-	p.RLock()
-	defer p.RUnlock()
-	return p.workerVbucketMap
-}
+	if conn, ok := p.feedbackListeners[c]; ok {
+		if conn != nil {
+			conn.Close()
+		}
+		delete(p.feedbackListeners, c)
+	}
+	p.listenerRWMutex.RUnlock()
 
-// GetNsServerPort return rest port for ns_server
-func (p *Producer) GetNsServerPort() string {
-	p.RLock()
-	defer p.RUnlock()
-	return p.nsServerPort
-}
+	logging.Infof("%s [%s:%d] ConsumerIndex: %d respawning the Eventing.Consumer instance",
+		logPrefix, p.appName, p.LenRunningConsumers(), consumerIndex)
+	workerName := fmt.Sprintf("worker_%s_%d", p.appName, consumerIndex)
+	p.workerVbMapRWMutex.RLock()
+	vbsAssigned := p.workerVbucketMap[workerName]
+	p.workerVbMapRWMutex.RUnlock()
 
-// NsServerHostPort returns host:port combination for ns_server instance
-func (p *Producer) NsServerHostPort() string {
-	p.RLock()
-	defer p.RUnlock()
-	return p.nsServerHostPort
-}
-
-// KvHostPorts returns host:port combination for kv service
-func (p *Producer) KvHostPorts() []string {
-	p.RLock()
-	defer p.RUnlock()
-	return p.kvHostPorts
-}
-
-// Auth returns username:password combination for the cluster
-func (p *Producer) Auth() string {
-	p.RLock()
-	defer p.RUnlock()
-	return p.auth
+	p.handleV8Consumer(workerName, vbsAssigned, consumerIndex, true)
 }
 
 func (p *Producer) getEventingNodeAddrs() []string {
@@ -349,54 +661,17 @@ func (p *Producer) getKvNodeAddrs() []string {
 	return nil
 }
 
-// NsServerNodeCount returns count of currently active ns_server nodes in the cluster
-func (p *Producer) NsServerNodeCount() int {
-	nsServerNodeAddrs := (*[]string)(atomic.LoadPointer(
-		(*unsafe.Pointer)(unsafe.Pointer(&p.nsServerNodeAddrs))))
-	if nsServerNodeAddrs != nil {
-		return len(*nsServerNodeAddrs)
-	}
-	return 0
-}
-
 func (p *Producer) getEventingNodeAssignedVbuckets(eventingNode string) []uint16 {
+	p.vbEventingNodeAssignRWMutex.RLock()
+	defer p.vbEventingNodeAssignRWMutex.RUnlock()
+
 	var vbnos []uint16
-	p.RLock()
-	defer p.RUnlock()
 	for vbno, node := range p.vbEventingNodeAssignMap {
 		if node == eventingNode {
 			vbnos = append(vbnos, vbno)
 		}
 	}
 	return vbnos
-}
-
-func (p *Producer) getConsumerAssignedVbuckets(workerName string) []uint16 {
-	p.RLock()
-	defer p.RUnlock()
-	return p.workerVbucketMap[workerName]
-}
-
-// CfgData returns deployment descriptor content
-func (p *Producer) CfgData() string {
-	return p.cfgData
-}
-
-// ClearEventStats flushes event processing stats
-func (p *Producer) ClearEventStats() {
-	for _, c := range p.runningConsumers {
-		c.ClearEventStats()
-	}
-}
-
-// MetadataBucket return metadata bucket for event handler
-func (p *Producer) MetadataBucket() string {
-	return p.metadatabucket
-}
-
-// NotifyInit notifies the supervisor about producer initialisation
-func (p *Producer) NotifyInit() {
-	<-p.notifyInitCh
 }
 
 // NotifySettingsChange is called by super_supervisor to notify producer about settings update
@@ -415,214 +690,211 @@ func (p *Producer) NotifyTopologyChange(msg *common.TopologyChangeMsg) {
 }
 
 // NotifyPrepareTopologyChange captures keepNodes supplied as part of topology change message
-func (p *Producer) NotifyPrepareTopologyChange(keepNodes []string) {
+func (p *Producer) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string) {
+	p.ejectNodeUUIDs = ejectNodes
 	p.eventingNodeUUIDs = keepNodes
 
-	for _, consumer := range p.runningConsumers {
-		consumer.UpdateEventingNodesUUIDs(keepNodes)
+	for _, eventingConsumer := range p.getConsumers() {
+		eventingConsumer.UpdateEventingNodesUUIDs(keepNodes)
 	}
 
-}
-
-// RbacUser return username for eventing specific rbac user, which
-// has all admin privileges
-func (p *Producer) RbacUser() string {
-	return p.rbacuser
-}
-
-// RbacPass return password for eventing specific rbac user, which
-// has all admin privileges
-func (p *Producer) RbacPass() string {
-	return p.rbacpass
-}
-
-// SignalToClosePlasmaStore is called by running consumer instances to signal that they
-// have stopped any operations against plasma instance associated with a specific
-// vbucket
-func (p *Producer) SignalToClosePlasmaStore(vb uint16) {
-	logging.Infof("PRDR[%s:%d] Got request from running consumer for vb: %v, requesting close of plasma store",
-		p.appName, p.LenRunningConsumers(), vb)
-	p.superSup.SignalToClosePlasmaStore(vb)
-}
-
-// SignalPlasmaClosed is used to signal every running consumer for a given app handler
-// to mark the dcp stream status as stopped after timer data transfer is finished
-func (p *Producer) SignalPlasmaClosed(vb uint16) {
-	for _, c := range p.runningConsumers {
-		logging.Infof("PRDR[%s:%d] vb: %v Signalling worker: %v about plasma store instance close",
-			p.appName, p.LenRunningConsumers(), vb, c.ConsumerName())
-		c.SignalPlasmaClosed(vb)
-	}
-}
-
-// SignalPlasmaTransferFinish is called by super supervisor instance on an eventing
-// node to signal every running producer instance that transfer of timer related
-// plasma files has finished
-func (p *Producer) SignalPlasmaTransferFinish(vb uint16, store *plasma.Plasma) {
-
-retryConsumerTransferFinishSig:
-	c, err := p.vbConsumerOwner(vb)
-	if err != nil {
-		logging.Errorf("PRDR[%s:%d] vb: %v failed to find consumer to signal about plasma timer data transfer finish. Retrying",
-			p.appName, p.LenRunningConsumers(), vb)
-		time.Sleep(bucketOpRetryInterval)
-		goto retryConsumerTransferFinishSig
-	}
-
-	logging.Tracef("PRDR[%s:%d] vb: %v Signalling worker: %v about plasma timer data transfer finish",
-		p.appName, p.LenRunningConsumers(), vb, c.ConsumerName())
-	c.SignalPlasmaTransferFinish(vb, store)
-}
-
-func (p *Producer) vbConsumerOwner(vb uint16) (common.EventingConsumer, error) {
-	p.RLock()
-	workerVbucketMap := p.WorkerVbMap()
-	p.RUnlock()
-
-	var workerName string
-	for w, vbs := range workerVbucketMap {
-		for _, v := range vbs {
-			if v == vb {
-				workerName = w
-				goto breakWorkerLookup
-			}
-		}
-	}
-
-breakWorkerLookup:
-	if workerName == "" {
-		logging.Errorf("PRDR[%s:%d] No worker found for vb: %v", p.appName, p.LenRunningConsumers(), vb)
-		return nil, fmt.Errorf("worker not found")
-	}
-
-	p.RLock()
-	c := p.workerNameConsumerMap[workerName]
-	p.RUnlock()
-
-	// Checking if assigned Eventing.Consumer is alive or not
-	p.RLock()
-	defer p.RUnlock()
-	for _, consumer := range p.runningConsumers {
-		if consumer == nil || c == nil {
-			return nil, fmt.Errorf("worker not alive at present")
-		}
-		if consumer.ConsumerName() == c.ConsumerName() {
-			return c, nil
-		}
-	}
-	return nil, fmt.Errorf("worker not alive at present")
-}
-
-// SignalCheckpointBlobCleanup cleans up eventing app related blobs from metadata bucket
-func (p *Producer) SignalCheckpointBlobCleanup() {
-
-	for vb := 0; vb < numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s_vb_%d", p.appName, vb)
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, vbKey)
-	}
-
-	dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, dFlagKey)
-
-	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), deleteOpCallback, p, dInstAddrKey)
-
-	logging.Infof("PRDR[%s:%d] Purged all owned checkpoint & debugger blobs from metadata bucket: %s",
-		p.appName, p.LenRunningConsumers(), p.metadataBucketHandle.Name)
 }
 
 // SignalStartDebugger updates KV blob in metadata bucket signalling request to start
 // V8 Debugger
-func (p *Producer) SignalStartDebugger() {
+func (p *Producer) SignalStartDebugger() error {
+	logPrefix := "Producer::SignalStartDebugger"
+
 	key := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
-	blob := &common.StartDebugBlob{
-		StartDebug: true,
+	blob := &common.StartDebugBlobVer{
+		common.StartDebugBlob{StartDebug: true},
+		util.EventingVer(),
 	}
 
 	// Check if debugger instance is already running somewhere
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, dInstAddrKey, dInstAddrBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval),
+		&p.retryCount, getOpCallback, p, p.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout",
+			logPrefix, p.appName, p.LenRunningConsumers())
+		return common.ErrRetryTimeout
+	}
 
 	if dInstAddrBlob.NodeUUID == "" {
-		util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, p, key, blob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval),
+			&p.retryCount, setOpCallback, p, p.AddMetadataPrefix(key), blob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%d] Exiting due to timeout",
+				logPrefix, p.appName, p.LenRunningConsumers())
+			return common.ErrRetryTimeout
+		}
 	} else {
-		logging.Errorf("PRDR[%s:%d] Debugger already started. Host: %v Worker: %v uuid: %v",
-			p.appName, p.LenRunningConsumers(), dInstAddrBlob.HostPortAddr, dInstAddrBlob.ConsumerName, dInstAddrBlob.NodeUUID)
+		logging.Errorf("%s [%s:%d] Debugger already started. Host: %rs Worker: %v uuid: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), dInstAddrBlob.HostPortAddr,
+			dInstAddrBlob.ConsumerName, dInstAddrBlob.NodeUUID)
 	}
+	return nil
 }
 
 // SignalStopDebugger updates KV blob in metadata bucket signalling request to stop
 // V8 Debugger
-func (p *Producer) SignalStopDebugger() {
+func (p *Producer) SignalStopDebugger() error {
+	logPrefix := "Producer::SignalStopDebugger"
+
 	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, dInstAddrKey, debuggerInstBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey), debuggerInstBlob)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return common.ErrRetryTimeout
+	}
 
 	if debuggerInstBlob.NodeUUID == p.uuid {
-		for _, c := range p.runningConsumers {
+		for _, c := range p.getConsumers() {
 			if c.ConsumerName() == debuggerInstBlob.ConsumerName {
-				c.SignalStopDebugger()
+				err = c.SignalStopDebugger()
+				if err == common.ErrRetryTimeout {
+					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+					return common.ErrRetryTimeout
+				}
 			}
 		}
 	} else {
 		if debuggerInstBlob.HostPortAddr == "" {
-			logging.Errorf("PRDR[%s:%d] Debugger hasn't started.", p.appName, p.LenRunningConsumers())
+			logging.Errorf("%s [%s:%d] Debugger hasn't started.", logPrefix, p.appName, p.LenRunningConsumers())
 
-			debugBlob := &common.StartDebugBlob{
-				StartDebug: false,
+			debugBlob := &common.StartDebugBlobVer{
+				common.StartDebugBlob{StartDebug: false},
+				util.EventingVer(),
 			}
 			dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
 
-			util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), setOpCallback, p, dFlagKey, debugBlob)
+			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
+				p, p.AddMetadataPrefix(dFlagKey), debugBlob)
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+				return common.ErrRetryTimeout
+			}
 
 		} else {
 			util.StopDebugger("stopDebugger", debuggerInstBlob.HostPortAddr, p.appName)
 		}
 	}
-}
 
-// GetAppCode returns handler code for the current app
-func (p *Producer) GetAppCode() string {
-	return p.app.AppCode
+	return nil
 }
 
 // GetDebuggerURL returns V8 Debugger url
-func (p *Producer) GetDebuggerURL() string {
+func (p *Producer) GetDebuggerURL() (string, error) {
+	logPrefix := "Producer::GetDebuggerURL"
 	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
 	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 
-	util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), getOpCallback, p, dInstAddrKey, debuggerInstBlob)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
+		p, p.AddMetadataPrefix(dInstAddrKey), debuggerInstBlob)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return "", common.ErrRetryTimeout
+	}
 
-	debugURL := util.GetDebuggerURL("/debugUrl", debuggerInstBlob.HostPortAddr, p.appName)
+	debugURL := util.GetDebuggerURL("/getLocalDebugUrl", debuggerInstBlob.HostPortAddr, p.appName)
 
-	return debugURL
+	return debugURL, nil
 }
 
-// GetSourceMap return source map to assist V8 Debugger
-func (p *Producer) GetSourceMap() string {
-	if len(p.runningConsumers) > 0 {
-		return p.runningConsumers[0].GetSourceMap()
+func (p *Producer) updateStats() {
+	logPrefix := "Producer::updateStats"
+
+	for {
+		select {
+		case <-p.updateStatsTicker.C:
+			err := p.vbDistributionStats()
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+				p.updateStatsTicker.Stop()
+				return
+			}
+
+			err = p.getSeqsProcessed()
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+				p.updateStatsTicker.Stop()
+				return
+			}
+
+		case <-p.updateStatsStopCh:
+			p.updateStatsTicker.Stop()
+			return
+
+		default:
+			if p.isTerminateRunning {
+				logging.Infof("%s [%s:%d] Terminate running, exiting", logPrefix, p.appName, p.LenRunningConsumers())
+				p.updateStatsTicker.Stop()
+				return
+			}
+			time.Sleep(time.Second)
+		}
 	}
-	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
-	return ""
 }
 
-// GetHandlerCode returns handler code to assist V8 Debugger
-func (p *Producer) GetHandlerCode() string {
-	if len(p.runningConsumers) > 0 {
-		return p.runningConsumers[0].GetHandlerCode()
+func (p *Producer) updateAppLogSetting(settings map[string]interface{}) {
+	if val, ok := settings["app_log_max_size"]; ok {
+		p.appLogMaxSize = int64(val.(float64))
 	}
-	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
-	return ""
+
+	if val, ok := settings["app_log_max_files"]; ok {
+		p.appLogMaxFiles = int64(val.(float64))
+	}
+
+	logger := p.appLogWriter.(*appLogCloser)
+	updateApplogSetting(logger, p.appLogMaxFiles, p.appLogMaxSize)
 }
 
-// GetSeqsProcessed returns vbucket specific sequence nos processed so far
-func (p *Producer) GetSeqsProcessed() map[int]int64 {
-	if len(p.runningConsumers) > 0 {
-		return p.runningConsumers[0].GetSeqsProcessed()
+func (p *Producer) pollForDeletedVbs() {
+	logPrefix := "Producer::pollForDeletedVbs"
+
+	p.pollBucketTicker = time.NewTicker(p.pollBucketInterval)
+
+	for {
+		select {
+		case <-p.pollBucketTicker.C:
+			hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+
+			srcBucketNodeCount := util.CountActiveKVNodes(p.handlerConfig.SourceBucket, hostAddress)
+			if srcBucketNodeCount == 0 {
+				logging.Infof("%s [%s:%d] SrcBucketNodeCount: %d Stopping running producer",
+					logPrefix, p.appName, p.LenRunningConsumers(), srcBucketNodeCount)
+				p.superSup.StopProducer(p.appName, false)
+				continue
+			}
+
+			metaBucketNodeCount := util.CountActiveKVNodes(p.metadatabucket, hostAddress)
+			if metaBucketNodeCount == 0 {
+				logging.Infof("%s [%s:%d] MetaBucketNodeCount: %d Stopping running producer",
+					logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)
+				p.superSup.StopProducer(p.appName, true)
+			}
+
+		case <-p.pollBucketStopCh:
+			p.pollBucketTicker.Stop()
+			return
+		}
 	}
-	logging.Errorf("PRDR[%s:%d] No active Eventing.Consumer instances running", p.appName, p.LenRunningConsumers())
-	return nil
+}
+
+func (p *Producer) getConsumers() []common.EventingConsumer {
+	workers := make([]common.EventingConsumer, 0)
+
+	p.runningConsumersRWMutex.RLock()
+	defer p.runningConsumersRWMutex.RUnlock()
+
+	for _, worker := range p.runningConsumers {
+		workers = append(workers, worker)
+	}
+
+	return workers
 }

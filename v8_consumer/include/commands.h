@@ -17,11 +17,11 @@
 // Opcodes for incoming messages from Go to C++
 enum event_type {
   eDCP,
-  eHTTP,
   eV8_Worker,
   eApp_Worker_Setting,
   eTimer,
   eDebugger,
+  eFilter,
   Event_Unknown
 };
 
@@ -32,13 +32,18 @@ enum v8_worker_opcode {
   oTerminate,
   oGetSourceMap,
   oGetHandlerCode,
+  oGetLatencyStats,
+  oGetFailureStats,
+  oGetExecutionStats,
+  oGetCompileInfo,
+  oGetLcbExceptions,
   oVersion,
   V8_Worker_Opcode_Unknown
 };
 
 enum dcp_opcode { oDelete, oMutation, DCP_Opcode_Unknown };
 
-enum http_opcode { oGet, oPost, HTTP_Opcode_Unknown };
+enum filter_opcode { oVbFilter, Filter_Opcode_Unknown };
 
 enum app_worker_setting_opcode {
   oLogLevel,
@@ -47,27 +52,44 @@ enum app_worker_setting_opcode {
   App_Worker_Setting_Opcode_Unknown
 };
 
-enum timer_opcode { oDocTimer, oNonDocTimer, Timer_Opcode_Unknown };
+enum timer_opcode { oTimer, oCronTimer, Timer_Opcode_Unknown };
 
 enum debugger_opcode { oDebuggerStart, oDebuggerStop, Debugger_Opcode_Unknown };
 
 event_type getEvent(int8_t event);
 v8_worker_opcode getV8WorkerOpcode(int8_t opcode);
 dcp_opcode getDCPOpcode(int8_t opcode);
-http_opcode getHTTPOpcode(int8_t opcode);
 app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode);
 timer_opcode getTimerOpcode(int8_t opcode);
 debugger_opcode getDebuggerOpcode(int8_t opcode);
 
 // Opcodes for outgoing messages from C++ to Go
-enum msg_type { mType, mV8_Worker_Config, Msg_Unknown };
+enum msg_type {
+  mType,
+  mV8_Worker_Config,
+  mTimer_Response,
+  mBucket_Ops_Response,
+  mFilterAck,
+  Msg_Unknown
+};
 
 enum v8_worker_config_opcode {
   oConfigOpcode,
   oSourceMap,
   oHandlerCode,
-  oLogMessage,
+  oAppLogMessage,
+  oSysLogMessage,
+  oLatencyStats,
+  oFailureStats,
+  oExecutionStats,
+  oCompileInfo,
+  oQueueSize,
+  oLcbExceptions,
   V8_Worker_Config_Opcode_Unknown
 };
+
+enum doc_timer_response_opcode { timerResponse };
+
+enum bucket_ops_response_opcode { checkpointResponse };
 
 #endif

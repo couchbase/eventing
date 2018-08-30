@@ -9,19 +9,19 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#ifndef PARSE_DEPLOYMENT
+#define PARSE_DEPLOYMENT
+
+#include <cassert>
 #include <fstream>
 #include <iostream>
+#include <list>
 #include <map>
 #include <string>
 #include <vector>
 
-#ifndef STANDALONE_BUILD
-extern void(assert)(int);
-#else
-#include <cassert>
-#endif
-
 #include "../../gen/flatbuf/cfg_schema_generated.h"
+#include "../../gen/flatbuf/payload_generated.h"
 
 typedef struct deployment_config_s {
   std::string metadata_bucket;
@@ -31,3 +31,7 @@ typedef struct deployment_config_s {
 } deployment_config;
 
 deployment_config *ParseDeployment(const char *app_name);
+std::vector<std::string> ToStringArray(
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *from);
+
+#endif

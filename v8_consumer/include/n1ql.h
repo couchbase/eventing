@@ -12,16 +12,17 @@
 #ifndef N1QL_H
 #define N1QL_H
 
-#include <map>
+#include <libcouchbase/couchbase.h>
+#include <libcouchbase/n1ql.h>
+#include <list>
 #include <queue>
 #include <stack>
 #include <string>
+#include <unordered_map>
 #include <v8.h>
 #include <vector>
 
-#include "libcouchbase/couchbase.h"
-#include "libcouchbase/n1ql.h"
-
+#include "comm.h"
 #include "log.h"
 #include "v8worker.h"
 
@@ -34,6 +35,7 @@ enum op_code {
   kKeywordDrop,
   kKeywordExecute,
   kKeywordExplain,
+  kKeywordFrom,
   kKeywordGrant,
   kKeywordInfer,
   kKeywordInsert,
@@ -43,16 +45,74 @@ enum op_code {
   kKeywordRevoke,
   kKeywordSelect,
   kKeywordUpdate,
-  kKeywordUpsert
+  kKeywordUpsert,
+  kN1QLParserError
 };
 
-enum lex_op_code { kJsify, kUniLineN1QL };
+enum lex_op_code { kJsify, kUniLineN1QL, kCommentN1QL };
+
+// Insertion types for CommentN1QL
+enum class insert_type { kN1QLBegin, kN1QLEnd };
+
+// Keeps track of the type of literal inserted during CommentN1QL
+struct InsertedCharsInfo {
+  InsertedCharsInfo(insert_type type)
+      : type(type), type_len(0), line_no(0), index(0) {}
+
+  insert_type type;
+  int type_len;
+  int32_t line_no;
+  int32_t index;
+};
+
+// Represents position of each char in the source code
+struct Pos {
+  Pos() : line_no(0), col_no(0), index(0) {}
+
+  int32_t line_no;
+  int32_t col_no;
+  int32_t index;
+};
+
+struct JsifyInfo {
+  int code;
+  std::string handler_code;
+  Pos last_pos;
+};
+
+struct UniLineN1QLInfo {
+  int code;
+  std::string handler_code;
+  Pos last_pos;
+};
+
+struct CommentN1QLInfo {
+  int code;
+  std::string handler_code;
+  std::list<InsertedCharsInfo> insertions;
+  Pos last_pos;
+  ParseInfo parse_info;
+};
+
+// Represents compilation status
+struct CompilationInfo {
+  CompilationInfo() : compile_success(false), index(0), line_no(0), col_no(0) {}
+
+  std::string language;
+  bool compile_success;
+  int32_t index;
+  int32_t line_no;
+  int32_t col_no;
+  std::string description;
+  std::string version;
+  std::string level;
+  std::string area;
+};
 
 // Data type for managing iterators.
 struct IterQueryHandler {
   std::string metadata;
   v8::Local<v8::Function> callback;
-  v8::Local<v8::Value> return_value;
 };
 
 struct BlockingQueryHandler {
@@ -64,85 +124,150 @@ struct QueryHandler {
   std::string hash;
   std::string query;
   lcb_t instance = nullptr;
-  v8::Isolate *isolate = nullptr;
   IterQueryHandler *iter_handler = nullptr;
   BlockingQueryHandler *block_handler = nullptr;
+  std::unordered_map<std::string, std::string> *named_params = nullptr;
+};
+
+// Data type for cookie to be used during row callback execution.
+struct HandlerCookie {
+  v8::Isolate *isolate = nullptr;
+  lcb_N1QLHANDLE handle = nullptr;
 };
 
 // Pool of lcb instances and routines for pool management.
 class ConnectionPool {
-private:
-  const int capacity;
-  int inst_count;
-  std::string conn_str;
-  std::string rbac_pass;
-  std::queue<lcb_t> instances;
-  void AddResource();
-
 public:
-  ConnectionPool(int capacity, std::string cb_kv_endpoint,
-                 std::string cb_source_bucket, std::string rbac_user,
-                 std::string rbac_pass);
-  void Restore(lcb_t instance) { instances.push(instance); }
+  ConnectionPool(v8::Isolate *isolate, int capacity, std::string cb_kv_endpoint,
+                 std::string cb_source_bucket);
+
+  void Restore(lcb_t instance) { instances_.push(instance); }
   lcb_t GetResource();
   static void Error(lcb_t instance, const char *msg, lcb_error_t err);
   ~ConnectionPool();
+
+private:
+  void AddResource();
+
+  const int capacity_;
+  int inst_count_;
+  std::string conn_str_;
+  std::queue<lcb_t> instances_;
+  v8::Isolate *isolate_;
 };
 
 // Data structure for maintaining the operations.
-// Each stack element is hashed, providing a two-way access.
+// Each stack element is hashed, providing access through both the ADTs - Stack
+// and HashMap.
 class HashedStack {
-  std::stack<QueryHandler> qstack;
-  std::map<std::string, QueryHandler *> qmap;
-
 public:
-  HashedStack() {}
+  HashedStack() = default;
   void Push(QueryHandler &q_handler);
   void Pop();
-  QueryHandler Top() { return qstack.top(); }
-  QueryHandler *Get(std::string index_hash) { return qmap[index_hash]; }
-  int Size() { return static_cast<int>(qstack.size()); }
-  ~HashedStack() {}
+  QueryHandler Top() { return qstack_.top(); }
+  QueryHandler *Get(const std::string &index_hash) { return qmap_[index_hash]; }
+  // TODO : Deduce return type
+  int Size() { return static_cast<int>(qstack_.size()); }
+
+private:
+  std::stack<QueryHandler> qstack_;
+  std::unordered_map<std::string, QueryHandler *> qmap_;
 };
 
 class N1QL {
+public:
+  N1QL(ConnectionPool *inst_pool, v8::Isolate *isolate)
+      : isolate_(isolate), inst_pool_(inst_pool) {}
+  HashedStack qhandler_stack;
+  std::vector<std::string> ExtractErrorMsg(const char *metadata);
+  // Schedules operations for execution.
+  template <typename> void ExecQuery(QueryHandler &q_handler);
+
 private:
-  ConnectionPool *inst_pool;
   // Callback for each row.
   template <typename>
   static void RowCallback(lcb_t instance, int callback_type,
                           const lcb_RESPN1QL *resp);
+  static void HandleRowCallbackFailure(lcb_t instance, const lcb_RESPN1QL *resp,
+                                       const Data *isolate_data,
+                                       N1QL *n1ql_handle);
+  v8::Isolate *isolate_;
+  ConnectionPool *inst_pool_;
+};
 
-public:
-  N1QL(ConnectionPool *inst_pool) : inst_pool(inst_pool) {}
-  HashedStack qhandler_stack;
-  std::vector<std::string> ExtractErrorMsg(const char *metadata,
-                                           v8::Isolate *isolate);
-  // Schedules operations for execution.
-  template <typename> void ExecQuery(QueryHandler &q_handler);
-  ~N1QL() {}
+struct TranspiledInfo {
+  TranspiledInfo(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
+                 const v8::Local<v8::Value> &transpiler_result);
+  ~TranspiledInfo();
+  bool ReplaceSource(const std::string &handler_code);
+
+  std::string transpiled_code;
+  std::string source_map;
+
+private:
+  v8::Isolate *isolate_;
+  v8::Persistent<v8::Context> context_;
 };
 
 class Transpiler {
-  v8::Isolate *isolate;
-  v8::Local<v8::Context> context;
-
 public:
-  Transpiler(std::string transpiler_src);
-  v8::Local<v8::Value> ExecTranspiler(std::string function,
+  Transpiler(v8::Isolate *isolate, const std::string &transpiler_src,
+             const std::vector<std::string> &handler_headers,
+             const std::vector<std::string> &handler_footers);
+  ~Transpiler();
+
+  v8::Local<v8::Value> ExecTranspiler(const std::string &function,
                                       v8::Local<v8::Value> args[],
-                                      int args_len);
-  std::string Transpile(std::string user_code, std::string filename,
-                        std::string src_map_name, std::string host_addr,
-                        std::string eventing_port);
-  std::string JsFormat(std::string user_code);
-  std::string GetSourceMap(std::string user_code, std::string filename);
-  bool IsTimerCalled(std::string user_code);
-  ~Transpiler() {}
+                                      const int &args_len);
+  CompilationInfo Compile(const std::string &plain_js);
+  std::string Transpile(const std::string &jsified_code,
+                        const std::string &src_filename,
+                        const std::string &handler_code);
+  std::string JsFormat(const std::string &handler_code);
+  std::string GetSourceMap(const std::string &handler_code,
+                           const std::string &src_filename);
+  std::string TranspileQuery(const std::string &query,
+                             const NamedParamsInfo &info);
+  UniLineN1QLInfo UniLineN1QL(const std::string &handler_code);
+  CodeVersion GetCodeVersion(const std::string &handler_code);
+  bool IsTimerCalled(const std::string &handler_code);
+  bool IsJsExpression(const std::string &str);
+  static void LogCompilationInfo(const CompilationInfo &info);
+
+private:
+  std::string AppendSourceMap(const TranspiledInfo &info);
+  static void Log(const v8::FunctionCallbackInfo<v8::Value> &args);
+  void RectifyCompilationInfo(CompilationInfo &info,
+                              const std::list<InsertedCharsInfo> &n1ql_pos);
+  CompilationInfo ComposeErrorInfo(const CommentN1QLInfo &cmt_info);
+  CompilationInfo
+  ComposeCompilationInfo(v8::Local<v8::Value> &compiler_result,
+                         const std::list<InsertedCharsInfo> &ins_list);
+  std::string ComposeDescription(int code);
+
+  v8::Persistent<v8::Context> context_;
+  v8::Isolate *isolate_;
+  std::string transpiler_src_;
+  std::vector<std::string> handler_headers_;
+  std::vector<std::string> handler_footers_;
 };
 
-int Jsify(const char *, std::string *);
-int UniLineN1QL(const char *input, std::string *output);
+// Function prototypes of jsify.lex
+JsifyInfo Jsify(const std::string &input);
+UniLineN1QLInfo UniLineN1QL(const std::string &info);
+CommentN1QLInfo CommentN1QL(const std::string &input);
+
+void HandleStrStart(int state);
+void HandleStrStop(int state);
+bool IsEsc(const std::string &str);
+void UpdatePos(insert_type type);
+void UpdatePos(Pos *pos);
+std::string TranspileQuery(const std::string &query);
+void ReplaceRecentChar(std::string &str, char m, char n);
+ParseInfo ParseQuery(const std::string &query);
+int32_t CountNewLines(const std::string &str, const int32_t from = 0);
+int32_t CountStr(const std::string &needle, const std::string &haystack,
+                 const int32_t from = 0);
 
 void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
@@ -155,7 +280,7 @@ template <typename HandlerType, typename ResultType>
 void AddQueryMetadata(HandlerType handler, v8::Isolate *isolate,
                       ResultType &result);
 
-std::string AppendStackIndex(int obj_hash);
+std::string AppendStackIndex(int obj_hash, v8::Isolate *isolate);
 bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args, std::string key);
 std::string SetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args);
 std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args);
@@ -164,8 +289,8 @@ std::string GetBaseHash(const v8::FunctionCallbackInfo<v8::Value> &args,
 void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
                     std::string key_hash_str, std::string value_hash_str);
 void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args);
-const char *ToCString(const v8::String::Utf8Value &value);
-bool ToCBool(const v8::Local<v8::Boolean> &value);
 template <typename T> v8::Local<T> ToLocal(const v8::MaybeLocal<T> &handle);
+std::unordered_map<std::string, std::string>
+ExtractNamedParams(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 #endif
