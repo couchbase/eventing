@@ -6,6 +6,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -55,7 +56,7 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
@@ -113,7 +114,7 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	b := args[1].(**couchbase.Bucket)
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
@@ -127,11 +128,13 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	var err error
 	*b, err = util.ConnectBucket(hostPortAddr, "default", c.bucket)
 	if err != nil {
-		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed isTerminateRunning: %t , err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, c.isTerminateRunning, err)
+		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed isTerminateRunning: %d , err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket,
+			atomic.LoadUint32(&c.isTerminateRunning), err)
 	} else {
-		logging.Infof("%s [%s:%d] Connected to bucket: %s isTerminateRunning: %t",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, c.isTerminateRunning)
+		logging.Infof("%s [%s:%d] Connected to bucket: %s isTerminateRunning: %d",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket,
+			atomic.LoadUint32(&c.isTerminateRunning))
 	}
 
 	return err
@@ -176,7 +179,7 @@ var getOpCallback = func(args ...interface{}) error {
 		createIfMissing = args[6].(bool)
 	}
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
@@ -726,7 +729,7 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	flogs := args[1].(*couchbase.FailoverLog)
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
@@ -790,7 +793,7 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	feedName := args[1].(couchbase.DcpFeedName)
 	kvHostPort := args[2].(string)
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
@@ -999,7 +1002,7 @@ var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbs := args[1].([]uint16)
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil

@@ -8,6 +8,7 @@ import (
 	"io"
 	"runtime/debug"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	mcd "github.com/couchbase/eventing/dcp/transport"
@@ -431,7 +432,7 @@ func (c *Consumer) sendMessageLoop() {
 		select {
 		case <-c.socketWriteTicker.C:
 			if c.sendMsgCounter > 0 && c.conn != nil {
-				if c.isTerminateRunning || c.stoppingConsumer {
+				if atomic.LoadUint32(&c.isTerminateRunning) == 1 || c.stoppingConsumer {
 					return
 				}
 
@@ -486,7 +487,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 		}
 	}()
 
-	if c.isTerminateRunning || c.stoppingConsumer {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 || c.stoppingConsumer {
 		return fmt.Errorf("Eventing.Consumer instance is terminating")
 	}
 

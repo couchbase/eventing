@@ -140,7 +140,7 @@ func (c *Consumer) routeTimers() {
 				c.timerStorageMetaChsRWMutex.RLock()
 				defer c.timerStorageMetaChsRWMutex.RUnlock()
 
-				if c.isTerminateRunning {
+				if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 					return
 				}
 				c.timerStorageRoutineMetaChs[partition] <- e

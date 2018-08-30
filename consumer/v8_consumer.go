@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -240,7 +241,7 @@ func (c *Consumer) Serve() {
 	}
 
 	for _, kvHostPort := range c.getKvNodes() {
-		if c.isTerminateRunning {
+		if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 			continue
 		}
 
@@ -260,7 +261,7 @@ func (c *Consumer) Serve() {
 		c.hostDcpFeedRWMutex.Unlock()
 	}
 
-	if !c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 0 {
 		c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
 		c.clientSupToken = c.consumerSup.Add(c.client)
 	}
@@ -290,7 +291,7 @@ checkIfPlannerRunning:
 	logging.Infof("%s [%s:%s:%d] vbsStateUpdateRunning: %t",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning)
 
-	if !c.vbsStateUpdateRunning && !c.isTerminateRunning {
+	if !c.vbsStateUpdateRunning && atomic.LoadUint32(&c.isTerminateRunning) == 0 {
 		logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		go c.vbsStateUpdate()
@@ -373,7 +374,7 @@ func (c *Consumer) Stop() {
 		}
 	}()
 
-	c.isTerminateRunning = true
+	atomic.StoreUint32(&c.isTerminateRunning, 1)
 
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())

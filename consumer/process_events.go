@@ -576,7 +576,7 @@ func (c *Consumer) processEvents() {
 func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 	logPrefix := "Consumer::startDcp"
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		return fmt.Errorf("terminate routine is running")
 	}
 
@@ -789,7 +789,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 					time.Sleep(10 * time.Millisecond)
 				}
 
-				if !c.isTerminateRunning {
+				if atomic.LoadUint32(&c.isTerminateRunning) == 0 {
 					atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
 					c.aggDCPFeed <- e
 				}
@@ -916,7 +916,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		}
 	}()
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		return nil
 	}
 
@@ -1006,7 +1006,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		return err
 	}
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		return fmt.Errorf("function is terminating")
 	}
 
