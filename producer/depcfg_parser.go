@@ -99,7 +99,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["curl_timeout"]; ok {
 		p.handlerConfig.CurlTimeout = int64(val.(float64))
 	} else {
-		p.handlerConfig.CurlTimeout = int64(500)
+		p.handlerConfig.CurlTimeout = int64(10000)
 	}
 
 	if val, ok := settings["dcp_stream_boundary"]; ok {
@@ -211,7 +211,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["worker_queue_mem_cap"]; ok {
 		p.handlerConfig.WorkerQueueMemCap = int64(val.(float64)) * 1024 * 1024
 	} else {
-		p.handlerConfig.WorkerQueueMemCap = 1024 * 1024 * 1024
+		p.handlerConfig.WorkerQueueMemCap = p.consumerMemQuota()
 	}
 
 	if val, ok := settings["worker_response_timeout"]; ok {
@@ -240,10 +240,22 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.TimerStorageChanSize = 10 * 1000
 	}
 
+	if val, ok := settings["timer_queue_mem_cap"]; ok {
+		p.handlerConfig.TimerQueueMemCap = int64(val.(float64)) * 1024 * 1024
+	} else {
+		p.handlerConfig.TimerQueueMemCap = 50 * 1024 * 1024
+	}
+
+	if val, ok := settings["timer_queue_size"]; ok {
+		p.handlerConfig.TimerQueueSize = int64(val.(float64))
+	} else {
+		p.handlerConfig.TimerQueueSize = 10000
+	}
+
 	if val, ok := settings["undeploy_routine_count"]; ok {
 		p.handlerConfig.UndeployRoutineCount = int(val.(float64))
 	} else {
-		p.handlerConfig.UndeployRoutineCount = 6
+		p.handlerConfig.UndeployRoutineCount = util.CPUCount(true)
 	}
 
 	// Process related configuration
@@ -300,7 +312,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["agg_dcp_feed_mem_cap"]; ok {
 		p.handlerConfig.AggDCPFeedMemCap = int64(val.(float64)) * 1024 * 1024
 	} else {
-		p.handlerConfig.AggDCPFeedMemCap = 1024 * 1024 * 1024
+		p.handlerConfig.AggDCPFeedMemCap = p.consumerMemQuota()
 	}
 
 	if val, ok := settings["data_chan_size"]; ok {
@@ -346,4 +358,16 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	return nil
+}
+
+func (p *Producer) consumerMemQuota() int64 {
+	wc := int64(p.handlerConfig.WorkerCount)
+	if wc > 0 {
+		// Divided by 2 because it's accounting for just 2 queues for each worker:
+		// (a) dcp feed queue
+		// (b) timer_feedback_queue + main_queue on eventing-consumer
+		return (p.MemoryQuota / (wc * 2)) * 1024 * 1024
+	}
+	return 1024 * 1024 * 1024
+
 }

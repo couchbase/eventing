@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
-	"os"
 	"runtime/debug"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -49,9 +49,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		dcpConfig:                       dcpConfig,
 		dcpFeedVbMap:                    make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:               hConfig.StreamBoundary,
-		debuggerStarted:                 false,
 		diagDir:                         pConfig.DiagDir,
-		fireTimerCh:                     make(chan *timerContext, dcpConfig["genChanSize"].(int)),
+		fireTimerQueue:                  util.NewBoundedQueue(hConfig.TimerQueueSize, hConfig.TimerQueueMemCap),
 		debuggerPort:                    pConfig.DebuggerPort,
 		eventingAdminPort:               pConfig.EventingPort,
 		eventingSSLPort:                 pConfig.EventingSSLPort,
@@ -81,7 +80,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		msgProcessedRWMutex:             &sync.RWMutex{},
 		numVbuckets:                     numVbuckets,
 		opsTimestamp:                    time.Now(),
-		createTimerCh:                   make(chan *TimerInfo, dcpConfig["genChanSize"].(int)),
+		createTimerQueue:                util.NewBoundedQueue(hConfig.TimerQueueSize, hConfig.TimerQueueMemCap),
 		createTimerStopCh:               make(chan struct{}, 1),
 		scanTimerStopCh:                 make(chan struct{}, 1),
 		producer:                        p,
@@ -90,17 +89,10 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		retryCount:                      retryCount,
 		sendMsgBufferRWMutex:            &sync.RWMutex{},
 		sendMsgCounter:                  0,
-		sendMsgToDebugger:               false,
 		signalBootstrapFinishCh:         make(chan struct{}, 1),
 		signalConnectedCh:               make(chan struct{}, 1),
-		signalDebugBlobDebugStopCh:      make(chan struct{}, 1),
 		signalFeedbackConnectedCh:       make(chan struct{}, 1),
-		signalInstBlobCasOpFinishCh:     make(chan struct{}, 1),
 		signalSettingsChangeCh:          make(chan struct{}, 1),
-		signalStartDebuggerCh:           make(chan struct{}, 1),
-		signalStopDebuggerCh:            make(chan struct{}, 1),
-		signalStopDebuggerRoutineCh:     make(chan struct{}, 1),
-		signalUpdateDebuggerInstBlobCh:  make(chan struct{}, 1),
 		socketTimeout:                   time.Duration(hConfig.SocketTimeout) * time.Second,
 		socketWriteBatchSize:            hConfig.SocketWriteBatchSize,
 		socketWriteLoopStopAckCh:        make(chan struct{}, 1),
@@ -115,10 +107,12 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		stopReqStreamProcessCh:          make(chan struct{}),
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
+		timerQueueSize:                  hConfig.TimerQueueSize,
+		timerQueueMemCap:                hConfig.TimerQueueMemCap,
 		timerStorageChanSize:            hConfig.TimerStorageChanSize,
 		timerStorageMetaChsRWMutex:      &sync.RWMutex{},
 		timerStorageRoutineCount:        hConfig.TimerStorageRoutineCount,
-		timerStorageRoutineMetaChs:      make([]chan *TimerInfo, hConfig.TimerStorageRoutineCount),
+		timerStorageQueues:              make([]*util.BoundedQueue, hConfig.TimerStorageRoutineCount),
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		usingTimer:                      hConfig.UsingTimer,
 		uuid:                            uuid,
@@ -218,8 +212,9 @@ func (c *Consumer) Serve() {
 	go c.processReqStreamMessages()
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
-	logging.Infof("%s [%s:%s:%d] using timer: %t vbnos len: %d dump: %s",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.usingTimer, len(c.vbnos), util.Condense(c.vbnos))
+	logging.Infof("%s [%s:%s:%d] using timer: %t vbnos len: %d dump: %s memory quota for worker and dcp queues each: %d MB",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.usingTimer, len(c.vbnos), util.Condense(c.vbnos),
+		c.workerQueueMemCap/(1024*1024))
 
 	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 	if err == common.ErrRetryTimeout {
@@ -239,7 +234,7 @@ func (c *Consumer) Serve() {
 	}
 
 	for _, kvHostPort := range c.getKvNodes() {
-		if c.isTerminateRunning {
+		if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 			continue
 		}
 
@@ -259,7 +254,7 @@ func (c *Consumer) Serve() {
 		c.hostDcpFeedRWMutex.Unlock()
 	}
 
-	if !c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 0 {
 		c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
 		c.clientSupToken = c.consumerSup.Add(c.client)
 	}
@@ -289,7 +284,7 @@ checkIfPlannerRunning:
 	logging.Infof("%s [%s:%s:%d] vbsStateUpdateRunning: %t",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning)
 
-	if !c.vbsStateUpdateRunning && !c.isTerminateRunning {
+	if !c.vbsStateUpdateRunning && atomic.LoadUint32(&c.isTerminateRunning) == 0 {
 		logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		go c.vbsStateUpdate()
@@ -302,8 +297,6 @@ checkIfPlannerRunning:
 	go c.updateWorkerStats()
 
 	go c.doLastSeqNoCheckpoint()
-
-	go c.pollForDebuggerStart()
 
 	c.signalBootstrapFinishCh <- struct{}{}
 
@@ -354,6 +347,7 @@ func (c *Consumer) HandleV8Worker() error {
 
 	if c.usingTimer {
 		go c.routeTimers()
+		go c.processTimerEvents()
 	}
 
 	go c.processEvents()
@@ -372,7 +366,7 @@ func (c *Consumer) Stop() {
 		}
 	}()
 
-	c.isTerminateRunning = true
+	atomic.StoreUint32(&c.isTerminateRunning, 1)
 
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -426,12 +420,18 @@ func (c *Consumer) Stop() {
 		c.stopReqStreamProcessCh <- struct{}{}
 	}
 
+	if c.createTimerQueue != nil {
+		c.createTimerQueue.Close()
+	}
+
 	if c.createTimerStopCh != nil {
 		c.createTimerStopCh <- struct{}{}
 	}
 
-	if c.scanTimerStopCh != nil {
-		c.scanTimerStopCh <- struct{}{}
+	for _, q := range c.timerStorageQueues {
+		if q != nil {
+			q.Close()
+		}
 	}
 
 	c.timerStorageMetaChsRWMutex.Lock()
@@ -439,6 +439,14 @@ func (c *Consumer) Stop() {
 		stopCh <- struct{}{}
 	}
 	c.timerStorageMetaChsRWMutex.Unlock()
+
+	if c.fireTimerQueue != nil {
+		c.fireTimerQueue.Close()
+	}
+
+	if c.scanTimerStopCh != nil {
+		c.scanTimerStopCh <- struct{}{}
+	}
 
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop timer routines",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -465,10 +473,6 @@ func (c *Consumer) Stop() {
 
 	if c.stopControlRoutineCh != nil {
 		c.stopControlRoutineCh <- struct{}{}
-	}
-
-	if c.signalStopDebuggerRoutineCh != nil {
-		c.signalStopDebuggerRoutineCh <- struct{}{}
 	}
 
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop checkpointing routine",
@@ -577,37 +581,14 @@ func (c *Consumer) NotifySettingsChange() {
 	c.signalSettingsChangeCh <- struct{}{}
 }
 
-// SignalStopDebugger signal C++ V8 consumer to stop Debugger Agent
+// SignalStopDebugger signal C++ consumer to stop debugger
 func (c *Consumer) SignalStopDebugger() error {
 	logPrefix := "Consumer::SignalStopDebugger"
 
-	logging.Infof("%s [%s:%s:%d] Got signal to stop V8 Debugger Agent",
+	logging.Infof("%s [%s:%s:%d] Got signal to stop debugger",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	c.signalStopDebuggerCh <- struct{}{}
-
-	c.stopDebuggerServer()
-
-	// Reset the debugger instance blob
-	dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
-	dInstAddrBlob := &common.DebuggerInstanceAddrBlobVer{
-		common.DebuggerInstanceAddrBlob{},
-		util.EventingVer(),
-	}
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback,
-		c, c.producer.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
-	}
-
-	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", c.eventingDir, c.app.AppName)
-	err = os.Remove(frontendURLFilePath)
-	if err != nil {
-		logging.Infof("%s [%s:%s:%d] Failed to remove frontend.url file, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-	}
-
+	c.stopDebugger()
 	return nil
 }
 

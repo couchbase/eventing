@@ -69,6 +69,17 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getHTTPServiceAuth, s, &user, &password)
 	s.auth = fmt.Sprintf("%s:%s", user, password)
 
+	go func() {
+		tick := time.NewTicker(time.Minute)
+		defer tick.Stop()
+
+		for {
+			select {
+			case <-tick.C:
+				printMemoryStats()
+			}
+		}
+	}()
 	return s
 }
 
@@ -98,6 +109,37 @@ func (s *SuperSupervisor) checkIfNodeInCluster() bool {
 	}
 
 	return true
+}
+
+func (s *SuperSupervisor) DebuggerCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "SuperSupervisor::DebuggerCallback"
+	logging.Infof("%s [%d] path => %s encoded value size => %v",
+		logPrefix, s.runningFnsCount(), path, string(value))
+
+	if !s.checkIfNodeInCluster() && s.runningFnsCount() == 0 {
+		logging.Infof("%s [%d] Node not part of cluster. Exiting callback",
+			logPrefix, s.runningFnsCount())
+		return nil
+	}
+
+	if value == nil {
+		logging.Errorf("%s [%d] value is nil",
+			logPrefix, s.runningFnsCount())
+		return nil
+	}
+
+	appName := util.GetAppNameFromPath(path)
+	p, exists := s.runningFns()[appName]
+	if !exists || p == nil {
+		logging.Errorf("%s [%d] Function %s not found",
+			logPrefix, s.runningFnsCount(), appName)
+		return nil
+	}
+	p.SignalStartDebugger(string(value))
+
+	util.Retry(util.NewFixedBackoff(time.Second), nil,
+		metakvDeleteCallback, s, path)
+	return nil
 }
 
 // EventHandlerLoadCallback is registered as callback from metakv observe calls on event handlers path
@@ -376,6 +418,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					s.deleteFromDeployedApps(appName)
 				}
 
+				s.updateQuotaForRunningFns()
 				logging.Infof("%s [%d] Function: %s undeployment done", logPrefix, s.runningFnsCount(), appName)
 			}
 		}
@@ -535,19 +578,35 @@ func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
 	logPrefix := "SuperSupervisor::HandleGlobalConfigChange"
 
 	for key, value := range config {
+		logging.Infof("%s [%d] Config key: %v value: %v", logPrefix, len(s.runningProducers), key, value)
+
 		switch key {
 		case "ram_quota":
 			s.memoryQuota = int64(value.(float64))
+			s.updateQuotaForRunningFns()
+		}
+	}
 
+	return nil
+}
+
+func (s *SuperSupervisor) updateQuotaForRunningFns() {
+	logPrefix := "SuperSupervisor::updateQuotaForRunningFns"
+
+	if s.memoryQuota <= 0 {
+		return
+	}
+
+	for _, p := range s.runningFns() {
+		fnCount := int64(s.runningFnsCount())
+		if fnCount > 0 {
 			logging.Infof("%s [%d] Notifying Eventing.Producer instances to update memory quota to %d MB",
 				logPrefix, len(s.runningProducers), s.memoryQuota)
-			for _, p := range s.runningFns() {
-				p.UpdateMemoryQuota(s.memoryQuota)
-			}
+			p.UpdateMemoryQuota(s.memoryQuota / fnCount)
+		} else {
+			p.UpdateMemoryQuota(s.memoryQuota)
 		}
-		return nil
 	}
-	return nil
 }
 
 // AppsRetryCallback informs all running functions to update the retry counter
@@ -582,7 +641,7 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 	p := producer.NewProducer(appName, s.adminPort.DebuggerPort, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
 		s.restPort, s.uuid, s.diagDir, s.memoryQuota, s.numVbuckets, s)
 
-	logging.Infof("%s [%d] Function: %s spawning up", logPrefix, s.runningFnsCount(), appName)
+	logging.Infof("%s [%d] Function: %s spawning up, memory quota: %d", logPrefix, s.runningFnsCount(), appName, s.memoryQuota)
 
 	token := s.superSup.Add(p)
 	s.addToRunningProducers(appName, p)
@@ -594,6 +653,8 @@ func (s *SuperSupervisor) spawnApp(appName string) {
 	logging.Infof("%s [%d] Function: %s spawned up", logPrefix, s.runningFnsCount(), appName)
 
 	p.NotifyPrepareTopologyChange(s.ejectNodes, s.keepNodes)
+
+	s.updateQuotaForRunningFns()
 }
 
 // HandleSupCmdMsg handles control commands like app (re)deploy, settings update

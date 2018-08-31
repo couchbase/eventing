@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"regexp"
-	"runtime"
 	"runtime/trace"
 	"sort"
 	"strconv"
@@ -25,7 +25,7 @@ import (
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/google/flatbuffers/go"
 )
 
 func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
@@ -274,6 +274,28 @@ func (m *ServiceMgr) logFileLocation(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"log_dir":"%v"}`, c["eventing_dir"])
 }
 
+func (m *ServiceMgr) notifyDebuggerStart(appName string) (info *runtimeInfo) {
+	logPrefix := "ServiceMgr::notifyDebuggerStart"
+	info = &runtimeInfo{}
+
+	uuidGen, err := util.NewUUID()
+	if err != nil {
+		info.Code = m.statusCodes.errUUIDGen.Code
+		info.Info = fmt.Sprintf("Unable to initialize UUID generator, err: %v", err)
+		return
+	}
+
+	token := uuidGen.Str()
+	m.superSup.WriteDebuggerToken(appName, token)
+	logging.Infof("%s Function: %s notifying on debugger path %s",
+		logPrefix, appName, common.MetakvDebuggerPath+appName)
+	util.Retry(util.NewFixedBackoff(time.Second), nil,
+		metakvSetCallback, common.MetakvDebuggerPath+appName, []byte(token))
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::startDebugger"
 
@@ -308,7 +330,23 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m.superSup.SignalStartDebugger(appName)
+	var isMixedMode bool
+	if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if isMixedMode {
+		info.Code = m.statusCodes.errMixedMode.Code
+		info.Info = "Debugger can not be spawned in a mixed mode cluster"
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if info = m.notifyDebuggerStart(appName); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "Function: %s Started Debugger", appName)
 }
@@ -334,9 +372,28 @@ func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	respString := fmt.Sprintf("Function: %s not deployed")
+	respString := fmt.Sprintf("Function: %s not deployed", appName)
 	fmt.Fprintf(w, respString)
 	logging.Infof("%s %s", logPrefix, respString)
+}
+
+func (m *ServiceMgr) writeDebuggerURLHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateLocalAuth(w, r) {
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+
+	appName := path.Base(r.URL.Path)
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		return
+	}
+
+	logging.Infof("Received Debugger URL: %s for Function: %s", string(data), appName)
+	m.superSup.WriteDebuggerURL(appName, string(data))
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 }
 
 func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Request) {
@@ -2219,7 +2276,7 @@ func (m *ServiceMgr) getCpuCount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%v\n", runtime.NumCPU())
+	fmt.Fprintf(w, "%v\n", util.CPUCount(false))
 }
 
 func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
@@ -2239,7 +2296,8 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 
 	apps := m.getTempStoreAll()
 	for _, app := range apps {
-		if app.Settings["deployment_status"].(bool) != true {
+		deployed, ok := app.Settings["deployment_status"].(bool)
+		if !ok || !deployed {
 			continue
 		}
 		if val, ok := app.Settings["worker_count"].(float64); ok {
@@ -2252,6 +2310,33 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "%v\n", count)
+}
+
+func (m *ServiceMgr) isMixedModeCluster() (bool, *runtimeInfo) {
+	info := &runtimeInfo{}
+
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
+	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	if err != nil {
+		info.Code = m.statusCodes.errConnectNsServer.Code
+		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
+		return false, info
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	nodes := clusterInfo.GetActiveEventingNodes()
+	if len(nodes) == 0 {
+		return false, info
+	}
+
+	first := nodes[0]
+	for _, node := range nodes {
+		if first.Version != node.Version {
+			return true, info
+		}
+	}
+
+	return false, info
 }
 
 type version struct {

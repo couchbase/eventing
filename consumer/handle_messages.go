@@ -8,6 +8,7 @@ import (
 	"io"
 	"runtime/debug"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	mcd "github.com/couchbase/eventing/dcp/transport"
@@ -323,15 +324,6 @@ func (c *Consumer) sendTimerEvent(e *timerContext, sendToDebugger bool) {
 }
 
 func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
-
-	if sendToDebugger {
-	checkDebuggerStarted:
-		if !c.debuggerStarted {
-			time.Sleep(retryInterval)
-			goto checkDebuggerStarted
-		}
-	}
-
 	m := dcpMetadata{
 		Cas:     e.Cas,
 		DocID:   string(e.Key),
@@ -431,7 +423,7 @@ func (c *Consumer) sendMessageLoop() {
 		select {
 		case <-c.socketWriteTicker.C:
 			if c.sendMsgCounter > 0 && c.conn != nil {
-				if c.isTerminateRunning || c.stoppingConsumer {
+				if atomic.LoadUint32(&c.isTerminateRunning) == 1 || c.stoppingConsumer {
 					return
 				}
 
@@ -440,7 +432,14 @@ func (c *Consumer) sendMessageLoop() {
 				func() {
 					c.sendMsgBufferRWMutex.Lock()
 					defer c.sendMsgBufferRWMutex.Unlock()
-					err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
+
+					if c.conn == nil {
+						logging.Infof("%s [%s:%s:%d] connection socket closed, bailing out",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer)
+						return
+					}
+
+					_, err := c.sendMsgBuffer.WriteTo(c.conn)
 					if err != nil {
 						logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, err)
@@ -480,7 +479,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 		}
 	}()
 
-	if c.isTerminateRunning || c.stoppingConsumer {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 || c.stoppingConsumer {
 		return fmt.Errorf("Eventing.Consumer instance is terminating")
 	}
 
@@ -526,7 +525,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 		if !m.sendToDebugger && c.conn != nil {
 			c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
 
-			err = binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
+			_, err := c.sendMsgBuffer.WriteTo(c.conn)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, err)
@@ -540,14 +539,13 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 				return err
 			}
 		} else if c.debugConn != nil {
-			err = binary.Write(c.debugConn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
+			_, err := c.sendMsgBuffer.WriteTo(c.debugConn)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Write to debug enabled worker socket failed, err: %v",
 					logPrefix, c.workerName, c.debugTCPPort, c.Pid(), err)
 				c.debugConn.Close()
 				return err
 			}
-			c.sendMsgToDebugger = false
 		}
 
 		// Reset the sendMessage buffer and message counter
@@ -571,6 +569,10 @@ func (c *Consumer) feedbackReadMessageLoop(feedbackReader *bufio.Reader) {
 	}()
 
 	for {
+		if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+			return
+		}
+
 		buffer := make([]byte, c.feedbackReadBufferSize)
 		bytesRead, err := feedbackReader.Read(buffer)
 

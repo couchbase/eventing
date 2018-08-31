@@ -228,6 +228,15 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
                   << std::endl;
   }
 
+  bool enableDetailedErrCodes = true;
+  err = lcb_cntl(bucket_lcb_obj_, LCB_CNTL_SET, LCB_CNTL_DETAILED_ERRCODES,
+                 &enableDetailedErrCodes);
+  if (err != LCB_SUCCESS) {
+    LOG(logWarning) << "Bucket: Unable to set detailed error codes. Defaulting "
+                       "to normal error codes"
+                    << std::endl;
+  }
+
   if (init_success) {
     LOG(logInfo) << "Bucket: lcb instance for " << bname
                  << " initialized successfully" << std::endl;

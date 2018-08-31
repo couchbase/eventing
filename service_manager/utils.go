@@ -39,7 +39,7 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "checkpoint_interval", float64(60000))
 	fillMissingDefault(settings, "cleanup_timers", false)
 	fillMissingDefault(settings, "cpp_worker_thread_count", float64(2))
-	fillMissingDefault(settings, "curl_timeout", float64(500))
+	fillMissingDefault(settings, "curl_timeout", float64(10000))
 	fillMissingDefault(settings, "deadline_timeout", float64(62))
 	fillMissingDefault(settings, "execution_timeout", float64(60))
 	fillMissingDefault(settings, "feedback_batch_size", float64(100))
@@ -61,6 +61,8 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "execute_timer_routine_count", float64(3))
 	fillMissingDefault(settings, "timer_storage_routine_count", float64(3))
 	fillMissingDefault(settings, "timer_storage_chan_size", float64(10*1000))
+	fillMissingDefault(settings, "timer_queue_mem_cap", float64(50))
+	fillMissingDefault(settings, "timer_queue_size", float64(10000))
 
 	// Process related configuration
 	fillMissingDefault(settings, "breakpad_on", true)

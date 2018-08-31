@@ -12,14 +12,15 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
+	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/gocb"
+	"runtime/debug"
 )
 
 var (
-	previousAppName string
-	debuggerMutex   = &sync.Mutex{}
+	debuggerPID   int = -1
+	debuggerMutex     = &sync.Mutex{}
 )
 
 func newDebugClient(c *Consumer, appName, debugTCPPort, eventingPort, feedbackTCPPort, ipcType, workerName string) *debugClient {
@@ -34,8 +35,9 @@ func newDebugClient(c *Consumer, appName, debugTCPPort, eventingPort, feedbackTC
 	}
 }
 
-func (c *debugClient) Serve() {
-	logPrefix := "debugClient::Serve"
+func (c *debugClient) Spawn(debuggerSpawned chan struct{}) {
+	logPrefix := "debugClient::Spawn"
+	defer c.consumerHandle.recoverDebugger()
 
 	c.cmd = exec.Command(
 		"eventing-consumer",
@@ -92,6 +94,9 @@ func (c *debugClient) Serve() {
 			logPrefix, c.workerName, c.debugTCPPort, c.osPid)
 	}
 
+	c.osPid = c.cmd.Process.Pid
+	debuggerPID = c.cmd.Process.Pid
+
 	bufErr := bufio.NewReader(errPipe)
 	bufOut := bufio.NewReader(outPipe)
 
@@ -121,7 +126,7 @@ func (c *debugClient) Serve() {
 		}
 	}(bufOut)
 
-	c.osPid = c.cmd.Process.Pid
+	debuggerSpawned <- struct{}{}
 	err = c.cmd.Wait()
 	if err != nil {
 		logging.Warnf("%s [%s:%s:%d] Exiting c++ debug worker with error: %v",
@@ -134,10 +139,10 @@ func (c *debugClient) Serve() {
 
 func (c *debugClient) Stop() {
 	logPrefix := "debugClient::Stop"
+	defer c.consumerHandle.recoverDebugger()
 
 	logging.Debugf("%s [%s:%s:%d] Stopping C++ worker spawned for debugger",
 		logPrefix, c.workerName, c.debugTCPPort, c.osPid)
-	c.consumerHandle.sendMsgToDebugger = false
 	c.consumerHandle.debugListener.Close()
 	err := util.KillProcess(c.osPid)
 	if err != nil {
@@ -151,122 +156,22 @@ func (c *debugClient) String() string {
 		c.appName, c.workerName, c.debugTCPPort, c.osPid)
 }
 
-func (c *Consumer) pollForDebuggerStart() {
-	logPrefix := "Consumer::pollForDebuggerStart"
-
-	dFlagKey := fmt.Sprintf("%s::%s", c.app.AppName, startDebuggerFlag)
-	dInstAddrKey := fmt.Sprintf("%s::%s", c.app.AppName, debuggerInstanceAddr)
-
-	dFlagBlob := &common.StartDebugBlobVer{
-		common.StartDebugBlob{},
-		util.EventingVer(),
-	}
-	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
-	var cas gocb.Cas
-
-	for {
-		select {
-		case <-c.signalStopDebuggerRoutineCh:
-			logging.Infof("%s [%s:%s:%d] Exiting debugger blob polling routine",
-				logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return
-		default:
-		}
-
-		c.debuggerState = debuggerOpcode
-
-		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-			c, c.producer.AddMetadataPrefix(dFlagKey), dFlagBlob, &cas, false)
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return
-		}
-
-		if !dFlagBlob.StartDebug {
-			time.Sleep(debuggerFlagCheckInterval)
-			continue
-		} else {
-			c.debuggerState = startDebug
-
-			// In case some other Eventing.Consumer instance starts the debugger, below
-			// logic keeps an eye on startDebugger blob in metadata bucket and calls continue
-			stopBucketLookupRoutineCh := make(chan struct{}, 1)
-
-			go func(c *Consumer, stopBucketLookupRoutineCh chan struct{}) {
-				for {
-					time.Sleep(time.Second)
-
-					select {
-					case <-stopBucketLookupRoutineCh:
-						return
-					default:
-					}
-					dFlagKey := fmt.Sprintf("%s::%s", c.app.AppName, startDebuggerFlag)
-					dFlagBlob := &common.StartDebugBlob{}
-
-					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-						c, c.producer.AddMetadataPrefix(dFlagKey), dFlagBlob, &cas, false)
-					if err == common.ErrRetryTimeout {
-						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-						return
-					}
-
-					if !dFlagBlob.StartDebug {
-						c.signalDebugBlobDebugStopCh <- struct{}{}
-						return
-					}
-
-				}
-			}(c, stopBucketLookupRoutineCh)
-
-			select {
-			case <-c.signalDebugBlobDebugStopCh:
-				continue
-			case <-c.signalUpdateDebuggerInstBlobCh:
-				stopBucketLookupRoutineCh <- struct{}{}
-			}
-
-		checkDInstAddrBlob:
-			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-				c, c.producer.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob, &cas, false)
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-				return
-			}
-
-			logging.Infof("%s [%s:%s:%d] Debugger inst addr key: %rm dump: %rm",
-				logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, fmt.Sprintf("%#v", dInstAddrBlob))
-
-			if dInstAddrBlob.HostPortAddr == "" {
-
-				dInstAddrBlob.ConsumerName = c.ConsumerName()
-				dInstAddrBlob.HostPortAddr = c.HostPortAddr()
-				dInstAddrBlob.NodeUUID = c.NodeUUID()
-
-				_, err := c.gocbMetaBucket.Replace(c.producer.AddMetadataPrefix(dInstAddrKey).Raw(), dInstAddrBlob, gocb.Cas(cas), 0)
-				if err != nil {
-					logging.Errorf("%s [%s:%s:%d] Bucket cas failed for debugger inst addr key: %rm, err: %v",
-						logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid(), dInstAddrKey, err)
-					goto checkDInstAddrBlob
-				} else {
-					dFlagBlob.StartDebug = false
-					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback,
-						c, c.producer.AddMetadataPrefix(dFlagKey), dFlagBlob)
-					if err == common.ErrRetryTimeout {
-						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-						return
-					}
-
-					c.signalStartDebuggerCh <- struct{}{}
-				}
-			}
-			c.signalInstBlobCasOpFinishCh <- struct{}{}
-		}
-	}
-}
-
-func (c *Consumer) startDebuggerServer() {
+func (c *Consumer) startDebugger(e *cb.DcpEvent) {
 	logPrefix := "Consumer::startDebuggerServer"
+	debuggerMutex.Lock()
+	defer debuggerMutex.Unlock()
+	defer c.recoverDebugger()
+
+	if debuggerPID != -1 {
+		logging.Infof("%s [%s:%s:%d] Killing previously spawned debugger with PID %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), debuggerPID)
+		err := util.KillProcess(debuggerPID)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Unable to kill previously spawned debugger with PID %d, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), debuggerPID, err)
+		}
+		time.Sleep(1 * time.Second)
+	}
 
 	var err error
 	udsSockPath := fmt.Sprintf("%s/debug_%s.sock", os.TempDir(), c.ConsumerName())
@@ -356,20 +261,13 @@ func (c *Consumer) startDebuggerServer() {
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 	}
 
-	debuggerMutex.Lock()
-	if previousAppName != "" {
-		logging.Infof("%s [%s:%s:%d] Stopping debugger for previously spawned %s",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), previousAppName)
-		c.superSup.SignalStopDebugger(previousAppName)
-		time.Sleep(1 * time.Second)
-	}
-
 	c.debugClient = newDebugClient(c, c.app.AppName, c.debugTCPPort,
 		c.eventingAdminPort, c.debugFeedbackTCPPort, c.debugIPCType, c.workerName)
-	c.debugClientSupToken = c.consumerSup.Add(c.debugClient)
-	previousAppName = c.app.AppName
-	debuggerMutex.Unlock()
 
+	debuggerSpawned := make(chan struct{}, 1)
+	go c.debugClient.Spawn(debuggerSpawned)
+
+	<-debuggerSpawned
 	<-c.signalDebuggerConnectedCh
 	<-c.signalDebuggerFeedbackCh
 
@@ -412,22 +310,28 @@ func (c *Consumer) startDebuggerServer() {
 		false, c.curlTimeout)
 
 	c.sendInitV8Worker(payload, true, pBuilder)
-
 	c.sendDebuggerStart()
-
 	c.sendLoadV8Worker(c.app.AppCode, true)
-
-	c.debuggerStarted = true
+	c.sendDcpEvent(e, true)
 }
 
-func (c *Consumer) stopDebuggerServer() {
-	logPrefix := "Consumer::stopDebuggerServer"
+func (c *Consumer) stopDebugger() {
+	logPrefix := "Consumer::stopDebugger"
+	defer c.recoverDebugger()
 
 	logging.Infof("%s [%s:%s:%d] Closing connection to C++ worker for debugger",
 		logPrefix, c.ConsumerName(), c.debugTCPPort, c.Pid())
 
-	c.debuggerStarted = false
-	c.sendMsgToDebugger = false
+	if c.debugClient != nil {
+		c.debugClient.Stop()
+	}
+
+	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", c.eventingDir, c.app.AppName)
+	err := os.Remove(frontendURLFilePath)
+	if err != nil {
+		logging.Infof("%s [%s:%s:%d] Failed to remove frontend.url file, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+	}
 
 	if c.debugConn != nil {
 		c.debugConn.Close()
@@ -443,5 +347,15 @@ func (c *Consumer) stopDebuggerServer() {
 
 	if c.debugFeedbackListener != nil {
 		c.debugFeedbackListener.Close()
+	}
+}
+
+func (c *Consumer) recoverDebugger() {
+	logPrefix := "Consumer::recoverDebugger"
+
+	if r := recover(); r != nil {
+		trace := debug.Stack()
+		logging.Errorf("%s [%s:%s:%d] recover %rm stack trace: %rm",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), r, string(trace))
 	}
 }

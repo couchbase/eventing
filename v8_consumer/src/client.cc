@@ -62,17 +62,19 @@ std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
 
   bool ok = header->Verify(verifier);
 
-  std::unique_ptr<header_t> parsed_header(new header_t);
-
   if (ok) {
+    std::unique_ptr<header_t> parsed_header(new header_t);
+
     parsed_header->event = header->event();
     parsed_header->opcode = header->opcode();
     parsed_header->partition = header->partition();
 
     parsed_header->metadata = header->metadata()->str();
+
+    return parsed_header;
   }
 
-  return parsed_header;
+  return nullptr;
 }
 
 std::unique_ptr<message_t> ParseServerMessage(int encoded_header_size,
@@ -858,13 +860,19 @@ void AppWorker::WriteResponses() {
 void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
                                        std::vector<uv_buf_t> messages,
                                        size_t max_batch_size) {
-  size_t curr_idx = 0;
+  size_t curr_idx = 0, counter = 0;
   while (curr_idx < messages.size()) {
     size_t batch_size = std::min(max_batch_size, messages.size() - curr_idx);
     int bytes_written =
         uv_try_write(handle, messages.data() + curr_idx, batch_size);
     if (bytes_written < 0) {
       uv_try_write_failure_counter++;
+      counter++;
+      if (counter < 100) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10 * counter));
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+      }
     } else {
       int written = bytes_written;
       for (size_t idx = curr_idx; idx < messages.size(); idx++, curr_idx++) {
@@ -876,6 +884,7 @@ void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
           written -= messages[idx].len;
         }
       }
+      counter = 0;
     }
   }
 }

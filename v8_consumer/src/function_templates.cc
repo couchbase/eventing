@@ -11,7 +11,7 @@
 
 #include "function_templates.h"
 
-long curl_timeout = 500L; // Default curl timeout of 500ms
+long curl_timeout = 10000L; // Default curl timeout in ms
 
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();

@@ -4,7 +4,6 @@ package timers
 
 import (
 	"fmt"
-	"math"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -146,7 +145,6 @@ func (r *kvPool) Counter(bucket, key string, delta, initial int64, expiry uint32
 	}
 	atomic.AddUint64(&r.incrCounter, 1)
 	ucount, cas, err := conn.Counter(key, delta, initial, expiry)
-	Assert(ucount <= math.MaxInt64)
 	count = int64(ucount)
 	return
 }

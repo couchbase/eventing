@@ -14,7 +14,7 @@ var getEventingNodeAddrOpCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		return nil
 	}
 
@@ -55,7 +55,7 @@ var getKvNodesFromVbMap = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		return nil
 	}
 

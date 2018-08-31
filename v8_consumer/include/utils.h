@@ -162,6 +162,6 @@ std::string EventingVer();
 bool IsRetriable(lcb_error_t error);
 bool IsTerminatingRetriable(bool retry);
 bool IsExecutionTerminating(v8::Isolate *isolate);
-std::string base64Encode(const std::string & data);
+std::string base64Encode(const std::string &data);
 
 #endif

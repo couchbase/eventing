@@ -63,6 +63,7 @@ const (
 	timerStorageRoutineCount = 3
 	workerCount              = 3
 
+	curlTimeout      = 1
 	deadlineTimeout  = 6
 	executionTimeout = 5
 )

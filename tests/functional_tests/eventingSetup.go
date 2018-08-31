@@ -211,6 +211,8 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["execution_timeout"] = s.executionTimeout
 	}
 
+	settings["curl_timeout"] = curlTimeout
+
 	if s.logLevel == "" {
 		settings["log_level"] = "INFO"
 	} else {

@@ -1,12 +1,8 @@
-package timers
+package util
 
 import (
 	"regexp"
-
-	"github.com/couchbase/eventing/util"
 )
-
-// TODO: move this to common
 
 var (
 	isDeveloper = false
@@ -14,7 +10,7 @@ var (
 
 func init() {
 	re := regexp.MustCompile("-0000+-")
-	isDeveloper = re.MatchString(util.EventingVer())
+	isDeveloper = re.MatchString(EventingVer())
 }
 
 func Assert(condition bool) {

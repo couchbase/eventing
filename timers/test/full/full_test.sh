@@ -33,7 +33,7 @@ BUCKET_1_SIZE=100
 BUCKET_2_SIZE=100
 METADATA_BUCKET_SIZE=100
 
-FUNCTION_PATH=$top/goproj/src/github.com/couchbase/eventing/timers/test/timers-new-api.json
+FUNCTION_PATH=$top/goproj/src/github.com/couchbase/eventing/timers/test/full/timers-new-api.json
 FUNCTION_NAME="timers-new-api"
 
 ITEM_COUNT=10000

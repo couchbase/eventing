@@ -80,7 +80,7 @@ func (r *rebalancer) gatherProgress() {
 retryRebProgress:
 	initProgress, _, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 	if len(errMap) > 0 && len(r.keepNodes) > 1 {
-		logging.Warnf(" %s Failed to capture cluster wide rebalance progress from all nodes. Retry counter: %d initProgress: %v errMap dump: %rm",
+		logging.Warnf("%s Failed to capture cluster wide rebalance progress from all nodes. Retry counter: %d initProgress: %v errMap dump: %rm",
 			logPrefix, retryCounter, initProgress, errMap)
 		retryCounter++
 
