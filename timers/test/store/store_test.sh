@@ -16,6 +16,8 @@ set -e
 cd $top/goproj/src/github.com/couchbase/eventing/timers/test/store
 go install -ldflags "-s -extldflags '-Wl,-rpath,@executable_path/../lib'" -tags 'jemalloc enterprise'
 go build -ldflags "-s -extldflags '-Wl,-rpath,@executable_path/../lib'" -tags 'jemalloc enterprise' storetest.go
+$top/install/bin/couchbase-cli bucket-flush -c 127.0.0.1 -u Administrator -p asdasd --bucket default --force
+sleep 5
 ./storetest $*
 rm storetest
 popd

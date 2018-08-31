@@ -57,7 +57,7 @@ func Pool(connstr string) *kvPool {
 	}
 
 	if singlePool.ident != connstr {
-		logging.Tracef("Pool created against %v but now renaming to %v", singlePool.ident, connstr)
+		logging.Debugf("Pool created against %v but now renaming to %v", singlePool.ident, connstr)
 		singlePool.ident = connstr
 	}
 
@@ -295,6 +295,7 @@ func MustRun(fn func() error) error {
 		duration := time.Now().Sub(start)
 		return duration.Nanoseconds() > atomic.LoadInt64(&maxRetryTime)
 	}
+	log := logging.Debugf
 	for e != nil {
 		delay := time.Now().Sub(start)
 		if alarm() {
@@ -303,11 +304,17 @@ func MustRun(fn func() error) error {
 		}
 		e = fn()
 		if e == nil || e == common.ErrRetryTimeout {
-			logging.Tracef("Call to %v finally succeded (or timed out) after %v", fname, delay)
+			log("Call to %v finally succeded (or timed out) after %v", fname, delay)
 			return e
 		}
-		logging.Warnf("Call %v failed due to %v, will retry", fname, e)
 		waitsec := delay.Minutes() + 1.0
+		switch {
+		case waitsec > 10:
+			log = logging.Infof
+		case waitsec > 100:
+			log = logging.Warnf
+		}
+		log("Call %v failed due to %v, will retry in %vs", fname, e, waitsec)
 		for n := 0.0; n < waitsec && !alarm(); n++ {
 			time.Sleep(time.Second)
 		}
