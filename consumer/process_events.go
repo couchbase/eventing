@@ -390,10 +390,13 @@ func (c *Consumer) processEvents() {
 				}
 			case mcd.DCP_STREAMEND:
 				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+
 				lastSeqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_read_seq_no").(uint64)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "seq_no_at_stream_end", lastSeqNo)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
+
 				c.sendVbFilterData(e, lastSeqNo)
+
 			default:
 			}
 
@@ -468,6 +471,7 @@ func (c *Consumer) processEvents() {
 			c.vbProcessingStats.updateVbStat(e.Vbucket, "current_vb_owner", "")
 			c.vbProcessingStats.updateVbStat(e.Vbucket, "dcp_stream_status", dcpStreamStopped)
 			c.vbProcessingStats.updateVbStat(e.Vbucket, "node_uuid", "")
+			c.vbProcessingStats.updateVbStat(e.Vbucket, "dcp_stream_requested_worker", "")
 
 			if c.checkIfCurrentConsumerShouldOwnVb(e.Vbucket) {
 				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND, needs to be reclaimed",

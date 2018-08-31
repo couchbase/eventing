@@ -113,7 +113,7 @@ func (c *Consumer) controlRoutine() error {
 				c.vbsRemainingToClose = make([]uint16, 0)
 				c.Unlock()
 
-				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v and vbsRemainingToClose: %v as the app has been undeployed",
+				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %s and vbsRemainingToClose: %s as the app has been undeployed",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream), util.Condense(vbsRemainingToClose))
 				continue
 			}
