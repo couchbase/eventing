@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 	"golang.org/x/crypto/ripemd160"
 )
@@ -20,7 +21,7 @@ const (
 	Resolution  = int64(7) // seconds
 	init_seq    = int64(128)
 	dict        = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*&"
-	encode_base = 36
+	encode_base = 10 // TODO: Change to 36 before GA
 )
 
 // Globals
@@ -49,7 +50,6 @@ type TimerEntry struct {
 
 	alarmSeq int64
 	ctxCas   gocb.Cas
-	topCas   gocb.Cas
 }
 
 type rowIter struct {
@@ -61,7 +61,9 @@ type rowIter struct {
 type colIter struct {
 	stop    int64
 	current int64
+	topKey  string
 	topCas  gocb.Cas
+	empty   bool
 }
 
 type Span struct {
@@ -160,7 +162,7 @@ func (r *TimerStore) Set(due int64, ref string, context interface{}) error {
 
 	if due-now <= Resolution {
 		atomic.AddUint64(&r.stats.timerInPastCounter, 1)
-		logging.Tracef("%v Moving too close/past timer to next period: %v context %ru", r.log, formatInt(due), context)
+		logging.Debugf("%v Moving too close/past timer to next period: %v context %ru", r.log, formatInt(due), context)
 		due = now + Resolution
 	}
 	due = roundUp(due)
@@ -203,40 +205,24 @@ func (r *TimerStore) Delete(entry *TimerEntry) error {
 		return err
 	}
 	if absent {
-		logging.Tracef("%v Timer %v seq %v is missing alarm in del: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
+		logging.Debugf("%v Timer %v seq %v is missing alarm in del: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
 	}
+
+	atomic.AddUint64(&r.stats.delSuccessCounter, 1)
 
 	_, absent, mismatch, err := kv.MustRemove(r.bucket, entry.ContextRef, entry.ctxCas)
 	if err != nil {
 		return err
 	}
 	if absent {
+		logging.Debugf("%v Timer %v seq %v was cancelled after it fired: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
 		atomic.AddUint64(&r.stats.contextMissingCounter, 1)
 	}
-
 	if mismatch {
-		logging.Tracef("%v Timer %v seq %v was either cancelled or overridden after it fired: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
+		logging.Debugf("%v Timer %v seq %v was overridden after it fired: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
 		return nil
 	}
 
-	if entry.topCas == 0 {
-		return nil
-	}
-
-	pos := r.kvLocatorRoot(entry.AlarmDue)
-	logging.Debugf("%v Removing last entry, so removing counter %+v", r.log, pos)
-
-	_, absent, mismatch, err = kv.MustRemove(r.bucket, pos, entry.topCas)
-	if err != nil {
-		return err
-	}
-	if absent || mismatch {
-		atomic.AddUint64(&r.stats.alarmMissingCounter, 1)
-		logging.Tracef("%v Concurrency on %v absent:%v mismatch:%v", r.log, pos, absent, mismatch)
-	}
-
-	r.shrinkSpan(entry.AlarmDue)
-	atomic.AddUint64(&r.stats.delSuccessCounter, 1)
 	return nil
 }
 
@@ -245,38 +231,47 @@ func (r *TimerStore) Cancel(ref string) error {
 	logging.Tracef("%v Cancelling timer ref %ru", r.log, ref)
 
 	kv := Pool(r.connstr)
-	cref := r.kvLocatorContext(ref)
+	cpos := r.kvLocatorContext(ref)
 
 	crecord := ContextRecord{}
-	_, absent, err := kv.MustGet(r.bucket, cref, &crecord)
+	ccas, absent, err := kv.MustGet(r.bucket, cpos, &crecord)
 	if err != nil {
-		return nil
+		return err
 	}
 	if absent {
 		atomic.AddUint64(&r.stats.cancelContextMissingCounter, 1)
-		logging.Tracef("%v Timer asked to cancel %ru cref %v does not exist", r.log, ref, cref)
+		logging.Debugf("%v Timer asked to cancel %ru cpos %v does not exist", r.log, ref, cpos)
 		return nil
 	}
 
-	_, absent, _, err = kv.MustRemove(r.bucket, crecord.AlarmRef, 0)
+	_, absent, mismatch, err := kv.MustRemove(r.bucket, cpos, ccas)
 	if err != nil {
+		return err
+	}
+	if absent || mismatch {
+		logging.Debugf("%v Timer cancel %ru alarmref %v unexpected concurrency on alarm", r.log, ref, crecord.AlarmRef)
 		return nil
+	}
+
+	arecord := AlarmRecord{}
+	acas, absent, err := kv.MustGet(r.bucket, crecord.AlarmRef, &arecord)
+	if err != nil {
+		return err
 	}
 	if absent {
 		atomic.AddUint64(&r.stats.cancelAlarmMissingCounter, 1)
-		logging.Tracef("%v Timer asked to cancel %ru alarmref %v does not exist", r.log, ref, crecord.AlarmRef)
+		logging.Debugf("%v Timer asked to cancel %ru alarmref %v does not exist", r.log, ref, crecord.AlarmRef)
 		return nil
 	}
 
-	_, absent, _, err = kv.MustRemove(r.bucket, cref, 0)
+	_, absent, mismatch, err = kv.MustRemove(r.bucket, crecord.AlarmRef, acas)
 	if err != nil {
+		return err
+	}
+	if absent || mismatch {
+		logging.Debugf("%v Timer cancel %ru alarmref %v unexpected concurrency on context", r.log, ref, crecord.AlarmRef)
 		return nil
 	}
-	if absent {
-		logging.Tracef("%v Timer asked to cancel %ru cref %v does not exist", r.log, ref, cref)
-	}
-
-	// TODO: if all items were canceled, need to remove top
 
 	atomic.AddUint64(&r.stats.cancelSuccessCounter, 1)
 	return nil
@@ -322,19 +317,21 @@ func (r *TimerIter) ScanNext() (*TimerEntry, error) {
 
 	for {
 		logging.Tracef("Scan next iterator: %+v", r)
+
 		found, err := r.nextColumn()
 		if err != nil {
 			return nil, err
 		}
 		if found {
-			if r.entry.AlarmDue > time.Now().Unix() {
-				atomic.AddUint64(&r.store.stats.timerInFutureFiredCounter, 1)
-			}
 			return r.entry, nil
 		}
+
 		found, err = r.nextRow()
-		if !found || err != nil {
+		if err != nil {
 			return nil, err
+		}
+		if !found {
+			return nil, nil
 		}
 	}
 }
@@ -347,25 +344,25 @@ func (r *TimerIter) nextRow() (bool, error) {
 	r.col = nil
 	r.entry = nil
 
-	col := colIter{current: init_seq, topCas: 0}
 	for r.row.current < r.row.stop {
 		r.row.current += Resolution
 
 		pos := r.store.kvLocatorRoot(r.row.current)
+		seq_end := int64(0)
 		atomic.AddUint64(&r.store.stats.scanRowLookupCounter, 1)
-		cas, absent, err := kv.MustGet(r.store.bucket, pos, &col.stop)
+		cas, absent, err := kv.MustGet(r.store.bucket, pos, &seq_end)
 		if err != nil {
 			return false, err
 		}
 		if !absent {
-			col.topCas = cas
-			r.col = &col
+			r.col = &colIter{current: init_seq, stop: seq_end, topKey: pos, topCas: cas, empty: true}
 			logging.Tracef("%v Found row %+v", r.store.log, r.row)
 			return true, nil
 		}
+		r.store.shrinkSpan(r.row.current)
 	}
-	logging.Tracef("%v Found no rows looking until %v", r.store.log, r.row.stop)
-	r.store.shrinkSpan(r.row.stop - Resolution)
+
+	logging.Tracef("%v Found no more rows looking until %v", r.store.log, r.row.stop)
 	return false, nil
 }
 
@@ -389,36 +386,54 @@ func (r *TimerIter) nextColumn() (bool, error) {
 		key := r.store.kvLocatorAlarm(r.row.current, current)
 
 		atomic.AddUint64(&r.store.stats.scanColumnLookupCounter, 1)
-		_, absent, err := kv.MustGet(r.store.bucket, key, &alarm)
+		acas, absent, err := kv.MustGet(r.store.bucket, key, &alarm)
 		if err != nil {
 			return false, err
 		}
 		if absent {
-			logging.Debugf("%v Skipping missing entry in chain at %v", r.store.log, key)
+			logging.Tracef("%v Skipping missing entry in chain at %v", r.store.log, key)
 			continue
 		}
 
 		atomic.AddUint64(&r.store.stats.scanColumnLookupCounter, 1)
-		cas, absent, err := kv.MustGet(r.store.bucket, alarm.ContextRef, &context)
+		ccas, absent, err := kv.MustGet(r.store.bucket, alarm.ContextRef, &context)
 		if err != nil {
 			return false, err
 		}
 		if absent || context.AlarmRef != key {
-			// Alarm canceled if absent, or superseded if AlarmRef != key
-			logging.Debugf("%v Alarm canceled or superseded %v by context %ru", r.store.log, alarm, context)
+			logging.Debugf("%v Alarm canceled or superseded %v by context %ru, deleting it", r.store.log, alarm, context)
+			_, absent, mismatch, err := kv.MustRemove(r.store.bucket, key, acas)
+			if err != nil {
+				return false, err
+			}
+			if absent || mismatch {
+				logging.Debugf("%v Alarm concurrency %v by context %ru, deleting fail %v, %v", r.store.log, alarm, context, absent, mismatch)
+			}
 			continue
 		}
 
-		r.entry = &TimerEntry{AlarmRecord: alarm, ContextRecord: context, alarmSeq: current, topCas: 0, ctxCas: cas}
-		if current == r.col.stop {
-			r.entry.topCas = r.col.topCas
+		r.entry = &TimerEntry{AlarmRecord: alarm, ContextRecord: context, alarmSeq: current, ctxCas: ccas}
+		if r.entry.AlarmDue > time.Now().Unix() {
+			atomic.AddUint64(&r.store.stats.timerInFutureFiredCounter, 1)
 		}
-		logging.Tracef("%v Scan returning timer %+v", r.store.log, r.entry)
-		return true, nil
 
+		r.col.empty = false
+		return true, nil
 	}
 
-	logging.Tracef("%v Column scan finished for %+v", r.store.log, r)
+	logging.Tracef("%v Column scan finished for %+v at %+v", r.store.log, r, *r.col)
+	if r.col.empty == true && r.col.topCas != 0 {
+		logging.Debugf("%v Row %v was empty, so removing counter", r.store.log, r.col.topKey)
+		_, absent, mismatch, err := kv.MustRemove(r.store.bucket, r.col.topKey, r.col.topCas)
+		if err != nil {
+			return false, err
+		}
+		if absent || mismatch {
+			logging.Debugf("%v Concurrency on %v absent:%v mismatch:%v", r.store.log, r.col.topKey, absent, mismatch)
+		}
+		r.store.shrinkSpan(r.row.current)
+	}
+
 	return false, nil
 }
 
@@ -431,11 +446,15 @@ func (r *TimerStore) readSpan() Span {
 func (r *TimerStore) expandSpan(point int64) {
 	r.span.lock.Lock()
 	defer r.span.lock.Unlock()
+	util.Assert(func() bool { return point >= roundDown(time.Now().Unix()) })
+
 	if r.span.Start > point {
+		logging.Tracef("Expanding span start to %v", r.span)
 		r.span.Start = point
 		r.span.dirty = true
 	}
 	if r.span.Stop < point {
+		logging.Tracef("Expanding span stop to %v", r.span)
 		r.span.Stop = point
 		r.span.dirty = true
 	}
@@ -444,9 +463,12 @@ func (r *TimerStore) expandSpan(point int64) {
 func (r *TimerStore) shrinkSpan(start int64) {
 	r.span.lock.Lock()
 	defer r.span.lock.Unlock()
+	util.Assert(func() bool { return start <= roundDown(time.Now().Unix()) })
+
 	if r.span.Start < start {
 		r.span.Start = start
 		r.span.dirty = true
+		logging.Tracef("Shrinking span to %v", r.span)
 	}
 }
 
@@ -480,7 +502,7 @@ func (r *TimerStore) syncSpan() error {
 		r.span.Span = Span{Start: roundDown(now), Stop: roundUp(now)}
 		wcas, mismatch, err := kv.MustInsert(r.bucket, pos, r.span.Span, 0)
 		if err != nil || mismatch {
-			logging.Tracef("%v Error initializing span %+v: mismatch=%v err=%v", r.log, r.span, mismatch, err)
+			logging.Debugf("%v Error initializing span %+v: mismatch=%v err=%v", r.log, r.span, mismatch, err)
 			return err
 		}
 		r.span.spanCas = wcas
@@ -492,7 +514,7 @@ func (r *TimerStore) syncSpan() error {
 	case absent && !r.span.empty:
 		wcas, mismatch, err := kv.MustInsert(r.bucket, pos, r.span.Span, 0)
 		if err != nil || mismatch {
-			logging.Tracef("%v Error initializing span %+v: mismatch=%v err=%v", r.log, r.span, mismatch, err)
+			logging.Debugf("%v Error initializing span %+v: mismatch=%v err=%v", r.log, r.span, mismatch, err)
 			return err
 		}
 		r.span.spanCas = wcas
@@ -521,7 +543,7 @@ func (r *TimerStore) syncSpan() error {
 		logging.Tracef("%v Writing span no conflict %+v", r.log, r.span)
 		wcas, absent, mismatch, err := kv.MustReplace(r.bucket, pos, r.span.Span, rcas, 0)
 		if err != nil || absent || mismatch {
-			logging.Tracef("%v Overwriting span %+v failed: absent=%v mismatch=%v err=%v", r.log, r.span, absent, mismatch, err)
+			logging.Debugf("%v Overwriting span %+v failed: absent=%v mismatch=%v err=%v", r.log, r.span, absent, mismatch, err)
 			return err
 		}
 		r.span.spanCas = wcas
@@ -531,18 +553,18 @@ func (r *TimerStore) syncSpan() error {
 	// Merge conflict
 	atomic.AddUint64(&r.stats.spanCasMismatchCounter, 1)
 	if r.span.Start > extspan.Start {
-		logging.Tracef("%v Span conflict external write, moving Start: span=%+v extspan=%+v", r.span, extspan)
+		logging.Debugf("%v Span conflict external write, moving Start: span=%+v extspan=%+v", r.span, extspan)
 		atomic.AddUint64(&r.stats.spanStartChangeCounter, 1)
 		r.span.Start = extspan.Start
 	}
 	if r.span.Stop < extspan.Stop {
-		logging.Tracef("%v Span conflict external write, moving Stop: span=%+v extspan=%+v", r.span, extspan)
+		logging.Debugf("%v Span conflict external write, moving Stop: span=%+v extspan=%+v", r.span, extspan)
 		atomic.AddUint64(&r.stats.spanStopChangeCounter, 1)
 		r.span.Stop = extspan.Stop
 	}
 	wcas, absent, mismatch, err := kv.MustReplace(r.bucket, pos, r.span.Span, rcas, 0)
 	if err != nil || absent || mismatch {
-		logging.Tracef("%v Overwriting span %+v failed: absent=%v mismatch=%v err=%v", r.log, r.span, absent, mismatch, err)
+		logging.Debugf("%v Overwriting span %+v failed: absent=%v mismatch=%v err=%v", r.log, r.span, absent, mismatch, err)
 		return err
 	}
 	r.span.spanCas = wcas
