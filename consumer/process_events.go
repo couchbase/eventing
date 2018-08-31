@@ -193,7 +193,7 @@ func (c *Consumer) processEvents() {
 					}
 
 					if c.usingTimer {
-						err := timers.Create(c.producer.AddMetadataPrefix(c.app.AppName).Raw(),
+						err := timers.Create(c.producer.GetMetadataPrefix(),
 							int(e.VBucket), connStr, c.producer.MetadataBucket())
 						if err == common.ErrRetryTimeout {
 							logging.Infof("%s [%s:%s:%d] Exiting due to timeout",

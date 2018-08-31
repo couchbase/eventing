@@ -234,7 +234,7 @@ func (c *Consumer) GetMetaStoreStats() map[string]uint64 {
 	stats["metastore_set_err"] = atomic.LoadUint64(&c.metastoreSetErrCounter)
 
 	for _, vb := range c.getCurrentlyOwnedVbs() {
-		store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
+		store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(vb))
 		if !found {
 			atomic.AddUint64(&c.metastoreNotFoundErrCounter, 1)
 			continue

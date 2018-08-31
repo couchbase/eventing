@@ -606,7 +606,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 
 		defer wg.Done()
 
-		prefix := p.AddMetadataPrefix(p.appName)
+		prefix := p.GetMetadataPrefix()
 		for {
 			select {
 			case e, ok := <-dcpFeed.C:
@@ -624,10 +624,9 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 				case mcd.DCP_MUTATION:
 					docID := string(e.Key)
 
-					if strings.HasPrefix(docID, prefix.Raw()) {
-						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p,
-							p.AddMetadataPrefix(p.appName+strings.TrimPrefix(docID, prefix.Raw())))
-
+					if strings.HasPrefix(docID, prefix) {
+						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
+							deleteOpCallback, p, docID)
 						if err == common.ErrRetryTimeout {
 							logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout",
 								logPrefix, p.appName, p.LenRunningConsumers(), id)
@@ -943,6 +942,10 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 // within metadata bucket
 func (p *Producer) AddMetadataPrefix(key string) common.Key {
 	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), key)
+}
+
+func (p *Producer) GetMetadataPrefix() string {
+	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), "").GetPrefix()
 }
 
 // GetVbOwner returns assigned eventing nodes and worker for a vbucket

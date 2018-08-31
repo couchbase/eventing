@@ -57,7 +57,7 @@ func (c *Consumer) executeTimers(vbs []uint16, wg *sync.WaitGroup) {
 			continue
 		}
 
-		store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
+		store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(vb))
 		if !found {
 			logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
@@ -177,7 +177,7 @@ func (c *Consumer) storeTimers(index int, timerQueue *util.BoundedQueue, stopCh 
 				return
 			}
 			timer := data.(*TimerInfo)
-			store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(timer.Vb))
+			store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(timer.Vb))
 			if !found {
 				logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb)

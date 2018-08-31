@@ -68,6 +68,7 @@ type EventingProducer interface {
 	GetLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
 	GetMetaStoreStats() map[string]uint64
+	GetMetadataPrefix() string
 	GetNsServerPort() string
 	GetVbOwner(vb uint16) (string, string, error)
 	GetSeqsProcessed() map[int]int64
@@ -318,4 +319,8 @@ func NewKey(userPrefix, clusterPrefix, key string) Key {
 
 func (k Key) Raw() string {
 	return k.transformedKey
+}
+
+func (k Key) GetPrefix() string {
+	return k.prefix
 }
