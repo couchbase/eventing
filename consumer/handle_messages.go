@@ -441,13 +441,14 @@ func (c *Consumer) sendMessageLoop() {
 				func() {
 					c.sendMsgBufferRWMutex.Lock()
 					defer c.sendMsgBufferRWMutex.Unlock()
+
 					if c.conn == nil {
 						logging.Infof("%s [%s:%s:%d] connection socket closed, bailing out",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer)
 						return
 					}
 
-					err := binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
+					_, err := c.sendMsgBuffer.WriteTo(c.conn)
 					if err != nil {
 						logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, err)
@@ -533,7 +534,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 		if !m.sendToDebugger && c.conn != nil {
 			c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
 
-			err = binary.Write(c.conn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
+			_, err := c.sendMsgBuffer.WriteTo(c.conn)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, err)
@@ -547,7 +548,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 				return err
 			}
 		} else if c.debugConn != nil {
-			err = binary.Write(c.debugConn, binary.LittleEndian, c.sendMsgBuffer.Bytes())
+			_, err := c.sendMsgBuffer.WriteTo(c.debugConn)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Write to debug enabled worker socket failed, err: %v",
 					logPrefix, c.workerName, c.debugTCPPort, c.Pid(), err)

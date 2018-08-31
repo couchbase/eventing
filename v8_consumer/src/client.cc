@@ -62,17 +62,19 @@ std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
 
   bool ok = header->Verify(verifier);
 
-  std::unique_ptr<header_t> parsed_header(new header_t);
-
   if (ok) {
+    std::unique_ptr<header_t> parsed_header(new header_t);
+
     parsed_header->event = header->event();
     parsed_header->opcode = header->opcode();
     parsed_header->partition = header->partition();
 
     parsed_header->metadata = header->metadata()->str();
+
+    return parsed_header;
   }
 
-  return parsed_header;
+  return nullptr;
 }
 
 std::unique_ptr<message_t> ParseServerMessage(int encoded_header_size,
