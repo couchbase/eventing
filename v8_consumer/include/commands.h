@@ -49,6 +49,7 @@ enum app_worker_setting_opcode {
   oLogLevel,
   oWorkerThreadCount,
   oWorkerThreadMap,
+  oTimerContextSize,
   App_Worker_Setting_Opcode_Unknown
 };
 

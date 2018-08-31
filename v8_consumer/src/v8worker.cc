@@ -210,6 +210,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   execute_flag_ = false;
   shutdown_terminator_ = false;
   max_task_duration_ = SECS_TO_NS * h_config->execution_timeout;
+  timer_context_size = h_config->timer_context_size;
 
   if (!h_config->skip_lcb_bootstrap) {
     for (auto it = config->component_configs.begin();
@@ -241,6 +242,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
                << " curl_timeout: " << curl_timeout
+               << " timer_context_size: " << h_config->timer_context_size
                << " version: " << EventingVer() << std::endl;
 
   connstr_ = "couchbase://" + settings_->kv_host_port + "/" +

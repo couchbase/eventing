@@ -26,6 +26,8 @@ const int HEADER_FRAGMENT_SIZE = 4;  // uint32
 const int PAYLOAD_FRAGMENT_SIZE = 4; // uint32
 const int SIZEOF_UINT32 = 4;
 
+int timer_context_size;
+
 typedef struct resp_msg_s {
   std::string msg;
   uint8_t msg_type;

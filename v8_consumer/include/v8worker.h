@@ -61,6 +61,8 @@ typedef std::chrono::nanoseconds nsecs;
 
 #define NUM_VBUCKETS 1024
 
+extern int timer_context_size;
+
 using atomic_ptr_t = std::shared_ptr<std::atomic<int64_t>>;
 // Used for checkpointing of vbucket seq nos
 typedef std::map<int64_t, atomic_ptr_t> vb_seq_map_t;
@@ -113,6 +115,7 @@ typedef struct server_settings_s {
 typedef struct handler_config_s {
   std::string app_name;
   long curl_timeout;
+  int timer_context_size;
   std::string dep_cfg;
   int execution_timeout;
   int lcb_inst_capacity;

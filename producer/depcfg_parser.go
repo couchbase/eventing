@@ -221,11 +221,16 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	// Metastore related configuration
-
 	if val, ok := settings["execute_timer_routine_count"]; ok {
 		p.handlerConfig.ExecuteTimerRoutineCount = int(val.(float64))
 	} else {
 		p.handlerConfig.ExecuteTimerRoutineCount = 3
+	}
+
+	if val, ok := settings["timer_context_size"]; ok {
+		p.handlerConfig.TimerContextSize = int(val.(float64))
+	} else {
+		p.handlerConfig.TimerContextSize = 1024
 	}
 
 	if val, ok := settings["timer_storage_routine_count"]; ok {

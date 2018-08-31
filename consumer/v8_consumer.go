@@ -337,7 +337,7 @@ func (c *Consumer) HandleV8Worker() error {
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort, currHost,
 		c.eventingDir, c.eventingAdminPort, c.eventingSSLPort, c.getKvNodes()[0],
 		c.producer.CfgData(), c.lcbInstCapacity, c.executionTimeout,
-		int(c.checkpointInterval.Nanoseconds()/(1000*1000)), false, c.curlTimeout)
+		int(c.checkpointInterval.Nanoseconds()/(1000*1000)), false, c.curlTimeout, c.timerContextSize)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 

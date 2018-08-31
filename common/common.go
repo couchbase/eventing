@@ -275,6 +275,7 @@ type HandlerConfig struct {
 	SourceBucket             string
 	StatsLogInterval         int
 	StreamBoundary           DcpStreamBoundary
+	TimerContextSize         int
 	TimerStorageRoutineCount int
 	TimerStorageChanSize     int
 	TimerQueueMemCap         int64

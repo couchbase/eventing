@@ -11,6 +11,7 @@ table Payload {
   app_name:string;
   checkpoint_interval:int; // Controls how frequently checkpoint will be updated in metadata bucket
   curl_timeout:long;
+  timer_context_size:int;
   depcfg:string;
   debugger_port:string;
   execution_timeout:int; // Execution timeout for handler code execution
