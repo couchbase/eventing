@@ -243,7 +243,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["timer_queue_mem_cap"]; ok {
 		p.handlerConfig.TimerQueueMemCap = int64(val.(float64)) * 1024 * 1024
 	} else {
-		p.handlerConfig.TimerQueueMemCap = 50 * 1024 * 1024
+		p.handlerConfig.TimerQueueMemCap = p.consumerMemQuota()
 	}
 
 	if val, ok := settings["timer_queue_size"]; ok {
@@ -363,9 +363,16 @@ func (p *Producer) parseDepcfg() error {
 func (p *Producer) consumerMemQuota() int64 {
 	wc := int64(p.handlerConfig.WorkerCount)
 	if wc > 0 {
-		// Divided by 2 because it's accounting for just 2 queues for each worker:
+		// Accounting for memory usage by following queues:
 		// (a) dcp feed queue
 		// (b) timer_feedback_queue + main_queue on eventing-consumer
+		// (c) create timer queue
+		// (d) timer store queues for thread pool
+		// (e) fire timer queue
+
+		if p.app.UsingTimer {
+			return (p.MemoryQuota / (wc * 5)) * 1024 * 1024
+		}
 		return (p.MemoryQuota / (wc * 2)) * 1024 * 1024
 	}
 	return 1024 * 1024 * 1024

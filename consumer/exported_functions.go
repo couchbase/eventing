@@ -702,14 +702,24 @@ func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
 	}
 }
 
-// UpdateWorkerQueueMemCap revises the memory cap for cpp worker and dcp queues
+// UpdateWorkerQueueMemCap revises the memory cap for cpp worker, dcp and timer queues
 func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 	logPrefix := "Consumer::updateWorkerQueueMemCap"
 
 	prevWorkerMemCap := c.workerQueueMemCap
 	prevDCPFeedMemCap := c.aggDCPFeedMemCap
-	c.workerQueueMemCap = (quota / 2) * 1024 * 1024
-	c.aggDCPFeedMemCap = (quota / 2) * 1024 * 1024
+
+	var divisor int64
+
+	if c.app.UsingTimer {
+		divisor = 5
+		c.timerQueueMemCap = (quota / divisor) * 1024 * 1024
+	} else {
+		divisor = 2
+	}
+
+	c.workerQueueMemCap = (quota / divisor) * 1024 * 1024
+	c.aggDCPFeedMemCap = (quota / divisor) * 1024 * 1024
 
 	logging.Infof("%s [%s:%s:%d] Updated memory quota: %d MB previous worker quota: %d MB dcp feed quota: %d MB",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.workerQueueMemCap/(1024*1024),
