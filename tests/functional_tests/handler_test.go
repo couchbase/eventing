@@ -716,6 +716,7 @@ func TestTimerOverwrite(t *testing.T) {
 	createAndDeployFunction(handler, handler, &commonSettings{})
 	waitForDeployToFinish(handler)
 
+	time.Sleep(10 * time.Second)
 	itemCountB, err := getBucketItemCount(metaBucket)
 	if err != nil {
 		log.Printf("Encountered err: %v while fetching item count from meta bucket: %s\n", err, metaBucket)
@@ -731,6 +732,7 @@ func TestTimerOverwrite(t *testing.T) {
 		)
 	}
 
+	time.Sleep(10 * time.Second)
 	itemCountA, err := getBucketItemCount(metaBucket)
 	if err != nil {
 		log.Printf("Encountered err: %v while fetching item count from meta bucket: %s\n", err, metaBucket)
