@@ -11,6 +11,8 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"runtime"
+	"runtime/debug"
 	"runtime/trace"
 	"sort"
 	"strconv"
@@ -2388,4 +2390,34 @@ func (m *ServiceMgr) checkVersionCompat(required string, info *runtimeInfo) {
 
 	logging.Infof("%s Function need %v satisfied by cluster %v", logPrefix, have, need)
 	info.Code = m.statusCodes.ok.Code
+}
+
+func (m *ServiceMgr) triggerGC(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::triggerGC"
+
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		return
+	}
+
+	logging.Infof("%s Triggering GC", logPrefix)
+	runtime.GC()
+	logging.Infof("%s Finished GC run", logPrefix)
+}
+
+func (m *ServiceMgr) freeOSMemory(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::freeOSMemory"
+
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		return
+	}
+
+	logging.Infof("%s Freeing up memory to OS", logPrefix)
+	debug.FreeOSMemory()
+	logging.Infof("%s Freed up memory to OS", logPrefix)
 }

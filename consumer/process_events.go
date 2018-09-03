@@ -33,6 +33,8 @@ func (c *Consumer) processEvents() {
 			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize ||
 				c.feedbackQueueCap < c.cppQueueSizes.DocTimerQueueSize ||
 				c.workerQueueMemCap < c.cppQueueSizes.AggQueueMemory {
+				logging.Debugf("%s [%s:%s:%d] Throttling, cpp queue sizes: %+v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes)
 				time.Sleep(10 * time.Millisecond)
 			}
 		}
