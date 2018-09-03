@@ -1011,3 +1011,27 @@ func (p *Producer) IsTrapEvent() bool {
 func (p *Producer) GetDebuggerToken() string {
 	return p.debuggerToken
 }
+
+// SpanBlobDump returns state of timer span blobs stored in metadata bucket
+func (p *Producer) SpanBlobDump() map[string]interface{} {
+	logPrefix := "Producer::SpanBlobDump"
+
+	spanBlobDumps := make(map[string]interface{})
+
+	if p.metadataBucketHandle == nil {
+		return spanBlobDumps
+	}
+
+	for vb := 0; vb < p.numVbuckets; vb++ {
+		vbBlob := make(map[string]interface{})
+		vbKey := fmt.Sprintf("%s:tm:%d:sp", p.appName, vb)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, p.AddMetadataPrefix(vbKey), &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+			return nil
+		}
+
+		spanBlobDumps[p.AddMetadataPrefix(vbKey).Raw()] = vbBlob
+	}
+	return spanBlobDumps
+}

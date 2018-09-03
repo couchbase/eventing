@@ -96,6 +96,7 @@ type EventingProducer interface {
 	SignalStartDebugger(token string) error
 	SignalStopDebugger() error
 	SetRetryCount(retryCount int64)
+	SpanBlobDump() map[string]interface{}
 	Serve()
 	Stop()
 	StopProducer()
@@ -190,6 +191,7 @@ type EventingSuperSup interface {
 	RemoveProducerToken(appName string)
 	RestPort() string
 	SignalStopDebugger(appName string) error
+	SpanBlobDump(appName string) (interface{}, error)
 	StopProducer(appName string, skipMetaCleanup bool)
 	TimerDebugStats(appName string) (map[int]map[string]interface{}, error)
 	VbDcpEventsRemainingToProcess(appName string) map[int]int64

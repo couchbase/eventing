@@ -2116,6 +2116,11 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 
 				stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
 				stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
+				spanBlobDump, err := m.superSup.SpanBlobDump(app.Name)
+				if err == nil {
+					stats.SpanBlobDump = spanBlobDump
+				}
+
 				stats.VbDcpEventsRemaining = m.superSup.VbDcpEventsRemainingToProcess(app.Name)
 				debugStats, err := m.superSup.TimerDebugStats(app.Name)
 				if err == nil {
@@ -2237,7 +2242,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			infoList = append(infoList, info)
 			continue
 		}
-		logging.Infof("%s FUnction: %s HandlerUUID generated: %d", logPrefix, app.Name, app.HandlerUUID)
+		logging.Infof("%s Function: %s HandlerUUID generated: %d", logPrefix, app.Name, app.HandlerUUID)
 
 		infoPri := m.savePrimaryStore(app)
 		if infoPri.Code != m.statusCodes.ok.Code {
