@@ -501,10 +501,6 @@ func (c *Consumer) Stop() {
 		c.stopHandleFailoverLogCh <- struct{}{}
 	}
 
-	close(c.aggDCPFeed)
-	logging.Infof("%s [%s:%s:%d] Closing up aggDcpFeed channel",
-		logPrefix, c.workerName, c.tcpPort, c.Pid())
-
 	// Bail out processEvents loop only after couchbase.DcpFeed and aggChan are closed.
 	if c.stopConsumerCh != nil {
 		c.stopConsumerCh <- struct{}{}

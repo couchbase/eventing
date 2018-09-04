@@ -726,10 +726,8 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 					time.Sleep(10 * time.Millisecond)
 				}
 
-				if atomic.LoadUint32(&c.isTerminateRunning) == 0 {
-					atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
-					c.aggDCPFeed <- e
-				}
+				atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
+				c.aggDCPFeed <- e
 			}
 		}
 	}(dcpFeed)
