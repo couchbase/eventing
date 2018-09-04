@@ -249,6 +249,8 @@ public:
 
   int ParseMetadata(const std::string &metadata, int &vb_no, int64_t &seq_no);
 
+  void SetThreadExitFlag();
+
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
   v8::Persistent<v8::Function> on_update_;
@@ -308,6 +310,7 @@ private:
   std::string handler_name_;
   std::string handler_uuid_;
   std::string user_prefix_;
+  std::atomic<bool> thread_exit_cond_;
 };
 
 const char *GetUsername(void *cookie, const char *host, const char *port,
