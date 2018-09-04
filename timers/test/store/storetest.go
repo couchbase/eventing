@@ -26,6 +26,7 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 	db := make(map[string]time.Time)
 	dbl := sync.Mutex{}
 	uid := "timertest-" + strconv.FormatInt(time.Now().Unix(), 36)
+	uid = "timertest"
 	cstr := "couchbase://localhost"
 	if len(os.Args) == 2 {
 		cstr = os.Args[1]
@@ -59,7 +60,7 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 			if finish.Before(due) {
 				finish = due
 			}
-			logging.Debugf("Created timer %+v", ref)
+			logging.Tracef("Created timer %+v", ref)
 			created++
 		}
 	}()
@@ -82,7 +83,7 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 			delete(db, ref)
 			dbl.Unlock()
 			store.Cancel(ref)
-			logging.Debugf("Cancelled timer %v", ref)
+			logging.Tracef("Cancelled timer %v", ref)
 			cancelled++
 		}
 	}()
@@ -96,7 +97,7 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 				if entry.AlarmDue > time.Now().Unix() {
 					logging.Errorf("Timer in future fired: %v at %v", entry, time.Now().Unix())
 				}
-				logging.Debugf("Fired timer %v, deleting it now", entry)
+				logging.Tracef("Fired timer %v, deleting it now", entry)
 				ctx := entry.Context.(map[string]interface{})
 				sdue := ctx["Due"].(string)
 				ref := ctx["Ref"].(string)
@@ -113,7 +114,7 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 				if dbe.Unix() > time.Now().Unix() {
 					logging.Errorf("Timer %v fired too early at %v", entry, time.Now().Unix())
 				}
-				if time.Now().Unix()-dbe.Unix() > int64((load/3000)+1)*timers.Resolution {
+				if time.Now().Unix()-dbe.Unix() > 10*timers.Resolution {
 					logging.Errorf("Timer %v was too late: %+v", dbe.Unix(), entry)
 				}
 				if dbe.Unix() != due {

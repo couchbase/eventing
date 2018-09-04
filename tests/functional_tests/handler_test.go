@@ -709,6 +709,42 @@ func TestUndeployWithKVFailover(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestTimerOverwrite(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_with_timer_overwritten"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	itemCountB, err := getBucketItemCount(metaBucket)
+	if err != nil {
+		log.Printf("Encountered err: %v while fetching item count from meta bucket: %s\n", err, metaBucket)
+		return
+	}
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "TimerBucketOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	itemCountA, err := getBucketItemCount(metaBucket)
+	if err != nil {
+		log.Printf("Encountered err: %v while fetching item count from meta bucket: %s\n", err, metaBucket)
+		return
+	}
+
+	if itemCountB != itemCountA {
+		t.Error("Expected", itemCountB, "got", itemCountA)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
 // Disabling as for the time being source bucket mutations aren't allowed
 /* func TestSourceBucketMutations(t *testing.T) {
 	time.Sleep(time.Second * 5)

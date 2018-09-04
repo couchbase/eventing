@@ -13,8 +13,8 @@ func init() {
 	isDeveloper = re.MatchString(EventingVer())
 }
 
-func Assert(condition bool) {
-	if condition {
+func Assert(stmt func() bool) {
+	if stmt() {
 		return
 	}
 	if isDeveloper {
