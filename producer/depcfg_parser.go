@@ -344,7 +344,13 @@ func (p *Producer) parseDepcfg() error {
 
 	p.app.Settings = settings
 
-	logLevel := settings["log_level"].(string)
+	var logLevel string
+	if val, ok := settings["log_level"]; ok {
+		logLevel = val.(string)
+	} else {
+		logLevel = "INFO"
+	}
+
 	logging.SetLogLevel(util.GetLogLevel(logLevel))
 
 	logging.Infof("%s [%s] Loaded function => wc: %v bucket: %v statsTickD: %v",
