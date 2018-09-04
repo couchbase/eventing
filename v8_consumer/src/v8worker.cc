@@ -614,7 +614,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
   }
 
   if (try_catch.HasCaught()) {
-    LOG(logError) << "OnUpdate Exception: "
+    LOG(logDebug) << "OnUpdate Exception: "
                   << ExceptionString(isolate_, &try_catch) << std::endl;
   }
 
@@ -637,7 +637,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
   on_doc_update->Call(context->Global(), 2, args);
   execute_flag_ = false;
   if (try_catch.HasCaught()) {
-    LOG(logError) << "OnUpdate Exception: "
+    LOG(logDebug) << "OnUpdate Exception: "
                   << ExceptionString(isolate_, &try_catch) << std::endl;
     UpdateHistogram(start_time);
     on_update_failure++;
@@ -698,7 +698,7 @@ int V8Worker::SendDelete(std::string meta, int vb_no, int64_t seq_no) {
   on_doc_delete->Call(context->Global(), 1, args);
   execute_flag_ = false;
   if (try_catch.HasCaught()) {
-    LOG(logError) << "OnDelete Exception: "
+    LOG(logDebug) << "OnDelete Exception: "
                   << ExceptionString(isolate_, &try_catch) << std::endl;
     UpdateHistogram(start_time);
     on_delete_failure++;

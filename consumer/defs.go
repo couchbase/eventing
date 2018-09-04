@@ -185,7 +185,7 @@ type Consumer struct {
 	statsTickDuration             time.Duration
 	stoppingConsumer              bool
 	superSup                      common.EventingSuperSup
-	timerContextSize              int
+	timerContextSize              int64
 	timerStorageChanSize          int
 	timerQueueSize                int64
 	timerQueueMemCap              int64

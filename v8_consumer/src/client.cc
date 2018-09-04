@@ -433,6 +433,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       handler_config->execution_timeout = payload->execution_timeout();
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
       handler_config->skip_lcb_bootstrap = payload->skip_lcb_bootstrap();
+      handler_config->timer_context_size = payload->timer_context_size();
       handler_config->handler_headers =
           ToStringArray(payload->handler_headers());
       handler_config->handler_footers =
@@ -749,7 +750,9 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority_ = true;
       break;
     case oTimerContextSize:
-      timer_context_size = std::stoi(parsed_header->metadata);
+      timer_context_size = std::stol(parsed_header->metadata);
+      LOG(logInfo) << "Setting timer_context_size to " << timer_context_size
+                   << std::endl;
       msg_priority_ = true;
       break;
     default:

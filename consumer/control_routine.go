@@ -77,7 +77,7 @@ func (c *Consumer) controlRoutine() error {
 			}
 
 			if val, ok := settings["timer_context_size"]; ok {
-				c.timerContextSize = int(val.(float64))
+				c.timerContextSize = int64(val.(float64))
 				c.sendTimerContextSize(c.timerContextSize, false)
 			}
 

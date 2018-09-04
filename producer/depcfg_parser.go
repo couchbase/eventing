@@ -228,7 +228,7 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	if val, ok := settings["timer_context_size"]; ok {
-		p.handlerConfig.TimerContextSize = int(val.(float64))
+		p.handlerConfig.TimerContextSize = int64(val.(float64))
 	} else {
 		p.handlerConfig.TimerContextSize = 1024
 	}

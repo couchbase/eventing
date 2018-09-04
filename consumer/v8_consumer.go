@@ -107,6 +107,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		stopReqStreamProcessCh:          make(chan struct{}),
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
+		timerContextSize:                hConfig.TimerContextSize,
 		timerQueueSize:                  hConfig.TimerQueueSize,
 		timerQueueMemCap:                hConfig.TimerQueueMemCap,
 		timerStorageChanSize:            hConfig.TimerStorageChanSize,
