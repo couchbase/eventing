@@ -447,15 +447,17 @@ var getDeployedAppsCallback = func(args ...interface{}) error {
 	return nil
 }
 
-func (m *ServiceMgr) getAppList(w http.ResponseWriter, r *http.Request) (map[string]int, int, error) {
+func (m *ServiceMgr) getAppList() (map[string]int, int, *runtimeInfo) {
 	logPrefix := "ServiceMgr::getAppList"
+	info := &runtimeInfo{}
 
 	nodeAddrs, err := m.getActiveNodeAddrs()
 	if err != nil {
 		logging.Warnf("%s failed to fetch active Eventing nodes, err: %v", logPrefix, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errActiveEventingNodes.Code))
-		fmt.Fprintf(w, "")
-		return nil, 0, err
+
+		info.Code = m.statusCodes.errActiveEventingNodes.Code
+		info.Info = fmt.Sprintf("Unable to fetch active Eventing nodes, err: %v", err)
+		return nil, 0, info
 	}
 
 	aggDeployedApps := make(map[string]map[string]string)
@@ -474,13 +476,12 @@ func (m *ServiceMgr) getAppList(w http.ResponseWriter, r *http.Request) (map[str
 
 	numEventingNodes := len(nodeAddrs)
 	if numEventingNodes == 0 {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errNoEventingNodes.Code))
-		logging.Warnf("%s no eventing nodes found in cluster", logPrefix)
-		fmt.Fprintf(w, "")
-		return nil, 0, err
+		info.Code = m.statusCodes.errNoEventingNodes.Code
+		return nil, 0, info
 	}
 
-	return appDeployedNodesCounter, numEventingNodes, nil
+	info.Code = m.statusCodes.ok.Code
+	return appDeployedNodesCounter, numEventingNodes, info
 }
 
 // Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
@@ -493,8 +494,9 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListDeployed, r, nil)
 
-	appDeployedNodesCounter, numEventingNodes, err := m.getAppList(w, r)
-	if err != nil {
+	appDeployedNodesCounter, numEventingNodes, info := m.getAppList()
+	if info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
 		return
 	}
 
@@ -508,8 +510,10 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 	data, err := json.Marshal(deployedApps)
 	if err != nil {
 		logging.Errorf("%s failed to marshal list of deployed apps, err: %v", logPrefix, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, "")
+
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("Unable to marshall response, err: %v", err)
+		m.sendErrorInfo(w, info)
 		return
 	}
 
@@ -528,8 +532,9 @@ func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListRunning, r, nil)
 
-	appDeployedNodesCounter, numEventingNodes, err := m.getAppList(w, r)
-	if err != nil {
+	appDeployedNodesCounter, numEventingNodes, info := m.getAppList()
+	if info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
 		return
 	}
 
@@ -543,8 +548,10 @@ func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
 	data, err := json.Marshal(runningApps)
 	if err != nil {
 		logging.Errorf("%s failed to marshal list of running apps, err: %v", logPrefix, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, "")
+
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("Unable to marshal response, err: %v", err)
+		m.sendErrorInfo(w, info)
 		return
 	}
 
@@ -2006,6 +2013,81 @@ func (m *ServiceMgr) notifyRetryToAllProducers(appName string, r *retry) (info *
 
 	info.Code = m.statusCodes.ok.Code
 	return
+}
+
+func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		return
+	}
+
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	audit.Log(auditevent.ListDeployed, r, nil)
+	response, info := m.statusHandlerImpl()
+	if info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	data, err := json.Marshal(response)
+	if err != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("Unable to marshal response, err: %v", err)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", string(data))
+}
+
+func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runtimeInfo) {
+	appDeployedNodesCounter, numEventingNodes, info := m.getAppList()
+	if info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	response.NumEventingNodes = numEventingNodes
+	for _, app := range m.getTempStoreAll() {
+		status := appStatus{
+			Name:             app.Name,
+			DeploymentStatus: app.Settings["deployment_status"].(bool),
+			ProcessingStatus: app.Settings["processing_status"].(bool),
+		}
+		if num, exists := appDeployedNodesCounter[app.Name]; exists {
+			status.NumDeployedNodes = num
+		}
+		status.CompositeStatus = determineStatus(status, numEventingNodes)
+		response.Apps = append(response.Apps, status)
+	}
+	return
+}
+
+func determineStatus(status appStatus, numEventingNodes int) string {
+	logPrefix := "determineStatus"
+
+	if status.DeploymentStatus && status.ProcessingStatus {
+		if status.NumDeployedNodes == numEventingNodes {
+			return "deployed"
+		}
+		return "deploying"
+	}
+
+	if !status.DeploymentStatus && !status.ProcessingStatus {
+		if status.NumDeployedNodes == 0 {
+			return "undeployed"
+		}
+		return "undeploying"
+	}
+
+	logging.Errorf("%s Function: %s inconsistent deployment state %v",
+		logPrefix, status.Name, status)
+	return "invalid"
 }
 
 func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {

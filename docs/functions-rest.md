@@ -131,3 +131,10 @@ This is a convenience method to export all function definitions. Exported functi
 at the time of export, regardless of the state in the cluster at time of export. The returned artifact should be treated as an
 opaque artifact and must not be edited outside the Couchbase Console UI.
 
+## Get the status of functions
+>
+> GET /api/v1/status
+>
+
+This API returns a list of functions and its corresponding `composite_status`. It can have one of the following values - `undeployed`,
+`deploying`, `deployed`, `undeploying`.
