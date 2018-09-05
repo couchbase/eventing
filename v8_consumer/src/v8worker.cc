@@ -738,7 +738,7 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
   }
 
   auto utils = UnwrapData(isolate_)->utils;
-  auto callback_func_val = utils->GetMethodFromGlobal(callback);
+  auto callback_func_val = utils->GetPropertyFromGlobal(callback);
   auto callback_func = callback_func_val.As<v8::Function>();
 
   if (debugger_started_) {

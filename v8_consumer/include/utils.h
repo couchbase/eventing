@@ -116,10 +116,10 @@ public:
 
   virtual ~Utils();
 
-  v8::Local<v8::Value> GetMethodFromGlobal(const std::string &method_name);
+  v8::Local<v8::Value> GetPropertyFromGlobal(const std::string &method_name);
   v8::Local<v8::Value>
-  GetMethodFromObject(const v8::Local<v8::Value> &obj_v8val,
-                      const std::string &method_name);
+  GetPropertyFromObject(const v8::Local<v8::Value> &obj_v8val,
+                        const std::string &method_name);
   std::string GetFunctionName(const v8::Local<v8::Value> &func_val);
   std::string ToCPPString(const v8::Local<v8::Value> &str_val);
   bool IsFuncGlobal(const v8::Local<v8::Value> &func);
@@ -142,7 +142,6 @@ std::string JSONStringify(v8::Isolate *isolate,
                           const v8::Local<v8::Value> &object);
 
 const char *ToCString(const v8::String::Utf8Value &value);
-bool ToCBool(const v8::Local<v8::Boolean> &value);
 
 std::string ConvertToISO8601(std::string timestamp);
 std::string GetTranspilerSrc();
