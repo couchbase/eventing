@@ -16,9 +16,23 @@ set -e
 cd $top/goproj/src/github.com/couchbase/eventing/timers/test/store
 go install -ldflags "-s -extldflags '-Wl,-rpath,@executable_path/../lib'" -tags 'jemalloc enterprise'
 go build -ldflags "-s -extldflags '-Wl,-rpath,@executable_path/../lib'" -tags 'jemalloc enterprise' storetest.go
+
 $top/install/bin/couchbase-cli bucket-flush -c 127.0.0.1 -u Administrator -p asdasd --bucket default --force
+echo "CREATE PRIMARY INDEX ON default;" | $top/install/bin/cbq -u Administrator -p asdasd -e http://localhost:8091 | grep "msg"
+
 sleep 5
 ./storetest $*
 rm storetest
+
+echo 'SELECT COUNT(*) as count FROM default WHERE meta().id LIKE "timertest:%" AND meta().id NOT LIKE "timertest:tm:%:sp";' | \
+  $top/install/bin/cbq -u Administrator -p asdasd -e http://localhost:8091 | \
+    grep '"count":' | grep -v number | grep -qs '"count": 0' || \
+      echo "Failed: Junk data found"
+
+echo 'SELECT COUNT(*) as count FROM default WHERE meta().id LIKE "timertest:tm:%:sp" AND sta != stp;' | \
+  $top/install/bin/cbq -u Administrator -p asdasd -e http://localhost:8091 | \
+    grep '"count":' | grep -v number | grep -qs '"count": 0' || \
+      echo "Failed: Mismatched span start/stop found"
+
 popd
 
