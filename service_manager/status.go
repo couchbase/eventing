@@ -390,7 +390,7 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errRebOngoing.Name,
 			Code:        m.statusCodes.errRebOngoing.Code,
-			Description: "Rebalance ongoing on some/all Eventing nodes, creating new functions or changing settings for existing functions isn't allowed",
+			Description: "Rebalance ongoing on some/all Eventing nodes, creating new functions, deployment or undeployment of existing functions is not allowed",
 		},
 		{
 			Name:        m.statusCodes.errActiveEventingNodes.Name,

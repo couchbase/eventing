@@ -902,7 +902,6 @@ func (m *ServiceMgr) getSettings(appName string) (*map[string]interface{}, *runt
 	logPrefix := "ServiceMgr::getSettings"
 
 	logging.Infof("%s Function: %s fetching settings", logPrefix, appName)
-
 	app, status := m.getTempStore(appName)
 	if status.Code != m.statusCodes.ok.Code {
 		return nil, status
@@ -929,6 +928,17 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		info.Info = fmt.Sprintf("Function: %s failed to unmarshal setting supplied, err: %v", appName, err)
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
+	}
+
+	_, procStatExists := settings["processing_status"]
+	_, depStatExists := settings["deployment_status"]
+
+	if procStatExists || depStatExists {
+		if lifeCycleOpsInfo := m.checkLifeCycleOpsDuringRebalance(); lifeCycleOpsInfo.Code != m.statusCodes.ok.Code {
+			info.Code = lifeCycleOpsInfo.Code
+			info.Info = lifeCycleOpsInfo.Info
+			return
+		}
 	}
 
 	// Get the app from temp store and update its settings with those provided
@@ -1297,7 +1307,7 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 	if rebStatus {
 		logging.Warnf("%s Rebalance ongoing on some/all Eventing nodes", logPrefix)
 		info.Code = m.statusCodes.errRebOngoing.Code
-		info.Info = "Rebalance ongoing on some/all Eventing nodes, creating new functions or changing settings for existing functions isn't allowed"
+		info.Info = "Rebalance ongoing on some/all Eventing nodes, creating new functions, deployment or undeployment of existing functions is not allowed"
 		return
 	}
 
@@ -1364,6 +1374,12 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 
 	info = &runtimeInfo{}
 	logging.Infof("%s Function: %s saving to primary store", logPrefix, app.Name)
+
+	if lifeCycleOpsInfo := m.checkLifeCycleOpsDuringRebalance(); lifeCycleOpsInfo.Code != m.statusCodes.ok.Code {
+		info.Code = lifeCycleOpsInfo.Code
+		info.Info = lifeCycleOpsInfo.Info
+		return
+	}
 
 	if m.checkIfDeployed(app.Name) {
 		info.Code = m.statusCodes.errAppDeployed.Code

@@ -253,6 +253,7 @@ func otpNodes(removeNodes []string) (string, string) {
 
 func waitForRebalanceFinish() {
 	t := time.NewTicker(5 * time.Second)
+
 	var rebalanceRunning bool
 
 	log.SetFlags(log.LstdFlags)
@@ -278,6 +279,7 @@ func waitForRebalanceFinish() {
 
 				if rebalanceRunning && task["type"].(string) == "rebalance" && task["status"].(string) == "notRunning" {
 					t.Stop()
+					time.Sleep(10 * time.Second)
 					log.Println("Rebalance progress: 100")
 					return
 				}
