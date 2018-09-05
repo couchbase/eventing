@@ -80,6 +80,5 @@ func (q *BoundedQueue) GetCount() (int64, error) {
 func (q *BoundedQueue) Close() {
 	if atomic.LoadInt32(&q.closed) == 0 {
 		atomic.StoreInt32(&q.closed, 1)
-		close(q.elements)
 	}
 }

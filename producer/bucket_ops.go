@@ -268,14 +268,14 @@ var deleteOpCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::deleteOpCallback"
 
 	p := args[0].(*Producer)
-	key := args[1].(common.Key)
+	key := args[1].(string)
 
-	_, err := p.metadataBucketHandle.Remove(key.Raw(), 0)
+	_, err := p.metadataBucketHandle.Remove(key, 0)
 	if gocb.IsKeyNotFoundError(err) || err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
 		logging.Errorf("%s [%s:%d] Bucket delete failed for key: %ru, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), key.Raw(), err)
+			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 
 		// Bucket op fail with generic timeout error even in case of bucket being dropped/deleted.
 		// Hence checking for it during routines called during undeploy

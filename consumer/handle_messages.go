@@ -40,6 +40,33 @@ func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
+func (c *Consumer) sendTimerContextSize(timerContextSize int64, sendToDebugger bool) {
+	logPrefix := "Consumer::sendTimerContextSize"
+
+	header, hBuilder := c.makeTimerContextSizeHeader(fmt.Sprintf("%d", timerContextSize))
+
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.v8WorkerMessagesProcessed["TIMER_CONTEXT_SIZE"]; !ok {
+		c.v8WorkerMessagesProcessed["TIMER_CONTEXT_SIZE"] = 0
+	}
+	c.v8WorkerMessagesProcessed["TIMER_CONTEXT_SIZE"]++
+	c.msgProcessedRWMutex.Unlock()
+
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	logging.Infof("%s [%s:%s:%d] Sending timer context size: %d",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), timerContextSize)
+
+	c.sendMessage(m)
+}
+
 func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) {
 	var header []byte
 	var hBuilder *flatbuffers.Builder

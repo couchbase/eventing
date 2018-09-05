@@ -490,6 +490,26 @@ func (m *ServiceMgr) validatePositiveInteger(field string, settings map[string]i
 	return
 }
 
+func (m *ServiceMgr) validateTimerContextSize(field string, settings map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if val, ok := settings[field]; ok {
+		if val.(float64) > 19*1024*1024 {
+			info.Info = fmt.Sprintf("%s value can not be more than 19MB", field)
+			return
+		}
+
+		if val.(float64) < 20 {
+			info.Info = fmt.Sprintf("%s value can not be less than 20 bytes", field)
+			return
+		}
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) validatePossibleValues(field string, settings map[string]interface{}, possibleValues []string) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
@@ -597,6 +617,14 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 	}
 
 	if info = m.validatePositiveInteger("sock_batch_size", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("timer_context_size", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateTimerContextSize("timer_context_size", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

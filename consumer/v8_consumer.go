@@ -107,6 +107,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		stopReqStreamProcessCh:          make(chan struct{}),
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
+		timerContextSize:                hConfig.TimerContextSize,
 		timerQueueSize:                  hConfig.TimerQueueSize,
 		timerQueueMemCap:                hConfig.TimerQueueMemCap,
 		timerStorageChanSize:            hConfig.TimerStorageChanSize,
@@ -337,7 +338,7 @@ func (c *Consumer) HandleV8Worker() error {
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort, currHost,
 		c.eventingDir, c.eventingAdminPort, c.eventingSSLPort, c.getKvNodes()[0],
 		c.producer.CfgData(), c.lcbInstCapacity, c.executionTimeout,
-		int(c.checkpointInterval.Nanoseconds()/(1000*1000)), false, c.curlTimeout)
+		int(c.checkpointInterval.Nanoseconds()/(1000*1000)), false, c.curlTimeout, c.timerContextSize)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 
@@ -499,10 +500,6 @@ func (c *Consumer) Stop() {
 	if c.stopHandleFailoverLogCh != nil {
 		c.stopHandleFailoverLogCh <- struct{}{}
 	}
-
-	close(c.aggDCPFeed)
-	logging.Infof("%s [%s:%s:%d] Closing up aggDcpFeed channel",
-		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	// Bail out processEvents loop only after couchbase.DcpFeed and aggChan are closed.
 	if c.stopConsumerCh != nil {

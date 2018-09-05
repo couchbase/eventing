@@ -606,7 +606,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 
 		defer wg.Done()
 
-		prefix := p.AddMetadataPrefix(p.appName)
+		prefix := p.GetMetadataPrefix()
 		for {
 			select {
 			case e, ok := <-dcpFeed.C:
@@ -624,10 +624,9 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 				case mcd.DCP_MUTATION:
 					docID := string(e.Key)
 
-					if strings.HasPrefix(docID, prefix.Raw()) {
-						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p,
-							p.AddMetadataPrefix(p.appName+strings.TrimPrefix(docID, prefix.Raw())))
-
+					if strings.HasPrefix(docID, prefix) {
+						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
+							deleteOpCallback, p, docID)
 						if err == common.ErrRetryTimeout {
 							logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout",
 								logPrefix, p.appName, p.LenRunningConsumers(), id)
@@ -945,6 +944,10 @@ func (p *Producer) AddMetadataPrefix(key string) common.Key {
 	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), key)
 }
 
+func (p *Producer) GetMetadataPrefix() string {
+	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), "").GetPrefix()
+}
+
 // GetVbOwner returns assigned eventing nodes and worker for a vbucket
 func (p *Producer) GetVbOwner(vb uint16) (string, string, error) {
 	if info, ok := p.vbMapping[vb]; ok {
@@ -1010,4 +1013,28 @@ func (p *Producer) IsTrapEvent() bool {
 
 func (p *Producer) GetDebuggerToken() string {
 	return p.debuggerToken
+}
+
+// SpanBlobDump returns state of timer span blobs stored in metadata bucket
+func (p *Producer) SpanBlobDump() map[string]interface{} {
+	logPrefix := "Producer::SpanBlobDump"
+
+	spanBlobDumps := make(map[string]interface{})
+
+	if p.metadataBucketHandle == nil {
+		return spanBlobDumps
+	}
+
+	for vb := 0; vb < p.numVbuckets; vb++ {
+		vbBlob := make(map[string]interface{})
+		vbKey := fmt.Sprintf("%s:tm:%d:sp", p.appName, vb)
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, p.AddMetadataPrefix(vbKey), &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+			return nil
+		}
+
+		spanBlobDumps[p.AddMetadataPrefix(vbKey).Raw()] = vbBlob
+	}
+	return spanBlobDumps
 }

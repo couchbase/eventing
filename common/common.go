@@ -68,6 +68,7 @@ type EventingProducer interface {
 	GetLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
 	GetMetaStoreStats() map[string]uint64
+	GetMetadataPrefix() string
 	GetNsServerPort() string
 	GetVbOwner(vb uint16) (string, string, error)
 	GetSeqsProcessed() map[int]int64
@@ -96,6 +97,7 @@ type EventingProducer interface {
 	SignalStartDebugger(token string) error
 	SignalStopDebugger() error
 	SetRetryCount(retryCount int64)
+	SpanBlobDump() map[string]interface{}
 	Serve()
 	Stop()
 	StopProducer()
@@ -190,6 +192,7 @@ type EventingSuperSup interface {
 	RemoveProducerToken(appName string)
 	RestPort() string
 	SignalStopDebugger(appName string) error
+	SpanBlobDump(appName string) (interface{}, error)
 	StopProducer(appName string, skipMetaCleanup bool)
 	TimerDebugStats(appName string) (map[int]map[string]interface{}, error)
 	VbDcpEventsRemainingToProcess(appName string) map[int]int64
@@ -273,6 +276,7 @@ type HandlerConfig struct {
 	SourceBucket             string
 	StatsLogInterval         int
 	StreamBoundary           DcpStreamBoundary
+	TimerContextSize         int64
 	TimerStorageRoutineCount int
 	TimerStorageChanSize     int
 	TimerQueueMemCap         int64
@@ -315,4 +319,8 @@ func NewKey(userPrefix, clusterPrefix, key string) Key {
 
 func (k Key) Raw() string {
 	return k.transformedKey
+}
+
+func (k Key) GetPrefix() string {
+	return k.prefix
 }

@@ -307,7 +307,7 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent) {
 		currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
 		c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
-		false, c.curlTimeout)
+		false, c.curlTimeout, c.timerContextSize)
 
 	c.sendInitV8Worker(payload, true, pBuilder)
 	c.sendDebuggerStart()

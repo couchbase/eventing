@@ -76,6 +76,11 @@ func (c *Consumer) controlRoutine() error {
 				c.sendLogLevel(c.logLevel, false)
 			}
 
+			if val, ok := settings["timer_context_size"]; ok {
+				c.timerContextSize = int64(val.(float64))
+				c.sendTimerContextSize(c.timerContextSize, false)
+			}
+
 			if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
 				c.vbOwnershipGiveUpRoutineCount = int(val.(float64))
 			}

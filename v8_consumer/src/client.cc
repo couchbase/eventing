@@ -24,6 +24,7 @@ std::atomic<int64_t> e_v8_worker_lost = {0};
 std::atomic<int64_t> delete_events_lost = {0};
 std::atomic<int64_t> timer_events_lost = {0};
 std::atomic<int64_t> mutation_events_lost = {0};
+extern std::atomic<int64_t> timer_context_size_exceeded_counter;
 
 std::atomic<int64_t> uv_try_write_failure_counter = {0};
 
@@ -427,10 +428,12 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
       handler_config->app_name.assign(payload->app_name()->str());
       handler_config->curl_timeout = long(payload->curl_timeout());
+      handler_config->timer_context_size = payload->timer_context_size();
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
       handler_config->skip_lcb_bootstrap = payload->skip_lcb_bootstrap();
+      handler_config->timer_context_size = payload->timer_context_size();
       handler_config->handler_headers =
           ToStringArray(payload->handler_headers());
       handler_config->handler_footers =
@@ -533,6 +536,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       fstats << R"("timer_events_lost": )" << e_timer_lost << ",";
       fstats << R"("debugger_events_lost": )" << e_debugger_lost << ",";
       fstats << R"("mutation_events_lost": )" << mutation_events_lost << ",";
+      fstats << R"("timer_context_size_exceeded_counter": )"
+             << timer_context_size_exceeded_counter << ",";
       fstats << R"("delete_events_lost": )" << delete_events_lost << ",";
       fstats << R"("timer_events_lost": )" << timer_events_lost << ",";
       fstats << R"("timestamp" : ")" << GetTimestampNow() << R"(")";
@@ -742,6 +747,12 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           partition_thr_map_[p_id] = thread_id;
         }
       }
+      msg_priority_ = true;
+      break;
+    case oTimerContextSize:
+      timer_context_size = std::stol(parsed_header->metadata);
+      LOG(logInfo) << "Setting timer_context_size to " << timer_context_size
+                   << std::endl;
       msg_priority_ = true;
       break;
     default:

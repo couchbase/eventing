@@ -68,6 +68,8 @@ app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
     return oWorkerThreadCount;
   if (opcode == 3)
     return oWorkerThreadMap;
+  if (opcode == 4)
+    return oTimerContextSize;
   return App_Worker_Setting_Opcode_Unknown;
 }
 

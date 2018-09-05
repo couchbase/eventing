@@ -234,7 +234,7 @@ func (c *Consumer) GetMetaStoreStats() map[string]uint64 {
 	stats["metastore_set_err"] = atomic.LoadUint64(&c.metastoreSetErrCounter)
 
 	for _, vb := range c.getCurrentlyOwnedVbs() {
-		store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
+		store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(vb))
 		if !found {
 			atomic.AddUint64(&c.metastoreNotFoundErrCounter, 1)
 			continue
@@ -541,7 +541,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 	c.handlerFooters = handlerFooters
 	// Framing bare minimum V8 worker init payload
 	payload, pBuilder := c.makeV8InitPayload(appName, c.debuggerPort, util.Localhost(), "", eventingPort, "",
-		"", appContent, 5, 10, 10*1000, true, 500)
+		"", appContent, 5, 10, 10*1000, true, 500, 1024)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 
@@ -702,14 +702,24 @@ func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
 	}
 }
 
-// UpdateWorkerQueueMemCap revises the memory cap for cpp worker and dcp queues
+// UpdateWorkerQueueMemCap revises the memory cap for cpp worker, dcp and timer queues
 func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 	logPrefix := "Consumer::updateWorkerQueueMemCap"
 
 	prevWorkerMemCap := c.workerQueueMemCap
 	prevDCPFeedMemCap := c.aggDCPFeedMemCap
-	c.workerQueueMemCap = (quota / 2) * 1024 * 1024
-	c.aggDCPFeedMemCap = (quota / 2) * 1024 * 1024
+
+	var divisor int64
+
+	if c.app.UsingTimer {
+		divisor = 5
+		c.timerQueueMemCap = (quota / divisor) * 1024 * 1024
+	} else {
+		divisor = 2
+	}
+
+	c.workerQueueMemCap = (quota / divisor) * 1024 * 1024
+	c.aggDCPFeedMemCap = (quota / divisor) * 1024 * 1024
 
 	logging.Infof("%s [%s:%s:%d] Updated memory quota: %d MB previous worker quota: %d MB dcp feed quota: %d MB",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.workerQueueMemCap/(1024*1024),

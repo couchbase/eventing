@@ -33,6 +33,8 @@ func (c *Consumer) processEvents() {
 			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize ||
 				c.feedbackQueueCap < c.cppQueueSizes.DocTimerQueueSize ||
 				c.workerQueueMemCap < c.cppQueueSizes.AggQueueMemory {
+				logging.Debugf("%s [%s:%s:%d] Throttling, cpp queue sizes: %+v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes)
 				time.Sleep(10 * time.Millisecond)
 			}
 		}
@@ -191,7 +193,7 @@ func (c *Consumer) processEvents() {
 					}
 
 					if c.usingTimer {
-						err := timers.Create(c.producer.AddMetadataPrefix(c.app.AppName).Raw(),
+						err := timers.Create(c.producer.GetMetadataPrefix(),
 							int(e.VBucket), connStr, c.producer.MetadataBucket())
 						if err == common.ErrRetryTimeout {
 							logging.Infof("%s [%s:%s:%d] Exiting due to timeout",
@@ -724,10 +726,8 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 					time.Sleep(10 * time.Millisecond)
 				}
 
-				if atomic.LoadUint32(&c.isTerminateRunning) == 0 {
-					atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
-					c.aggDCPFeed <- e
-				}
+				atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
+				c.aggDCPFeed <- e
 			}
 		}
 	}(dcpFeed)

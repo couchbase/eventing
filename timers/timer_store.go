@@ -50,6 +50,18 @@ type TimerEntry struct {
 
 	alarmSeq int64
 	ctxCas   gocb.Cas
+	alrCas   gocb.Cas
+}
+
+// This can be used to delete a timer from outside this project, as follows:
+//  1. Delete context_key from bucket with context_cas, ignore any absent/mismatch error
+//  2. Delete alarm_key from bucket with alarm_cas, log any absent/mismatch error
+type DeleteToken struct {
+	Bucket     string `json:"bucket"`
+	AlarmKey   string `json:"alarm_key"`
+	AlarmCas   uint64 `json:"alarm_cas"`
+	ContextKey string `json:"context_key"`
+	ContextCas uint64 `json:"context_cas"`
 }
 
 type rowIter struct {
@@ -200,17 +212,17 @@ func (r *TimerStore) Delete(entry *TimerEntry) error {
 	atomic.AddUint64(&r.stats.delCounter, 1)
 	kv := Pool(r.connstr)
 
-	_, absent, _, err := kv.MustRemove(r.bucket, entry.AlarmRef, 0)
+	_, absent, mismatch, err := kv.MustRemove(r.bucket, entry.AlarmRef, entry.alrCas)
 	if err != nil {
 		return err
 	}
-	if absent {
+	if absent || mismatch {
 		logging.Debugf("%v Timer %v seq %v is missing alarm in del: %ru", r.log, entry.AlarmDue, entry.alarmSeq, *entry)
 	}
 
 	atomic.AddUint64(&r.stats.delSuccessCounter, 1)
 
-	_, absent, mismatch, err := kv.MustRemove(r.bucket, entry.ContextRef, entry.ctxCas)
+	_, absent, mismatch, err = kv.MustRemove(r.bucket, entry.ContextRef, entry.ctxCas)
 	if err != nil {
 		return err
 	}
@@ -224,6 +236,17 @@ func (r *TimerStore) Delete(entry *TimerEntry) error {
 	}
 
 	return nil
+}
+
+func (r *TimerStore) GetToken(e *TimerEntry) *DeleteToken {
+	util.Assert(func() bool { return e.ctxCas != 0 && e.alrCas != 0 })
+	return &DeleteToken{
+		Bucket:     r.bucket,
+		ContextKey: e.ContextRef,
+		ContextCas: uint64(e.ctxCas),
+		AlarmKey:   e.AlarmRef,
+		AlarmCas:   uint64(e.alrCas),
+	}
 }
 
 func (r *TimerStore) Cancel(ref string) error {
@@ -412,7 +435,7 @@ func (r *TimerIter) nextColumn() (bool, error) {
 			continue
 		}
 
-		r.entry = &TimerEntry{AlarmRecord: alarm, ContextRecord: context, alarmSeq: current, ctxCas: ccas}
+		r.entry = &TimerEntry{AlarmRecord: alarm, ContextRecord: context, alarmSeq: current, ctxCas: ccas, alrCas: acas}
 		if r.entry.AlarmDue > time.Now().Unix() {
 			atomic.AddUint64(&r.store.stats.timerInFutureFiredCounter, 1)
 		}

@@ -463,3 +463,13 @@ func (s *SuperSupervisor) addToRunningProducers(appName string, p common.Eventin
 	defer s.runningProducersRWMutex.Unlock()
 	s.runningProducers[appName] = p
 }
+
+// SpanBlobDump returns state of timer span blobs stored in metadata bucket
+func (s *SuperSupervisor) SpanBlobDump(appName string) (interface{}, error) {
+	p, ok := s.runningFns()[appName]
+	if ok {
+		return p.SpanBlobDump(), nil
+	}
+
+	return nil, fmt.Errorf("Eventing.Producer isn't alive")
+}

@@ -211,6 +211,8 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["execution_timeout"] = s.executionTimeout
 	}
 
+	settings["timer_context_size"] = 15 * 1024 * 1024
+
 	settings["curl_timeout"] = curlTimeout
 
 	if s.logLevel == "" {
