@@ -382,6 +382,7 @@ func (r *TimerIter) nextRow() (bool, error) {
 			logging.Tracef("%v Found row %+v", r.store.log, r.row)
 			return true, nil
 		}
+		// below handles shrink when row counter never existed. all others cases go to nextColumn
 		r.store.shrinkSpan(r.row.current)
 	}
 
@@ -444,6 +445,7 @@ func (r *TimerIter) nextColumn() (bool, error) {
 		return true, nil
 	}
 
+	// row counter exists and but has no timers. shrink logic depends on all chains reducing to this eventually
 	logging.Tracef("%v Column scan finished for %+v at %+v", r.store.log, r, *r.col)
 	if r.col.empty == true && r.col.topCas != 0 {
 		logging.Debugf("%v Row %v was empty, so removing counter", r.store.log, r.col.topKey)
@@ -451,8 +453,12 @@ func (r *TimerIter) nextColumn() (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if absent || mismatch {
-			logging.Debugf("%v Concurrency on %v absent:%v mismatch:%v", r.store.log, r.col.topKey, absent, mismatch)
+		if mismatch {
+			logging.Debugf("%v Concurrency on %v mismatched CAS", r.store.log, r.col.topKey)
+			return false, nil
+		}
+		if absent {
+			logging.Debugf("%v Concurrency on %v which is now absent", r.store.log, r.col.topKey)
 		}
 		r.store.shrinkSpan(r.row.current)
 	}
