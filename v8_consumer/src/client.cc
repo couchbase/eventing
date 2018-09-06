@@ -11,6 +11,7 @@
 
 #include "client.h"
 #include "breakpad.h"
+#include "bucket.h"
 
 uint64_t timer_responses_sent(0);
 uint64_t messages_parsed(0);
@@ -25,6 +26,8 @@ std::atomic<int64_t> delete_events_lost = {0};
 std::atomic<int64_t> timer_events_lost = {0};
 std::atomic<int64_t> mutation_events_lost = {0};
 extern std::atomic<int64_t> timer_context_size_exceeded_counter;
+extern std::atomic<int64_t> timer_alarm_delete_failure;
+extern std::atomic<int64_t> timer_context_delete_failure;
 
 std::atomic<int64_t> uv_try_write_failure_counter = {0};
 
@@ -419,7 +422,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   case eV8_Worker:
     switch (getV8WorkerOpcode(parsed_header->opcode)) {
     case oDispose:
-    case oInit:
+    case oInit: {
       payload = flatbuf::payload::GetPayload(
           (const void *)parsed_message->payload.c_str());
 
@@ -458,18 +461,27 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       v8::V8::InitializePlatform(platform);
       v8::V8::Initialize();
 
+      auto local_key = GetLocalKey();
+      // WARNING : Assuming that v8worker init is called only once
+      // Otherwise, it will cause a memory leak
+      comm_ = new Communicator(server_settings->host_addr,
+                               server_settings->eventing_port, local_key.first,
+                               local_key.second, false, app_name_);
+      auto config = ParseDeployment(handler_config->dep_cfg.c_str());
+      metadata_bucket_ = new CbBucket(config->metadata_bucket,
+                                      server_settings->kv_host_port, comm_);
       for (int16_t i = 0; i < thr_count_; i++) {
-        V8Worker *w = new V8Worker(platform, handler_config, server_settings,
-                                   handler_name_, handler_uuid_, user_prefix_);
+        auto w = new V8Worker(platform, handler_config, server_settings,
+                              handler_name_, handler_uuid_, user_prefix_,
+                              metadata_bucket_);
 
         LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
         workers_[i] = w;
       }
 
       delete handler_config;
-
       msg_priority_ = true;
-      break;
+    } break;
     case oLoad:
       LOG(logDebug) << "Loading app code:" << RM(parsed_header->metadata)
                     << std::endl;
@@ -536,6 +548,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       fstats << R"("timer_events_lost": )" << e_timer_lost << ",";
       fstats << R"("debugger_events_lost": )" << e_debugger_lost << ",";
       fstats << R"("mutation_events_lost": )" << mutation_events_lost << ",";
+      fstats << R"("timer_alarm_delete_failure": )"
+             << timer_alarm_delete_failure << ",";
+      fstats << R"("timer_context_delete_failure": )"
+             << timer_context_delete_failure << ",";
       fstats << R"("timer_context_size_exceeded_counter": )"
              << timer_context_size_exceeded_counter << ",";
       fstats << R"("delete_events_lost": )" << delete_events_lost << ",";
@@ -977,6 +993,9 @@ AppWorker::~AppWorker() {
   for (auto &v8worker : workers_) {
     delete v8worker.second;
   }
+
+  delete metadata_bucket_;
+  delete comm_;
 
   uv_loop_close(&feedback_loop_);
   uv_loop_close(&main_loop_);

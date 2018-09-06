@@ -331,8 +331,8 @@ func (c *Consumer) sendGetLcbExceptionStats(sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
-func (c *Consumer) sendTimerEvent(e *timerContext, sendToDebugger bool) {
-	timerHeader, hBuilder := c.makeTimerEventHeader(int16(e.Vb))
+func (c *Consumer) sendTimerEvent(e *TimerEvent, sendToDebugger bool) {
+	timerHeader, hBuilder := c.makeTimerEventHeader(int16(e.Context.Vb))
 	timerPayload, pBuilder := c.makeTimerPayload(e)
 
 	m := &msgToTransmit{

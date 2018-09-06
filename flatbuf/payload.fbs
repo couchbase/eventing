@@ -36,6 +36,10 @@ table Payload {
   // Timer event related fields
   callback_fn:string; // timer event callback function
   context:string; // context for timer
+  alarm_key:string;
+  alarm_cas:ulong;
+  context_key:string;
+  context_cas:ulong;
 
   // CPP worker config
   partitionCount:short; // Virtual partitions for sharding workload among c++ workers

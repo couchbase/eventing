@@ -505,9 +505,9 @@ func (c *Consumer) processTimerEvents() {
 				logging.Errorf("%s [%s:%s:%d] Failed to pop from fireTimerQueue, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 				return
 			}
-			timer := ev.(*timerContext)
+			event := ev.(*TimerEvent)
 			c.timerMessagesProcessed++
-			c.sendTimerEvent(timer, false)
+			c.sendTimerEvent(event, false)
 		}
 	}
 }

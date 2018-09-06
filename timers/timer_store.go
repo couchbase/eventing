@@ -14,6 +14,7 @@ import (
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 	"golang.org/x/crypto/ripemd160"
+	"unsafe"
 )
 
 // Constants
@@ -357,6 +358,12 @@ func (r *TimerIter) ScanNext() (*TimerEntry, error) {
 			return nil, nil
 		}
 	}
+}
+
+func (t *DeleteToken) Size() uint64 {
+	return uint64(unsafe.Sizeof(*t)) + uint64(len(t.ContextKey)) +
+		uint64(unsafe.Sizeof(t.AlarmCas)) + uint64(len(t.AlarmKey)) +
+		uint64(unsafe.Sizeof(t.ContextCas)) + uint64(len(t.Bucket))
 }
 
 func (r *TimerIter) nextRow() (bool, error) {

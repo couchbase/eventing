@@ -14,6 +14,8 @@
 
 #undef NDEBUG
 
+std::mutex CbBucket::lock_;
+
 // lcb related callbacks
 static void get_callback(lcb_t instance, int, const lcb_RESPBASE *rb) {
   auto resp = reinterpret_cast<const lcb_RESPGET *>(rb);
@@ -578,4 +580,119 @@ template <>
 void Bucket::BucketDelete<uint32_t>(
     uint32_t key, const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   BucketDelete<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), info);
+}
+
+bool CbBucket::TryInitialize() {
+  if (initialized_) {
+    return true;
+  }
+
+  auto conn_str =
+      "couchbase://" + endpoint_ + "/" + bucket_ + "?select_bucket=true";
+  if (IsIPv6()) {
+    conn_str += "&ipv6=allow";
+  }
+
+  lcb_create_st options;
+  memset(&options, 0, sizeof(options));
+
+  options.version = 3;
+  options.v.v3.connstr = conn_str.c_str();
+  options.v.v3.type = LCB_TYPE_BUCKET;
+
+  auto err = lcb_create(&handle_, &options);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "CbBucket: Unable to create handle, err: "
+                  << RS(lcb_strerror(handle_, err)) << std::endl;
+    return false;
+  }
+
+  err = lcb_cntl(handle_, LCB_CNTL_SET, LCB_CNTL_LOGGER, &evt_logger);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "CbBucket: Unable to set logger hooks, err: "
+                  << RS(lcb_strerror(handle_, err)) << std::endl;
+    return false;
+  }
+
+  auto auth = lcbauth_new();
+  err = lcbauth_set_callbacks(auth, comm_, GetUsernameCbBucket,
+                              GetPasswordCbBucket);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "CbBucket: Unable to set auth callbacks, err: "
+                  << RS(lcb_strerror(handle_, err)) << std::endl;
+    return false;
+  }
+
+  err = lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "CbBucket: Unable to set auth mode to dynamic, err: "
+                  << RS(lcb_strerror(handle_, err)) << std::endl;
+    return false;
+  }
+  lcb_set_auth(handle_, auth);
+
+  err = lcb_connect(handle_);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "CbBucket: Unable to connect to bucket, err: "
+                  << RS(lcb_strerror(handle_, err)) << std::endl;
+    return false;
+  }
+
+  err = lcb_wait(handle_);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "CbBucket: Unable to schedule call for connect, err: "
+                  << RS(lcb_strerror(handle_, err)) << std::endl;
+    return false;
+  }
+
+  lcb_install_callback3(handle_, LCB_CALLBACK_REMOVE, del_callback);
+
+  bool detailed_err = true;
+  err = lcb_cntl(handle_, LCB_CNTL_SET, LCB_CNTL_DETAILED_ERRCODES,
+                 &detailed_err);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "CbBucket: Unable to set detailed error codes, err: "
+                  << RS(lcb_strerror(handle_, err)) << std::endl;
+    return false;
+  }
+
+  initialized_ = true;
+  return true;
+}
+
+CbBucket::~CbBucket() { lcb_destroy(handle_); }
+
+CbBucketInfo CbBucket::Delete(const std::string &key, uint64_t cas) {
+  std::lock_guard<std::mutex> guard(lock_);
+
+  if (!TryInitialize()) {
+    LOG(logError) << "CbBucket: Unable to delete key: " << RU(key)
+                  << " as initialization failed" << std::endl;
+    return {false};
+  }
+
+  lcb_CMDREMOVE cmd;
+  LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
+  cmd.cas = lcb_U64(cas);
+
+  Result result;
+  lcb_sched_enter(handle_);
+  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_remove3, handle_,
+                                   &result, &cmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "CbBucket: Unable to set params for lcb_remove3, err: "
+                  << RU(lcb_strerror(handle_, err)) << std::endl;
+    return {false};
+  }
+  lcb_sched_leave(handle_);
+
+  err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, handle_);
+  if (err != LCB_SUCCESS) {
+    LOG(logError) << "CbBucket: Unable to schedule call for lcb_remove3, err: "
+                  << RU(lcb_strerror(handle_, err)) << std::endl;
+    ++lcb_retry_failure;
+    return {false};
+  }
+
+  return {true, result};
 }

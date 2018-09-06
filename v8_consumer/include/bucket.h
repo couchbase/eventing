@@ -23,6 +23,38 @@
 #define LCB_INST_FIELD_NO 0
 #define BLOCK_MUTATION_FIELD_NO 1
 
+struct CbBucketInfo {
+  CbBucketInfo(bool success) : success(success) {}
+  CbBucketInfo(bool success, Result result)
+      : success(success), result(std::move(result)) {}
+
+  bool success;
+  Result result;
+};
+
+class CbBucket {
+public:
+  CbBucket(std::string bucket, std::string endpoint, Communicator *comm)
+      : handle_(nullptr), initialized_(false), bucket_(std::move(bucket)),
+        endpoint_(std::move(endpoint)), comm_(comm) {}
+
+  ~CbBucket();
+
+  CbBucketInfo Delete(const std::string &key, uint64_t cas);
+  CbBucketInfo GetAndLock(const std::string &key, uint64_t cas);
+
+  static std::mutex lock_;
+
+private:
+  bool TryInitialize();
+
+  lcb_t handle_;
+  bool initialized_;
+  std::string bucket_;
+  std::string endpoint_;
+  Communicator *comm_;
+};
+
 class Bucket {
 public:
   Bucket(V8Worker *w, const char *bname, const char *ep, const char *alias,

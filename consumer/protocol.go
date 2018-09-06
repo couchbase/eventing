@@ -260,17 +260,22 @@ func (c *Consumer) makeThrMapPayload(thrMap map[int][]uint16, partitionCount int
 	return
 }
 
-func (c *Consumer) makeTimerPayload(e *timerContext) (encodedPayload []byte, builder *flatbuffers.Builder) {
+func (c *Consumer) makeTimerPayload(e *TimerEvent) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
-	callbackFnPos := builder.CreateString(e.Callback)
-	contextPos := builder.CreateString(e.Context)
+	callbackFnPos := builder.CreateString(e.Context.Callback)
+	contextPos := builder.CreateString(e.Context.Context)
+	alarmKeyPos := builder.CreateString(e.Token.AlarmKey)
+	contextKeyPos := builder.CreateString(e.Token.ContextKey)
 
 	payload.PayloadStart(builder)
 
 	payload.PayloadAddCallbackFn(builder, callbackFnPos)
 	payload.PayloadAddContext(builder, contextPos)
-
+	payload.PayloadAddAlarmKey(builder, alarmKeyPos)
+	payload.PayloadAddAlarmCas(builder, e.Token.AlarmCas)
+	payload.PayloadAddContextKey(builder, contextKeyPos)
+	payload.PayloadAddContextCas(builder, e.Token.ContextCas)
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
 
