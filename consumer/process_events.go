@@ -175,7 +175,7 @@ func (c *Consumer) processEvents() {
 				}
 
 				if e.Status == mcd.SUCCESS {
-
+					c.sendClearTimerFilterData(e)
 					kvNodes := c.getKvNodes()
 
 					connStr := "couchbase://"

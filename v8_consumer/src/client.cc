@@ -679,30 +679,42 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     }
     break;
   case eFilter:
-    worker_index = partition_thr_map_[parsed_header->partition];
-    if (workers_[worker_index] != nullptr) {
-      workers_[worker_index]->UpdateVbFilter(parsed_header->metadata);
+    switch (getFilterOpcode(parsed_header->opcode)) {
+    case oVbFilter: {
       LOG(logInfo) << "Received filter event from Go "
                    << parsed_header->metadata << std::endl;
-      int vb_no = 0;
+      int vb_no = 0, partition = 0;
       int64_t seq_no = 0;
-      if (kSuccess == workers_[worker_index]->ParseMetadata(
-                          parsed_header->metadata, vb_no, seq_no)) {
-        auto bucketops_seqno = workers_[worker_index]->GetBucketopsSeqno(vb_no);
+      std::istringstream iss(parsed_header->metadata);
+      iss >> vb_no >> seq_no >> partition;
+      SetTimerFilter(vb_no);
+      auto bucketops_worker = workers_[partition_thr_map_[partition]];
+      if (bucketops_worker != nullptr) {
+        bucketops_worker->SetBucketopFilter(vb_no, seq_no);
+        auto bucketops_seqno = bucketops_worker->GetBucketopsSeqno(vb_no);
+        bucketops_worker->ResetCheckpoint(vb_no);
         SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno);
+      } else {
+        LOG(logError) << "Bucketops filter event lost"
+                      << parsed_header->metadata << std::endl;
       }
-    } else {
-      LOG(logError) << "Filter event lost: worker " << worker_index
-                    << " is null" << std::endl;
+    } break;
+    case oClearTimerFilter:
+      ClearTimerFilter(parsed_header->partition);
+      break;
+    default:
+      LOG(logError) << "Opcode " << getTimerOpcode(parsed_header->opcode)
+                    << "is not implemented for filtering" << std::endl;
+      break;
     }
     break;
   case eTimer:
     switch (getTimerOpcode(parsed_header->opcode)) {
     case oTimer:
-      worker_index = partition_thr_map_[parsed_header->partition];
-      if (workers_[worker_index] != nullptr) {
+      if (workers_[curr_worker_idx_] != nullptr) {
         enqueued_timer_msg_counter++;
-        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
+        workers_[curr_worker_idx_]->Enqueue(parsed_header, parsed_message);
+        curr_worker_idx_ = (curr_worker_idx_ + 1) % thr_count_;
       } else {
         LOG(logError) << "Timer event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -900,7 +912,21 @@ void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
   }
 }
 
-AppWorker::AppWorker() : feedback_conn_handle_(nullptr), conn_handle_(nullptr) {
+void AppWorker::SetTimerFilter(int vb_no) {
+  for (auto &worker : workers_) {
+    worker.second->SetTimerFilter(vb_no);
+  }
+}
+
+void AppWorker::ClearTimerFilter(int vb_no) {
+  for (auto &worker : workers_) {
+    worker.second->ClearTimerFilter(vb_no);
+  }
+}
+
+AppWorker::AppWorker()
+    : feedback_conn_handle_(nullptr), conn_handle_(nullptr),
+      curr_worker_idx_(0) {
   thread_exit_cond_.store(false);
   uv_loop_init(&feedback_loop_);
   uv_loop_init(&main_loop_);

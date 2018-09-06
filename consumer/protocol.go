@@ -37,6 +37,7 @@ const (
 const (
 	filterOpcode int8 = iota
 	vbFilter
+	clearTimerFilter
 )
 
 const (
@@ -126,6 +127,10 @@ func (c *Consumer) makeDcpHeader(opcode int8, partition int16, meta string) ([]b
 
 func (c *Consumer) filterEventHeader(opcode int8, partition int16, meta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(filterEvent, opcode, partition, meta)
+}
+
+func (c *Consumer) makeClearTimerFilterHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.filterEventHeader(clearTimerFilter, partition, meta)
 }
 
 func (c *Consumer) makeVbFilterHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
