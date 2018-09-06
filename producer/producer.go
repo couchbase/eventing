@@ -561,23 +561,21 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 
 	consumerIndex := c.Index()
 
+	p.runningConsumersRWMutex.Lock()
 	var indexToPurge int
-	for i, val := range p.getConsumers() {
+	for i, val := range p.runningConsumers {
 		if val == c {
 			indexToPurge = i
 		}
 	}
 
-	if p.LenRunningConsumers() > 1 {
-		p.runningConsumersRWMutex.Lock()
+	if len(p.runningConsumers) > 1 {
 		p.runningConsumers = append(p.runningConsumers[:indexToPurge],
 			p.runningConsumers[indexToPurge+1:]...)
-		p.runningConsumersRWMutex.Unlock()
 	} else {
-		p.runningConsumersRWMutex.Lock()
 		p.runningConsumers = nil
-		p.runningConsumersRWMutex.Unlock()
 	}
+	p.runningConsumersRWMutex.Unlock()
 
 	p.workerNameConsumerMapRWMutex.Lock()
 	delete(p.workerNameConsumerMap, c.ConsumerName())

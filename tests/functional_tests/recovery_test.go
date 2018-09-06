@@ -25,6 +25,38 @@ func TestRebalanceWhenEventingConsumerIsKilled(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rl.count}, rl)
 
+	KillEventingConsumersDuringRebalance(true, handler)
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}
+
+func TestRebalanceWhenEventingConsumersAreKilled(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{workerCount: 6})
+	waitForDeployToFinish(handler)
+
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: rlOpsPSec,
+		count:   rlItemCount,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(opsType{count: rl.count}, rl)
+
+	KillEventingConsumersDuringRebalance(false, handler)
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}
+
+func KillEventingConsumersDuringRebalance(doWait bool, handler string) {
 	killConsumers := func() {
 		time.Sleep(time.Duration(random(5, 30)) * time.Second)
 
@@ -35,7 +67,10 @@ func TestRebalanceWhenEventingConsumerIsKilled(t *testing.T) {
 			for _, pid := range pids {
 				log.Println("Killing pid:", pid)
 				killPid(pid)
-				time.Sleep(time.Duration(random(5, 30)) * time.Second)
+
+				if doWait {
+					time.Sleep(time.Duration(random(5, 30)) * time.Second)
+				}
 			}
 		}
 	}
@@ -83,8 +118,4 @@ func TestRebalanceWhenEventingConsumerIsKilled(t *testing.T) {
 		killConsumers()
 	}()
 	removeAllNodesOneByOne()
-
-	rl.stopCh <- struct{}{}
-
-	flushFunctionAndBucket(handler)
 }
