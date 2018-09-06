@@ -131,6 +131,7 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/writeDebuggerURL/", m.writeDebuggerURLHandler)
 
 	// Public REST APIs
+	http.HandleFunc("/api/v1/status", m.statusHandler)
 	http.HandleFunc("/api/v1/stats", m.statsHandler)
 	http.HandleFunc("/api/v1/config", m.configHandler)
 	http.HandleFunc("/api/v1/config/", m.configHandler)

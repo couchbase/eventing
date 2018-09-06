@@ -104,7 +104,7 @@ function ApplicationModel(app) {
 }
 
 ApplicationModel.prototype.getDefaultModel = function() {
-    var code = 'function OnUpdate(doc, meta){log(\'document\', doc);} function OnDelete(meta){}';
+    var code = 'function OnUpdate(doc, meta){log(\'docId\', meta.id);} function OnDelete(meta){}';
     return {
         appname: 'Application name',
         appcode: formatCode(code),
@@ -163,4 +163,19 @@ function formatCode(code) {
     });
     var formattedCode = escodegen.generate(ast);
     return formattedCode;
+}
+
+function determineUIStatus(status) {
+    switch (status) {
+        case 'deployed':
+            return 'healthy';
+        case 'undeployed':
+            return 'inactive';
+        case 'undeploying':
+        case 'deploying':
+            return 'warmup';
+        default:
+            console.error('Abnormal case - status can not be', status);
+            return '';
+    }
 }

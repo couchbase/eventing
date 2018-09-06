@@ -135,7 +135,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       handler_uuid_(handler_uuid), user_prefix_(user_prefix) {
   curl_timeout = h_config->curl_timeout;
   histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
-
+  thread_exit_cond_.store(false);
   for (int i = 0; i < NUM_VBUCKETS; i++) {
     vb_seq_[i] = atomic_ptr_t(new std::atomic<int64_t>(0));
   }
@@ -443,8 +443,11 @@ void V8Worker::RouteMessage() {
   const flatbuf::payload::Payload *payload;
   std::string val, context, callback;
 
-  while (true) {
-    auto msg = worker_queue_->Pop();
+  while (!thread_exit_cond_.load()) {
+    worker_msg_t msg;
+    if (!worker_queue_->Pop(msg)) {
+      continue;
+    }
     payload = flatbuf::payload::GetPayload(
         (const void *)msg.payload->payload.c_str());
 
@@ -893,7 +896,9 @@ void V8Worker::GetTimerMessages(std::vector<uv_buf_t> &messages,
       std::min(timer_queue_->Count(), static_cast<int64_t>(window_size));
 
   for (int64_t idx = 0; idx < timer_count; ++idx) {
-    auto timer_msg = timer_queue_->Pop();
+    timer_msg_t timer_msg;
+    if (!timer_queue_->Pop(timer_msg))
+      break;
     auto curr_messages =
         BuildResponse(timer_msg.timer_entry, mTimer_Response, timerResponse);
     for (auto &msg : curr_messages) {
@@ -1022,4 +1027,10 @@ int64_t V8Worker::GetBucketopsSeqno(int vb_no) {
   vb_seq_[vb_no]->store(0, std::memory_order_seq_cst);
   std::lock_guard<std::mutex> lock(bucketops_lock_);
   return processed_bucketops_[vb_no];
+}
+
+void V8Worker::SetThreadExitFlag() {
+  thread_exit_cond_.store(true);
+  timer_queue_->Close();
+  worker_queue_->Close();
 }

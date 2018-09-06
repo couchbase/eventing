@@ -128,6 +128,7 @@ func (c *ClusterInfoCache) Fetch() error {
 		version := uint32(math.MaxUint32)
 		minorVersion := uint32(math.MaxUint32)
 		for _, n := range c.pool.Nodes {
+			logging.Tracef("Examining node %+v", n)
 			if n.ClusterMembership == "active" {
 				nodes = append(nodes, n)
 			} else if n.ClusterMembership == "inactiveFailed" {
@@ -146,6 +147,7 @@ func (c *ClusterInfoCache) Fetch() error {
 			if v < version || (v == version && minorv < minorVersion) {
 				version = v
 				minorVersion = minorv
+				logging.Tracef("Lowering version to %v.%v due to node %+v", version, minorVersion, n)
 			}
 		}
 		c.nodes = nodes

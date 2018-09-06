@@ -29,9 +29,6 @@
         <span class="cbui-table-cell">status</span>
         <span class="cbui-table-cell"></span>
       </div>
-      <!-- TO DO
-        add to <section> element: ng-class="['dynamic_' + someStatus]" where "someStatus" returns healthy/unhealthy/warmup,
-        remove "dynamic_healthy from the normal class below (it's a placeholder) -->
       <section
         class="has-hover"
         ng-repeat="(appname, app) in summaryCtrl.appList"
@@ -41,15 +38,8 @@
           <span class="cbui-table-cell cbui-tablerow-title">{{appname}}</span>
           <span class="cbui-table-cell row flex-left">
             <div class="fix-width-1 margin-right-3">
-              <span class="icon fa-fw"
-                    ng-class="app.getDeploymentStatus() == 'deployed' ? 'fa-check green-3':'fa-warning orange-1'"></span>
-              {{app.getDeploymentStatus()}}
+              {{app.status === 'deployed' || app.status === 'undeployed' ? app.status : app.status + '...'}}
             </div>
-            <span>
-            <span class="icon fa-fw"
-                  ng-class="app.uiState == 'healthy' ? 'fa-check green-3':'fa-warning orange-1'"></span>
-            {{summaryCtrl.getAppUiProcessingState(app)}}
-            </span>
           </span>
           <span class="cbui-table-cell text-right">
           <a ng-click="$event.stopPropagation();summaryCtrl.openSettings(appname);">
@@ -74,6 +64,7 @@
             </button>
             <button
               class="outline"
+              ng-disabled="app.status === 'deploying' || app.status === 'undeploying'"
               ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
               {{app.getDeploymentStatus(true)}}
             </button>

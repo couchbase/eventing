@@ -24,16 +24,16 @@ public:
   Queue(const Queue &) = delete;
   Queue &operator=(const Queue &) = delete;
 
-  T Pop() {
+  bool Pop(T &item) {
     std::unique_lock<std::mutex> lk(mut_);
-    while (data_queue_.empty()) {
-      data_cond_.wait(lk);
-    }
-    auto value = data_queue_.front();
-    queue_size_ -= value.GetSize();
+    data_cond_.wait(lk, [this] { return !data_queue_.empty() || closed_; });
+    if (data_queue_.empty())
+      return false;
+    item = std::move(data_queue_.front());
+    queue_size_ -= item.GetSize();
     data_queue_.pop();
     entry_count_--;
-    return value;
+    return true;
   }
 
   void Push(const T &item) {
@@ -45,6 +45,12 @@ public:
     data_cond_.notify_one();
   }
 
+  void Close() {
+    std::lock_guard<std::mutex> lk(mut_);
+    closed_ = true;
+    data_cond_.notify_all();
+  }
+
   int64_t Count() { return entry_count_; }
   std::size_t Size() { return queue_size_; }
 
@@ -52,6 +58,7 @@ private:
   std::queue<T> data_queue_;
   std::mutex mut_;
   std::condition_variable data_cond_;
+  bool closed_ = {false};
   std::atomic<std::int64_t> entry_count_ = {0};
   std::atomic<std::size_t> queue_size_ = {0};
 };

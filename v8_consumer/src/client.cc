@@ -935,6 +935,10 @@ AppWorker::~AppWorker() {
     write_responses_thr_.join();
   }
 
+  for (auto &v8worker : workers_) {
+    delete v8worker.second;
+  }
+
   uv_loop_close(&feedback_loop_);
   uv_loop_close(&main_loop_);
 }
@@ -947,6 +951,11 @@ void AppWorker::ReadStdinLoop() {
       std::getline(std::cin, token);
     }
     worker->thread_exit_cond_.store(true);
+    for (auto &v8worker : worker->workers_) {
+      if (v8worker.second != nullptr) {
+        v8worker.second->SetThreadExitFlag();
+      }
+    }
     uv_async_send(async1);
     uv_async_send(async2);
   };
