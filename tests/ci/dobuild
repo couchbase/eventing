@@ -91,6 +91,7 @@ chmod a+w CMakeLists.txt
 perl -pi -e 's/ADD_SUBDIRECTORY (analytics)/# No analytics/' CMakeLists.txt
 perl -pi -e 's/ADD_SUBDIRECTORY (cbas-ui)/# No cbas-ui/' CMakeLists.txt
 
+note_version gocbcore     $WORKSPACE/godeps/src/gopkg.in/couchbase/gocbcore.v7
 note_version gocb         $WORKSPACE/godeps/src/github.com/couchbase/gocb
 note_version plasma       $WORKSPACE/goproj/src/github.com/couchbase/plasma
 note_version nitro        $WORKSPACE/goproj/src/github.com/couchbase/nitro
