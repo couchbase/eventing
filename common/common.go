@@ -212,7 +212,7 @@ type AppConfig struct {
 	AppName        string
 	AppState       string
 	AppVersion     string
-	HandlerUUID    uint32
+	HandlerID      string
 	ID             int
 	LastDeploy     string
 	Settings       map[string]interface{}
