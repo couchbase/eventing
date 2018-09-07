@@ -492,9 +492,10 @@ func (info *TimerInfo) Size() int64 {
 // This is struct that will be stored in
 // the meta store as the timer's context
 type timerContext struct {
-	Callback string `json:"callback"`
-	Vb       uint64 `json:"vb"`
-	Context  string `json:"context"` // This is the context provided by the user
+	Callback  string `json:"callback"`
+	Vb        uint64 `json:"vb"`
+	Context   string `json:"context"` // This is the context provided by the user
+	reference string
 }
 
 func (ctx *timerContext) Size() int64 {

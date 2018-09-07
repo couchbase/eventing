@@ -332,8 +332,8 @@ func (c *Consumer) sendGetLcbExceptionStats(sendToDebugger bool) {
 }
 
 func (c *Consumer) sendTimerEvent(e *timerContext, sendToDebugger bool) {
-	partition := int16(e.Vb)
-	timerHeader, hBuilder := c.makeTimerEventHeader(partition)
+	cppPartition := util.VbucketByKey([]byte(e.reference), cppWorkerPartitionCount)
+	timerHeader, hBuilder := c.makeTimerEventHeader(int16(cppPartition))
 	timerPayload, pBuilder := c.makeTimerPayload(e)
 
 	m := &msgToTransmit{

@@ -92,9 +92,10 @@ func (c *Consumer) executeTimersImpl(store *timers.TimerStore, iterator *timers.
 
 		e := entry.Context.(map[string]interface{})
 		timer := &timerContext{
-			Callback: e["callback"].(string),
-			Context:  e["context"].(string),
-			Vb:       uint64(e["vb"].(float64)),
+			Callback:  e["callback"].(string),
+			Context:   e["context"].(string),
+			reference: entry.ContextRecord.AlarmRef,
+			Vb:        uint64(e["vb"].(float64)),
 		}
 
 		if err = c.fireTimerQueue.Push(timer); err != nil {
