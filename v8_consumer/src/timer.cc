@@ -28,7 +28,7 @@ EpochInfo Timer::Epoch(const v8::Local<v8::Value> &date_val) {
   v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
-  auto get_time_val = utils->GetMethodFromObject(date_val, "getTime");
+  auto get_time_val = utils->GetPropertyFromObject(date_val, "getTime");
   auto get_time_func = get_time_val.As<v8::Function>();
 
   v8::Local<v8::Value> seconds_v8val;

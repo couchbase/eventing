@@ -220,6 +220,39 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) (a
 	return
 }
 
+func (m *ServiceMgr) checkLifeCycleOpsDuringRebalance() (info *runtimeInfo) {
+	logPrefix := "ServiceMgr:enableLifeCycleOpsDuringRebalance"
+
+	info = &runtimeInfo{}
+	var lifeCycleOpsDuringReb bool
+
+	config, configInfo := m.getConfig()
+	if configInfo.Code != m.statusCodes.ok.Code {
+		lifeCycleOpsDuringReb = false
+	} else {
+		if enableVal, exists := config["enable_lifecycle_ops_during_rebalance"]; !exists {
+			lifeCycleOpsDuringReb = false
+		} else {
+			enable, ok := enableVal.(bool)
+			if !ok {
+				logging.Infof("%s [%d] Supplied enable_lifecycle_ops_during_rebalance value unexpected. Defaulting to false", logPrefix)
+				enable = false
+			}
+			lifeCycleOpsDuringReb = enable
+		}
+	}
+
+	if rebStatus := m.checkRebalanceStatus(); !lifeCycleOpsDuringReb && rebStatus.Code != m.statusCodes.ok.Code {
+		info.Code = rebStatus.Code
+		info.Info = rebStatus.Info
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 var metakvSetCallback = func(args ...interface{}) error {
 	logPrefix := "ServiceMgr::metakvSetCallback"
 

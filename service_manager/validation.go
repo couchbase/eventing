@@ -240,6 +240,10 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 		return
 	}
 
+	if info = m.validateBoolean("enable_lifecycle_ops_during_rebalance", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	info.Code = m.statusCodes.ok.Code
 	return
 }

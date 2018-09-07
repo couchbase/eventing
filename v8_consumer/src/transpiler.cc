@@ -485,11 +485,11 @@ TranspiledInfo::TranspiledInfo(v8::Isolate *isolate,
   v8::HandleScope handle_scope(isolate);
   Utils utils(isolate, context);
 
-  auto code_val = utils.GetMethodFromObject(transpiler_result, "code");
+  auto code_val = utils.GetPropertyFromObject(transpiler_result, "code");
   v8::String::Utf8Value code_utf8(code_val);
   transpiled_code = *code_utf8;
 
-  auto map_val = utils.GetMethodFromObject(transpiler_result, "map");
+  auto map_val = utils.GetPropertyFromObject(transpiler_result, "map");
   v8::String::Utf8Value map_utf8(map_val);
   source_map = *map_utf8;
 
