@@ -542,9 +542,8 @@ func TestBootstrapAfterKVHardFailover(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	go func() {
-		rebalanceFromRest([]string{""})
-	}()
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
 
 	waitForDeployToFinish(handler)
 	metaStateDump()

@@ -22,10 +22,10 @@ func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) {
 	header, hBuilder := c.makeLogLevelHeader(logLevel)
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["LOG_LEVEL"]; !ok {
-		c.v8WorkerMessagesProcessed["LOG_LEVEL"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["log_level"]; !ok {
+		c.v8WorkerMessagesProcessed["log_level"] = 0
 	}
-	c.v8WorkerMessagesProcessed["LOG_LEVEL"]++
+	c.v8WorkerMessagesProcessed["log_level"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
@@ -46,10 +46,10 @@ func (c *Consumer) sendTimerContextSize(timerContextSize int64, sendToDebugger b
 	header, hBuilder := c.makeTimerContextSizeHeader(fmt.Sprintf("%d", timerContextSize))
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["TIMER_CONTEXT_SIZE"]; !ok {
-		c.v8WorkerMessagesProcessed["TIMER_CONTEXT_SIZE"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["timer_context_size"]; !ok {
+		c.v8WorkerMessagesProcessed["timer_context_size"] = 0
 	}
-	c.v8WorkerMessagesProcessed["TIMER_CONTEXT_SIZE"]++
+	c.v8WorkerMessagesProcessed["timer_context_size"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
@@ -77,10 +77,10 @@ func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) {
 	}
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["THR_COUNT"]; !ok {
-		c.v8WorkerMessagesProcessed["THR_COUNT"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["thr_count"]; !ok {
+		c.v8WorkerMessagesProcessed["thr_count"] = 0
 	}
-	c.v8WorkerMessagesProcessed["THR_COUNT"]++
+	c.v8WorkerMessagesProcessed["thr_count"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
@@ -107,10 +107,10 @@ func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebu
 	}
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["THR_MAP"]; !ok {
-		c.v8WorkerMessagesProcessed["THR_MAP"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["thr_map"]; !ok {
+		c.v8WorkerMessagesProcessed["thr_map"] = 0
 	}
-	c.v8WorkerMessagesProcessed["THR_MAP"]++
+	c.v8WorkerMessagesProcessed["thr_map"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
@@ -132,10 +132,10 @@ func (c *Consumer) sendDebuggerStart() {
 	header, hBuilder := c.makeV8DebuggerStartHeader()
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_START"]; !ok {
-		c.v8WorkerMessagesProcessed["DEBUG_START"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["debug_start"]; !ok {
+		c.v8WorkerMessagesProcessed["debug_start"] = 0
 	}
-	c.v8WorkerMessagesProcessed["DEBUG_START"]++
+	c.v8WorkerMessagesProcessed["debug_start"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
@@ -155,10 +155,10 @@ func (c *Consumer) sendDebuggerStop() {
 	header, hBuilder := c.makeV8DebuggerStopHeader()
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_STOP"]; !ok {
-		c.v8WorkerMessagesProcessed["DEBUG_STOP"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["debug_stop"]; !ok {
+		c.v8WorkerMessagesProcessed["debug_stop"] = 0
 	}
-	c.v8WorkerMessagesProcessed["DEBUG_STOP"]++
+	c.v8WorkerMessagesProcessed["debug_stop"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
@@ -178,10 +178,10 @@ func (c *Consumer) sendInitV8Worker(payload []byte, sendToDebugger bool, pBuilde
 	header, hBuilder := c.makeV8InitOpcodeHeader()
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["V8_INIT"]; !ok {
-		c.v8WorkerMessagesProcessed["V8_INIT"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["v8_init"]; !ok {
+		c.v8WorkerMessagesProcessed["v8_init"] = 0
 	}
-	c.v8WorkerMessagesProcessed["V8_INIT"]++
+	c.v8WorkerMessagesProcessed["v8_init"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
@@ -202,10 +202,10 @@ func (c *Consumer) sendCompileRequest(appCode string) {
 	header, hBuilder := c.makeV8CompileOpcodeHeader(appCode)
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["V8_COMPILE"]; !ok {
-		c.v8WorkerMessagesProcessed["V8_COMPILE"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["v8_compile"]; !ok {
+		c.v8WorkerMessagesProcessed["v8_compile"] = 0
 	}
-	c.v8WorkerMessagesProcessed["V8_COMPILE"]++
+	c.v8WorkerMessagesProcessed["v8_compile"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
@@ -225,10 +225,10 @@ func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) {
 	header, hBuilder := c.makeV8LoadOpcodeHeader(appCode)
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["V8_LOAD"]; !ok {
-		c.v8WorkerMessagesProcessed["V8_LOAD"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["v8_load"]; !ok {
+		c.v8WorkerMessagesProcessed["v8_load"] = 0
 	}
-	c.v8WorkerMessagesProcessed["V8_LOAD"]++
+	c.v8WorkerMessagesProcessed["v8_load"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
@@ -247,10 +247,10 @@ func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) {
 	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerLatencyStats, 0, "")
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["LATENCY_STATS"]; !ok {
-		c.v8WorkerMessagesProcessed["LATENCY_STATS"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["latency_stats"]; !ok {
+		c.v8WorkerMessagesProcessed["latency_stats"] = 0
 	}
-	c.v8WorkerMessagesProcessed["LATENCY_STATS"]++
+	c.v8WorkerMessagesProcessed["latency_stats"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
@@ -269,10 +269,10 @@ func (c *Consumer) sendGetFailureStats(sendToDebugger bool) {
 	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerFailureStats, 0, "")
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["FAILURE_STATS"]; !ok {
-		c.v8WorkerMessagesProcessed["FAILURE_STATS"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["failure_stats"]; !ok {
+		c.v8WorkerMessagesProcessed["failure_stats"] = 0
 	}
-	c.v8WorkerMessagesProcessed["FAILURE_STATS"]++
+	c.v8WorkerMessagesProcessed["failure_stats"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
@@ -291,10 +291,10 @@ func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) {
 	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerExecutionStats, 0, "")
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["EXECUTION_STATS"]; !ok {
-		c.v8WorkerMessagesProcessed["EXECUTION_STATS"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["execution_stats"]; !ok {
+		c.v8WorkerMessagesProcessed["execution_stats"] = 0
 	}
-	c.v8WorkerMessagesProcessed["EXECUTION_STATS"]++
+	c.v8WorkerMessagesProcessed["execution_stats"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
@@ -313,10 +313,10 @@ func (c *Consumer) sendGetLcbExceptionStats(sendToDebugger bool) {
 	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerLcbExceptions, 0, "")
 
 	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]; !ok {
-		c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"] = 0
+	if _, ok := c.v8WorkerMessagesProcessed["lcb_exception_stats"]; !ok {
+		c.v8WorkerMessagesProcessed["lcb_exception_stats"] = 0
 	}
-	c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]++
+	c.v8WorkerMessagesProcessed["lcb_exception_stats"]++
 	c.msgProcessedRWMutex.Unlock()
 
 	m := &msgToTransmit{
