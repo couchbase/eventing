@@ -42,8 +42,6 @@ func (c *Consumer) processEvents() {
 			if ok == false {
 				logging.Infof("%s [%s:%s:%d] Closing DCP feed for bucket %q",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.bucket)
-
-				c.stopCheckpointingCh <- struct{}{}
 				return
 			}
 
@@ -349,8 +347,6 @@ func (c *Consumer) processEvents() {
 		case e, ok := <-c.filterDataCh:
 			if ok == false {
 				logging.Infof("%s [%s:%s:%d] Closing filterDataCh", logPrefix, c.workerName, c.tcpPort, c.Pid())
-
-				c.stopCheckpointingCh <- struct{}{}
 				return
 			}
 			logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d received on filterDataCh",
@@ -496,15 +492,21 @@ func (c *Consumer) processEvents() {
 func (c *Consumer) processTimerEvents() {
 	logPrefix := "Consumer::processTimerEvents"
 	for {
-		ev, err := c.fireTimerQueue.Pop()
-		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Failed to pop from fireTimerQueue, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-			c.stopCheckpointingCh <- struct{}{}
+		select {
+		case <-c.stopConsumerCh:
+			logging.Infof("%s [%s:%s:%d] Exiting processTimerEvents routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
+		default:
+			ev, err := c.fireTimerQueue.Pop()
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] Failed to pop from fireTimerQueue, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+				return
+			}
+			timer := ev.(*timerContext)
+			c.timerMessagesProcessed++
+			c.sendTimerEvent(timer, false)
 		}
-		timer := ev.(*timerContext)
-		c.timerMessagesProcessed++
-		c.sendTimerEvent(timer, false)
 	}
 }
 
@@ -725,7 +727,14 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 				}
 
 				atomic.AddInt64(&c.aggDCPFeedMem, int64(len(e.Value)))
-				c.aggDCPFeed <- e
+				select {
+				case c.aggDCPFeed <- e:
+				case <-c.stopConsumerCh:
+					return
+
+				}
+			case <-c.stopConsumerCh:
+				return
 			}
 		}
 	}(dcpFeed)
@@ -1091,12 +1100,16 @@ func (c *Consumer) handleFailoverLog() {
 					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
 
-					c.reqStreamCh <- &streamRequestInfo{
+					streamInfo := &streamRequestInfo{
 						vb:         vbFlog.vb,
 						vbBlob:     &vbBlob,
 						startSeqNo: vbFlog.seqNo,
 					}
-
+					select {
+					case c.reqStreamCh <- streamInfo:
+					case <-c.stopConsumerCh:
+						return
+					}
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", startSeqNo)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 				} else {
@@ -1112,18 +1125,22 @@ func (c *Consumer) handleFailoverLog() {
 					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
 
-					c.reqStreamCh <- &streamRequestInfo{
+					streamInfo := &streamRequestInfo{
 						vb:         vbFlog.vb,
 						vbBlob:     &vbBlob,
 						startSeqNo: startSeqNo,
 					}
+					select {
+					case c.reqStreamCh <- streamInfo:
+					case <-c.stopConsumerCh:
+						return
+					}
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", 0)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 				}
-
 			}
 
-		case <-c.stopHandleFailoverLogCh:
+		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exiting failover log handling routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
@@ -1272,7 +1289,7 @@ func (c *Consumer) processReqStreamMessages() {
 
 			streamReqWG.Wait()
 
-		case <-c.stopReqStreamProcessCh:
+		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exiting streamReq processing routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}

@@ -108,7 +108,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 				}
 			}
 
-		case <-c.stopCheckpointingCh:
+		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exited checkpointing routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return

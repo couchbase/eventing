@@ -15,7 +15,7 @@ func (c *Consumer) scanTimers() {
 
 	for {
 		select {
-		case <-c.scanTimerStopCh:
+		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exiting timer scanning routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
@@ -121,19 +121,18 @@ func (c *Consumer) routeTimers() {
 
 	c.timerStorageMetaChsRWMutex.Lock()
 	for i := 0; i < c.timerStorageRoutineCount; i++ {
+		maxcount := uint64(c.timerQueueSize / uint64(c.timerStorageRoutineCount))
+		maxsize := uint64(c.timerQueueMemCap / uint64(c.timerStorageRoutineCount))
 		c.timerStorageQueues[i] =
-			util.NewBoundedQueue(c.timerQueueSize/int64(c.timerStorageRoutineCount), c.timerQueueMemCap/int64(c.timerStorageRoutineCount))
+			util.NewBoundedQueue(maxcount, maxsize)
 
-		stopCh := make(chan struct{}, 1)
-		c.timerStorageStopChs = append(c.timerStorageStopChs, stopCh)
-
-		go c.storeTimers(i, c.timerStorageQueues[i], stopCh)
+		go c.storeTimers(i, c.timerStorageQueues[i])
 	}
 	c.timerStorageMetaChsRWMutex.Unlock()
 
 	for {
 		select {
-		case <-c.createTimerStopCh:
+		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exiting timer store routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
@@ -162,11 +161,11 @@ func (c *Consumer) routeTimers() {
 	}
 }
 
-func (c *Consumer) storeTimers(index int, timerQueue *util.BoundedQueue, stopCh chan struct{}) {
+func (c *Consumer) storeTimers(index int, timerQueue *util.BoundedQueue) {
 	logPrefix := "Consumer::storeTimers"
 	for {
 		select {
-		case <-stopCh:
+		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Routine id: %d got message on stop chan. Exiting timer storage routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), index)
 			return

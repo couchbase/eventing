@@ -740,7 +740,7 @@ func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 
 	if c.app.UsingTimer {
 		divisor = 5
-		c.timerQueueMemCap = (quota / divisor) * 1024 * 1024
+		c.timerQueueMemCap = uint64((quota / divisor) * 1024 * 1024)
 	} else {
 		divisor = 2
 	}

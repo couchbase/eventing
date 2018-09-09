@@ -81,8 +81,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		numVbuckets:                     numVbuckets,
 		opsTimestamp:                    time.Now(),
 		createTimerQueue:                util.NewBoundedQueue(hConfig.TimerQueueSize, hConfig.TimerQueueMemCap),
-		createTimerStopCh:               make(chan struct{}, 1),
-		scanTimerStopCh:                 make(chan struct{}, 1),
 		producer:                        p,
 		reqStreamCh:                     make(chan *streamRequestInfo, numVbuckets*10),
 		restartVbDcpStreamTicker:        time.NewTicker(restartVbDcpStreamTickInterval),
@@ -101,9 +99,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		statsRWMutex:                    &sync.RWMutex{},
 		statsTickDuration:               time.Duration(hConfig.StatsLogInterval) * time.Millisecond,
 		stopControlRoutineCh:            make(chan struct{}, 1),
-		stopHandleFailoverLogCh:         make(chan struct{}, 1),
 		stopVbOwnerTakeoverCh:           make(chan struct{}),
-		stopReqStreamProcessCh:          make(chan struct{}),
+		stopConsumerCh:                  make(chan struct{}),
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
 		timerContextSize:                hConfig.TimerContextSize,
@@ -121,7 +118,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbEnqueuedForStreamReqRWMutex:   &sync.RWMutex{},
 		vbFlogChan:                      make(chan *vbFlogEntry, 1024),
 		vbnos:                           vbnos,
-		updateStatsStopCh:               make(chan struct{}, 1),
 		vbDcpEventsRemaining:            make(map[int]int64),
 		vbEventingNodeAssignMap:         vbEventingNodeAssignMap,
 		vbEventingNodeAssignRWMutex:     &sync.RWMutex{},
@@ -171,9 +167,6 @@ func (c *Consumer) Serve() {
 
 	// Insert an entry to sendMessage loop control channel to signify a normal bootstrap
 	c.socketWriteLoopStopAckCh <- struct{}{}
-
-	c.stopConsumerCh = make(chan struct{}, 1)
-	c.stopCheckpointingCh = make(chan struct{}, 1)
 
 	c.dcpMessagesProcessed = make(map[mcd.CommandCode]uint64)
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
@@ -416,36 +409,20 @@ func (c *Consumer) Stop() {
 		c.socketWriteTicker.Stop()
 	}
 
-	if c.stopReqStreamProcessCh != nil {
-		c.stopReqStreamProcessCh <- struct{}{}
-	}
-
 	if c.createTimerQueue != nil {
 		c.createTimerQueue.Close()
 	}
 
-	if c.createTimerStopCh != nil {
-		c.createTimerStopCh <- struct{}{}
-	}
-
+	c.timerStorageMetaChsRWMutex.Lock()
 	for _, q := range c.timerStorageQueues {
 		if q != nil {
 			q.Close()
 		}
 	}
-
-	c.timerStorageMetaChsRWMutex.Lock()
-	for _, stopCh := range c.timerStorageStopChs {
-		stopCh <- struct{}{}
-	}
 	c.timerStorageMetaChsRWMutex.Unlock()
 
 	if c.fireTimerQueue != nil {
 		c.fireTimerQueue.Close()
-	}
-
-	if c.scanTimerStopCh != nil {
-		c.scanTimerStopCh <- struct{}{}
 	}
 
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop timer routines",
@@ -460,16 +437,8 @@ func (c *Consumer) Stop() {
 		c.updateStatsTicker.Stop()
 	}
 
-	if c.updateStatsStopCh != nil {
-		c.updateStatsStopCh <- struct{}{}
-	}
-
 	logging.Infof("%s [%s:%s:%d] Sent signal to stop cpp worker stat collection routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
-
-	if c.stopCheckpointingCh != nil {
-		c.stopCheckpointingCh <- struct{}{}
-	}
 
 	if c.stopControlRoutineCh != nil {
 		c.stopControlRoutineCh <- struct{}{}
@@ -496,14 +465,7 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Closed all dcpfeed handles",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	if c.stopHandleFailoverLogCh != nil {
-		c.stopHandleFailoverLogCh <- struct{}{}
-	}
-
-	// Bail out processEvents loop only after couchbase.DcpFeed and aggChan are closed.
-	if c.stopConsumerCh != nil {
-		c.stopConsumerCh <- struct{}{}
-	}
+	close(c.stopConsumerCh)
 
 	if c.conn != nil {
 		c.conn.Close()

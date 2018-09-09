@@ -246,13 +246,13 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	if val, ok := settings["timer_queue_mem_cap"]; ok {
-		p.handlerConfig.TimerQueueMemCap = int64(val.(float64)) * 1024 * 1024
+		p.handlerConfig.TimerQueueMemCap = uint64(val.(float64)) * 1024 * 1024
 	} else {
-		p.handlerConfig.TimerQueueMemCap = p.consumerMemQuota()
+		p.handlerConfig.TimerQueueMemCap = uint64(p.consumerMemQuota())
 	}
 
 	if val, ok := settings["timer_queue_size"]; ok {
-		p.handlerConfig.TimerQueueSize = int64(val.(float64))
+		p.handlerConfig.TimerQueueSize = uint64(val.(float64))
 	} else {
 		p.handlerConfig.TimerQueueSize = 10000
 	}
