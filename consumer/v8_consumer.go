@@ -102,8 +102,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		statsTickDuration:               time.Duration(hConfig.StatsLogInterval) * time.Millisecond,
 		stopControlRoutineCh:            make(chan struct{}, 1),
 		stopHandleFailoverLogCh:         make(chan struct{}, 1),
-		stopVbOwnerGiveupCh:             make(chan struct{}, rConfig.VBOwnershipGiveUpRoutineCount),
-		stopVbOwnerTakeoverCh:           make(chan struct{}, rConfig.VBOwnershipTakeoverRoutineCount),
+		stopVbOwnerTakeoverCh:           make(chan struct{}),
 		stopReqStreamProcessCh:          make(chan struct{}),
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
@@ -556,15 +555,11 @@ func (c *Consumer) NotifyRebalanceStop() {
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	c.isRebalanceOngoing = false
-	logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %v",
+	logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
 
-	for i := 0; i < c.vbOwnershipGiveUpRoutineCount; i++ {
-		c.stopVbOwnerGiveupCh <- struct{}{}
-	}
-
-	for i := 0; i < c.vbOwnershipTakeoverRoutineCount; i++ {
-		c.stopVbOwnerTakeoverCh <- struct{}{}
+	if c.vbsStateUpdateRunning {
+		close(c.stopVbOwnerTakeoverCh)
 	}
 }
 

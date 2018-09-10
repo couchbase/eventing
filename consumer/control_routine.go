@@ -49,8 +49,7 @@ func (c *Consumer) controlRoutine() error {
 
 			c.closeAllRunningDcpFeeds()
 
-			c.stopVbOwnerGiveupCh = make(chan struct{}, c.vbOwnershipGiveUpRoutineCount)
-			c.stopVbOwnerTakeoverCh = make(chan struct{}, c.vbOwnershipTakeoverRoutineCount)
+			c.stopVbOwnerTakeoverCh = make(chan struct{})
 
 			logging.Infof("%s [%s:%s:%d] Got notification that cluster state has changed",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())

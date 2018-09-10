@@ -142,10 +142,12 @@ retryStreamUpdate:
 				}
 
 				select {
-				case <-c.stopVbOwnerTakeoverCh:
-					logging.Infof("%s [%s:takeover_r_%d:%s:%d] Exiting vb ownership takeover routine, next vb: %d",
-						logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
-					return
+				case _, ok := <-c.stopVbOwnerTakeoverCh:
+					if ok == false {
+						logging.Infof("%s [%s:takeover_r_%d:%s:%d] Exiting vb ownership takeover routine, next vb: %d",
+							logPrefix, c.workerName, i, c.tcpPort, c.Pid(), vb)
+						return
+					}
 				default:
 				}
 
@@ -178,7 +180,7 @@ retryStreamUpdate:
 
 	wg.Wait()
 
-	c.stopVbOwnerTakeoverCh = make(chan struct{}, c.vbOwnershipTakeoverRoutineCount)
+	c.stopVbOwnerTakeoverCh = make(chan struct{})
 
 	if c.isRebalanceOngoing {
 		c.vbsRemainingToOwn = c.getVbRemainingToOwn()
