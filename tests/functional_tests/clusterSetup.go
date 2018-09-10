@@ -279,7 +279,6 @@ func waitForRebalanceFinish() {
 
 				if rebalanceRunning && task["type"].(string) == "rebalance" && task["status"].(string) == "notRunning" {
 					t.Stop()
-					time.Sleep(10 * time.Second)
 					log.Println("Rebalance progress: 100")
 					return
 				}
