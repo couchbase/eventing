@@ -138,7 +138,7 @@ type application struct {
 	AppHandlers      string                 `json:"appcode"`
 	DeploymentConfig depCfg                 `json:"depcfg"`
 	EventingVersion  string                 `json:"version"`
-	HandlerUUID      uint32                 `json:"handleruuid"`
+	HandlerID        string                 `json:"handlerid"`
 	ID               int                    `json:"id"`
 	Name             string                 `json:"appname"`
 	Settings         map[string]interface{} `json:"settings"`

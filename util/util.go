@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"crypto/md5"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"hash/crc64"
 	"io"
 	"io/ioutil"
 	"math"
@@ -35,10 +37,9 @@ const (
 	EventingAdminService = "eventingAdminPort"
 	DataService          = "kv"
 	MgmtService          = "mgmt"
-
-	HTTPRequestTimeout = time.Duration(5000) * time.Millisecond
-
-	EPSILON = 1e-5
+	HTTPRequestTimeout   = time.Duration(5000) * time.Millisecond
+	Epsilon              = 1e-5
+	dict                 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 )
 
 const (
@@ -66,7 +67,6 @@ type DynamicAuthenticator struct {
 func (h *ConfigHolder) Store(conf Config) {
 	atomic.StorePointer(&h.ptr, unsafe.Pointer(&conf))
 }
-
 func (h *ConfigHolder) Load() Config {
 	confPtr := atomic.LoadPointer(&h.ptr)
 	return *(*Config)(confPtr)
@@ -1098,7 +1098,7 @@ func ToStringArray(from interface{}) (to []string) {
 }
 
 func FloatEquals(a, b float64) bool {
-	return math.Abs(a-b) <= EPSILON
+	return math.Abs(a-b) <= Epsilon
 }
 
 func DeepCopy(kv map[string]interface{}) (newKv map[string]interface{}) {
@@ -1115,13 +1115,20 @@ func GetAppNameFromPath(path string) string {
 	return split[len(split)-1]
 }
 
-func GenerateHandlerUUID() (uint32, error) {
-	uuid := make([]byte, 16)
-	_, err := rand.Read(uuid)
+func GenerateHandlerID(appname string) (string, error) {
+	id := make([]byte, 10)
+	hash := crc64.Checksum([]byte(appname), crc64.MakeTable(crc64.ECMA))
+	binary.LittleEndian.PutUint64(id[0:], hash)
+	_, err := rand.Read(id[6:])
 	if err != nil {
-		return 0, err
+		return "", err
 	}
-	return crc32.ChecksumIEEE(uuid), nil
+	sz := byte(len(dict))
+	for i := 0; i < len(id); i++ {
+		sel := id[i] % sz
+		id[i] = dict[sel]
+	}
+	return string(id), nil
 }
 
 type GocbLogger struct{}

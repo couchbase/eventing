@@ -8,7 +8,6 @@ import (
 	"hash/crc32"
 	"runtime/debug"
 	"sort"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,7 +26,6 @@ func (c *Consumer) processEvents() {
 	logPrefix := "Consumer::processEvents"
 
 	var timerMsgCounter uint64
-	xattrprefix := strconv.Itoa(int(c.app.HandlerUUID))
 	for {
 		if c.cppQueueSizes != nil {
 			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize ||
@@ -95,9 +93,9 @@ func (c *Consumer) processEvents() {
 							totalXattrData = totalXattrData[4+frameLength:]
 						}
 
-						if len(frameData) > len(xattrprefix) {
-							if bytes.Compare(frameData[:len(xattrprefix)], []byte(xattrprefix)) == 0 {
-								toParse := frameData[len(xattrprefix)+1:]
+						if len(frameData) > len(c.app.HandlerID) {
+							if bytes.Compare(frameData[:len(c.app.HandlerID)], []byte(c.app.HandlerID)) == 0 {
+								toParse := frameData[len(c.app.HandlerID)+1:]
 
 								err := json.Unmarshal(toParse, &xMeta)
 								if err != nil {

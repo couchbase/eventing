@@ -20,7 +20,7 @@ import (
 const (
 	Resolution  = int64(7) // seconds
 	init_seq    = int64(128)
-	dict        = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*&"
+	dict        = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*#"
 	encode_base = 10 // TODO: Change to 36 before GA
 )
 
