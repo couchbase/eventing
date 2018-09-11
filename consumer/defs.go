@@ -187,12 +187,11 @@ type Consumer struct {
 	superSup                      common.EventingSuperSup
 	timerContextSize              int64
 	timerStorageChanSize          int
-	timerQueueSize                int64
-	timerQueueMemCap              int64
+	timerQueueSize                uint64
+	timerQueueMemCap              uint64
 	timerStorageMetaChsRWMutex    *sync.RWMutex
 	timerStorageRoutineCount      int
-	timerStorageQueues            []*util.BoundedQueue // Access controlled by timerStorageMetaChsRWMutex
-	timerStorageStopChs           []chan struct{}      // Access controlled by timerStorageMetaChsRWMutex
+	timerStorageQueues            []*util.BoundedQueue
 	usingTimer                    bool
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed
@@ -236,10 +235,8 @@ type Consumer struct {
 	// N1QL Transpiler related nested iterator config params
 	lcbInstCapacity int
 
-	fireTimerQueue    *util.BoundedQueue
-	createTimerQueue  *util.BoundedQueue
-	createTimerStopCh chan struct{}
-	scanTimerStopCh   chan struct{}
+	fireTimerQueue   *util.BoundedQueue
+	createTimerQueue *util.BoundedQueue
 
 	socketTimeout time.Duration
 
@@ -258,8 +255,6 @@ type Consumer struct {
 	sendMsgBufferRWMutex     *sync.RWMutex
 	sockFeedbackReader       *bufio.Reader
 	sockReader               *bufio.Reader
-	socketReadLoopStopCh     chan struct{}
-	socketReadLoopStopAckCh  chan struct{}
 	socketWriteBatchSize     int
 	socketWriteTicker        *time.Ticker
 	socketWriteLoopStopCh    chan struct{}
@@ -294,17 +289,11 @@ type Consumer struct {
 	// Chan used by signal update of app handler settings
 	signalSettingsChangeCh chan struct{}
 
-	stopControlRoutineCh    chan struct{}
-	stopHandleFailoverLogCh chan struct{}
-	stopReqStreamProcessCh  chan struct{}
+	stopControlRoutineCh chan struct{}
 
 	// Populated when downstream tcp socket mapping to
 	// C++ v8 worker is down. Buffered channel to avoid deadlock
 	stopConsumerCh chan struct{}
-
-	// Chan to stop background checkpoint routine, keeping track
-	// of last seq # processed
-	stopCheckpointingCh chan struct{}
 
 	gracefulShutdownChan chan struct{}
 
@@ -375,7 +364,6 @@ type Consumer struct {
 	statsTicker              *time.Ticker
 
 	updateStatsTicker *time.Ticker
-	updateStatsStopCh chan struct{}
 }
 
 // For V8 worker spawned for debugging purpose
@@ -484,19 +472,20 @@ type TimerInfo struct {
 	Context   string `json:"context"`
 }
 
-func (info *TimerInfo) Size() int64 {
-	return int64(unsafe.Sizeof(*info)) + int64(len(info.Callback)) +
-		int64(len(info.Reference)) + int64(len(info.Context))
+func (info *TimerInfo) Size() uint64 {
+	return uint64(unsafe.Sizeof(*info)) + uint64(len(info.Callback)) +
+		uint64(len(info.Reference)) + uint64(len(info.Context))
 }
 
 // This is struct that will be stored in
 // the meta store as the timer's context
 type timerContext struct {
-	Callback string `json:"callback"`
-	Vb       uint64 `json:"vb"`
-	Context  string `json:"context"` // This is the context provided by the user
+	Callback  string `json:"callback"`
+	Vb        uint64 `json:"vb"`
+	Context   string `json:"context"` // This is the context provided by the user
+	reference string
 }
 
-func (ctx *timerContext) Size() int64 {
-	return int64(unsafe.Sizeof(*ctx)) + int64(len(ctx.Callback)) + int64(len(ctx.Context))
+func (ctx *timerContext) Size() uint64 {
+	return uint64(unsafe.Sizeof(*ctx)) + uint64(len(ctx.Callback)) + uint64(len(ctx.Context))
 }

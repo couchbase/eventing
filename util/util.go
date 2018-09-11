@@ -709,7 +709,7 @@ func MemcachedErrCode(err error) gomemcached.Status {
 	return status
 }
 
-func CompareSlices(s1, s2 []string) bool {
+func CompareSlices(s1, s2 []uint16) bool {
 
 	if s1 == nil && s2 == nil {
 		return true

@@ -279,8 +279,8 @@ type HandlerConfig struct {
 	TimerContextSize         int64
 	TimerStorageRoutineCount int
 	TimerStorageChanSize     int
-	TimerQueueMemCap         int64
-	TimerQueueSize           int64
+	TimerQueueMemCap         uint64
+	TimerQueueSize           uint64
 	UndeployRoutineCount     int
 	UsingTimer               bool
 	WorkerCount              int

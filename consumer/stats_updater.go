@@ -132,7 +132,7 @@ func (c *Consumer) updateWorkerStats() {
 				}
 			}
 
-		case <-c.updateStatsStopCh:
+		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exiting cpp worker stats updater routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return

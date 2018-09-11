@@ -391,8 +391,25 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 createApp(scope);
             };
 
+            self.showEventingSettings = function() {
+                $uibModal.open({
+                        templateUrl: '../_p/ui/event/ui-current/fragments/eventing-settings.html',
+                        controller: 'EventingSettingsCtrl',
+                        controllerAs: 'ctrl',
+                        resolve: {
+                            config: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.public.getConfig();
+                                }
+                            ]
+                        }
+                    }).result
+                    .catch(function(errResponse) {
+                        console.error(errResponse);
+                    });
+            };
+
             // Callback for importing application.
-            // BUG : Sometimes the continue button must be pressed twice.
             self.importConfig = function() {
                 function handleFileSelect() {
                     var reader = new FileReader();
@@ -428,6 +445,20 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 loadConfigElement.value = null;
                 loadConfigElement.addEventListener('change', handleFileSelect, false);
                 loadConfigElement.click();
+            };
+        }
+    ])
+    .controller('EventingSettingsCtrl', ['$scope', 'ApplicationService', 'config',
+        function($scope, ApplicationService, config) {
+            var self = this;
+            config = config.data;
+            self.enableDebugger = config.enable_debugger;
+
+            self.saveSettings = function(closeDialog) {
+                ApplicationService.public.updateConfig({
+                    enable_debugger: self.enableDebugger
+                });
+                closeDialog('ok');
             };
         }
     ])
@@ -693,7 +724,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     })
                     .then(function(response) {
                         if (!response.data.enable_debugger) {
-                            ApplicationService.server.showErrorAlert('Unable to start debugger as it is disabled. Please enable it under cluster settings');
+                            ApplicationService.server.showErrorAlert('Unable to start debugger as it is disabled. Please enable it under Eventing Settings');
                             return;
                         }
 
@@ -892,6 +923,19 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     },
                     getConfig: function() {
                         return $http.get('/_p/event/api/v1/config');
+                    },
+                    updateConfig: function(data) {
+                        return $http({
+                            url: '/_p/event/api/v1/config',
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: data
+                        });
                     }
                 },
                 tempStore: {

@@ -718,6 +718,17 @@ func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
 	}
 }
 
+func (c *Consumer) getAssignedVbs(workerName string) ([]uint16, error) {
+	c.workerVbucketMapRWMutex.RLock()
+	defer c.workerVbucketMapRWMutex.RUnlock()
+
+	if _, ok := c.workerVbucketMap[workerName]; ok {
+		return c.workerVbucketMap[workerName], nil
+	}
+
+	return nil, fmt.Errorf("worker not found")
+}
+
 // UpdateWorkerQueueMemCap revises the memory cap for cpp worker, dcp and timer queues
 func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 	logPrefix := "Consumer::updateWorkerQueueMemCap"
@@ -729,7 +740,7 @@ func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 
 	if c.app.UsingTimer {
 		divisor = 5
-		c.timerQueueMemCap = (quota / divisor) * 1024 * 1024
+		c.timerQueueMemCap = uint64((quota / divisor) * 1024 * 1024)
 	} else {
 		divisor = 2
 	}

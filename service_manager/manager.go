@@ -82,7 +82,7 @@ func (m *ServiceMgr) initService() {
 		}
 	}(m)
 
-	m.enableDebugger()
+	m.disableDebugger()
 
 	// Internal REST APIs
 	http.HandleFunc("/cleanupEventing", m.cleanupEventing)
@@ -231,7 +231,7 @@ func (m *ServiceMgr) initService() {
 	}
 }
 
-func (m *ServiceMgr) enableDebugger() {
+func (m *ServiceMgr) disableDebugger() {
 	logPrefix := "ServiceMgr::enableDebugger"
 
 	config, info := m.getConfig()
@@ -246,7 +246,7 @@ func (m *ServiceMgr) enableDebugger() {
 
 	logging.Tracef("%s enable_debugger field does not exist, enabling it", logPrefix)
 
-	config["enable_debugger"] = true
+	config["enable_debugger"] = false
 	if info := m.saveConfig(config); info.Code != m.statusCodes.ok.Code {
 		logging.Errorf("Unable to enable debugger by default, err: %v", info.Info)
 	}
