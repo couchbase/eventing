@@ -433,6 +433,37 @@ func (c *Consumer) sendClearTimerFilterData(e *memcached.DcpEvent) {
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 }
 
+func (c *Consumer) sendUpdateProcessedSeqNo(vb uint16, seqNo uint64) {
+	logPrefix := "Consumer::sendUpdateProcessedSeqNo"
+
+	data := vbSeqNo{
+		SeqNo:   seqNo,
+		Vbucket: vb,
+	}
+
+	metadata, err := json.Marshal(&data)
+	if err != nil {
+		logging.Errorf("[%s:%s:%s:%d] vb: %d failed to marshal ",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
+		return
+	}
+
+	updateSeqNoHeader, hBuilder := c.makeProcessedSeqNoHeader(int16(vb), string(metadata))
+
+	msg := &msgToTransmit{
+		msg: &message{
+			Header: updateSeqNoHeader,
+		},
+		sendToDebugger: false,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(msg)
+	logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d sending update seqno data to C++",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNo)
+}
+
 func (c *Consumer) sendMessageLoop() {
 	logPrefix := "Consumer::sendMessageLoop"
 

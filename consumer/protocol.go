@@ -38,6 +38,7 @@ const (
 	filterOpcode int8 = iota
 	vbFilter
 	clearTimerFilter
+	processedSeqNo
 )
 
 const (
@@ -135,6 +136,10 @@ func (c *Consumer) makeClearTimerFilterHeader(partition int16, meta string) ([]b
 
 func (c *Consumer) makeVbFilterHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
 	return c.filterEventHeader(vbFilter, partition, meta)
+}
+
+func (c *Consumer) makeProcessedSeqNoHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.filterEventHeader(processedSeqNo, partition, meta)
 }
 
 func (c *Consumer) makeV8DebuggerStartHeader() ([]byte, *flatbuffers.Builder) {
@@ -484,7 +489,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNo)
 		}
 	case bucketOpsFilterAck:
-		var ack vbFilterData
+		var ack vbSeqNo
 		err := json.Unmarshal([]byte(msg), &ack)
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal filter ack, msg: %v err: %v",

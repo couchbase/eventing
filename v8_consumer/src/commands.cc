@@ -84,6 +84,8 @@ filter_opcode getFilterOpcode(int8_t opcode) {
     return oVbFilter;
   if (opcode == 2)
     return oClearTimerFilter;
+  if (opcode == 3)
+    return oProcessedSeqNo;
   return Filter_Opcode_Unknown;
 }
 

@@ -43,7 +43,12 @@ enum v8_worker_opcode {
 
 enum dcp_opcode { oDelete, oMutation, DCP_Opcode_Unknown };
 
-enum filter_opcode { oVbFilter, oClearTimerFilter, Filter_Opcode_Unknown };
+enum filter_opcode {
+  oVbFilter,
+  oClearTimerFilter,
+  oProcessedSeqNo,
+  Filter_Opcode_Unknown
+};
 
 enum app_worker_setting_opcode {
   oLogLevel,

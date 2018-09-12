@@ -100,7 +100,7 @@ type dcpMetadata struct {
 	SeqNo   uint64 `json:"seq"`
 }
 
-type vbFilterData struct {
+type vbSeqNo struct {
 	SeqNo   uint64 `json:"seq"`
 	Vbucket uint16 `json:"vb"`
 }
@@ -163,7 +163,7 @@ type Consumer struct {
 	executionTimeout              int
 	filterVbEvents                map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
 	filterVbEventsRWMutex         *sync.RWMutex
-	filterDataCh                  chan *vbFilterData
+	filterDataCh                  chan *vbSeqNo
 	gocbBucket                    *gocb.Bucket
 	gocbMetaBucket                *gocb.Bucket
 	idleCheckpointInterval        time.Duration
