@@ -43,7 +43,12 @@ enum v8_worker_opcode {
 
 enum dcp_opcode { oDelete, oMutation, DCP_Opcode_Unknown };
 
-enum filter_opcode { oVbFilter, Filter_Opcode_Unknown };
+enum filter_opcode {
+  oVbFilter,
+  oClearTimerFilter,
+  oProcessedSeqNo,
+  Filter_Opcode_Unknown
+};
 
 enum app_worker_setting_opcode {
   oLogLevel,
@@ -61,6 +66,7 @@ event_type getEvent(int8_t event);
 v8_worker_opcode getV8WorkerOpcode(int8_t opcode);
 dcp_opcode getDCPOpcode(int8_t opcode);
 app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode);
+filter_opcode getFilterOpcode(int8_t opcode);
 timer_opcode getTimerOpcode(int8_t opcode);
 debugger_opcode getDebuggerOpcode(int8_t opcode);
 

@@ -8,6 +8,7 @@ import (
 	"hash/crc32"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,6 +27,7 @@ func (c *Consumer) processEvents() {
 	logPrefix := "Consumer::processEvents"
 
 	var timerMsgCounter uint64
+	xattrprefix := strconv.Itoa(int(c.app.HandlerUUID))
 	for {
 		if c.cppQueueSizes != nil {
 			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize ||
@@ -91,9 +93,9 @@ func (c *Consumer) processEvents() {
 							totalXattrData = totalXattrData[4+frameLength:]
 						}
 
-						if len(frameData) > len(c.app.HandlerID) {
-							if bytes.Compare(frameData[:len(c.app.HandlerID)], []byte(c.app.HandlerID)) == 0 {
-								toParse := frameData[len(c.app.HandlerID)+1:]
+						if len(frameData) > len(xattrprefix) {
+							if bytes.Compare(frameData[:len(xattrprefix)], []byte(xattrprefix)) == 0 {
+								toParse := frameData[len(xattrprefix)+1:]
 
 								err := json.Unmarshal(toParse, &xMeta)
 								if err != nil {
@@ -173,7 +175,7 @@ func (c *Consumer) processEvents() {
 				}
 
 				if e.Status == mcd.SUCCESS {
-
+					c.sendClearTimerFilterData(e)
 					kvNodes := c.getKvNodes()
 
 					connStr := "couchbase://"
@@ -987,6 +989,10 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		logging.Infof("%s [%s:%s:%d] vb: %d Closed and deleted dcpfeed mapping to kvAddr: %s",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbKvAddr)
 	} else {
+
+		c.vbProcessingStats.updateVbStat(vb, "last_read_seq_no", start)
+
+		c.sendUpdateProcessedSeqNo(vb, start)
 
 		logging.Infof("%s [%s:%s:%d] vb: %d Adding entry into inflightDcpStreams",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)

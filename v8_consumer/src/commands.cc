@@ -79,6 +79,16 @@ timer_opcode getTimerOpcode(int8_t opcode) {
   return Timer_Opcode_Unknown;
 }
 
+filter_opcode getFilterOpcode(int8_t opcode) {
+  if (opcode == 1)
+    return oVbFilter;
+  if (opcode == 2)
+    return oClearTimerFilter;
+  if (opcode == 3)
+    return oProcessedSeqNo;
+  return Filter_Opcode_Unknown;
+}
+
 debugger_opcode getDebuggerOpcode(int8_t opcode) {
   if (opcode == 1)
     return oDebuggerStart;

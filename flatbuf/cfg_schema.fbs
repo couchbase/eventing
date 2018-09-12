@@ -4,7 +4,7 @@ table Config {
   appCode:string;
   appName:string;
   depCfg:DepCfg;
-  handlerID:string;
+  handlerUUID:uint;
   id:uint;
   usingTimer:bool;
 }

@@ -64,6 +64,32 @@ struct CodeVersion {
   std::string using_timer;
 };
 
+template <typename T> class AtomicWrapper {
+public:
+  AtomicWrapper() : data(T()) {}
+
+  explicit AtomicWrapper(T const &val) : data(val) {}
+
+  explicit AtomicWrapper(std::atomic<T> const &val) : data(val.load()) {}
+
+  AtomicWrapper(AtomicWrapper const &other) : data(other.data.load()) {}
+
+  AtomicWrapper &operator=(AtomicWrapper const &other) {
+    data.store(other.data.load());
+    return *this;
+  }
+
+  inline void Set(T val) { data.store(val); }
+
+  inline T Get() { return data.load(); }
+
+private:
+  std::atomic<T> data;
+};
+typedef AtomicWrapper<int64_t> AtomicInt64;
+typedef AtomicWrapper<uint64_t> AtomicUint64;
+typedef AtomicWrapper<bool> AtomicBool;
+
 inline Data *UnwrapData(v8::Isolate *isolate) {
   return reinterpret_cast<Data *>(isolate->GetData(DATA_SLOT));
 }
