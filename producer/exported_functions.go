@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -940,11 +941,11 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 // AddMetadataPrefix prepends user prefix and handler UUID to namespacing
 // within metadata bucket
 func (p *Producer) AddMetadataPrefix(key string) common.Key {
-	return common.NewKey(p.app.UserPrefix, p.app.HandlerID, key)
+	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), key)
 }
 
 func (p *Producer) GetMetadataPrefix() string {
-	return common.NewKey(p.app.UserPrefix, p.app.HandlerID, "").GetPrefix()
+	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), "").GetPrefix()
 }
 
 // GetVbOwner returns assigned eventing nodes and worker for a vbucket

@@ -44,7 +44,7 @@ func (c *client) Serve() {
 		c.consumerHandle.diagDir,
 		util.GetIPMode(),
 		strconv.FormatBool(c.consumerHandle.breakpadOn),
-		c.consumerHandle.app.HandlerID,
+		strconv.Itoa(int(c.consumerHandle.app.HandlerUUID)),
 		c.consumerHandle.app.UserPrefix,
 		c.eventingPort) // Not read, for tagging
 

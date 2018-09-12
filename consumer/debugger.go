@@ -51,7 +51,7 @@ func (c *debugClient) Spawn(debuggerSpawned chan struct{}) {
 		c.consumerHandle.diagDir,
 		util.GetIPMode(),
 		"true",
-		c.consumerHandle.app.HandlerID,
+		strconv.Itoa(int(c.consumerHandle.app.HandlerUUID)),
 		c.consumerHandle.app.UserPrefix,
 		c.eventingPort, // not read, for tagging
 		"debug")        // not read, for tagging

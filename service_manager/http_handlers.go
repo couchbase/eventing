@@ -1348,14 +1348,13 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 
 	appCode := builder.CreateString(app.AppHandlers)
 	aName := builder.CreateString(app.Name)
-	hID := builder.CreateString(app.HandlerID)
 
 	cfg.ConfigStart(builder)
 	cfg.ConfigAddId(builder, uint32(app.ID))
 	cfg.ConfigAddAppCode(builder, appCode)
 	cfg.ConfigAddAppName(builder, aName)
 	cfg.ConfigAddDepCfg(builder, depcfg)
-	cfg.ConfigAddHandlerID(builder, hID)
+	cfg.ConfigAddHandlerUUID(builder, app.HandlerUUID)
 
 	udtp := byte(0x0)
 	if app.UsingTimer {
@@ -1929,7 +1928,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 			var err error
 			app.EventingVersion = util.EventingVer()
-			app.HandlerID, err = util.GenerateHandlerID(appName)
+			app.HandlerUUID, err = util.GenerateHandlerUUID()
 			if err != nil {
 				info.Code = m.statusCodes.errUUIDGen.Code
 				info.Info = fmt.Sprintf("Function: %s UUID generation failed", appName)
@@ -1937,7 +1936,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
-			logging.Infof("%s Function: %s HandlerID generated, ID: %v", logPrefix, app.Name, app.HandlerID)
+			logging.Infof("%s Function: %s HandlerUUID generated, UUID: %d", logPrefix, app.Name, app.HandlerUUID)
 
 			runtimeInfo := m.savePrimaryStore(app)
 			if runtimeInfo.Code == m.statusCodes.ok.Code {
@@ -2334,7 +2333,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 		}
 
 		app.EventingVersion = util.EventingVer()
-		app.HandlerID, err = util.GenerateHandlerID(app.Name)
+		app.HandlerUUID, err = util.GenerateHandlerUUID()
 		if err != nil {
 			info := &runtimeInfo{}
 			info.Code = m.statusCodes.errUUIDGen.Code
@@ -2343,7 +2342,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			infoList = append(infoList, info)
 			continue
 		}
-		logging.Infof("%s Function: %s HandlerID generated: %v", logPrefix, app.Name, app.HandlerID)
+		logging.Infof("%s Function: %s HandlerUUID generated: %d", logPrefix, app.Name, app.HandlerUUID)
 
 		infoPri := m.savePrimaryStore(app)
 		if infoPri.Code != m.statusCodes.ok.Code {
