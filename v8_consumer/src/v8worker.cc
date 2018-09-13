@@ -356,19 +356,17 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::Context::Scope context_scope(context);
 
   auto uniline_info = transpiler->UniLineN1QL(script_to_execute);
-  LOG(logInfo) << "code after Unilining N1QL: " << RM(uniline_info.handler_code)
-               << std::endl;
+  LOG(logTrace) << "code after Unilining N1QL: "
+                << RM(uniline_info.handler_code) << std::endl;
   if (uniline_info.code != kOK) {
-    LOG(logError) << "failed to uniline N1QL: " << RM(uniline_info.code)
-                  << std::endl;
+    LOG(logError) << "failed to uniline N1QL" << std::endl;
     return uniline_info.code;
   }
 
   auto jsify_info = Jsify(script_to_execute);
-  LOG(logInfo) << "jsified code: " << RM(jsify_info.handler_code) << std::endl;
+  LOG(logTrace) << "jsified code: " << RM(jsify_info.handler_code) << std::endl;
   if (jsify_info.code != kOK) {
-    LOG(logError) << "failed to jsify: " << RM(jsify_info.handler_code)
-                  << std::endl;
+    LOG(logError) << "failed to jsify" << std::endl;
     return jsify_info.code;
   }
 
