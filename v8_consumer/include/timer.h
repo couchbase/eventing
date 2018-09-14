@@ -15,6 +15,8 @@
 #include <string>
 #include <v8.h>
 
+#include "../../gen/flatbuf/payload_generated.h"
+
 struct EpochInfo {
   EpochInfo(bool is_valid) : is_valid(is_valid), epoch(0) {}
   EpochInfo(bool is_valid, int64_t epoch) : is_valid(is_valid), epoch(epoch) {}
@@ -35,6 +37,22 @@ struct TimerInfo {
   std::string callback;
   std::string reference;
   std::string context;
+};
+
+struct TimerEvent {
+  explicit TimerEvent(const flatbuf::payload::Payload *payload)
+      : callback(payload->callback_fn()->str()),
+        context(payload->context()->str()),
+        alarm_key(payload->alarm_key()->str()),
+        context_key(payload->context_key()->str()),
+        alarm_cas(payload->alarm_cas()), context_cas(payload->context_cas()) {}
+
+  std::string callback;
+  std::string context;
+  std::string alarm_key;
+  std::string context_key;
+  uint64_t alarm_cas;
+  uint64_t context_cas;
 };
 
 class Timer {

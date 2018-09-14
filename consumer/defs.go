@@ -16,6 +16,7 @@ import (
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 	"github.com/google/flatbuffers/go"
@@ -488,4 +489,13 @@ type timerContext struct {
 
 func (ctx *timerContext) Size() uint64 {
 	return uint64(unsafe.Sizeof(*ctx)) + uint64(len(ctx.Callback)) + uint64(len(ctx.Context))
+}
+
+type TimerEvent struct {
+	Context *timerContext
+	Token   *timers.DeleteToken
+}
+
+func (e *TimerEvent) Size() uint64 {
+	return uint64(unsafe.Sizeof(*e)) + e.Context.Size() + e.Token.Size()
 }
