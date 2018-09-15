@@ -454,7 +454,7 @@ func (r *TimerIter) nextColumn() (bool, error) {
 
 	// row counter exists and but has no timers. shrink logic depends on all chains reducing to this eventually
 	logging.Tracef("%v Column scan finished for %+v at %+v", r.store.log, r, *r.col)
-	if r.col.empty == true && r.col.topCas != 0 {
+	if r.col.topCas != 0 {
 		logging.Debugf("%v Row %v was empty, so removing counter", r.store.log, r.col.topKey)
 		_, absent, mismatch, err := kv.MustRemove(r.store.bucket, r.col.topKey, r.col.topCas)
 		if err != nil {
