@@ -30,7 +30,7 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 		progress.VbsRemainingToShuffle = len(vbsRemainingToCloseStream) + len(vbsRemainingToStreamReq)
 	}
 
-	if len(vbsRemainingToCloseStream) == 0 && len(vbsRemainingToStreamReq) == 0 && c.vbsStateUpdateRunning {
+	if len(vbsRemainingToCloseStream) == 0 && len(vbsRemainingToStreamReq) == 0 {
 		c.isRebalanceOngoing = false
 		logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
