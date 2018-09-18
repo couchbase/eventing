@@ -29,7 +29,6 @@ func (c *Consumer) controlRoutine() error {
 			sort.Sort(util.Uint16Slice(assignedVbs))
 
 			if err == nil {
-				sort.Sort(util.Uint16Slice(assignedVbs))
 				currentlyOwnedVbs := c.getCurrentlyOwnedVbs()
 
 				logging.Infof("%s [%s:%s:%d] assignedVbs len: %d dump: %s currentlyOwnedVbs len: %d dump: %s",
