@@ -131,7 +131,6 @@ enum RETURN_CODE {
 };
 
 class Bucket;
-class CbBucket;
 class N1QL;
 class ConnectionPool;
 class V8Worker;
@@ -165,8 +164,7 @@ class V8Worker {
 public:
   V8Worker(v8::Platform *platform, handler_config_t *config,
            server_settings_t *settings, const std::string &handler_name,
-           const std::string &handler_uuid, const std::string &user_prefix,
-           CbBucket *metadata_bucket);
+           const std::string &handler_uuid, const std::string &user_prefix);
   ~V8Worker();
 
   void operator()() {
@@ -203,7 +201,7 @@ public:
   int SendUpdate(std::string value, std::string meta, int vb_no, int64_t seq_no,
                  std::string doc_type);
   int SendDelete(std::string meta, int vb_no, int64_t seq_no);
-  void SendTimer(const TimerEvent &event);
+  void SendTimer(std::string callback, std::string timer_ctx);
   std::string CompileHandler(std::string handler);
   CodeVersion IdentifyVersion(std::string handler);
 
@@ -301,17 +299,12 @@ private:
   std::string handler_uuid_;
   std::string user_prefix_;
   std::atomic<bool> thread_exit_cond_;
-  CbBucket *metadata_bucket_;
 };
 
 const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket);
 const char *GetPassword(void *cookie, const char *host, const char *port,
                         const char *bucket);
-const char *GetUsernameCbBucket(void *cookie, const char *host,
-                                const char *port, const char *bucket);
-const char *GetPasswordCbBucket(void *cookie, const char *host,
-                                const char *port, const char *bucket);
 const char *GetUsernameCached(void *cookie, const char *host, const char *port,
                               const char *bucket);
 const char *GetPasswordCached(void *cookie, const char *host, const char *port,

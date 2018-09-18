@@ -39,9 +39,6 @@ typedef union {
   sockaddr_in6 sock6;
 } sockaddr_in46;
 
-class CbBucket;
-class Communicator;
-
 class AppWorker {
 public:
   static AppWorker *GetAppWorker();
@@ -161,8 +158,6 @@ private:
   std::vector<char> read_buffer_feedback_;
 
   std::atomic<bool> thread_exit_cond_;
-  Communicator *comm_;
-  CbBucket *metadata_bucket_;
 };
 
 #endif

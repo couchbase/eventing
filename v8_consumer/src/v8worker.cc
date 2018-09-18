@@ -31,8 +31,6 @@ std::atomic<int64_t> on_delete_success = {0};
 std::atomic<int64_t> on_delete_failure = {0};
 
 std::atomic<int64_t> timer_create_failure = {0};
-std::atomic<int64_t> timer_alarm_delete_failure = {0};
-std::atomic<int64_t> timer_context_delete_failure = {0};
 std::atomic<int64_t> lcb_retry_failure = {0};
 
 std::atomic<int64_t> messages_processed_counter = {0};
@@ -44,48 +42,6 @@ std::atomic<int64_t> timer_msg_counter = {0};
 std::atomic<int64_t> enqueued_dcp_delete_msg_counter = {0};
 std::atomic<int64_t> enqueued_dcp_mutation_msg_counter = {0};
 std::atomic<int64_t> enqueued_timer_msg_counter = {0};
-
-const char *GetUsernameCbBucket(void *cookie, const char *host,
-                                const char *port, const char *bucket) {
-  LOG(logDebug) << "Getting username for host " << RS(host) << " port " << port
-                << std::endl;
-
-  auto comm = static_cast<Communicator *>(cookie);
-  auto endpoint = JoinHostPort(host, port);
-  auto info = comm->GetCreds(endpoint);
-  if (!info.is_valid) {
-    LOG(logError) << "Failed to get username for " << RS(host) << ":" << port
-                  << " err: " << info.msg << std::endl;
-  }
-
-  static const char *username = "";
-  if (info.username != username) {
-    username = strdup(info.username.c_str());
-  }
-
-  return username;
-}
-
-const char *GetPasswordCbBucket(void *cookie, const char *host,
-                                const char *port, const char *bucket) {
-  LOG(logDebug) << "Getting password for host " << RS(host) << " port " << port
-                << std::endl;
-
-  auto comm = static_cast<Communicator *>(cookie);
-  auto endpoint = JoinHostPort(host, port);
-  auto info = comm->GetCreds(endpoint);
-  if (!info.is_valid) {
-    LOG(logError) << "Failed to get password for " << RS(host) << ":" << port
-                  << " err: " << info.msg << std::endl;
-  }
-
-  static const char *password = "";
-  if (info.password != password) {
-    password = strdup(info.password.c_str());
-  }
-
-  return password;
-}
 
 const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket) {
@@ -173,7 +129,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    server_settings_t *server_settings,
                    const std::string &handler_name,
                    const std::string &handler_uuid,
-                   const std::string &user_prefix, CbBucket *metadata_bucket)
+                   const std::string &user_prefix)
     : app_name_(h_config->app_name), settings_(server_settings),
       vb_seq_(NUM_VBUCKETS, AtomicInt64(0)),
       vb_seq_validity_(NUM_VBUCKETS, AtomicBool(false)),
@@ -182,8 +138,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       processed_bucketops_(NUM_VBUCKETS, AtomicInt64(0)),
       timer_filters_(NUM_VBUCKETS, AtomicBool(false)), platform_(platform),
       handler_name_(handler_name), handler_uuid_(handler_uuid),
-      user_prefix_(user_prefix), metadata_bucket_(metadata_bucket) {
-  deployment_config *config = ParseDeployment(h_config->dep_cfg.c_str());
+      user_prefix_(user_prefix) {
   curl_timeout = h_config->curl_timeout;
   histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
   thread_exit_cond_.store(false);
@@ -247,6 +202,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   data_.utils = new Utils(isolate_, context);
   data_.timer = new Timer(isolate_, context);
   execute_start_time_ = Time::now();
+
+  deployment_config *config = ParseDeployment(h_config->dep_cfg.c_str());
 
   cb_source_bucket_.assign(config->source_bucket);
 
@@ -485,7 +442,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
 void V8Worker::RouteMessage() {
   const flatbuf::payload::Payload *payload;
-  std::string val;
+  std::string val, context, callback;
 
   while (!thread_exit_cond_.load()) {
     worker_msg_t msg;
@@ -548,9 +505,10 @@ void V8Worker::RouteMessage() {
         if (timer_filters_[vb_no].Get() == false) {
           payload = flatbuf::payload::GetPayload(
               (const void *)msg.payload->payload.c_str());
-          TimerEvent event(payload);
+          callback.assign(payload->callback_fn()->str());
+          context.assign(payload->context()->str());
           timer_msg_counter++;
-          this->SendTimer(event);
+          this->SendTimer(callback, context);
         }
         break;
       default:
@@ -763,9 +721,9 @@ int V8Worker::SendDelete(std::string meta, int vb_no, int64_t seq_no) {
   return kSuccess;
 }
 
-void V8Worker::SendTimer(const TimerEvent &event) {
-  LOG(logTrace) << "Got timer event, context:" << RU(event.context)
-                << " callback:" << RU(event.callback) << std::endl;
+void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
+  LOG(logTrace) << "Got timer event, context:" << RU(timer_ctx)
+                << " callback:" << callback << std::endl;
 
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
@@ -777,10 +735,10 @@ void V8Worker::SendTimer(const TimerEvent &event) {
   v8::Local<v8::Value> timer_ctx_val;
   v8::Local<v8::Value> arg[1];
 
-  if (event.context == "undefined") {
+  if (timer_ctx == "undefined") {
     arg[0] = v8::Undefined(isolate_);
   } else {
-    if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, event.context)),
+    if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, timer_ctx)),
                   &timer_ctx_val)) {
       return;
     }
@@ -788,7 +746,7 @@ void V8Worker::SendTimer(const TimerEvent &event) {
   }
 
   auto utils = UnwrapData(isolate_)->utils;
-  auto callback_func_val = utils->GetPropertyFromGlobal(event.callback);
+  auto callback_func_val = utils->GetPropertyFromGlobal(callback);
   auto callback_func = callback_func_val.As<v8::Function>();
 
   if (debugger_started_) {
@@ -797,8 +755,7 @@ void V8Worker::SendTimer(const TimerEvent &event) {
     }
 
     agent_->PauseOnNextJavascriptStatement("Break on start");
-    DebugExecute(event.callback.c_str(), arg, 1);
-    return;
+    DebugExecute(callback.c_str(), arg, 1);
   }
 
   execute_flag_ = true;
@@ -807,24 +764,8 @@ void V8Worker::SendTimer(const TimerEvent &event) {
                         IsTerminatingRetriable, IsExecutionTerminating,
                         isolate_);
 
-  v8::TryCatch try_catch(isolate_);
   callback_func->Call(callback_func_val, 1, arg);
   execute_flag_ = false;
-  if (try_catch.HasCaught()) {
-    LOG(logDebug) << "SendTimer exception"
-                  << ExceptionString(isolate_, &try_catch) << std::endl;
-    return;
-  }
-
-  auto info = metadata_bucket_->Delete(event.alarm_key, event.alarm_cas);
-  if (!info.success) {
-    ++timer_alarm_delete_failure;
-  }
-
-  info = metadata_bucket_->Delete(event.context_key, event.context_cas);
-  if (!info.success) {
-    ++timer_context_delete_failure;
-  }
 }
 
 void V8Worker::StartDebugger() {
