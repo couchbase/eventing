@@ -679,23 +679,44 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     }
     break;
   case eFilter:
-    worker_index = partition_thr_map_[parsed_header->partition];
-    if (workers_[worker_index] != nullptr) {
-      workers_[worker_index]->UpdateVbFilter(parsed_header->metadata);
-      LOG(logInfo) << "Received filter event from Go "
-                   << parsed_header->metadata << std::endl;
-      int vb_no = 0;
-      int64_t seq_no = 0;
-      if (kSuccess == workers_[worker_index]->ParseMetadata(
-                          parsed_header->metadata, vb_no, seq_no)) {
-        auto bucketops_seqno = workers_[worker_index]->GetBucketopsSeqno(vb_no);
-        SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno);
+    switch (getFilterOpcode(parsed_header->opcode)) {
+    case oVbFilter:
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
+        workers_[worker_index]->UpdateVbFilter(parsed_header->metadata);
+        LOG(logInfo) << "Received filter event from Go "
+                     << parsed_header->metadata << std::endl;
+        int vb_no = 0;
+        int64_t seq_no = 0;
+        if (kSuccess == workers_[worker_index]->ParseMetadata(
+                            parsed_header->metadata, vb_no, seq_no)) {
+          auto bucketops_seqno =
+              workers_[worker_index]->GetBucketopsSeqno(vb_no);
+          SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno);
+        }
+      } else {
+        LOG(logError) << "Filter event lost: worker " << worker_index
+                      << " is null" << std::endl;
       }
-    } else {
-      LOG(logError) << "Filter event lost: worker " << worker_index
-                    << " is null" << std::endl;
+      break;
+    case oProcessedSeqNo:
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
+        LOG(logInfo) << "Received update processed seq_no event from Go "
+                     << parsed_header->metadata << std::endl;
+        int vb_no = 0;
+        int64_t seq_no = 0;
+        if (kSuccess == workers_[worker_index]->ParseMetadata(
+                            parsed_header->metadata, vb_no, seq_no)) {
+          workers_[worker_index]->UpdateBucketopsSeqno(vb_no, seq_no);
+        }
+      }
+      break;
+    default:
+      LOG(logError) << "Opcode " << getTimerOpcode(parsed_header->opcode)
+                    << "is not implemented for filtering" << std::endl;
+      break;
     }
-    break;
   case eTimer:
     switch (getTimerOpcode(parsed_header->opcode)) {
     case oTimer:
