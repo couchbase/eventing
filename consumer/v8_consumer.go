@@ -64,7 +64,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		feedbackWriteBatchSize:          hConfig.FeedbackBatchSize,
 		filterVbEvents:                  make(map[uint16]struct{}),
 		filterVbEventsRWMutex:           &sync.RWMutex{},
-		filterDataCh:                    make(chan *vbSeqNo, numVbuckets),
+		filterDataCh:                    make(chan *vbFilterData, numVbuckets),
 		gracefulShutdownChan:            make(chan struct{}, 1),
 		handlerFooters:                  hConfig.HandlerFooters,
 		handlerHeaders:                  hConfig.HandlerHeaders,

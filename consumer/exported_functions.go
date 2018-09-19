@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -50,7 +49,7 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	stats := make(map[string]uint64)
 
 	for opcode, value := range c.dcpMessagesProcessed {
-		stats[strings.ToLower(mcd.CommandNames[opcode])] = value
+		stats[mcd.CommandNames[opcode]] = value
 	}
 
 	if c.adhocTimerResponsesRecieved > 0 {

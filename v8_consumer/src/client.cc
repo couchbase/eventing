@@ -702,19 +702,6 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oClearTimerFilter:
       ClearTimerFilter(parsed_header->partition);
       break;
-    case oProcessedSeqNo:
-      worker_index = partition_thr_map_[parsed_header->partition];
-      if (workers_[worker_index] != nullptr) {
-        LOG(logInfo) << "Received update processed seq_no event from Go "
-                     << parsed_header->metadata << std::endl;
-        int vb_no = 0;
-        int64_t seq_no = 0;
-        if (kSuccess == workers_[worker_index]->ParseMetadata(
-                            parsed_header->metadata, vb_no, seq_no)) {
-          workers_[worker_index]->UpdateBucketopsSeqno(vb_no, seq_no);
-        }
-      }
-      break;
     default:
       LOG(logError) << "Opcode " << getTimerOpcode(parsed_header->opcode)
                     << "is not implemented for filtering" << std::endl;
@@ -1026,8 +1013,7 @@ int main(int argc, char **argv) {
 
   if (argc < 11) {
     std::cerr
-        << "Need at least 11 arguments: appname, ipc_type, port, "
-           "feedback_port"
+        << "Need at least 11 arguments: appname, ipc_type, port, feedback_port"
            "worker_id, batch_size, feedback_batch_size, diag_dir, ipv4/6, "
            "breakpad_on, handler_uuid"
         << std::endl;
