@@ -410,9 +410,7 @@ func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
 		return
 	}
 
-	partition := int16(util.VbucketByKey(e.Key, cppWorkerPartitionCount))
-
-	filterHeader, hBuilder := c.makeVbFilterHeader(partition, string(metadata))
+	filterHeader, hBuilder := c.makeVbFilterHeader(int16(e.VBucket), string(metadata))
 
 	msg := &msgToTransmit{
 		msg: &message{
