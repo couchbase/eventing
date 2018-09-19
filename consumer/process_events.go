@@ -991,6 +991,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 	} else {
 
 		c.vbProcessingStats.updateVbStat(vb, "last_read_seq_no", start)
+		c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", start)
 
 		c.sendUpdateProcessedSeqNo(vb, start)
 		logging.Infof("%s [%s:%s:%d] vb: %d Adding entry into inflightDcpStreams",

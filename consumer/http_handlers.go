@@ -31,9 +31,11 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 	}
 
 	if len(vbsRemainingToCloseStream) == 0 && len(vbsRemainingToStreamReq) == 0 {
+		if c.isRebalanceOngoing {
+			logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
+		}
 		c.isRebalanceOngoing = false
-		logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
 	}
 
 	return progress
