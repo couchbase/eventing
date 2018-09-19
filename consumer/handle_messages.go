@@ -332,7 +332,8 @@ func (c *Consumer) sendGetLcbExceptionStats(sendToDebugger bool) {
 }
 
 func (c *Consumer) sendTimerEvent(e *timerContext, sendToDebugger bool) {
-	timerHeader, hBuilder := c.makeTimerEventHeader(int16(e.Vb))
+	cppPartition := util.VbucketByKey([]byte(e.reference), cppWorkerPartitionCount)
+	timerHeader, hBuilder := c.makeTimerEventHeader(int16(cppPartition))
 	timerPayload, pBuilder := c.makeTimerPayload(e)
 
 	m := &msgToTransmit{
@@ -397,8 +398,21 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
 	logPrefix := "Consumer::sendVbFilterData"
 
-	metadata := fmt.Sprintf("%d %d %d", e.VBucket, seqNo, e.VBucket)
-	filterHeader, hBuilder := c.makeVbFilterHeader(int16(e.VBucket), metadata)
+	data := vbFilterData{
+		SeqNo:   seqNo,
+		Vbucket: e.VBucket,
+	}
+
+	metadata, err := json.Marshal(&data)
+	if err != nil {
+		logging.Errorf("[%s:%s:%s:%d] key: %ru failed to marshal metadata",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+		return
+	}
+
+	partition := int16(util.VbucketByKey(e.Key, cppWorkerPartitionCount))
+
+	filterHeader, hBuilder := c.makeVbFilterHeader(partition, string(metadata))
 
 	msg := &msgToTransmit{
 		msg: &message{
@@ -412,25 +426,6 @@ func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
 	c.sendMessage(msg)
 	logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d sending filter data to C++",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, seqNo)
-}
-
-func (c *Consumer) sendClearTimerFilterData(e *memcached.DcpEvent) {
-	logPrefix := "Consumer::sendClearTimerFilterData"
-
-	header, hBuilder := c.makeClearTimerFilterHeader(int16(e.VBucket), strconv.Itoa(int(e.VBucket)))
-
-	msg := &msgToTransmit{
-		msg: &message{
-			Header: header,
-		},
-		sendToDebugger: false,
-		prioritize:     true,
-		headerBuilder:  hBuilder,
-	}
-
-	c.sendMessage(msg)
-	logging.Infof("%s [%s:%s:%d] vb: %d sending clear timer filter data to C++",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 }
 
 func (c *Consumer) sendMessageLoop() {

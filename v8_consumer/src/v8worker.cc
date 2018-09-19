@@ -131,17 +131,16 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    const std::string &handler_uuid,
                    const std::string &user_prefix)
     : app_name_(h_config->app_name), settings_(server_settings),
-      vb_seq_(NUM_VBUCKETS, AtomicInt64(0)),
-      vb_seq_validity_(NUM_VBUCKETS, AtomicBool(false)),
-      bucketop_filters_(NUM_VBUCKETS, AtomicInt64(0)),
-      bucketop_filters_validity_(NUM_VBUCKETS, AtomicBool(false)),
-      processed_bucketops_(NUM_VBUCKETS, AtomicInt64(0)),
-      timer_filters_(NUM_VBUCKETS, AtomicBool(false)), platform_(platform),
-      handler_name_(handler_name), handler_uuid_(handler_uuid),
-      user_prefix_(user_prefix) {
+      platform_(platform), handler_name_(handler_name),
+      handler_uuid_(handler_uuid), user_prefix_(user_prefix) {
   curl_timeout = h_config->curl_timeout;
   histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
   thread_exit_cond_.store(false);
+  for (int i = 0; i < NUM_VBUCKETS; i++) {
+    vb_seq_[i] = atomic_ptr_t(new std::atomic<int64_t>(0));
+  }
+  vbfilter_map_.resize(NUM_VBUCKETS, -1);
+  processed_bucketops_.resize(NUM_VBUCKETS, 0);
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
@@ -466,11 +465,10 @@ void V8Worker::RouteMessage() {
       case oDelete:
         dcp_delete_msg_counter++;
         if (kSuccess == ParseMetadata(msg.header->metadata, vb_no, seq_no)) {
-          auto is_valid = bucketop_filters_validity_[vb_no].Get();
-          auto filter_seq_no = bucketop_filters_[vb_no].Get();
-          if (is_valid && seq_no <= filter_seq_no) {
+          auto filter_seq_no = GetVbFilter(vb_no);
+          if (filter_seq_no != -1 && seq_no <= filter_seq_no) {
             if (seq_no == filter_seq_no) {
-              bucketop_filters_validity_[vb_no].Set(false);
+              EraseVbFilter(vb_no);
             }
           } else {
             this->SendDelete(msg.header->metadata, vb_no, seq_no);
@@ -483,11 +481,10 @@ void V8Worker::RouteMessage() {
         val.assign(payload->value()->str());
         dcp_mutation_msg_counter++;
         if (kSuccess == ParseMetadata(msg.header->metadata, vb_no, seq_no)) {
-          auto is_valid = bucketop_filters_validity_[vb_no].Get();
-          auto filter_seq_no = bucketop_filters_[vb_no].Get();
-          if (is_valid && seq_no <= filter_seq_no) {
+          auto filter_seq_no = GetVbFilter(vb_no);
+          if (filter_seq_no != -1 && seq_no <= filter_seq_no) {
             if (seq_no == filter_seq_no) {
-              bucketop_filters_validity_[vb_no].Set(false);
+              EraseVbFilter(vb_no);
             }
           } else {
             this->SendUpdate(val, msg.header->metadata, vb_no, seq_no, "json");
@@ -501,15 +498,12 @@ void V8Worker::RouteMessage() {
     case eTimer:
       switch (getTimerOpcode(msg.header->opcode)) {
       case oTimer:
-        vb_no = msg.header->partition;
-        if (timer_filters_[vb_no].Get() == false) {
-          payload = flatbuf::payload::GetPayload(
-              (const void *)msg.payload->payload.c_str());
-          callback.assign(payload->callback_fn()->str());
-          context.assign(payload->context()->str());
-          timer_msg_counter++;
-          this->SendTimer(callback, context);
-        }
+        payload = flatbuf::payload::GetPayload(
+            (const void *)msg.payload->payload.c_str());
+        callback.assign(payload->callback_fn()->str());
+        context.assign(payload->context()->str());
+        timer_msg_counter++;
+        this->SendTimer(callback, context);
         break;
       default:
         break;
@@ -615,9 +609,8 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
 
   currently_processed_vb_ = vb_no;
   currently_processed_seqno_ = seq_no;
-  vb_seq_[vb_no].Set(vb_no);
-  vb_seq_validity_[vb_no].Set(true);
-  processed_bucketops_[vb_no].Set(seq_no);
+  vb_seq_[vb_no]->store(seq_no, std::memory_order_seq_cst);
+  UpdateBucketopsSeqno(vb_no, seq_no);
   if (on_update_.IsEmpty()) {
     UpdateHistogram(start_time);
     return kOnUpdateCallFail;
@@ -679,9 +672,8 @@ int V8Worker::SendDelete(std::string meta, int vb_no, int64_t seq_no) {
 
   currently_processed_vb_ = vb_no;
   currently_processed_seqno_ = seq_no;
-  vb_seq_[vb_no].Set(vb_no);
-  vb_seq_validity_[vb_no].Set(true);
-  processed_bucketops_[vb_no].Set(seq_no);
+  vb_seq_[vb_no]->store(seq_no, std::memory_order_seq_cst);
+  UpdateBucketopsSeqno(vb_no, seq_no);
   if (on_delete_.IsEmpty()) {
     UpdateHistogram(start_time);
     return kOnDeleteCallFail;
@@ -917,16 +909,16 @@ void V8Worker::GetTimerMessages(std::vector<uv_buf_t> &messages,
 
 void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages) {
   for (int vb = 0; vb < NUM_VBUCKETS; ++vb) {
-    if (vb_seq_validity_[vb].Get()) {
-      std::string seq_no =
-          std::to_string(vb) + "::" + std::to_string(vb_seq_[vb].Get());
+    auto seq = vb_seq_[vb].get()->load(std::memory_order_seq_cst);
+    if (seq > 0) {
+      std::string seq_no = std::to_string(vb) + "::" + std::to_string(seq);
       auto curr_messages =
           BuildResponse(seq_no, mBucket_Ops_Response, checkpointResponse);
       for (auto &msg : curr_messages) {
         messages.push_back(msg);
       }
-      // Reset the validity of checkpointed vb
-      ResetCheckpoint(vb);
+      // Reset the seq no of checkpointed vb to 0
+      vb_seq_[vb].get()->compare_exchange_strong(seq, 0);
     }
   }
 }
@@ -1003,26 +995,39 @@ int V8Worker::ParseMetadata(const std::string &metadata, int &vb_no,
   return kSuccess;
 }
 
-int64_t V8Worker::GetBucketopsSeqno(int vb_no) {
-  return processed_bucketops_[vb_no].Get();
+int V8Worker::UpdateVbFilter(const std::string &metadata) {
+  int vb_no = 0;
+  int64_t seq_no = 0;
+  auto update_status = ParseMetadata(metadata, vb_no, seq_no);
+  if (update_status != kSuccess) {
+    return update_status;
+  }
+  std::lock_guard<std::mutex> lock(vbfilter_lock_);
+  vbfilter_map_[vb_no] = seq_no;
+  return kSuccess;
+}
+
+int64_t V8Worker::GetVbFilter(int vb_no) {
+  std::lock_guard<std::mutex> lock(vbfilter_lock_);
+  return vbfilter_map_[vb_no];
+}
+
+void V8Worker::EraseVbFilter(int vb_no) {
+  std::lock_guard<std::mutex> lock(vbfilter_lock_);
+  vbfilter_map_[vb_no] = -1;
 }
 
 void V8Worker::UpdateBucketopsSeqno(int vb_no, int64_t seq_no) {
-  processed_bucketops_[vb_no].Set(seq_no);
+  std::lock_guard<std::mutex> lock(bucketops_lock_);
+  processed_bucketops_[vb_no] = seq_no;
 }
 
-void V8Worker::ResetCheckpoint(int vb_no) {
-  vb_seq_validity_[vb_no].Set(false);
+int64_t V8Worker::GetBucketopsSeqno(int vb_no) {
+  // Reset the seq no of checkpointed vb to 0
+  vb_seq_[vb_no]->store(0, std::memory_order_seq_cst);
+  std::lock_guard<std::mutex> lock(bucketops_lock_);
+  return processed_bucketops_[vb_no];
 }
-
-void V8Worker::SetBucketopFilter(int vb_no, int64_t seq_no) {
-  bucketop_filters_[vb_no].Set(seq_no);
-  bucketop_filters_validity_[vb_no].Set(true);
-}
-
-void V8Worker::SetTimerFilter(int vb_no) { timer_filters_[vb_no].Set(true); }
-
-void V8Worker::ClearTimerFilter(int vb_no) { timer_filters_[vb_no].Set(false); }
 
 void V8Worker::SetThreadExitFlag() {
   thread_exit_cond_.store(true);
