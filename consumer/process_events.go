@@ -175,7 +175,7 @@ func (c *Consumer) processEvents() {
 				}
 
 				if e.Status == mcd.SUCCESS {
-					c.sendClearTimerFilterData(e)
+
 					kvNodes := c.getKvNodes()
 
 					connStr := "couchbase://"
@@ -505,9 +505,9 @@ func (c *Consumer) processTimerEvents() {
 				logging.Errorf("%s [%s:%s:%d] Failed to pop from fireTimerQueue, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 				return
 			}
-			event := ev.(*TimerEvent)
+			timer := ev.(*timerContext)
 			c.timerMessagesProcessed++
-			c.sendTimerEvent(event, false)
+			c.sendTimerEvent(timer, false)
 		}
 	}
 }
@@ -993,7 +993,6 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		c.vbProcessingStats.updateVbStat(vb, "last_read_seq_no", start)
 
 		c.sendUpdateProcessedSeqNo(vb, start)
-
 		logging.Infof("%s [%s:%s:%d] vb: %d Adding entry into inflightDcpStreams",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 

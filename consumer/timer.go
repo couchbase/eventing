@@ -98,14 +98,20 @@ func (c *Consumer) executeTimersImpl(store *timers.TimerStore, iterator *timers.
 			Vb:        uint64(e["vb"].(float64)),
 		}
 
-		event := &TimerEvent{
-			Context: timer,
-			Token:   store.GetToken(entry),
-		}
-		if err = c.fireTimerQueue.Push(event); err != nil {
+		if err = c.fireTimerQueue.Push(timer); err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to write to fireTimerQueue, size: %d, quota: %d err : %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Size(), c.timerQueueMemCap, err)
 			return
+		}
+
+		// TODO: Implement ack channel
+		err = store.Delete(entry)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] vb: %d unable to delete timer entry, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+			atomic.AddUint64(&c.metastoreDeleteErrCounter, 1)
+		} else {
+			atomic.AddUint64(&c.metastoreDeleteCounter, 1)
 		}
 	}
 }

@@ -39,9 +39,6 @@ typedef union {
   sockaddr_in6 sock6;
 } sockaddr_in46;
 
-class CbBucket;
-class Communicator;
-
 class AppWorker {
 public:
   static AppWorker *GetAppWorker();
@@ -84,10 +81,6 @@ public:
   static void StopUvLoop(uv_async_t *);
 
   void SendFilterAck(int opcode, int msgtype, int vb_no, int64_t seq_no);
-
-  void SetTimerFilter(int vb_no);
-
-  void ClearTimerFilter(int vb_no);
 
   std::thread main_uv_loop_thr_;
   std::thread feedback_uv_loop_thr_;
@@ -141,7 +134,6 @@ private:
 
   std::map<int16_t, int16_t> partition_thr_map_;
 
-  size_t curr_worker_idx_;
   // Controls the number of virtual partitions, in order to shard work among
   // worker threads
   int16_t partition_count_;
@@ -161,8 +153,6 @@ private:
   std::vector<char> read_buffer_feedback_;
 
   std::atomic<bool> thread_exit_cond_;
-  Communicator *comm_;
-  CbBucket *metadata_bucket_;
 };
 
 #endif

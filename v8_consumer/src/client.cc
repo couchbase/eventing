@@ -11,7 +11,6 @@
 
 #include "client.h"
 #include "breakpad.h"
-#include "bucket.h"
 
 uint64_t timer_responses_sent(0);
 uint64_t messages_parsed(0);
@@ -26,8 +25,6 @@ std::atomic<int64_t> delete_events_lost = {0};
 std::atomic<int64_t> timer_events_lost = {0};
 std::atomic<int64_t> mutation_events_lost = {0};
 extern std::atomic<int64_t> timer_context_size_exceeded_counter;
-extern std::atomic<int64_t> timer_alarm_delete_failure;
-extern std::atomic<int64_t> timer_context_delete_failure;
 
 std::atomic<int64_t> uv_try_write_failure_counter = {0};
 
@@ -422,7 +419,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   case eV8_Worker:
     switch (getV8WorkerOpcode(parsed_header->opcode)) {
     case oDispose:
-    case oInit: {
+    case oInit:
       payload = flatbuf::payload::GetPayload(
           (const void *)parsed_message->payload.c_str());
 
@@ -461,27 +458,18 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       v8::V8::InitializePlatform(platform);
       v8::V8::Initialize();
 
-      auto local_key = GetLocalKey();
-      // WARNING : Assuming that v8worker init is called only once
-      // Otherwise, it will cause a memory leak
-      comm_ = new Communicator(server_settings->host_addr,
-                               server_settings->eventing_port, local_key.first,
-                               local_key.second, false, app_name_);
-      auto config = ParseDeployment(handler_config->dep_cfg.c_str());
-      metadata_bucket_ = new CbBucket(config->metadata_bucket,
-                                      server_settings->kv_host_port, comm_);
       for (int16_t i = 0; i < thr_count_; i++) {
-        auto w = new V8Worker(platform, handler_config, server_settings,
-                              handler_name_, handler_uuid_, user_prefix_,
-                              metadata_bucket_);
+        V8Worker *w = new V8Worker(platform, handler_config, server_settings,
+                                   handler_name_, handler_uuid_, user_prefix_);
 
         LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
         workers_[i] = w;
       }
 
       delete handler_config;
+
       msg_priority_ = true;
-    } break;
+      break;
     case oLoad:
       LOG(logDebug) << "Loading app code:" << RM(parsed_header->metadata)
                     << std::endl;
@@ -548,10 +536,6 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       fstats << R"("timer_events_lost": )" << e_timer_lost << ",";
       fstats << R"("debugger_events_lost": )" << e_debugger_lost << ",";
       fstats << R"("mutation_events_lost": )" << mutation_events_lost << ",";
-      fstats << R"("timer_alarm_delete_failure": )"
-             << timer_alarm_delete_failure << ",";
-      fstats << R"("timer_context_delete_failure": )"
-             << timer_context_delete_failure << ",";
       fstats << R"("timer_context_size_exceeded_counter": )"
              << timer_context_size_exceeded_counter << ",";
       fstats << R"("delete_events_lost": )" << delete_events_lost << ",";
@@ -696,27 +680,24 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     break;
   case eFilter:
     switch (getFilterOpcode(parsed_header->opcode)) {
-    case oVbFilter: {
-      LOG(logInfo) << "Received filter event from Go "
-                   << parsed_header->metadata << std::endl;
-      int vb_no = 0, partition = 0;
-      int64_t seq_no = 0;
-      std::istringstream iss(parsed_header->metadata);
-      iss >> vb_no >> seq_no >> partition;
-      SetTimerFilter(vb_no);
-      auto bucketops_worker = workers_[partition_thr_map_[partition]];
-      if (bucketops_worker != nullptr) {
-        bucketops_worker->SetBucketopFilter(vb_no, seq_no);
-        auto bucketops_seqno = bucketops_worker->GetBucketopsSeqno(vb_no);
-        bucketops_worker->ResetCheckpoint(vb_no);
-        SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno);
+    case oVbFilter:
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
+        workers_[worker_index]->UpdateVbFilter(parsed_header->metadata);
+        LOG(logInfo) << "Received filter event from Go "
+                     << parsed_header->metadata << std::endl;
+        int vb_no = 0;
+        int64_t seq_no = 0;
+        if (kSuccess == workers_[worker_index]->ParseMetadata(
+                            parsed_header->metadata, vb_no, seq_no)) {
+          auto bucketops_seqno =
+              workers_[worker_index]->GetBucketopsSeqno(vb_no);
+          SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno);
+        }
       } else {
-        LOG(logError) << "Bucketops filter event lost"
-                      << parsed_header->metadata << std::endl;
+        LOG(logError) << "Filter event lost: worker " << worker_index
+                      << " is null" << std::endl;
       }
-    } break;
-    case oClearTimerFilter:
-      ClearTimerFilter(parsed_header->partition);
       break;
     case oProcessedSeqNo:
       worker_index = partition_thr_map_[parsed_header->partition];
@@ -736,14 +717,13 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                     << "is not implemented for filtering" << std::endl;
       break;
     }
-    break;
   case eTimer:
     switch (getTimerOpcode(parsed_header->opcode)) {
     case oTimer:
-      if (workers_[curr_worker_idx_] != nullptr) {
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
         enqueued_timer_msg_counter++;
-        workers_[curr_worker_idx_]->Enqueue(parsed_header, parsed_message);
-        curr_worker_idx_ = (curr_worker_idx_ + 1) % thr_count_;
+        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
       } else {
         LOG(logError) << "Timer event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -941,21 +921,7 @@ void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
   }
 }
 
-void AppWorker::SetTimerFilter(int vb_no) {
-  for (auto &worker : workers_) {
-    worker.second->SetTimerFilter(vb_no);
-  }
-}
-
-void AppWorker::ClearTimerFilter(int vb_no) {
-  for (auto &worker : workers_) {
-    worker.second->ClearTimerFilter(vb_no);
-  }
-}
-
-AppWorker::AppWorker()
-    : feedback_conn_handle_(nullptr), conn_handle_(nullptr),
-      curr_worker_idx_(0) {
+AppWorker::AppWorker() : feedback_conn_handle_(nullptr), conn_handle_(nullptr) {
   thread_exit_cond_.store(false);
   uv_loop_init(&feedback_loop_);
   uv_loop_init(&main_loop_);
@@ -993,9 +959,6 @@ AppWorker::~AppWorker() {
   for (auto &v8worker : workers_) {
     delete v8worker.second;
   }
-
-  delete metadata_bucket_;
-  delete comm_;
 
   uv_loop_close(&feedback_loop_);
   uv_loop_close(&main_loop_);
@@ -1045,8 +1008,7 @@ int main(int argc, char **argv) {
 
   if (argc < 11) {
     std::cerr
-        << "Need at least 11 arguments: appname, ipc_type, port, "
-           "feedback_port"
+        << "Need at least 11 arguments: appname, ipc_type, port, feedback_port"
            "worker_id, batch_size, feedback_batch_size, diag_dir, ipv4/6, "
            "breakpad_on, handler_uuid"
         << std::endl;

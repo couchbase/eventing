@@ -63,6 +63,10 @@ typedef std::chrono::nanoseconds nsecs;
 
 extern int64_t timer_context_size;
 
+using atomic_ptr_t = std::shared_ptr<std::atomic<int64_t>>;
+// Used for checkpointing of vbucket seq nos
+typedef std::map<int64_t, atomic_ptr_t> vb_seq_map_t;
+
 typedef struct timer_msg_s {
   std::size_t GetSize() const { return timer_entry.length(); }
 
@@ -131,7 +135,6 @@ enum RETURN_CODE {
 };
 
 class Bucket;
-class CbBucket;
 class N1QL;
 class ConnectionPool;
 class V8Worker;
@@ -165,8 +168,7 @@ class V8Worker {
 public:
   V8Worker(v8::Platform *platform, handler_config_t *config,
            server_settings_t *settings, const std::string &handler_name,
-           const std::string &handler_uuid, const std::string &user_prefix,
-           CbBucket *metadata_bucket);
+           const std::string &handler_uuid, const std::string &user_prefix);
   ~V8Worker();
 
   void operator()() {
@@ -203,7 +205,7 @@ public:
   int SendUpdate(std::string value, std::string meta, int vb_no, int64_t seq_no,
                  std::string doc_type);
   int SendDelete(std::string meta, int vb_no, int64_t seq_no);
-  void SendTimer(const TimerEvent &event);
+  void SendTimer(std::string callback, std::string timer_ctx);
   std::string CompileHandler(std::string handler);
   CodeVersion IdentifyVersion(std::string handler);
 
@@ -219,21 +221,31 @@ public:
 
   void UpdateHistogram(Time::time_point t);
 
+  /**
+   * Remove item from doc_timer_queue, serialize it and
+   * populate @param messages.
+   *
+   * @param messages
+   * @param window_size
+   */
   void GetTimerMessages(std::vector<uv_buf_t> &messages, size_t window_size);
 
+  /**
+   * Read vb_seq map, serialize it and populate @param messages
+   *
+   * @param messages
+   */
   void GetBucketOpsMessages(std::vector<uv_buf_t> &messages);
 
-  void SetBucketopFilter(int vb_no, int64_t seq_no);
+  int UpdateVbFilter(const std::string &metadata);
 
-  void SetTimerFilter(int vb_no);
+  int64_t GetVbFilter(int vb_no);
 
-  void ClearTimerFilter(int vb_no);
-
-  int64_t GetBucketopsSeqno(int vb_no);
+  void EraseVbFilter(int vb_no);
 
   void UpdateBucketopsSeqno(int vb_no, int64_t seq_no);
 
-  void ResetCheckpoint(int vb_no);
+  int64_t GetBucketopsSeqno(int vb_no);
 
   int ParseMetadata(const std::string &metadata, int &vb_no, int64_t &seq_no);
 
@@ -282,15 +294,13 @@ private:
   std::string meta_connstr_;
   std::string src_path_;
 
-  std::vector<AtomicInt64> vb_seq_;
-  std::vector<AtomicBool> vb_seq_validity_;
+  vb_seq_map_t vb_seq_;
 
-  std::vector<AtomicInt64> bucketop_filters_;
-  std::vector<AtomicBool> bucketop_filters_validity_;
+  std::vector<int64_t> vbfilter_map_;
+  std::mutex vbfilter_lock_;
 
-  std::vector<AtomicInt64> processed_bucketops_;
-
-  std::vector<AtomicBool> timer_filters_;
+  std::vector<int64_t> processed_bucketops_;
+  std::mutex bucketops_lock_;
 
   std::list<Bucket *> bucket_handles_;
   N1QL *n1ql_handle_;
@@ -301,17 +311,12 @@ private:
   std::string handler_uuid_;
   std::string user_prefix_;
   std::atomic<bool> thread_exit_cond_;
-  CbBucket *metadata_bucket_;
 };
 
 const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket);
 const char *GetPassword(void *cookie, const char *host, const char *port,
                         const char *bucket);
-const char *GetUsernameCbBucket(void *cookie, const char *host,
-                                const char *port, const char *bucket);
-const char *GetPasswordCbBucket(void *cookie, const char *host,
-                                const char *port, const char *bucket);
 const char *GetUsernameCached(void *cookie, const char *host, const char *port,
                               const char *bucket);
 const char *GetPasswordCached(void *cookie, const char *host, const char *port,
