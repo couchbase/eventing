@@ -354,8 +354,12 @@ func (c *Consumer) SignalFeedbackConnected() {
 
 // UpdateEventingNodesUUIDs is called by producer instance to notify about
 // updated list of node uuids
-func (c *Consumer) UpdateEventingNodesUUIDs(uuids []string) {
-	c.eventingNodeUUIDs = uuids
+func (c *Consumer) UpdateEventingNodesUUIDs(keepNodes, ejectNodes []string) {
+	c.ejectNodesUUIDs = ejectNodes
+	c.eventingNodeUUIDs = keepNodes
+
+	// Reset the flag before a rebalance is about to start off
+	c.timerQueuesAreDrained = false
 }
 
 // GetLatencyStats returns latency stats for event handlers from from cpp world

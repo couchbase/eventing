@@ -13,6 +13,7 @@ type Element interface {
 }
 
 type BoundedQueue struct {
+	count     uint64
 	elements  []Element
 	front     uint64
 	rear      uint64
@@ -60,6 +61,7 @@ func (q *BoundedQueue) Push(elem Element) error {
 	q.elements[q.rear] = elem
 	q.rear = next
 	q.size += elemsz
+	q.count++
 	if q.waitempty > 0 {
 		q.waitempty--
 		q.notempty.Signal()
@@ -83,6 +85,7 @@ func (q *BoundedQueue) Pop() (Element, error) {
 	elem := q.elements[q.front]
 	q.front = (q.front + 1) % q.maxcount
 	q.size -= elem.Size()
+	q.count--
 	if q.waitfull > 0 {
 		q.waitfull--
 		q.notfull.Signal()
@@ -104,4 +107,8 @@ func (q *BoundedQueue) IsClosed() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	return q.closed
+}
+
+func (q *BoundedQueue) Count() uint64 {
+	return q.count
 }

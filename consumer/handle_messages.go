@@ -500,7 +500,7 @@ func (c *Consumer) sendMessageLoop() {
 						logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, err)
 
-						if c.stoppingConsumer {
+						if atomic.LoadUint32(&c.isTerminateRunning) == 1 || c.stoppingConsumer {
 							return
 						}
 

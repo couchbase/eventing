@@ -58,7 +58,7 @@ const (
 
 	socketWriteTimerInterval = time.Duration(5000) * time.Millisecond
 
-	updateCPPStatsTickInterval = time.Duration(5000) * time.Millisecond
+	updateCPPStatsTickInterval = time.Duration(1000) * time.Millisecond
 )
 
 const (
@@ -154,6 +154,7 @@ type Consumer struct {
 	dcpFeedsClosed                bool
 	dcpFeedVbMap                  map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
 	debuggerPort                  string
+	ejectNodesUUIDs               []string
 	eventingAdminPort             string
 	eventingDir                   string
 	eventingSSLPort               string
@@ -187,11 +188,12 @@ type Consumer struct {
 	superSup                      common.EventingSuperSup
 	timerContextSize              int64
 	timerStorageChanSize          int
+	timerQueuesAreDrained         bool
 	timerQueueSize                uint64
 	timerQueueMemCap              uint64
 	timerStorageMetaChsRWMutex    *sync.RWMutex
 	timerStorageRoutineCount      int
-	timerStorageQueues            []*util.BoundedQueue
+	timerStorageQueues            []*util.BoundedQueue // Access controlled by timerStorageMetaChsRWMutex
 	usingTimer                    bool
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed

@@ -453,7 +453,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
       LOG(logDebug) << "Loading app:" << app_name_ << std::endl;
 
-      v8::V8::InitializeICU();
+      v8::V8::InitializeICUDefaultLocation("");
       platform = v8::platform::CreateDefaultPlatform();
       v8::V8::InitializePlatform(platform);
       v8::V8::Initialize();

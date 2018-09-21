@@ -135,7 +135,7 @@ func (p *Producer) GetEventProcessingStats() map[string]uint64 {
 	}
 
 	if p.workerSpawnCounter > 0 {
-		aggStats["WORKER_SPAWN_COUNTER"] = p.workerSpawnCounter
+		aggStats["worker_spawn_counter"] = p.workerSpawnCounter
 	}
 
 	return aggStats
