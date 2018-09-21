@@ -20,18 +20,21 @@ import (
 const (
 	Resolution  = int64(7) // seconds
 	init_seq    = int64(128)
+	tail_time   = int64(60)
 	dict        = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*&"
 	encode_base = 10 // TODO: Change to 36 before GA
 )
 
 // Globals
 var (
-	stores = newStores()
+	stores *storeMap
 )
 
 type storeMap struct {
-	lock    sync.RWMutex
-	entries map[string]*TimerStore
+	lock       sync.RWMutex
+	entries    map[string]*TimerStore
+	rebalancer rebalancer
+	conflict   int64
 }
 
 type AlarmRecord struct {
@@ -75,7 +78,6 @@ type colIter struct {
 	current int64
 	topKey  string
 	topCas  gocb.Cas
-	empty   bool
 }
 
 type Span struct {
@@ -131,6 +133,19 @@ type timerStats struct {
 	spanStartChangeCounter      uint64 `json:"meta_span_start_change"`
 	spanStopChangeCounter       uint64 `json:"meta_span_stop_change"`
 	spanCasMismatchCounter      uint64 `json:"meta_span_cas_mismatch"`
+}
+
+type rebalancer interface {
+	RebalanceStatus() bool
+}
+
+func init() {
+	stores = newStores()
+	go stores.syncRoutine()
+}
+
+func SetRebalancer(r rebalancer) {
+	stores.rebalancer = r
 }
 
 func Create(uid string, partn int, connstr string, bucket string) error {
@@ -378,7 +393,7 @@ func (r *TimerIter) nextRow() (bool, error) {
 			return false, err
 		}
 		if !absent {
-			r.col = &colIter{current: init_seq, stop: seq_end, topKey: pos, topCas: cas, empty: true}
+			r.col = &colIter{current: init_seq, stop: seq_end, topKey: pos, topCas: cas}
 			logging.Tracef("%v Found row %+v", r.store.log, r.row)
 			return true, nil
 		}
@@ -441,7 +456,6 @@ func (r *TimerIter) nextColumn() (bool, error) {
 			atomic.AddUint64(&r.store.stats.timerInFutureFiredCounter, 1)
 		}
 
-		r.col.empty = false
 		return true, nil
 	}
 
@@ -507,10 +521,6 @@ func (r *TimerStore) syncSpan() error {
 
 	r.span.lock.Lock()
 	defer r.span.lock.Unlock()
-
-	if !r.span.dirty && !r.span.empty {
-		return nil
-	}
 
 	r.span.dirty = false
 	kv := Pool(r.connstr)
@@ -581,6 +591,8 @@ func (r *TimerStore) syncSpan() error {
 
 	// Merge conflict
 	atomic.AddUint64(&r.stats.spanCasMismatchCounter, 1)
+	stores.conflict = time.Now().Unix()
+
 	if r.span.Start > extspan.Start {
 		logging.Debugf("%v Span conflict external write, moving Start: span=%+v extspan=%+v", r.span, extspan)
 		atomic.AddUint64(&r.stats.spanStartChangeCounter, 1)
@@ -603,10 +615,16 @@ func (r *TimerStore) syncSpan() error {
 
 func (r *storeMap) syncRoutine() {
 	for {
+		if r.rebalancer != nil && r.rebalancer.RebalanceStatus() {
+			r.conflict = time.Now().Unix()
+		}
+
+		force := time.Now().Unix()-r.conflict < tail_time
 		dirty := make([]*TimerStore, 0)
 		r.lock.RLock()
+
 		for _, store := range r.entries {
-			if store.span.dirty {
+			if force || store.span.dirty {
 				dirty = append(dirty, store)
 			}
 		}
@@ -698,10 +716,11 @@ func formatInt(tm int64) string {
 
 func newStores() *storeMap {
 	smap := &storeMap{
-		entries: make(map[string]*TimerStore),
-		lock:    sync.RWMutex{},
+		entries:    make(map[string]*TimerStore),
+		lock:       sync.RWMutex{},
+		rebalancer: nil,
+		conflict:   0,
 	}
-	go smap.syncRoutine()
 	return smap
 }
 

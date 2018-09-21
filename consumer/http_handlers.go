@@ -1,10 +1,14 @@
 package consumer
 
 import (
+	"errors"
+
 	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
+
+var errTimerQueueNotDrained = errors.New("timer queues are not drained")
 
 // RebalanceTaskProgress reports progress to producer
 func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
@@ -30,6 +34,19 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 		progress.VbsRemainingToShuffle = len(vbsRemainingToCloseStream) + len(vbsRemainingToStreamReq)
 	}
 
+	// timerQueuesAreDrained - Primarily to avoid calls to checkIfTimerQueuesAreDrained()
+	// multiple times and hence avoid filling up log files
+	if !c.timerQueuesAreDrained && len(vbsRemainingToCloseStream) == 0 && c.usingTimer {
+		err := c.checkIfTimerQueuesAreDrained()
+		if err != nil {
+			progress.VbsRemainingToShuffle = 1
+			progress.CloseStreamVbsLen = 1
+			return progress
+		} else {
+			c.timerQueuesAreDrained = true
+		}
+	}
+
 	if len(vbsRemainingToCloseStream) == 0 && len(vbsRemainingToStreamReq) == 0 {
 		if c.isRebalanceOngoing {
 			logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
@@ -39,6 +56,49 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 	}
 
 	return progress
+}
+
+func (c *Consumer) checkIfTimerQueuesAreDrained() error {
+	logPrefix := "Consumer::checkIfTimerQueuesAreDrained"
+
+	logging.Infof("%s [%s:%s:%d] uuid: %s eject node UUIDs: %+v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.NodeUUID(), c.ejectNodesUUIDs)
+
+	if util.Contains(c.NodeUUID(), c.ejectNodesUUIDs) {
+
+		if c.cppQueueSizes.DocTimerQueueSize > 0 {
+			c.GetExecutionStats()
+			logging.Infof("%s [%s:%s:%d] DocTimerQueueSize: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.DocTimerQueueSize)
+			return errTimerQueueNotDrained
+		}
+
+		if c.createTimerQueue.Count() > 0 {
+			logging.Infof("%s [%s:%s:%d] CreateTimerQueue size: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.createTimerQueue.Count())
+			return errTimerQueueNotDrained
+		}
+
+		var aggStorageQueueCount uint64
+		c.timerStorageMetaChsRWMutex.RLock()
+		for _, queue := range c.timerStorageQueues {
+			aggStorageQueueCount += queue.Count()
+		}
+		c.timerStorageMetaChsRWMutex.RUnlock()
+
+		if aggStorageQueueCount > 0 {
+			logging.Infof("%s [%s:%s:%d] aggStorageQueueCount: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), aggStorageQueueCount)
+			return errTimerQueueNotDrained
+		}
+
+		logging.Infof("%s [%s:%s:%d] DocTimerQueueSize: %d CreateTimerQueue size: %d aggStorageQueueCount: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(),
+			c.cppQueueSizes.DocTimerQueueSize, c.createTimerQueue.Count(), aggStorageQueueCount)
+
+	}
+
+	return nil
 }
 
 // EventsProcessedPSec reports dcp + timer events triggered per sec

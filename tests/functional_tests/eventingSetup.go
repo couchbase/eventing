@@ -372,6 +372,7 @@ retryVerifyBucketOp:
 	}
 	rCount++
 	time.Sleep(time.Second * 5)
+	log.Printf("Waiting for dst bucket item count to get to: %d curr count: %d\n", count, itemCount)
 	goto retryVerifyBucketOp
 }
 

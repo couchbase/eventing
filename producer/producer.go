@@ -668,7 +668,7 @@ func (p *Producer) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string) {
 	p.eventingNodeUUIDs = keepNodes
 
 	for _, eventingConsumer := range p.getConsumers() {
-		eventingConsumer.UpdateEventingNodesUUIDs(keepNodes)
+		eventingConsumer.UpdateEventingNodesUUIDs(keepNodes, ejectNodes)
 	}
 
 }
