@@ -271,6 +271,8 @@ func (c *Consumer) processEvents() {
 					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_requested_node_uuid", c.NodeUUID())
 					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_requested_worker", c.ConsumerName())
 
+					c.vbProcessingStats.updateVbStat(e.VBucket, "vb_filter_ack_received", false)
+
 					if !c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 						c.Lock()
 						c.vbsRemainingToClose = append(c.vbsRemainingToClose, e.VBucket)
@@ -417,6 +419,7 @@ func (c *Consumer) processEvents() {
 			c.vbProcessingStats.updateVbStat(e.Vbucket, "dcp_stream_status", dcpStreamStopped)
 			c.vbProcessingStats.updateVbStat(e.Vbucket, "node_uuid", "")
 			c.vbProcessingStats.updateVbStat(e.Vbucket, "dcp_stream_requested_worker", "")
+			c.vbProcessingStats.updateVbStat(e.Vbucket, "vb_filter_ack_received", true)
 
 			if c.checkIfCurrentConsumerShouldOwnVb(e.Vbucket) {
 				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND, needs to be reclaimed",

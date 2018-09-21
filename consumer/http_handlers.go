@@ -66,6 +66,20 @@ func (c *Consumer) checkIfTimerQueuesAreDrained() error {
 
 	if util.Contains(c.NodeUUID(), c.ejectNodesUUIDs) {
 
+		vbsFilterAckYetToCome := c.getVbsFilterAckYetToCome()
+		if len(vbsFilterAckYetToCome) > 0 {
+			logging.Infof("%s [%s:%s:%d] vbsFilterAckYetToCome dump: %s len: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsFilterAckYetToCome), len(vbsFilterAckYetToCome))
+			return errTimerQueueNotDrained
+		}
+
+		if c.cppQueueSizes.AggQueueSize > 0 {
+			c.GetExecutionStats()
+			logging.Infof("%s [%s:%s:%d] AggQueueSize: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.AggQueueSize)
+			return errTimerQueueNotDrained
+		}
+
 		if c.cppQueueSizes.DocTimerQueueSize > 0 {
 			c.GetExecutionStats()
 			logging.Infof("%s [%s:%s:%d] DocTimerQueueSize: %d",
@@ -92,10 +106,15 @@ func (c *Consumer) checkIfTimerQueuesAreDrained() error {
 			return errTimerQueueNotDrained
 		}
 
-		logging.Infof("%s [%s:%s:%d] DocTimerQueueSize: %d CreateTimerQueue size: %d aggStorageQueueCount: %d",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(),
-			c.cppQueueSizes.DocTimerQueueSize, c.createTimerQueue.Count(), aggStorageQueueCount)
+		if c.fireTimerQueue.Count() > 0 {
+			logging.Infof("%s [%s:%s:%d] fireTimerQueue: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.fireTimerQueue.Count())
+			return errTimerQueueNotDrained
+		}
 
+		logging.Infof("%s [%s:%s:%d] TimerQueue: %d CreateTimerQueue: %d aggStorageQueue: %d aggQueue: %d fireTimerQueue: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.DocTimerQueueSize,
+			c.createTimerQueue.Count(), aggStorageQueueCount, c.cppQueueSizes.AggQueueSize, c.fireTimerQueue.Count())
 	}
 
 	return nil
