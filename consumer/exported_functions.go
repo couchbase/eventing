@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -49,167 +50,183 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	stats := make(map[string]uint64)
 
 	for opcode, value := range c.dcpMessagesProcessed {
-		stats[mcd.CommandNames[opcode]] = value
+		stats[strings.ToLower(mcd.CommandNames[opcode])] = value
 	}
 
 	if c.adhocTimerResponsesRecieved > 0 {
-		stats["ADHOC_TIMER_RESPONSES_RECEIVED"] = c.adhocTimerResponsesRecieved
+		stats["adhoc_timer_response_received"] = c.adhocTimerResponsesRecieved
 	}
 
 	if c.cppQueueSizes != nil {
-		stats["AGG_TIMER_FEEDBACK_QUEUE_SIZE"] = uint64(c.cppQueueSizes.DocTimerQueueSize)
-		stats["AGG_QUEUE_MEMORY"] = uint64(c.cppQueueSizes.AggQueueMemory)
-		stats["AGG_QUEUE_SIZE"] = uint64(c.cppQueueSizes.AggQueueSize)
+		stats["agg_timer_feedback_queue_size"] = uint64(c.cppQueueSizes.DocTimerQueueSize)
+		stats["agg_queue_memory"] = uint64(c.cppQueueSizes.AggQueueMemory)
+		stats["agg_queue_size"] = uint64(c.cppQueueSizes.AggQueueSize)
 	}
 
-	stats["AGG_TIMER_FEEDBACK_QUEUE_CAP"] = uint64(c.feedbackQueueCap)
-	stats["AGG_QUEUE_MEMORY_CAP"] = uint64(c.workerQueueMemCap)
-	stats["AGG_QUEUE_SIZE_CAP"] = uint64(c.workerQueueCap)
+	stats["agg_timer_feedback_queue_cap"] = uint64(c.feedbackQueueCap)
+	stats["agg_queue_memory_cap"] = uint64(c.workerQueueMemCap)
+	stats["agg_queue_size_cap"] = uint64(c.workerQueueCap)
 
 	if c.aggMessagesSentCounter > 0 {
-		stats["AGG_MESSAGES_SENT_TO_WORKER"] = c.aggMessagesSentCounter
+		stats["agg_messages_sent_to_worker"] = c.aggMessagesSentCounter
 	}
 
 	if c.dcpDeletionCounter > 0 {
-		stats["DCP_DELETION_SENT_TO_WORKER"] = c.dcpDeletionCounter
+		stats["dcp_deletion_sent_to_worker"] = c.dcpDeletionCounter
 	}
 
 	if c.dcpMutationCounter > 0 {
-		stats["DCP_MUTATION_SENT_TO_WORKER"] = c.dcpMutationCounter
+		stats["dcp_mutation_sent_to_worker"] = c.dcpMutationCounter
 	}
 
 	if c.dcpCloseStreamCounter > 0 {
-		stats["DCP_STREAM_CLOSE_COUNTER"] = c.dcpCloseStreamCounter
+		stats["dcp_stream_close_counter"] = c.dcpCloseStreamCounter
 	}
 
 	if c.dcpCloseStreamErrCounter > 0 {
-		stats["DCP_STREAM_CLOSE_ERR_COUNTER"] = c.dcpCloseStreamErrCounter
+		stats["dcp_stream_close_err_counter"] = c.dcpCloseStreamErrCounter
 	}
 
 	if c.dcpStreamReqCounter > 0 {
-		stats["DCP_STREAM_REQ_COUNTER"] = c.dcpStreamReqCounter
+		stats["dcp_stream_req_counter"] = c.dcpStreamReqCounter
 	}
 
 	if c.dcpStreamReqErrCounter > 0 {
-		stats["DCP_STREAM_REQ_ERR_COUNTER"] = c.dcpStreamReqErrCounter
+		stats["dcp_stream_req_err_counter"] = c.dcpStreamReqErrCounter
 	}
 
 	if c.timerResponsesRecieved > 0 {
-		stats["TIMER_RESPONSES_RECEIVED"] = c.timerResponsesRecieved
+		stats["timer_responses_received"] = c.timerResponsesRecieved
 	}
 
 	if c.timerMessagesProcessed > 0 {
-		stats["TIMER_EVENTS"] = c.timerMessagesProcessed
+		stats["timer_events"] = c.timerMessagesProcessed
 	}
 
 	if c.errorParsingTimerResponses > 0 {
-		stats["ERROR_PARSING_TIMER_RESPONSES"] = c.errorParsingTimerResponses
+		stats["error_parsing_timer_response"] = c.errorParsingTimerResponses
 	}
 
 	if c.isBootstrapping {
-		stats["IS_BOOTSTRAPPING"] = 1
+		stats["is_bootstrapping"] = 1
 	}
 
 	if c.isRebalanceOngoing {
-		stats["IS_REBALANCE_ONGOING"] = 1
+		stats["is_rebalance_ongoing"] = 1
+	}
+
+	vbsRemainingToCloseStream := c.getVbRemainingToCloseStream()
+	if len(vbsRemainingToCloseStream) > 0 {
+		stats["reb_vb_remaining_to_close_stream"] = uint64(len(vbsRemainingToCloseStream))
 	}
 
 	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
 	if len(vbsRemainingToGiveUp) > 0 {
-		stats["REB_VB_REMAINING_TO_GIVE_UP"] = uint64(len(vbsRemainingToGiveUp))
+		stats["reb_vb_remaining_to_give_up"] = uint64(len(vbsRemainingToGiveUp))
 	}
 
 	vbsRemainingToOwn := c.getVbRemainingToOwn()
 	if len(vbsRemainingToOwn) > 0 {
-		stats["REB_VB_REMAINING_TO_OWN"] = uint64(len(vbsRemainingToOwn))
+		stats["reb_vb_remaining_to_own"] = uint64(len(vbsRemainingToOwn))
+	}
+
+	vbsRemainingToStreamReq := c.getVbRemainingToStreamReq()
+	if len(vbsRemainingToStreamReq) > 0 {
+		stats["reb_vb_remaining_to_stream_req"] = uint64(len(vbsRemainingToStreamReq))
 	}
 
 	if c.vbsStateUpdateRunning {
-		stats["VBS_STATE_UPDATE_RUNNING"] = 1
+		stats["vbs_state_update_running"] = 1
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_START"]; ok {
-		if c.v8WorkerMessagesProcessed["DEBUG_START"] > 0 {
-			stats["DEBUG_START"] = c.v8WorkerMessagesProcessed["DEBUG_START"]
+	if _, ok := c.v8WorkerMessagesProcessed["debug_start"]; ok {
+		if c.v8WorkerMessagesProcessed["debug_start"] > 0 {
+			stats["debug_start"] = c.v8WorkerMessagesProcessed["debug_start"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_STOP"]; ok {
-		if c.v8WorkerMessagesProcessed["DEBUG_STOP"] > 0 {
-			stats["DEBUG_STOP"] = c.v8WorkerMessagesProcessed["DEBUG_STOP"]
+	if _, ok := c.v8WorkerMessagesProcessed["debug_stop"]; ok {
+		if c.v8WorkerMessagesProcessed["debug_stop"] > 0 {
+			stats["debug_stop"] = c.v8WorkerMessagesProcessed["debug_stop"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["EXECUTION_STATS"]; ok {
-		if c.v8WorkerMessagesProcessed["EXECUTION_STATS"] > 0 {
-			stats["EXECUTION_STATS"] = c.v8WorkerMessagesProcessed["EXECUTION_STATS"]
+	if _, ok := c.v8WorkerMessagesProcessed["execution_stats"]; ok {
+		if c.v8WorkerMessagesProcessed["execution_stats"] > 0 {
+			stats["execution_stats"] = c.v8WorkerMessagesProcessed["execution_stats"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["FAILURE_STATS"]; ok {
-		if c.v8WorkerMessagesProcessed["FAILURE_STATS"] > 0 {
-			stats["FAILURE_STATS"] = c.v8WorkerMessagesProcessed["FAILURE_STATS"]
+	if _, ok := c.v8WorkerMessagesProcessed["failure_stats"]; ok {
+		if c.v8WorkerMessagesProcessed["failure_stats"] > 0 {
+			stats["failure_stats"] = c.v8WorkerMessagesProcessed["failure_stats"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["HANDLER_CODE"]; ok {
-		if c.v8WorkerMessagesProcessed["HANDLER_CODE"] > 0 {
-			stats["HANDLER_CODE"] = c.v8WorkerMessagesProcessed["HANDLER_CODE"]
+	if _, ok := c.v8WorkerMessagesProcessed["handler_code"]; ok {
+		if c.v8WorkerMessagesProcessed["handler_code"] > 0 {
+			stats["handler_code"] = c.v8WorkerMessagesProcessed["handler_code"]
 
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["LATENCY_STATS"]; ok {
-		if c.v8WorkerMessagesProcessed["LATENCY_STATS"] > 0 {
-			stats["LATENCY_STATS"] = c.v8WorkerMessagesProcessed["LATENCY_STATS"]
+	if _, ok := c.v8WorkerMessagesProcessed["latency_stats"]; ok {
+		if c.v8WorkerMessagesProcessed["latency_stats"] > 0 {
+			stats["latency_stats"] = c.v8WorkerMessagesProcessed["latency_stats"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]; ok {
-		if c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"] > 0 {
-			stats["LCB_EXCEPTION_STATS"] = c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]
+	if _, ok := c.v8WorkerMessagesProcessed["lcb_exception_stats"]; ok {
+		if c.v8WorkerMessagesProcessed["lcb_exception_stats"] > 0 {
+			stats["lcb_exception_stats"] = c.v8WorkerMessagesProcessed["lcb_exception_stats"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["LOG_LEVEL"]; ok {
-		if c.v8WorkerMessagesProcessed["LOG_LEVEL"] > 0 {
-			stats["LOG_LEVEL"] = c.v8WorkerMessagesProcessed["LOG_LEVEL"]
+	if _, ok := c.v8WorkerMessagesProcessed["log_level"]; ok {
+		if c.v8WorkerMessagesProcessed["log_level"] > 0 {
+			stats["log_level"] = c.v8WorkerMessagesProcessed["log_level"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["SOURCE_MAP"]; ok {
-		if c.v8WorkerMessagesProcessed["SOURCE_MAP"] > 0 {
-			stats["SOURCE_MAP"] = c.v8WorkerMessagesProcessed["SOURCE_MAP"]
+	if _, ok := c.v8WorkerMessagesProcessed["source_map"]; ok {
+		if c.v8WorkerMessagesProcessed["source_map"] > 0 {
+			stats["source_map"] = c.v8WorkerMessagesProcessed["source_map"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["THR_COUNT"]; ok {
-		if c.v8WorkerMessagesProcessed["THR_COUNT"] > 0 {
-			stats["THR_COUNT"] = c.v8WorkerMessagesProcessed["THR_COUNT"]
+	if _, ok := c.v8WorkerMessagesProcessed["timer_context_size"]; ok {
+		if c.v8WorkerMessagesProcessed["timer_context_size"] > 0 {
+			stats["timer_context_size"] = c.v8WorkerMessagesProcessed["timer_context_size"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["THR_MAP"]; ok {
-		if c.v8WorkerMessagesProcessed["THR_MAP"] > 0 {
-			stats["THR_MAP"] = c.v8WorkerMessagesProcessed["THR_MAP"]
+	if _, ok := c.v8WorkerMessagesProcessed["thr_count"]; ok {
+		if c.v8WorkerMessagesProcessed["thr_count"] > 0 {
+			stats["thr_count"] = c.v8WorkerMessagesProcessed["thr_count"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["V8_COMPILE"]; ok {
-		if c.v8WorkerMessagesProcessed["V8_COMPILE"] > 0 {
-			stats["V8_COMPILE"] = c.v8WorkerMessagesProcessed["V8_COMPILE"]
+	if _, ok := c.v8WorkerMessagesProcessed["thr_map"]; ok {
+		if c.v8WorkerMessagesProcessed["thr_map"] > 0 {
+			stats["thr_map"] = c.v8WorkerMessagesProcessed["thr_map"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["V8_INIT"]; ok {
-		if c.v8WorkerMessagesProcessed["V8_INIT"] > 0 {
-			stats["V8_INIT"] = c.v8WorkerMessagesProcessed["V8_INIT"]
+	if _, ok := c.v8WorkerMessagesProcessed["v8_compile"]; ok {
+		if c.v8WorkerMessagesProcessed["v8_compile"] > 0 {
+			stats["v8_compile"] = c.v8WorkerMessagesProcessed["v8_compile"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["V8_LOAD"]; ok {
-		if c.v8WorkerMessagesProcessed["V8_LOAD"] > 0 {
-			stats["V8_LOAD"] = c.v8WorkerMessagesProcessed["V8_LOAD"]
+	if _, ok := c.v8WorkerMessagesProcessed["v8_init"]; ok {
+		if c.v8WorkerMessagesProcessed["v8_init"] > 0 {
+			stats["v8_init"] = c.v8WorkerMessagesProcessed["v8_init"]
+		}
+	}
+
+	if _, ok := c.v8WorkerMessagesProcessed["v8_load"]; ok {
+		if c.v8WorkerMessagesProcessed["v8_load"] > 0 {
+			stats["v8_load"] = c.v8WorkerMessagesProcessed["v8_load"]
 		}
 	}
 
@@ -234,7 +251,7 @@ func (c *Consumer) GetMetaStoreStats() map[string]uint64 {
 	stats["metastore_set_err"] = atomic.LoadUint64(&c.metastoreSetErrCounter)
 
 	for _, vb := range c.getCurrentlyOwnedVbs() {
-		store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
+		store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(vb))
 		if !found {
 			atomic.AddUint64(&c.metastoreNotFoundErrCounter, 1)
 			continue
@@ -541,7 +558,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 	c.handlerFooters = handlerFooters
 	// Framing bare minimum V8 worker init payload
 	payload, pBuilder := c.makeV8InitPayload(appName, c.debuggerPort, util.Localhost(), "", eventingPort, "",
-		"", appContent, 5, 10, 10*1000, true, 500)
+		"", appContent, 5, 10, 10*1000, true, 500, 1024)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 
@@ -702,14 +719,35 @@ func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
 	}
 }
 
-// UpdateWorkerQueueMemCap revises the memory cap for cpp worker and dcp queues
+func (c *Consumer) getAssignedVbs(workerName string) ([]uint16, error) {
+	c.workerVbucketMapRWMutex.RLock()
+	defer c.workerVbucketMapRWMutex.RUnlock()
+
+	if _, ok := c.workerVbucketMap[workerName]; ok {
+		return c.workerVbucketMap[workerName], nil
+	}
+
+	return nil, fmt.Errorf("worker not found")
+}
+
+// UpdateWorkerQueueMemCap revises the memory cap for cpp worker, dcp and timer queues
 func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 	logPrefix := "Consumer::updateWorkerQueueMemCap"
 
 	prevWorkerMemCap := c.workerQueueMemCap
 	prevDCPFeedMemCap := c.aggDCPFeedMemCap
-	c.workerQueueMemCap = (quota / 2) * 1024 * 1024
-	c.aggDCPFeedMemCap = (quota / 2) * 1024 * 1024
+
+	var divisor int64
+
+	if c.app.UsingTimer {
+		divisor = 5
+		c.timerQueueMemCap = uint64((quota / divisor) * 1024 * 1024)
+	} else {
+		divisor = 2
+	}
+
+	c.workerQueueMemCap = (quota / divisor) * 1024 * 1024
+	c.aggDCPFeedMemCap = (quota / divisor) * 1024 * 1024
 
 	logging.Infof("%s [%s:%s:%d] Updated memory quota: %d MB previous worker quota: %d MB dcp feed quota: %d MB",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.workerQueueMemCap/(1024*1024),

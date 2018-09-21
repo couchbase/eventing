@@ -18,6 +18,7 @@ table Payload {
   skip_lcb_bootstrap:bool; // Control bootstrap of lcb handles.
                            // In some case we need to skip lcb connects i.e. while checking for
                            // compilation issues in supplied handler code.
+  timer_context_size:long;
   handler_headers: [string]; // List of statements that will prefixed to handler code post code constraint checks
   handler_footers: [string]; // List of statements that will appended to handler code post code constraint checks
 

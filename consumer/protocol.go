@@ -37,6 +37,7 @@ const (
 const (
 	filterOpcode int8 = iota
 	vbFilter
+	processedSeqNo
 )
 
 const (
@@ -65,6 +66,7 @@ const (
 	logLevel
 	workerThreadCount
 	workerThreadPartitionMap
+	timerContextSize
 )
 
 // message and opcode types for interpreting messages from C++ To Go
@@ -131,6 +133,10 @@ func (c *Consumer) makeVbFilterHeader(partition int16, meta string) ([]byte, *fl
 	return c.filterEventHeader(vbFilter, partition, meta)
 }
 
+func (c *Consumer) makeProcessedSeqNoHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.filterEventHeader(processedSeqNo, partition, meta)
+}
+
 func (c *Consumer) makeV8DebuggerStartHeader() ([]byte, *flatbuffers.Builder) {
 	return c.makeV8DebuggerHeader(startDebug, "")
 }
@@ -161,6 +167,10 @@ func (c *Consumer) makeV8EventHeader(opcode int8, meta string) ([]byte, *flatbuf
 
 func (c *Consumer) makeLogLevelHeader(meta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(appWorkerSetting, logLevel, 0, meta)
+}
+
+func (c *Consumer) makeTimerContextSizeHeader(meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(appWorkerSetting, timerContextSize, 0, meta)
 }
 
 func (c *Consumer) makeThrCountHeader(meta string) ([]byte, *flatbuffers.Builder) {
@@ -283,7 +293,7 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 
 func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDir, eventingPort,
 	eventingSSLPort, kvHostPort, depCfg string, capacity, executionTimeout, checkpointInterval int,
-	skipLcbBootstrap bool, curlTimeout int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	skipLcbBootstrap bool, curlTimeout int64, timerContextSize int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
 	app := builder.CreateString(appName)
@@ -314,6 +324,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))
 	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))
 	payload.PayloadAddCurlTimeout(builder, curlTimeout)
+	payload.PayloadAddTimerContextSize(builder, timerContextSize)
 	payload.PayloadAddSkipLcbBootstrap(builder, lcb[0])
 	payload.PayloadAddHandlerHeaders(builder, handlerHeaders)
 	payload.PayloadAddHandlerFooters(builder, handlerFooters)
@@ -439,7 +450,11 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 		}
 
 		c.timerResponsesRecieved++
-		c.createTimerCh <- &info
+		if err = c.createTimerQueue.Push(&info); err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to write to createTimerQueue, err : %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+			return
+		}
 
 	case bucketOpsResponse:
 		data := strings.Split(msg, "::")
@@ -469,7 +484,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNo)
 		}
 	case bucketOpsFilterAck:
-		var ack vbFilterData
+		var ack vbSeqNo
 		err := json.Unmarshal([]byte(msg), &ack)
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal filter ack, msg: %v err: %v",

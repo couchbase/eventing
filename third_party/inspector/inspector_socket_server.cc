@@ -97,7 +97,8 @@ void OnBufferAlloc(uv_handle_t *handle, size_t len, uv_buf_t *buf) {
 }
 
 void PrintDebuggerReadyMessage(const std::string &host, int port,
-                               const std::vector<std::string> &ids, FILE *out) {
+                               const std::vector<std::string> &ids, FILE *out,
+                               std::string *out_url = nullptr) {
   if (out == NULL) {
     return;
   }
@@ -107,6 +108,9 @@ void PrintDebuggerReadyMessage(const std::string &host, int port,
     frontend_url += "/js_app.html?experiments=true&v8only=true&ws=";
     frontend_url += FormatWsAddress(host, port, id, false);
     fprintf(out, "%s\n", frontend_url.c_str());
+    if (out_url != nullptr) {
+      *out_url = frontend_url;
+    }
     fprintf(stderr, "Debugger starting on %s\n", frontend_url.c_str());
   }
   fflush(out);
@@ -286,9 +290,10 @@ private:
 InspectorSocketServer::InspectorSocketServer(SocketServerDelegate *delegate,
                                              uv_loop_t *loop,
                                              const std::string &host, int port,
+                                             PostURLCallback on_connect,
                                              FILE *out)
-    : loop_(loop), delegate_(delegate), host_(host), port_(port),
-      closer_(nullptr), next_session_id_(0), out_(out) {
+    : on_connect_(on_connect), loop_(loop), delegate_(delegate), host_(host),
+      port_(port), closer_(nullptr), next_session_id_(0), out_(out) {
   state_ = ServerState::kNew;
 }
 
@@ -419,9 +424,11 @@ bool InspectorSocketServer::Start() {
     return false;
   }
   state_ = ServerState::kRunning;
+  std::string url;
   // getaddrinfo sorts the addresses, so the first port is most relevant.
   PrintDebuggerReadyMessage(host_, server_sockets_[0]->port(),
-                            delegate_->GetTargetIds(), out_);
+                            delegate_->GetTargetIds(), out_, &url);
+  on_connect_(url);
   return true;
 }
 

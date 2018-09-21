@@ -337,7 +337,7 @@ func (feed *DcpFeed) connectToNodes(
 	m, err := feed.bucket.GetVBmap(kvaddrs)
 	if err != nil {
 		fmsg := "%v ##%x GetVBmap(%v) failed: %v\n"
-		logging.Fatalf(fmsg, prefix, opaque, kvaddrs, err)
+		logging.Warnf(fmsg, prefix, opaque, kvaddrs, err)
 		return memcached.ErrorInvalidFeed
 	}
 	for kvaddr := range m {

@@ -21,7 +21,26 @@ func (c *Consumer) controlRoutine() error {
 		select {
 		case <-c.clusterStateChangeNotifCh:
 
-			err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
+			// To avoid eventing rebalance during any other MDS service rebalance
+			assignedVbs, err := c.getAssignedVbs(c.ConsumerName())
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+			}
+			sort.Sort(util.Uint16Slice(assignedVbs))
+
+			if err == nil {
+				currentlyOwnedVbs := c.getCurrentlyOwnedVbs()
+
+				logging.Infof("%s [%s:%s:%d] assignedVbs len: %d dump: %s currentlyOwnedVbs len: %d dump: %s",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), len(assignedVbs), util.Condense(assignedVbs),
+					len(currentlyOwnedVbs), util.Condense(currentlyOwnedVbs))
+
+				if util.CompareSlices(assignedVbs, currentlyOwnedVbs) {
+					continue
+				}
+			}
+
+			err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return common.ErrRetryTimeout
@@ -29,8 +48,7 @@ func (c *Consumer) controlRoutine() error {
 
 			c.closeAllRunningDcpFeeds()
 
-			c.stopVbOwnerGiveupCh = make(chan struct{}, c.vbOwnershipGiveUpRoutineCount)
-			c.stopVbOwnerTakeoverCh = make(chan struct{}, c.vbOwnershipTakeoverRoutineCount)
+			c.stopVbOwnerTakeoverCh = make(chan struct{})
 
 			logging.Infof("%s [%s:%s:%d] Got notification that cluster state has changed",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -76,6 +94,11 @@ func (c *Consumer) controlRoutine() error {
 				c.sendLogLevel(c.logLevel, false)
 			}
 
+			if val, ok := settings["timer_context_size"]; ok {
+				c.timerContextSize = int64(val.(float64))
+				c.sendTimerContextSize(c.timerContextSize, false)
+			}
+
 			if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
 				c.vbOwnershipGiveUpRoutineCount = int(val.(float64))
 			}
@@ -113,7 +136,7 @@ func (c *Consumer) controlRoutine() error {
 				c.vbsRemainingToClose = make([]uint16, 0)
 				c.Unlock()
 
-				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v and vbsRemainingToClose: %v as the app has been undeployed",
+				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %s and vbsRemainingToClose: %s as the app has been undeployed",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream), util.Condense(vbsRemainingToClose))
 				continue
 			}
@@ -235,7 +258,7 @@ func (c *Consumer) controlRoutine() error {
 				if err != nil {
 					c.vbsStreamRRWMutex.Lock()
 					if _, ok := c.vbStreamRequested[vb]; ok {
-						logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
+						logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 
 						delete(c.vbStreamRequested, vb)

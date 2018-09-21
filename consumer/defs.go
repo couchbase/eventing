@@ -9,12 +9,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 	"github.com/google/flatbuffers/go"
 )
@@ -33,11 +35,6 @@ const (
 const (
 	udsSockPathLimit = 100
 
-	// KV blob suffixes to assist in choose right consumer instance
-	// for instantiating V8 Debugger instance
-	startDebuggerFlag    = "startDebugger"
-	debuggerInstanceAddr = "debuggerInstAddr"
-
 	// To decode messages from c++ world to Go
 	headerFragmentSize = 4
 
@@ -45,8 +42,6 @@ const (
 	ClusterChangeNotifChBufSize = 10
 
 	cppWorkerPartitionCount = 1024
-
-	debuggerFlagCheckInterval = time.Duration(5000) * time.Millisecond
 
 	// Interval for retrying failed bucket operations using go-couchbase
 	bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
@@ -60,8 +55,6 @@ const (
 	restartVbDcpStreamTickInterval = time.Duration(3000) * time.Millisecond
 
 	vbTakeoverRetryInterval = time.Duration(1000) * time.Millisecond
-
-	retryInterval = time.Duration(1000) * time.Millisecond
 
 	socketWriteTimerInterval = time.Duration(5000) * time.Millisecond
 
@@ -107,7 +100,7 @@ type dcpMetadata struct {
 	SeqNo   uint64 `json:"seq"`
 }
 
-type vbFilterData struct {
+type vbSeqNo struct {
 	SeqNo   uint64 `json:"seq"`
 	Vbucket uint16 `json:"vb"`
 }
@@ -146,7 +139,6 @@ type Consumer struct {
 	debugListener         net.Listener
 	diagDir               string // Location that will house minidumps from from crashed cpp workers
 	handlerCode           string // Handler code for V8 Debugger
-	sendMsgToDebugger     bool
 	sourceMap             string // source map to assist with V8 Debugger
 
 	aggDCPFeed                    chan *cb.DcpEvent
@@ -171,7 +163,7 @@ type Consumer struct {
 	executionTimeout              int
 	filterVbEvents                map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
 	filterVbEventsRWMutex         *sync.RWMutex
-	filterDataCh                  chan *vbFilterData
+	filterDataCh                  chan *vbSeqNo
 	gocbBucket                    *gocb.Bucket
 	gocbMetaBucket                *gocb.Bucket
 	idleCheckpointInterval        time.Duration
@@ -181,7 +173,7 @@ type Consumer struct {
 	ipcType                       string // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
 	isBootstrapping               bool
 	isRebalanceOngoing            bool
-	isTerminateRunning            bool
+	isTerminateRunning            uint32                        // To signify if Consumer::Stop is running
 	kvHostDcpFeedMap              map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
 	hostDcpFeedRWMutex            *sync.RWMutex
 	kvNodes                       []string // Access controlled by kvNodesRWMutex
@@ -193,11 +185,13 @@ type Consumer struct {
 	statsTickDuration             time.Duration
 	stoppingConsumer              bool
 	superSup                      common.EventingSuperSup
+	timerContextSize              int64
 	timerStorageChanSize          int
+	timerQueueSize                uint64
+	timerQueueMemCap              uint64
 	timerStorageMetaChsRWMutex    *sync.RWMutex
 	timerStorageRoutineCount      int
-	timerStorageRoutineMetaChs    []chan *TimerInfo // Access controlled by timerStorageMetaChsRWMutex
-	timerStorageStopChs           []chan struct{}   // Access controlled by timerStorageMetaChsRWMutex
+	timerStorageQueues            []*util.BoundedQueue
 	usingTimer                    bool
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed
@@ -241,20 +235,8 @@ type Consumer struct {
 	// N1QL Transpiler related nested iterator config params
 	lcbInstCapacity int
 
-	fireTimerCh       chan *timerContext
-	createTimerCh     chan *TimerInfo
-	createTimerStopCh chan struct{}
-	scanTimerStopCh   chan struct{}
-
-	// Signals V8 consumer to start V8 Debugger agent
-	signalStartDebuggerCh          chan struct{}
-	signalStopDebuggerCh           chan struct{}
-	signalInstBlobCasOpFinishCh    chan struct{}
-	signalUpdateDebuggerInstBlobCh chan struct{}
-	signalDebugBlobDebugStopCh     chan struct{}
-	signalStopDebuggerRoutineCh    chan struct{}
-	debuggerState                  int8
-	debuggerStarted                bool
+	fireTimerQueue   *util.BoundedQueue
+	createTimerQueue *util.BoundedQueue
 
 	socketTimeout time.Duration
 
@@ -273,8 +255,6 @@ type Consumer struct {
 	sendMsgBufferRWMutex     *sync.RWMutex
 	sockFeedbackReader       *bufio.Reader
 	sockReader               *bufio.Reader
-	socketReadLoopStopCh     chan struct{}
-	socketReadLoopStopAckCh  chan struct{}
 	socketWriteBatchSize     int
 	socketWriteTicker        *time.Ticker
 	socketWriteLoopStopCh    chan struct{}
@@ -290,9 +270,8 @@ type Consumer struct {
 	osPid atomic.Value
 
 	// C++ v8 worker cmd handle, would be required to killing worker that are no more needed
-	client              *client
-	debugClient         *debugClient // C++ V8 worker spawned for debugging purpose
-	debugClientSupToken suptree.ServiceToken
+	client      *client
+	debugClient *debugClient // C++ V8 worker spawned for debugging purpose
 
 	consumerSup    *suptree.Supervisor
 	clientSupToken suptree.ServiceToken
@@ -310,17 +289,11 @@ type Consumer struct {
 	// Chan used by signal update of app handler settings
 	signalSettingsChangeCh chan struct{}
 
-	stopControlRoutineCh    chan struct{}
-	stopHandleFailoverLogCh chan struct{}
-	stopReqStreamProcessCh  chan struct{}
+	stopControlRoutineCh chan struct{}
 
 	// Populated when downstream tcp socket mapping to
 	// C++ v8 worker is down. Buffered channel to avoid deadlock
 	stopConsumerCh chan struct{}
-
-	// Chan to stop background checkpoint routine, keeping track
-	// of last seq # processed
-	stopCheckpointingCh chan struct{}
 
 	gracefulShutdownChan chan struct{}
 
@@ -391,7 +364,6 @@ type Consumer struct {
 	statsTicker              *time.Ticker
 
 	updateStatsTicker *time.Ticker
-	updateStatsStopCh chan struct{}
 }
 
 // For V8 worker spawned for debugging purpose
@@ -500,10 +472,20 @@ type TimerInfo struct {
 	Context   string `json:"context"`
 }
 
+func (info *TimerInfo) Size() uint64 {
+	return uint64(unsafe.Sizeof(*info)) + uint64(len(info.Callback)) +
+		uint64(len(info.Reference)) + uint64(len(info.Context))
+}
+
 // This is struct that will be stored in
 // the meta store as the timer's context
 type timerContext struct {
-	Callback string `json:"callback"`
-	Vb       uint64 `json:"vb"`
-	Context  string `json:"context"` // This is the context provided by the user
+	Callback  string `json:"callback"`
+	Vb        uint64 `json:"vb"`
+	Context   string `json:"context"` // This is the context provided by the user
+	reference string
+}
+
+func (ctx *timerContext) Size() uint64 {
+	return uint64(unsafe.Sizeof(*ctx)) + uint64(len(ctx.Callback)) + uint64(len(ctx.Context))
 }

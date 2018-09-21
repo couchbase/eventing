@@ -68,6 +68,8 @@ app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
     return oWorkerThreadCount;
   if (opcode == 3)
     return oWorkerThreadMap;
+  if (opcode == 4)
+    return oTimerContextSize;
   return App_Worker_Setting_Opcode_Unknown;
 }
 
@@ -75,6 +77,14 @@ timer_opcode getTimerOpcode(int8_t opcode) {
   if (opcode == 1)
     return oTimer;
   return Timer_Opcode_Unknown;
+}
+
+filter_opcode getFilterOpcode(int8_t opcode) {
+  if (opcode == 1)
+    return oVbFilter;
+  if (opcode == 2)
+    return oProcessedSeqNo;
+  return Filter_Opcode_Unknown;
 }
 
 debugger_opcode getDebuggerOpcode(int8_t opcode) {

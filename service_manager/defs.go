@@ -178,6 +178,7 @@ type stats struct {
 	MetastoreStats                  interface{} `json:"metastore_stats,omitempty"`
 	RebalanceStats                  interface{} `json:"rebalance_stats,omitempty"`
 	SeqsProcessed                   interface{} `json:"seqs_processed,omitempty"`
+	SpanBlobDump                    interface{} `json:"span_blob_dump,omitempty"`
 	VbDcpEventsRemaining            interface{} `json:"dcp_event_backlog_per_vb,omitempty"`
 	VbDistributionStatsFromMetadata interface{} `json:"vb_distribution_stats_from_metadata,omitempty"`
 	VbSeqnoStats                    interface{} `json:"vb_seq_no_stats,omitempty"`
@@ -195,4 +196,17 @@ type credsInfo struct {
 
 type retry struct {
 	Count int64 `json:"count"`
+}
+
+type appStatus struct {
+	Name             string `json:"name"`
+	CompositeStatus  string `json:"composite_status"`
+	NumDeployedNodes int    `json:"num_deployed_nodes"`
+	DeploymentStatus bool   `json:"deployment_status"`
+	ProcessingStatus bool   `json:"processing_status"`
+}
+
+type appStatusResponse struct {
+	Apps             []appStatus `json:"apps"`
+	NumEventingNodes int         `json:"num_eventing_nodes"`
 }

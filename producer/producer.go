@@ -171,31 +171,6 @@ func (p *Producer) Serve() {
 		return
 	}
 
-	// Write debugger blobs in metadata bucket
-	dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
-	debugBlob := &common.StartDebugBlobVer{
-		common.StartDebugBlob{StartDebug: false},
-		util.EventingVer(),
-	}
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
-		p, p.AddMetadataPrefix(dFlagKey), debugBlob)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return
-	}
-
-	debuggerInstBlob := &common.DebuggerInstanceAddrBlobVer{
-		common.DebuggerInstanceAddrBlob{},
-		util.EventingVer(),
-	}
-	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
-		p, p.AddMetadataPrefix(dInstAddrKey), debuggerInstBlob)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return
-	}
-
 	p.startBucket()
 
 	p.bootstrapFinishCh <- struct{}{}
@@ -586,23 +561,21 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 
 	consumerIndex := c.Index()
 
+	p.runningConsumersRWMutex.Lock()
 	var indexToPurge int
-	for i, val := range p.getConsumers() {
+	for i, val := range p.runningConsumers {
 		if val == c {
 			indexToPurge = i
 		}
 	}
 
-	if p.LenRunningConsumers() > 1 {
-		p.runningConsumersRWMutex.Lock()
+	if len(p.runningConsumers) > 1 {
 		p.runningConsumers = append(p.runningConsumers[:indexToPurge],
 			p.runningConsumers[indexToPurge+1:]...)
-		p.runningConsumersRWMutex.Unlock()
 	} else {
-		p.runningConsumersRWMutex.Lock()
 		p.runningConsumers = nil
-		p.runningConsumersRWMutex.Unlock()
 	}
+	p.runningConsumersRWMutex.Unlock()
 
 	p.workerNameConsumerMapRWMutex.Lock()
 	delete(p.workerNameConsumerMap, c.ConsumerName())
@@ -700,110 +673,61 @@ func (p *Producer) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string) {
 
 }
 
-// SignalStartDebugger updates KV blob in metadata bucket signalling request to start
-// V8 Debugger
-func (p *Producer) SignalStartDebugger() error {
-	logPrefix := "Producer::SignalStartDebugger"
+func (p *Producer) SignalStartDebugger(token string) error {
+	p.debuggerToken = token
+	p.trapEvent = true
+	return nil
+}
 
-	key := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
-	blob := &common.StartDebugBlobVer{
-		common.StartDebugBlob{StartDebug: true},
-		util.EventingVer(),
-	}
+func (p *Producer) SignalStopDebugger() error {
+	logPrefix := "Producer::SignalStopDebugger"
 
-	// Check if debugger instance is already running somewhere
-	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
-	dInstAddrBlob := &common.DebuggerInstanceAddrBlob{}
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval),
-		&p.retryCount, getOpCallback, p, p.AddMetadataPrefix(dInstAddrKey), dInstAddrBlob)
+	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
+	var instance common.DebuggerInstance
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
+		getOpCallback, p, key, &instance)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout",
 			logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
 	}
 
-	if dInstAddrBlob.NodeUUID == "" {
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval),
-			&p.retryCount, setOpCallback, p, p.AddMetadataPrefix(key), blob)
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%d] Exiting due to timeout",
-				logPrefix, p.appName, p.LenRunningConsumers())
-			return common.ErrRetryTimeout
-		}
-	} else {
-		logging.Errorf("%s [%s:%d] Debugger already started. Host: %rs Worker: %v uuid: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), dInstAddrBlob.HostPortAddr,
-			dInstAddrBlob.ConsumerName, dInstAddrBlob.NodeUUID)
+	consumers := p.getConsumers()
+	if consumers[0].HostPortAddr() != instance.Host {
+		util.StopDebugger(instance.Host, p.appName)
+		return nil
 	}
-	return nil
-}
 
-// SignalStopDebugger updates KV blob in metadata bucket signalling request to stop
-// V8 Debugger
-func (p *Producer) SignalStopDebugger() error {
-	logPrefix := "Producer::SignalStopDebugger"
+	p.trapEvent = false
+	p.debuggerToken = ""
+	for _, c := range consumers {
+		c.SignalStopDebugger()
+	}
 
-	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
-	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
-
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
-		p, p.AddMetadataPrefix(dInstAddrKey), debuggerInstBlob)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
+		clearDebuggerInstanceCallback, p)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		logging.Errorf("%s [%s:%d] Exiting due to timeout",
+			logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
 	}
-
-	if debuggerInstBlob.NodeUUID == p.uuid {
-		for _, c := range p.getConsumers() {
-			if c.ConsumerName() == debuggerInstBlob.ConsumerName {
-				err = c.SignalStopDebugger()
-				if err == common.ErrRetryTimeout {
-					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-					return common.ErrRetryTimeout
-				}
-			}
-		}
-	} else {
-		if debuggerInstBlob.HostPortAddr == "" {
-			logging.Errorf("%s [%s:%d] Debugger hasn't started.", logPrefix, p.appName, p.LenRunningConsumers())
-
-			debugBlob := &common.StartDebugBlobVer{
-				common.StartDebugBlob{StartDebug: false},
-				util.EventingVer(),
-			}
-			dFlagKey := fmt.Sprintf("%s::%s", p.appName, startDebuggerFlag)
-
-			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback,
-				p, p.AddMetadataPrefix(dFlagKey), debugBlob)
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-				return common.ErrRetryTimeout
-			}
-
-		} else {
-			util.StopDebugger("stopDebugger", debuggerInstBlob.HostPortAddr, p.appName)
-		}
-	}
-
 	return nil
 }
 
 // GetDebuggerURL returns V8 Debugger url
 func (p *Producer) GetDebuggerURL() (string, error) {
 	logPrefix := "Producer::GetDebuggerURL"
-	debuggerInstBlob := &common.DebuggerInstanceAddrBlob{}
-	dInstAddrKey := fmt.Sprintf("%s::%s", p.appName, debuggerInstanceAddr)
 
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
-		p, p.AddMetadataPrefix(dInstAddrKey), debuggerInstBlob)
+	var instance common.DebuggerInstance
+	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
+		getOpCallback, p, key, &instance)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return "", common.ErrRetryTimeout
 	}
 
-	debugURL := util.GetDebuggerURL("/getLocalDebugUrl", debuggerInstBlob.HostPortAddr, p.appName)
-
-	return debugURL, nil
+	return instance.URL, nil
 }
 
 func (p *Producer) updateStats() {

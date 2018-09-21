@@ -144,6 +144,81 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 	return nil
 }
 
+var clearDebuggerInstanceCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::clearDebuggerInstanceCallback"
+
+	p := args[0].(*Producer)
+	if p.isTerminateRunning {
+		return nil
+	}
+	if p.metadataBucketHandle == nil {
+		logging.Errorf("%s [%s:%d] Metadata bucket handle not initialized",
+			logPrefix, p.appName, p.LenRunningConsumers())
+		return nil
+	}
+
+	key := p.AddMetadataPrefix(p.app.AppName).Raw() + "::" + common.DebuggerTokenKey
+	var instance common.DebuggerInstance
+	cas, err := p.metadataBucketHandle.Get(key, &instance)
+	if err == gocb.ErrKeyNotFound || err == gocb.ErrShutdown {
+		logging.Errorf("%s [%s:%d] Abnormal case - debugger instance blob is absent or bucket is closed",
+			logPrefix, p.appName, p.LenRunningConsumers())
+		return nil
+	}
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Unable to get debugger instance blob, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
+		return err
+	}
+
+	instance = common.DebuggerInstance{}
+	_, err = p.metadataBucketHandle.Replace(key, instance, cas, 0)
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Unable to clear debugger instance, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
+		return err
+	}
+	return err
+}
+
+var writeDebuggerURLCallback = func(args ...interface{}) error {
+	logPrefix := "Producer::writeDebuggerURLCallback"
+
+	p := args[0].(*Producer)
+	url := args[1].(string)
+	if p.isTerminateRunning {
+		return nil
+	}
+	if p.metadataBucketHandle == nil {
+		logging.Errorf("%s [%s:%d] Metadata bucket handle not initialized",
+			logPrefix, p.appName, p.LenRunningConsumers())
+		return nil
+	}
+
+	key := p.AddMetadataPrefix(p.app.AppName).Raw() + "::" + common.DebuggerTokenKey
+	var instance common.DebuggerInstance
+	cas, err := p.metadataBucketHandle.Get(key, &instance)
+	if err == gocb.ErrKeyNotFound || err == gocb.ErrShutdown {
+		logging.Errorf("%s [%s:%d] Abnormal case - debugger instance blob is absent or bucket is closed",
+			logPrefix, p.appName, p.LenRunningConsumers())
+		return nil
+	}
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Unable to get debugger instance blob, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
+		return err
+	}
+
+	instance.URL = url
+	_, err = p.metadataBucketHandle.Replace(key, instance, cas, 0)
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Unable to write debugger URL, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), err)
+		return err
+	}
+	return err
+}
+
 var setOpCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::setOpCallback"
 
@@ -193,14 +268,14 @@ var deleteOpCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::deleteOpCallback"
 
 	p := args[0].(*Producer)
-	key := args[1].(common.Key)
+	key := args[1].(string)
 
-	_, err := p.metadataBucketHandle.Remove(key.Raw(), 0)
+	_, err := p.metadataBucketHandle.Remove(key, 0)
 	if gocb.IsKeyNotFoundError(err) || err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
 		logging.Errorf("%s [%s:%d] Bucket delete failed for key: %ru, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), key.Raw(), err)
+			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 
 		// Bucket op fail with generic timeout error even in case of bucket being dropped/deleted.
 		// Hence checking for it during routines called during undeploy

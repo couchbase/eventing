@@ -82,13 +82,14 @@ func (m *ServiceMgr) initService() {
 		}
 	}(m)
 
-	m.enableDebugger()
+	m.disableDebugger()
 
 	// Internal REST APIs
 	http.HandleFunc("/cleanupEventing", m.cleanupEventing)
 	http.HandleFunc("/clearEventStats", m.clearEventStats)
 	http.HandleFunc("/deleteApplication/", m.deletePrimaryStoreHandler)
 	http.HandleFunc("/deleteAppTempStore/", m.deleteTempStoreHandler)
+	http.HandleFunc("/freeOSMemory", m.freeOSMemory)
 	http.HandleFunc("/getAggBootstrappingApps", m.getAggBootstrappingApps)
 	http.HandleFunc("/getAggEventProcessingStats", m.getAggEventProcessingStats)
 	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
@@ -122,12 +123,15 @@ func (m *ServiceMgr) initService() {
 	http.HandleFunc("/setSettings/", m.setSettingsHandler)
 	http.HandleFunc("/startDebugger/", m.startDebugger)
 	http.HandleFunc("/startTracing", m.startTracing)
+	http.HandleFunc("/triggerGC", m.triggerGC)
 	http.HandleFunc("/stopDebugger/", m.stopDebugger)
 	http.HandleFunc("/stopTracing", m.stopTracing)
 	http.HandleFunc("/uuid", m.getNodeUUID)
 	http.HandleFunc("/version", m.getNodeVersion)
+	http.HandleFunc("/writeDebuggerURL/", m.writeDebuggerURLHandler)
 
 	// Public REST APIs
+	http.HandleFunc("/api/v1/status", m.statusHandler)
 	http.HandleFunc("/api/v1/stats", m.statsHandler)
 	http.HandleFunc("/api/v1/config", m.configHandler)
 	http.HandleFunc("/api/v1/config/", m.configHandler)
@@ -227,7 +231,7 @@ func (m *ServiceMgr) initService() {
 	}
 }
 
-func (m *ServiceMgr) enableDebugger() {
+func (m *ServiceMgr) disableDebugger() {
 	logPrefix := "ServiceMgr::enableDebugger"
 
 	config, info := m.getConfig()
@@ -242,7 +246,7 @@ func (m *ServiceMgr) enableDebugger() {
 
 	logging.Tracef("%s enable_debugger field does not exist, enabling it", logPrefix)
 
-	config["enable_debugger"] = true
+	config["enable_debugger"] = false
 	if info := m.saveConfig(config); info.Code != m.statusCodes.ok.Code {
 		logging.Errorf("Unable to enable debugger by default, err: %v", info.Info)
 	}

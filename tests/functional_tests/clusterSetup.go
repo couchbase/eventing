@@ -253,6 +253,7 @@ func otpNodes(removeNodes []string) (string, string) {
 
 func waitForRebalanceFinish() {
 	t := time.NewTicker(5 * time.Second)
+
 	var rebalanceRunning bool
 
 	log.SetFlags(log.LstdFlags)

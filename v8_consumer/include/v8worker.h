@@ -61,6 +61,8 @@ typedef std::chrono::nanoseconds nsecs;
 
 #define NUM_VBUCKETS 1024
 
+extern int64_t timer_context_size;
+
 using atomic_ptr_t = std::shared_ptr<std::atomic<int64_t>>;
 // Used for checkpointing of vbucket seq nos
 typedef std::map<int64_t, atomic_ptr_t> vb_seq_map_t;
@@ -117,6 +119,7 @@ typedef struct handler_config_s {
   int execution_timeout;
   int lcb_inst_capacity;
   bool skip_lcb_bootstrap;
+  int64_t timer_context_size;
   std::vector<std::string> handler_headers;
   std::vector<std::string> handler_footers;
 } handler_config_t;
@@ -246,6 +249,8 @@ public:
 
   int ParseMetadata(const std::string &metadata, int &vb_no, int64_t &seq_no);
 
+  void SetThreadExitFlag();
+
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
   v8::Persistent<v8::Function> on_update_;
@@ -305,6 +310,7 @@ private:
   std::string handler_name_;
   std::string handler_uuid_;
   std::string user_prefix_;
+  std::atomic<bool> thread_exit_cond_;
 };
 
 const char *GetUsername(void *cookie, const char *host, const char *port,

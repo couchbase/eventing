@@ -15,7 +15,7 @@ func (c *Consumer) scanTimers() {
 
 	for {
 		select {
-		case <-c.scanTimerStopCh:
+		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exiting timer scanning routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
@@ -57,7 +57,7 @@ func (c *Consumer) executeTimers(vbs []uint16, wg *sync.WaitGroup) {
 			continue
 		}
 
-		store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(vb))
+		store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(vb))
 		if !found {
 			logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
@@ -92,12 +92,17 @@ func (c *Consumer) executeTimersImpl(store *timers.TimerStore, iterator *timers.
 
 		e := entry.Context.(map[string]interface{})
 		timer := &timerContext{
-			Callback: e["callback"].(string),
-			Context:  e["context"].(string),
-			Vb:       uint64(e["vb"].(float64)),
+			Callback:  e["callback"].(string),
+			Context:   e["context"].(string),
+			reference: entry.ContextRecord.AlarmRef,
+			Vb:        uint64(e["vb"].(float64)),
 		}
 
-		c.fireTimerCh <- timer
+		if err = c.fireTimerQueue.Push(timer); err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to write to fireTimerQueue, size: %d, quota: %d err : %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Size(), c.timerQueueMemCap, err)
+			return
+		}
 
 		// TODO: Implement ack channel
 		err = store.Delete(entry)
@@ -115,58 +120,64 @@ func (c *Consumer) routeTimers() {
 	logPrefix := "Consumer::routeTimers"
 
 	c.timerStorageMetaChsRWMutex.Lock()
-	c.timerStorageStopChs = make([]chan struct{}, 0)
-
 	for i := 0; i < c.timerStorageRoutineCount; i++ {
-		c.timerStorageRoutineMetaChs[i] = make(chan *TimerInfo, c.timerStorageChanSize/c.timerStorageRoutineCount)
+		maxcount := uint64(c.timerQueueSize / uint64(c.timerStorageRoutineCount))
+		maxsize := uint64(c.timerQueueMemCap / uint64(c.timerStorageRoutineCount))
+		c.timerStorageQueues[i] =
+			util.NewBoundedQueue(maxcount, maxsize)
 
-		stopCh := make(chan struct{})
-		c.timerStorageStopChs = append(c.timerStorageStopChs, stopCh)
-		go c.storeTimers(i, c.timerStorageRoutineMetaChs[i], stopCh)
+		go c.storeTimers(i, c.timerStorageQueues[i])
 	}
 	c.timerStorageMetaChsRWMutex.Unlock()
 
 	for {
 		select {
-		case e, ok := <-c.createTimerCh:
-			if !ok {
-				logging.Infof("%s [%s:%s:%d] Chan closed. Exiting timer routing routine",
-					logPrefix, c.workerName, c.tcpPort, c.Pid())
-				return
-			}
-
-			partition := int(e.Vb) % c.timerStorageRoutineCount
-			func() {
-				c.timerStorageMetaChsRWMutex.RLock()
-				defer c.timerStorageMetaChsRWMutex.RUnlock()
-
-				if c.isTerminateRunning {
-					return
-				}
-				c.timerStorageRoutineMetaChs[partition] <- e
-			}()
-
-		case <-c.createTimerStopCh:
+		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exiting timer store routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
+		default:
+			data, err := c.createTimerQueue.Pop()
+			if err != nil {
+				logging.Infof("%s [%s:%s:%d] read from CreateTimerCh failed err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+				return
+			}
+			timerdata := data.(*TimerInfo)
+			partition := int(timerdata.Vb) % c.timerStorageRoutineCount
+			func() {
+				c.timerStorageMetaChsRWMutex.RLock()
+				defer c.timerStorageMetaChsRWMutex.RUnlock()
+				if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+					return
+				}
+				if err = c.timerStorageQueues[partition].Push(timerdata); err != nil {
+					logging.Infof("%s [%s:%s:%d] write to  timerStorageRoutineMetaChs failed err: %v",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+					return
+				}
+			}()
 		}
 	}
 }
 
-func (c *Consumer) storeTimers(index int, timerCh chan *TimerInfo, stopCh chan struct{}) {
+func (c *Consumer) storeTimers(index int, timerQueue *util.BoundedQueue) {
 	logPrefix := "Consumer::storeTimers"
-
 	for {
 		select {
-		case timer, ok := <-timerCh:
-			if !ok {
-				logging.Infof("%s [%s:%s:%d] Routine id: %d chan closed. Exiting timer storage routine",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), index)
+		case <-c.stopConsumerCh:
+			logging.Infof("%s [%s:%s:%d] Routine id: %d got message on stop chan. Exiting timer storage routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), index)
+			return
+		default:
+			data, err := timerQueue.Pop()
+			if err != nil {
+				logging.Infof("%s [%s:%s:%d] Routine id: %d read from timerQueue failed err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), index, err)
 				return
 			}
-
-			store, found := timers.Fetch(c.producer.AddMetadataPrefix(c.app.AppName).Raw(), int(timer.Vb))
+			timer := data.(*TimerInfo)
+			store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(timer.Vb))
 			if !found {
 				logging.Errorf("%s [%s:%s:%d] vb: %d unable to get store",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb)
@@ -180,7 +191,7 @@ func (c *Consumer) storeTimers(index int, timerCh chan *TimerInfo, stopCh chan s
 				Vb:       timer.Vb,
 			}
 
-			err := store.Set(timer.Epoch, timer.Callback+":"+timer.Reference, context)
+			err = store.Set(timer.Epoch, timer.Callback+":"+timer.Reference, context)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] vb: %d seq: %d failed to store",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), timer.Vb, timer.SeqNum)
@@ -188,11 +199,6 @@ func (c *Consumer) storeTimers(index int, timerCh chan *TimerInfo, stopCh chan s
 				continue
 			}
 			atomic.AddUint64(&c.metastoreSetCounter, 1)
-
-		case <-stopCh:
-			logging.Infof("%s [%s:%s:%d] Routine id: %d got message on stop chan. Exiting timer storage routine",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), index)
-			return
 		}
 	}
 }

@@ -132,7 +132,7 @@
             ng-model="appModel.settings.worker_count"
             ng-disabled="formCtrl.isAppDeployed"
             min="1"
-            max="32">
+            max="64">
           <div
             class="error field-error"
             ng-show="formCtrl.createAppForm.worker_count.$error.min && formCtrl.createAppForm.worker_count.$dirty">
@@ -146,7 +146,7 @@
           <div
             class="error field-error"
             ng-show="formCtrl.createAppForm.worker_count.$error.max && formCtrl.createAppForm.worker_count.$dirty">
-            Worker count must be less than 32
+            Worker count must be less than 64
           </div>
         </div>
         <div class="formrow indent-1" ng-disabled="formCtrl.isAppDeployed">

@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -315,7 +316,7 @@ func Console(clusterAddr string, format string, v ...interface{}) error {
 	return err
 }
 
-func StopDebugger(urlSuffix, nodeAddr, appName string) {
+func StopDebugger(nodeAddr, appName string) {
 	endpointURL := fmt.Sprintf("http://%s/stopDebugger/?name=%s", nodeAddr, appName)
 	netClient := NewClient(HTTPRequestTimeout)
 
@@ -327,34 +328,6 @@ func StopDebugger(urlSuffix, nodeAddr, appName string) {
 
 	defer res.Body.Close()
 	return
-}
-
-func GetDebuggerURL(urlSuffix, nodeAddr, appName string) string {
-	logPrefix := "util::GetDebuggerURL"
-
-	if nodeAddr == "" {
-		logging.Verbosef("%s Debugger host not found. Debugger not started", logPrefix)
-		return ""
-	}
-
-	endpointURL := fmt.Sprintf("http://%s/%s/?name=%s", nodeAddr, urlSuffix, appName)
-
-	netClient := NewClient(HTTPRequestTimeout)
-
-	res, err := netClient.Get(endpointURL)
-	if err != nil {
-		logging.Errorf("%s Failed to capture v8 debugger url from url: %rs, err: %v", logPrefix, endpointURL, err)
-		return ""
-	}
-
-	buf, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		logging.Errorf("%s Failed to read v8 debugger url response from url: %rs, err: %v", logPrefix, endpointURL, err)
-		return ""
-	}
-	defer res.Body.Close()
-
-	return string(buf)
 }
 
 func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) (map[string]string, error) {
@@ -736,7 +709,7 @@ func MemcachedErrCode(err error) gomemcached.Status {
 	return status
 }
 
-func CompareSlices(s1, s2 []string) bool {
+func CompareSlices(s1, s2 []uint16) bool {
 
 	if s1 == nil && s2 == nil {
 		return true
@@ -1200,4 +1173,18 @@ func SuperImpose(source, on map[string]interface{}) map[string]interface{} {
 	}
 
 	return m
+}
+
+func CPUCount(log bool) int {
+	logPrefix := "util::GetCPUCount"
+
+	cpuCount := runtime.NumCPU()
+	if cpuCount == 0 {
+		if log {
+			logging.Errorf("%s CPU count reported as 0", logPrefix)
+		}
+		return 3
+	}
+
+	return cpuCount
 }

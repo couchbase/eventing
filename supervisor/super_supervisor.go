@@ -111,6 +111,37 @@ func (s *SuperSupervisor) checkIfNodeInCluster() bool {
 	return true
 }
 
+func (s *SuperSupervisor) DebuggerCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "SuperSupervisor::DebuggerCallback"
+	logging.Infof("%s [%d] path => %s encoded value size => %v",
+		logPrefix, s.runningFnsCount(), path, string(value))
+
+	if !s.checkIfNodeInCluster() && s.runningFnsCount() == 0 {
+		logging.Infof("%s [%d] Node not part of cluster. Exiting callback",
+			logPrefix, s.runningFnsCount())
+		return nil
+	}
+
+	if value == nil {
+		logging.Errorf("%s [%d] value is nil",
+			logPrefix, s.runningFnsCount())
+		return nil
+	}
+
+	appName := util.GetAppNameFromPath(path)
+	p, exists := s.runningFns()[appName]
+	if !exists || p == nil {
+		logging.Errorf("%s [%d] Function %s not found",
+			logPrefix, s.runningFnsCount(), appName)
+		return nil
+	}
+	p.SignalStartDebugger(string(value))
+
+	util.Retry(util.NewFixedBackoff(time.Second), nil,
+		metakvDeleteCallback, s, path)
+	return nil
+}
+
 // EventHandlerLoadCallback is registered as callback from metakv observe calls on event handlers path
 func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, rev interface{}) error {
 	logPrefix := "SuperSupervisor::EventHandlerLoadCallback"
@@ -418,6 +449,10 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			topologyChangeMsg.CType = common.StartRebalanceCType
 		}
 
+		for _, eventingProducer := range s.runningFns() {
+			eventingProducer.NotifyTopologyChange(topologyChangeMsg)
+		}
+
 		// On topology change notification, lookup up in metakv if there are any any apps
 		// that haven't been deployed on current node. Case where this is needed: Eventing node
 		// n_1 is added to cluster while an app was bootstrapping, rebalance would be failed as
@@ -505,14 +540,11 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					s.appListRWMutex.Lock()
 					delete(s.bootstrappingApps, appName)
 					s.appListRWMutex.Unlock()
+
+					eventingProducer.NotifyTopologyChange(topologyChangeMsg)
 				}
 			}
 		}
-
-		for _, eventingProducer := range s.runningFns() {
-			eventingProducer.NotifyTopologyChange(topologyChangeMsg)
-		}
-
 	}
 
 	return nil

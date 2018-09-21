@@ -81,6 +81,21 @@ var metakvGetCallback = func(args ...interface{}) error {
 	return nil
 }
 
+var metakvDeleteCallback = func(args ...interface{}) error {
+	logPrefix := "SUperSupervisor::metakvDeleteCallback"
+
+	s := args[0].(*SuperSupervisor)
+	path := args[1].(string)
+
+	err := util.MetaKvDelete(path, nil)
+	if err != nil {
+		logging.Errorf("%s [%d] Unable to delete %s, err: %v",
+			logPrefix, s.runningFnsCount(), path, err)
+		return err
+	}
+	return nil
+}
+
 var undeployFunctionCallback = func(args ...interface{}) error {
 	logPrefix := "Supervisor::undeployFunctionCallback"
 

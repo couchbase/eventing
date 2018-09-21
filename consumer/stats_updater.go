@@ -124,13 +124,15 @@ func (c *Consumer) updateWorkerStats() {
 							return
 						}
 
+						logging.Infof("%s [%s:%s:%d] Re-spawning eventing last response received at %s",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, lastTs.String())
 						c.stoppingConsumer = true
 						c.producer.KillAndRespawnEventingConsumer(c)
 					}
 				}
 			}
 
-		case <-c.updateStatsStopCh:
+		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exiting cpp worker stats updater routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return

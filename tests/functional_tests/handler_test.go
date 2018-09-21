@@ -709,6 +709,78 @@ func TestUndeployWithKVFailover(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestTimerOverwrite(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_with_timer_overwritten"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	time.Sleep(10 * time.Second)
+	itemCountB, err := getBucketItemCount(metaBucket)
+	if err != nil {
+		log.Printf("Encountered err: %v while fetching item count from meta bucket: %s\n", err, metaBucket)
+		return
+	}
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "TimerBucketOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	time.Sleep(10 * time.Second)
+	itemCountA, err := getBucketItemCount(metaBucket)
+	if err != nil {
+		log.Printf("Encountered err: %v while fetching item count from meta bucket: %s\n", err, metaBucket)
+		return
+	}
+
+	if itemCountB != itemCountA {
+		t.Error("Expected", itemCountB, "got", itemCountA)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
+func TestUndeployBackdoorDuringBootstrap(t *testing.T) {
+	time.Sleep(5 * time.Second)
+
+	addNodeFromRest("127.0.0.1:9003", "kv")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+
+	failoverFromRest([]string{"127.0.0.1:9003"})
+
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+	createAndDeployLargeFunction(handler, handler, &commonSettings{workerCount: 1}, 10*1024)
+
+	go pumpBucketOps(opsType{}, &rateLimit{})
+
+	time.Sleep(10 * time.Second)
+	dumpStats()
+
+	setSettings(handler, false, false, &commonSettings{})
+	setRetryCounter(handler)
+
+	time.Sleep(60 * time.Second)
+	waitForUndeployToFinish(handler)
+	dumpStats()
+	resp, _ := deleteFunction(handler)
+	if resp.httpResponseCode != 200 {
+		t.Error("Expected 200 response code, got code", resp.httpResponseCode, resp.Name)
+	}
+
+	flushFunctionAndBucket(handler)
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+}
+
 // Disabling as for the time being source bucket mutations aren't allowed
 /* func TestSourceBucketMutations(t *testing.T) {
 	time.Sleep(time.Second * 5)

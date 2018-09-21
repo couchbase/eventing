@@ -179,7 +179,7 @@ func printStats() {
 		stats[k] = v
 	}
 
-	data, err := json.Marshal(&stats)
+	data, err := json.MarshalIndent(&stats, "\t", " ")
 	if err == nil {
 		logging.Infof(string(data))
 	}
@@ -200,7 +200,7 @@ func main() {
 
 	done := make(chan struct{})
 	go func(done chan struct{}) {
-		ticker := time.NewTicker(time.Duration(timers.Resolution) * time.Second)
+		ticker := time.NewTicker(time.Duration(10) * time.Second)
 
 		for {
 			select {

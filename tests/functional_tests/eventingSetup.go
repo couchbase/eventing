@@ -28,6 +28,20 @@ func getHandlerCode(filename string) (string, error) {
 	return string(content), nil
 }
 
+func setRetryCounter(handler string) {
+	retryURL := fmt.Sprintf("%s/%s/retry", functionsURL, handler)
+	payload := make(map[string]interface{})
+	payload["count"] = 1
+	data, err := json.Marshal(&payload)
+	if err != nil {
+		log.Println("failed to marshal payload for retry counter, err", err)
+		return
+	}
+
+	resp := postToEventingEndpoint("Post to set retry counter", retryURL, data)
+	log.Println("set retry counter, response", resp)
+}
+
 func postToEventingEndpoint(context, url string, payload []byte) (response *restResponse) {
 	response = &restResponse{}
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
@@ -210,6 +224,8 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	} else {
 		settings["execution_timeout"] = s.executionTimeout
 	}
+
+	settings["timer_context_size"] = 15 * 1024 * 1024
 
 	settings["curl_timeout"] = curlTimeout
 

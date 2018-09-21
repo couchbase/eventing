@@ -6,6 +6,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -39,7 +40,7 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 
 		c.vbsStreamRRWMutex.Lock()
 		if _, ok := c.vbStreamRequested[vb]; ok {
-			logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
+			logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 
 			delete(c.vbStreamRequested, vb)
@@ -55,7 +56,7 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
@@ -113,7 +114,7 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	b := args[1].(**couchbase.Bucket)
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
@@ -127,11 +128,13 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	var err error
 	*b, err = util.ConnectBucket(hostPortAddr, "default", c.bucket)
 	if err != nil {
-		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed isTerminateRunning: %t , err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, c.isTerminateRunning, err)
+		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed isTerminateRunning: %d , err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket,
+			atomic.LoadUint32(&c.isTerminateRunning), err)
 	} else {
-		logging.Infof("%s [%s:%d] Connected to bucket: %s isTerminateRunning: %t",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, c.isTerminateRunning)
+		logging.Infof("%s [%s:%d] Connected to bucket: %s isTerminateRunning: %d",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket,
+			atomic.LoadUint32(&c.isTerminateRunning))
 	}
 
 	return err
@@ -176,7 +179,7 @@ var getOpCallback = func(args ...interface{}) error {
 		createIfMissing = args[6].(bool)
 	}
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
@@ -726,7 +729,7 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	flogs := args[1].(*couchbase.FailoverLog)
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
@@ -790,7 +793,7 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	feedName := args[1].(couchbase.DcpFeedName)
 	kvHostPort := args[2].(string)
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
@@ -940,6 +943,57 @@ var removeDocIDCallback = func(args ...interface{}) error {
 	return err
 }
 
+var acquireDebuggerTokenCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::acquireDebuggerTokenCallback"
+
+	c := args[0].(*Consumer)
+	token := args[1].(string)
+	success := args[2].(*bool)
+
+	key := c.producer.AddMetadataPrefix(c.app.AppName).Raw() + "::" + common.DebuggerTokenKey
+	var instance common.DebuggerInstance
+	cas, err := c.gocbMetaBucket.Get(key, &instance)
+	if err == gocb.ErrKeyNotFound || err == gocb.ErrShutdown {
+		logging.Errorf("%s [%s:%s:%d] Key: %s, debugger token not found or bucket is closed, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
+		*success = false
+		return nil
+	}
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Key: %s, failed to get doc from metadata bucket, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
+		return err
+	}
+
+	// Some other consumer has acquired the token
+	if instance.Status == common.MutationTrapped || instance.Token != token {
+		logging.Infof("%s [%s:%s:%d] Some other consumer acquired the debugger token or token is stale",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		*success = false
+		return nil
+	}
+
+	instance.Host = c.HostPortAddr()
+	instance.Status = common.MutationTrapped
+	_, err = c.gocbMetaBucket.Replace(key, instance, cas, 0)
+	if err == nil {
+		logging.Infof("%s [%s:%s:%d] Debugger token acquired",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		*success = true
+		return nil
+	}
+	// Check for CAS mismatch
+	if gocb.IsKeyExistsError(err) {
+		*success = false
+		logging.Infof("%s [%s:%s:%d] Some other consumer acquired the debugger token",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+	logging.Errorf("%s [%s:%s:%d] Failed to acquire token, err: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+	return err
+}
+
 var removeIndexCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::removeIndexCallback"
 
@@ -999,7 +1053,7 @@ var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbs := args[1].([]uint16)
 
-	if c.isTerminateRunning {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil

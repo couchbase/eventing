@@ -221,11 +221,16 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	// Metastore related configuration
-
 	if val, ok := settings["execute_timer_routine_count"]; ok {
 		p.handlerConfig.ExecuteTimerRoutineCount = int(val.(float64))
 	} else {
 		p.handlerConfig.ExecuteTimerRoutineCount = 3
+	}
+
+	if val, ok := settings["timer_context_size"]; ok {
+		p.handlerConfig.TimerContextSize = int64(val.(float64))
+	} else {
+		p.handlerConfig.TimerContextSize = 1024
 	}
 
 	if val, ok := settings["timer_storage_routine_count"]; ok {
@@ -240,10 +245,22 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.TimerStorageChanSize = 10 * 1000
 	}
 
+	if val, ok := settings["timer_queue_mem_cap"]; ok {
+		p.handlerConfig.TimerQueueMemCap = uint64(val.(float64)) * 1024 * 1024
+	} else {
+		p.handlerConfig.TimerQueueMemCap = uint64(p.consumerMemQuota())
+	}
+
+	if val, ok := settings["timer_queue_size"]; ok {
+		p.handlerConfig.TimerQueueSize = uint64(val.(float64))
+	} else {
+		p.handlerConfig.TimerQueueSize = 10000
+	}
+
 	if val, ok := settings["undeploy_routine_count"]; ok {
 		p.handlerConfig.UndeployRoutineCount = int(val.(float64))
 	} else {
-		p.handlerConfig.UndeployRoutineCount = 6
+		p.handlerConfig.UndeployRoutineCount = util.CPUCount(true)
 	}
 
 	// Process related configuration
@@ -327,7 +344,13 @@ func (p *Producer) parseDepcfg() error {
 
 	p.app.Settings = settings
 
-	logLevel := settings["log_level"].(string)
+	var logLevel string
+	if val, ok := settings["log_level"]; ok {
+		logLevel = val.(string)
+	} else {
+		logLevel = "INFO"
+	}
+
 	logging.SetLogLevel(util.GetLogLevel(logLevel))
 
 	logging.Infof("%s [%s] Loaded function => wc: %v bucket: %v statsTickD: %v",
@@ -351,9 +374,16 @@ func (p *Producer) parseDepcfg() error {
 func (p *Producer) consumerMemQuota() int64 {
 	wc := int64(p.handlerConfig.WorkerCount)
 	if wc > 0 {
-		// Divided by 2 because it's accounting for just 2 queues for each worker:
+		// Accounting for memory usage by following queues:
 		// (a) dcp feed queue
 		// (b) timer_feedback_queue + main_queue on eventing-consumer
+		// (c) create timer queue
+		// (d) timer store queues for thread pool
+		// (e) fire timer queue
+
+		if p.app.UsingTimer {
+			return (p.MemoryQuota / (wc * 5)) * 1024 * 1024
+		}
 		return (p.MemoryQuota / (wc * 2)) * 1024 * 1024
 	}
 	return 1024 * 1024 * 1024

@@ -332,7 +332,7 @@ Utils::~Utils() {
 }
 
 v8::Local<v8::Value>
-Utils::GetMethodFromGlobal(const std::string &method_name) {
+Utils::GetPropertyFromGlobal(const std::string &method_name) {
   v8::EscapableHandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
@@ -348,8 +348,8 @@ Utils::GetMethodFromGlobal(const std::string &method_name) {
 }
 
 v8::Local<v8::Value>
-Utils::GetMethodFromObject(const v8::Local<v8::Value> &obj_v8val,
-                           const std::string &method_name) {
+Utils::GetPropertyFromObject(const v8::Local<v8::Value> &obj_v8val,
+                             const std::string &method_name) {
   v8::EscapableHandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
@@ -402,7 +402,7 @@ bool Utils::IsFuncGlobal(const v8::Local<v8::Value> &func) {
     return false;
   }
 
-  auto global_func_val = GetMethodFromGlobal(func_name);
+  auto global_func_val = GetPropertyFromGlobal(func_name);
   auto global_func = global_func_val.As<v8::Function>();
   if (global_func->IsUndefined()) {
     auto message = func_name + " is not accessible from global scope";

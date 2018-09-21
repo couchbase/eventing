@@ -3,10 +3,12 @@
 
 #include "v8-inspector.h"
 #include "v8.h"
+#include <functional>
 #include <memory>
+#include <stddef.h>
 #include <string>
 
-#include <stddef.h>
+using PostURLCallback = std::function<void(const std::string &url)>;
 
 namespace inspector {
 
@@ -25,7 +27,8 @@ class CBInspectorClient;
 
 class Agent {
 public:
-  Agent(std::string host_name, std::string file_path, int port);
+  Agent(std::string host_name, std::string file_path, int port,
+        PostURLCallback on_connect);
   ~Agent();
 
   // Create client_, may create io_ if option enabled
@@ -68,6 +71,7 @@ public:
 private:
   std::unique_ptr<CBInspectorClient> client_;
   std::unique_ptr<InspectorIo> io_;
+  PostURLCallback on_connect_;
   Platform *platform_;
   Isolate *isolate_;
   bool enabled_;

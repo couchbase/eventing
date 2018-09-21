@@ -82,6 +82,7 @@ type statusCodes struct {
 	errUUIDGen             statusBase
 	errAppDelete           statusBase
 	errDebuggerDisabled    statusBase
+	errMixedMode           statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -164,6 +165,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusBadRequest
 	case m.statusCodes.errDebuggerDisabled.Code:
 		return http.StatusInternalServerError
+	case m.statusCodes.errMixedMode.Code:
+		return http.StatusInternalServerError
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -212,6 +215,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errUUIDGen:             statusBase{"ERR_UUID_GEN_FAILED", 43},
 		errAppDelete:           statusBase{"ERR_APP_DELETE_NOT_ALLOWED", 44},
 		errDebuggerDisabled:    statusBase{"ERR_DEBUGGER_DISABLED", 45},
+		errMixedMode:           statusBase{"ERR_MIXED_MODE", 46},
 	}
 
 	errors := []errorPayload{
@@ -386,7 +390,7 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errRebOngoing.Name,
 			Code:        m.statusCodes.errRebOngoing.Code,
-			Description: "Rebalance ongoing on some/all Eventing nodes, creating new functions or changing settings for existing functions isn't allowed",
+			Description: "Rebalance ongoing on some/all Eventing nodes, creating new functions, deployment or undeployment of existing functions is not allowed",
 		},
 		{
 			Name:        m.statusCodes.errActiveEventingNodes.Name,
@@ -432,6 +436,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errDebuggerDisabled.Name,
 			Code:        m.statusCodes.errDebuggerDisabled.Code,
 			Description: "Unable to start debugger as it has been disabled",
+		},
+		{
+			Name:        m.statusCodes.errMixedMode.Name,
+			Code:        m.statusCodes.errMixedMode.Code,
+			Description: "Unable to start debugger in mixed mode cluster",
 		},
 	}
 

@@ -43,6 +43,15 @@ void ConnectionPool::AddResource() {
     Error(instance, "N1QL: Unable to create lcb handle", err);
   }
 
+  bool enableDetailedErrCodes = true;
+  err = lcb_cntl(instance, LCB_CNTL_SET, LCB_CNTL_DETAILED_ERRCODES,
+                 &enableDetailedErrCodes);
+  if (err != LCB_SUCCESS) {
+    LOG(logWarning) << "N1QL: Unable to set detailed error codes. Defaulting "
+                       "to normal error codes"
+                    << std::endl;
+  }
+
   auto auth = lcbauth_new();
   err = lcbauth_set_callbacks(auth, isolate_, GetUsernameCached,
                               GetPasswordCached);

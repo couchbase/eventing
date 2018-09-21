@@ -68,6 +68,8 @@ type Producer struct {
 	retryCount             int64
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
+	trapEvent              bool
+	debuggerToken          string
 	uuid                   string
 	workerSpawnCounter     uint64
 

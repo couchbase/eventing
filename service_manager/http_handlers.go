@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"runtime/trace"
 	"sort"
 	"strconv"
@@ -25,7 +27,7 @@ import (
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/google/flatbuffers/go"
 )
 
 func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
@@ -274,6 +276,28 @@ func (m *ServiceMgr) logFileLocation(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"log_dir":"%v"}`, c["eventing_dir"])
 }
 
+func (m *ServiceMgr) notifyDebuggerStart(appName string) (info *runtimeInfo) {
+	logPrefix := "ServiceMgr::notifyDebuggerStart"
+	info = &runtimeInfo{}
+
+	uuidGen, err := util.NewUUID()
+	if err != nil {
+		info.Code = m.statusCodes.errUUIDGen.Code
+		info.Info = fmt.Sprintf("Unable to initialize UUID generator, err: %v", err)
+		return
+	}
+
+	token := uuidGen.Str()
+	m.superSup.WriteDebuggerToken(appName, token)
+	logging.Infof("%s Function: %s notifying on debugger path %s",
+		logPrefix, appName, common.MetakvDebuggerPath+appName)
+	util.Retry(util.NewFixedBackoff(time.Second), nil,
+		metakvSetCallback, common.MetakvDebuggerPath+appName, []byte(token))
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::startDebugger"
 
@@ -308,7 +332,23 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m.superSup.SignalStartDebugger(appName)
+	var isMixedMode bool
+	if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if isMixedMode {
+		info.Code = m.statusCodes.errMixedMode.Code
+		info.Info = "Debugger can not be spawned in a mixed mode cluster"
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if info = m.notifyDebuggerStart(appName); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "Function: %s Started Debugger", appName)
 }
@@ -334,9 +374,28 @@ func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	respString := fmt.Sprintf("Function: %s not deployed")
+	respString := fmt.Sprintf("Function: %s not deployed", appName)
 	fmt.Fprintf(w, respString)
 	logging.Infof("%s %s", logPrefix, respString)
+}
+
+func (m *ServiceMgr) writeDebuggerURLHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateLocalAuth(w, r) {
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+
+	appName := path.Base(r.URL.Path)
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		return
+	}
+
+	logging.Infof("Received Debugger URL: %s for Function: %s", string(data), appName)
+	m.superSup.WriteDebuggerURL(appName, string(data))
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 }
 
 func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Request) {
@@ -388,15 +447,17 @@ var getDeployedAppsCallback = func(args ...interface{}) error {
 	return nil
 }
 
-func (m *ServiceMgr) getAppList(w http.ResponseWriter, r *http.Request) (map[string]int, int, error) {
+func (m *ServiceMgr) getAppList() (map[string]int, int, *runtimeInfo) {
 	logPrefix := "ServiceMgr::getAppList"
+	info := &runtimeInfo{}
 
 	nodeAddrs, err := m.getActiveNodeAddrs()
 	if err != nil {
 		logging.Warnf("%s failed to fetch active Eventing nodes, err: %v", logPrefix, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errActiveEventingNodes.Code))
-		fmt.Fprintf(w, "")
-		return nil, 0, err
+
+		info.Code = m.statusCodes.errActiveEventingNodes.Code
+		info.Info = fmt.Sprintf("Unable to fetch active Eventing nodes, err: %v", err)
+		return nil, 0, info
 	}
 
 	aggDeployedApps := make(map[string]map[string]string)
@@ -415,13 +476,12 @@ func (m *ServiceMgr) getAppList(w http.ResponseWriter, r *http.Request) (map[str
 
 	numEventingNodes := len(nodeAddrs)
 	if numEventingNodes == 0 {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errNoEventingNodes.Code))
-		logging.Warnf("%s no eventing nodes found in cluster", logPrefix)
-		fmt.Fprintf(w, "")
-		return nil, 0, err
+		info.Code = m.statusCodes.errNoEventingNodes.Code
+		return nil, 0, info
 	}
 
-	return appDeployedNodesCounter, numEventingNodes, nil
+	info.Code = m.statusCodes.ok.Code
+	return appDeployedNodesCounter, numEventingNodes, info
 }
 
 // Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
@@ -434,8 +494,9 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListDeployed, r, nil)
 
-	appDeployedNodesCounter, numEventingNodes, err := m.getAppList(w, r)
-	if err != nil {
+	appDeployedNodesCounter, numEventingNodes, info := m.getAppList()
+	if info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
 		return
 	}
 
@@ -449,8 +510,10 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 	data, err := json.Marshal(deployedApps)
 	if err != nil {
 		logging.Errorf("%s failed to marshal list of deployed apps, err: %v", logPrefix, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, "")
+
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("Unable to marshall response, err: %v", err)
+		m.sendErrorInfo(w, info)
 		return
 	}
 
@@ -469,8 +532,9 @@ func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListRunning, r, nil)
 
-	appDeployedNodesCounter, numEventingNodes, err := m.getAppList(w, r)
-	if err != nil {
+	appDeployedNodesCounter, numEventingNodes, info := m.getAppList()
+	if info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
 		return
 	}
 
@@ -484,8 +548,10 @@ func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
 	data, err := json.Marshal(runningApps)
 	if err != nil {
 		logging.Errorf("%s failed to marshal list of running apps, err: %v", logPrefix, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, "")
+
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("Unable to marshal response, err: %v", err)
+		m.sendErrorInfo(w, info)
 		return
 	}
 
@@ -836,7 +902,6 @@ func (m *ServiceMgr) getSettings(appName string) (*map[string]interface{}, *runt
 	logPrefix := "ServiceMgr::getSettings"
 
 	logging.Infof("%s Function: %s fetching settings", logPrefix, appName)
-
 	app, status := m.getTempStore(appName)
 	if status.Code != m.statusCodes.ok.Code {
 		return nil, status
@@ -863,6 +928,17 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		info.Info = fmt.Sprintf("Function: %s failed to unmarshal setting supplied, err: %v", appName, err)
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
+	}
+
+	_, procStatExists := settings["processing_status"]
+	_, depStatExists := settings["deployment_status"]
+
+	if procStatExists || depStatExists {
+		if lifeCycleOpsInfo := m.checkLifeCycleOpsDuringRebalance(); lifeCycleOpsInfo.Code != m.statusCodes.ok.Code {
+			info.Code = lifeCycleOpsInfo.Code
+			info.Info = lifeCycleOpsInfo.Info
+			return
+		}
 	}
 
 	// Get the app from temp store and update its settings with those provided
@@ -1231,7 +1307,7 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 	if rebStatus {
 		logging.Warnf("%s Rebalance ongoing on some/all Eventing nodes", logPrefix)
 		info.Code = m.statusCodes.errRebOngoing.Code
-		info.Info = "Rebalance ongoing on some/all Eventing nodes, creating new functions or changing settings for existing functions isn't allowed"
+		info.Info = "Rebalance ongoing on some/all Eventing nodes, creating new functions, deployment or undeployment of existing functions is not allowed"
 		return
 	}
 
@@ -1298,6 +1374,12 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 
 	info = &runtimeInfo{}
 	logging.Infof("%s Function: %s saving to primary store", logPrefix, app.Name)
+
+	if lifeCycleOpsInfo := m.checkLifeCycleOpsDuringRebalance(); lifeCycleOpsInfo.Code != m.statusCodes.ok.Code {
+		info.Code = lifeCycleOpsInfo.Code
+		info.Info = lifeCycleOpsInfo.Info
+		return
+	}
 
 	if m.checkIfDeployed(app.Name) {
 		info.Code = m.statusCodes.errAppDeployed.Code
@@ -1949,6 +2031,81 @@ func (m *ServiceMgr) notifyRetryToAllProducers(appName string, r *retry) (info *
 	return
 }
 
+func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		return
+	}
+
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	audit.Log(auditevent.ListDeployed, r, nil)
+	response, info := m.statusHandlerImpl()
+	if info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	data, err := json.Marshal(response)
+	if err != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("Unable to marshal response, err: %v", err)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", string(data))
+}
+
+func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runtimeInfo) {
+	appDeployedNodesCounter, numEventingNodes, info := m.getAppList()
+	if info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	response.NumEventingNodes = numEventingNodes
+	for _, app := range m.getTempStoreAll() {
+		status := appStatus{
+			Name:             app.Name,
+			DeploymentStatus: app.Settings["deployment_status"].(bool),
+			ProcessingStatus: app.Settings["processing_status"].(bool),
+		}
+		if num, exists := appDeployedNodesCounter[app.Name]; exists {
+			status.NumDeployedNodes = num
+		}
+		status.CompositeStatus = determineStatus(status, numEventingNodes)
+		response.Apps = append(response.Apps, status)
+	}
+	return
+}
+
+func determineStatus(status appStatus, numEventingNodes int) string {
+	logPrefix := "determineStatus"
+
+	if status.DeploymentStatus && status.ProcessingStatus {
+		if status.NumDeployedNodes == numEventingNodes {
+			return "deployed"
+		}
+		return "deploying"
+	}
+
+	if !status.DeploymentStatus && !status.ProcessingStatus {
+		if status.NumDeployedNodes == 0 {
+			return "undeployed"
+		}
+		return "undeploying"
+	}
+
+	logging.Errorf("%s Function: %s inconsistent deployment state %v",
+		logPrefix, status.Name, status)
+	return "invalid"
+}
+
 func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
@@ -2059,6 +2216,11 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 
 				stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
 				stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
+				spanBlobDump, err := m.superSup.SpanBlobDump(app.Name)
+				if err == nil {
+					stats.SpanBlobDump = spanBlobDump
+				}
+
 				stats.VbDcpEventsRemaining = m.superSup.VbDcpEventsRemainingToProcess(app.Name)
 				debugStats, err := m.superSup.TimerDebugStats(app.Name)
 				if err == nil {
@@ -2180,7 +2342,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			infoList = append(infoList, info)
 			continue
 		}
-		logging.Infof("%s FUnction: %s HandlerUUID generated: %d", logPrefix, app.Name, app.HandlerUUID)
+		logging.Infof("%s Function: %s HandlerUUID generated: %d", logPrefix, app.Name, app.HandlerUUID)
 
 		infoPri := m.savePrimaryStore(app)
 		if infoPri.Code != m.statusCodes.ok.Code {
@@ -2219,7 +2381,7 @@ func (m *ServiceMgr) getCpuCount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%v\n", runtime.NumCPU())
+	fmt.Fprintf(w, "%v\n", util.CPUCount(false))
 }
 
 func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
@@ -2239,7 +2401,8 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 
 	apps := m.getTempStoreAll()
 	for _, app := range apps {
-		if app.Settings["deployment_status"].(bool) != true {
+		deployed, ok := app.Settings["deployment_status"].(bool)
+		if !ok || !deployed {
 			continue
 		}
 		if val, ok := app.Settings["worker_count"].(float64); ok {
@@ -2252,6 +2415,33 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "%v\n", count)
+}
+
+func (m *ServiceMgr) isMixedModeCluster() (bool, *runtimeInfo) {
+	info := &runtimeInfo{}
+
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
+	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	if err != nil {
+		info.Code = m.statusCodes.errConnectNsServer.Code
+		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
+		return false, info
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	nodes := clusterInfo.GetActiveEventingNodes()
+	if len(nodes) == 0 {
+		return false, info
+	}
+
+	first := nodes[0]
+	for _, node := range nodes {
+		if first.Version != node.Version {
+			return true, info
+		}
+	}
+
+	return false, info
 }
 
 type version struct {
@@ -2298,4 +2488,34 @@ func (m *ServiceMgr) checkVersionCompat(required string, info *runtimeInfo) {
 
 	logging.Infof("%s Function need %v satisfied by cluster %v", logPrefix, have, need)
 	info.Code = m.statusCodes.ok.Code
+}
+
+func (m *ServiceMgr) triggerGC(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::triggerGC"
+
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		return
+	}
+
+	logging.Infof("%s Triggering GC", logPrefix)
+	runtime.GC()
+	logging.Infof("%s Finished GC run", logPrefix)
+}
+
+func (m *ServiceMgr) freeOSMemory(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::freeOSMemory"
+
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		return
+	}
+
+	logging.Infof("%s Freeing up memory to OS", logPrefix)
+	debug.FreeOSMemory()
+	logging.Infof("%s Freed up memory to OS", logPrefix)
 }

@@ -207,12 +207,15 @@ CURLResponse CURLClient::HTTPPost(const std::vector<std::string> &header_list,
 
 Communicator::Communicator(const std::string &host_ip,
                            const std::string &host_port, const std::string &usr,
-                           const std::string &key, bool ssl) {
+                           const std::string &key, bool ssl,
+                           const std::string &app_name)
+    : app_name_(app_name) {
   std::string base_url = (ssl ? "https://" : "http://") +
                          JoinHostPort(Localhost(false), host_port);
   parse_query_url_ = base_url + "/parseQuery";
   get_creds_url_ = base_url + "/getCreds";
   get_named_params_url_ = base_url + "/getNamedParams";
+  write_debugger_url_ = base_url + "/writeDebuggerURL";
   lo_usr_ = usr;
   lo_key_ = key;
 }
@@ -374,3 +377,14 @@ ParseInfo Communicator::ParseQuery(const std::string &query) {
 }
 
 void Communicator::Refresh() { creds_cache_.clear(); }
+
+void Communicator::WriteDebuggerURL(const std::string &url) {
+  auto response = curl_.HTTPPost({"Content-Type: text/plain"},
+                                 write_debugger_url_ + "/" + app_name_, url,
+                                 lo_usr_, lo_key_);
+  int status = std::stoi(response.headers["Status"]);
+  if (status != 0) {
+    LOG(logError) << "Unable to write debugger URL: non-zero status in header"
+                  << status << std::endl;
+  }
+}

@@ -135,7 +135,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       handler_uuid_(handler_uuid), user_prefix_(user_prefix) {
   curl_timeout = h_config->curl_timeout;
   histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
-
+  thread_exit_cond_.store(false);
   for (int i = 0; i < NUM_VBUCKETS; i++) {
     vb_seq_[i] = atomic_ptr_t(new std::atomic<int64_t>(0));
   }
@@ -193,7 +193,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   auto key = GetLocalKey();
   data_.comm = new Communicator(server_settings->host_addr, port, key.first,
-                                key.second, ssl);
+                                key.second, ssl, app_name_);
 
   data_.transpiler =
       new Transpiler(isolate_, GetTranspilerSrc(), h_config->handler_headers,
@@ -210,6 +210,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   execute_flag_ = false;
   shutdown_terminator_ = false;
   max_task_duration_ = SECS_TO_NS * h_config->execution_timeout;
+  timer_context_size = h_config->timer_context_size;
 
   if (!h_config->skip_lcb_bootstrap) {
     for (auto it = config->component_configs.begin();
@@ -241,6 +242,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
                << " curl_timeout: " << curl_timeout
+               << " timer_context_size: " << h_config->timer_context_size
                << " version: " << EventingVer() << std::endl;
 
   connstr_ = "couchbase://" + settings_->kv_host_port + "/" +
@@ -354,19 +356,17 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::Context::Scope context_scope(context);
 
   auto uniline_info = transpiler->UniLineN1QL(script_to_execute);
-  LOG(logInfo) << "code after Unilining N1QL: " << RM(uniline_info.handler_code)
-               << std::endl;
+  LOG(logTrace) << "code after Unilining N1QL: "
+                << RM(uniline_info.handler_code) << std::endl;
   if (uniline_info.code != kOK) {
-    LOG(logError) << "failed to uniline N1QL: " << RM(uniline_info.code)
-                  << std::endl;
+    LOG(logError) << "failed to uniline N1QL" << std::endl;
     return uniline_info.code;
   }
 
   auto jsify_info = Jsify(script_to_execute);
-  LOG(logInfo) << "jsified code: " << RM(jsify_info.handler_code) << std::endl;
+  LOG(logTrace) << "jsified code: " << RM(jsify_info.handler_code) << std::endl;
   if (jsify_info.code != kOK) {
-    LOG(logError) << "failed to jsify: " << RM(jsify_info.handler_code)
-                  << std::endl;
+    LOG(logError) << "failed to jsify" << std::endl;
     return jsify_info.code;
   }
 
@@ -441,8 +441,11 @@ void V8Worker::RouteMessage() {
   const flatbuf::payload::Payload *payload;
   std::string val, context, callback;
 
-  while (true) {
-    auto msg = worker_queue_->Pop();
+  while (!thread_exit_cond_.load()) {
+    worker_msg_t msg;
+    if (!worker_queue_->Pop(msg)) {
+      continue;
+    }
     payload = flatbuf::payload::GetPayload(
         (const void *)msg.payload->payload.c_str());
 
@@ -612,7 +615,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
   }
 
   if (try_catch.HasCaught()) {
-    LOG(logError) << "OnUpdate Exception: "
+    LOG(logDebug) << "OnUpdate Exception: "
                   << ExceptionString(isolate_, &try_catch) << std::endl;
   }
 
@@ -635,7 +638,7 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
   on_doc_update->Call(context->Global(), 2, args);
   execute_flag_ = false;
   if (try_catch.HasCaught()) {
-    LOG(logError) << "OnUpdate Exception: "
+    LOG(logDebug) << "OnUpdate Exception: "
                   << ExceptionString(isolate_, &try_catch) << std::endl;
     UpdateHistogram(start_time);
     on_update_failure++;
@@ -696,7 +699,7 @@ int V8Worker::SendDelete(std::string meta, int vb_no, int64_t seq_no) {
   on_doc_delete->Call(context->Global(), 1, args);
   execute_flag_ = false;
   if (try_catch.HasCaught()) {
-    LOG(logError) << "OnDelete Exception: "
+    LOG(logDebug) << "OnDelete Exception: "
                   << ExceptionString(isolate_, &try_catch) << std::endl;
     UpdateHistogram(start_time);
     on_delete_failure++;
@@ -733,7 +736,7 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
   }
 
   auto utils = UnwrapData(isolate_)->utils;
-  auto callback_func_val = utils->GetMethodFromGlobal(callback);
+  auto callback_func_val = utils->GetPropertyFromGlobal(callback);
   auto callback_func = callback_func_val.As<v8::Function>();
 
   if (debugger_started_) {
@@ -771,9 +774,15 @@ void V8Worker::StartDebugger() {
 
   LOG(logInfo) << "Starting debugger on port: " << RS(port) << std::endl;
   debugger_started_ = true;
-  agent_ = new inspector::Agent(
-      settings_->host_addr,
-      settings_->eventing_dir + "/" + app_name_ + "_frontend.url", port);
+  auto on_connect = [this](const std::string &url) -> void {
+    auto comm = UnwrapData(isolate_)->comm;
+    comm->WriteDebuggerURL(url);
+  };
+
+  agent_ = new inspector::Agent(settings_->host_addr,
+                                settings_->eventing_dir + "/" + app_name_ +
+                                    "_frontend.url",
+                                port, on_connect);
 }
 
 void V8Worker::StopDebugger() {
@@ -885,7 +894,9 @@ void V8Worker::GetTimerMessages(std::vector<uv_buf_t> &messages,
       std::min(timer_queue_->Count(), static_cast<int64_t>(window_size));
 
   for (int64_t idx = 0; idx < timer_count; ++idx) {
-    auto timer_msg = timer_queue_->Pop();
+    timer_msg_t timer_msg;
+    if (!timer_queue_->Pop(timer_msg))
+      break;
     auto curr_messages =
         BuildResponse(timer_msg.timer_entry, mTimer_Response, timerResponse);
     for (auto &msg : curr_messages) {
@@ -1014,4 +1025,10 @@ int64_t V8Worker::GetBucketopsSeqno(int vb_no) {
   vb_seq_[vb_no]->store(0, std::memory_order_seq_cst);
   std::lock_guard<std::mutex> lock(bucketops_lock_);
   return processed_bucketops_[vb_no];
+}
+
+void V8Worker::SetThreadExitFlag() {
+  thread_exit_cond_.store(true);
+  timer_queue_->Close();
+  worker_queue_->Close();
 }

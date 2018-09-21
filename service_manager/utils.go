@@ -50,6 +50,7 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "poll_bucket_interval", float64(10))
 	fillMissingDefault(settings, "sock_batch_size", float64(100))
 	fillMissingDefault(settings, "tick_duration", float64(60000))
+	fillMissingDefault(settings, "timer_context_size", float64(1024))
 	fillMissingDefault(settings, "undeploy_routine_count", float64(6))
 	fillMissingDefault(settings, "worker_count", float64(3))
 	fillMissingDefault(settings, "worker_feedback_queue_cap", float64(500))
@@ -61,6 +62,8 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "execute_timer_routine_count", float64(3))
 	fillMissingDefault(settings, "timer_storage_routine_count", float64(3))
 	fillMissingDefault(settings, "timer_storage_chan_size", float64(10*1000))
+	fillMissingDefault(settings, "timer_queue_mem_cap", float64(50))
+	fillMissingDefault(settings, "timer_queue_size", float64(10000))
 
 	// Process related configuration
 	fillMissingDefault(settings, "breakpad_on", true)
@@ -209,6 +212,39 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) (a
 	if err != nil {
 		info.Code = m.statusCodes.errUnmarshalPld.Code
 		info.Info = fmt.Sprintf("Failed to unmarshal payload err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) checkLifeCycleOpsDuringRebalance() (info *runtimeInfo) {
+	logPrefix := "ServiceMgr:enableLifeCycleOpsDuringRebalance"
+
+	info = &runtimeInfo{}
+	var lifeCycleOpsDuringReb bool
+
+	config, configInfo := m.getConfig()
+	if configInfo.Code != m.statusCodes.ok.Code {
+		lifeCycleOpsDuringReb = false
+	} else {
+		if enableVal, exists := config["enable_lifecycle_ops_during_rebalance"]; !exists {
+			lifeCycleOpsDuringReb = false
+		} else {
+			enable, ok := enableVal.(bool)
+			if !ok {
+				logging.Infof("%s [%d] Supplied enable_lifecycle_ops_during_rebalance value unexpected. Defaulting to false", logPrefix)
+				enable = false
+			}
+			lifeCycleOpsDuringReb = enable
+		}
+	}
+
+	if rebStatus := m.checkRebalanceStatus(); !lifeCycleOpsDuringReb && rebStatus.Code != m.statusCodes.ok.Code {
+		info.Code = rebStatus.Code
+		info.Info = rebStatus.Info
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}

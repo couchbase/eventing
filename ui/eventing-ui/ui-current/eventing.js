@@ -27,21 +27,30 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     return;
                 }
 
-                ApplicationService.primaryStore.getDeployedApps()
+                ApplicationService.public.status()
                     .then(function(response) {
-                        for (var app of Object.keys(self.appList)) {
-                            if (app in response.data) {
-                                self.appList[app].uiState = 'healthy';
-                            } else {
-                                self.appList[app].uiState = 'warmup';
+                        response = response.data;
+                        var appList = new Set();
+                        for (var app of response.apps ? response.apps : []) {
+                            if (!(app.name in self.appList)) {
+                                console.error('Abnormal case : UI app list is stale');
+                                continue;
                             }
+
+                            appList.add(app.name);
+                            self.appList[app.name].status = app.composite_status;
+                        }
+                        for (var app of Object.keys(self.appList)) {
+                            if (!appList.has(app)) {
+                                self.appList[app].status = 'undeployed';
+                            }
+                            self.appList[app].uiState = determineUIStatus(self.appList[app].status);
                         }
 
                         setTimeout(deployedAppsTicker, 2000);
-                    })
-                    .catch(function(errResponse) {
+                    }).catch(function(errResponse) {
                         self.errorCode = errResponse && errResponse.status || 500;
-                        console.error('Unable to get deployed apps', errResponse);
+                        console.error('Unable to list apps');
                     });
 
                 ApplicationService.server.getWorkerCount()
@@ -68,18 +77,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             }
 
             deployedAppsTicker();
-
-            self.getAppUiProcessingState = function(app) {
-                if (app.getDeploymentStatus() === 'deployed') {
-                    if (self.appList[app.appname].uiState === 'healthy') {
-                        return 'running';
-                    } else {
-                        return 'bootstrapping';
-                    }
-                } else {
-                    return 'paused';
-                }
-            };
 
             self.isAppListEmpty = function() {
                 return Object.keys(self.appList).length === 0;
@@ -198,9 +195,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             }
                         }
                         if (warnings == null) {
-                            ApplicationService.server.showSuccessAlert(`${app.appname} deployed successfully!`);
+                            ApplicationService.server.showSuccessAlert(`${app.appname} will be deployed`);
                         } else {
-                            ApplicationService.server.showSuccessAlert(`${app.appname} deployed with warnings.`);
+                            ApplicationService.server.showSuccessAlert(`${app.appname} will be deployed with warnings.`);
                         }
                     })
                     .catch(function(errResponse) {
@@ -248,7 +245,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         console.log(response.data);
                         app.settings.deployment_status = false;
                         app.settings.processing_status = false;
-                        ApplicationService.server.showSuccessAlert(`${app.appname} undeployed successfully!`);
+                        ApplicationService.server.showSuccessAlert(`${app.appname} will be undeployed`);
                     })
                     .catch(function(errResponse) {
                         console.error(errResponse);
@@ -394,8 +391,25 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 createApp(scope);
             };
 
+            self.showEventingSettings = function() {
+                $uibModal.open({
+                        templateUrl: '../_p/ui/event/ui-current/fragments/eventing-settings.html',
+                        controller: 'EventingSettingsCtrl',
+                        controllerAs: 'ctrl',
+                        resolve: {
+                            config: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.public.getConfig();
+                                }
+                            ]
+                        }
+                    }).result
+                    .catch(function(errResponse) {
+                        console.error(errResponse);
+                    });
+            };
+
             // Callback for importing application.
-            // BUG : Sometimes the continue button must be pressed twice.
             self.importConfig = function() {
                 function handleFileSelect() {
                     var reader = new FileReader();
@@ -431,6 +445,20 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 loadConfigElement.value = null;
                 loadConfigElement.addEventListener('change', handleFileSelect, false);
                 loadConfigElement.click();
+            };
+        }
+    ])
+    .controller('EventingSettingsCtrl', ['$scope', 'ApplicationService', 'config',
+        function($scope, ApplicationService, config) {
+            var self = this;
+            config = config.data;
+            self.enableDebugger = config.enable_debugger;
+
+            self.saveSettings = function(closeDialog) {
+                ApplicationService.public.updateConfig({
+                    enable_debugger: self.enableDebugger
+                });
+                closeDialog('ok');
             };
         }
     ])
@@ -696,7 +724,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     })
                     .then(function(response) {
                         if (!response.data.enable_debugger) {
-                            ApplicationService.server.showErrorAlert('Unable to start debugger as it is disabled. Please enable it under cluster settings');
+                            ApplicationService.server.showErrorAlert('Unable to start debugger as it is disabled. Please enable it under Eventing Settings');
                             return;
                         }
 
@@ -847,6 +875,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     }
                 },
                 public: {
+                    status: function() {
+                        return $http.get('/_p/event/api/v1/status');
+                    },
                     updateSettings: function(appModel) {
                         return $http({
                             url: `/_p/event/api/v1/functions/${appModel.appname}/settings`,
@@ -892,6 +923,19 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     },
                     getConfig: function() {
                         return $http.get('/_p/event/api/v1/config');
+                    },
+                    updateConfig: function(data) {
+                        return $http({
+                            url: '/_p/event/api/v1/config',
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: data
+                        });
                     }
                 },
                 tempStore: {

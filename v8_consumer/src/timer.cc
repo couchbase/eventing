@@ -14,6 +14,8 @@
 #include "utils.h"
 #include "v8worker.h"
 
+std::atomic<int64_t> timer_context_size_exceeded_counter = {0};
+
 Timer::Timer(v8::Isolate *isolate, const v8::Local<v8::Context> &context)
     : isolate_(isolate) {
   context_.Reset(isolate_, context);
@@ -26,7 +28,7 @@ EpochInfo Timer::Epoch(const v8::Local<v8::Value> &date_val) {
   v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
-  auto get_time_val = utils->GetMethodFromObject(date_val, "getTime");
+  auto get_time_val = utils->GetPropertyFromObject(date_val, "getTime");
   auto get_time_func = get_time_val.As<v8::Function>();
 
   v8::Local<v8::Value> seconds_v8val;
@@ -71,6 +73,14 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_info.callback = utils->GetFunctionName(args[0]);
   timer_info.reference = utils->ToCPPString(args[2]);
   timer_info.context = JSONStringify(isolate_, args[3]);
+
+  if (timer_info.context.size() > timer_context_size) {
+    js_exception->Throw(
+        "The context payload size is more than the configured size:" +
+        std::to_string(timer_context_size) + " bytes");
+    timer_context_size_exceeded_counter++;
+    return false;
+  }
 
   timer_msg_t msg;
   msg.timer_entry = timer_info.ToJSON(isolate_, context);

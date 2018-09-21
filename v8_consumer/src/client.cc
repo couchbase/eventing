@@ -24,6 +24,7 @@ std::atomic<int64_t> e_v8_worker_lost = {0};
 std::atomic<int64_t> delete_events_lost = {0};
 std::atomic<int64_t> timer_events_lost = {0};
 std::atomic<int64_t> mutation_events_lost = {0};
+extern std::atomic<int64_t> timer_context_size_exceeded_counter;
 
 std::atomic<int64_t> uv_try_write_failure_counter = {0};
 
@@ -62,17 +63,19 @@ std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
 
   bool ok = header->Verify(verifier);
 
-  std::unique_ptr<header_t> parsed_header(new header_t);
-
   if (ok) {
+    std::unique_ptr<header_t> parsed_header(new header_t);
+
     parsed_header->event = header->event();
     parsed_header->opcode = header->opcode();
     parsed_header->partition = header->partition();
 
     parsed_header->metadata = header->metadata()->str();
+
+    return parsed_header;
   }
 
-  return parsed_header;
+  return nullptr;
 }
 
 std::unique_ptr<message_t> ParseServerMessage(int encoded_header_size,
@@ -425,10 +428,12 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
       handler_config->app_name.assign(payload->app_name()->str());
       handler_config->curl_timeout = long(payload->curl_timeout());
+      handler_config->timer_context_size = payload->timer_context_size();
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
       handler_config->skip_lcb_bootstrap = payload->skip_lcb_bootstrap();
+      handler_config->timer_context_size = payload->timer_context_size();
       handler_config->handler_headers =
           ToStringArray(payload->handler_headers());
       handler_config->handler_footers =
@@ -448,7 +453,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
       LOG(logDebug) << "Loading app:" << app_name_ << std::endl;
 
-      v8::V8::InitializeICU();
+      v8::V8::InitializeICUDefaultLocation("");
       platform = v8::platform::CreateDefaultPlatform();
       v8::V8::InitializePlatform(platform);
       v8::V8::Initialize();
@@ -531,6 +536,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       fstats << R"("timer_events_lost": )" << e_timer_lost << ",";
       fstats << R"("debugger_events_lost": )" << e_debugger_lost << ",";
       fstats << R"("mutation_events_lost": )" << mutation_events_lost << ",";
+      fstats << R"("timer_context_size_exceeded_counter": )"
+             << timer_context_size_exceeded_counter << ",";
       fstats << R"("delete_events_lost": )" << delete_events_lost << ",";
       fstats << R"("timer_events_lost": )" << timer_events_lost << ",";
       fstats << R"("timestamp" : ")" << GetTimestampNow() << R"(")";
@@ -672,23 +679,44 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     }
     break;
   case eFilter:
-    worker_index = partition_thr_map_[parsed_header->partition];
-    if (workers_[worker_index] != nullptr) {
-      workers_[worker_index]->UpdateVbFilter(parsed_header->metadata);
-      LOG(logInfo) << "Received filter event from Go "
-                   << parsed_header->metadata << std::endl;
-      int vb_no = 0;
-      int64_t seq_no = 0;
-      if (kSuccess == workers_[worker_index]->ParseMetadata(
-                          parsed_header->metadata, vb_no, seq_no)) {
-        auto bucketops_seqno = workers_[worker_index]->GetBucketopsSeqno(vb_no);
-        SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno);
+    switch (getFilterOpcode(parsed_header->opcode)) {
+    case oVbFilter:
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
+        workers_[worker_index]->UpdateVbFilter(parsed_header->metadata);
+        LOG(logInfo) << "Received filter event from Go "
+                     << parsed_header->metadata << std::endl;
+        int vb_no = 0;
+        int64_t seq_no = 0;
+        if (kSuccess == workers_[worker_index]->ParseMetadata(
+                            parsed_header->metadata, vb_no, seq_no)) {
+          auto bucketops_seqno =
+              workers_[worker_index]->GetBucketopsSeqno(vb_no);
+          SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno);
+        }
+      } else {
+        LOG(logError) << "Filter event lost: worker " << worker_index
+                      << " is null" << std::endl;
       }
-    } else {
-      LOG(logError) << "Filter event lost: worker " << worker_index
-                    << " is null" << std::endl;
+      break;
+    case oProcessedSeqNo:
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
+        LOG(logInfo) << "Received update processed seq_no event from Go "
+                     << parsed_header->metadata << std::endl;
+        int vb_no = 0;
+        int64_t seq_no = 0;
+        if (kSuccess == workers_[worker_index]->ParseMetadata(
+                            parsed_header->metadata, vb_no, seq_no)) {
+          workers_[worker_index]->UpdateBucketopsSeqno(vb_no, seq_no);
+        }
+      }
+      break;
+    default:
+      LOG(logError) << "Opcode " << getTimerOpcode(parsed_header->opcode)
+                    << "is not implemented for filtering" << std::endl;
+      break;
     }
-    break;
   case eTimer:
     switch (getTimerOpcode(parsed_header->opcode)) {
     case oTimer:
@@ -740,6 +768,12 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
           partition_thr_map_[p_id] = thread_id;
         }
       }
+      msg_priority_ = true;
+      break;
+    case oTimerContextSize:
+      timer_context_size = std::stol(parsed_header->metadata);
+      LOG(logInfo) << "Setting timer_context_size to " << timer_context_size
+                   << std::endl;
       msg_priority_ = true;
       break;
     default:
@@ -858,13 +892,19 @@ void AppWorker::WriteResponses() {
 void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
                                        std::vector<uv_buf_t> messages,
                                        size_t max_batch_size) {
-  size_t curr_idx = 0;
+  size_t curr_idx = 0, counter = 0;
   while (curr_idx < messages.size()) {
     size_t batch_size = std::min(max_batch_size, messages.size() - curr_idx);
     int bytes_written =
         uv_try_write(handle, messages.data() + curr_idx, batch_size);
     if (bytes_written < 0) {
       uv_try_write_failure_counter++;
+      counter++;
+      if (counter < 100) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10 * counter));
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+      }
     } else {
       int written = bytes_written;
       for (size_t idx = curr_idx; idx < messages.size(); idx++, curr_idx++) {
@@ -876,6 +916,7 @@ void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
           written -= messages[idx].len;
         }
       }
+      counter = 0;
     }
   }
 }
@@ -915,6 +956,10 @@ AppWorker::~AppWorker() {
     write_responses_thr_.join();
   }
 
+  for (auto &v8worker : workers_) {
+    delete v8worker.second;
+  }
+
   uv_loop_close(&feedback_loop_);
   uv_loop_close(&main_loop_);
 }
@@ -927,6 +972,11 @@ void AppWorker::ReadStdinLoop() {
       std::getline(std::cin, token);
     }
     worker->thread_exit_cond_.store(true);
+    for (auto &v8worker : worker->workers_) {
+      if (v8worker.second != nullptr) {
+        v8worker.second->SetThreadExitFlag();
+      }
+    }
     uv_async_send(async1);
     uv_async_send(async2);
   };
