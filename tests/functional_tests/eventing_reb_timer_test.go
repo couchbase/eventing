@@ -8,7 +8,7 @@ import (
 
 const (
 	tOpsPSec       = 3000
-	tItemCount     = 200 * 1000
+	tItemCount     = 50 * 1000
 	tHandlerName   = "timers_rebalance"
 	dtcHandlerName = "timers_creation_uuid"
 	dtfHandlerName = "timers_firing_uuid"
