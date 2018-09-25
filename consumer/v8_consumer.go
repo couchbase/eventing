@@ -16,6 +16,7 @@ import (
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
 )
@@ -363,6 +364,13 @@ func (c *Consumer) Stop() {
 
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
+
+	for vb := 0; vb < c.numVbuckets; vb++ {
+		store, found := timers.Fetch(c.producer.GetMetadataPrefix(), vb)
+		if found {
+			store.Free()
+		}
+	}
 
 	if c.gocbBucket != nil {
 		c.gocbBucket.Close()

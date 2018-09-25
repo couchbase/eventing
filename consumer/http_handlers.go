@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"errors"
+	"math/rand"
 
 	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
@@ -40,8 +41,10 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 	if !c.timerQueuesAreDrained && len(vbsRemainingToCloseStream) == 0 && c.usingTimer {
 		err := c.checkIfTimerQueuesAreDrained()
 		if err != nil {
-			progress.VbsRemainingToShuffle = 1
-			progress.CloseStreamVbsLen = 1
+			// Faking rebalance progress while timer queues are getting drained
+			vbsToMove := rand.Intn(5) + 1
+			progress.VbsRemainingToShuffle = vbsToMove
+			progress.CloseStreamVbsLen = vbsToMove
 			return progress
 		} else {
 			c.timerQueuesAreDrained = true
