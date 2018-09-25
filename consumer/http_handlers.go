@@ -5,6 +5,7 @@ import (
 
 	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -111,6 +112,11 @@ func (c *Consumer) checkIfTimerQueuesAreDrained() error {
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.fireTimerQueue.Count())
 			return errTimerQueueNotDrained
 		}
+
+		// All the timer queues are drained and the vb's have received STREAMEND
+		// It is not possible for new events to create timers
+		// Sync span timers for one last time before rebalancing out
+		timers.ForceSpanSync()
 
 		logging.Infof("%s [%s:%s:%d] TimerQueue: %d CreateTimerQueue: %d aggStorageQueue: %d aggQueue: %d fireTimerQueue: %d",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.DocTimerQueueSize,
