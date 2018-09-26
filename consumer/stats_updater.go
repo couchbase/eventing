@@ -18,6 +18,7 @@ func newVbProcessingStats(appName string, numVbuckets uint16, uuid, workerName s
 		vbsts[i].stats["dcp_stream_requested"] = false
 		vbsts[i].stats["dcp_stream_requested_worker"] = ""
 		vbsts[i].stats["dcp_stream_requested_node_uuid"] = ""
+		vbsts[i].stats["vb_filter_ack_received"] = true
 
 		vbsts[i].stats["plasma_last_seq_no_stored"] = uint64(0)
 		vbsts[i].stats["plasma_last_seq_no_persisted"] = uint64(0)

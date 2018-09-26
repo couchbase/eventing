@@ -2,9 +2,11 @@ package consumer
 
 import (
 	"errors"
+	"math/rand"
 
 	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -39,8 +41,10 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 	if !c.timerQueuesAreDrained && len(vbsRemainingToCloseStream) == 0 && c.usingTimer {
 		err := c.checkIfTimerQueuesAreDrained()
 		if err != nil {
-			progress.VbsRemainingToShuffle = 1
-			progress.CloseStreamVbsLen = 1
+			// Faking rebalance progress while timer queues are getting drained
+			vbsToMove := rand.Intn(5) + 1
+			progress.VbsRemainingToShuffle = vbsToMove
+			progress.CloseStreamVbsLen = vbsToMove
 			return progress
 		} else {
 			c.timerQueuesAreDrained = true
@@ -65,6 +69,20 @@ func (c *Consumer) checkIfTimerQueuesAreDrained() error {
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.NodeUUID(), c.ejectNodesUUIDs)
 
 	if util.Contains(c.NodeUUID(), c.ejectNodesUUIDs) {
+
+		vbsFilterAckYetToCome := c.getVbsFilterAckYetToCome()
+		if len(vbsFilterAckYetToCome) > 0 {
+			logging.Infof("%s [%s:%s:%d] vbsFilterAckYetToCome dump: %s len: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsFilterAckYetToCome), len(vbsFilterAckYetToCome))
+			return errTimerQueueNotDrained
+		}
+
+		if c.cppQueueSizes.AggQueueSize > 0 {
+			c.GetExecutionStats()
+			logging.Infof("%s [%s:%s:%d] AggQueueSize: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.AggQueueSize)
+			return errTimerQueueNotDrained
+		}
 
 		if c.cppQueueSizes.DocTimerQueueSize > 0 {
 			c.GetExecutionStats()
@@ -92,10 +110,20 @@ func (c *Consumer) checkIfTimerQueuesAreDrained() error {
 			return errTimerQueueNotDrained
 		}
 
-		logging.Infof("%s [%s:%s:%d] DocTimerQueueSize: %d CreateTimerQueue size: %d aggStorageQueueCount: %d",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(),
-			c.cppQueueSizes.DocTimerQueueSize, c.createTimerQueue.Count(), aggStorageQueueCount)
+		if c.fireTimerQueue.Count() > 0 {
+			logging.Infof("%s [%s:%s:%d] fireTimerQueue: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.fireTimerQueue.Count())
+			return errTimerQueueNotDrained
+		}
 
+		// All the timer queues are drained and the vb's have received STREAMEND
+		// It is not possible for new events to create timers
+		// Sync span timers for one last time before rebalancing out
+		timers.ForceSpanSync()
+
+		logging.Infof("%s [%s:%s:%d] TimerQueue: %d CreateTimerQueue: %d aggStorageQueue: %d aggQueue: %d fireTimerQueue: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.DocTimerQueueSize,
+			c.createTimerQueue.Count(), aggStorageQueueCount, c.cppQueueSizes.AggQueueSize, c.fireTimerQueue.Count())
 	}
 
 	return nil
