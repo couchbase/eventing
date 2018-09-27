@@ -101,7 +101,7 @@ func (c *Consumer) updateWorkerStats() {
 		select {
 		case <-c.updateStatsTicker.C:
 			if c.workerExited {
-				logging.Infof("%s [%s:%s:%d] Skipping sending worker stat opcode as worker exited",
+				logging.Debugf("%s [%s:%s:%d] Skipping sending worker stat opcode as worker exited",
 					logPrefix, c.workerName, c.tcpPort, c.Pid())
 				continue
 			}
