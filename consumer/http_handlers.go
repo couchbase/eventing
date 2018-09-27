@@ -46,9 +46,8 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 			progress.VbsRemainingToShuffle = vbsToMove
 			progress.CloseStreamVbsLen = vbsToMove
 			return progress
-		} else {
-			c.timerQueuesAreDrained = true
 		}
+		c.timerQueuesAreDrained = true
 	}
 
 	if len(vbsRemainingToCloseStream) == 0 && len(vbsRemainingToStreamReq) == 0 {
