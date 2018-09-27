@@ -180,36 +180,45 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
   lcb_create(&bucket_lcb_obj_, &crst);
 
   auto err =
-      lcb_cntl(bucket_lcb_obj_, LCB_CNTL_SET, LCB_CNTL_LOGGER, &evt_logger);
+      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, bucket_lcb_obj_,
+                            LCB_CNTL_SET, LCB_CNTL_LOGGER, &evt_logger);
   if (err != LCB_SUCCESS) {
     init_success = false;
-    LOG(logError) << "Bucket: Unable to set logger hooks" << std::endl;
+    LOG(logError) << "Bucket: Unable to set logger hooks, err: " << err
+                  << std::endl;
   }
 
   auto auth = lcbauth_new();
-  err = lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
+  err = RetryWithFixedBackoff(5, 200, IsRetriable, lcbauth_set_callbacks, auth,
+                              isolate_, GetUsername, GetPassword);
   if (err != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: Unable to set auth callbacks" << std::endl;
+    LOG(logError) << "Bucket: Unable to set auth callbacks, err: " << err
+                  << std::endl;
     init_success = false;
   }
 
-  err = lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
+  err = RetryWithFixedBackoff(5, 200, IsRetriable, lcbauth_set_mode, auth,
+                              LCBAUTH_MODE_DYNAMIC);
   if (err != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: Unable to set auth mode to dynamic" << std::endl;
+    LOG(logError) << "Bucket: Unable to set auth mode to dynamic, err: " << err
+                  << std::endl;
     init_success = false;
   }
 
   lcb_set_auth(bucket_lcb_obj_, auth);
 
-  err = lcb_connect(bucket_lcb_obj_);
+  err =
+      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_connect, bucket_lcb_obj_);
   if (err != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: Unable to connect to bucket" << std::endl;
+    LOG(logError) << "Bucket: Unable to connect to bucket, err: " << err
+                  << std::endl;
     init_success = false;
   }
 
-  err = lcb_wait(bucket_lcb_obj_);
+  err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, bucket_lcb_obj_);
   if (err != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: Unable to schedule call for connect" << std::endl;
+    LOG(logError) << "Bucket: Unable to schedule call for connect, err: " << err
+                  << std::endl;
     init_success = false;
   }
 
@@ -220,21 +229,22 @@ Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
   lcb_install_callback3(bucket_lcb_obj_, LCB_CALLBACK_REMOVE, del_callback);
 
   lcb_U32 lcb_timeout = 2500000; // 2.5s
-  err = lcb_cntl(bucket_lcb_obj_, LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT,
-                 &lcb_timeout);
+  err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, bucket_lcb_obj_,
+                              LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
   if (err != LCB_SUCCESS) {
     init_success = false;
-    LOG(logError) << "Bucket: Unable to set timeout for bucket ops"
-                  << std::endl;
+    LOG(logError) << "Bucket: Unable to set timeout for bucket ops, err: "
+                  << err << std::endl;
   }
 
   bool enableDetailedErrCodes = true;
-  err = lcb_cntl(bucket_lcb_obj_, LCB_CNTL_SET, LCB_CNTL_DETAILED_ERRCODES,
-                 &enableDetailedErrCodes);
+  err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, bucket_lcb_obj_,
+                              LCB_CNTL_SET, LCB_CNTL_DETAILED_ERRCODES,
+                              &enableDetailedErrCodes);
   if (err != LCB_SUCCESS) {
     LOG(logWarning) << "Bucket: Unable to set detailed error codes. Defaulting "
-                       "to normal error codes"
-                    << std::endl;
+                       "to normal error codes, err: "
+                    << err << std::endl;
   }
 
   if (init_success) {
