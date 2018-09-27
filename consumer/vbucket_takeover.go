@@ -519,6 +519,19 @@ func (c *Consumer) getVbRemainingToCloseStream() []uint16 {
 	return vbsRemainingToCloseStream
 }
 
+func (c *Consumer) getVbsFilterAckYetToCome() []uint16 {
+	var vbsFilterAckYetToCome []uint16
+
+	for vb := range c.vbProcessingStats {
+		if !c.vbProcessingStats.getVbStat(vb, "vb_filter_ack_received").(bool) {
+			vbsFilterAckYetToCome = append(vbsFilterAckYetToCome, vb)
+		}
+	}
+	sort.Sort(util.Uint16Slice(vbsFilterAckYetToCome))
+
+	return vbsFilterAckYetToCome
+}
+
 func (c *Consumer) verifyVbsCurrentlyOwned(vbsToMigrate []uint16) []uint16 {
 	var vbsCurrentlyOwned []uint16
 

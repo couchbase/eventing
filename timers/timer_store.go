@@ -319,6 +319,31 @@ func (r *TimerStore) Partition() int {
 	return r.partn
 }
 
+func ForceSpanSync() {
+	logPrefix := "timers::ForceSpanSync"
+	logging.Infof("%v Starting to force span sync", logPrefix)
+	dirty := make([]*TimerStore, 0)
+
+	stores.lock.RLock()
+	for _, store := range stores.entries {
+		if store.span.dirty {
+			dirty = append(dirty, store)
+		}
+	}
+	stores.lock.RUnlock()
+
+	for _, store := range dirty {
+		for {
+			if mismatch, _ := store.syncSpan(); !mismatch {
+				break
+			} else {
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+	}
+	logging.Infof("%v Finished forcing span sync", logPrefix)
+}
+
 func (r *TimerStore) ScanDue() *TimerIter {
 	span := r.readSpan()
 	now := roundDown(time.Now().Unix())
@@ -515,7 +540,7 @@ func (r *TimerStore) shrinkSpan(start int64) {
 	}
 }
 
-func (r *TimerStore) syncSpan() error {
+func (r *TimerStore) syncSpan() (bool, error) {
 	atomic.AddUint64(&r.stats.syncSpanCounter, 1)
 	logging.Tracef("%v syncSpan called", r.log)
 
@@ -529,7 +554,7 @@ func (r *TimerStore) syncSpan() error {
 
 	rcas, absent, err := kv.MustGet(r.bucket, pos, &extspan)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// Initial setup cases
@@ -542,23 +567,23 @@ func (r *TimerStore) syncSpan() error {
 		wcas, mismatch, err := kv.MustInsert(r.bucket, pos, r.span.Span, 0)
 		if err != nil || mismatch {
 			logging.Debugf("%v Error initializing span %+v: mismatch=%v err=%v", r.log, r.span, mismatch, err)
-			return err
+			return false, err
 		}
 		r.span.spanCas = wcas
 		r.span.empty = false
 		logging.Tracef("%v Span initialized as %+v", r.log, r.span)
-		return nil
+		return false, nil
 
 	// new, not persisted, but we have data locally
 	case absent && !r.span.empty:
 		wcas, mismatch, err := kv.MustInsert(r.bucket, pos, r.span.Span, 0)
 		if err != nil || mismatch {
 			logging.Debugf("%v Error initializing span %+v: mismatch=%v err=%v", r.log, r.span, mismatch, err)
-			return err
+			return false, err
 		}
 		r.span.spanCas = wcas
 		logging.Tracef("%v Span created as %+v", r.log, r.span)
-		return nil
+		return false, nil
 
 	// we have no data, but some data has been persisted earlier
 	case r.span.empty:
@@ -566,7 +591,7 @@ func (r *TimerStore) syncSpan() error {
 		r.span.Span = extspan
 		r.span.spanCas = rcas
 		logging.Tracef("%v Span read and initialized to %+v", r.log, r.span)
-		return nil
+		return false, nil
 	}
 
 	// Happy path cases
@@ -575,7 +600,7 @@ func (r *TimerStore) syncSpan() error {
 	// nothing has moved, either locally or in persisted version
 	case r.span.spanCas == rcas && r.span.Span == extspan:
 		logging.Tracef("%v Span no changes %+v", r.log, r.span)
-		return nil
+		return false, nil
 
 	// only internal changes, no conflict with persisted version
 	case r.span.spanCas == rcas:
@@ -583,10 +608,10 @@ func (r *TimerStore) syncSpan() error {
 		wcas, absent, mismatch, err := kv.MustReplace(r.bucket, pos, r.span.Span, rcas, 0)
 		if err != nil || absent || mismatch {
 			logging.Debugf("%v Overwriting span %+v failed: absent=%v mismatch=%v err=%v", r.log, r.span, absent, mismatch, err)
-			return err
+			return mismatch, err
 		}
 		r.span.spanCas = wcas
-		return nil
+		return false, nil
 	}
 
 	// Merge conflict
@@ -606,11 +631,11 @@ func (r *TimerStore) syncSpan() error {
 	wcas, absent, mismatch, err := kv.MustReplace(r.bucket, pos, r.span.Span, rcas, 0)
 	if err != nil || absent || mismatch {
 		logging.Debugf("%v Overwriting span %+v failed: absent=%v mismatch=%v err=%v", r.log, r.span, absent, mismatch, err)
-		return err
+		return mismatch, err
 	}
 	r.span.spanCas = wcas
 	logging.Tracef("%v Span was merged and saved successfully: %+v", r.log, r.span)
-	return nil
+	return false, nil
 }
 
 func (r *storeMap) syncRoutine() {
@@ -646,7 +671,7 @@ func newTimerStore(uid string, partn int, connstr string, bucket string) (*Timer
 		span:    storeSpan{empty: true, dirty: false},
 	}
 
-	err := timerstore.syncSpan()
+	_, err := timerstore.syncSpan()
 	if err != nil {
 		return nil, err
 	}
