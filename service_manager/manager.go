@@ -562,6 +562,10 @@ func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
 	var data []byte
 	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, metakvConfigKeepNodes, &data)
 
+	if len(data) == 0 {
+		return nodeAddrs, nil
+	}
+
 	var keepNodes []string
 	err = json.Unmarshal(data, &keepNodes)
 	if err != nil {

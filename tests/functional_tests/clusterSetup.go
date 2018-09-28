@@ -272,6 +272,10 @@ func waitForRebalanceFinish() {
 			}
 			for _, v := range tasks {
 				task := v.(map[string]interface{})
+				if task["errorMessage"] != nil {
+					log.Println(task["errorMessage"].(string))
+					return
+				}
 				if task["type"].(string) == "rebalance" && task["status"].(string) == "running" {
 					rebalanceRunning = true
 					log.Println("Rebalance progress:", task["progress"])
