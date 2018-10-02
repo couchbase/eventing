@@ -480,6 +480,7 @@ func (c *Consumer) sendMessageLoop() {
 		case <-c.socketWriteTicker.C:
 			if c.sendMsgCounter > 0 && c.conn != nil {
 				if atomic.LoadUint32(&c.isTerminateRunning) == 1 || c.stoppingConsumer {
+					c.socketWriteLoopStopAckCh <- struct{}{}
 					return
 				}
 
@@ -490,8 +491,9 @@ func (c *Consumer) sendMessageLoop() {
 					defer c.sendMsgBufferRWMutex.Unlock()
 
 					if c.conn == nil {
-						logging.Infof("%s [%s:%s:%d] connection socket closed, bailing out",
+						logging.Infof("%s [%s:%s:%d] stoppingConsumer: %t connection socket closed, bailing out",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer)
+						c.socketWriteLoopStopAckCh <- struct{}{}
 						return
 					}
 
@@ -501,6 +503,7 @@ func (c *Consumer) sendMessageLoop() {
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, err)
 
 						if atomic.LoadUint32(&c.isTerminateRunning) == 1 || c.stoppingConsumer {
+							c.socketWriteLoopStopAckCh <- struct{}{}
 							return
 						}
 
