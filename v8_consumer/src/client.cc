@@ -713,11 +713,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       }
       break;
     default:
-      LOG(logError) << "Opcode " << getFilterOpcode(parsed_header->opcode)
+      LOG(logError) << "Opcode " << getTimerOpcode(parsed_header->opcode)
                     << "is not implemented for filtering" << std::endl;
       break;
     }
-    break;
   case eTimer:
     switch (getTimerOpcode(parsed_header->opcode)) {
     case oTimer:
