@@ -276,7 +276,7 @@ func (m *ServiceMgr) logFileLocation(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"log_dir":"%v"}`, c["eventing_dir"])
 }
 
-func (m *ServiceMgr) notifyDebuggerStart(appName string) (info *runtimeInfo) {
+func (m *ServiceMgr) notifyDebuggerStart(appName string, hostnames []string) (info *runtimeInfo) {
 	logPrefix := "ServiceMgr::notifyDebuggerStart"
 	info = &runtimeInfo{}
 
@@ -288,7 +288,7 @@ func (m *ServiceMgr) notifyDebuggerStart(appName string) (info *runtimeInfo) {
 	}
 
 	token := uuidGen.Str()
-	m.superSup.WriteDebuggerToken(appName, token)
+	m.superSup.WriteDebuggerToken(appName, token, hostnames)
 	logging.Infof("%s Function: %s notifying on debugger path %s",
 		logPrefix, appName, common.MetakvDebuggerPath+appName)
 	util.Retry(util.NewFixedBackoff(time.Second), nil,
@@ -345,7 +345,24 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if info = m.notifyDebuggerStart(appName); info.Code != m.statusCodes.ok.Code {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("Failed to read request, err : %v", err)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	var data map[string]interface{}
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		info.Code = m.statusCodes.errUnmarshalPld.Code
+		info.Info = fmt.Sprintf("Failed to unmarshal request, err : %v", err)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if info = m.notifyDebuggerStart(appName, GetNodesHostname(data)); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
 	}

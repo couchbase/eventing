@@ -27,8 +27,8 @@ class CBInspectorClient;
 
 class Agent {
 public:
-  Agent(std::string host_name, std::string file_path, int port,
-        PostURLCallback on_connect);
+  Agent(std::string host_name, std::string host_name_display,
+        std::string file_path, int port, PostURLCallback on_connect);
   ~Agent();
 
   // Create client_, may create io_ if option enabled
@@ -78,6 +78,7 @@ private:
   int port_;
   std::string path_;
   std::string host_name_;
+  std::string host_name_display_;
   std::string file_path_;
 };
 

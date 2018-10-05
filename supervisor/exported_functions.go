@@ -410,7 +410,7 @@ func (s *SuperSupervisor) GetMetaStoreStats(appName string) map[string]uint64 {
 	return stats
 }
 
-func (s *SuperSupervisor) WriteDebuggerToken(appName, token string) {
+func (s *SuperSupervisor) WriteDebuggerToken(appName, token string, hostnames []string) {
 	logPrefix := "SuperSupervisor::WriteDebuggerToken"
 
 	p, exists := s.runningFns()[appName]
@@ -419,7 +419,7 @@ func (s *SuperSupervisor) WriteDebuggerToken(appName, token string) {
 			logPrefix, s.runningFnsCount(), appName)
 		return
 	}
-	p.WriteDebuggerToken(token)
+	p.WriteDebuggerToken(token, hostnames)
 }
 
 func (s *SuperSupervisor) WriteDebuggerURL(appName, url string) {

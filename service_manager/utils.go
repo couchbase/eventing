@@ -265,3 +265,19 @@ var metakvSetCallback = func(args ...interface{}) error {
 	}
 	return err
 }
+
+func GetNodesHostname(data map[string]interface{}) []string {
+	hostnames := make([]string, 0)
+
+	nodes, exists := data["nodes"].([]interface{})
+	if !exists {
+		return hostnames
+	}
+	for _, value := range nodes {
+		nodeInfo := value.(map[string]interface{})
+		if hostname, exists := nodeInfo["hostname"].(string); exists {
+			hostnames = append(hostnames, hostname)
+		}
+	}
+	return hostnames
+}

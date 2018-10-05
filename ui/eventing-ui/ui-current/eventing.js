@@ -719,7 +719,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             ApplicationService.server.showErrorAlert(`Function ${app.appname} may be undergoing bootstrap. Please try later.`);
                             return;
                         }
-
                         return ApplicationService.public.getConfig();
                     })
                     .then(function(response) {
@@ -727,14 +726,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             ApplicationService.server.showErrorAlert('Unable to start debugger as it is disabled. Please enable it under Eventing Settings');
                             return;
                         }
-
+                        return ApplicationService.server.getDefaultPool();
+                    })
+                    .then(function(response) {
                         if (!isDebugOn) {
                             debugScope.url = 'Waiting for mutation';
                             debugScope.urlReceived = false;
                             isDebugOn = true;
 
                             // Starts the debugger agent.
-                            ApplicationService.debug.start(app.appname)
+                            ApplicationService.debug.start(app.appname, response.data)
                                 .then(function(response) {
                                     var responseCode = ApplicationService.status.getResponseCode(response);
                                     if (responseCode) {
@@ -781,6 +782,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                     getDebugUrl();
                                 })
                                 .catch(function(errResponse) {
+                                    ApplicationService.server.showErrorAlert('Unexpected error occurred. Please try again.');
                                     console.error('Failed to start debugger', errResponse);
                                 });
                         }
@@ -802,6 +804,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
                     })
                     .catch(function(errResponse) {
+                        ApplicationService.server.showErrorAlert('Unexpected error occurred. Please try again.');
                         console.error('Unable to start debugger', errResponse);
                     });
             };
@@ -994,7 +997,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     }
                 },
                 debug: {
-                    start: function(appName) {
+                    start: function(appName, nodesInfo) {
                         return $http({
                             url: '/_p/event/startDebugger/?name=' + appName,
                             method: 'POST',
@@ -1004,7 +1007,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             headers: {
                                 'Content-Type': 'application/json'
                             },
-                            data: {}
+                            data: nodesInfo
                         });
                     },
                     getUrl: function(appName) {
@@ -1046,6 +1049,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     }
                 },
                 server: {
+                    getDefaultPool: function() {
+                        return $http.get('/pools/default');
+                    },
                     getLogFileLocation: function() {
                         return $http.get('/_p/event/logFileLocation')
                             .then(function(response) {

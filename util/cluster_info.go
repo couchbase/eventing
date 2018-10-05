@@ -493,6 +493,24 @@ func (c *ClusterInfoCache) GetLocalServiceHost(srvc string) (string, error) {
 	return h, nil
 }
 
+func (c *ClusterInfoCache) GetExternalIPOfThisNode(hostnames []string) (string, error) {
+	if len(hostnames) != len(c.nodes) {
+		return "", errors.New("Cluster info cache is inconsistent")
+	}
+	for i, node := range c.nodes {
+		if !node.ThisNode {
+			continue
+		}
+
+		hostIp, _, err := net.SplitHostPort(hostnames[i])
+		if err != nil {
+			return "", err
+		}
+		return hostIp, nil
+	}
+	return "", errors.New("Nodes are empty in cluster info cache")
+}
+
 func (c *ClusterInfoCache) GetLocalServerGroup() (string, error) {
 	node := c.GetCurrentNode()
 	return c.GetServerGroup(node), nil
