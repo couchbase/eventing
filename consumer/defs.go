@@ -182,6 +182,7 @@ type Consumer struct {
 	kvVbMap                       map[uint16]string // Access controlled by default lock
 	logLevel                      string
 	numVbuckets                   int
+	nsServerPort                  string
 	reqStreamCh                   chan *streamRequestInfo
 	statsTickDuration             time.Duration
 	stoppingConsumer              bool

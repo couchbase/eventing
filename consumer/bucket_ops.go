@@ -949,10 +949,10 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	token := args[1].(string)
 	success := args[2].(*bool)
+	instance := args[3].(*common.DebuggerInstance)
 
 	key := c.producer.AddMetadataPrefix(c.app.AppName).Raw() + "::" + common.DebuggerTokenKey
-	var instance common.DebuggerInstance
-	cas, err := c.gocbMetaBucket.Get(key, &instance)
+	cas, err := c.gocbMetaBucket.Get(key, instance)
 	if err == gocb.ErrKeyNotFound || err == gocb.ErrShutdown {
 		logging.Errorf("%s [%s:%s:%d] Key: %s, debugger token not found or bucket is closed, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)

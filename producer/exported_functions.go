@@ -974,12 +974,13 @@ func (p *Producer) GetMetaStoreStats() map[string]uint64 {
 	return metaStats
 }
 
-func (p *Producer) WriteDebuggerToken(token string) error {
+func (p *Producer) WriteDebuggerToken(token string, hostnames []string) error {
 	logPrefix := "Producer::WriteDebuggerToken"
 
 	data := &common.DebuggerInstance{
-		Token:  token,
-		Status: common.WaitingForMutation,
+		Token:           token,
+		Status:          common.WaitingForMutation,
+		NodesExternalIP: hostnames,
 	}
 	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,

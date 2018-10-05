@@ -779,7 +779,7 @@ void V8Worker::StartDebugger() {
     comm->WriteDebuggerURL(url);
   };
 
-  agent_ = new inspector::Agent(settings_->host_addr,
+  agent_ = new inspector::Agent("0.0.0.0", settings_->host_addr,
                                 settings_->eventing_dir + "/" + app_name_ +
                                     "_frontend.url",
                                 port, on_connect);

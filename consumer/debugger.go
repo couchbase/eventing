@@ -156,7 +156,7 @@ func (c *debugClient) String() string {
 		c.appName, c.workerName, c.debugTCPPort, c.osPid)
 }
 
-func (c *Consumer) startDebugger(e *cb.DcpEvent) {
+func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstance) {
 	logPrefix := "Consumer::startDebuggerServer"
 	debuggerMutex.Lock()
 	defer debuggerMutex.Unlock()
@@ -257,7 +257,7 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent) {
 	frontendURLFilePath := fmt.Sprintf("%s/%s_frontend.url", c.eventingDir, c.app.AppName)
 	err = os.Remove(frontendURLFilePath)
 	if err != nil {
-		logging.Infof("%s [%s:%s:%d] Failed to remove frontend.url file, err: %v",
+		logging.Errorf("%s [%s:%s:%d] Failed to remove frontend.url file, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 	}
 
@@ -288,23 +288,18 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent) {
 		return
 	}
 
-	currHost := util.Localhost()
-	h := c.HostPortAddr()
-	if h != "" {
-		currHost, _, err = net.SplitHostPort(h)
-		if err != nil {
-			logging.Errorf("Unable to split hostport %v: %v", h, err)
-		}
-	}
-
 	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
 	}
 
+	ip := c.ResolveHostname(instance)
+	logging.Infof("%s [%s:%s:%d] Spawning debugger on host:port %rs:%rs",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), ip, c.debuggerPort)
+
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort,
-		currHost, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
+		ip, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
 		c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
 		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		false, c.curlTimeout, c.timerContextSize)
@@ -313,6 +308,28 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent) {
 	c.sendDebuggerStart()
 	c.sendLoadV8Worker(c.app.AppCode, true)
 	c.sendDcpEvent(e, true)
+}
+
+// Returns external IP address of this node
+// Returns 127.0.0.1 in case of any failure
+func (c *Consumer) ResolveHostname(instance common.DebuggerInstance) string {
+	logPrefix := "Consumer::ResolveHostname"
+
+	currHost := net.JoinHostPort(util.Localhost(), c.nsServerPort)
+	info, err := util.FetchNewClusterInfoCache(currHost)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Unable to fetch cluster info cache, err : %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+		return util.Localhost()
+	}
+
+	externalIp, err := info.GetExternalIPOfThisNode(instance.NodesExternalIP)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Unable to resolve host name, err : %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+		return util.Localhost()
+	}
+	return externalIp
 }
 
 func (c *Consumer) stopDebugger() {

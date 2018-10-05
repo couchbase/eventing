@@ -287,13 +287,13 @@ private:
   int port_;
 };
 
-InspectorSocketServer::InspectorSocketServer(SocketServerDelegate *delegate,
-                                             uv_loop_t *loop,
-                                             const std::string &host, int port,
-                                             PostURLCallback on_connect,
-                                             FILE *out)
+InspectorSocketServer::InspectorSocketServer(
+    SocketServerDelegate *delegate, uv_loop_t *loop, const std::string &host,
+    const std::string &host_name_display, int port, PostURLCallback on_connect,
+    FILE *out)
     : on_connect_(on_connect), loop_(loop), delegate_(delegate), host_(host),
-      port_(port), closer_(nullptr), next_session_id_(0), out_(out) {
+      host_name_display_(host_name_display), port_(port), closer_(nullptr),
+      next_session_id_(0), out_(out) {
   state_ = ServerState::kNew;
 }
 
@@ -313,7 +313,8 @@ void InspectorSocketServer::SessionTerminated(SocketSession *session) {
     delegate_->EndSession(id);
     if (connected_sessions_.empty()) {
       if (state_ == ServerState::kRunning && !server_sockets_.empty()) {
-        PrintDebuggerReadyMessage(host_, server_sockets_[0]->port(),
+        PrintDebuggerReadyMessage(host_name_display_,
+                                  server_sockets_[0]->port(),
                                   delegate_->GetTargetIds(), out_);
       }
       if (state_ == ServerState::kStopped) {
@@ -426,7 +427,7 @@ bool InspectorSocketServer::Start() {
   state_ = ServerState::kRunning;
   std::string url;
   // getaddrinfo sorts the addresses, so the first port is most relevant.
-  PrintDebuggerReadyMessage(host_, server_sockets_[0]->port(),
+  PrintDebuggerReadyMessage(host_name_display_, server_sockets_[0]->port(),
                             delegate_->GetTargetIds(), out_, &url);
   on_connect_(url);
   return true;

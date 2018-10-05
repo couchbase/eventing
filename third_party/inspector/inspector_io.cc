@@ -190,12 +190,14 @@ private:
 
 InspectorIo::InspectorIo(Isolate *isolate, Platform *platform,
                          const std::string &path, std::string host_name,
+                         const std::string &host_name_display,
                          bool wait_for_connect, std::string file_path, int port,
                          PostURLCallback on_connect)
     : on_connect_(on_connect), thread_(), delegate_(nullptr),
       state_(State::kNew), thread_req_(), platform_(platform),
       isolate_(isolate), dispatching_messages_(false), session_id_(0),
-      script_name_(path), host_name_(host_name), file_path_(file_path),
+      script_name_(path), host_name_(host_name),
+      host_name_display_(host_name_display), file_path_(file_path),
       wait_for_connect_(wait_for_connect), port_(port) {
   main_thread_req_ = new AsyncAndAgent(
       {uv_async_t(), reinterpret_cast<Agent *>(isolate->GetData(1))});
@@ -303,8 +305,8 @@ template <typename Transport> void InspectorIo::ThreadMain() {
   InspectorIoDelegate delegate(this, script_path, script_name_,
                                wait_for_connect_);
   delegate_ = &delegate;
-  Transport server(&delegate, &loop, host_name_, port_, on_connect_,
-                   fopen(file_path_.c_str(), "w"));
+  Transport server(&delegate, &loop, host_name_, host_name_display_, port_,
+                   on_connect_, fopen(file_path_.c_str(), "w"));
   TransportAndIo<Transport> queue_transport(&server, this);
   thread_req_.data = &queue_transport;
   if (!server.Start()) {

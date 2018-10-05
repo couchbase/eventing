@@ -23,7 +23,7 @@ import (
 
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, rConfig *common.RebalanceConfig,
-	index int, uuid string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
+	index int, uuid, nsServerPort string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	dcpConfig map[string]interface{}, p common.EventingProducer, s common.EventingSuperSup,
 	numVbuckets int, retryCount *int64, vbEventingNodeAssignMap map[uint16]string,
 	workerVbucketMap map[string][]uint16) *Consumer {
@@ -140,6 +140,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		workerRespMainLoopThreshold:     hConfig.WorkerResponseTimeout,
 		workerVbucketMap:                workerVbucketMap,
 		workerVbucketMapRWMutex:         &sync.RWMutex{},
+		nsServerPort:                    nsServerPort,
 	}
 
 	consumer.builderPool = &sync.Pool{

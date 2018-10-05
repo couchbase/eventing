@@ -40,10 +40,11 @@ const (
 )
 
 type DebuggerInstance struct {
-	Token  string `json:"token"`  // An ID for a debugging session
-	Host   string `json:"host"`   // The node where debugger has been spawned
-	Status string `json:"status"` // Possible values are WaitingForMutation, MutationTrapped
-	URL    string `json:"url"`    // Chrome-Devtools URL for debugging
+	Token           string   `json:"token"`             // An ID for a debugging session
+	Host            string   `json:"host"`              // The node where debugger has been spawned
+	Status          string   `json:"status"`            // Possible values are WaitingForMutation, MutationTrapped
+	URL             string   `json:"url"`               // Chrome-Devtools URL for debugging
+	NodesExternalIP []string `json:"nodes_external_ip"` // List of external IP address of the nodes in the cluster
 }
 
 var ErrRetryTimeout = errors.New("retry timeout")
@@ -112,7 +113,7 @@ type EventingProducer interface {
 	VbSeqnoStats() map[int][]map[string]interface{}
 	WriteAppLog(log string)
 	WriteDebuggerURL(url string)
-	WriteDebuggerToken(token string) error
+	WriteDebuggerToken(token string, hostnames []string) error
 }
 
 // EventingConsumer interface to export functions from eventing_consumer
@@ -199,7 +200,7 @@ type EventingSuperSup interface {
 	VbDistributionStatsFromMetadata(appName string) map[string]map[string]string
 	VbSeqnoStats(appName string) (map[int][]map[string]interface{}, error)
 	WriteDebuggerURL(appName, url string)
-	WriteDebuggerToken(appName, token string)
+	WriteDebuggerToken(appName, token string, hostnames []string)
 }
 
 type EventingServiceMgr interface{}
