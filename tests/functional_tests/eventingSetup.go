@@ -12,11 +12,36 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/mitchellh/go-ps"
 )
 
 const (
 	lettersAndDigits = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
+
+func checkIfProcessRunning(processName string) error {
+	res, err := ps.Processes()
+	if err != nil {
+		log.Printf("Failed to list all processes, err: %v\n", err)
+		return err
+	}
+
+	runningPids := make([]int, 0)
+	for _, r := range res {
+		if r.Executable() == processName {
+			runningPids = append(runningPids, r.Pid())
+		}
+	}
+
+	if len(runningPids) > 0 {
+		log.Printf("Found %d running processes, pids: %v\n", len(runningPids), runningPids)
+		return fmt.Errorf("found running pids")
+	}
+
+	log.Printf("No %s process running", processName)
+	return nil
+}
 
 func getHandlerCode(filename string) (string, error) {
 	content, err := ioutil.ReadFile(handlerCodeDir + filename + ".js")
@@ -508,6 +533,7 @@ func bucketFlush(bucketName string) {
 func flushFunction(handler string) {
 	setSettings(handler, false, false, &commonSettings{})
 	waitForUndeployToFinish(handler)
+	checkIfProcessRunning("eventing-con")
 	deleteFunction(handler)
 }
 
