@@ -271,6 +271,12 @@ checkIfPlannerRunning:
 	c.controlRoutineWg.Add(1)
 	go c.controlRoutine()
 
+	if c.usingTimer {
+		go c.scanTimers()
+	}
+
+	go c.updateWorkerStats()
+
 	err = c.startDcp(flogs)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -289,12 +295,6 @@ checkIfPlannerRunning:
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		go c.vbsStateUpdate()
 	}
-
-	if c.usingTimer {
-		go c.scanTimers()
-	}
-
-	go c.updateWorkerStats()
 
 	go c.doLastSeqNoCheckpoint()
 
