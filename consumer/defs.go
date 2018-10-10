@@ -185,6 +185,7 @@ type Consumer struct {
 	nsServerPort                  string
 	reqStreamCh                   chan *streamRequestInfo
 	statsTickDuration             time.Duration
+	streamReqRWMutex              *sync.RWMutex
 	stoppingConsumer              bool
 	superSup                      common.EventingSuperSup
 	timerContextSize              int64
@@ -319,19 +320,15 @@ type Consumer struct {
 	signalDebuggerConnectedCh chan struct{}
 	signalDebuggerFeedbackCh  chan struct{}
 
-	msgProcessedRWMutex *sync.RWMutex
-	// Tracks DCP Opcodes processed per consumer
-	dcpMessagesProcessed map[mcd.CommandCode]uint64 // Access controlled by msgProcessedRWMutex
-
-	// Tracks V8 Opcodes processed per consumer
-	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by msgProcessedRWMutex
+	msgProcessedRWMutex       *sync.RWMutex
+	dcpMessagesProcessed      map[mcd.CommandCode]uint64 // Access controlled by msgProcessedRWMutex
+	v8WorkerMessagesProcessed map[string]uint64          // Access controlled by msgProcessedRWMutex
 
 	dcpCloseStreamCounter    uint64
 	dcpCloseStreamErrCounter uint64
 	dcpStreamReqCounter      uint64
 	dcpStreamReqErrCounter   uint64
 
-	// TODO : Remove these stats
 	adhocTimerResponsesRecieved uint64
 	timerMessagesProcessed      uint64
 

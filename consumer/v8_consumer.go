@@ -99,6 +99,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		socketWriteTicker:               time.NewTicker(socketWriteTimerInterval),
 		statsRWMutex:                    &sync.RWMutex{},
 		statsTickDuration:               time.Duration(hConfig.StatsLogInterval) * time.Millisecond,
+		streamReqRWMutex:                &sync.RWMutex{},
 		stopControlRoutineCh:            make(chan struct{}, 1),
 		stopVbOwnerTakeoverCh:           make(chan struct{}),
 		stopConsumerCh:                  make(chan struct{}),

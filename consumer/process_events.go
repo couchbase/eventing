@@ -864,6 +864,9 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		}
 	}()
 
+	c.streamReqRWMutex.Lock()
+	defer c.streamReqRWMutex.Unlock()
+
 	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		return nil
 	}
