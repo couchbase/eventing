@@ -164,6 +164,8 @@ func (c *Consumer) Serve() {
 	}()
 
 	c.isBootstrapping = true
+	logging.Infof("%s [%s:%s:%d] Bootstrapping status: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isBootstrapping)
+
 	c.statsTicker = time.NewTicker(c.statsTickDuration)
 	c.backupVbStats = newVbBackupStats(uint16(c.numVbuckets))
 
@@ -275,6 +277,9 @@ checkIfPlannerRunning:
 		return
 	}
 	c.isBootstrapping = false
+	logging.Infof("%s [%s:%s:%d] Bootstrapping status: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isBootstrapping)
+
+	c.signalBootstrapFinishCh <- struct{}{}
 
 	logging.Infof("%s [%s:%s:%d] vbsStateUpdateRunning: %t",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning)
@@ -292,8 +297,6 @@ checkIfPlannerRunning:
 	go c.updateWorkerStats()
 
 	go c.doLastSeqNoCheckpoint()
-
-	c.signalBootstrapFinishCh <- struct{}{}
 
 	c.controlRoutineWg.Wait()
 

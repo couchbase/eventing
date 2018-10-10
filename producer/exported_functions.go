@@ -470,17 +470,23 @@ func (p *Producer) GetSeqsProcessed() map[int]int64 {
 // RebalanceTaskProgress reports vbuckets remaining to be transferred as per planner
 // during the course of rebalance
 func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
+	logPrefix := "Producer::RebalanceTaskProgress"
 
 	producerLevelProgress := &common.RebalanceProgress{}
 
-	for _, consumer := range p.getConsumers() {
-		consumerProgress := consumer.RebalanceTaskProgress()
+	for _, c := range p.getConsumers() {
+		progress := c.RebalanceTaskProgress()
 
-		producerLevelProgress.CloseStreamVbsLen += consumerProgress.CloseStreamVbsLen
-		producerLevelProgress.StreamReqVbsLen += consumerProgress.StreamReqVbsLen
+		producerLevelProgress.CloseStreamVbsLen += progress.CloseStreamVbsLen
+		producerLevelProgress.StreamReqVbsLen += progress.StreamReqVbsLen
 
-		producerLevelProgress.VbsRemainingToShuffle += consumerProgress.VbsRemainingToShuffle
-		producerLevelProgress.VbsOwnedPerPlan += consumerProgress.VbsOwnedPerPlan
+		producerLevelProgress.VbsRemainingToShuffle += progress.VbsRemainingToShuffle
+		producerLevelProgress.VbsOwnedPerPlan += progress.VbsOwnedPerPlan
+	}
+
+	if p.isBootstrapping {
+		producerLevelProgress.VbsRemainingToShuffle += 1
+		logging.Infof("%s [%s:%d] Producer bootstrapping", logPrefix, p.appName, p.LenRunningConsumers())
 	}
 
 	return producerLevelProgress

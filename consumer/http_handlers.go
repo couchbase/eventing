@@ -21,8 +21,8 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 	vbsRemainingToCloseStream := c.getVbRemainingToCloseStream()
 	vbsRemainingToStreamReq := c.getVbRemainingToStreamReq()
 
-	logging.Infof("%s [%s:%s:%d] vbsRemainingToCloseStream len: %d dump: %v vbsRemainingToStreamReq len: %d dump: %v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsRemainingToCloseStream),
+	logging.Infof("%s [%s:%s:%d] IsBootstrapping: %t vbsRemainingToCloseStream len: %d dump: %v vbsRemainingToStreamReq len: %d dump: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isBootstrapping, len(vbsRemainingToCloseStream),
 		util.Condense(vbsRemainingToCloseStream), len(vbsRemainingToStreamReq),
 		util.Condense(vbsRemainingToStreamReq))
 
@@ -56,6 +56,10 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
 		}
 		c.isRebalanceOngoing = false
+	}
+
+	if c.isBootstrapping {
+		progress.VbsRemainingToShuffle++
 	}
 
 	return progress

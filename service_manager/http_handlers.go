@@ -639,8 +639,8 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
 		// if it occurs
 		appProgress, err := m.superSup.RebalanceTaskProgress(appName)
-		logging.Infof("%s Function: %s rebalance progress from node with rest port: %rs progress: %v",
-			logPrefix, appName, m.restPort, appProgress)
+		logging.Infof("%s Function: %s rebalance progress from node with rest port: %rs progress: %v err: %v",
+			logPrefix, appName, m.restPort, appProgress, err)
 		if err == nil {
 			progress.CloseStreamVbsLen += appProgress.CloseStreamVbsLen
 			progress.StreamReqVbsLen += appProgress.StreamReqVbsLen

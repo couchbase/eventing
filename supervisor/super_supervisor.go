@@ -167,13 +167,6 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 				logPrefix, s.runningFnsCount(), appName, err)
 		}
 
-		settings := make(map[string]interface{})
-		err = json.Unmarshal(sData, &settings)
-		if err != nil {
-			logging.Errorf("%s [%d] Function: %s Failed to unmarshal settings received, err: %v",
-				logPrefix, s.runningFnsCount(), appName, err)
-		}
-
 		s.appRWMutex.Lock()
 		if _, ok := s.appDeploymentStatus[appName]; !ok {
 			s.appDeploymentStatus[appName] = false
@@ -184,35 +177,17 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 		}
 		s.appRWMutex.Unlock()
 
-		val, ok := settings["processing_status"]
-		if !ok {
+		pStatus, _, err := s.getStatuses(sData)
+		if err != nil {
 			logging.Errorf("%s [%d] Missing processing_status", logPrefix, s.runningFnsCount())
-			return nil
-		}
-
-		processingStatus, ok := val.(bool)
-		if !ok {
-			logging.Errorf("%s [%d] Supplied processing_status unexpected", logPrefix, s.runningFnsCount())
-			return nil
-		}
-
-		val, ok = settings["deployment_status"]
-		if !ok {
-			logging.Errorf("%s [%d] Missing deployment_status", logPrefix, s.runningFnsCount())
-			return nil
-		}
-
-		_, ok = val.(bool)
-		if !ok {
-			logging.Errorf("%s [%d] Supplied deployment_status unexpected", logPrefix, s.runningFnsCount())
-			return nil
+			return nil // Returning nil, otherwise metakv callback would keep getting invoked over and over again
 		}
 
 		s.appRWMutex.RLock()
 		appProcessingStatus := s.appProcessingStatus[appName]
 		s.appRWMutex.RUnlock()
 
-		if appProcessingStatus == false && processingStatus {
+		if appProcessingStatus == false && pStatus {
 			s.supCmdCh <- msg
 
 			s.appRWMutex.Lock()
@@ -262,30 +237,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			cmd: cmdSettingsUpdate,
 		}
 
-		settings := make(map[string]interface{})
-		json.Unmarshal(value, &settings)
-
-		val, ok := settings["processing_status"]
-		if !ok {
-			logging.Errorf("%s [%d] Missing processing_status", logPrefix, s.runningFnsCount())
-			return nil
-		}
-
-		processingStatus, ok := val.(bool)
-		if !ok {
-			logging.Errorf("%s [%d] Supplied processing_status unexpected", logPrefix, s.runningFnsCount())
-			return nil
-		}
-
-		val, ok = settings["deployment_status"]
-		if !ok {
-			logging.Errorf("%s [%d] Missing deployment_status", logPrefix, s.runningFnsCount())
-			return nil
-		}
-
-		deploymentStatus, ok := val.(bool)
-		if !ok {
-			logging.Errorf("%s [%d] Supplied deployment_status unexpected", logPrefix, s.runningFnsCount())
+		processingStatus, deploymentStatus, err := s.getStatuses(value)
+		if err != nil {
 			return nil
 		}
 
@@ -340,6 +293,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						s.appListRWMutex.Unlock()
 						return nil
 					}
+
+					logging.Infof("%s [%d] Function: %s adding to bootstrap list", logPrefix, s.runningFnsCount(), appName)
 					s.bootstrappingApps[appName] = time.Now().String()
 					s.appListRWMutex.Unlock()
 
@@ -361,6 +316,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						s.Unlock()
 
 						s.appListRWMutex.Lock()
+						logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
 						delete(s.bootstrappingApps, appName)
 						s.appListRWMutex.Unlock()
 					}
@@ -472,40 +428,15 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 				return nil
 			}
 
-			settings := make(map[string]interface{})
-			err = json.Unmarshal(sData, &settings)
+			processingStatus, deploymentStatus, err := s.getStatuses(sData)
 			if err != nil {
-				logging.Errorf("%s [%d] Failed to unmarshal application settings, err: %v", logPrefix, s.runningFnsCount(), err)
-			}
-
-			val, ok := settings["processing_status"]
-			if !ok {
-				logging.Errorf("%s [%d] Missing processing_status", logPrefix, s.runningFnsCount())
 				return nil
 			}
 
-			processingStatus, ok := val.(bool)
-			if !ok {
-				logging.Errorf("%s [%d] Supplied processing_status unexpected", logPrefix, s.runningFnsCount())
-				return nil
-			}
-
-			val, ok = settings["deployment_status"]
-			if !ok {
-				logging.Errorf("%s [%d] Missing deployment_status", logPrefix, s.runningFnsCount())
-				return nil
-			}
-
-			deploymentStatus, ok := val.(bool)
-			if !ok {
-				logging.Errorf("%s [%d] Supplied deployment_status unexpected", logPrefix, s.runningFnsCount())
-				return nil
-			}
-
-			logging.Infof("%s [%d] Function: %s deployment_status: %v processing_status: %v runningProducer: %v",
+			logging.Infof("%s [%d] Function: %s deployment_status: %t processing_status: %t runningProducer: %v",
 				logPrefix, s.runningFnsCount(), appName, deploymentStatus, processingStatus, s.runningFns()[appName])
 
-			if _, ok := s.runningFns()[appName]; deploymentStatus == true && processingStatus == true && !ok {
+			if _, ok := s.runningFns()[appName]; deploymentStatus && processingStatus && !ok {
 
 				logging.Infof("%s [%d] Function: %s bootstrapping", logPrefix, s.runningFnsCount(), appName)
 
@@ -515,6 +446,8 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					s.appListRWMutex.Unlock()
 					return nil
 				}
+
+				logging.Infof("%s [%d] Function: %s adding to bootstrap list", logPrefix, s.runningFnsCount(), appName)
 				s.bootstrappingApps[appName] = time.Now().String()
 				s.appListRWMutex.Unlock()
 
@@ -538,6 +471,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					s.Unlock()
 
 					s.appListRWMutex.Lock()
+					logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
 					delete(s.bootstrappingApps, appName)
 					s.appListRWMutex.Unlock()
 
@@ -707,6 +641,8 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					s.appListRWMutex.Unlock()
 					continue
 				}
+
+				logging.Infof("%s [%d] Function: %s adding to bootstrap list", logPrefix, s.runningFnsCount(), appName)
 				s.bootstrappingApps[appName] = time.Now().String()
 				s.appListRWMutex.Unlock()
 
@@ -778,6 +714,7 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					s.Unlock()
 
 					s.appListRWMutex.Lock()
+					logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
 					delete(s.bootstrappingApps, appName)
 					s.appListRWMutex.Unlock()
 				}
@@ -872,4 +809,28 @@ func (s *SuperSupervisor) stopAndDeleteProducer(p common.EventingProducer) {
 	s.tokenMapRWMutex.Lock()
 	delete(s.producerSupervisorTokenMap, p)
 	s.tokenMapRWMutex.Unlock()
+}
+
+func (s *SuperSupervisor) isFnRunningFromPrimary(appName string) (bool, error) {
+	logPrefix := "SuperSupervisor::isFnRunningFromPrimary"
+
+	var sData []byte
+	path := MetakvAppSettingsPath + appName
+
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
+
+	processingStatus, deploymentStatus, err := s.getStatuses(sData)
+	if err != nil {
+		return false, err
+	}
+
+	if deploymentStatus && processingStatus {
+		logging.Infof("%s [%d] Function: %s running as deployment and processing status", logPrefix, s.runningFnsCount(), appName)
+		return true, nil
+	}
+
+	logging.Infof("%s [%d] Function: %s not running. deployment_status: %t processing_status: %t",
+		logPrefix, s.runningFnsCount(), appName, deploymentStatus, processingStatus)
+
+	return false, fmt.Errorf("function not running")
 }

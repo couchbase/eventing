@@ -87,6 +87,10 @@ func (p *Producer) Serve() {
 			p.superSup.CleanupProducer(p.appName, false)
 		}
 	}()
+
+	p.isBootstrapping = true
+	logging.Infof("%s [%s:%d] Bootstrapping status: %t", logPrefix, p.appName, p.LenRunningConsumers(), p.isBootstrapping)
+
 	err := p.parseDepcfg()
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
@@ -174,6 +178,9 @@ func (p *Producer) Serve() {
 	p.startBucket()
 
 	p.bootstrapFinishCh <- struct{}{}
+
+	p.isBootstrapping = false
+	logging.Infof("%s [%s:%d] Bootstrapping status: %t", logPrefix, p.appName, p.LenRunningConsumers(), p.isBootstrapping)
 
 	go p.updateStats()
 

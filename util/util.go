@@ -1040,7 +1040,7 @@ func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error)
 		}
 
 		if len(bootstrappingApps) > 0 {
-			return true, fmt.Errorf("Some apps are undergoing bootstrap")
+			return true, fmt.Errorf("Some apps are undergoing bootstrap, node: %s", nodeAddr)
 		}
 	}
 

@@ -273,7 +273,14 @@ func (s *SuperSupervisor) RebalanceTaskProgress(appName string) (*common.Rebalan
 		return p.RebalanceTaskProgress(), nil
 	}
 
-	return nil, fmt.Errorf("Eventing.Producer isn't alive")
+	_, err := s.isFnRunningFromPrimary(appName)
+	if err != nil {
+		return nil, err
+	}
+
+	progress := &common.RebalanceProgress{}
+	progress.VbsRemainingToShuffle = 1
+	return progress, nil
 }
 
 // TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
@@ -309,6 +316,8 @@ func (s *SuperSupervisor) RebalanceStatus() bool {
 
 // BootstrapAppList returns list of apps undergoing bootstrap
 func (s *SuperSupervisor) BootstrapAppList() map[string]string {
+	logPrefix := "SuperSupervisor::BootstrapAppList"
+
 	bootstrappingApps := make(map[string]string)
 
 	s.appListRWMutex.RLock()
@@ -317,6 +326,8 @@ func (s *SuperSupervisor) BootstrapAppList() map[string]string {
 	for appName, ts := range s.bootstrappingApps {
 		bootstrappingApps[appName] = ts
 	}
+
+	logging.Infof("%s [%d] bootstrappingApps: %+v", logPrefix, s.runningFnsCount(), bootstrappingApps)
 
 	return bootstrappingApps
 }
