@@ -369,10 +369,19 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	for vb := 0; vb < c.numVbuckets; vb++ {
-		store, found := timers.Fetch(c.producer.GetMetadataPrefix(), vb)
-		if found {
-			store.Free()
+	if c.usingTimer {
+		vbsOwned := c.getCurrentlyOwnedVbs()
+		sort.Sort(util.Uint16Slice(vbsOwned))
+
+		logging.Infof("%s [%s:%s:%d] Currently owned vbs len: %d dump: %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsOwned), util.Condense(vbsOwned))
+
+		for _, vb := range vbsOwned {
+			store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(vb))
+
+			if found {
+				store.Free()
+			}
 		}
 	}
 
