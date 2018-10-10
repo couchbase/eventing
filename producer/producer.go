@@ -680,22 +680,22 @@ func (p *Producer) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string) {
 
 }
 
+// SignalStartDebugger sets up necessary flags to signal debugger start
 func (p *Producer) SignalStartDebugger(token string) error {
 	p.debuggerToken = token
 	p.trapEvent = true
 	return nil
 }
 
+// SignalStopDebugger signals to stop debugger session
 func (p *Producer) SignalStopDebugger() error {
 	logPrefix := "Producer::SignalStopDebugger"
 
 	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
 	var instance common.DebuggerInstance
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
-		getOpCallback, p, key, &instance)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, key, &instance)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout",
-			logPrefix, p.appName, p.LenRunningConsumers())
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
 	}
 
@@ -714,8 +714,7 @@ func (p *Producer) SignalStopDebugger() error {
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
 		clearDebuggerInstanceCallback, p)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout",
-			logPrefix, p.appName, p.LenRunningConsumers())
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
 	}
 	return nil

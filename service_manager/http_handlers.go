@@ -440,7 +440,7 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 		fmt.Fprintf(w, "%s", string(data))
 	} else {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-		respString := fmt.Sprintf("Function: %s not deployed")
+		respString := fmt.Sprintf("Function: %s not deployed", appName)
 		fmt.Fprintf(w, respString)
 		logging.Infof("%s %s", logPrefix, respString)
 	}
@@ -2384,7 +2384,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 	return
 }
 
-func (m *ServiceMgr) getCpuCount(w http.ResponseWriter, r *http.Request) {
+func (m *ServiceMgr) getCPUCount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		w.WriteHeader(http.StatusUnauthorized)

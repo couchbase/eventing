@@ -421,25 +421,25 @@ func (s *SuperSupervisor) GetMetaStoreStats(appName string) map[string]uint64 {
 	return stats
 }
 
+// WriteDebuggerToken signals running function to write debug token
 func (s *SuperSupervisor) WriteDebuggerToken(appName, token string, hostnames []string) {
 	logPrefix := "SuperSupervisor::WriteDebuggerToken"
 
 	p, exists := s.runningFns()[appName]
 	if !exists {
-		logging.Errorf("%s [%d] Function %s not found",
-			logPrefix, s.runningFnsCount(), appName)
+		logging.Errorf("%s [%d] Function %s not found", logPrefix, s.runningFnsCount(), appName)
 		return
 	}
 	p.WriteDebuggerToken(token, hostnames)
 }
 
+// WriteDebuggerURL signals running function to write debug url
 func (s *SuperSupervisor) WriteDebuggerURL(appName, url string) {
 	logPrefix := "SuperSupervisor::WriteDebuggerURL"
 
 	p, exists := s.runningFns()[appName]
 	if !exists {
-		logging.Errorf("%s [%d] Function %s not found",
-			logPrefix, s.runningFnsCount(), appName)
+		logging.Errorf("%s [%d] Function %s not found", logPrefix, s.runningFnsCount(), appName)
 		return
 	}
 	p.WriteDebuggerURL(url)

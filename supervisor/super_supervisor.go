@@ -111,34 +111,31 @@ func (s *SuperSupervisor) checkIfNodeInCluster() bool {
 	return true
 }
 
+// DebuggerCallback gets invoked to signal start of debug session
 func (s *SuperSupervisor) DebuggerCallback(path string, value []byte, rev interface{}) error {
 	logPrefix := "SuperSupervisor::DebuggerCallback"
-	logging.Infof("%s [%d] path => %s encoded value size => %v",
-		logPrefix, s.runningFnsCount(), path, string(value))
+
+	logging.Infof("%s [%d] path => %s encoded value size => %v", logPrefix, s.runningFnsCount(), path, string(value))
 
 	if !s.checkIfNodeInCluster() && s.runningFnsCount() == 0 {
-		logging.Infof("%s [%d] Node not part of cluster. Exiting callback",
-			logPrefix, s.runningFnsCount())
+		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, s.runningFnsCount())
 		return nil
 	}
 
 	if value == nil {
-		logging.Errorf("%s [%d] value is nil",
-			logPrefix, s.runningFnsCount())
+		logging.Errorf("%s [%d] value is nil", logPrefix, s.runningFnsCount())
 		return nil
 	}
 
 	appName := util.GetAppNameFromPath(path)
 	p, exists := s.runningFns()[appName]
 	if !exists || p == nil {
-		logging.Errorf("%s [%d] Function %s not found",
-			logPrefix, s.runningFnsCount(), appName)
+		logging.Errorf("%s [%d] Function %s not found", logPrefix, s.runningFnsCount(), appName)
 		return nil
 	}
 	p.SignalStartDebugger(string(value))
 
-	util.Retry(util.NewFixedBackoff(time.Second), nil,
-		metakvDeleteCallback, s, path)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvDeleteCallback, s, path)
 	return nil
 }
 
@@ -509,6 +506,7 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, 
 	return s.HandleGlobalConfigChange(config)
 }
 
+// HandleGlobalConfigChange handles updates to global configs for Eventing
 func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
 	logPrefix := "SuperSupervisor::HandleGlobalConfigChange"
 

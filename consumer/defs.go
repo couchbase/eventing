@@ -475,6 +475,7 @@ type TimerInfo struct {
 	Context   string `json:"context"`
 }
 
+// Size returns aggregate size of timer entry sent from CPP to Go
 func (info *TimerInfo) Size() uint64 {
 	return uint64(unsafe.Sizeof(*info)) + uint64(len(info.Callback)) +
 		uint64(len(info.Reference)) + uint64(len(info.Context))
