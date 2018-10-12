@@ -8,11 +8,6 @@ if [ "$WORKSPACE" = "" ]; then
 fi
 
 if [ "$CIBOT" = "true" ]; then
-   sleep 60
-   exit 0
-fi
-
-for i in {1..240}; do
   upSeconds="$(cat /proc/uptime | grep -o '^[0-9]\+')"
   upHours=$((${upSeconds} / 3600))
 
@@ -23,6 +18,11 @@ for i in {1..240}; do
     echo "Uptime less than 24hrs"
   fi
 
+  sleep 60
+  exit 0
+fi
+
+for i in {1..240}; do
   cd $WORKSPACE
   sleep 60
   current="`git ls-remote git://github.com/couchbase/eventing $BRANCH | awk '{print $1}'`"
