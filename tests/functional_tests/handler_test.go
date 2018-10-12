@@ -109,6 +109,7 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 				"got", eventCount,
 			)
 		}
+		waitForDeployToFinish(handler)
 
 		dumpStats()
 		log.Println("Undeploying app:", handler)
@@ -117,6 +118,7 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 		checkIfProcessRunning("eventing-con")
 		bucketFlush("default")
 		bucketFlush("hello-world")
+		time.Sleep(30 * time.Second) // To allow bucket flush to purge all items
 	}
 
 	deleteFunction(handler)
@@ -309,6 +311,7 @@ func TestDeployUndeployLoopTimer(t *testing.T) {
 				"got", eventCount,
 			)
 		}
+		waitForDeployToFinish(handler)
 
 		dumpStats()
 		log.Println("Undeploying app:", handler)
@@ -317,6 +320,7 @@ func TestDeployUndeployLoopTimer(t *testing.T) {
 		checkIfProcessRunning("eventing-con")
 		bucketFlush("default")
 		bucketFlush("hello-world")
+		time.Sleep(30 * time.Second)
 	}
 
 	deleteFunction(handler)

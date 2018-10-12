@@ -464,15 +464,23 @@ func (s *SuperSupervisor) runningFns() map[string]common.EventingProducer {
 }
 
 func (s *SuperSupervisor) deleteFromRunningProducers(appName string) {
+	logPrefix := "SuperSupervisor::deleteFromRunningProducers"
+
 	s.runningProducersRWMutex.Lock()
-	defer s.runningProducersRWMutex.Unlock()
 	delete(s.runningProducers, appName)
+	s.runningProducersRWMutex.Unlock()
+
+	logging.Infof("%s [%d] Function: %s deleted from running functions", logPrefix, s.runningFnsCount(), appName)
 }
 
 func (s *SuperSupervisor) addToRunningProducers(appName string, p common.EventingProducer) {
+	logPrefix := "SuperSupervisor::addToRunningProducers"
+
 	s.runningProducersRWMutex.Lock()
-	defer s.runningProducersRWMutex.Unlock()
 	s.runningProducers[appName] = p
+	s.runningProducersRWMutex.Unlock()
+
+	logging.Infof("%s [%d] Function: %s added to running functions", logPrefix, s.runningFnsCount(), appName)
 }
 
 // SpanBlobDump returns state of timer span blobs stored in metadata bucket

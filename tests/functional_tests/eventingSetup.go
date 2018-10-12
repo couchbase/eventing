@@ -104,9 +104,12 @@ func createPadding(paddingCount int) string {
 }
 
 func createAndDeployLargeFunction(appName, hFileName string, settings *commonSettings, paddingCount int) (storeResponse *restResponse) {
+	sCount, _ := getBucketItemCount(srcBucket)
+	dCount, _ := getBucketItemCount(dstBucket)
+
 	storeResponse = &restResponse{}
 
-	log.Printf("Deploying app: %s", appName)
+	log.Printf("Deploying app: %s. Item count src bucket: %d dst bucket: %d", appName, sCount, dCount)
 	pad := createPadding(paddingCount)
 	content, err := getHandlerCode(hFileName)
 	content = pad + content
