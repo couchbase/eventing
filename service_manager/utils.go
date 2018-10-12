@@ -266,6 +266,7 @@ var metakvSetCallback = func(args ...interface{}) error {
 	return err
 }
 
+// GetNodesHostname returns hostnames of all nodes
 func GetNodesHostname(data map[string]interface{}) []string {
 	hostnames := make([]string, 0)
 
