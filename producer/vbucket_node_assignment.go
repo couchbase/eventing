@@ -69,6 +69,10 @@ func (p *Producer) vbEventingNodeAssign() error {
 		return err
 	}
 
+	p.vbEventingNodeAssignRWMutex.Lock()
+	defer p.vbEventingNodeAssignRWMutex.Unlock()
+	p.vbEventingNodeAssignMap = make(map[uint16]string)
+
 	if len(keepNodes) > 0 {
 		logging.Infof("%s [%s:%d] Updating Eventing keepNodes uuids. Previous: %v current: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), p.eventingNodeUUIDs, keepNodes)
@@ -92,10 +96,6 @@ func (p *Producer) vbEventingNodeAssign() error {
 	vbucketsPerNode := p.numVbuckets / len(eventingNodeAddrs)
 	var vbNo int
 	var startVb uint16
-
-	p.vbEventingNodeAssignRWMutex.Lock()
-	defer p.vbEventingNodeAssignRWMutex.Unlock()
-	p.vbEventingNodeAssignMap = make(map[uint16]string)
 
 	vbCountPerNode := make([]int, len(eventingNodeAddrs))
 	for i := 0; i < len(eventingNodeAddrs); i++ {
