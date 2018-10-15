@@ -73,6 +73,13 @@ func (c *Consumer) checkIfTimerQueuesAreDrained() error {
 
 	if util.Contains(c.NodeUUID(), c.ejectNodesUUIDs) {
 
+		vbsFilterAckYetToCome := c.getVbsFilterAckYetToCome()
+		if len(vbsFilterAckYetToCome) > 0 {
+			logging.Infof("%s [%s:%s:%d] vbsFilterAckYetToCome dump: %s len: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsFilterAckYetToCome), len(vbsFilterAckYetToCome))
+			return errTimerQueueNotDrained
+		}
+
 		if c.cppQueueSizes.AggQueueSize > 0 {
 			c.GetExecutionStats()
 			logging.Infof("%s [%s:%s:%d] AggQueueSize: %d",
