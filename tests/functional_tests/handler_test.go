@@ -628,6 +628,10 @@ func TestUndeployDuringBootstrap(t *testing.T) {
 
 	dumpStats()
 	setSettings(handler, false, false, &commonSettings{})
+
+	bootstrapCheck(handler, true)  // Check for start of boostrapping phase
+	bootstrapCheck(handler, false) // Check for end of bootstrapping phase
+
 	waitForUndeployToFinish(handler)
 	checkIfProcessRunning("eventing-con")
 	time.Sleep(20 * time.Second)

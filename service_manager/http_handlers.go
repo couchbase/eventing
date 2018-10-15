@@ -1542,12 +1542,14 @@ func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Requ
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
 	appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", m.eventingNodeAddrs)
-	if err != nil {
-		logging.Errorf("%s Failed to grab bootstrapping function list from all eventing nodes or some functions are undergoing bootstrap", logPrefix)
+	if appsBootstrapping {
+		w.Write([]byte(strconv.FormatBool(appsBootstrapping)))
+		return
+	} else if !appsBootstrapping && err != nil {
+		logging.Errorf("%s Failed to grab bootstrapping function list from all eventing nodes or some functions are undergoing bootstrap."+
+			"Node list: %v", logPrefix, m.eventingNodeAddrs)
 		return
 	}
-
-	w.Write([]byte(strconv.FormatBool(appsBootstrapping)))
 }
 
 func (m *ServiceMgr) getBootstrappingApps(w http.ResponseWriter, r *http.Request) {

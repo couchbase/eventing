@@ -7,12 +7,13 @@ const (
 )
 
 const (
-	handlerCodeDir     = "hcode/"
-	deployedAppsURL    = "http://127.0.0.1:9300/getDeployedApps"
-	exportFunctionsURL = "http://127.0.0.1:9300/api/v1/export"
-	importFunctionsURL = "http://127.0.0.1:9300/api/v1/import"
-	functionsURL       = "http://127.0.0.1:9300/api/v1/functions"
-	runningAppsURL     = "http://127.0.0.1:9300/getRunningApps"
+	handlerCodeDir       = "hcode/"
+	aggBootstrappingApps = "http://127.0.0.1:9300/getAggBootstrappingApps"
+	deployedAppsURL      = "http://127.0.0.1:9300/getDeployedApps"
+	exportFunctionsURL   = "http://127.0.0.1:9300/api/v1/export"
+	importFunctionsURL   = "http://127.0.0.1:9300/api/v1/import"
+	functionsURL         = "http://127.0.0.1:9300/api/v1/functions"
+	runningAppsURL       = "http://127.0.0.1:9300/getRunningApps"
 
 	statsEndpointURL0 = "http://127.0.0.1:9300/api/v1/stats"
 	statsEndpointURL1 = "http://127.0.0.1:9301/api/v1/stats"
