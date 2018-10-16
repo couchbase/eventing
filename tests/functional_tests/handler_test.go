@@ -109,13 +109,16 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 				"got", eventCount,
 			)
 		}
+		waitForDeployToFinish(handler)
 
 		dumpStats()
 		log.Println("Undeploying app:", handler)
 		setSettings(handler, false, false, &commonSettings{})
+		waitForUndeployToFinish(handler)
+		checkIfProcessRunning("eventing-con")
 		bucketFlush("default")
 		bucketFlush("hello-world")
-		time.Sleep(30 * time.Second)
+		time.Sleep(30 * time.Second) // To allow bucket flush to purge all items
 	}
 
 	deleteFunction(handler)
@@ -308,10 +311,13 @@ func TestDeployUndeployLoopTimer(t *testing.T) {
 				"got", eventCount,
 			)
 		}
+		waitForDeployToFinish(handler)
 
 		dumpStats()
 		log.Println("Undeploying app:", handler)
 		setSettings(handler, false, false, &commonSettings{})
+		waitForUndeployToFinish(handler)
+		checkIfProcessRunning("eventing-con")
 		bucketFlush("default")
 		bucketFlush("hello-world")
 		time.Sleep(30 * time.Second)
@@ -623,11 +629,12 @@ func TestUndeployDuringBootstrap(t *testing.T) {
 	dumpStats()
 	setSettings(handler, false, false, &commonSettings{})
 
-	// Double check needed because of a logic on supersupervisor, that
-	// handles bucket deletion.
+	bootstrapCheck(handler, true)  // Check for start of boostrapping phase
+	bootstrapCheck(handler, false) // Check for end of bootstrapping phase
+
 	waitForUndeployToFinish(handler)
+	checkIfProcessRunning("eventing-con")
 	time.Sleep(20 * time.Second)
-	waitForUndeployToFinish(handler)
 
 	flushFunctionAndBucket(handler)
 }
@@ -667,6 +674,8 @@ func TestUndeployWhenTimersAreFired(t *testing.T) {
 	time.Sleep(30 * time.Second)
 	setSettings(handler, false, false, &commonSettings{})
 	waitForUndeployToFinish(handler)
+	checkIfProcessRunning("eventing-con")
+
 	time.Sleep(100 * time.Second)
 	itemCount, err := getBucketItemCount(metaBucket)
 	if itemCount != 0 && err == nil {

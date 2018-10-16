@@ -33,7 +33,8 @@ class InspectorSocketServer {
 public:
   using ServerCallback = void (*)(InspectorSocketServer *);
   InspectorSocketServer(SocketServerDelegate *delegate, uv_loop_t *loop,
-                        const std::string &host, int port,
+                        const std::string &host,
+                        const std::string &host_name_display, int port,
                         PostURLCallback on_connect, FILE *out = stderr);
   // Start listening on host/port
   bool Start();
@@ -71,6 +72,7 @@ private:
   uv_loop_t *loop_;
   SocketServerDelegate *const delegate_;
   const std::string host_;
+  const std::string host_name_display_;
   int port_;
   std::string path_;
   std::vector<ServerSocket *> server_sockets_;

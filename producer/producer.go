@@ -87,6 +87,10 @@ func (p *Producer) Serve() {
 			p.superSup.CleanupProducer(p.appName, false)
 		}
 	}()
+
+	p.isBootstrapping = true
+	logging.Infof("%s [%s:%d] Bootstrapping status: %t", logPrefix, p.appName, p.LenRunningConsumers(), p.isBootstrapping)
+
 	err := p.parseDepcfg()
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
@@ -174,6 +178,9 @@ func (p *Producer) Serve() {
 	p.startBucket()
 
 	p.bootstrapFinishCh <- struct{}{}
+
+	p.isBootstrapping = false
+	logging.Infof("%s [%s:%d] Bootstrapping status: %t", logPrefix, p.appName, p.LenRunningConsumers(), p.isBootstrapping)
 
 	go p.updateStats()
 
@@ -423,8 +430,12 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	// https://github.com/golang/go/issues/6895 - uds pathname limited to 108 chars
 
 	// Adding host port in uds path in order to make it across different nodes on a cluster_run setup
-	udsSockPath := fmt.Sprintf("%s/%s_%s.sock", os.TempDir(), p.nsServerHostPort, workerName)
-	feedbackSockPath := fmt.Sprintf("%s/feedback_%s_%s.sock", os.TempDir(), p.nsServerHostPort, workerName)
+	pathNameSuffix := fmt.Sprintf("%s_%d_%d.sock", p.nsServerHostPort, index, p.app.HandlerUUID)
+	udsSockPath := fmt.Sprintf("%s/%s", os.TempDir(), pathNameSuffix)
+	feedbackSockPath := fmt.Sprintf("%s/f_%s", os.TempDir(), pathNameSuffix)
+
+	logging.Infof("%s [%s:%d] udsSockPath len: %d dump: %s feedbackSockPath len: %d dump: %s",
+		logPrefix, p.appName, p.LenRunningConsumers(), len(udsSockPath), udsSockPath, len(feedbackSockPath), feedbackSockPath)
 
 	if runtime.GOOS == "windows" || len(feedbackSockPath) > udsSockPathLimit {
 		feedbackListener, err = net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
@@ -493,7 +504,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		}
 	}()
 
-	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid,
+	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid, p.nsServerPort,
 		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.numVbuckets,
 		&p.retryCount, vbEventingNodeAssignMap, workerVbucketMap)
 
@@ -673,22 +684,22 @@ func (p *Producer) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string) {
 
 }
 
+// SignalStartDebugger sets up necessary flags to signal debugger start
 func (p *Producer) SignalStartDebugger(token string) error {
 	p.debuggerToken = token
 	p.trapEvent = true
 	return nil
 }
 
+// SignalStopDebugger signals to stop debugger session
 func (p *Producer) SignalStopDebugger() error {
 	logPrefix := "Producer::SignalStopDebugger"
 
 	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
 	var instance common.DebuggerInstance
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
-		getOpCallback, p, key, &instance)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, key, &instance)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout",
-			logPrefix, p.appName, p.LenRunningConsumers())
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
 	}
 
@@ -707,8 +718,7 @@ func (p *Producer) SignalStopDebugger() error {
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
 		clearDebuggerInstanceCallback, p)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout",
-			logPrefix, p.appName, p.LenRunningConsumers())
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return common.ErrRetryTimeout
 	}
 	return nil

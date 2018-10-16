@@ -614,6 +614,9 @@ func (c *Consumer) closeAllRunningDcpFeeds() {
 	}
 	c.hostDcpFeedRWMutex.RUnlock()
 
+	c.streamReqRWMutex.Lock()
+	defer c.streamReqRWMutex.Unlock()
+
 	logging.Infof("%s [%s:%s:%d] Going to close all active dcp feeds. Active feed count: %d",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(runningDcpFeeds))
 

@@ -23,7 +23,7 @@ import (
 
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, rConfig *common.RebalanceConfig,
-	index int, uuid string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
+	index int, uuid, nsServerPort string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	dcpConfig map[string]interface{}, p common.EventingProducer, s common.EventingSuperSup,
 	numVbuckets int, retryCount *int64, vbEventingNodeAssignMap map[uint16]string,
 	workerVbucketMap map[string][]uint16) *Consumer {
@@ -99,6 +99,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		socketWriteTicker:               time.NewTicker(socketWriteTimerInterval),
 		statsRWMutex:                    &sync.RWMutex{},
 		statsTickDuration:               time.Duration(hConfig.StatsLogInterval) * time.Millisecond,
+		streamReqRWMutex:                &sync.RWMutex{},
 		stopControlRoutineCh:            make(chan struct{}, 1),
 		stopVbOwnerTakeoverCh:           make(chan struct{}),
 		stopConsumerCh:                  make(chan struct{}),
@@ -140,6 +141,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		workerRespMainLoopThreshold:     hConfig.WorkerResponseTimeout,
 		workerVbucketMap:                workerVbucketMap,
 		workerVbucketMapRWMutex:         &sync.RWMutex{},
+		nsServerPort:                    nsServerPort,
 	}
 
 	consumer.builderPool = &sync.Pool{
@@ -163,6 +165,8 @@ func (c *Consumer) Serve() {
 	}()
 
 	c.isBootstrapping = true
+	logging.Infof("%s [%s:%s:%d] Bootstrapping status: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isBootstrapping)
+
 	c.statsTicker = time.NewTicker(c.statsTickDuration)
 	c.backupVbStats = newVbBackupStats(uint16(c.numVbuckets))
 
@@ -268,12 +272,21 @@ checkIfPlannerRunning:
 	c.controlRoutineWg.Add(1)
 	go c.controlRoutine()
 
+	if c.usingTimer {
+		go c.scanTimers()
+	}
+
+	go c.updateWorkerStats()
+
 	err = c.startDcp(flogs)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
 	}
 	c.isBootstrapping = false
+	logging.Infof("%s [%s:%s:%d] Bootstrapping status: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isBootstrapping)
+
+	c.signalBootstrapFinishCh <- struct{}{}
 
 	logging.Infof("%s [%s:%s:%d] vbsStateUpdateRunning: %t",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning)
@@ -284,15 +297,7 @@ checkIfPlannerRunning:
 		go c.vbsStateUpdate()
 	}
 
-	if c.usingTimer {
-		go c.scanTimers()
-	}
-
-	go c.updateWorkerStats()
-
 	go c.doLastSeqNoCheckpoint()
-
-	c.signalBootstrapFinishCh <- struct{}{}
 
 	c.controlRoutineWg.Wait()
 
@@ -365,10 +370,19 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	for vb := 0; vb < c.numVbuckets; vb++ {
-		store, found := timers.Fetch(c.producer.GetMetadataPrefix(), vb)
-		if found {
-			store.Free()
+	if c.usingTimer {
+		vbsOwned := c.getCurrentlyOwnedVbs()
+		sort.Sort(util.Uint16Slice(vbsOwned))
+
+		logging.Infof("%s [%s:%s:%d] Currently owned vbs len: %d dump: %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsOwned), util.Condense(vbsOwned))
+
+		for _, vb := range vbsOwned {
+			store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(vb))
+
+			if found {
+				store.Free()
+			}
 		}
 	}
 

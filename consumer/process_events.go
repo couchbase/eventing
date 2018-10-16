@@ -864,6 +864,9 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		}
 	}()
 
+	c.streamReqRWMutex.Lock()
+	defer c.streamReqRWMutex.Unlock()
+
 	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		return nil
 	}
@@ -1195,8 +1198,9 @@ func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	var success bool
+	var instance common.DebuggerInstance
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount,
-		acquireDebuggerTokenCallback, c, c.producer.GetDebuggerToken(), &success)
+		acquireDebuggerTokenCallback, c, c.producer.GetDebuggerToken(), &success, &instance)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -1204,7 +1208,7 @@ func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 	}
 
 	if success {
-		c.startDebugger(e)
+		c.startDebugger(e, instance)
 	} else {
 		c.sendDcpEvent(e, false)
 	}

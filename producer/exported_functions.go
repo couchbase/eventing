@@ -470,17 +470,23 @@ func (p *Producer) GetSeqsProcessed() map[int]int64 {
 // RebalanceTaskProgress reports vbuckets remaining to be transferred as per planner
 // during the course of rebalance
 func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
+	logPrefix := "Producer::RebalanceTaskProgress"
 
 	producerLevelProgress := &common.RebalanceProgress{}
 
-	for _, consumer := range p.getConsumers() {
-		consumerProgress := consumer.RebalanceTaskProgress()
+	for _, c := range p.getConsumers() {
+		progress := c.RebalanceTaskProgress()
 
-		producerLevelProgress.CloseStreamVbsLen += consumerProgress.CloseStreamVbsLen
-		producerLevelProgress.StreamReqVbsLen += consumerProgress.StreamReqVbsLen
+		producerLevelProgress.CloseStreamVbsLen += progress.CloseStreamVbsLen
+		producerLevelProgress.StreamReqVbsLen += progress.StreamReqVbsLen
 
-		producerLevelProgress.VbsRemainingToShuffle += consumerProgress.VbsRemainingToShuffle
-		producerLevelProgress.VbsOwnedPerPlan += consumerProgress.VbsOwnedPerPlan
+		producerLevelProgress.VbsRemainingToShuffle += progress.VbsRemainingToShuffle
+		producerLevelProgress.VbsOwnedPerPlan += progress.VbsOwnedPerPlan
+	}
+
+	if p.isBootstrapping {
+		producerLevelProgress.VbsRemainingToShuffle++
+		logging.Infof("%s [%s:%d] Producer bootstrapping", logPrefix, p.appName, p.LenRunningConsumers())
 	}
 
 	return producerLevelProgress
@@ -944,6 +950,7 @@ func (p *Producer) AddMetadataPrefix(key string) common.Key {
 	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), key)
 }
 
+// GetMetadataPrefix returns prefix used for blobs stored in Couchbase bucket
 func (p *Producer) GetMetadataPrefix() string {
 	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), "").GetPrefix()
 }
@@ -974,16 +981,17 @@ func (p *Producer) GetMetaStoreStats() map[string]uint64 {
 	return metaStats
 }
 
-func (p *Producer) WriteDebuggerToken(token string) error {
+// WriteDebuggerToken stores debugger token into metadata bucket
+func (p *Producer) WriteDebuggerToken(token string, hostnames []string) error {
 	logPrefix := "Producer::WriteDebuggerToken"
 
 	data := &common.DebuggerInstance{
-		Token:  token,
-		Status: common.WaitingForMutation,
+		Token:           token,
+		Status:          common.WaitingForMutation,
+		NodesExternalIP: hostnames,
 	}
 	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
-		setOpCallback, p, key, data)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, key, data)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout",
 			logPrefix, p.appName, p.LenRunningConsumers())
@@ -992,25 +1000,28 @@ func (p *Producer) WriteDebuggerToken(token string) error {
 	return nil
 }
 
+// WriteDebuggerURL stores debugger info in metadata bucket
 func (p *Producer) WriteDebuggerURL(url string) {
 	logPrefix := "Producer::WriteDebuggerURL"
 
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
-		writeDebuggerURLCallback, p, url)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, writeDebuggerURLCallback, p, url)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout",
 			logPrefix, p.appName, p.LenRunningConsumers())
 	}
 }
 
+// SetTrapEvent flips trap event flag
 func (p *Producer) SetTrapEvent(value bool) {
 	p.trapEvent = value
 }
 
+// IsTrapEvent signifies if debugger should trap events
 func (p *Producer) IsTrapEvent() bool {
 	return p.trapEvent
 }
 
+// GetDebuggerToken returns debug token
 func (p *Producer) GetDebuggerToken() string {
 	return p.debuggerToken
 }

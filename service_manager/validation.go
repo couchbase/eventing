@@ -192,7 +192,7 @@ func (m *ServiceMgr) validateApplicationName(applicationName string) (info *runt
 	return
 }
 
-func (m *ServiceMgr) validateBoolean(field string, settings map[string]interface{}) (info *runtimeInfo) {
+func (m *ServiceMgr) validateBoolean(field string, isOptional bool, settings map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
@@ -201,6 +201,9 @@ func (m *ServiceMgr) validateBoolean(field string, settings map[string]interface
 			info.Info = fmt.Sprintf("%s must be a boolean", field)
 			return
 		}
+	} else if !isOptional {
+		info.Info = fmt.Sprintf("%s is required", field)
+		return
 	}
 
 	info.Code = m.statusCodes.ok.Code
@@ -232,7 +235,7 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
-	if info = m.validateBoolean("enable_debugger", c); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("enable_debugger", true, c); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -240,7 +243,7 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 		return
 	}
 
-	if info = m.validateBoolean("enable_lifecycle_ops_during_rebalance", c); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("enable_lifecycle_ops_during_rebalance", true, c); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -538,11 +541,11 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validateBoolean("processing_status", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("processing_status", false, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
-	if info = m.validateBoolean("deployment_status", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("deployment_status", false, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -550,7 +553,7 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validateBoolean("cleanup_timers", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("cleanup_timers", true, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -682,7 +685,7 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 	}
 
 	// Process related configuration
-	if info = m.validateBoolean("breakpad_on", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("breakpad_on", true, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -708,7 +711,7 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validateBoolean("enable_applog_rotation", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("enable_applog_rotation", true, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

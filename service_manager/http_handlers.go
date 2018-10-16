@@ -276,7 +276,7 @@ func (m *ServiceMgr) logFileLocation(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"log_dir":"%v"}`, c["eventing_dir"])
 }
 
-func (m *ServiceMgr) notifyDebuggerStart(appName string) (info *runtimeInfo) {
+func (m *ServiceMgr) notifyDebuggerStart(appName string, hostnames []string) (info *runtimeInfo) {
 	logPrefix := "ServiceMgr::notifyDebuggerStart"
 	info = &runtimeInfo{}
 
@@ -288,7 +288,7 @@ func (m *ServiceMgr) notifyDebuggerStart(appName string) (info *runtimeInfo) {
 	}
 
 	token := uuidGen.Str()
-	m.superSup.WriteDebuggerToken(appName, token)
+	m.superSup.WriteDebuggerToken(appName, token, hostnames)
 	logging.Infof("%s Function: %s notifying on debugger path %s",
 		logPrefix, appName, common.MetakvDebuggerPath+appName)
 	util.Retry(util.NewFixedBackoff(time.Second), nil,
@@ -345,7 +345,24 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if info = m.notifyDebuggerStart(appName); info.Code != m.statusCodes.ok.Code {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("Failed to read request, err : %v", err)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	var data map[string]interface{}
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		info.Code = m.statusCodes.errUnmarshalPld.Code
+		info.Info = fmt.Sprintf("Failed to unmarshal request, err : %v", err)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if info = m.notifyDebuggerStart(appName, GetNodesHostname(data)); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
 	}
@@ -423,7 +440,7 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 		fmt.Fprintf(w, "%s", string(data))
 	} else {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-		respString := fmt.Sprintf("Function: %s not deployed")
+		respString := fmt.Sprintf("Function: %s not deployed", appName)
 		fmt.Fprintf(w, respString)
 		logging.Infof("%s %s", logPrefix, respString)
 	}
@@ -622,8 +639,8 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
 		// if it occurs
 		appProgress, err := m.superSup.RebalanceTaskProgress(appName)
-		logging.Infof("%s Function: %s rebalance progress from node with rest port: %rs progress: %v",
-			logPrefix, appName, m.restPort, appProgress)
+		logging.Infof("%s Function: %s rebalance progress from node with rest port: %rs progress: %v err: %v",
+			logPrefix, appName, m.restPort, appProgress, err)
 		if err == nil {
 			progress.CloseStreamVbsLen += appProgress.CloseStreamVbsLen
 			progress.StreamReqVbsLen += appProgress.StreamReqVbsLen
@@ -1525,12 +1542,14 @@ func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Requ
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
 	appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", m.eventingNodeAddrs)
-	if err != nil {
-		logging.Errorf("%s Failed to grab bootstrapping function list from all eventing nodes or some functions are undergoing bootstrap", logPrefix)
+	if appsBootstrapping {
+		w.Write([]byte(strconv.FormatBool(appsBootstrapping)))
+		return
+	} else if !appsBootstrapping && err != nil {
+		logging.Errorf("%s Failed to grab bootstrapping function list from all eventing nodes or some functions are undergoing bootstrap."+
+			"Node list: %v", logPrefix, m.eventingNodeAddrs)
 		return
 	}
-
-	w.Write([]byte(strconv.FormatBool(appsBootstrapping)))
 }
 
 func (m *ServiceMgr) getBootstrappingApps(w http.ResponseWriter, r *http.Request) {
@@ -2367,7 +2386,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 	return
 }
 
-func (m *ServiceMgr) getCpuCount(w http.ResponseWriter, r *http.Request) {
+func (m *ServiceMgr) getCPUCount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		w.WriteHeader(http.StatusUnauthorized)

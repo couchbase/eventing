@@ -51,6 +51,7 @@ type Producer struct {
 	auth                   string
 	cfgData                string
 	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
+	isBootstrapping        bool
 	isPlannerRunning       bool
 	isTerminateRunning     bool
 	kvPort                 string

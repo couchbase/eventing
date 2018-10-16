@@ -1022,25 +1022,25 @@ func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error)
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
 			logging.Errorf("%s Failed to gather bootstrapping app list from url: %rs, err: %v", logPrefix, endpointURL, err)
-			return true, err
+			return false, err
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
-			return true, err
+			return false, err
 		}
 
 		bootstrappingApps := make(map[string]string)
 		err = json.Unmarshal(buf, &bootstrappingApps)
 		if err != nil {
 			logging.Errorf("%s Failed to marshal bootstrapping app list from url: %rs, err: %v", logPrefix, endpointURL, err)
-			return true, err
+			return false, err
 		}
 
 		if len(bootstrappingApps) > 0 {
-			return true, fmt.Errorf("Some apps are undergoing bootstrap")
+			return true, fmt.Errorf("Some apps are undergoing bootstrap, node: %s", nodeAddr)
 		}
 	}
 

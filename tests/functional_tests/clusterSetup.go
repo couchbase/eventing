@@ -10,9 +10,12 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
+
+var statusParsingFailed = fmt.Errorf("status parsing failed")
 
 func initNodePaths() ([]byte, error) {
 	payload := strings.NewReader(fmt.Sprintf("data_path=%s&index_path=", dataDir))
@@ -308,6 +311,30 @@ func waitForDeployToFinish(appName string) {
 	}
 }
 
+func bootstrapCheck(appName string, startCheck bool) {
+	for {
+		bStatus, err := getBootstrappingApps()
+		if err != nil {
+			if !startCheck && err == statusParsingFailed {
+				log.Println("No apps undergoing bootstrap")
+				return
+			}
+
+			log.Printf("Error: %v encountered while fetching bootstrapping apps", err)
+			continue
+		}
+
+		log.Printf("Apps undergoing bootstrap: %t", bStatus)
+
+		if bStatus && startCheck {
+			log.Printf("App: %s started bootstrap\n", appName)
+			return
+		}
+
+		time.Sleep(5 * time.Second)
+	}
+}
+
 func waitForUndeployToFinish(appName string) {
 	for {
 		time.Sleep(5 * time.Second)
@@ -325,6 +352,20 @@ func waitForUndeployToFinish(appName string) {
 		}
 
 	}
+}
+
+func getBootstrappingApps() (bool, error) {
+	r, err := makeRequest("GET", strings.NewReader(""), aggBootstrappingApps)
+	if err != nil {
+		return false, err
+	}
+
+	status, err := strconv.ParseBool(string(r))
+	if err != nil {
+		return false, statusParsingFailed
+	}
+
+	return status, nil
 }
 
 func getDeployedApps() (map[string]string, error) {
