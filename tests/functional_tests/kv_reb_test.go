@@ -543,7 +543,10 @@ func TestBootstrapAfterKVHardFailover(t *testing.T) {
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
 	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
+	err := waitForRebalanceFinish()
+	if err == nil {
+		t.Errorf("Rebalance didn't fail when bootstrap was in progress")
+	}
 
 	waitForDeployToFinish(handler)
 	metaStateDump()
