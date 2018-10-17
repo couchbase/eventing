@@ -154,9 +154,9 @@ struct lcb_logprocs_st evt_logger = {
 };
 
 Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
-               const char *alias, bool block_mutation)
-    : block_mutation_(block_mutation), bucket_name_(bname), endpoint_(ep),
-      bucket_alias_(alias), worker_(w) {
+               const char *alias, bool block_mutation, bool is_source_bucket)
+    : block_mutation_(block_mutation), is_source_bucket_(is_source_bucket),
+      bucket_name_(bname), endpoint_(ep), bucket_alias_(alias), worker_(w) {
   isolate_ = w->GetIsolate();
   context_.Reset(isolate_, w->context_);
 
@@ -288,11 +288,12 @@ v8::Local<v8::Object> Bucket::WrapBucketMap() {
     return handle_scope.Escape(result);
   }
 
-  auto bucket_lcb_obj_ptr = v8::External::New(isolate_, &bucket_lcb_obj_);
-  auto block_mutation_ptr = v8::External::New(isolate_, &block_mutation_);
-
-  result->SetInternalField(LCB_INST_FIELD_NO, bucket_lcb_obj_ptr);
-  result->SetInternalField(BLOCK_MUTATION_FIELD_NO, block_mutation_ptr);
+  result->SetInternalField(static_cast<int>(InternalFields::kLcbInstance),
+                           v8::External::New(isolate_, &bucket_lcb_obj_));
+  result->SetInternalField(static_cast<int>(InternalFields::kBlockMutation),
+                           v8::External::New(isolate_, &block_mutation_));
+  result->SetInternalField(static_cast<int>(InternalFields::kIsSourceBucket),
+                           v8::External::New(isolate_, &is_source_bucket_));
   return handle_scope.Escape(result);
 }
 
@@ -334,8 +335,8 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   v8::String::Utf8Value utf8_key(name.As<v8::String>());
   std::string key(*utf8_key);
 
-  auto bucket_lcb_obj_ptr =
-      UnwrapInternalField<lcb_t>(info.Holder(), LCB_INST_FIELD_NO);
+  auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
+      info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
 
   Result result;
   lcb_CMDGET gcmd = {0};
@@ -391,8 +392,8 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     return;
   }
 
-  auto block_mutation =
-      UnwrapInternalField<bool>(info.Holder(), BLOCK_MUTATION_FIELD_NO);
+  auto block_mutation = UnwrapInternalField<bool>(
+      info.Holder(), static_cast<int>(InternalFields::kBlockMutation));
   if (*block_mutation) {
     auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
     js_exception->Throw("Writing to source bucket is forbidden");
@@ -400,60 +401,19 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     return;
   }
 
-  v8::HandleScope handle_scope(isolate);
-  v8::String::Utf8Value utf8_key(name.As<v8::String>());
-  std::string key(*utf8_key);
-  auto value = JSONStringify(isolate, value_obj);
-
-  LOG(logTrace) << "Bucket: Set call Key: " << RU(key)
-                << " Value: " << RU(value) << std::endl;
-
-  auto bucket_lcb_obj_ptr =
-      UnwrapInternalField<lcb_t>(info.Holder(), LCB_INST_FIELD_NO);
-  Result sres;
-
-  lcb_CMDSTORE scmd = {0};
-  LCB_CMD_SET_KEY(&scmd, key.c_str(), key.length());
-  LCB_CMD_SET_VALUE(&scmd, value.c_str(), value.length());
-  scmd.operation = LCB_SET;
-  scmd.flags = 0x2000000;
-
-  lcb_sched_enter(*bucket_lcb_obj_ptr);
-  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_store3,
-                                   *bucket_lcb_obj_ptr, &sres, &scmd);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
-    return;
+  auto is_source_bucket = UnwrapInternalField<bool>(
+      info.Holder(), static_cast<int>(InternalFields::kIsSourceBucket));
+  if (*is_source_bucket) {
+    BucketSetWithXattr(name, value_obj, info);
+  } else {
+    BucketSetWithoutXattr(name, value_obj, info);
   }
-
-  lcb_sched_leave(*bucket_lcb_obj_ptr);
-  err =
-      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
-    return;
-  }
-
-  // Throw an exception in JavaScript if the bucket set call failed.
-  if (sres.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_STORE call failed: " << sres.rc << std::endl;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, sres.rc);
-    return;
-  }
-
-  info.GetReturnValue().Set(value_obj);
 }
 
 // Performs the lcb related calls when bucket object is accessed
 template <>
 void Bucket::BucketDelete<v8::Local<v8::Name>>(
-    v8::Local<v8::Name> name,
+    const v8::Local<v8::Name> &name,
     const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   auto isolate = info.GetIsolate();
   if (name->IsSymbol()) {
@@ -463,8 +423,8 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
     return;
   }
 
-  auto block_mutation =
-      UnwrapInternalField<bool>(info.Holder(), BLOCK_MUTATION_FIELD_NO);
+  auto block_mutation = UnwrapInternalField<bool>(
+      info.Holder(), static_cast<int>(InternalFields::kBlockMutation));
   if (*block_mutation) {
     auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
     js_exception->Throw("Delete from source bucket is forbidden");
@@ -472,49 +432,13 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
     return;
   }
 
-  v8::HandleScope handle_scope(isolate);
-  v8::String::Utf8Value utf8_key(name.As<v8::String>());
-  std::string key(*utf8_key);
-
-  auto bucket_lcb_obj_ptr =
-      UnwrapInternalField<lcb_t>(info.Holder(), LCB_INST_FIELD_NO);
-
-  Result result;
-  lcb_CMDREMOVE rcmd = {0};
-  LCB_CMD_SET_KEY(&rcmd, key.c_str(), key.length());
-
-  lcb_sched_enter(*bucket_lcb_obj_ptr);
-  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_remove3,
-                                   *bucket_lcb_obj_ptr, &result, &rcmd);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to set params for LCB_REMOVE: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
-    return;
+  auto is_source_bucket = UnwrapInternalField<bool>(
+      info.Holder(), static_cast<int>(InternalFields::kIsSourceBucket));
+  if (*is_source_bucket) {
+    BucketDeleteWithXattr(name, info);
+  } else {
+    BucketDeleteWithoutXattr(name, info);
   }
-
-  lcb_sched_leave(*bucket_lcb_obj_ptr);
-  err =
-      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
-    return;
-  }
-
-  // Throw an exception in JavaScript if the bucket delete call failed.
-  if (result.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_REMOVE call failed: " << result.rc
-                  << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.rc);
-    return;
-  }
-
-  info.GetReturnValue().Set(true);
 }
 
 void Bucket::HandleBucketOpFailure(v8::Isolate *isolate,
@@ -536,7 +460,8 @@ v8::Local<v8::ObjectTemplate> Bucket::MakeBucketMapTemplate() {
   auto result = v8::ObjectTemplate::New(isolate_);
   // We will store lcb_instance associated with this bucket object in the
   // internal field
-  result->SetInternalFieldCount(2);
+  result->SetInternalFieldCount(
+      static_cast<int>(InternalFields::kMaxInternalFields));
   // Register corresponding callbacks for alphanumeric accesses on bucket
   // object
   result->SetHandler(v8::NamedPropertyHandlerConfiguration(
@@ -588,4 +513,272 @@ template <>
 void Bucket::BucketDelete<uint32_t>(
     uint32_t key, const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   BucketDelete<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), info);
+}
+
+void Bucket::BucketSetWithXattr(
+    const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
+    const v8::PropertyCallbackInfo<v8::Value> &info) {
+  auto isolate = info.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  v8::String::Utf8Value utf8_key(name.As<v8::String>());
+  std::string key(*utf8_key);
+  auto value = JSONStringify(isolate, value_obj);
+
+  LOG(logTrace) << "Bucket: Set call Key: " << RU(key)
+                << " Value: " << RU(value) << std::endl;
+
+  auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
+      info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
+  Result mres;
+
+  lcb_SDSPEC function_id_spec = {0};
+  auto v8worker = UnwrapData(isolate)->v8worker;
+  std::string function_instance_id = v8worker->GetFunctionInstanceID();
+  std::string function_instance_id_path("_eventing.fiid");
+  function_id_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+  function_id_spec.options =
+      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
+  LCB_SDSPEC_SET_PATH(&function_id_spec, function_instance_id_path.c_str(),
+                      function_instance_id_path.size());
+  LCB_SDSPEC_SET_VALUE(&function_id_spec, function_instance_id.c_str(),
+                       function_instance_id.size());
+
+  lcb_SDSPEC value_crc32_spec = {0};
+  std::string value_crc32_path("_eventing.crc");
+  std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
+  value_crc32_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+  value_crc32_spec.options =
+      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
+  LCB_SDSPEC_SET_PATH(&value_crc32_spec, value_crc32_path.c_str(),
+                      value_crc32_path.size());
+  LCB_SDSPEC_SET_VALUE(&value_crc32_spec, value_crc32_macro.c_str(),
+                       value_crc32_macro.size());
+
+  lcb_SDSPEC doc_spec = {0};
+  doc_spec.sdcmd = LCB_SDCMD_SET_FULLDOC;
+  LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
+  LCB_SDSPEC_SET_VALUE(&doc_spec, value.c_str(), value.length());
+
+  std::vector<lcb_SDSPEC> specs = {function_id_spec, value_crc32_spec,
+                                   doc_spec};
+  lcb_CMDSUBDOC mcmd = {0};
+  LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
+  mcmd.specs = specs.data();
+  mcmd.nspecs = specs.size();
+  mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
+
+  lcb_sched_enter(*bucket_lcb_obj_ptr);
+  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_subdoc3,
+                                   *bucket_lcb_obj_ptr, &mres, &mcmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
+
+  lcb_sched_leave(*bucket_lcb_obj_ptr);
+  err =
+      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
+
+  // Throw an exception in JavaScript if the bucket set call failed.
+  if (mres.rc != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: LCB_STORE call failed: " << mres.rc << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, mres.rc);
+    return;
+  }
+
+  info.GetReturnValue().Set(value_obj);
+}
+
+void Bucket::BucketSetWithoutXattr(
+    const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
+    const v8::PropertyCallbackInfo<v8::Value> &info) {
+  auto isolate = info.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  v8::String::Utf8Value utf8_key(name.As<v8::String>());
+  std::string key(*utf8_key);
+  auto value = JSONStringify(isolate, value_obj);
+
+  LOG(logTrace) << "Bucket: Set call Key: " << RU(key)
+                << " Value: " << RU(value) << std::endl;
+
+  auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
+      info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
+  Result sres;
+
+  lcb_CMDSTORE scmd = {0};
+  LCB_CMD_SET_KEY(&scmd, key.c_str(), key.length());
+  LCB_CMD_SET_VALUE(&scmd, value.c_str(), value.length());
+  scmd.operation = LCB_SET;
+  scmd.flags = 0x2000000;
+
+  lcb_sched_enter(*bucket_lcb_obj_ptr);
+  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_store3,
+                                   *bucket_lcb_obj_ptr, &sres, &scmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
+
+  lcb_sched_leave(*bucket_lcb_obj_ptr);
+  err =
+      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
+
+  // Throw an exception in JavaScript if the bucket set call failed.
+  if (sres.rc != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: LCB_STORE call failed: " << sres.rc << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, sres.rc);
+    return;
+  }
+
+  info.GetReturnValue().Set(value_obj);
+}
+
+void Bucket::BucketDeleteWithXattr(
+    const v8::Local<v8::Name> &name,
+    const v8::PropertyCallbackInfo<v8::Boolean> &info) {
+  auto isolate = info.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  v8::String::Utf8Value utf8_key(name.As<v8::String>());
+  std::string key(*utf8_key);
+
+  auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
+      info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
+
+  Result result;
+  lcb_SDSPEC function_id_spec = {0};
+  auto v8worker = UnwrapData(isolate)->v8worker;
+  std::string function_instance_id = v8worker->GetFunctionInstanceID();
+  std::string function_instance_id_path("_eventing.fiid");
+  function_id_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+  function_id_spec.options =
+      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
+  LCB_SDSPEC_SET_PATH(&function_id_spec, function_instance_id_path.c_str(),
+                      function_instance_id_path.size());
+  LCB_SDSPEC_SET_VALUE(&function_id_spec, function_instance_id.c_str(),
+                       function_instance_id.size());
+
+  lcb_SDSPEC value_crc32_spec = {0};
+  std::string value_crc32_path("_eventing.crc");
+  std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
+  value_crc32_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+  value_crc32_spec.options =
+      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
+  LCB_SDSPEC_SET_PATH(&value_crc32_spec, value_crc32_path.c_str(),
+                      value_crc32_path.size());
+  LCB_SDSPEC_SET_VALUE(&value_crc32_spec, value_crc32_macro.c_str(),
+                       value_crc32_macro.size());
+
+  lcb_SDSPEC doc_spec = {0};
+  doc_spec.sdcmd = LCB_SDCMD_REMOVE_FULLDOC;
+  LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
+  LCB_SDSPEC_SET_VALUE(&doc_spec, "", 0);
+
+  std::vector<lcb_SDSPEC> specs = {function_id_spec, value_crc32_spec,
+                                   doc_spec};
+  lcb_CMDSUBDOC mcmd = {0};
+  LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
+  mcmd.specs = specs.data();
+  mcmd.nspecs = specs.size();
+
+  lcb_sched_enter(*bucket_lcb_obj_ptr);
+  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_subdoc3,
+                                   *bucket_lcb_obj_ptr, &result, &mcmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_REMOVE: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
+
+  lcb_sched_leave(*bucket_lcb_obj_ptr);
+  err =
+      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
+
+  // Throw an exception in JavaScript if the bucket delete call failed.
+  if (result.rc != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: LCB_REMOVE call failed: " << result.rc
+                  << std::endl;
+    lcb_retry_failure++;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.rc);
+    return;
+  }
+
+  info.GetReturnValue().Set(true);
+}
+
+void Bucket::BucketDeleteWithoutXattr(
+    const v8::Local<v8::Name> &name,
+    const v8::PropertyCallbackInfo<v8::Boolean> &info) {
+  auto isolate = info.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  v8::String::Utf8Value utf8_key(name.As<v8::String>());
+  std::string key(*utf8_key);
+
+  auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
+      info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
+
+  Result result;
+  lcb_CMDREMOVE rcmd = {0};
+  LCB_CMD_SET_KEY(&rcmd, key.c_str(), key.length());
+
+  lcb_sched_enter(*bucket_lcb_obj_ptr);
+  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_remove3,
+                                   *bucket_lcb_obj_ptr, &result, &rcmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_REMOVE: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
+
+  lcb_sched_leave(*bucket_lcb_obj_ptr);
+  err =
+      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
+    lcb_retry_failure++;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
+
+  // Throw an exception in JavaScript if the bucket delete call failed.
+  if (result.rc != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: LCB_REMOVE call failed: " << result.rc
+                  << std::endl;
+    lcb_retry_failure++;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.rc);
+    return;
+  }
+
+  info.GetReturnValue().Set(true);
 }

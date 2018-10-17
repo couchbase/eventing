@@ -214,17 +214,19 @@ type Config map[string]interface{}
 
 // AppConfig Application/Event handler configuration
 type AppConfig struct {
-	AppCode        string
-	AppDeployState string
-	AppName        string
-	AppState       string
-	AppVersion     string
-	HandlerUUID    uint32
-	ID             int
-	LastDeploy     string
-	Settings       map[string]interface{}
-	UsingTimer     bool
-	UserPrefix     string
+	AppCode            string
+	AppDeployState     string
+	AppName            string
+	AppState           string
+	AppVersion         string
+	FunctionID         uint32
+	FunctionInstanceID string
+	ID                 int
+	LastDeploy         string
+	Settings           map[string]interface{}
+	UsingTimer         bool
+	UserPrefix         string
+	SrcMutationEnabled bool
 }
 
 type RebalanceProgress struct {

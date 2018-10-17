@@ -1,11 +1,9 @@
 package consumer
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"hash/crc32"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -26,8 +24,9 @@ import (
 func (c *Consumer) processEvents() {
 	logPrefix := "Consumer::processEvents"
 
+	functionInstanceId := strconv.Itoa(int(c.app.FunctionID)) + "-" + c.app.FunctionInstanceID
+
 	var timerMsgCounter uint64
-	xattrprefix := strconv.Itoa(int(c.app.HandlerUUID))
 	for {
 		if c.cppQueueSizes != nil {
 			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize ||
@@ -75,67 +74,22 @@ func (c *Consumer) processEvents() {
 					c.dcpMutationCounter++
 					c.sendEvent(e)
 				case dcpDatatypeJSONXattr:
-					totalXattrLen := binary.BigEndian.Uint32(e.Value[0:])
-					totalXattrData := e.Value[4 : 4+totalXattrLen-1]
-
-					logging.Tracef("%s [%s:%s:%d] key: %ru totalXattrLen: %v totalXattrData: %ru",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), totalXattrLen, totalXattrData)
-					var xMeta xattrMetadata
-					var bytesDecoded uint32
-
-					// Try decoding all xattrs defined in io-vector encoding format
-					for bytesDecoded < totalXattrLen {
-						frameLength := binary.BigEndian.Uint32(totalXattrData)
-						bytesDecoded += 4
-						frameData := totalXattrData[4 : 4+frameLength-1]
-						bytesDecoded += frameLength
-						if bytesDecoded < totalXattrLen {
-							totalXattrData = totalXattrData[4+frameLength:]
-						}
-
-						if len(frameData) > len(xattrprefix) {
-							if bytes.Compare(frameData[:len(xattrprefix)], []byte(xattrprefix)) == 0 {
-								toParse := frameData[len(xattrprefix)+1:]
-
-								err := json.Unmarshal(toParse, &xMeta)
-								if err != nil {
-									continue
-								}
-							}
-						}
-					}
-
-					logging.Tracef("%s [%s:%s:%d] Key: %ru xmeta dump: %ru",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), fmt.Sprintf("%#v", xMeta))
-
-					// Validating for eventing xattr fields
-					if xMeta.Cas != "" {
-						cas, err := util.ConvertBigEndianToUint64([]byte(xMeta.Cas))
-						if err != nil {
-							logging.Errorf("%s [%s:%s:%d] Key: %ru failed to convert cas string from kv to uint64, err: %v",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
-							continue
-						}
-
-						logging.Tracef("%s [%s:%s:%d] Key: %ru decoded cas: %v dcp cas: %v",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), cas, e.Cas)
-
-						// Send mutation to V8 CPP worker _only_ when DcpEvent.Cas != Cas field in xattr
-						if cas != e.Cas {
-							e.Value = e.Value[4+totalXattrLen:]
-
-							if crc32.Update(0, c.crcTable, e.Value) != xMeta.Digest {
-								logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers as cas & crc have mismatched",
-									logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-								c.dcpMutationCounter++
-								c.sendEvent(e)
-							}
+					xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
+					if c.app.SrcMutationEnabled {
+						if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceId); err == nil && isRecursive == true {
+							c.suppressedDCPMutationCounter++
+						} else {
+							logging.Tracef("%s [%s:%s:%d] No IntraHandlerRecursion, sending key: %ru to be processed by JS handlers",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+							c.dcpMutationCounter++
+							e.Value = e.Value[xattrLen+4:]
+							c.sendEvent(e)
 						}
 					} else {
-						e.Value = e.Value[4+totalXattrLen:]
-						logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers because no eventing xattrs",
+						logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 						c.dcpMutationCounter++
+						e.Value = e.Value[xattrLen+4:]
 						c.sendEvent(e)
 					}
 				}
@@ -149,8 +103,30 @@ func (c *Consumer) processEvents() {
 				c.filterVbEventsRWMutex.RUnlock()
 
 				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
-				c.dcpDeletionCounter++
-				c.sendEvent(e)
+				switch e.Datatype {
+				case dcpDatatypeJSONXattr:
+					xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
+					if c.app.SrcMutationEnabled {
+						if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceId); err == nil && isRecursive == true {
+							c.suppressedDCPDeletionCounter++
+						} else {
+							c.dcpDeletionCounter++
+							e.Value = e.Value[xattrLen+4:]
+							logging.Tracef("%s [%s:%s:%d] No IntraHandlerRecursion, sending key: %ru to be processed by JS handlers",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+							c.sendEvent(e)
+						}
+					} else {
+						c.dcpDeletionCounter++
+						e.Value = e.Value[xattrLen+4:]
+						logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+						c.sendEvent(e)
+					}
+				default:
+					c.dcpDeletionCounter++
+					c.sendEvent(e)
+				}
 
 			case mcd.DCP_STREAMREQ:
 

@@ -304,6 +304,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	esp := builder.CreateString(eventingSSLPort)
 	dcfg := builder.CreateString(depCfg)
 	khp := builder.CreateString(kvHostPort)
+	fiid := builder.CreateString(c.app.FunctionInstanceID)
 	handlerHeaders := c.createHandlerHeaders(builder)
 	handlerFooters := c.createHandlerFooters(builder)
 
@@ -325,6 +326,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))
 	payload.PayloadAddCurlTimeout(builder, curlTimeout)
 	payload.PayloadAddTimerContextSize(builder, timerContextSize)
+	payload.PayloadAddFunctionInstanceId(builder, fiid)
 	payload.PayloadAddSkipLcbBootstrap(builder, lcb[0])
 	payload.PayloadAddHandlerHeaders(builder, handlerHeaders)
 	payload.PayloadAddHandlerFooters(builder, handlerFooters)

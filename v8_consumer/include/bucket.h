@@ -20,13 +20,10 @@
 
 #include "v8worker.h"
 
-#define LCB_INST_FIELD_NO 0
-#define BLOCK_MUTATION_FIELD_NO 1
-
 class Bucket {
 public:
   Bucket(V8Worker *w, const char *bname, const char *ep, const char *alias,
-         bool block_mutation);
+         bool block_mutation, bool is_source_bucket);
   ~Bucket();
 
   bool Initialize(V8Worker *w);
@@ -75,10 +72,28 @@ private:
                         const v8::PropertyCallbackInfo<v8::Value> &info);
 
   template <typename>
-  static void BucketDelete(v8::Local<v8::Name> key,
+  static void BucketDelete(const v8::Local<v8::Name> &key,
                            const v8::PropertyCallbackInfo<v8::Boolean> &info);
   template <typename>
   static void BucketDelete(uint32_t key,
+                           const v8::PropertyCallbackInfo<v8::Boolean> &info);
+
+  static void
+  BucketSetWithXattr(const v8::Local<v8::Name> &key,
+                     const v8::Local<v8::Value> &value,
+                     const v8::PropertyCallbackInfo<v8::Value> &info);
+
+  static void
+  BucketSetWithoutXattr(const v8::Local<v8::Name> &key,
+                        const v8::Local<v8::Value> &value,
+                        const v8::PropertyCallbackInfo<v8::Value> &info);
+
+  static void
+  BucketDeleteWithXattr(const v8::Local<v8::Name> &key,
+                        const v8::PropertyCallbackInfo<v8::Boolean> &info);
+
+  static void
+  BucketDeleteWithoutXattr(const v8::Local<v8::Name> &key,
                            const v8::PropertyCallbackInfo<v8::Boolean> &info);
 
   v8::Local<v8::Object> WrapBucketMap();
@@ -87,9 +102,17 @@ private:
   v8::Persistent<v8::Context> context_;
 
   bool block_mutation_;
+  bool is_source_bucket_;
   std::string bucket_name_;
   std::string endpoint_;
   std::string bucket_alias_;
+
+  enum class InternalFields {
+    kLcbInstance,
+    kBlockMutation,
+    kIsSourceBucket,
+    kMaxInternalFields
+  };
 
   V8Worker *worker_;
 };

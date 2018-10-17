@@ -1075,17 +1075,16 @@ func TestUndeployBackdoorDuringBootstrap(t *testing.T) {
 	waitForRebalanceFinish()
 }
 
-// Disabling as for the time being source bucket mutations aren't allowed
-/* func TestSourceBucketMutations(t *testing.T) {
+func TestOnUpdateSrcMutation(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler := "source_bucket_update_op"
 	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{recursiveBehavior: "disable"})
+	createAndDeployFunction(handler, handler, &commonSettings{srcMutationEnabled: true})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifySourceBucketOps(itemCount*2, statsLookupRetryCounter)
 	if itemCount*2 != eventCount {
-		t.Error("For", "WithUserXattrs",
+		t.Error("For", "OnUpdateSrcBucketMutations",
 			"expected", itemCount*2,
 			"got", eventCount,
 		)
@@ -1093,4 +1092,88 @@ func TestUndeployBackdoorDuringBootstrap(t *testing.T) {
 
 	dumpStats()
 	flushFunctionAndBucket(handler)
-} */
+}
+
+func TestOnDeleteSrcMutation(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "src_bucket_op_on_delete"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{srcMutationEnabled: true})
+
+	pumpBucketOps(opsType{delete: true}, &rateLimit{})
+	time.Sleep(time.Second * 10)
+	eventCount := verifySourceBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "OnDeleteSrcBucketMutations",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
+func TestOnUpdateSrcMutationWithTimer(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "src_bucket_op_on_update_with_timer"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{srcMutationEnabled: true})
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifySourceBucketOps(itemCount*2, statsLookupRetryCounter)
+	if itemCount*2 != eventCount {
+		t.Error("For", "OnUpdateSrcBucketMutations",
+			"expected", itemCount*2,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
+func TestOnDeleteSrcMutationsWithTimer(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "src_bucket_op_on_delete_with_timer"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{srcMutationEnabled: true})
+
+	pumpBucketOps(opsType{delete: true}, &rateLimit{})
+	eventCount := verifySourceBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "OnDeleteSrcBucketMutations",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
+func TestInterHandlerRecursion(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler1 := "source_bucket_update_op"
+	handler2 := "src_bucket_op_on_delete"
+	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(handler2)
+	resp := createAndDeployFunction(handler1, handler1, &commonSettings{srcMutationEnabled: true})
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
+	resp = createAndDeployFunction(handler2, handler2, &commonSettings{srcMutationEnabled: true})
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(resp.body, &response)
+	if err != nil {
+		t.Errorf("Failed to unmarshal response, err : %v\n", err)
+		return
+	}
+
+	if response["name"].(string) != "ERR_INTER_FUNCTION_RECURSION" {
+		t.Errorf("Deployment must fail")
+		return
+	}
+	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(handler2)
+}

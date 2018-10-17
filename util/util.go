@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,7 @@ const (
 	HTTPRequestTimeout = time.Duration(5000) * time.Millisecond
 
 	EPSILON = 1e-5
+	dict    = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ*&"
 )
 
 var GocbCredsRequestCounter = 0
@@ -1121,13 +1123,32 @@ func GetAppNameFromPath(path string) string {
 	return split[len(split)-1]
 }
 
-func GenerateHandlerUUID() (uint32, error) {
+func GenerateFunctionID() (uint32, error) {
 	uuid := make([]byte, 16)
 	_, err := rand.Read(uuid)
 	if err != nil {
 		return 0, err
 	}
 	return crc32.ChecksumIEEE(uuid), nil
+}
+
+func GenerateFunctionInstanceID() (string, error) {
+	uuid := make([]byte, 16)
+	_, err := rand.Read(uuid)
+	if err != nil {
+		return "", err
+	}
+	instanceId := crc32.ChecksumIEEE(uuid)
+	instanceIdStr := make([]byte, 0, 8)
+	if instanceId == 0 {
+		return "0", nil
+	}
+	for instanceId > 0 {
+		ch := dict[instanceId%64]
+		instanceIdStr = append(instanceIdStr, byte(ch))
+		instanceId /= 64
+	}
+	return string(instanceIdStr), nil
 }
 
 type GocbLogger struct{}
@@ -1193,4 +1214,36 @@ func CPUCount(log bool) int {
 	}
 
 	return cpuCount
+}
+
+func ParseXattrData(xattrPrefix string, data []byte) (body, xattr []byte, err error) {
+	length := len(data)
+	if length < 4 {
+		return nil, nil, fmt.Errorf("empty xattr metadata")
+	}
+	xattrLen := binary.BigEndian.Uint32(data[0:4])
+	body = data[xattrLen+4:]
+	if xattrLen == 0 {
+		return body, nil, nil
+	}
+	index := uint32(4)
+	delimeter := []byte("\x00")
+	for index < xattrLen {
+		keyValPairLen := binary.BigEndian.Uint32(data[index : index+4])
+		if keyValPairLen == 0 || int(index+keyValPairLen) > length {
+			return body, nil, fmt.Errorf("xattr parse error, unexpected xattr data")
+		}
+		index += 4
+		keyValPairData := data[index : index+keyValPairLen]
+		keyValPair := bytes.Split(keyValPairData, delimeter)
+		if len(keyValPair) != 3 {
+			return body, nil, fmt.Errorf("xattr parse error, unexpected number of components")
+		}
+		xattrKey := string(keyValPair[0])
+		if xattrKey == xattrPrefix {
+			return body, keyValPair[1], nil
+		}
+		index += keyValPairLen
+	}
+	return body, nil, nil
 }

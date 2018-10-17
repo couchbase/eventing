@@ -14,9 +14,28 @@ import (
 	"github.com/couchbase/eventing/util"
 )
 
+func (m *ServiceMgr) sanitiseApplication(app *application) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+
+	for idx := 0; idx < len(app.DeploymentConfig.Buckets); idx++ {
+		if app.DeploymentConfig.Buckets[idx].Access == "" {
+			if app.DeploymentConfig.SourceBucket == app.DeploymentConfig.Buckets[idx].BucketName {
+				app.DeploymentConfig.Buckets[idx].Access = "r"
+			} else {
+				app.DeploymentConfig.Buckets[idx].Access = "rw"
+			}
+		}
+	}
+	return info
+}
+
 func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if info = m.sanitiseApplication(app); info.Code != m.statusCodes.ok.Code {
+		return
+	}
 
 	if info = m.validateApplicationName(app.Name); info.Code != m.statusCodes.ok.Code {
 		return
@@ -34,6 +53,11 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 		return
 	}
 
+	if m.isAppDeployable(app) == false {
+		info.Code = m.statusCodes.errInterFunctionRecursion.Code
+		info.Info = fmt.Sprintf("Inter Handler Recursion Error")
+		return
+	}
 	info.Code = m.statusCodes.ok.Code
 	return
 }
@@ -287,6 +311,17 @@ func (m *ServiceMgr) validateNonMemcached(bucketName string) (info *runtimeInfo)
 	return
 }
 
+func (m *ServiceMgr) validateBucketAccess(access string) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	if access == "r" || access == "rw" {
+		info.Code = m.statusCodes.ok.Code
+		return
+	}
+	info.Code = m.statusCodes.errBucketAccess.Code
+	info.Info = fmt.Sprintf("Invalid bucket access, should be either \"r\" or \"rw\"")
+	return
+}
+
 func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
@@ -317,6 +352,10 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		}
 
 		if info = m.validateAliasName(bucket.Alias); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+
+		if info = m.validateBucketAccess(bucket.Access); info.Code != m.statusCodes.ok.Code {
 			return
 		}
 	}

@@ -106,8 +106,8 @@ std::vector<char> *AppWorker::GetReadBufferFeedback() {
   return &read_buffer_feedback_;
 }
 
-void AppWorker::InitTcpSock(const std::string &handler_name,
-                            const std::string &handler_uuid,
+void AppWorker::InitTcpSock(const std::string &function_name,
+                            const std::string &function_id,
                             const std::string &user_prefix,
                             const std::string &appname, const std::string &addr,
                             const std::string &worker_id, int bsize, int fbsize,
@@ -122,8 +122,8 @@ void AppWorker::InitTcpSock(const std::string &handler_name,
     uv_ip4_addr(addr.c_str(), feedback_port, &feedback_server_sock_.sock4);
     uv_ip4_addr(addr.c_str(), port, &server_sock_.sock4);
   }
-  handler_name_ = handler_name;
-  handler_uuid_ = handler_uuid;
+  function_name_ = function_name;
+  function_id_ = function_id;
   user_prefix_ = user_prefix;
   app_name_ = appname;
   batch_size_ = bsize;
@@ -155,8 +155,8 @@ void AppWorker::InitTcpSock(const std::string &handler_name,
   main_uv_loop_thr_ = std::move(m_thr);
 }
 
-void AppWorker::InitUDS(const std::string &handler_name,
-                        const std::string &handler_uuid,
+void AppWorker::InitUDS(const std::string &function_name,
+                        const std::string &function_id,
                         const std::string &user_prefix,
                         const std::string &appname, const std::string &addr,
                         const std::string &worker_id, int bsize, int fbsize,
@@ -165,8 +165,8 @@ void AppWorker::InitUDS(const std::string &handler_name,
   uv_pipe_init(&feedback_loop_, &feedback_uds_sock_, 0);
   uv_pipe_init(&main_loop_, &uds_sock_, 0);
 
-  handler_name_ = handler_name;
-  handler_uuid_ = handler_uuid;
+  function_name_ = function_name;
+  function_id_ = function_id;
   user_prefix_ = user_prefix;
   app_name_ = appname;
   batch_size_ = bsize;
@@ -408,6 +408,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   std::ostringstream lstats, estats, fstats;
   std::map<int, int64_t> agg_lcb_exceptions;
   std::string::size_type i = 0;
+  std::string handler_instance_id;
 
   const flatbuf::payload::Payload *payload;
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
@@ -453,6 +454,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       server_settings->host_addr.assign(payload->curr_host()->str());
       server_settings->kv_host_port.assign(payload->kv_host_port()->str());
 
+      handler_instance_id = payload->function_instance_id()->str();
+
       LOG(logDebug) << "Loading app:" << app_name_ << std::endl;
 
       v8::V8::InitializeICUDefaultLocation("");
@@ -462,7 +465,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
       for (int16_t i = 0; i < thr_count_; i++) {
         V8Worker *w = new V8Worker(platform, handler_config, server_settings,
-                                   handler_name_, handler_uuid_, user_prefix_);
+                                   function_name_, function_id_,
+                                   handler_instance_id, user_prefix_);
 
         LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
         workers_[i] = w;
@@ -1059,15 +1063,15 @@ int main(int argc, char **argv) {
   }
 
   curl_global_init(CURL_GLOBAL_ALL);
-  std::string handler_uuid(argv[11]);
-  std::string handler_name(argv[1]);
+  std::string function_id(argv[11]);
+  std::string function_name(argv[1]);
   AppWorker *worker = AppWorker::GetAppWorker();
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
-    worker->InitUDS(handler_name, handler_uuid, user_prefix, appname,
+    worker->InitUDS(function_name, function_id, user_prefix, appname,
                     Localhost(false), worker_id, batch_size,
                     feedback_batch_size, feedback_sock_path, uds_sock_path);
   } else {
-    worker->InitTcpSock(handler_name, handler_uuid, user_prefix, appname,
+    worker->InitTcpSock(function_name, function_id, user_prefix, appname,
                         Localhost(false), worker_id, batch_size,
                         feedback_batch_size, feedback_port, port);
   }

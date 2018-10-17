@@ -105,6 +105,7 @@ type depCfg struct {
 type bucket struct {
 	Alias      string `json:"alias"`
 	BucketName string `json:"bucket_name"`
+	Access     string `json:"access"`
 }
 
 type commonSettings struct {
@@ -124,6 +125,7 @@ type commonSettings struct {
 	timerStorageRoutineCount int
 	undeployedState          bool
 	workerCount              int
+	srcMutationEnabled       bool
 }
 
 type rateLimit struct {

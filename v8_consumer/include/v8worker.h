@@ -168,7 +168,9 @@ class V8Worker {
 public:
   V8Worker(v8::Platform *platform, handler_config_t *config,
            server_settings_t *settings, const std::string &handler_name,
-           const std::string &handler_uuid, const std::string &user_prefix);
+           const std::string &function_id,
+           const std::string &function_instance_id,
+           const std::string &user_prefix);
   ~V8Worker();
 
   void operator()() {
@@ -221,20 +223,8 @@ public:
 
   void UpdateHistogram(Time::time_point t);
 
-  /**
-   * Remove item from doc_timer_queue, serialize it and
-   * populate @param messages.
-   *
-   * @param messages
-   * @param window_size
-   */
   void GetTimerMessages(std::vector<uv_buf_t> &messages, size_t window_size);
 
-  /**
-   * Read vb_seq map, serialize it and populate @param messages
-   *
-   * @param messages
-   */
   void GetBucketOpsMessages(std::vector<uv_buf_t> &messages);
 
   int UpdateVbFilter(const std::string &metadata);
@@ -250,6 +240,10 @@ public:
   int ParseMetadata(const std::string &metadata, int &vb_no, int64_t &seq_no);
 
   void SetThreadExitFlag();
+
+  inline std::string GetFunctionID() { return function_id_; }
+
+  inline std::string GetFunctionInstanceID() { return function_instance_id_; }
 
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
@@ -307,8 +301,9 @@ private:
   v8::Isolate *isolate_;
   v8::Platform *platform_;
   inspector::Agent *agent_;
-  std::string handler_name_;
-  std::string handler_uuid_;
+  std::string function_name_;
+  std::string function_id_;
+  std::string function_instance_id_;
   std::string user_prefix_;
   std::atomic<bool> thread_exit_cond_;
 };

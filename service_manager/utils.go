@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/couchbase/cbauth/service"
+	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -251,6 +252,62 @@ func (m *ServiceMgr) checkLifeCycleOpsDuringRebalance() (info *runtimeInfo) {
 
 	info.Code = m.statusCodes.ok.Code
 	return
+}
+
+func (m *ServiceMgr) getSourceBinding(cfg *depCfg) *bucket {
+	for _, binding := range cfg.Buckets {
+		if binding.BucketName == cfg.SourceBucket && binding.Access == "rw" {
+			return &binding
+		}
+	}
+	return nil
+}
+
+func (m *ServiceMgr) getSourceBindingFromFlatBuf(config *cfg.DepCfg) *cfg.Bucket {
+	binding := new(cfg.Bucket)
+	for idx := 0; idx < config.BucketsLength(); idx++ {
+		if config.Buckets(binding, idx) {
+			if string(binding.BucketName()) == string(config.SourceBucket()) && string(binding.Access()) == "rw" {
+				return binding
+			}
+		}
+	}
+	return nil
+}
+
+func (m *ServiceMgr) isSrcMutationEnabled(cfg *depCfg) bool {
+	for _, binding := range cfg.Buckets {
+		if binding.BucketName == cfg.SourceBucket && binding.Access == "rw" {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *ServiceMgr) isAppDeployable(app *application) bool {
+	appSrcBinding := m.getSourceBinding(&app.DeploymentConfig)
+	if appSrcBinding == nil {
+		return true
+	}
+	for _, appName := range m.superSup.DeployedAppList() {
+		if appName == app.Name {
+			continue
+		}
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
+		if err != nil {
+			return false
+		}
+		appdata := cfg.GetRootAsConfig(data, 0)
+		config := new(cfg.DepCfg)
+		depcfg := appdata.DepCfg(config)
+		if app.DeploymentConfig.SourceBucket == string(depcfg.SourceBucket()) {
+			binding := m.getSourceBindingFromFlatBuf(depcfg)
+			if binding != nil {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 var metakvSetCallback = func(args ...interface{}) error {

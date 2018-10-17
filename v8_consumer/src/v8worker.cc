@@ -129,12 +129,16 @@ const char *GetPasswordCached(void *cookie, const char *host, const char *port,
 
 V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    server_settings_t *server_settings,
-                   const std::string &handler_name,
-                   const std::string &handler_uuid,
+                   const std::string &function_name,
+                   const std::string &function_id,
+                   const std::string &function_instance_id,
                    const std::string &user_prefix)
     : app_name_(h_config->app_name), settings_(server_settings),
-      platform_(platform), handler_name_(handler_name),
-      handler_uuid_(handler_uuid), user_prefix_(user_prefix) {
+      platform_(platform), function_name_(function_name),
+      function_id_(function_id), user_prefix_(user_prefix) {
+  std::ostringstream oss;
+  oss << "\"" << function_id << "-" << function_instance_id << "\"";
+  function_instance_id_.assign(oss.str());
   curl_timeout = h_config->curl_timeout;
   histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
   thread_exit_cond_.store(false);
@@ -223,10 +227,12 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
           std::string bucket_alias = bucket->first;
           std::string bucket_name =
               config->component_configs["buckets"][bucket_alias][0];
-
-          bucket_handle = new Bucket(
-              this, bucket_name.c_str(), settings_->kv_host_port.c_str(),
-              bucket_alias.c_str(), cb_source_bucket_ == bucket_name);
+          std::string bucket_access =
+              config->component_configs["buckets"][bucket_alias][2];
+          bucket_handle = new Bucket(this, bucket_name.c_str(),
+                                     settings_->kv_host_port.c_str(),
+                                     bucket_alias.c_str(), bucket_access == "r",
+                                     bucket_name == config->source_bucket);
 
           bucket_handles_.push_back(bucket_handle);
         }

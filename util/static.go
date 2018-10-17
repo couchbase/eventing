@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"github.com/couchbase/eventing/gen/version"
 	"github.com/couchbase/eventing/logging"
+	"hash/crc32"
 )
 
 var ipv4 bool = true
@@ -11,6 +12,7 @@ var localusr string
 var localkey string
 var maxFunctionSize int = 128 * 1024
 var metakvMaxDocSize int = 4096
+var CrcTable *crc32.Table
 
 func init() {
 	dict := []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890")
@@ -26,6 +28,7 @@ func init() {
 	mid := len(buf) / 2
 	localusr = string(buf[:mid])
 	localkey = string(buf[mid:])
+	CrcTable = crc32.MakeTable(crc32.Castagnoli)
 }
 
 func SetIPv6(is6 bool) {

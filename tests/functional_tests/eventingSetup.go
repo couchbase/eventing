@@ -123,10 +123,13 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 	if len(settings.aliasSources) == 0 {
 		aliases = append(aliases, "dst_bucket")
 
-		// Source bucket bindings disallowed
-		// aliases = append(aliases, "src_bucket")
-
 		bnames = append(bnames, "hello-world")
+
+		//Source bucket bindings
+		if settings.srcMutationEnabled == true {
+			aliases = append(aliases, "src_bucket")
+			bnames = append(bnames, "default")
+		}
 	} else {
 		for index, val := range settings.aliasSources {
 			bnames = append(bnames, val)
@@ -181,7 +184,9 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		var alias bucket
 		alias.BucketName = b
 		alias.Alias = bucketAliases[i]
-
+		if s.srcMutationEnabled && alias.BucketName == sourceBucket {
+			alias.Access = "rw"
+		}
 		aliases = append(aliases, alias)
 	}
 

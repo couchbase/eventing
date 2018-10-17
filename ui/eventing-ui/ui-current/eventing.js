@@ -386,7 +386,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 scope.bindings.push({
                     type: 'alias',
                     name: '',
-                    value: ''
+                    value: '',
+                    access: 'rw'
                 });
                 createApp(scope);
             };
@@ -1116,13 +1117,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 },
                 convertBindingToConfig: function(bindings) {
                     // A binding is of the form -
-                    // [{type:'alias', name:'', value:''}]
+                    // [{type:'alias', name:'', value:'', acess:''}]
                     var config = [];
                     for (var binding of bindings) {
                         if (binding.type === 'alias' && binding.name && binding.value) {
                             var element = {};
                             element[binding.type] = binding.value;
                             element.bucket_name = binding.name;
+                            element.access = binding.access;
                             config.push(element);
                         }
                     }
@@ -1136,6 +1138,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             element.type = 'alias';
                             element.name = c.bucket_name;
                             element.value = c.alias;
+                            element.access = c.access;
                             bindings.push(element);
                         }
                     }

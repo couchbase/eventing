@@ -1035,7 +1035,8 @@ func (s *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 	app.AppHandlers = string(config.AppCode())
 	app.Name = string(config.AppName())
 	app.ID = int(config.Id())
-	app.HandlerUUID = uint32(config.HandlerUUID())
+	app.FunctionID = uint32(config.FunctionID())
+	app.FunctionInstanceID = string(config.FunctionInstanceID())
 
 	d := new(cfg.DepCfg)
 	depcfg := new(depCfg)
@@ -1052,6 +1053,7 @@ func (s *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 			newBucket := bucket{
 				Alias:      string(b.Alias()),
 				BucketName: string(b.BucketName()),
+				Access:     string(b.Access()),
 			}
 			buckets = append(buckets, newBucket)
 		}
@@ -1349,10 +1351,12 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
 		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
 		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
+		bAccess := builder.CreateString(app.DeploymentConfig.Buckets[i].Access)
 
 		cfg.BucketStart(builder)
 		cfg.BucketAddAlias(builder, alias)
 		cfg.BucketAddBucketName(builder, bName)
+		cfg.BucketAddAccess(builder, bAccess)
 		csBucket := cfg.BucketEnd(builder)
 
 		bNames = append(bNames, csBucket)
@@ -1375,19 +1379,27 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 
 	appCode := builder.CreateString(app.AppHandlers)
 	aName := builder.CreateString(app.Name)
+	fiid := builder.CreateString(app.FunctionInstanceID)
 
 	cfg.ConfigStart(builder)
 	cfg.ConfigAddId(builder, uint32(app.ID))
 	cfg.ConfigAddAppCode(builder, appCode)
 	cfg.ConfigAddAppName(builder, aName)
 	cfg.ConfigAddDepCfg(builder, depcfg)
-	cfg.ConfigAddHandlerUUID(builder, app.HandlerUUID)
+	cfg.ConfigAddFunctionID(builder, app.FunctionID)
+	cfg.ConfigAddFunctionInstanceID(builder, fiid)
 
 	udtp := byte(0x0)
 	if app.UsingTimer {
 		udtp = byte(0x1)
 	}
 	cfg.ConfigAddUsingTimer(builder, udtp)
+
+	srcMutation := byte(0x0)
+	if app.SrcMutationEnabled {
+		srcMutation = byte(0x1)
+	}
+	cfg.ConfigAddSrcMutationEnabled(builder, srcMutation)
 	config := cfg.ConfigEnd(builder)
 
 	builder.Finish(config)
@@ -1441,6 +1453,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
+	app.SrcMutationEnabled = m.isSrcMutationEnabled(&app.DeploymentConfig)
 	appContent := m.encodeAppPayload(&app)
 
 	if len(appContent) > util.MaxFunctionSize() {
@@ -1471,7 +1484,6 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		app.Settings["using_timer"] = false
 		app.UsingTimer = false
 	}
-
 	appContent = m.encodeAppPayload(&app)
 
 	m.checkVersionCompat(compilationInfo.Version, info)
@@ -1833,19 +1845,19 @@ func (m *ServiceMgr) assignFunctionID(fnName string, app *application, info *run
 
 	if err == nil && data != nil {
 		tApp := m.parseFunctionPayload(data, fnName)
-		app.HandlerUUID = tApp.HandlerUUID
-		logging.Infof("%s Function: %s assigned previous function ID: %d", logPrefix, app.Name, app.HandlerUUID)
+		app.FunctionID = tApp.FunctionID
+		logging.Infof("%s Function: %s assigned previous function ID: %d", logPrefix, app.Name, app.FunctionID)
 	} else {
 		var uErr error
-		app.HandlerUUID, uErr = util.GenerateHandlerUUID()
+		app.FunctionID, uErr = util.GenerateFunctionID()
 		if uErr != nil {
-			info.Code = m.statusCodes.errUUIDGen.Code
-			info.Info = fmt.Sprintf("Function: %s UUID generation failed", fnName)
+			info.Code = m.statusCodes.errFunctionIDGen.Code
+			info.Info = fmt.Sprintf("Function: %s FunctionID generation failed", fnName)
 
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			return uErr
 		}
-		logging.Infof("%s Function: %s ID: %d generated", logPrefix, app.Name, app.HandlerUUID)
+		logging.Infof("%s Function: %s FunctionID: %d generated", logPrefix, app.Name, app.FunctionID)
 	}
 
 	return nil
@@ -2010,6 +2022,16 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
+
+			fiid, err := util.GenerateFunctionInstanceID()
+			if err != nil {
+				info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
+				info.Info = fmt.Sprintf("Handler FunctionInstanceID generation failed")
+				m.sendErrorInfo(w, info)
+				return
+			}
+			logging.Infof("%s Function: %s FunctionInstanceID generated, InstanceId: %s", logPrefix, app.Name, fiid)
+			app.FunctionInstanceID = fiid
 
 			app.EventingVersion = util.EventingVer()
 
@@ -2265,7 +2287,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 			stats.FailureStats = m.superSup.GetFailureStats(app.Name)
 			stats.FunctionName = app.Name
 			stats.GocbCredsRequestCounter = util.GocbCredsRequestCounter
-			stats.HandlerUID = app.HandlerUUID
+			stats.FunctionID = app.FunctionID
 			stats.InternalVbDistributionStats = m.superSup.InternalVbDistributionStats(app.Name)
 			stats.LcbCredsRequestCounter = m.lcbCredsCounter
 			stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
@@ -2427,6 +2449,17 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			infoList = append(infoList, info)
 			continue
 		}
+
+		info = &runtimeInfo{}
+		fiid, err := util.GenerateFunctionInstanceID()
+		if err != nil {
+			info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
+			info.Info = fmt.Sprintf("Handler FunctionInstanceID generation failed")
+			infoList = append(infoList, info)
+			continue
+		}
+		logging.Infof("%s Function: %s FunctionInstanceID generated, InstanceId: %s", logPrefix, app.Name, fiid)
+		app.FunctionInstanceID = fiid
 
 		app.EventingVersion = util.EventingVer()
 
