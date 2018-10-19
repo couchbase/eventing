@@ -40,6 +40,7 @@
 #include "js_exception.h"
 #include "log.h"
 #include "n1ql.h"
+#include "parse_deployment.h"
 #include "queue.h"
 #include "utils.h"
 
@@ -270,7 +271,6 @@ public:
   Queue<worker_msg_t> *worker_queue_;
 
   ConnectionPool *conn_pool_;
-  JsException *js_exception_;
 
   std::mutex lcb_exception_mtx_;
   std::map<int, int64_t> lcb_exceptions_;
@@ -279,6 +279,13 @@ public:
   Data data_;
 
 private:
+  v8::Local<v8::ObjectTemplate> NewGlobalObj() const;
+  void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
+  void InitializeIsolateData(const server_settings_t *server_settings,
+                             const handler_config_t *h_config);
+  void
+  InitializeCurlBindingValues(const std::vector<CurlBinding> &curl_bindings);
+  void FreeCurlBindings();
   std::vector<uv_buf_t> BuildResponse(const std::string &payload,
                                       int8_t msg_type, int8_t response_opcode);
   bool ExecuteScript(const v8::Local<v8::String> &script);
@@ -304,6 +311,7 @@ private:
   std::string user_prefix_;
   std::atomic<bool> thread_exit_cond_;
   const std::vector<std::string> exception_type_names_;
+  std::vector<std::string> curl_binding_values_;
 };
 
 const char *GetUsername(void *cookie, const char *host, const char *port,

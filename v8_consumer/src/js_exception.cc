@@ -57,23 +57,6 @@ void JsException::CopyMembers(JsException &&exc_obj) {
   name_.Reset(isolate_, v8Str(isolate_, name_str_));
 }
 
-// Composes exception message for curl related errors
-void JsException::Throw(CURLcode res) {
-  v8::HandleScope handle_scope(isolate_);
-
-  auto code_name = code_.Get(isolate_);
-  auto desc_name = desc_.Get(isolate_);
-
-  auto code_value = v8::Number::New(isolate_, static_cast<int>(res));
-  auto desc_value = v8Str(isolate_, curl_easy_strerror(res));
-
-  auto exception = v8::Object::New(isolate_);
-  exception->Set(code_name, code_value);
-  exception->Set(desc_name, desc_value);
-
-  isolate_->ThrowException(exception);
-}
-
 // Extracts the error message, composes an exception object and throws.
 void JsException::ThrowKVError(lcb_t instance, lcb_error_t error) {
   v8::HandleScope handle_scope(isolate_);
@@ -141,6 +124,21 @@ void JsException::ThrowEventingError(const std::string &err_msg) {
       custom_error->NewEventingError(v8Str(isolate_, err_msg), error_obj);
   if (info.is_fatal) {
     LOG(logError) << "Unable to construct EventingError : " << info.msg
+                  << std::endl;
+    isolate_->ThrowException(v8Str(isolate_, err_msg));
+    return;
+  }
+  isolate_->ThrowException(error_obj);
+}
+
+void JsException::ThrowCurlError(const std::string &err_msg) {
+  v8::HandleScope handle_scope(isolate_);
+  auto custom_error = UnwrapData(isolate_)->custom_error;
+
+  v8::Local<v8::Object> error_obj;
+  auto info = custom_error->NewCurlError(v8Str(isolate_, err_msg), error_obj);
+  if (info.is_fatal) {
+    LOG(logError) << "Unable to construct CurlError : " << info.msg
                   << std::endl;
     isolate_->ThrowException(v8Str(isolate_, err_msg));
     return;

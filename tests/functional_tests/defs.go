@@ -1,5 +1,7 @@
 package eventing
 
+import "github.com/couchbase/eventing/common"
+
 const (
 	srcBucket  = "default"
 	dstBucket  = "hello-world"
@@ -97,9 +99,10 @@ type application struct {
 }
 
 type depCfg struct {
-	Buckets        []bucket `json:"buckets"`
-	MetadataBucket string   `json:"metadata_bucket"`
-	SourceBucket   string   `json:"source_bucket"`
+	Curl           []common.Curl `json:"curl"`
+	Buckets        []bucket      `json:"buckets"`
+	MetadataBucket string        `json:"metadata_bucket"`
+	SourceBucket   string        `json:"source_bucket"`
 }
 
 type bucket struct {
@@ -111,6 +114,7 @@ type bucket struct {
 type commonSettings struct {
 	aliasHandles             []string
 	aliasSources             []string
+	curlBindings             []common.Curl
 	batchSize                int
 	cleanupTimers            bool
 	deadlineTimeout          int

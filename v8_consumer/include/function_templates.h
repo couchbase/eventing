@@ -20,11 +20,8 @@
 
 #include "log.h"
 #include "utils.h"
-#include "v8worker.h"
 
 #define CONSOLE_LOG_MAX_ARITY 20
-
-extern long curl_timeout;
 
 struct Result {
   lcb_CAS cas;
@@ -35,19 +32,7 @@ struct Result {
   Result() : cas(0), rc(LCB_SUCCESS) {}
 };
 
-struct CurlResult {
-  char *memory;
-  size_t size;
-};
-
-void Curl(const v8::FunctionCallbackInfo<v8::Value> &args);
-
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args);
 void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args);
-
-void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args);
-void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args);
-void HandleDocTimerFailure(v8::Isolate *isolate, lcb_t instance,
-                           lcb_error_t error);
 
 #endif

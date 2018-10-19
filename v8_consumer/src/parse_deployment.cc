@@ -23,7 +23,7 @@ deployment_config *ParseDeployment(const char *app_code) {
   auto buckets = dep_cfg->buckets();
 
   std::map<std::string, std::vector<std::string>> buckets_info;
-  for (unsigned int i = 0; i < buckets->size(); i++) {
+  for (flatbuffers::uoffset_t i = 0; i < buckets->size(); i++) {
     std::vector<std::string> bucket_info;
     bucket_info.push_back(buckets->Get(i)->bucketName()->str());
     bucket_info.push_back(buckets->Get(i)->alias()->str());
@@ -33,6 +33,11 @@ deployment_config *ParseDeployment(const char *app_code) {
   }
   config->component_configs["buckets"] = buckets_info;
 
+  const auto curl_cfg = dep_cfg->curl();
+  config->curl_bindings.reserve(static_cast<std::size_t>(curl_cfg->size()));
+  for (flatbuffers::uoffset_t i = 0; i < curl_cfg->size(); ++i) {
+    config->curl_bindings.emplace_back(curl_cfg->Get(i));
+  }
   return config;
 }
 

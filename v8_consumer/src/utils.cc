@@ -321,12 +321,15 @@ bool IsExecutionTerminating(v8::Isolate *isolate) {
 }
 
 Utils::Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context)
-    : isolate_(isolate) {
+    : isolate_(isolate), curl_handle_(curl_easy_init()) {
+  v8::HandleScope handle_scope(isolate_);
+
   context_.Reset(isolate_, context);
   global_.Reset(isolate_, context->Global());
 }
 
 Utils::~Utils() {
+  curl_easy_cleanup(curl_handle_);
   context_.Reset();
   global_.Reset();
 }
@@ -411,4 +414,254 @@ bool Utils::IsFuncGlobal(const v8::Local<v8::Value> &func) {
   }
 
   return true;
+}
+
+std::string Utils::TrimBack(const std::string &s, const char *ws) const {
+  std::string ts(s);
+  ts.erase(ts.find_last_not_of(ws) + 1);
+  return ts;
+}
+
+std::string Utils::TrimFront(const std::string &s, const char *ws) const {
+  std::string ts(s);
+  ts.erase(0, ts.find_first_not_of(ws));
+  return ts;
+}
+
+std::string Utils::Trim(const std::string &s, const char *ws) const {
+  return TrimFront(TrimBack(s, ws), ws);
+}
+
+v8::Local<v8::ArrayBuffer> Utils::ToArrayBuffer(void *buffer,
+                                                std::size_t size) {
+  v8::EscapableHandleScope handle_scope(isolate_);
+
+  auto arr_buf = v8::ArrayBuffer::New(isolate_, size);
+  memcpy(arr_buf->GetContents().Data(), buffer, size);
+  return handle_scope.Escape(arr_buf);
+}
+
+UrlEncode Utils::UrlEncodeAsString(const std::string &data) {
+  if (curl_handle_ == nullptr) {
+    return {true, "Curl handle is not initialized"};
+  }
+
+  // libcurl uses strlen if last param is 0
+  // It's preferable to use 0 because the return type of strlen is size_t, which
+  // has a bigger range than int
+  auto encoded_ptr = curl_easy_escape(curl_handle_, data.c_str(), 0);
+  if (encoded_ptr == nullptr) {
+    return {true, "Unable to url encode " + data};
+  }
+
+  std::string encoded(encoded_ptr);
+  curl_free(encoded_ptr);
+  return {encoded};
+}
+
+UrlEncode Utils::UrlEncodeAsKeyValue(const v8::Local<v8::Value> &obj_val) {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  v8::Local<v8::Object> obj;
+  if (!TO_LOCAL(obj_val->ToObject(context), &obj)) {
+    return {true, "Unable to read JSON"};
+  }
+
+  v8::Local<v8::Array> keys_arr;
+  if (!TO_LOCAL(obj->GetOwnPropertyNames(context), &keys_arr)) {
+    return {true, "Unable to read keys"};
+  }
+
+  std::string encoded;
+  for (uint32_t i = 0, len = keys_arr->Length(); i < len; ++i) {
+    v8::Local<v8::Value> key_v8val;
+    if (!TO_LOCAL(keys_arr->Get(context, i), &key_v8val)) {
+      return {true, "Unable to read keys"};
+    }
+    v8::String::Utf8Value key_utf8(key_v8val);
+
+    v8::Local<v8::Value> value_v8val;
+    if (!TO_LOCAL(obj->Get(context, key_v8val), &value_v8val)) {
+      return {true, "Unable to read value of key " + std::string(*key_utf8)};
+    }
+    std::string value;
+    if (value_v8val->IsString()) {
+      v8::String::Utf8Value value_utf8(value_v8val);
+      value = *value_utf8;
+    } else {
+      value = JSONStringify(isolate_, value_v8val);
+    }
+
+    auto info = UrlEncodeAsString(*key_utf8);
+    if (info.is_fatal) {
+      return info;
+    }
+    if (!encoded.empty()) {
+      encoded += "&";
+    }
+    encoded += info.encoded;
+    encoded += "=";
+
+    info = UrlEncodeAsString(value);
+    if (info.is_fatal) {
+      return info;
+    }
+    encoded += info.encoded;
+  }
+  return {encoded};
+}
+
+UrlDecode Utils::UrlDecodeString(const std::string &data) {
+  auto n_decode = 0;
+  auto decoded_ptr =
+      curl_easy_unescape(curl_handle_, data.c_str(), 0, &n_decode);
+  if (decoded_ptr == nullptr) {
+    return {true, "Unable to url decode " + data};
+  }
+  std::string decoded(decoded_ptr);
+  curl_free(decoded_ptr);
+  return {decoded};
+}
+
+UrlDecode Utils::UrlDecodeAsKeyValue(const std::string &data,
+                                     v8::Local<v8::Object> &obj_out) {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  std::istringstream tokenizer(data);
+  std::string item;
+  while (std::getline(tokenizer, item, '&')) {
+    auto i = item.find('=');
+    if (i == std::string::npos) {
+      return {true, "Encoded string is not delimited by ="};
+    }
+
+    auto key_info = UrlDecodeString(item.substr(0, i));
+    if (key_info.is_fatal) {
+      return key_info;
+    }
+
+    auto value = item.substr(i + 1);
+    std::replace(value.begin(), value.end(), '+', ' ');
+    auto value_info = UrlDecodeString(value);
+    if (value_info.is_fatal) {
+      return value_info;
+    }
+
+    auto result = false;
+    if (!TO(obj_out->Set(context, v8Str(isolate_, key_info.decoded),
+                         v8Str(isolate_, value_info.decoded)),
+            &result) ||
+        !result) {
+      return {true, "Unable to set key value"};
+    }
+  }
+  return {};
+}
+
+UrlEncode Utils::UrlEncodeAny(const v8::Local<v8::Value> &val) {
+  auto utils = UnwrapData(isolate_)->utils;
+
+  if (val->IsObject()) {
+    return utils->UrlEncodeAsKeyValue(val);
+  }
+
+  v8::String::Utf8Value val_utf8(val);
+  return utils->UrlEncodeAsString(*val_utf8);
+}
+
+UrlDecode
+Utils::UrlDecodeAsKeyValue(const std::string &data,
+                           std::unordered_map<std::string, std::string> &kv) {
+  std::istringstream tokenizer(data);
+  std::string item;
+  while (std::getline(tokenizer, item, '&')) {
+    auto i = item.find('=');
+    if (i == std::string::npos) {
+      return {true, "Encoded string is not delimited by ="};
+    }
+
+    auto key_info = UrlDecodeString(item.substr(0, i));
+    if (key_info.is_fatal) {
+      return key_info;
+    }
+
+    auto value = item.substr(i + 1);
+    std::replace(value.begin(), value.end(), '+', ' ');
+    auto value_info = UrlDecodeString(value);
+    if (value_info.is_fatal) {
+      return value_info;
+    }
+
+    kv[key_info.decoded] = value_info.decoded;
+  }
+  return UrlDecode();
+}
+
+void UrlEncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+
+  auto js_exception = UnwrapData(isolate)->js_exception;
+  auto utils = UnwrapData(isolate)->utils;
+
+  if (args.Length() == 0) {
+    js_exception->ThrowEventingError("Need at least one parameter");
+    return;
+  }
+
+  UrlEncode info;
+  if (args[0]->IsObject()) {
+    info = utils->UrlEncodeAsKeyValue(args[0]);
+    if (info.is_fatal) {
+      js_exception->ThrowEventingError(info.msg);
+      return;
+    }
+  } else {
+    v8::String::Utf8Value arg_utf8(args[0]);
+    info = utils->UrlEncodeAsString(*arg_utf8);
+    if (info.is_fatal) {
+      js_exception->ThrowEventingError(info.msg);
+      return;
+    }
+  }
+
+  args.GetReturnValue().Set(v8Str(isolate, info.encoded));
+}
+
+void UrlDecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+
+  auto js_exception = UnwrapData(isolate)->js_exception;
+  auto utils = UnwrapData(isolate)->utils;
+
+  if (args.Length() == 0) {
+    js_exception->ThrowEventingError("Need at least one parameter");
+    return;
+  }
+  if (!args[0]->IsString()) {
+    js_exception->ThrowEventingError("Expected an argument of type string");
+    return;
+  }
+
+  v8::String::Utf8Value arg_utf8(args[0]);
+  if (strchr(*arg_utf8, '=') == nullptr) {
+    auto info = utils->UrlDecodeString(*arg_utf8);
+    if (info.is_fatal) {
+      js_exception->ThrowEventingError(info.msg);
+      return;
+    }
+    args.GetReturnValue().Set(v8Str(isolate, info.decoded));
+    return;
+  }
+
+  auto decoded_obj = v8::Object::New(isolate);
+  auto info = utils->UrlDecodeAsKeyValue(*arg_utf8, decoded_obj);
+  if (info.is_fatal) {
+    js_exception->ThrowEventingError(info.msg);
+    return;
+  }
+  args.GetReturnValue().Set(decoded_obj);
 }

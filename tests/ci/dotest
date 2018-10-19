@@ -134,6 +134,16 @@ if [[ "$MODE" == *"$phase"* ]]; then
   collect_logs
 fi
 
+# cURL tests
+export phase=curl
+if [[ "$MODE" == *"$phase"* ]]; then
+  echo "</pre><h4>${phase^} tests</h4><pre>"
+  echo "`date +'%Y/%m/%d %H:%M:%S'` Started $phase"
+  cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
+  GOMAXPROCS=16 $GOROOT/bin/go test -timeout 4h -tags curl -v 2>&1 | tee -a $WORKSPACE/test.log
+  collect_logs
+fi
+
 stop_cluster
 
 start_cluster

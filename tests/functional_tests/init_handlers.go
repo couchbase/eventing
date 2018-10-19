@@ -1,4 +1,4 @@
-// +build all handler n1ql
+// +build all handler n1ql curl
 
 package eventing
 
