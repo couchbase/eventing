@@ -39,15 +39,21 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 	// timerQueuesAreDrained - Primarily to avoid calls to checkIfTimerQueuesAreDrained()
 	// multiple times and hence avoid filling up log files
 	if !c.timerQueuesAreDrained && len(vbsRemainingToCloseStream) == 0 && c.usingTimer {
-		err := c.checkIfTimerQueuesAreDrained()
-		if err != nil {
-			// Faking rebalance progress while timer queues are getting drained
-			vbsToMove := rand.Intn(5) + 1
-			progress.VbsRemainingToShuffle = vbsToMove
-			progress.CloseStreamVbsLen = vbsToMove
-			return progress
+
+		logging.Infof("%s [%s:%s:%d] uuid: %s eject node UUIDs: %+v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.NodeUUID(), c.ejectNodesUUIDs)
+
+		if util.Contains(c.NodeUUID(), c.ejectNodesUUIDs) {
+			err := c.CheckIfQueuesAreDrained()
+			if err != nil {
+				// Faking rebalance progress while timer queues are getting drained
+				vbsToMove := rand.Intn(5) + 1
+				progress.VbsRemainingToShuffle = vbsToMove
+				progress.CloseStreamVbsLen = vbsToMove
+				return progress
+			}
+			c.timerQueuesAreDrained = true
 		}
-		c.timerQueuesAreDrained = true
 	}
 
 	if len(vbsRemainingToCloseStream) == 0 && len(vbsRemainingToStreamReq) == 0 {
@@ -65,28 +71,24 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 	return progress
 }
 
-func (c *Consumer) checkIfTimerQueuesAreDrained() error {
-	logPrefix := "Consumer::checkIfTimerQueuesAreDrained"
+func (c *Consumer) CheckIfQueuesAreDrained() error {
+	logPrefix := "Consumer::CheckIfQueuesAreDrained"
 
-	logging.Infof("%s [%s:%s:%d] uuid: %s eject node UUIDs: %+v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.NodeUUID(), c.ejectNodesUUIDs)
+	vbsFilterAckYetToCome := c.getVbsFilterAckYetToCome()
+	if len(vbsFilterAckYetToCome) > 0 {
+		logging.Infof("%s [%s:%s:%d] vbsFilterAckYetToCome dump: %s len: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsFilterAckYetToCome), len(vbsFilterAckYetToCome))
+		return errTimerQueueNotDrained
+	}
 
-	if util.Contains(c.NodeUUID(), c.ejectNodesUUIDs) {
+	if c.cppQueueSizes.AggQueueSize > 0 {
+		c.GetExecutionStats()
+		logging.Infof("%s [%s:%s:%d] AggQueueSize: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.AggQueueSize)
+		return errTimerQueueNotDrained
+	}
 
-		vbsFilterAckYetToCome := c.getVbsFilterAckYetToCome()
-		if len(vbsFilterAckYetToCome) > 0 {
-			logging.Infof("%s [%s:%s:%d] vbsFilterAckYetToCome dump: %s len: %d",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsFilterAckYetToCome), len(vbsFilterAckYetToCome))
-			return errTimerQueueNotDrained
-		}
-
-		if c.cppQueueSizes.AggQueueSize > 0 {
-			c.GetExecutionStats()
-			logging.Infof("%s [%s:%s:%d] AggQueueSize: %d",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.AggQueueSize)
-			return errTimerQueueNotDrained
-		}
-
+	if c.usingTimer {
 		if c.cppQueueSizes.DocTimerQueueSize > 0 {
 			c.GetExecutionStats()
 			logging.Infof("%s [%s:%s:%d] DocTimerQueueSize: %d",

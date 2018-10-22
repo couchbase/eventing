@@ -365,9 +365,6 @@ func TestMultipleHandlers(t *testing.T) {
 	flushFunctionAndBucket(handler2)
 }
 
-/* Disabling pause/resume tests as it's retired. Keeping the tests around as
-we might need to use these tests for allowing deploy/undeploy to pick
-things up from last checkpointed seq no
 func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
@@ -378,6 +375,7 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		if i > 0 {
+			log.Printf("Resuming the app: %s\n\n", handler)
 			setSettings(handler, true, true, &commonSettings{})
 		}
 
@@ -391,7 +389,7 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 		}
 
 		dumpStats()
-		fmt.Printf("Pausing the app: %s\n\n", handler)
+		log.Printf("Pausing the app: %s\n\n", handler)
 		setSettings(handler, true, false, &commonSettings{})
 	}
 
@@ -401,13 +399,14 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
-	handler := "bucket_op_on_update"
+	handler := "bucket_op_with_timer"
 
 	flushFunctionAndBucket(handler)
 	createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4})
 
 	for i := 0; i < 5; i++ {
 		if i > 0 {
+			log.Printf("Resuming the app: %s\n\n", handler)
 			setSettings(handler, true, true, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4})
 		}
 
@@ -421,12 +420,12 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 		}
 
 		dumpStats()
-		fmt.Printf("Pausing the app: %s\n\n", handler)
+		log.Printf("Pausing the app: %s\n\n", handler)
 		setSettings(handler, true, false, &commonSettings{})
 	}
 
 	flushFunctionAndBucket(handler)
-}*/
+}
 
 func TestCommentUnCommentOnDelete(t *testing.T) {
 	time.Sleep(5 * time.Second)

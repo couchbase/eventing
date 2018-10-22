@@ -290,3 +290,17 @@ var deleteOpCallback = func(args ...interface{}) error {
 	}
 	return err
 }
+
+var checkIfQueuesAreDrained = func(args ...interface{}) error {
+	p := args[0].(*Producer)
+
+	var err error
+	for _, c := range p.getConsumers() {
+		err = c.CheckIfQueuesAreDrained()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

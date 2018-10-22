@@ -46,7 +46,7 @@ func (c *Consumer) controlRoutine() error {
 				return common.ErrRetryTimeout
 			}
 
-			c.closeAllRunningDcpFeeds()
+			c.CloseAllRunningDcpFeeds()
 
 			c.stopVbOwnerTakeoverCh = make(chan struct{})
 

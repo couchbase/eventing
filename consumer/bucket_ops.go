@@ -994,59 +994,6 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 	return err
 }
 
-var removeIndexCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::removeIndexCallback"
-
-	c := args[0].(*Consumer)
-	key := args[1].(common.Key)
-	index := args[2].(int)
-
-	_, err := c.gocbMetaBucket.MutateIn(key.Raw(), 0, 0).
-		Remove(fmt.Sprintf("[%d]", index)).
-		Execute()
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %ru, failed to remove from metadata bucket, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), key.Raw(), err)
-	}
-
-	return err
-}
-
-var checkKeyExistsCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::checkKeyExistsCallback"
-
-	c := args[0].(*Consumer)
-	docID := args[1].(string)
-	exists := args[2].(*bool)
-	connShutdown := args[3].(*bool)
-	var value interface{}
-
-	_, err := c.gocbBucket.Get(docID, &value)
-	if err == gocb.ErrShutdown {
-		*exists = false
-		*connShutdown = true
-		return nil
-	}
-
-	*connShutdown = false
-	if err == gocb.ErrKeyNotFound {
-		*exists = false
-		return nil
-	}
-
-	if err == nil {
-		*exists = true
-		return nil
-	}
-
-	logging.Errorf("%s [%s:%s:%d] Key: %ru, err : %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), docID, err)
-	return err
-}
-
 var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::checkIfVbStreamsOpenedCallback"
 
@@ -1065,31 +1012,5 @@ var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
 		}
 	}
 
-	return nil
-}
-
-var checkIfReceivedTillEndSeqNoCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::checkIfRecievedTillEndSeqNoCallback"
-
-	c := args[0].(*Consumer)
-	vb := args[1].(uint16)
-	receivedTillEndSeqNo := args[2].(*bool)
-	dcpFeed := args[3].(*couchbase.DcpFeed)
-
-	if !c.isRebalanceOngoing {
-		logging.Infof("%s [%s:%s:%d] vb: %d closing feed: %s as rebalance has been stopped",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName())
-
-		dcpFeed.Close()
-		return nil
-	}
-
-	if !*receivedTillEndSeqNo {
-		return fmt.Errorf("Not recieved till supplied end seq no")
-	}
-	logging.Infof("%s [%s:%s:%d] vb: %d closing feed: %s, received events till end seq no",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName())
-
-	dcpFeed.Close()
 	return nil
 }

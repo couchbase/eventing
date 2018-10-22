@@ -603,8 +603,8 @@ func (c *Consumer) cleanupVbMetadata(vb uint16) error {
 	return nil
 }
 
-func (c *Consumer) closeAllRunningDcpFeeds() {
-	logPrefix := "Consumer::closeAllRunningDcpFeeds"
+func (c *Consumer) CloseAllRunningDcpFeeds() {
+	logPrefix := "Consumer::CloseAllRunningDcpFeeds"
 
 	runningDcpFeeds := make([]*couchbase.DcpFeed, 0)
 

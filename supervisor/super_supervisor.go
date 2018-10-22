@@ -157,12 +157,9 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 			cmd: cmdAppLoad,
 		}
 
-		settingsPath := MetakvAppSettingsPath + appName
-		sData, err := util.MetakvGet(settingsPath)
-		if err != nil {
-			logging.Errorf("%s [%d] Function: %s Failed to fetch updated settings from metakv, err: %v",
-				logPrefix, s.runningFnsCount(), appName, err)
-		}
+		var sData []byte
+		path := MetakvAppSettingsPath + appName
+		util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
 
 		s.appRWMutex.Lock()
 		if _, ok := s.appDeploymentStatus[appName]; !ok {
@@ -253,9 +250,9 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			logPrefix, s.runningFnsCount(), appName, s.GetAppState(appName), deploymentStatus, processingStatus)
 
 		/*
-			State 1(Deployment status = False, Processing status = False)
-			State 2 (Deployment status = True, Processing status = True)
-			State 3 (Deployment status = True,  Processing status = False)
+			Undeployed	S1 	deployment_status: false 	processing_status: false
+			Deployed	S2 	deployment_status: true 	processing_status: true
+			Paused		S3 	deployment_status: true 	processing_status: false
 
 			Possible state transitions:
 
@@ -418,12 +415,9 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 		for _, appName := range appsInPrimaryStore {
 
+			var sData []byte
 			path := MetakvAppSettingsPath + appName
-			sData, err := util.MetakvGet(path)
-			if err != nil {
-				logging.Errorf("%s [%d] Function: %s failed to fetch settings, err: %v", logPrefix, s.runningFnsCount(), appName, err)
-				return nil
-			}
+			util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
 
 			processingStatus, deploymentStatus, err := s.getStatuses(sData)
 			if err != nil {
@@ -658,41 +652,19 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 				// Resetting cleanup timers in metakv. This helps in differentiating between eventing node reboot(or eventing process
 				// re-spawn) and app redeploy
+
+				var sData []byte
 				path := MetakvAppSettingsPath + appName
-				sData, err := util.MetakvGet(path)
+				util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
+
+				pStatus, dStatus, err := s.getStatuses(sData)
 				if err != nil {
-					logging.Errorf("%s [%d] Function: %s failed to fetch settings, err: %v", logPrefix, s.runningFnsCount(), appName, err)
 					continue
 				}
 
-				settings := make(map[string]interface{})
-				err = json.Unmarshal(sData, &settings)
-				if err != nil {
-					logging.Errorf("%s [%d] Function: %s failed to unmarshal settings, err: %v", logPrefix, s.runningFnsCount(), appName, err)
-					continue
-				}
-
-				deploymentStatus := settings["deployment_status"].(bool)
-				processingStatus := settings["processing_status"].(bool)
-
-				if !deploymentStatus && !processingStatus {
+				if !dStatus && !pStatus {
 					logging.Infof("%s [%d] Function: %s skipping bootstrap as processing & deployment status suggests function isn't supposed to be deployed",
 						logPrefix, s.runningFnsCount(), appName)
-					continue
-				}
-
-				settings["cleanup_timers"] = false
-
-				sData, err = json.Marshal(&settings)
-				if err != nil {
-					logging.Errorf("%s [%d] Function: %s failed to marshal updated settings, err: %v", logPrefix, s.runningFnsCount(), appName, err)
-					continue
-				}
-
-				err = util.MetakvSet(path, sData, nil)
-				if err != nil {
-					logging.Errorf("%s [%d] Function: %s failed to store updated settings in metakv, err: %v",
-						logPrefix, s.runningFnsCount(), appName, err)
 					continue
 				}
 

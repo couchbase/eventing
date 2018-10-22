@@ -484,8 +484,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oTerminate:
       break;
     case oGetLatencyStats:
-      latency_buckets = workers_[0]->histogram_->Buckets();
-      agg_hgram.assign(latency_buckets, 0);
+      if (workers_.size() > 0) {
+        latency_buckets = workers_[0]->histogram_->Buckets();
+        agg_hgram.assign(latency_buckets, 0);
+      }
       for (const auto &w : workers_) {
         worker_hgram = w.second->histogram_->Hgram();
         for (std::string::size_type i = 0; i < worker_hgram.size(); i++) {

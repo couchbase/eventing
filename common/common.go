@@ -118,7 +118,9 @@ type EventingProducer interface {
 
 // EventingConsumer interface to export functions from eventing_consumer
 type EventingConsumer interface {
+	CheckIfQueuesAreDrained() error
 	ClearEventStats()
+	CloseAllRunningDcpFeeds()
 	ConsumerName() string
 	DcpEventsRemainingToProcess() uint64
 	EventingNodeUUIDs() []string

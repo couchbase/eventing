@@ -263,6 +263,17 @@ func (p *Producer) Serve() {
 			logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
 
 			for _, c := range p.getConsumers() {
+				c.WorkerVbMapUpdate(nil)
+				c.CloseAllRunningDcpFeeds()
+			}
+
+			err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, checkIfQueuesAreDrained, p)
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+				return
+			}
+
+			for _, c := range p.getConsumers() {
 				p.stopAndDeleteConsumer(c)
 			}
 
