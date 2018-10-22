@@ -367,7 +367,6 @@ func TestMultipleHandlers(t *testing.T) {
 
 func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 	time.Sleep(5 * time.Second)
-
 	handler := "bucket_op_on_update"
 
 	flushFunctionAndBucket(handler)
@@ -398,7 +397,6 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 
 func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 	time.Sleep(5 * time.Second)
-
 	handler := "bucket_op_with_timer"
 
 	flushFunctionAndBucket(handler)
@@ -423,6 +421,86 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 		log.Printf("Pausing the app: %s\n\n", handler)
 		setSettings(handler, true, false, &commonSettings{})
 	}
+
+	flushFunctionAndBucket(handler)
+}
+
+func TestPauseAndResumeWithWorkerCountChange(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_with_timer"
+
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "TestPauseAndResumeWithWorkerCountChange",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	log.Printf("Pausing the app: %s\n", handler)
+	setSettings(handler, true, false, &commonSettings{})
+
+	log.Printf("Resuming the app: %s\n", handler)
+	setSettings(handler, true, true, &commonSettings{workerCount: 6})
+
+	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
+	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
+	if itemCount*2 != eventCount {
+		t.Error("For", "TestPauseAndResumeWithWorkerCountChange",
+			"expected", itemCount*2,
+			"got", eventCount,
+		)
+	}
+
+	flushFunctionAndBucket(handler)
+}
+
+func TestPauseResumeWithEventingReb(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_with_timer"
+
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "TestPauseResumeWithEventingReb",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	log.Printf("Pausing the app: %s\n", handler)
+	setSettings(handler, true, false, &commonSettings{})
+
+	addNodeFromRest("127.0.0.1:9003", "eventing")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+
+	log.Printf("Resuming the app: %s\n", handler)
+	setSettings(handler, true, true, &commonSettings{workerCount: 6})
+
+	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
+	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
+	if itemCount*2 != eventCount {
+		t.Error("For", "TestPauseResumeWithEventingReb",
+			"expected", itemCount*2,
+			"got", eventCount,
+		)
+	}
+
+	rebalanceFromRest([]string{"127.0.0.1:9003"})
+	waitForRebalanceFinish()
+	metaStateDump()
 
 	flushFunctionAndBucket(handler)
 }
