@@ -149,12 +149,14 @@ func SetRebalancer(r rebalancer) {
 }
 
 func Create(uid string, partn int, connstr string, bucket string) error {
+	logPrefix := "TimerStore::Create"
+
 	stores.lock.Lock()
 	defer stores.lock.Unlock()
 
 	_, found := stores.entries[mapLocator(uid, partn)]
 	if found {
-		logging.Warnf("Asked to create store %v:%v which exists. Reusing", uid, partn)
+		logging.Warnf("%s Asked to create store %v:%v which exists. Reusing", logPrefix, uid, partn)
 		return nil
 	}
 	store, err := newTimerStore(uid, partn, connstr, bucket)
@@ -166,11 +168,13 @@ func Create(uid string, partn int, connstr string, bucket string) error {
 }
 
 func Fetch(uid string, partn int) (store *TimerStore, found bool) {
+	logPrefix := "TimerStore::Fetch"
+
 	stores.lock.RLock()
 	defer stores.lock.RUnlock()
 	store, found = stores.entries[mapLocator(uid, partn)]
 	if !found {
-		logging.Infof("Store not defined: " + mapLocator(uid, partn))
+		logging.Infof("%s Store not defined: %s", logPrefix, mapLocator(uid, partn))
 		return nil, false
 	}
 	return
@@ -320,7 +324,8 @@ func (r *TimerStore) Partition() int {
 }
 
 func ForceSpanSync() {
-	logPrefix := "timers::ForceSpanSync"
+	logPrefix := "TimerStore::ForceSpanSync"
+
 	logging.Infof("%v Starting to force span sync", logPrefix)
 	dirty := make([]*TimerStore, 0)
 

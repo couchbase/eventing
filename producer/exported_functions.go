@@ -494,7 +494,7 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 
 // CleanupMetadataBucket clears up all application related artifacts from
 // metadata bucket post undeploy
-func (p *Producer) CleanupMetadataBucket() error {
+func (p *Producer) CleanupMetadataBucket(skipCheckpointBlobs bool) error {
 	logPrefix := "Producer::CleanupMetadataBucket"
 
 	hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
@@ -540,14 +540,14 @@ func (p *Producer) CleanupMetadataBucket() error {
 	undeployWG.Add(p.handlerConfig.UndeployRoutineCount)
 
 	for i := 0; i < p.handlerConfig.UndeployRoutineCount; i++ {
-		go p.cleanupMetadataImpl(i, vbsDistribution[i], &undeployWG)
+		go p.cleanupMetadataImpl(i, vbsDistribution[i], &undeployWG, skipCheckpointBlobs)
 	}
 
 	undeployWG.Wait()
 	return nil
 }
 
-func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG *sync.WaitGroup) error {
+func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG *sync.WaitGroup, skipCheckpointBlobs bool) error {
 	logPrefix := "Producer::cleanupMetadataImpl"
 	defer undeployWG.Done()
 
@@ -631,8 +631,11 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 					docID := string(e.Key)
 
 					if strings.HasPrefix(docID, prefix) {
-						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
-							deleteOpCallback, p, docID)
+						if skipCheckpointBlobs && strings.Contains(docID, "::vb::") {
+							continue
+						}
+
+						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p, docID)
 						if err == common.ErrRetryTimeout {
 							logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout",
 								logPrefix, p.appName, p.LenRunningConsumers(), id)

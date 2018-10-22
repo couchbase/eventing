@@ -286,9 +286,7 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
 
-	settings["cleanup_timers"] = false
 	settings["dcp_stream_boundary"] = "everything"
-	settings["log_level"] = "INFO"
 	settings["tick_duration"] = 5000
 
 	if s.thrCount == 0 {
@@ -315,8 +313,7 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 		settings["lcb_inst_capacity"] = s.lcbInstCap
 	}
 
-	settings["timer_worker_pool_size"] = 1
-	settings["skip_timer_threshold"] = 86400
+	settings["cleanup_timers"] = s.cleanupTimers
 
 	data, err := json.Marshal(&settings)
 	if err != nil {
@@ -384,7 +381,7 @@ func makeDeleteReq(context, url string) (response *responseSchema, err error) {
 	return
 }
 
-func verifyBucketOps(count, retryCount int) int {
+func verifyBucketCount(count, retryCount int, bucket string) int {
 	rCount := 1
 	var itemCount int
 
@@ -393,7 +390,7 @@ retryVerifyBucketOp:
 		return itemCount
 	}
 
-	itemCount, _ = getBucketItemCount(dstBucket)
+	itemCount, _ = getBucketItemCount(bucket)
 	if itemCount == count {
 		log.Printf("src & dst bucket item count matched up. src bucket count: %d dst bucket count: %d\n", count, itemCount)
 		return itemCount
@@ -402,6 +399,10 @@ retryVerifyBucketOp:
 	time.Sleep(time.Second * 5)
 	log.Printf("Waiting for dst bucket item count to get to: %d curr count: %d\n", count, itemCount)
 	goto retryVerifyBucketOp
+}
+
+func verifyBucketOps(count, retryCount int) int {
+	return verifyBucketCount(count, retryCount, dstBucket)
 }
 
 func verifySourceBucketOps(count, retryCount int) int {

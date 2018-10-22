@@ -55,7 +55,7 @@ type EventingProducer interface {
 	Auth() string
 	CfgData() string
 	CheckpointBlobDump() map[string]interface{}
-	CleanupMetadataBucket() error
+	CleanupMetadataBucket(skipCheckpointBlobs bool) error
 	CleanupUDSs()
 	ClearEventStats()
 	GetAppCode() string

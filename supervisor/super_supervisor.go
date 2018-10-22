@@ -171,7 +171,7 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 		}
 		s.appRWMutex.Unlock()
 
-		pStatus, _, err := s.getStatuses(sData)
+		pStatus, _, _, err := s.getStatuses(sData)
 		if err != nil {
 			logging.Errorf("%s [%d] Missing processing_status", logPrefix, s.runningFnsCount())
 			return nil // Returning nil, otherwise metakv callback would keep getting invoked over and over again
@@ -231,7 +231,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			cmd: cmdSettingsUpdate,
 		}
 
-		processingStatus, deploymentStatus, err := s.getStatuses(value)
+		processingStatus, deploymentStatus, cleanupTimers, err := s.getStatuses(value)
 		if err != nil {
 			return nil
 		}
@@ -338,6 +338,14 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						p.PauseProducer()
 						p.NotifySupervisor()
 						logging.Infof("%s [%d] Function: %s Cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
+
+						if cleanupTimers {
+							err = p.CleanupMetadataBucket(true)
+							if err == common.ErrRetryTimeout {
+								logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
+								return nil
+							}
+						}
 					}
 				}
 			}
@@ -419,7 +427,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			path := MetakvAppSettingsPath + appName
 			util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
 
-			processingStatus, deploymentStatus, err := s.getStatuses(sData)
+			processingStatus, deploymentStatus, _, err := s.getStatuses(sData)
 			if err != nil {
 				return nil
 			}
@@ -657,7 +665,7 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 				path := MetakvAppSettingsPath + appName
 				util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
 
-				pStatus, dStatus, err := s.getStatuses(sData)
+				pStatus, dStatus, _, err := s.getStatuses(sData)
 				if err != nil {
 					continue
 				}
@@ -753,7 +761,7 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool) 
 			p.CleanupUDSs()
 
 			if !skipMetaCleanup {
-				err := p.CleanupMetadataBucket()
+				err := p.CleanupMetadataBucket(false)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
 					return common.ErrRetryTimeout
@@ -787,7 +795,7 @@ func (s *SuperSupervisor) isFnRunningFromPrimary(appName string) (bool, error) {
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
 
-	processingStatus, deploymentStatus, err := s.getStatuses(sData)
+	processingStatus, deploymentStatus, _, err := s.getStatuses(sData)
 	if err != nil {
 		return false, err
 	}

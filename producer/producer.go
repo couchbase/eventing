@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -271,6 +272,13 @@ func (p *Producer) Serve() {
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 				return
+			}
+
+			for vb := 0; vb < p.numVbuckets; vb++ {
+				store, found := timers.Fetch(p.GetMetadataPrefix(), vb)
+				if found {
+					store.Free()
+				}
 			}
 
 			for _, c := range p.getConsumers() {

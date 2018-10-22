@@ -109,6 +109,7 @@ type commonSettings struct {
 	aliasHandles             []string
 	aliasSources             []string
 	batchSize                int
+	cleanupTimers            bool
 	deadlineTimeout          int
 	executeTimerRoutineCount int
 	executionTimeout         int

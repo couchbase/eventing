@@ -374,7 +374,7 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		if i > 0 {
-			log.Printf("Resuming the app: %s\n\n", handler)
+			log.Println("Resuming app:", handler)
 			setSettings(handler, true, true, &commonSettings{})
 		}
 
@@ -388,7 +388,7 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 		}
 
 		dumpStats()
-		log.Printf("Pausing the app: %s\n\n", handler)
+		log.Println("Pausing app:", handler)
 		setSettings(handler, true, false, &commonSettings{})
 	}
 
@@ -404,7 +404,7 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		if i > 0 {
-			log.Printf("Resuming the app: %s\n\n", handler)
+			log.Println("Resuming app:", handler)
 			setSettings(handler, true, true, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4})
 		}
 
@@ -418,7 +418,7 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 		}
 
 		dumpStats()
-		log.Printf("Pausing the app: %s\n\n", handler)
+		log.Println("Pausing app:", handler)
 		setSettings(handler, true, false, &commonSettings{})
 	}
 
@@ -443,10 +443,10 @@ func TestPauseAndResumeWithWorkerCountChange(t *testing.T) {
 	}
 
 	dumpStats()
-	log.Printf("Pausing the app: %s\n", handler)
+	log.Println("Pausing app:", handler)
 	setSettings(handler, true, false, &commonSettings{})
 
-	log.Printf("Resuming the app: %s\n", handler)
+	log.Println("Resuming app:", handler)
 	setSettings(handler, true, true, &commonSettings{workerCount: 6})
 
 	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
@@ -479,14 +479,14 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 	}
 
 	dumpStats()
-	log.Printf("Pausing the app: %s\n", handler)
+	log.Println("Pausing app:", handler)
 	setSettings(handler, true, false, &commonSettings{})
 
 	addNodeFromRest("127.0.0.1:9003", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
-	log.Printf("Resuming the app: %s\n", handler)
+	log.Println("Resuming app:", handler)
 	setSettings(handler, true, true, &commonSettings{workerCount: 6})
 
 	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
@@ -502,6 +502,45 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
+	flushFunctionAndBucket(handler)
+}
+
+func TestCleanupTimersOnPause(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "timers_in_distant_future"
+
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	time.Sleep(10 * time.Second) // Let some timers get created
+
+	log.Println("Pausing app:", handler)
+	setSettings(handler, true, false, &commonSettings{cleanupTimers: true})
+
+	eventCount := verifyBucketCount(1024, statsLookupRetryCounter, metaBucket)
+	if eventCount != 1024 {
+		t.Error("For", "TestCleanupTimersOnPause",
+			"expected", 1024,
+			"got", eventCount,
+		)
+	}
+
+	log.Println("Resuming app:", handler)
+	setSettings(handler, true, true, &commonSettings{})
+	eventCount = verifyBucketCount(2048, statsLookupRetryCounter, metaBucket)
+	if eventCount != 2048 {
+		t.Error("For", "TestCleanupTimersOnPause",
+			"expected", 2048,
+			"got", eventCount,
+		)
+	}
+
+	log.Println("Undeploying app:", handler)
+	setSettings(handler, false, false, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
 	flushFunctionAndBucket(handler)
 }
 

@@ -603,6 +603,7 @@ func (c *Consumer) cleanupVbMetadata(vb uint16) error {
 	return nil
 }
 
+// CloseAllRunningDcpFeeds drops all socket connections to DCP producer
 func (c *Consumer) CloseAllRunningDcpFeeds() {
 	logPrefix := "Consumer::CloseAllRunningDcpFeeds"
 

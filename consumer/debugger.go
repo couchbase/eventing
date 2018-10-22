@@ -310,8 +310,8 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstanc
 	c.sendDcpEvent(e, true)
 }
 
-// Returns external IP address of this node
-// Returns 127.0.0.1 in case of any failure
+// ResolveHostname returns external IP address of this node.
+// In-case of failure returns 127.0.0.1
 func (c *Consumer) ResolveHostname(instance common.DebuggerInstance) string {
 	logPrefix := "Consumer::ResolveHostname"
 
@@ -323,13 +323,13 @@ func (c *Consumer) ResolveHostname(instance common.DebuggerInstance) string {
 		return util.Localhost()
 	}
 
-	externalIp, err := info.GetExternalIPOfThisNode(instance.NodesExternalIP)
+	externalIP, err := info.GetExternalIPOfThisNode(instance.NodesExternalIP)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Unable to resolve host name, err : %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return util.Localhost()
 	}
-	return externalIp
+	return externalIP
 }
 
 func (c *Consumer) stopDebugger() {

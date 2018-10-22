@@ -71,6 +71,9 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 	return progress
 }
 
+// CheckIfQueuesAreDrained looks at all queues to make sure no events are left,
+// to avoid potential loss of events - especially during rebalance out and
+// pausing of execution of a function
 func (c *Consumer) CheckIfQueuesAreDrained() error {
 	logPrefix := "Consumer::CheckIfQueuesAreDrained"
 
