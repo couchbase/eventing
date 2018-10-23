@@ -2120,6 +2120,13 @@ func determineStatus(status appStatus, numEventingNodes int) string {
 		return "undeploying"
 	}
 
+	if status.DeploymentStatus && !status.ProcessingStatus {
+		if status.NumDeployedNodes == numEventingNodes {
+			return "paused"
+		}
+		return "pausing"
+	}
+
 	logging.Errorf("%s Function: %s inconsistent deployment state %v",
 		logPrefix, status.Name, status)
 	return "invalid"
