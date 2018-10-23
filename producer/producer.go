@@ -23,11 +23,12 @@ import (
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingDir, kvPort,
-	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
+	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string, cleanupTimers bool,
 	memoryQuota int64, numVbuckets int, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                    appName,
 		bootstrapFinishCh:          make(chan struct{}, 1),
+		cleanupTimers:              cleanupTimers,
 		consumerListeners:          make(map[common.EventingConsumer]net.Listener),
 		dcpConfig:                  make(map[string]interface{}),
 		ejectNodeUUIDs:             make([]string, 0),
@@ -174,6 +175,14 @@ func (p *Producer) Serve() {
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return
+	}
+
+	if p.cleanupTimers {
+		err = p.CleanupMetadataBucket(true)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+			return
+		}
 	}
 
 	p.startBucket()

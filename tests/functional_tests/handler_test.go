@@ -544,6 +544,42 @@ func TestCleanupTimersOnPause(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestCleanupTimersOnResume(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "timers_in_distant_future"
+
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	time.Sleep(10 * time.Second) // Let some timers get created
+
+	mCount, _ := getBucketItemCount(metaBucket)
+
+	log.Printf("Metadata item count: %d pausing app: %s\n", mCount, handler)
+	setSettings(handler, true, false, &commonSettings{})
+
+	mCount, _ = getBucketItemCount(metaBucket)
+	log.Printf("Metadata item count: %d resuming app: %s\n", mCount, handler)
+
+	setSettings(handler, true, true, &commonSettings{cleanupTimers: true})
+
+	eventCount := verifyBucketCount(2048, statsLookupRetryCounter, metaBucket)
+	if eventCount != 2048 {
+		t.Error("For", "TestCleanupTimersOnResume",
+			"expected", 2048,
+			"got", eventCount,
+		)
+	}
+
+	log.Println("Undeploying app:", handler)
+	setSettings(handler, false, false, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+	flushFunctionAndBucket(handler)
+}
+
 func TestCommentUnCommentOnDelete(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "on_delete_bucket_op_comment"

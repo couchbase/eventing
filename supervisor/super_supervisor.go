@@ -171,11 +171,13 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 		}
 		s.appRWMutex.Unlock()
 
-		pStatus, _, _, err := s.getStatuses(sData)
+		pStatus, _, cTimers, _, err := s.getStatuses(sData)
 		if err != nil {
 			logging.Errorf("%s [%d] Missing processing_status", logPrefix, s.runningFnsCount())
 			return nil // Returning nil, otherwise metakv callback would keep getting invoked over and over again
 		}
+
+		msg.cleanupTimers = cTimers
 
 		s.appRWMutex.RLock()
 		appProcessingStatus := s.appProcessingStatus[appName]
@@ -231,7 +233,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			cmd: cmdSettingsUpdate,
 		}
 
-		processingStatus, deploymentStatus, cleanupTimers, err := s.getStatuses(value)
+		processingStatus, deploymentStatus, cTimers, _, err := s.getStatuses(value)
 		if err != nil {
 			return nil
 		}
@@ -292,7 +294,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					s.bootstrappingApps[appName] = time.Now().String()
 					s.appListRWMutex.Unlock()
 
-					s.spawnApp(appName)
+					s.spawnApp(appName, cTimers)
+					s.resetCleanupTimersFlag(appName)
 
 					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
@@ -339,7 +342,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						p.NotifySupervisor()
 						logging.Infof("%s [%d] Function: %s Cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
 
-						if cleanupTimers {
+						if cTimers {
 							err = p.CleanupMetadataBucket(true)
 							if err == common.ErrRetryTimeout {
 								logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
@@ -427,7 +430,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			path := MetakvAppSettingsPath + appName
 			util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
 
-			processingStatus, deploymentStatus, _, err := s.getStatuses(sData)
+			processingStatus, deploymentStatus, _, _, err := s.getStatuses(sData)
 			if err != nil {
 				return nil
 			}
@@ -450,7 +453,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 				s.bootstrappingApps[appName] = time.Now().String()
 				s.appListRWMutex.Unlock()
 
-				s.spawnApp(appName)
+				s.spawnApp(appName, false)
 
 				s.appRWMutex.Lock()
 				s.appDeploymentStatus[appName] = deploymentStatus
@@ -566,13 +569,13 @@ func (s *SuperSupervisor) AppsRetryCallback(path string, value []byte, rev inter
 	return nil
 }
 
-func (s *SuperSupervisor) spawnApp(appName string) {
+func (s *SuperSupervisor) spawnApp(appName string, cleanupTimers bool) {
 	logPrefix := "SuperSupervisor::spawnApp"
 
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
-	p := producer.NewProducer(appName, s.adminPort.DebuggerPort, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir, s.kvPort, metakvAppHostPortsPath,
-		s.restPort, s.uuid, s.diagDir, s.memoryQuota, s.numVbuckets, s)
+	p := producer.NewProducer(appName, s.adminPort.DebuggerPort, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir,
+		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, cleanupTimers, s.memoryQuota, s.numVbuckets, s)
 
 	logging.Infof("%s [%d] Function: %s spawning up, memory quota: %d", logPrefix, s.runningFnsCount(), appName, s.memoryQuota)
 
@@ -656,16 +659,14 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					logging.Infof("%s [%d] Function: %s cleaned up previous running producer instance", logPrefix, s.runningFnsCount(), appName)
 				}
 
-				s.spawnApp(appName)
-
-				// Resetting cleanup timers in metakv. This helps in differentiating between eventing node reboot(or eventing process
-				// re-spawn) and app redeploy
+				s.spawnApp(appName, msg.cleanupTimers)
+				s.resetCleanupTimersFlag(appName)
 
 				var sData []byte
 				path := MetakvAppSettingsPath + appName
 				util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
 
-				pStatus, dStatus, _, err := s.getStatuses(sData)
+				pStatus, dStatus, _, _, err := s.getStatuses(sData)
 				if err != nil {
 					continue
 				}
@@ -795,7 +796,7 @@ func (s *SuperSupervisor) isFnRunningFromPrimary(appName string) (bool, error) {
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
 
-	processingStatus, deploymentStatus, _, err := s.getStatuses(sData)
+	processingStatus, deploymentStatus, _, _, err := s.getStatuses(sData)
 	if err != nil {
 		return false, err
 	}
@@ -809,4 +810,30 @@ func (s *SuperSupervisor) isFnRunningFromPrimary(appName string) (bool, error) {
 		logPrefix, s.runningFnsCount(), appName, deploymentStatus, processingStatus)
 
 	return false, fmt.Errorf("function not running")
+}
+
+func (s *SuperSupervisor) resetCleanupTimersFlag(appName string) {
+	logPrefix := "SuperSupervisor::resetCleanupTimersFlag"
+
+	var sData []byte
+	path := MetakvAppSettingsPath + appName
+
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
+
+	_, _, _, settings, err := s.getStatuses(sData)
+	if err != nil {
+		return
+	}
+
+	settings["cleanup_timers"] = false
+
+	data, err := json.Marshal(&settings)
+	if err != nil {
+		logging.Errorf("%s [%d] Function: %s failed to marshal updated settings, err: %v", logPrefix, s.runningFnsCount(), appName, err)
+		return
+	}
+
+	util.Retry(util.NewFixedBackoff(time.Second), &s.retryCount, metakvSetCallback, s, MetakvAppSettingsPath+appName, data)
+
+	logging.Infof("%s [%d] Function: %s reset cleanup timer settings", logPrefix, s.runningFnsCount(), appName)
 }

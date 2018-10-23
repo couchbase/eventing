@@ -68,53 +68,53 @@ func (s *SuperSupervisor) assignVbucketsToOwn(addrs []string, currNodeAddr strin
 		logPrefix, s.runningFnsCount(), currNodeAddr, len(s.vbucketsToOwn), util.Condense(s.vbucketsToOwn))
 }
 
-func (s *SuperSupervisor) getStatuses(data []byte) (bool, bool, bool, error) {
+func (s *SuperSupervisor) getStatuses(data []byte) (bool, bool, bool, map[string]interface{}, error) {
 	logPrefix := "Supervisor::getStatuses"
 
 	settings := make(map[string]interface{})
 	err := json.Unmarshal(data, &settings)
 	if err != nil {
 		logging.Errorf("%s [%d] Failed to unmarshal settings", logPrefix, s.runningFnsCount())
-		return false, false, false, err
+		return false, false, false, settings, err
 	}
 
 	val, ok := settings["processing_status"]
 	if !ok {
 		logging.Errorf("%s [%d] Missing processing_status", logPrefix, s.runningFnsCount())
-		return false, false, false, fmt.Errorf("missing processing_status")
+		return false, false, false, settings, fmt.Errorf("missing processing_status")
 	}
 
 	pStatus, ok := val.(bool)
 	if !ok {
 		logging.Errorf("%s [%d] Supplied processing_status unexpected", logPrefix, s.runningFnsCount())
-		return false, false, false, fmt.Errorf("non boolean processing_status")
+		return false, false, false, settings, fmt.Errorf("non boolean processing_status")
 	}
 
 	val, ok = settings["deployment_status"]
 	if !ok {
 		logging.Errorf("%s [%d] Missing deployment_status", logPrefix, s.runningFnsCount())
-		return false, false, false, fmt.Errorf("missing deployment_status")
+		return false, false, false, settings, fmt.Errorf("missing deployment_status")
 	}
 
 	dStatus, ok := val.(bool)
 	if !ok {
 		logging.Errorf("%s [%d] Supplied deployment_status unexpected", logPrefix, s.runningFnsCount())
-		return false, false, false, fmt.Errorf("non boolean deployment_status")
+		return false, false, false, settings, fmt.Errorf("non boolean deployment_status")
 	}
 
 	val, ok = settings["cleanup_timers"]
 	if !ok {
 		logging.Infof("%s [%d] Missing cleanup_timers", logPrefix, s.runningFnsCount())
-		return pStatus, dStatus, false, nil
+		return pStatus, dStatus, false, settings, nil
 	}
 
 	cTimers, ok := val.(bool)
 	if !ok {
 		logging.Infof("%s [%d] Supplied cleanup_timers unexpected", logPrefix, s.runningFnsCount())
-		return pStatus, dStatus, false, nil
+		return pStatus, dStatus, false, settings, nil
 	}
 
-	return pStatus, dStatus, cTimers, nil
+	return pStatus, dStatus, cTimers, settings, nil
 }
 
 func printMemoryStats() {
