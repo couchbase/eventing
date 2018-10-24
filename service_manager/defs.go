@@ -199,11 +199,12 @@ type retry struct {
 }
 
 type appStatus struct {
-	Name             string `json:"name"`
-	CompositeStatus  string `json:"composite_status"`
-	NumDeployedNodes int    `json:"num_deployed_nodes"`
-	DeploymentStatus bool   `json:"deployment_status"`
-	ProcessingStatus bool   `json:"processing_status"`
+	CompositeStatus       string `json:"composite_status"`
+	Name                  string `json:"name"`
+	NumBootstrappingNodes int    `json:"num_bootstrapping_nodes"`
+	NumDeployedNodes      int    `json:"num_deployed_nodes"`
+	DeploymentStatus      bool   `json:"deployment_status"`
+	ProcessingStatus      bool   `json:"processing_status"`
 }
 
 type appStatusResponse struct {

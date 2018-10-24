@@ -458,10 +458,10 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 	return aggProgress, progressMap, errMap
 }
 
-func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {
-	logPrefix := "util::GetDeployedApps"
+func GetAppStatus(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {
+	logPrefix := "util::GetAppStatus"
 
-	deployedApps := make(map[string]map[string]string)
+	appStatuses := make(map[string]map[string]string)
 
 	netClient := NewClient(HTTPRequestTimeout)
 
@@ -470,7 +470,7 @@ func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[strin
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
-			logging.Errorf("%s Failed to get deployed apps from url: %rs, err: %v", logPrefix, endpointURL, err)
+			logging.Errorf("%s Failed to get app statuses from url: %rs, err: %v", logPrefix, endpointURL, err)
 			return nil, err
 		}
 		defer res.Body.Close()
@@ -481,18 +481,18 @@ func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[strin
 			return nil, err
 		}
 
-		var locallyDeployedApps map[string]string
-		err = json.Unmarshal(buf, &locallyDeployedApps)
+		var appStatus map[string]string
+		err = json.Unmarshal(buf, &appStatus)
 		if err != nil {
-			logging.Errorf("%s Failed to unmarshal deployed apps from url: %rs, err: %v", logPrefix, endpointURL, err)
+			logging.Errorf("%s Failed to unmarshal apps statuses from url: %rs, err: %v", logPrefix, endpointURL, err)
 			return nil, err
 		}
 
-		deployedApps[nodeAddr] = make(map[string]string)
-		deployedApps[nodeAddr] = locallyDeployedApps
+		appStatuses[nodeAddr] = make(map[string]string)
+		appStatuses[nodeAddr] = appStatus
 	}
 
-	return deployedApps, nil
+	return appStatuses, nil
 }
 
 func ListChildren(path string) []string {

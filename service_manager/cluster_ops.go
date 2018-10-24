@@ -137,3 +137,33 @@ var metaKVSetCallback = func(args ...interface{}) error {
 
 	return err
 }
+
+var getDeployedAppsCallback = func(args ...interface{}) error {
+	logPrefix := "ServiceMgr::getDeployedAppsCallback"
+
+	aggDeployedApps := args[0].(*map[string]map[string]string)
+	nodeAddrs := args[1].([]string)
+
+	var err error
+	*aggDeployedApps, err = util.GetAppStatus("/getLocallyDeployedApps", nodeAddrs)
+	if err != nil {
+		logging.Errorf("%s Failed to get deployed apps, err: %v", logPrefix, err)
+	}
+
+	return err
+}
+
+var getBootstrappingAppsCallback = func(args ...interface{}) error {
+	logPrefix := "ServiceMgr::getBootstrappingAppsCallback"
+
+	aggBootstrappingApps := args[0].(*map[string]map[string]string)
+	nodeAddrs := args[1].([]string)
+
+	var err error
+	*aggBootstrappingApps, err = util.GetAppStatus("/getBootstrappingApps", nodeAddrs)
+	if err != nil {
+		logging.Errorf("%s Failed to get bootstrapping apps, err: %v", logPrefix, err)
+	}
+
+	return err
+}

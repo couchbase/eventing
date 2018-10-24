@@ -446,25 +446,7 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-var getDeployedAppsCallback = func(args ...interface{}) error {
-	logPrefix := "ServiceMgr::getDeployedAppsCallback"
-
-	aggDeployedApps := args[0].(*map[string]map[string]string)
-	nodeAddrs := args[1].([]string)
-
-	var err error
-	*aggDeployedApps, err = util.GetDeployedApps("/getLocallyDeployedApps", nodeAddrs)
-	if err != nil {
-		logging.Errorf("%s Failed to get deployed apps, err: %v", logPrefix, err)
-		return err
-	}
-
-	logging.Tracef("Cluster wide deployed app status: %rm", *aggDeployedApps)
-
-	return nil
-}
-
-func (m *ServiceMgr) getAppList() (map[string]int, int, *runtimeInfo) {
+func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, int, *runtimeInfo) {
 	logPrefix := "ServiceMgr::getAppList"
 	info := &runtimeInfo{}
 
@@ -474,7 +456,13 @@ func (m *ServiceMgr) getAppList() (map[string]int, int, *runtimeInfo) {
 
 		info.Code = m.statusCodes.errActiveEventingNodes.Code
 		info.Info = fmt.Sprintf("Unable to fetch active Eventing nodes, err: %v", err)
-		return nil, 0, info
+		return nil, nil, 0, info
+	}
+
+	numEventingNodes := len(nodeAddrs)
+	if numEventingNodes == 0 {
+		info.Code = m.statusCodes.errNoEventingNodes.Code
+		return nil, nil, 0, info
 	}
 
 	aggDeployedApps := make(map[string]map[string]string)
@@ -491,14 +479,21 @@ func (m *ServiceMgr) getAppList() (map[string]int, int, *runtimeInfo) {
 		}
 	}
 
-	numEventingNodes := len(nodeAddrs)
-	if numEventingNodes == 0 {
-		info.Code = m.statusCodes.errNoEventingNodes.Code
-		return nil, 0, info
+	aggBootstrappingApps := make(map[string]map[string]string)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getBootstrappingAppsCallback, &aggBootstrappingApps, nodeAddrs)
+
+	appBootstrappingNodesCounter := make(map[string]int)
+	for _, apps := range aggBootstrappingApps {
+		for app := range apps {
+			if _, ok := appBootstrappingNodesCounter[app]; !ok {
+				appBootstrappingNodesCounter[app] = 0
+			}
+			appBootstrappingNodesCounter[app]++
+		}
 	}
 
 	info.Code = m.statusCodes.ok.Code
-	return appDeployedNodesCounter, numEventingNodes, info
+	return appDeployedNodesCounter, appBootstrappingNodesCounter, numEventingNodes, info
 }
 
 // Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
@@ -511,7 +506,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListDeployed, r, nil)
 
-	appDeployedNodesCounter, numEventingNodes, info := m.getAppList()
+	appDeployedNodesCounter, _, numEventingNodes, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -549,7 +544,7 @@ func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListRunning, r, nil)
 
-	appDeployedNodesCounter, numEventingNodes, info := m.getAppList()
+	appDeployedNodesCounter, _, numEventingNodes, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -2082,7 +2077,7 @@ func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runtimeInfo) {
-	appDeployedNodesCounter, numEventingNodes, info := m.getAppList()
+	appDeployedNodesCounter, appBootstrappingNodesCounter, numEventingNodes, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -2097,6 +2092,9 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 		if num, exists := appDeployedNodesCounter[app.Name]; exists {
 			status.NumDeployedNodes = num
 		}
+		if num, exists := appBootstrappingNodesCounter[app.Name]; exists {
+			status.NumBootstrappingNodes = num
+		}
 		status.CompositeStatus = determineStatus(status, numEventingNodes)
 		response.Apps = append(response.Apps, status)
 	}
@@ -2107,7 +2105,7 @@ func determineStatus(status appStatus, numEventingNodes int) string {
 	logPrefix := "determineStatus"
 
 	if status.DeploymentStatus && status.ProcessingStatus {
-		if status.NumDeployedNodes == numEventingNodes {
+		if status.NumBootstrappingNodes == 0 && status.NumDeployedNodes == numEventingNodes {
 			return "deployed"
 		}
 		return "deploying"
