@@ -14,11 +14,13 @@ import (
 	"github.com/couchbase/gocb"
 )
 
-var errDcpFeedsClosed = errors.New("dcp feeds are closed")
-var errDcpStreamRequested = errors.New("another worker issued STREAMREQ")
-var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
-var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another worker on same node")
-var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")
+var (
+	errDcpFeedsClosed           = errors.New("dcp feeds are closed")
+	errDcpStreamRequested       = errors.New("another worker issued STREAMREQ")
+	errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
+	errVbOwnedByAnotherWorker   = errors.New("vbucket is owned by another worker on same node")
+	errVbOwnedByAnotherNode     = errors.New("vbucket is owned by another node")
+)
 
 func (c *Consumer) checkAndUpdateMetadata() {
 	logPrefix := "Consumer::checkAndUpdateMetadata"

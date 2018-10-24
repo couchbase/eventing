@@ -250,6 +250,8 @@ func (p *Producer) SignalBootstrapFinish() {
 		}
 		c.SignalBootstrapFinish()
 	}
+
+	logging.Infof("%s [%s:%d] Signalled bootstrap status", logPrefix, p.appName, p.LenRunningConsumers())
 }
 
 // PauseProducer pauses the execution of Eventing.Producer and corresponding Eventing.Consumer instances

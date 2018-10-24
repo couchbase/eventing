@@ -295,7 +295,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					s.appListRWMutex.Unlock()
 
 					s.spawnApp(appName, cTimers)
-					s.resetCleanupTimersFlag(appName)
 
 					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
@@ -307,15 +306,14 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 						s.addToDeployedApps(appName)
 						s.addToLocallyDeployedApps(appName)
-
-						s.Lock()
-						delete(s.cleanedUpAppMap, appName)
-						s.Unlock()
+						s.deleteFromCleanupApps(appName)
 
 						s.appListRWMutex.Lock()
 						logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
 						delete(s.bootstrappingApps, appName)
 						s.appListRWMutex.Unlock()
+
+						s.resetCleanupTimersFlag(appName)
 					}
 				} else {
 					s.supCmdCh <- msg
@@ -467,10 +465,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 					s.addToDeployedApps(appName)
 					s.addToLocallyDeployedApps(appName)
-
-					s.Lock()
-					delete(s.cleanedUpAppMap, appName)
-					s.Unlock()
+					s.deleteFromCleanupApps(appName)
 
 					s.appListRWMutex.Lock()
 					logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
@@ -660,7 +655,6 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 				}
 
 				s.spawnApp(appName, msg.cleanupTimers)
-				s.resetCleanupTimersFlag(appName)
 
 				var sData []byte
 				path := MetakvAppSettingsPath + appName
@@ -683,17 +677,16 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 					s.addToDeployedApps(appName)
 					s.addToLocallyDeployedApps(appName)
+					s.deleteFromCleanupApps(appName)
 
 					logging.Infof("%s [%d] Function: %s added to deployed apps map", logPrefix, s.runningFnsCount(), appName)
-
-					s.Lock()
-					delete(s.cleanedUpAppMap, appName)
-					s.Unlock()
 
 					s.appListRWMutex.Lock()
 					logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
 					delete(s.bootstrappingApps, appName)
 					s.appListRWMutex.Unlock()
+
+					s.resetCleanupTimersFlag(appName)
 				}
 
 			case cmdSettingsUpdate:
@@ -742,32 +735,21 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool) 
 			logging.Infof("%s [%d] Function: %s cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
 		}()
 
-		logging.Infof("%s [%d] Function: %s stopping running instance of Eventing.Producer", logPrefix, s.runningFnsCount(), appName)
+		logging.Infof("%s [%d] Function: %s stopping running instance of Eventing.Producer, skipMetaCleanup: %t",
+			logPrefix, s.runningFnsCount(), appName, skipMetaCleanup)
 
 		if !skipMetaCleanup {
 			p.NotifyInit()
 		}
 
 		s.deleteFromRunningProducers(appName)
+		s.addToCleanupApps(appName)
 
-		s.Lock()
-		_, ok := s.cleanedUpAppMap[appName]
-		if !ok {
-			s.cleanedUpAppMap[appName] = struct{}{}
-		}
-		s.Unlock()
+		p.StopRunningConsumers()
+		p.CleanupUDSs()
 
-		if !ok {
-			p.StopRunningConsumers()
-			p.CleanupUDSs()
-
-			if !skipMetaCleanup {
-				err := p.CleanupMetadataBucket(false)
-				if err == common.ErrRetryTimeout {
-					logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
-					return common.ErrRetryTimeout
-				}
-			}
+		if !skipMetaCleanup {
+			p.CleanupMetadataBucket(false)
 		}
 
 		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
@@ -814,6 +796,14 @@ func (s *SuperSupervisor) isFnRunningFromPrimary(appName string) (bool, error) {
 
 func (s *SuperSupervisor) resetCleanupTimersFlag(appName string) {
 	logPrefix := "SuperSupervisor::resetCleanupTimersFlag"
+
+	s.RLock()
+	if _, ok := s.cleanedUpAppMap[appName]; ok {
+		logging.Infof("%s [%d] Function: %s exists in cleanup list", logPrefix, s.runningFnsCount(), appName)
+		s.RUnlock()
+		return
+	}
+	s.RUnlock()
 
 	var sData []byte
 	path := MetakvAppSettingsPath + appName
