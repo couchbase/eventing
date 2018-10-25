@@ -169,6 +169,7 @@ type stats struct {
 	FailureStats                    interface{} `json:"failure_stats,omitempty"`
 	FunctionName                    interface{} `json:"function_name"`
 	GocbCredsRequestCounter         interface{} `json:"gocb_creds_request_counter,omitempty"`
+	HandlerUID                      interface{} `json:"handler_uid,omitempty"`
 	InternalVbDistributionStats     interface{} `json:"internal_vb_distribution_stats,omitempty"`
 	LatencyPercentileStats          interface{} `json:"latency_percentile_stats,omitempty"`
 	LatencyStats                    interface{} `json:"latency_stats,omitempty"`

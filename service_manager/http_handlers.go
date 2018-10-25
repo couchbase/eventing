@@ -1032,7 +1032,7 @@ func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Reque
 
 	for index, appName := range appList {
 		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
-		if err == nil {
+		if err == nil && data != nil {
 
 			config := cfg.GetRootAsConfig(data, 0)
 
@@ -1131,7 +1131,7 @@ func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtim
 
 	for _, name := range util.ListChildren(metakvTempAppsPath) {
 		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, name)
-		if err == nil {
+		if err == nil && data != nil {
 			uErr := json.Unmarshal(data, &app)
 			if uErr != nil {
 				logging.Errorf("%s Function: %s failed to unmarshal data from metakv, err: %v", logPrefix, appName, uErr)
@@ -1164,7 +1164,7 @@ func (m *ServiceMgr) getTempStoreAll() []application {
 
 	for i, appName := range tempAppList {
 		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName)
-		if err == nil {
+		if err == nil && data != nil {
 			var app application
 			uErr := json.Unmarshal(data, &app)
 			if uErr != nil {
@@ -1786,6 +1786,47 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (m *ServiceMgr) assignHandlerUID(appName string, app *application, info *runtimeInfo) error {
+	logPrefix := "ServiceMgr::assignHandlerUID"
+
+	data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName)
+	if err != nil && data != nil {
+		info.Code = m.statusCodes.errGetAppPs.Code
+		info.Info = fmt.Sprintf("Function: %s failed to read definitions from metakv", appName)
+
+		logging.Errorf("%s %s, err: %v", logPrefix, info.Info, err)
+		return fmt.Errorf("%s", info.Info)
+	}
+
+	if err == nil && data != nil {
+		var tApp application
+		tErr := json.Unmarshal(data, &tApp)
+		if tErr != nil {
+			info.Code = m.statusCodes.errUnmarshalPld.Code
+			info.Info = fmt.Sprintf("Function: %s failed to unmarshal function defintion from metakv", appName)
+
+			logging.Errorf("%s %s err: %v", logPrefix, info.Info, tErr)
+			return tErr
+		}
+
+		app.HandlerUUID = tApp.HandlerUUID
+		logging.Infof("%s Function: %s assigned previous handlerUUID: %d", logPrefix, app.Name, app.HandlerUUID)
+	} else {
+		var uErr error
+		app.HandlerUUID, uErr = util.GenerateHandlerUUID()
+		if uErr != nil {
+			info.Code = m.statusCodes.errUUIDGen.Code
+			info.Info = fmt.Sprintf("Function: %s UUID generation failed", appName)
+
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return uErr
+		}
+		logging.Infof("%s Function: %s HandlerUUID generated, UUID: %d", logPrefix, app.Name, app.HandlerUUID)
+	}
+
+	return nil
+}
+
 func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::functionsHandler"
 
@@ -1940,17 +1981,13 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			var err error
-			app.EventingVersion = util.EventingVer()
-			app.HandlerUUID, err = util.GenerateHandlerUUID()
+			err := m.assignHandlerUID(appName, &app, info)
 			if err != nil {
-				info.Code = m.statusCodes.errUUIDGen.Code
-				info.Info = fmt.Sprintf("Function: %s UUID generation failed", appName)
-				logging.Errorf("%s %s", logPrefix, info.Info)
 				m.sendErrorInfo(w, info)
 				return
 			}
-			logging.Infof("%s Function: %s HandlerUUID generated, UUID: %d", logPrefix, app.Name, app.HandlerUUID)
+
+			app.EventingVersion = util.EventingVer()
 
 			runtimeInfo := m.savePrimaryStore(app)
 			if runtimeInfo.Code == m.statusCodes.ok.Code {
@@ -2201,6 +2238,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 			stats.FailureStats = m.superSup.GetFailureStats(app.Name)
 			stats.FunctionName = app.Name
 			stats.GocbCredsRequestCounter = util.GocbCredsRequestCounter
+			stats.HandlerUID = app.HandlerUUID
 			stats.InternalVbDistributionStats = m.superSup.InternalVbDistributionStats(app.Name)
 			stats.LcbCredsRequestCounter = m.lcbCredsCounter
 			stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
@@ -2356,17 +2394,14 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			app.Settings["processing_status"] = false
 		}
 
-		app.EventingVersion = util.EventingVer()
-		app.HandlerUUID, err = util.GenerateHandlerUUID()
+		info := &runtimeInfo{}
+		err = m.assignHandlerUID(app.Name, &app, info)
 		if err != nil {
-			info := &runtimeInfo{}
-			info.Code = m.statusCodes.errUUIDGen.Code
-			info.Info = fmt.Sprintf("Function: %s UUID generation failed", app.Name)
-			logging.Errorf("%s %s", logPrefix, info.Info)
 			infoList = append(infoList, info)
 			continue
 		}
-		logging.Infof("%s Function: %s HandlerUUID generated: %d", logPrefix, app.Name, app.HandlerUUID)
+
+		app.EventingVersion = util.EventingVer()
 
 		infoPri := m.savePrimaryStore(app)
 		if infoPri.Code != m.statusCodes.ok.Code {
