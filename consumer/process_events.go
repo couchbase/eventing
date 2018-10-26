@@ -1213,7 +1213,7 @@ func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 		return nil
 	}
 
-	logging.Infof("%s [%s:%s:%d] Trying to trap an event", logPrefix, c.workerName, c.tcpPort, c.Pid())
+	logging.Debugf("%s [%s:%s:%d] Trying to trap an event", logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	var success bool
 	var instance common.DebuggerInstance

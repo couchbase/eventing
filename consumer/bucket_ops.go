@@ -946,7 +946,7 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 
 	// Some other consumer has acquired the token
 	if instance.Status == common.MutationTrapped || instance.Token != token {
-		logging.Infof("%s [%s:%s:%d] Some other consumer acquired the debugger token or token is stale",
+		logging.Debugf("%s [%s:%s:%d] Some other consumer acquired the debugger token or token is stale",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		*success = false
 		return nil
