@@ -254,7 +254,7 @@ func otpNodes(removeNodes []string) (string, string) {
 	return knownNodes, ejectNodes
 }
 
-func waitForRebalanceFinish() {
+func waitForRebalanceFinish() error {
 	t := time.NewTicker(5 * time.Second)
 
 	var rebalanceRunning bool
@@ -271,13 +271,13 @@ func waitForRebalanceFinish() {
 			err = json.Unmarshal(r, &tasks)
 			if err != nil {
 				fmt.Println("tasks fetch, err:", err)
-				return
+				return err
 			}
 			for _, v := range tasks {
 				task := v.(map[string]interface{})
 				if task["errorMessage"] != nil {
 					log.Println(task["errorMessage"].(string))
-					return
+					return fmt.Errorf("rebalance failed")
 				}
 				if task["type"].(string) == "rebalance" && task["status"].(string) == "running" {
 					rebalanceRunning = true
@@ -287,7 +287,7 @@ func waitForRebalanceFinish() {
 				if rebalanceRunning && task["type"].(string) == "rebalance" && task["status"].(string) == "notRunning" {
 					t.Stop()
 					log.Println("Rebalance progress: 100")
-					return
+					return nil
 				}
 			}
 		}
