@@ -161,7 +161,7 @@ func (s *SuperSupervisor) SignalStopDebugger(appName string) error {
 		err := p.SignalStopDebugger()
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
-			return common.ErrRetryTimeout
+			return err
 		}
 	} else {
 		logging.Errorf("%s [%d] Function: %s request didn't go through as Eventing.Producer instance isn't alive",

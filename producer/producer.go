@@ -728,7 +728,7 @@ func (p *Producer) SignalStopDebugger() error {
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, key, &instance)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	consumers := p.getConsumers()
@@ -747,7 +747,7 @@ func (p *Producer) SignalStopDebugger() error {
 		clearDebuggerInstanceCallback, p)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 	return nil
 }

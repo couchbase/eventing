@@ -312,7 +312,7 @@ func (p *Producer) getKvVbMap() error {
 	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getClusterInfoCacheOpCallback, p, &cinfo)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	kvAddrs, err := cinfo.GetNodesByBucket(p.handlerConfig.SourceBucket)

@@ -25,7 +25,7 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 	err := c.doVbTakeover(vb)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	if err == errDcpFeedsClosed {
@@ -282,7 +282,7 @@ var recreateCheckpointBlobsFromVbStatsCallback = func(args ...interface{}) error
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	logging.Infof("%s [%s:%s:%d] vb: %d Recreated missing checkpoint blob", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
@@ -348,7 +348,7 @@ var recreateCheckpointBlobCallback = func(args ...interface{}) error {
 		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return common.ErrRetryTimeout
+			return err
 		}
 	}
 
@@ -920,29 +920,6 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	return nil
 }
 
-var removeDocIDCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::removeDocIDCallback"
-
-	c := args[0].(*Consumer)
-	key := args[1].(common.Key)
-
-	_, err := c.gocbMetaBucket.Remove(key.Raw(), 0)
-	if gocb.IsKeyNotFoundError(err) {
-		return nil
-	}
-
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %ru, failed to remove from metadata bucket, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), key.Raw(), err)
-	}
-
-	return err
-}
-
 var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::acquireDebuggerTokenCallback"
 
@@ -952,6 +929,7 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 	instance := args[3].(*common.DebuggerInstance)
 
 	key := c.producer.AddMetadataPrefix(c.app.AppName).Raw() + "::" + common.DebuggerTokenKey
+
 	cas, err := c.gocbMetaBucket.Get(key, instance)
 	if err == gocb.ErrKeyNotFound || err == gocb.ErrShutdown {
 		logging.Errorf("%s [%s:%s:%d] Key: %s, debugger token not found or bucket is closed, err: %v",
@@ -959,6 +937,7 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 		*success = false
 		return nil
 	}
+
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %s, failed to get doc from metadata bucket, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
@@ -977,11 +956,11 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 	instance.Status = common.MutationTrapped
 	_, err = c.gocbMetaBucket.Replace(key, instance, cas, 0)
 	if err == nil {
-		logging.Infof("%s [%s:%s:%d] Debugger token acquired",
-			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		logging.Infof("%s [%s:%s:%d] Debugger token acquired", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		*success = true
 		return nil
 	}
+
 	// Check for CAS mismatch
 	if gocb.IsKeyExistsError(err) {
 		*success = false
@@ -989,8 +968,10 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
 	}
+
 	logging.Errorf("%s [%s:%s:%d] Failed to acquire token, err: %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+
 	return err
 }
 

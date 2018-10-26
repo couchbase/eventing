@@ -28,7 +28,7 @@ func (p *Producer) parseDepcfg() error {
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, metakvAppCallback, p, metakvAppsPath, metakvChecksumPath, p.appName, &cfgData)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s] Exiting due to timeout", logPrefix, p.appName)
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	config := cfg.GetRootAsConfig(cfgData, 0)
@@ -53,7 +53,7 @@ func (p *Producer) parseDepcfg() error {
 	err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getHTTPServiceAuth, p, &user, &password)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s] Exiting due to timeout", logPrefix, p.appName)
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	p.auth = fmt.Sprintf("%s:%s", user, password)
