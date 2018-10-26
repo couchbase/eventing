@@ -41,10 +41,6 @@ const (
 	EPSILON = 1e-5
 )
 
-const (
-	metakvMaxDocSize = 4096 //Fragment size for Appcontent
-)
-
 var GocbCredsRequestCounter = 0
 
 type Uint16Slice []uint16
@@ -550,8 +546,8 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 	length := len(payload)
 
 	checksumPath += appName
-	fragmentCount := length / metakvMaxDocSize
-	if length%metakvMaxDocSize != 0 {
+	fragmentCount := length / MetaKvMaxDocSize()
+	if length%MetaKvMaxDocSize() != 0 {
 		fragmentCount++
 	}
 
@@ -559,8 +555,8 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 
 	for idx := 0; idx < fragmentCount; idx++ {
 		currpath := appsPath + strconv.Itoa(int(idx))
-		curridx := idx * metakvMaxDocSize
-		lastidx := (idx + 1) * metakvMaxDocSize
+		curridx := idx * MetaKvMaxDocSize()
+		lastidx := (idx + 1) * MetaKvMaxDocSize()
 		if lastidx > length {
 			lastidx = length
 		}
@@ -581,7 +577,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 
 	//Compute MD5 hash and update it in metakv
 	payloadhash := PayloadHash{}
-	if err := payloadhash.Update(payload, metakvMaxDocSize); err != nil {
+	if err := payloadhash.Update(payload, MetaKvMaxDocSize()); err != nil {
 		logging.Errorf("%s Function: %s updating payload hash failed err: %v", logPrefix, appName, err)
 		//Delete existing entry from appspath
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {

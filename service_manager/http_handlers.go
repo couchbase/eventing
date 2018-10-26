@@ -1437,9 +1437,9 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 
 	appContent := m.encodeAppPayload(&app)
 
-	if len(appContent) > maxHandlerSize {
+	if len(appContent) > util.MaxFunctionSize() {
 		info.Code = m.statusCodes.errAppCodeSize.Code
-		info.Info = fmt.Sprintf("Function: %s handler Code size is more than 128K", app.Name)
+		info.Info = fmt.Sprintf("Function: %s handler Code size is more than %d", app.Name, util.MaxFunctionSize())
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}

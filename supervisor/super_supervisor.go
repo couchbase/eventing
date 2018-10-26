@@ -509,13 +509,23 @@ func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
 	logPrefix := "SuperSupervisor::HandleGlobalConfigChange"
 
 	for key, value := range config {
-		logging.Infof("%s [%d] Config key: %v value: %v", logPrefix, s.runningFnsCount(), key, value)
+		logging.Infof("%s [%d] Config key: %s value: %v", logPrefix, s.runningFnsCount(), key, value)
 
 		switch key {
 		case "ram_quota":
 			if quota, ok := value.(float64); ok {
 				s.memoryQuota = int64(quota)
 				s.updateQuotaForRunningFns()
+			}
+
+		case "function_size":
+			if size, ok := value.(float64); ok {
+				util.SetMaxFunctionSize(int(size))
+			}
+
+		case "metakv_max_doc_size":
+			if size, ok := value.(float64); ok {
+				util.SetMetaKvMaxDocSize(int(size))
 			}
 		}
 	}
