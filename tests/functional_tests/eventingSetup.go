@@ -286,8 +286,13 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
 
-	settings["dcp_stream_boundary"] = "everything"
 	settings["tick_duration"] = 5000
+
+	if s.streamBoundary == "" {
+		settings["dcp_stream_boundary"] = "everything"
+	} else {
+		settings["dcp_stream_boundary"] = s.streamBoundary
+	}
 
 	if s.thrCount == 0 {
 		settings["cpp_worker_thread_count"] = cppthrCount
@@ -543,8 +548,10 @@ func flushFunction(handler string) {
 
 func flushFunctionAndBucket(handler string) {
 	flushFunction(handler)
-	bucketFlush("default")
-	bucketFlush("hello-world")
+	bucketFlush(srcBucket)
+	verifyBucketCount(0, statsLookupRetryCounter, srcBucket)
+	bucketFlush(dstBucket)
+	verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
 }
 
 func dumpStats() {
@@ -583,14 +590,14 @@ func makeStatsRequest(context, url string, printStats bool) (interface{}, error)
 		return nil, err
 	}
 
-	// Pretty print json
-	body, err := json.MarshalIndent(&response, "", "  ")
-	if err != nil {
-		log.Println("Pretty print json:", err)
-		return nil, err
-	}
-
 	if printStats {
+		// Pretty print json
+		body, err := json.MarshalIndent(&response, "", "  ")
+		if err != nil {
+			log.Println("Pretty print json:", err)
+			return nil, err
+		}
+
 		log.Printf("%v::%s\n", context, string(body))
 	}
 
@@ -653,4 +660,46 @@ func killPid(pid int) error {
 	}
 
 	return process.Kill()
+}
+
+func getFnStatus(appName string) string {
+	res, err := makeStatsRequest("", statusURL, false)
+	if err != nil {
+		return "invalid"
+	}
+
+	s := res.(map[string]interface{})
+	appStatuses, ok := s["apps"].([]interface{})
+	if !ok {
+		return "invalid"
+	}
+
+	for _, entry := range appStatuses {
+		status := entry.(map[string]interface{})
+
+		app := status["name"].(string)
+		if app == appName {
+			compositeStatus := status["composite_status"].(string)
+			return compositeStatus
+		}
+	}
+
+	return "invalid"
+}
+
+func waitForStatusChange(appName, expectedStatus string, retryCounter int) {
+	for {
+		time.Sleep(5 * time.Second)
+		log.Printf("Waiting for function: %s status to change to %s\n", appName, expectedStatus)
+
+		status := getFnStatus(appName)
+		if status != expectedStatus {
+			continue
+		}
+
+		if status == expectedStatus {
+			log.Printf("Function: %s status changed to %s\n", appName, expectedStatus)
+			return
+		}
+	}
 }

@@ -668,14 +668,33 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 				logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
-				c.reqStreamCh <- &streamRequestInfo{
-					vb:         vb,
-					vbBlob:     &vbBlob,
-					startSeqNo: vbBlob.LastSeqNoProcessed,
-				}
-				c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
-				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
+				switch c.dcpStreamBoundary {
+				case common.DcpEverything:
+					c.reqStreamCh <- &streamRequestInfo{
+						vb:         vb,
+						vbBlob:     &vbBlob,
+						startSeqNo: 0,
+					}
+					c.vbProcessingStats.updateVbStat(vb, "start_seq_no", 0)
 
+				case common.DcpFromNow:
+					c.reqStreamCh <- &streamRequestInfo{
+						vb:         vb,
+						vbBlob:     &vbBlob,
+						startSeqNo: vbSeqnos[int(vb)],
+					}
+					c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbSeqnos[int(vb)])
+
+				case common.DcpFromPrior:
+					c.reqStreamCh <- &streamRequestInfo{
+						vb:         vb,
+						vbBlob:     &vbBlob,
+						startSeqNo: vbBlob.LastSeqNoProcessed,
+					}
+					c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
+				}
+
+				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 			}
 		}
 	}

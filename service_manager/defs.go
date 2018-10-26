@@ -44,11 +44,6 @@ const (
 )
 
 const (
-	srcMapExt  = ".map.json"
-	srcCodeExt = ".js"
-)
-
-const (
 	maxHandlerSize = 128 * 1024
 )
 
@@ -188,11 +183,6 @@ type stats struct {
 
 type configResponse struct {
 	Restart bool `json:"restart"`
-}
-
-type credsInfo struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
 }
 
 type retry struct {

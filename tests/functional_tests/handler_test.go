@@ -580,6 +580,99 @@ func TestCleanupTimersOnResume(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestDiffFeedBoundariesWithResume(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
+	eventCount := verifyBucketCount(itemCount, statsLookupRetryCounter, dstBucket)
+	if eventCount != itemCount {
+		t.Error("For TestDiffFeedBoundariesWithResume expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	log.Println("Pausing app:", handler)
+	setSettings(handler, true, false, &commonSettings{})
+	waitForStatusChange(handler, "paused", statsLookupRetryCounter)
+
+	bucketFlush(dstBucket)
+	count := verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
+	if count != 0 {
+		t.Error("Waited too long for item count to come down to 0")
+	}
+
+	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
+
+	log.Printf("Resuming app: %s from feed boundary everything\n", handler)
+	setSettings(handler, true, true, &commonSettings{streamBoundary: "everything"})
+	waitForStatusChange(handler, "deployed", statsLookupRetryCounter)
+
+	eventCount = verifyBucketCount(itemCount*2, statsLookupRetryCounter, dstBucket)
+	if eventCount != itemCount*2 {
+		t.Error("For", "TestDiffFeedBoundariesWithResume with from_eveything feed boundary",
+			"expected", itemCount*2,
+			"got", eventCount,
+		)
+	}
+
+	log.Println("Pausing app:", handler)
+	setSettings(handler, true, false, &commonSettings{})
+	waitForStatusChange(handler, "paused", statsLookupRetryCounter)
+
+	bucketFlush(dstBucket)
+	count = verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
+	if count != 0 {
+		t.Error("Waited too long for item count to come down to 0")
+	}
+
+	log.Printf("Resuming app: %s from feed boundary from_now\n", handler)
+	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_now"})
+	waitForStatusChange(handler, "deployed", statsLookupRetryCounter)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount = verifyBucketCount(itemCount, statsLookupRetryCounter, dstBucket)
+	if eventCount != itemCount {
+		t.Error("For", "TestDiffFeedBoundariesWithResume with from_now feed boundary",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	go pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
+
+	time.Sleep(5 * time.Second)
+
+	log.Println("Pausing app:", handler)
+	setSettings(handler, true, false, &commonSettings{})
+	waitForStatusChange(handler, "paused", statsLookupRetryCounter)
+
+	count, _ = getBucketItemCount(dstBucket)
+	log.Println("Item count in dst bucket:", count)
+
+	log.Printf("Resuming app: %s from feed boundary from_prior\n", handler)
+	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_prior"})
+	waitForStatusChange(handler, "deployed", statsLookupRetryCounter)
+
+	eventCount = verifyBucketCount(rlItemCount, statsLookupRetryCounter, dstBucket)
+	if eventCount != rlItemCount {
+		t.Error("For", "TestDiffFeedBoundariesWithResume with from_prior feed boundary",
+			"expected", rlItemCount,
+			"got", eventCount,
+		)
+	}
+
+	log.Println("Undeploying app:", handler)
+	setSettings(handler, false, false, &commonSettings{})
+	waitForStatusChange(handler, "undeployed", statsLookupRetryCounter)
+
+	flushFunctionAndBucket(handler)
+}
+
 func TestCommentUnCommentOnDelete(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "on_delete_bucket_op_comment"
@@ -620,7 +713,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	setSettings(appName, false, false, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(appName)
 }
 
 func TestCPPWorkerCleanup(t *testing.T) {

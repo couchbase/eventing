@@ -2139,7 +2139,7 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 }
 
 func determineStatus(status appStatus, numEventingNodes int) string {
-	logPrefix := "determineStatus"
+	logPrefix := "ServiceMgr::determineStatus"
 
 	if status.DeploymentStatus && status.ProcessingStatus {
 		if status.NumBootstrappingNodes == 0 && status.NumDeployedNodes == numEventingNodes {

@@ -10,6 +10,7 @@ type DcpStreamBoundary string
 const (
 	DcpEverything = DcpStreamBoundary("everything")
 	DcpFromNow    = DcpStreamBoundary("from_now")
+	DcpFromPrior  = DcpStreamBoundary("from_prior")
 )
 
 type ChangeType string
