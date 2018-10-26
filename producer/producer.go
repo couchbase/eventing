@@ -262,9 +262,11 @@ func (p *Producer) Serve() {
 				continue
 			}
 
-			logLevel := settings["log_level"].(string)
-			logging.SetLogLevel(util.GetLogLevel(logLevel))
-			p.updateAppLogSetting(settings)
+			logLevel, ok := settings["log_level"].(string)
+			if ok {
+				logging.SetLogLevel(util.GetLogLevel(logLevel))
+				p.updateAppLogSetting(settings)
+			}
 
 		case <-p.pauseProducerCh:
 

@@ -513,8 +513,10 @@ func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
 
 		switch key {
 		case "ram_quota":
-			s.memoryQuota = int64(value.(float64))
-			s.updateQuotaForRunningFns()
+			if quota, ok := value.(float64); ok {
+				s.memoryQuota = int64(quota)
+				s.updateQuotaForRunningFns()
+			}
 		}
 	}
 
