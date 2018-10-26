@@ -981,6 +981,15 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 				return
 			}
 		}
+
+		if (filterFeedBoundary(settings) == common.DcpFromPrior) && (!processingStatus || deploymentStatus) {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state", appName)
+
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return
+		}
+
 	} else {
 		info.Code = m.statusCodes.errStatusesNotFound.Code
 		info.Info = fmt.Sprintf("Function: %s missing processing or deployment statuses or both", appName)
@@ -1380,6 +1389,16 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	return builder.FinishedBytes()
 }
 
+func filterFeedBoundary(settings map[string]interface{}) common.DcpStreamBoundary {
+	if val, ok := settings["dcp_stream_boundary"]; ok {
+		if boundary, bOk := val.(string); bOk {
+			return common.StreamBoundary(boundary)
+		}
+	}
+
+	return common.DcpEverything
+}
+
 // Saves application to metakv and returns appropriate success/error code
 func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	logPrefix := "ServiceMgr::savePrimaryStore"
@@ -1404,6 +1423,14 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		info.Code = m.statusCodes.errSrcMbSame.Code
 		info.Info = fmt.Sprintf("Function: %s source bucket same as metadata bucket. source_bucket : %s metadata_bucket : %s",
 			app.Name, app.DeploymentConfig.SourceBucket, app.DeploymentConfig.MetadataBucket)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	if filterFeedBoundary(app.Settings) == common.DcpFromPrior {
+		info.Code = m.statusCodes.errInvalidConfig.Code
+		info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state", app.Name)
+
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}

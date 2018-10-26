@@ -328,3 +328,16 @@ func (k Key) Raw() string {
 func (k Key) GetPrefix() string {
 	return k.prefix
 }
+
+func StreamBoundary(boundary string) DcpStreamBoundary {
+	switch boundary {
+	case "everything":
+		return DcpEverything
+	case "from_now":
+		return DcpFromNow
+	case "from_prior":
+		return DcpFromPrior
+	}
+
+	return DcpStreamBoundary("")
+}
