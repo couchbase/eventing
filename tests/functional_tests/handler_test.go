@@ -528,7 +528,7 @@ func TestCleanupTimersOnPause(t *testing.T) {
 	}
 
 	log.Println("Resuming app:", handler)
-	setSettings(handler, true, true, &commonSettings{})
+	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_prior"})
 	eventCount = verifyBucketCount(2048, statsLookupRetryCounter, metaBucket)
 	if eventCount != 2048 {
 		t.Error("For", "TestCleanupTimersOnPause",
@@ -563,7 +563,7 @@ func TestCleanupTimersOnResume(t *testing.T) {
 	mCount, _ = getBucketItemCount(metaBucket)
 	log.Printf("Metadata item count: %d resuming app: %s\n", mCount, handler)
 
-	setSettings(handler, true, true, &commonSettings{cleanupTimers: true})
+	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_prior", cleanupTimers: true})
 
 	eventCount := verifyBucketCount(2048, statsLookupRetryCounter, metaBucket)
 	if eventCount != 2048 {
@@ -630,6 +630,9 @@ func TestDiffFeedBoundariesWithResume(t *testing.T) {
 		t.Error("Waited too long for item count to come down to 0")
 	}
 
+	// TODO: Remove this sleep. Added to mitigate a race occuring when resume request is quickly fired after pause
+	time.Sleep(3 * time.Minute)
+
 	log.Printf("Resuming app: %s from feed boundary from_now\n", handler)
 	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_now"})
 	waitForStatusChange(handler, "deployed", statsLookupRetryCounter)
@@ -653,6 +656,9 @@ func TestDiffFeedBoundariesWithResume(t *testing.T) {
 
 	count, _ = getBucketItemCount(dstBucket)
 	log.Println("Item count in dst bucket:", count)
+
+	// TODO: Remove this sleep. Added to mitigate a race occuring when resume request is quickly fired after pause
+	time.Sleep(3 * time.Minute)
 
 	log.Printf("Resuming app: %s from feed boundary from_prior\n", handler)
 	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_prior"})

@@ -269,14 +269,14 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 				logging.Infof("%s [%d] Function: %s begin deployment process", logPrefix, s.runningFnsCount(), appName)
 				state := s.GetAppState(appName)
 
-				if state == common.AppStateUndeployed || state == common.AppStateDisabled {
+				if state == common.AppStateUndeployed || state == common.AppStatePaused {
 					if err := util.MetaKvDelete(MetakvAppsRetryPath+appName, nil); err != nil {
 						logging.Errorf("%s [%d] Function: %s failed to delete from metakv path, err : %v",
 							logPrefix, s.runningFnsCount(), appName, err)
 						return err
 					}
 
-					if state == common.AppStateDisabled {
+					if state == common.AppStatePaused {
 						if p, ok := s.runningFns()[appName]; ok {
 							logging.Infof("%s [%d] Function: %s stopping running producer instance", logPrefix, s.runningFnsCount(), appName)
 							p.StopProducer()
@@ -361,7 +361,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 				state := s.GetAppState(appName)
 				logging.Infof("%s [%d] Function: %s Begin undeploy process. Current state: %d", logPrefix, s.runningFnsCount(), appName, state)
 
-				if state == common.AppStateEnabled || state == common.AppStateDisabled || state == common.AppStateUndeployed {
+				if state == common.AppStateEnabled || state == common.AppStatePaused || state == common.AppStateUndeployed {
 
 					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus

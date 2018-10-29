@@ -551,7 +551,8 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 		fragmentCount++
 	}
 
-	logging.Infof("%s Function: %s number of fragments: %d payload size: %d", logPrefix, appName, fragmentCount, length)
+	logging.Infof("%s Function: %s number of fragments: %d payload size: %d app path: %s checksum path: %s",
+		logPrefix, appName, fragmentCount, length, appsPath, checksumPath)
 
 	for idx := 0; idx < fragmentCount; idx++ {
 		currpath := appsPath + strconv.Itoa(int(idx))

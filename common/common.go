@@ -28,7 +28,7 @@ const (
 	AppState int8 = iota
 	AppStateUndeployed
 	AppStateEnabled
-	AppStateDisabled
+	AppStatePaused
 	AppStateUnexpected
 )
 

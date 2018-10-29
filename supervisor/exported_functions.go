@@ -182,7 +182,7 @@ func (s *SuperSupervisor) GetAppState(appName string) int8 {
 		case true:
 			return common.AppStateEnabled
 		case false:
-			return common.AppStateDisabled
+			return common.AppStatePaused
 		}
 	case false:
 		switch s.appProcessingStatus[appName] {

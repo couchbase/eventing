@@ -968,7 +968,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 	deploymentStatus, dOk := app.Settings["deployment_status"].(bool)
 
 	logging.Infof("%s Function: %s deployment status: %t processing status: %t",
-		logPrefix, appName, processingStatus, deploymentStatus)
+		logPrefix, appName, deploymentStatus, processingStatus)
 
 	deployedApps := m.superSup.GetDeployedApps()
 	if pOk && dOk {
@@ -982,7 +982,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 			}
 		}
 
-		if (filterFeedBoundary(settings) == common.DcpFromPrior) && (!processingStatus || deploymentStatus) {
+		if filterFeedBoundary(settings) == common.DcpFromPrior && m.superSup.GetAppState(appName) != common.AppStatePaused {
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state", appName)
 
