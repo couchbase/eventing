@@ -24,7 +24,9 @@ std::atomic<int64_t> e_v8_worker_lost = {0};
 std::atomic<int64_t> delete_events_lost = {0};
 std::atomic<int64_t> timer_events_lost = {0};
 std::atomic<int64_t> mutation_events_lost = {0};
+
 extern std::atomic<int64_t> timer_context_size_exceeded_counter;
+extern std::atomic<int64_t> timer_callback_missing_counter;
 
 std::atomic<int64_t> uv_try_write_failure_counter = {0};
 
@@ -540,6 +542,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       fstats << R"("mutation_events_lost": )" << mutation_events_lost << ",";
       fstats << R"("timer_context_size_exceeded_counter": )"
              << timer_context_size_exceeded_counter << ",";
+      fstats << R"("timer_callback_missing_counter": )"
+             << timer_callback_missing_counter << ",";
       fstats << R"("delete_events_lost": )" << delete_events_lost << ",";
       fstats << R"("timer_events_lost": )" << timer_events_lost << ",";
       fstats << R"("timestamp" : ")" << GetTimestampNow() << R"(")";

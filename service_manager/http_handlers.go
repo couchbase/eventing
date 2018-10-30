@@ -1412,7 +1412,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	if m.checkIfDeployed(app.Name) {
+	if m.checkIfDeployed(app.Name) && m.superSup.GetAppState(app.Name) != common.AppStatePaused {
 		info.Code = m.statusCodes.errAppDeployed.Code
 		info.Info = fmt.Sprintf("Function: %s another function with same name is already deployed, skipping save request", app.Name)
 		logging.Errorf("%s %s", logPrefix, info.Info)
@@ -1427,7 +1427,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	if filterFeedBoundary(app.Settings) == common.DcpFromPrior {
+	if filterFeedBoundary(app.Settings) == common.DcpFromPrior && m.superSup.GetAppState(app.Name) != common.AppStatePaused {
 		info.Code = m.statusCodes.errInvalidConfig.Code
 		info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state", app.Name)
 

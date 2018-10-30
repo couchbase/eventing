@@ -43,6 +43,8 @@ std::atomic<int64_t> enqueued_dcp_delete_msg_counter = {0};
 std::atomic<int64_t> enqueued_dcp_mutation_msg_counter = {0};
 std::atomic<int64_t> enqueued_timer_msg_counter = {0};
 
+std::atomic<int64_t> timer_callback_missing_counter = {0};
+
 const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket) {
   LOG(logDebug) << "Getting username for host " << RS(host) << " port " << port
@@ -737,6 +739,10 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
 
   auto utils = UnwrapData(isolate_)->utils;
   auto callback_func_val = utils->GetPropertyFromGlobal(callback);
+  if (!utils->IsFuncGlobal(callback_func_val)) {
+    timer_callback_missing_counter++;
+    return;
+  }
   auto callback_func = callback_func_val.As<v8::Function>();
 
   if (debugger_started_) {

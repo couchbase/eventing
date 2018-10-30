@@ -544,6 +544,40 @@ func TestCleanupTimersOnPause(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestChangeFnCodeBetweenPauseResume(t *testing.T) {
+	// Additionally function code deployed post resume is missing timer callback
+	// for which timers were defined earlier.
+	time.Sleep(5 * time.Second)
+	fnName := "bucket_op_with_timer"
+	fnFile1 := "bucket_op_with_timer_100s"
+
+	flushFunctionAndBucket(fnName)
+	createAndDeployFunction(fnName, fnFile1, &commonSettings{})
+	waitForDeployToFinish(fnName)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	time.Sleep(30 * time.Second) // Allow some timers to get created
+
+	log.Println("Pausing function:", fnName)
+	setSettings(fnName, true, false, &commonSettings{})
+
+	// TODO: Reduce this sleep window
+	time.Sleep(3 * time.Minute)
+
+	fnFile2 := "bucket_op_with_timer_100s_missing_cb"
+
+	log.Printf("Resuming function: %s with from_prior feed boundary\n", fnName)
+	createAndDeployFunction(fnName, fnFile2, &commonSettings{streamBoundary: "from_prior"})
+
+	waitForFailureStatCounterSync(fnName, "timer_callback_missing_counter", itemCount)
+
+	log.Println("Undeploying function:", fnName)
+	setSettings(fnName, false, false, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+	flushFunctionAndBucket(fnName)
+}
+
 func TestCleanupTimersOnResume(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "timers_in_distant_future"
@@ -630,7 +664,7 @@ func TestDiffFeedBoundariesWithResume(t *testing.T) {
 		t.Error("Waited too long for item count to come down to 0")
 	}
 
-	// TODO: Remove this sleep. Added to mitigate a race occuring when resume request is quickly fired after pause
+	// TODO: Remove this sleep. Added to mitigate a race occurring when resume request is quickly fired after pause
 	time.Sleep(3 * time.Minute)
 
 	log.Printf("Resuming app: %s from feed boundary from_now\n", handler)
@@ -657,7 +691,7 @@ func TestDiffFeedBoundariesWithResume(t *testing.T) {
 	count, _ = getBucketItemCount(dstBucket)
 	log.Println("Item count in dst bucket:", count)
 
-	// TODO: Remove this sleep. Added to mitigate a race occuring when resume request is quickly fired after pause
+	// TODO: Remove this sleep. Added to mitigate a race occurring when resume request is quickly fired after pause
 	time.Sleep(3 * time.Minute)
 
 	log.Printf("Resuming app: %s from feed boundary from_prior\n", handler)

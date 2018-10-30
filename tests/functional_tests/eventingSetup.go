@@ -703,3 +703,80 @@ func waitForStatusChange(appName, expectedStatus string, retryCounter int) {
 		}
 	}
 }
+
+func getFailureStatCounter(statName, fnName string) int {
+	responses := make([]interface{}, 0)
+
+	res0, err := makeStatsRequest("", statsEndpointURL0, false)
+	if err == nil {
+		responses = append(responses, res0)
+	}
+
+	res1, err := makeStatsRequest("", statsEndpointURL1, false)
+	if err == nil {
+		responses = append(responses, res1)
+	}
+
+	res2, err := makeStatsRequest("", statsEndpointURL2, false)
+	if err == nil {
+		responses = append(responses, res2)
+	}
+
+	res3, err := makeStatsRequest("", statsEndpointURL3, false)
+	if err == nil {
+		responses = append(responses, res3)
+	}
+
+	var result int
+
+	for _, res := range responses {
+		stats, ok := res.([]interface{})
+		if !ok {
+			continue
+		}
+
+		for _, stat := range stats {
+			s, ok := stat.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			sFName, ok := s["function_name"].(string)
+			if !ok {
+				continue
+			}
+
+			if sFName == fnName {
+				failureStats, ok := s["failure_stats"].(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if val, ok := failureStats[statName].(float64); !ok {
+					continue
+				} else {
+					result += int(val)
+				}
+			}
+		}
+	}
+
+	return result
+}
+
+func waitForFailureStatCounterSync(fnName, statName string, expectedCount int) {
+	for {
+		time.Sleep(5 * time.Second)
+		log.Printf("Waiting for function: %s stat: %s to get to %d\n", fnName, statName, expectedCount)
+
+		count := getFailureStatCounter(statName, fnName)
+		if count != expectedCount {
+			log.Printf("Function: %s stat: %s got to %d expected %d\n", fnName, statName, count, expectedCount)
+			continue
+		}
+
+		if count == expectedCount {
+			log.Printf("Function: %s stat: %s got to %d\n", fnName, statName, expectedCount)
+			return
+		}
+	}
+}
