@@ -757,3 +757,11 @@ func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.workerQueueMemCap/(1024*1024),
 		prevWorkerMemCap/(1024*1024), prevDCPFeedMemCap/(1024*1024))
 }
+
+func (c *Consumer) ResetBootstrapDone() {
+	logPrefix := "Consumer::ResetBootstrapDone"
+
+	logging.Infof("%s [%s:%s:%d] Current ResetBootstrapDone flag: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.resetBootstrapDone)
+	c.resetBootstrapDone = true
+	logging.Infof("%s [%s:%s:%d] Updated ResetBootstrapDone flag to: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.resetBootstrapDone)
+}

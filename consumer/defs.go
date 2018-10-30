@@ -184,6 +184,7 @@ type Consumer struct {
 	numVbuckets                   int
 	nsServerPort                  string
 	reqStreamCh                   chan *streamRequestInfo
+	resetBootstrapDone            bool
 	statsTickDuration             time.Duration
 	streamReqRWMutex              *sync.RWMutex
 	stoppingConsumer              bool
@@ -400,6 +401,7 @@ type vbStat struct {
 
 type vbucketKVBlob struct {
 	AssignedWorker            string           `json:"assigned_worker"`
+	BootstrapStreamReqDone    bool             `json:"bootstrap_stream_req_done"`
 	CurrentVBOwner            string           `json:"current_vb_owner"`
 	DCPStreamStatus           string           `json:"dcp_stream_status"`
 	DCPStreamRequested        bool             `json:"dcp_stream_requested"`

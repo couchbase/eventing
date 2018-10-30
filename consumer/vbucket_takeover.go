@@ -371,6 +371,14 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
 	vbBlob.PreviousVBOwner = c.HostPortAddr()
 
+	if c.resetBootstrapDone {
+		logging.Infof("%s [%s:%s:%d] vb: %d current BootstrapStreamReqDone flag: %t",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.BootstrapStreamReqDone)
+		vbBlob.BootstrapStreamReqDone = false
+		logging.Infof("%s [%s:%s:%d] vb: %d updated BootstrapStreamReqDone flag to: %t",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.BootstrapStreamReqDone)
+	}
+
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, updateCheckpointCallback,
 		c, c.producer.AddMetadataPrefix(vbKey), vbBlob)
 	if err == common.ErrRetryTimeout {

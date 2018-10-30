@@ -145,6 +145,7 @@ type EventingConsumer interface {
 	Pid() int
 	RebalanceStatus() bool
 	RebalanceTaskProgress() *RebalanceProgress
+	ResetBootstrapDone()
 	Serve()
 	SetConnHandle(net.Conn)
 	SetFeedbackConnHandle(net.Conn)

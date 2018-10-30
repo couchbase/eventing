@@ -276,6 +276,7 @@ func (p *Producer) Serve() {
 
 			for _, c := range p.getConsumers() {
 				c.WorkerVbMapUpdate(nil)
+				c.ResetBootstrapDone()
 				c.CloseAllRunningDcpFeeds()
 			}
 

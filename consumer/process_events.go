@@ -191,11 +191,9 @@ func (c *Consumer) processEvents() {
 					}
 
 					if c.usingTimer {
-						err := timers.Create(c.producer.GetMetadataPrefix(),
-							int(e.VBucket), connStr, c.producer.MetadataBucket())
+						err := timers.Create(c.producer.GetMetadataPrefix(), int(e.VBucket), connStr, c.producer.MetadataBucket())
 						if err == common.ErrRetryTimeout {
-							logging.Infof("%s [%s:%s:%d] Exiting due to timeout",
-								logPrefix, c.workerName, c.tcpPort, c.Pid())
+							logging.Infof("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 							return
 						}
 						if err != nil {
@@ -240,6 +238,13 @@ func (c *Consumer) processEvents() {
 					var startSeqNo uint64
 					if seqNo, ok := c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64); ok {
 						startSeqNo = seqNo
+					}
+
+					if val, ok := c.vbProcessingStats.getVbStat(e.VBucket, "bootstrap_stream_req_done").(bool); ok && !val {
+						c.vbProcessingStats.updateVbStat(e.VBucket, "bootstrap_stream_req_done", true)
+						vbBlob.BootstrapStreamReqDone = true
+						logging.Infof("%s [%s:%s:%d] vb: %d updated bootstrap done flag to: %t",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbBlob.BootstrapStreamReqDone)
 					}
 
 					entry := OwnershipEntry{
@@ -581,6 +586,8 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 
 		if isNoEnt {
 
+			c.vbProcessingStats.updateVbStat(vb, "bootstrap_stream_req_done", false)
+
 			// Storing vbuuid in metadata bucket, will be required for start
 			// stream later on
 			vbBlob.VBuuid = vbuuid
@@ -668,24 +675,36 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 				logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
-				switch c.dcpStreamBoundary {
-				case common.DcpEverything:
-					c.reqStreamCh <- &streamRequestInfo{
-						vb:         vb,
-						vbBlob:     &vbBlob,
-						startSeqNo: 0,
-					}
-					c.vbProcessingStats.updateVbStat(vb, "start_seq_no", 0)
+				if !vbBlob.BootstrapStreamReqDone {
 
-				case common.DcpFromNow:
-					c.reqStreamCh <- &streamRequestInfo{
-						vb:         vb,
-						vbBlob:     &vbBlob,
-						startSeqNo: vbSeqnos[int(vb)],
-					}
-					c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbSeqnos[int(vb)])
+					c.vbProcessingStats.updateVbStat(vb, "bootstrap_stream_req_done", false)
 
-				case common.DcpFromPrior:
+					switch c.dcpStreamBoundary {
+					case common.DcpEverything:
+						c.reqStreamCh <- &streamRequestInfo{
+							vb:         vb,
+							vbBlob:     &vbBlob,
+							startSeqNo: 0,
+						}
+						c.vbProcessingStats.updateVbStat(vb, "start_seq_no", 0)
+
+					case common.DcpFromNow:
+						c.reqStreamCh <- &streamRequestInfo{
+							vb:         vb,
+							vbBlob:     &vbBlob,
+							startSeqNo: vbSeqnos[int(vb)],
+						}
+						c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbSeqnos[int(vb)])
+
+					case common.DcpFromPrior:
+						c.reqStreamCh <- &streamRequestInfo{
+							vb:         vb,
+							vbBlob:     &vbBlob,
+							startSeqNo: vbBlob.LastSeqNoProcessed,
+						}
+						c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
+					}
+				} else {
 					c.reqStreamCh <- &streamRequestInfo{
 						vb:         vb,
 						vbBlob:     &vbBlob,
