@@ -515,3 +515,13 @@ func (s *SuperSupervisor) deleteFromCleanupApps(appName string) {
 
 	logging.Infof("%s [%d] Function: %s deleted", logPrefix, s.runningFnsCount(), appName)
 }
+
+// DcpFeedBoundary returns feed boundary used for vb dcp streams
+func (s *SuperSupervisor) DcpFeedBoundary(fnName string) (string, error) {
+	p, ok := s.runningFns()[fnName]
+	if ok {
+		return p.DcpFeedBoundary(), nil
+	}
+
+	return "", fmt.Errorf("Eventing.Producer isn't alive")
+}

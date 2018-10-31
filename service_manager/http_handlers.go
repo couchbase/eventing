@@ -2186,8 +2186,7 @@ func determineStatus(status appStatus, numEventingNodes int) string {
 		return "pausing"
 	}
 
-	logging.Errorf("%s Function: %s inconsistent deployment state %v",
-		logPrefix, status.Name, status)
+	logging.Errorf("%s Function: %s inconsistent deployment state %v", logPrefix, status.Name, status)
 	return "invalid"
 }
 
@@ -2256,6 +2255,10 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 	for _, app := range m.getTempStoreAll() {
 		if m.checkIfDeployed(app.Name) {
 			stats := stats{}
+			feedBoundary, err := m.superSup.DcpFeedBoundary(app.Name)
+			if err == nil {
+				stats.DCPFeedBoundary = feedBoundary
+			}
 			stats.EventProcessingStats = m.superSup.GetEventProcessingStats(app.Name)
 			stats.EventsRemaining = backlogStat{DcpBacklog: m.superSup.GetDcpEventsRemainingToProcess(app.Name)}
 			stats.ExecutionStats = m.superSup.GetExecutionStats(app.Name)

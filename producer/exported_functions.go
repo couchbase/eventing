@@ -1056,3 +1056,8 @@ func (p *Producer) SpanBlobDump() map[string]interface{} {
 	}
 	return spanBlobDumps
 }
+
+// DcpFeedBoundary returns feed boundary used for vb dcp streams
+func (p *Producer) DcpFeedBoundary() string {
+	return string(p.handlerConfig.StreamBoundary)
+}

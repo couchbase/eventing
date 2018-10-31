@@ -243,6 +243,14 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 		return
 	}
 
+	if info = m.validatePositiveInteger("function_size", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("metakv_max_doc_size", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validateBoolean("enable_lifecycle_ops_during_rebalance", true, c); info.Code != m.statusCodes.ok.Code {
 		return
 	}

@@ -59,6 +59,7 @@ type EventingProducer interface {
 	CleanupMetadataBucket(skipCheckpointBlobs bool) error
 	CleanupUDSs()
 	ClearEventStats()
+	DcpFeedBoundary() string
 	GetAppCode() string
 	GetDcpEventsRemainingToProcess() uint64
 	GetDebuggerURL() (string, error)
@@ -172,6 +173,7 @@ type EventingSuperSup interface {
 	CheckpointBlobDump(appName string) (interface{}, error)
 	ClearEventStats()
 	CleanupProducer(appName string, skipMetaCleanup bool) error
+	DcpFeedBoundary(fnName string) (string, error)
 	DeployedAppList() []string
 	GetEventProcessingStats(appName string) map[string]uint64
 	GetAppCode(appName string) string
