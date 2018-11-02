@@ -1026,6 +1026,57 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 	return
 }
 
+func (s *ServiceMgr) parseFunctionPayload(data []byte, fnName string) application {
+	logPrefix := "ServiceMgr::parseFunctionPayload"
+
+	config := cfg.GetRootAsConfig(data, 0)
+
+	var app application
+	app.AppHandlers = string(config.AppCode())
+	app.Name = string(config.AppName())
+	app.ID = int(config.Id())
+	app.HandlerUUID = uint32(config.HandlerUUID())
+
+	d := new(cfg.DepCfg)
+	depcfg := new(depCfg)
+	dcfg := config.DepCfg(d)
+
+	depcfg.MetadataBucket = string(dcfg.MetadataBucket())
+	depcfg.SourceBucket = string(dcfg.SourceBucket())
+
+	var buckets []bucket
+	b := new(cfg.Bucket)
+	for i := 0; i < dcfg.BucketsLength(); i++ {
+
+		if dcfg.Buckets(b, i) {
+			newBucket := bucket{
+				Alias:      string(b.Alias()),
+				BucketName: string(b.BucketName()),
+			}
+			buckets = append(buckets, newBucket)
+		}
+	}
+
+	settingsPath := metakvAppSettingsPath + fnName
+	sData, sErr := util.MetakvGet(settingsPath)
+	if sErr == nil {
+		settings := make(map[string]interface{})
+		uErr := json.Unmarshal(sData, &settings)
+		if uErr != nil {
+			logging.Errorf("%s failed to unmarshal settings data from metakv, err: %v", logPrefix, uErr)
+		} else {
+			app.Settings = settings
+		}
+	} else {
+		logging.Errorf("%s failed to fetch settings data from metakv, err: %v", logPrefix, sErr)
+	}
+
+	depcfg.Buckets = buckets
+	app.DeploymentConfig = *depcfg
+
+	return app
+}
+
 func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getPrimaryStoreHandler"
 
@@ -1039,55 +1090,10 @@ func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Reque
 	appList := util.ListChildren(metakvAppsPath)
 	respData := make([]application, len(appList))
 
-	for index, appName := range appList {
-		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
+	for index, fnName := range appList {
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, fnName)
 		if err == nil && data != nil {
-
-			config := cfg.GetRootAsConfig(data, 0)
-
-			app := new(application)
-			app.AppHandlers = string(config.AppCode())
-			app.Name = string(config.AppName())
-			app.ID = int(config.Id())
-
-			d := new(cfg.DepCfg)
-			depcfg := new(depCfg)
-			dcfg := config.DepCfg(d)
-
-			depcfg.MetadataBucket = string(dcfg.MetadataBucket())
-			depcfg.SourceBucket = string(dcfg.SourceBucket())
-
-			var buckets []bucket
-			b := new(cfg.Bucket)
-			for i := 0; i < dcfg.BucketsLength(); i++ {
-
-				if dcfg.Buckets(b, i) {
-					newBucket := bucket{
-						Alias:      string(b.Alias()),
-						BucketName: string(b.BucketName()),
-					}
-					buckets = append(buckets, newBucket)
-				}
-			}
-
-			settingsPath := metakvAppSettingsPath + appName
-			sData, sErr := util.MetakvGet(settingsPath)
-			if sErr == nil {
-				settings := make(map[string]interface{})
-				uErr := json.Unmarshal(sData, &settings)
-				if uErr != nil {
-					logging.Errorf("%s failed to unmarshal settings data from metakv, err: %v", logPrefix, uErr)
-				} else {
-					app.Settings = settings
-				}
-			} else {
-				logging.Errorf("%s failed to fetch settings data from metakv, err: %v", logPrefix, sErr)
-			}
-
-			depcfg.Buckets = buckets
-			app.DeploymentConfig = *depcfg
-
-			respData[index] = *app
+			respData[index] = m.parseFunctionPayload(data, fnName)
 		}
 	}
 
@@ -1813,42 +1819,33 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (m *ServiceMgr) assignHandlerUID(appName string, app *application, info *runtimeInfo) error {
-	logPrefix := "ServiceMgr::assignHandlerUID"
+func (m *ServiceMgr) assignFunctionID(fnName string, app *application, info *runtimeInfo) error {
+	logPrefix := "ServiceMgr::assignFunctionID"
 
-	data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
+	data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, fnName)
 	if err != nil && data != nil {
 		info.Code = m.statusCodes.errGetAppPs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to read definitions from metakv", appName)
+		info.Info = fmt.Sprintf("Function: %s failed to read definitions from metakv", fnName)
 
 		logging.Errorf("%s %s, err: %v", logPrefix, info.Info, err)
 		return fmt.Errorf("%s", info.Info)
 	}
 
 	if err == nil && data != nil {
-		var tApp application
-		tErr := json.Unmarshal(data, &tApp)
-		if tErr != nil {
-			info.Code = m.statusCodes.errUnmarshalPld.Code
-			info.Info = fmt.Sprintf("Function: %s failed to unmarshal function defintion from metakv", appName)
-
-			logging.Errorf("%s %s err: %v", logPrefix, info.Info, tErr)
-			return tErr
-		}
-
+		tApp := m.parseFunctionPayload(data, fnName)
 		app.HandlerUUID = tApp.HandlerUUID
-		logging.Infof("%s Function: %s assigned previous handlerUUID: %d", logPrefix, app.Name, app.HandlerUUID)
+		logging.Infof("%s Function: %s assigned previous function ID: %d", logPrefix, app.Name, app.HandlerUUID)
 	} else {
 		var uErr error
 		app.HandlerUUID, uErr = util.GenerateHandlerUUID()
 		if uErr != nil {
 			info.Code = m.statusCodes.errUUIDGen.Code
-			info.Info = fmt.Sprintf("Function: %s UUID generation failed", appName)
+			info.Info = fmt.Sprintf("Function: %s UUID generation failed", fnName)
 
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			return uErr
 		}
-		logging.Infof("%s Function: %s HandlerUUID generated, UUID: %d", logPrefix, app.Name, app.HandlerUUID)
+		logging.Infof("%s Function: %s ID: %d generated", logPrefix, app.Name, app.HandlerUUID)
 	}
 
 	return nil
@@ -2008,7 +2005,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			err := m.assignHandlerUID(appName, &app, info)
+			err := m.assignFunctionID(appName, &app, info)
 			if err != nil {
 				m.sendErrorInfo(w, info)
 				return
@@ -2422,7 +2419,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 		}
 
 		info := &runtimeInfo{}
-		err = m.assignHandlerUID(app.Name, &app, info)
+		err = m.assignFunctionID(app.Name, &app, info)
 		if err != nil {
 			infoList = append(infoList, info)
 			continue
