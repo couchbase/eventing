@@ -1816,7 +1816,7 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) assignHandlerUID(appName string, app *application, info *runtimeInfo) error {
 	logPrefix := "ServiceMgr::assignHandlerUID"
 
-	data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName)
+	data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
 	if err != nil && data != nil {
 		info.Code = m.statusCodes.errGetAppPs.Code
 		info.Info = fmt.Sprintf("Function: %s failed to read definitions from metakv", appName)
