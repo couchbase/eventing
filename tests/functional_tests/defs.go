@@ -19,6 +19,8 @@ const (
 	statsEndpointURL1 = "http://127.0.0.1:9301/api/v1/stats"
 	statsEndpointURL2 = "http://127.0.0.1:9302/api/v1/stats"
 	statsEndpointURL3 = "http://127.0.0.1:9303/api/v1/stats"
+
+	statusURL = "http://127.0.0.1:9300/api/v1/status"
 )
 
 const (
@@ -109,6 +111,7 @@ type commonSettings struct {
 	aliasHandles             []string
 	aliasSources             []string
 	batchSize                int
+	cleanupTimers            bool
 	deadlineTimeout          int
 	executeTimerRoutineCount int
 	executionTimeout         int

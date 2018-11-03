@@ -10,6 +10,7 @@ type DcpStreamBoundary string
 const (
 	DcpEverything = DcpStreamBoundary("everything")
 	DcpFromNow    = DcpStreamBoundary("from_now")
+	DcpFromPrior  = DcpStreamBoundary("from_prior")
 )
 
 type ChangeType string
@@ -27,7 +28,7 @@ const (
 	AppState int8 = iota
 	AppStateUndeployed
 	AppStateEnabled
-	AppStateDisabled
+	AppStatePaused
 	AppStateUnexpected
 )
 
@@ -55,7 +56,7 @@ type EventingProducer interface {
 	Auth() string
 	CfgData() string
 	CheckpointBlobDump() map[string]interface{}
-	CleanupMetadataBucket() error
+	CleanupMetadataBucket(skipCheckpointBlobs bool) error
 	CleanupUDSs()
 	ClearEventStats()
 	GetAppCode() string
@@ -118,7 +119,9 @@ type EventingProducer interface {
 
 // EventingConsumer interface to export functions from eventing_consumer
 type EventingConsumer interface {
+	CheckIfQueuesAreDrained() error
 	ClearEventStats()
+	CloseAllRunningDcpFeeds()
 	ConsumerName() string
 	DcpEventsRemainingToProcess() uint64
 	EventingNodeUUIDs() []string
@@ -142,6 +145,7 @@ type EventingConsumer interface {
 	Pid() int
 	RebalanceStatus() bool
 	RebalanceTaskProgress() *RebalanceProgress
+	ResetBootstrapDone()
 	Serve()
 	SetConnHandle(net.Conn)
 	SetFeedbackConnHandle(net.Conn)
@@ -324,4 +328,17 @@ func (k Key) Raw() string {
 
 func (k Key) GetPrefix() string {
 	return k.prefix
+}
+
+func StreamBoundary(boundary string) DcpStreamBoundary {
+	switch boundary {
+	case "everything":
+		return DcpEverything
+	case "from_now":
+		return DcpFromNow
+	case "from_prior":
+		return DcpFromPrior
+	}
+
+	return DcpStreamBoundary("")
 }

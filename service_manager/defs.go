@@ -43,15 +43,6 @@ const (
 	rebalanceStalenessCounter = 200
 )
 
-const (
-	srcMapExt  = ".map.json"
-	srcCodeExt = ".js"
-)
-
-const (
-	maxHandlerSize = 128 * 1024
-)
-
 // ServiceMgr implements cbauth_service interface
 type ServiceMgr struct {
 	adminHTTPPort     string
@@ -169,6 +160,7 @@ type stats struct {
 	FailureStats                    interface{} `json:"failure_stats,omitempty"`
 	FunctionName                    interface{} `json:"function_name"`
 	GocbCredsRequestCounter         interface{} `json:"gocb_creds_request_counter,omitempty"`
+	HandlerUID                      interface{} `json:"handler_uid,omitempty"`
 	InternalVbDistributionStats     interface{} `json:"internal_vb_distribution_stats,omitempty"`
 	LatencyPercentileStats          interface{} `json:"latency_percentile_stats,omitempty"`
 	LatencyStats                    interface{} `json:"latency_stats,omitempty"`
@@ -189,21 +181,17 @@ type configResponse struct {
 	Restart bool `json:"restart"`
 }
 
-type credsInfo struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 type retry struct {
 	Count int64 `json:"count"`
 }
 
 type appStatus struct {
-	Name             string `json:"name"`
-	CompositeStatus  string `json:"composite_status"`
-	NumDeployedNodes int    `json:"num_deployed_nodes"`
-	DeploymentStatus bool   `json:"deployment_status"`
-	ProcessingStatus bool   `json:"processing_status"`
+	CompositeStatus       string `json:"composite_status"`
+	Name                  string `json:"name"`
+	NumBootstrappingNodes int    `json:"num_bootstrapping_nodes"`
+	NumDeployedNodes      int    `json:"num_deployed_nodes"`
+	DeploymentStatus      bool   `json:"deployment_status"`
+	ProcessingStatus      bool   `json:"processing_status"`
 }
 
 type appStatusResponse struct {

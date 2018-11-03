@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-var statusParsingFailed = fmt.Errorf("status parsing failed")
+var errStatusParsingFailed = fmt.Errorf("status parsing failed")
 
 func initNodePaths() ([]byte, error) {
 	payload := strings.NewReader(fmt.Sprintf("data_path=%s&index_path=", dataDir))
@@ -315,7 +315,7 @@ func bootstrapCheck(appName string, startCheck bool) {
 	for {
 		bStatus, err := getBootstrappingApps()
 		if err != nil {
-			if !startCheck && err == statusParsingFailed {
+			if !startCheck && err == errStatusParsingFailed {
 				log.Println("No apps undergoing bootstrap")
 				return
 			}
@@ -362,7 +362,7 @@ func getBootstrappingApps() (bool, error) {
 
 	status, err := strconv.ParseBool(string(r))
 	if err != nil {
-		return false, statusParsingFailed
+		return false, errStatusParsingFailed
 	}
 
 	return status, nil

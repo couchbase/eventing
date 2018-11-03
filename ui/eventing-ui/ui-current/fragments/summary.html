@@ -38,7 +38,7 @@
           <span class="cbui-table-cell cbui-tablerow-title">{{appname}}</span>
           <span class="cbui-table-cell row flex-left">
             <div class="fix-width-1 margin-right-3">
-              {{app.status === 'deployed' || app.status === 'undeployed' ? app.status : app.status + '...'}}
+              {{app.status === 'deployed' || app.status === 'undeployed' || app.status === 'paused' ? app.status : app.status + '...'}}
             </div>
           </span>
           <span class="cbui-table-cell text-right">

@@ -161,7 +161,7 @@ func (s *SuperSupervisor) SignalStopDebugger(appName string) error {
 		err := p.SignalStopDebugger()
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
-			return common.ErrRetryTimeout
+			return err
 		}
 	} else {
 		logging.Errorf("%s [%d] Function: %s request didn't go through as Eventing.Producer instance isn't alive",
@@ -182,7 +182,7 @@ func (s *SuperSupervisor) GetAppState(appName string) int8 {
 		case true:
 			return common.AppStateEnabled
 		case false:
-			return common.AppStateDisabled
+			return common.AppStatePaused
 		}
 	case false:
 		switch s.appProcessingStatus[appName] {
@@ -368,8 +368,8 @@ func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool) {
 	s.appProcessingStatus[appName] = false
 	s.appRWMutex.Unlock()
 
-	logging.Infof("%s [%d] Function: %s stopping running producer instance",
-		logPrefix, s.runningFnsCount(), appName)
+	logging.Infof("%s [%d] Function: %s stopping running producer instance, skipMetaCleanup",
+		logPrefix, s.runningFnsCount(), appName, skipMetaCleanup)
 
 	s.deleteFromLocallyDeployedApps(appName)
 
@@ -491,4 +491,27 @@ func (s *SuperSupervisor) SpanBlobDump(appName string) (interface{}, error) {
 	}
 
 	return nil, fmt.Errorf("Eventing.Producer isn't alive")
+}
+
+func (s *SuperSupervisor) addToCleanupApps(appName string) {
+	logPrefix := "SuperSupervisor::addToCleanupApps"
+
+	s.Lock()
+	defer s.Unlock()
+
+	_, ok := s.cleanedUpAppMap[appName]
+	if !ok {
+		s.cleanedUpAppMap[appName] = struct{}{}
+		logging.Infof("%s [%d] Function: %s added", logPrefix, s.runningFnsCount(), appName)
+	}
+}
+
+func (s *SuperSupervisor) deleteFromCleanupApps(appName string) {
+	logPrefix := "SuperSupervisor::deleteFromCleanupApps"
+
+	s.Lock()
+	defer s.Unlock()
+	delete(s.cleanedUpAppMap, appName)
+
+	logging.Infof("%s [%d] Function: %s deleted", logPrefix, s.runningFnsCount(), appName)
 }

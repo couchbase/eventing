@@ -17,16 +17,18 @@ import (
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingDir, kvPort,
-	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
+	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string, cleanupTimers bool,
 	memoryQuota int64, numVbuckets int, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                    appName,
 		bootstrapFinishCh:          make(chan struct{}, 1),
+		cleanupTimers:              cleanupTimers,
 		consumerListeners:          make(map[common.EventingConsumer]net.Listener),
 		dcpConfig:                  make(map[string]interface{}),
 		ejectNodeUUIDs:             make([]string, 0),
@@ -175,6 +177,14 @@ func (p *Producer) Serve() {
 		return
 	}
 
+	if p.cleanupTimers {
+		err = p.CleanupMetadataBucket(true)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+			return
+		}
+	}
+
 	p.startBucket()
 
 	p.bootstrapFinishCh <- struct{}{}
@@ -252,15 +262,36 @@ func (p *Producer) Serve() {
 				continue
 			}
 
-			logLevel := settings["log_level"].(string)
-			logging.SetLogLevel(util.GetLogLevel(logLevel))
-			p.updateAppLogSetting(settings)
+			logLevel, ok := settings["log_level"].(string)
+			if ok {
+				logging.SetLogLevel(util.GetLogLevel(logLevel))
+				p.updateAppLogSetting(settings)
+			}
 
 		case <-p.pauseProducerCh:
 
 			// This routine cleans up everything apart from metadataBucketHandle,
 			// which would be needed to clean up metadata bucket
 			logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
+
+			for _, c := range p.getConsumers() {
+				c.WorkerVbMapUpdate(nil)
+				c.ResetBootstrapDone()
+				c.CloseAllRunningDcpFeeds()
+			}
+
+			err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, checkIfQueuesAreDrained, p)
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+				return
+			}
+
+			for vb := 0; vb < p.numVbuckets; vb++ {
+				store, found := timers.Fetch(p.GetMetadataPrefix(), vb)
+				if found {
+					store.Free()
+				}
+			}
 
 			for _, c := range p.getConsumers() {
 				p.stopAndDeleteConsumer(c)
@@ -700,7 +731,7 @@ func (p *Producer) SignalStopDebugger() error {
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, key, &instance)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	consumers := p.getConsumers()
@@ -719,7 +750,7 @@ func (p *Producer) SignalStopDebugger() error {
 		clearDebuggerInstanceCallback, p)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 	return nil
 }

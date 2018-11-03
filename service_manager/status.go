@@ -405,7 +405,7 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errAppCodeSize.Name,
 			Code:        m.statusCodes.errAppCodeSize.Code,
-			Description: "Function Code size is more than 128k",
+			Description: "Function Code size is more than the configured limit",
 		},
 		{
 			Name:        m.statusCodes.errAppRetry.Name,

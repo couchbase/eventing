@@ -25,7 +25,7 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 	err := c.doVbTakeover(vb)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	if err == errDcpFeedsClosed {
@@ -282,7 +282,7 @@ var recreateCheckpointBlobsFromVbStatsCallback = func(args ...interface{}) error
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	logging.Infof("%s [%s:%s:%d] vb: %d Recreated missing checkpoint blob", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
@@ -348,7 +348,7 @@ var recreateCheckpointBlobCallback = func(args ...interface{}) error {
 		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return common.ErrRetryTimeout
+			return err
 		}
 	}
 
@@ -420,6 +420,7 @@ retryUpdateCheckpoint:
 
 	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
+		UpsertEx("bootstrap_stream_req_done", vbBlob.BootstrapStreamReqDone, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath).
@@ -647,6 +648,7 @@ retrySRSUpdate:
 	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
+		UpsertEx("bootstrap_stream_req_done", vbBlob.BootstrapStreamReqDone, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath).
@@ -920,29 +922,6 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	return nil
 }
 
-var removeDocIDCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::removeDocIDCallback"
-
-	c := args[0].(*Consumer)
-	key := args[1].(common.Key)
-
-	_, err := c.gocbMetaBucket.Remove(key.Raw(), 0)
-	if gocb.IsKeyNotFoundError(err) {
-		return nil
-	}
-
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %ru, failed to remove from metadata bucket, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), key.Raw(), err)
-	}
-
-	return err
-}
-
 var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::acquireDebuggerTokenCallback"
 
@@ -952,6 +931,7 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 	instance := args[3].(*common.DebuggerInstance)
 
 	key := c.producer.AddMetadataPrefix(c.app.AppName).Raw() + "::" + common.DebuggerTokenKey
+
 	cas, err := c.gocbMetaBucket.Get(key, instance)
 	if err == gocb.ErrKeyNotFound || err == gocb.ErrShutdown {
 		logging.Errorf("%s [%s:%s:%d] Key: %s, debugger token not found or bucket is closed, err: %v",
@@ -959,6 +939,7 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 		*success = false
 		return nil
 	}
+
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %s, failed to get doc from metadata bucket, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
@@ -967,7 +948,7 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 
 	// Some other consumer has acquired the token
 	if instance.Status == common.MutationTrapped || instance.Token != token {
-		logging.Infof("%s [%s:%s:%d] Some other consumer acquired the debugger token or token is stale",
+		logging.Debugf("%s [%s:%s:%d] Some other consumer acquired the debugger token or token is stale",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		*success = false
 		return nil
@@ -977,11 +958,11 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 	instance.Status = common.MutationTrapped
 	_, err = c.gocbMetaBucket.Replace(key, instance, cas, 0)
 	if err == nil {
-		logging.Infof("%s [%s:%s:%d] Debugger token acquired",
-			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		logging.Infof("%s [%s:%s:%d] Debugger token acquired", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		*success = true
 		return nil
 	}
+
 	// Check for CAS mismatch
 	if gocb.IsKeyExistsError(err) {
 		*success = false
@@ -989,61 +970,10 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
 	}
+
 	logging.Errorf("%s [%s:%s:%d] Failed to acquire token, err: %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-	return err
-}
 
-var removeIndexCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::removeIndexCallback"
-
-	c := args[0].(*Consumer)
-	key := args[1].(common.Key)
-	index := args[2].(int)
-
-	_, err := c.gocbMetaBucket.MutateIn(key.Raw(), 0, 0).
-		Remove(fmt.Sprintf("[%d]", index)).
-		Execute()
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %ru, failed to remove from metadata bucket, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), key.Raw(), err)
-	}
-
-	return err
-}
-
-var checkKeyExistsCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::checkKeyExistsCallback"
-
-	c := args[0].(*Consumer)
-	docID := args[1].(string)
-	exists := args[2].(*bool)
-	connShutdown := args[3].(*bool)
-	var value interface{}
-
-	_, err := c.gocbBucket.Get(docID, &value)
-	if err == gocb.ErrShutdown {
-		*exists = false
-		*connShutdown = true
-		return nil
-	}
-
-	*connShutdown = false
-	if err == gocb.ErrKeyNotFound {
-		*exists = false
-		return nil
-	}
-
-	if err == nil {
-		*exists = true
-		return nil
-	}
-
-	logging.Errorf("%s [%s:%s:%d] Key: %ru, err : %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), docID, err)
 	return err
 }
 
@@ -1065,31 +995,5 @@ var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
 		}
 	}
 
-	return nil
-}
-
-var checkIfReceivedTillEndSeqNoCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::checkIfRecievedTillEndSeqNoCallback"
-
-	c := args[0].(*Consumer)
-	vb := args[1].(uint16)
-	receivedTillEndSeqNo := args[2].(*bool)
-	dcpFeed := args[3].(*couchbase.DcpFeed)
-
-	if !c.isRebalanceOngoing {
-		logging.Infof("%s [%s:%s:%d] vb: %d closing feed: %s as rebalance has been stopped",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName())
-
-		dcpFeed.Close()
-		return nil
-	}
-
-	if !*receivedTillEndSeqNo {
-		return fmt.Errorf("Not recieved till supplied end seq no")
-	}
-	logging.Infof("%s [%s:%s:%d] vb: %d closing feed: %s, received events till end seq no",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName())
-
-	dcpFeed.Close()
 	return nil
 }

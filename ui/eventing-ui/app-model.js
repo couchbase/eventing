@@ -170,6 +170,7 @@ function determineUIStatus(status) {
         case 'deployed':
             return 'healthy';
         case 'undeployed':
+        case 'paused':
             return 'inactive';
         case 'undeploying':
         case 'deploying':

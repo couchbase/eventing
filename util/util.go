@@ -41,10 +41,6 @@ const (
 	EPSILON = 1e-5
 )
 
-const (
-	metakvMaxDocSize = 4096 //Fragment size for Appcontent
-)
-
 var GocbCredsRequestCounter = 0
 
 type Uint16Slice []uint16
@@ -458,10 +454,10 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 	return aggProgress, progressMap, errMap
 }
 
-func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {
-	logPrefix := "util::GetDeployedApps"
+func GetAppStatus(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {
+	logPrefix := "util::GetAppStatus"
 
-	deployedApps := make(map[string]map[string]string)
+	appStatuses := make(map[string]map[string]string)
 
 	netClient := NewClient(HTTPRequestTimeout)
 
@@ -470,7 +466,7 @@ func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[strin
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
-			logging.Errorf("%s Failed to get deployed apps from url: %rs, err: %v", logPrefix, endpointURL, err)
+			logging.Errorf("%s Failed to get app statuses from url: %rs, err: %v", logPrefix, endpointURL, err)
 			return nil, err
 		}
 		defer res.Body.Close()
@@ -481,18 +477,18 @@ func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[strin
 			return nil, err
 		}
 
-		var locallyDeployedApps map[string]string
-		err = json.Unmarshal(buf, &locallyDeployedApps)
+		var appStatus map[string]string
+		err = json.Unmarshal(buf, &appStatus)
 		if err != nil {
-			logging.Errorf("%s Failed to unmarshal deployed apps from url: %rs, err: %v", logPrefix, endpointURL, err)
+			logging.Errorf("%s Failed to unmarshal apps statuses from url: %rs, err: %v", logPrefix, endpointURL, err)
 			return nil, err
 		}
 
-		deployedApps[nodeAddr] = make(map[string]string)
-		deployedApps[nodeAddr] = locallyDeployedApps
+		appStatuses[nodeAddr] = make(map[string]string)
+		appStatuses[nodeAddr] = appStatus
 	}
 
-	return deployedApps, nil
+	return appStatuses, nil
 }
 
 func ListChildren(path string) []string {
@@ -550,19 +546,24 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 	length := len(payload)
 
 	checksumPath += appName
-	fragmentCount := length / metakvMaxDocSize
-	if length%metakvMaxDocSize != 0 {
+	fragmentCount := length / MetaKvMaxDocSize()
+	if length%MetaKvMaxDocSize() != 0 {
 		fragmentCount++
 	}
-	logging.Infof("%s Function: %s number of fragments: %d payload size: %d", logPrefix, appName, fragmentCount, length)
+
+	logging.Infof("%s Function: %s number of fragments: %d payload size: %d app path: %s checksum path: %s",
+		logPrefix, appName, fragmentCount, length, appsPath, checksumPath)
+
 	for idx := 0; idx < fragmentCount; idx++ {
 		currpath := appsPath + strconv.Itoa(int(idx))
-		curridx := idx * metakvMaxDocSize
-		lastidx := (idx + 1) * metakvMaxDocSize
+		curridx := idx * MetaKvMaxDocSize()
+		lastidx := (idx + 1) * MetaKvMaxDocSize()
 		if lastidx > length {
 			lastidx = length
 		}
+
 		fragment := payload[curridx:lastidx]
+
 		err := MetakvSet(currpath, fragment, nil)
 		if err != nil {
 			//Delete existing entry from appspath
@@ -575,9 +576,9 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 		}
 	}
 
-	//Compute MD5 hash and Update it to metakv
+	//Compute MD5 hash and update it in metakv
 	payloadhash := PayloadHash{}
-	if err := payloadhash.Update(payload, metakvMaxDocSize); err != nil {
+	if err := payloadhash.Update(payload, MetaKvMaxDocSize()); err != nil {
 		logging.Errorf("%s Function: %s updating payload hash failed err: %v", logPrefix, appName, err)
 		//Delete existing entry from appspath
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
@@ -587,10 +588,10 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 		return err
 	}
 
-	//Marshal payloadhash and update it to metakv
+	//Marshal payload hash and update it in metakv
 	hashdata, err := json.Marshal(&payloadhash)
 	if err != nil {
-		//Delete existing entry from appspath
+		//Delete existing entry from apps path
 		logging.Errorf("%s Function: %s marshal failed, err: %v", logPrefix, appName, err)
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
 			logging.Errorf("%s Function: %s unmarshal failed, err: %v", logPrefix, appName, errd)
@@ -600,7 +601,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 	}
 
 	if err = MetakvSet(checksumPath, hashdata, nil); err != nil {
-		//Delete existing entry from appspath
+		//Delete existing entry from apps path
 		logging.Errorf("%s Function: %s metakv set failed for checksum, err: %v", logPrefix, appName, err)
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
 			logging.Errorf("%s Function: %s checksum metakv recursive delete, err: %v", logPrefix, appName, errd)
@@ -612,7 +613,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 	return nil
 }
 
-//ReadAppContent reads Handler Code
+// ReadAppContent reads function code
 func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 	logPrefix := "util::ReadAppContent"
 
@@ -622,6 +623,11 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 		logging.Errorf("%s Function: %s metakv get failed for checksum, err: %v", logPrefix, appName, err)
 		return nil, err
 	} else {
+		if len(hashdata) == 0 {
+			logging.Errorf("%s Function: %s app content doesn't exist or is empty", logPrefix, appName)
+			return nil, nil
+		}
+
 		if err := json.Unmarshal(hashdata, &payloadhash); err != nil {
 			logging.Errorf("%s Function: %s unmarshal failed for checksum", logPrefix, appName)
 			return nil, err

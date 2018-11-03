@@ -14,11 +14,13 @@ import (
 	"github.com/couchbase/gocb"
 )
 
-var errDcpFeedsClosed = errors.New("dcp feeds are closed")
-var errDcpStreamRequested = errors.New("another worker issued STREAMREQ")
-var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
-var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another worker on same node")
-var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")
+var (
+	errDcpFeedsClosed           = errors.New("dcp feeds are closed")
+	errDcpStreamRequested       = errors.New("another worker issued STREAMREQ")
+	errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
+	errVbOwnedByAnotherWorker   = errors.New("vbucket is owned by another worker on same node")
+	errVbOwnedByAnotherNode     = errors.New("vbucket is owned by another node")
+)
 
 func (c *Consumer) checkAndUpdateMetadata() {
 	logPrefix := "Consumer::checkAndUpdateMetadata"
@@ -226,7 +228,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 		c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, true, &isNoEnt, true)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	switch vbBlob.DCPStreamStatus {
@@ -369,11 +371,19 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
 	vbBlob.PreviousVBOwner = c.HostPortAddr()
 
+	if c.resetBootstrapDone {
+		logging.Infof("%s [%s:%s:%d] vb: %d current BootstrapStreamReqDone flag: %t",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.BootstrapStreamReqDone)
+		vbBlob.BootstrapStreamReqDone = false
+		logging.Infof("%s [%s:%s:%d] vb: %d updated BootstrapStreamReqDone flag to: %t",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.BootstrapStreamReqDone)
+	}
+
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, updateCheckpointCallback,
 		c, c.producer.AddMetadataPrefix(vbKey), vbBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
@@ -569,7 +579,7 @@ func (c *Consumer) doCleanupForPreviouslyOwnedVbs() error {
 		err := c.cleanupVbMetadata(vb)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return common.ErrRetryTimeout
+			return err
 		}
 	}
 
@@ -588,14 +598,14 @@ func (c *Consumer) cleanupVbMetadata(vb uint16) error {
 		c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() && vbBlob.DCPStreamStatus == dcpStreamRunning {
 		err = c.updateCheckpoint(vbKey, vb, &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return common.ErrRetryTimeout
+			return err
 		}
 		logging.Infof("%s [%s:%s:%d] vb: %d cleaned up ownership", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	}
@@ -603,8 +613,9 @@ func (c *Consumer) cleanupVbMetadata(vb uint16) error {
 	return nil
 }
 
-func (c *Consumer) closeAllRunningDcpFeeds() {
-	logPrefix := "Consumer::closeAllRunningDcpFeeds"
+// CloseAllRunningDcpFeeds drops all socket connections to DCP producer
+func (c *Consumer) CloseAllRunningDcpFeeds() {
+	logPrefix := "Consumer::CloseAllRunningDcpFeeds"
 
 	runningDcpFeeds := make([]*couchbase.DcpFeed, 0)
 
