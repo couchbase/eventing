@@ -1026,7 +1026,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 	return
 }
 
-func (s *ServiceMgr) parseFunctionPayload(data []byte, fnName string) application {
+func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) application {
 	logPrefix := "ServiceMgr::parseFunctionPayload"
 
 	config := cfg.GetRootAsConfig(data, 0)
@@ -1115,8 +1115,7 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	logPrefix := "ServiceMgr::getTempStoreHandler"
 
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -1754,7 +1753,7 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -1868,7 +1867,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2131,7 +2130,7 @@ func (m *ServiceMgr) notifyRetryToAllProducers(appName string, r *retry) (info *
 func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2215,7 +2214,7 @@ func determineStatus(status appStatus, numEventingNodes int) string {
 func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2353,7 +2352,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 // Clears up all Eventing related artifacts from metakv, typically will be used for rebalance tests
 func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2369,8 +2368,7 @@ func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2402,8 +2400,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2489,8 +2486,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 func (m *ServiceMgr) getCPUCount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2507,7 +2503,7 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2614,8 +2610,7 @@ func (m *ServiceMgr) triggerGC(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2629,8 +2624,7 @@ func (m *ServiceMgr) freeOSMemory(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
