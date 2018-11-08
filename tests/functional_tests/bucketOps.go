@@ -51,7 +51,7 @@ func mangleCheckpointBlobs(appName, prefix string, start, end int) {
 	}
 	defer bucket.Close()
 
-	// Grab handlerUUID from metakv
+	// Grab functionID from metakv
 	metakvPath := fmt.Sprintf("/eventing/tempApps/%s/0", appName)
 	data, _, err := metakv.Get(metakvPath)
 	if err != nil {
@@ -78,7 +78,7 @@ func mangleCheckpointBlobs(appName, prefix string, start, end int) {
 	rand.Seed(time.Now().UnixNano())
 
 	for vb := start; vb <= end; vb++ {
-		docID := fmt.Sprintf("%s::%d::%s::vb::%d", prefix, uint64(app["handleruuid"].(float64)), appName, vb)
+		docID := fmt.Sprintf("%s::%d::%s::vb::%d", prefix, uint64(app["function_id"].(float64)), appName, vb)
 
 		worker := possibleWorkers[random(0, len(possibleWorkers))]
 		ownerNode := possibleVbOwners[random(0, len(possibleVbOwners))]
@@ -121,7 +121,7 @@ func purgeCheckpointBlobs(appName, prefix string, start, end int) {
 	}
 	defer bucket.Close()
 
-	// Grab handlerUUID from metakv
+	// Grab functionID from metakv
 	metakvPath := fmt.Sprintf("/eventing/tempApps/%s/0", appName)
 	data, _, err := metakv.Get(metakvPath)
 	if err != nil {
@@ -137,7 +137,7 @@ func purgeCheckpointBlobs(appName, prefix string, start, end int) {
 	}
 
 	for vb := start; vb <= end; vb++ {
-		docID := fmt.Sprintf("%s::%d::%s::vb::%d", prefix, uint64(app["handleruuid"].(float64)), appName, vb)
+		docID := fmt.Sprintf("%s::%d::%s::vb::%d", prefix, uint64(app["function_id"].(float64)), appName, vb)
 		_, err = bucket.Remove(docID, 0)
 		if err != nil {
 			log.Printf("DocID: %s err: %v\n", docID, err)

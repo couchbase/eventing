@@ -79,6 +79,18 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["dcp_mutation_sent_to_worker"] = c.dcpMutationCounter
 	}
 
+	if c.dcpXattrParseError > 0 {
+		stats["dcp_xattr_parse_error_counter"] = c.dcpXattrParseError
+	}
+
+	if c.suppressedDCPDeletionCounter > 0 {
+		stats["dcp_deletion_suppressed_counter"] = c.suppressedDCPDeletionCounter
+	}
+
+	if c.suppressedDCPMutationCounter > 0 {
+		stats["dcp_mutation_suppressed_counter"] = c.suppressedDCPMutationCounter
+	}
+
 	if c.dcpCloseStreamCounter > 0 {
 		stats["dcp_stream_close_counter"] = c.dcpCloseStreamCounter
 	}

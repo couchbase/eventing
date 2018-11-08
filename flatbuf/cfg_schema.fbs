@@ -4,9 +4,11 @@ table Config {
   appCode:string;
   appName:string;
   depCfg:DepCfg;
-  handlerUUID:uint;
+  functionID:uint;
+  functionInstanceID:string;
   id:uint;
   usingTimer:bool;
+  srcMutationEnabled:bool;
 }
 
 table DepCfg {
@@ -18,6 +20,7 @@ table DepCfg {
 table Bucket {
   bucketName:string;
   alias:string;
+  access:string;
 }
 
 root_type Config;

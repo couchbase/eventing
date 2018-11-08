@@ -59,6 +59,7 @@ type EventingProducer interface {
 	CleanupMetadataBucket(skipCheckpointBlobs bool) error
 	CleanupUDSs()
 	ClearEventStats()
+	DcpFeedBoundary() string
 	GetAppCode() string
 	GetDcpEventsRemainingToProcess() uint64
 	GetDebuggerURL() (string, error)
@@ -172,6 +173,7 @@ type EventingSuperSup interface {
 	CheckpointBlobDump(appName string) (interface{}, error)
 	ClearEventStats()
 	CleanupProducer(appName string, skipMetaCleanup bool) error
+	DcpFeedBoundary(fnName string) (string, error)
 	DeployedAppList() []string
 	GetEventProcessingStats(appName string) map[string]uint64
 	GetAppCode(appName string) string
@@ -212,17 +214,19 @@ type Config map[string]interface{}
 
 // AppConfig Application/Event handler configuration
 type AppConfig struct {
-	AppCode        string
-	AppDeployState string
-	AppName        string
-	AppState       string
-	AppVersion     string
-	HandlerUUID    uint32
-	ID             int
-	LastDeploy     string
-	Settings       map[string]interface{}
-	UsingTimer     bool
-	UserPrefix     string
+	AppCode            string
+	AppDeployState     string
+	AppName            string
+	AppState           string
+	AppVersion         string
+	FunctionID         uint32
+	FunctionInstanceID string
+	ID                 int
+	LastDeploy         string
+	Settings           map[string]interface{}
+	UsingTimer         bool
+	UserPrefix         string
+	SrcMutationEnabled bool
 }
 
 type RebalanceProgress struct {

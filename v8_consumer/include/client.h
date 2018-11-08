@@ -48,14 +48,14 @@ public:
 
   void FlushToConn(uv_stream_t *stream, char *buffer, int length);
 
-  void InitTcpSock(const std::string &handler_name,
-                   const std::string &handler_uuid,
+  void InitTcpSock(const std::string &function_name,
+                   const std::string &function_id,
                    const std::string &user_prefix, const std::string &appname,
                    const std::string &addr, const std::string &worker_id,
                    int batch_size, int feedback_batch_size, int feedback_port,
                    int port);
 
-  void InitUDS(const std::string &handler_name, const std::string &handler_uuid,
+  void InitUDS(const std::string &function_name, const std::string &function_id,
                const std::string &user_prefix, const std::string &appname,
                const std::string &addr, const std::string &worker_id,
                int batch_size, int feedback_batch_size,
@@ -124,9 +124,9 @@ private:
 
   std::string app_name_;
 
-  std::string handler_name_;
+  std::string function_name_;
 
-  std::string handler_uuid_;
+  std::string function_id_;
 
   std::string user_prefix_;
 

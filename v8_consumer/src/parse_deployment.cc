@@ -27,10 +27,10 @@ deployment_config *ParseDeployment(const char *app_code) {
     std::vector<std::string> bucket_info;
     bucket_info.push_back(buckets->Get(i)->bucketName()->str());
     bucket_info.push_back(buckets->Get(i)->alias()->str());
+    bucket_info.push_back(buckets->Get(i)->access()->str());
 
     buckets_info[buckets->Get(i)->alias()->str()] = bucket_info;
   }
-
   config->component_configs["buckets"] = buckets_info;
 
   return config;

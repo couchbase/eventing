@@ -126,14 +126,16 @@ type cleanup struct {
 }
 
 type application struct {
-	AppHandlers      string                 `json:"appcode"`
-	DeploymentConfig depCfg                 `json:"depcfg"`
-	EventingVersion  string                 `json:"version"`
-	HandlerUUID      uint32                 `json:"handleruuid"`
-	ID               int                    `json:"id"`
-	Name             string                 `json:"appname"`
-	Settings         map[string]interface{} `json:"settings"`
-	UsingTimer       bool                   `json:"using_timer"`
+	AppHandlers        string                 `json:"appcode"`
+	DeploymentConfig   depCfg                 `json:"depcfg"`
+	EventingVersion    string                 `json:"version"`
+	FunctionID         uint32                 `json:"function_id"`
+	ID                 int                    `json:"id"`
+	FunctionInstanceID string                 `json:"function_instance_id"`
+	Name               string                 `json:"appname"`
+	Settings           map[string]interface{} `json:"settings"`
+	UsingTimer         bool                   `json:"using_timer"`
+	SrcMutationEnabled bool                   `json:"src_mutation"`
 }
 
 type depCfg struct {
@@ -145,6 +147,7 @@ type depCfg struct {
 type bucket struct {
 	Alias      string `json:"alias"`
 	BucketName string `json:"bucket_name"`
+	Access     string `json:"access"`
 }
 
 type backlogStat struct {
@@ -153,6 +156,7 @@ type backlogStat struct {
 
 type stats struct {
 	CheckpointBlobDump              interface{} `json:"checkpoint_blob_dump,omitempty"`
+	DCPFeedBoundary                 interface{} `json:"dcp_feed_boundary"`
 	DocTimerDebugStats              interface{} `json:"doc_timer_debug_stats,omitempty"`
 	EventProcessingStats            interface{} `json:"event_processing_stats,omitempty"`
 	EventsRemaining                 interface{} `json:"events_remaining,omitempty"`
@@ -160,7 +164,7 @@ type stats struct {
 	FailureStats                    interface{} `json:"failure_stats,omitempty"`
 	FunctionName                    interface{} `json:"function_name"`
 	GocbCredsRequestCounter         interface{} `json:"gocb_creds_request_counter,omitempty"`
-	HandlerUID                      interface{} `json:"handler_uid,omitempty"`
+	FunctionID                      interface{} `json:"function_id,omitempty"`
 	InternalVbDistributionStats     interface{} `json:"internal_vb_distribution_stats,omitempty"`
 	LatencyPercentileStats          interface{} `json:"latency_percentile_stats,omitempty"`
 	LatencyStats                    interface{} `json:"latency_stats,omitempty"`

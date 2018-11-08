@@ -461,7 +461,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	// https://github.com/golang/go/issues/6895 - uds pathname limited to 108 chars
 
 	// Adding host port in uds path in order to make it across different nodes on a cluster_run setup
-	pathNameSuffix := fmt.Sprintf("%s_%d_%d.sock", p.nsServerHostPort, index, p.app.HandlerUUID)
+	pathNameSuffix := fmt.Sprintf("%s_%d_%d.sock", p.nsServerHostPort, index, p.app.FunctionID)
 	udsSockPath := fmt.Sprintf("%s/%s", os.TempDir(), pathNameSuffix)
 	feedbackSockPath := fmt.Sprintf("%s/f_%s", os.TempDir(), pathNameSuffix)
 

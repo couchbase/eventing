@@ -74,12 +74,12 @@ const (
 	metadataUpdatedPeriodicCheck   = "metadata_updated_periodic_checkpoint"
 	metadataCorrectedAfterRollback = "metadata_corrected_after_rollback"
 	undoMetadataCorrection         = "undo_metadata_correction"
+	xattrPrefix                    = "_eventing"
 )
 
 type xattrMetadata struct {
-	Cas    string   `json:"cas"`
-	Digest uint32   `json:"digest"`
-	Timers []string `json:"timers"`
+	FunctionInstanceID string `json:"fiid"`
+	ValueCRC           string `json:"crc"`
 }
 
 type vbFlogEntry struct {
@@ -334,12 +334,15 @@ type Consumer struct {
 	timerMessagesProcessed      uint64
 
 	// DCP and timer related counters
-	timerResponsesRecieved     uint64
-	aggMessagesSentCounter     uint64
-	dcpDeletionCounter         uint64
-	dcpMutationCounter         uint64
-	errorParsingTimerResponses uint64
-	timerMessagesProcessedPSec int
+	timerResponsesRecieved       uint64
+	aggMessagesSentCounter       uint64
+	dcpDeletionCounter           uint64
+	dcpMutationCounter           uint64
+	dcpXattrParseError           uint64
+	errorParsingTimerResponses   uint64
+	timerMessagesProcessedPSec   int
+	suppressedDCPDeletionCounter uint64
+	suppressedDCPMutationCounter uint64
 
 	// metastore related timer stats
 	metastoreDeleteCounter      uint64

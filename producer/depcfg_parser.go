@@ -38,7 +38,8 @@ func (p *Producer) parseDepcfg() error {
 	p.app.AppName = string(config.AppName())
 	p.app.AppState = fmt.Sprintf("%v", appUndeployed)
 	p.app.AppVersion = util.GetHash(p.app.AppCode)
-	p.app.HandlerUUID = uint32(config.HandlerUUID())
+	p.app.FunctionID = uint32(config.FunctionID())
+	p.app.FunctionInstanceID = string(config.FunctionInstanceID())
 	p.app.ID = int(config.Id())
 	p.app.LastDeploy = time.Now().UTC().Format("2006-01-02T15:04:05.000000000-0700")
 	p.app.Settings = make(map[string]interface{})
@@ -46,6 +47,11 @@ func (p *Producer) parseDepcfg() error {
 	if config.UsingTimer() == 0x1 {
 		p.app.UsingTimer = true
 	}
+
+	if config.SrcMutationEnabled() == 0x1 {
+		p.app.SrcMutationEnabled = true
+	}
+
 	d := new(cfg.DepCfg)
 	depcfg := config.DepCfg(d)
 
