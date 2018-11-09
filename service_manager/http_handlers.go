@@ -2166,10 +2166,17 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 
 	response.NumEventingNodes = numEventingNodes
 	for _, app := range m.getTempStoreAll() {
+		deploymentStatus, dOk := app.Settings["deployment_status"].(bool)
+		processingStatus, pOk := app.Settings["processing_status"].(bool)
+		if !dOk || !pOk {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			return
+		}
+
 		status := appStatus{
 			Name:             app.Name,
-			DeploymentStatus: app.Settings["deployment_status"].(bool),
-			ProcessingStatus: app.Settings["processing_status"].(bool),
+			DeploymentStatus: deploymentStatus,
+			ProcessingStatus: processingStatus,
 		}
 		if num, exists := appDeployedNodesCounter[app.Name]; exists {
 			status.NumDeployedNodes = num
