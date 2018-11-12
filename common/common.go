@@ -102,7 +102,7 @@ type EventingProducer interface {
 	SetRetryCount(retryCount int64)
 	SpanBlobDump() map[string]interface{}
 	Serve()
-	Stop()
+	Stop(context string)
 	StopProducer()
 	StopRunningConsumers()
 	String() string
@@ -156,7 +156,7 @@ type EventingConsumer interface {
 	SignalFeedbackConnected()
 	SignalStopDebugger() error
 	SpawnCompilationWorker(appCode, appContent, appName, eventingPort string, handlerHeaders, handlerFooters []string) (*CompileStatus, error)
-	Stop()
+	Stop(context string)
 	String() string
 	TimerDebugStats() map[int]map[string]interface{}
 	UpdateEventingNodesUUIDs(keepNodes, ejectNodes []string)

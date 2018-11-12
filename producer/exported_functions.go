@@ -278,7 +278,7 @@ func (p *Producer) StopProducer() {
 		logPrefix, p.appName, p.LenRunningConsumers())
 
 	if p.workerSupervisor != nil {
-		p.workerSupervisor.Stop()
+		p.workerSupervisor.Stop(p.appName)
 	}
 
 	logging.Infof("%s [%s:%d] Stopped supervisor tree",
