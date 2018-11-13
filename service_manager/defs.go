@@ -53,6 +53,9 @@ type ServiceMgr struct {
 	ejectNodeUUIDs    []string
 	eventingNodeAddrs []string
 	failoverNotif     bool
+	fnsInPrimaryStore map[string]struct{} // Access controlled by fnMu
+	fnsInTempStore    map[string]struct{} // Access controlled by fnMu
+	fnMu              *sync.RWMutex
 	keepNodeUUIDs     []string
 	keyFile           string
 	lcbCredsCounter   int64

@@ -628,9 +628,8 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 
 	progress := &common.RebalanceProgress{}
 
-	appList := util.ListChildren(metakvAppsPath)
-
-	for _, appName := range appList {
+	m.fnMu.RLock()
+	for appName := range m.fnsInPrimaryStore {
 		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
 		// if it occurs
 		appProgress, err := m.superSup.RebalanceTaskProgress(appName)
@@ -644,6 +643,7 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 			progress.VbsRemainingToShuffle += appProgress.VbsRemainingToShuffle
 		}
 	}
+	m.fnMu.RUnlock()
 
 	if progress.VbsRemainingToShuffle > 0 {
 		m.statsWritten = false
@@ -1175,17 +1175,21 @@ func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtim
 func (m *ServiceMgr) getTempStoreAll() []application {
 	logPrefix := "ServiceMgr::getTempStoreAll"
 
-	tempAppList := util.ListChildren(metakvTempAppsPath)
-	applications := make([]application, len(tempAppList))
+	m.fnMu.RLock()
+	defer m.fnMu.RUnlock()
 
-	for i, appName := range tempAppList {
-		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName)
+	applications := make([]application, len(m.fnsInTempStore))
+	i := -1
+
+	for fnName := range m.fnsInTempStore {
+		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, fnName)
 		if err == nil && data != nil {
 			var app application
+			i++
 			uErr := json.Unmarshal(data, &app)
 			if uErr != nil {
 				logging.Errorf("%s Function: %s failed to unmarshal data from metakv, err: %v data: %v",
-					logPrefix, appName, uErr, string(data))
+					logPrefix, fnName, uErr, string(data))
 				continue
 			}
 
