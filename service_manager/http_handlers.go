@@ -1312,7 +1312,7 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	info := m.savePrimaryStore(app)
+	info := m.savePrimaryStore(&app)
 	m.sendRuntimeInfo(w, info)
 }
 
@@ -1417,7 +1417,7 @@ func filterFeedBoundary(settings map[string]interface{}) common.DcpStreamBoundar
 }
 
 // Saves application to metakv and returns appropriate success/error code
-func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
+func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	logPrefix := "ServiceMgr::savePrimaryStore"
 
 	info = &runtimeInfo{}
@@ -1453,7 +1453,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	}
 
 	app.SrcMutationEnabled = m.isSrcMutationEnabled(&app.DeploymentConfig)
-	appContent := m.encodeAppPayload(&app)
+	appContent := m.encodeAppPayload(app)
 
 	if len(appContent) > util.MaxFunctionSize() {
 		info.Code = m.statusCodes.errAppCodeSize.Code
@@ -1483,7 +1483,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		app.Settings["using_timer"] = false
 		app.UsingTimer = false
 	}
-	appContent = m.encodeAppPayload(&app)
+	appContent = m.encodeAppPayload(app)
 
 	m.checkVersionCompat(compilationInfo.Version, info)
 	if info.Code != m.statusCodes.ok.Code {
@@ -2034,7 +2034,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 			app.EventingVersion = util.EventingVer()
 
-			runtimeInfo := m.savePrimaryStore(app)
+			runtimeInfo := m.savePrimaryStore(&app)
 			if runtimeInfo.Code == m.statusCodes.ok.Code {
 				audit.Log(auditevent.SaveDraft, r, appName)
 				// Save to temp store only if saving to primary store succeeds
@@ -2467,7 +2467,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 
 		app.EventingVersion = util.EventingVer()
 
-		infoPri := m.savePrimaryStore(app)
+		infoPri := m.savePrimaryStore(&app)
 		if infoPri.Code != m.statusCodes.ok.Code {
 			logging.Errorf("%s Function: %s saving %ru to primary store failed: %v", logPrefix, app.Name, infoPri)
 			infoList = append(infoList, infoPri)
