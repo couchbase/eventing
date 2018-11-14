@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	_ "expvar" // For stat collection
 	"fmt"
 	"io/ioutil"
 	"net"
