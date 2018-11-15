@@ -963,7 +963,6 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		app.Settings[setting] = settings[setting]
 	}
 
-	// State validation - app must be in deployed state
 	processingStatus, pOk := app.Settings["processing_status"].(bool)
 	deploymentStatus, dOk := app.Settings["deployment_status"].(bool)
 
@@ -972,8 +971,18 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 	deployedApps := m.superSup.GetDeployedApps()
 	if pOk && dOk {
-		// Check for disable processing
+		mhVersion := eventingVerMap["mad-hatter"]
+
+		// Check for pause processing
 		if deploymentStatus == true && processingStatus == false {
+			if !m.compareEventingVersion(mhVersion) {
+				info.Code = m.statusCodes.errClusterVersion.Code
+				info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for pausing function execution",
+					mhVersion.major, mhVersion.minor)
+				logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+				return
+			}
+
 			if _, ok := deployedApps[appName]; !ok {
 				info.Code = m.statusCodes.errAppNotInit.Code
 				info.Info = fmt.Sprintf("Function: %s not processing mutations. Operation is not permitted. Edit function instead", appName)
@@ -982,10 +991,17 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 			}
 		}
 
+		if filterFeedBoundary(settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
+			info.Code = m.statusCodes.errClusterVersion.Code
+			info.Info = fmt.Sprintf("All eventing nodes in cluster must be on version %d.%d or higher for resuming function execution",
+				mhVersion.major, mhVersion.minor)
+			logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+			return
+		}
+
 		if filterFeedBoundary(settings) == common.DcpFromPrior && m.superSup.GetAppState(appName) != common.AppStatePaused {
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state", appName)
-
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			return
 		}
@@ -1448,6 +1464,15 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
+	mhVersion := eventingVerMap["mad-hatter"]
+	if filterFeedBoundary(app.Settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
+		info.Code = m.statusCodes.errClusterVersion.Code
+		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for using 'from prior' deployment feed boundary",
+			mhVersion.major, mhVersion.minor)
+		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+		return
+	}
+
 	if filterFeedBoundary(app.Settings) == common.DcpFromPrior && m.superSup.GetAppState(app.Name) != common.AppStatePaused {
 		info.Code = m.statusCodes.errInvalidConfig.Code
 		info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state", app.Name)
@@ -1457,6 +1482,14 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	}
 
 	app.SrcMutationEnabled = m.isSrcMutationEnabled(&app.DeploymentConfig)
+	if app.SrcMutationEnabled && !m.compareEventingVersion(mhVersion) {
+		info.Code = m.statusCodes.errClusterVersion.Code
+		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for allowing mutations against source bucket",
+			mhVersion.major, mhVersion.minor)
+		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+		return
+	}
+
 	appContent := m.encodeAppPayload(app)
 
 	if len(appContent) > util.MaxFunctionSize() {

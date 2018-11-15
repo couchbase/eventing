@@ -1055,6 +1055,35 @@ func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error)
 	return false, nil
 }
 
+func GetEventingVersion(urlSuffix string, nodeAddrs []string) ([]string, error) {
+	logPrefix := "util::GetEventingVersion"
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	versions := make([]string, 0)
+
+	for _, nodeAddr := range nodeAddrs {
+		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(endpointURL)
+		if err != nil {
+			logging.Errorf("%s Failed to gather eventing version from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return versions, err
+		}
+		defer res.Body.Close()
+
+		version, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return versions, err
+		}
+
+		versions = append(versions, string(version))
+	}
+
+	return versions, nil
+}
+
 func Contains(needle interface{}, haystack interface{}) bool {
 	s := reflect.ValueOf(haystack)
 
