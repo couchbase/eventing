@@ -797,6 +797,13 @@ func (s *SuperSupervisor) isFnRunningFromPrimary(appName string) (bool, error) {
 	logging.Infof("%s [%d] Function: %s not running. deployment_status: %t processing_status: %t",
 		logPrefix, s.runningFnsCount(), appName, deploymentStatus, processingStatus)
 
+	// Adding to deployed apps map, in-order to correctly report Function status.
+	// Specifically when Eventing node(s) get added to the cluster when one or
+	// more functions are in paused state.
+	if deploymentStatus && !processingStatus {
+		s.addToDeployedApps(appName)
+	}
+
 	return false, fmt.Errorf("function not running")
 }
 

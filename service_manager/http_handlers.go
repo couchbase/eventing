@@ -1496,6 +1496,19 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
+	if m.superSup.GetAppState(app.Name) == common.AppStatePaused {
+		switch filterFeedBoundary(app.Settings) {
+		case common.DcpFromNow, common.DcpEverything:
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("Function: %s only from_prior feed boundary is allowed during resume", app.Name)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return
+		case common.DcpStreamBoundary(""):
+			app.Settings["dcp_stream_boundary"] = "from_prior"
+		default:
+		}
+	}
+
 	app.SrcMutationEnabled = m.isSrcMutationEnabled(&app.DeploymentConfig)
 	if app.SrcMutationEnabled && !m.compareEventingVersion(mhVersion) {
 		info.Code = m.statusCodes.errClusterVersion.Code
