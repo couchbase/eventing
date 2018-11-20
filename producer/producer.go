@@ -201,7 +201,7 @@ func (p *Producer) Serve() {
 
 	p.startBucket()
 
-	go p.persistPlasma()
+	// go p.persistPlasma()
 
 	p.bootstrapFinishCh <- struct{}{}
 
