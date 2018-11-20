@@ -234,12 +234,10 @@
             </div>
             <div class="column width-4">
               <h4 class="text-medium inline">access</h4>
-              <select>
-                <option value="rw"
-                        ng-model="bindings[$index].access">rw
+              <select ng-model="bindings[$index].access">
+                <option value="rw">rw
                 </option>
-                <option value="r"
-                        ng-model="bindings[$index].access">r
+                <option value="r">r
                 </option>
               </select>
             </div>
@@ -316,12 +314,10 @@
             </div>
             <div class="column width-4">
               <h4 class="text-medium inline">access</h4>
-              <select>
-                <option value="rw"
-                        ng-model="bindings[$index].access">rw
+              <select  ng-model="formCtrl.bindings[$index].access">
+                <option value="rw">rw
                 </option>
-                <option value="r"
-                        ng-model="bindings[$index].access">r
+                <option value="r">r
                 </option>
               </select>
             </div>
