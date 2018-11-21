@@ -368,7 +368,7 @@ func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool) {
 	s.appProcessingStatus[appName] = false
 	s.appRWMutex.Unlock()
 
-	logging.Infof("%s [%d] Function: %s stopping running producer instance, skipMetaCleanup",
+	logging.Infof("%s [%d] Function: %s stopping running producer instance, skipMetaCleanup: %t",
 		logPrefix, s.runningFnsCount(), appName, skipMetaCleanup)
 
 	s.deleteFromLocallyDeployedApps(appName)
