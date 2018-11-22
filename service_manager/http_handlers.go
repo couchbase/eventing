@@ -1872,9 +1872,9 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	functions := regexp.MustCompile("^/api/v1/functions/?$")
-	functionsName := regexp.MustCompile("^/api/v1/functions/(.+[^/])/?$") // Match is agnostic of trailing '/'
-	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.+[^/])/settings/?$")
-	functionsNameRetry := regexp.MustCompile("^/api/v1/functions/(.+[^/])/retry/?$")
+	functionsName := regexp.MustCompile("^/api/v1/functions/(.*[^/])/?$") // Match is agnostic of trailing '/'
+	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.*[^/])/settings/?$")
+	functionsNameRetry := regexp.MustCompile("^/api/v1/functions/(.*[^/])/retry/?$")
 
 	if match := functionsNameRetry.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		appName := match[1]
@@ -2025,11 +2025,11 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			fiid, err := util.GenerateFunctionInstanceID()
 			if err != nil {
 				info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
-				info.Info = fmt.Sprintf("Handler FunctionInstanceID generation failed")
+				info.Info = fmt.Sprintf("Function instance ID generation failed")
 				m.sendErrorInfo(w, info)
 				return
 			}
-			logging.Infof("%s Function: %s FunctionInstanceID generated, InstanceId: %s", logPrefix, app.Name, fiid)
+			logging.Infof("%s Function: %s Function instance ID: %s generated", logPrefix, app.Name, fiid)
 			app.FunctionInstanceID = fiid
 
 			app.EventingVersion = util.EventingVer()
@@ -2166,10 +2166,17 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 
 	response.NumEventingNodes = numEventingNodes
 	for _, app := range m.getTempStoreAll() {
+		deploymentStatus, dOk := app.Settings["deployment_status"].(bool)
+		processingStatus, pOk := app.Settings["processing_status"].(bool)
+		if !dOk || !pOk {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			return
+		}
+
 		status := appStatus{
 			Name:             app.Name,
-			DeploymentStatus: app.Settings["deployment_status"].(bool),
-			ProcessingStatus: app.Settings["processing_status"].(bool),
+			DeploymentStatus: deploymentStatus,
+			ProcessingStatus: processingStatus,
 		}
 		if num, exists := appDeployedNodesCounter[app.Name]; exists {
 			status.NumDeployedNodes = num

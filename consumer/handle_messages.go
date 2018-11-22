@@ -395,22 +395,22 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	c.sendMessage(msg)
 }
 
-func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
+func (c *Consumer) sendVbFilterData(vb uint16, seqNo uint64) {
 	logPrefix := "Consumer::sendVbFilterData"
 
 	data := vbSeqNo{
 		SeqNo:   seqNo,
-		Vbucket: e.VBucket,
+		Vbucket: vb,
 	}
 
 	metadata, err := json.Marshal(&data)
 	if err != nil {
-		logging.Errorf("[%s:%s:%s:%d] key: %ru failed to marshal metadata",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+		logging.Errorf("[%s:%s:%s:%d] Failed to marshal metadata",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 		return
 	}
 
-	filterHeader, hBuilder := c.makeVbFilterHeader(int16(e.VBucket), string(metadata))
+	filterHeader, hBuilder := c.makeVbFilterHeader(int16(vb), string(metadata))
 
 	msg := &msgToTransmit{
 		msg: &message{
@@ -423,7 +423,7 @@ func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
 
 	c.sendMessage(msg)
 	logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d sending filter data to C++",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, seqNo)
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNo)
 }
 
 func (c *Consumer) sendUpdateProcessedSeqNo(vb uint16, seqNo uint64) {

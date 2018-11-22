@@ -177,7 +177,7 @@ func (c *Consumer) Serve() {
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
 
 	c.consumerSup = suptree.NewSimple(c.workerName)
-	go c.consumerSup.ServeBackground()
+	c.consumerSup.ServeBackground(c.workerName)
 
 	c.cppWorkerThrPartitionMap()
 
@@ -354,7 +354,7 @@ func (c *Consumer) HandleV8Worker() error {
 }
 
 // Stop acts terminate routine for consumer handle
-func (c *Consumer) Stop() {
+func (c *Consumer) Stop(context string) {
 	logPrefix := "Consumer::Stop"
 
 	defer func() {
@@ -502,7 +502,7 @@ func (c *Consumer) Stop() {
 	}
 
 	if c.consumerSup != nil {
-		c.consumerSup.Stop()
+		c.consumerSup.Stop(c.workerName)
 	}
 
 	logging.Infof("%s [%s:%s:%d] Requested to stop supervisor for Eventing.Consumer. Exiting Consumer::Stop",

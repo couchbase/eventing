@@ -3,11 +3,12 @@ package suptree
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/couchbase/eventing/logging"
 )
 
 const (
@@ -106,6 +107,8 @@ Timeout is how long Suptree will wait for a service to properly terminate.
 
 */
 func New(name string, spec Spec) (s *Supervisor) {
+	logPrefix := "Supervisor::New"
+
 	s = new(Supervisor)
 
 	s.Name = name
@@ -116,7 +119,7 @@ func New(name string, spec Spec) (s *Supervisor) {
 
 	if spec.Log == nil {
 		s.log = func(msg string) {
-			log.Print(fmt.Sprintf("Supervisor %s: %s", s.Name, msg))
+			logging.Infof("%s Supervisor %s: %s", logPrefix, s.Name, msg)
 		}
 	} else {
 		s.log = spec.Log
@@ -156,8 +159,7 @@ func New(name string, spec Spec) (s *Supervisor) {
 
 	// set up the default logging handlers
 	s.logBadStop = func(supervisor *Supervisor, service Service, name string) {
-		s.log(fmt.Sprintf("%s: Service %s failed to terminate in a timely manner",
-			supervisor.Name, name))
+		logging.Errorf("%s %s: Service %s failed to terminate in a timely manner", logPrefix, supervisor.Name, name)
 	}
 	s.logFailure = func(supervisor *Supervisor, service Service,
 		serviceName string, failures float64, threshold float64, restarting bool,
@@ -171,15 +173,14 @@ func New(name string, spec Spec) (s *Supervisor) {
 			errString = fmt.Sprintf("%#v", err)
 		}
 
-		s.log(fmt.Sprintf("%s: Failed service '%s' (%f failures of %f), restarting: %#v, error: %s, stacktrace: %s",
-			supervisor.Name, serviceName, failures, threshold,
-			restarting, errString, string(st)))
+		logging.Infof("%s %s: Failed service '%s' (%f failures of %f), restarting: %#v, error: %s, stacktrace: %s",
+			logPrefix, supervisor.Name, serviceName, failures, threshold, restarting, errString, string(st))
 	}
 	s.logBackoff = func(s *Supervisor, entering bool) {
 		if entering {
-			s.log("Entering the backoff state.")
+			logging.Infof("%s Entering the backoff state.", logPrefix)
 		} else {
-			s.log("Exiting backoff state.")
+			logging.Infof("%s Exiting backoff state.", logPrefix)
 		}
 	}
 
@@ -203,9 +204,13 @@ func NewSimple(name string) *Supervisor {
 
 // Add adds a service to this supervisor.
 func (s *Supervisor) Add(service Service) ServiceToken {
+	logPrefix := "Supervisor::Add"
+
 	if s == nil {
 		panic("can't add service to nil *suptree.Supervisor")
 	}
+
+	logging.Infof("%s Service: %s", logPrefix, service.String())
 
 	if supervisor, isSupervisor := service.(*Supervisor); isSupervisor {
 		supervisor.logBadStop = s.logBadStop
@@ -222,20 +227,30 @@ func (s *Supervisor) Add(service Service) ServiceToken {
 		s.restartQueue = append(s.restartQueue, id)
 
 		s.Unlock()
-		return ServiceToken{uint64(s.id)<<32 | uint64(id)}
+
+		token := ServiceToken{uint64(s.id)<<32 | uint64(id)}
+		logging.Infof("%s Token id: %v", logPrefix, token)
+		return token
 	}
 	s.Unlock()
 
 	response := make(chan serviceID)
 	s.control <- addService{service, serviceName(service), response}
-	return ServiceToken{uint64(s.id)<<32 | uint64(<-response)}
+
+	token := ServiceToken{uint64(s.id)<<32 | uint64(<-response)}
+	logging.Infof("%s Token id: %v", logPrefix, token)
+	return token
 }
 
 // ServeBackground starts running a supervisor in its own goroutine. This
 // method does not return until it is safe to use .Add() on the Supervisor.
-func (s *Supervisor) ServeBackground() {
+func (s *Supervisor) ServeBackground(context string) {
+	logPrefix := "Supervisor::ServeBackground"
+
 	go s.Serve()
 	s.sync()
+
+	logging.Infof("%s Spawned up supervision tree, context: %s", logPrefix, context)
 }
 
 /*
@@ -410,7 +425,7 @@ func (s *Supervisor) removeService(id serviceID,
 		go func() {
 			successChan := make(chan bool)
 			go func() {
-				namedService.Service.Stop()
+				namedService.Service.Stop("")
 				successChan <- true
 			}()
 
@@ -434,7 +449,7 @@ func (s *Supervisor) stopSupervisor() {
 			delete(s.services, id)
 			s.servicesShuttingDown[id] = namedService
 			go func(sID serviceID) {
-				namedService.Service.Stop()
+				namedService.Service.Stop("")
 				notifyDone <- sID
 			}(id)
 		}
@@ -476,10 +491,14 @@ Remove will remove the given service from the Supervisor, and attempt to Stop() 
 The ServiceID token comes from the Add() call.
 */
 func (s *Supervisor) Remove(id ServiceToken) error {
+	logPrefix := "Supervisor::Remove"
+
 	sID := supervisorID(id.id >> 32)
 	if sID != s.id {
 		return ErrWrongSupervisor
 	}
+
+	logging.Infof("%s Token id: %v", logPrefix, id)
 	s.sendControl(removeService{serviceID(id.id & 0xffffffff)})
 	return nil
 }

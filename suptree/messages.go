@@ -1,5 +1,9 @@
 package suptree
 
+import (
+	"github.com/couchbase/eventing/logging"
+)
+
 type supervisorMessage interface {
 	isSupervisorMessage()
 }
@@ -60,11 +64,15 @@ func (as addService) isSupervisorMessage() {}
 //
 // This function will not return until either all Services have stopped, or
 // they timeout after the timeout value given to the Supervisor at creation.
-func (s *Supervisor) Stop() {
+func (s *Supervisor) Stop(context string) {
+	logPrefix := "Supervisor::Stop"
+
 	done := make(chan struct{})
 	if s.sendControl(stopSupervisor{done}) {
 		<-done
 	}
+
+	logging.Infof("%s Stopping supervision tree, context: %s", logPrefix, context)
 }
 
 type stopSupervisor struct {

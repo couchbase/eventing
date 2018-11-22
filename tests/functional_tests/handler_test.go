@@ -798,6 +798,42 @@ func TestWithUserXattrs(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestEventProcessingPostBucketFlush(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "TestEventProcessingPostBucketFlush",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	bucketFlush(srcBucket)
+	verifyBucketCount(0, statsLookupRetryCounter, srcBucket)
+	bucketFlush(dstBucket)
+	verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
+
+	pumpBucketOps(opsType{count: itemCount * 5}, &rateLimit{})
+	eventCount = verifyBucketOps(itemCount*5, statsLookupRetryCounter)
+	if itemCount*5 != eventCount {
+		t.Error("For", "TestEventProcessingPostBucketFlush",
+			"expected", itemCount*5,
+			"got", eventCount,
+		)
+	}
+
+	setSettings(handler, false, false, &commonSettings{})
+	waitForUndeployToFinish(handler)
+	checkIfProcessRunning("eventing-con")
+	flushFunctionAndBucket(handler)
+}
+
 func TestMetaBucketDelete(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"

@@ -169,7 +169,7 @@ func (p *Producer) Serve() {
 		Timeout: supervisorTimeout,
 	}
 	p.workerSupervisor = suptree.New(p.appName, spec)
-	go p.workerSupervisor.ServeBackground()
+	p.workerSupervisor.ServeBackground(p.appName)
 
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, gocbConnectMetaBucketCallback, p)
 	if err == common.ErrRetryTimeout {
@@ -353,7 +353,7 @@ func (p *Producer) Serve() {
 }
 
 // Stop implements suptree.Service interface
-func (p *Producer) Stop() {
+func (p *Producer) Stop(context string) {
 	logPrefix := "Producer::Stop"
 
 	logging.Infof("%s [%s:%d] Gracefully shutting down producer routine",
@@ -416,6 +416,10 @@ func (p *Producer) Stop() {
 
 	if p.pollBucketStopCh != nil {
 		p.pollBucketStopCh <- struct{}{}
+	}
+
+	if p.workerSupervisor != nil {
+		p.workerSupervisor.Stop(p.appName)
 	}
 
 	logging.Infof("%s [%s:%d] Exiting from Producer::Stop routine",

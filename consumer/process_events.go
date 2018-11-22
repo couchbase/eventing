@@ -325,7 +325,7 @@ func (c *Consumer) processEvents() {
 				c.vbProcessingStats.updateVbStat(e.VBucket, "seq_no_at_stream_end", lastSeqNo)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
 
-				c.sendVbFilterData(e, lastSeqNo)
+				c.sendVbFilterData(e.VBucket, lastSeqNo)
 
 			default:
 			}
@@ -1103,7 +1103,7 @@ func (c *Consumer) handleFailoverLog() {
 				}
 
 				if flog, ok := flogs[vbFlog.vb]; ok {
-					vbuuid, startSeqNo, err = flog.Latest()
+					vbuuid, startSeqNo, err = flog.FetchLogForSeqNo(vbBlob.LastSeqNoProcessed)
 					if err != nil {
 						c.Lock()
 						c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbFlog.vb)
@@ -1115,7 +1115,7 @@ func (c *Consumer) handleFailoverLog() {
 				}
 
 				if vbFlog.statusCode == mcd.ROLLBACK {
-					logging.Infof("%s [%s:%s:%d] vb: %v Rollback requested by DCP. Retrying DCP stream start vbuuid: %d startSeq: %d flog startSeqNo: %d",
+					logging.Infof("%s [%s:%s:%d] vb: %d rollback requested by DCP. Retrying DCP stream start vbuuid: %d startSeq: %d flog startSeqNo: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo, startSeqNo)
 
 					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
@@ -1126,6 +1126,8 @@ func (c *Consumer) handleFailoverLog() {
 
 					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
+
+					c.sendVbFilterData(vbFlog.vb, vbFlog.seqNo-1)
 
 					streamInfo := &streamRequestInfo{
 						vb:         vbFlog.vb,
@@ -1142,6 +1144,10 @@ func (c *Consumer) handleFailoverLog() {
 				} else {
 					logging.Infof("%s [%s:%s:%d] vb: %d Retrying DCP stream start vbuuid: %d startSeq: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
+
+					if vbFlog.statusCode == mcd.NOT_MY_VBUCKET {
+						c.sendVbFilterData(vbFlog.vb, startSeqNo-1)
+					}
 
 					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
 						continue

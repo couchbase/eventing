@@ -69,7 +69,7 @@ func (s *SuperSupervisor) assignVbucketsToOwn(addrs []string, currNodeAddr strin
 }
 
 func (s *SuperSupervisor) getStatuses(data []byte) (bool, bool, bool, map[string]interface{}, error) {
-	logPrefix := "Supervisor::getStatuses"
+	logPrefix := "SuperSupervisor::getStatuses"
 
 	settings := make(map[string]interface{})
 	err := json.Unmarshal(data, &settings)

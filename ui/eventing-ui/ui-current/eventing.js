@@ -429,7 +429,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 scope.bindings.push({
                                     type: 'alias',
                                     name: '',
-                                    value: ''
+                                    value: '',
+                                    access: 'rw'
                                 });
                             }
 

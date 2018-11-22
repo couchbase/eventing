@@ -61,7 +61,7 @@ var metakvSetCallback = func(args ...interface{}) error {
 }
 
 var metakvDeleteCallback = func(args ...interface{}) error {
-	logPrefix := "SUperSupervisor::metakvDeleteCallback"
+	logPrefix := "SuperSupervisor::metakvDeleteCallback"
 
 	s := args[0].(*SuperSupervisor)
 	path := args[1].(string)
@@ -75,7 +75,7 @@ var metakvDeleteCallback = func(args ...interface{}) error {
 }
 
 var undeployFunctionCallback = func(args ...interface{}) error {
-	logPrefix := "Supervisor::undeployFunctionCallback"
+	logPrefix := "SuperSupervisor::undeployFunctionCallback"
 
 	s := args[0].(*SuperSupervisor)
 	appName := args[1].(string)
