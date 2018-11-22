@@ -48,8 +48,9 @@ func (c *Consumer) deleteFromEnqueueMap(vb uint16) {
 	delete(c.vbEnqueuedForStreamReq, vb)
 }
 
-func (c *Consumer) isRecursiveDCPEvent(evt *memcached.DcpEvent, functionInstanceId string) (bool, error) {
+func (c *Consumer) isRecursiveDCPEvent(evt *memcached.DcpEvent, functionInstanceID string) (bool, error) {
 	logPrefix := "Consumer::isRecursiveDCPEvent"
+
 	var xMeta xattrMetadata
 	body, xattr, err := util.ParseXattrData(xattrPrefix, evt.Value)
 	if err != nil {
@@ -66,7 +67,7 @@ func (c *Consumer) isRecursiveDCPEvent(evt *memcached.DcpEvent, functionInstance
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key), err)
 			return false, err
 		}
-		if xMeta.FunctionInstanceID == functionInstanceId {
+		if xMeta.FunctionInstanceID == functionInstanceID {
 			checksum := crc32.Checksum(body, util.CrcTable)
 			xChecksum, err := strconv.ParseUint(xMeta.ValueCRC, 0, 32)
 			if err != nil {

@@ -653,4 +653,6 @@ func (c *Consumer) CloseAllRunningDcpFeeds() {
 		c.vbProcessingStats.updateVbStat(vb, "dcp_stream_requested_node_uuid", "")
 	}
 
+	logging.Infof("%s [%s:%s:%d] Finished reset of vb related stats",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }

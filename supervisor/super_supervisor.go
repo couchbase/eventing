@@ -280,6 +280,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						if p, ok := s.runningFns()[appName]; ok {
 							logging.Infof("%s [%d] Function: %s stopping running producer instance", logPrefix, s.runningFnsCount(), appName)
 							p.StopProducer()
+							s.stopAndDeleteProducer(p)
+							p.NotifySupervisor()
 						}
 					}
 

@@ -24,7 +24,7 @@ import (
 func (c *Consumer) processEvents() {
 	logPrefix := "Consumer::processEvents"
 
-	functionInstanceId := strconv.Itoa(int(c.app.FunctionID)) + "-" + c.app.FunctionInstanceID
+	functionInstanceID := strconv.Itoa(int(c.app.FunctionID)) + "-" + c.app.FunctionInstanceID
 
 	var timerMsgCounter uint64
 	for {
@@ -76,7 +76,7 @@ func (c *Consumer) processEvents() {
 				case dcpDatatypeJSONXattr:
 					xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
 					if c.app.SrcMutationEnabled {
-						if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceId); err == nil && isRecursive == true {
+						if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
 							c.suppressedDCPMutationCounter++
 						} else {
 							logging.Tracef("%s [%s:%s:%d] No IntraHandlerRecursion, sending key: %ru to be processed by JS handlers",
@@ -107,7 +107,7 @@ func (c *Consumer) processEvents() {
 				case dcpDatatypeJSONXattr:
 					xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
 					if c.app.SrcMutationEnabled {
-						if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceId); err == nil && isRecursive == true {
+						if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
 							c.suppressedDCPDeletionCounter++
 						} else {
 							c.dcpDeletionCounter++
@@ -694,7 +694,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 		}
 	}
 
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, checkIfVbStreamsOpenedCallback, c, vbs)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval*5), c.retryCount, checkIfVbStreamsOpenedCallback, c, vbs)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return err

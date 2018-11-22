@@ -322,7 +322,10 @@ func (p *Producer) Serve() {
 				p.appLogWriter.Close()
 			}
 
-			close(p.stopCh)
+			if !p.stopChClosed {
+				close(p.stopCh)
+				p.stopChClosed = true
+			}
 
 			logging.Infof("%s [%s:%d] Closed stop chan and app log writer handle",
 				logPrefix, p.appName, p.LenRunningConsumers())
@@ -420,7 +423,10 @@ func (p *Producer) Stop(context string) {
 	logging.Infof("%s [%s:%d] Closed function log writer handle",
 		logPrefix, p.appName, p.LenRunningConsumers())
 
-	close(p.stopCh)
+	if !p.stopChClosed {
+		close(p.stopCh)
+		p.stopChClosed = true
+	}
 
 	if p.workerSupervisor != nil {
 		p.workerSupervisor.Stop(p.appName)
