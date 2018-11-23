@@ -942,6 +942,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		return
 	}
 
+	logging.Infof("%s Function: %s settings params: %+v", logPrefix, appName, settings)
+
 	_, procStatExists := settings["processing_status"]
 	_, depStatExists := settings["deployment_status"]
 
@@ -2234,6 +2236,17 @@ func determineStatus(status appStatus, numEventingNodes int) string {
 		if status.NumBootstrappingNodes == 0 && status.NumDeployedNodes == numEventingNodes {
 			return "deployed"
 		}
+		return "deploying"
+	}
+
+	// For case:
+	// T1 - bootstrap was requested
+	// T2 - undeploy was requested
+	// T3 - boostrap finished
+	// During the period T2 - T3, Eventing is spending cycles to bring up
+	// the function is ready state i.e. state should be "deploying". Reporting
+	// undeployed by looking up in temp store would be unreasonable
+	if status.NumBootstrappingNodes > 0 {
 		return "deploying"
 	}
 
