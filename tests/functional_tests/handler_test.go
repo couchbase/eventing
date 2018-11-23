@@ -1210,6 +1210,10 @@ func TestInterHandlerRecursion(t *testing.T) {
 		t.Errorf("Deployment must fail")
 		return
 	}
+
+	// Required, otherwise function delete request in subsequent call would fail
+	waitForDeployToFinish(handler1)
+
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)
 }
