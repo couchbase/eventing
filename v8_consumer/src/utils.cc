@@ -389,7 +389,7 @@ bool Utils::IsFuncGlobal(const v8::Local<v8::Value> &func) {
   auto js_exception = UnwrapData(isolate_)->js_exception;
   if (!func->IsFunction()) {
     auto message = "Invalid arg: Function reference expected";
-    js_exception->Throw(message);
+    js_exception->ThrowEventingError(message);
     return false;
   }
 
@@ -398,7 +398,7 @@ bool Utils::IsFuncGlobal(const v8::Local<v8::Value> &func) {
 
   if (func_name.empty()) {
     auto message = "Invalid arg: Anonymous function is not allowed";
-    js_exception->Throw(message);
+    js_exception->ThrowEventingError(message);
     return false;
   }
 
@@ -406,7 +406,7 @@ bool Utils::IsFuncGlobal(const v8::Local<v8::Value> &func) {
   auto global_func = global_func_val.As<v8::Function>();
   if (global_func->IsUndefined()) {
     auto message = func_name + " is not accessible from global scope";
-    js_exception->Throw(message);
+    js_exception->ThrowEventingError(message);
     return false;
   }
 

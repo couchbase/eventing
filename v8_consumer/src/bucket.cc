@@ -323,7 +323,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   auto isolate = info.GetIsolate();
   if (name->IsSymbol()) {
     auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->Throw("Symbol data type is not supported");
+    js_exception->ThrowEventingError("Symbol data type is not supported");
     ++bucket_op_exception_count;
     return;
   }
@@ -386,7 +386,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
   auto isolate = info.GetIsolate();
   if (name->IsSymbol()) {
     auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->Throw("Symbol data type is not supported");
+    js_exception->ThrowEventingError("Symbol data type is not supported");
     ++bucket_op_exception_count;
     return;
   }
@@ -395,7 +395,7 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
       UnwrapInternalField<bool>(info.Holder(), BLOCK_MUTATION_FIELD_NO);
   if (*block_mutation) {
     auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
-    js_exception->Throw("Writing to source bucket is forbidden");
+    js_exception->ThrowKVError("Writing to source bucket is forbidden");
     ++bucket_op_exception_count;
     return;
   }
@@ -458,7 +458,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   auto isolate = info.GetIsolate();
   if (name->IsSymbol()) {
     auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->Throw("Symbol data type is not supported");
+    js_exception->ThrowEventingError("Symbol data type is not supported");
     ++bucket_op_exception_count;
     return;
   }
@@ -467,7 +467,7 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
       UnwrapInternalField<bool>(info.Holder(), BLOCK_MUTATION_FIELD_NO);
   if (*block_mutation) {
     auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
-    js_exception->Throw("Delete from source bucket is forbidden");
+    js_exception->ThrowKVError("Delete from source bucket is forbidden");
     ++bucket_op_exception_count;
     return;
   }
@@ -526,7 +526,7 @@ void Bucket::HandleBucketOpFailure(v8::Isolate *isolate,
   ++bucket_op_exception_count;
 
   auto js_exception = isolate_data->js_exception;
-  js_exception->Throw(bucket_lcb_obj_ptr, error);
+  js_exception->ThrowKVError(bucket_lcb_obj_ptr, error);
 }
 
 // Registers the necessary callbacks to the bucket object in JavaScript

@@ -59,7 +59,8 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto js_exception = UnwrapData(isolate_)->js_exception;
   auto epoch_info = Epoch(args[1]);
   if (!epoch_info.is_valid) {
-    js_exception->Throw("Unable to compute epoch for the given Date instance");
+    js_exception->ThrowEventingError(
+        "Unable to compute epoch for the given Date instance");
     return false;
   }
 
@@ -75,7 +76,7 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_info.context = JSONStringify(isolate_, args[3]);
 
   if (timer_info.context.size() > timer_context_size) {
-    js_exception->Throw(
+    js_exception->ThrowEventingError(
         "The context payload size is more than the configured size:" +
         std::to_string(timer_context_size) + " bytes");
     timer_context_size_exceeded_counter++;
@@ -91,7 +92,7 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
 bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto js_exception = UnwrapData(isolate_)->js_exception;
   if (args.kArgsLength < 3) {
-    js_exception->Throw(
+    js_exception->ThrowEventingError(
         "Need 3 arguments - callback function, time, reference");
     return false;
   }
@@ -102,12 +103,14 @@ bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   if (!args[1]->IsDate()) {
-    js_exception->Throw("First argument must be a JavaScript Date instance");
+    js_exception->ThrowEventingError(
+        "First argument must be a JavaScript Date instance");
     return false;
   }
 
   if (!args[2]->IsString()) {
-    js_exception->Throw("Third argument must be a JavaScript string");
+    js_exception->ThrowEventingError(
+        "Third argument must be a JavaScript string");
     return false;
   }
 
