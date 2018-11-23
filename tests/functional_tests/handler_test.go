@@ -10,6 +10,28 @@ import (
 	"time"
 )
 
+func TestError(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	itemCount := 100
+	expectedCount := itemCount * 3
+	handler := "error"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter)
+	if expectedCount != eventCount {
+		t.Error("For", "TestError",
+			"expected", expectedCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
 func TestCRLF(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	itemCount := 100

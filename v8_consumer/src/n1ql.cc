@@ -231,8 +231,8 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
 
     free(row_str);
   } else {
-    if (resp->rc != LCB_SUCCESS) {
-      HandleRowCallbackFailure(instance, resp, isolate_data, n1ql_handle);
+    if (resp->rc != LCB_SUCCESS || !IsStatusSuccess(resp->row)) {
+      HandleRowCallbackFailure(resp, isolate_data);
     }
 
     q_handler.iter_handler->metadata = resp->row;
@@ -263,25 +263,21 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
 
     free(row_str);
   } else {
-    if (resp->rc != LCB_SUCCESS) {
-      HandleRowCallbackFailure(instance, resp, isolate_data, n1ql_handle);
+    if (resp->rc != LCB_SUCCESS || !IsStatusSuccess(resp->row)) {
+      HandleRowCallbackFailure(resp, isolate_data);
     }
 
     q_handler.block_handler->metadata = resp->row;
   }
 }
 
-void N1QL::HandleRowCallbackFailure(lcb_t instance, const lcb_RESPN1QL *resp,
-                                    const Data *isolate_data,
-                                    N1QL *n1ql_handle) {
+void N1QL::HandleRowCallbackFailure(const lcb_RESPN1QL *resp,
+                                    const Data *isolate_data) {
   auto w = isolate_data->v8worker;
   w->AddLcbException(static_cast<int>(resp->rc));
-
-  auto errors = n1ql_handle->ExtractErrorMsg(resp->row);
   n1ql_op_exception_count++;
-
   auto js_exception = isolate_data->js_exception;
-  js_exception->Throw(instance, resp->rc, errors);
+  js_exception->ThrowN1QLError(resp->row);
 
   if (resp->rc == LCB_AUTH_ERROR) {
     auto comm = isolate_data->comm;
@@ -323,11 +319,8 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   if (err != LCB_SUCCESS) {
     // for example: when there is no query node
     ConnectionPool::Error(instance, "N1QL: Unable to schedule N1QL query", err);
-    std::vector<std::string> vec;
-    vec.push_back("N1QL: Unable to schedule N1QL query");
-
     auto js_exception = UnwrapData(isolate_)->js_exception;
-    js_exception->Throw(instance, err, vec);
+    js_exception->ThrowN1QLError("N1QL: Unable to schedule N1QL query");
   }
 
   lcb_n1p_free(n1ql_params);
@@ -348,6 +341,11 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   lcb_set_cookie(instance, nullptr);
   qhandler_stack.Pop();
   inst_pool_->Restore(instance);
+}
+
+bool N1QL::IsStatusSuccess(const char *row) {
+  std::regex re_status_success(R"("status"\s*:\s*"success")");
+  return std::regex_search(row, re_status_success);
 }
 
 std::unordered_map<std::string, std::string>
@@ -449,7 +447,7 @@ void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     LOG(logError) << e << std::endl;
     ++n1ql_op_exception_count;
     auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->Throw(e);
+    js_exception->ThrowN1QLError(e);
   }
 }
 
@@ -481,7 +479,7 @@ void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   } catch (const char *e) {
     LOG(logError) << e << std::endl;
     auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->Throw(e);
+    js_exception->ThrowN1QLError(e);
   }
 }
 
@@ -537,7 +535,7 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     LOG(logError) << e << std::endl;
     ++n1ql_op_exception_count;
     auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->Throw(e);
+    js_exception->ThrowN1QLError(e);
   }
 }
 

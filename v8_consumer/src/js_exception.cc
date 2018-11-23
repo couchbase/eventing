@@ -75,7 +75,7 @@ void JsException::Throw(CURLcode res) {
 }
 
 // Extracts the error message, composes an exception object and throws.
-void JsException::Throw(lcb_t instance, lcb_error_t error) {
+void JsException::ThrowKVError(lcb_t instance, lcb_error_t error) {
   v8::HandleScope handle_scope(isolate_);
 
   auto code_name = code_.Get(isolate_);
@@ -87,59 +87,186 @@ void JsException::Throw(lcb_t instance, lcb_error_t error) {
       v8Str(isolate_, ExtractErrorName(lcb_strerror_short(error)).c_str());
   auto desc_value = v8Str(isolate_, lcb_strerror(instance, error));
 
-  auto exception = v8::Object::New(isolate_);
-  exception->Set(code_name, code_value);
-  exception->Set(desc_name, desc_value);
-  exception->Set(name_name, name_value);
+  auto message = v8::Object::New(isolate_);
+  message->Set(code_name, code_value);
+  message->Set(desc_name, desc_value);
+  message->Set(name_name, name_value);
 
-  isolate_->ThrowException(exception);
-}
-
-// Extracts the error messages and aggregates, composes an exception object and
-// throws.
-void JsException::Throw(lcb_t instance, lcb_error_t error,
-                        std::vector<std::string> error_msgs) {
-  v8::HandleScope handle_scope(isolate_);
-
-  auto code_name = code_.Get(isolate_);
-  auto desc_name = desc_.Get(isolate_);
-  auto name_name = name_.Get(isolate_);
-
-  auto code_value = v8::Number::New(isolate_, lcb_get_errtype(error));
-  auto name_value =
-      v8Str(isolate_, ExtractErrorName(lcb_strerror_short(error)).c_str());
-
-  auto desc_arr =
-      v8::Array::New(isolate_, static_cast<int>(error_msgs.size() + 1));
-  for (std::string::size_type i = 0; i < error_msgs.size(); ++i) {
-    auto desc = v8Str(isolate_, error_msgs[i].c_str());
-    desc_arr->Set(static_cast<uint32_t>(i), desc);
+  auto custom_error = UnwrapData(isolate_)->custom_error;
+  v8::Local<v8::Object> error_obj;
+  auto info = custom_error->NewKVError(message, error_obj);
+  if (info.is_fatal) {
+    LOG(logError) << "Unable to construct KVError : " << info.msg << std::endl;
+    isolate_->ThrowException(message);
+    return;
   }
-
-  auto desc_value = v8Str(isolate_, lcb_strerror(instance, error));
-  desc_arr->Set(static_cast<uint32_t>(error_msgs.size()), desc_value);
-
-  auto exception = v8::Object::New(isolate_);
-  exception->Set(code_name, code_value);
-  exception->Set(desc_name, desc_arr);
-  exception->Set(name_name, name_value);
-
-  isolate_->ThrowException(exception);
+  isolate_->ThrowException(error_obj);
 }
 
-// Throws an exception with just the message (typically used for those errors
-// where code and name of exception isn't available)
-void JsException::Throw(const std::string &message) {
+void JsException::ThrowKVError(const std::string &err_msg) {
   v8::HandleScope handle_scope(isolate_);
+  auto custom_error = UnwrapData(isolate_)->custom_error;
 
-  auto desc_name = desc_.Get(isolate_);
-  auto exception = v8::Object::New(isolate_);
-  exception->Set(desc_name, v8Str(isolate_, message));
+  v8::Local<v8::Object> error_obj;
+  auto info = custom_error->NewKVError(v8Str(isolate_, err_msg), error_obj);
+  if (info.is_fatal) {
+    LOG(logError) << "Unable to construct KVError : " << info.msg << std::endl;
+    isolate_->ThrowException(v8Str(isolate_, err_msg));
+    return;
+  }
+  isolate_->ThrowException(error_obj);
+}
 
-  isolate_->ThrowException(exception);
+void JsException::ThrowN1QLError(const std::string &err_msg) {
+  v8::HandleScope handle_scope(isolate_);
+  auto custom_error = UnwrapData(isolate_)->custom_error;
+
+  v8::Local<v8::Object> error_obj;
+  auto info = custom_error->NewN1QLError(v8Str(isolate_, err_msg), error_obj);
+  if (info.is_fatal) {
+    LOG(logError) << "Unable to construct N1QLError : " << info.msg
+                  << std::endl;
+    isolate_->ThrowException(v8Str(isolate_, err_msg));
+    return;
+  }
+  isolate_->ThrowException(error_obj);
+}
+
+void JsException::ThrowEventingError(const std::string &err_msg) {
+  v8::HandleScope handle_scope(isolate_);
+  auto custom_error = UnwrapData(isolate_)->custom_error;
+
+  v8::Local<v8::Object> error_obj;
+  auto info =
+      custom_error->NewEventingError(v8Str(isolate_, err_msg), error_obj);
+  if (info.is_fatal) {
+    LOG(logError) << "Unable to construct EventingError : " << info.msg
+                  << std::endl;
+    isolate_->ThrowException(v8Str(isolate_, err_msg));
+    return;
+  }
+  isolate_->ThrowException(error_obj);
 }
 
 JsException::~JsException() {
   code_.Reset();
   desc_.Reset();
+}
+
+CustomError::CustomError(v8::Isolate *isolate,
+                         const v8::Local<v8::Context> &context)
+    : isolate_(isolate) {
+  context_.Reset(isolate_, context);
+}
+
+CustomError::~CustomError() { context_.Reset(); }
+
+Info CustomError::NewCustomError(const v8::Local<v8::Value> &message_val,
+                                 v8::Local<v8::Object> &custom_error_out,
+                                 const std::string &type_name) {
+  v8::EscapableHandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  auto global = context->Global();
+
+  v8::Local<v8::Value> custom_error_val;
+  if (!TO_LOCAL(global->Get(context, v8Str(isolate_, type_name)),
+                &custom_error_val)) {
+    return {true, "Unable to get " + type_name + " from global"};
+  }
+
+  auto custom_error_func = custom_error_val.As<v8::Function>();
+  v8::Local<v8::Value> args[1];
+  args[0] = message_val;
+
+  v8::Local<v8::Object> custom_error_obj;
+  if (!TO_LOCAL(custom_error_func->NewInstance(context, 1, args),
+                &custom_error_obj)) {
+    return {true, "Unable to instantiate " + type_name};
+  }
+  custom_error_out = handle_scope.Escape(custom_error_obj);
+  return {false};
+}
+
+void CustomErrorCtor(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
+  auto result = false;
+  auto this_obj = args.This();
+
+  if (args.Length() > 0) {
+    auto message_val = args[0];
+    if (!TO(this_obj->Set(context, v8Str(isolate, "message"), message_val),
+            &result) ||
+        !result) {
+      return;
+    }
+  }
+
+  auto utils = UnwrapData(isolate)->utils;
+  auto error_val = utils->GetPropertyFromGlobal("Error");
+  auto error_func = error_val.As<v8::Function>();
+
+  v8::Local<v8::Object> error_obj;
+  if (!TO_LOCAL(error_func->NewInstance(context), &error_obj)) {
+    return;
+  }
+
+  v8::Local<v8::Value> stack_val;
+  if (!TO_LOCAL(error_obj->Get(context, v8Str(isolate, "stack")), &stack_val)) {
+    return;
+  }
+
+  if (!TO(this_obj->Set(context, v8Str(isolate, "stack"), stack_val),
+          &result) ||
+      !result) {
+    return;
+  }
+}
+
+Info DeriveFromError(v8::Isolate *isolate,
+                     const v8::Local<v8::Context> &context,
+                     const std::string &type_name) {
+  v8::HandleScope handle_scope(isolate);
+  auto utils = UnwrapData(isolate)->utils;
+  auto global = context->Global();
+
+  auto error_val = utils->GetPropertyFromGlobal("Error");
+  v8::Local<v8::Value> custom_error_val;
+  if (!TO_LOCAL(global->Get(context, v8Str(isolate, type_name)),
+                &custom_error_val)) {
+    return {true, "Unable to get " + type_name + "from global"};
+  }
+
+  auto error_func = error_val.As<v8::Function>();
+  v8::Local<v8::Value> error_prototype_val;
+  if (!TO_LOCAL(error_func->Get(context, v8Str(isolate, "prototype")),
+                &error_prototype_val)) {
+    return {true, "Unable to get prototype of Error"};
+  }
+
+  v8::Local<v8::Object> object_obj;
+  if (!TO_LOCAL(utils->GetPropertyFromGlobal("Object")->ToObject(context),
+                &object_obj)) {
+    return {true, "Unable to read Object"};
+  }
+
+  auto create_func =
+      utils->GetPropertyFromObject(object_obj, "create").As<v8::Function>();
+  v8::Local<v8::Value> error_prototype_clone_val;
+  if (!TO_LOCAL(create_func->Call(context, global, 1, &error_prototype_val),
+                &error_prototype_clone_val)) {
+    return {true, "Unable to call clone Error prototype"};
+  }
+
+  auto result = false;
+  auto custom_error_func = custom_error_val.As<v8::Function>();
+  if (!TO(custom_error_func->Set(context, v8Str(isolate, "prototype"),
+                                 error_prototype_clone_val),
+          &result) ||
+      !result) {
+    return {true, "Unable to set prototype on " + type_name + " class"};
+  }
+  return {false};
 }
