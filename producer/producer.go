@@ -176,14 +176,6 @@ func (p *Producer) Serve() {
 		return
 	}
 
-	if p.cleanupTimers {
-		err = p.CleanupMetadataBucket(true)
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-			return
-		}
-	}
-
 	p.startBucket()
 
 	p.bootstrapFinishCh <- struct{}{}

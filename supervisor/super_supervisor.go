@@ -341,14 +341,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						p.PauseProducer()
 						p.NotifySupervisor()
 						logging.Infof("%s [%d] Function: %s Cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
-
-						if cTimers {
-							err = p.CleanupMetadataBucket(true)
-							if err == common.ErrRetryTimeout {
-								logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
-								return nil
-							}
-						}
 					}
 				}
 			}

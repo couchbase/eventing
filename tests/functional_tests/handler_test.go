@@ -640,59 +640,27 @@ func TestDiffFeedBoundariesWithResume(t *testing.T) {
 		t.Error("Waited too long for item count to come down to 0")
 	}
 
-	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
-
-	log.Printf("Resuming app: %s from feed boundary everything\n", handler)
-	setSettings(handler, true, true, &commonSettings{streamBoundary: "everything"})
-	waitForStatusChange(handler, "deployed", statsLookupRetryCounter)
-
-	eventCount = verifyBucketCount(itemCount*2, statsLookupRetryCounter, dstBucket)
-	if eventCount != itemCount*2 {
-		t.Error("For", "TestDiffFeedBoundariesWithResume with from_eveything feed boundary",
-			"expected", itemCount*2,
-			"got", eventCount,
-		)
-	}
-
-	log.Println("Pausing app:", handler)
-	setSettings(handler, true, false, &commonSettings{})
-	waitForStatusChange(handler, "paused", statsLookupRetryCounter)
-
-	bucketFlush(dstBucket)
-	count = verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
-	if count != 0 {
-		t.Error("Waited too long for item count to come down to 0")
-	}
-
-	// TODO: Remove this sleep. Added to mitigate a race occurring when resume request is quickly fired after pause
-	time.Sleep(3 * time.Minute)
-
-	log.Printf("Resuming app: %s from feed boundary from_now\n", handler)
-	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_now"})
-	waitForStatusChange(handler, "deployed", statsLookupRetryCounter)
-
-	pumpBucketOps(opsType{}, &rateLimit{})
-	eventCount = verifyBucketCount(itemCount, statsLookupRetryCounter, dstBucket)
-	if eventCount != itemCount {
-		t.Error("For", "TestDiffFeedBoundariesWithResume with from_now feed boundary",
-			"expected", itemCount,
-			"got", eventCount,
-		)
-	}
-
 	go pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
 
-	time.Sleep(5 * time.Second)
+	log.Printf("Resuming app: %s from feed boundary everything\n", handler)
+	res, _ := setSettings(handler, true, true, &commonSettings{streamBoundary: "everything"})
+	if res.httpResponseCode == 200 {
+		t.Error("Expected non 200 response code")
+	}
 
-	log.Println("Pausing app:", handler)
-	setSettings(handler, true, false, &commonSettings{})
-	waitForStatusChange(handler, "paused", statsLookupRetryCounter)
+	if res.httpResponseCode != 200 && res.Name != "ERR_INVALID_CONFIG" {
+		t.Error("Expected ERR_INVALID_CONFIG got", res.Name)
+	}
 
-	count, _ = getBucketItemCount(dstBucket)
-	log.Println("Item count in dst bucket:", count)
+	log.Printf("Resuming app: %s from feed boundary from_now\n", handler)
+	res, _ = setSettings(handler, true, true, &commonSettings{streamBoundary: "from_now"})
+	if res.httpResponseCode == 200 {
+		t.Error("Expected non 200 response code")
+	}
 
-	// TODO: Remove this sleep. Added to mitigate a race occurring when resume request is quickly fired after pause
-	time.Sleep(3 * time.Minute)
+	if res.httpResponseCode != 200 && res.Name != "ERR_INVALID_CONFIG" {
+		t.Error("Expected ERR_INVALID_CONFIG got", res.Name)
+	}
 
 	log.Printf("Resuming app: %s from feed boundary from_prior\n", handler)
 	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_prior"})

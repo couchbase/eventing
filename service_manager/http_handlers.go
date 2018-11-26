@@ -976,7 +976,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		mhVersion := eventingVerMap["mad-hatter"]
 
 		// Check for pause processing
-		if deploymentStatus == true && processingStatus == false {
+		if deploymentStatus && !processingStatus {
 			if !m.compareEventingVersion(mhVersion) {
 				info.Code = m.statusCodes.errClusterVersion.Code
 				info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for pausing function execution",
@@ -1008,6 +1008,18 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 			return
 		}
 
+		if deploymentStatus && processingStatus && m.superSup.GetAppState(appName) == common.AppStatePaused {
+			switch filterFeedBoundary(settings) {
+			case common.DcpFromNow, common.DcpEverything:
+				info.Code = m.statusCodes.errInvalidConfig.Code
+				info.Info = fmt.Sprintf("Function: %s only from_prior feed boundary is allowed during resume", appName)
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				return
+			case common.DcpStreamBoundary(""):
+				app.Settings["dcp_stream_boundary"] = "from_prior"
+			default:
+			}
+		}
 	} else {
 		info.Code = m.statusCodes.errStatusesNotFound.Code
 		info.Info = fmt.Sprintf("Function: %s missing processing or deployment statuses or both", appName)
@@ -1435,7 +1447,7 @@ func filterFeedBoundary(settings map[string]interface{}) common.DcpStreamBoundar
 		}
 	}
 
-	return common.DcpEverything
+	return common.StreamBoundary("")
 }
 
 // Saves application to metakv and returns appropriate success/error code
