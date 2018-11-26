@@ -1157,6 +1157,14 @@ func TestInterHandlerRecursion(t *testing.T) {
 	handler2 := "src_bucket_op_on_delete"
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)
+
+	defer func() {
+		// Required, otherwise function delete request in subsequent call would fail
+		waitForDeployToFinish(handler1)
+		flushFunctionAndBucket(handler1)
+		flushFunctionAndBucket(handler2)
+	}()
+
 	resp := createAndDeployFunction(handler1, handler1, &commonSettings{srcMutationEnabled: true})
 	log.Printf("response body %s err %v", string(resp.body), resp.err)
 	resp = createAndDeployFunction(handler2, handler2, &commonSettings{srcMutationEnabled: true})
@@ -1173,10 +1181,44 @@ func TestInterHandlerRecursion(t *testing.T) {
 		t.Errorf("Deployment must fail")
 		return
 	}
+}
 
-	// Required, otherwise function delete request in subsequent call would fail
-	waitForDeployToFinish(handler1)
+func TestInterBucketRecursion(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	jsFileName := "noop"
+	setting1 := &commonSettings{
+		aliasSources: []string{dstBucket},
+		aliasHandles: []string{"dst_bucket"},
+		metaBucket:   metaBucket,
+		sourceBucket: srcBucket,
+	}
+	resp := createAndDeployFunction("function1", jsFileName, setting1)
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
 
-	flushFunctionAndBucket(handler1)
-	flushFunctionAndBucket(handler2)
+	setting2 := &commonSettings{
+		aliasSources: []string{srcBucket},
+		aliasHandles: []string{"dst_bucket"},
+		metaBucket:   metaBucket,
+		sourceBucket: dstBucket,
+	}
+	resp = createAndDeployFunction("function2", jsFileName, setting2)
+
+	defer func() {
+		// Required, otherwise function delete request in subsequent call would fail
+		waitForDeployToFinish("function1")
+		flushFunctionAndBucket("function1")
+		flushFunctionAndBucket("function2")
+	}()
+
+	var response map[string]interface{}
+	err := json.Unmarshal(resp.body, &response)
+	if err != nil {
+		t.Errorf("Failed to unmarshal response, err : %v\n", err)
+		return
+	}
+
+	if response["name"].(string) != "ERR_INTER_BUCKET_RECURSION" {
+		t.Errorf("Deployment must fail")
+		return
+	}
 }

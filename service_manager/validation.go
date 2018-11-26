@@ -55,8 +55,27 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 
 	if m.isAppDeployable(app) == false {
 		info.Code = m.statusCodes.errInterFunctionRecursion.Code
-		info.Info = fmt.Sprintf("Inter Handler Recursion Error")
+		info.Info = fmt.Sprintf("Inter handler recursion error")
 		return
+	}
+
+	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
+	if len(destinations) != 0 {
+		if possible, path := m.graph.isAcyclicInsertPossible(app.Name, source, destinations); !possible {
+			info.Code = m.statusCodes.errInterBucketRecursion.Code
+			info.Info = fmt.Sprintf("Inter bucket recursion error; function: %s causes a cycle "+
+				"involving functions: %v, hence deployment is disallowed", app.Name, path)
+			return
+		}
+
+		functions := m.graph.getAcyclicInsertSideEffects(destinations)
+		if len(functions) > 0 {
+			info.Code = m.statusCodes.ok.Code
+			var wInfo warningsInfo
+			wInfo.Status = "Validated function config"
+			wInfo.Warnings = append(wInfo.Warnings, fmt.Sprintf("Function %s will modify source buckets of following functions %v", app.Name, functions))
+			info.Info = wInfo
+		}
 	}
 	info.Code = m.statusCodes.ok.Code
 	return

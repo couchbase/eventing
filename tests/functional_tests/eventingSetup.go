@@ -147,7 +147,7 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 	if settings.metaBucket == "" {
 		metaBucket = "eventing"
 	} else {
-		metaBucket = settings.sourceBucket
+		metaBucket = settings.metaBucket
 	}
 
 	// Source bucket bindings disallowed

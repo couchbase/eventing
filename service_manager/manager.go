@@ -31,7 +31,8 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 	mu := &sync.RWMutex{}
 
 	mgr := &ServiceMgr{
-		fnsInPrimaryStore: make(map[string]struct{}),
+		graph:             newBucketMultiDiGraph(),
+		fnsInPrimaryStore: make(map[string]depCfg),
 		fnsInTempStore:    make(map[string]struct{}),
 		fnMu:              &sync.RWMutex{},
 		mu:                mu,
@@ -240,7 +241,7 @@ func (m *ServiceMgr) initService() {
 	go func(m *ServiceMgr) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildren(metakvAppsPath, m.primaryStoreChangeCallback, cancelCh)
+			err := metakv.RunObserveChildren(metakvChecksumPath, m.primaryStoreChangeCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("%s metakv observe error for primary store, err: %v. Retrying...", logPrefix, err)
 				time.Sleep(2 * time.Second)
@@ -259,6 +260,16 @@ func (m *ServiceMgr) initService() {
 		}
 	}(m)
 
+	go func(m *ServiceMgr) {
+		cancelCh := make(chan struct{})
+		for {
+			err := metakv.RunObserveChildren(metakvAppSettingsPath, m.settingChangeCallback, cancelCh)
+			if err != nil {
+				logging.Errorf("%s metakv observe error for setting store, err: %v. Retrying...", logPrefix, err)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}(m)
 }
 
 func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev interface{}) error {
@@ -267,17 +278,28 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
 
 	splitRes := strings.Split(path, "/")
-	if len(splitRes) != 5 {
+	if len(splitRes) != 4 {
 		return nil
 	}
 
-	fnName := splitRes[len(splitRes)-2]
+	fnName := splitRes[len(splitRes)-1]
 	m.fnMu.Lock()
 	defer m.fnMu.Unlock()
 
 	if len(value) > 0 {
-		m.fnsInPrimaryStore[fnName] = struct{}{}
+		//Read application from metakv
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, fnName)
+		if err != nil {
+			logging.Errorf("%s Reading function: %s from metakv failed, err: %v", logPrefix, fnName, err)
+			return nil
+		}
+		app := m.parseFunctionPayload(data, fnName)
+		m.fnsInPrimaryStore[fnName] = app.DeploymentConfig
 		logging.Infof("%s Added function: %s to fnsInPrimaryStore", logPrefix, fnName)
+		source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
+		if len(destinations) != 0 {
+			m.graph.insertEdges(fnName, source, destinations)
+		}
 	} else {
 		delete(m.fnsInPrimaryStore, fnName)
 		logging.Infof("%s Deleted function: %s from fnsInPrimaryStore", logPrefix, fnName)
@@ -308,6 +330,58 @@ func (m *ServiceMgr) tempStoreChangeCallback(path string, value []byte, rev inte
 		logging.Infof("%s Deleted function: %s from fnsInTempStore", logPrefix, fnName)
 	}
 
+	return nil
+}
+
+func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "ServiceMgr::settingChangeCallback"
+
+	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
+
+	pathTokens := strings.Split(path, "/")
+	if len(pathTokens) != 4 {
+		logging.Errorf("%s Invalid setting path, path: %s", logPrefix, path)
+		return nil
+	}
+
+	if value == nil {
+		return nil
+	}
+
+	functionName := pathTokens[len(pathTokens)-1]
+
+	settings := make(map[string]interface{})
+	err := json.Unmarshal(value, &settings)
+	if err != nil {
+		logging.Errorf("%s [%s] Failed to unmarshal settings received from metakv, err: %v",
+			logPrefix, functionName, err)
+		return nil
+	}
+
+	deploymentStatus, ok := settings["deployment_status"].(bool)
+	if !ok {
+		logging.Errorf("%s [%s] Failed to convert deployment status to boolean from setting",
+			logPrefix, functionName)
+		return nil
+	}
+
+	processingStatus, ok := settings["processing_status"].(bool)
+	if !ok {
+		logging.Errorf("%s [%s] Failed to convert processing status to boolean from setting",
+			logPrefix, functionName)
+		return nil
+	}
+
+	if deploymentStatus == false && processingStatus == false {
+		m.fnMu.Lock()
+		cfg := m.fnsInPrimaryStore[functionName]
+		m.fnMu.Unlock()
+
+		source, destinations := m.getSourceAndDestinationsFromDepCfg(&cfg)
+		if len(destinations) != 0 {
+			m.graph.removeEdges(functionName, source, destinations)
+		}
+	}
 	return nil
 }
 

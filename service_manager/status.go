@@ -87,6 +87,7 @@ type statusCodes struct {
 	errFunctionInstanceIDGen  statusBase
 	errBucketAccess           statusBase
 	errInterFunctionRecursion statusBase
+	errInterBucketRecursion   statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -179,6 +180,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusBadRequest
 	case m.statusCodes.errInterFunctionRecursion.Code:
 		return http.StatusBadRequest
+	case m.statusCodes.errInterBucketRecursion.Code:
+		return http.StatusBadRequest
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -232,6 +235,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errFunctionInstanceIDGen:  statusBase{"ERR_INSTANCE_ID_GEN", 48},
 		errBucketAccess:           statusBase{"ERR_BUCKET_ACCESS", 49},
 		errInterFunctionRecursion: statusBase{"ERR_INTER_FUNCTION_RECURSION", 50},
+		errInterBucketRecursion:   statusBase{"ERR_INTER_BUCKET_RECURSION", 51},
 	}
 
 	errors := []errorPayload{
@@ -476,7 +480,12 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errInterFunctionRecursion.Name,
 			Code:        m.statusCodes.errInterFunctionRecursion.Code,
-			Description: "Inter function recursion error, only one function is allowed to do source bucket mutation on a bucket",
+			Description: "Inter function recursion error, only one function is allowed to do source bucket mutation/delete on a bucket",
+		},
+		{
+			Name:        m.statusCodes.errInterBucketRecursion.Name,
+			Code:        m.statusCodes.errInterBucketRecursion.Code,
+			Description: "Inter bucket recursion error, deployment of current handler will cause inter bucket recursion",
 		},
 	}
 

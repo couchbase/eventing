@@ -53,12 +53,13 @@ type ServiceMgr struct {
 	adminHTTPPort     string
 	adminSSLPort      string
 	auth              string
+	graph             *bucketMultiDiGraph
 	certFile          string
 	config            util.ConfigHolder
 	ejectNodeUUIDs    []string
 	eventingNodeAddrs []string
 	failoverNotif     bool
-	fnsInPrimaryStore map[string]struct{} // Access controlled by fnMu
+	fnsInPrimaryStore map[string]depCfg   // Access controlled by fnMu
 	fnsInTempStore    map[string]struct{} // Access controlled by fnMu
 	fnMu              *sync.RWMutex
 	keepNodeUUIDs     []string
