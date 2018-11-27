@@ -731,10 +731,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   case eTimer:
     switch (getTimerOpcode(parsed_header->opcode)) {
     case oTimer:
-      worker_index = partition_thr_map_[parsed_header->partition];
-      if (workers_[worker_index] != nullptr) {
+      if (workers_[curr_worker_idx_] != nullptr) {
         enqueued_timer_msg_counter++;
-        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
+        workers_[curr_worker_idx_]->Enqueue(parsed_header, parsed_message);
+        curr_worker_idx_ = (curr_worker_idx_ + 1) % thr_count_;
       } else {
         LOG(logError) << "Timer event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -932,7 +932,9 @@ void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
   }
 }
 
-AppWorker::AppWorker() : feedback_conn_handle_(nullptr), conn_handle_(nullptr) {
+AppWorker::AppWorker()
+    : feedback_conn_handle_(nullptr), conn_handle_(nullptr),
+      curr_worker_idx_(0) {
   thread_exit_cond_.store(false);
   uv_loop_init(&feedback_loop_);
   uv_loop_init(&main_loop_);

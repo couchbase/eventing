@@ -628,9 +628,8 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 
 	progress := &common.RebalanceProgress{}
 
-	appList := util.ListChildren(metakvAppsPath)
-
-	for _, appName := range appList {
+	m.fnMu.RLock()
+	for appName := range m.fnsInPrimaryStore {
 		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
 		// if it occurs
 		appProgress, err := m.superSup.RebalanceTaskProgress(appName)
@@ -644,6 +643,7 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 			progress.VbsRemainingToShuffle += appProgress.VbsRemainingToShuffle
 		}
 	}
+	m.fnMu.RUnlock()
 
 	if progress.VbsRemainingToShuffle > 0 {
 		m.statsWritten = false
@@ -963,7 +963,6 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		app.Settings[setting] = settings[setting]
 	}
 
-	// State validation - app must be in deployed state
 	processingStatus, pOk := app.Settings["processing_status"].(bool)
 	deploymentStatus, dOk := app.Settings["deployment_status"].(bool)
 
@@ -972,8 +971,18 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 	deployedApps := m.superSup.GetDeployedApps()
 	if pOk && dOk {
-		// Check for disable processing
+		mhVersion := eventingVerMap["mad-hatter"]
+
+		// Check for pause processing
 		if deploymentStatus == true && processingStatus == false {
+			if !m.compareEventingVersion(mhVersion) {
+				info.Code = m.statusCodes.errClusterVersion.Code
+				info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for pausing function execution",
+					mhVersion.major, mhVersion.minor)
+				logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+				return
+			}
+
 			if _, ok := deployedApps[appName]; !ok {
 				info.Code = m.statusCodes.errAppNotInit.Code
 				info.Info = fmt.Sprintf("Function: %s not processing mutations. Operation is not permitted. Edit function instead", appName)
@@ -982,10 +991,17 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 			}
 		}
 
+		if filterFeedBoundary(settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
+			info.Code = m.statusCodes.errClusterVersion.Code
+			info.Info = fmt.Sprintf("All eventing nodes in cluster must be on version %d.%d or higher for resuming function execution",
+				mhVersion.major, mhVersion.minor)
+			logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+			return
+		}
+
 		if filterFeedBoundary(settings) == common.DcpFromPrior && m.superSup.GetAppState(appName) != common.AppStatePaused {
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state", appName)
-
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			return
 		}
@@ -1175,17 +1191,21 @@ func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtim
 func (m *ServiceMgr) getTempStoreAll() []application {
 	logPrefix := "ServiceMgr::getTempStoreAll"
 
-	tempAppList := util.ListChildren(metakvTempAppsPath)
-	applications := make([]application, len(tempAppList))
+	m.fnMu.RLock()
+	defer m.fnMu.RUnlock()
 
-	for i, appName := range tempAppList {
-		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName)
+	applications := make([]application, len(m.fnsInTempStore))
+	i := -1
+
+	for fnName := range m.fnsInTempStore {
+		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, fnName)
 		if err == nil && data != nil {
 			var app application
+			i++
 			uErr := json.Unmarshal(data, &app)
 			if uErr != nil {
 				logging.Errorf("%s Function: %s failed to unmarshal data from metakv, err: %v data: %v",
-					logPrefix, appName, uErr, string(data))
+					logPrefix, fnName, uErr, string(data))
 				continue
 			}
 
@@ -1312,7 +1332,7 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	info := m.savePrimaryStore(app)
+	info := m.savePrimaryStore(&app)
 	m.sendRuntimeInfo(w, info)
 }
 
@@ -1417,7 +1437,7 @@ func filterFeedBoundary(settings map[string]interface{}) common.DcpStreamBoundar
 }
 
 // Saves application to metakv and returns appropriate success/error code
-func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
+func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	logPrefix := "ServiceMgr::savePrimaryStore"
 
 	info = &runtimeInfo{}
@@ -1444,6 +1464,15 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
+	mhVersion := eventingVerMap["mad-hatter"]
+	if filterFeedBoundary(app.Settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
+		info.Code = m.statusCodes.errClusterVersion.Code
+		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for using 'from prior' deployment feed boundary",
+			mhVersion.major, mhVersion.minor)
+		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+		return
+	}
+
 	if filterFeedBoundary(app.Settings) == common.DcpFromPrior && m.superSup.GetAppState(app.Name) != common.AppStatePaused {
 		info.Code = m.statusCodes.errInvalidConfig.Code
 		info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state", app.Name)
@@ -1453,7 +1482,15 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	}
 
 	app.SrcMutationEnabled = m.isSrcMutationEnabled(&app.DeploymentConfig)
-	appContent := m.encodeAppPayload(&app)
+	if app.SrcMutationEnabled && !m.compareEventingVersion(mhVersion) {
+		info.Code = m.statusCodes.errClusterVersion.Code
+		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for allowing mutations against source bucket",
+			mhVersion.major, mhVersion.minor)
+		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+		return
+	}
+
+	appContent := m.encodeAppPayload(app)
 
 	if len(appContent) > util.MaxFunctionSize() {
 		info.Code = m.statusCodes.errAppCodeSize.Code
@@ -1483,7 +1520,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		app.Settings["using_timer"] = false
 		app.UsingTimer = false
 	}
-	appContent = m.encodeAppPayload(&app)
+	appContent = m.encodeAppPayload(app)
 
 	m.checkVersionCompat(compilationInfo.Version, info)
 	if info.Code != m.statusCodes.ok.Code {
@@ -2034,7 +2071,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 			app.EventingVersion = util.EventingVer()
 
-			runtimeInfo := m.savePrimaryStore(app)
+			runtimeInfo := m.savePrimaryStore(&app)
 			if runtimeInfo.Code == m.statusCodes.ok.Code {
 				audit.Log(auditevent.SaveDraft, r, appName)
 				// Save to temp store only if saving to primary store succeeds
@@ -2467,7 +2504,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 
 		app.EventingVersion = util.EventingVer()
 
-		infoPri := m.savePrimaryStore(app)
+		infoPri := m.savePrimaryStore(&app)
 		if infoPri.Code != m.statusCodes.ok.Code {
 			logging.Errorf("%s Function: %s saving %ru to primary store failed: %v", logPrefix, app.Name, infoPri)
 			infoList = append(infoList, infoPri)

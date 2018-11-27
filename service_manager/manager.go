@@ -10,10 +10,13 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" // For debugging
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
@@ -28,8 +31,11 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 	mu := &sync.RWMutex{}
 
 	mgr := &ServiceMgr{
-		mu:      mu,
-		servers: make([]service.NodeID, 0),
+		fnsInPrimaryStore: make(map[string]struct{}),
+		fnsInTempStore:    make(map[string]struct{}),
+		fnMu:              &sync.RWMutex{},
+		mu:                mu,
+		servers:           make([]service.NodeID, 0),
 		state: state{
 			rebalanceID:   "",
 			rebalanceTask: nil,
@@ -55,6 +61,8 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 }
 
 func (m *ServiceMgr) initService() {
+	logPrefix := "ServiceMgr::initService"
+
 	cfg := m.config.Load()
 	m.adminHTTPPort = cfg["eventing_admin_http_port"].(string)
 	m.adminSSLPort = cfg["eventing_admin_ssl_port"].(string)
@@ -64,10 +72,8 @@ func (m *ServiceMgr) initService() {
 	m.uuid = cfg["uuid"].(string)
 	m.initErrCodes()
 
-	logging.Infof("ServiceMgr::initService adminHTTPPort: %v", m.adminHTTPPort)
-	logging.Infof("ServiceMgr::initService adminSSLPort: %v", m.adminSSLPort)
-	logging.Infof("ServiceMgr::initService certFile: %v", m.certFile)
-	logging.Infof("ServiceMgr::initService keyFile: %v", m.keyFile)
+	logging.Infof("%s adminHTTPPort: %s adminSSLPort: %s", logPrefix, m.adminHTTPPort, m.adminSSLPort)
+	logging.Infof("%s certFile: %s keyFile: %s", logPrefix, m.certFile, m.keyFile)
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getHTTPServiceAuth, m)
 
@@ -75,7 +81,7 @@ func (m *ServiceMgr) initService() {
 		for {
 			err := m.registerWithServer()
 			if err != nil {
-				logging.Infof("Retrying to register against cbauth_service")
+				logging.Infof("%s Retrying to register against cbauth_service", logPrefix)
 				time.Sleep(2 * time.Second)
 			} else {
 				break
@@ -145,9 +151,9 @@ func (m *ServiceMgr) initService() {
 
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)
-		logging.Infof("Admin HTTP server started: %v", addr)
+		logging.Infof("%s Admin HTTP server started: %s", logPrefix, addr)
 		err := http.ListenAndServe(addr, nil)
-		logging.Fatalf("Error in Admin HTTP Server: %v", err)
+		logging.Fatalf("%s Error in Admin HTTP Server: %v", logPrefix, err)
 	}()
 
 	if m.adminSSLPort != "" {
@@ -169,19 +175,19 @@ func (m *ServiceMgr) initService() {
 				if err == nil {
 					break
 				}
-				logging.Errorf("Unable to register for cert refresh, will retry: %v", err)
+				logging.Errorf("%s Unable to register for cert refresh, will retry: %v", logPrefix, err)
 				time.Sleep(10 * time.Second)
 			}
 			for {
 				cert, err := tls.LoadX509KeyPair(m.certFile, m.keyFile)
 				if err != nil {
-					logging.Errorf("Error in loading SSL certificate: %v", err)
+					logging.Errorf("%s Error in loading SSL certificate: %v", logPrefix, err)
 					return
 				}
 
 				clientAuthType, err := cbauth.GetClientCertAuthType()
 				if err != nil {
-					logging.Errorf("Error in getting client cert auth type, %v", err)
+					logging.Errorf("%s Error in getting client cert auth type, %v", logPrefix, err)
 					return
 				}
 
@@ -196,7 +202,7 @@ func (m *ServiceMgr) initService() {
 				if clientAuthType != tls.NoClientCert {
 					caCert, err := ioutil.ReadFile(m.certFile)
 					if err != nil {
-						logging.Errorf("Error in reading cacert file, %v", err)
+						logging.Errorf("%s Error in reading cacert file, %v", logPrefix, err)
 						return
 					}
 					caCertPool := x509.NewCertPool()
@@ -213,23 +219,96 @@ func (m *ServiceMgr) initService() {
 				// replace below with ListenAndServeTLS on moving to go1.8
 				lsnr, err := net.Listen("tcp", sslAddr)
 				if err != nil {
-					logging.Errorf("Error in listenting to SSL port: %v", err)
+					logging.Errorf("%s Error in listenting to SSL port: %v", logPrefix, err)
 					return
 				}
 				val := tls.NewListener(lsnr, sslsrv.TLSConfig)
 				tlslsnr = &val
 				reload = false
-				logging.Infof("SSL server started: %v", sslAddr)
+				logging.Infof("%s SSL server started: %v", logPrefix, sslAddr)
 				err = http.Serve(*tlslsnr, nil)
 				if reload {
-					logging.Warnf("SSL certificate change: %v", err)
+					logging.Warnf("%s SSL certificate change: %v", logPrefix, err)
 				} else {
-					logging.Errorf("Error in SSL Server: %v", err)
+					logging.Errorf("%s Error in SSL Server: %v", logPrefix, err)
 					return
 				}
 			}
 		}()
 	}
+
+	go func(m *ServiceMgr) {
+		cancelCh := make(chan struct{})
+		for {
+			err := metakv.RunObserveChildren(metakvAppsPath, m.primaryStoreChangeCallback, cancelCh)
+			if err != nil {
+				logging.Errorf("%s metakv observe error for primary store, err: %v. Retrying...", logPrefix, err)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}(m)
+
+	go func(m *ServiceMgr) {
+		cancelCh := make(chan struct{})
+		for {
+			err := metakv.RunObserveChildren(metakvTempAppsPath, m.tempStoreChangeCallback, cancelCh)
+			if err != nil {
+				logging.Errorf("%s metakv observe error for temp store, err: %v. Retrying...", logPrefix, err)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}(m)
+
+}
+
+func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "ServiceMgr::primaryStoreChangeCallback"
+
+	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
+
+	splitRes := strings.Split(path, "/")
+	if len(splitRes) != 5 {
+		return nil
+	}
+
+	fnName := splitRes[len(splitRes)-2]
+	m.fnMu.Lock()
+	defer m.fnMu.Unlock()
+
+	if len(value) > 0 {
+		m.fnsInPrimaryStore[fnName] = struct{}{}
+		logging.Infof("%s Added function: %s to fnsInPrimaryStore", logPrefix, fnName)
+	} else {
+		delete(m.fnsInPrimaryStore, fnName)
+		logging.Infof("%s Deleted function: %s from fnsInPrimaryStore", logPrefix, fnName)
+	}
+
+	return nil
+}
+
+func (m *ServiceMgr) tempStoreChangeCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "ServiceMgr::tempStoreChangeCallback"
+
+	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
+
+	splitRes := strings.Split(path, "/")
+	if len(splitRes) != 5 {
+		return nil
+	}
+
+	fnName := splitRes[len(splitRes)-2]
+	m.fnMu.Lock()
+	defer m.fnMu.Unlock()
+
+	if len(value) > 0 {
+		m.fnsInTempStore[fnName] = struct{}{}
+		logging.Infof("%s Added function: %s to fnsInTempStore", logPrefix, fnName)
+	} else {
+		delete(m.fnsInTempStore, fnName)
+		logging.Infof("%s Deleted function: %s from fnsInTempStore", logPrefix, fnName)
+	}
+
+	return nil
 }
 
 func (m *ServiceMgr) disableDebugger() {
@@ -570,8 +649,7 @@ func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
 	var keepNodes []string
 	err = json.Unmarshal(data, &keepNodes)
 	if err != nil {
-		logging.Warnf("%s Failed to unmarshal keepNodes received from metakv, err: %v",
-			logPrefix, err)
+		logging.Warnf("%s Failed to unmarshal keepNodes received from metakv, err: %v", logPrefix, err)
 		return nodeAddrs, err
 	}
 
@@ -585,4 +663,86 @@ func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
 		logPrefix, keepNodes, addrUUIDMap, nodeAddrs)
 
 	return nodeAddrs, nil
+}
+
+func (m *ServiceMgr) compareEventingVersion(need eventingVer) bool {
+	logPrefix := "ServiceMgr::compareEventingVersion"
+
+	nodes, err := m.getActiveNodeAddrs()
+	if err != nil {
+		logging.Errorf("%s failed to get active eventing nodes, err: %v", logPrefix, err)
+		return false
+	}
+
+	versions, err := util.GetEventingVersion("/version", nodes)
+	if err != nil {
+		logging.Errorf("%s failed to gather eventing version, err: %v", logPrefix, err)
+		return false
+	}
+
+	logging.Infof("%s eventing version for all nodes: %+v need version: %+v", logPrefix, versions, need)
+
+	for _, ver := range versions {
+		eVer, err := frameEventingVersion(ver)
+		if err != nil {
+			return false
+		}
+
+		if !eVer.compare(need) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (e eventingVer) compare(need eventingVer) bool {
+	return (e.major > need.major ||
+		e.major == need.major && e.minor >= need.minor ||
+		e.major == need.major && e.major == need.minor && e.mpVersion >= need.mpVersion) &&
+		(e.isEnterprise == need.isEnterprise)
+}
+
+func frameEventingVersion(ver string) (eventingVer, error) {
+	var eVer eventingVer
+
+	segs := strings.Split(ver, "-")
+	if len(segs) < 4 {
+		return eVer, errInvalidVersion
+	}
+
+	verSegs := strings.Split(segs[1], ".")
+	if len(verSegs) != 3 {
+		return eVer, errInvalidVersion
+	}
+
+	val, err := strconv.Atoi(verSegs[0])
+	if err != nil {
+		return eVer, errInvalidVersion
+	}
+	eVer.major = val
+
+	val, err = strconv.Atoi(verSegs[1])
+	if err != nil {
+		return eVer, errInvalidVersion
+	}
+	eVer.minor = val
+
+	val, err = strconv.Atoi(verSegs[2])
+	if err != nil {
+		return eVer, errInvalidVersion
+	}
+	eVer.mpVersion = val
+
+	val, err = strconv.Atoi(segs[2])
+	if err != nil {
+		return eVer, errInvalidVersion
+	}
+	eVer.build = val
+
+	if segs[len(segs)-1] == "ee" {
+		eVer.isEnterprise = true
+	}
+
+	return eVer, nil
 }

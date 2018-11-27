@@ -125,7 +125,7 @@ func (c *Consumer) updateWorkerStats() {
 							return
 						}
 
-						logging.Infof("%s [%s:%s:%d] Re-spawning eventing last response received at %s",
+						logging.Infof("%s [%s:%s:%d] stoppingConsumer: %t re-spawning eventing last response received at %s",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, lastTs.String())
 						c.stoppingConsumer = true
 						c.producer.KillAndRespawnEventingConsumer(c)

@@ -288,9 +288,8 @@ func (c *Consumer) controlRoutine() error {
 				goto retryVbsRemainingToRestream
 			}
 
-		case <-c.stopControlRoutineCh:
-			logging.Infof("%s [%s:%s:%d] Exiting control routine",
-				logPrefix, c.workerName, c.tcpPort, c.Pid())
+		case <-c.stopConsumerCh:
+			logging.Infof("%s [%s:%s:%d] Exiting control routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return nil
 		}
 	}

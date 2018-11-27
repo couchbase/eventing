@@ -374,6 +374,8 @@ func (p *Producer) parseDepcfg() error {
 		return err
 	}
 
+	logging.Infof("%s [%s] kv nodes from cinfo: %+v", logPrefix, p.appName, p.kvHostPorts)
+
 	return nil
 }
 

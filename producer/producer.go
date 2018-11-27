@@ -46,15 +46,14 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		pauseProducerCh:            make(chan struct{}, 1),
 		plannerNodeMappingsRWMutex: &sync.RWMutex{},
 		MemoryQuota:                memoryQuota,
-		pollBucketStopCh:           make(chan struct{}, 1),
 		retryCount:                 -1,
 		runningConsumersRWMutex:    &sync.RWMutex{},
 		seqsNoProcessed:            make(map[int]int64),
 		seqsNoProcessedRWMutex:     &sync.RWMutex{},
 		statsRWMutex:               &sync.RWMutex{},
+		stopCh:                     make(chan struct{}, 1),
 		superSup:                   superSup,
 		topologyChangeCh:           make(chan *common.TopologyChangeMsg, 10),
-		updateStatsStopCh:          make(chan struct{}, 1),
 		uuid:                       uuid,
 		vbEventingNodeAssignRWMutex:  &sync.RWMutex{},
 		vbEventingNodeRWMutex:        &sync.RWMutex{},
@@ -287,9 +286,11 @@ func (p *Producer) Serve() {
 			}
 
 			for vb := 0; vb < p.numVbuckets; vb++ {
-				store, found := timers.Fetch(p.GetMetadataPrefix(), vb)
-				if found {
-					store.Free()
+				if p.app.UsingTimer {
+					store, found := timers.Fetch(p.GetMetadataPrefix(), vb)
+					if found {
+						store.Free()
+					}
 				}
 			}
 
@@ -316,6 +317,15 @@ func (p *Producer) Serve() {
 			}
 			p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
 			p.listenerRWMutex.Unlock()
+
+			if p.appLogWriter != nil {
+				p.appLogWriter.Close()
+			}
+
+			close(p.stopCh)
+
+			logging.Infof("%s [%s:%d] Closed stop chan and app log writer handle",
+				logPrefix, p.appName, p.LenRunningConsumers())
 
 			p.notifySupervisorCh <- struct{}{}
 
@@ -410,13 +420,7 @@ func (p *Producer) Stop(context string) {
 	logging.Infof("%s [%s:%d] Closed function log writer handle",
 		logPrefix, p.appName, p.LenRunningConsumers())
 
-	if p.updateStatsStopCh != nil {
-		p.updateStatsStopCh <- struct{}{}
-	}
-
-	if p.pollBucketStopCh != nil {
-		p.pollBucketStopCh <- struct{}{}
-	}
+	close(p.stopCh)
 
 	if p.workerSupervisor != nil {
 		p.workerSupervisor.Stop(p.appName)
@@ -795,7 +799,8 @@ func (p *Producer) updateStats() {
 				return
 			}
 
-		case <-p.updateStatsStopCh:
+		case <-p.stopCh:
+			logging.Infof("%s [%s:%d] Got message on stop chan, exiting", logPrefix, p.appName, p.LenRunningConsumers())
 			p.updateStatsTicker.Stop()
 			return
 
@@ -848,7 +853,7 @@ func (p *Producer) pollForDeletedVbs() {
 				p.superSup.StopProducer(p.appName, true)
 			}
 
-		case <-p.pollBucketStopCh:
+		case <-p.stopCh:
 			p.pollBucketTicker.Stop()
 			return
 		}

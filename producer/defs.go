@@ -66,8 +66,8 @@ type Producer struct {
 	pauseProducerCh        chan struct{}
 	pollBucketInterval     time.Duration
 	pollBucketTicker       *time.Ticker
-	pollBucketStopCh       chan struct{}
 	retryCount             int64
+	stopCh                 chan struct{}
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
 	trapEvent              bool
@@ -146,7 +146,6 @@ type Producer struct {
 	seqsNoProcessed            map[int]int64 // Access controlled by seqsNoProcessedRWMutex
 	seqsNoProcessedRWMutex     *sync.RWMutex
 	updateStatsTicker          *time.Ticker
-	updateStatsStopCh          chan struct{}
 
 	// Captures vbucket assignment to different eventing nodes
 	vbEventingNodeMap     map[string]map[string]string // Access controlled by vbEventingNodeRWMutex

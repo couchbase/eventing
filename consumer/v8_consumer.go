@@ -100,7 +100,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		statsRWMutex:                    &sync.RWMutex{},
 		statsTickDuration:               time.Duration(hConfig.StatsLogInterval) * time.Millisecond,
 		streamReqRWMutex:                &sync.RWMutex{},
-		stopControlRoutineCh:            make(chan struct{}, 1),
 		stopVbOwnerTakeoverCh:           make(chan struct{}),
 		stopConsumerCh:                  make(chan struct{}),
 		superSup:                        s,
@@ -462,10 +461,6 @@ func (c *Consumer) Stop(context string) {
 	logging.Infof("%s [%s:%s:%d] Sent signal to stop cpp worker stat collection routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	if c.stopControlRoutineCh != nil {
-		c.stopControlRoutineCh <- struct{}{}
-	}
-
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop checkpointing routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
@@ -484,8 +479,7 @@ func (c *Consumer) Stop(context string) {
 		}
 	}()
 
-	logging.Infof("%s [%s:%s:%d] Closed all dcpfeed handles",
-		logPrefix, c.workerName, c.tcpPort, c.Pid())
+	logging.Infof("%s [%s:%s:%d] Closed all dcpfeed handles", logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	close(c.stopConsumerCh)
 

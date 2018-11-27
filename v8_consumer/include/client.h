@@ -134,6 +134,8 @@ private:
 
   std::map<int16_t, int16_t> partition_thr_map_;
 
+  int16_t curr_worker_idx_;
+
   // Controls the number of virtual partitions, in order to shard work among
   // worker threads
   int16_t partition_count_;
