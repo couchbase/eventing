@@ -1003,7 +1003,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 		if filterFeedBoundary(settings) == common.DcpFromPrior && m.superSup.GetAppState(appName) != common.AppStatePaused {
 			info.Code = m.statusCodes.errInvalidConfig.Code
-			info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state", appName)
+			info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state, current state: %v",
+				appName, m.superSup.GetAppState(appName))
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			return
 		}
