@@ -69,9 +69,12 @@ func mangleCheckpointBlobs(appName, prefix string, start, end int) {
 	possibleVbOwners := []string{"127.0.0.1:9302", "127.0.0.1:9301", "127.0.0.1:9300", "127.0.0.1:9305"}
 	// possibleDcpStreamStates := []string{"running", "stopped", ""}
 	possibleDcpStreamStates := []string{"running"}
-	possibleNodeUUIDs := []string{"abcd", "defg", "ghij"}
+
+	// Commenting it for now, as in real world a node uuid is tied specifically to a host:port combination.
+	// One host:port combination can't have more than one node uuid.
+	// possibleNodeUUIDs := []string{"abcd", "defg", "ghij"}
 	possibleWorkers := make([]string, 0)
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 100; i++ {
 		possibleWorkers = append(possibleWorkers, fmt.Sprintf("worker_%s_%d", appName, i))
 	}
 
@@ -96,7 +99,7 @@ func mangleCheckpointBlobs(appName, prefix string, start, end int) {
 			UpsertEx("assigned_worker", worker, gocb.SubdocFlagCreatePath).
 			UpsertEx("current_vb_owner", ownerNode, gocb.SubdocFlagCreatePath).
 			UpsertEx("dcp_stream_status", possibleDcpStreamStates[random(0, len(possibleDcpStreamStates))], gocb.SubdocFlagCreatePath).
-			UpsertEx("node_uuid", possibleNodeUUIDs[random(0, len(possibleNodeUUIDs))], gocb.SubdocFlagCreatePath).
+			// UpsertEx("node_uuid", possibleNodeUUIDs[random(0, len(possibleNodeUUIDs))], gocb.SubdocFlagCreatePath).
 			Execute()
 		if err != nil {
 			log.Printf("DocID: %s err: %v\n", docID, err)

@@ -250,7 +250,7 @@ func (c *Consumer) controlRoutine() error {
 					return err
 				}
 
-				err = c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, false)
+				err = c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 					return err

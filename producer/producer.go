@@ -638,7 +638,7 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 	logging.Infof("%s [%s:%d] IndexToPurge: %d ConsumerIndex: %d Closing down listener handles",
 		logPrefix, p.appName, p.LenRunningConsumers(), indexToPurge, consumerIndex)
 
-	p.listenerRWMutex.RLock()
+	p.listenerRWMutex.Lock()
 	if conn, ok := p.consumerListeners[c]; ok {
 		if conn != nil {
 			conn.Close()
@@ -652,7 +652,7 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 		}
 		delete(p.feedbackListeners, c)
 	}
-	p.listenerRWMutex.RUnlock()
+	p.listenerRWMutex.Unlock()
 
 	logging.Infof("%s [%s:%d] ConsumerIndex: %d respawning the Eventing.Consumer instance",
 		logPrefix, p.appName, p.LenRunningConsumers(), consumerIndex)

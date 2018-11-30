@@ -231,6 +231,11 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 		return err
 	}
 
+	var possibleConsumers []string
+	for i := 0; i < c.workerCount; i++ {
+		possibleConsumers = append(possibleConsumers, fmt.Sprintf("worker_%s_%s", c.app.AppName, i))
+	}
+
 	switch vbBlob.DCPStreamStatus {
 	case dcpStreamRunning:
 
@@ -239,39 +244,48 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 			vbBlob.CurrentVBOwner, vbBlob.AssignedWorker, c.NodeUUID(),
 			vbBlob.NodeUUID, c.checkIfCurrentNodeShouldOwnVb(vb))
 
-		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
-			logging.Infof("%s [%s:%s:%d] vb: %d current consumer and eventing node has already opened dcp stream. Stream status: %s, skipping",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
-			return nil
-		}
-
-		if c.NodeUUID() != vbBlob.NodeUUID &&
-			!c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner, vbBlob.NodeUUID) && c.checkIfCurrentNodeShouldOwnVb(vb) {
-
-			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker != c.ConsumerName() {
-				return errVbOwnedByAnotherWorker
+		if vbBlob.NodeUUID != c.NodeUUID() {
+			// Case 1a: Some node that isn't part of the cluster has spawned DCP stream for the vbucket.
+			//         Hence start the connection from consumer, discarding previous state.
+			if !c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner, vbBlob.NodeUUID) && c.checkIfCurrentNodeShouldOwnVb(vb) {
+				logging.Infof("%s [%s:%s:%d] vb: %d node: %rs taking ownership. Old node: %rs isn't alive any more as per ns_server vbuuid: %s vblob.uuid: %s",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.HostPortAddr(), vbBlob.CurrentVBOwner,
+					c.NodeUUID(), vbBlob.NodeUUID)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 			}
 
-			logging.Infof("%s [%s:%s:%d] vb: %d node: %rs taking ownership. Old node: %rs isn't alive any more as per ns_server vbuuid: %s vblob.uuid: %s",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.HostPortAddr(), vbBlob.CurrentVBOwner,
-				c.NodeUUID(), vbBlob.NodeUUID)
+			// Case 1b: Invalid worker on another node is owning up vbucket stream
+			if !util.Contains(vbBlob.AssignedWorker, possibleConsumers) {
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
+			}
+		}
 
-			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
-
-				logging.Infof("%s [%s:%s:%d] vb: %d vbblob stream status: %v starting dcp stream",
+		if vbBlob.NodeUUID == c.NodeUUID() {
+			// Case 2a: Current consumer has already spawned DCP stream for the vbucket
+			if vbBlob.AssignedWorker == c.ConsumerName() {
+				logging.Infof("%s [%s:%s:%d] vb: %d current consumer and eventing node has already opened dcp stream. Stream status: %s, skipping",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
-
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+				return nil
 			}
-			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
-		}
 
-		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker != c.ConsumerName() {
 			logging.Infof("%s [%s:%s:%d] vb: %d owned by another worker: %s on same node",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.AssignedWorker)
+
+			if !util.Contains(vbBlob.AssignedWorker, possibleConsumers) {
+				// Case 2b: Worker who is invalid right now, has the ownership per metadata. Could happen for example:
+				//         t1 - Eventing starts off with worker count 10
+				//         t2 - Function was paused and resumed with worker count 3
+				//         t3 - Eventing rebalance was kicked off and KV rolled back metadata bucket to t1
+				//         This would currently cause rebalance to get stuck
+				//         In this case, it makes sense to revoke ownership metadata of old owners.
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
+			}
+
+			// Case 2c: An existing & running consumer on current Eventing node  has owned up the vbucket
 			return errVbOwnedByAnotherWorker
 		}
 
+		// Case 3: Another running Eventing node has the ownership of the vbucket stream
 		logging.Infof("%s [%s:%s:%d] vb: %d owned by node: %s worker: %s",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.CurrentVBOwner, vbBlob.AssignedWorker)
 		return errVbOwnedByAnotherNode
@@ -281,7 +295,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 		if vbBlob.DCPStreamRequested {
 			if (vbBlob.NodeUUIDRequestedVbStream == c.NodeUUID() && vbBlob.WorkerRequestedVbStream == c.ConsumerName()) ||
 				(vbBlob.NodeUUIDRequestedVbStream == "" && vbBlob.WorkerRequestedVbStream == "") {
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, false)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 			}
 
 			if vbBlob.NodeUUIDRequestedVbStream != c.NodeUUID() &&
@@ -290,7 +304,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 					"Old node: %rs isn't alive any more as per ns_server vbuuid: %s node requested stream uuid: %s",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vb, vbBlob.NodeRequestedVbStream,
 					c.NodeUUID(), vbBlob.NodeUUIDRequestedVbStream)
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 			}
 
 			logging.Infof("%s [%s:%s:%d] vb: %d. STREAMREQ already issued by hostPort: %s worker: %s uuid: %s",
@@ -302,7 +316,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 		logging.Infof("%s [%s:%s:%d] vb: %d vbblob stream status: %s, starting dcp stream",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
 
-		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 
 	default:
 		return errUnexpectedVbStreamStatus
@@ -328,7 +342,7 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 	return false
 }
 
-func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob, backfillTimers bool) error {
+func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob) error {
 	logPrefix := "Consumer::updateVbOwnerAndStartDCPStream"
 
 	if c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
