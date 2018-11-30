@@ -285,7 +285,8 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	return encodedData, nil
 }
 
-func setSettings(appName string, deploymentStatus, processingStatus bool, s *commonSettings) {
+func setSettings(appName string, deploymentStatus, processingStatus bool, s *commonSettings) (*responseSchema, error) {
+	res := &responseSchema{}
 	settings := make(map[string]interface{})
 
 	settings["processing_status"] = processingStatus
@@ -328,13 +329,13 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 	data, err := json.Marshal(&settings)
 	if err != nil {
 		log.Println("Undeploy json marshal:", err)
-		return
+		return res, err
 	}
 
 	req, err := http.NewRequest("POST", functionsURL+"/"+appName+"/settings", bytes.NewBuffer(data))
 	if err != nil {
 		log.Println("Undeploy request framing::", err)
-		return
+		return res, err
 	}
 
 	req.SetBasicAuth(username, password)
@@ -342,7 +343,7 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println("Undeploy response:", err)
-		return
+		return res, err
 	}
 
 	defer resp.Body.Close()
@@ -350,11 +351,12 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 	data, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("Post to eventing, response read:", err)
-		return
+		return res, err
 	}
 
+	err = json.Unmarshal(data, res)
 	log.Printf("Update settings, response code: %d dump: %s\n", resp.StatusCode, string(data))
-	return
+	return res, nil
 }
 
 func deleteFunction(appName string) (*responseSchema, error) {

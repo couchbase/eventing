@@ -280,6 +280,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						if p, ok := s.runningFns()[appName]; ok {
 							logging.Infof("%s [%d] Function: %s stopping running producer instance", logPrefix, s.runningFnsCount(), appName)
 							p.StopProducer()
+							s.stopAndDeleteProducer(p)
+							p.NotifySupervisor()
 						}
 					}
 
@@ -339,14 +341,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						p.PauseProducer()
 						p.NotifySupervisor()
 						logging.Infof("%s [%d] Function: %s Cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
-
-						if cTimers {
-							err = p.CleanupMetadataBucket(true)
-							if err == common.ErrRetryTimeout {
-								logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
-								return nil
-							}
-						}
 					}
 				}
 			}
@@ -802,6 +796,13 @@ func (s *SuperSupervisor) isFnRunningFromPrimary(appName string) (bool, error) {
 
 	logging.Infof("%s [%d] Function: %s not running. deployment_status: %t processing_status: %t",
 		logPrefix, s.runningFnsCount(), appName, deploymentStatus, processingStatus)
+
+	// Adding to deployed apps map, in-order to correctly report Function status.
+	// Specifically when Eventing node(s) get added to the cluster when one or
+	// more functions are in paused state.
+	if deploymentStatus && !processingStatus {
+		s.addToDeployedApps(appName)
+	}
 
 	return false, fmt.Errorf("function not running")
 }

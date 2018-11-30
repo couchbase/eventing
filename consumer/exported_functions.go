@@ -770,6 +770,7 @@ func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 		prevWorkerMemCap/(1024*1024), prevDCPFeedMemCap/(1024*1024))
 }
 
+// ResetBootstrapDone to unset bootstrap flag
 func (c *Consumer) ResetBootstrapDone() {
 	logPrefix := "Consumer::ResetBootstrapDone"
 

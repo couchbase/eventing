@@ -44,6 +44,7 @@ class JsException;
 class Transpiler;
 class Utils;
 class Timer;
+class CustomError;
 
 // Struct for storing isolate data
 struct Data {
@@ -55,6 +56,7 @@ struct Data {
   Transpiler *transpiler;
   Utils *utils;
   Timer *timer;
+  CustomError *custom_error;
 };
 
 // Code version of handler

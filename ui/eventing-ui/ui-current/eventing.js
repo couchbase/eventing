@@ -113,6 +113,17 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                     });
                             }
                         ],
+                        isAppPaused: ['ApplicationService',
+                            function(ApplicationService) {
+                                return ApplicationService.tempStore.isAppPaused(appName)
+                                    .then(function(isPaused) {
+                                        return isPaused;
+                                    })
+                                    .catch(function(errResponse) {
+                                        console.error('Unable to get function status', errResponse);
+                                    });
+                            }
+                        ],
                         logFileLocation: ['ApplicationService',
                             function(ApplicationService) {
                                 return ApplicationService.server.getLogFileLocation();
@@ -132,42 +143,82 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 if (app.settings.deployment_status) {
                     undeployApp(app, deploymentScope);
                 } else {
-                    deployApp(app, deploymentScope);
+                    changeState('deploy', app, deploymentScope);
                 }
             };
 
-            function deployApp(app, scope) {
+            self.toggleProcessing = function(app) {
+                var processingScope = $scope.$new(true);
+                processingScope.appName = app.appname;
+                processingScope.actionTitle = app.settings.processing_status ? 'Pause' : 'Resume';
+                processingScope.action = app.settings.processing_status ? 'pause' : 'resume';
+                processingScope.cleanupTimers = false;
+
+                if (app.settings.processing_status) {
+                    changeState('pause', app, processingScope);
+                } else {
+                    changeState('resume', app, processingScope);
+                }
+            };
+
+            function changeState(operation, app, scope) {
                 var appClone = app.clone();
                 scope.settings = {};
                 scope.settings.cleanupTimers = false;
                 scope.settings.changeFeedBoundary = 'everything';
 
-                // Open dialog to confirm application deployment.
                 $uibModal.open({
-                        templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
-                        scope: scope
-                    }).result
+                    templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
+                    scope: scope
+                }).result
                     .then(function(response) {
                         return ApplicationService.primaryStore.getDeployedApps();
                     })
                     .then(function(response) {
-                        if (appClone.appname in response.data) {
-                            return $q.reject({
-                                data: {
-                                    runtime_info: `${appClone.appname} is being undeployed. Please try later.`
-                                }
-                            });
+                            switch (operation) {
+                                case 'deploy':
+                                    if (appClone.appname in response.data) {
+                                        return $q.reject({
+                                            data: {
+                                                runtime_info: `${appClone.appname} is being undeployed. Please try later.`
+                                            }
+                                        });
+                                    }
+                                    appClone.settings.dcp_stream_boundary = scope.settings.changeFeedBoundary;
+                                    break;
+                                case 'pause':
+                                    if (!(appClone.appname in response.data)) {
+                                        return $q.reject({
+                                            data: {
+                                                runtime_info: `${appClone.appname} isn't currently deployed. Only deployed function can be paused.`
+                                            }
+                                        });
+                                    }
+                                    appClone.settings.dcp_stream_boundary = scope.settings.changeFeedBoundary;
+                                    break;
+                                case 'resume':
+                                    if (!(appClone.appname in response.data)) {
+                                        return $q.reject({
+                                            data: {
+                                                runtime_info: `${appClone.appname} isn't currently deployed. Only deployed function can be resumed.`
+                                            }
+                                        });
+                                    }
+                                    appClone.settings.dcp_stream_boundary = "from_prior";
+                                    break;
+                            }
+
+                        switch (operation) {
+                            case 'deploy':
+                            case 'resume':
+                                appClone.settings.deployment_status = true;
+                                appClone.settings.processing_status = true;
+                                return ApplicationService.public.deployApp(appClone);
+                            case 'pause':
+                                appClone.settings.deployment_status = true;
+                                appClone.settings.processing_status = false;
+                                return ApplicationService.public.updateSettings(appClone);
                         }
-
-                        appClone.settings.cleanup_timers = scope.settings.cleanupTimers;
-                        appClone.settings.dcp_stream_boundary = scope.settings.changeFeedBoundary;
-
-                        // Set app to 'deployed & enabled' state and save.
-                        appClone.settings.deployment_status = true;
-                        appClone.settings.processing_status = true;
-                        // Disable edit button till we get the compilation info
-                        self.disableEditButton = true;
-                        return ApplicationService.public.deployApp(appClone);
                     })
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
@@ -175,49 +226,44 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
                         }
 
-                        console.log(response.data);
-
-                        // Update settings in the UI.
                         app.settings.cleanup_timers = appClone.settings.cleanup_timers;
                         app.settings.deployment_status = appClone.settings.deployment_status;
                         app.settings.processing_status = appClone.settings.processing_status;
 
-                        // Enable edit button as we got compilation info
                         self.disableEditButton = false;
 
-                        // Show an alert upon successful deployment.
                         var warnings = null;
                         if (response.data && response.data.info) {
                             var info = response.data.info;
                             if (info.warnings && info.warnings.length > 0) {
-                                warnings = info.warnings.join(". <br/>");
+                                warnings = info.warnings.join(". <br>");
                                 ApplicationService.server.showWarningAlert(warnings);
                             }
                         }
+
                         if (warnings == null) {
-                            ApplicationService.server.showSuccessAlert(`${app.appname} will be deployed`);
+                            ApplicationService.server.showSuccessAlert(`${app.appname} will ${operation}`);
                         } else {
-                            ApplicationService.server.showSuccessAlert(`${app.appname} will be deployed with warnings.`);
+                            ApplicationService.server.showSuccessAlert(`${app.appname} will ${operation} with warnings`);
                         }
                     })
                     .catch(function(errResponse) {
                         if (errResponse.data && (errResponse.data.name === 'ERR_HANDLER_COMPILATION')) {
                             var info = errResponse.data.runtime_info.info;
                             app.compilationInfo = info;
-                            ApplicationService.server.showErrorAlert(`Deployment failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
+                            ApplicationService.server.showErrorAlert(`${operation} failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
                         } else if (errResponse.data && (errResponse.data.name === 'ERR_CLUSTER_VERSION')) {
                             var data = errResponse.data;
-                            ApplicationService.server.showErrorAlert(`Deployment failed: ${data.description} - ${data.runtime_info.info}`);
+                            ApplicationService.server.showErrorAlert(`${operation} failed: ${data.description} - ${data.runtime_info.info}`);
                         } else {
                             var info = errResponse.data.runtime_info;
-                            ApplicationService.server.showErrorAlert(`Deployment failed: ` + JSON.stringify(info));
+                            ApplicationService.server.showErrorAlert(`${operation} failed: ` + JSON.stringify(info));
                         }
 
-                        // Enable edit button as we got compilation info
                         self.disableEditButton = false;
                         console.error(errResponse);
                     });
-            }
+                }
 
             function undeployApp(app, scope) {
                 $uibModal.open({
@@ -516,9 +562,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
     ])
     // Controller for settings.
     .controller('SettingsCtrl', ['$q', '$timeout', '$scope', 'ApplicationService', 'FormValidationService',
-        'appName', 'bucketsResolve', 'savedApps', 'isAppDeployed', 'logFileLocation',
+        'appName', 'bucketsResolve', 'savedApps', 'isAppDeployed', 'isAppPaused', 'logFileLocation',
         function($q, $timeout, $scope, ApplicationService, FormValidationService,
-            appName, bucketsResolve, savedApps, isAppDeployed, logFileLocation) {
+            appName, bucketsResolve, savedApps, isAppDeployed, isAppPaused, logFileLocation) {
             var self = this,
                 appModel = ApplicationService.local.getAppByName(appName);
 
@@ -526,6 +572,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.showSuccessAlert = false;
             self.showWarningAlert = false;
             self.isAppDeployed = isAppDeployed;
+            self.isAppPaused = isAppPaused;
             self.logFileLocation = logFileLocation;
             self.sourceAndBindingSame = false;
 
@@ -586,11 +633,19 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                 ApplicationService.tempStore.isAppDeployed(appName)
                     .then(function(isDeployed) {
-                        if (isDeployed) {
-                            return ApplicationService.public.updateSettings($scope.appModel);
-                        } else {
-                            return ApplicationService.tempStore.saveApp($scope.appModel);
-                        }
+                        ApplicationService.tempStore.isAppPaused(appName)
+                            .then(function(isPaused) {
+                                if (isDeployed && isPaused) {
+                                    return ApplicationService.tempStore.saveApp($scope.appModel);
+                                } else if (isDeployed) {
+                                    return ApplicationService.public.updateSettings($scope.appModel);
+                                } else {
+                                    return ApplicationService.tempStore.saveApp($scope.appModel);
+                                }
+                            })
+                            .catch(function(errResponse) {
+                                console.error('Failed to get function status', errResponse);
+                            })
                     })
                     .catch(function(errResponse) {
                         console.error('Unable to get deployed apps list', errResponse);
@@ -622,7 +677,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.debugToolTip = 'Displays a URL that connects the Chrome Dev-Tools with the application handler. Code must be deployed in order to debug.';
             self.disableCancelButton = true;
             self.disableSaveButton = true;
-            self.editorDisabled = app.settings.deployment_status || app.settings.processing_status;
+            self.editorDisabled = app.settings.deployment_status && app.settings.processing_status;
             self.debugDisabled = !(app.settings.deployment_status && app.settings.processing_status);
 
             $state.current.data.title = app.appname;
@@ -655,7 +710,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                 editor.on('focus', function(event) {
                     if (self.editorDisabled) {
-                        ApplicationService.server.showWarningAlert('Undeploy the application to edit!');
+                        ApplicationService.server.showWarningAlert('Undeploy/Pause the function to edit!');
                     }
                 });
 
@@ -985,6 +1040,22 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             .then(function(deployedAppsMgr) {
                                 return deployedAppsMgr.getAppByName(appName).settings.deployment_status;
                             });
+                    },
+                    isAppPaused: function(appName) {
+                        return $http.get('/_p/event/getAppTempStore/')
+                            .then(function(response) {
+                                var pausedAppsMgr = new ApplicationManager();
+
+                                for (var pausedApp of response.data) {
+                                    pausedAppsMgr.pushApp(new Application(pausedApp))
+                                }
+
+                                return pausedAppsMgr;
+                            })
+                            .then(function(pausedAppsMgr) {
+                                return pausedAppsMgr.getAppByName(appName).settings.deployment_status &&
+                                    !pausedAppsMgr.getAppByName(appName).settings.processing_status;
+                            })
                     },
                     deleteApp: function(appName) {
                         return $http.get('/_p/event/deleteAppTempStore/?name=' + appName);

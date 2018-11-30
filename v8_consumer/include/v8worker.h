@@ -292,10 +292,8 @@ private:
 
   std::vector<int64_t> vbfilter_map_;
   std::mutex vbfilter_lock_;
-
   std::vector<int64_t> processed_bucketops_;
   std::mutex bucketops_lock_;
-
   std::list<Bucket *> bucket_handles_;
   N1QL *n1ql_handle_;
   v8::Isolate *isolate_;
@@ -306,6 +304,7 @@ private:
   std::string function_instance_id_;
   std::string user_prefix_;
   std::atomic<bool> thread_exit_cond_;
+  const std::vector<std::string> exception_type_names_;
 };
 
 const char *GetUsername(void *cookie, const char *host, const char *port,

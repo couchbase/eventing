@@ -68,6 +68,7 @@ type Producer struct {
 	pollBucketTicker       *time.Ticker
 	retryCount             int64
 	stopCh                 chan struct{}
+	stopChClosed           bool
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
 	trapEvent              bool

@@ -10,6 +10,28 @@ import (
 	"time"
 )
 
+func TestError(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	itemCount := 100
+	expectedCount := itemCount * 3
+	handler := "error"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter)
+	if expectedCount != eventCount {
+		t.Error("For", "TestError",
+			"expected", expectedCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
 func TestCRLF(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	itemCount := 100
@@ -375,7 +397,7 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		if i > 0 {
 			log.Println("Resuming app:", handler)
-			setSettings(handler, true, true, &commonSettings{})
+			setSettings(handler, true, true, &commonSettings{streamBoundary: "from_prior"})
 		}
 
 		pumpBucketOps(opsType{startIndex: itemCount * i}, &rateLimit{})
@@ -390,6 +412,7 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 		dumpStats()
 		log.Println("Pausing app:", handler)
 		setSettings(handler, true, false, &commonSettings{})
+		waitForStatusChange(handler, "paused", statsLookupRetryCounter)
 	}
 
 	flushFunctionAndBucket(handler)
@@ -405,7 +428,7 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		if i > 0 {
 			log.Println("Resuming app:", handler)
-			setSettings(handler, true, true, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4})
+			setSettings(handler, true, true, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4, streamBoundary: "from_prior"})
 		}
 
 		pumpBucketOps(opsType{startIndex: itemCount * i}, &rateLimit{})
@@ -420,6 +443,7 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 		dumpStats()
 		log.Println("Pausing app:", handler)
 		setSettings(handler, true, false, &commonSettings{})
+		waitForStatusChange(handler, "paused", statsLookupRetryCounter)
 	}
 
 	flushFunctionAndBucket(handler)
@@ -445,9 +469,10 @@ func TestPauseAndResumeWithWorkerCountChange(t *testing.T) {
 	dumpStats()
 	log.Println("Pausing app:", handler)
 	setSettings(handler, true, false, &commonSettings{})
+	waitForStatusChange(handler, "paused", statsLookupRetryCounter)
 
 	log.Println("Resuming app:", handler)
-	setSettings(handler, true, true, &commonSettings{workerCount: 6})
+	setSettings(handler, true, true, &commonSettings{workerCount: 6, streamBoundary: "from_prior"})
 
 	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
 	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
@@ -481,13 +506,14 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 	dumpStats()
 	log.Println("Pausing app:", handler)
 	setSettings(handler, true, false, &commonSettings{})
+	waitForStatusChange(handler, "paused", statsLookupRetryCounter)
 
 	addNodeFromRest("127.0.0.1:9003", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
 	log.Println("Resuming app:", handler)
-	setSettings(handler, true, true, &commonSettings{workerCount: 6})
+	setSettings(handler, true, true, &commonSettings{workerCount: 6, streamBoundary: "from_prior"})
 
 	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
 	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
@@ -502,45 +528,6 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	flushFunctionAndBucket(handler)
-}
-
-func TestCleanupTimersOnPause(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "timers_in_distant_future"
-
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
-
-	pumpBucketOps(opsType{}, &rateLimit{})
-	time.Sleep(10 * time.Second) // Let some timers get created
-
-	log.Println("Pausing app:", handler)
-	setSettings(handler, true, false, &commonSettings{cleanupTimers: true})
-
-	eventCount := verifyBucketCount(1024, statsLookupRetryCounter, metaBucket)
-	if eventCount != 1024 {
-		t.Error("For", "TestCleanupTimersOnPause",
-			"expected", 1024,
-			"got", eventCount,
-		)
-	}
-
-	log.Println("Resuming app:", handler)
-	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_prior"})
-	eventCount = verifyBucketCount(2048, statsLookupRetryCounter, metaBucket)
-	if eventCount != 2048 {
-		t.Error("For", "TestCleanupTimersOnPause",
-			"expected", 2048,
-			"got", eventCount,
-		)
-	}
-
-	log.Println("Undeploying app:", handler)
-	setSettings(handler, false, false, &commonSettings{})
-
-	time.Sleep(5 * time.Second)
 	flushFunctionAndBucket(handler)
 }
 
@@ -560,6 +547,7 @@ func TestChangeFnCodeBetweenPauseResume(t *testing.T) {
 
 	log.Println("Pausing function:", fnName)
 	setSettings(fnName, true, false, &commonSettings{})
+	waitForStatusChange(fnName, "paused", statsLookupRetryCounter)
 
 	// TODO: Reduce this sleep window
 	time.Sleep(3 * time.Minute)
@@ -576,42 +564,6 @@ func TestChangeFnCodeBetweenPauseResume(t *testing.T) {
 
 	time.Sleep(5 * time.Second)
 	flushFunctionAndBucket(fnName)
-}
-
-func TestCleanupTimersOnResume(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "timers_in_distant_future"
-
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
-
-	pumpBucketOps(opsType{}, &rateLimit{})
-	time.Sleep(10 * time.Second) // Let some timers get created
-
-	mCount, _ := getBucketItemCount(metaBucket)
-
-	log.Printf("Metadata item count: %d pausing app: %s\n", mCount, handler)
-	setSettings(handler, true, false, &commonSettings{})
-
-	mCount, _ = getBucketItemCount(metaBucket)
-	log.Printf("Metadata item count: %d resuming app: %s\n", mCount, handler)
-
-	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_prior", cleanupTimers: true})
-
-	eventCount := verifyBucketCount(2048, statsLookupRetryCounter, metaBucket)
-	if eventCount != 2048 {
-		t.Error("For", "TestCleanupTimersOnResume",
-			"expected", 2048,
-			"got", eventCount,
-		)
-	}
-
-	log.Println("Undeploying app:", handler)
-	setSettings(handler, false, false, &commonSettings{})
-
-	time.Sleep(5 * time.Second)
-	flushFunctionAndBucket(handler)
 }
 
 func TestDiffFeedBoundariesWithResume(t *testing.T) {
@@ -640,59 +592,27 @@ func TestDiffFeedBoundariesWithResume(t *testing.T) {
 		t.Error("Waited too long for item count to come down to 0")
 	}
 
-	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
-
-	log.Printf("Resuming app: %s from feed boundary everything\n", handler)
-	setSettings(handler, true, true, &commonSettings{streamBoundary: "everything"})
-	waitForStatusChange(handler, "deployed", statsLookupRetryCounter)
-
-	eventCount = verifyBucketCount(itemCount*2, statsLookupRetryCounter, dstBucket)
-	if eventCount != itemCount*2 {
-		t.Error("For", "TestDiffFeedBoundariesWithResume with from_eveything feed boundary",
-			"expected", itemCount*2,
-			"got", eventCount,
-		)
-	}
-
-	log.Println("Pausing app:", handler)
-	setSettings(handler, true, false, &commonSettings{})
-	waitForStatusChange(handler, "paused", statsLookupRetryCounter)
-
-	bucketFlush(dstBucket)
-	count = verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
-	if count != 0 {
-		t.Error("Waited too long for item count to come down to 0")
-	}
-
-	// TODO: Remove this sleep. Added to mitigate a race occurring when resume request is quickly fired after pause
-	time.Sleep(3 * time.Minute)
-
-	log.Printf("Resuming app: %s from feed boundary from_now\n", handler)
-	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_now"})
-	waitForStatusChange(handler, "deployed", statsLookupRetryCounter)
-
-	pumpBucketOps(opsType{}, &rateLimit{})
-	eventCount = verifyBucketCount(itemCount, statsLookupRetryCounter, dstBucket)
-	if eventCount != itemCount {
-		t.Error("For", "TestDiffFeedBoundariesWithResume with from_now feed boundary",
-			"expected", itemCount,
-			"got", eventCount,
-		)
-	}
-
 	go pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
 
-	time.Sleep(5 * time.Second)
+	log.Printf("Resuming app: %s from feed boundary everything\n", handler)
+	res, _ := setSettings(handler, true, true, &commonSettings{streamBoundary: "everything"})
+	if res.httpResponseCode == 200 {
+		t.Error("Expected non 200 response code")
+	}
 
-	log.Println("Pausing app:", handler)
-	setSettings(handler, true, false, &commonSettings{})
-	waitForStatusChange(handler, "paused", statsLookupRetryCounter)
+	if res.httpResponseCode != 200 && res.Name != "ERR_INVALID_CONFIG" {
+		t.Error("Expected ERR_INVALID_CONFIG got", res.Name)
+	}
 
-	count, _ = getBucketItemCount(dstBucket)
-	log.Println("Item count in dst bucket:", count)
+	log.Printf("Resuming app: %s from feed boundary from_now\n", handler)
+	res, _ = setSettings(handler, true, true, &commonSettings{streamBoundary: "from_now"})
+	if res.httpResponseCode == 200 {
+		t.Error("Expected non 200 response code")
+	}
 
-	// TODO: Remove this sleep. Added to mitigate a race occurring when resume request is quickly fired after pause
-	time.Sleep(3 * time.Minute)
+	if res.httpResponseCode != 200 && res.Name != "ERR_INVALID_CONFIG" {
+		t.Error("Expected ERR_INVALID_CONFIG got", res.Name)
+	}
 
 	log.Printf("Resuming app: %s from feed boundary from_prior\n", handler)
 	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_prior"})
@@ -1210,6 +1130,10 @@ func TestInterHandlerRecursion(t *testing.T) {
 		t.Errorf("Deployment must fail")
 		return
 	}
+
+	// Required, otherwise function delete request in subsequent call would fail
+	waitForDeployToFinish(handler1)
+
 	flushFunctionAndBucket(handler1)
 	flushFunctionAndBucket(handler2)
 }

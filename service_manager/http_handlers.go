@@ -942,6 +942,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		return
 	}
 
+	logging.Infof("%s Function: %s settings params: %+v", logPrefix, appName, settings)
+
 	_, procStatExists := settings["processing_status"]
 	_, depStatExists := settings["deployment_status"]
 
@@ -974,7 +976,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		mhVersion := eventingVerMap["mad-hatter"]
 
 		// Check for pause processing
-		if deploymentStatus == true && processingStatus == false {
+		if deploymentStatus && !processingStatus {
 			if !m.compareEventingVersion(mhVersion) {
 				info.Code = m.statusCodes.errClusterVersion.Code
 				info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for pausing function execution",
@@ -1001,11 +1003,24 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 		if filterFeedBoundary(settings) == common.DcpFromPrior && m.superSup.GetAppState(appName) != common.AppStatePaused {
 			info.Code = m.statusCodes.errInvalidConfig.Code
-			info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state", appName)
+			info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state, current state: %v",
+				appName, m.superSup.GetAppState(appName))
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			return
 		}
 
+		if deploymentStatus && processingStatus && m.superSup.GetAppState(appName) == common.AppStatePaused {
+			switch filterFeedBoundary(settings) {
+			case common.DcpFromNow, common.DcpEverything:
+				info.Code = m.statusCodes.errInvalidConfig.Code
+				info.Info = fmt.Sprintf("Function: %s only from_prior feed boundary is allowed during resume", appName)
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				return
+			case common.DcpStreamBoundary(""):
+				app.Settings["dcp_stream_boundary"] = "from_prior"
+			default:
+			}
+		}
 	} else {
 		info.Code = m.statusCodes.errStatusesNotFound.Code
 		info.Info = fmt.Sprintf("Function: %s missing processing or deployment statuses or both", appName)
@@ -1433,7 +1448,7 @@ func filterFeedBoundary(settings map[string]interface{}) common.DcpStreamBoundar
 		}
 	}
 
-	return common.DcpEverything
+	return common.StreamBoundary("")
 }
 
 // Saves application to metakv and returns appropriate success/error code
@@ -1479,6 +1494,19 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
+	}
+
+	if m.superSup.GetAppState(app.Name) == common.AppStatePaused {
+		switch filterFeedBoundary(app.Settings) {
+		case common.DcpFromNow, common.DcpEverything:
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("Function: %s only from_prior feed boundary is allowed during resume", app.Name)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return
+		case common.DcpStreamBoundary(""):
+			app.Settings["dcp_stream_boundary"] = "from_prior"
+		default:
+		}
 	}
 
 	app.SrcMutationEnabled = m.isSrcMutationEnabled(&app.DeploymentConfig)
@@ -2234,6 +2262,17 @@ func determineStatus(status appStatus, numEventingNodes int) string {
 		if status.NumBootstrappingNodes == 0 && status.NumDeployedNodes == numEventingNodes {
 			return "deployed"
 		}
+		return "deploying"
+	}
+
+	// For case:
+	// T1 - bootstrap was requested
+	// T2 - undeploy was requested
+	// T3 - boostrap finished
+	// During the period T2 - T3, Eventing is spending cycles to bring up
+	// the function is ready state i.e. state should be "deploying". Reporting
+	// undeployed by looking up in temp store would be unreasonable
+	if status.NumBootstrappingNodes > 0 {
 		return "deploying"
 	}
 

@@ -342,7 +342,7 @@ func StreamBoundary(boundary string) DcpStreamBoundary {
 		return DcpFromNow
 	case "from_prior":
 		return DcpFromPrior
+	default:
+		return DcpStreamBoundary("")
 	}
-
-	return DcpStreamBoundary("")
 }

@@ -21,7 +21,7 @@ Application.prototype.enforceSchema = function() {
 Application.prototype.getProcessingStatus = function(inverted) {
     // Inverted case is used for the button.
     if (inverted) {
-        return this.settings.processing_status ? 'Pause' : 'Run';
+        return this.settings.processing_status ? 'Pause' : 'Resume';
     }
 
     return this.settings.processing_status ? 'running' : 'paused';
@@ -172,6 +172,7 @@ function determineUIStatus(status) {
         case 'undeployed':
         case 'paused':
             return 'inactive';
+        case 'pausing':
         case 'undeploying':
         case 'deploying':
             return 'warmup';

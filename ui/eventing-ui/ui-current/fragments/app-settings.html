@@ -130,7 +130,7 @@
             type="number"
             name="worker_count"
             ng-model="appModel.settings.worker_count"
-            ng-disabled="formCtrl.isAppDeployed"
+            ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
             min="1"
             max="64">
           <div
@@ -149,7 +149,7 @@
             Worker count must be less than 64
           </div>
         </div>
-        <div class="formrow indent-1" ng-disabled="formCtrl.isAppDeployed">
+        <div class="formrow indent-1" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
           <label class="inline">Script Timeout
             <small>in seconds</small>
           </label>
@@ -164,7 +164,7 @@
             type="number"
             name="execution_timeout"
             ng-model="appModel.settings.execution_timeout"
-            ng-disabled="formCtrl.isAppDeployed"
+            ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
             min="1"
             max="60">
           <div
@@ -265,14 +265,14 @@
             <button
               class="outline btn-small"
               title="Add a binding"
-              ng-disabled="formCtrl.isAppDeployed"
+            ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
               ng-click="formCtrl.bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:''})">
               +
             </button>
             <button
               class="outline btn-small"
               title="Remove parameter"
-              ng-disabled="formCtrl.isAppDeployed"
+            ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
               ng-click="formCtrl.bindings.splice(-1, 1)">
               -
             </button>
@@ -292,7 +292,7 @@
             </span>
               <select>
                 <option value="alias"
-                        ng-disabled="formCtrl.isAppDeployed"
+                        ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                         ng-model="formCtrl.bindings[$index].type">Alias
                 </option>
               </select>
@@ -301,7 +301,7 @@
               <h4 class="text-medium inline">name</h4>
               <span class="input-prepend">
               <select ng-model="formCtrl.bindings[$index].name"
-                      ng-disabled="formCtrl.isAppDeployed"
+                      ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                       ng-options="bucket for bucket in formCtrl.sourceBuckets">
               </select>
             </span>
@@ -309,7 +309,7 @@
             <div class="width-4">
               <h4 class="text-medium inline">value</h4>
               <input type="text"
-                     ng-disabled="formCtrl.isAppDeployed"
+                     ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                      ng-model="formCtrl.bindings[$index].value"/>
             </div>
             <div class="column width-4">

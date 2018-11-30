@@ -135,7 +135,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    const std::string &user_prefix)
     : app_name_(h_config->app_name), settings_(server_settings),
       platform_(platform), function_name_(function_name),
-      function_id_(function_id), user_prefix_(user_prefix) {
+      function_id_(function_id), user_prefix_(user_prefix),
+      exception_type_names_({"KVError", "N1QLError", "EventingError"}) {
   std::ostringstream oss;
   oss << "\"" << function_id << "-" << function_instance_id << "\"";
   function_instance_id_.assign(oss.str());
@@ -184,6 +185,11 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   global->Set(v8::String::NewFromUtf8(isolate_, "createTimer"),
               v8::FunctionTemplate::New(isolate_, CreateTimer));
 
+  for (const auto &type_name : exception_type_names_) {
+    global->Set(v8::String::NewFromUtf8(isolate_, type_name.c_str()),
+                v8::FunctionTemplate::New(isolate_, CustomErrorCtor));
+  }
+
   if (try_catch.HasCaught()) {
     LOG(logError) << "Exception logged:"
                   << ExceptionString(isolate_, &try_catch) << std::endl;
@@ -193,6 +199,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   context_.Reset(isolate_, context);
   js_exception_ = new JsException(isolate_);
   data_.js_exception = js_exception_;
+  data_.custom_error = new CustomError(isolate_, context);
 
   auto ssl = false;
   auto port = server_settings->eventing_port;
@@ -284,6 +291,7 @@ V8Worker::~V8Worker() {
   }
 
   auto data = UnwrapData(isolate_);
+  delete data->custom_error;
   delete data->comm;
   delete data->transpiler;
   delete data->utils;
@@ -362,6 +370,10 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   auto context = context_.Get(isolate_);
   auto transpiler = UnwrapData(isolate_)->transpiler;
   v8::Context::Scope context_scope(context);
+
+  for (const auto &type_name : exception_type_names_) {
+    DeriveFromError(isolate_, context, type_name);
+  }
 
   auto uniline_info = transpiler->UniLineN1QL(script_to_execute);
   LOG(logTrace) << "code after Unilining N1QL: "
