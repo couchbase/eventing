@@ -56,15 +56,21 @@ func TestCRLF(t *testing.T) {
 func TestImportExport(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	n1qlHandler := "n1ql_insert_on_update"
-	flushFunctionAndBucket(n1qlHandler)
-	createAndDeployFunction(n1qlHandler, n1qlHandler, &commonSettings{})
-
 	bucketHandler := "bucket_op_on_update"
+
+	flushFunctionAndBucket(n1qlHandler)
 	flushFunctionAndBucket(bucketHandler)
+
+	createAndDeployFunction(n1qlHandler, n1qlHandler, &commonSettings{})
 	createAndDeployFunction(bucketHandler, bucketHandler, &commonSettings{})
 
 	waitForDeployToFinish(n1qlHandler)
 	waitForDeployToFinish(bucketHandler)
+
+	defer func() {
+		flushFunctionAndBucket(bucketHandler)
+		flushFunctionAndBucket(n1qlHandler)
+	}()
 
 	exportResponse, err := makeRequest("GET", strings.NewReader(""), exportFunctionsURL)
 	if err != nil {
@@ -72,8 +78,8 @@ func TestImportExport(t *testing.T) {
 		return
 	}
 
-	flushFunctionAndBucket(bucketHandler)
-	flushFunctionAndBucket(n1qlHandler)
+	flushFunction(n1qlHandler)
+	flushFunction(bucketHandler)
 
 	_, err = makeRequest("POST", strings.NewReader(string(exportResponse)), importFunctionsURL)
 	if err != nil {
@@ -103,6 +109,7 @@ func TestImportExport(t *testing.T) {
 		t.Errorf("Import/Export failed for %v", bucketHandler)
 		return
 	}
+
 }
 
 func functionExists(name string, functionsList []map[string]interface{}) bool {
