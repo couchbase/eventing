@@ -433,7 +433,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     type: 'alias',
                     name: '',
                     value: '',
-                    access: 'rw'
+                    access: 'r'
                 });
                 createApp(scope);
             };
@@ -469,14 +469,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                             var scope = $scope.$new(true);
                             scope.appModel = new ApplicationModel(app);
-                            scope.bindings = ApplicationService.getBindingFromConfig(app.depcfg.buckets);
+                            scope.bindings = ApplicationService.getBindingFromConfig(app.depcfg);
                             if (!scope.bindings.length) {
                                 // Add a sample row of bindings.
                                 scope.bindings.push({
                                     type: 'alias',
                                     name: '',
                                     value: '',
-                                    access: 'rw'
+                                    access: 'r'
                                 });
                             }
 
@@ -579,7 +579,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             // Need to initialize buckets if they are empty,
             // otherwise self.saveSettings() would compare 'null' with '[]'.
             appModel.depcfg.buckets = appModel.depcfg.buckets ? appModel.depcfg.buckets : [];
-            self.bindings = ApplicationService.getBindingFromConfig(appModel.depcfg.buckets);
+            self.bindings = ApplicationService.getBindingFromConfig(appModel.depcfg);
 
             // TODO : The following two lines may not be needed as we don't allow the user to edit
             //			the source and metadata buckets in the settings page.
@@ -1189,7 +1189,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 },
                 convertBindingToConfig: function(bindings) {
                     // A binding is of the form -
-                    // [{type:'alias', name:'', value:'', acess:''}]
+                    // [{type:'alias', name:'', value:'', access:''}]
                     var config = [];
                     for (var binding of bindings) {
                         if (binding.type === 'alias' && binding.name && binding.value) {
@@ -1205,12 +1205,20 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 getBindingFromConfig: function(config) {
                     var bindings = [];
                     if (config) {
-                        for (var c of config) {
+                        for (var c of config.buckets) {
                             var element = {};
                             element.type = 'alias';
                             element.name = c.bucket_name;
                             element.value = c.alias;
-                            element.access = c.access;
+                            if (!c.access) {
+                                if (config.source_bucket === c.bucket_name) {
+                                    element.access = 'r';
+                                } else {
+                                    element.access = 'rw';
+                                }
+                            } else {
+                                element.access = c.access
+                            }
                             bindings.push(element);
                         }
                     }

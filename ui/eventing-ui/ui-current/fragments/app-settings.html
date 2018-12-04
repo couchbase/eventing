@@ -191,7 +191,7 @@
             <button
               class="outline btn-small"
               title="Add a binding"
-              ng-click="bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:'', access:'rw'})">
+              ng-click="bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:'', access:'r'})">
               +
             </button>
             <button
@@ -205,7 +205,7 @@
         <hr>
         <div ng-repeat="binding in bindings track by $index">
           <div class="row margin-bottom-half">
-            <div class="column width-4">
+            <div class="column width-3">
               <h4 class="text-medium inline">type</h4>
               <span
                 class="fa-stack icon-info"
@@ -220,7 +220,7 @@
                 </option>
               </select>
             </div>
-            <div class="column width-4">
+            <div class="column width-3">
               <h4 class="text-medium inline">name</h4>
               <span class="input-prepend">
               <select ng-model="bindings[$index].name"
@@ -228,17 +228,17 @@
               </select>
             </span>
             </div>
-            <div class="width-4">
+            <div class="column width-3">
               <h4 class="text-medium inline">value</h4>
               <input type="text" ng-model="bindings[$index].value"/>
             </div>
-            <div class="column width-4">
+            <div class="width-3">
               <h4 class="text-medium inline">access</h4>
               <select ng-model="bindings[$index].access">
-                <option value="rw">rw
+                <option value="r">Read Only
                 </option>
-                <option value="r">r
-                </option>
+                <option value="rw">Read and Write
+                  </option>
               </select>
             </div>
             <div
@@ -266,7 +266,7 @@
               class="outline btn-small"
               title="Add a binding"
             ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-              ng-click="formCtrl.bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:''})">
+              ng-click="formCtrl.bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:'', access:'r'})">
               +
             </button>
             <button
@@ -281,7 +281,7 @@
         <hr>
         <div ng-repeat="binding in formCtrl.bindings track by $index">
           <div class="row margin-bottom-half">
-            <div class="column width-4">
+            <div class="column width-3">
               <h4 class="text-medium inline">type</h4>
               <span
                 class="fa-stack icon-info"
@@ -290,14 +290,13 @@
             <span class="icon fa-circle-thin fa-stack-2x"></span>
             <span class="icon fa-info fa-stack-1x"></span>
             </span>
-              <select>
-                <option value="alias"
-                        ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                        ng-model="formCtrl.bindings[$index].type">Alias
+              <select ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                      ng-model="formCtrl.bindings[$index].type">
+                <option value="alias">Alias
                 </option>
               </select>
             </div>
-            <div class="column width-4">
+            <div class="column width-3">
               <h4 class="text-medium inline">name</h4>
               <span class="input-prepend">
               <select ng-model="formCtrl.bindings[$index].name"
@@ -306,18 +305,19 @@
               </select>
             </span>
             </div>
-            <div class="width-4">
+            <div class="column width-3">
               <h4 class="text-medium inline">value</h4>
               <input type="text"
                      ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                      ng-model="formCtrl.bindings[$index].value"/>
             </div>
-            <div class="column width-4">
+            <div class="column width-3">
               <h4 class="text-medium inline">access</h4>
-              <select  ng-model="formCtrl.bindings[$index].access">
-                <option value="rw">rw
+              <select  ng-model="formCtrl.bindings[$index].access"
+                       ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+                <option value="r">Read Only
                 </option>
-                <option value="r">r
+                <option value="rw">Read and Write
                 </option>
               </select>
             </div>
