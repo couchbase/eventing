@@ -399,7 +399,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         creationScope.appModel.settings.deployment_status = false;
 
                         // Deadline timeout must be greater and execution timeout.
-                        creationScope.appModel.settings.deadline_timeout = creationScope.appModel.settings.execution_timeout + 2;
+                        if (creationScope.appModel.settings.hasOwnProperty('execution_timeout')) {
+                            creationScope.appModel.settings.deadline_timeout = creationScope.appModel.settings.execution_timeout + 2;
+                        }
 
                         ApplicationService.local.createApp(creationScope.appModel);
                         return $state.transitionTo('app.admin.eventing.handler', {
@@ -625,7 +627,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 }
 
                 // Deadline timeout must be greater than execution timeout.
-                $scope.appModel.settings.deadline_timeout = $scope.appModel.settings.execution_timeout + 2;
+                if ($scope.appModel.settings.hasOwnProperty('execution_timeout')) {
+                    $scope.appModel.settings.deadline_timeout = $scope.appModel.settings.execution_timeout + 2;
+                }
 
                 // Update local changes.
                 appModel.settings = $scope.appModel.settings;
