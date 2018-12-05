@@ -233,7 +233,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 	var possibleConsumers []string
 	for i := 0; i < c.workerCount; i++ {
-		possibleConsumers = append(possibleConsumers, fmt.Sprintf("worker_%s_%s", c.app.AppName, i))
+		possibleConsumers = append(possibleConsumers, fmt.Sprintf("worker_%s_%d", c.app.AppName, i))
 	}
 
 	switch vbBlob.DCPStreamStatus {

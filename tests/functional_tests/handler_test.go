@@ -966,6 +966,42 @@ func TestUndeployWithKVFailover(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+func TestBucketFlushWhileFnDeployed(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(opsType{count: itemCount * 4}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount*4, statsLookupRetryCounter)
+	if itemCount*4 != eventCount {
+		t.Error("For", "TestBucketFlushWhileFnDeployed",
+			"expected", itemCount*4,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+
+	bucketFlush(srcBucket)
+	verifyBucketCount(0, statsLookupRetryCounter, srcBucket)
+
+	bucketFlush(dstBucket)
+	verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
+
+	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
+	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
+	if itemCount*2 != eventCount {
+		t.Error("For", "TestBucketFlushWhileFnDeployed",
+			"expected", itemCount*2,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
 func TestTimerOverwrite(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer_overwritten"
