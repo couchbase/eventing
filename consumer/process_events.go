@@ -1086,7 +1086,7 @@ func (c *Consumer) handleFailoverLog() {
 				}
 
 				if flog, ok := flogs[vbFlog.vb]; ok {
-					vbuuid, startSeqNo, err = flog.Latest()
+					vbuuid, startSeqNo, err = flog.FetchLogForSeqNo(vbBlob.LastSeqNoProcessed)
 					if err != nil {
 						c.Lock()
 						c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbFlog.vb)
