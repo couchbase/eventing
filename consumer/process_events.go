@@ -344,7 +344,7 @@ func (c *Consumer) processEvents() {
 				c.vbProcessingStats.updateVbStat(e.VBucket, "seq_no_at_stream_end", lastSeqNo)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
 
-				c.sendVbFilterData(e, lastSeqNo)
+				c.sendVbFilterData(e.VBucket, lastSeqNo)
 
 			default:
 			}
@@ -1110,6 +1110,8 @@ func (c *Consumer) handleFailoverLog() {
 					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
 
+					c.sendVbFilterData(vbFlog.vb, vbFlog.seqNo-1)
+
 					streamInfo := &streamRequestInfo{
 						vb:         vbFlog.vb,
 						vbBlob:     &vbBlob,
@@ -1125,6 +1127,10 @@ func (c *Consumer) handleFailoverLog() {
 				} else {
 					logging.Infof("%s [%s:%s:%d] vb: %d Retrying DCP stream start vbuuid: %d startSeq: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
+
+					if vbFlog.statusCode == mcd.NOT_MY_VBUCKET {
+						c.sendVbFilterData(vbFlog.vb, startSeqNo-1)
+					}
 
 					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
 						continue
