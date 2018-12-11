@@ -213,6 +213,7 @@ func TestMetaPartialRollbackWithEventingReb(t *testing.T) {
 	metaStateDump()
 
 	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002"})
+	go mangleCheckpointBlobs(handler, "eventing", 0, 1023)
 	waitForRebalanceFinish()
 	metaStateDump()
 

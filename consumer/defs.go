@@ -216,6 +216,7 @@ type Consumer struct {
 	vbStreamRequested             map[uint16]struct{} // Access controlled by vbsStreamRRWMutex
 	vbsStreamRRWMutex             *sync.RWMutex
 	workerExited                  bool
+	workerCount                   int
 	workerVbucketMap              map[string][]uint16 // Access controlled by workerVbucketMapRWMutex
 	workerVbucketMapRWMutex       *sync.RWMutex
 

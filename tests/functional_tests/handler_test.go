@@ -56,15 +56,21 @@ func TestCRLF(t *testing.T) {
 func TestImportExport(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	n1qlHandler := "n1ql_insert_on_update"
-	flushFunctionAndBucket(n1qlHandler)
-	createAndDeployFunction(n1qlHandler, n1qlHandler, &commonSettings{})
-
 	bucketHandler := "bucket_op_on_update"
+
+	flushFunctionAndBucket(n1qlHandler)
 	flushFunctionAndBucket(bucketHandler)
+
+	createAndDeployFunction(n1qlHandler, n1qlHandler, &commonSettings{})
 	createAndDeployFunction(bucketHandler, bucketHandler, &commonSettings{})
 
 	waitForDeployToFinish(n1qlHandler)
 	waitForDeployToFinish(bucketHandler)
+
+	defer func() {
+		flushFunctionAndBucket(bucketHandler)
+		flushFunctionAndBucket(n1qlHandler)
+	}()
 
 	exportResponse, err := makeRequest("GET", strings.NewReader(""), exportFunctionsURL)
 	if err != nil {
@@ -72,8 +78,8 @@ func TestImportExport(t *testing.T) {
 		return
 	}
 
-	flushFunctionAndBucket(bucketHandler)
-	flushFunctionAndBucket(n1qlHandler)
+	flushFunction(n1qlHandler)
+	flushFunction(bucketHandler)
 
 	_, err = makeRequest("POST", strings.NewReader(string(exportResponse)), importFunctionsURL)
 	if err != nil {
@@ -103,6 +109,7 @@ func TestImportExport(t *testing.T) {
 		t.Errorf("Import/Export failed for %v", bucketHandler)
 		return
 	}
+
 }
 
 func functionExists(name string, functionsList []map[string]interface{}) bool {
@@ -954,6 +961,42 @@ func TestUndeployWithKVFailover(t *testing.T) {
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	waitForUndeployToFinish(handler)
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
+func TestBucketFlushWhileFnDeployed(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+	flushFunctionAndBucket(handler)
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	pumpBucketOps(opsType{count: itemCount * 4}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount*4, statsLookupRetryCounter)
+	if itemCount*4 != eventCount {
+		t.Error("For", "TestBucketFlushWhileFnDeployed",
+			"expected", itemCount*4,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+
+	bucketFlush(srcBucket)
+	verifyBucketCount(0, statsLookupRetryCounter, srcBucket)
+
+	bucketFlush(dstBucket)
+	verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
+
+	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
+	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
+	if itemCount*2 != eventCount {
+		t.Error("For", "TestBucketFlushWhileFnDeployed",
+			"expected", itemCount*2,
+			"got", eventCount,
+		)
+	}
 
 	dumpStats()
 	flushFunctionAndBucket(handler)
