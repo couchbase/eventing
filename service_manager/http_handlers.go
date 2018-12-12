@@ -1623,7 +1623,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	}
 
 	var wInfo warningsInfo
-	wInfo.Status = "Stored function config in metakv"
+	wInfo.Status = fmt.Sprintf("Stored function: '%s' in metakv", app.Name)
 
 	switch strings.ToLower(compilationInfo.Level) {
 	case "dp":
@@ -1816,7 +1816,7 @@ func (m *ServiceMgr) getConfig() (c common.Config, info *runtimeInfo) {
 		}
 	}
 
-	logging.Infof("%s Retrieving config from metakv: %ru", logPrefix, c)
+	logging.Infof("%s Retrieving config from metakv: %+v", logPrefix, c)
 	info.Code = m.statusCodes.ok.Code
 	return
 }
@@ -2481,6 +2481,8 @@ func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::exportHandler"
+
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		cbauth.SendForbidden(w, EventingPermissionManage)
@@ -2494,6 +2496,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ExportFunctions, r, nil)
 
+	exportedFns := make([]string, 0)
 	apps := m.getTempStoreAll()
 	for _, app := range apps {
 		for i := range app.DeploymentConfig.Curl {
@@ -2501,7 +2504,10 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		app.Settings["deployment_status"] = false
 		app.Settings["processing_status"] = false
+		exportedFns = append(exportedFns, app.Name)
 	}
+
+	logging.Infof("%s Exported function list: %+v", logPrefix, exportedFns)
 
 	data, err := json.Marshal(apps)
 	if err != nil {
@@ -2516,6 +2522,8 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::importHandler"
+
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		cbauth.SendForbidden(w, EventingPermissionManage)
@@ -2536,6 +2544,13 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	infoList := m.createApplications(r, appList, true)
+
+	importedFns := make([]string, 0)
+	for _, app := range *appList {
+		importedFns = append(importedFns, app.Name)
+	}
+
+	logging.Infof("%s Imported functions: %+v", logPrefix, importedFns)
 	m.sendRuntimeInfoList(w, infoList)
 }
 

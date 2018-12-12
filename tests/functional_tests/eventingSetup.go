@@ -286,7 +286,7 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	return encodedData, nil
 }
 
-func setSettings(appName string, deploymentStatus, processingStatus bool, s *commonSettings) (*responseSchema, error) {
+func setSettings(fnName string, deploymentStatus, processingStatus bool, s *commonSettings) (*responseSchema, error) {
 	res := &responseSchema{}
 	settings := make(map[string]interface{})
 
@@ -333,7 +333,7 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 		return res, err
 	}
 
-	req, err := http.NewRequest("POST", functionsURL+"/"+appName+"/settings", bytes.NewBuffer(data))
+	req, err := http.NewRequest("POST", functionsURL+"/"+fnName+"/settings", bytes.NewBuffer(data))
 	if err != nil {
 		log.Println("Undeploy request framing::", err)
 		return res, err
@@ -356,12 +356,13 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 	}
 
 	err = json.Unmarshal(data, res)
-	log.Printf("Update settings, response code: %d dump: %s\n", resp.StatusCode, string(data))
+	log.Printf("Function: %s update settings: %+v requested, response code: %d dump: %s\n",
+		fnName, settings, resp.StatusCode, string(data))
 	return res, nil
 }
 
-func deleteFunction(appName string) (*responseSchema, error) {
-	return makeDeleteReq("Delete from main store", functionsURL+"/"+appName)
+func deleteFunction(fnName string) (*responseSchema, error) {
+	return makeDeleteReq(fmt.Sprintf("Function: %s delete from main store", fnName), functionsURL+"/"+fnName)
 }
 
 func makeDeleteReq(context, url string) (response *responseSchema, err error) {
