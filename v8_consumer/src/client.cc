@@ -1032,10 +1032,6 @@ int main(int argc, char **argv) {
 
   srand(static_cast<unsigned>(time(nullptr)));
 
-  if (isSSE42Supported()) {
-    initCrcTable();
-  }
-
   std::string appname(argv[1]);
   std::string ipc_type(argv[2]); // can be af_unix or af_inet
 

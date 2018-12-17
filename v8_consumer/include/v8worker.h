@@ -34,7 +34,6 @@
 #include <v8.h>
 
 #include "commands.h"
-#include "crc32c.h"
 #include "function_templates.h"
 #include "histogram.h"
 #include "inspector_agent.h"
