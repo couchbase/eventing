@@ -310,6 +310,19 @@ func (m *ServiceMgr) isAppDeployable(app *application) bool {
 	return true
 }
 
+func (m *ServiceMgr) getSourceAndDestinationsFromDepCfg(cfg *depCfg) (src string, dest map[string]struct{}) {
+	dest = make(map[string]struct{})
+	src = cfg.SourceBucket
+	dest[cfg.MetadataBucket] = struct{}{}
+	for idx := 0; idx < len(cfg.Buckets); idx++ {
+		bucketName := cfg.Buckets[idx].BucketName
+		if bucketName != src && cfg.Buckets[idx].Access == "rw" {
+			dest[bucketName] = struct{}{}
+		}
+	}
+	return src, dest
+}
+
 var metakvSetCallback = func(args ...interface{}) error {
 	logPrefix := "ServiceMgr::metakvSetCallback"
 
