@@ -243,6 +243,10 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 			return nil
 		}
 
+		if !util.Contains(vbBlob.NodeUUID, c.eventingNodeUUIDs) && !util.Contains(vbBlob.NodeUUID, c.ejectNodesUUIDs) {
+			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+		}
+
 		if c.NodeUUID() != vbBlob.NodeUUID &&
 			!c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner, vbBlob.NodeUUID) && c.checkIfCurrentNodeShouldOwnVb(vb) {
 
