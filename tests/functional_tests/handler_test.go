@@ -744,6 +744,7 @@ func TestEventProcessingPostBucketFlush(t *testing.T) {
 		)
 	}
 
+	dumpStats()
 	bucketFlush(srcBucket)
 	verifyBucketCount(0, statsLookupRetryCounter, srcBucket)
 	bucketFlush(dstBucket)
@@ -758,6 +759,7 @@ func TestEventProcessingPostBucketFlush(t *testing.T) {
 		)
 	}
 
+	dumpStats()
 	setSettings(handler, false, false, &commonSettings{})
 	waitForUndeployToFinish(handler)
 	checkIfProcessRunning("eventing-con")
