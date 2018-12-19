@@ -102,6 +102,7 @@ type dcpMetadata struct {
 
 type vbSeqNo struct {
 	SeqNo   uint64 `json:"seq"`
+	SkipAck int    `json:"skip_ack"` // 0: false 1: true
 	Vbucket uint16 `json:"vb"`
 }
 

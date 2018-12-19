@@ -1093,3 +1093,19 @@ var checkIfReceivedTillEndSeqNoCallback = func(args ...interface{}) error {
 	dcpFeed.Close()
 	return nil
 }
+
+var vbSeqNosCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::vbSeqNosCallback"
+
+	c := args[0].(*Consumer)
+	vbSeqNos := args[1].([]uint64)
+
+	var err error
+	vbSeqNos, err = util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, len vbSeqNos: %d err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbSeqNos), err)
+	}
+
+	return err
+}

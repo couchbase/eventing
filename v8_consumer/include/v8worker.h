@@ -248,6 +248,8 @@ public:
   int64_t GetBucketopsSeqno(int vb_no);
 
   int ParseMetadata(const std::string &metadata, int &vb_no, int64_t &seq_no);
+  int ParseMetadataWithAck(const std::string &metadata, int &vb_no,
+                           int64_t &seq_no, int &skip_ack, bool ack_check);
 
   void SetThreadExitFlag();
 

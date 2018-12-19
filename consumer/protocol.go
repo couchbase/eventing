@@ -491,9 +491,13 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			return
 		}
-		logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d received filter ack from C++",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), ack.Vbucket, ack.SeqNo)
-		c.filterDataCh <- &ack
+
+		logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d skip_ack: %d received filter ack from C++",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), ack.Vbucket, ack.SeqNo, ack.SkipAck)
+
+		if ack.SkipAck == 0 {
+			c.filterDataCh <- &ack
+		}
 	default:
 		logging.Infof("%s [%s:%s:%d] Unknown message %s",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)

@@ -395,12 +395,16 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	c.sendMessage(msg)
 }
 
-func (c *Consumer) sendVbFilterData(vb uint16, seqNo uint64) {
+func (c *Consumer) sendVbFilterData(vb uint16, seqNo uint64, skipAck bool) {
 	logPrefix := "Consumer::sendVbFilterData"
 
 	data := vbSeqNo{
 		SeqNo:   seqNo,
 		Vbucket: vb,
+	}
+
+	if skipAck {
+		data.SkipAck = 1
 	}
 
 	metadata, err := json.Marshal(&data)

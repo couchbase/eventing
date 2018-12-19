@@ -344,7 +344,7 @@ func (c *Consumer) processEvents() {
 				c.vbProcessingStats.updateVbStat(e.VBucket, "seq_no_at_stream_end", lastSeqNo)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
 
-				c.sendVbFilterData(e.VBucket, lastSeqNo)
+				c.sendVbFilterData(e.VBucket, lastSeqNo, false)
 
 			default:
 			}
@@ -1110,7 +1110,12 @@ func (c *Consumer) handleFailoverLog() {
 					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
 
-					c.sendVbFilterData(vbFlog.vb, vbFlog.seqNo-1)
+					// Reason for sending this message at the time of sending STREAMREQ request
+					// to DCP producer instead of of time when Eventing gets STREAMREQ response
+					// from DCP producer is because we don't precisely know the start_seq_no for
+					// for stream in later case, unless we maintain another data structure to
+					// maintain that information
+					c.sendVbFilterData(vbFlog.vb, vbFlog.seqNo, true)
 
 					streamInfo := &streamRequestInfo{
 						vb:         vbFlog.vb,
@@ -1125,12 +1130,20 @@ func (c *Consumer) handleFailoverLog() {
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", startSeqNo)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 				} else {
-					logging.Infof("%s [%s:%s:%d] vb: %d Retrying DCP stream start vbuuid: %d startSeq: %d",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo)
 
-					if vbFlog.statusCode == mcd.NOT_MY_VBUCKET {
-						c.sendVbFilterData(vbFlog.vb, startSeqNo-1)
+					// Issuing high seq nos call to ascertain all vbuckets are back online(i.e. not stuck warm-up, flush etc)
+					var vbSeqNos []uint64
+					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, vbSeqNosCallback, c, vbSeqNos)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return
 					}
+
+					c.sendVbFilterData(vbFlog.vb, vbBlob.LastSeqNoProcessed, true)
+
+					logging.Infof("%s [%s:%s:%d] vb: %d Retrying DCP stream start vbuuid: %d vbFlog startSeq: %d last processed seq: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid,
+						vbFlog.seqNo, vbBlob.LastSeqNoProcessed)
 
 					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
 						continue
@@ -1144,14 +1157,14 @@ func (c *Consumer) handleFailoverLog() {
 					streamInfo := &streamRequestInfo{
 						vb:         vbFlog.vb,
 						vbBlob:     &vbBlob,
-						startSeqNo: startSeqNo,
+						startSeqNo: vbBlob.LastSeqNoProcessed,
 					}
 					select {
 					case c.reqStreamCh <- streamInfo:
 					case <-c.stopConsumerCh:
 						return
 					}
-					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", 0)
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 				}
 			}
