@@ -521,7 +521,15 @@ func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
 			if size, ok := value.(float64); ok {
 				util.SetMetaKvMaxDocSize(int(size))
 			}
+
+		case "http_request_timeout":
+			if timeout, ok := value.(float64); ok {
+				util.HTTPRequestTimeout = time.Duration(int(timeout)) * time.Second
+				logging.Infof("%s [%d] Updated deadline for http request to: %v",
+					logPrefix, s.runningFnsCount(), util.HTTPRequestTimeout)
+			}
 		}
+
 	}
 
 	return nil

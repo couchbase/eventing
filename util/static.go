@@ -2,17 +2,22 @@ package util
 
 import (
 	"crypto/rand"
+	"hash/crc32"
+	"time"
+
 	"github.com/couchbase/eventing/gen/version"
 	"github.com/couchbase/eventing/logging"
-	"hash/crc32"
 )
 
-var ipv4 bool = true
-var localusr string
-var localkey string
-var maxFunctionSize int = 128 * 1024
-var metakvMaxDocSize int = 4096
-var CrcTable *crc32.Table
+var (
+	ipv4               bool = true
+	localusr           string
+	localkey           string
+	maxFunctionSize    int = 128 * 1024
+	metakvMaxDocSize   int = 4096
+	CrcTable           *crc32.Table
+	HTTPRequestTimeout = 5 * time.Second
+)
 
 func init() {
 	dict := []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890")
