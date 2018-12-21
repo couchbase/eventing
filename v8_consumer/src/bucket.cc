@@ -543,17 +543,6 @@ void Bucket::BucketSetWithXattr(
   LCB_SDSPEC_SET_VALUE(&function_id_spec, function_instance_id.c_str(),
                        function_instance_id.size());
 
-  lcb_SDSPEC dcp_seqno_spec = {0};
-  std::string dcp_seqno_path("_eventing.seqno");
-  std::string dcp_seqno_macro(R"("${Mutation.seqno}")");
-  dcp_seqno_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-  dcp_seqno_spec.options =
-      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
-  LCB_SDSPEC_SET_PATH(&dcp_seqno_spec, dcp_seqno_path.c_str(),
-                      dcp_seqno_path.size());
-  LCB_SDSPEC_SET_VALUE(&dcp_seqno_spec, dcp_seqno_macro.c_str(),
-                       dcp_seqno_macro.size());
-
   lcb_SDSPEC value_crc32_spec = {0};
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
@@ -570,8 +559,8 @@ void Bucket::BucketSetWithXattr(
   LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
   LCB_SDSPEC_SET_VALUE(&doc_spec, value.c_str(), value.length());
 
-  std::vector<lcb_SDSPEC> specs = {function_id_spec, dcp_seqno_spec,
-                                   value_crc32_spec, doc_spec};
+  std::vector<lcb_SDSPEC> specs = {function_id_spec, value_crc32_spec,
+                                   doc_spec};
   lcb_CMDSUBDOC mcmd = {0};
   LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
   mcmd.specs = specs.data();
@@ -688,17 +677,6 @@ void Bucket::BucketDeleteWithXattr(
   LCB_SDSPEC_SET_VALUE(&function_id_spec, function_instance_id.c_str(),
                        function_instance_id.size());
 
-  lcb_SDSPEC dcp_seqno_spec = {0};
-  std::string dcp_seqno_path("_eventing.seqno");
-  std::string dcp_seqno_macro(R"("${Mutation.seqno}")");
-  dcp_seqno_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-  dcp_seqno_spec.options =
-      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
-  LCB_SDSPEC_SET_PATH(&dcp_seqno_spec, dcp_seqno_path.c_str(),
-                      dcp_seqno_path.size());
-  LCB_SDSPEC_SET_VALUE(&dcp_seqno_spec, dcp_seqno_macro.c_str(),
-                       dcp_seqno_macro.size());
-
   lcb_SDSPEC value_crc32_spec = {0};
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
@@ -715,8 +693,8 @@ void Bucket::BucketDeleteWithXattr(
   LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
   LCB_SDSPEC_SET_VALUE(&doc_spec, "", 0);
 
-  std::vector<lcb_SDSPEC> specs = {function_id_spec, dcp_seqno_spec,
-                                   value_crc32_spec, doc_spec};
+  std::vector<lcb_SDSPEC> specs = {function_id_spec, value_crc32_spec,
+                                   doc_spec};
   lcb_CMDSUBDOC mcmd = {0};
   LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
   mcmd.specs = specs.data();

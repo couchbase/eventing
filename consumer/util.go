@@ -67,16 +67,7 @@ func (c *Consumer) isRecursiveDCPEvent(evt *memcached.DcpEvent, functionInstance
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key), err)
 			return false, err
 		}
-
-		seqno, err := strconv.ParseUint(xMeta.SeqNo, 0, 32)
-		if err != nil {
-			c.dcpXattrParseError++
-			logging.Errorf("%s [%s:%s:%d] key: %ru failed to read sequence number from XATTR",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key))
-			return false, err
-		}
-
-		if xMeta.FunctionInstanceID == functionInstanceID && seqno == evt.Seqno {
+		if xMeta.FunctionInstanceID == functionInstanceID {
 			checksum := crc32.Checksum(body, util.CrcTable)
 			xChecksum, err := strconv.ParseUint(xMeta.ValueCRC, 0, 32)
 			if err != nil {

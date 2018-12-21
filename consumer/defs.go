@@ -79,7 +79,6 @@ const (
 
 type xattrMetadata struct {
 	FunctionInstanceID string `json:"fiid"`
-	SeqNo              string `json:"seqno"`
 	ValueCRC           string `json:"crc"`
 }
 
