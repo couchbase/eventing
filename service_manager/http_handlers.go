@@ -224,7 +224,7 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	logging.Infof("%s Function: %s got request to get V8 debugger url", logPrefix, appName)
+	logging.Debugf("%s Function: %s got request to get V8 debugger url", logPrefix, appName)
 
 	if m.checkIfDeployed(appName) {
 		debugURL, _ := m.superSup.GetDebuggerURL(appName)
@@ -243,7 +243,7 @@ func (m *ServiceMgr) getLocalDebugURL(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	logging.Infof("%s Function: %s got request to get local V8 debugger url", logPrefix, appName)
+	logging.Debugf("%s Function: %s got request to get local V8 debugger url", logPrefix, appName)
 
 	config := m.config.Load()
 	dir := config["eventing_dir"].(string)
