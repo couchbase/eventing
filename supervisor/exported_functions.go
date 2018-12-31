@@ -50,7 +50,7 @@ func (s *SuperSupervisor) GetAppCode(appName string) string {
 func (s *SuperSupervisor) GetDebuggerURL(appName string) (string, error) {
 	logPrefix := "SuperSupervisor::GetDebuggerURL"
 
-	logging.Infof("%s [%d] Function: %s request for debugger URL", logPrefix, s.runningFnsCount(), appName)
+	logging.Debugf("%s [%d] Function: %s request for debugger URL", logPrefix, s.runningFnsCount(), appName)
 	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetDebuggerURL()
 	}
