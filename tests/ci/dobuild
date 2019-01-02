@@ -108,6 +108,7 @@ note_version kv_engine    $WORKSPACE/kv_engine
 cd $WORKSPACE/goproj/src/github.com/couchbase/
 echo "Cloning eventing-ee and checking out $BRANCH"
 git clone git@github.com:couchbase/eventing-ee.git
+cd $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee
 git checkout $BRANCH 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout $BRANCH"
 git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
 note_version eventing-ee $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee
