@@ -1959,6 +1959,36 @@ func (m *ServiceMgr) assignFunctionID(fnName string, app *application, info *run
 	return nil
 }
 
+func (m *ServiceMgr) assignFunctionInstanceID(functionName string, app *application, info *runtimeInfo) error {
+	logPrefix := "ServiceMgr:assignFunctionInstanceID"
+
+	if m.superSup.GetAppState(functionName) != common.AppStatePaused {
+		fiid, err := util.GenerateFunctionInstanceID()
+		if err != nil {
+			info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
+			info.Info = fmt.Sprintf("FunctionInstanceID generation failed")
+
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return err
+		}
+		app.FunctionInstanceID = fiid
+		logging.Infof("%s Function: %s FunctionInstanceID: %s generated", logPrefix, app.Name, app.FunctionInstanceID)
+	} else {
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, functionName)
+		if err != nil || data == nil {
+			info.Code = m.statusCodes.errGetAppPs.Code
+			info.Info = fmt.Sprintf("Function: %s failed to read definitions from metakv", functionName)
+
+			logging.Errorf("%s %s, err: %v", logPrefix, info.Info, err)
+			return fmt.Errorf("%s err: %v", info.Info, err)
+		}
+		prevApp := m.parseFunctionPayload(data, functionName)
+		app.FunctionInstanceID = prevApp.FunctionInstanceID
+		logging.Infof("%s Function: %s assigned previous FunctionInstanceID: %s", logPrefix, app.Name, app.FunctionInstanceID)
+	}
+	return nil
+}
+
 func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::functionsHandler"
 
@@ -2119,15 +2149,11 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			fiid, err := util.GenerateFunctionInstanceID()
+			err = m.assignFunctionInstanceID(appName, &app, info)
 			if err != nil {
-				info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
-				info.Info = fmt.Sprintf("Function instance ID generation failed")
 				m.sendErrorInfo(w, info)
 				return
 			}
-			logging.Infof("%s Function: %s Function instance ID: %s generated", logPrefix, app.Name, fiid)
-			app.FunctionInstanceID = fiid
 
 			app.EventingVersion = util.EventingVer()
 
@@ -2581,15 +2607,11 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 		}
 
 		info = &runtimeInfo{}
-		fiid, err := util.GenerateFunctionInstanceID()
+		err = m.assignFunctionInstanceID(app.Name, &app, info)
 		if err != nil {
-			info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
-			info.Info = fmt.Sprintf("Handler FunctionInstanceID generation failed")
 			infoList = append(infoList, info)
 			continue
 		}
-		logging.Infof("%s Function: %s FunctionInstanceID generated, InstanceId: %s", logPrefix, app.Name, fiid)
-		app.FunctionInstanceID = fiid
 
 		app.EventingVersion = util.EventingVer()
 
