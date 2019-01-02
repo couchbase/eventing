@@ -105,13 +105,6 @@ note_version couchstore   $WORKSPACE/couchstore
 note_version forestdb     $WORKSPACE/forestdb
 note_version kv_engine    $WORKSPACE/kv_engine
 
-cd $WORKSPACE/goproj/src/github.com/couchbase/
-echo "Cloning eventing-ee and checking out $BRANCH"
-git clone https://github.com/couchbase/eventing-ee.git
-git checkout $BRANCH 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout $BRANCH"
-git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
-note_version eventing-ee $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee
-
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
 echo "Switching eventing to $BRANCH"
 git checkout $BRANCH 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout $BRANCH"
