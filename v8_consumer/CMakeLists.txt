@@ -46,6 +46,7 @@ ENDIF()
 SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc PROPERTIES GENERATED TRUE)
 
 SET(EVENTING_SOURCES
+    ../../eventing-ee/curl.cc
     src/base64.cc
     src/client.cc
     src/comm.cc

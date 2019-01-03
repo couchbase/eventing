@@ -15,10 +15,11 @@
 #include <cassert>
 #include <fstream>
 #include <iostream>
-#include <list>
 #include <map>
 #include <string>
 #include <vector>
+
+#include "curl.h"
 
 #include "../../gen/flatbuf/cfg_schema_generated.h"
 #include "../../gen/flatbuf/payload_generated.h"
@@ -28,6 +29,7 @@ typedef struct deployment_config_s {
   std::string source_bucket;
   std::map<std::string, std::map<std::string, std::vector<std::string>>>
       component_configs;
+  std::vector<CurlBinding> curl_bindings;
 } deployment_config;
 
 deployment_config *ParseDeployment(const char *app_name);

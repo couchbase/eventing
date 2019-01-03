@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "comm.h"
+#include "info.h"
 #include "log.h"
 #include "timer.h"
 
@@ -38,6 +39,7 @@
   (ToLocal((maybe), (local), __FILE__, __FUNCTION__, __LINE__))
 #define IS_EMPTY(v8obj) (IsEmpty((v8obj), __FILE__, __FUNCTION__, __LINE__))
 
+class Curl;
 class N1QL;
 class V8Worker;
 class JsException;
@@ -45,10 +47,12 @@ class Transpiler;
 class Utils;
 class Timer;
 class CustomError;
+class CurlFactory;
+class CurlRequestBuilder;
+class CurlResponseBuilder;
 
 // Struct for storing isolate data
 struct Data {
-  CURL *curl_handle;
   N1QL *n1ql_handle;
   V8Worker *v8worker;
   JsException *js_exception;
@@ -57,6 +61,9 @@ struct Data {
   Utils *utils;
   Timer *timer;
   CustomError *custom_error;
+  CurlFactory *curl_factory;
+  CurlRequestBuilder *req_builder;
+  CurlResponseBuilder *resp_builder;
 };
 
 // Code version of handler
@@ -112,6 +119,22 @@ bool IsEmpty(const T &obj, const char *file = "", const char *caller = "",
   return false;
 }
 
+struct UrlEncode : public Info {
+  UrlEncode() = default;
+  UrlEncode(bool is_fatal, std::string msg) : Info(is_fatal, std::move(msg)) {}
+  UrlEncode(std::string encoded) : encoded(std::move(encoded)) {}
+
+  std::string encoded;
+};
+
+struct UrlDecode : public Info {
+  UrlDecode() = default;
+  UrlDecode(bool is_fatal, std::string msg) : Info(is_fatal, std::move(msg)) {}
+  UrlDecode(std::string decoded) : decoded(std::move(decoded)) {}
+
+  std::string decoded;
+};
+
 class Utils {
 public:
   Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
@@ -124,10 +147,26 @@ public:
                         const std::string &method_name);
   std::string GetFunctionName(const v8::Local<v8::Value> &func_val);
   std::string ToCPPString(const v8::Local<v8::Value> &str_val);
+  UrlEncode UrlEncodeAny(const v8::Local<v8::Value> &val);
+  UrlEncode UrlEncodeAsString(const std::string &data);
+  UrlEncode UrlEncodeAsKeyValue(const v8::Local<v8::Value> &obj);
+  UrlDecode UrlDecodeString(const std::string &data);
+  UrlDecode UrlDecodeAsKeyValue(const std::string &data,
+                                v8::Local<v8::Object> &obj_out);
+  UrlDecode
+  UrlDecodeAsKeyValue(const std::string &data,
+                      std::unordered_map<std::string, std::string> &kv);
+  v8::Local<v8::ArrayBuffer> ToArrayBuffer(void *buffer, std::size_t size);
   bool IsFuncGlobal(const v8::Local<v8::Value> &func);
+  std::string TrimBack(const std::string &s,
+                       const char *ws = " \t\n\r\f\v") const;
+  std::string TrimFront(const std::string &s,
+                        const char *ws = " \t\n\r\f\v") const;
+  std::string Trim(const std::string &s, const char *ws = " \t\n\r\f\v") const;
 
 private:
   v8::Isolate *isolate_;
+  CURL *curl_handle_; // Used only to perform url encode/decode
   v8::Persistent<v8::Context> context_;
   v8::Persistent<v8::Object> global_;
 };
@@ -164,5 +203,8 @@ bool IsRetriable(lcb_error_t error);
 bool IsTerminatingRetriable(bool retry);
 bool IsExecutionTerminating(v8::Isolate *isolate);
 std::string base64Encode(const std::string &data);
+
+void UrlEncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
+void UrlDecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 #endif

@@ -48,6 +48,16 @@ type DebuggerInstance struct {
 	NodesExternalIP []string `json:"nodes_external_ip"` // List of external IP address of the nodes in the cluster
 }
 
+type Curl struct {
+	Hostname  string `json:"hostname"`
+	Value     string `json:"value"`
+	AuthType  string `json:"auth_type"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	BearerKey string `json:"bearer_key"`
+	Cookies   string `json:"cookies"`
+}
+
 var ErrRetryTimeout = errors.New("retry timeout")
 
 // EventingProducer interface to export functions from eventing_producer

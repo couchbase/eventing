@@ -12,25 +12,12 @@
 #ifndef COMM_H
 #define COMM_H
 
-#include <curl/curl.h>
-#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <v8.h>
 #include <vector>
 
-struct CURLResponse {
-  bool is_error;
-  std::string response;
-  std::unordered_map<std::string, std::string> headers;
-};
-
-struct DecodeKVInfo {
-  bool is_valid;
-  std::string msg;
-  std::string key;
-  std::string value;
-};
+#include "curl.h"
 
 struct CredsInfo {
   bool is_valid;
@@ -38,12 +25,6 @@ struct CredsInfo {
   std::string username;
   std::string password;
   time_t time_fetched;
-};
-
-struct ExtractKVInfo {
-  bool is_valid;
-  std::string msg;
-  std::unordered_map<std::string, std::string> kv;
 };
 
 // Info about parsing N1QL query
@@ -60,47 +41,12 @@ struct NamedParamsInfo {
   std::vector<std::string> named_params;
 };
 
-class CURLHeaders {
-public:
-  explicit CURLHeaders(const std::vector<std::string> &headers);
-  ~CURLHeaders();
-
-  struct curl_slist *GetHeaders() const {
-    return headers_;
-  }
-
-private:
-  struct curl_slist *headers_;
-};
-
-class CURLClient {
-public:
-  CURLClient();
-  ~CURLClient();
-
-  ExtractKVInfo ExtractKV(const std::string &encoded_str);
-  CURLResponse HTTPPost(const std::vector<std::string> &headers,
-                        const std::string &url, const std::string &body,
-                        const std::string &usr, const std::string &key);
-
-private:
-  static size_t BodyCallback(void *buffer, size_t size, size_t nmemb,
-                             void *cookie);
-  std::string Decode(const std::string &encoded_str);
-  static size_t HeaderCallback(char *buffer, size_t size, size_t nitems,
-                               void *cookie);
-
-  CURLcode code_;
-  CURL *curl_handle_;
-  std::mutex curl_handle_lck_;
-};
-
 // Channel to communicate to eventing-producer through CURL
 class Communicator {
 public:
   Communicator(const std::string &host_ip, const std::string &host_port,
                const std::string &usr, const std::string &key, bool ssl,
-               const std::string &app_name);
+               const std::string &app_name, v8::Isolate *isolate);
 
   CredsInfo GetCreds(const std::string &endpoint);
   CredsInfo GetCredsCached(const std::string &endpoint);
@@ -114,8 +60,9 @@ private:
   NamedParamsInfo ExtractNamedParams(const std::string &encoded_str);
   ParseInfo ExtractParseInfo(const std::string &encoded_str);
 
+  v8::Isolate *isolate_;
   std::unordered_map<std::string, CredsInfo> creds_cache_;
-  CURLClient curl_;
+  CurlClient curl_;
   std::string app_name_;
   std::string get_creds_url_;
   std::string get_named_params_url_;

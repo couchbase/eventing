@@ -1382,8 +1382,37 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 
 func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	builder := flatbuffers.NewBuilder(0)
-	var bNames []flatbuffers.UOffsetT
 
+	var curlBindings []flatbuffers.UOffsetT
+	for i := 0; i < len(app.DeploymentConfig.Curl); i++ {
+		authTypeEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].AuthType)
+		hostnameEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Hostname)
+		valueEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Value)
+		passwordEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Password)
+		usernameEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Username)
+		bearerKeyEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].BearerKey)
+		cookiesEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Cookies)
+
+		cfg.CurlStart(builder)
+		cfg.CurlAddAuthType(builder, authTypeEncoded)
+		cfg.CurlAddHostname(builder, hostnameEncoded)
+		cfg.CurlAddValue(builder, valueEncoded)
+		cfg.CurlAddPassword(builder, passwordEncoded)
+		cfg.CurlAddUsername(builder, usernameEncoded)
+		cfg.CurlAddBearerKey(builder, bearerKeyEncoded)
+		cfg.CurlAddCookies(builder, cookiesEncoded)
+		curlBindingsEnd := cfg.CurlEnd(builder)
+
+		curlBindings = append(curlBindings, curlBindingsEnd)
+	}
+
+	cfg.DepCfgStartCurlVector(builder, len(curlBindings))
+	for i := 0; i < len(curlBindings); i++ {
+		builder.PrependUOffsetT(curlBindings[i])
+	}
+	curlBindingsVector := builder.EndVector(len(curlBindings))
+
+	var bNames []flatbuffers.UOffsetT
 	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
 		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
 		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
@@ -1409,6 +1438,7 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 
 	cfg.DepCfgStart(builder)
 	cfg.DepCfgAddBuckets(builder, buckets)
+	cfg.DepCfgAddCurl(builder, curlBindingsVector)
 	cfg.DepCfgAddMetadataBucket(builder, metaBucket)
 	cfg.DepCfgAddSourceBucket(builder, sourceBucket)
 	depcfg := cfg.DepCfgEnd(builder)
@@ -2466,6 +2496,9 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 
 	apps := m.getTempStoreAll()
 	for _, app := range apps {
+		for i := range app.DeploymentConfig.Curl {
+			app.DeploymentConfig.Curl[i].Password = ""
+		}
 		app.Settings["deployment_status"] = false
 		app.Settings["processing_status"] = false
 	}

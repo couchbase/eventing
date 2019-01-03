@@ -84,53 +84,56 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             self.openSettings = function(appName) {
                 $uibModal.open({
-                    templateUrl: '../_p/ui/event/ui-current/fragments/app-settings.html',
-                    controller: 'SettingsCtrl',
-                    controllerAs: 'formCtrl',
-                    resolve: {
-                        appName: [function() {
-                            return appName;
-                        }],
-                        bucketsResolve: ['ApplicationService',
-                            function(ApplicationService) {
-                                // Getting the list of buckets from server.
-                                return ApplicationService.server.getLatestBuckets();
-                            }
-                        ],
-                        savedApps: ['ApplicationService',
-                            function(ApplicationService) {
-                                return ApplicationService.tempStore.getAllApps();
-                            }
-                        ],
-                        isAppDeployed: ['ApplicationService',
-                            function(ApplicationService) {
-                                return ApplicationService.tempStore.isAppDeployed(appName)
-                                    .then(function(isDeployed) {
-                                        return isDeployed;
-                                    })
-                                    .catch(function(errResponse) {
-                                        console.error('Unable to get deployed apps list', errResponse);
-                                    });
-                            }
-                        ],
-                        isAppPaused: ['ApplicationService',
-                            function(ApplicationService) {
-                                return ApplicationService.tempStore.isAppPaused(appName)
-                                    .then(function(isPaused) {
-                                        return isPaused;
-                                    })
-                                    .catch(function(errResponse) {
-                                        console.error('Unable to get function status', errResponse);
-                                    });
-                            }
-                        ],
-                        logFileLocation: ['ApplicationService',
-                            function(ApplicationService) {
-                                return ApplicationService.server.getLogFileLocation();
-                            }
-                        ]
-                    }
-                });
+                        templateUrl: '../_p/ui/event/ui-current/fragments/app-settings.html',
+                        controller: 'SettingsCtrl',
+                        controllerAs: 'formCtrl',
+                        resolve: {
+                            appName: [function() {
+                                return appName;
+                            }],
+                            bucketsResolve: ['ApplicationService',
+                                function(ApplicationService) {
+                                    // Getting the list of buckets from server.
+                                    return ApplicationService.server.getLatestBuckets();
+                                }
+                            ],
+                            savedApps: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.tempStore.getAllApps();
+                                }
+                            ],
+                            isAppDeployed: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.tempStore.isAppDeployed(appName)
+                                        .then(function(isDeployed) {
+                                            return isDeployed;
+                                        })
+                                        .catch(function(errResponse) {
+                                            console.error('Unable to get deployed apps list', errResponse);
+                                        });
+                                }
+                            ],
+                            isAppPaused: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.tempStore.isAppPaused(appName)
+                                        .then(function(isPaused) {
+                                            return isPaused;
+                                        })
+                                        .catch(function(errResponse) {
+                                            console.error('Unable to get function status', errResponse);
+                                        });
+                                }
+                            ],
+                            logFileLocation: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.server.getLogFileLocation();
+                                }
+                            ]
+                        }
+                    }).result
+                    .catch(function(errResponse) {
+                        console.log(errResponse);
+                    });
             };
 
             self.toggleDeployment = function(app) {
@@ -168,45 +171,45 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 scope.settings.changeFeedBoundary = 'everything';
 
                 $uibModal.open({
-                    templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
-                    scope: scope
-                }).result
+                        templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
+                        scope: scope
+                    }).result
                     .then(function(response) {
                         return ApplicationService.primaryStore.getDeployedApps();
                     })
                     .then(function(response) {
-                            switch (operation) {
-                                case 'deploy':
-                                    if (appClone.appname in response.data) {
-                                        return $q.reject({
-                                            data: {
-                                                runtime_info: `${appClone.appname} is being undeployed. Please try later.`
-                                            }
-                                        });
-                                    }
-                                    appClone.settings.dcp_stream_boundary = scope.settings.changeFeedBoundary;
-                                    break;
-                                case 'pause':
-                                    if (!(appClone.appname in response.data)) {
-                                        return $q.reject({
-                                            data: {
-                                                runtime_info: `${appClone.appname} isn't currently deployed. Only deployed function can be paused.`
-                                            }
-                                        });
-                                    }
-                                    appClone.settings.dcp_stream_boundary = scope.settings.changeFeedBoundary;
-                                    break;
-                                case 'resume':
-                                    if (!(appClone.appname in response.data)) {
-                                        return $q.reject({
-                                            data: {
-                                                runtime_info: `${appClone.appname} isn't currently deployed. Only deployed function can be resumed.`
-                                            }
-                                        });
-                                    }
-                                    appClone.settings.dcp_stream_boundary = "from_prior";
-                                    break;
-                            }
+                        switch (operation) {
+                            case 'deploy':
+                                if (appClone.appname in response.data) {
+                                    return $q.reject({
+                                        data: {
+                                            runtime_info: `${appClone.appname} is being undeployed. Please try later.`
+                                        }
+                                    });
+                                }
+                                appClone.settings.dcp_stream_boundary = scope.settings.changeFeedBoundary;
+                                break;
+                            case 'pause':
+                                if (!(appClone.appname in response.data)) {
+                                    return $q.reject({
+                                        data: {
+                                            runtime_info: `${appClone.appname} isn't currently deployed. Only deployed function can be paused.`
+                                        }
+                                    });
+                                }
+                                appClone.settings.dcp_stream_boundary = scope.settings.changeFeedBoundary;
+                                break;
+                            case 'resume':
+                                if (!(appClone.appname in response.data)) {
+                                    return $q.reject({
+                                        data: {
+                                            runtime_info: `${appClone.appname} isn't currently deployed. Only deployed function can be resumed.`
+                                        }
+                                    });
+                                }
+                                appClone.settings.dcp_stream_boundary = "from_prior";
+                                break;
+                        }
 
                         switch (operation) {
                             case 'deploy':
@@ -263,7 +266,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         self.disableEditButton = false;
                         console.error(errResponse);
                     });
-                }
+            }
 
             function undeployApp(app, scope) {
                 $uibModal.open({
@@ -390,7 +393,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
                     }).result
                     .then(function(repsonse) { // Upon continue.
-                        creationScope.appModel.depcfg.buckets = ApplicationService.convertBindingToConfig(creationScope.bindings);
+                        Object.assign(creationScope.appModel.depcfg, ApplicationService.convertBindingToConfig(creationScope.bindings));
                         creationScope.appModel.fillWithMissingDefaults();
 
                         // When we import the application, we want it to be in
@@ -435,7 +438,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     type: 'alias',
                     name: '',
                     value: '',
-                    access: 'r'
+                    access: 'r',
+                    auth_type: 'no-auth',
+                    cookies: 'allow'
                 });
                 createApp(scope);
             };
@@ -620,9 +625,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             };
 
             self.saveSettings = function(dismissDialog, closeDialog) {
-                var bindings = ApplicationService.convertBindingToConfig(self.bindings);
-                if (JSON.stringify(appModel.depcfg.buckets) !== JSON.stringify(bindings)) {
-                    $scope.appModel.depcfg.buckets = bindings;
+                var config = JSON.parse(JSON.stringify(appModel.depcfg));
+                Object.assign(config, ApplicationService.convertBindingToConfig(self.bindings));
+
+                if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config)) {
+                    $scope.appModel.depcfg = config;
                     ApplicationService.server.showWarningAlert('Bindings changed. Deploy for changes to take effect.');
                 }
 
@@ -633,7 +640,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                 // Update local changes.
                 appModel.settings = $scope.appModel.settings;
-                appModel.depcfg.buckets = bindings;
+                appModel.depcfg = config;
 
                 ApplicationService.tempStore.isAppDeployed(appName)
                     .then(function(isDeployed) {
@@ -1193,38 +1200,148 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 },
                 convertBindingToConfig: function(bindings) {
                     // A binding is of the form -
-                    // [{type:'alias', name:'', value:'', access:''}]
-                    var config = [];
+                    // [{type:'', name:'', value:'', auth_type:'no-auth', cookies:'allow', access:'r'}]
+                    var config = {
+                        buckets: [],
+                        curl: []
+                    };
                     for (var binding of bindings) {
                         if (binding.type === 'alias' && binding.name && binding.value) {
                             var element = {};
                             element[binding.type] = binding.value;
                             element.bucket_name = binding.name;
                             element.access = binding.access;
-                            config.push(element);
+                            config.buckets.push(element);
+                        }
+                        if (binding.type === 'url' && binding.hostname && binding.value) {
+                            config.curl.push({
+                                hostname: binding.hostname,
+                                value: binding.value
+                            });
+
+                            switch (binding.auth_type) {
+                                case 'digest':
+                                    Object.assign(config.curl[config.curl.length - 1], {
+                                        auth_type: 'digest',
+                                        username: binding.username,
+                                        password: binding.password
+                                    });
+                                    break;
+
+                                case 'basic':
+                                    Object.assign(config.curl[config.curl.length - 1], {
+                                        auth_type: 'basic',
+                                        username: binding.username,
+                                        password: binding.password
+                                    });
+                                    break;
+
+                                case 'bearer':
+                                    Object.assign(config.curl[config.curl.length - 1], {
+                                        auth_type: 'bearer',
+                                        bearer_key: binding.bearer_key
+                                    });
+                                    break;
+
+                                case 'no-auth':
+                                default:
+                                    Object.assign(config.curl[config.curl.length - 1], {
+                                        auth_type: 'no-auth',
+                                    });
+                            }
+
+                            switch (binding.cookies) {
+                                case 'allow':
+                                    Object.assign(config.curl[config.curl.length - 1], {
+                                        cookies: 'allow'
+                                    });
+                                    break;
+
+                                case 'disallow':
+                                default:
+                                    Object.assign(config.curl[config.curl.length - 1], {
+                                        cookies: 'disallow'
+                                    });
+                            }
                         }
                     }
                     return config;
                 },
                 getBindingFromConfig: function(config) {
                     var bindings = [];
-                    if (config) {
-                        for (var c of config.buckets) {
-                            var element = {};
-                            element.type = 'alias';
-                            element.name = c.bucket_name;
-                            element.value = c.alias;
-                            if (!c.access) {
-                                if (config.source_bucket === c.bucket_name) {
-                                    element.access = 'r';
-                                } else {
-                                    element.access = 'rw';
-                                }
-                            } else {
-                                element.access = c.access
-                            }
-                            bindings.push(element);
+
+                    function addBucketBindings(bucketConfigs) {
+                        for (var config of bucketConfigs) {
+                            bindings.push({
+                                type: 'alias',
+                                name: config.bucket_name,
+                                value: config.alias,
+                                access: config.access ? config.access : (config.source_bucket === config.bucket_name ? 'r' : 'rw')
+                            });
                         }
+                    }
+
+                    function addCurlBindings(curlConfigs) {
+                        for (var config of curlConfigs) {
+                            bindings.push({
+                                type: 'url',
+                                hostname: config.hostname,
+                                value: config.value
+                            });
+
+                            switch (config.auth_type) {
+                                case 'basic':
+                                    Object.assign(bindings[bindings.length - 1], {
+                                        auth_type: 'basic',
+                                        username: config.username,
+                                        password: config.password
+                                    });
+                                    break;
+
+                                case 'digest':
+                                    Object.assign(bindings[bindings.length - 1], {
+                                        auth_type: 'digest',
+                                        username: config.username,
+                                        password: config.password
+                                    });
+                                    break;
+
+                                case 'bearer':
+                                    Object.assign(bindings[bindings.length - 1], {
+                                        auth_type: 'bearer',
+                                        bearer_key: config.bearer_key
+                                    });
+                                    break;
+
+                                case 'no-auth':
+                                default:
+                                    Object.assign(bindings[bindings.length - 1], {
+                                        auth_type: 'no-auth',
+                                    });
+                            }
+
+                            switch (config.cookies) {
+                                case 'allow':
+                                    Object.assign(bindings[bindings.length - 1], {
+                                        cookies: 'allow'
+                                    });
+                                    break;
+
+                                case 'disallow':
+                                default:
+                                    Object.assign(bindings[bindings.length - 1], {
+                                        cookies: 'disallow'
+                                    });
+                                    break;
+                            }
+                        }
+                    }
+
+                    if (config && config.buckets) {
+                        addBucketBindings(config.buckets);
+                    }
+                    if (config && config.curl) {
+                        addCurlBindings(config.curl);
                     }
                     return bindings;
                 }

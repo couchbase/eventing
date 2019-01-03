@@ -345,6 +345,8 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
+	// TODO : Validate the curl binding - check if the auth types are within the supported ones
+
 	if info = m.validateNonEmpty(deploymentConfig.SourceBucket, "Source bucket name"); info.Code != m.statusCodes.ok.Code {
 		return
 	}

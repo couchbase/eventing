@@ -191,6 +191,7 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	}
 
 	var dcfg depCfg
+	dcfg.Curl = s.curlBindings
 	dcfg.Buckets = aliases
 	dcfg.MetadataBucket = metadataBucket
 	dcfg.SourceBucket = sourceBucket

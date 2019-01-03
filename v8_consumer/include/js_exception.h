@@ -37,6 +37,10 @@ public:
                         v8::Local<v8::Object> &eventing_error_out) {
     return NewCustomError(message_val, eventing_error_out, "EventingError");
   }
+  Info NewCurlError(const v8::Local<v8::Value> &message_val,
+                    v8::Local<v8::Object> &curl_error_out) {
+    return NewCustomError(message_val, curl_error_out, "CurlError");
+  }
 
 private:
   Info NewCustomError(const v8::Local<v8::Value> &message_val,
@@ -56,11 +60,11 @@ public:
   // Need to overload '=' as we have members of v8::Persistent type.
   JsException &operator=(JsException &&exc_obj);
 
-  void Throw(CURLcode res);
   void ThrowKVError(const std::string &err_msg);
   void ThrowKVError(lcb_t instance, lcb_error_t error);
   void ThrowN1QLError(const std::string &err_msg);
   void ThrowEventingError(const std::string &err_msg);
+  void ThrowCurlError(const std::string &err_msg);
 
   ~JsException();
 

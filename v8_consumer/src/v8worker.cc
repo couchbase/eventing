@@ -11,7 +11,7 @@
 
 #include "v8worker.h"
 #include "bucket.h"
-#include "parse_deployment.h"
+#include "curl.h"
 #include "retry_util.h"
 #include "timer.h"
 #include "utils.h"
@@ -127,51 +127,12 @@ const char *GetPasswordCached(void *cookie, const char *host, const char *port,
   return password;
 }
 
-V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
-                   server_settings_t *server_settings,
-                   const std::string &function_name,
-                   const std::string &function_id,
-                   const std::string &function_instance_id,
-                   const std::string &user_prefix)
-    : app_name_(h_config->app_name), settings_(server_settings),
-      platform_(platform), function_name_(function_name),
-      function_id_(function_id), user_prefix_(user_prefix),
-      exception_type_names_({"KVError", "N1QLError", "EventingError"}) {
-  std::ostringstream oss;
-  oss << "\"" << function_id << "-" << function_instance_id << "\"";
-  function_instance_id_.assign(oss.str());
-  curl_timeout = h_config->curl_timeout;
-  histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
-  thread_exit_cond_.store(false);
-  for (int i = 0; i < NUM_VBUCKETS; i++) {
-    vb_seq_[i] = atomic_ptr_t(new std::atomic<int64_t>(0));
-  }
-  vbfilter_map_.resize(NUM_VBUCKETS, -1);
-  processed_bucketops_.resize(NUM_VBUCKETS, 0);
-  v8::Isolate::CreateParams create_params;
-  create_params.array_buffer_allocator =
-      v8::ArrayBuffer::Allocator::NewDefaultAllocator();
-
-  isolate_ = v8::Isolate::New(create_params);
-  v8::Locker locker(isolate_);
-  v8::Isolate::Scope isolate_scope(isolate_);
-  v8::HandleScope handle_scope(isolate_);
-
-  isolate_->SetData(DATA_SLOT, &data_);
-  isolate_->SetCaptureStackTraceForUncaughtExceptions(true);
-  data_.v8worker = this;
-
-  curl_global_init(CURL_GLOBAL_ALL);
-  CURL *curl = curl_easy_init();
-  if (curl) {
-    UnwrapData(isolate_)->curl_handle = curl;
-  }
+v8::Local<v8::ObjectTemplate> V8Worker::NewGlobalObj() const {
+  v8::EscapableHandleScope handle_scope(isolate_);
 
   auto global = v8::ObjectTemplate::New(isolate_);
-  v8::TryCatch try_catch;
-
   global->Set(v8::String::NewFromUtf8(isolate_, "curl"),
-              v8::FunctionTemplate::New(isolate_, Curl));
+              v8::FunctionTemplate::New(isolate_, CurlFunction));
   global->Set(v8::String::NewFromUtf8(isolate_, "log"),
               v8::FunctionTemplate::New(isolate_, Log));
   global->Set(v8::String::NewFromUtf8(isolate_, "iter"),
@@ -184,44 +145,107 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
               v8::FunctionTemplate::New(isolate_, GetReturnValueFunction));
   global->Set(v8::String::NewFromUtf8(isolate_, "createTimer"),
               v8::FunctionTemplate::New(isolate_, CreateTimer));
+  global->Set(v8::String::NewFromUtf8(isolate_, "urlEncode"),
+              v8::FunctionTemplate::New(isolate_, UrlEncodeFunction));
+  global->Set(v8::String::NewFromUtf8(isolate_, "urlDecode"),
+              v8::FunctionTemplate::New(isolate_, UrlDecodeFunction));
 
   for (const auto &type_name : exception_type_names_) {
     global->Set(v8::String::NewFromUtf8(isolate_, type_name.c_str()),
                 v8::FunctionTemplate::New(isolate_, CustomErrorCtor));
   }
+  return handle_scope.Escape(global);
+}
 
-  if (try_catch.HasCaught()) {
-    LOG(logError) << "Exception logged:"
-                  << ExceptionString(isolate_, &try_catch) << std::endl;
+// TODO : Use vector
+void V8Worker::InstallCurlBindings(
+    const std::vector<CurlBinding> &curl_bindings) const {
+  v8::HandleScope handle_scope(isolate_);
+
+  auto context = context_.Get(isolate_);
+  for (const auto &binding : curl_bindings) {
+    binding.InstallBinding(isolate_, context);
   }
+}
 
-  auto context = v8::Context::New(isolate_, nullptr, global);
-  context_.Reset(isolate_, context);
-  js_exception_ = new JsException(isolate_);
-  data_.js_exception = js_exception_;
-  data_.custom_error = new CustomError(isolate_, context);
+void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
+                                     const handler_config_t *h_config) {
+  v8::HandleScope handle_scope(isolate_);
 
-  auto ssl = false;
-  auto port = server_settings->eventing_port;
-
+  auto context = context_.Get(isolate_);
+  data_.v8worker = this;
+  data_.utils = new Utils(isolate_, context);
+  data_.js_exception = new JsException(isolate_);
   auto key = GetLocalKey();
-  data_.comm = new Communicator(server_settings->host_addr, port, key.first,
-                                key.second, ssl, app_name_);
-
+  data_.comm = new Communicator(server_settings->host_addr,
+                                server_settings->eventing_port, key.first,
+                                key.second, false, app_name_, isolate_);
   data_.transpiler =
       new Transpiler(isolate_, GetTranspilerSrc(), h_config->handler_headers,
                      h_config->handler_footers);
-  data_.utils = new Utils(isolate_, context);
   data_.timer = new Timer(isolate_, context);
+  // TODO : Need to make HEAD call to all the bindings to establish TCP
+  // Connections
+  data_.curl_factory = new CurlFactory(isolate_, context);
+  data_.req_builder = new CurlRequestBuilder(isolate_, context);
+  data_.resp_builder = new CurlResponseBuilder(isolate_, context);
+  data_.custom_error = new CustomError(isolate_, context);
+}
+
+void V8Worker::InitializeCurlBindingValues(
+    const std::vector<CurlBinding> &curl_bindings) {
+  for (const auto &curl_binding : curl_bindings) {
+    curl_binding_values_.emplace_back(curl_binding.value);
+  }
+}
+
+V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
+                   server_settings_t *server_settings,
+                   const std::string &function_name,
+                   const std::string &function_id,
+                   const std::string &function_instance_id,
+                   const std::string &user_prefix)
+    : app_name_(h_config->app_name), settings_(server_settings),
+      platform_(platform), function_name_(function_name),
+      function_id_(function_id), user_prefix_(user_prefix),
+      exception_type_names_(
+          {"KVError", "N1QLError", "EventingError", "CurlError"}) {
+  auto config = ParseDeployment(h_config->dep_cfg.c_str());
+  std::ostringstream oss;
+  oss << "\"" << function_id << "-" << function_instance_id << "\"";
+  function_instance_id_.assign(oss.str());
+  histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
+  thread_exit_cond_.store(false);
+  for (int i = 0; i < NUM_VBUCKETS; i++) {
+    vb_seq_[i] = atomic_ptr_t(new std::atomic<int64_t>(0));
+  }
+  vbfilter_map_.resize(NUM_VBUCKETS, -1);
+  processed_bucketops_.resize(NUM_VBUCKETS, 0);
+  v8::Isolate::CreateParams create_params;
+  create_params.array_buffer_allocator =
+      v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+
+  isolate_ = v8::Isolate::New(create_params);
+  isolate_->SetData(DATA_SLOT, &data_);
+  isolate_->SetCaptureStackTraceForUncaughtExceptions(true);
+
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
+
+  auto global = NewGlobalObj();
+  auto context = v8::Context::New(isolate_, nullptr, global);
+  context_.Reset(isolate_, context);
+
+  v8::Context::Scope context_scope(context);
+  InitializeIsolateData(server_settings, h_config);
+  InstallCurlBindings(config->curl_bindings);
+  InitializeCurlBindingValues(config->curl_bindings);
+
   execute_start_time_ = Time::now();
-
-  deployment_config *config = ParseDeployment(h_config->dep_cfg.c_str());
-
   cb_source_bucket_.assign(config->source_bucket);
 
   Bucket *bucket_handle = nullptr;
-  execute_flag_ = false;
-  shutdown_terminator_ = false;
   max_task_duration_ = SECS_TO_NS * h_config->execution_timeout;
   timer_context_size = h_config->timer_context_size;
 
@@ -256,7 +280,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " kv_host_port: " << RS(settings_->kv_host_port)
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
-               << " curl_timeout: " << curl_timeout
                << " timer_context_size: " << h_config->timer_context_size
                << " version: " << EventingVer() << std::endl;
 
@@ -290,14 +313,19 @@ V8Worker::~V8Worker() {
     processing_thr_.join();
   }
 
+  FreeCurlBindings();
+
   auto data = UnwrapData(isolate_);
   delete data->custom_error;
   delete data->comm;
   delete data->transpiler;
   delete data->utils;
   delete data->timer;
+  delete data->js_exception;
+  delete data->curl_factory;
+  delete data->req_builder;
+  delete data->resp_builder;
 
-  curl_global_cleanup();
   context_.Reset();
   on_update_.Reset();
   on_delete_.Reset();
@@ -305,7 +333,6 @@ V8Worker::~V8Worker() {
   delete n1ql_handle_;
   delete settings_;
   delete histogram_;
-  delete js_exception_;
   delete timer_queue_;
   delete worker_queue_;
 }
@@ -390,6 +417,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     return jsify_info.code;
   }
 
+  // TODO : Move n1ql_handle_ initialization to InitializeIsolateData()
   n1ql_handle_ = new N1QL(conn_pool_, isolate_);
   UnwrapData(isolate_)->n1ql_handle = n1ql_handle_;
 
@@ -1055,4 +1083,21 @@ void V8Worker::SetThreadExitFlag() {
   thread_exit_cond_.store(true);
   timer_queue_->Close();
   worker_queue_->Close();
+}
+
+// Must be called only in destructor
+void V8Worker::FreeCurlBindings() {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  auto utils = UnwrapData(isolate_)->utils;
+
+  for (const auto &binding : curl_binding_values_) {
+    auto binding_val = utils->GetPropertyFromGlobal(binding);
+    auto info = CurlBinding::GetCurlInstance(isolate_, context, binding_val);
+    if (info.is_fatal) {
+      continue;
+    }
+
+    delete info.curl;
+  }
 }
