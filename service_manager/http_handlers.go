@@ -3,10 +3,12 @@ package servicemanager
 import (
 	"bytes"
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"net/url"
 	"os"
 	"path"
@@ -224,7 +226,7 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	logging.Infof("%s Function: %s got request to get V8 debugger url", logPrefix, appName)
+	logging.Debugf("%s Function: %s got request to get V8 debugger url", logPrefix, appName)
 
 	if m.checkIfDeployed(appName) {
 		debugURL, _ := m.superSup.GetDebuggerURL(appName)
@@ -243,7 +245,7 @@ func (m *ServiceMgr) getLocalDebugURL(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	logging.Infof("%s Function: %s got request to get local V8 debugger url", logPrefix, appName)
+	logging.Debugf("%s Function: %s got request to get local V8 debugger url", logPrefix, appName)
 
 	config := m.config.Load()
 	dir := config["eventing_dir"].(string)
@@ -2714,4 +2716,69 @@ func (m *ServiceMgr) freeOSMemory(w http.ResponseWriter, r *http.Request) {
 	logging.Infof("%s Freeing up memory to OS", logPrefix)
 	debug.FreeOSMemory()
 	logging.Infof("%s Freed up memory to OS", logPrefix)
+}
+
+//expvar handler
+func (m *ServiceMgr) expvarHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+
+	fmt.Fprintf(w, "{\n")
+	first := true
+	expvar.Do(func(kv expvar.KeyValue) {
+		if !first {
+			fmt.Fprintf(w, ",\n")
+		}
+		first = false
+		fmt.Fprintf(w, "%q: %s", kv.Key, kv.Value)
+	})
+	fmt.Fprintf(w, "\n}\n")
+}
+
+//pprof index handler
+func (m *ServiceMgr) indexHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+	pprof.Index(w, r)
+}
+
+//pprof cmdline handler
+func (m *ServiceMgr) cmdlineHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+	pprof.Cmdline(w, r)
+}
+
+//pprof profile handler
+func (m *ServiceMgr) profileHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+	pprof.Profile(w, r)
+}
+
+//pprof symbol handler
+func (m *ServiceMgr) symbolHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+	pprof.Symbol(w, r)
+}
+
+//pprof trace handler
+func (m *ServiceMgr) traceHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+	pprof.Trace(w, r)
 }

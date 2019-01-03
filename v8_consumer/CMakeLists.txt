@@ -34,9 +34,9 @@ INCLUDE_DIRECTORIES(AFTER
                      ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector)
 
 IF (NOT WIN32)
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer -msse4.2 -DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer -DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT")
 ELSE ()
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT")
 ENDIF ()
 
 IF(BUILD_ENTERPRISE)
@@ -55,7 +55,6 @@ SET(EVENTING_SOURCES
     src/bucket.cc
     src/n1ql.cc
     src/parse_deployment.cc
-    src/crc32c.cc
     src/log.cc
     src/transpiler.cc
     src/js_exception.cc
