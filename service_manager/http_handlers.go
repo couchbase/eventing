@@ -1380,15 +1380,6 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 	return
 }
 
-func (m *ServiceMgr) getCipherSuiteName(appName string) string {
-	tlsConfig, err := cbauth.GetTLSConfig()
-	if err != nil {
-		logging.Errorf("%s Unable to get TLS Config, err : %v", appName, err)
-		return ""
-	}
-	return strings.Join(tlsConfig.CipherSuiteNames, ":")
-}
-
 func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	builder := flatbuffers.NewBuilder(0)
 
@@ -1401,7 +1392,6 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 		usernameEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Username)
 		bearerKeyEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].BearerKey)
 		cookiesEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Cookies)
-		cipherSuiteNamesEncoded := builder.CreateString(m.getCipherSuiteName(app.Name))
 
 		cfg.CurlStart(builder)
 		cfg.CurlAddAuthType(builder, authTypeEncoded)
@@ -1411,7 +1401,6 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 		cfg.CurlAddUsername(builder, usernameEncoded)
 		cfg.CurlAddBearerKey(builder, bearerKeyEncoded)
 		cfg.CurlAddCookies(builder, cookiesEncoded)
-		cfg.CurlAddCipherSuiteNames(builder, cipherSuiteNamesEncoded)
 		curlBindingsEnd := cfg.CurlEnd(builder)
 
 		curlBindings = append(curlBindings, curlBindingsEnd)

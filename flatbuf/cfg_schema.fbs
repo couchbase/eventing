@@ -32,7 +32,6 @@ table Curl {
   password:string;
   bearerKey:string;
   cookies:string;
-  cipherSuiteNames:string;
 }
 
 root_type Config;

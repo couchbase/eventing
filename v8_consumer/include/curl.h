@@ -84,8 +84,6 @@ private:
                          ParamsList &params_list) const;
   Info SetRequestBody(const CurlRequest &request, ParamsList &params_list,
                       Curl::ReadBuffer &buffer) const;
-  void SetCipherSuites(const CurlBinding &binding,
-                       ParamsList &params_list) const;
 
   CurlClient curl_client_;
   v8::Isolate *isolate_;
@@ -122,7 +120,6 @@ struct CurlBinding {
   std::string password;
   std::string bearer_key;
   std::string cookies;
-  std::string cipher_suite_names;
   Curl *curl_instance;
 
 private:
@@ -134,7 +131,6 @@ private:
     kBindingId,
     kBearerKey,
     kCookies,
-    kCipherSuiteNames,
     kCurlInstance,
     Count // This is not a field, its value represents the count of this enum
     // Ensure that "Count" is always the last value in this enum
