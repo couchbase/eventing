@@ -37,8 +37,6 @@ const (
 	DataService          = "kv"
 	MgmtService          = "mgmt"
 
-	HTTPRequestTimeout = time.Duration(5000) * time.Millisecond
-
 	EPSILON = 1e-5
 	dict    = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ*&"
 )

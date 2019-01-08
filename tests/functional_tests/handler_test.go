@@ -87,6 +87,9 @@ func TestImportExport(t *testing.T) {
 		return
 	}
 
+	// Allow some time between import and export
+	time.Sleep(10 * time.Second)
+
 	response, err := makeRequest("GET", strings.NewReader(""), functionsURL)
 	if err != nil {
 		t.Errorf("Unable to list Functions err : %v\n", err)

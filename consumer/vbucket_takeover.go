@@ -258,6 +258,11 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 			if !util.Contains(vbBlob.AssignedWorker, possibleConsumers) {
 				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 			}
+
+			// Case 1c: Invalid node uuid is marked as owner of the vbucket
+			if !util.Contains(vbBlob.NodeUUID, c.eventingNodeUUIDs) && !util.Contains(vbBlob.NodeUUID, c.ejectNodesUUIDs) {
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
+			}
 		}
 
 		if vbBlob.NodeUUID == c.NodeUUID() {

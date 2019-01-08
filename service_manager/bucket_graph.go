@@ -59,7 +59,7 @@ func (bg *bucketMultiDiGraph) getInDegreeEdgeLabels(vertex string) []string {
 
 	labels := make([]string, 0)
 	if degree, ok := bg.inDegreeLabels[vertex]; ok {
-		for label, _ := range degree {
+		for label := range degree {
 			labels = append(labels, label)
 		}
 	}
@@ -73,7 +73,7 @@ func (bg *bucketMultiDiGraph) getOutDegreeEdgeLabels(vertex string) []string {
 
 	labels := make([]string, 0)
 	if degree, ok := bg.outDegreeLabels[vertex]; ok {
-		for label, _ := range degree {
+		for label := range degree {
 			labels = append(labels, label)
 		}
 	}
@@ -208,7 +208,7 @@ func (bg *bucketMultiDiGraph) hasPath(source, destination string) (reachable boo
 		visited[vertex] = struct{}{}
 
 		children := bg.adjacenyList[vertex]
-		for child, _ := range children {
+		for child := range children {
 			st.Push(child)
 			parents[child] = vertex
 		}
@@ -261,10 +261,9 @@ func (bg *bucketMultiDiGraph) isAcyclicInsertPossible(label, source string, dest
 			possible = false
 			labels = path
 			return
-		} else {
-			inserted = append(inserted, dest)
-			bg.insertEdge(label, source, dest)
 		}
+		inserted = append(inserted, dest)
+		bg.insertEdge(label, source, dest)
 	}
 	return
 }
@@ -275,7 +274,7 @@ func (bg *bucketMultiDiGraph) getAcyclicInsertSideEffects(destinations map[strin
 	visited := make(map[string]struct{})
 	for dest := range destinations {
 		if degree, ok := bg.outDegreeLabels[dest]; ok {
-			for label, _ := range degree {
+			for label := range degree {
 				if _, ok := visited[dest]; ok {
 					continue
 				}

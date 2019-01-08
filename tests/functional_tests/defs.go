@@ -22,6 +22,11 @@ const (
 	statsEndpointURL2 = "http://127.0.0.1:9302/api/v1/stats"
 	statsEndpointURL3 = "http://127.0.0.1:9303/api/v1/stats"
 
+	goroutineURL0 = "http://localhost:9300/debug/pprof/goroutine?debug=1"
+	goroutineURL1 = "http://localhost:9301/debug/pprof/goroutine?debug=1"
+	goroutineURL2 = "http://localhost:9302/debug/pprof/goroutine?debug=1"
+	goroutineURL3 = "http://localhost:9303/debug/pprof/goroutine?debug=1"
+
 	statusURL = "http://127.0.0.1:9300/api/v1/status"
 )
 

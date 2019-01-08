@@ -1623,7 +1623,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	}
 
 	var wInfo warningsInfo
-	wInfo.Status = "Stored function config in metakv"
+	wInfo.Status = fmt.Sprintf("Stored function: '%s' in metakv", app.Name)
 
 	switch strings.ToLower(compilationInfo.Level) {
 	case "dp":
@@ -1816,7 +1816,7 @@ func (m *ServiceMgr) getConfig() (c common.Config, info *runtimeInfo) {
 		}
 	}
 
-	logging.Infof("%s Retrieving config from metakv: %ru", logPrefix, c)
+	logging.Infof("%s Retrieving config from metakv: %+v", logPrefix, c)
 	info.Code = m.statusCodes.ok.Code
 	return
 }
@@ -1956,6 +1956,36 @@ func (m *ServiceMgr) assignFunctionID(fnName string, app *application, info *run
 		logging.Infof("%s Function: %s FunctionID: %d generated", logPrefix, app.Name, app.FunctionID)
 	}
 
+	return nil
+}
+
+func (m *ServiceMgr) assignFunctionInstanceID(functionName string, app *application, info *runtimeInfo) error {
+	logPrefix := "ServiceMgr:assignFunctionInstanceID"
+
+	if m.superSup.GetAppState(functionName) != common.AppStatePaused {
+		fiid, err := util.GenerateFunctionInstanceID()
+		if err != nil {
+			info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
+			info.Info = fmt.Sprintf("FunctionInstanceID generation failed")
+
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return err
+		}
+		app.FunctionInstanceID = fiid
+		logging.Infof("%s Function: %s FunctionInstanceID: %s generated", logPrefix, app.Name, app.FunctionInstanceID)
+	} else {
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, functionName)
+		if err != nil || data == nil {
+			info.Code = m.statusCodes.errGetAppPs.Code
+			info.Info = fmt.Sprintf("Function: %s failed to read definitions from metakv", functionName)
+
+			logging.Errorf("%s %s, err: %v", logPrefix, info.Info, err)
+			return fmt.Errorf("%s err: %v", info.Info, err)
+		}
+		prevApp := m.parseFunctionPayload(data, functionName)
+		app.FunctionInstanceID = prevApp.FunctionInstanceID
+		logging.Infof("%s Function: %s assigned previous FunctionInstanceID: %s", logPrefix, app.Name, app.FunctionInstanceID)
+	}
 	return nil
 }
 
@@ -2119,15 +2149,11 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			fiid, err := util.GenerateFunctionInstanceID()
+			err = m.assignFunctionInstanceID(appName, &app, info)
 			if err != nil {
-				info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
-				info.Info = fmt.Sprintf("Function instance ID generation failed")
 				m.sendErrorInfo(w, info)
 				return
 			}
-			logging.Infof("%s Function: %s Function instance ID: %s generated", logPrefix, app.Name, fiid)
-			app.FunctionInstanceID = fiid
 
 			app.EventingVersion = util.EventingVer()
 
@@ -2481,6 +2507,8 @@ func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::exportHandler"
+
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		cbauth.SendForbidden(w, EventingPermissionManage)
@@ -2494,6 +2522,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ExportFunctions, r, nil)
 
+	exportedFns := make([]string, 0)
 	apps := m.getTempStoreAll()
 	for _, app := range apps {
 		for i := range app.DeploymentConfig.Curl {
@@ -2501,7 +2530,10 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		app.Settings["deployment_status"] = false
 		app.Settings["processing_status"] = false
+		exportedFns = append(exportedFns, app.Name)
 	}
+
+	logging.Infof("%s Exported function list: %+v", logPrefix, exportedFns)
 
 	data, err := json.Marshal(apps)
 	if err != nil {
@@ -2516,6 +2548,8 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::importHandler"
+
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		cbauth.SendForbidden(w, EventingPermissionManage)
@@ -2536,6 +2570,13 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	infoList := m.createApplications(r, appList, true)
+
+	importedFns := make([]string, 0)
+	for _, app := range *appList {
+		importedFns = append(importedFns, app.Name)
+	}
+
+	logging.Infof("%s Imported functions: %+v", logPrefix, importedFns)
 	m.sendRuntimeInfoList(w, infoList)
 }
 
@@ -2566,15 +2607,11 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 		}
 
 		info = &runtimeInfo{}
-		fiid, err := util.GenerateFunctionInstanceID()
+		err = m.assignFunctionInstanceID(app.Name, &app, info)
 		if err != nil {
-			info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
-			info.Info = fmt.Sprintf("Handler FunctionInstanceID generation failed")
 			infoList = append(infoList, info)
 			continue
 		}
-		logging.Infof("%s Function: %s FunctionInstanceID generated, InstanceId: %s", logPrefix, app.Name, fiid)
-		app.FunctionInstanceID = fiid
 
 		app.EventingVersion = util.EventingVer()
 
