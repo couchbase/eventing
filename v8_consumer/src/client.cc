@@ -698,11 +698,14 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                      << parsed_header->metadata << std::endl;
         int vb_no = 0;
         int64_t seq_no = 0;
-        if (kSuccess == workers_[worker_index]->ParseMetadata(
-                            parsed_header->metadata, vb_no, seq_no)) {
+        int skip_ack = 0;
+        if (kSuccess ==
+            workers_[worker_index]->ParseMetadataWithAck(
+                parsed_header->metadata, vb_no, seq_no, skip_ack, true)) {
           auto bucketops_seqno =
               workers_[worker_index]->GetBucketopsSeqno(vb_no);
-          SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno);
+          SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno,
+                        skip_ack);
         }
       } else {
         LOG(logError) << "Filter event lost: worker " << worker_index
@@ -1003,18 +1006,20 @@ void AppWorker::StopUvLoop(uv_async_t *async) {
 }
 
 void AppWorker::SendFilterAck(int opcode, int msgtype, int vb_no,
-                              int64_t seq_no) {
+                              int64_t seq_no, bool skip_ack) {
   std::ostringstream filter_ack;
   filter_ack << R"({"vb":)";
   filter_ack << vb_no << R"(, "seq":)";
-  filter_ack << seq_no << "}";
+  filter_ack << seq_no << R"(, "skip_ack":)";
+  filter_ack << skip_ack << "}";
 
   resp_msg_->msg.assign(filter_ack.str());
   resp_msg_->msg_type = msgtype;
   resp_msg_->opcode = opcode;
   msg_priority_ = true;
   LOG(logInfo) << "vb: " << vb_no << " seqNo: " << seq_no
-               << " sending filter ack to Go" << std::endl;
+               << " skip_ack: " << skip_ack << " sending filter ack to Go"
+               << std::endl;
 }
 
 int main(int argc, char **argv) {

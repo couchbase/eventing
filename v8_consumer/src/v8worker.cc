@@ -999,6 +999,13 @@ std::vector<uv_buf_t> V8Worker::BuildResponse(const std::string &payload,
 
 int V8Worker::ParseMetadata(const std::string &metadata, int &vb_no,
                             int64_t &seq_no) {
+  int skip_ack;
+  return ParseMetadataWithAck(metadata, vb_no, seq_no, skip_ack, false);
+}
+
+int V8Worker::ParseMetadataWithAck(const std::string &metadata, int &vb_no,
+                                   int64_t &seq_no, int &skip_ack,
+                                   bool ack_check) {
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::HandleScope handle_scope(isolate_);
@@ -1028,6 +1035,14 @@ int V8Worker::ParseMetadata(const std::string &metadata, int &vb_no,
     return kToLocalFailed;
   }
 
+  v8::Local<v8::Value> skip_ack_val;
+  if (ack_check) {
+    if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "skip_ack")),
+                  &skip_ack_val)) {
+      return kToLocalFailed;
+    }
+  }
+
   if (seq_val->IsNumber() && vb_val->IsNumber()) {
     v8::Local<v8::Integer> vb_val_int;
     if (!TO_LOCAL(vb_val->ToInteger(context), &vb_val_int)) {
@@ -1039,10 +1054,28 @@ int V8Worker::ParseMetadata(const std::string &metadata, int &vb_no,
       return kToLocalFailed;
     }
 
+    v8::Local<v8::Integer> skip_ack_int;
+    if (ack_check) {
+      if (!skip_ack_val->IsNumber()) {
+        return kToLocalFailed;
+      }
+
+      if (!TO_LOCAL(skip_ack_val->ToInteger(context), &skip_ack_int)) {
+        return kToLocalFailed;
+      }
+    }
+
     vb_no = vb_val_int->Value();
     seq_no = seq_val_int->Value();
+
+    if (ack_check) {
+      skip_ack = skip_ack_int->Value();
+    }
+
+    return kSuccess;
   }
-  return kSuccess;
+
+  return kToLocalFailed;
 }
 
 int V8Worker::UpdateVbFilter(const std::string &metadata) {
