@@ -609,7 +609,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 
 			vbs = append(vbs, vb)
 			switch c.dcpStreamBoundary {
-			case common.DcpEverything:
+			case common.DcpEverything, common.DcpFromPrior:
 				logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
