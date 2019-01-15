@@ -1,10 +1,10 @@
 {
   "service": "eventing",
-  "proxy-strategy": "local",
+  "proxy-strategy": "@PROXY_STRATEGY@",
    "version-dirs": [
     {"version": [4, 5], "dir": "ui-classic"},
     {"version": [5, 0], "dir": "ui-current"}
   ],
  "rest-api-prefix": "event",
-  "doc-root": "@BIN_PREFIX@eventing-ui"
+ "doc-root": "@BIN_PREFIX@eventing-ui"
 }
