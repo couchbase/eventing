@@ -18,6 +18,16 @@ INCLUDE (FindCouchbaseBreakpad)
 
 SET(LIBS_HEADERS
         ../libs/include)
+SET(LIBS_SRC
+        ../../eventing-ee/curl.cc
+        ../libs/src/bucket.cc
+        ../libs/src/comm.cc
+        ../libs/src/n1ql.cc
+        ../libs/src/log.cc
+        ../libs/src/transpiler.cc
+        ../libs/src/js_exception.cc
+        ../libs/src/v8log.cc
+        ../libs/src/utils.cc)
 
 INCLUDE_DIRECTORIES(BEFORE
                      "${libcouchbase_SOURCE_DIR}/include"
@@ -50,23 +60,15 @@ ENDIF()
 SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc PROPERTIES GENERATED TRUE)
 
 SET(EVENTING_SOURCES
-    ../../eventing-ee/curl.cc
     src/base64.cc
     src/client.cc
-    src/comm.cc
     src/commands.cc
     src/v8worker.cc
     src/assert.cc
-    src/bucket.cc
-    src/n1ql.cc
     src/parse_deployment.cc
-    src/log.cc
-    src/transpiler.cc
-    src/js_exception.cc
-    src/utils.cc
-    src/function_templates.cc
     src/breakpad.cc
     src/timer.cc
+    ${LIBS_SRC}
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/version/version.cc)
 

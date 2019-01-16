@@ -11,6 +11,7 @@
 
 #include <regex>
 
+#include "isolate_data.h"
 #include "js_exception.h"
 #include "utils.h"
 

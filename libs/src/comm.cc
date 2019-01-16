@@ -10,6 +10,7 @@
 // permissions and limitations under the License.
 
 #include "comm.h"
+#include "isolate_data.h"
 #include "utils.h"
 
 Communicator::Communicator(const std::string &host_ip,
