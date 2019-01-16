@@ -995,8 +995,8 @@ var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
 				return nil
 			}
 			// TODO: Added for debugging, can be retired before release
-			logging.Infof("%s [%s:%s:%d] vb: %d not owned by consumer yet",
-				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			logging.Warnf("%s [%s:%s:%d] vb: %d not owned by consumer yet",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 			return fmt.Errorf("vb: %d not owned by consumer yet", vb)
 		}
 	}
