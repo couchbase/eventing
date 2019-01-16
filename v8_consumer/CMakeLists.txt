@@ -16,6 +16,9 @@ INCLUDE (FindCouchbaseLibuv)
 INCLUDE (FindCouchbaseV8)
 INCLUDE (FindCouchbaseBreakpad)
 
+SET(LIBS_HEADERS
+        ../libs/include)
+
 INCLUDE_DIRECTORIES(BEFORE
                      "${libcouchbase_SOURCE_DIR}/include"
                      "${libcouchbase_BINARY_DIR}/generated"
@@ -31,7 +34,8 @@ INCLUDE_DIRECTORIES(AFTER
                      ${FLATBUFFERS_INCLUDE_DIR}
                      ${Platform_SOURCE_DIR}/include
                      ${CMAKE_INSTALL_PREFIX}/include
-                     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector)
+                     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector
+                     ${LIBS_HEADERS})
 
 IF (NOT WIN32)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer -DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT")
