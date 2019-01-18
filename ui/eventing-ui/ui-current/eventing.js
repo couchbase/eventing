@@ -1172,8 +1172,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     isEventingRunning: function() {
                         return mnPoolDefault.get()
                             .then(function(response) {
-                                var isEventingRunning = _.indexOf(response.thisNode.services, 'eventing') > -1;
-                                return isEventingRunning;
+                                // in 6.5 and later, sticky proxy allows eventing service on any node
+                                var nlist = mnPoolDefault.export.compat.atLeast65 ? response.nodes : [ response.thisNode ];
+                                for (var ni = 0; ni < nlist.length; ni++) {
+                                        if (_.indexOf(nlist[ni].services, 'eventing') > -1) {
+                                                return true;
+                                        }
+                                }
+                                return false;
                             }).catch(function(errResponse) {
                                 console.error('Unable to get server nodes', errResponse);
                             });

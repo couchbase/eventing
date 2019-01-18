@@ -9,7 +9,9 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "function_templates.h"
+#include "utils.h"
+
+const auto ConsoleLogMaxArity = 20;
 
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
@@ -65,16 +67,16 @@ void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
                      .ToLocalChecked();
   auto log_fn = v8::Local<v8::Function>::Cast(console->Get(log_v8_str));
 
-  v8::Local<v8::Value> log_args[CONSOLE_LOG_MAX_ARITY];
+  v8::Local<v8::Value> log_args[ConsoleLogMaxArity];
   auto i = 0;
-  for (; i < args.Length() && i < CONSOLE_LOG_MAX_ARITY; ++i) {
+  for (; i < args.Length() && i < ConsoleLogMaxArity; ++i) {
     log_args[i] = args[i];
   }
 
   // Calling console.log with the args passed to log() function.
-  if (i < CONSOLE_LOG_MAX_ARITY) {
+  if (i < ConsoleLogMaxArity) {
     log_fn->Call(log_fn, args.Length(), log_args);
   } else {
-    log_fn->Call(log_fn, CONSOLE_LOG_MAX_ARITY, log_args);
+    log_fn->Call(log_fn, ConsoleLogMaxArity, log_args);
   }
 }
