@@ -28,9 +28,7 @@
 #include "comm.h"
 #include "info.h"
 #include "log.h"
-#include "timer.h"
 
-#define DATA_SLOT 0
 #define EXCEPTION_STR_SIZE 20
 
 #define TO(maybe, local)                                                       \
@@ -38,44 +36,6 @@
 #define TO_LOCAL(maybe, local)                                                 \
   (ToLocal((maybe), (local), __FILE__, __FUNCTION__, __LINE__))
 #define IS_EMPTY(v8obj) (IsEmpty((v8obj), __FILE__, __FUNCTION__, __LINE__))
-
-class Curl;
-class N1QL;
-class V8Worker;
-class JsException;
-class Transpiler;
-class Utils;
-class Timer;
-class CustomError;
-class CurlFactory;
-class CurlRequestBuilder;
-class CurlResponseBuilder;
-
-// Struct for storing isolate data
-struct Data {
-  N1QL *n1ql_handle;
-  V8Worker *v8worker;
-  JsException *js_exception;
-  Communicator *comm;
-  Transpiler *transpiler;
-  Utils *utils;
-  Timer *timer;
-  CustomError *custom_error;
-  CurlFactory *curl_factory;
-  CurlRequestBuilder *req_builder;
-  CurlResponseBuilder *resp_builder;
-};
-
-// Code version of handler
-struct CodeVersion {
-  std::string version;
-  std::string level;
-  std::string using_timer;
-};
-
-inline Data *UnwrapData(v8::Isolate *isolate) {
-  return reinterpret_cast<Data *>(isolate->GetData(DATA_SLOT));
-}
 
 template <typename T>
 T *UnwrapInternalField(v8::Local<v8::Object> obj, int field_no) {
