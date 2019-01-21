@@ -22,6 +22,8 @@
 #include <v8.h>
 #include <vector>
 
+#include "../../gen/flatbuf/cfg_schema_generated.h"
+#include "../../gen/flatbuf/payload_generated.h"
 #include "info.h"
 
 struct CurlParameters;
@@ -96,14 +98,6 @@ struct CurlInfo : public Info {
 
   Curl *curl;
 };
-
-// Forward declaring the flatbuf struct to avoid #including the generated
-// flatbuf headers
-namespace flatbuf {
-namespace cfg {
-struct Curl;
-}
-} // namespace flatbuf
 
 struct CurlBinding {
   CurlBinding() : curl_instance(nullptr) {}

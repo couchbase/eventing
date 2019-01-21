@@ -9,18 +9,16 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "transpiler.h"
 #include "log.h"
+#include "n1ql.h"
 #include "retry_util.h"
 #include "utils.h"
 
 Transpiler::Transpiler(v8::Isolate *isolate, const std::string &transpiler_src,
                        const std::vector<std::string> &handler_headers,
-                       const std::vector<std::string> &handler_footers,
-                       const std::string &source_bucket)
+                       const std::vector<std::string> &handler_footers)
     : isolate_(isolate), transpiler_src_(transpiler_src),
-      source_bucket_(source_bucket), handler_headers_(handler_headers),
-      handler_footers_(handler_footers) {
+      handler_headers_(handler_headers), handler_footers_(handler_footers) {
   auto global = v8::ObjectTemplate::New(isolate);
   global->Set(v8Str(isolate, "log"),
               v8::FunctionTemplate::New(isolate, Transpiler::Log));
@@ -81,8 +79,8 @@ v8::Local<v8::Value> Transpiler::ExecTranspiler(const std::string &function,
 
 CompilationInfo Transpiler::Compile(const std::string &n1ql_js_src) {
   // Comment-out N1QL queries and obtain the list of insertions that was made
-  auto cmt_info = CommentN1QL(n1ql_js_src, true, source_bucket_);
-  if (cmt_info.code != Jsify::kOK) {
+  auto cmt_info = CommentN1QL(n1ql_js_src);
+  if (cmt_info.code != kOK) {
     return ComposeErrorInfo(cmt_info);
   }
 
@@ -135,8 +133,8 @@ std::string Transpiler::Transpile(const std::string &jsified_code,
 }
 
 UniLineN1QLInfo Transpiler::UniLineN1QL(const std::string &handler_code) {
-  auto info = ::UniLineN1QL(handler_code, true, source_bucket_);
-  if (info.code != Jsify::kOK) {
+  auto info = ::UniLineN1QL(handler_code);
+  if (info.code != kOK) {
     return info;
   }
 
@@ -150,6 +148,30 @@ UniLineN1QLInfo Transpiler::UniLineN1QL(const std::string &handler_code) {
   v8::String::Utf8Value utf8result(result);
   info.handler_code = *utf8result;
   return info;
+}
+
+std::string Transpiler::JsFormat(const std::string &handler_code) {
+  v8::HandleScope handle_scope(isolate_);
+  v8::Local<v8::Value> args[1];
+  args[0] = v8Str(isolate_, handler_code);
+  auto result = ExecTranspiler("jsFormat", args, 1);
+  v8::String::Utf8Value utf8result(result);
+
+  return *utf8result;
+}
+
+std::string Transpiler::GetSourceMap(const std::string &handler_code,
+                                     const std::string &src_filename) {
+  v8::HandleScope handle_scope(isolate_);
+  v8::Local<v8::Value> args[4];
+  args[0] = v8Str(isolate_, handler_code);
+  args[1] = v8Str(isolate_, src_filename);
+  args[2] = v8Array(isolate_, handler_headers_);
+  args[3] = v8Array(isolate_, handler_footers_);
+  auto result = ExecTranspiler("getSourceMap", args, 4);
+  v8::String::Utf8Value utf8result(result);
+
+  return *utf8result;
 }
 
 std::string Transpiler::TranspileQuery(const std::string &query,
@@ -207,6 +229,14 @@ CodeVersion Transpiler::GetCodeVersion(const std::string &handler_code) {
   return CodeVersion{*version, *level, *using_timer};
 }
 
+bool Transpiler::IsTimerCalled(const std::string &handler_code) {
+  v8::HandleScope handle_scope(isolate_);
+  v8::Local<v8::Value> args[1];
+  args[0] = v8Str(isolate_, handler_code);
+  auto result = ExecTranspiler("isTimerCalled", args, 1);
+  return result.As<v8::Boolean>()->Value();
+}
+
 bool Transpiler::IsJsExpression(const std::string &str) {
   v8::HandleScope handle_scope(isolate_);
   v8::Local<v8::Value> args[1];
@@ -235,7 +265,7 @@ CompilationInfo Transpiler::ComposeErrorInfo(const CommentN1QLInfo &cmt_info) {
   info.line_no = cmt_info.last_pos.line_no;
   info.col_no = cmt_info.last_pos.col_no;
   info.index = cmt_info.last_pos.index;
-  if (cmt_info.code == Jsify::kN1QLParserError) {
+  if (cmt_info.code == kN1QLParserError) {
     info.language = "N1QL";
     info.description = cmt_info.parse_info.info;
   } else {
@@ -361,71 +391,71 @@ CompilationInfo Transpiler::ComposeCompilationInfo(
 std::string Transpiler::ComposeDescription(int code) {
   std::string keyword;
   switch (code) {
-  case Jsify::kKeywordAlter:
+  case kKeywordAlter:
     keyword = "alter";
     break;
 
-  case Jsify::kKeywordBuild:
+  case kKeywordBuild:
     keyword = "build";
     break;
 
-  case Jsify::kKeywordCreate:
+  case kKeywordCreate:
     keyword = "create";
     break;
 
-  case Jsify::kKeywordDelete:
+  case kKeywordDelete:
     keyword = "delete";
     break;
 
-  case Jsify::kKeywordDrop:
+  case kKeywordDrop:
     keyword = "drop";
     break;
 
-  case Jsify::kKeywordExecute:
+  case kKeywordExecute:
     keyword = "execute";
     break;
 
-  case Jsify::kKeywordExplain:
+  case kKeywordExplain:
     keyword = "explain";
     break;
 
-  case Jsify::kKeywordGrant:
+  case kKeywordGrant:
     keyword = "grant";
     break;
 
-  case Jsify::kKeywordInfer:
+  case kKeywordInfer:
     keyword = "infer";
     break;
 
-  case Jsify::kKeywordInsert:
+  case kKeywordInsert:
     keyword = "insert";
     break;
 
-  case Jsify::kKeywordMerge:
+  case kKeywordMerge:
     keyword = "merge";
     break;
 
-  case Jsify::kKeywordPrepare:
+  case kKeywordPrepare:
     keyword = "prepare";
     break;
 
-  case Jsify::kKeywordRename:
+  case kKeywordRename:
     keyword = "rename";
     break;
 
-  case Jsify::kKeywordRevoke:
+  case kKeywordRevoke:
     keyword = "revoke";
     break;
 
-  case Jsify::kKeywordSelect:
+  case kKeywordSelect:
     keyword = "select";
     break;
 
-  case Jsify::kKeywordUpdate:
+  case kKeywordUpdate:
     keyword = "update";
     break;
 
-  case Jsify::kKeywordUpsert:
+  case kKeywordUpsert:
     keyword = "upsert";
     break;
 

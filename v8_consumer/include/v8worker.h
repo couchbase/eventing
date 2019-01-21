@@ -34,17 +34,15 @@
 #include <v8.h>
 
 #include "commands.h"
+#include "function_templates.h"
 #include "histogram.h"
 #include "inspector_agent.h"
-#include "isolate_data.h"
 #include "js_exception.h"
 #include "log.h"
 #include "n1ql.h"
 #include "parse_deployment.h"
 #include "queue.h"
-#include "transpiler.h"
 #include "utils.h"
-#include "v8log.h"
 
 #include "../../gen/flatbuf/header_generated.h"
 #include "../../gen/flatbuf/payload_generated.h"
@@ -280,14 +278,13 @@ public:
   std::map<int, int64_t> lcb_exceptions_;
 
   Histogram *histogram_;
-  IsolateData data_;
+  Data data_;
 
 private:
   v8::Local<v8::ObjectTemplate> NewGlobalObj() const;
   void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
   void InitializeIsolateData(const server_settings_t *server_settings,
-                             const handler_config_t *h_config,
-                             const std::string &source_bucket);
+                             const handler_config_t *h_config);
   void
   InitializeCurlBindingValues(const std::vector<CurlBinding> &curl_bindings);
   void FreeCurlBindings();
@@ -319,4 +316,12 @@ private:
   std::vector<std::string> curl_binding_values_;
 };
 
+const char *GetUsername(void *cookie, const char *host, const char *port,
+                        const char *bucket);
+const char *GetPassword(void *cookie, const char *host, const char *port,
+                        const char *bucket);
+const char *GetUsernameCached(void *cookie, const char *host, const char *port,
+                              const char *bucket);
+const char *GetPasswordCached(void *cookie, const char *host, const char *port,
+                              const char *bucket);
 #endif

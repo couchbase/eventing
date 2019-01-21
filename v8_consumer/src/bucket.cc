@@ -10,58 +10,9 @@
 // permissions and limitations under the License.
 
 #include "bucket.h"
-#include "js_exception.h"
 #include "retry_util.h"
-#include "utils.h"
 
 #undef NDEBUG
-
-std::atomic<int64_t> bucket_op_exception_count = {0};
-std::atomic<int64_t> lcb_retry_failure = {0};
-
-const char *GetUsername(void *cookie, const char *host, const char *port,
-                        const char *bucket) {
-  LOG(logDebug) << "Getting username for host " << RS(host) << " port " << port
-                << std::endl;
-
-  auto endpoint = JoinHostPort(host, port);
-  auto isolate = static_cast<v8::Isolate *>(cookie);
-  auto comm = UnwrapData(isolate)->comm;
-  auto info = comm->GetCreds(endpoint);
-  if (!info.is_valid) {
-    LOG(logError) << "Failed to get username for " << RS(host) << ":" << port
-                  << " err: " << info.msg << std::endl;
-  }
-
-  static const char *username = "";
-  if (info.username != username) {
-    username = strdup(info.username.c_str());
-  }
-
-  return username;
-}
-
-const char *GetPassword(void *cookie, const char *host, const char *port,
-                        const char *bucket) {
-  LOG(logDebug) << "Getting password for host " << RS(host) << " port " << port
-                << std::endl;
-
-  auto isolate = static_cast<v8::Isolate *>(cookie);
-  auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(host, port);
-  auto info = comm->GetCreds(endpoint);
-  if (!info.is_valid) {
-    LOG(logError) << "Failed to get password for " << RS(host) << ":" << port
-                  << " err: " << info.msg << std::endl;
-  }
-
-  static const char *password = "";
-  if (info.password != password) {
-    password = strdup(info.password.c_str());
-  }
-
-  return password;
-}
 
 // lcb related callbacks
 static void get_callback(lcb_t instance, int, const lcb_RESPBASE *rb) {
@@ -202,14 +153,12 @@ struct lcb_logprocs_st evt_logger = {
     }                     /* v */
 };
 
-Bucket::Bucket(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
-               const std::string &bucket_name, const std::string &endpoint,
-               const std::string &alias, bool block_mutation,
-               bool is_source_bucket)
-    : isolate_(isolate), block_mutation_(block_mutation),
-      is_source_bucket_(is_source_bucket), bucket_name_(bucket_name),
-      endpoint_(endpoint), bucket_alias_(alias) {
-  context_.Reset(isolate_, context);
+Bucket::Bucket(V8Worker *w, const char *bname, const char *ep,
+               const char *alias, bool block_mutation, bool is_source_bucket)
+    : block_mutation_(block_mutation), is_source_bucket_(is_source_bucket),
+      bucket_name_(bname), endpoint_(ep), bucket_alias_(alias), worker_(w) {
+  isolate_ = w->GetIsolate();
+  context_.Reset(isolate_, w->context_);
 
   auto init_success = true;
   auto connstr =
@@ -299,17 +248,27 @@ Bucket::Bucket(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
   }
 
   if (init_success) {
-    LOG(logInfo) << "Bucket: lcb instance for " << bucket_name
+    LOG(logInfo) << "Bucket: lcb instance for " << bname
                  << " initialized successfully" << std::endl;
   } else {
-    LOG(logError) << "Bucket: Unable to initialize lcb instance for "
-                  << bucket_name << std::endl;
+    LOG(logError) << "Bucket: Unable to initialize lcb instance for " << bname
+                  << std::endl;
   }
 }
 
 Bucket::~Bucket() {
   lcb_destroy(bucket_lcb_obj_);
   context_.Reset();
+}
+
+bool Bucket::Initialize(V8Worker *w) {
+  v8::HandleScope handle_scope(isolate_);
+
+  auto context = v8::Local<v8::Context>::New(isolate_, w->context_);
+  context_.Reset(isolate_, context);
+  v8::Context::Scope context_scope(context);
+
+  return InstallMaps();
 }
 
 // Associates the lcb instance with the bucket object and returns it
@@ -486,7 +445,8 @@ void Bucket::HandleBucketOpFailure(v8::Isolate *isolate,
                                    lcb_t bucket_lcb_obj_ptr,
                                    lcb_error_t error) {
   auto isolate_data = UnwrapData(isolate);
-  AddLcbException(isolate_data, error);
+  auto w = isolate_data->v8worker;
+  w->AddLcbException(error);
   ++bucket_op_exception_count;
 
   auto js_exception = isolate_data->js_exception;
@@ -572,7 +532,8 @@ void Bucket::BucketSetWithXattr(
   Result mres;
 
   lcb_SDSPEC function_id_spec = {0};
-  std::string function_instance_id = GetFunctionInstanceID(isolate);
+  auto v8worker = UnwrapData(isolate)->v8worker;
+  std::string function_instance_id = v8worker->GetFunctionInstanceID();
   std::string function_instance_id_path("_eventing.fiid");
   function_id_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
   function_id_spec.options =
@@ -581,17 +542,6 @@ void Bucket::BucketSetWithXattr(
                       function_instance_id_path.size());
   LCB_SDSPEC_SET_VALUE(&function_id_spec, function_instance_id.c_str(),
                        function_instance_id.size());
-
-  lcb_SDSPEC dcp_seqno_spec = {0};
-  std::string dcp_seqno_path("_eventing.seqno");
-  std::string dcp_seqno_macro(R"("${Mutation.seqno}")");
-  dcp_seqno_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-  dcp_seqno_spec.options =
-      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
-  LCB_SDSPEC_SET_PATH(&dcp_seqno_spec, dcp_seqno_path.c_str(),
-                      dcp_seqno_path.size());
-  LCB_SDSPEC_SET_VALUE(&dcp_seqno_spec, dcp_seqno_macro.c_str(),
-                       dcp_seqno_macro.size());
 
   lcb_SDSPEC value_crc32_spec = {0};
   std::string value_crc32_path("_eventing.crc");
@@ -609,8 +559,8 @@ void Bucket::BucketSetWithXattr(
   LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
   LCB_SDSPEC_SET_VALUE(&doc_spec, value.c_str(), value.length());
 
-  std::vector<lcb_SDSPEC> specs = {function_id_spec, dcp_seqno_spec,
-                                   value_crc32_spec, doc_spec};
+  std::vector<lcb_SDSPEC> specs = {function_id_spec, value_crc32_spec,
+                                   doc_spec};
   lcb_CMDSUBDOC mcmd = {0};
   LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
   mcmd.specs = specs.data();
@@ -716,7 +666,8 @@ void Bucket::BucketDeleteWithXattr(
 
   Result result;
   lcb_SDSPEC function_id_spec = {0};
-  std::string function_instance_id = GetFunctionInstanceID(isolate);
+  auto v8worker = UnwrapData(isolate)->v8worker;
+  std::string function_instance_id = v8worker->GetFunctionInstanceID();
   std::string function_instance_id_path("_eventing.fiid");
   function_id_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
   function_id_spec.options =
@@ -725,17 +676,6 @@ void Bucket::BucketDeleteWithXattr(
                       function_instance_id_path.size());
   LCB_SDSPEC_SET_VALUE(&function_id_spec, function_instance_id.c_str(),
                        function_instance_id.size());
-
-  lcb_SDSPEC dcp_seqno_spec = {0};
-  std::string dcp_seqno_path("_eventing.seqno");
-  std::string dcp_seqno_macro(R"("${Mutation.seqno}")");
-  dcp_seqno_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
-  dcp_seqno_spec.options =
-      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
-  LCB_SDSPEC_SET_PATH(&dcp_seqno_spec, dcp_seqno_path.c_str(),
-                      dcp_seqno_path.size());
-  LCB_SDSPEC_SET_VALUE(&dcp_seqno_spec, dcp_seqno_macro.c_str(),
-                       dcp_seqno_macro.size());
 
   lcb_SDSPEC value_crc32_spec = {0};
   std::string value_crc32_path("_eventing.crc");
@@ -753,8 +693,8 @@ void Bucket::BucketDeleteWithXattr(
   LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
   LCB_SDSPEC_SET_VALUE(&doc_spec, "", 0);
 
-  std::vector<lcb_SDSPEC> specs = {function_id_spec, dcp_seqno_spec,
-                                   value_crc32_spec, doc_spec};
+  std::vector<lcb_SDSPEC> specs = {function_id_spec, value_crc32_spec,
+                                   doc_spec};
   lcb_CMDSUBDOC mcmd = {0};
   LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
   mcmd.specs = specs.data();

@@ -12,38 +12,17 @@
 
     #include <list>
     #include <algorithm>
-    #include <string>
-
+    #include "n1ql.h"
     #include "utils.h"
-    #include "transpiler.h"
-    #include "isolate_data.h"
 
-    void HandleStrStart(int state);
-    void HandleStrStop(int state);
-    bool IsEsc(const std::string &str);
-    void UpdatePos(InsertType type);
-    void UpdatePos(Pos *pos);
-    std::string TranspileQuery(const std::string &query);
-    void ReplaceRecentChar(std::string &str, char m, char n);
-    ParseInfo ParseQuery(const std::string &query);
-    int32_t CountNewLines(const std::string &str, int32_t from = 0);
-    int32_t CountStr(const std::string &needle, const std::string &haystack, int32_t from = 0);
-
-    enum class JsifyMode { kJsify, kUniLineN1QL, kCommentN1QL };
-
-    JsifyMode mode;
+    lex_op_code lex_op;
     int pos_type_len[2];
     std::list<InsertedCharsInfo> *insertions;
     ParseInfo parse_info;
-
     // Contains the output plain JavaScript code.
     std::string js_code, n1ql_query;
-
     // Storing the state for resuming on switch.
     int previous_state;
-
-    bool validate_source_bucket = false;
-    std::string source_bucket;
 %}
 %option nounput
 %x N1QL MLCMT SLCMT DSTR SSTR TSTR
@@ -81,24 +60,24 @@
 <SSTR>[']	{HandleStrStop(SSTR);}
 [`]	{HandleStrStart(TSTR); /* Handling templated string */}
 <TSTR>[`]	{HandleStrStop(TSTR);}
-(var|function)[ \t\r\n]+[aA][lL][tT][eE][rR][ \t\r\n;=(]|[aA][lL][tT][eE][rR][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordAlter; }
-(var|function)[ \t\r\n]+[bB][uU][iI][lL][dD][ \t\r\n;=(]|[bB][uU][iI][lL][dD][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordBuild;}
-(var|function)[ \t\r\n]+[cC][rR][eE][aA][tT][eE][ \t\r\n;=(]|[cC][rR][eE][aA][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordCreate;}
-(var|function)[ \t\r\n]+[dD][eE][lL][eE][tT][eE][ \t\r\n;=(]|[dD][eE][lL][eE][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordDelete;}
-(var|function)[ \t\r\n]+[dD][rR][oO][pP][ \t\r\n;=(]|[dD][rR][oO][pP][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordDrop;}
-(var|function)[ \t\r\n]+[eE][xX][eE][cC][uU][tT][eE][ \t\r\n;=(]|[eE][xX][eE][cC][uU][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordExecute;}
-(var|function)[ \t\r\n]+[eE][xX][pP][lL][aA][iI][nN][ \t\r\n;=(]|[eE][xX][pP][lL][aA][iI][nN][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordExplain;}
-(var|function)[ \t\r\n]+[fF][rR][oO][mM][ \t\r\n;=(]|[fF][rR][oO][mM][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordFrom;}
-(var|function)[ \t\r\n]+[gG][rR][aA][nN][tT][ \t\r\n;=(]|[gG][rR][aA][nN][tT][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordGrant;}
-(var|function)[ \t\r\n]+[iI][nN][fF][eE][rR][ \t\r\n;=(]|[iI][nN][fF][eE][rR][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordInfer;}
-(var|function)[ \t\r\n]+[iI][nN][sS][eE][rR][tT][ \t\r\n;=(]|[iI][nN][sS][eE][rR][tT][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordInsert;}
-(var|function)[ \t\r\n]+[mM][eE][rR][gG][eE][ \t\r\n;=(]|[mM][eE][rR][gG][eE][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordMerge;}
-(var|function)[ \t\r\n]+[pP][rR][eE][pP][aA][rR][eE][ \t\r\n;=(]|[pP][rR][eE][pP][aA][rR][eE][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordPrepare;}
-(var|function)[ \t\r\n]+[rR][eE][nN][aA][mM][eE][ \t\r\n;=(]|[rR][eE][nN][aA][mM][eE][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordRename;}
-(var|function)[ \t\r\n]+[sS][eE][lL][eE][cC][tT][ \t\r\n;=(]|[sS][eE][lL][eE][cC][tT][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordSelect;}
-(var|function)[ \t\r\n]+[rR][eE][vV][oO][kK][eE][ \t\r\n;=(]|[rR][eE][vV][oO][kK][eE][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordRevoke;}
-(var|function)[ \t\r\n]+[uU][pP][dD][aA][tT][eE][ \t\r\n;=(]|[uU][pP][dD][aA][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordUpdate;}
-(var|function)[ \t\r\n]+[uU][pP][sS][eE][rR][tT][ \t\r\n;=(]|[uU][pP][sS][eE][rR][tT][ \t\r\n]*:[ \t\r\n]*\{	{return Jsify::kKeywordUpsert;}
+(var|function)[ \t\r\n]+[aA][lL][tT][eE][rR][ \t\r\n;=(]|[aA][lL][tT][eE][rR][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordAlter; /* Checking the constraints in this section */}
+(var|function)[ \t\r\n]+[bB][uU][iI][lL][dD][ \t\r\n;=(]|[bB][uU][iI][lL][dD][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordBuild;}
+(var|function)[ \t\r\n]+[cC][rR][eE][aA][tT][eE][ \t\r\n;=(]|[cC][rR][eE][aA][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordCreate;}
+(var|function)[ \t\r\n]+[dD][eE][lL][eE][tT][eE][ \t\r\n;=(]|[dD][eE][lL][eE][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordDelete;}
+(var|function)[ \t\r\n]+[dD][rR][oO][pP][ \t\r\n;=(]|[dD][rR][oO][pP][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordDrop;}
+(var|function)[ \t\r\n]+[eE][xX][eE][cC][uU][tT][eE][ \t\r\n;=(]|[eE][xX][eE][cC][uU][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordExecute;}
+(var|function)[ \t\r\n]+[eE][xX][pP][lL][aA][iI][nN][ \t\r\n;=(]|[eE][xX][pP][lL][aA][iI][nN][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordExplain;}
+(var|function)[ \t\r\n]+[fF][rR][oO][mM][ \t\r\n;=(]|[fF][rR][oO][mM][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordFrom;}
+(var|function)[ \t\r\n]+[gG][rR][aA][nN][tT][ \t\r\n;=(]|[gG][rR][aA][nN][tT][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordGrant;}
+(var|function)[ \t\r\n]+[iI][nN][fF][eE][rR][ \t\r\n;=(]|[iI][nN][fF][eE][rR][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordInfer;}
+(var|function)[ \t\r\n]+[iI][nN][sS][eE][rR][tT][ \t\r\n;=(]|[iI][nN][sS][eE][rR][tT][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordInsert;}
+(var|function)[ \t\r\n]+[mM][eE][rR][gG][eE][ \t\r\n;=(]|[mM][eE][rR][gG][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordMerge;}
+(var|function)[ \t\r\n]+[pP][rR][eE][pP][aA][rR][eE][ \t\r\n;=(]|[pP][rR][eE][pP][aA][rR][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordPrepare;}
+(var|function)[ \t\r\n]+[rR][eE][nN][aA][mM][eE][ \t\r\n;=(]|[rR][eE][nN][aA][mM][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordRename;}
+(var|function)[ \t\r\n]+[sS][eE][lL][eE][cC][tT][ \t\r\n;=(]|[sS][eE][lL][eE][cC][tT][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordSelect;}
+(var|function)[ \t\r\n]+[rR][eE][vV][oO][kK][eE][ \t\r\n;=(]|[rR][eE][vV][oO][kK][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordRevoke;}
+(var|function)[ \t\r\n]+[uU][pP][dD][aA][tT][eE][ \t\r\n;=(]|[uU][pP][dD][aA][tT][eE][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordUpdate;}
+(var|function)[ \t\r\n]+[uU][pP][sS][eE][rR][tT][ \t\r\n;=(]|[uU][pP][sS][eE][rR][tT][ \t\r\n]*:[ \t\r\n]*\{	{return kKeywordUpsert;}
 [aA][lL][tT][eE][rR][ \t\r\n][ \t\r\n]?	|
 [bB][uU][iI][lL][dD][ \t\r\n][ \t\r\n]?	|
 [cC][rR][eE][aA][tT][eE][ \t\r\n][ \t\r\n]? |
@@ -121,8 +100,8 @@
 
         n1ql_query = std::string(yytext);
 
-        if(mode == JsifyMode::kCommentN1QL) {
-            UpdatePos(InsertType::kN1QLBegin);
+        if(lex_op == kCommentN1QL) {
+            UpdatePos(insert_type::kN1QLBegin);
         } else {
             // The '\n' might be consumed by the regex above
             // It's essential to replace it with a space as multi-line string with single-quotes isn't possible in JavaScript
@@ -134,21 +113,22 @@
         BEGIN INITIAL;
 
         n1ql_query += ";";
-        switch(mode) {
-            case JsifyMode::kUniLineN1QL:
+        switch(lex_op) {
+            case kUniLineN1QL:
                 js_code += n1ql_query;
                 break;
 
-            case JsifyMode::kJsify:
-            case JsifyMode::kCommentN1QL: {
+            case kJsify:
+            case kCommentN1QL: {
                     auto isolate = v8::Isolate::GetCurrent();
                     parse_info = ParseQuery(n1ql_query);
                     if(parse_info.is_valid) {
                         // If the query is DML, it should not execute on the source bucket
-                        if(validate_source_bucket && parse_info.is_dml_query) {
-                            if(source_bucket == parse_info.keyspace_name) {
+                        if(parse_info.is_dml_query) {
+                            auto source = UnwrapData(isolate)->v8worker->cb_source_bucket_;
+                            if(source == parse_info.keyspace_name) {
                                 parse_info.is_valid = false;
-                                parse_info.info = R"(Can not execute DML query on bucket ")" + source_bucket + R"(")";
+                                parse_info.info = R"(Can not execute DML query on bucket ")" + source + R"(")";
                                 return kN1QLParserError;
                             }
                         }
@@ -167,8 +147,8 @@
                         js_code += n1ql_query;
                     }
 
-                    if(mode == JsifyMode::kCommentN1QL) {
-                        UpdatePos(InsertType::kN1QLEnd);
+                    if(lex_op == kCommentN1QL) {
+                        UpdatePos(insert_type::kN1QLEnd);
                     }
                 }
                 break;
@@ -179,7 +159,7 @@
 <N1QL>\r    |
 <N1QL>. {
         std::string str(yytext);
-        if(mode == JsifyMode::kCommentN1QL) {
+        if(lex_op == kCommentN1QL) {
             n1ql_query += str;
         } else {
             ReplaceRecentChar(str, '\n', ' ');
@@ -198,9 +178,9 @@ int TransformSource(const char* input, std::string *output, Pos *last_pos) {
     // Set the input stream.
     yy_scan_string(input);
 
-    // pos_type_len represents the length that each InsertType will take
-    pos_type_len[static_cast<std::size_t>(InsertType::kN1QLBegin)] = 2;
-    pos_type_len[static_cast<std::size_t>(InsertType::kN1QLEnd)] = 3;
+    // pos_type_len represents the length that each insert_type will take
+    pos_type_len[static_cast<std::size_t>(insert_type::kN1QLBegin)] = 2;
+    pos_type_len[static_cast<std::size_t>(insert_type::kN1QLEnd)] = 3;
 
     // Reset flex state for the subsequent calls.
     BEGIN INITIAL;
@@ -220,33 +200,27 @@ int TransformSource(const char* input, std::string *output, Pos *last_pos) {
 }
 
 // Converts N1QL embedded JS to native JS.
-JsifyInfo Jsify(const std::string &input, bool validate_source_bucket, const std::string &source_bucket) {
-    mode = JsifyMode::kJsify;
+JsifyInfo Jsify(const std::string &input) {
+    lex_op = kJsify;
     JsifyInfo info;
-    ::validate_source_bucket = validate_source_bucket;
-    ::source_bucket = source_bucket;
 
     info.code = TransformSource(input.c_str(), &info.handler_code, &info.last_pos);
     return info;
 }
 
 // Unilines Multiline N1QL embeddings.
-UniLineN1QLInfo UniLineN1QL(const std::string &input, bool validate_source_bucket, const std::string &source_bucket) {
-    mode = JsifyMode::kUniLineN1QL;
+UniLineN1QLInfo UniLineN1QL(const std::string &input) {
+    lex_op = kUniLineN1QL;
     UniLineN1QLInfo info;
-    ::validate_source_bucket = validate_source_bucket;
-    ::source_bucket = source_bucket;
 
     info.code = TransformSource(input.c_str(), &info.handler_code, &info.last_pos);
     return info;
 }
 
 // Comments out N1QL statements and substitutes $ in its place
-CommentN1QLInfo CommentN1QL(const std::string &input, bool validate_source_bucket, const std::string &source_bucket) {
-    mode = JsifyMode::kCommentN1QL;
+CommentN1QLInfo CommentN1QL(const std::string &input) {
+    lex_op = kCommentN1QL;
     CommentN1QLInfo info;
-    ::validate_source_bucket = validate_source_bucket;
-    ::source_bucket = source_bucket;
 
     insertions = &info.insertions;
     info.code = TransformSource(input.c_str(), &info.handler_code, &info.last_pos);
@@ -267,7 +241,7 @@ void UpdatePos(Pos *pos) {
 }
 
 // Adds an entry to keep track of N1QL queries in the js_code
-void UpdatePos(InsertType type) {
+void UpdatePos(insert_type type) {
     InsertedCharsInfo pos(type);
     if(!insertions->empty()) {
         pos = insertions->back();
@@ -276,16 +250,16 @@ void UpdatePos(InsertType type) {
     // Count the number of newlines since the previously updated pos
     pos.line_no = CountNewLines(js_code, pos.line_no) + 1;
     switch(type) {
-        case InsertType::kN1QLBegin:
+        case insert_type::kN1QLBegin:
             pos.index = js_code.length();
-            pos.type = InsertType::kN1QLBegin;
-            pos.type_len = pos_type_len[static_cast<std::size_t>(InsertType::kN1QLBegin)];
+            pos.type = insert_type::kN1QLBegin;
+            pos.type_len = pos_type_len[static_cast<std::size_t>(insert_type::kN1QLBegin)];
             break;
 
-        case InsertType::kN1QLEnd:
+        case insert_type::kN1QLEnd:
             pos.index = js_code.length() - 1;
-            pos.type = InsertType::kN1QLEnd;
-            pos.type_len = pos_type_len[static_cast<std::size_t>(InsertType::kN1QLEnd)];
+            pos.type = insert_type::kN1QLEnd;
+            pos.type_len = pos_type_len[static_cast<std::size_t>(insert_type::kN1QLEnd)];
             break;
     }
 
@@ -358,8 +332,8 @@ extern "C" int yywrap() {
 
 // Transpiles the given N1QL query into a JavaScript expression - "new N1qlQuery('...')"
 std::string TranspileQuery(const std::string &query) {
-    switch(mode) {
-        case JsifyMode::kJsify: {
+    switch(lex_op) {
+        case kJsify: {
                 auto isolate = v8::Isolate::GetCurrent();
                 auto comm = UnwrapData(isolate)->comm;
                 auto transpiler = UnwrapData(isolate)->transpiler;
@@ -369,8 +343,8 @@ std::string TranspileQuery(const std::string &query) {
                 return transpiler->TranspileQuery(query, info);
             }
 
-        case JsifyMode::kCommentN1QL: {
-                // For JsifyMode::kCommentN1QL, instead of appending the character read, we substitute a '*'
+        case kCommentN1QL: {
+                // For kCommentN1QL, instead of appending the character read, we substitute a '*'
                 // This is done because it will be ambiguous to JavaScript parser if it sees comment in N1QL query.
                 std::string query_transpiled = "/*";
                 for(const auto &c: query) {
@@ -382,7 +356,7 @@ std::string TranspileQuery(const std::string &query) {
             }
 
         default:
-            throw "Transpile Query not handled for this Jsify mode";
+            throw "Transpile Query not handled for this lex_op";
     }
 }
 

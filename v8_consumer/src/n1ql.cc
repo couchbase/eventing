@@ -9,53 +9,9 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include <regex>
-
-#include "isolate_data.h"
-#include "js_exception.h"
 #include "n1ql.h"
 #include "retry_util.h"
 #include "utils.h"
-
-std::atomic<int64_t> n1ql_op_exception_count = {0};
-
-const char *GetUsernameCached(void *cookie, const char *host, const char *port,
-                              const char *bucket) {
-  auto isolate = static_cast<v8::Isolate *>(cookie);
-  auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(host, port);
-  auto info = comm->GetCredsCached(endpoint);
-  if (!info.is_valid) {
-    LOG(logError) << "Failed to get username for " << RS(host) << ":" << port
-                  << " err: " << info.msg << std::endl;
-  }
-
-  static const char *username = "";
-  if (info.username != username) {
-    username = strdup(info.username.c_str());
-  }
-
-  return username;
-}
-
-const char *GetPasswordCached(void *cookie, const char *host, const char *port,
-                              const char *bucket) {
-  auto isolate = static_cast<v8::Isolate *>(cookie);
-  auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(host, port);
-  auto info = comm->GetCredsCached(endpoint);
-  if (!info.is_valid) {
-    LOG(logError) << "Failed to get password for " << RS(host) << ":" << port
-                  << " err: " << info.msg << std::endl;
-  }
-
-  static const char *password = "";
-  if (info.password != password) {
-    password = strdup(info.password.c_str());
-  }
-
-  return password;
-}
 
 ConnectionPool::ConnectionPool(v8::Isolate *isolate, int capacity,
                                std::string cb_kv_endpoint,
@@ -182,6 +138,60 @@ void HashedStack::Pop() {
   qstack_.pop();
 }
 
+// Extracts error messages from the metadata JSON.
+std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata) {
+  v8::HandleScope handle_scope(isolate_);
+
+  std::vector<std::string> errors;
+  auto context = isolate_->GetCurrentContext();
+  v8::Local<v8::Value> metadata_val;
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, metadata)),
+                &metadata_val)) {
+    return errors;
+  }
+
+  v8::Local<v8::Object> metadata_obj;
+  if (!TO_LOCAL(metadata_val->ToObject(context), &metadata_obj)) {
+    return errors;
+  }
+
+  if (!metadata_obj.IsEmpty()) {
+    v8::Local<v8::Value> errors_v8val;
+    if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "errors")),
+                  &errors_v8val)) {
+      return errors;
+    }
+
+    auto errors_v8arr = errors_v8val.As<v8::Array>();
+    for (uint32_t i = 0; i < errors_v8arr->Length(); ++i) {
+      v8::Local<v8::Value> error_val;
+      if (!TO_LOCAL(errors_v8arr->Get(context, i), &error_val)) {
+        return errors;
+      }
+
+      v8::Local<v8::Object> error_obj;
+      if (!TO_LOCAL(error_val->ToObject(context), &error_obj)) {
+        return errors;
+      }
+
+      v8::Local<v8::Value> msg_val;
+      if (!TO_LOCAL(error_obj->Get(context, v8Str(isolate_, "msg")),
+                    &msg_val)) {
+        return errors;
+      }
+
+      v8::String::Utf8Value msg(msg_val);
+      errors.emplace_back(*msg);
+    }
+  } else {
+    LOG(logError)
+        << "N1QL: Error parsing JSON while extracting N1QL error message"
+        << std::endl;
+  }
+
+  return errors;
+}
+
 // Row-callback for iterator.
 template <>
 void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
@@ -262,8 +272,9 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
 }
 
 void N1QL::HandleRowCallbackFailure(const lcb_RESPN1QL *resp,
-                                    const IsolateData *isolate_data) {
-  AddLcbException(isolate_data, resp);
+                                    const Data *isolate_data) {
+  auto w = isolate_data->v8worker;
+  w->AddLcbException(static_cast<int>(resp->rc));
   n1ql_op_exception_count++;
   auto js_exception = isolate_data->js_exception;
   js_exception->ThrowN1QLError(resp->row);

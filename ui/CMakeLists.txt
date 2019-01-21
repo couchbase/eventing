@@ -1,17 +1,11 @@
-if ("${PRODUCT_VERSION}" VERSION_LESS "6.5.0")
-  set (PROXY_STRATEGY "local")
-else()
-  set (PROXY_STRATEGY "sticky")
-endif()
-
 # for actual install
-set (BIN_PREFIX "")
+SET (BIN_PREFIX "")
 configure_file (pluggable-ui-eventing.json.in pluggable-ui-eventing.json)
 install(FILES "${PROJECT_BINARY_DIR}/ui/pluggable-ui-eventing.json"
         DESTINATION etc/couchbase)
 
 # for cluster_run
-set (BIN_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/")
+SET (BIN_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/")
 configure_file (pluggable-ui-eventing.json.in pluggable-ui-eventing.cluster_run.json)
 file(COPY "${PROJECT_BINARY_DIR}/ui/pluggable-ui-eventing.cluster_run.json"
         DESTINATION  "${PROJECT_BINARY_DIR}/../../../../../cluster_run_ui_plugins")

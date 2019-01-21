@@ -16,33 +16,23 @@
 #include <libcouchbase/couchbase.h>
 #include <libcouchbase/subdoc.h>
 #include <string>
-#include <v8.h>
 #include <vector>
 
-#include "isolate_data.h"
-
-struct Result {
-  lcb_CAS cas;
-  lcb_error_t rc;
-  std::string value;
-  uint32_t exptime;
-
-  Result() : cas(0), rc(LCB_SUCCESS) {}
-};
+#include "v8worker.h"
 
 class Bucket {
 public:
-  Bucket(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
-         const std::string &bucket_name, const std::string &endpoint,
-         const std::string &alias, bool block_mutation, bool is_source_bucket);
+  Bucket(V8Worker *w, const char *bname, const char *ep, const char *alias,
+         bool block_mutation, bool is_source_bucket);
   ~Bucket();
 
-  bool InstallMaps();
+  bool Initialize(V8Worker *w);
 
   v8::Global<v8::ObjectTemplate> bucket_map_template_;
   lcb_t bucket_lcb_obj_;
 
 private:
+  bool InstallMaps();
   static void HandleBucketOpFailure(v8::Isolate *isolate,
                                     lcb_t bucket_lcb_obj_ptr,
                                     lcb_error_t error);
@@ -123,10 +113,8 @@ private:
     kIsSourceBucket,
     kMaxInternalFields
   };
-};
 
-// TODO : Must be implemented by the component that wants to use Bucket
-void AddLcbException(const IsolateData *isolate_data, lcb_error_t error);
-std::string GetFunctionInstanceID(v8::Isolate *isolate);
+  V8Worker *worker_;
+};
 
 #endif

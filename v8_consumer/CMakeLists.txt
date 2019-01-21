@@ -16,19 +16,6 @@ INCLUDE (FindCouchbaseLibuv)
 INCLUDE (FindCouchbaseV8)
 INCLUDE (FindCouchbaseBreakpad)
 
-SET(LIBS_HEADERS
-        ../libs/include)
-SET(LIBS_SRC
-        ../../eventing-ee/curl.cc
-        ../libs/src/bucket.cc
-        ../libs/src/comm.cc
-        ../libs/src/n1ql.cc
-        ../libs/src/log.cc
-        ../libs/src/transpiler.cc
-        ../libs/src/js_exception.cc
-        ../libs/src/v8log.cc
-        ../libs/src/utils.cc)
-
 INCLUDE_DIRECTORIES(BEFORE
                      "${libcouchbase_SOURCE_DIR}/include"
                      "${libcouchbase_BINARY_DIR}/generated"
@@ -44,8 +31,7 @@ INCLUDE_DIRECTORIES(AFTER
                      ${FLATBUFFERS_INCLUDE_DIR}
                      ${Platform_SOURCE_DIR}/include
                      ${CMAKE_INSTALL_PREFIX}/include
-                     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector
-                     ${LIBS_HEADERS})
+                     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector)
 
 IF (NOT WIN32)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer -DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT")
@@ -60,15 +46,23 @@ ENDIF()
 SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc PROPERTIES GENERATED TRUE)
 
 SET(EVENTING_SOURCES
+    ../../eventing-ee/curl.cc
     src/base64.cc
     src/client.cc
+    src/comm.cc
     src/commands.cc
     src/v8worker.cc
     src/assert.cc
+    src/bucket.cc
+    src/n1ql.cc
     src/parse_deployment.cc
+    src/log.cc
+    src/transpiler.cc
+    src/js_exception.cc
+    src/utils.cc
+    src/function_templates.cc
     src/breakpad.cc
     src/timer.cc
-    ${LIBS_SRC}
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/version/version.cc)
 

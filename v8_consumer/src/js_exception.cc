@@ -10,7 +10,6 @@
 // permissions and limitations under the License.
 
 #include "js_exception.h"
-#include "isolate_data.h"
 #include "utils.h"
 
 JsException::JsException(v8::Isolate *isolate) : isolate_(isolate) {

@@ -72,18 +72,18 @@ ADD_CUSTOM_COMMAND(
 ADD_CUSTOM_COMMAND(
         OUTPUT js/builtin.h
         COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../libs/src/builtin.js js_builtin js/builtin.h
-        DEPENDS ../libs/src/builtin.js
+        ARGS ../v8_consumer/src/builtin.js js_builtin js/builtin.h
+        DEPENDS ../v8_consumer/src/builtin.js
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../libs/src/builtin.js to js/builtin.h with variable js_builtin"
+        COMMENT "Converting ../v8_consumer/src/builtin.js to js/builtin.h with variable js_builtin"
 )
 ADD_CUSTOM_COMMAND(
         OUTPUT js/transpiler.h
         COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../libs/src/transpiler.js js_transpiler js/transpiler.h
-        DEPENDS ../libs/src/transpiler.js
+        ARGS ../v8_consumer/src/transpiler.js js_transpiler js/transpiler.h
+        DEPENDS ../v8_consumer/src/transpiler.js
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../libs/src/transpiler.js to js/transpiler.h with variable js_transpiler"
+        COMMENT "Converting ../v8_consumer/src/transpiler.js to js/transpiler.h with variable js_transpiler"
 )
 ADD_CUSTOM_COMMAND(
         OUTPUT js/esprima.h
@@ -186,10 +186,10 @@ ENDIF ()
 ADD_CUSTOM_COMMAND(
         OUTPUT parser/jsify.cc
         COMMAND ${_flex_command}
-        ARGS -B -oparser/jsify.cc ../libs/src/jsify.lex
-        DEPENDS ../libs/src/jsify.lex
+        ARGS -B -oparser/jsify.cc ../v8_consumer/src/jsify.lex
+        DEPENDS ../v8_consumer/src/jsify.lex
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../libs/src/jsify.lex to parser/jsify.cc"
+        COMMENT "Converting ../v8_consumer/src/jsify.lex to parser/jsify.cc"
 )
 
 ADD_CUSTOM_TARGET(generated DEPENDS

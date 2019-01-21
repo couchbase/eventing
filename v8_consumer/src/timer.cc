@@ -10,7 +10,6 @@
 // permissions and limitations under the License.
 
 #include "timer.h"
-#include "isolate_data.h"
 #include "js_exception.h"
 #include "utils.h"
 #include "v8worker.h"

@@ -12,7 +12,25 @@
 #ifndef FUNCTION_TEMPLATES_H
 #define FUNCTION_TEMPLATES_H
 
+#include <libcouchbase/api3.h>
+#include <libcouchbase/couchbase.h>
+#include <libplatform/libplatform.h>
+#include <thread>
 #include <v8.h>
+
+#include "log.h"
+#include "utils.h"
+
+#define CONSOLE_LOG_MAX_ARITY 20
+
+struct Result {
+  lcb_CAS cas;
+  lcb_error_t rc;
+  std::string value;
+  uint32_t exptime;
+
+  Result() : cas(0), rc(LCB_SUCCESS) {}
+};
 
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args);
 void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args);

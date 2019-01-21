@@ -371,7 +371,6 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		return
 	}
 
-	aliasSet := make(map[string]struct{})
 	for _, bucket := range deploymentConfig.Buckets {
 		if info = m.validateNonEmpty(bucket.BucketName, "Alias bucket name"); info.Code != m.statusCodes.ok.Code {
 			return
@@ -380,16 +379,6 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		if info = m.validateAliasName(bucket.Alias); info.Code != m.statusCodes.ok.Code {
 			return
 		}
-
-		//Check for the uniqueness of alias name
-		if _, ok := aliasSet[bucket.Alias]; ok {
-			info.Info = fmt.Sprintf("Alias name must be unique")
-			info.Code = m.statusCodes.errInvalidConfig.Code
-			return
-		}
-
-		//Update AliasSet
-		aliasSet[bucket.Alias] = struct{}{}
 
 		if info = m.validateBucketAccess(bucket.Access); info.Code != m.statusCodes.ok.Code {
 			return

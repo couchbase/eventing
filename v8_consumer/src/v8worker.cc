@@ -14,13 +14,14 @@
 #include "curl.h"
 #include "retry_util.h"
 #include "timer.h"
-#include "transpiler.h"
 #include "utils.h"
 
 #include "../../gen/js/builtin.h"
 
 bool V8Worker::debugger_started_ = false;
 
+std::atomic<int64_t> bucket_op_exception_count = {0};
+std::atomic<int64_t> n1ql_op_exception_count = {0};
 std::atomic<int64_t> timeout_count = {0};
 std::atomic<int16_t> checkpoint_failure_count = {0};
 
@@ -30,6 +31,7 @@ std::atomic<int64_t> on_delete_success = {0};
 std::atomic<int64_t> on_delete_failure = {0};
 
 std::atomic<int64_t> timer_create_failure = {0};
+std::atomic<int64_t> lcb_retry_failure = {0};
 
 std::atomic<int64_t> messages_processed_counter = {0};
 
@@ -42,6 +44,88 @@ std::atomic<int64_t> enqueued_dcp_mutation_msg_counter = {0};
 std::atomic<int64_t> enqueued_timer_msg_counter = {0};
 
 std::atomic<int64_t> timer_callback_missing_counter = {0};
+
+const char *GetUsername(void *cookie, const char *host, const char *port,
+                        const char *bucket) {
+  LOG(logDebug) << "Getting username for host " << RS(host) << " port " << port
+                << std::endl;
+
+  auto endpoint = JoinHostPort(host, port);
+  auto isolate = static_cast<v8::Isolate *>(cookie);
+  auto comm = UnwrapData(isolate)->comm;
+  auto info = comm->GetCreds(endpoint);
+  if (!info.is_valid) {
+    LOG(logError) << "Failed to get username for " << RS(host) << ":" << port
+                  << " err: " << info.msg << std::endl;
+  }
+
+  static const char *username = "";
+  if (info.username != username) {
+    username = strdup(info.username.c_str());
+  }
+
+  return username;
+}
+
+const char *GetPassword(void *cookie, const char *host, const char *port,
+                        const char *bucket) {
+  LOG(logDebug) << "Getting password for host " << RS(host) << " port " << port
+                << std::endl;
+
+  auto isolate = static_cast<v8::Isolate *>(cookie);
+  auto comm = UnwrapData(isolate)->comm;
+  auto endpoint = JoinHostPort(host, port);
+  auto info = comm->GetCreds(endpoint);
+  if (!info.is_valid) {
+    LOG(logError) << "Failed to get password for " << RS(host) << ":" << port
+                  << " err: " << info.msg << std::endl;
+  }
+
+  static const char *password = "";
+  if (info.password != password) {
+    password = strdup(info.password.c_str());
+  }
+
+  return password;
+}
+
+const char *GetUsernameCached(void *cookie, const char *host, const char *port,
+                              const char *bucket) {
+  auto isolate = static_cast<v8::Isolate *>(cookie);
+  auto comm = UnwrapData(isolate)->comm;
+  auto endpoint = JoinHostPort(host, port);
+  auto info = comm->GetCredsCached(endpoint);
+  if (!info.is_valid) {
+    LOG(logError) << "Failed to get username for " << RS(host) << ":" << port
+                  << " err: " << info.msg << std::endl;
+  }
+
+  static const char *username = "";
+  if (info.username != username) {
+    username = strdup(info.username.c_str());
+  }
+
+  return username;
+}
+
+const char *GetPasswordCached(void *cookie, const char *host, const char *port,
+                              const char *bucket) {
+  auto isolate = static_cast<v8::Isolate *>(cookie);
+  auto comm = UnwrapData(isolate)->comm;
+  auto endpoint = JoinHostPort(host, port);
+  auto info = comm->GetCredsCached(endpoint);
+  if (!info.is_valid) {
+    LOG(logError) << "Failed to get password for " << RS(host) << ":" << port
+                  << " err: " << info.msg << std::endl;
+  }
+
+  static const char *password = "";
+  if (info.password != password) {
+    password = strdup(info.password.c_str());
+  }
+
+  return password;
+}
 
 v8::Local<v8::ObjectTemplate> V8Worker::NewGlobalObj() const {
   v8::EscapableHandleScope handle_scope(isolate_);
@@ -85,8 +169,7 @@ void V8Worker::InstallCurlBindings(
 }
 
 void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
-                                     const handler_config_t *h_config,
-                                     const std::string &source_bucket) {
+                                     const handler_config_t *h_config) {
   v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
@@ -99,7 +182,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
                                 key.second, false, app_name_, isolate_);
   data_.transpiler =
       new Transpiler(isolate_, GetTranspilerSrc(), h_config->handler_headers,
-                     h_config->handler_footers, source_bucket);
+                     h_config->handler_footers);
   data_.timer = new Timer(isolate_, context);
   // TODO : Need to make HEAD call to all the bindings to establish TCP
   // Connections
@@ -143,7 +226,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
 
   isolate_ = v8::Isolate::New(create_params);
-  isolate_->SetData(IsolateData::index, &data_);
+  isolate_->SetData(DATA_SLOT, &data_);
   isolate_->SetCaptureStackTraceForUncaughtExceptions(true);
 
   v8::Locker locker(isolate_);
@@ -155,7 +238,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   context_.Reset(isolate_, context);
 
   v8::Context::Scope context_scope(context);
-  InitializeIsolateData(server_settings, h_config, config->source_bucket);
+  InitializeIsolateData(server_settings, h_config);
   InstallCurlBindings(config->curl_bindings);
   InitializeCurlBindingValues(config->curl_bindings);
 
@@ -177,9 +260,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
               config->component_configs["buckets"][bucket_alias][0];
           std::string bucket_access =
               config->component_configs["buckets"][bucket_alias][2];
-          bucket_handle = new Bucket(isolate_, context, bucket_name,
-                                     settings_->kv_host_port, bucket_alias,
-                                     bucket_access == "r",
+          bucket_handle = new Bucket(this, bucket_name.c_str(),
+                                     settings_->kv_host_port.c_str(),
+                                     bucket_alias.c_str(), bucket_access == "r",
                                      bucket_name == config->source_bucket);
 
           bucket_handles_.push_back(bucket_handle);
@@ -327,7 +410,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     return uniline_info.code;
   }
 
-  auto jsify_info = Jsify(script_to_execute, true, cb_source_bucket_);
+  auto jsify_info = Jsify(script_to_execute);
   LOG(logTrace) << "jsified code: " << RM(jsify_info.handler_code) << std::endl;
   if (jsify_info.code != kOK) {
     LOG(logError) << "failed to jsify" << std::endl;
@@ -384,7 +467,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
     for (; bucket_handle != bucket_handles_.end(); bucket_handle++) {
       if (*bucket_handle) {
-        if (!(*bucket_handle)->InstallMaps()) {
+        if (!(*bucket_handle)->Initialize(this)) {
           LOG(logError) << "Error initializing bucket handle" << std::endl;
           return kFailedInitBucketHandle;
         }
@@ -838,12 +921,12 @@ CodeVersion V8Worker::IdentifyVersion(std::string handler) {
   v8::Context::Scope context_scope(context);
 
   auto uniline_info = transpiler->UniLineN1QL(handler);
-  if (uniline_info.code != Jsify::kOK) {
+  if (uniline_info.code != kOK) {
     throw "Unline N1QL failed when trying to identify version";
   }
 
-  auto jsify_info = Jsify(handler, true, cb_source_bucket_);
-  if (jsify_info.code != Jsify::kOK) {
+  auto jsify_info = Jsify(handler);
+  if (jsify_info.code != kOK) {
     throw "Jsify failed when trying to identify version";
   }
 
@@ -1050,21 +1133,4 @@ void V8Worker::FreeCurlBindings() {
 
     delete info.curl;
   }
-}
-
-// TODO : Remove this when stats variables are handled properly
-void AddLcbException(const IsolateData *isolate_data,
-                     const lcb_RESPN1QL *resp) {
-  auto w = isolate_data->v8worker;
-  w->AddLcbException(static_cast<int>(resp->rc));
-}
-
-void AddLcbException(const IsolateData *isolate_data, lcb_error_t error) {
-  auto w = isolate_data->v8worker;
-  w->AddLcbException(static_cast<int>(error));
-}
-
-std::string GetFunctionInstanceID(v8::Isolate *isolate) {
-  auto w = UnwrapData(isolate)->v8worker;
-  return w->GetFunctionInstanceID();
 }
