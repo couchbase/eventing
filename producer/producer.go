@@ -569,18 +569,29 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	go func(listener net.Listener, c *consumer.Consumer) {
 		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
+			acceptedCh := make(chan acceptedConn, 1)
+			go func() {
+				conn, err := listener.Accept()
+				acceptedCh <- acceptedConn{conn, err}
+			}()
 
-			logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, conn: %v",
-				logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), conn)
-			c.SetConnHandle(conn)
-			c.SignalConnected()
-			err = c.HandleV8Worker()
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+			select {
+			case accepted := <-acceptedCh:
+				if accepted.err != nil {
+					logging.Errorf("%s [%s:%d] Accept failed in main loop", logPrefix, p.appName, p.LenRunningConsumers())
+					continue
+				}
+				logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, conn: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), accepted.conn)
+				c.SetConnHandle(accepted.conn)
+				c.SignalConnected()
+				err = c.HandleV8Worker()
+				if err == common.ErrRetryTimeout {
+					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+					return
+				}
+			case <-p.stopCh:
+				logging.Infof("%s [%s:%d] Got message on stop chan, exiting", logPrefix, p.appName, p.LenRunningConsumers())
 				return
 			}
 		}
@@ -588,15 +599,26 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	go func(feedbackListener net.Listener, c *consumer.Consumer) {
 		for {
-			conn, err := feedbackListener.Accept()
-			if err != nil {
+			acceptedCh := make(chan acceptedConn, 1)
+			go func() {
+				conn, err := feedbackListener.Accept()
+				acceptedCh <- acceptedConn{conn, err}
+			}()
+
+			select {
+			case accepted := <-acceptedCh:
+				if accepted.err != nil {
+					logging.Errorf("%s [%s:%d] Accept failed in feedback loop", logPrefix, p.appName, p.LenRunningConsumers())
+					continue
+				}
+				logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, feedback conn: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), accepted.conn)
+				c.SetFeedbackConnHandle(accepted.conn)
+				c.SignalFeedbackConnected()
+			case <-p.stopCh:
+				logging.Infof("%s [%s:%d] Got message on stop chan, exiting feedback loop", logPrefix, p.appName, p.LenRunningConsumers())
 				return
 			}
-			logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, feedback conn: %v",
-				logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), conn)
-
-			c.SetFeedbackConnHandle(conn)
-			c.SignalFeedbackConnected()
 		}
 	}(feedbackListener, c)
 }
