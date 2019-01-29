@@ -280,7 +280,6 @@ type HandlerConfig struct {
 	IdleCheckpointInterval   int
 	CleanupTimers            bool
 	CPPWorkerThrCount        int
-	CurlTimeout              int64
 	ExecuteTimerRoutineCount int
 	ExecutionTimeout         int
 	FeedbackBatchSize        int
