@@ -406,7 +406,7 @@ func (c *Consumer) processEvents() {
 				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND, needs to be reclaimed",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket)
 
-				vbFlog := &vbFlogEntry{signalStreamEnd: true, vb: e.Vbucket}
+				vbFlog := &vbFlogEntry{seqNo: e.SeqNo, signalStreamEnd: true, vb: e.Vbucket}
 				logging.Infof("%s [%s:%s:%d] vb: %d STREAMEND Inserting entry: %#v to vbFlogChan",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket, vbFlog)
 				c.vbFlogChan <- vbFlog
