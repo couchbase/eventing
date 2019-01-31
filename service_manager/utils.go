@@ -40,7 +40,6 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "checkpoint_interval", float64(60000))
 	fillMissingDefault(settings, "cleanup_timers", false)
 	fillMissingDefault(settings, "cpp_worker_thread_count", float64(2))
-	fillMissingDefault(settings, "curl_timeout", float64(10000))
 	fillMissingDefault(settings, "deadline_timeout", float64(62))
 	fillMissingDefault(settings, "execution_timeout", float64(60))
 	fillMissingDefault(settings, "feedback_batch_size", float64(100))

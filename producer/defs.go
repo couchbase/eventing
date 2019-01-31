@@ -168,3 +168,8 @@ type vbNodeWorkerMapping struct {
 	ownerNode      string
 	assignedWorker string
 }
+
+type acceptedConn struct {
+	conn net.Conn
+	err  error
+}

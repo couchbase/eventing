@@ -430,7 +430,6 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       server_settings = new server_settings_t;
 
       handler_config->app_name.assign(payload->app_name()->str());
-      handler_config->curl_timeout = long(payload->curl_timeout());
       handler_config->timer_context_size = payload->timer_context_size();
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();

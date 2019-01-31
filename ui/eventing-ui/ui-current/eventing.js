@@ -303,9 +303,15 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             // Callback to export the app.
             self.exportApp = function(appName) {
-                ApplicationService.tempStore.getAllApps()
-                    .then(function(deployedAppsMgr) {
-                        var app = deployedAppsMgr.getAppByName(appName);
+                ApplicationService.public.export()
+                    .then(function(apps) {
+                        var app = apps.data.find(function(app) {
+                            return app.appname === appName;
+                        });
+                        if (!app) {
+                            return $q.reject('app not found');
+                        }
+
                         var fileName = appName + '.json';
 
                         // Create a new blob of the app.
@@ -317,8 +323,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         // Save the file.
                         saveAs(fileToSave, fileName);
                     })
-                    .catch(function(errResponse) {
-                        console.error('Failed to get apps from server', errResponse);
+                    .catch(function() {
+                        console.error('Failed to export the Function');
                     });
             };
 
@@ -949,6 +955,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     status: function() {
                         return $http.get('/_p/event/api/v1/status');
                     },
+                    export: function() {
+                        return $http.get('/_p/event/api/v1/export');
+                    },
                     updateSettings: function(appModel) {
                         return $http({
                             url: `/_p/event/api/v1/functions/${appModel.appname}/settings`,
@@ -1173,11 +1182,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         return mnPoolDefault.get()
                             .then(function(response) {
                                 // in 6.5 and later, sticky proxy allows eventing service on any node
-                                var nlist = mnPoolDefault.export.compat.atLeast65 ? response.nodes : [ response.thisNode ];
+                                var nlist = mnPoolDefault.export.compat.atLeast65 ? response.nodes : [response.thisNode];
                                 for (var ni = 0; ni < nlist.length; ni++) {
-                                        if (_.indexOf(nlist[ni].services, 'eventing') > -1) {
-                                                return true;
-                                        }
+                                    if (_.indexOf(nlist[ni].services, 'eventing') > -1) {
+                                        return true;
+                                    }
                                 }
                                 return false;
                             }).catch(function(errResponse) {

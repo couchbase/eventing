@@ -26,35 +26,35 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string, cleanupTimers bool,
 	memoryQuota int64, numVbuckets int, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
-		appName:                    appName,
-		bootstrapFinishCh:          make(chan struct{}, 1),
-		cleanupTimers:              cleanupTimers,
-		consumerListeners:          make(map[common.EventingConsumer]net.Listener),
-		dcpConfig:                  make(map[string]interface{}),
-		ejectNodeUUIDs:             make([]string, 0),
-		eventingNodeUUIDs:          make([]string, 0),
-		feedbackListeners:          make(map[common.EventingConsumer]net.Listener),
-		handleV8ConsumerMutex:      &sync.Mutex{},
-		kvPort:                     kvPort,
-		listenerRWMutex:            &sync.RWMutex{},
-		metakvAppHostPortsPath:     metakvAppHostPortsPath,
-		notifyInitCh:               make(chan struct{}, 2),
-		notifySettingsChangeCh:     make(chan struct{}, 1),
-		notifySupervisorCh:         make(chan struct{}),
-		nsServerPort:               nsServerPort,
-		numVbuckets:                numVbuckets,
-		pauseProducerCh:            make(chan struct{}, 1),
-		plannerNodeMappingsRWMutex: &sync.RWMutex{},
-		MemoryQuota:                memoryQuota,
-		retryCount:                 -1,
-		runningConsumersRWMutex:    &sync.RWMutex{},
-		seqsNoProcessed:            make(map[int]int64),
-		seqsNoProcessedRWMutex:     &sync.RWMutex{},
-		statsRWMutex:               &sync.RWMutex{},
-		stopCh:                     make(chan struct{}, 1),
-		superSup:                   superSup,
-		topologyChangeCh:           make(chan *common.TopologyChangeMsg, 10),
-		uuid:                       uuid,
+		appName:                      appName,
+		bootstrapFinishCh:            make(chan struct{}, 1),
+		cleanupTimers:                cleanupTimers,
+		consumerListeners:            make(map[common.EventingConsumer]net.Listener),
+		dcpConfig:                    make(map[string]interface{}),
+		ejectNodeUUIDs:               make([]string, 0),
+		eventingNodeUUIDs:            make([]string, 0),
+		feedbackListeners:            make(map[common.EventingConsumer]net.Listener),
+		handleV8ConsumerMutex:        &sync.Mutex{},
+		kvPort:                       kvPort,
+		listenerRWMutex:              &sync.RWMutex{},
+		metakvAppHostPortsPath:       metakvAppHostPortsPath,
+		notifyInitCh:                 make(chan struct{}, 2),
+		notifySettingsChangeCh:       make(chan struct{}, 1),
+		notifySupervisorCh:           make(chan struct{}),
+		nsServerPort:                 nsServerPort,
+		numVbuckets:                  numVbuckets,
+		pauseProducerCh:              make(chan struct{}, 1),
+		plannerNodeMappingsRWMutex:   &sync.RWMutex{},
+		MemoryQuota:                  memoryQuota,
+		retryCount:                   -1,
+		runningConsumersRWMutex:      &sync.RWMutex{},
+		seqsNoProcessed:              make(map[int]int64),
+		seqsNoProcessedRWMutex:       &sync.RWMutex{},
+		statsRWMutex:                 &sync.RWMutex{},
+		stopCh:                       make(chan struct{}, 1),
+		superSup:                     superSup,
+		topologyChangeCh:             make(chan *common.TopologyChangeMsg, 10),
+		uuid:                         uuid,
 		vbEventingNodeAssignRWMutex:  &sync.RWMutex{},
 		vbEventingNodeRWMutex:        &sync.RWMutex{},
 		vbMapping:                    make(map[uint16]*vbNodeWorkerMapping),
@@ -569,18 +569,29 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	go func(listener net.Listener, c *consumer.Consumer) {
 		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
+			acceptedCh := make(chan acceptedConn, 1)
+			go func() {
+				conn, err := listener.Accept()
+				acceptedCh <- acceptedConn{conn, err}
+			}()
 
-			logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, conn: %v",
-				logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), conn)
-			c.SetConnHandle(conn)
-			c.SignalConnected()
-			err = c.HandleV8Worker()
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+			select {
+			case accepted := <-acceptedCh:
+				if accepted.err != nil {
+					logging.Errorf("%s [%s:%d] Accept failed in main loop", logPrefix, p.appName, p.LenRunningConsumers())
+					continue
+				}
+				logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, conn: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), accepted.conn)
+				c.SetConnHandle(accepted.conn)
+				c.SignalConnected()
+				err = c.HandleV8Worker()
+				if err == common.ErrRetryTimeout {
+					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+					return
+				}
+			case <-p.stopCh:
+				logging.Infof("%s [%s:%d] Got message on stop chan, exiting", logPrefix, p.appName, p.LenRunningConsumers())
 				return
 			}
 		}
@@ -588,15 +599,26 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	go func(feedbackListener net.Listener, c *consumer.Consumer) {
 		for {
-			conn, err := feedbackListener.Accept()
-			if err != nil {
+			acceptedCh := make(chan acceptedConn, 1)
+			go func() {
+				conn, err := feedbackListener.Accept()
+				acceptedCh <- acceptedConn{conn, err}
+			}()
+
+			select {
+			case accepted := <-acceptedCh:
+				if accepted.err != nil {
+					logging.Errorf("%s [%s:%d] Accept failed in feedback loop", logPrefix, p.appName, p.LenRunningConsumers())
+					continue
+				}
+				logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, feedback conn: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), accepted.conn)
+				c.SetFeedbackConnHandle(accepted.conn)
+				c.SignalFeedbackConnected()
+			case <-p.stopCh:
+				logging.Infof("%s [%s:%d] Got message on stop chan, exiting feedback loop", logPrefix, p.appName, p.LenRunningConsumers())
 				return
 			}
-			logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, feedback conn: %v",
-				logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), conn)
-
-			c.SetFeedbackConnHandle(conn)
-			c.SignalFeedbackConnected()
 		}
 	}(feedbackListener, c)
 }

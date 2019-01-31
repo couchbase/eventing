@@ -644,10 +644,6 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validatePositiveInteger("curl_timeout", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
 	dcpStreamBoundaryValues := []string{"everything", "from_now", "from_prior"}
 	if info = m.validatePossibleValues("dcp_stream_boundary", settings, dcpStreamBoundaryValues); info.Code != m.statusCodes.ok.Code {
 		return
@@ -658,14 +654,6 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 	}
 
 	if info = m.validatePositiveInteger("execution_timeout", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validateLessThan("curl_timeout", "deadline_timeout", 1000, settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validateLessThan("curl_timeout", "execution_timeout", 1000, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

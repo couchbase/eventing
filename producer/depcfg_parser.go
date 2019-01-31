@@ -102,12 +102,6 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.CPPWorkerThrCount = 2
 	}
 
-	if val, ok := settings["curl_timeout"]; ok {
-		p.handlerConfig.CurlTimeout = int64(val.(float64))
-	} else {
-		p.handlerConfig.CurlTimeout = int64(10000)
-	}
-
 	if val, ok := settings["dcp_stream_boundary"]; ok {
 		p.handlerConfig.StreamBoundary = common.DcpStreamBoundary(val.(string))
 	} else {
