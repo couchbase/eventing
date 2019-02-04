@@ -366,5 +366,8 @@ private:
 };
 
 void CurlFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
+void UpdateCurlLatencyHistogram(
+    v8::Isolate *isolate,
+    const std::chrono::high_resolution_clock::time_point &start);
 
 #endif

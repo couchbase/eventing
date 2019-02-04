@@ -223,6 +223,7 @@ public:
   void ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions);
 
   void UpdateHistogram(Time::time_point t);
+  void UpdateCurlLatencyHistogram(const Time::time_point &start);
 
   void GetTimerMessages(std::vector<uv_buf_t> &messages, size_t window_size);
 
@@ -279,6 +280,7 @@ public:
   std::map<int, int64_t> lcb_exceptions_;
 
   Histogram *histogram_;
+  Histogram *curl_latency_;
   IsolateData data_;
 
 private:

@@ -2466,6 +2466,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 				}
 
 				stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
+				stats.CurlLatencyStats = m.superSup.GetCurlLatencyStats(app.Name)
 				stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
 				spanBlobDump, err := m.superSup.SpanBlobDump(app.Name)
 				if err == nil {

@@ -394,6 +394,32 @@ void AppWorker::FlushToConn(uv_stream_t *stream, char *msg, int length) {
   }
 }
 
+std::string ToString(const std::vector<int64_t> &histogram) {
+  std::ostringstream out;
+  for (std::string::size_type i = 0; i < histogram.size(); i++) {
+    if (i == 0) {
+      out << "{";
+    }
+
+    if (histogram[i] > 0) {
+      if ((i > 0) && (out.str().length() > 1)) {
+        out << ",";
+      }
+
+      if (i == 0) {
+        out << R"(")" << HIST_FROM << R"(":)" << histogram[i];
+      } else {
+        out << R"(")" << i * HIST_WIDTH << R"(":)" << histogram[i];
+      }
+    }
+
+    if (i == histogram.size() - 1) {
+      out << "}";
+    }
+  }
+  return out.str();
+}
+
 void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                          message_t *parsed_message) {
   std::string key, val, doc_id, callback_fn, doc_ids_cb_fns, compile_resp;
@@ -500,32 +526,26 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
         }
       }
 
-      lstats.str(std::string());
-
-      for (std::string::size_type i = 0; i < agg_hgram.size(); i++) {
-        if (i == 0) {
-          lstats << "{";
-        }
-
-        if (agg_hgram[i] > 0) {
-          if ((i > 0) && (lstats.str().length() > 1)) {
-            lstats << ",";
-          }
-
-          if (i == 0) {
-            lstats << R"(")" << HIST_FROM << R"(":)" << agg_hgram[i];
-          } else {
-            lstats << R"(")" << i * HIST_WIDTH << R"(":)" << agg_hgram[i];
-          }
-        }
-
-        if (i == agg_hgram.size() - 1) {
-          lstats << "}";
-        }
-      }
-      resp_msg_->msg.assign(lstats.str());
+      resp_msg_->msg.assign(ToString(agg_hgram));
       resp_msg_->msg_type = mV8_Worker_Config;
       resp_msg_->opcode = oLatencyStats;
+      msg_priority_ = true;
+      break;
+    case oGetCurlLatencyStats:
+      if (workers_.size() > 0) {
+        latency_buckets = workers_[0]->curl_latency_->Buckets();
+        agg_hgram.assign(latency_buckets, 0);
+      }
+      for (const auto &w : workers_) {
+        worker_hgram = w.second->curl_latency_->Hgram();
+        for (std::string::size_type i = 0; i < worker_hgram.size(); i++) {
+          agg_hgram[i] += worker_hgram[i];
+        }
+      }
+
+      resp_msg_->msg.assign(ToString(agg_hgram));
+      resp_msg_->msg_type = mV8_Worker_Config;
+      resp_msg_->opcode = oCurlLatencyStats;
       msg_priority_ = true;
       break;
     case oGetFailureStats:

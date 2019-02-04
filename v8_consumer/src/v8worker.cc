@@ -132,6 +132,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   oss << "\"" << function_id << "-" << function_instance_id << "\"";
   function_instance_id_.assign(oss.str());
   histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
+  curl_latency_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
   thread_exit_cond_.store(false);
   for (int i = 0; i < NUM_VBUCKETS; i++) {
     vb_seq_[i] = atomic_ptr_t(new std::atomic<int64_t>(0));
@@ -250,6 +251,7 @@ V8Worker::~V8Worker() {
   delete n1ql_handle_;
   delete settings_;
   delete histogram_;
+  delete curl_latency_;
   delete timer_queue_;
   delete worker_queue_;
 }
@@ -540,6 +542,12 @@ void V8Worker::UpdateHistogram(Time::time_point start_time) {
   Time::time_point t = Time::now();
   nsecs ns = std::chrono::duration_cast<nsecs>(t - start_time);
   histogram_->Add(ns.count() / 1000);
+}
+
+void V8Worker::UpdateCurlLatencyHistogram(const Time::time_point &start) {
+  Time::time_point t = Time::now();
+  nsecs ns = std::chrono::duration_cast<nsecs>(t - start);
+  curl_latency_->Add(ns.count() / 1000);
 }
 
 int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
@@ -1067,4 +1075,11 @@ void AddLcbException(const IsolateData *isolate_data, lcb_error_t error) {
 std::string GetFunctionInstanceID(v8::Isolate *isolate) {
   auto w = UnwrapData(isolate)->v8worker;
   return w->GetFunctionInstanceID();
+}
+
+void UpdateCurlLatencyHistogram(
+    v8::Isolate *isolate,
+    const std::chrono::high_resolution_clock::time_point &start) {
+  auto w = UnwrapData(isolate)->v8worker;
+  w->UpdateCurlLatencyHistogram(start);
 }
