@@ -8,18 +8,8 @@ if [ "$WORKSPACE" = "" ]; then
 fi
 
 if [ "$CIBOT" = "true" ]; then
-  upSeconds="$(cat /proc/uptime | grep -o '^[0-9]\+')"
-  upHours=$((${upSeconds} / 3600))
-
-  if [ "${upHours}" -gt "24" ]
-  then
-    sudo reboot
-  else
-    echo "Uptime less than 24hrs"
-  fi
-
-  sleep 60
-  exit 0
+   sleep 60
+   exit 0
 fi
 
 for i in {1..240}; do
