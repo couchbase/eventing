@@ -455,7 +455,7 @@ func (s *SuperSupervisor) runningFns() map[string]common.EventingProducer {
 	runningFns := make(map[string]common.EventingProducer)
 
 	s.runningProducersRWMutex.RLock()
-	s.runningProducersRWMutex.RUnlock()
+	defer s.runningProducersRWMutex.RUnlock()
 	for k, v := range s.runningProducers {
 		runningFns[k] = v
 	}

@@ -427,6 +427,13 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 				return nil
 			}
 
+			//Update deployment and processing status in supervisor. This will enable us to compute function
+			//state (pause, resume) correctly in case of newly added node.
+			s.appRWMutex.Lock()
+			s.appDeploymentStatus[appName] = deploymentStatus
+			s.appProcessingStatus[appName] = processingStatus
+			s.appRWMutex.Unlock()
+
 			logging.Infof("%s [%d] Function: %s deployment_status: %t processing_status: %t runningProducer: %v",
 				logPrefix, s.runningFnsCount(), appName, deploymentStatus, processingStatus, s.runningFns()[appName])
 
@@ -446,11 +453,6 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 				s.appListRWMutex.Unlock()
 
 				s.spawnApp(appName, false)
-
-				s.appRWMutex.Lock()
-				s.appDeploymentStatus[appName] = deploymentStatus
-				s.appProcessingStatus[appName] = processingStatus
-				s.appRWMutex.Unlock()
 
 				if eventingProducer, ok := s.runningFns()[appName]; ok {
 					eventingProducer.SignalBootstrapFinish()
