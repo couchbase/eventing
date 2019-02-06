@@ -105,6 +105,10 @@ git checkout $BRANCH 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout $BR
 git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
 note_version eventing $WORKSPACE/goproj/src/github.com/couchbase/eventing
 
+cd $WORKSPACE/goproj/src/github.com/couchbase
+if [ ! -d eventing-ee ]; then
+	git clone git@github.com:couchbase/eventing-ee.git
+fi
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee
 echo "Switching eventing-ee to $BRANCH"
 git checkout $BRANCH 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout $BRANCH"
