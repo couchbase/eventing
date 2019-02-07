@@ -359,10 +359,6 @@
           ng-show="!formCtrl.validateVariable((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index])">
           Alias value must neither be a JavaScript nor a N1QL reserved word
         </div>
-        <div class="row margin-bottom-half error field-error"
-          ng-show="formCtrl.srcBindingSameBucket(appModel, (formCtrl.isDialog ? bindings : formCtrl.bindings)[$index])">
-          Only read on this bucket is allowed, write/delete on this bucket is forbidden
-        </div>
       </div>
     </div>
     <div class="panel-footer">

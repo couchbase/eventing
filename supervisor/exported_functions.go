@@ -90,6 +90,13 @@ func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
 	return nil
 }
 
+func (s *SuperSupervisor) GetCurlLatencyStats(appName string) map[string]uint64 {
+	if p, ok := s.runningFns()[appName]; ok {
+		return p.GetCurlLatencyStats()
+	}
+	return nil
+}
+
 // GetLocallyDeployedApps returns list of deployed apps and their last deployment time
 func (s *SuperSupervisor) GetLocallyDeployedApps() map[string]string {
 	s.appListRWMutex.RLock()
@@ -455,7 +462,7 @@ func (s *SuperSupervisor) runningFns() map[string]common.EventingProducer {
 	runningFns := make(map[string]common.EventingProducer)
 
 	s.runningProducersRWMutex.RLock()
-	s.runningProducersRWMutex.RUnlock()
+	defer s.runningProducersRWMutex.RUnlock()
 	for k, v := range s.runningProducers {
 		runningFns[k] = v
 	}

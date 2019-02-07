@@ -79,6 +79,7 @@ type EventingProducer interface {
 	GetFailureStats() map[string]interface{}
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
+	GetCurlLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
 	GetMetaStoreStats() map[string]uint64
 	GetMetadataPrefix() string
@@ -142,6 +143,7 @@ type EventingConsumer interface {
 	GetFailureStats() map[string]interface{}
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
+	GetCurlLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
 	GetMetaStoreStats() map[string]uint64
 	GetSourceMap() string
@@ -196,6 +198,7 @@ type EventingSuperSup interface {
 	GetFailureStats(appName string) map[string]interface{}
 	GetHandlerCode(appName string) string
 	GetLatencyStats(appName string) map[string]uint64
+	GetCurlLatencyStats(appName string) map[string]uint64
 	GetLcbExceptionsStats(appName string) map[string]uint64
 	GetLocallyDeployedApps() map[string]string
 	GetMetaStoreStats(appName string) map[string]uint64

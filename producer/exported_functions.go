@@ -53,6 +53,21 @@ func (p *Producer) GetLatencyStats() map[string]uint64 {
 	return latencyStats
 }
 
+func (p *Producer) GetCurlLatencyStats() map[string]uint64 {
+	latencyStats := make(map[string]uint64)
+
+	for _, c := range p.getConsumers() {
+		clStats := c.GetCurlLatencyStats()
+		for k, v := range clStats {
+			if _, ok := latencyStats[k]; !ok {
+				latencyStats[k] = 0
+			}
+			latencyStats[k] += v
+		}
+	}
+	return latencyStats
+}
+
 // GetExecutionStats returns execution stats aggregated from Eventing.Consumer instances
 func (p *Producer) GetExecutionStats() map[string]interface{} {
 	executionStats := make(map[string]interface{})

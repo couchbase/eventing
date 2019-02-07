@@ -265,6 +265,28 @@ func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
+func (c *Consumer) refershCurlLatencyStats(sendToDebugger bool) {
+	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerCurlLatencyStats, 0, "")
+
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.v8WorkerMessagesProcessed["curl_latency_stats"]; !ok {
+		c.v8WorkerMessagesProcessed["curl_latency_stats"] = 0
+	}
+	c.v8WorkerMessagesProcessed["curl_latency_stats"]++
+	c.msgProcessedRWMutex.Unlock()
+
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(m)
+}
+
 func (c *Consumer) sendGetFailureStats(sendToDebugger bool) {
 	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerFailureStats, 0, "")
 

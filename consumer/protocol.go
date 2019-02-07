@@ -53,6 +53,7 @@ const (
 	v8WorkerExecutionStats
 	v8WorkerCompile
 	v8WorkerLcbExceptions
+	v8WorkerCurlLatencyStats
 )
 
 const (
@@ -90,6 +91,7 @@ const (
 	compileInfo
 	queueSize
 	lcbExceptions
+	curlLatencyStats
 )
 
 const (
@@ -386,6 +388,16 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			err := json.Unmarshal([]byte(msg), &c.latencyStats)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal latency stats, msg: %v err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+		case curlLatencyStats:
+			c.workerRespMainLoopTs.Store(time.Now())
+
+			c.statsRWMutex.Lock()
+			defer c.statsRWMutex.Unlock()
+			err := json.Unmarshal([]byte(msg), &c.curlLatencyStats)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal curl latency stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case failureStats:

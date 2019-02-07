@@ -111,6 +111,7 @@ func (c *Consumer) updateWorkerStats() {
 			c.sendGetFailureStats(false)
 			c.sendGetLatencyStats(false)
 			c.sendGetLcbExceptionStats(false)
+			c.refershCurlLatencyStats(false)
 
 			val := c.workerRespMainLoopTs.Load()
 			if val == nil {
