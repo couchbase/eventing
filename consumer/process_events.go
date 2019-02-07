@@ -283,6 +283,7 @@ func (c *Consumer) processEvents() {
 
 					vbFlog := &vbFlogEntry{
 						flog:           e.FailoverLog,
+						seqNo:          e.Seqno,
 						statusCode:     e.Status,
 						streamReqRetry: true,
 						vb:             e.VBucket,
