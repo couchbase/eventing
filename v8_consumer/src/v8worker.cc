@@ -867,8 +867,8 @@ CodeVersion V8Worker::IdentifyVersion(std::string handler) {
 
 void V8Worker::GetTimerMessages(std::vector<uv_buf_t> &messages,
                                 size_t window_size) {
-  int64_t timer_count =
-      std::min(timer_queue_->Count(), static_cast<int64_t>(window_size));
+  size_t timer_count = timer_queue_->Count();
+  timer_count = std::min(timer_count, window_size);
 
   for (int64_t idx = 0; idx < timer_count; ++idx) {
     timer_msg_t timer_msg;
