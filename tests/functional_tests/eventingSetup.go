@@ -787,3 +787,36 @@ func waitForFailureStatCounterSync(fnName, statName string, expectedCount int) {
 		}
 	}
 }
+
+func goroutineDumpAllNodes() {
+	urls := []string{goroutineURL0, goroutineURL1, goroutineURL2, goroutineURL3}
+	for _, url := range urls {
+		log.Printf("Collecting goroutine dump from url: %v\n", url)
+		goroutineDump(url)
+	}
+}
+
+func goroutineDump(url string) error {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Printf("HTTP request creation failed, url: %v err: %v\n", url, err)
+		return err
+	}
+
+	req.SetBasicAuth(username, password)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Println("http request failed with the response :", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("Response body read failed: ", err)
+		return err
+	}
+
+	log.Printf("%s\n", string(data))
+	return nil
+}
