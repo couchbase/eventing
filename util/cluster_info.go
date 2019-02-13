@@ -248,6 +248,18 @@ func (c *ClusterInfoCache) GetNodesByServiceType(srvc string) (nids []NodeId) {
 	return
 }
 
+func (c *ClusterInfoCache) GetAllNodes() []*Node {
+	var nodes []*Node
+	for _, n := range c.nodes {
+		node, err := NewNode(n.Hostname)
+		if err != nil {
+			continue
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes
+}
+
 func (c *ClusterInfoCache) GetActiveEventingNodes() (nodes []couchbase.Node) {
 	for _, n := range c.nodes {
 		for _, s := range n.Services {

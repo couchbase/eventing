@@ -1632,22 +1632,79 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	var wInfo warningsInfo
-	wInfo.Status = fmt.Sprintf("Stored function: '%s' in metakv", app.Name)
-
-	switch strings.ToLower(compilationInfo.Level) {
-	case "dp":
-		msg := fmt.Sprintf("Function '%s' uses Developer Preview features. Do not use in production environments", app.Name)
-		wInfo.Warnings = append(wInfo.Warnings, msg)
-
-	case "beta":
-		msg := fmt.Sprintf("Function '%s' uses Beta features. Do not use in production environments", app.Name)
-		wInfo.Warnings = append(wInfo.Warnings, msg)
+	wInfo, err := m.determineWarnings(app, compilationInfo)
+	if err != nil {
+		info.Code = m.statusCodes.errGetConfig.Code
+		info.Info = fmt.Sprintf("Function: %s failed to determine warnings, err : %v", app.Name, err)
+		return
 	}
 
 	info.Code = m.statusCodes.ok.Code
-	info.Info = wInfo
+	info.Info = *wInfo
 	return
+}
+
+func (m *ServiceMgr) determineWarnings(app *application, compilationInfo *common.CompileStatus) (*warningsInfo, error) {
+	wInfo := &warningsInfo{}
+	wInfo.Status = fmt.Sprintf("Stored function: '%s' in metakv", app.Name)
+
+	wInfo.Warnings = append(wInfo.Warnings, m.determineFeatureWarnings(app, compilationInfo)...)
+
+	curlWarning, err := m.determineCurlWarning(app)
+	if err != nil {
+		logging.Errorf("Function: %s unable to determine curl warnings, err : %v", app.Name, err)
+	} else {
+		wInfo.Warnings = append(wInfo.Warnings, curlWarning)
+	}
+
+	numWarnings := len(wInfo.Warnings)
+	if numWarnings > 0 {
+		wInfo.Warnings[numWarnings-1] += " Do not use in production environments"
+	}
+	return wInfo, nil
+}
+
+func (m *ServiceMgr) determineCurlWarning(app *application) (string, error) {
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
+	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	if err != nil {
+		return "", err
+	}
+
+	allNodes := clusterInfo.GetAllNodes()
+	for _, curl := range app.DeploymentConfig.Curl {
+		parsedUrl, err := url.Parse(curl.Hostname)
+		if err != nil {
+			return fmt.Sprintf("Unable to parse URL of %s, err : %v", curl.Value, err), nil
+		}
+
+		node, err := util.NewNode(parsedUrl.Host)
+		if err != nil {
+			return fmt.Sprintf("Unable to resolve %s, err : %v", curl.Value, err), nil
+		}
+
+		for _, nodeInCluster := range allNodes {
+			if node.IsEqual(nodeInCluster) {
+				msg := fmt.Sprintf(" Function '%s' has a curl binding to a Couchbase node in the same cluster.", app.Name)
+				return msg, nil
+			}
+		}
+	}
+	return "", nil
+}
+
+func (m *ServiceMgr) determineFeatureWarnings(app *application, compilationInfo *common.CompileStatus) []string {
+	var warnings []string
+	switch strings.ToLower(compilationInfo.Level) {
+	case "dp":
+		msg := fmt.Sprintf(" Function '%s' uses Developer Preview features.", app.Name)
+		warnings = append(warnings, msg)
+
+	case "beta":
+		msg := fmt.Sprintf(" Function '%s' uses Beta features.", app.Name)
+		warnings = append(warnings, msg)
+	}
+	return warnings
 }
 
 func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
