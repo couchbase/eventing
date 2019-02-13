@@ -295,18 +295,27 @@ func waitForRebalanceFinish() error {
 }
 
 func waitForDeployToFinish(appName string) {
+	timer := time.NewTimer(time.Hour)
 	for {
-		time.Sleep(5 * time.Second)
-		log.Printf("Waiting for app: %v to get deployed\n", appName)
-
-		deployedApps, err := getDeployedApps()
-		if err != nil {
-			continue
-		}
-
-		if _, exists := deployedApps[appName]; exists {
-			log.Printf("App: %v got deployed\n", appName)
+		select {
+		case <-timer.C:
+			log.Printf("Deployment is stuck for app: %v", appName)
+			goroutineDumpAllNodes()
 			return
+		default:
+			time.Sleep(5 * time.Second)
+			log.Printf("Waiting for app: %v to get deployed\n", appName)
+
+			deployedApps, err := getDeployedApps()
+			if err != nil {
+				continue
+			}
+
+			if _, exists := deployedApps[appName]; exists {
+				log.Printf("App: %v got deployed\n", appName)
+				timer.Stop()
+				return
+			}
 		}
 	}
 }
@@ -336,19 +345,28 @@ func bootstrapCheck(appName string, startCheck bool) {
 }
 
 func waitForUndeployToFinish(appName string) {
+	timer := time.NewTimer(time.Hour)
 	for {
-		time.Sleep(5 * time.Second)
-
-		log.Printf("Waiting for app: %s to get un-deployed\n", appName)
-
-		runningApps, err := getRunningApps()
-		if err != nil {
-			continue
-		}
-
-		if _, exists := runningApps[appName]; !exists {
-			log.Printf("App: %v got un-deployed\n", appName)
+		select {
+		case <-timer.C:
+			log.Printf("Undeploy is stuck for app: %v", appName)
+			goroutineDumpAllNodes()
 			return
+		default:
+			time.Sleep(5 * time.Second)
+
+			log.Printf("Waiting for app: %s to get un-deployed\n", appName)
+
+			runningApps, err := getRunningApps()
+			if err != nil {
+				continue
+			}
+
+			if _, exists := runningApps[appName]; !exists {
+				log.Printf("App: %v got un-deployed\n", appName)
+				timer.Stop()
+				return
+			}
 		}
 
 	}

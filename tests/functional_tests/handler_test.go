@@ -10,6 +10,36 @@ import (
 	"time"
 )
 
+func testEnoent(itemCount int, handler string, t *testing.T) {
+	expectedCount := itemCount
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter)
+	if expectedCount != eventCount {
+		t.Error("For", "TestError",
+			"expected", expectedCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(handler)
+}
+
+func TestEnoentGet(t *testing.T) {
+	itemCount := 100
+	handler := "bucket_op_enoent_get"
+	testEnoent(itemCount, handler, t)
+}
+
+func TestEnoentDelete(t *testing.T) {
+	itemCount := 100
+	handler := "bucket_op_enoent_delete"
+	testEnoent(itemCount, handler, t)
+}
+
 func TestError(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	itemCount := 100

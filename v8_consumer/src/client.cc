@@ -872,8 +872,8 @@ void AppWorker::WriteResponses() {
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
   auto start = std::chrono::system_clock::now();
-  int batch_size = (feedback_batch_size_ & 1) ? (feedback_batch_size_ + 1)
-                                              : feedback_batch_size_;
+  size_t batch_size = (feedback_batch_size_ & 1) ? (feedback_batch_size_ + 1)
+                                                 : feedback_batch_size_;
   while (!thread_exit_cond_.load()) {
     auto sleep = true;
     // Update DocTimers Checkpoint
@@ -927,7 +927,8 @@ void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
                                        size_t max_batch_size) {
   size_t curr_idx = 0, counter = 0;
   while (curr_idx < messages.size()) {
-    size_t batch_size = std::min(max_batch_size, messages.size() - curr_idx);
+    size_t batch_size = messages.size() - curr_idx;
+    batch_size = std::min(max_batch_size, batch_size);
     int bytes_written =
         uv_try_write(handle, messages.data() + curr_idx, batch_size);
     if (bytes_written < 0) {
