@@ -36,4 +36,14 @@ GoInstall(TARGET eventing-producer PACKAGE github.com/couchbase/eventing/cmd/pro
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION})
 
+GoInstall(TARGET cbevent PACKAGE github.com/couchbase/eventing/cmd/cbevent
+  GOPATH "${PROJECT_SOURCE_DIR}/../../../../.." "${GODEPSDIR}"
+  INSTALL_PATH bin OUTPUT cbevent
+  CGO_INCLUDE_DIRS "${CGO_INCLUDE_DIRS}"
+  CGO_LIBRARY_DIRS "${CGO_LIBRARY_DIRS}"
+  GOTAGS "${TAGS}"
+  LDFLAGS "${LDFLAGS}"
+  GOVERSION ${GOVERSION})
+
 ADD_DEPENDENCIES(eventing-producer generated cbq-engine indexer)
+ADD_DEPENDENCIES(cbevent generated)

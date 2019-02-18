@@ -216,6 +216,16 @@ func (m *ServiceMgr) deleteTempStore(appName string) (info *runtimeInfo) {
 	return
 }
 
+func (m *ServiceMgr) die(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+	logging.Errorf("Got request to die, killing all consumers")
+	m.superSup.KillAllConsumers()
+	logging.Errorf("Got request to die, killing producer")
+	os.Exit(-1)
+}
+
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getDebuggerURL"
 

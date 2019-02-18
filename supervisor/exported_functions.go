@@ -234,6 +234,13 @@ func (s *SuperSupervisor) GetEventingConsumerPids(appName string) map[string]int
 	return nil
 }
 
+// Last ditch effort to kill all consumers
+func (s *SuperSupervisor) KillAllConsumers() {
+	for _, p := range s.runningProducers {
+		p.KillAllConsumers()
+	}
+}
+
 // InternalVbDistributionStats returns internal state of vbucket ownership distribution on local eventing node
 func (s *SuperSupervisor) InternalVbDistributionStats(appName string) map[string]string {
 	p, ok := s.runningFns()[appName]

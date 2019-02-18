@@ -324,6 +324,29 @@ func (p *Producer) GetEventingConsumerPids() map[string]int {
 	return workerPidMapping
 }
 
+// Last ditch effort to kill all consumers
+func (p *Producer) KillAllConsumers() {
+	for _, consumer := range p.getConsumers() {
+		err := consumer.RemoveSupervisorToken()
+		if err != nil {
+			logging.Errorf("%v", err)
+			continue
+		}
+
+		pid := consumer.Pid()
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			logging.Errorf("Unable to find consumer pid %v to kill", pid)
+			continue
+		}
+		err = proc.Kill()
+		if err != nil {
+			logging.Errorf("Unable to kill consumer pid %v", pid)
+			continue
+		}
+	}
+}
+
 // WriteAppLog dumps the application specific log message to configured file
 func (p *Producer) WriteAppLog(log string) {
 	ts := time.Now().Format("2006-01-02T15:04:05.000-07:00")

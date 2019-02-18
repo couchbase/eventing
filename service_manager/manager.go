@@ -99,6 +99,7 @@ func (m *ServiceMgr) initService() {
 	// Internal REST APIs
 	mux.HandleFunc("/cleanupEventing", m.cleanupEventing)
 	mux.HandleFunc("/clearEventStats", m.clearEventStats)
+	mux.HandleFunc("/die", m.die)
 	mux.HandleFunc("/deleteApplication/", m.deletePrimaryStoreHandler)
 	mux.HandleFunc("/deleteAppTempStore/", m.deleteTempStoreHandler)
 	mux.HandleFunc("/freeOSMemory", m.freeOSMemory)

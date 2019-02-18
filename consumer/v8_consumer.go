@@ -384,12 +384,13 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Issued close for go-couchbase and gocb handles",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	if c.consumerSup != nil {
-		c.consumerSup.Remove(c.clientSupToken)
+	err := c.RemoveSupervisorToken()
+	if err != nil {
+		logging.Errorf("%v", err)
+	} else {
+		logging.Infof("%s [%s:%s:%d] Requested to remove supervision of eventing-consumer",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
 	}
-
-	logging.Infof("%s [%s:%s:%d] Requested to remove supervision of eventing-consumer",
-		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	if c.checkpointTicker != nil {
 		c.checkpointTicker.Stop()

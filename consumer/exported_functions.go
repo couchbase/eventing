@@ -757,3 +757,14 @@ func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.workerQueueMemCap/(1024*1024),
 		prevWorkerMemCap/(1024*1024), prevDCPFeedMemCap/(1024*1024))
 }
+
+func (c *Consumer) RemoveSupervisorToken() error {
+	logPrefix := "Consumer::RemoveSupervisorToken"
+	logging.Infof("%s [%s:%s:%d] Removing supervisor token",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
+	if c.consumerSup == nil {
+		return fmt.Errorf("%s [%s:%s:%d] Unable to remove Supervisor token as it is nil",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+	}
+	return c.consumerSup.Remove(c.clientSupToken)
+}
