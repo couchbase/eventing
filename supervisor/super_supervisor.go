@@ -427,48 +427,51 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 				return nil
 			}
 
-			//Update deployment and processing status in supervisor. This will enable us to compute function
-			//state (pause, resume) correctly in case of newly added node.
-			s.appRWMutex.Lock()
-			s.appDeploymentStatus[appName] = deploymentStatus
-			s.appProcessingStatus[appName] = processingStatus
-			s.appRWMutex.Unlock()
-
 			logging.Infof("%s [%d] Function: %s deployment_status: %t processing_status: %t runningProducer: %v",
 				logPrefix, s.runningFnsCount(), appName, deploymentStatus, processingStatus, s.runningFns()[appName])
 
-			if _, ok := s.runningFns()[appName]; deploymentStatus && processingStatus && !ok {
+			if _, ok := s.runningFns()[appName]; !ok {
 
-				logging.Infof("%s [%d] Function: %s bootstrapping", logPrefix, s.runningFnsCount(), appName)
-
-				s.appListRWMutex.Lock()
-				if _, ok := s.bootstrappingApps[appName]; ok {
-					logging.Infof("%s [%d] Function: %s already bootstrapping", logPrefix, s.runningFnsCount(), appName)
-					s.appListRWMutex.Unlock()
-					return nil
-				}
-
-				logging.Infof("%s [%d] Function: %s adding to bootstrap list", logPrefix, s.runningFnsCount(), appName)
-				s.bootstrappingApps[appName] = time.Now().String()
-				s.appListRWMutex.Unlock()
-
-				s.spawnApp(appName, false)
-
-				if eventingProducer, ok := s.runningFns()[appName]; ok {
-					eventingProducer.SignalBootstrapFinish()
-
-					logging.Infof("%s [%d] Function: %s bootstrap finished", logPrefix, s.runningFnsCount(), appName)
-
-					s.addToDeployedApps(appName)
-					s.addToLocallyDeployedApps(appName)
-					s.deleteFromCleanupApps(appName)
+				if deploymentStatus && processingStatus {
+					logging.Infof("%s [%d] Function: %s bootstrapping", logPrefix, s.runningFnsCount(), appName)
 
 					s.appListRWMutex.Lock()
-					logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
-					delete(s.bootstrappingApps, appName)
+					if _, ok := s.bootstrappingApps[appName]; ok {
+						logging.Infof("%s [%d] Function: %s already bootstrapping", logPrefix, s.runningFnsCount(), appName)
+						s.appListRWMutex.Unlock()
+						return nil
+					}
+
+					logging.Infof("%s [%d] Function: %s adding to bootstrap list", logPrefix, s.runningFnsCount(), appName)
+					s.bootstrappingApps[appName] = time.Now().String()
 					s.appListRWMutex.Unlock()
 
-					eventingProducer.NotifyTopologyChange(topologyChangeMsg)
+					s.spawnApp(appName, false)
+					s.appRWMutex.Lock()
+					s.appDeploymentStatus[appName] = deploymentStatus
+					s.appProcessingStatus[appName] = processingStatus
+					s.appRWMutex.Unlock()
+					if eventingProducer, ok := s.runningFns()[appName]; ok {
+						eventingProducer.SignalBootstrapFinish()
+
+						logging.Infof("%s [%d] Function: %s bootstrap finished", logPrefix, s.runningFnsCount(), appName)
+
+						s.addToDeployedApps(appName)
+						s.addToLocallyDeployedApps(appName)
+						s.deleteFromCleanupApps(appName)
+
+						s.appListRWMutex.Lock()
+						logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
+						delete(s.bootstrappingApps, appName)
+						s.appListRWMutex.Unlock()
+
+						eventingProducer.NotifyTopologyChange(topologyChangeMsg)
+					}
+				} else {
+					s.appRWMutex.Lock()
+					s.appDeploymentStatus[appName] = deploymentStatus
+					s.appProcessingStatus[appName] = processingStatus
+					s.appRWMutex.Unlock()
 				}
 			}
 		}
