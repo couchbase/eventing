@@ -189,21 +189,6 @@ func (qs *queryStmt) VisitBuildIndexes(stmt *algebra.BuildIndexes) (interface{},
 	return stmt, err
 }
 
-func (qs *queryStmt) VisitCreateFunction(stmt *algebra.CreateFunction) (interface{}, error) {
-	err := handleStmt(qs, stmt.Expressions())
-	return stmt, err
-}
-
-func (qs *queryStmt) VisitDropFunction(stmt *algebra.DropFunction) (interface{}, error) {
-	err := handleStmt(qs, stmt.Expressions())
-	return stmt, err
-}
-
-func (qs *queryStmt) VisitExecuteFunction(stmt *algebra.ExecuteFunction) (interface{}, error) {
-	err := handleStmt(qs, stmt.Expressions())
-	return stmt, err
-}
-
 func (qs *queryStmt) VisitGrantRole(stmt *algebra.GrantRole) (interface{}, error) {
 	err := handleStmt(qs, stmt.Expressions())
 	return stmt, err

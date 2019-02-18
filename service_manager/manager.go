@@ -1,12 +1,11 @@
 package servicemanager
 
 import (
+	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	_ "expvar" // For stat collection
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // For debugging
@@ -170,14 +169,14 @@ func (m *ServiceMgr) initService() {
 	}()
 
 	if m.adminSSLPort != "" {
+		var reload bool = false
+		var sslsrv *http.Server = nil
 		sslAddr := net.JoinHostPort("", m.adminSSLPort)
-		reload := false
-		var tlslsnr *net.Listener
 
 		refresh := func() error {
-			if tlslsnr != nil {
+			if sslsrv != nil {
 				reload = true
-				(*tlslsnr).Close()
+				sslsrv.Shutdown(context.Background())
 			}
 			return nil
 		}
@@ -192,61 +191,20 @@ func (m *ServiceMgr) initService() {
 				time.Sleep(10 * time.Second)
 			}
 			for {
-				cert, err := tls.LoadX509KeyPair(m.certFile, m.keyFile)
+				tlscfg, err := m.getTLSConfig(logPrefix)
 				if err != nil {
-					logging.Errorf("%s Error in loading SSL certificate: %v", logPrefix, err)
+					logging.Errorf("%s Error configuring TLS: %v", logPrefix, err)
 					return
 				}
-
-				clientAuthType, err := cbauth.GetClientCertAuthType()
-				if err != nil {
-					logging.Errorf("%s Error in getting client cert auth type, %v", logPrefix, err)
-					return
-				}
-
-				cbauthTLScfg, err1 := cbauth.GetTLSConfig()
-				if err1 != nil {
-					logging.Errorf("Error in getting cbauth tls config: %v", err1.Error())
-					return
-				}
-
-				config := &tls.Config{
-					Certificates:             []tls.Certificate{cert},
-					CipherSuites:             cbauthTLScfg.CipherSuites,
-					MinVersion:               cbauthTLScfg.MinVersion,
-					PreferServerCipherSuites: cbauthTLScfg.PreferServerCipherSuites,
-					ClientAuth:               clientAuthType,
-				}
-
-				if clientAuthType != tls.NoClientCert {
-					caCert, err := ioutil.ReadFile(m.certFile)
-					if err != nil {
-						logging.Errorf("%s Error in reading cacert file, %v", logPrefix, err)
-						return
-					}
-					caCertPool := x509.NewCertPool()
-					caCertPool.AppendCertsFromPEM(caCert)
-					config.ClientCAs = caCertPool
-				}
-
-				// allow only strong ssl as this is an internal API and interop is not a concern
-				sslsrv := &http.Server{
+				sslsrv = &http.Server{
 					Addr:         sslAddr,
 					TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
-					TLSConfig:    config,
+					TLSConfig:    tlscfg,
 					Handler:      mux,
 				}
-				// replace below with ListenAndServeTLS on moving to go1.8
-				lsnr, err := net.Listen("tcp", sslAddr)
-				if err != nil {
-					logging.Errorf("%s Error in listenting to SSL port: %v", logPrefix, err)
-					return
-				}
-				val := tls.NewListener(lsnr, sslsrv.TLSConfig)
-				tlslsnr = &val
+				logging.Infof("%s SSL server started: %v", logPrefix, sslsrv)
 				reload = false
-				logging.Infof("%s SSL server started: %v", logPrefix, sslAddr)
-				err = http.Serve(*tlslsnr, mux)
+				err = sslsrv.ListenAndServeTLS(m.certFile, m.keyFile)
 				if reload {
 					logging.Warnf("%s SSL certificate change: %v", logPrefix, err)
 				} else {
