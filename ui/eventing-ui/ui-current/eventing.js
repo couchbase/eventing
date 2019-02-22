@@ -441,12 +441,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 scope.appModel.initializeDefaults();
                 scope.bindings = [];
                 scope.bindings.push({
-                    type: 'alias',
+                    type: '',
                     name: '',
                     value: '',
                     access: 'r',
                     auth_type: 'no-auth',
-                    cookies: 'allow'
+                    cookies: true
                 });
                 createApp(scope);
             };
@@ -486,7 +486,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             if (!scope.bindings.length) {
                                 // Add a sample row of bindings.
                                 scope.bindings.push({
-                                    type: 'alias',
+                                    type: '',
                                     name: '',
                                     value: '',
                                     access: 'r'
@@ -603,6 +603,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.metadataBucket = appModel.depcfg.metadata_bucket;
             self.savedApps = savedApps;
 
+            for (var curl of appModel.depcfg.curl) {
+                curl.cookies = curl.cookies === 'allow';
+            }
             // Need to pass a deep copy or the changes will be stored locally till refresh.
             $scope.appModel = JSON.parse(JSON.stringify(appModel));
 
@@ -1265,19 +1268,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                     });
                             }
 
-                            switch (binding.cookies) {
-                                case 'allow':
-                                    Object.assign(config.curl[config.curl.length - 1], {
-                                        cookies: 'allow'
-                                    });
-                                    break;
-
-                                case 'disallow':
-                                default:
-                                    Object.assign(config.curl[config.curl.length - 1], {
-                                        cookies: 'disallow'
-                                    });
-                            }
+                            Object.assign(config.curl[config.curl.length - 1], {
+                                cookies: binding.cookies ? 'allow' : 'disallow'
+                            });
                         }
                     }
                     return config;
@@ -1338,14 +1331,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             switch (config.cookies) {
                                 case 'allow':
                                     Object.assign(bindings[bindings.length - 1], {
-                                        cookies: 'allow'
+                                        cookies: true
                                     });
                                     break;
 
                                 case 'disallow':
                                 default:
                                     Object.assign(bindings[bindings.length - 1], {
-                                        cookies: 'disallow'
+                                        cookies: false
                                     });
                                     break;
                             }
