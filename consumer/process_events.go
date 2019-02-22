@@ -216,6 +216,8 @@ func (c *Consumer) processEvents() {
 						startSeqNo = seqNo
 					}
 
+					c.sendUpdateProcessedSeqNo(e.VBucket, startSeqNo)
+
 					if val, ok := c.vbProcessingStats.getVbStat(e.VBucket, "bootstrap_stream_req_done").(bool); ok && !val {
 						c.vbProcessingStats.updateVbStat(e.VBucket, "bootstrap_stream_req_done", true)
 						vbBlob.BootstrapStreamReqDone = true
@@ -1015,7 +1017,6 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		c.vbProcessingStats.updateVbStat(vb, "last_read_seq_no", start)
 		c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", start)
 
-		c.sendUpdateProcessedSeqNo(vb, start)
 		logging.Infof("%s [%s:%s:%d] vb: %d Adding entry into inflightDcpStreams",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 
@@ -1111,8 +1112,6 @@ func (c *Consumer) handleFailoverLog() {
 						c.Unlock()
 						continue
 					}
-
-					vbBlob.VBuuid = vbuuid
 				}
 
 				if vbFlog.statusCode == mcd.ROLLBACK {
@@ -1134,7 +1133,7 @@ func (c *Consumer) handleFailoverLog() {
 					// for stream in later case, unless we maintain another data structure to
 					// maintain that information
 					c.sendVbFilterData(vbFlog.vb, vbFlog.seqNo, true)
-
+					vbBlob.VBuuid = vbuuid
 					streamInfo := &streamRequestInfo{
 						vb:         vbFlog.vb,
 						vbBlob:     &vbBlob,
@@ -1165,13 +1164,6 @@ func (c *Consumer) handleFailoverLog() {
 						}
 					}
 
-					filterSeqNum := startSeqNo
-
-					if vbBlob.LastSeqNoProcessed < startSeqNo {
-						filterSeqNum = vbBlob.LastSeqNoProcessed
-					}
-					c.sendVbFilterData(vbFlog.vb, filterSeqNum, true)
-
 					logging.Infof("%s [%s:%s:%d] vb: %d Retrying DCP stream start vbuuid: %d vbFlog startSeq: %d last processed seq: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid,
 						vbFlog.seqNo, vbBlob.LastSeqNoProcessed)
@@ -1184,18 +1176,17 @@ func (c *Consumer) handleFailoverLog() {
 
 					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
-
 					streamInfo := &streamRequestInfo{
 						vb:         vbFlog.vb,
 						vbBlob:     &vbBlob,
-						startSeqNo: filterSeqNum,
+						startSeqNo: vbBlob.LastSeqNoProcessed,
 					}
 					select {
 					case c.reqStreamCh <- streamInfo:
 					case <-c.stopConsumerCh:
 						return
 					}
-					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", filterSeqNum)
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 				}
 			}
