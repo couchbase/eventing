@@ -351,3 +351,18 @@ func GetNodesHostname(data map[string]interface{}) []string {
 	}
 	return hostnames
 }
+
+func (m *ServiceMgr) UpdateBucketGraphFromMektakv(functionName string) error {
+	logPrefix := "ServiceMgr::UpdateBucketGraphFromMektakv"
+	appData, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, functionName)
+	if err != nil {
+		logging.Errorf("%s Function read from metakv failed, err: %v", logPrefix, err)
+		return err
+	}
+	app := m.parseFunctionPayload(appData, functionName)
+	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
+	if len(destinations) != 0 {
+		m.graph.insertEdges(functionName, source, destinations)
+	}
+	return nil
+}

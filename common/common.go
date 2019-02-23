@@ -225,7 +225,9 @@ type EventingSuperSup interface {
 	WriteDebuggerToken(appName, token string, hostnames []string)
 }
 
-type EventingServiceMgr interface{}
+type EventingServiceMgr interface {
+	UpdateBucketGraphFromMektakv(functionName string) error
+}
 type Config map[string]interface{}
 
 // AppConfig Application/Event handler configuration

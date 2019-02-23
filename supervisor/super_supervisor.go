@@ -451,6 +451,10 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					s.appDeploymentStatus[appName] = deploymentStatus
 					s.appProcessingStatus[appName] = processingStatus
 					s.appRWMutex.Unlock()
+					err = s.serviceMgr.UpdateBucketGraphFromMektakv(appName)
+					if err != nil {
+						return nil
+					}
 					if eventingProducer, ok := s.runningFns()[appName]; ok {
 						eventingProducer.SignalBootstrapFinish()
 
