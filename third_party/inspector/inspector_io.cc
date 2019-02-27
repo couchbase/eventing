@@ -13,11 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <vector>
-#ifndef STANDALONE_BUILD
-extern void(assert)(int);
-#else
 #include <cassert>
-#endif
+
 
 namespace inspector {
 namespace {

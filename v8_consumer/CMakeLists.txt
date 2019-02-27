@@ -11,7 +11,6 @@
 
 PROJECT(eventing-consumer)
 
-INCLUDE (FindCouchbaseJemalloc)
 INCLUDE (FindCouchbaseLibuv)
 INCLUDE (FindCouchbaseV8)
 INCLUDE (FindCouchbaseBreakpad)
@@ -27,7 +26,8 @@ SET(LIBS_SRC
         ../libs/src/transpiler.cc
         ../libs/src/js_exception.cc
         ../libs/src/v8log.cc
-        ../libs/src/utils.cc)
+        ../libs/src/utils.cc
+        ../libs/src/base64.cc)
 
 INCLUDE_DIRECTORIES(BEFORE
                      "${libcouchbase_SOURCE_DIR}/include"
@@ -42,7 +42,6 @@ INCLUDE_DIRECTORIES(AFTER
                      ${CMAKE_CURRENT_SOURCE_DIR}
                      ${CMAKE_CURRENT_SOURCE_DIR}/include
                      ${FLATBUFFERS_INCLUDE_DIR}
-                     ${Platform_SOURCE_DIR}/include
                      ${CMAKE_INSTALL_PREFIX}/include
                      ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector
                      ${LIBS_HEADERS})
@@ -60,11 +59,9 @@ ENDIF()
 SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc PROPERTIES GENERATED TRUE)
 
 SET(EVENTING_SOURCES
-    src/base64.cc
     src/client.cc
     src/commands.cc
     src/v8worker.cc
-    src/assert.cc
     src/parse_deployment.cc
     src/breakpad.cc
     src/timer.cc
@@ -75,12 +72,10 @@ SET(EVENTING_SOURCES
 SET(EVENTING_LIBRARIES
     ${V8_LIBRARIES}
     ${ICU_LIBRARIES}
-    ${JEMALLOC_LIBRARIES}
     ${CURL_LIBRARIES}
     ${LIBUV_LIBRARIES}
     ${ZLIB_LIBRARIES}
-    eventing-inspector
-    platform)
+    eventing-inspector)
 
 IF(APPLE)
   SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} ${FLEX_LIBRARIES})
@@ -93,7 +88,7 @@ IF(BREAKPAD_FOUND)
 ENDIF()
 
 ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})
-ADD_DEPENDENCIES(eventing-consumer generated platform couchbase)
+ADD_DEPENDENCIES(eventing-consumer generated  couchbase)
 
 TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES} couchbase)
 INSTALL(TARGETS eventing-consumer RUNTIME DESTINATION bin)
