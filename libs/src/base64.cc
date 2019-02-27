@@ -18,64 +18,61 @@
 #include <string>
 #include <vector>
 
-
 static const uint8_t code[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+static void encode_rest(const uint8_t *s, std::string &result, size_t num) {
+  uint32_t val = 0;
 
-static void encode_rest(const uint8_t* s, std::string& result, size_t num) {
-    uint32_t val = 0;
+  switch (num) {
+  case 2:
+    val = (uint32_t)((*s << 16) | (*(s + 1) << 8));
+    break;
+  case 1:
+    val = (uint32_t)((*s << 16));
+    break;
+  default:
+    throw std::invalid_argument("encode_rest num may be 1 or 2");
+  }
 
-    switch (num) {
-    case 2:
-        val = (uint32_t)((*s << 16) | (*(s + 1) << 8));
-        break;
-    case 1:
-        val = (uint32_t)((*s << 16));
-        break;
-    default:
-        throw std::invalid_argument("encode_rest num may be 1 or 2");
-    }
-
-    result.push_back((char)code[(val >> 18) & 63]);
-    result.push_back((char)code[(val >> 12) & 63]);
-    if (num == 2) {
-        result.push_back((char)code[(val >> 6) & 63]);
-    } else {
-        result.push_back('=');
-    }
+  result.push_back((char)code[(val >> 18) & 63]);
+  result.push_back((char)code[(val >> 12) & 63]);
+  if (num == 2) {
+    result.push_back((char)code[(val >> 6) & 63]);
+  } else {
     result.push_back('=');
+  }
+  result.push_back('=');
 }
 
-static void encode_triplet(const uint8_t* s, std::string& str) {
-    uint32_t val = (uint32_t)((*s << 16) | (*(s + 1) << 8) | (*(s + 2)));
-    str.push_back((char)code[(val >> 18) & 63]);
-    str.push_back((char)code[(val >> 12) & 63]);
-    str.push_back((char)code[(val >> 6) & 63]);
-    str.push_back((char)code[val & 63]);
+static void encode_triplet(const uint8_t *s, std::string &str) {
+  uint32_t val = (uint32_t)((*s << 16) | (*(s + 1) << 8) | (*(s + 2)));
+  str.push_back((char)code[(val >> 18) & 63]);
+  str.push_back((char)code[(val >> 12) & 63]);
+  str.push_back((char)code[(val >> 6) & 63]);
+  str.push_back((char)code[val & 63]);
 }
 
 std::string base64Encode(const std::string &blob) {
-    auto triplets = blob.size() / 3;
-    auto rest = blob.size() % 3;
-    auto chunks = triplets;
-    if (rest != 0) {
-        ++chunks;
-    }
+  auto triplets = blob.size() / 3;
+  auto rest = blob.size() % 3;
+  auto chunks = triplets;
+  if (rest != 0) {
+    ++chunks;
+  }
 
-    std::string result;
-    result.reserve(chunks * 4);
+  std::string result;
+  result.reserve(chunks * 4);
 
-    const uint8_t* in = reinterpret_cast<const uint8_t*> (blob.data());
+  const uint8_t *in = reinterpret_cast<const uint8_t *>(blob.data());
 
-    for (size_t ii = 0; ii < triplets; ++ii) {
-        encode_triplet(in, result);
-        in += 3;
-    }
+  for (size_t ii = 0; ii < triplets; ++ii) {
+    encode_triplet(in, result);
+    in += 3;
+  }
 
-    if (rest > 0) {
-        encode_rest(in, result, rest);
-    }
-    return result;
+  if (rest > 0) {
+    encode_rest(in, result, rest);
+  }
+  return result;
 }
-

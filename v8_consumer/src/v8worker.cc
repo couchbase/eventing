@@ -65,6 +65,8 @@ v8::Local<v8::ObjectTemplate> V8Worker::NewGlobalObj() const {
               v8::FunctionTemplate::New(isolate_, UrlEncodeFunction));
   global->Set(v8::String::NewFromUtf8(isolate_, "urlDecode"),
               v8::FunctionTemplate::New(isolate_, UrlDecodeFunction));
+  global->Set(v8::String::NewFromUtf8(isolate_, "crc64"),
+              v8::FunctionTemplate::New(isolate_, Crc64Function));
 
   for (const auto &type_name : exception_type_names_) {
     global->Set(v8::String::NewFromUtf8(isolate_, type_name.c_str()),
