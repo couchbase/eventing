@@ -91,6 +91,7 @@ type EventingProducer interface {
 	InternalVbDistributionStats() map[string]string
 	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
 	IsPlannerRunning() bool
+	KillAllConsumers()
 	KillAndRespawnEventingConsumer(consumer EventingConsumer)
 	KvHostPorts() []string
 	LenRunningConsumers() int
@@ -178,6 +179,7 @@ type EventingConsumer interface {
 	VbProcessingStats() map[uint16]map[string]interface{}
 	VbSeqnoStats() map[int]map[string]interface{}
 	WorkerVbMapUpdate(map[string][]uint16)
+	RemoveSupervisorToken() error
 }
 
 type EventingSuperSup interface {
@@ -205,6 +207,7 @@ type EventingSuperSup interface {
 	GetSeqsProcessed(appName string) map[int]int64
 	GetSourceMap(appName string) string
 	InternalVbDistributionStats(appName string) map[string]string
+	KillAllConsumers()
 	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string)
 	PlannerStats(appName string) []*PlannerNodeVbMapping
 	RebalanceStatus() bool

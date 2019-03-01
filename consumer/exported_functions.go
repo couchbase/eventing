@@ -790,3 +790,14 @@ func (c *Consumer) ResetBootstrapDone() {
 	c.resetBootstrapDone = true
 	logging.Infof("%s [%s:%s:%d] Updated ResetBootstrapDone flag to: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.resetBootstrapDone)
 }
+
+func (c *Consumer) RemoveSupervisorToken() error {
+	logPrefix := "Consumer::RemoveSupervisorToken"
+	logging.Infof("%s [%s:%s:%d] Removing supervisor token",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
+	if c.consumerSup == nil {
+		return fmt.Errorf("%s [%s:%s:%d] Unable to remove Supervisor token as it is nil",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+	}
+	return c.consumerSup.Remove(c.clientSupToken)
+}
