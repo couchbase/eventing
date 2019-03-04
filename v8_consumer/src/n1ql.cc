@@ -232,7 +232,7 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS || !IsStatusSuccess(resp->row)) {
-      HandleRowCallbackFailure(resp, isolate_data);
+      HandleRowCallbackFailure(resp, isolate);
     }
 
     q_handler.iter_handler->metadata = resp->row;
@@ -264,7 +264,7 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS || !IsStatusSuccess(resp->row)) {
-      HandleRowCallbackFailure(resp, isolate_data);
+      HandleRowCallbackFailure(resp, isolate);
     }
 
     q_handler.block_handler->metadata = resp->row;
@@ -272,11 +272,24 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
 }
 
 void N1QL::HandleRowCallbackFailure(const lcb_RESPN1QL *resp,
-                                    const Data *isolate_data) {
+                                    v8::Isolate *isolate) {
+  const auto isolate_data = UnwrapData(isolate);
   auto w = isolate_data->v8worker;
   w->AddLcbException(static_cast<int>(resp->rc));
   n1ql_op_exception_count++;
   auto js_exception = isolate_data->js_exception;
+
+  N1QLErrorExtractor extractor(isolate);
+  const auto info = extractor.GetErrorCodes(resp->row);
+  if (info.is_fatal) {
+    js_exception->ThrowN1QLError(info.msg);
+    return;
+  }
+
+  for (const auto code : info.errors) {
+    w->AddLcbException(static_cast<int>(code));
+  }
+
   js_exception->ThrowN1QLError(resp->row);
 
   if (resp->rc == LCB_AUTH_ERROR) {
@@ -801,4 +814,76 @@ template <typename T> v8::Local<T> ToLocal(const v8::MaybeLocal<T> &handle) {
   }
 
   return handle_scope.Escape(value);
+}
+
+N1QLErrorExtractor::N1QLErrorExtractor(v8::Isolate *isolate)
+    : isolate_(isolate) {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = isolate_->GetCurrentContext();
+  context_.Reset(isolate_, context);
+}
+
+N1QLErrorExtractor::~N1QLErrorExtractor() { context_.Reset(); }
+
+ErrorCodesInfo N1QLErrorExtractor::GetErrorCodes(const char *err_str) {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  std::vector<int64_t> errors;
+
+  v8::Local<v8::Value> error_val;
+  if (!TO_LOCAL(v8::JSON::Parse(isolate_, v8Str(isolate_, err_str)),
+                &error_val)) {
+    return {true, "Unable to parse error JSON"};
+  }
+
+  v8::Local<v8::Object> error_obj;
+  if (!TO_LOCAL(error_val->ToObject(context), &error_obj)) {
+    return {true, "Unable to cast error to Object"};
+  }
+
+  v8::Local<v8::Value> errors_val;
+  if (!TO_LOCAL(error_obj->Get(context, v8Str(isolate_, "errors")),
+                &errors_val)) {
+    return {true, "Unable to read errors property from message Object"};
+  }
+  return GetErrorCodes(errors_val);
+}
+
+ErrorCodesInfo
+N1QLErrorExtractor::GetErrorCodes(const v8::Local<v8::Value> &errors_val) {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  std::vector<int64_t> errors;
+
+  auto errors_v8arr = errors_val.As<v8::Array>();
+  const auto len = errors_v8arr->Length();
+  errors.resize(static_cast<std::size_t>(len));
+  for (uint32_t i = 0; i < len; ++i) {
+    v8::Local<v8::Value> error_val;
+    if (!TO_LOCAL(errors_v8arr->Get(context, i), &error_val)) {
+      return {true,
+              "Unable to read error Object at index " + std::to_string(i)};
+    }
+
+    v8::Local<v8::Object> error_obj;
+    if (!TO_LOCAL(error_val->ToObject(context), &error_obj)) {
+      return {true, "Unable to cast error at index " + std::to_string(i) +
+                        " to Object"};
+    }
+
+    v8::Local<v8::Value> code_val;
+    if (!TO_LOCAL(error_obj->Get(context, v8Str(isolate_, "code")),
+                  &code_val)) {
+      return {true, "Unable to get code from error Object at index " +
+                        std::to_string(i)};
+    }
+
+    v8::Local<v8::Integer> code_v8int;
+    if (!TO_LOCAL(code_val->ToInteger(context), &code_v8int)) {
+      return {true, "Unable to cast code to integer in error Object at index " +
+                        std::to_string(i)};
+    }
+    errors[static_cast<std::size_t>(i)] = code_v8int->Value();
+  }
+  return errors;
 }
