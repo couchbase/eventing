@@ -92,6 +92,30 @@ private:
   std::unordered_map<std::string, QueryHandler *> qmap_;
 };
 
+struct ErrorCodesInfo : Info {
+  ErrorCodesInfo(const Info &info) : Info(info.is_fatal, info.msg) {}
+  ErrorCodesInfo(bool is_fatal, const std::string &msg) : Info(is_fatal, msg) {}
+  ErrorCodesInfo(std::vector<int64_t> &errors) : Info(false) {
+    std::swap(this->errors, errors);
+  }
+
+  std::vector<int64_t> errors;
+};
+
+class N1QLErrorExtractor {
+public:
+  explicit N1QLErrorExtractor(v8::Isolate *isolate);
+  virtual ~N1QLErrorExtractor();
+
+  ErrorCodesInfo GetErrorCodes(const char *err_str);
+
+private:
+  ErrorCodesInfo GetErrorCodes(const v8::Local<v8::Value> &errors_val);
+
+  v8::Isolate *isolate_;
+  v8::Persistent<v8::Context> context_;
+};
+
 class N1QL {
 public:
   N1QL(ConnectionPool *inst_pool, v8::Isolate *isolate)
@@ -106,8 +130,9 @@ private:
   static void RowCallback(lcb_t instance, int callback_type,
                           const lcb_RESPN1QL *resp);
   static void HandleRowCallbackFailure(const lcb_RESPN1QL *resp,
-                                       const IsolateData *isolate_data);
+                                       v8::Isolate *isolate);
   static bool IsStatusSuccess(const char *row);
+
   v8::Isolate *isolate_;
   ConnectionPool *inst_pool_;
 };
@@ -139,6 +164,6 @@ ExtractNamedParams(const v8::FunctionCallbackInfo<v8::Value> &args);
 // TODO : Currently, this method needs to be implemented by the file that is
 // importing this method
 //  This method will be deprecated soon
-void AddLcbException(const IsolateData *isolate_data, const lcb_RESPN1QL *resp);
+void AddLcbException(const IsolateData *isolate_data, const int code);
 
 #endif

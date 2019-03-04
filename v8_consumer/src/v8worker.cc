@@ -1078,10 +1078,9 @@ void V8Worker::FreeCurlBindings() {
 }
 
 // TODO : Remove this when stats variables are handled properly
-void AddLcbException(const IsolateData *isolate_data,
-                     const lcb_RESPN1QL *resp) {
+void AddLcbException(const IsolateData *isolate_data, const int code) {
   auto w = isolate_data->v8worker;
-  w->AddLcbException(static_cast<int>(resp->rc));
+  w->AddLcbException(code);
 }
 
 void AddLcbException(const IsolateData *isolate_data, lcb_error_t error) {
