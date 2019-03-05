@@ -109,6 +109,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.req_builder = new CurlRequestBuilder(isolate_, context);
   data_.resp_builder = new CurlResponseBuilder(isolate_, context);
   data_.custom_error = new CustomError(isolate_, context);
+  data_.curl_codex = new CurlCodex;
 }
 
 void V8Worker::InitializeCurlBindingValues(
@@ -245,6 +246,7 @@ V8Worker::~V8Worker() {
   delete data->curl_factory;
   delete data->req_builder;
   delete data->resp_builder;
+  delete data->curl_codex;
 
   context_.Reset();
   on_update_.Reset();
