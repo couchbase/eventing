@@ -4,12 +4,8 @@
 #include "v8-inspector.h"
 #include "v8-platform.h"
 #include "zlib.h"
-#ifndef STANDALONE_BUILD
-extern void(assert)(int);
-#else
-#include <cassert>
-#endif
 
+#include <cassert>
 #include <string.h>
 #include <vector>
 

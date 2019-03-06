@@ -27,11 +27,8 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef STANDALONE_BUILD
-extern void(assert)(int);
-#else
 #include <cassert>
-#endif
+
 
 #ifndef ULLONG_MAX
 #define ULLONG_MAX ((uint64_t)-1) /* 2^64-1 */

@@ -9,11 +9,8 @@
 #include <map>
 #include <set>
 #include <sstream>
-#ifndef STANDALONE_BUILD
-extern void(assert)(int);
-#else
 #include <cassert>
-#endif
+
 
 namespace inspector {
 
