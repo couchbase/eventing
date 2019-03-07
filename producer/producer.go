@@ -65,6 +65,8 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		handlerConfig:                &common.HandlerConfig{},
 		processConfig:                &common.ProcessConfig{},
 		rebalanceConfig:              &common.RebalanceConfig{},
+		latencyStats:                 util.NewStats(),
+		curlLatencyStats:             util.NewStats(),
 	}
 
 	p.processConfig.DebuggerPort = debuggerPort
@@ -365,6 +367,9 @@ func (p *Producer) Stop(context string) {
 		logPrefix, p.appName, p.LenRunningConsumers())
 
 	p.isTerminateRunning = true
+
+	p.latencyStats.Close()
+	p.curlLatencyStats.Close()
 
 	p.listenerRWMutex.RLock()
 	if p.consumerListeners != nil {

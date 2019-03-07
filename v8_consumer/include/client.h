@@ -99,6 +99,9 @@ private:
   std::map<int16_t, V8Worker *> workers_;
   std::chrono::milliseconds checkpoint_interval_;
 
+  Histogram latency_stats_;
+  Histogram curl_latency_stats_;
+
   // Socket  handles for out of band data channel to pipeline data to parent
   // eventing-producer
   int feedback_batch_size_;

@@ -223,8 +223,6 @@ type Consumer struct {
 
 	executionStats    map[string]interface{} // Access controlled by statsRWMutex
 	failureStats      map[string]interface{} // Access controlled by statsRWMutex
-	latencyStats      map[string]uint64      // Access controlled by statsRWMutex
-	curlLatencyStats  map[string]uint64      // Access controlled by statsRWMutex
 	lcbExceptionStats map[string]uint64      // Access controlled by statsRWMutex
 	statsRWMutex      *sync.RWMutex
 

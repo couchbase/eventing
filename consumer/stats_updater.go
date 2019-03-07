@@ -109,9 +109,9 @@ func (c *Consumer) updateWorkerStats() {
 			c.dcpEventsRemainingToProcess()
 			c.sendGetExecutionStats(false)
 			c.sendGetFailureStats(false)
-			c.sendGetLatencyStats(false)
+			c.sendGetLatencyStats()
 			c.sendGetLcbExceptionStats(false)
-			c.refershCurlLatencyStats(false)
+			c.refreshCurlLatencyStats()
 
 			val := c.workerRespMainLoopTs.Load()
 			if val == nil {

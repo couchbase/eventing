@@ -243,7 +243,7 @@ func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
-func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) {
+func (c *Consumer) sendGetLatencyStats() {
 	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerLatencyStats, 0, "")
 
 	c.msgProcessedRWMutex.Lock()
@@ -257,7 +257,7 @@ func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) {
 		msg: &message{
 			Header: header,
 		},
-		sendToDebugger: sendToDebugger,
+		sendToDebugger: false,
 		prioritize:     true,
 		headerBuilder:  hBuilder,
 	}
@@ -265,7 +265,7 @@ func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
-func (c *Consumer) refershCurlLatencyStats(sendToDebugger bool) {
+func (c *Consumer) refreshCurlLatencyStats() {
 	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerCurlLatencyStats, 0, "")
 
 	c.msgProcessedRWMutex.Lock()
@@ -279,7 +279,7 @@ func (c *Consumer) refershCurlLatencyStats(sendToDebugger bool) {
 		msg: &message{
 			Header: header,
 		},
-		sendToDebugger: sendToDebugger,
+		sendToDebugger: false,
 		prioritize:     true,
 		headerBuilder:  hBuilder,
 	}
