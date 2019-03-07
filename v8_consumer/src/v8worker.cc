@@ -112,6 +112,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.curl_factory = new CurlFactory(isolate_, context);
   data_.req_builder = new CurlRequestBuilder(isolate_, context);
   data_.resp_builder = new CurlResponseBuilder(isolate_, context);
+  data_.n1ql_codex = new N1QLCodex;
   data_.custom_error = new CustomError(isolate_, context);
   data_.curl_codex = new CurlCodex;
 }
@@ -242,6 +243,7 @@ V8Worker::~V8Worker() {
 
   auto data = UnwrapData(isolate_);
   delete data->custom_error;
+  delete data->n1ql_codex;
   delete data->comm;
   delete data->transpiler;
   delete data->utils;
