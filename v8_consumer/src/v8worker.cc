@@ -207,6 +207,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                      h_config->handler_footers);
   data_.utils = new Utils(isolate_, context);
   data_.timer = new Timer(isolate_, context);
+  data_.n1ql_codex = new N1QLCodex;
   execute_start_time_ = Time::now();
 
   deployment_config *config = ParseDeployment(h_config->dep_cfg.c_str());
@@ -284,6 +285,7 @@ V8Worker::~V8Worker() {
 
   auto data = UnwrapData(isolate_);
   delete data->custom_error;
+  delete data->n1ql_codex;
   delete data->comm;
   delete data->transpiler;
   delete data->utils;

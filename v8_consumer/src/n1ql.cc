@@ -232,7 +232,7 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS || !IsStatusSuccess(resp->row)) {
-      HandleRowCallbackFailure(resp, isolate);
+      HandleRowCallbackFailure(resp, isolate, cookie);
     }
 
     q_handler.iter_handler->metadata = resp->row;
@@ -264,7 +264,7 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS || !IsStatusSuccess(resp->row)) {
-      HandleRowCallbackFailure(resp, isolate);
+      HandleRowCallbackFailure(resp, isolate, cookie);
     }
 
     q_handler.block_handler->metadata = resp->row;
@@ -272,13 +272,17 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
 }
 
 void N1QL::HandleRowCallbackFailure(const lcb_RESPN1QL *resp,
-                                    v8::Isolate *isolate) {
+                                    v8::Isolate *isolate,
+                                    HandlerCookie *cookie) {
+  n1ql_op_exception_count++;
   const auto isolate_data = UnwrapData(isolate);
   auto w = isolate_data->v8worker;
   w->AddLcbException(static_cast<int>(resp->rc));
   n1ql_op_exception_count++;
   auto js_exception = isolate_data->js_exception;
+  auto codex = isolate_data->n1ql_codex;
 
+  cookie->error = resp->row;
   N1QLErrorExtractor extractor(isolate);
   const auto info = extractor.GetErrorCodes(resp->row);
   if (info.is_fatal) {
@@ -288,11 +292,16 @@ void N1QL::HandleRowCallbackFailure(const lcb_RESPN1QL *resp,
 
   for (const auto code : info.errors) {
     w->AddLcbException(static_cast<int>(code));
+    if (codex->IsRetriable(code)) {
+      cookie->must_retry = true;
+    }
   }
 
-  js_exception->ThrowN1QLError(resp->row);
+  if (!cookie->must_retry) {
+    js_exception->ThrowN1QLError(resp->row);
+  }
 
-  if (resp->rc == LCB_AUTH_ERROR) {
+  if (resp->rc == LCB_AUTH_ERROR || cookie->must_retry) {
     auto comm = isolate_data->comm;
     comm->Refresh();
   }
@@ -306,10 +315,6 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
 
   lcb_t &instance = q_handler.instance;
   lcb_error_t err;
-  lcb_CMDN1QL cmd = {0};
-  lcb_N1QLHANDLE handle = nullptr;
-  cmd.handle = &handle;
-  cmd.callback = RowCallback<HandlerType>;
 
   lcb_N1QLPARAMS *n1ql_params = lcb_n1p_new();
   err = lcb_n1p_setstmtz(n1ql_params, q_handler.query.c_str());
@@ -326,34 +331,55 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
     }
   }
 
-  lcb_n1p_mkcmd(n1ql_params, &cmd);
-
-  err = lcb_n1ql_query(instance, nullptr, &cmd);
-  if (err != LCB_SUCCESS) {
-    // for example: when there is no query node
-    ConnectionPool::Error(instance, "N1QL: Unable to schedule N1QL query", err);
+  std::string err_msg;
+  auto must_retry = RetryWithFixedBackoff(
+      5, 0, [](bool retry) -> bool { return retry; },
+      ExecQueryImpl<HandlerType>, isolate_, instance, n1ql_params, err_msg);
+  if (must_retry) {
     auto js_exception = UnwrapData(isolate_)->js_exception;
-    js_exception->ThrowN1QLError("N1QL: Unable to schedule N1QL query");
-  }
-
-  lcb_n1p_free(n1ql_params);
-
-  // Add the N1QL handle as cookie - allow for query cancellation.
-  HandlerCookie cookie;
-  cookie.isolate = isolate_;
-  cookie.handle = handle;
-  lcb_set_cookie(instance, &cookie);
-
-  // Run the query
-  err = lcb_wait(instance);
-  if (err != LCB_SUCCESS) {
-    ConnectionPool::Error(instance, "N1QL: Query execution failed", err);
+    js_exception->ThrowN1QLError(
+        "Query did not succeed even after 5 attempts, error : " + err_msg);
   }
 
   // Resource clean-up.
   lcb_set_cookie(instance, nullptr);
   qhandler_stack.Pop();
   inst_pool_->Restore(instance);
+}
+
+template <typename HandlerType>
+bool N1QL::ExecQueryImpl(v8::Isolate *isolate, lcb_t &instance,
+                         lcb_N1QLPARAMS *n1ql_params, std::string &err_out) {
+  lcb_CMDN1QL cmd = {0};
+  lcb_N1QLHANDLE handle = nullptr;
+  cmd.handle = &handle;
+  cmd.callback = RowCallback<HandlerType>;
+
+  lcb_n1p_mkcmd(n1ql_params, &cmd);
+
+  auto err = lcb_n1ql_query(instance, nullptr, &cmd);
+  if (err != LCB_SUCCESS) {
+    // for example: when there is no query node
+    ConnectionPool::Error(instance, "N1QL: Unable to schedule N1QL query", err);
+    auto js_exception = UnwrapData(isolate)->js_exception;
+    js_exception->ThrowN1QLError("N1QL: Unable to schedule N1QL query");
+  }
+
+  lcb_n1p_free(n1ql_params);
+
+  HandlerCookie cookie;
+  cookie.isolate = isolate;
+  // Add the N1QL handle as cookie - allow for query cancellation.
+  cookie.handle = handle;
+  lcb_set_cookie(instance, &cookie);
+
+  cookie.must_retry = false;
+  err = lcb_wait(instance);
+  if (err != LCB_SUCCESS) {
+    ConnectionPool::Error(instance, "N1QL: Query execution failed", err);
+  }
+  err_out = cookie.error;
+  return cookie.must_retry;
 }
 
 bool N1QL::IsStatusSuccess(const char *row) {

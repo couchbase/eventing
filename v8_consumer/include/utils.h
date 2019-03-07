@@ -39,6 +39,7 @@
 #define IS_EMPTY(v8obj) (IsEmpty((v8obj), __FILE__, __FUNCTION__, __LINE__))
 
 class N1QL;
+struct N1QLCodex;
 class V8Worker;
 class JsException;
 class Transpiler;
@@ -48,6 +49,7 @@ class CustomError;
 
 // Struct for storing isolate data
 struct Data {
+  N1QLCodex *n1ql_codex;
   CURL *curl_handle;
   N1QL *n1ql_handle;
   V8Worker *v8worker;

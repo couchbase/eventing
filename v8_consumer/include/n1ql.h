@@ -19,6 +19,7 @@
 #include <stack>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <v8.h>
 #include <vector>
 
@@ -109,6 +110,23 @@ struct CompilationInfo {
   std::string area;
 };
 
+struct N1QLCodex {
+  bool IsRetriable(int64_t code) const {
+    return retriable_errors.find(code) != retriable_errors.end();
+  }
+
+  enum {
+    auth_failure = 13014,
+    attempts_failure = 12009,
+  };
+
+private:
+  const std::unordered_set<int64_t> retriable_errors{
+      auth_failure,
+      attempts_failure,
+  };
+};
+
 // Data type for managing iterators.
 struct IterQueryHandler {
   std::string metadata;
@@ -131,8 +149,10 @@ struct QueryHandler {
 
 // Data type for cookie to be used during row callback execution.
 struct HandlerCookie {
-  v8::Isolate *isolate = nullptr;
-  lcb_N1QLHANDLE handle = nullptr;
+  bool must_retry{false};
+  std::string error;
+  v8::Isolate *isolate{nullptr};
+  lcb_N1QLHANDLE handle{nullptr};
 };
 
 // Pool of lcb instances and routines for pool management.
@@ -208,12 +228,17 @@ public:
   template <typename> void ExecQuery(QueryHandler &q_handler);
 
 private:
+  template <typename>
+  static bool ExecQueryImpl(v8::Isolate *isolate, lcb_t &instance,
+                            lcb_N1QLPARAMS *n1ql_params, std::string &err_out);
+
   // Callback for each row.
   template <typename>
   static void RowCallback(lcb_t instance, int callback_type,
                           const lcb_RESPN1QL *resp);
   static void HandleRowCallbackFailure(const lcb_RESPN1QL *resp,
-                                       v8::Isolate *isolate);
+                                       v8::Isolate *isolate,
+                                       HandlerCookie *cookie);
   static bool IsStatusSuccess(const char *row);
   v8::Isolate *isolate_;
   ConnectionPool *inst_pool_;
