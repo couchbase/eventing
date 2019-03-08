@@ -1206,14 +1206,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             });
                     },
                     showSuccessAlert: function(message) {
-                        mnAlertsService.formatAndSetAlerts(message, 'success', 2500);
+                        mnAlertsService.formatAndSetAlerts(message, 'success', 4000);
                     },
 
                     showWarningAlert: function(message) {
-                        mnAlertsService.formatAndSetAlerts(message, 'warning', 2500);
+                        mnAlertsService.formatAndSetAlerts(message, 'warning', 4000);
                     },
                     showErrorAlert: function(message) {
-                        mnAlertsService.formatAndSetAlerts(message, 'error', 2500);
+                        mnAlertsService.formatAndSetAlerts(message, 'error', 4000);
                     }
                 },
                 convertBindingToConfig: function(bindings) {
