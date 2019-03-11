@@ -11,7 +11,7 @@
 
 #include <regex>
 
-#include "crc.h"
+#include "crc64.h"
 #include "isolate_data.h"
 #include "js_exception.h"
 #include "utils.h"
@@ -679,19 +679,22 @@ void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
   const uint8_t *data = nullptr;
-  std::string crc_str;
+  uint64_t crc = 0;
   uint64_t len = 0;
   if (args[0]->IsArrayBuffer()) {
     auto array_buf = args[0].As<v8::ArrayBuffer>();
     auto contents = array_buf->GetContents();
     data = static_cast<const uint8_t *>(contents.Data());
     len = contents.ByteLength();
-    crc_str = std::to_string(crc64_iso::crc64(0, data, len));
+    crc = crc64_iso.Checksum(data, len);
   } else {
     std::string data_str = JSONStringify(isolate, args[0]);
     data = reinterpret_cast<const uint8_t *>(data_str.c_str());
     len = data_str.size();
-    crc_str = std::to_string(crc64_iso::crc64(0, data, len));
+    crc = crc64_iso.Checksum(data, len);
   }
+
+  char crc_str[32] = {0};
+  std::sprintf(crc_str, "%016llx", crc);
   args.GetReturnValue().Set(v8Str(isolate, crc_str));
 }
