@@ -16,7 +16,9 @@ INCLUDE (FindCouchbaseV8)
 INCLUDE (FindCouchbaseBreakpad)
 
 SET(LIBS_HEADERS
-        ../libs/include)
+        ../libs/include
+        ../third_party/crc64)
+
 SET(LIBS_SRC
         ../../eventing-ee/curl.cc
         ../libs/src/bucket.cc
@@ -27,7 +29,8 @@ SET(LIBS_SRC
         ../libs/src/js_exception.cc
         ../libs/src/v8log.cc
         ../libs/src/utils.cc
-        ../libs/src/base64.cc)
+        ../libs/src/base64.cc
+        ../third_party/crc64/crc64.cc)
 
 INCLUDE_DIRECTORIES(BEFORE
                      "${libcouchbase_SOURCE_DIR}/include"

@@ -11,6 +11,7 @@
 
 #include <regex>
 
+#include "crc64.h"
 #include "isolate_data.h"
 #include "js_exception.h"
 #include "utils.h"
@@ -665,4 +666,35 @@ void UrlDecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
   args.GetReturnValue().Set(decoded_obj);
+}
+
+void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+
+  auto js_exception = UnwrapData(isolate)->js_exception;
+
+  if (args.Length() != 1) {
+    js_exception->ThrowEventingError("Need one parameter");
+    return;
+  }
+  const uint8_t *data = nullptr;
+  uint64_t crc = 0;
+  uint64_t len = 0;
+  if (args[0]->IsArrayBuffer()) {
+    auto array_buf = args[0].As<v8::ArrayBuffer>();
+    auto contents = array_buf->GetContents();
+    data = static_cast<const uint8_t *>(contents.Data());
+    len = contents.ByteLength();
+    crc = crc64_iso.Checksum(data, len);
+  } else {
+    std::string data_str = JSONStringify(isolate, args[0]);
+    data = reinterpret_cast<const uint8_t *>(data_str.c_str());
+    len = data_str.size();
+    crc = crc64_iso.Checksum(data, len);
+  }
+
+  char crc_str[32] = {0};
+  std::sprintf(crc_str, "%016llx", crc);
+  args.GetReturnValue().Set(v8Str(isolate, crc_str));
 }

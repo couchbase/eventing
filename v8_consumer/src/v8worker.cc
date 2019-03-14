@@ -65,6 +65,8 @@ v8::Local<v8::ObjectTemplate> V8Worker::NewGlobalObj() const {
               v8::FunctionTemplate::New(isolate_, UrlEncodeFunction));
   global->Set(v8::String::NewFromUtf8(isolate_, "urlDecode"),
               v8::FunctionTemplate::New(isolate_, UrlDecodeFunction));
+  global->Set(v8::String::NewFromUtf8(isolate_, "crc64"),
+              v8::FunctionTemplate::New(isolate_, Crc64Function));
 
   for (const auto &type_name : exception_type_names_) {
     global->Set(v8::String::NewFromUtf8(isolate_, type_name.c_str()),
@@ -107,6 +109,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.req_builder = new CurlRequestBuilder(isolate_, context);
   data_.resp_builder = new CurlResponseBuilder(isolate_, context);
   data_.custom_error = new CustomError(isolate_, context);
+  data_.curl_codex = new CurlCodex;
 }
 
 void V8Worker::InitializeCurlBindingValues(
@@ -243,6 +246,7 @@ V8Worker::~V8Worker() {
   delete data->curl_factory;
   delete data->req_builder;
   delete data->resp_builder;
+  delete data->curl_codex;
 
   context_.Reset();
   on_update_.Reset();

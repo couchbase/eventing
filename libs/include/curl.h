@@ -88,6 +88,41 @@ private:
   v8::Persistent<v8::Context> context_;
 };
 
+struct CurlCodex {
+  using Headers = Curl::Headers;
+  using ContentTypes = std::unordered_set<std::string>;
+  using Methods = std::unordered_set<std::string>;
+
+  bool IsSupportedJson(const std::string &content_type) const {
+    return supported_json_.find(content_type) != supported_json_.end();
+  }
+  bool IsSupportedBinary(const std::string &content_type) const {
+    return supported_binary_.find(content_type) != supported_binary_.end();
+  }
+  bool IsSupportedForm(const std::string &content_type) const {
+    return supported_form_.find(content_type) != supported_form_.end();
+  }
+  bool IsSupportedText(const std::string &content_type) const {
+    return content_type.compare(0, supported_text_.length(), supported_text_) ==
+           0;
+  }
+  bool IsSupportedMethod(const std::string &method) const {
+    return supported_methods_.find(method) != supported_methods_.end();
+  }
+
+  const std::string default_json_{"application/json"};
+  const std::string default_text_{"text/plain"};
+  const std::string default_binary_{"application/octet-stream"};
+  const std::string default_form_{"application/x-www-form-urlencoded"};
+
+private:
+  const Methods supported_methods_{"GET", "POST", "HEAD", "DELETE", "PUT"};
+  const ContentTypes supported_json_{"application/json"};
+  const ContentTypes supported_binary_{"application/octet-stream"};
+  const ContentTypes supported_form_{"application/x-www-form-urlencoded"};
+  const std::string supported_text_{"text/"};
+};
+
 struct CurlInfo : public Info {
   CurlInfo(bool is_fatal) : Info(is_fatal), curl(nullptr) {}
   CurlInfo(bool is_fatal, std::string msg)
@@ -275,20 +310,6 @@ public:
                      const v8::Local<v8::Context> &context);
   ~CurlRequestBuilder();
 
-  bool IsSupportedJson(const std::string &content_type) const {
-    return supported_json_.find(content_type) != supported_json_.end();
-  }
-  bool IsSupportedBinary(const std::string &content_type) const {
-    return supported_binary_.find(content_type) != supported_binary_.end();
-  }
-  bool IsSupportedForm(const std::string &content_type) const {
-    return supported_form_.find(content_type) != supported_form_.end();
-  }
-  bool IsSupportedText(const std::string &content_type) const {
-    return content_type.compare(0, supported_text_.length(), supported_text_) ==
-           0;
-  }
-
   CurlRequest NewRequest(const CurlBinding &binding,
                          const v8::FunctionCallbackInfo<v8::Value> &args);
 
@@ -306,19 +327,10 @@ private:
   Info ExtractHeaders(const v8::Local<v8::Value> &headers_val,
                       Headers &value_out);
   Info FillContentType(const v8::Local<v8::Value> &body_val,
-                       CurlRequest &request);
+                       CurlRequest &request, const BodyEncoding &encoding);
 
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
-  Methods supported_methods_;
-  ContentTypes supported_json_;
-  ContentTypes supported_binary_;
-  ContentTypes supported_form_;
-  std::string supported_text_;
-
-  std::string default_json_;
-  std::string default_text_;
-  std::string default_binary_;
 };
 
 // TODO : If and when we add green threads, we may need to have one CurlFactory

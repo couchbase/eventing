@@ -26,6 +26,7 @@ class CurlFactory;
 class CurlRequestBuilder;
 class CurlResponseBuilder;
 class Communicator;
+struct CurlCodex;
 
 // Struct for storing isolate data
 struct IsolateData {
@@ -45,6 +46,7 @@ struct IsolateData {
   Utils *utils;
   Timer *timer;
   CustomError *custom_error;
+  CurlCodex *curl_codex;
   CurlFactory *curl_factory;
   CurlRequestBuilder *req_builder;
   CurlResponseBuilder *resp_builder;
