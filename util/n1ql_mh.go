@@ -20,3 +20,8 @@ func (qs *queryStmt) VisitExecuteFunction(stmt *algebra.ExecuteFunction) (interf
 	err := handleStmt(qs, stmt.Expressions())
 	return stmt, err
 }
+
+func (qs *queryStmt) VisitAdvise(stmt *algebra.Advise) (interface{}, error) {
+	err := handleStmt(qs, stmt.Expressions())
+	return stmt, err
+}
