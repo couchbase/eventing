@@ -50,7 +50,7 @@ func (s *SuperSupervisor) GetAppCode(appName string) string {
 func (s *SuperSupervisor) GetDebuggerURL(appName string) (string, error) {
 	logPrefix := "SuperSupervisor::GetDebuggerURL"
 
-	logging.Infof("%s [%d] Function: %s request for debugger URL", logPrefix, s.runningFnsCount(), appName)
+	logging.Debugf("%s [%d] Function: %s request for debugger URL", logPrefix, s.runningFnsCount(), appName)
 	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetDebuggerURL()
 	}
@@ -86,6 +86,13 @@ func (s *SuperSupervisor) GetHandlerCode(appName string) string {
 func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
 	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetLatencyStats()
+	}
+	return nil
+}
+
+func (s *SuperSupervisor) GetCurlLatencyStats(appName string) map[string]uint64 {
+	if p, ok := s.runningFns()[appName]; ok {
+		return p.GetCurlLatencyStats()
 	}
 	return nil
 }
@@ -161,7 +168,7 @@ func (s *SuperSupervisor) SignalStopDebugger(appName string) error {
 		err := p.SignalStopDebugger()
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
-			return common.ErrRetryTimeout
+			return err
 		}
 	} else {
 		logging.Errorf("%s [%d] Function: %s request didn't go through as Eventing.Producer instance isn't alive",
@@ -182,7 +189,7 @@ func (s *SuperSupervisor) GetAppState(appName string) int8 {
 		case true:
 			return common.AppStateEnabled
 		case false:
-			return common.AppStateDisabled
+			return common.AppStatePaused
 		}
 	case false:
 		switch s.appProcessingStatus[appName] {
@@ -273,7 +280,14 @@ func (s *SuperSupervisor) RebalanceTaskProgress(appName string) (*common.Rebalan
 		return p.RebalanceTaskProgress(), nil
 	}
 
-	return nil, fmt.Errorf("Eventing.Producer isn't alive")
+	_, err := s.isFnRunningFromPrimary(appName)
+	if err != nil {
+		return nil, err
+	}
+
+	progress := &common.RebalanceProgress{}
+	progress.VbsRemainingToShuffle = 1
+	return progress, nil
 }
 
 // TimerDebugStats captures timer related stats to assist in debugging mismtaches during rebalance
@@ -309,6 +323,8 @@ func (s *SuperSupervisor) RebalanceStatus() bool {
 
 // BootstrapAppList returns list of apps undergoing bootstrap
 func (s *SuperSupervisor) BootstrapAppList() map[string]string {
+	logPrefix := "SuperSupervisor::BootstrapAppList"
+
 	bootstrappingApps := make(map[string]string)
 
 	s.appListRWMutex.RLock()
@@ -317,6 +333,8 @@ func (s *SuperSupervisor) BootstrapAppList() map[string]string {
 	for appName, ts := range s.bootstrappingApps {
 		bootstrappingApps[appName] = ts
 	}
+
+	logging.Infof("%s [%d] bootstrappingApps: %+v", logPrefix, s.runningFnsCount(), bootstrappingApps)
 
 	return bootstrappingApps
 }
@@ -357,8 +375,8 @@ func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool) {
 	s.appProcessingStatus[appName] = false
 	s.appRWMutex.Unlock()
 
-	logging.Infof("%s [%d] Function: %s stopping running producer instance",
-		logPrefix, s.runningFnsCount(), appName)
+	logging.Infof("%s [%d] Function: %s stopping running producer instance, skipMetaCleanup: %t",
+		logPrefix, s.runningFnsCount(), appName, skipMetaCleanup)
 
 	s.deleteFromLocallyDeployedApps(appName)
 
@@ -410,25 +428,25 @@ func (s *SuperSupervisor) GetMetaStoreStats(appName string) map[string]uint64 {
 	return stats
 }
 
-func (s *SuperSupervisor) WriteDebuggerToken(appName, token string) {
+// WriteDebuggerToken signals running function to write debug token
+func (s *SuperSupervisor) WriteDebuggerToken(appName, token string, hostnames []string) {
 	logPrefix := "SuperSupervisor::WriteDebuggerToken"
 
 	p, exists := s.runningFns()[appName]
 	if !exists {
-		logging.Errorf("%s [%d] Function %s not found",
-			logPrefix, s.runningFnsCount(), appName)
+		logging.Errorf("%s [%d] Function %s not found", logPrefix, s.runningFnsCount(), appName)
 		return
 	}
-	p.WriteDebuggerToken(token)
+	p.WriteDebuggerToken(token, hostnames)
 }
 
+// WriteDebuggerURL signals running function to write debug url
 func (s *SuperSupervisor) WriteDebuggerURL(appName, url string) {
 	logPrefix := "SuperSupervisor::WriteDebuggerURL"
 
 	p, exists := s.runningFns()[appName]
 	if !exists {
-		logging.Errorf("%s [%d] Function %s not found",
-			logPrefix, s.runningFnsCount(), appName)
+		logging.Errorf("%s [%d] Function %s not found", logPrefix, s.runningFnsCount(), appName)
 		return
 	}
 	p.WriteDebuggerURL(url)
@@ -444,7 +462,7 @@ func (s *SuperSupervisor) runningFns() map[string]common.EventingProducer {
 	runningFns := make(map[string]common.EventingProducer)
 
 	s.runningProducersRWMutex.RLock()
-	s.runningProducersRWMutex.RUnlock()
+	defer s.runningProducersRWMutex.RUnlock()
 	for k, v := range s.runningProducers {
 		runningFns[k] = v
 	}
@@ -453,15 +471,23 @@ func (s *SuperSupervisor) runningFns() map[string]common.EventingProducer {
 }
 
 func (s *SuperSupervisor) deleteFromRunningProducers(appName string) {
+	logPrefix := "SuperSupervisor::deleteFromRunningProducers"
+
 	s.runningProducersRWMutex.Lock()
-	defer s.runningProducersRWMutex.Unlock()
 	delete(s.runningProducers, appName)
+	s.runningProducersRWMutex.Unlock()
+
+	logging.Infof("%s [%d] Function: %s deleted from running functions", logPrefix, s.runningFnsCount(), appName)
 }
 
 func (s *SuperSupervisor) addToRunningProducers(appName string, p common.EventingProducer) {
+	logPrefix := "SuperSupervisor::addToRunningProducers"
+
 	s.runningProducersRWMutex.Lock()
-	defer s.runningProducersRWMutex.Unlock()
 	s.runningProducers[appName] = p
+	s.runningProducersRWMutex.Unlock()
+
+	logging.Infof("%s [%d] Function: %s added to running functions", logPrefix, s.runningFnsCount(), appName)
 }
 
 // SpanBlobDump returns state of timer span blobs stored in metadata bucket
@@ -472,4 +498,37 @@ func (s *SuperSupervisor) SpanBlobDump(appName string) (interface{}, error) {
 	}
 
 	return nil, fmt.Errorf("Eventing.Producer isn't alive")
+}
+
+func (s *SuperSupervisor) addToCleanupApps(appName string) {
+	logPrefix := "SuperSupervisor::addToCleanupApps"
+
+	s.Lock()
+	defer s.Unlock()
+
+	_, ok := s.cleanedUpAppMap[appName]
+	if !ok {
+		s.cleanedUpAppMap[appName] = struct{}{}
+		logging.Infof("%s [%d] Function: %s added", logPrefix, s.runningFnsCount(), appName)
+	}
+}
+
+func (s *SuperSupervisor) deleteFromCleanupApps(appName string) {
+	logPrefix := "SuperSupervisor::deleteFromCleanupApps"
+
+	s.Lock()
+	defer s.Unlock()
+	delete(s.cleanedUpAppMap, appName)
+
+	logging.Infof("%s [%d] Function: %s deleted", logPrefix, s.runningFnsCount(), appName)
+}
+
+// DcpFeedBoundary returns feed boundary used for vb dcp streams
+func (s *SuperSupervisor) DcpFeedBoundary(fnName string) (string, error) {
+	p, ok := s.runningFns()[fnName]
+	if ok {
+		return p.DcpFeedBoundary(), nil
+	}
+
+	return "", fmt.Errorf("Eventing.Producer isn't alive")
 }

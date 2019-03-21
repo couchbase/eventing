@@ -1,5 +1,7 @@
 package eventing
 
+import "github.com/couchbase/eventing/common"
+
 const (
 	srcBucket  = "default"
 	dstBucket  = "hello-world"
@@ -7,17 +9,25 @@ const (
 )
 
 const (
-	handlerCodeDir     = "hcode/"
-	deployedAppsURL    = "http://127.0.0.1:9300/getDeployedApps"
-	exportFunctionsURL = "http://127.0.0.1:9300/api/v1/export"
-	importFunctionsURL = "http://127.0.0.1:9300/api/v1/import"
-	functionsURL       = "http://127.0.0.1:9300/api/v1/functions"
-	runningAppsURL     = "http://127.0.0.1:9300/getRunningApps"
+	handlerCodeDir       = "hcode/"
+	aggBootstrappingApps = "http://127.0.0.1:9300/getAggBootstrappingApps"
+	deployedAppsURL      = "http://127.0.0.1:9300/getDeployedApps"
+	exportFunctionsURL   = "http://127.0.0.1:9300/api/v1/export"
+	importFunctionsURL   = "http://127.0.0.1:9300/api/v1/import"
+	functionsURL         = "http://127.0.0.1:9300/api/v1/functions"
+	runningAppsURL       = "http://127.0.0.1:9300/getRunningApps"
 
 	statsEndpointURL0 = "http://127.0.0.1:9300/api/v1/stats"
 	statsEndpointURL1 = "http://127.0.0.1:9301/api/v1/stats"
 	statsEndpointURL2 = "http://127.0.0.1:9302/api/v1/stats"
 	statsEndpointURL3 = "http://127.0.0.1:9303/api/v1/stats"
+
+	goroutineURL0 = "http://localhost:9300/debug/pprof/goroutine?debug=1"
+	goroutineURL1 = "http://localhost:9301/debug/pprof/goroutine?debug=1"
+	goroutineURL2 = "http://localhost:9302/debug/pprof/goroutine?debug=1"
+	goroutineURL3 = "http://localhost:9303/debug/pprof/goroutine?debug=1"
+
+	statusURL = "http://127.0.0.1:9300/api/v1/status"
 )
 
 const (
@@ -63,7 +73,6 @@ const (
 	timerStorageRoutineCount = 3
 	workerCount              = 3
 
-	curlTimeout      = 1
 	deadlineTimeout  = 6
 	executionTimeout = 5
 )
@@ -94,20 +103,24 @@ type application struct {
 }
 
 type depCfg struct {
-	Buckets        []bucket `json:"buckets"`
-	MetadataBucket string   `json:"metadata_bucket"`
-	SourceBucket   string   `json:"source_bucket"`
+	Curl           []common.Curl `json:"curl"`
+	Buckets        []bucket      `json:"buckets"`
+	MetadataBucket string        `json:"metadata_bucket"`
+	SourceBucket   string        `json:"source_bucket"`
 }
 
 type bucket struct {
 	Alias      string `json:"alias"`
 	BucketName string `json:"bucket_name"`
+	Access     string `json:"access"`
 }
 
 type commonSettings struct {
 	aliasHandles             []string
 	aliasSources             []string
+	curlBindings             []common.Curl
 	batchSize                int
+	cleanupTimers            bool
 	deadlineTimeout          int
 	executeTimerRoutineCount int
 	executionTimeout         int
@@ -120,6 +133,7 @@ type commonSettings struct {
 	timerStorageRoutineCount int
 	undeployedState          bool
 	workerCount              int
+	srcMutationEnabled       bool
 }
 
 type rateLimit struct {

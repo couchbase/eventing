@@ -2,11 +2,11 @@
 <!--The controller that invokes this HTML must provide an implementation for formCtrl-->
 <!--The data binding is always done through $scope-->
 <div ng-show="!formCtrl.isDialog && formCtrl.showSuccessAlert"
-     class="animate-alert alert enable-ng-animation ng-scope alert-success">
+  class="animate-alert alert enable-ng-animation ng-scope alert-success">
   <p class="ng-binding">{{formCtrl.successMessage}}</p>
 </div>
 <div ng-show="!formCtrl.isDialog && formCtrl.showWarningAlert"
-     class="animate-alert alert enable-ng-animation ng-scope alert-warning">
+  class="animate-alert alert enable-ng-animation ng-scope alert-warning">
   <p class="ng-binding">{{formCtrl.warningMessage}}</p>
 </div>
 <div class="dialog-lg">
@@ -19,26 +19,26 @@
       <div class="formrow">
         <label class="inline">Source Bucket</label>
         <span class="fa-stack icon-info"
-              uib-tooltip="The function will listen to this bucket for changes. Memcached buckets are not allowed."
-              tooltip-placement="right">
+          uib-tooltip="The function will listen to this bucket for changes. Memcached buckets are not allowed."
+          tooltip-placement="right">
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
         </span>
         <select ng-disabled="!formCtrl.isDialog"
-                ng-model="appModel.depcfg.source_bucket"
-                ng-options="bucket for bucket in formCtrl.sourceBuckets"
-                name="source_bucket">
+          ng-model="appModel.depcfg.source_bucket"
+          ng-options="bucket for bucket in formCtrl.sourceBuckets"
+          name="source_bucket">
         </select>
         <div class="error field-error"
-             ng-show="formCtrl.sourceBuckets.indexOf(appModel.depcfg.source_bucket) === -1">
+          ng-show="formCtrl.sourceBuckets.indexOf(appModel.depcfg.source_bucket) === -1">
           Please specify a source bucket for your function.
         </div>
       </div>
       <div class="formrow">
         <label class="inline">Metadata Bucket</label>
         <span class="fa-stack icon-info"
-              uib-tooltip="This bucket is used to store system data and should not be used by other applications."
-              tooltip-placement="right">
+          uib-tooltip="This bucket is used to store system data and should not be used by other applications."
+          tooltip-placement="right">
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
         </span>
@@ -130,7 +130,7 @@
             type="number"
             name="worker_count"
             ng-model="appModel.settings.worker_count"
-            ng-disabled="formCtrl.isAppDeployed"
+            ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
             min="1"
             max="64">
           <div
@@ -149,9 +149,9 @@
             Worker count must be less than 64
           </div>
         </div>
-        <div class="formrow indent-1" ng-disabled="formCtrl.isAppDeployed">
+        <div class="formrow indent-1" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
           <label class="inline">Script Timeout
-            <small>in seconds</small>
+          <small>in seconds</small>
           </label>
           <span
             class="fa-stack icon-info"
@@ -164,7 +164,7 @@
             type="number"
             name="execution_timeout"
             ng-model="appModel.settings.execution_timeout"
-            ng-disabled="formCtrl.isAppDeployed"
+            ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
             min="1"
             max="60">
           <div
@@ -184,149 +184,180 @@
           </div>
         </div>
       </div>
-      <div ng-if="formCtrl.isDialog">
-        <div class="row">
-          <h4>Bindings</h4>
-          <div class="margin-bottom-half">
-            <button
-              class="outline btn-small"
-              title="Add a binding"
-              ng-click="bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:''})">
-              +
-            </button>
-            <button
-              class="outline btn-small"
-              title="Remove parameter"
-              ng-click="bindings.splice(-1, 1)">
-              -
-            </button>
-          </div>
-        </div>
-        <hr>
-        <div ng-repeat="binding in bindings track by $index">
-          <div class="row margin-bottom-half">
-            <div class="column width-4">
-              <h4 class="text-medium inline">type</h4>
-              <span
-                class="fa-stack icon-info"
-                uib-tooltip="A binding for referencing a bucket in your function. 'name' is the actual name of the bucket in the cluster. 'value' is the alias you will use to refer to the bucket."
-                tooltip-placement="right">
-            <span class="icon fa-circle-thin fa-stack-2x"></span>
-            <span class="icon fa-info fa-stack-1x"></span>
-            </span>
-              <select>
-                <option value="alias"
-                        ng-model="bindings[$index].type">Alias
-                </option>
-              </select>
-            </div>
-            <div class="column width-4">
-              <h4 class="text-medium inline">name</h4>
-              <span class="input-prepend">
-              <select ng-model="bindings[$index].name"
-                      ng-options="bucket for bucket in formCtrl.sourceBuckets">
-              </select>
-            </span>
-            </div>
-            <div class="width-4">
-              <h4 class="text-medium inline">value</h4>
-              <input type="text" ng-model="bindings[$index].value"/>
-            </div>
-            <div
-              class="red-2 cursor-pointer"
-              ng-click="bindings.splice($index, 1)"
-              style="padding: 1rem 0 .5rem 1rem">
-              <span class="icon fa-close"></span>
-            </div>
-          </div>
-          <div class="row margin-bottom-half error field-error"
-               ng-show="!formCtrl.validateVariableRegex(bindings[$index])">
-            Alias value must be a valid identifier
-          </div>
-          <div class="row margin-bottom-half error field-error"
-               ng-show="!formCtrl.validateVariable(bindings[$index])">
-            Alias value must neither be a JavaScript nor a N1QL reserved word
-          </div>
-          <div class="row margin-bottom-half error field-error"
-               ng-show="formCtrl.srcBindingSameBucket(appModel, bindings[$index])">
-            Only read on this bucket is allowed, write/delete on this bucket is forbidden
-          </div>
+      <div class="row">
+        <h4>Bindings</h4>
+        <div class="margin-bottom-half">
+          <button
+            class="outline btn-small"
+            title="Add a binding"
+            ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+            ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).push({type:'alias', name:formCtrl.sourceBuckets[0], value:'', auth_type:'no-auth', cookies:'allow', access:'r'})">
+          +
+          </button>
+          <button
+            class="outline btn-small"
+            title="Remove parameter"
+            ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+            ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).splice(-1, 1)">
+          -
+          </button>
         </div>
       </div>
-      <div ng-if="!formCtrl.isDialog">
-        <div class="row">
-          <h4>Bindings</h4>
-          <div class="margin-bottom-half">
-            <button
-              class="outline btn-small"
-              title="Add a binding"
-              ng-disabled="formCtrl.isAppDeployed"
-              ng-click="formCtrl.bindings.push({type:'alias', name:formCtrl.sourceBuckets[0], value:''})">
-              +
-            </button>
-            <button
-              class="outline btn-small"
-              title="Remove parameter"
-              ng-disabled="formCtrl.isAppDeployed"
-              ng-click="formCtrl.bindings.splice(-1, 1)">
-              -
-            </button>
+      <hr>
+      <div ng-repeat="binding in (formCtrl.isDialog ? bindings : formCtrl.bindings) track by $index">
+        <div class="row margin-bottom-half">
+          <div class="column width-4">
+            <div class="row">
+              <div class="column width-12">
+                <h4 class="text-medium inline">type</h4>
+                <span
+                            class="fa-stack icon-info"
+                            uib-tooltip="A binding for referencing a bucket in your function. 'name' is the actual name of the bucket in the cluster. 'value' is the alias you will use to refer to the bucket."
+                            tooltip-placement="right">
+                <span class="icon fa-circle-thin fa-stack-2x"></span>
+                <span class="icon fa-info fa-stack-1x"></span>
+                </span>
+                <select
+                        ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type"
+                        ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+                  <option value="alias">Alias</option>
+                  <option value="url">URL</option>
+                </select>
+              </div>
+            </div>
+            <div class="row" ng-show="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
+              <div class="column width-12">
+                <h4 class="text-medium inline">auth type</h4>
+                <span
+                        class="fa-stack icon-info"
+                        uib-tooltip="Authentication type for this endpoint."
+                        tooltip-placement="right">
+                <span class="icon fa-circle-thin fa-stack-2x"></span>
+                <span class="icon fa-info fa-stack-1x"></span>
+                </span>
+                <select
+                        ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type"
+                        ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+                  <option value="no-auth">No auth</option>
+                  <option value="basic">Basic</option>
+                  <option value="bearer">Bearer</option>
+                  <option value="digest">Digest</option>
+                </select>
+              </div>
+            </div>
+            <div class="row" ng-show="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
+              <div class="column width-12">
+                <h4 class="text-medium inline">cookies</h4>
+                <span
+                        class="fa-stack icon-info"
+                        uib-tooltip="Allow cookies for this handle."
+                        tooltip-placement="right">
+                <span class="icon fa-circle-thin fa-stack-2x"></span>
+                <span class="icon fa-info fa-stack-1x"></span>
+                </span>
+                <select
+                        ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].cookies"
+                        ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+                  <option value="allow">Allow</option>
+                  <option value="disallow">Disallow</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="column width-8">
+            <div class="row" ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'alias'">
+              <div class="column width-4">
+                <h4 class="text-medium inline">name</h4>
+                <span class="input-prepend">
+                <select
+                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                  ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name"
+                  ng-options="bucket for bucket in formCtrl.sourceBuckets">
+                </select>
+                </span>
+              </div>
+              <div class="column width-4">
+                <h4 class="text-medium inline">value</h4>
+                <input type="text" ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"/>
+              </div>
+              <div class="width-4">
+                <h4 class="text-medium inline">access</h4>
+                <select ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].access">
+                  <option value="r">Read Only
+                  </option>
+                  <option value="rw">Read and Write
+                  </option>
+                </select>
+              </div>
+            </div>
+            <div class="row" ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
+              <div class="column-12">
+                <div class="row">
+                  <div class="column width-6">
+                    <h4 class="text-medium inline">hostname</h4>
+                    <input type="text" ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].hostname" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"/>
+                  </div>
+                  <div class="width-6">
+                    <h4 class="text-medium inline">value</h4>
+                    <input type="text" ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"/>
+                  </div>
+                </div>
+                <div class="row" ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'no-auth'" ng-style="{visibility: 'hidden'}">
+                  <div class="column width-12">
+                    <label for="no-auth-dummy">no auth dummy</label>
+                    <input type="password" id="no-auth-dummy" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"/>
+                  </div>
+                </div>
+                <div class="row" ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'basic'">
+                  <div class="column width-6">
+                    <label for="auth-basic-username">username</label>
+                    <input type="text" ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].username" id="auth-basic-username" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"/>
+                  </div>
+                  <div class="column width-6">
+                    <label for="auth-basic-password">password</label>
+                    <input type="password" ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].password" id="auth-basic-password" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"/>
+                  </div>
+                </div>
+                <div class="row" ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'digest'">
+                  <div class="column width-6">
+                    <label for="auth-digest-username">username</label>
+                    <input type="text" ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].username" id="auth-digest-username" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"/>
+                  </div>
+                  <div class="column width-6">
+                    <label for="auth-digest-password">password</label>
+                    <input type="password" ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].password" id="auth-digest-password" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"/>
+                  </div>
+                </div>
+                <div class="row" ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'bearer'">
+                  <div class="column width-12">
+                    <label for="auth-bearer">bearer key</label>
+                    <input type="password" ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].bearer_key" id="auth-bearer" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"/>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="column width-12" ng-style="{visibility: 'hidden'}">
+                    <label for="cookies-dummy">cookies dummy</label>
+                    <input type="password" ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].bearer_key" id="cookies-dummy" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"/>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            class="red-2 cursor-pointer"
+            ng-show="!formCtrl.isAppDeployed"
+            ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).splice($index, 1)"
+            style="padding: 1rem 0 .5rem 1rem">
+            <span class="icon fa-close"></span>
           </div>
         </div>
-        <hr>
-        <div ng-repeat="binding in formCtrl.bindings track by $index">
-          <div class="row margin-bottom-half">
-            <div class="column width-4">
-              <h4 class="text-medium inline">type</h4>
-              <span
-                class="fa-stack icon-info"
-                uib-tooltip="A binding for referencing a bucket in your function. 'name' is the actual name of the bucket in the cluster. 'value' is the alias you will use to refer to the bucket."
-                tooltip-placement="right">
-            <span class="icon fa-circle-thin fa-stack-2x"></span>
-            <span class="icon fa-info fa-stack-1x"></span>
-            </span>
-              <select>
-                <option value="alias"
-                        ng-disabled="formCtrl.isAppDeployed"
-                        ng-model="formCtrl.bindings[$index].type">Alias
-                </option>
-              </select>
-            </div>
-            <div class="column width-4">
-              <h4 class="text-medium inline">name</h4>
-              <span class="input-prepend">
-              <select ng-model="formCtrl.bindings[$index].name"
-                      ng-disabled="formCtrl.isAppDeployed"
-                      ng-options="bucket for bucket in formCtrl.sourceBuckets">
-              </select>
-            </span>
-            </div>
-            <div class="width-4">
-              <h4 class="text-medium inline">value</h4>
-              <input type="text"
-                     ng-disabled="formCtrl.isAppDeployed"
-                     ng-model="formCtrl.bindings[$index].value"/>
-            </div>
-            <div
-              ng-if="!formCtrl.isAppDeployed"
-              class="red-2 cursor-pointer"
-              ng-click="formCtrl.bindings.splice($index, 1)"
-              style="padding: 1rem 0 .5rem 1rem">
-              <span class="icon fa-close"></span>
-            </div>
-          </div>
-          <div class="row margin-bottom-half error field-error"
-               ng-show="!formCtrl.validateVariableRegex(formCtrl.bindings[$index])">
-            Alias value must be a valid identifier
-          </div>
-          <div class="row margin-bottom-half error field-error"
-               ng-show="!formCtrl.validateVariable(formCtrl.bindings[$index])">
-            Alias value must neither be a JavaScript nor a N1QL reserved word
-          </div>
-          <div class="row margin-bottom-half error field-error"
-               ng-show="formCtrl.srcBindingSameBucket(formCtrl.bindings[$index])">
-            Only read on this bucket is allowed, write/delete on this bucket is forbidden
-          </div>
+        <div class="row margin-bottom-half error field-error"
+          ng-show="!formCtrl.validateVariableRegex((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index])">
+          Alias value must be a valid identifier
+        </div>
+        <div class="row margin-bottom-half error field-error"
+          ng-show="!formCtrl.validateVariable((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index])">
+          Alias value must neither be a JavaScript nor a N1QL reserved word
         </div>
       </div>
     </div>
@@ -334,24 +365,24 @@
       <a
         ng-if="formCtrl.isDialog"
         ng-click="$dismiss('cancel')">
-        Cancel
+      Cancel
       </a>
       <button
         ng-if="formCtrl.isDialog"
         ng-click="$close('ok')"
         ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel) || formCtrl.isFuncNameUndefined() ">
-        Next: Add Code
+      Next: Add Code
       </button>
       <a
         ng-if="!formCtrl.isDialog"
         ng-click="formCtrl.cancelEdit($dismiss)">
-        Cancel
+      Cancel
       </a>
       <button
         ng-if="!formCtrl.isDialog"
         ng-click="formCtrl.saveSettings($dismiss, $close)"
         ng-disabled="formCtrl.isFormInvalid()">
-        Save
+      Save
       </button>
     </div>
   </form>

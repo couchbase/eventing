@@ -51,7 +51,7 @@ public:
     data_cond_.notify_all();
   }
 
-  int64_t Count() { return entry_count_; }
+  std::size_t Count() { return entry_count_; }
   std::size_t Size() { return queue_size_; }
 
 private:

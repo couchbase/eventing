@@ -10,6 +10,7 @@ type DcpStreamBoundary string
 const (
 	DcpEverything = DcpStreamBoundary("everything")
 	DcpFromNow    = DcpStreamBoundary("from_now")
+	DcpFromPrior  = DcpStreamBoundary("from_prior")
 )
 
 type ChangeType string
@@ -27,7 +28,7 @@ const (
 	AppState int8 = iota
 	AppStateUndeployed
 	AppStateEnabled
-	AppStateDisabled
+	AppStatePaused
 	AppStateUnexpected
 )
 
@@ -40,10 +41,21 @@ const (
 )
 
 type DebuggerInstance struct {
-	Token  string `json:"token"`  // An ID for a debugging session
-	Host   string `json:"host"`   // The node where debugger has been spawned
-	Status string `json:"status"` // Possible values are WaitingForMutation, MutationTrapped
-	URL    string `json:"url"`    // Chrome-Devtools URL for debugging
+	Token           string   `json:"token"`             // An ID for a debugging session
+	Host            string   `json:"host"`              // The node where debugger has been spawned
+	Status          string   `json:"status"`            // Possible values are WaitingForMutation, MutationTrapped
+	URL             string   `json:"url"`               // Chrome-Devtools URL for debugging
+	NodesExternalIP []string `json:"nodes_external_ip"` // List of external IP address of the nodes in the cluster
+}
+
+type Curl struct {
+	Hostname  string `json:"hostname"`
+	Value     string `json:"value"`
+	AuthType  string `json:"auth_type"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	BearerKey string `json:"bearer_key"`
+	Cookies   string `json:"cookies"`
 }
 
 var ErrRetryTimeout = errors.New("retry timeout")
@@ -54,9 +66,10 @@ type EventingProducer interface {
 	Auth() string
 	CfgData() string
 	CheckpointBlobDump() map[string]interface{}
-	CleanupMetadataBucket() error
+	CleanupMetadataBucket(skipCheckpointBlobs bool) error
 	CleanupUDSs()
 	ClearEventStats()
+	DcpFeedBoundary() string
 	GetAppCode() string
 	GetDcpEventsRemainingToProcess() uint64
 	GetDebuggerURL() (string, error)
@@ -66,6 +79,7 @@ type EventingProducer interface {
 	GetFailureStats() map[string]interface{}
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
+	GetCurlLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
 	GetMetaStoreStats() map[string]uint64
 	GetMetadataPrefix() string
@@ -99,7 +113,7 @@ type EventingProducer interface {
 	SetRetryCount(retryCount int64)
 	SpanBlobDump() map[string]interface{}
 	Serve()
-	Stop()
+	Stop(context string)
 	StopProducer()
 	StopRunningConsumers()
 	String() string
@@ -112,12 +126,14 @@ type EventingProducer interface {
 	VbSeqnoStats() map[int][]map[string]interface{}
 	WriteAppLog(log string)
 	WriteDebuggerURL(url string)
-	WriteDebuggerToken(token string) error
+	WriteDebuggerToken(token string, hostnames []string) error
 }
 
 // EventingConsumer interface to export functions from eventing_consumer
 type EventingConsumer interface {
+	CheckIfQueuesAreDrained() error
 	ClearEventStats()
+	CloseAllRunningDcpFeeds()
 	ConsumerName() string
 	DcpEventsRemainingToProcess() uint64
 	EventingNodeUUIDs() []string
@@ -127,6 +143,7 @@ type EventingConsumer interface {
 	GetFailureStats() map[string]interface{}
 	GetHandlerCode() string
 	GetLatencyStats() map[string]uint64
+	GetCurlLatencyStats() map[string]uint64
 	GetLcbExceptionsStats() map[string]uint64
 	GetMetaStoreStats() map[string]uint64
 	GetSourceMap() string
@@ -141,6 +158,7 @@ type EventingConsumer interface {
 	Pid() int
 	RebalanceStatus() bool
 	RebalanceTaskProgress() *RebalanceProgress
+	ResetBootstrapDone()
 	Serve()
 	SetConnHandle(net.Conn)
 	SetFeedbackConnHandle(net.Conn)
@@ -150,10 +168,10 @@ type EventingConsumer interface {
 	SignalFeedbackConnected()
 	SignalStopDebugger() error
 	SpawnCompilationWorker(appCode, appContent, appName, eventingPort string, handlerHeaders, handlerFooters []string) (*CompileStatus, error)
-	Stop()
+	Stop(context string)
 	String() string
 	TimerDebugStats() map[int]map[string]interface{}
-	UpdateEventingNodesUUIDs(uuids []string)
+	UpdateEventingNodesUUIDs(keepNodes, ejectNodes []string)
 	UpdateWorkerQueueMemCap(quota int64)
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbEventingNodeAssignMapUpdate(map[uint16]string)
@@ -167,6 +185,7 @@ type EventingSuperSup interface {
 	CheckpointBlobDump(appName string) (interface{}, error)
 	ClearEventStats()
 	CleanupProducer(appName string, skipMetaCleanup bool) error
+	DcpFeedBoundary(fnName string) (string, error)
 	DeployedAppList() []string
 	GetEventProcessingStats(appName string) map[string]uint64
 	GetAppCode(appName string) string
@@ -179,6 +198,7 @@ type EventingSuperSup interface {
 	GetFailureStats(appName string) map[string]interface{}
 	GetHandlerCode(appName string) string
 	GetLatencyStats(appName string) map[string]uint64
+	GetCurlLatencyStats(appName string) map[string]uint64
 	GetLcbExceptionsStats(appName string) map[string]uint64
 	GetLocallyDeployedApps() map[string]string
 	GetMetaStoreStats(appName string) map[string]uint64
@@ -199,7 +219,7 @@ type EventingSuperSup interface {
 	VbDistributionStatsFromMetadata(appName string) map[string]map[string]string
 	VbSeqnoStats(appName string) (map[int][]map[string]interface{}, error)
 	WriteDebuggerURL(appName, url string)
-	WriteDebuggerToken(appName, token string)
+	WriteDebuggerToken(appName, token string, hostnames []string)
 }
 
 type EventingServiceMgr interface{}
@@ -207,17 +227,19 @@ type Config map[string]interface{}
 
 // AppConfig Application/Event handler configuration
 type AppConfig struct {
-	AppCode        string
-	AppDeployState string
-	AppName        string
-	AppState       string
-	AppVersion     string
-	HandlerUUID    uint32
-	ID             int
-	LastDeploy     string
-	Settings       map[string]interface{}
-	UsingTimer     bool
-	UserPrefix     string
+	AppCode            string
+	AppDeployState     string
+	AppName            string
+	AppState           string
+	AppVersion         string
+	FunctionID         uint32
+	FunctionInstanceID string
+	ID                 int
+	LastDeploy         string
+	Settings           map[string]interface{}
+	UsingTimer         bool
+	UserPrefix         string
+	SrcMutationEnabled bool
 }
 
 type RebalanceProgress struct {
@@ -261,7 +283,6 @@ type HandlerConfig struct {
 	IdleCheckpointInterval   int
 	CleanupTimers            bool
 	CPPWorkerThrCount        int
-	CurlTimeout              int64
 	ExecuteTimerRoutineCount int
 	ExecutionTimeout         int
 	FeedbackBatchSize        int
@@ -323,4 +344,17 @@ func (k Key) Raw() string {
 
 func (k Key) GetPrefix() string {
 	return k.prefix
+}
+
+func StreamBoundary(boundary string) DcpStreamBoundary {
+	switch boundary {
+	case "everything":
+		return DcpEverything
+	case "from_now":
+		return DcpFromNow
+	case "from_prior":
+		return DcpFromPrior
+	default:
+		return DcpStreamBoundary("")
+	}
 }

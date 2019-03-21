@@ -33,8 +33,9 @@ enum class TransportAction { kKill, kSendMessage, kStop };
 class InspectorIo {
 public:
   InspectorIo(Isolate *isolate, Platform *platform, const std::string &path,
-              std::string host_name, bool wait_for_connect,
-              std::string file_path_, int port, PostURLCallback on_connect);
+              std::string host_name, const std::string &host_name_display,
+              bool wait_for_connect, std::string file_path_, int port,
+              PostURLCallback on_connect);
 
   ~InspectorIo();
   // Start the inspector agent thread, waiting for it to initialize,
@@ -133,6 +134,7 @@ private:
   std::string script_name_;
   std::string script_path_;
   std::string host_name_;
+  std::string host_name_display_;
   std::string file_path_;
   const bool wait_for_connect_;
   int port_;

@@ -53,6 +53,21 @@ func (p *Producer) GetLatencyStats() map[string]uint64 {
 	return latencyStats
 }
 
+func (p *Producer) GetCurlLatencyStats() map[string]uint64 {
+	latencyStats := make(map[string]uint64)
+
+	for _, c := range p.getConsumers() {
+		clStats := c.GetCurlLatencyStats()
+		for k, v := range clStats {
+			if _, ok := latencyStats[k]; !ok {
+				latencyStats[k] = 0
+			}
+			latencyStats[k] += v
+		}
+	}
+	return latencyStats
+}
+
 // GetExecutionStats returns execution stats aggregated from Eventing.Consumer instances
 func (p *Producer) GetExecutionStats() map[string]interface{} {
 	executionStats := make(map[string]interface{})
@@ -135,7 +150,7 @@ func (p *Producer) GetEventProcessingStats() map[string]uint64 {
 	}
 
 	if p.workerSpawnCounter > 0 {
-		aggStats["WORKER_SPAWN_COUNTER"] = p.workerSpawnCounter
+		aggStats["worker_spawn_counter"] = p.workerSpawnCounter
 	}
 
 	return aggStats
@@ -250,6 +265,8 @@ func (p *Producer) SignalBootstrapFinish() {
 		}
 		c.SignalBootstrapFinish()
 	}
+
+	logging.Infof("%s [%s:%d] Signalled bootstrap status", logPrefix, p.appName, p.LenRunningConsumers())
 }
 
 // PauseProducer pauses the execution of Eventing.Producer and corresponding Eventing.Consumer instances
@@ -276,7 +293,7 @@ func (p *Producer) StopProducer() {
 		logPrefix, p.appName, p.LenRunningConsumers())
 
 	if p.workerSupervisor != nil {
-		p.workerSupervisor.Stop()
+		p.workerSupervisor.Stop(p.appName)
 	}
 
 	logging.Infof("%s [%s:%d] Stopped supervisor tree",
@@ -370,7 +387,7 @@ func (p *Producer) vbDistributionStats() error {
 			p, p.AddMetadataPrefix(vbKey), &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-			return common.ErrRetryTimeout
+			return err
 		}
 
 		if val, ok := vbBlob["current_vb_owner"]; !ok || val == "" {
@@ -440,7 +457,7 @@ func (p *Producer) getSeqsProcessed() error {
 			p, p.AddMetadataPrefix(vbKey), &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-			return common.ErrRetryTimeout
+			return err
 		}
 
 		p.seqsNoProcessedRWMutex.Lock()
@@ -470,17 +487,23 @@ func (p *Producer) GetSeqsProcessed() map[int]int64 {
 // RebalanceTaskProgress reports vbuckets remaining to be transferred as per planner
 // during the course of rebalance
 func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
+	logPrefix := "Producer::RebalanceTaskProgress"
 
 	producerLevelProgress := &common.RebalanceProgress{}
 
-	for _, consumer := range p.getConsumers() {
-		consumerProgress := consumer.RebalanceTaskProgress()
+	for _, c := range p.getConsumers() {
+		progress := c.RebalanceTaskProgress()
 
-		producerLevelProgress.CloseStreamVbsLen += consumerProgress.CloseStreamVbsLen
-		producerLevelProgress.StreamReqVbsLen += consumerProgress.StreamReqVbsLen
+		producerLevelProgress.CloseStreamVbsLen += progress.CloseStreamVbsLen
+		producerLevelProgress.StreamReqVbsLen += progress.StreamReqVbsLen
 
-		producerLevelProgress.VbsRemainingToShuffle += consumerProgress.VbsRemainingToShuffle
-		producerLevelProgress.VbsOwnedPerPlan += consumerProgress.VbsOwnedPerPlan
+		producerLevelProgress.VbsRemainingToShuffle += progress.VbsRemainingToShuffle
+		producerLevelProgress.VbsOwnedPerPlan += progress.VbsOwnedPerPlan
+	}
+
+	if p.isBootstrapping {
+		producerLevelProgress.VbsRemainingToShuffle++
+		logging.Infof("%s [%s:%d] Producer bootstrapping", logPrefix, p.appName, p.LenRunningConsumers())
 	}
 
 	return producerLevelProgress
@@ -488,7 +511,7 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 
 // CleanupMetadataBucket clears up all application related artifacts from
 // metadata bucket post undeploy
-func (p *Producer) CleanupMetadataBucket() error {
+func (p *Producer) CleanupMetadataBucket(skipCheckpointBlobs bool) error {
 	logPrefix := "Producer::CleanupMetadataBucket"
 
 	hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
@@ -534,14 +557,14 @@ func (p *Producer) CleanupMetadataBucket() error {
 	undeployWG.Add(p.handlerConfig.UndeployRoutineCount)
 
 	for i := 0; i < p.handlerConfig.UndeployRoutineCount; i++ {
-		go p.cleanupMetadataImpl(i, vbsDistribution[i], &undeployWG)
+		go p.cleanupMetadataImpl(i, vbsDistribution[i], &undeployWG, skipCheckpointBlobs)
 	}
 
 	undeployWG.Wait()
 	return nil
 }
 
-func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG *sync.WaitGroup) error {
+func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG *sync.WaitGroup, skipCheckpointBlobs bool) error {
 	logPrefix := "Producer::cleanupMetadataImpl"
 	defer undeployWG.Done()
 
@@ -552,7 +575,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, p.metadatabucket)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	kvNodeAddrs := p.getKvNodeAddrs()
@@ -562,13 +585,13 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, commonConnectBucketOpCallback, p, &b)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, cleanupMetadataCallback, p, &b, &dcpFeed, kvNodeAddrs, id)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	logging.Infof("%s [%s:%d:id_%d] Started up dcpfeed to cleanup artifacts from metadata bucket: %s",
@@ -578,7 +601,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, dcpGetSeqNosCallback, p, &dcpFeed, &vbSeqNos)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	cleanupVbs := make(map[uint16]bool)
@@ -625,8 +648,11 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 					docID := string(e.Key)
 
 					if strings.HasPrefix(docID, prefix) {
-						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
-							deleteOpCallback, p, docID)
+						if skipCheckpointBlobs && strings.Contains(docID, "::vb::") {
+							continue
+						}
+
+						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, deleteOpCallback, p, docID)
 						if err == common.ErrRetryTimeout {
 							logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout",
 								logPrefix, p.appName, p.LenRunningConsumers(), id)
@@ -662,7 +688,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getFailoverLogOpCallback, p, &b, &flogs, vbs)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	start, snapStart, snapEnd := uint64(0), uint64(0), uint64(0xFFFFFFFFFFFFFFFF)
@@ -941,11 +967,12 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 // AddMetadataPrefix prepends user prefix and handler UUID to namespacing
 // within metadata bucket
 func (p *Producer) AddMetadataPrefix(key string) common.Key {
-	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), key)
+	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.FunctionID)), key)
 }
 
+// GetMetadataPrefix returns prefix used for blobs stored in Couchbase bucket
 func (p *Producer) GetMetadataPrefix() string {
-	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.HandlerUUID)), "").GetPrefix()
+	return common.NewKey(p.app.UserPrefix, strconv.Itoa(int(p.app.FunctionID)), "").GetPrefix()
 }
 
 // GetVbOwner returns assigned eventing nodes and worker for a vbucket
@@ -974,43 +1001,47 @@ func (p *Producer) GetMetaStoreStats() map[string]uint64 {
 	return metaStats
 }
 
-func (p *Producer) WriteDebuggerToken(token string) error {
+// WriteDebuggerToken stores debugger token into metadata bucket
+func (p *Producer) WriteDebuggerToken(token string, hostnames []string) error {
 	logPrefix := "Producer::WriteDebuggerToken"
 
 	data := &common.DebuggerInstance{
-		Token:  token,
-		Status: common.WaitingForMutation,
+		Token:           token,
+		Status:          common.WaitingForMutation,
+		NodesExternalIP: hostnames,
 	}
+
 	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
-		setOpCallback, p, key, data)
+
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, key, data)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout",
-			logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return err
 	}
 	return nil
 }
 
+// WriteDebuggerURL stores debugger info in metadata bucket
 func (p *Producer) WriteDebuggerURL(url string) {
 	logPrefix := "Producer::WriteDebuggerURL"
 
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
-		writeDebuggerURLCallback, p, url)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, writeDebuggerURLCallback, p, url)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout",
-			logPrefix, p.appName, p.LenRunningConsumers())
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 	}
 }
 
+// SetTrapEvent flips trap event flag
 func (p *Producer) SetTrapEvent(value bool) {
 	p.trapEvent = value
 }
 
+// IsTrapEvent signifies if debugger should trap events
 func (p *Producer) IsTrapEvent() bool {
 	return p.trapEvent
 }
 
+// GetDebuggerToken returns debug token
 func (p *Producer) GetDebuggerToken() string {
 	return p.debuggerToken
 }
@@ -1026,8 +1057,10 @@ func (p *Producer) SpanBlobDump() map[string]interface{} {
 	}
 
 	for vb := 0; vb < p.numVbuckets; vb++ {
+
 		vbBlob := make(map[string]interface{})
 		vbKey := fmt.Sprintf("%s:tm:%d:sp", p.appName, vb)
+
 		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, p.AddMetadataPrefix(vbKey), &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
@@ -1037,4 +1070,9 @@ func (p *Producer) SpanBlobDump() map[string]interface{} {
 		spanBlobDumps[p.AddMetadataPrefix(vbKey).Raw()] = vbBlob
 	}
 	return spanBlobDumps
+}
+
+// DcpFeedBoundary returns feed boundary used for vb dcp streams
+func (p *Producer) DcpFeedBoundary() string {
+	return string(p.handlerConfig.StreamBoundary)
 }

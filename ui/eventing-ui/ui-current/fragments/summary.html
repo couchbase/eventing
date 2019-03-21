@@ -26,6 +26,7 @@
     <div class="cbui-table">
       <div class="cbui-table-header" ng-if="!summaryCtrl.isAppListEmpty()">
         <span class="cbui-table-cell">function name</span>
+        <span class="cbui-table-cell">source bucket</span>
         <span class="cbui-table-cell">status</span>
         <span class="cbui-table-cell"></span>
       </div>
@@ -36,9 +37,10 @@
         ng-click="app.toggleActionsVisibility()">
         <div class="cbui-tablerow">
           <span class="cbui-table-cell cbui-tablerow-title">{{appname}}</span>
+          <span class="cbui-table-cell cbui-tablerow-title">{{app.depcfg.source_bucket}}</span>
           <span class="cbui-table-cell row flex-left">
             <div class="fix-width-1 margin-right-3">
-              {{app.status === 'deployed' || app.status === 'undeployed' ? app.status : app.status + '...'}}
+              {{app.status === 'deployed' || app.status === 'undeployed' || app.status === 'paused' ? app.status : app.status + '...'}}
             </div>
           </span>
           <span class="cbui-table-cell text-right">
@@ -67,6 +69,12 @@
               ng-disabled="app.status === 'deploying' || app.status === 'undeploying'"
               ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
               {{app.getDeploymentStatus(true)}}
+            </button>
+            <button
+              class="outline"
+              ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'undeployed'"
+              ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)">
+                {{app.getProcessingStatus(true)}}
             </button>
             <button
               ng-click="$event.stopPropagation();"

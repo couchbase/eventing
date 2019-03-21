@@ -18,6 +18,7 @@ func newVbProcessingStats(appName string, numVbuckets uint16, uuid, workerName s
 		vbsts[i].stats["dcp_stream_requested"] = false
 		vbsts[i].stats["dcp_stream_requested_worker"] = ""
 		vbsts[i].stats["dcp_stream_requested_node_uuid"] = ""
+		vbsts[i].stats["vb_filter_ack_received"] = true
 
 		vbsts[i].stats["plasma_last_seq_no_stored"] = uint64(0)
 		vbsts[i].stats["plasma_last_seq_no_persisted"] = uint64(0)
@@ -100,7 +101,7 @@ func (c *Consumer) updateWorkerStats() {
 		select {
 		case <-c.updateStatsTicker.C:
 			if c.workerExited {
-				logging.Infof("%s [%s:%s:%d] Skipping sending worker stat opcode as worker exited",
+				logging.Debugf("%s [%s:%s:%d] Skipping sending worker stat opcode as worker exited",
 					logPrefix, c.workerName, c.tcpPort, c.Pid())
 				continue
 			}
@@ -110,6 +111,7 @@ func (c *Consumer) updateWorkerStats() {
 			c.sendGetFailureStats(false)
 			c.sendGetLatencyStats(false)
 			c.sendGetLcbExceptionStats(false)
+			c.refershCurlLatencyStats(false)
 
 			val := c.workerRespMainLoopTs.Load()
 			if val == nil {
@@ -124,7 +126,7 @@ func (c *Consumer) updateWorkerStats() {
 							return
 						}
 
-						logging.Infof("%s [%s:%s:%d] Re-spawning eventing last response received at %s",
+						logging.Infof("%s [%s:%s:%d] stoppingConsumer: %t re-spawning eventing last response received at %s",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, lastTs.String())
 						c.stoppingConsumer = true
 						c.producer.KillAndRespawnEventingConsumer(c)

@@ -998,6 +998,18 @@ func (flogp *FailoverLog) Latest() (vbuuid, seqno uint64, err error) {
 	return vbuuid, seqno, ErrorInvalidLog
 }
 
+func (flogp *FailoverLog) FetchLogForSeqNo(desiredSeqNo uint64) (vbuuid, seqno uint64, err error) {
+	if flogp != nil {
+		flog := *flogp
+		for _, entry := range flog {
+			if entry[1] <= desiredSeqNo {
+				return entry[0], entry[1], nil
+			}
+		}
+	}
+	return vbuuid, seqno, ErrorInvalidLog
+}
+
 // failsafeOp can be used by gen-server implementors to avoid infinitely
 // blocked API calls.
 func failsafeOp(

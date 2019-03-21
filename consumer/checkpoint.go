@@ -140,7 +140,7 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vb uint16, vbBlob *vbucket
 		c, c.producer.AddMetadataPrefix(vbKey), vbBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	return nil

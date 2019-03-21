@@ -26,10 +26,18 @@
           <option value="from_now">From now</option>
         </select>
       </div>
-      <div class="formrow" ng-hide="true">
-        <input type="checkbox" id="cleanup-timers" ng-model="settings.cleanupTimers"/>
-        <label for="cleanup-timers">Cleanup artifacts?</label>
-      </div>
+    </div>
+    <!--Pause action-->
+    <div ng-if="action==='pause'">
+      <p>
+        Pause execution of running function.
+      </p>
+    </div>
+    <!--Resume action-->
+    <div ng-if="action==='resume'">
+      <p>
+        Resume execution of paused function.
+      </p>
     </div>
     <!--Undeploy action-->
     <div ng-if="action==='undeploy'">
@@ -43,6 +51,8 @@
     <button ng-click="$close('ok')">
       <span ng-if="action==='delete'">Delete Function</span>
       <span ng-if="action==='deploy'">Deploy Function</span>
+      <span ng-if="action==='pause'">Pause Function</span>
+      <span ng-if="action==='resume'">Resume Function</span>
       <span ng-if="action==='undeploy'">Undeploy Function</span>
     </button>
   </div>

@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/couchbase/cbauth/service"
+	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -39,7 +40,6 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "checkpoint_interval", float64(60000))
 	fillMissingDefault(settings, "cleanup_timers", false)
 	fillMissingDefault(settings, "cpp_worker_thread_count", float64(2))
-	fillMissingDefault(settings, "curl_timeout", float64(10000))
 	fillMissingDefault(settings, "deadline_timeout", float64(62))
 	fillMissingDefault(settings, "execution_timeout", float64(60))
 	fillMissingDefault(settings, "feedback_batch_size", float64(100))
@@ -253,6 +253,75 @@ func (m *ServiceMgr) checkLifeCycleOpsDuringRebalance() (info *runtimeInfo) {
 	return
 }
 
+func (m *ServiceMgr) getSourceBinding(cfg *depCfg) *bucket {
+	for _, binding := range cfg.Buckets {
+		if binding.BucketName == cfg.SourceBucket && binding.Access == "rw" {
+			return &binding
+		}
+	}
+	return nil
+}
+
+func (m *ServiceMgr) getSourceBindingFromFlatBuf(config *cfg.DepCfg) *cfg.Bucket {
+	binding := new(cfg.Bucket)
+	for idx := 0; idx < config.BucketsLength(); idx++ {
+		if config.Buckets(binding, idx) {
+			if string(binding.BucketName()) == string(config.SourceBucket()) && string(binding.Access()) == "rw" {
+				return binding
+			}
+		}
+	}
+	return nil
+}
+
+func (m *ServiceMgr) isSrcMutationEnabled(cfg *depCfg) bool {
+	for _, binding := range cfg.Buckets {
+		if binding.BucketName == cfg.SourceBucket && binding.Access == "rw" {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *ServiceMgr) isAppDeployable(app *application) bool {
+	appSrcBinding := m.getSourceBinding(&app.DeploymentConfig)
+	if appSrcBinding == nil {
+		return true
+	}
+	for _, appName := range m.superSup.DeployedAppList() {
+		if appName == app.Name {
+			continue
+		}
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
+		if err != nil {
+			return false
+		}
+		appdata := cfg.GetRootAsConfig(data, 0)
+		config := new(cfg.DepCfg)
+		depcfg := appdata.DepCfg(config)
+		if app.DeploymentConfig.SourceBucket == string(depcfg.SourceBucket()) {
+			binding := m.getSourceBindingFromFlatBuf(depcfg)
+			if binding != nil {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (m *ServiceMgr) getSourceAndDestinationsFromDepCfg(cfg *depCfg) (src string, dest map[string]struct{}) {
+	dest = make(map[string]struct{})
+	src = cfg.SourceBucket
+	dest[cfg.MetadataBucket] = struct{}{}
+	for idx := 0; idx < len(cfg.Buckets); idx++ {
+		bucketName := cfg.Buckets[idx].BucketName
+		if bucketName != src && cfg.Buckets[idx].Access == "rw" {
+			dest[bucketName] = struct{}{}
+		}
+	}
+	return src, dest
+}
+
 var metakvSetCallback = func(args ...interface{}) error {
 	logPrefix := "ServiceMgr::metakvSetCallback"
 
@@ -264,4 +333,21 @@ var metakvSetCallback = func(args ...interface{}) error {
 		logging.Errorf("%s metakv set failed, err: %v", logPrefix, err)
 	}
 	return err
+}
+
+// GetNodesHostname returns hostnames of all nodes
+func GetNodesHostname(data map[string]interface{}) []string {
+	hostnames := make([]string, 0)
+
+	nodes, exists := data["nodes"].([]interface{})
+	if !exists {
+		return hostnames
+	}
+	for _, value := range nodes {
+		nodeInfo := value.(map[string]interface{})
+		if hostname, exists := nodeInfo["hostname"].(string); exists {
+			hostnames = append(hostnames, hostname)
+		}
+	}
+	return hostnames
 }

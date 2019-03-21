@@ -14,11 +14,13 @@ import (
 	"github.com/couchbase/gocb"
 )
 
-var errDcpFeedsClosed = errors.New("dcp feeds are closed")
-var errDcpStreamRequested = errors.New("another worker issued STREAMREQ")
-var errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
-var errVbOwnedByAnotherWorker = errors.New("vbucket is owned by another worker on same node")
-var errVbOwnedByAnotherNode = errors.New("vbucket is owned by another node")
+var (
+	errDcpFeedsClosed           = errors.New("dcp feeds are closed")
+	errDcpStreamRequested       = errors.New("another worker issued STREAMREQ")
+	errUnexpectedVbStreamStatus = errors.New("unexpected vbucket stream status")
+	errVbOwnedByAnotherWorker   = errors.New("vbucket is owned by another worker on same node")
+	errVbOwnedByAnotherNode     = errors.New("vbucket is owned by another node")
+)
 
 func (c *Consumer) checkAndUpdateMetadata() {
 	logPrefix := "Consumer::checkAndUpdateMetadata"
@@ -226,7 +228,12 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 		c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, true, &isNoEnt, true)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
+	}
+
+	var possibleConsumers []string
+	for i := 0; i < c.workerCount; i++ {
+		possibleConsumers = append(possibleConsumers, fmt.Sprintf("worker_%s_%d", c.app.AppName, i))
 	}
 
 	switch vbBlob.DCPStreamStatus {
@@ -237,39 +244,53 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 			vbBlob.CurrentVBOwner, vbBlob.AssignedWorker, c.NodeUUID(),
 			vbBlob.NodeUUID, c.checkIfCurrentNodeShouldOwnVb(vb))
 
-		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
-			logging.Infof("%s [%s:%s:%d] vb: %d current consumer and eventing node has already opened dcp stream. Stream status: %s, skipping",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
-			return nil
-		}
-
-		if c.NodeUUID() != vbBlob.NodeUUID &&
-			!c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner, vbBlob.NodeUUID) && c.checkIfCurrentNodeShouldOwnVb(vb) {
-
-			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker != c.ConsumerName() {
-				return errVbOwnedByAnotherWorker
+		if vbBlob.NodeUUID != c.NodeUUID() {
+			// Case 1a: Some node that isn't part of the cluster has spawned DCP stream for the vbucket.
+			//         Hence start the connection from consumer, discarding previous state.
+			if !c.producer.IsEventingNodeAlive(vbBlob.CurrentVBOwner, vbBlob.NodeUUID) && c.checkIfCurrentNodeShouldOwnVb(vb) {
+				logging.Infof("%s [%s:%s:%d] vb: %d node: %rs taking ownership. Old node: %rs isn't alive any more as per ns_server vbuuid: %s vblob.uuid: %s",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.HostPortAddr(), vbBlob.CurrentVBOwner,
+					c.NodeUUID(), vbBlob.NodeUUID)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 			}
 
-			logging.Infof("%s [%s:%s:%d] vb: %d node: %rs taking ownership. Old node: %rs isn't alive any more as per ns_server vbuuid: %s vblob.uuid: %s",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, c.HostPortAddr(), vbBlob.CurrentVBOwner,
-				c.NodeUUID(), vbBlob.NodeUUID)
+			// Case 1b: Invalid worker on another node is owning up vbucket stream
+			if !util.Contains(vbBlob.AssignedWorker, possibleConsumers) {
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
+			}
 
-			if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() {
+			// Case 1c: Invalid node uuid is marked as owner of the vbucket
+			if !util.Contains(vbBlob.NodeUUID, c.eventingNodeUUIDs) && !util.Contains(vbBlob.NodeUUID, c.ejectNodesUUIDs) {
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
+			}
+		}
 
-				logging.Infof("%s [%s:%s:%d] vb: %d vbblob stream status: %v starting dcp stream",
+		if vbBlob.NodeUUID == c.NodeUUID() {
+			// Case 2a: Current consumer has already spawned DCP stream for the vbucket
+			if vbBlob.AssignedWorker == c.ConsumerName() {
+				logging.Infof("%s [%s:%s:%d] vb: %d current consumer and eventing node has already opened dcp stream. Stream status: %s, skipping",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
-
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+				return nil
 			}
-			return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
-		}
 
-		if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker != c.ConsumerName() {
 			logging.Infof("%s [%s:%s:%d] vb: %d owned by another worker: %s on same node",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.AssignedWorker)
+
+			if !util.Contains(vbBlob.AssignedWorker, possibleConsumers) {
+				// Case 2b: Worker who is invalid right now, has the ownership per metadata. Could happen for example:
+				//         t1 - Eventing starts off with worker count 10
+				//         t2 - Function was paused and resumed with worker count 3
+				//         t3 - Eventing rebalance was kicked off and KV rolled back metadata bucket to t1
+				//         This would currently cause rebalance to get stuck
+				//         In this case, it makes sense to revoke ownership metadata of old owners.
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
+			}
+
+			// Case 2c: An existing & running consumer on current Eventing node  has owned up the vbucket
 			return errVbOwnedByAnotherWorker
 		}
 
+		// Case 3: Another running Eventing node has the ownership of the vbucket stream
 		logging.Infof("%s [%s:%s:%d] vb: %d owned by node: %s worker: %s",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.CurrentVBOwner, vbBlob.AssignedWorker)
 		return errVbOwnedByAnotherNode
@@ -279,7 +300,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 		if vbBlob.DCPStreamRequested {
 			if (vbBlob.NodeUUIDRequestedVbStream == c.NodeUUID() && vbBlob.WorkerRequestedVbStream == c.ConsumerName()) ||
 				(vbBlob.NodeUUIDRequestedVbStream == "" && vbBlob.WorkerRequestedVbStream == "") {
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, false)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 			}
 
 			if vbBlob.NodeUUIDRequestedVbStream != c.NodeUUID() &&
@@ -288,7 +309,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 					"Old node: %rs isn't alive any more as per ns_server vbuuid: %s node requested stream uuid: %s",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr(), vb, vbBlob.NodeRequestedVbStream,
 					c.NodeUUID(), vbBlob.NodeUUIDRequestedVbStream)
-				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+				return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 			}
 
 			logging.Infof("%s [%s:%s:%d] vb: %d. STREAMREQ already issued by hostPort: %s worker: %s uuid: %s",
@@ -300,7 +321,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 		logging.Infof("%s [%s:%s:%d] vb: %d vbblob stream status: %s, starting dcp stream",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.DCPStreamStatus)
 
-		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, true)
+		return c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 
 	default:
 		return errUnexpectedVbStreamStatus
@@ -326,7 +347,7 @@ func (c *Consumer) checkIfCurrentConsumerShouldOwnVb(vb uint16) bool {
 	return false
 }
 
-func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob, backfillTimers bool) error {
+func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlob *vbucketKVBlob) error {
 	logPrefix := "Consumer::updateVbOwnerAndStartDCPStream"
 
 	if c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
@@ -369,11 +390,19 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
 	vbBlob.PreviousVBOwner = c.HostPortAddr()
 
+	if c.resetBootstrapDone {
+		logging.Infof("%s [%s:%s:%d] vb: %d current BootstrapStreamReqDone flag: %t",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.BootstrapStreamReqDone)
+		vbBlob.BootstrapStreamReqDone = false
+		logging.Infof("%s [%s:%s:%d] vb: %d updated BootstrapStreamReqDone flag to: %t",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.BootstrapStreamReqDone)
+	}
+
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, updateCheckpointCallback,
 		c, c.producer.AddMetadataPrefix(vbKey), vbBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
@@ -519,6 +548,19 @@ func (c *Consumer) getVbRemainingToCloseStream() []uint16 {
 	return vbsRemainingToCloseStream
 }
 
+func (c *Consumer) getVbsFilterAckYetToCome() []uint16 {
+	var vbsFilterAckYetToCome []uint16
+
+	for vb := range c.vbProcessingStats {
+		if !c.vbProcessingStats.getVbStat(vb, "vb_filter_ack_received").(bool) {
+			vbsFilterAckYetToCome = append(vbsFilterAckYetToCome, vb)
+		}
+	}
+	sort.Sort(util.Uint16Slice(vbsFilterAckYetToCome))
+
+	return vbsFilterAckYetToCome
+}
+
 func (c *Consumer) verifyVbsCurrentlyOwned(vbsToMigrate []uint16) []uint16 {
 	var vbsCurrentlyOwned []uint16
 
@@ -556,7 +598,7 @@ func (c *Consumer) doCleanupForPreviouslyOwnedVbs() error {
 		err := c.cleanupVbMetadata(vb)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return common.ErrRetryTimeout
+			return err
 		}
 	}
 
@@ -575,14 +617,14 @@ func (c *Consumer) cleanupVbMetadata(vb uint16) error {
 		c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() && vbBlob.DCPStreamStatus == dcpStreamRunning {
 		err = c.updateCheckpoint(vbKey, vb, &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return common.ErrRetryTimeout
+			return err
 		}
 		logging.Infof("%s [%s:%s:%d] vb: %d cleaned up ownership", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	}
@@ -590,8 +632,9 @@ func (c *Consumer) cleanupVbMetadata(vb uint16) error {
 	return nil
 }
 
-func (c *Consumer) closeAllRunningDcpFeeds() {
-	logPrefix := "Consumer::closeAllRunningDcpFeeds"
+// CloseAllRunningDcpFeeds drops all socket connections to DCP producer
+func (c *Consumer) CloseAllRunningDcpFeeds() {
+	logPrefix := "Consumer::CloseAllRunningDcpFeeds"
 
 	runningDcpFeeds := make([]*couchbase.DcpFeed, 0)
 
@@ -600,6 +643,9 @@ func (c *Consumer) closeAllRunningDcpFeeds() {
 		runningDcpFeeds = append(runningDcpFeeds, dcpFeed)
 	}
 	c.hostDcpFeedRWMutex.RUnlock()
+
+	c.streamReqRWMutex.Lock()
+	defer c.streamReqRWMutex.Unlock()
 
 	logging.Infof("%s [%s:%s:%d] Going to close all active dcp feeds. Active feed count: %d",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(runningDcpFeeds))
@@ -626,4 +672,6 @@ func (c *Consumer) closeAllRunningDcpFeeds() {
 		c.vbProcessingStats.updateVbStat(vb, "dcp_stream_requested_node_uuid", "")
 	}
 
+	logging.Infof("%s [%s:%s:%d] Finished reset of vb related stats",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }

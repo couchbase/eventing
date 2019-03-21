@@ -34,15 +34,17 @@
 #include <v8.h>
 
 #include "commands.h"
-#include "crc32c.h"
-#include "function_templates.h"
 #include "histogram.h"
 #include "inspector_agent.h"
+#include "isolate_data.h"
 #include "js_exception.h"
 #include "log.h"
 #include "n1ql.h"
+#include "parse_deployment.h"
 #include "queue.h"
+#include "transpiler.h"
 #include "utils.h"
+#include "v8log.h"
 
 #include "../../gen/flatbuf/header_generated.h"
 #include "../../gen/flatbuf/payload_generated.h"
@@ -114,7 +116,6 @@ typedef struct server_settings_s {
 
 typedef struct handler_config_s {
   std::string app_name;
-  long curl_timeout;
   std::string dep_cfg;
   int execution_timeout;
   int lcb_inst_capacity;
@@ -168,7 +169,9 @@ class V8Worker {
 public:
   V8Worker(v8::Platform *platform, handler_config_t *config,
            server_settings_t *settings, const std::string &handler_name,
-           const std::string &handler_uuid, const std::string &user_prefix);
+           const std::string &function_id,
+           const std::string &function_instance_id,
+           const std::string &user_prefix);
   ~V8Worker();
 
   void operator()() {
@@ -220,21 +223,10 @@ public:
   void ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions);
 
   void UpdateHistogram(Time::time_point t);
+  void UpdateCurlLatencyHistogram(const Time::time_point &start);
 
-  /**
-   * Remove item from doc_timer_queue, serialize it and
-   * populate @param messages.
-   *
-   * @param messages
-   * @param window_size
-   */
   void GetTimerMessages(std::vector<uv_buf_t> &messages, size_t window_size);
 
-  /**
-   * Read vb_seq map, serialize it and populate @param messages
-   *
-   * @param messages
-   */
   void GetBucketOpsMessages(std::vector<uv_buf_t> &messages);
 
   int UpdateVbFilter(const std::string &metadata);
@@ -248,8 +240,14 @@ public:
   int64_t GetBucketopsSeqno(int vb_no);
 
   int ParseMetadata(const std::string &metadata, int &vb_no, int64_t &seq_no);
+  int ParseMetadataWithAck(const std::string &metadata, int &vb_no,
+                           int64_t &seq_no, int &skip_ack, bool ack_check);
 
   void SetThreadExitFlag();
+
+  inline std::string GetFunctionID() { return function_id_; }
+
+  inline std::string GetFunctionInstanceID() { return function_instance_id_; }
 
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
@@ -277,15 +275,23 @@ public:
   Queue<worker_msg_t> *worker_queue_;
 
   ConnectionPool *conn_pool_;
-  JsException *js_exception_;
 
   std::mutex lcb_exception_mtx_;
   std::map<int, int64_t> lcb_exceptions_;
 
   Histogram *histogram_;
-  Data data_;
+  Histogram *curl_latency_;
+  IsolateData data_;
 
 private:
+  v8::Local<v8::ObjectTemplate> NewGlobalObj() const;
+  void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
+  void InitializeIsolateData(const server_settings_t *server_settings,
+                             const handler_config_t *h_config,
+                             const std::string &source_bucket);
+  void
+  InitializeCurlBindingValues(const std::vector<CurlBinding> &curl_bindings);
+  void FreeCurlBindings();
   std::vector<uv_buf_t> BuildResponse(const std::string &payload,
                                       int8_t msg_type, int8_t response_opcode);
   bool ExecuteScript(const v8::Local<v8::String> &script);
@@ -298,27 +304,20 @@ private:
 
   std::vector<int64_t> vbfilter_map_;
   std::mutex vbfilter_lock_;
-
   std::vector<int64_t> processed_bucketops_;
   std::mutex bucketops_lock_;
-
   std::list<Bucket *> bucket_handles_;
   N1QL *n1ql_handle_;
   v8::Isolate *isolate_;
   v8::Platform *platform_;
   inspector::Agent *agent_;
-  std::string handler_name_;
-  std::string handler_uuid_;
+  std::string function_name_;
+  std::string function_id_;
+  std::string function_instance_id_;
   std::string user_prefix_;
   std::atomic<bool> thread_exit_cond_;
+  const std::vector<std::string> exception_type_names_;
+  std::vector<std::string> curl_binding_values_;
 };
 
-const char *GetUsername(void *cookie, const char *host, const char *port,
-                        const char *bucket);
-const char *GetPassword(void *cookie, const char *host, const char *port,
-                        const char *bucket);
-const char *GetUsernameCached(void *cookie, const char *host, const char *port,
-                              const char *bucket);
-const char *GetPasswordCached(void *cookie, const char *host, const char *port,
-                              const char *bucket);
 #endif

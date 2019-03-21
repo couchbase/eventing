@@ -20,18 +20,21 @@ import (
 const (
 	Resolution  = int64(7) // seconds
 	init_seq    = int64(128)
+	tail_time   = int64(60)
 	dict        = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*&"
 	encode_base = 10 // TODO: Change to 36 before GA
 )
 
 // Globals
 var (
-	stores = newStores()
+	stores *storeMap
 )
 
 type storeMap struct {
-	lock    sync.RWMutex
-	entries map[string]*TimerStore
+	lock       sync.RWMutex
+	entries    map[string]*TimerStore
+	rebalancer rebalancer
+	conflict   int64
 }
 
 type AlarmRecord struct {
@@ -75,7 +78,6 @@ type colIter struct {
 	current int64
 	topKey  string
 	topCas  gocb.Cas
-	empty   bool
 }
 
 type Span struct {
@@ -133,13 +135,28 @@ type timerStats struct {
 	spanCasMismatchCounter      uint64 `json:"meta_span_cas_mismatch"`
 }
 
+type rebalancer interface {
+	RebalanceStatus() bool
+}
+
+func init() {
+	stores = newStores()
+	go stores.syncRoutine()
+}
+
+func SetRebalancer(r rebalancer) {
+	stores.rebalancer = r
+}
+
 func Create(uid string, partn int, connstr string, bucket string) error {
+	logPrefix := "TimerStore::Create"
+
 	stores.lock.Lock()
 	defer stores.lock.Unlock()
 
 	_, found := stores.entries[mapLocator(uid, partn)]
 	if found {
-		logging.Warnf("Asked to create store %v:%v which exists. Reusing", uid, partn)
+		logging.Warnf("%s Asked to create store %v:%v which exists. Reusing", logPrefix, uid, partn)
 		return nil
 	}
 	store, err := newTimerStore(uid, partn, connstr, bucket)
@@ -151,11 +168,13 @@ func Create(uid string, partn int, connstr string, bucket string) error {
 }
 
 func Fetch(uid string, partn int) (store *TimerStore, found bool) {
+	logPrefix := "TimerStore::Fetch"
+
 	stores.lock.RLock()
 	defer stores.lock.RUnlock()
 	store, found = stores.entries[mapLocator(uid, partn)]
 	if !found {
-		logging.Infof("Store not defined: " + mapLocator(uid, partn))
+		logging.Infof("%s Store not defined: %s", logPrefix, mapLocator(uid, partn))
 		return nil, false
 	}
 	return
@@ -304,6 +323,32 @@ func (r *TimerStore) Partition() int {
 	return r.partn
 }
 
+func ForceSpanSync() {
+	logPrefix := "TimerStore::ForceSpanSync"
+
+	logging.Infof("%v Starting to force span sync", logPrefix)
+	dirty := make([]*TimerStore, 0)
+
+	stores.lock.RLock()
+	for _, store := range stores.entries {
+		if store.span.dirty {
+			dirty = append(dirty, store)
+		}
+	}
+	stores.lock.RUnlock()
+
+	for _, store := range dirty {
+		for {
+			if mismatch, _ := store.syncSpan(); !mismatch {
+				break
+			} else {
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+	}
+	logging.Infof("%v Finished forcing span sync", logPrefix)
+}
+
 func (r *TimerStore) ScanDue() *TimerIter {
 	span := r.readSpan()
 	now := roundDown(time.Now().Unix())
@@ -378,7 +423,7 @@ func (r *TimerIter) nextRow() (bool, error) {
 			return false, err
 		}
 		if !absent {
-			r.col = &colIter{current: init_seq, stop: seq_end, topKey: pos, topCas: cas, empty: true}
+			r.col = &colIter{current: init_seq, stop: seq_end, topKey: pos, topCas: cas}
 			logging.Tracef("%v Found row %+v", r.store.log, r.row)
 			return true, nil
 		}
@@ -441,7 +486,6 @@ func (r *TimerIter) nextColumn() (bool, error) {
 			atomic.AddUint64(&r.store.stats.timerInFutureFiredCounter, 1)
 		}
 
-		r.col.empty = false
 		return true, nil
 	}
 
@@ -501,16 +545,12 @@ func (r *TimerStore) shrinkSpan(start int64) {
 	}
 }
 
-func (r *TimerStore) syncSpan() error {
+func (r *TimerStore) syncSpan() (bool, error) {
 	atomic.AddUint64(&r.stats.syncSpanCounter, 1)
 	logging.Tracef("%v syncSpan called", r.log)
 
 	r.span.lock.Lock()
 	defer r.span.lock.Unlock()
-
-	if !r.span.dirty && !r.span.empty {
-		return nil
-	}
 
 	r.span.dirty = false
 	kv := Pool(r.connstr)
@@ -519,7 +559,7 @@ func (r *TimerStore) syncSpan() error {
 
 	rcas, absent, err := kv.MustGet(r.bucket, pos, &extspan)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// Initial setup cases
@@ -532,23 +572,23 @@ func (r *TimerStore) syncSpan() error {
 		wcas, mismatch, err := kv.MustInsert(r.bucket, pos, r.span.Span, 0)
 		if err != nil || mismatch {
 			logging.Debugf("%v Error initializing span %+v: mismatch=%v err=%v", r.log, r.span, mismatch, err)
-			return err
+			return false, err
 		}
 		r.span.spanCas = wcas
 		r.span.empty = false
 		logging.Tracef("%v Span initialized as %+v", r.log, r.span)
-		return nil
+		return false, nil
 
 	// new, not persisted, but we have data locally
 	case absent && !r.span.empty:
 		wcas, mismatch, err := kv.MustInsert(r.bucket, pos, r.span.Span, 0)
 		if err != nil || mismatch {
 			logging.Debugf("%v Error initializing span %+v: mismatch=%v err=%v", r.log, r.span, mismatch, err)
-			return err
+			return false, err
 		}
 		r.span.spanCas = wcas
 		logging.Tracef("%v Span created as %+v", r.log, r.span)
-		return nil
+		return false, nil
 
 	// we have no data, but some data has been persisted earlier
 	case r.span.empty:
@@ -556,7 +596,7 @@ func (r *TimerStore) syncSpan() error {
 		r.span.Span = extspan
 		r.span.spanCas = rcas
 		logging.Tracef("%v Span read and initialized to %+v", r.log, r.span)
-		return nil
+		return false, nil
 	}
 
 	// Happy path cases
@@ -565,7 +605,7 @@ func (r *TimerStore) syncSpan() error {
 	// nothing has moved, either locally or in persisted version
 	case r.span.spanCas == rcas && r.span.Span == extspan:
 		logging.Tracef("%v Span no changes %+v", r.log, r.span)
-		return nil
+		return false, nil
 
 	// only internal changes, no conflict with persisted version
 	case r.span.spanCas == rcas:
@@ -573,14 +613,16 @@ func (r *TimerStore) syncSpan() error {
 		wcas, absent, mismatch, err := kv.MustReplace(r.bucket, pos, r.span.Span, rcas, 0)
 		if err != nil || absent || mismatch {
 			logging.Debugf("%v Overwriting span %+v failed: absent=%v mismatch=%v err=%v", r.log, r.span, absent, mismatch, err)
-			return err
+			return mismatch, err
 		}
 		r.span.spanCas = wcas
-		return nil
+		return false, nil
 	}
 
 	// Merge conflict
 	atomic.AddUint64(&r.stats.spanCasMismatchCounter, 1)
+	stores.conflict = time.Now().Unix()
+
 	if r.span.Start > extspan.Start {
 		logging.Debugf("%v Span conflict external write, moving Start: span=%+v extspan=%+v", r.span, extspan)
 		atomic.AddUint64(&r.stats.spanStartChangeCounter, 1)
@@ -594,19 +636,25 @@ func (r *TimerStore) syncSpan() error {
 	wcas, absent, mismatch, err := kv.MustReplace(r.bucket, pos, r.span.Span, rcas, 0)
 	if err != nil || absent || mismatch {
 		logging.Debugf("%v Overwriting span %+v failed: absent=%v mismatch=%v err=%v", r.log, r.span, absent, mismatch, err)
-		return err
+		return mismatch, err
 	}
 	r.span.spanCas = wcas
 	logging.Tracef("%v Span was merged and saved successfully: %+v", r.log, r.span)
-	return nil
+	return false, nil
 }
 
 func (r *storeMap) syncRoutine() {
 	for {
+		if r.rebalancer != nil && r.rebalancer.RebalanceStatus() {
+			r.conflict = time.Now().Unix()
+		}
+
+		force := time.Now().Unix()-r.conflict < tail_time
 		dirty := make([]*TimerStore, 0)
 		r.lock.RLock()
+
 		for _, store := range r.entries {
-			if store.span.dirty {
+			if force || store.span.dirty {
 				dirty = append(dirty, store)
 			}
 		}
@@ -628,7 +676,7 @@ func newTimerStore(uid string, partn int, connstr string, bucket string) (*Timer
 		span:    storeSpan{empty: true, dirty: false},
 	}
 
-	err := timerstore.syncSpan()
+	_, err := timerstore.syncSpan()
 	if err != nil {
 		return nil, err
 	}
@@ -698,10 +746,11 @@ func formatInt(tm int64) string {
 
 func newStores() *storeMap {
 	smap := &storeMap{
-		entries: make(map[string]*TimerStore),
-		lock:    sync.RWMutex{},
+		entries:    make(map[string]*TimerStore),
+		lock:       sync.RWMutex{},
+		rebalancer: nil,
+		conflict:   0,
 	}
-	go smap.syncRoutine()
 	return smap
 }
 

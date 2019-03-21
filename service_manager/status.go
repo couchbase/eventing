@@ -38,51 +38,56 @@ type warningsInfo struct {
 }
 
 type statusCodes struct {
-	ok                     statusBase
-	errDelAppPs            statusBase
-	errDelAppTs            statusBase
-	errGetAppPs            statusBase
-	getAppTs               statusBase
-	errSaveAppPs           statusBase
-	errSaveAppTs           statusBase
-	errSetSettingsPs       statusBase
-	errDelAppSettingsPs    statusBase
-	errAppNotDeployed      statusBase
-	errAppNotFoundTs       statusBase
-	errMarshalResp         statusBase
-	errReadReq             statusBase
-	errUnmarshalPld        statusBase
-	errSrcMbSame           statusBase
-	errInvalidExt          statusBase
-	errGetVbSeqs           statusBase
-	errAppDeployed         statusBase
-	errAppNotInit          statusBase
-	errAppNotUndeployed    statusBase
-	errStatusesNotFound    statusBase
-	errConnectNsServer     statusBase
-	errBucketTypeCheck     statusBase
-	errMemcachedBucket     statusBase
-	errHandlerCompile      statusBase
-	errRbacCreds           statusBase
-	errAppNameMismatch     statusBase
-	errSrcBucketMissing    statusBase
-	errMetaBucketMissing   statusBase
-	errNoEventingNodes     statusBase
-	errSaveConfig          statusBase
-	errGetConfig           statusBase
-	errGetCreds            statusBase
-	errGetRebStatus        statusBase
-	errRebOngoing          statusBase
-	errActiveEventingNodes statusBase
-	errInvalidConfig       statusBase
-	errAppCodeSize         statusBase
-	errAppRetry            statusBase
-	errBucketMissing       statusBase
-	errClusterVersion      statusBase
-	errUUIDGen             statusBase
-	errAppDelete           statusBase
-	errDebuggerDisabled    statusBase
-	errMixedMode           statusBase
+	ok                        statusBase
+	errDelAppPs               statusBase
+	errDelAppTs               statusBase
+	errGetAppPs               statusBase
+	getAppTs                  statusBase
+	errSaveAppPs              statusBase
+	errSaveAppTs              statusBase
+	errSetSettingsPs          statusBase
+	errDelAppSettingsPs       statusBase
+	errAppNotDeployed         statusBase
+	errAppNotFoundTs          statusBase
+	errMarshalResp            statusBase
+	errReadReq                statusBase
+	errUnmarshalPld           statusBase
+	errSrcMbSame              statusBase
+	errInvalidExt             statusBase
+	errGetVbSeqs              statusBase
+	errAppDeployed            statusBase
+	errAppNotInit             statusBase
+	errAppNotUndeployed       statusBase
+	errStatusesNotFound       statusBase
+	errConnectNsServer        statusBase
+	errBucketTypeCheck        statusBase
+	errMemcachedBucket        statusBase
+	errHandlerCompile         statusBase
+	errRbacCreds              statusBase
+	errAppNameMismatch        statusBase
+	errSrcBucketMissing       statusBase
+	errMetaBucketMissing      statusBase
+	errNoEventingNodes        statusBase
+	errSaveConfig             statusBase
+	errGetConfig              statusBase
+	errGetCreds               statusBase
+	errGetRebStatus           statusBase
+	errRebOngoing             statusBase
+	errActiveEventingNodes    statusBase
+	errInvalidConfig          statusBase
+	errAppCodeSize            statusBase
+	errAppRetry               statusBase
+	errBucketMissing          statusBase
+	errClusterVersion         statusBase
+	errUUIDGen                statusBase
+	errAppDelete              statusBase
+	errDebuggerDisabled       statusBase
+	errMixedMode              statusBase
+	errFunctionIDGen          statusBase
+	errFunctionInstanceIDGen  statusBase
+	errBucketAccess           statusBase
+	errInterFunctionRecursion statusBase
+	errInterBucketRecursion   statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -167,6 +172,16 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusInternalServerError
 	case m.statusCodes.errMixedMode.Code:
 		return http.StatusInternalServerError
+	case m.statusCodes.errFunctionIDGen.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errFunctionInstanceIDGen.Code:
+		return http.StatusInternalServerError
+	case m.statusCodes.errBucketAccess.Code:
+		return http.StatusBadRequest
+	case m.statusCodes.errInterFunctionRecursion.Code:
+		return http.StatusBadRequest
+	case m.statusCodes.errInterBucketRecursion.Code:
+		return http.StatusBadRequest
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -175,47 +190,52 @@ func (m *ServiceMgr) getDisposition(code int) int {
 
 func (m *ServiceMgr) initErrCodes() {
 	m.statusCodes = statusCodes{
-		ok:                     statusBase{"OK", 0},
-		errDelAppPs:            statusBase{"ERR_DEL_APP_PS", 1},
-		errDelAppTs:            statusBase{"ERR_DEL_APP_TS", 2},
-		errSaveAppPs:           statusBase{"ERR_SAVE_APP_PS", 5},
-		errSaveAppTs:           statusBase{"ERR_SAVE_APP_TS", 6},
-		errSetSettingsPs:       statusBase{"ERR_SET_SETTINGS_PS", 7},
-		errDelAppSettingsPs:    statusBase{"ERR_DEL_APP_SETTINGS_PS", 11},
-		errAppNotDeployed:      statusBase{"ERR_APP_NOT_DEPLOYED", 12},
-		errAppNotFoundTs:       statusBase{"ERR_APP_NOT_FOUND_TS", 13},
-		errMarshalResp:         statusBase{"ERR_MARSHAL_RESP", 14},
-		errReadReq:             statusBase{"ERR_READ_REQ", 15},
-		errUnmarshalPld:        statusBase{"ERR_UNMARSHAL_PLD", 16},
-		errSrcMbSame:           statusBase{"ERR_SRC_MB_SAME", 17},
-		errInvalidExt:          statusBase{"ERR_INVALID_EXT", 18},
-		errGetVbSeqs:           statusBase{"ERR_GET_VB_SEQS", 19},
-		errAppDeployed:         statusBase{"ERR_APP_ALREADY_DEPLOYED", 20},
-		errAppNotInit:          statusBase{"ERR_APP_NOT_BOOTSTRAPPED", 21},
-		errAppNotUndeployed:    statusBase{"ERR_APP_NOT_UNDEPLOYED", 22},
-		errStatusesNotFound:    statusBase{"ERR_PROCESSING_OR_DEPLOYMENT_STATUS_NOT_FOUND", 23},
-		errConnectNsServer:     statusBase{"ERR_CONNECT_TO_NS_SERVER", 24},
-		errBucketTypeCheck:     statusBase{"ERR_BUCKET_TYPE_CHECK", 25},
-		errMemcachedBucket:     statusBase{"ERR_SOURCE_BUCKET_MEMCACHED", 26},
-		errHandlerCompile:      statusBase{"ERR_HANDLER_COMPILATION", 27},
-		errAppNameMismatch:     statusBase{"ERR_APPNAME_MISMATCH", 29},
-		errSrcBucketMissing:    statusBase{"ERR_SRC_BUCKET_MISSING", 30},
-		errMetaBucketMissing:   statusBase{"ERR_METADATA_BUCKET_MISSING", 31},
-		errNoEventingNodes:     statusBase{"ERR_NO_EVENTING_NODES_FOUND", 32},
-		errSaveConfig:          statusBase{"ERR_SAVE_CONFIG", 33},
-		errGetConfig:           statusBase{"ERR_GET_CONFIG", 34},
-		errGetRebStatus:        statusBase{"ERR_GET_REBALANCE_STATUS", 35},
-		errRebOngoing:          statusBase{"ERR_REBALANCE_ONGOING", 36},
-		errActiveEventingNodes: statusBase{"ERR_FETCHING_ACTIVE_EVENTING_NODES", 37},
-		errInvalidConfig:       statusBase{"ERR_INVALID_CONFIG", 38},
-		errAppCodeSize:         statusBase{"ERR_APPCODE_SIZE", 39},
-		errAppRetry:            statusBase{"ERR_APP_RETRY", 40},
-		errBucketMissing:       statusBase{"ERR_BUCKET_MISSING", 41},
-		errClusterVersion:      statusBase{"ERR_CLUSTER_VERSION", 42},
-		errUUIDGen:             statusBase{"ERR_UUID_GEN_FAILED", 43},
-		errAppDelete:           statusBase{"ERR_APP_DELETE_NOT_ALLOWED", 44},
-		errDebuggerDisabled:    statusBase{"ERR_DEBUGGER_DISABLED", 45},
-		errMixedMode:           statusBase{"ERR_MIXED_MODE", 46},
+		ok:                        statusBase{"OK", 0},
+		errDelAppPs:               statusBase{"ERR_DEL_APP_PS", 1},
+		errDelAppTs:               statusBase{"ERR_DEL_APP_TS", 2},
+		errSaveAppPs:              statusBase{"ERR_SAVE_APP_PS", 5},
+		errSaveAppTs:              statusBase{"ERR_SAVE_APP_TS", 6},
+		errSetSettingsPs:          statusBase{"ERR_SET_SETTINGS_PS", 7},
+		errDelAppSettingsPs:       statusBase{"ERR_DEL_APP_SETTINGS_PS", 11},
+		errAppNotDeployed:         statusBase{"ERR_APP_NOT_DEPLOYED", 12},
+		errAppNotFoundTs:          statusBase{"ERR_APP_NOT_FOUND_TS", 13},
+		errMarshalResp:            statusBase{"ERR_MARSHAL_RESP", 14},
+		errReadReq:                statusBase{"ERR_READ_REQ", 15},
+		errUnmarshalPld:           statusBase{"ERR_UNMARSHAL_PLD", 16},
+		errSrcMbSame:              statusBase{"ERR_SRC_MB_SAME", 17},
+		errInvalidExt:             statusBase{"ERR_INVALID_EXT", 18},
+		errGetVbSeqs:              statusBase{"ERR_GET_VB_SEQS", 19},
+		errAppDeployed:            statusBase{"ERR_APP_ALREADY_DEPLOYED", 20},
+		errAppNotInit:             statusBase{"ERR_APP_NOT_BOOTSTRAPPED", 21},
+		errAppNotUndeployed:       statusBase{"ERR_APP_NOT_UNDEPLOYED", 22},
+		errStatusesNotFound:       statusBase{"ERR_PROCESSING_OR_DEPLOYMENT_STATUS_NOT_FOUND", 23},
+		errConnectNsServer:        statusBase{"ERR_CONNECT_TO_NS_SERVER", 24},
+		errBucketTypeCheck:        statusBase{"ERR_BUCKET_TYPE_CHECK", 25},
+		errMemcachedBucket:        statusBase{"ERR_SOURCE_BUCKET_MEMCACHED", 26},
+		errHandlerCompile:         statusBase{"ERR_HANDLER_COMPILATION", 27},
+		errAppNameMismatch:        statusBase{"ERR_APPNAME_MISMATCH", 29},
+		errSrcBucketMissing:       statusBase{"ERR_SRC_BUCKET_MISSING", 30},
+		errMetaBucketMissing:      statusBase{"ERR_METADATA_BUCKET_MISSING", 31},
+		errNoEventingNodes:        statusBase{"ERR_NO_EVENTING_NODES_FOUND", 32},
+		errSaveConfig:             statusBase{"ERR_SAVE_CONFIG", 33},
+		errGetConfig:              statusBase{"ERR_GET_CONFIG", 34},
+		errGetRebStatus:           statusBase{"ERR_GET_REBALANCE_STATUS", 35},
+		errRebOngoing:             statusBase{"ERR_REBALANCE_ONGOING", 36},
+		errActiveEventingNodes:    statusBase{"ERR_FETCHING_ACTIVE_EVENTING_NODES", 37},
+		errInvalidConfig:          statusBase{"ERR_INVALID_CONFIG", 38},
+		errAppCodeSize:            statusBase{"ERR_APPCODE_SIZE", 39},
+		errAppRetry:               statusBase{"ERR_APP_RETRY", 40},
+		errBucketMissing:          statusBase{"ERR_BUCKET_MISSING", 41},
+		errClusterVersion:         statusBase{"ERR_CLUSTER_VERSION", 42},
+		errUUIDGen:                statusBase{"ERR_UUID_GEN_FAILED", 43},
+		errAppDelete:              statusBase{"ERR_APP_DELETE_NOT_ALLOWED", 44},
+		errDebuggerDisabled:       statusBase{"ERR_DEBUGGER_DISABLED", 45},
+		errMixedMode:              statusBase{"ERR_MIXED_MODE", 46},
+		errFunctionIDGen:          statusBase{"ERR_HANDLER_ID_GEN", 47},
+		errFunctionInstanceIDGen:  statusBase{"ERR_INSTANCE_ID_GEN", 48},
+		errBucketAccess:           statusBase{"ERR_BUCKET_ACCESS", 49},
+		errInterFunctionRecursion: statusBase{"ERR_INTER_FUNCTION_RECURSION", 50},
+		errInterBucketRecursion:   statusBase{"ERR_INTER_BUCKET_RECURSION", 51},
 	}
 
 	errors := []errorPayload{
@@ -405,7 +425,7 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errAppCodeSize.Name,
 			Code:        m.statusCodes.errAppCodeSize.Code,
-			Description: "Function Code size is more than 128k",
+			Description: "Function Code size is more than the configured limit",
 		},
 		{
 			Name:        m.statusCodes.errAppRetry.Name,
@@ -441,6 +461,31 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errMixedMode.Name,
 			Code:        m.statusCodes.errMixedMode.Code,
 			Description: "Unable to start debugger in mixed mode cluster",
+		},
+		{
+			Name:        m.statusCodes.errFunctionIDGen.Name,
+			Code:        m.statusCodes.errFunctionIDGen.Code,
+			Description: "Handler ID generation failed",
+		},
+		{
+			Name:        m.statusCodes.errFunctionInstanceIDGen.Name,
+			Code:        m.statusCodes.errFunctionInstanceIDGen.Code,
+			Description: "Function Instance ID generation failed",
+		},
+		{
+			Name:        m.statusCodes.errBucketAccess.Name,
+			Code:        m.statusCodes.errBucketAccess.Code,
+			Description: "Invalid bucket access error, access should be either \"r\" or \"w\"",
+		},
+		{
+			Name:        m.statusCodes.errInterFunctionRecursion.Name,
+			Code:        m.statusCodes.errInterFunctionRecursion.Code,
+			Description: "Inter function recursion error, only one function is allowed to do source bucket mutation/delete on a bucket",
+		},
+		{
+			Name:        m.statusCodes.errInterBucketRecursion.Name,
+			Code:        m.statusCodes.errInterBucketRecursion.Code,
+			Description: "Inter bucket recursion error, deployment of current handler will cause inter bucket recursion",
 		},
 	}
 

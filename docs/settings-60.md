@@ -16,7 +16,6 @@
 |breakpad_on|true|For enabling/disabling breakpad minidump capture|
 |checkpoint_interval|60s|Frequency for updating checkpoint blobs in metadata bucket|
 |cpp_worker_thread_count|2|V8 sandboxes running within an eventing-consumer process|
-|curl_timeout|10000ms|Timeout for curl call|
 |data_chan_size|50|Capacity of queue that buffers dcp events|
 |dcp_gen_chan_size|10000|Capacity of queue that buffers dcp related control messages|
 |dcp_num_connections|1|Num of dcp connections to open per eventing-consumer per Data service node|

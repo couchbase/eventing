@@ -265,6 +265,28 @@ func (c *Consumer) sendGetLatencyStats(sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
+func (c *Consumer) refershCurlLatencyStats(sendToDebugger bool) {
+	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerCurlLatencyStats, 0, "")
+
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.v8WorkerMessagesProcessed["curl_latency_stats"]; !ok {
+		c.v8WorkerMessagesProcessed["curl_latency_stats"] = 0
+	}
+	c.v8WorkerMessagesProcessed["curl_latency_stats"]++
+	c.msgProcessedRWMutex.Unlock()
+
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		sendToDebugger: sendToDebugger,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(m)
+}
+
 func (c *Consumer) sendGetFailureStats(sendToDebugger bool) {
 	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerFailureStats, 0, "")
 
@@ -395,22 +417,26 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	c.sendMessage(msg)
 }
 
-func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
+func (c *Consumer) sendVbFilterData(vb uint16, seqNo uint64, skipAck bool) {
 	logPrefix := "Consumer::sendVbFilterData"
 
 	data := vbSeqNo{
 		SeqNo:   seqNo,
-		Vbucket: e.VBucket,
+		Vbucket: vb,
+	}
+
+	if skipAck {
+		data.SkipAck = 1
 	}
 
 	metadata, err := json.Marshal(&data)
 	if err != nil {
-		logging.Errorf("[%s:%s:%s:%d] key: %ru failed to marshal metadata",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+		logging.Errorf("[%s:%s:%s:%d] Failed to marshal metadata",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid())
 		return
 	}
 
-	filterHeader, hBuilder := c.makeVbFilterHeader(int16(e.VBucket), string(metadata))
+	filterHeader, hBuilder := c.makeVbFilterHeader(int16(vb), string(metadata))
 
 	msg := &msgToTransmit{
 		msg: &message{
@@ -423,7 +449,7 @@ func (c *Consumer) sendVbFilterData(e *memcached.DcpEvent, seqNo uint64) {
 
 	c.sendMessage(msg)
 	logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d sending filter data to C++",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, seqNo)
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNo)
 }
 
 func (c *Consumer) sendUpdateProcessedSeqNo(vb uint16, seqNo uint64) {
@@ -480,6 +506,7 @@ func (c *Consumer) sendMessageLoop() {
 		case <-c.socketWriteTicker.C:
 			if c.sendMsgCounter > 0 && c.conn != nil {
 				if atomic.LoadUint32(&c.isTerminateRunning) == 1 || c.stoppingConsumer {
+					c.socketWriteLoopStopAckCh <- struct{}{}
 					return
 				}
 
@@ -490,8 +517,9 @@ func (c *Consumer) sendMessageLoop() {
 					defer c.sendMsgBufferRWMutex.Unlock()
 
 					if c.conn == nil {
-						logging.Infof("%s [%s:%s:%d] connection socket closed, bailing out",
+						logging.Infof("%s [%s:%s:%d] stoppingConsumer: %t connection socket closed, bailing out",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer)
+						c.socketWriteLoopStopAckCh <- struct{}{}
 						return
 					}
 
@@ -500,7 +528,8 @@ func (c *Consumer) sendMessageLoop() {
 						logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, err)
 
-						if c.stoppingConsumer {
+						if atomic.LoadUint32(&c.isTerminateRunning) == 1 || c.stoppingConsumer {
+							c.socketWriteLoopStopAckCh <- struct{}{}
 							return
 						}
 

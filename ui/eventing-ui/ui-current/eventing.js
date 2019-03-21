@@ -84,42 +84,56 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             self.openSettings = function(appName) {
                 $uibModal.open({
-                    templateUrl: '../_p/ui/event/ui-current/fragments/app-settings.html',
-                    controller: 'SettingsCtrl',
-                    controllerAs: 'formCtrl',
-                    resolve: {
-                        appName: [function() {
-                            return appName;
-                        }],
-                        bucketsResolve: ['ApplicationService',
-                            function(ApplicationService) {
-                                // Getting the list of buckets from server.
-                                return ApplicationService.server.getLatestBuckets();
-                            }
-                        ],
-                        savedApps: ['ApplicationService',
-                            function(ApplicationService) {
-                                return ApplicationService.tempStore.getAllApps();
-                            }
-                        ],
-                        isAppDeployed: ['ApplicationService',
-                            function(ApplicationService) {
-                                return ApplicationService.tempStore.isAppDeployed(appName)
-                                    .then(function(isDeployed) {
-                                        return isDeployed;
-                                    })
-                                    .catch(function(errResponse) {
-                                        console.error('Unable to get deployed apps list', errResponse);
-                                    });
-                            }
-                        ],
-                        logFileLocation: ['ApplicationService',
-                            function(ApplicationService) {
-                                return ApplicationService.server.getLogFileLocation();
-                            }
-                        ]
-                    }
-                });
+                        templateUrl: '../_p/ui/event/ui-current/fragments/app-settings.html',
+                        controller: 'SettingsCtrl',
+                        controllerAs: 'formCtrl',
+                        resolve: {
+                            appName: [function() {
+                                return appName;
+                            }],
+                            bucketsResolve: ['ApplicationService',
+                                function(ApplicationService) {
+                                    // Getting the list of buckets from server.
+                                    return ApplicationService.server.getLatestBuckets();
+                                }
+                            ],
+                            savedApps: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.tempStore.getAllApps();
+                                }
+                            ],
+                            isAppDeployed: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.tempStore.isAppDeployed(appName)
+                                        .then(function(isDeployed) {
+                                            return isDeployed;
+                                        })
+                                        .catch(function(errResponse) {
+                                            console.error('Unable to get deployed apps list', errResponse);
+                                        });
+                                }
+                            ],
+                            isAppPaused: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.tempStore.isAppPaused(appName)
+                                        .then(function(isPaused) {
+                                            return isPaused;
+                                        })
+                                        .catch(function(errResponse) {
+                                            console.error('Unable to get function status', errResponse);
+                                        });
+                                }
+                            ],
+                            logFileLocation: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.server.getLogFileLocation();
+                                }
+                            ]
+                        }
+                    }).result
+                    .catch(function(errResponse) {
+                        console.log(errResponse);
+                    });
             };
 
             self.toggleDeployment = function(app) {
@@ -132,17 +146,30 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 if (app.settings.deployment_status) {
                     undeployApp(app, deploymentScope);
                 } else {
-                    deployApp(app, deploymentScope);
+                    changeState('deploy', app, deploymentScope);
                 }
             };
 
-            function deployApp(app, scope) {
+            self.toggleProcessing = function(app) {
+                var processingScope = $scope.$new(true);
+                processingScope.appName = app.appname;
+                processingScope.actionTitle = app.settings.processing_status ? 'Pause' : 'Resume';
+                processingScope.action = app.settings.processing_status ? 'pause' : 'resume';
+                processingScope.cleanupTimers = false;
+
+                if (app.settings.processing_status) {
+                    changeState('pause', app, processingScope);
+                } else {
+                    changeState('resume', app, processingScope);
+                }
+            };
+
+            function changeState(operation, app, scope) {
                 var appClone = app.clone();
                 scope.settings = {};
                 scope.settings.cleanupTimers = false;
                 scope.settings.changeFeedBoundary = 'everything';
 
-                // Open dialog to confirm application deployment.
                 $uibModal.open({
                         templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
                         scope: scope
@@ -151,23 +178,50 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         return ApplicationService.primaryStore.getDeployedApps();
                     })
                     .then(function(response) {
-                        if (appClone.appname in response.data) {
-                            return $q.reject({
-                                data: {
-                                    runtime_info: `${appClone.appname} is being undeployed. Please try later.`
+                        switch (operation) {
+                            case 'deploy':
+                                if (appClone.appname in response.data) {
+                                    return $q.reject({
+                                        data: {
+                                            runtime_info: `${appClone.appname} is being undeployed. Please try later.`
+                                        }
+                                    });
                                 }
-                            });
+                                appClone.settings.dcp_stream_boundary = scope.settings.changeFeedBoundary;
+                                break;
+                            case 'pause':
+                                if (!(appClone.appname in response.data)) {
+                                    return $q.reject({
+                                        data: {
+                                            runtime_info: `${appClone.appname} isn't currently deployed. Only deployed function can be paused.`
+                                        }
+                                    });
+                                }
+                                appClone.settings.dcp_stream_boundary = scope.settings.changeFeedBoundary;
+                                break;
+                            case 'resume':
+                                if (!(appClone.appname in response.data)) {
+                                    return $q.reject({
+                                        data: {
+                                            runtime_info: `${appClone.appname} isn't currently deployed. Only deployed function can be resumed.`
+                                        }
+                                    });
+                                }
+                                appClone.settings.dcp_stream_boundary = "from_prior";
+                                break;
                         }
 
-                        appClone.settings.cleanup_timers = scope.settings.cleanupTimers;
-                        appClone.settings.dcp_stream_boundary = scope.settings.changeFeedBoundary;
-
-                        // Set app to 'deployed & enabled' state and save.
-                        appClone.settings.deployment_status = true;
-                        appClone.settings.processing_status = true;
-                        // Disable edit button till we get the compilation info
-                        self.disableEditButton = true;
-                        return ApplicationService.public.deployApp(appClone);
+                        switch (operation) {
+                            case 'deploy':
+                            case 'resume':
+                                appClone.settings.deployment_status = true;
+                                appClone.settings.processing_status = true;
+                                return ApplicationService.public.deployApp(appClone);
+                            case 'pause':
+                                appClone.settings.deployment_status = true;
+                                appClone.settings.processing_status = false;
+                                return ApplicationService.public.updateSettings(appClone);
+                        }
                     })
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
@@ -175,45 +229,40 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
                         }
 
-                        console.log(response.data);
-
-                        // Update settings in the UI.
                         app.settings.cleanup_timers = appClone.settings.cleanup_timers;
                         app.settings.deployment_status = appClone.settings.deployment_status;
                         app.settings.processing_status = appClone.settings.processing_status;
 
-                        // Enable edit button as we got compilation info
                         self.disableEditButton = false;
 
-                        // Show an alert upon successful deployment.
                         var warnings = null;
                         if (response.data && response.data.info) {
                             var info = response.data.info;
                             if (info.warnings && info.warnings.length > 0) {
-                                warnings = info.warnings.join(". <br/>");
+                                warnings = info.warnings.join(". <br>");
                                 ApplicationService.server.showWarningAlert(warnings);
                             }
                         }
+
                         if (warnings == null) {
-                            ApplicationService.server.showSuccessAlert(`${app.appname} will be deployed`);
+                            ApplicationService.server.showSuccessAlert(`${app.appname} will ${operation}`);
                         } else {
-                            ApplicationService.server.showSuccessAlert(`${app.appname} will be deployed with warnings.`);
+                            ApplicationService.server.showSuccessAlert(`${app.appname} will ${operation} with warnings`);
                         }
                     })
                     .catch(function(errResponse) {
                         if (errResponse.data && (errResponse.data.name === 'ERR_HANDLER_COMPILATION')) {
                             var info = errResponse.data.runtime_info.info;
                             app.compilationInfo = info;
-                            ApplicationService.server.showErrorAlert(`Deployment failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
+                            ApplicationService.server.showErrorAlert(`${operation} failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
                         } else if (errResponse.data && (errResponse.data.name === 'ERR_CLUSTER_VERSION')) {
                             var data = errResponse.data;
-                            ApplicationService.server.showErrorAlert(`Deployment failed: ${data.description} - ${data.runtime_info.info}`);
+                            ApplicationService.server.showErrorAlert(`${operation} failed: ${data.description} - ${data.runtime_info.info}`);
                         } else {
                             var info = errResponse.data.runtime_info;
-                            ApplicationService.server.showErrorAlert(`Deployment failed: ` + JSON.stringify(info));
+                            ApplicationService.server.showErrorAlert(`${operation} failed: ` + JSON.stringify(info));
                         }
 
-                        // Enable edit button as we got compilation info
                         self.disableEditButton = false;
                         console.error(errResponse);
                     });
@@ -254,9 +303,15 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             // Callback to export the app.
             self.exportApp = function(appName) {
-                ApplicationService.tempStore.getAllApps()
-                    .then(function(deployedAppsMgr) {
-                        var app = deployedAppsMgr.getAppByName(appName);
+                ApplicationService.public.export()
+                    .then(function(apps) {
+                        var app = apps.data.find(function(app) {
+                            return app.appname === appName;
+                        });
+                        if (!app) {
+                            return $q.reject('app not found');
+                        }
+
                         var fileName = appName + '.json';
 
                         // Create a new blob of the app.
@@ -268,8 +323,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         // Save the file.
                         saveAs(fileToSave, fileName);
                     })
-                    .catch(function(errResponse) {
-                        console.error('Failed to get apps from server', errResponse);
+                    .catch(function() {
+                        console.error('Failed to export the Function');
                     });
             };
 
@@ -344,7 +399,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
                     }).result
                     .then(function(repsonse) { // Upon continue.
-                        creationScope.appModel.depcfg.buckets = ApplicationService.convertBindingToConfig(creationScope.bindings);
+                        Object.assign(creationScope.appModel.depcfg, ApplicationService.convertBindingToConfig(creationScope.bindings));
                         creationScope.appModel.fillWithMissingDefaults();
 
                         // When we import the application, we want it to be in
@@ -353,7 +408,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         creationScope.appModel.settings.deployment_status = false;
 
                         // Deadline timeout must be greater and execution timeout.
-                        creationScope.appModel.settings.deadline_timeout = creationScope.appModel.settings.execution_timeout + 2;
+                        if (creationScope.appModel.settings.hasOwnProperty('execution_timeout')) {
+                            creationScope.appModel.settings.deadline_timeout = creationScope.appModel.settings.execution_timeout + 2;
+                        }
 
                         ApplicationService.local.createApp(creationScope.appModel);
                         return $state.transitionTo('app.admin.eventing.handler', {
@@ -386,7 +443,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 scope.bindings.push({
                     type: 'alias',
                     name: '',
-                    value: ''
+                    value: '',
+                    access: 'r',
+                    auth_type: 'no-auth',
+                    cookies: 'allow'
                 });
                 createApp(scope);
             };
@@ -422,13 +482,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                             var scope = $scope.$new(true);
                             scope.appModel = new ApplicationModel(app);
-                            scope.bindings = ApplicationService.getBindingFromConfig(app.depcfg.buckets);
+                            scope.bindings = ApplicationService.getBindingFromConfig(app.depcfg);
                             if (!scope.bindings.length) {
                                 // Add a sample row of bindings.
                                 scope.bindings.push({
                                     type: 'alias',
                                     name: '',
-                                    value: ''
+                                    value: '',
+                                    access: 'r'
                                 });
                             }
 
@@ -514,9 +575,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
     ])
     // Controller for settings.
     .controller('SettingsCtrl', ['$q', '$timeout', '$scope', 'ApplicationService', 'FormValidationService',
-        'appName', 'bucketsResolve', 'savedApps', 'isAppDeployed', 'logFileLocation',
+        'appName', 'bucketsResolve', 'savedApps', 'isAppDeployed', 'isAppPaused', 'logFileLocation',
         function($q, $timeout, $scope, ApplicationService, FormValidationService,
-            appName, bucketsResolve, savedApps, isAppDeployed, logFileLocation) {
+            appName, bucketsResolve, savedApps, isAppDeployed, isAppPaused, logFileLocation) {
             var self = this,
                 appModel = ApplicationService.local.getAppByName(appName);
 
@@ -524,13 +585,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.showSuccessAlert = false;
             self.showWarningAlert = false;
             self.isAppDeployed = isAppDeployed;
+            self.isAppPaused = isAppPaused;
             self.logFileLocation = logFileLocation;
             self.sourceAndBindingSame = false;
 
             // Need to initialize buckets if they are empty,
             // otherwise self.saveSettings() would compare 'null' with '[]'.
             appModel.depcfg.buckets = appModel.depcfg.buckets ? appModel.depcfg.buckets : [];
-            self.bindings = ApplicationService.getBindingFromConfig(appModel.depcfg.buckets);
+            self.bindings = ApplicationService.getBindingFromConfig(appModel.depcfg);
 
             // TODO : The following two lines may not be needed as we don't allow the user to edit
             //			the source and metadata buckets in the settings page.
@@ -569,26 +631,38 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             };
 
             self.saveSettings = function(dismissDialog, closeDialog) {
-                var bindings = ApplicationService.convertBindingToConfig(self.bindings);
-                if (JSON.stringify(appModel.depcfg.buckets) !== JSON.stringify(bindings)) {
-                    $scope.appModel.depcfg.buckets = bindings;
+                var config = JSON.parse(JSON.stringify(appModel.depcfg));
+                Object.assign(config, ApplicationService.convertBindingToConfig(self.bindings));
+
+                if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config)) {
+                    $scope.appModel.depcfg = config;
                     ApplicationService.server.showWarningAlert('Bindings changed. Deploy for changes to take effect.');
                 }
 
                 // Deadline timeout must be greater than execution timeout.
-                $scope.appModel.settings.deadline_timeout = $scope.appModel.settings.execution_timeout + 2;
+                if ($scope.appModel.settings.hasOwnProperty('execution_timeout')) {
+                    $scope.appModel.settings.deadline_timeout = $scope.appModel.settings.execution_timeout + 2;
+                }
 
                 // Update local changes.
                 appModel.settings = $scope.appModel.settings;
-                appModel.depcfg.buckets = bindings;
+                appModel.depcfg = config;
 
                 ApplicationService.tempStore.isAppDeployed(appName)
                     .then(function(isDeployed) {
-                        if (isDeployed) {
-                            return ApplicationService.public.updateSettings($scope.appModel);
-                        } else {
-                            return ApplicationService.tempStore.saveApp($scope.appModel);
-                        }
+                        ApplicationService.tempStore.isAppPaused(appName)
+                            .then(function(isPaused) {
+                                if (isDeployed && isPaused) {
+                                    return ApplicationService.tempStore.saveApp($scope.appModel);
+                                } else if (isDeployed) {
+                                    return ApplicationService.public.updateSettings($scope.appModel);
+                                } else {
+                                    return ApplicationService.tempStore.saveApp($scope.appModel);
+                                }
+                            })
+                            .catch(function(errResponse) {
+                                console.error('Failed to get function status', errResponse);
+                            })
                     })
                     .catch(function(errResponse) {
                         console.error('Unable to get deployed apps list', errResponse);
@@ -620,7 +694,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.debugToolTip = 'Displays a URL that connects the Chrome Dev-Tools with the application handler. Code must be deployed in order to debug.';
             self.disableCancelButton = true;
             self.disableSaveButton = true;
-            self.editorDisabled = app.settings.deployment_status || app.settings.processing_status;
+            self.editorDisabled = app.settings.deployment_status && app.settings.processing_status;
             self.debugDisabled = !(app.settings.deployment_status && app.settings.processing_status);
 
             $state.current.data.title = app.appname;
@@ -653,7 +727,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                 editor.on('focus', function(event) {
                     if (self.editorDisabled) {
-                        ApplicationService.server.showWarningAlert('Undeploy the application to edit!');
+                        ApplicationService.server.showWarningAlert('Undeploy/Pause the function to edit!');
                     }
                 });
 
@@ -719,7 +793,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             ApplicationService.server.showErrorAlert(`Function ${app.appname} may be undergoing bootstrap. Please try later.`);
                             return;
                         }
-
                         return ApplicationService.public.getConfig();
                     })
                     .then(function(response) {
@@ -727,14 +800,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             ApplicationService.server.showErrorAlert('Unable to start debugger as it is disabled. Please enable it under Eventing Settings');
                             return;
                         }
-
+                        return ApplicationService.server.getDefaultPool();
+                    })
+                    .then(function(response) {
                         if (!isDebugOn) {
                             debugScope.url = 'Waiting for mutation';
                             debugScope.urlReceived = false;
                             isDebugOn = true;
 
                             // Starts the debugger agent.
-                            ApplicationService.debug.start(app.appname)
+                            ApplicationService.debug.start(app.appname, response.data)
                                 .then(function(response) {
                                     var responseCode = ApplicationService.status.getResponseCode(response);
                                     if (responseCode) {
@@ -781,6 +856,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                     getDebugUrl();
                                 })
                                 .catch(function(errResponse) {
+                                    ApplicationService.server.showErrorAlert('Unexpected error occurred. Please try again.');
                                     console.error('Failed to start debugger', errResponse);
                                 });
                         }
@@ -802,6 +878,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
                     })
                     .catch(function(errResponse) {
+                        ApplicationService.server.showErrorAlert('Unexpected error occurred. Please try again.');
                         console.error('Unable to start debugger', errResponse);
                     });
             };
@@ -877,6 +954,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 public: {
                     status: function() {
                         return $http.get('/_p/event/api/v1/status');
+                    },
+                    export: function() {
+                        return $http.get('/_p/event/api/v1/export');
                     },
                     updateSettings: function(appModel) {
                         return $http({
@@ -981,6 +1061,22 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 return deployedAppsMgr.getAppByName(appName).settings.deployment_status;
                             });
                     },
+                    isAppPaused: function(appName) {
+                        return $http.get('/_p/event/getAppTempStore/')
+                            .then(function(response) {
+                                var pausedAppsMgr = new ApplicationManager();
+
+                                for (var pausedApp of response.data) {
+                                    pausedAppsMgr.pushApp(new Application(pausedApp))
+                                }
+
+                                return pausedAppsMgr;
+                            })
+                            .then(function(pausedAppsMgr) {
+                                return pausedAppsMgr.getAppByName(appName).settings.deployment_status &&
+                                    !pausedAppsMgr.getAppByName(appName).settings.processing_status;
+                            })
+                    },
                     deleteApp: function(appName) {
                         return $http.get('/_p/event/deleteAppTempStore/?name=' + appName);
                     }
@@ -994,7 +1090,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     }
                 },
                 debug: {
-                    start: function(appName) {
+                    start: function(appName, nodesInfo) {
                         return $http({
                             url: '/_p/event/startDebugger/?name=' + appName,
                             method: 'POST',
@@ -1004,7 +1100,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             headers: {
                                 'Content-Type': 'application/json'
                             },
-                            data: {}
+                            data: nodesInfo
                         });
                     },
                     getUrl: function(appName) {
@@ -1046,6 +1142,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     }
                 },
                 server: {
+                    getDefaultPool: function() {
+                        return $http.get('/pools/default');
+                    },
                     getLogFileLocation: function() {
                         return $http.get('/_p/event/logFileLocation')
                             .then(function(response) {
@@ -1082,8 +1181,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     isEventingRunning: function() {
                         return mnPoolDefault.get()
                             .then(function(response) {
-                                var isEventingRunning = _.indexOf(response.thisNode.services, 'eventing') > -1;
-                                return isEventingRunning;
+                                // in 6.5 and later, sticky proxy allows eventing service on any node
+                                var nlist = mnPoolDefault.export.compat.atLeast65 ? response.nodes : [response.thisNode];
+                                for (var ni = 0; ni < nlist.length; ni++) {
+                                    if (_.indexOf(nlist[ni].services, 'eventing') > -1) {
+                                        return true;
+                                    }
+                                }
+                                return false;
                             }).catch(function(errResponse) {
                                 console.error('Unable to get server nodes', errResponse);
                             });
@@ -1110,28 +1215,148 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 },
                 convertBindingToConfig: function(bindings) {
                     // A binding is of the form -
-                    // [{type:'alias', name:'', value:''}]
-                    var config = [];
+                    // [{type:'', name:'', value:'', auth_type:'no-auth', cookies:'allow', access:'r'}]
+                    var config = {
+                        buckets: [],
+                        curl: []
+                    };
                     for (var binding of bindings) {
                         if (binding.type === 'alias' && binding.name && binding.value) {
                             var element = {};
                             element[binding.type] = binding.value;
                             element.bucket_name = binding.name;
-                            config.push(element);
+                            element.access = binding.access;
+                            config.buckets.push(element);
+                        }
+                        if (binding.type === 'url' && binding.hostname && binding.value) {
+                            config.curl.push({
+                                hostname: binding.hostname,
+                                value: binding.value
+                            });
+
+                            switch (binding.auth_type) {
+                                case 'digest':
+                                    Object.assign(config.curl[config.curl.length - 1], {
+                                        auth_type: 'digest',
+                                        username: binding.username,
+                                        password: binding.password
+                                    });
+                                    break;
+
+                                case 'basic':
+                                    Object.assign(config.curl[config.curl.length - 1], {
+                                        auth_type: 'basic',
+                                        username: binding.username,
+                                        password: binding.password
+                                    });
+                                    break;
+
+                                case 'bearer':
+                                    Object.assign(config.curl[config.curl.length - 1], {
+                                        auth_type: 'bearer',
+                                        bearer_key: binding.bearer_key
+                                    });
+                                    break;
+
+                                case 'no-auth':
+                                default:
+                                    Object.assign(config.curl[config.curl.length - 1], {
+                                        auth_type: 'no-auth',
+                                    });
+                            }
+
+                            switch (binding.cookies) {
+                                case 'allow':
+                                    Object.assign(config.curl[config.curl.length - 1], {
+                                        cookies: 'allow'
+                                    });
+                                    break;
+
+                                case 'disallow':
+                                default:
+                                    Object.assign(config.curl[config.curl.length - 1], {
+                                        cookies: 'disallow'
+                                    });
+                            }
                         }
                     }
                     return config;
                 },
                 getBindingFromConfig: function(config) {
                     var bindings = [];
-                    if (config) {
-                        for (var c of config) {
-                            var element = {};
-                            element.type = 'alias';
-                            element.name = c.bucket_name;
-                            element.value = c.alias;
-                            bindings.push(element);
+
+                    function addBucketBindings(bucketConfigs) {
+                        for (var config of bucketConfigs) {
+                            bindings.push({
+                                type: 'alias',
+                                name: config.bucket_name,
+                                value: config.alias,
+                                access: config.access ? config.access : (config.source_bucket === config.bucket_name ? 'r' : 'rw')
+                            });
                         }
+                    }
+
+                    function addCurlBindings(curlConfigs) {
+                        for (var config of curlConfigs) {
+                            bindings.push({
+                                type: 'url',
+                                hostname: config.hostname,
+                                value: config.value
+                            });
+
+                            switch (config.auth_type) {
+                                case 'basic':
+                                    Object.assign(bindings[bindings.length - 1], {
+                                        auth_type: 'basic',
+                                        username: config.username,
+                                        password: config.password
+                                    });
+                                    break;
+
+                                case 'digest':
+                                    Object.assign(bindings[bindings.length - 1], {
+                                        auth_type: 'digest',
+                                        username: config.username,
+                                        password: config.password
+                                    });
+                                    break;
+
+                                case 'bearer':
+                                    Object.assign(bindings[bindings.length - 1], {
+                                        auth_type: 'bearer',
+                                        bearer_key: config.bearer_key
+                                    });
+                                    break;
+
+                                case 'no-auth':
+                                default:
+                                    Object.assign(bindings[bindings.length - 1], {
+                                        auth_type: 'no-auth',
+                                    });
+                            }
+
+                            switch (config.cookies) {
+                                case 'allow':
+                                    Object.assign(bindings[bindings.length - 1], {
+                                        cookies: 'allow'
+                                    });
+                                    break;
+
+                                case 'disallow':
+                                default:
+                                    Object.assign(bindings[bindings.length - 1], {
+                                        cookies: 'disallow'
+                                    });
+                                    break;
+                            }
+                        }
+                    }
+
+                    if (config && config.buckets) {
+                        addBucketBindings(config.buckets);
+                    }
+                    if (config && config.curl) {
+                        addCurlBindings(config.curl);
                     }
                     return bindings;
                 }

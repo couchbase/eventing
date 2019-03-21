@@ -43,10 +43,10 @@ func (c *Consumer) controlRoutine() error {
 			err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-				return common.ErrRetryTimeout
+				return err
 			}
 
-			c.closeAllRunningDcpFeeds()
+			c.CloseAllRunningDcpFeeds()
 
 			c.stopVbOwnerTakeoverCh = make(chan struct{})
 
@@ -212,7 +212,7 @@ func (c *Consumer) controlRoutine() error {
 				err = c.updateCheckpoint(vbKey, vb, &vbBlob)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return common.ErrRetryTimeout
+					return err
 				}
 			}
 
@@ -247,13 +247,13 @@ func (c *Consumer) controlRoutine() error {
 					c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, true, &isNoEnt, true)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return common.ErrRetryTimeout
+					return err
 				}
 
-				err = c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, false)
+				err = c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return common.ErrRetryTimeout
+					return err
 				}
 				if err != nil {
 					c.vbsStreamRRWMutex.Lock()
@@ -288,9 +288,8 @@ func (c *Consumer) controlRoutine() error {
 				goto retryVbsRemainingToRestream
 			}
 
-		case <-c.stopControlRoutineCh:
-			logging.Infof("%s [%s:%s:%d] Exiting control routine",
-				logPrefix, c.workerName, c.tcpPort, c.Pid())
+		case <-c.stopConsumerCh:
+			logging.Infof("%s [%s:%s:%d] Exiting control routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return nil
 		}
 	}

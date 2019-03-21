@@ -17,43 +17,44 @@ import (
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 )
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingDir, kvPort,
-	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string,
+	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string, cleanupTimers bool,
 	memoryQuota int64, numVbuckets int, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
-		appName:                    appName,
-		bootstrapFinishCh:          make(chan struct{}, 1),
-		consumerListeners:          make(map[common.EventingConsumer]net.Listener),
-		dcpConfig:                  make(map[string]interface{}),
-		ejectNodeUUIDs:             make([]string, 0),
-		eventingNodeUUIDs:          make([]string, 0),
-		feedbackListeners:          make(map[common.EventingConsumer]net.Listener),
-		handleV8ConsumerMutex:      &sync.Mutex{},
-		kvPort:                     kvPort,
-		listenerRWMutex:            &sync.RWMutex{},
-		metakvAppHostPortsPath:     metakvAppHostPortsPath,
-		notifyInitCh:               make(chan struct{}, 2),
-		notifySettingsChangeCh:     make(chan struct{}, 1),
-		notifySupervisorCh:         make(chan struct{}),
-		nsServerPort:               nsServerPort,
-		numVbuckets:                numVbuckets,
-		pauseProducerCh:            make(chan struct{}, 1),
-		plannerNodeMappingsRWMutex: &sync.RWMutex{},
-		MemoryQuota:                memoryQuota,
-		pollBucketStopCh:           make(chan struct{}, 1),
-		retryCount:                 -1,
-		runningConsumersRWMutex:    &sync.RWMutex{},
-		seqsNoProcessed:            make(map[int]int64),
-		seqsNoProcessedRWMutex:     &sync.RWMutex{},
-		statsRWMutex:               &sync.RWMutex{},
-		superSup:                   superSup,
-		topologyChangeCh:           make(chan *common.TopologyChangeMsg, 10),
-		updateStatsStopCh:          make(chan struct{}, 1),
-		uuid:                       uuid,
+		appName:                      appName,
+		bootstrapFinishCh:            make(chan struct{}, 1),
+		cleanupTimers:                cleanupTimers,
+		consumerListeners:            make(map[common.EventingConsumer]net.Listener),
+		dcpConfig:                    make(map[string]interface{}),
+		ejectNodeUUIDs:               make([]string, 0),
+		eventingNodeUUIDs:            make([]string, 0),
+		feedbackListeners:            make(map[common.EventingConsumer]net.Listener),
+		handleV8ConsumerMutex:        &sync.Mutex{},
+		kvPort:                       kvPort,
+		listenerRWMutex:              &sync.RWMutex{},
+		metakvAppHostPortsPath:       metakvAppHostPortsPath,
+		notifyInitCh:                 make(chan struct{}, 2),
+		notifySettingsChangeCh:       make(chan struct{}, 1),
+		notifySupervisorCh:           make(chan struct{}),
+		nsServerPort:                 nsServerPort,
+		numVbuckets:                  numVbuckets,
+		pauseProducerCh:              make(chan struct{}, 1),
+		plannerNodeMappingsRWMutex:   &sync.RWMutex{},
+		MemoryQuota:                  memoryQuota,
+		retryCount:                   -1,
+		runningConsumersRWMutex:      &sync.RWMutex{},
+		seqsNoProcessed:              make(map[int]int64),
+		seqsNoProcessedRWMutex:       &sync.RWMutex{},
+		statsRWMutex:                 &sync.RWMutex{},
+		stopCh:                       make(chan struct{}, 1),
+		superSup:                     superSup,
+		topologyChangeCh:             make(chan *common.TopologyChangeMsg, 10),
+		uuid:                         uuid,
 		vbEventingNodeAssignRWMutex:  &sync.RWMutex{},
 		vbEventingNodeRWMutex:        &sync.RWMutex{},
 		vbMapping:                    make(map[uint16]*vbNodeWorkerMapping),
@@ -87,6 +88,10 @@ func (p *Producer) Serve() {
 			p.superSup.CleanupProducer(p.appName, false)
 		}
 	}()
+
+	p.isBootstrapping = true
+	logging.Infof("%s [%s:%d] Bootstrapping status: %t", logPrefix, p.appName, p.LenRunningConsumers(), p.isBootstrapping)
+
 	err := p.parseDepcfg()
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
@@ -163,7 +168,7 @@ func (p *Producer) Serve() {
 		Timeout: supervisorTimeout,
 	}
 	p.workerSupervisor = suptree.New(p.appName, spec)
-	go p.workerSupervisor.ServeBackground()
+	p.workerSupervisor.ServeBackground(p.appName)
 
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, gocbConnectMetaBucketCallback, p)
 	if err == common.ErrRetryTimeout {
@@ -174,6 +179,9 @@ func (p *Producer) Serve() {
 	p.startBucket()
 
 	p.bootstrapFinishCh <- struct{}{}
+
+	p.isBootstrapping = false
+	logging.Infof("%s [%s:%d] Bootstrapping status: %t", logPrefix, p.appName, p.LenRunningConsumers(), p.isBootstrapping)
 
 	go p.updateStats()
 
@@ -245,15 +253,38 @@ func (p *Producer) Serve() {
 				continue
 			}
 
-			logLevel := settings["log_level"].(string)
-			logging.SetLogLevel(util.GetLogLevel(logLevel))
-			p.updateAppLogSetting(settings)
+			logLevel, ok := settings["log_level"].(string)
+			if ok {
+				logging.SetLogLevel(util.GetLogLevel(logLevel))
+				p.updateAppLogSetting(settings)
+			}
 
 		case <-p.pauseProducerCh:
 
 			// This routine cleans up everything apart from metadataBucketHandle,
 			// which would be needed to clean up metadata bucket
 			logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
+
+			for _, c := range p.getConsumers() {
+				c.WorkerVbMapUpdate(nil)
+				c.ResetBootstrapDone()
+				c.CloseAllRunningDcpFeeds()
+			}
+
+			err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, checkIfQueuesAreDrained, p)
+			if err == common.ErrRetryTimeout {
+				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+				return
+			}
+
+			for vb := 0; vb < p.numVbuckets; vb++ {
+				if p.app.UsingTimer {
+					store, found := timers.Fetch(p.GetMetadataPrefix(), vb)
+					if found {
+						store.Free()
+					}
+				}
+			}
 
 			for _, c := range p.getConsumers() {
 				p.stopAndDeleteConsumer(c)
@@ -278,6 +309,18 @@ func (p *Producer) Serve() {
 			}
 			p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
 			p.listenerRWMutex.Unlock()
+
+			if p.appLogWriter != nil {
+				p.appLogWriter.Close()
+			}
+
+			if !p.stopChClosed {
+				close(p.stopCh)
+				p.stopChClosed = true
+			}
+
+			logging.Infof("%s [%s:%d] Closed stop chan and app log writer handle",
+				logPrefix, p.appName, p.LenRunningConsumers())
 
 			p.notifySupervisorCh <- struct{}{}
 
@@ -315,7 +358,7 @@ func (p *Producer) Serve() {
 }
 
 // Stop implements suptree.Service interface
-func (p *Producer) Stop() {
+func (p *Producer) Stop(context string) {
 	logPrefix := "Producer::Stop"
 
 	logging.Infof("%s [%s:%d] Gracefully shutting down producer routine",
@@ -372,12 +415,13 @@ func (p *Producer) Stop() {
 	logging.Infof("%s [%s:%d] Closed function log writer handle",
 		logPrefix, p.appName, p.LenRunningConsumers())
 
-	if p.updateStatsStopCh != nil {
-		p.updateStatsStopCh <- struct{}{}
+	if !p.stopChClosed {
+		close(p.stopCh)
+		p.stopChClosed = true
 	}
 
-	if p.pollBucketStopCh != nil {
-		p.pollBucketStopCh <- struct{}{}
+	if p.workerSupervisor != nil {
+		p.workerSupervisor.Stop(p.appName)
 	}
 
 	logging.Infof("%s [%s:%d] Exiting from Producer::Stop routine",
@@ -423,8 +467,12 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	// https://github.com/golang/go/issues/6895 - uds pathname limited to 108 chars
 
 	// Adding host port in uds path in order to make it across different nodes on a cluster_run setup
-	udsSockPath := fmt.Sprintf("%s/%s_%s.sock", os.TempDir(), p.nsServerHostPort, workerName)
-	feedbackSockPath := fmt.Sprintf("%s/feedback_%s_%s.sock", os.TempDir(), p.nsServerHostPort, workerName)
+	pathNameSuffix := fmt.Sprintf("%s_%d_%d.sock", p.nsServerHostPort, index, p.app.FunctionID)
+	udsSockPath := fmt.Sprintf("%s/%s", os.TempDir(), pathNameSuffix)
+	feedbackSockPath := fmt.Sprintf("%s/f_%s", os.TempDir(), pathNameSuffix)
+
+	logging.Infof("%s [%s:%d] udsSockPath len: %d dump: %s feedbackSockPath len: %d dump: %s",
+		logPrefix, p.appName, p.LenRunningConsumers(), len(udsSockPath), udsSockPath, len(feedbackSockPath), feedbackSockPath)
 
 	if runtime.GOOS == "windows" || len(feedbackSockPath) > udsSockPathLimit {
 		feedbackListener, err = net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
@@ -493,7 +541,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		}
 	}()
 
-	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid,
+	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid, p.nsServerPort,
 		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.numVbuckets,
 		&p.retryCount, vbEventingNodeAssignMap, workerVbucketMap)
 
@@ -521,18 +569,29 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	go func(listener net.Listener, c *consumer.Consumer) {
 		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
+			acceptedCh := make(chan acceptedConn, 1)
+			go func() {
+				conn, err := listener.Accept()
+				acceptedCh <- acceptedConn{conn, err}
+			}()
 
-			logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, conn: %v",
-				logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), conn)
-			c.SetConnHandle(conn)
-			c.SignalConnected()
-			err = c.HandleV8Worker()
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+			select {
+			case accepted := <-acceptedCh:
+				if accepted.err != nil {
+					logging.Errorf("%s [%s:%d] Accept failed in main loop", logPrefix, p.appName, p.LenRunningConsumers())
+					continue
+				}
+				logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, conn: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), accepted.conn)
+				c.SetConnHandle(accepted.conn)
+				c.SignalConnected()
+				err = c.HandleV8Worker()
+				if err == common.ErrRetryTimeout {
+					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+					return
+				}
+			case <-p.stopCh:
+				logging.Infof("%s [%s:%d] Got message on stop chan, exiting", logPrefix, p.appName, p.LenRunningConsumers())
 				return
 			}
 		}
@@ -540,15 +599,26 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	go func(feedbackListener net.Listener, c *consumer.Consumer) {
 		for {
-			conn, err := feedbackListener.Accept()
-			if err != nil {
+			acceptedCh := make(chan acceptedConn, 1)
+			go func() {
+				conn, err := feedbackListener.Accept()
+				acceptedCh <- acceptedConn{conn, err}
+			}()
+
+			select {
+			case accepted := <-acceptedCh:
+				if accepted.err != nil {
+					logging.Errorf("%s [%s:%d] Accept failed in feedback loop", logPrefix, p.appName, p.LenRunningConsumers())
+					continue
+				}
+				logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, feedback conn: %v",
+					logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), accepted.conn)
+				c.SetFeedbackConnHandle(accepted.conn)
+				c.SignalFeedbackConnected()
+			case <-p.stopCh:
+				logging.Infof("%s [%s:%d] Got message on stop chan, exiting feedback loop", logPrefix, p.appName, p.LenRunningConsumers())
 				return
 			}
-			logging.Infof("%s [%s:%d] Got request from cpp worker: %s index: %d, feedback conn: %v",
-				logPrefix, p.appName, p.LenRunningConsumers(), c.ConsumerName(), c.Index(), conn)
-
-			c.SetFeedbackConnHandle(conn)
-			c.SignalFeedbackConnected()
 		}
 	}(feedbackListener, c)
 }
@@ -590,7 +660,7 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 	logging.Infof("%s [%s:%d] IndexToPurge: %d ConsumerIndex: %d Closing down listener handles",
 		logPrefix, p.appName, p.LenRunningConsumers(), indexToPurge, consumerIndex)
 
-	p.listenerRWMutex.RLock()
+	p.listenerRWMutex.Lock()
 	if conn, ok := p.consumerListeners[c]; ok {
 		if conn != nil {
 			conn.Close()
@@ -604,7 +674,7 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 		}
 		delete(p.feedbackListeners, c)
 	}
-	p.listenerRWMutex.RUnlock()
+	p.listenerRWMutex.Unlock()
 
 	logging.Infof("%s [%s:%d] ConsumerIndex: %d respawning the Eventing.Consumer instance",
 		logPrefix, p.appName, p.LenRunningConsumers(), consumerIndex)
@@ -668,28 +738,28 @@ func (p *Producer) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string) {
 	p.eventingNodeUUIDs = keepNodes
 
 	for _, eventingConsumer := range p.getConsumers() {
-		eventingConsumer.UpdateEventingNodesUUIDs(keepNodes)
+		eventingConsumer.UpdateEventingNodesUUIDs(keepNodes, ejectNodes)
 	}
 
 }
 
+// SignalStartDebugger sets up necessary flags to signal debugger start
 func (p *Producer) SignalStartDebugger(token string) error {
 	p.debuggerToken = token
 	p.trapEvent = true
 	return nil
 }
 
+// SignalStopDebugger signals to stop debugger session
 func (p *Producer) SignalStopDebugger() error {
 	logPrefix := "Producer::SignalStopDebugger"
 
 	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
 	var instance common.DebuggerInstance
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
-		getOpCallback, p, key, &instance)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, key, &instance)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout",
-			logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return err
 	}
 
 	consumers := p.getConsumers()
@@ -707,9 +777,8 @@ func (p *Producer) SignalStopDebugger() error {
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
 		clearDebuggerInstanceCallback, p)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout",
-			logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		return err
 	}
 	return nil
 }
@@ -750,7 +819,8 @@ func (p *Producer) updateStats() {
 				return
 			}
 
-		case <-p.updateStatsStopCh:
+		case <-p.stopCh:
+			logging.Infof("%s [%s:%d] Got message on stop chan, exiting", logPrefix, p.appName, p.LenRunningConsumers())
 			p.updateStatsTicker.Stop()
 			return
 
@@ -803,7 +873,7 @@ func (p *Producer) pollForDeletedVbs() {
 				p.superSup.StopProducer(p.appName, true)
 			}
 
-		case <-p.pollBucketStopCh:
+		case <-p.stopCh:
 			p.pollBucketTicker.Stop()
 			return
 		}

@@ -24,7 +24,9 @@ std::atomic<int64_t> e_v8_worker_lost = {0};
 std::atomic<int64_t> delete_events_lost = {0};
 std::atomic<int64_t> timer_events_lost = {0};
 std::atomic<int64_t> mutation_events_lost = {0};
+
 extern std::atomic<int64_t> timer_context_size_exceeded_counter;
+extern std::atomic<int64_t> timer_callback_missing_counter;
 
 std::atomic<int64_t> uv_try_write_failure_counter = {0};
 
@@ -104,8 +106,8 @@ std::vector<char> *AppWorker::GetReadBufferFeedback() {
   return &read_buffer_feedback_;
 }
 
-void AppWorker::InitTcpSock(const std::string &handler_name,
-                            const std::string &handler_uuid,
+void AppWorker::InitTcpSock(const std::string &function_name,
+                            const std::string &function_id,
                             const std::string &user_prefix,
                             const std::string &appname, const std::string &addr,
                             const std::string &worker_id, int bsize, int fbsize,
@@ -120,8 +122,8 @@ void AppWorker::InitTcpSock(const std::string &handler_name,
     uv_ip4_addr(addr.c_str(), feedback_port, &feedback_server_sock_.sock4);
     uv_ip4_addr(addr.c_str(), port, &server_sock_.sock4);
   }
-  handler_name_ = handler_name;
-  handler_uuid_ = handler_uuid;
+  function_name_ = function_name;
+  function_id_ = function_id;
   user_prefix_ = user_prefix;
   app_name_ = appname;
   batch_size_ = bsize;
@@ -153,8 +155,8 @@ void AppWorker::InitTcpSock(const std::string &handler_name,
   main_uv_loop_thr_ = std::move(m_thr);
 }
 
-void AppWorker::InitUDS(const std::string &handler_name,
-                        const std::string &handler_uuid,
+void AppWorker::InitUDS(const std::string &function_name,
+                        const std::string &function_id,
                         const std::string &user_prefix,
                         const std::string &appname, const std::string &addr,
                         const std::string &worker_id, int bsize, int fbsize,
@@ -163,8 +165,8 @@ void AppWorker::InitUDS(const std::string &handler_name,
   uv_pipe_init(&feedback_loop_, &feedback_uds_sock_, 0);
   uv_pipe_init(&main_loop_, &uds_sock_, 0);
 
-  handler_name_ = handler_name;
-  handler_uuid_ = handler_uuid;
+  function_name_ = function_name;
+  function_id_ = function_id;
   user_prefix_ = user_prefix;
   app_name_ = appname;
   batch_size_ = bsize;
@@ -392,6 +394,32 @@ void AppWorker::FlushToConn(uv_stream_t *stream, char *msg, int length) {
   }
 }
 
+std::string ToString(const std::vector<int64_t> &histogram) {
+  std::ostringstream out;
+  for (std::string::size_type i = 0; i < histogram.size(); i++) {
+    if (i == 0) {
+      out << "{";
+    }
+
+    if (histogram[i] > 0) {
+      if ((i > 0) && (out.str().length() > 1)) {
+        out << ",";
+      }
+
+      if (i == 0) {
+        out << R"(")" << HIST_FROM << R"(":)" << histogram[i];
+      } else {
+        out << R"(")" << i * HIST_WIDTH << R"(":)" << histogram[i];
+      }
+    }
+
+    if (i == histogram.size() - 1) {
+      out << "}";
+    }
+  }
+  return out.str();
+}
+
 void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                          message_t *parsed_message) {
   std::string key, val, doc_id, callback_fn, doc_ids_cb_fns, compile_resp;
@@ -406,6 +434,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   std::ostringstream lstats, estats, fstats;
   std::map<int, int64_t> agg_lcb_exceptions;
   std::string::size_type i = 0;
+  std::string handler_instance_id;
 
   const flatbuf::payload::Payload *payload;
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
@@ -427,7 +456,6 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       server_settings = new server_settings_t;
 
       handler_config->app_name.assign(payload->app_name()->str());
-      handler_config->curl_timeout = long(payload->curl_timeout());
       handler_config->timer_context_size = payload->timer_context_size();
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();
@@ -451,6 +479,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       server_settings->host_addr.assign(payload->curr_host()->str());
       server_settings->kv_host_port.assign(payload->kv_host_port()->str());
 
+      handler_instance_id = payload->function_instance_id()->str();
+
       LOG(logDebug) << "Loading app:" << app_name_ << std::endl;
 
       v8::V8::InitializeICUDefaultLocation("");
@@ -460,7 +490,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
 
       for (int16_t i = 0; i < thr_count_; i++) {
         V8Worker *w = new V8Worker(platform, handler_config, server_settings,
-                                   handler_name_, handler_uuid_, user_prefix_);
+                                   function_name_, function_id_,
+                                   handler_instance_id, user_prefix_);
 
         LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
         workers_[i] = w;
@@ -484,8 +515,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     case oTerminate:
       break;
     case oGetLatencyStats:
-      latency_buckets = workers_[0]->histogram_->Buckets();
-      agg_hgram.assign(latency_buckets, 0);
+      if (workers_.size() > 0) {
+        latency_buckets = workers_[0]->histogram_->Buckets();
+        agg_hgram.assign(latency_buckets, 0);
+      }
       for (const auto &w : workers_) {
         worker_hgram = w.second->histogram_->Hgram();
         for (std::string::size_type i = 0; i < worker_hgram.size(); i++) {
@@ -493,32 +526,26 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
         }
       }
 
-      lstats.str(std::string());
-
-      for (std::string::size_type i = 0; i < agg_hgram.size(); i++) {
-        if (i == 0) {
-          lstats << "{";
-        }
-
-        if (agg_hgram[i] > 0) {
-          if ((i > 0) && (lstats.str().length() > 1)) {
-            lstats << ",";
-          }
-
-          if (i == 0) {
-            lstats << R"(")" << HIST_FROM << R"(":)" << agg_hgram[i];
-          } else {
-            lstats << R"(")" << i * HIST_WIDTH << R"(":)" << agg_hgram[i];
-          }
-        }
-
-        if (i == agg_hgram.size() - 1) {
-          lstats << "}";
-        }
-      }
-      resp_msg_->msg.assign(lstats.str());
+      resp_msg_->msg.assign(ToString(agg_hgram));
       resp_msg_->msg_type = mV8_Worker_Config;
       resp_msg_->opcode = oLatencyStats;
+      msg_priority_ = true;
+      break;
+    case oGetCurlLatencyStats:
+      if (workers_.size() > 0) {
+        latency_buckets = workers_[0]->curl_latency_->Buckets();
+        agg_hgram.assign(latency_buckets, 0);
+      }
+      for (const auto &w : workers_) {
+        worker_hgram = w.second->curl_latency_->Hgram();
+        for (std::string::size_type i = 0; i < worker_hgram.size(); i++) {
+          agg_hgram[i] += worker_hgram[i];
+        }
+      }
+
+      resp_msg_->msg.assign(ToString(agg_hgram));
+      resp_msg_->msg_type = mV8_Worker_Config;
+      resp_msg_->opcode = oCurlLatencyStats;
       msg_priority_ = true;
       break;
     case oGetFailureStats:
@@ -538,6 +565,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       fstats << R"("mutation_events_lost": )" << mutation_events_lost << ",";
       fstats << R"("timer_context_size_exceeded_counter": )"
              << timer_context_size_exceeded_counter << ",";
+      fstats << R"("timer_callback_missing_counter": )"
+             << timer_callback_missing_counter << ",";
       fstats << R"("delete_events_lost": )" << delete_events_lost << ",";
       fstats << R"("timer_events_lost": )" << timer_events_lost << ",";
       fstats << R"("timestamp" : ")" << GetTimestampNow() << R"(")";
@@ -688,11 +717,14 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                      << parsed_header->metadata << std::endl;
         int vb_no = 0;
         int64_t seq_no = 0;
-        if (kSuccess == workers_[worker_index]->ParseMetadata(
-                            parsed_header->metadata, vb_no, seq_no)) {
+        int skip_ack = 0;
+        if (kSuccess ==
+            workers_[worker_index]->ParseMetadataWithAck(
+                parsed_header->metadata, vb_no, seq_no, skip_ack, true)) {
           auto bucketops_seqno =
               workers_[worker_index]->GetBucketopsSeqno(vb_no);
-          SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno);
+          SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno,
+                        skip_ack);
         }
       } else {
         LOG(logError) << "Filter event lost: worker " << worker_index
@@ -713,17 +745,18 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       }
       break;
     default:
-      LOG(logError) << "Opcode " << getTimerOpcode(parsed_header->opcode)
+      LOG(logError) << "Opcode " << getFilterOpcode(parsed_header->opcode)
                     << "is not implemented for filtering" << std::endl;
       break;
     }
+    break;
   case eTimer:
     switch (getTimerOpcode(parsed_header->opcode)) {
     case oTimer:
-      worker_index = partition_thr_map_[parsed_header->partition];
-      if (workers_[worker_index] != nullptr) {
+      if (workers_[curr_worker_idx_] != nullptr) {
         enqueued_timer_msg_counter++;
-        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
+        workers_[curr_worker_idx_]->Enqueue(parsed_header, parsed_message);
+        curr_worker_idx_ = (curr_worker_idx_ + 1) % thr_count_;
       } else {
         LOG(logError) << "Timer event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -839,8 +872,8 @@ void AppWorker::WriteResponses() {
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
   auto start = std::chrono::system_clock::now();
-  int batch_size = (feedback_batch_size_ & 1) ? (feedback_batch_size_ + 1)
-                                              : feedback_batch_size_;
+  size_t batch_size = (feedback_batch_size_ & 1) ? (feedback_batch_size_ + 1)
+                                                 : feedback_batch_size_;
   while (!thread_exit_cond_.load()) {
     auto sleep = true;
     // Update DocTimers Checkpoint
@@ -894,7 +927,8 @@ void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
                                        size_t max_batch_size) {
   size_t curr_idx = 0, counter = 0;
   while (curr_idx < messages.size()) {
-    size_t batch_size = std::min(max_batch_size, messages.size() - curr_idx);
+    size_t batch_size = messages.size() - curr_idx;
+    batch_size = std::min(max_batch_size, batch_size);
     int bytes_written =
         uv_try_write(handle, messages.data() + curr_idx, batch_size);
     if (bytes_written < 0) {
@@ -921,7 +955,9 @@ void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
   }
 }
 
-AppWorker::AppWorker() : feedback_conn_handle_(nullptr), conn_handle_(nullptr) {
+AppWorker::AppWorker()
+    : feedback_conn_handle_(nullptr), conn_handle_(nullptr),
+      curr_worker_idx_(0) {
   thread_exit_cond_.store(false);
   uv_loop_init(&feedback_loop_);
   uv_loop_init(&main_loop_);
@@ -990,18 +1026,20 @@ void AppWorker::StopUvLoop(uv_async_t *async) {
 }
 
 void AppWorker::SendFilterAck(int opcode, int msgtype, int vb_no,
-                              int64_t seq_no) {
+                              int64_t seq_no, bool skip_ack) {
   std::ostringstream filter_ack;
   filter_ack << R"({"vb":)";
   filter_ack << vb_no << R"(, "seq":)";
-  filter_ack << seq_no << "}";
+  filter_ack << seq_no << R"(, "skip_ack":)";
+  filter_ack << skip_ack << "}";
 
   resp_msg_->msg.assign(filter_ack.str());
   resp_msg_->msg_type = msgtype;
   resp_msg_->opcode = opcode;
   msg_priority_ = true;
   LOG(logInfo) << "vb: " << vb_no << " seqNo: " << seq_no
-               << " sending filter ack to Go" << std::endl;
+               << " skip_ack: " << skip_ack << " sending filter ack to Go"
+               << std::endl;
 }
 
 int main(int argc, char **argv) {
@@ -1018,10 +1056,6 @@ int main(int argc, char **argv) {
   SetIPv6(std::string(argv[9]) == "ipv6");
 
   srand(static_cast<unsigned>(time(nullptr)));
-
-  if (isSSE42Supported()) {
-    initCrcTable();
-  }
 
   std::string appname(argv[1]);
   std::string ipc_type(argv[2]); // can be af_unix or af_inet
@@ -1052,15 +1086,15 @@ int main(int argc, char **argv) {
   }
 
   curl_global_init(CURL_GLOBAL_ALL);
-  std::string handler_uuid(argv[11]);
-  std::string handler_name(argv[1]);
+  std::string function_id(argv[11]);
+  std::string function_name(argv[1]);
   AppWorker *worker = AppWorker::GetAppWorker();
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
-    worker->InitUDS(handler_name, handler_uuid, user_prefix, appname,
+    worker->InitUDS(function_name, function_id, user_prefix, appname,
                     Localhost(false), worker_id, batch_size,
                     feedback_batch_size, feedback_sock_path, uds_sock_path);
   } else {
-    worker->InitTcpSock(handler_name, handler_uuid, user_prefix, appname,
+    worker->InitTcpSock(function_name, function_id, user_prefix, appname,
                         Localhost(false), worker_id, batch_size,
                         feedback_batch_size, feedback_port, port);
   }

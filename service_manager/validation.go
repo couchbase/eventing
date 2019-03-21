@@ -14,9 +14,28 @@ import (
 	"github.com/couchbase/eventing/util"
 )
 
+func (m *ServiceMgr) sanitiseApplication(app *application) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+
+	for idx := 0; idx < len(app.DeploymentConfig.Buckets); idx++ {
+		if app.DeploymentConfig.Buckets[idx].Access == "" {
+			if app.DeploymentConfig.SourceBucket == app.DeploymentConfig.Buckets[idx].BucketName {
+				app.DeploymentConfig.Buckets[idx].Access = "r"
+			} else {
+				app.DeploymentConfig.Buckets[idx].Access = "rw"
+			}
+		}
+	}
+	return info
+}
+
 func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if info = m.sanitiseApplication(app); info.Code != m.statusCodes.ok.Code {
+		return
+	}
 
 	if info = m.validateApplicationName(app.Name); info.Code != m.statusCodes.ok.Code {
 		return
@@ -34,6 +53,30 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 		return
 	}
 
+	if m.isAppDeployable(app) == false {
+		info.Code = m.statusCodes.errInterFunctionRecursion.Code
+		info.Info = fmt.Sprintf("Inter handler recursion error")
+		return
+	}
+
+	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
+	if len(destinations) != 0 {
+		if possible, path := m.graph.isAcyclicInsertPossible(app.Name, source, destinations); !possible {
+			info.Code = m.statusCodes.errInterBucketRecursion.Code
+			info.Info = fmt.Sprintf("Inter bucket recursion error; function: %s causes a cycle "+
+				"involving functions: %v, hence deployment is disallowed", app.Name, path)
+			return
+		}
+
+		functions := m.graph.getAcyclicInsertSideEffects(destinations)
+		if len(functions) > 0 {
+			info.Code = m.statusCodes.ok.Code
+			var wInfo warningsInfo
+			wInfo.Status = "Validated function config"
+			wInfo.Warnings = append(wInfo.Warnings, fmt.Sprintf("Function %s will modify source buckets of following functions %v", app.Name, functions))
+			info.Info = wInfo
+		}
+	}
 	info.Code = m.statusCodes.ok.Code
 	return
 }
@@ -192,7 +235,7 @@ func (m *ServiceMgr) validateApplicationName(applicationName string) (info *runt
 	return
 }
 
-func (m *ServiceMgr) validateBoolean(field string, settings map[string]interface{}) (info *runtimeInfo) {
+func (m *ServiceMgr) validateBoolean(field string, isOptional bool, settings map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
@@ -201,6 +244,9 @@ func (m *ServiceMgr) validateBoolean(field string, settings map[string]interface
 			info.Info = fmt.Sprintf("%s must be a boolean", field)
 			return
 		}
+	} else if !isOptional {
+		info.Info = fmt.Sprintf("%s is required", field)
+		return
 	}
 
 	info.Code = m.statusCodes.ok.Code
@@ -232,7 +278,7 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
-	if info = m.validateBoolean("enable_debugger", c); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("enable_debugger", true, c); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -240,7 +286,19 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 		return
 	}
 
-	if info = m.validateBoolean("enable_lifecycle_ops_during_rebalance", c); info.Code != m.statusCodes.ok.Code {
+	if info = m.validatePositiveInteger("function_size", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("metakv_max_doc_size", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("http_request_timeout", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateBoolean("enable_lifecycle_ops_during_rebalance", true, c); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -276,9 +334,22 @@ func (m *ServiceMgr) validateNonMemcached(bucketName string) (info *runtimeInfo)
 	return
 }
 
+func (m *ServiceMgr) validateBucketAccess(access string) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	if access == "r" || access == "rw" {
+		info.Code = m.statusCodes.ok.Code
+		return
+	}
+	info.Code = m.statusCodes.errBucketAccess.Code
+	info.Info = fmt.Sprintf("Invalid bucket access, should be either \"r\" or \"rw\"")
+	return
+}
+
 func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	// TODO : Validate the curl binding - check if the auth types are within the supported ones
 
 	if info = m.validateNonEmpty(deploymentConfig.SourceBucket, "Source bucket name"); info.Code != m.statusCodes.ok.Code {
 		return
@@ -300,12 +371,27 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		return
 	}
 
+	aliasSet := make(map[string]struct{})
 	for _, bucket := range deploymentConfig.Buckets {
 		if info = m.validateNonEmpty(bucket.BucketName, "Alias bucket name"); info.Code != m.statusCodes.ok.Code {
 			return
 		}
 
 		if info = m.validateAliasName(bucket.Alias); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+
+		//Check for the uniqueness of alias name
+		if _, ok := aliasSet[bucket.Alias]; ok {
+			info.Info = fmt.Sprintf("Alias name must be unique")
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			return
+		}
+
+		//Update AliasSet
+		aliasSet[bucket.Alias] = struct{}{}
+
+		if info = m.validateBucketAccess(bucket.Access); info.Code != m.statusCodes.ok.Code {
 			return
 		}
 	}
@@ -538,11 +624,11 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validateBoolean("processing_status", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("processing_status", false, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
-	if info = m.validateBoolean("deployment_status", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("deployment_status", false, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -550,7 +636,7 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validateBoolean("cleanup_timers", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("cleanup_timers", true, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -558,11 +644,7 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validatePositiveInteger("curl_timeout", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	dcpStreamBoundaryValues := []string{"everything", "from_now"}
+	dcpStreamBoundaryValues := []string{"everything", "from_now", "from_prior"}
 	if info = m.validatePossibleValues("dcp_stream_boundary", settings, dcpStreamBoundaryValues); info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -572,14 +654,6 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 	}
 
 	if info = m.validatePositiveInteger("execution_timeout", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validateLessThan("curl_timeout", "deadline_timeout", 1000, settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validateLessThan("curl_timeout", "execution_timeout", 1000, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -682,7 +756,7 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 	}
 
 	// Process related configuration
-	if info = m.validateBoolean("breakpad_on", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("breakpad_on", true, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -708,7 +782,7 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validateBoolean("enable_applog_rotation", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("enable_applog_rotation", true, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

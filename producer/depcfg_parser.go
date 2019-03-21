@@ -28,7 +28,7 @@ func (p *Producer) parseDepcfg() error {
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, metakvAppCallback, p, metakvAppsPath, metakvChecksumPath, p.appName, &cfgData)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s] Exiting due to timeout", logPrefix, p.appName)
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	config := cfg.GetRootAsConfig(cfgData, 0)
@@ -38,7 +38,8 @@ func (p *Producer) parseDepcfg() error {
 	p.app.AppName = string(config.AppName())
 	p.app.AppState = fmt.Sprintf("%v", appUndeployed)
 	p.app.AppVersion = util.GetHash(p.app.AppCode)
-	p.app.HandlerUUID = uint32(config.HandlerUUID())
+	p.app.FunctionID = uint32(config.FunctionID())
+	p.app.FunctionInstanceID = string(config.FunctionInstanceID())
 	p.app.ID = int(config.Id())
 	p.app.LastDeploy = time.Now().UTC().Format("2006-01-02T15:04:05.000000000-0700")
 	p.app.Settings = make(map[string]interface{})
@@ -46,6 +47,11 @@ func (p *Producer) parseDepcfg() error {
 	if config.UsingTimer() == 0x1 {
 		p.app.UsingTimer = true
 	}
+
+	if config.SrcMutationEnabled() == 0x1 {
+		p.app.SrcMutationEnabled = true
+	}
+
 	d := new(cfg.DepCfg)
 	depcfg := config.DepCfg(d)
 
@@ -53,7 +59,7 @@ func (p *Producer) parseDepcfg() error {
 	err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getHTTPServiceAuth, p, &user, &password)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s] Exiting due to timeout", logPrefix, p.appName)
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	p.auth = fmt.Sprintf("%s:%s", user, password)
@@ -94,12 +100,6 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.CPPWorkerThrCount = int(val.(float64))
 	} else {
 		p.handlerConfig.CPPWorkerThrCount = 2
-	}
-
-	if val, ok := settings["curl_timeout"]; ok {
-		p.handlerConfig.CurlTimeout = int64(val.(float64))
-	} else {
-		p.handlerConfig.CurlTimeout = int64(10000)
 	}
 
 	if val, ok := settings["dcp_stream_boundary"]; ok {
@@ -367,6 +367,8 @@ func (p *Producer) parseDepcfg() error {
 		logging.Errorf("%s [%s] Failed to get list of kv nodes in the cluster, err: %v", logPrefix, p.appName, err)
 		return err
 	}
+
+	logging.Infof("%s [%s] kv nodes from cinfo: %+v", logPrefix, p.appName, p.kvHostPorts)
 
 	return nil
 }

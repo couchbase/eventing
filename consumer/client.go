@@ -44,7 +44,7 @@ func (c *client) Serve() {
 		c.consumerHandle.diagDir,
 		util.GetIPMode(),
 		strconv.FormatBool(c.consumerHandle.breakpadOn),
-		strconv.Itoa(int(c.consumerHandle.app.HandlerUUID)),
+		strconv.Itoa(int(c.consumerHandle.app.FunctionID)),
 		c.consumerHandle.app.UserPrefix,
 		c.eventingPort) // Not read, for tagging
 
@@ -145,7 +145,7 @@ func (c *client) Serve() {
 	}
 }
 
-func (c *client) Stop() {
+func (c *client) Stop(context string) {
 	logPrefix := "client::Stop"
 
 	c.stopCalled = true
@@ -155,7 +155,7 @@ func (c *client) Stop() {
 	c.consumerHandle.workerExited = true
 	err := util.KillProcess(c.osPid)
 	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Unable to kill C++ worker, err: %v",
+		logging.Errorf("%s [%s:%s:%d] Unable to kill c++ worker, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.osPid, err)
 	}
 }

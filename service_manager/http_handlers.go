@@ -3,10 +3,12 @@ package servicemanager
 import (
 	"bytes"
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"net/url"
 	"os"
 	"path"
@@ -224,7 +226,7 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	logging.Infof("%s Function: %s got request to get V8 debugger url", logPrefix, appName)
+	logging.Debugf("%s Function: %s got request to get V8 debugger url", logPrefix, appName)
 
 	if m.checkIfDeployed(appName) {
 		debugURL, _ := m.superSup.GetDebuggerURL(appName)
@@ -243,7 +245,7 @@ func (m *ServiceMgr) getLocalDebugURL(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	logging.Infof("%s Function: %s got request to get local V8 debugger url", logPrefix, appName)
+	logging.Debugf("%s Function: %s got request to get local V8 debugger url", logPrefix, appName)
 
 	config := m.config.Load()
 	dir := config["eventing_dir"].(string)
@@ -276,7 +278,7 @@ func (m *ServiceMgr) logFileLocation(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"log_dir":"%v"}`, c["eventing_dir"])
 }
 
-func (m *ServiceMgr) notifyDebuggerStart(appName string) (info *runtimeInfo) {
+func (m *ServiceMgr) notifyDebuggerStart(appName string, hostnames []string) (info *runtimeInfo) {
 	logPrefix := "ServiceMgr::notifyDebuggerStart"
 	info = &runtimeInfo{}
 
@@ -288,7 +290,7 @@ func (m *ServiceMgr) notifyDebuggerStart(appName string) (info *runtimeInfo) {
 	}
 
 	token := uuidGen.Str()
-	m.superSup.WriteDebuggerToken(appName, token)
+	m.superSup.WriteDebuggerToken(appName, token, hostnames)
 	logging.Infof("%s Function: %s notifying on debugger path %s",
 		logPrefix, appName, common.MetakvDebuggerPath+appName)
 	util.Retry(util.NewFixedBackoff(time.Second), nil,
@@ -345,7 +347,24 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if info = m.notifyDebuggerStart(appName); info.Code != m.statusCodes.ok.Code {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("Failed to read request, err : %v", err)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	var data map[string]interface{}
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		info.Code = m.statusCodes.errUnmarshalPld.Code
+		info.Info = fmt.Sprintf("Failed to unmarshal request, err : %v", err)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if info = m.notifyDebuggerStart(appName, GetNodesHostname(data)); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
 	}
@@ -423,31 +442,13 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 		fmt.Fprintf(w, "%s", string(data))
 	} else {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-		respString := fmt.Sprintf("Function: %s not deployed")
+		respString := fmt.Sprintf("Function: %s not deployed", appName)
 		fmt.Fprintf(w, respString)
 		logging.Infof("%s %s", logPrefix, respString)
 	}
 }
 
-var getDeployedAppsCallback = func(args ...interface{}) error {
-	logPrefix := "ServiceMgr::getDeployedAppsCallback"
-
-	aggDeployedApps := args[0].(*map[string]map[string]string)
-	nodeAddrs := args[1].([]string)
-
-	var err error
-	*aggDeployedApps, err = util.GetDeployedApps("/getLocallyDeployedApps", nodeAddrs)
-	if err != nil {
-		logging.Errorf("%s Failed to get deployed apps, err: %v", logPrefix, err)
-		return err
-	}
-
-	logging.Tracef("Cluster wide deployed app status: %rm", *aggDeployedApps)
-
-	return nil
-}
-
-func (m *ServiceMgr) getAppList() (map[string]int, int, *runtimeInfo) {
+func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, int, *runtimeInfo) {
 	logPrefix := "ServiceMgr::getAppList"
 	info := &runtimeInfo{}
 
@@ -457,7 +458,13 @@ func (m *ServiceMgr) getAppList() (map[string]int, int, *runtimeInfo) {
 
 		info.Code = m.statusCodes.errActiveEventingNodes.Code
 		info.Info = fmt.Sprintf("Unable to fetch active Eventing nodes, err: %v", err)
-		return nil, 0, info
+		return nil, nil, 0, info
+	}
+
+	numEventingNodes := len(nodeAddrs)
+	if numEventingNodes == 0 {
+		info.Code = m.statusCodes.errNoEventingNodes.Code
+		return nil, nil, 0, info
 	}
 
 	aggDeployedApps := make(map[string]map[string]string)
@@ -474,14 +481,21 @@ func (m *ServiceMgr) getAppList() (map[string]int, int, *runtimeInfo) {
 		}
 	}
 
-	numEventingNodes := len(nodeAddrs)
-	if numEventingNodes == 0 {
-		info.Code = m.statusCodes.errNoEventingNodes.Code
-		return nil, 0, info
+	aggBootstrappingApps := make(map[string]map[string]string)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getBootstrappingAppsCallback, &aggBootstrappingApps, nodeAddrs)
+
+	appBootstrappingNodesCounter := make(map[string]int)
+	for _, apps := range aggBootstrappingApps {
+		for app := range apps {
+			if _, ok := appBootstrappingNodesCounter[app]; !ok {
+				appBootstrappingNodesCounter[app] = 0
+			}
+			appBootstrappingNodesCounter[app]++
+		}
 	}
 
 	info.Code = m.statusCodes.ok.Code
-	return appDeployedNodesCounter, numEventingNodes, info
+	return appDeployedNodesCounter, appBootstrappingNodesCounter, numEventingNodes, info
 }
 
 // Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
@@ -494,7 +508,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListDeployed, r, nil)
 
-	appDeployedNodesCounter, numEventingNodes, info := m.getAppList()
+	appDeployedNodesCounter, _, numEventingNodes, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -532,7 +546,7 @@ func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListRunning, r, nil)
 
-	appDeployedNodesCounter, numEventingNodes, info := m.getAppList()
+	appDeployedNodesCounter, _, numEventingNodes, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -616,14 +630,13 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 
 	progress := &common.RebalanceProgress{}
 
-	appList := util.ListChildren(metakvAppsPath)
-
-	for _, appName := range appList {
+	m.fnMu.RLock()
+	for appName := range m.fnsInPrimaryStore {
 		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
 		// if it occurs
 		appProgress, err := m.superSup.RebalanceTaskProgress(appName)
-		logging.Infof("%s Function: %s rebalance progress from node with rest port: %rs progress: %v",
-			logPrefix, appName, m.restPort, appProgress)
+		logging.Infof("%s Function: %s rebalance progress from node with rest port: %rs progress: %v err: %v",
+			logPrefix, appName, m.restPort, appProgress, err)
 		if err == nil {
 			progress.CloseStreamVbsLen += appProgress.CloseStreamVbsLen
 			progress.StreamReqVbsLen += appProgress.StreamReqVbsLen
@@ -632,6 +645,7 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 			progress.VbsRemainingToShuffle += appProgress.VbsRemainingToShuffle
 		}
 	}
+	m.fnMu.RUnlock()
 
 	if progress.VbsRemainingToShuffle > 0 {
 		m.statsWritten = false
@@ -930,6 +944,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		return
 	}
 
+	logging.Infof("%s Function: %s settings params: %+v", logPrefix, appName, settings)
+
 	_, procStatExists := settings["processing_status"]
 	_, depStatExists := settings["deployment_status"]
 
@@ -951,22 +967,60 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		app.Settings[setting] = settings[setting]
 	}
 
-	// State validation - app must be in deployed state
 	processingStatus, pOk := app.Settings["processing_status"].(bool)
 	deploymentStatus, dOk := app.Settings["deployment_status"].(bool)
 
 	logging.Infof("%s Function: %s deployment status: %t processing status: %t",
-		logPrefix, appName, processingStatus, deploymentStatus)
+		logPrefix, appName, deploymentStatus, processingStatus)
 
 	deployedApps := m.superSup.GetDeployedApps()
 	if pOk && dOk {
-		// Check for disable processing
-		if deploymentStatus == true && processingStatus == false {
+		mhVersion := eventingVerMap["mad-hatter"]
+
+		// Check for pause processing
+		if deploymentStatus && !processingStatus {
+			if !m.compareEventingVersion(mhVersion) {
+				info.Code = m.statusCodes.errClusterVersion.Code
+				info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for pausing function execution",
+					mhVersion.major, mhVersion.minor)
+				logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+				return
+			}
+
 			if _, ok := deployedApps[appName]; !ok {
 				info.Code = m.statusCodes.errAppNotInit.Code
 				info.Info = fmt.Sprintf("Function: %s not processing mutations. Operation is not permitted. Edit function instead", appName)
 				logging.Errorf("%s %s", logPrefix, info.Info)
 				return
+			}
+		}
+
+		if filterFeedBoundary(settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
+			info.Code = m.statusCodes.errClusterVersion.Code
+			info.Info = fmt.Sprintf("All eventing nodes in cluster must be on version %d.%d or higher for resuming function execution",
+				mhVersion.major, mhVersion.minor)
+			logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+			return
+		}
+
+		if filterFeedBoundary(settings) == common.DcpFromPrior && m.superSup.GetAppState(appName) != common.AppStatePaused {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state, current state: %v",
+				appName, m.superSup.GetAppState(appName))
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return
+		}
+
+		if deploymentStatus && processingStatus && m.superSup.GetAppState(appName) == common.AppStatePaused {
+			switch filterFeedBoundary(settings) {
+			case common.DcpFromNow, common.DcpEverything:
+				info.Code = m.statusCodes.errInvalidConfig.Code
+				info.Info = fmt.Sprintf("Function: %s only from_prior feed boundary is allowed during resume", appName)
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				return
+			case common.DcpStreamBoundary(""):
+				app.Settings["dcp_stream_boundary"] = "from_prior"
+			default:
 			}
 		}
 	} else {
@@ -1005,6 +1059,59 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 	return
 }
 
+func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) application {
+	logPrefix := "ServiceMgr::parseFunctionPayload"
+
+	config := cfg.GetRootAsConfig(data, 0)
+
+	var app application
+	app.AppHandlers = string(config.AppCode())
+	app.Name = string(config.AppName())
+	app.ID = int(config.Id())
+	app.FunctionID = uint32(config.FunctionID())
+	app.FunctionInstanceID = string(config.FunctionInstanceID())
+
+	d := new(cfg.DepCfg)
+	depcfg := new(depCfg)
+	dcfg := config.DepCfg(d)
+
+	depcfg.MetadataBucket = string(dcfg.MetadataBucket())
+	depcfg.SourceBucket = string(dcfg.SourceBucket())
+
+	var buckets []bucket
+	b := new(cfg.Bucket)
+	for i := 0; i < dcfg.BucketsLength(); i++ {
+
+		if dcfg.Buckets(b, i) {
+			newBucket := bucket{
+				Alias:      string(b.Alias()),
+				BucketName: string(b.BucketName()),
+				Access:     string(b.Access()),
+			}
+			buckets = append(buckets, newBucket)
+		}
+	}
+
+	settingsPath := metakvAppSettingsPath + fnName
+	sData, sErr := util.MetakvGet(settingsPath)
+	if sErr == nil {
+		settings := make(map[string]interface{})
+		uErr := json.Unmarshal(sData, &settings)
+		if uErr != nil {
+			logging.Errorf("%s failed to unmarshal settings data from metakv, err: %v", logPrefix, uErr)
+		} else {
+			app.Settings = settings
+		}
+	} else {
+		logging.Errorf("%s failed to fetch settings data from metakv, err: %v", logPrefix, sErr)
+	}
+
+	depcfg.Buckets = buckets
+	app.DeploymentConfig = *depcfg
+
+	return app
+}
+
 func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getPrimaryStoreHandler"
 
@@ -1018,55 +1125,10 @@ func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Reque
 	appList := util.ListChildren(metakvAppsPath)
 	respData := make([]application, len(appList))
 
-	for index, appName := range appList {
-		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
-		if err == nil {
-
-			config := cfg.GetRootAsConfig(data, 0)
-
-			app := new(application)
-			app.AppHandlers = string(config.AppCode())
-			app.Name = string(config.AppName())
-			app.ID = int(config.Id())
-
-			d := new(cfg.DepCfg)
-			depcfg := new(depCfg)
-			dcfg := config.DepCfg(d)
-
-			depcfg.MetadataBucket = string(dcfg.MetadataBucket())
-			depcfg.SourceBucket = string(dcfg.SourceBucket())
-
-			var buckets []bucket
-			b := new(cfg.Bucket)
-			for i := 0; i < dcfg.BucketsLength(); i++ {
-
-				if dcfg.Buckets(b, i) {
-					newBucket := bucket{
-						Alias:      string(b.Alias()),
-						BucketName: string(b.BucketName()),
-					}
-					buckets = append(buckets, newBucket)
-				}
-			}
-
-			settingsPath := metakvAppSettingsPath + appName
-			sData, sErr := util.MetakvGet(settingsPath)
-			if sErr == nil {
-				settings := make(map[string]interface{})
-				uErr := json.Unmarshal(sData, &settings)
-				if uErr != nil {
-					logging.Errorf("%s failed to unmarshal settings data from metakv, err: %v", logPrefix, uErr)
-				} else {
-					app.Settings = settings
-				}
-			} else {
-				logging.Errorf("%s failed to fetch settings data from metakv, err: %v", logPrefix, sErr)
-			}
-
-			depcfg.Buckets = buckets
-			app.DeploymentConfig = *depcfg
-
-			respData[index] = *app
+	for index, fnName := range appList {
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, fnName)
+		if err == nil && data != nil {
+			respData[index] = m.parseFunctionPayload(data, fnName)
 		}
 	}
 
@@ -1086,8 +1148,7 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	logPrefix := "ServiceMgr::getTempStoreHandler"
 
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -1119,7 +1180,7 @@ func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtim
 
 	for _, name := range util.ListChildren(metakvTempAppsPath) {
 		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, name)
-		if err == nil {
+		if err == nil && data != nil {
 			uErr := json.Unmarshal(data, &app)
 			if uErr != nil {
 				logging.Errorf("%s Function: %s failed to unmarshal data from metakv, err: %v", logPrefix, appName, uErr)
@@ -1147,17 +1208,21 @@ func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtim
 func (m *ServiceMgr) getTempStoreAll() []application {
 	logPrefix := "ServiceMgr::getTempStoreAll"
 
-	tempAppList := util.ListChildren(metakvTempAppsPath)
-	applications := make([]application, len(tempAppList))
+	m.fnMu.RLock()
+	defer m.fnMu.RUnlock()
 
-	for i, appName := range tempAppList {
-		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName)
-		if err == nil {
+	applications := make([]application, len(m.fnsInTempStore))
+	i := -1
+
+	for fnName := range m.fnsInTempStore {
+		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, fnName)
+		if err == nil && data != nil {
 			var app application
+			i++
 			uErr := json.Unmarshal(data, &app)
 			if uErr != nil {
 				logging.Errorf("%s Function: %s failed to unmarshal data from metakv, err: %v data: %v",
-					logPrefix, appName, uErr, string(data))
+					logPrefix, fnName, uErr, string(data))
 				continue
 			}
 
@@ -1284,7 +1349,7 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	info := m.savePrimaryStore(app)
+	info := m.savePrimaryStore(&app)
 	m.sendRuntimeInfo(w, info)
 }
 
@@ -1317,15 +1382,46 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 
 func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	builder := flatbuffers.NewBuilder(0)
-	var bNames []flatbuffers.UOffsetT
 
+	var curlBindings []flatbuffers.UOffsetT
+	for i := 0; i < len(app.DeploymentConfig.Curl); i++ {
+		authTypeEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].AuthType)
+		hostnameEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Hostname)
+		valueEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Value)
+		passwordEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Password)
+		usernameEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Username)
+		bearerKeyEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].BearerKey)
+		cookiesEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Cookies)
+
+		cfg.CurlStart(builder)
+		cfg.CurlAddAuthType(builder, authTypeEncoded)
+		cfg.CurlAddHostname(builder, hostnameEncoded)
+		cfg.CurlAddValue(builder, valueEncoded)
+		cfg.CurlAddPassword(builder, passwordEncoded)
+		cfg.CurlAddUsername(builder, usernameEncoded)
+		cfg.CurlAddBearerKey(builder, bearerKeyEncoded)
+		cfg.CurlAddCookies(builder, cookiesEncoded)
+		curlBindingsEnd := cfg.CurlEnd(builder)
+
+		curlBindings = append(curlBindings, curlBindingsEnd)
+	}
+
+	cfg.DepCfgStartCurlVector(builder, len(curlBindings))
+	for i := 0; i < len(curlBindings); i++ {
+		builder.PrependUOffsetT(curlBindings[i])
+	}
+	curlBindingsVector := builder.EndVector(len(curlBindings))
+
+	var bNames []flatbuffers.UOffsetT
 	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
 		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
 		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
+		bAccess := builder.CreateString(app.DeploymentConfig.Buckets[i].Access)
 
 		cfg.BucketStart(builder)
 		cfg.BucketAddAlias(builder, alias)
 		cfg.BucketAddBucketName(builder, bName)
+		cfg.BucketAddAccess(builder, bAccess)
 		csBucket := cfg.BucketEnd(builder)
 
 		bNames = append(bNames, csBucket)
@@ -1342,25 +1438,34 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 
 	cfg.DepCfgStart(builder)
 	cfg.DepCfgAddBuckets(builder, buckets)
+	cfg.DepCfgAddCurl(builder, curlBindingsVector)
 	cfg.DepCfgAddMetadataBucket(builder, metaBucket)
 	cfg.DepCfgAddSourceBucket(builder, sourceBucket)
 	depcfg := cfg.DepCfgEnd(builder)
 
 	appCode := builder.CreateString(app.AppHandlers)
 	aName := builder.CreateString(app.Name)
+	fiid := builder.CreateString(app.FunctionInstanceID)
 
 	cfg.ConfigStart(builder)
 	cfg.ConfigAddId(builder, uint32(app.ID))
 	cfg.ConfigAddAppCode(builder, appCode)
 	cfg.ConfigAddAppName(builder, aName)
 	cfg.ConfigAddDepCfg(builder, depcfg)
-	cfg.ConfigAddHandlerUUID(builder, app.HandlerUUID)
+	cfg.ConfigAddFunctionID(builder, app.FunctionID)
+	cfg.ConfigAddFunctionInstanceID(builder, fiid)
 
 	udtp := byte(0x0)
 	if app.UsingTimer {
 		udtp = byte(0x1)
 	}
 	cfg.ConfigAddUsingTimer(builder, udtp)
+
+	srcMutation := byte(0x0)
+	if app.SrcMutationEnabled {
+		srcMutation = byte(0x1)
+	}
+	cfg.ConfigAddSrcMutationEnabled(builder, srcMutation)
 	config := cfg.ConfigEnd(builder)
 
 	builder.Finish(config)
@@ -1368,8 +1473,18 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	return builder.FinishedBytes()
 }
 
+func filterFeedBoundary(settings map[string]interface{}) common.DcpStreamBoundary {
+	if val, ok := settings["dcp_stream_boundary"]; ok {
+		if boundary, bOk := val.(string); bOk {
+			return common.StreamBoundary(boundary)
+		}
+	}
+
+	return common.StreamBoundary("")
+}
+
 // Saves application to metakv and returns appropriate success/error code
-func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
+func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	logPrefix := "ServiceMgr::savePrimaryStore"
 
 	info = &runtimeInfo{}
@@ -1381,7 +1496,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	if m.checkIfDeployed(app.Name) {
+	if m.checkIfDeployed(app.Name) && m.superSup.GetAppState(app.Name) != common.AppStatePaused {
 		info.Code = m.statusCodes.errAppDeployed.Code
 		info.Info = fmt.Sprintf("Function: %s another function with same name is already deployed, skipping save request", app.Name)
 		logging.Errorf("%s %s", logPrefix, info.Info)
@@ -1396,11 +1511,50 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	appContent := m.encodeAppPayload(&app)
+	mhVersion := eventingVerMap["mad-hatter"]
+	if filterFeedBoundary(app.Settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
+		info.Code = m.statusCodes.errClusterVersion.Code
+		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for using 'from prior' deployment feed boundary",
+			mhVersion.major, mhVersion.minor)
+		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+		return
+	}
 
-	if len(appContent) > maxHandlerSize {
+	if filterFeedBoundary(app.Settings) == common.DcpFromPrior && m.superSup.GetAppState(app.Name) != common.AppStatePaused {
+		info.Code = m.statusCodes.errInvalidConfig.Code
+		info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state", app.Name)
+
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	if m.superSup.GetAppState(app.Name) == common.AppStatePaused {
+		switch filterFeedBoundary(app.Settings) {
+		case common.DcpFromNow, common.DcpEverything:
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("Function: %s only from_prior feed boundary is allowed during resume", app.Name)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return
+		case common.DcpStreamBoundary(""):
+			app.Settings["dcp_stream_boundary"] = "from_prior"
+		default:
+		}
+	}
+
+	app.SrcMutationEnabled = m.isSrcMutationEnabled(&app.DeploymentConfig)
+	if app.SrcMutationEnabled && !m.compareEventingVersion(mhVersion) {
+		info.Code = m.statusCodes.errClusterVersion.Code
+		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for allowing mutations against source bucket",
+			mhVersion.major, mhVersion.minor)
+		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+		return
+	}
+
+	appContent := m.encodeAppPayload(app)
+
+	if len(appContent) > util.MaxFunctionSize() {
 		info.Code = m.statusCodes.errAppCodeSize.Code
-		info.Info = fmt.Sprintf("Function: %s handler Code size is more than 128K", app.Name)
+		info.Info = fmt.Sprintf("Function: %s handler Code size is more than %d", app.Name, util.MaxFunctionSize())
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}
@@ -1426,8 +1580,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		app.Settings["using_timer"] = false
 		app.UsingTimer = false
 	}
-
-	appContent = m.encodeAppPayload(&app)
+	appContent = m.encodeAppPayload(app)
 
 	m.checkVersionCompat(compilationInfo.Version, info)
 	if info.Code != m.statusCodes.ok.Code {
@@ -1470,7 +1623,7 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 	}
 
 	var wInfo warningsInfo
-	wInfo.Status = "Stored function config in metakv"
+	wInfo.Status = fmt.Sprintf("Stored function: '%s' in metakv", app.Name)
 
 	switch strings.ToLower(compilationInfo.Level) {
 	case "dp":
@@ -1525,12 +1678,14 @@ func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Requ
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
 	appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", m.eventingNodeAddrs)
-	if err != nil {
-		logging.Errorf("%s Failed to grab bootstrapping function list from all eventing nodes or some functions are undergoing bootstrap", logPrefix)
+	if appsBootstrapping {
+		w.Write([]byte(strconv.FormatBool(appsBootstrapping)))
+		return
+	} else if !appsBootstrapping && err != nil {
+		logging.Errorf("%s Failed to grab bootstrapping function list from all eventing nodes or some functions are undergoing bootstrap."+
+			"Node list: %v", logPrefix, m.eventingNodeAddrs)
 		return
 	}
-
-	w.Write([]byte(strconv.FormatBool(appsBootstrapping)))
 }
 
 func (m *ServiceMgr) getBootstrappingApps(w http.ResponseWriter, r *http.Request) {
@@ -1661,7 +1816,7 @@ func (m *ServiceMgr) getConfig() (c common.Config, info *runtimeInfo) {
 		}
 	}
 
-	logging.Infof("%s Retrieving config from metakv: %ru", logPrefix, c)
+	logging.Infof("%s Retrieving config from metakv: %+v", logPrefix, c)
 	info.Code = m.statusCodes.ok.Code
 	return
 }
@@ -1695,7 +1850,7 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -1772,19 +1927,81 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (m *ServiceMgr) assignFunctionID(fnName string, app *application, info *runtimeInfo) error {
+	logPrefix := "ServiceMgr::assignFunctionID"
+
+	data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, fnName)
+	if err != nil && data != nil {
+		info.Code = m.statusCodes.errGetAppPs.Code
+		info.Info = fmt.Sprintf("Function: %s failed to read definitions from metakv", fnName)
+
+		logging.Errorf("%s %s, err: %v", logPrefix, info.Info, err)
+		return fmt.Errorf("%s", info.Info)
+	}
+
+	if err == nil && data != nil {
+		tApp := m.parseFunctionPayload(data, fnName)
+		app.FunctionID = tApp.FunctionID
+		logging.Infof("%s Function: %s assigned previous function ID: %d", logPrefix, app.Name, app.FunctionID)
+	} else {
+		var uErr error
+		app.FunctionID, uErr = util.GenerateFunctionID()
+		if uErr != nil {
+			info.Code = m.statusCodes.errFunctionIDGen.Code
+			info.Info = fmt.Sprintf("Function: %s FunctionID generation failed", fnName)
+
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return uErr
+		}
+		logging.Infof("%s Function: %s FunctionID: %d generated", logPrefix, app.Name, app.FunctionID)
+	}
+
+	return nil
+}
+
+func (m *ServiceMgr) assignFunctionInstanceID(functionName string, app *application, info *runtimeInfo) error {
+	logPrefix := "ServiceMgr:assignFunctionInstanceID"
+
+	if m.superSup.GetAppState(functionName) != common.AppStatePaused {
+		fiid, err := util.GenerateFunctionInstanceID()
+		if err != nil {
+			info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
+			info.Info = fmt.Sprintf("FunctionInstanceID generation failed")
+
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return err
+		}
+		app.FunctionInstanceID = fiid
+		logging.Infof("%s Function: %s FunctionInstanceID: %s generated", logPrefix, app.Name, app.FunctionInstanceID)
+	} else {
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, functionName)
+		if err != nil || data == nil {
+			info.Code = m.statusCodes.errGetAppPs.Code
+			info.Info = fmt.Sprintf("Function: %s failed to read definitions from metakv", functionName)
+
+			logging.Errorf("%s %s, err: %v", logPrefix, info.Info, err)
+			return fmt.Errorf("%s err: %v", info.Info, err)
+		}
+		prevApp := m.parseFunctionPayload(data, functionName)
+		app.FunctionInstanceID = prevApp.FunctionInstanceID
+		logging.Infof("%s Function: %s assigned previous FunctionInstanceID: %s", logPrefix, app.Name, app.FunctionInstanceID)
+	}
+	return nil
+}
+
 func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::functionsHandler"
 
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
 	functions := regexp.MustCompile("^/api/v1/functions/?$")
-	functionsName := regexp.MustCompile("^/api/v1/functions/(.+[^/])/?$") // Match is agnostic of trailing '/'
-	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.+[^/])/settings/?$")
-	functionsNameRetry := regexp.MustCompile("^/api/v1/functions/(.+[^/])/retry/?$")
+	functionsName := regexp.MustCompile("^/api/v1/functions/(.*[^/])/?$") // Match is agnostic of trailing '/'
+	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.*[^/])/settings/?$")
+	functionsNameRetry := regexp.MustCompile("^/api/v1/functions/(.*[^/])/retry/?$")
 
 	if match := functionsNameRetry.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		appName := match[1]
@@ -1926,19 +2143,21 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			var err error
-			app.EventingVersion = util.EventingVer()
-			app.HandlerUUID, err = util.GenerateHandlerUUID()
+			err := m.assignFunctionID(appName, &app, info)
 			if err != nil {
-				info.Code = m.statusCodes.errUUIDGen.Code
-				info.Info = fmt.Sprintf("Function: %s UUID generation failed", appName)
-				logging.Errorf("%s %s", logPrefix, info.Info)
 				m.sendErrorInfo(w, info)
 				return
 			}
-			logging.Infof("%s Function: %s HandlerUUID generated, UUID: %d", logPrefix, app.Name, app.HandlerUUID)
 
-			runtimeInfo := m.savePrimaryStore(app)
+			err = m.assignFunctionInstanceID(appName, &app, info)
+			if err != nil {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			app.EventingVersion = util.EventingVer()
+
+			runtimeInfo := m.savePrimaryStore(&app)
 			if runtimeInfo.Code == m.statusCodes.ok.Code {
 				audit.Log(auditevent.SaveDraft, r, appName)
 				// Save to temp store only if saving to primary store succeeds
@@ -2034,7 +2253,7 @@ func (m *ServiceMgr) notifyRetryToAllProducers(appName string, r *retry) (info *
 func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2063,20 +2282,30 @@ func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runtimeInfo) {
-	appDeployedNodesCounter, numEventingNodes, info := m.getAppList()
+	appDeployedNodesCounter, appBootstrappingNodesCounter, numEventingNodes, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
 	response.NumEventingNodes = numEventingNodes
 	for _, app := range m.getTempStoreAll() {
+		deploymentStatus, dOk := app.Settings["deployment_status"].(bool)
+		processingStatus, pOk := app.Settings["processing_status"].(bool)
+		if !dOk || !pOk {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			return
+		}
+
 		status := appStatus{
 			Name:             app.Name,
-			DeploymentStatus: app.Settings["deployment_status"].(bool),
-			ProcessingStatus: app.Settings["processing_status"].(bool),
+			DeploymentStatus: deploymentStatus,
+			ProcessingStatus: processingStatus,
 		}
 		if num, exists := appDeployedNodesCounter[app.Name]; exists {
 			status.NumDeployedNodes = num
+		}
+		if num, exists := appBootstrappingNodesCounter[app.Name]; exists {
+			status.NumBootstrappingNodes = num
 		}
 		status.CompositeStatus = determineStatus(status, numEventingNodes)
 		response.Apps = append(response.Apps, status)
@@ -2085,12 +2314,23 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 }
 
 func determineStatus(status appStatus, numEventingNodes int) string {
-	logPrefix := "determineStatus"
+	logPrefix := "ServiceMgr::determineStatus"
 
 	if status.DeploymentStatus && status.ProcessingStatus {
-		if status.NumDeployedNodes == numEventingNodes {
+		if status.NumBootstrappingNodes == 0 && status.NumDeployedNodes == numEventingNodes {
 			return "deployed"
 		}
+		return "deploying"
+	}
+
+	// For case:
+	// T1 - bootstrap was requested
+	// T2 - undeploy was requested
+	// T3 - boostrap finished
+	// During the period T2 - T3, Eventing is spending cycles to bring up
+	// the function is ready state i.e. state should be "deploying". Reporting
+	// undeployed by looking up in temp store would be unreasonable
+	if status.NumBootstrappingNodes > 0 {
 		return "deploying"
 	}
 
@@ -2101,15 +2341,21 @@ func determineStatus(status appStatus, numEventingNodes int) string {
 		return "undeploying"
 	}
 
-	logging.Errorf("%s Function: %s inconsistent deployment state %v",
-		logPrefix, status.Name, status)
+	if status.DeploymentStatus && !status.ProcessingStatus {
+		if status.NumDeployedNodes == numEventingNodes {
+			return "paused"
+		}
+		return "pausing"
+	}
+
+	logging.Errorf("%s Function: %s inconsistent deployment state %v", logPrefix, status.Name, status)
 	return "invalid"
 }
 
 func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2171,12 +2417,17 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 	for _, app := range m.getTempStoreAll() {
 		if m.checkIfDeployed(app.Name) {
 			stats := stats{}
+			feedBoundary, err := m.superSup.DcpFeedBoundary(app.Name)
+			if err == nil {
+				stats.DCPFeedBoundary = feedBoundary
+			}
 			stats.EventProcessingStats = m.superSup.GetEventProcessingStats(app.Name)
 			stats.EventsRemaining = backlogStat{DcpBacklog: m.superSup.GetDcpEventsRemainingToProcess(app.Name)}
 			stats.ExecutionStats = m.superSup.GetExecutionStats(app.Name)
 			stats.FailureStats = m.superSup.GetFailureStats(app.Name)
 			stats.FunctionName = app.Name
 			stats.GocbCredsRequestCounter = util.GocbCredsRequestCounter
+			stats.FunctionID = app.FunctionID
 			stats.InternalVbDistributionStats = m.superSup.InternalVbDistributionStats(app.Name)
 			stats.LcbCredsRequestCounter = m.lcbCredsCounter
 			stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(app.Name)
@@ -2215,6 +2466,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 				}
 
 				stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
+				stats.CurlLatencyStats = m.superSup.GetCurlLatencyStats(app.Name)
 				stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
 				spanBlobDump, err := m.superSup.SpanBlobDump(app.Name)
 				if err == nil {
@@ -2242,7 +2494,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 // Clears up all Eventing related artifacts from metakv, typically will be used for rebalance tests
 func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2256,10 +2508,11 @@ func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::exportHandler"
+
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2270,11 +2523,18 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ExportFunctions, r, nil)
 
+	exportedFns := make([]string, 0)
 	apps := m.getTempStoreAll()
 	for _, app := range apps {
+		for i := range app.DeploymentConfig.Curl {
+			app.DeploymentConfig.Curl[i].Password = ""
+		}
 		app.Settings["deployment_status"] = false
 		app.Settings["processing_status"] = false
+		exportedFns = append(exportedFns, app.Name)
 	}
+
+	logging.Infof("%s Exported function list: %+v", logPrefix, exportedFns)
 
 	data, err := json.Marshal(apps)
 	if err != nil {
@@ -2289,10 +2549,11 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::importHandler"
+
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2310,6 +2571,13 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	infoList := m.createApplications(r, appList, true)
+
+	importedFns := make([]string, 0)
+	for _, app := range *appList {
+		importedFns = append(importedFns, app.Name)
+	}
+
+	logging.Infof("%s Imported functions: %+v", logPrefix, importedFns)
 	m.sendRuntimeInfoList(w, infoList)
 }
 
@@ -2332,19 +2600,23 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			app.Settings["processing_status"] = false
 		}
 
-		app.EventingVersion = util.EventingVer()
-		app.HandlerUUID, err = util.GenerateHandlerUUID()
+		info := &runtimeInfo{}
+		err = m.assignFunctionID(app.Name, &app, info)
 		if err != nil {
-			info := &runtimeInfo{}
-			info.Code = m.statusCodes.errUUIDGen.Code
-			info.Info = fmt.Sprintf("Function: %s UUID generation failed", app.Name)
-			logging.Errorf("%s %s", logPrefix, info.Info)
 			infoList = append(infoList, info)
 			continue
 		}
-		logging.Infof("%s Function: %s HandlerUUID generated: %d", logPrefix, app.Name, app.HandlerUUID)
 
-		infoPri := m.savePrimaryStore(app)
+		info = &runtimeInfo{}
+		err = m.assignFunctionInstanceID(app.Name, &app, info)
+		if err != nil {
+			infoList = append(infoList, info)
+			continue
+		}
+
+		app.EventingVersion = util.EventingVer()
+
+		infoPri := m.savePrimaryStore(&app)
 		if infoPri.Code != m.statusCodes.ok.Code {
 			logging.Errorf("%s Function: %s saving %ru to primary store failed: %v", logPrefix, app.Name, infoPri)
 			infoList = append(infoList, infoPri)
@@ -2367,11 +2639,10 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 	return
 }
 
-func (m *ServiceMgr) getCpuCount(w http.ResponseWriter, r *http.Request) {
+func (m *ServiceMgr) getCPUCount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2388,7 +2659,7 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2495,8 +2766,7 @@ func (m *ServiceMgr) triggerGC(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -2510,12 +2780,76 @@ func (m *ServiceMgr) freeOSMemory(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"error":"Request not authorized"}`)
+		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
 	logging.Infof("%s Freeing up memory to OS", logPrefix)
 	debug.FreeOSMemory()
 	logging.Infof("%s Freed up memory to OS", logPrefix)
+}
+
+//expvar handler
+func (m *ServiceMgr) expvarHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+
+	fmt.Fprintf(w, "{\n")
+	first := true
+	expvar.Do(func(kv expvar.KeyValue) {
+		if !first {
+			fmt.Fprintf(w, ",\n")
+		}
+		first = false
+		fmt.Fprintf(w, "%q: %s", kv.Key, kv.Value)
+	})
+	fmt.Fprintf(w, "\n}\n")
+}
+
+//pprof index handler
+func (m *ServiceMgr) indexHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+	pprof.Index(w, r)
+}
+
+//pprof cmdline handler
+func (m *ServiceMgr) cmdlineHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+	pprof.Cmdline(w, r)
+}
+
+//pprof profile handler
+func (m *ServiceMgr) profileHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+	pprof.Profile(w, r)
+}
+
+//pprof symbol handler
+func (m *ServiceMgr) symbolHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+	pprof.Symbol(w, r)
+}
+
+//pprof trace handler
+func (m *ServiceMgr) traceHandler(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+	pprof.Trace(w, r)
 }

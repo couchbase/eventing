@@ -23,19 +23,19 @@ func (p *Producer) vbEventingNodeAssign() error {
 	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, p.handlerConfig.SourceBucket)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getEventingNodesAddressesOpCallback, p)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getNsServerNodesAddressesOpCallback, p)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	// Would include eventing nodes that are about to be ejected out of the cluster
@@ -58,7 +58,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, metakvGetCallback, p, metakvConfigKeepNodes, &data)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	var keepNodes []string
@@ -68,6 +68,10 @@ func (p *Producer) vbEventingNodeAssign() error {
 			logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return err
 	}
+
+	p.vbEventingNodeAssignRWMutex.Lock()
+	defer p.vbEventingNodeAssignRWMutex.Unlock()
+	p.vbEventingNodeAssignMap = make(map[uint16]string)
 
 	if len(keepNodes) > 0 {
 		logging.Infof("%s [%s:%d] Updating Eventing keepNodes uuids. Previous: %v current: %v",
@@ -92,10 +96,6 @@ func (p *Producer) vbEventingNodeAssign() error {
 	vbucketsPerNode := p.numVbuckets / len(eventingNodeAddrs)
 	var vbNo int
 	var startVb uint16
-
-	p.vbEventingNodeAssignRWMutex.Lock()
-	defer p.vbEventingNodeAssignRWMutex.Unlock()
-	p.vbEventingNodeAssignMap = make(map[uint16]string)
 
 	vbCountPerNode := make([]int, len(eventingNodeAddrs))
 	for i := 0; i < len(eventingNodeAddrs); i++ {
@@ -312,7 +312,7 @@ func (p *Producer) getKvVbMap() error {
 	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getClusterInfoCacheOpCallback, p, &cinfo)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	kvAddrs, err := cinfo.GetNodesByBucket(p.handlerConfig.SourceBucket)

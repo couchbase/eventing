@@ -48,14 +48,14 @@ public:
 
   void FlushToConn(uv_stream_t *stream, char *buffer, int length);
 
-  void InitTcpSock(const std::string &handler_name,
-                   const std::string &handler_uuid,
+  void InitTcpSock(const std::string &function_name,
+                   const std::string &function_id,
                    const std::string &user_prefix, const std::string &appname,
                    const std::string &addr, const std::string &worker_id,
                    int batch_size, int feedback_batch_size, int feedback_port,
                    int port);
 
-  void InitUDS(const std::string &handler_name, const std::string &handler_uuid,
+  void InitUDS(const std::string &function_name, const std::string &function_id,
                const std::string &user_prefix, const std::string &appname,
                const std::string &addr, const std::string &worker_id,
                int batch_size, int feedback_batch_size,
@@ -80,7 +80,8 @@ public:
 
   static void StopUvLoop(uv_async_t *);
 
-  void SendFilterAck(int opcode, int msgtype, int vb_no, int64_t seq_no);
+  void SendFilterAck(int opcode, int msgtype, int vb_no, int64_t seq_no,
+                     bool skip_ack);
 
   std::thread main_uv_loop_thr_;
   std::thread feedback_uv_loop_thr_;
@@ -124,15 +125,17 @@ private:
 
   std::string app_name_;
 
-  std::string handler_name_;
+  std::string function_name_;
 
-  std::string handler_uuid_;
+  std::string function_id_;
 
   std::string user_prefix_;
 
   std::string next_message_;
 
   std::map<int16_t, int16_t> partition_thr_map_;
+
+  int16_t curr_worker_idx_;
 
   // Controls the number of virtual partitions, in order to shard work among
   // worker threads

@@ -16,13 +16,14 @@ import (
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
 )
 
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, rConfig *common.RebalanceConfig,
-	index int, uuid string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
+	index int, uuid, nsServerPort string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	dcpConfig map[string]interface{}, p common.EventingProducer, s common.EventingSuperSup,
 	numVbuckets int, retryCount *int64, vbEventingNodeAssignMap map[uint16]string,
 	workerVbucketMap map[string][]uint16) *Consumer {
@@ -45,7 +46,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		cppThrPartitionMap:              make(map[int][]uint16),
 		cppWorkerThrCount:               hConfig.CPPWorkerThrCount,
 		crcTable:                        crc32.MakeTable(crc32.Castagnoli),
-		curlTimeout:                     hConfig.CurlTimeout,
 		dcpConfig:                       dcpConfig,
 		dcpFeedVbMap:                    make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:               hConfig.StreamBoundary,
@@ -98,7 +98,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		socketWriteTicker:               time.NewTicker(socketWriteTimerInterval),
 		statsRWMutex:                    &sync.RWMutex{},
 		statsTickDuration:               time.Duration(hConfig.StatsLogInterval) * time.Millisecond,
-		stopControlRoutineCh:            make(chan struct{}, 1),
+		streamReqRWMutex:                &sync.RWMutex{},
 		stopVbOwnerTakeoverCh:           make(chan struct{}),
 		stopConsumerCh:                  make(chan struct{}),
 		superSup:                        s,
@@ -134,11 +134,13 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbsStreamRRWMutex:               &sync.RWMutex{},
 		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
 		vbProcessingStats:               newVbProcessingStats(app.AppName, uint16(numVbuckets), uuid, fmt.Sprintf("worker_%s_%d", app.AppName, index)),
+		workerCount:                     len(workerVbucketMap),
 		workerQueueCap:                  hConfig.WorkerQueueCap,
 		workerQueueMemCap:               hConfig.WorkerQueueMemCap,
 		workerRespMainLoopThreshold:     hConfig.WorkerResponseTimeout,
 		workerVbucketMap:                workerVbucketMap,
 		workerVbucketMapRWMutex:         &sync.RWMutex{},
+		nsServerPort:                    nsServerPort,
 	}
 
 	consumer.builderPool = &sync.Pool{
@@ -162,6 +164,8 @@ func (c *Consumer) Serve() {
 	}()
 
 	c.isBootstrapping = true
+	logging.Infof("%s [%s:%s:%d] Bootstrapping status: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isBootstrapping)
+
 	c.statsTicker = time.NewTicker(c.statsTickDuration)
 	c.backupVbStats = newVbBackupStats(uint16(c.numVbuckets))
 
@@ -172,7 +176,7 @@ func (c *Consumer) Serve() {
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
 
 	c.consumerSup = suptree.NewSimple(c.workerName)
-	go c.consumerSup.ServeBackground()
+	c.consumerSup.ServeBackground(c.workerName)
 
 	c.cppWorkerThrPartitionMap()
 
@@ -267,12 +271,21 @@ checkIfPlannerRunning:
 	c.controlRoutineWg.Add(1)
 	go c.controlRoutine()
 
+	if c.usingTimer {
+		go c.scanTimers()
+	}
+
+	go c.updateWorkerStats()
+
 	err = c.startDcp(flogs)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
 	}
 	c.isBootstrapping = false
+	logging.Infof("%s [%s:%s:%d] Bootstrapping status: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isBootstrapping)
+
+	c.signalBootstrapFinishCh <- struct{}{}
 
 	logging.Infof("%s [%s:%s:%d] vbsStateUpdateRunning: %t",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning)
@@ -283,15 +296,7 @@ checkIfPlannerRunning:
 		go c.vbsStateUpdate()
 	}
 
-	if c.usingTimer {
-		go c.scanTimers()
-	}
-
-	go c.updateWorkerStats()
-
 	go c.doLastSeqNoCheckpoint()
-
-	c.signalBootstrapFinishCh <- struct{}{}
 
 	c.controlRoutineWg.Wait()
 
@@ -314,7 +319,7 @@ func (c *Consumer) HandleV8Worker() error {
 	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	currHost := util.Localhost()
@@ -330,7 +335,7 @@ func (c *Consumer) HandleV8Worker() error {
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort, currHost,
 		c.eventingDir, c.eventingAdminPort, c.eventingSSLPort, c.getKvNodes()[0],
 		c.producer.CfgData(), c.lcbInstCapacity, c.executionTimeout,
-		int(c.checkpointInterval.Nanoseconds()/(1000*1000)), false, c.curlTimeout, c.timerContextSize)
+		int(c.checkpointInterval.Nanoseconds()/(1000*1000)), false, c.timerContextSize)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 
@@ -348,7 +353,7 @@ func (c *Consumer) HandleV8Worker() error {
 }
 
 // Stop acts terminate routine for consumer handle
-func (c *Consumer) Stop() {
+func (c *Consumer) Stop(context string) {
 	logPrefix := "Consumer::Stop"
 
 	defer func() {
@@ -363,6 +368,22 @@ func (c *Consumer) Stop() {
 
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
+
+	if c.usingTimer {
+		vbsOwned := c.getCurrentlyOwnedVbs()
+		sort.Sort(util.Uint16Slice(vbsOwned))
+
+		logging.Infof("%s [%s:%s:%d] Currently owned vbs len: %d dump: %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsOwned), util.Condense(vbsOwned))
+
+		for _, vb := range vbsOwned {
+			store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(vb))
+
+			if found {
+				store.Free()
+			}
+		}
+	}
 
 	if c.gocbBucket != nil {
 		c.gocbBucket.Close()
@@ -440,10 +461,6 @@ func (c *Consumer) Stop() {
 	logging.Infof("%s [%s:%s:%d] Sent signal to stop cpp worker stat collection routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	if c.stopControlRoutineCh != nil {
-		c.stopControlRoutineCh <- struct{}{}
-	}
-
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop checkpointing routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
@@ -462,8 +479,7 @@ func (c *Consumer) Stop() {
 		}
 	}()
 
-	logging.Infof("%s [%s:%s:%d] Closed all dcpfeed handles",
-		logPrefix, c.workerName, c.tcpPort, c.Pid())
+	logging.Infof("%s [%s:%s:%d] Closed all dcpfeed handles", logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	close(c.stopConsumerCh)
 
@@ -480,7 +496,7 @@ func (c *Consumer) Stop() {
 	}
 
 	if c.consumerSup != nil {
-		c.consumerSup.Stop()
+		c.consumerSup.Stop(c.workerName)
 	}
 
 	logging.Infof("%s [%s:%s:%d] Requested to stop supervisor for Eventing.Consumer. Exiting Consumer::Stop",

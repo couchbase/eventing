@@ -2,16 +2,18 @@
 
 if [ ! -f ~/.cienv ]; then
 cat > ~/.cienv <<EOF
-    export CINAME=ci-eventing
+    export CINAME=ci-eventing-unstable
+    export CIBOT=true
     export WORKSPACE=/opt/build
-    export RELEASE=5.5.0
-    export MANIFEST="couchbase-server/vulcan.xml"
-    export MODE="functional,integration"
+    export RELEASE=6.5.0
+    export MANIFEST="couchbase-server/mad-hatter/6.5.0.xml"
+    export MODE="sanity,unit,functional,integration"
     export BRANCH="unstable"
-    #export CIBOT=true
-    #export GERRIT="9101 9102"
-    #export WATCHERS="somebody@couchbase.com nobody@couchbase.com"
-    #export PEGGED=1979
+    export MODE="test"
+    export WATCHERS="siri@couchbase.com"
+    export PEGGED=0
+    # use below if gerrit patchsets need to be ordered (so adding CI bot is not enough)
+    # export GERRIT="10051 20012 31241"
 EOF
 fi
 source ~/.cienv
@@ -22,7 +24,7 @@ if [ "$WORKSPACE" = "" ]; then
 fi
 
 if [ "$MODE" = "" ]; then
-  echo MODE must be set to 'test'
+  echo MODE must be some combination of: 'sanity,unit,functional,integration'
   exit 2
 fi
 

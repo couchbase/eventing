@@ -10,9 +10,12 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
+
+var errStatusParsingFailed = fmt.Errorf("status parsing failed")
 
 func initNodePaths() ([]byte, error) {
 	payload := strings.NewReader(fmt.Sprintf("data_path=%s&index_path=", dataDir))
@@ -251,7 +254,7 @@ func otpNodes(removeNodes []string) (string, string) {
 	return knownNodes, ejectNodes
 }
 
-func waitForRebalanceFinish() {
+func waitForRebalanceFinish() error {
 	t := time.NewTicker(5 * time.Second)
 
 	var rebalanceRunning bool
@@ -268,10 +271,14 @@ func waitForRebalanceFinish() {
 			err = json.Unmarshal(r, &tasks)
 			if err != nil {
 				fmt.Println("tasks fetch, err:", err)
-				return
+				return err
 			}
 			for _, v := range tasks {
 				task := v.(map[string]interface{})
+				if task["errorMessage"] != nil {
+					log.Println(task["errorMessage"].(string))
+					return fmt.Errorf("rebalance failed")
+				}
 				if task["type"].(string) == "rebalance" && task["status"].(string) == "running" {
 					rebalanceRunning = true
 					log.Println("Rebalance progress:", task["progress"])
@@ -280,7 +287,7 @@ func waitForRebalanceFinish() {
 				if rebalanceRunning && task["type"].(string) == "rebalance" && task["status"].(string) == "notRunning" {
 					t.Stop()
 					log.Println("Rebalance progress: 100")
-					return
+					return nil
 				}
 			}
 		}
@@ -288,39 +295,95 @@ func waitForRebalanceFinish() {
 }
 
 func waitForDeployToFinish(appName string) {
+	timer := time.NewTimer(time.Hour)
 	for {
-		time.Sleep(5 * time.Second)
-		log.Printf("Waiting for app: %v to get deployed\n", appName)
-
-		deployedApps, err := getDeployedApps()
-		if err != nil {
-			continue
-		}
-
-		if _, exists := deployedApps[appName]; exists {
-			log.Printf("App: %v got deployed\n", appName)
+		select {
+		case <-timer.C:
+			log.Printf("Deployment is stuck for app: %v", appName)
+			goroutineDumpAllNodes()
 			return
+		default:
+			time.Sleep(5 * time.Second)
+			log.Printf("Waiting for app: %v to get deployed\n", appName)
+
+			deployedApps, err := getDeployedApps()
+			if err != nil {
+				continue
+			}
+
+			if _, exists := deployedApps[appName]; exists {
+				log.Printf("App: %v got deployed\n", appName)
+				timer.Stop()
+				return
+			}
 		}
 	}
 }
 
-func waitForUndeployToFinish(appName string) {
+func bootstrapCheck(appName string, startCheck bool) {
 	for {
-		time.Sleep(5 * time.Second)
-
-		log.Printf("Waiting for app: %s to get un-deployed\n", appName)
-
-		runningApps, err := getRunningApps()
+		bStatus, err := getBootstrappingApps()
 		if err != nil {
+			if !startCheck && err == errStatusParsingFailed {
+				log.Println("No apps undergoing bootstrap")
+				return
+			}
+
+			log.Printf("Error: %v encountered while fetching bootstrapping apps", err)
 			continue
 		}
 
-		if _, exists := runningApps[appName]; !exists {
-			log.Printf("App: %v got un-deployed\n", appName)
+		log.Printf("Apps undergoing bootstrap: %t", bStatus)
+
+		if bStatus && startCheck {
+			log.Printf("App: %s started bootstrap\n", appName)
 			return
 		}
 
+		time.Sleep(5 * time.Second)
 	}
+}
+
+func waitForUndeployToFinish(appName string) {
+	timer := time.NewTimer(time.Hour)
+	for {
+		select {
+		case <-timer.C:
+			log.Printf("Undeploy is stuck for app: %v", appName)
+			goroutineDumpAllNodes()
+			return
+		default:
+			time.Sleep(5 * time.Second)
+
+			log.Printf("Waiting for app: %s to get un-deployed\n", appName)
+
+			runningApps, err := getRunningApps()
+			if err != nil {
+				continue
+			}
+
+			if _, exists := runningApps[appName]; !exists {
+				log.Printf("App: %v got un-deployed\n", appName)
+				timer.Stop()
+				return
+			}
+		}
+
+	}
+}
+
+func getBootstrappingApps() (bool, error) {
+	r, err := makeRequest("GET", strings.NewReader(""), aggBootstrappingApps)
+	if err != nil {
+		return false, err
+	}
+
+	status, err := strconv.ParseBool(string(r))
+	if err != nil {
+		return false, errStatusParsingFailed
+	}
+
+	return status, nil
 }
 
 func getDeployedApps() (map[string]string, error) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,13 +37,8 @@ const (
 	DataService          = "kv"
 	MgmtService          = "mgmt"
 
-	HTTPRequestTimeout = time.Duration(5000) * time.Millisecond
-
 	EPSILON = 1e-5
-)
-
-const (
-	metakvMaxDocSize = 4096 //Fragment size for Appcontent
+	dict    = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ*&"
 )
 
 var GocbCredsRequestCounter = 0
@@ -458,10 +454,10 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 	return aggProgress, progressMap, errMap
 }
 
-func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {
-	logPrefix := "util::GetDeployedApps"
+func GetAppStatus(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {
+	logPrefix := "util::GetAppStatus"
 
-	deployedApps := make(map[string]map[string]string)
+	appStatuses := make(map[string]map[string]string)
 
 	netClient := NewClient(HTTPRequestTimeout)
 
@@ -470,7 +466,7 @@ func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[strin
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
-			logging.Errorf("%s Failed to get deployed apps from url: %rs, err: %v", logPrefix, endpointURL, err)
+			logging.Errorf("%s Failed to get app statuses from url: %rs, err: %v", logPrefix, endpointURL, err)
 			return nil, err
 		}
 		defer res.Body.Close()
@@ -481,18 +477,18 @@ func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[strin
 			return nil, err
 		}
 
-		var locallyDeployedApps map[string]string
-		err = json.Unmarshal(buf, &locallyDeployedApps)
+		var appStatus map[string]string
+		err = json.Unmarshal(buf, &appStatus)
 		if err != nil {
-			logging.Errorf("%s Failed to unmarshal deployed apps from url: %rs, err: %v", logPrefix, endpointURL, err)
+			logging.Errorf("%s Failed to unmarshal apps statuses from url: %rs, err: %v", logPrefix, endpointURL, err)
 			return nil, err
 		}
 
-		deployedApps[nodeAddr] = make(map[string]string)
-		deployedApps[nodeAddr] = locallyDeployedApps
+		appStatuses[nodeAddr] = make(map[string]string)
+		appStatuses[nodeAddr] = appStatus
 	}
 
-	return deployedApps, nil
+	return appStatuses, nil
 }
 
 func ListChildren(path string) []string {
@@ -550,19 +546,24 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 	length := len(payload)
 
 	checksumPath += appName
-	fragmentCount := length / metakvMaxDocSize
-	if length%metakvMaxDocSize != 0 {
+	fragmentCount := length / MetaKvMaxDocSize()
+	if length%MetaKvMaxDocSize() != 0 {
 		fragmentCount++
 	}
-	logging.Infof("%s Function: %s number of fragments: %d payload size: %d", logPrefix, appName, fragmentCount, length)
+
+	logging.Infof("%s Function: %s number of fragments: %d payload size: %d app path: %s checksum path: %s",
+		logPrefix, appName, fragmentCount, length, appsPath, checksumPath)
+
 	for idx := 0; idx < fragmentCount; idx++ {
 		currpath := appsPath + strconv.Itoa(int(idx))
-		curridx := idx * metakvMaxDocSize
-		lastidx := (idx + 1) * metakvMaxDocSize
+		curridx := idx * MetaKvMaxDocSize()
+		lastidx := (idx + 1) * MetaKvMaxDocSize()
 		if lastidx > length {
 			lastidx = length
 		}
+
 		fragment := payload[curridx:lastidx]
+
 		err := MetakvSet(currpath, fragment, nil)
 		if err != nil {
 			//Delete existing entry from appspath
@@ -575,9 +576,9 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 		}
 	}
 
-	//Compute MD5 hash and Update it to metakv
+	//Compute MD5 hash and update it in metakv
 	payloadhash := PayloadHash{}
-	if err := payloadhash.Update(payload, metakvMaxDocSize); err != nil {
+	if err := payloadhash.Update(payload, MetaKvMaxDocSize()); err != nil {
 		logging.Errorf("%s Function: %s updating payload hash failed err: %v", logPrefix, appName, err)
 		//Delete existing entry from appspath
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
@@ -587,10 +588,10 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 		return err
 	}
 
-	//Marshal payloadhash and update it to metakv
+	//Marshal payload hash and update it in metakv
 	hashdata, err := json.Marshal(&payloadhash)
 	if err != nil {
-		//Delete existing entry from appspath
+		//Delete existing entry from apps path
 		logging.Errorf("%s Function: %s marshal failed, err: %v", logPrefix, appName, err)
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
 			logging.Errorf("%s Function: %s unmarshal failed, err: %v", logPrefix, appName, errd)
@@ -600,7 +601,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 	}
 
 	if err = MetakvSet(checksumPath, hashdata, nil); err != nil {
-		//Delete existing entry from appspath
+		//Delete existing entry from apps path
 		logging.Errorf("%s Function: %s metakv set failed for checksum, err: %v", logPrefix, appName, err)
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
 			logging.Errorf("%s Function: %s checksum metakv recursive delete, err: %v", logPrefix, appName, errd)
@@ -612,7 +613,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 	return nil
 }
 
-//ReadAppContent reads Handler Code
+// ReadAppContent reads function code
 func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 	logPrefix := "util::ReadAppContent"
 
@@ -622,6 +623,11 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 		logging.Errorf("%s Function: %s metakv get failed for checksum, err: %v", logPrefix, appName, err)
 		return nil, err
 	} else {
+		if len(hashdata) == 0 {
+			logging.Errorf("%s Function: %s app content doesn't exist or is empty", logPrefix, appName)
+			return nil, nil
+		}
+
 		if err := json.Unmarshal(hashdata, &payloadhash); err != nil {
 			logging.Errorf("%s Function: %s unmarshal failed for checksum", logPrefix, appName)
 			return nil, err
@@ -1022,29 +1028,58 @@ func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error)
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
 			logging.Errorf("%s Failed to gather bootstrapping app list from url: %rs, err: %v", logPrefix, endpointURL, err)
-			return true, err
+			return false, err
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
-			return true, err
+			return false, err
 		}
 
 		bootstrappingApps := make(map[string]string)
 		err = json.Unmarshal(buf, &bootstrappingApps)
 		if err != nil {
 			logging.Errorf("%s Failed to marshal bootstrapping app list from url: %rs, err: %v", logPrefix, endpointURL, err)
-			return true, err
+			return false, err
 		}
 
 		if len(bootstrappingApps) > 0 {
-			return true, fmt.Errorf("Some apps are undergoing bootstrap")
+			return true, fmt.Errorf("Some apps are undergoing bootstrap, node: %s", nodeAddr)
 		}
 	}
 
 	return false, nil
+}
+
+func GetEventingVersion(urlSuffix string, nodeAddrs []string) ([]string, error) {
+	logPrefix := "util::GetEventingVersion"
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	versions := make([]string, 0)
+
+	for _, nodeAddr := range nodeAddrs {
+		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(endpointURL)
+		if err != nil {
+			logging.Errorf("%s Failed to gather eventing version from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return versions, err
+		}
+		defer res.Body.Close()
+
+		version, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return versions, err
+		}
+
+		versions = append(versions, string(version))
+	}
+
+	return versions, nil
 }
 
 func Contains(needle interface{}, haystack interface{}) bool {
@@ -1115,13 +1150,32 @@ func GetAppNameFromPath(path string) string {
 	return split[len(split)-1]
 }
 
-func GenerateHandlerUUID() (uint32, error) {
+func GenerateFunctionID() (uint32, error) {
 	uuid := make([]byte, 16)
 	_, err := rand.Read(uuid)
 	if err != nil {
 		return 0, err
 	}
 	return crc32.ChecksumIEEE(uuid), nil
+}
+
+func GenerateFunctionInstanceID() (string, error) {
+	uuid := make([]byte, 16)
+	_, err := rand.Read(uuid)
+	if err != nil {
+		return "", err
+	}
+	instanceId := crc32.ChecksumIEEE(uuid)
+	instanceIdStr := make([]byte, 0, 8)
+	if instanceId == 0 {
+		return "0", nil
+	}
+	for instanceId > 0 {
+		ch := dict[instanceId%64]
+		instanceIdStr = append(instanceIdStr, byte(ch))
+		instanceId /= 64
+	}
+	return string(instanceIdStr), nil
 }
 
 type GocbLogger struct{}
@@ -1187,4 +1241,36 @@ func CPUCount(log bool) int {
 	}
 
 	return cpuCount
+}
+
+func ParseXattrData(xattrPrefix string, data []byte) (body, xattr []byte, err error) {
+	length := len(data)
+	if length < 4 {
+		return nil, nil, fmt.Errorf("empty xattr metadata")
+	}
+	xattrLen := binary.BigEndian.Uint32(data[0:4])
+	body = data[xattrLen+4:]
+	if xattrLen == 0 {
+		return body, nil, nil
+	}
+	index := uint32(4)
+	delimeter := []byte("\x00")
+	for index < xattrLen {
+		keyValPairLen := binary.BigEndian.Uint32(data[index : index+4])
+		if keyValPairLen == 0 || int(index+keyValPairLen) > length {
+			return body, nil, fmt.Errorf("xattr parse error, unexpected xattr data")
+		}
+		index += 4
+		keyValPairData := data[index : index+keyValPairLen]
+		keyValPair := bytes.Split(keyValPairData, delimeter)
+		if len(keyValPair) != 3 {
+			return body, nil, fmt.Errorf("xattr parse error, unexpected number of components")
+		}
+		xattrKey := string(keyValPair[0])
+		if xattrKey == xattrPrefix {
+			return body, keyValPair[1], nil
+		}
+		index += keyValPairLen
+	}
+	return body, nil, nil
 }

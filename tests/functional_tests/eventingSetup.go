@@ -12,11 +12,36 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/mitchellh/go-ps"
 )
 
 const (
 	lettersAndDigits = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
+
+func checkIfProcessRunning(processName string) error {
+	res, err := ps.Processes()
+	if err != nil {
+		log.Printf("Failed to list all processes, err: %v\n", err)
+		return err
+	}
+
+	runningPids := make([]int, 0)
+	for _, r := range res {
+		if r.Executable() == processName {
+			runningPids = append(runningPids, r.Pid())
+		}
+	}
+
+	if len(runningPids) > 0 {
+		log.Printf("Found %d running processes, pids: %v\n", len(runningPids), runningPids)
+		return fmt.Errorf("found running pids")
+	}
+
+	log.Printf("No %s process running", processName)
+	return nil
+}
 
 func getHandlerCode(filename string) (string, error) {
 	content, err := ioutil.ReadFile(handlerCodeDir + filename + ".js")
@@ -79,9 +104,12 @@ func createPadding(paddingCount int) string {
 }
 
 func createAndDeployLargeFunction(appName, hFileName string, settings *commonSettings, paddingCount int) (storeResponse *restResponse) {
+	sCount, _ := getBucketItemCount(srcBucket)
+	dCount, _ := getBucketItemCount(dstBucket)
+
 	storeResponse = &restResponse{}
 
-	log.Printf("Deploying app: %s", appName)
+	log.Printf("Deploying app: %s. Item count src bucket: %d dst bucket: %d", appName, sCount, dCount)
 	pad := createPadding(paddingCount)
 	content, err := getHandlerCode(hFileName)
 	content = pad + content
@@ -95,10 +123,13 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 	if len(settings.aliasSources) == 0 {
 		aliases = append(aliases, "dst_bucket")
 
-		// Source bucket bindings disallowed
-		// aliases = append(aliases, "src_bucket")
-
 		bnames = append(bnames, "hello-world")
+
+		//Source bucket bindings
+		if settings.srcMutationEnabled == true {
+			aliases = append(aliases, "src_bucket")
+			bnames = append(bnames, "default")
+		}
 	} else {
 		for index, val := range settings.aliasSources {
 			bnames = append(bnames, val)
@@ -116,7 +147,7 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 	if settings.metaBucket == "" {
 		metaBucket = "eventing"
 	} else {
-		metaBucket = settings.sourceBucket
+		metaBucket = settings.metaBucket
 	}
 
 	// Source bucket bindings disallowed
@@ -153,11 +184,14 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		var alias bucket
 		alias.BucketName = b
 		alias.Alias = bucketAliases[i]
-
+		if s.srcMutationEnabled && alias.BucketName == sourceBucket {
+			alias.Access = "rw"
+		}
 		aliases = append(aliases, alias)
 	}
 
 	var dcfg depCfg
+	dcfg.Curl = s.curlBindings
 	dcfg.Buckets = aliases
 	dcfg.MetadataBucket = metadataBucket
 	dcfg.SourceBucket = sourceBucket
@@ -227,8 +261,6 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 
 	settings["timer_context_size"] = 15 * 1024 * 1024
 
-	settings["curl_timeout"] = curlTimeout
-
 	if s.logLevel == "" {
 		settings["log_level"] = "INFO"
 	} else {
@@ -252,16 +284,20 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	return encodedData, nil
 }
 
-func setSettings(appName string, deploymentStatus, processingStatus bool, s *commonSettings) {
+func setSettings(fnName string, deploymentStatus, processingStatus bool, s *commonSettings) (*responseSchema, error) {
+	res := &responseSchema{}
 	settings := make(map[string]interface{})
 
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
 
-	settings["cleanup_timers"] = false
-	settings["dcp_stream_boundary"] = "everything"
-	settings["log_level"] = "INFO"
 	settings["tick_duration"] = 5000
+
+	if s.streamBoundary == "" {
+		settings["dcp_stream_boundary"] = "everything"
+	} else {
+		settings["dcp_stream_boundary"] = s.streamBoundary
+	}
 
 	if s.thrCount == 0 {
 		settings["cpp_worker_thread_count"] = cppthrCount
@@ -287,19 +323,18 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 		settings["lcb_inst_capacity"] = s.lcbInstCap
 	}
 
-	settings["timer_worker_pool_size"] = 1
-	settings["skip_timer_threshold"] = 86400
+	settings["cleanup_timers"] = s.cleanupTimers
 
 	data, err := json.Marshal(&settings)
 	if err != nil {
 		log.Println("Undeploy json marshal:", err)
-		return
+		return res, err
 	}
 
-	req, err := http.NewRequest("POST", functionsURL+"/"+appName+"/settings", bytes.NewBuffer(data))
+	req, err := http.NewRequest("POST", functionsURL+"/"+fnName+"/settings", bytes.NewBuffer(data))
 	if err != nil {
 		log.Println("Undeploy request framing::", err)
-		return
+		return res, err
 	}
 
 	req.SetBasicAuth(username, password)
@@ -307,7 +342,7 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println("Undeploy response:", err)
-		return
+		return res, err
 	}
 
 	defer resp.Body.Close()
@@ -315,15 +350,17 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 	data, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("Post to eventing, response read:", err)
-		return
+		return res, err
 	}
 
-	log.Printf("Update settings, response code: %d dump: %s\n", resp.StatusCode, string(data))
-	return
+	err = json.Unmarshal(data, res)
+	log.Printf("Function: %s update settings: %+v requested, response code: %d dump: %s\n",
+		fnName, settings, resp.StatusCode, string(data))
+	return res, nil
 }
 
-func deleteFunction(appName string) (*responseSchema, error) {
-	return makeDeleteReq("Delete from main store", functionsURL+"/"+appName)
+func deleteFunction(fnName string) (*responseSchema, error) {
+	return makeDeleteReq(fmt.Sprintf("Function: %s delete from main store", fnName), functionsURL+"/"+fnName)
 }
 
 func makeDeleteReq(context, url string) (response *responseSchema, err error) {
@@ -356,7 +393,7 @@ func makeDeleteReq(context, url string) (response *responseSchema, err error) {
 	return
 }
 
-func verifyBucketOps(count, retryCount int) int {
+func verifyBucketCount(count, retryCount int, bucket string) int {
 	rCount := 1
 	var itemCount int
 
@@ -365,14 +402,19 @@ retryVerifyBucketOp:
 		return itemCount
 	}
 
-	itemCount, _ = getBucketItemCount(dstBucket)
+	itemCount, _ = getBucketItemCount(bucket)
 	if itemCount == count {
 		log.Printf("src & dst bucket item count matched up. src bucket count: %d dst bucket count: %d\n", count, itemCount)
 		return itemCount
 	}
 	rCount++
 	time.Sleep(time.Second * 5)
+	log.Printf("Waiting for dst bucket item count to get to: %d curr count: %d\n", count, itemCount)
 	goto retryVerifyBucketOp
+}
+
+func verifyBucketOps(count, retryCount int) int {
+	return verifyBucketCount(count, retryCount, dstBucket)
 }
 
 func verifySourceBucketOps(count, retryCount int) int {
@@ -507,13 +549,16 @@ func bucketFlush(bucketName string) {
 func flushFunction(handler string) {
 	setSettings(handler, false, false, &commonSettings{})
 	waitForUndeployToFinish(handler)
+	checkIfProcessRunning("eventing-con")
 	deleteFunction(handler)
 }
 
 func flushFunctionAndBucket(handler string) {
 	flushFunction(handler)
-	bucketFlush("default")
-	bucketFlush("hello-world")
+	bucketFlush(srcBucket)
+	verifyBucketCount(0, statsLookupRetryCounter, srcBucket)
+	bucketFlush(dstBucket)
+	verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
 }
 
 func dumpStats() {
@@ -552,14 +597,14 @@ func makeStatsRequest(context, url string, printStats bool) (interface{}, error)
 		return nil, err
 	}
 
-	// Pretty print json
-	body, err := json.MarshalIndent(&response, "", "  ")
-	if err != nil {
-		log.Println("Pretty print json:", err)
-		return nil, err
-	}
-
 	if printStats {
+		// Pretty print json
+		body, err := json.MarshalIndent(&response, "", "  ")
+		if err != nil {
+			log.Println("Pretty print json:", err)
+			return nil, err
+		}
+
 		log.Printf("%v::%s\n", context, string(body))
 	}
 
@@ -622,4 +667,156 @@ func killPid(pid int) error {
 	}
 
 	return process.Kill()
+}
+
+func getFnStatus(appName string) string {
+	res, err := makeStatsRequest("", statusURL, false)
+	if err != nil {
+		return "invalid"
+	}
+
+	s := res.(map[string]interface{})
+	appStatuses, ok := s["apps"].([]interface{})
+	if !ok {
+		return "invalid"
+	}
+
+	for _, entry := range appStatuses {
+		status := entry.(map[string]interface{})
+
+		app := status["name"].(string)
+		if app == appName {
+			compositeStatus := status["composite_status"].(string)
+			return compositeStatus
+		}
+	}
+
+	return "invalid"
+}
+
+func waitForStatusChange(appName, expectedStatus string, retryCounter int) {
+	for {
+		time.Sleep(5 * time.Second)
+		log.Printf("Waiting for function: %s status to change to %s\n", appName, expectedStatus)
+
+		status := getFnStatus(appName)
+		if status != expectedStatus {
+			continue
+		}
+
+		if status == expectedStatus {
+			log.Printf("Function: %s status changed to %s\n", appName, expectedStatus)
+			return
+		}
+	}
+}
+
+func getFailureStatCounter(statName, fnName string) int {
+	responses := make([]interface{}, 0)
+
+	res0, err := makeStatsRequest("", statsEndpointURL0, false)
+	if err == nil {
+		responses = append(responses, res0)
+	}
+
+	res1, err := makeStatsRequest("", statsEndpointURL1, false)
+	if err == nil {
+		responses = append(responses, res1)
+	}
+
+	res2, err := makeStatsRequest("", statsEndpointURL2, false)
+	if err == nil {
+		responses = append(responses, res2)
+	}
+
+	res3, err := makeStatsRequest("", statsEndpointURL3, false)
+	if err == nil {
+		responses = append(responses, res3)
+	}
+
+	var result int
+
+	for _, res := range responses {
+		stats, ok := res.([]interface{})
+		if !ok {
+			continue
+		}
+
+		for _, stat := range stats {
+			s, ok := stat.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			sFName, ok := s["function_name"].(string)
+			if !ok {
+				continue
+			}
+
+			if sFName == fnName {
+				failureStats, ok := s["failure_stats"].(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if val, ok := failureStats[statName].(float64); !ok {
+					continue
+				} else {
+					result += int(val)
+				}
+			}
+		}
+	}
+
+	return result
+}
+
+func waitForFailureStatCounterSync(fnName, statName string, expectedCount int) {
+	for {
+		time.Sleep(5 * time.Second)
+		log.Printf("Waiting for function: %s stat: %s to get to %d\n", fnName, statName, expectedCount)
+
+		count := getFailureStatCounter(statName, fnName)
+		if count != expectedCount {
+			log.Printf("Function: %s stat: %s got to %d expected %d\n", fnName, statName, count, expectedCount)
+			continue
+		}
+
+		if count == expectedCount {
+			log.Printf("Function: %s stat: %s got to %d\n", fnName, statName, expectedCount)
+			return
+		}
+	}
+}
+
+func goroutineDumpAllNodes() {
+	urls := []string{goroutineURL0, goroutineURL1, goroutineURL2, goroutineURL3}
+	for _, url := range urls {
+		log.Printf("Collecting goroutine dump from url: %v\n", url)
+		goroutineDump(url)
+	}
+}
+
+func goroutineDump(url string) error {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Printf("HTTP request creation failed, url: %v err: %v\n", url, err)
+		return err
+	}
+
+	req.SetBasicAuth(username, password)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Println("http request failed with the response :", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("Response body read failed: ", err)
+		return err
+	}
+
+	log.Printf("%s\n", string(data))
+	return nil
 }

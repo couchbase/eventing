@@ -10,7 +10,6 @@ table Payload {
   // Handler config
   app_name:string;
   checkpoint_interval:int; // Controls how frequently checkpoint will be updated in metadata bucket
-  curl_timeout:long;
   depcfg:string;
   debugger_port:string;
   execution_timeout:int; // Execution timeout for handler code execution
@@ -19,6 +18,7 @@ table Payload {
                            // In some case we need to skip lcb connects i.e. while checking for
                            // compilation issues in supplied handler code.
   timer_context_size:long;
+  function_instance_id:string;
   handler_headers: [string]; // List of statements that will prefixed to handler code post code constraint checks
   handler_footers: [string]; // List of statements that will appended to handler code post code constraint checks
 

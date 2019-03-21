@@ -2,6 +2,7 @@ package servicemanager
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"time"
 
@@ -177,6 +178,27 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 		m.failoverNotif = true
 
 	case service.TopologyChangeTypeRebalance:
+		nodeAddrs, err := m.getActiveNodeAddrs()
+		logging.Infof("%s Active Eventing nodes in the cluster: %rs", logPrefix, nodeAddrs)
+
+		if len(nodeAddrs) > 0 && err == nil {
+
+			logging.Infof("%s Querying nodes: %rs for bootstrap status", logPrefix, nodeAddrs)
+
+			// Fail rebalance if some apps are undergoing bootstrap
+			appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", nodeAddrs)
+			logging.Infof("%s Status of app bootstrap across all Eventing nodes: %v", logPrefix, appsBootstrapping)
+			if err != nil {
+				logging.Warnf("%s Some apps are undergoing bootstrap on some/all Eventing nodes, err: %v", logPrefix, err)
+				return err
+			}
+		}
+
+		if err != nil {
+			logging.Warnf("%s Error encountered while fetching active Eventing nodes, err: %v", logPrefix, err)
+			return fmt.Errorf("failed to get active eventing nodes in the cluster")
+		}
+
 		util.Retry(util.NewFixedBackoff(time.Second), nil, storeKeepNodesCallback, m.keepNodeUUIDs)
 
 		m.startRebalance(change)

@@ -50,7 +50,9 @@ type Producer struct {
 	app                    *common.AppConfig
 	auth                   string
 	cfgData                string
+	cleanupTimers          bool
 	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
+	isBootstrapping        bool
 	isPlannerRunning       bool
 	isTerminateRunning     bool
 	kvPort                 string
@@ -64,8 +66,9 @@ type Producer struct {
 	pauseProducerCh        chan struct{}
 	pollBucketInterval     time.Duration
 	pollBucketTicker       *time.Ticker
-	pollBucketStopCh       chan struct{}
 	retryCount             int64
+	stopCh                 chan struct{}
+	stopChClosed           bool
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
 	trapEvent              bool
@@ -144,7 +147,6 @@ type Producer struct {
 	seqsNoProcessed            map[int]int64 // Access controlled by seqsNoProcessedRWMutex
 	seqsNoProcessedRWMutex     *sync.RWMutex
 	updateStatsTicker          *time.Ticker
-	updateStatsStopCh          chan struct{}
 
 	// Captures vbucket assignment to different eventing nodes
 	vbEventingNodeMap     map[string]map[string]string // Access controlled by vbEventingNodeRWMutex
@@ -165,4 +167,9 @@ type Producer struct {
 type vbNodeWorkerMapping struct {
 	ownerNode      string
 	assignedWorker string
+}
+
+type acceptedConn struct {
+	conn net.Conn
+	err  error
 }

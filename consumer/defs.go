@@ -58,7 +58,7 @@ const (
 
 	socketWriteTimerInterval = time.Duration(5000) * time.Millisecond
 
-	updateCPPStatsTickInterval = time.Duration(5000) * time.Millisecond
+	updateCPPStatsTickInterval = time.Duration(1000) * time.Millisecond
 )
 
 const (
@@ -74,12 +74,13 @@ const (
 	metadataUpdatedPeriodicCheck   = "metadata_updated_periodic_checkpoint"
 	metadataCorrectedAfterRollback = "metadata_corrected_after_rollback"
 	undoMetadataCorrection         = "undo_metadata_correction"
+	xattrPrefix                    = "_eventing"
 )
 
 type xattrMetadata struct {
-	Cas    string   `json:"cas"`
-	Digest uint32   `json:"digest"`
-	Timers []string `json:"timers"`
+	FunctionInstanceID string `json:"fiid"`
+	SeqNo              string `json:"seqno"`
+	ValueCRC           string `json:"crc"`
 }
 
 type vbFlogEntry struct {
@@ -102,6 +103,7 @@ type dcpMetadata struct {
 
 type vbSeqNo struct {
 	SeqNo   uint64 `json:"seq"`
+	SkipAck int    `json:"skip_ack"` // 0: false 1: true
 	Vbucket uint16 `json:"vb"`
 }
 
@@ -132,7 +134,6 @@ type Consumer struct {
 	cppThrPartitionMap    map[int][]uint16
 	cppWorkerThrCount     int // No. of worker threads per CPP worker process
 	crcTable              *crc32.Table
-	curlTimeout           int64    // curl operation timeout in ms
 	debugConn             net.Conn // Interface to support communication between Go and C++ worker spawned for debugging
 	debugFeedbackConn     net.Conn
 	debugFeedbackListener net.Listener
@@ -154,6 +155,7 @@ type Consumer struct {
 	dcpFeedsClosed                bool
 	dcpFeedVbMap                  map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
 	debuggerPort                  string
+	ejectNodesUUIDs               []string
 	eventingAdminPort             string
 	eventingDir                   string
 	eventingSSLPort               string
@@ -181,17 +183,21 @@ type Consumer struct {
 	kvVbMap                       map[uint16]string // Access controlled by default lock
 	logLevel                      string
 	numVbuckets                   int
+	nsServerPort                  string
 	reqStreamCh                   chan *streamRequestInfo
+	resetBootstrapDone            bool
 	statsTickDuration             time.Duration
+	streamReqRWMutex              *sync.RWMutex
 	stoppingConsumer              bool
 	superSup                      common.EventingSuperSup
 	timerContextSize              int64
 	timerStorageChanSize          int
+	timerQueuesAreDrained         bool
 	timerQueueSize                uint64
 	timerQueueMemCap              uint64
 	timerStorageMetaChsRWMutex    *sync.RWMutex
 	timerStorageRoutineCount      int
-	timerStorageQueues            []*util.BoundedQueue
+	timerStorageQueues            []*util.BoundedQueue // Access controlled by timerStorageMetaChsRWMutex
 	usingTimer                    bool
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed
@@ -211,12 +217,14 @@ type Consumer struct {
 	vbStreamRequested             map[uint16]struct{} // Access controlled by vbsStreamRRWMutex
 	vbsStreamRRWMutex             *sync.RWMutex
 	workerExited                  bool
+	workerCount                   int
 	workerVbucketMap              map[string][]uint16 // Access controlled by workerVbucketMapRWMutex
 	workerVbucketMapRWMutex       *sync.RWMutex
 
 	executionStats    map[string]interface{} // Access controlled by statsRWMutex
 	failureStats      map[string]interface{} // Access controlled by statsRWMutex
 	latencyStats      map[string]uint64      // Access controlled by statsRWMutex
+	curlLatencyStats  map[string]uint64      // Access controlled by statsRWMutex
 	lcbExceptionStats map[string]uint64      // Access controlled by statsRWMutex
 	statsRWMutex      *sync.RWMutex
 
@@ -289,10 +297,6 @@ type Consumer struct {
 	// Chan used by signal update of app handler settings
 	signalSettingsChangeCh chan struct{}
 
-	stopControlRoutineCh chan struct{}
-
-	// Populated when downstream tcp socket mapping to
-	// C++ v8 worker is down. Buffered channel to avoid deadlock
 	stopConsumerCh chan struct{}
 
 	gracefulShutdownChan chan struct{}
@@ -316,29 +320,28 @@ type Consumer struct {
 	signalDebuggerConnectedCh chan struct{}
 	signalDebuggerFeedbackCh  chan struct{}
 
-	msgProcessedRWMutex *sync.RWMutex
-	// Tracks DCP Opcodes processed per consumer
-	dcpMessagesProcessed map[mcd.CommandCode]uint64 // Access controlled by msgProcessedRWMutex
-
-	// Tracks V8 Opcodes processed per consumer
-	v8WorkerMessagesProcessed map[string]uint64 // Access controlled by msgProcessedRWMutex
+	msgProcessedRWMutex       *sync.RWMutex
+	dcpMessagesProcessed      map[mcd.CommandCode]uint64 // Access controlled by msgProcessedRWMutex
+	v8WorkerMessagesProcessed map[string]uint64          // Access controlled by msgProcessedRWMutex
 
 	dcpCloseStreamCounter    uint64
 	dcpCloseStreamErrCounter uint64
 	dcpStreamReqCounter      uint64
 	dcpStreamReqErrCounter   uint64
 
-	// TODO : Remove these stats
 	adhocTimerResponsesRecieved uint64
 	timerMessagesProcessed      uint64
 
 	// DCP and timer related counters
-	timerResponsesRecieved     uint64
-	aggMessagesSentCounter     uint64
-	dcpDeletionCounter         uint64
-	dcpMutationCounter         uint64
-	errorParsingTimerResponses uint64
-	timerMessagesProcessedPSec int
+	timerResponsesRecieved       uint64
+	aggMessagesSentCounter       uint64
+	dcpDeletionCounter           uint64
+	dcpMutationCounter           uint64
+	dcpXattrParseError           uint64
+	errorParsingTimerResponses   uint64
+	timerMessagesProcessedPSec   int
+	suppressedDCPDeletionCounter uint64
+	suppressedDCPMutationCounter uint64
 
 	// metastore related timer stats
 	metastoreDeleteCounter      uint64
@@ -400,6 +403,7 @@ type vbStat struct {
 
 type vbucketKVBlob struct {
 	AssignedWorker            string           `json:"assigned_worker"`
+	BootstrapStreamReqDone    bool             `json:"bootstrap_stream_req_done"`
 	CurrentVBOwner            string           `json:"current_vb_owner"`
 	DCPStreamStatus           string           `json:"dcp_stream_status"`
 	DCPStreamRequested        bool             `json:"dcp_stream_requested"`
@@ -472,6 +476,7 @@ type TimerInfo struct {
 	Context   string `json:"context"`
 }
 
+// Size returns aggregate size of timer entry sent from CPP to Go
 func (info *TimerInfo) Size() uint64 {
 	return uint64(unsafe.Sizeof(*info)) + uint64(len(info.Callback)) +
 		uint64(len(info.Reference)) + uint64(len(info.Context))

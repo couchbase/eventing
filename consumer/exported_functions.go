@@ -79,6 +79,18 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["dcp_mutation_sent_to_worker"] = c.dcpMutationCounter
 	}
 
+	if c.dcpXattrParseError > 0 {
+		stats["dcp_xattr_parse_error_counter"] = c.dcpXattrParseError
+	}
+
+	if c.suppressedDCPDeletionCounter > 0 {
+		stats["dcp_deletion_suppressed_counter"] = c.suppressedDCPDeletionCounter
+	}
+
+	if c.suppressedDCPMutationCounter > 0 {
+		stats["dcp_mutation_suppressed_counter"] = c.suppressedDCPMutationCounter
+	}
+
 	if c.dcpCloseStreamCounter > 0 {
 		stats["dcp_stream_close_counter"] = c.dcpCloseStreamCounter
 	}
@@ -354,8 +366,12 @@ func (c *Consumer) SignalFeedbackConnected() {
 
 // UpdateEventingNodesUUIDs is called by producer instance to notify about
 // updated list of node uuids
-func (c *Consumer) UpdateEventingNodesUUIDs(uuids []string) {
-	c.eventingNodeUUIDs = uuids
+func (c *Consumer) UpdateEventingNodesUUIDs(keepNodes, ejectNodes []string) {
+	c.ejectNodesUUIDs = ejectNodes
+	c.eventingNodeUUIDs = keepNodes
+
+	// Reset the flag before a rebalance is about to start off
+	c.timerQueuesAreDrained = false
 }
 
 // GetLatencyStats returns latency stats for event handlers from from cpp world
@@ -366,6 +382,19 @@ func (c *Consumer) GetLatencyStats() map[string]uint64 {
 	latencyStats := make(map[string]uint64)
 
 	for k, v := range c.latencyStats {
+		latencyStats[k] = v
+	}
+
+	return latencyStats
+}
+
+func (c *Consumer) GetCurlLatencyStats() map[string]uint64 {
+	c.statsRWMutex.RLock()
+	defer c.statsRWMutex.RUnlock()
+
+	latencyStats := make(map[string]uint64)
+
+	for k, v := range c.curlLatencyStats {
 		latencyStats[k] = v
 	}
 
@@ -558,7 +587,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 	c.handlerFooters = handlerFooters
 	// Framing bare minimum V8 worker init payload
 	payload, pBuilder := c.makeV8InitPayload(appName, c.debuggerPort, util.Localhost(), "", eventingPort, "",
-		"", appContent, 5, 10, 10*1000, true, 500, 1024)
+		"", appContent, 5, 10, 10*1000, true, 1024)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 
@@ -590,7 +619,6 @@ func (c *Consumer) initConsumer(appName string) {
 	c.lcbInstCapacity = 1
 	c.socketWriteBatchSize = 1
 	c.cppWorkerThrCount = 1
-	c.curlTimeout = 1000
 	c.ipcType = "af_inet"
 
 	c.connMutex = &sync.RWMutex{}
@@ -752,4 +780,13 @@ func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 	logging.Infof("%s [%s:%s:%d] Updated memory quota: %d MB previous worker quota: %d MB dcp feed quota: %d MB",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.workerQueueMemCap/(1024*1024),
 		prevWorkerMemCap/(1024*1024), prevDCPFeedMemCap/(1024*1024))
+}
+
+// ResetBootstrapDone to unset bootstrap flag
+func (c *Consumer) ResetBootstrapDone() {
+	logPrefix := "Consumer::ResetBootstrapDone"
+
+	logging.Infof("%s [%s:%s:%d] Current ResetBootstrapDone flag: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.resetBootstrapDone)
+	c.resetBootstrapDone = true
+	logging.Infof("%s [%s:%s:%d] Updated ResetBootstrapDone flag to: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.resetBootstrapDone)
 }
