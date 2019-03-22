@@ -68,6 +68,7 @@ SET(EVENTING_SOURCES
     src/parse_deployment.cc
     src/breakpad.cc
     src/timer.cc
+    src/histogram.cc
     ${LIBS_SRC}
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/version/version.cc)

@@ -394,32 +394,6 @@ void AppWorker::FlushToConn(uv_stream_t *stream, char *msg, int length) {
   }
 }
 
-std::string ToString(const std::vector<int64_t> &histogram) {
-  std::ostringstream out;
-  for (std::string::size_type i = 0; i < histogram.size(); i++) {
-    if (i == 0) {
-      out << "{";
-    }
-
-    if (histogram[i] > 0) {
-      if ((i > 0) && (out.str().length() > 1)) {
-        out << ",";
-      }
-
-      if (i == 0) {
-        out << R"(")" << HIST_FROM << R"(":)" << histogram[i];
-      } else {
-        out << R"(")" << i * HIST_WIDTH << R"(":)" << histogram[i];
-      }
-    }
-
-    if (i == histogram.size() - 1) {
-      out << "}";
-    }
-  }
-  return out.str();
-}
-
 void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
                                          message_t *parsed_message) {
   std::string key, val, doc_id, callback_fn, doc_ids_cb_fns, compile_resp;
@@ -428,10 +402,8 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   handler_config_t *handler_config;
 
   int worker_index;
-  int64_t latency_buckets, agg_queue_size, feedback_queue_size,
-      agg_queue_memory;
-  std::vector<int64_t> agg_hgram, worker_hgram;
-  std::ostringstream lstats, estats, fstats;
+  int64_t agg_queue_size, feedback_queue_size, agg_queue_memory;
+  std::ostringstream estats, fstats;
   std::map<int, int64_t> agg_lcb_exceptions;
   std::string::size_type i = 0;
   std::string handler_instance_id;
@@ -489,9 +461,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       v8::V8::Initialize();
 
       for (int16_t i = 0; i < thr_count_; i++) {
-        V8Worker *w = new V8Worker(platform, handler_config, server_settings,
-                                   function_name_, function_id_,
-                                   handler_instance_id, user_prefix_);
+        V8Worker *w =
+            new V8Worker(platform, handler_config, server_settings,
+                         function_name_, function_id_, handler_instance_id,
+                         user_prefix_, &latency_stats_, &curl_latency_stats_);
 
         LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
         workers_[i] = w;
@@ -514,40 +487,21 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       break;
     case oTerminate:
       break;
-    case oGetLatencyStats:
-      if (workers_.size() > 0) {
-        latency_buckets = workers_[0]->histogram_->Buckets();
-        agg_hgram.assign(latency_buckets, 0);
-      }
-      for (const auto &w : workers_) {
-        worker_hgram = w.second->histogram_->Hgram();
-        for (std::string::size_type i = 0; i < worker_hgram.size(); i++) {
-          agg_hgram[i] += worker_hgram[i];
-        }
-      }
 
-      resp_msg_->msg.assign(ToString(agg_hgram));
+    case oGetLatencyStats:
+      resp_msg_->msg = latency_stats_.ToString();
       resp_msg_->msg_type = mV8_Worker_Config;
       resp_msg_->opcode = oLatencyStats;
       msg_priority_ = true;
       break;
-    case oGetCurlLatencyStats:
-      if (workers_.size() > 0) {
-        latency_buckets = workers_[0]->curl_latency_->Buckets();
-        agg_hgram.assign(latency_buckets, 0);
-      }
-      for (const auto &w : workers_) {
-        worker_hgram = w.second->curl_latency_->Hgram();
-        for (std::string::size_type i = 0; i < worker_hgram.size(); i++) {
-          agg_hgram[i] += worker_hgram[i];
-        }
-      }
 
-      resp_msg_->msg.assign(ToString(agg_hgram));
+    case oGetCurlLatencyStats:
+      resp_msg_->msg = curl_latency_stats_.ToString();
       resp_msg_->msg_type = mV8_Worker_Config;
       resp_msg_->opcode = oCurlLatencyStats;
       msg_priority_ = true;
       break;
+
     case oGetFailureStats:
       fstats.str(std::string());
       fstats << R"({"bucket_op_exception_count":)";

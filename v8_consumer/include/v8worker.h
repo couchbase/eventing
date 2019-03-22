@@ -55,12 +55,6 @@ typedef std::chrono::nanoseconds nsecs;
 
 #define SECS_TO_NS 1000 * 1000 * 1000ULL
 
-// Histogram to capture latency stats. Latency buckets have granularity of 1ms,
-// starting from 100us to 10s
-#define HIST_FROM 100
-#define HIST_TILL 1000 * 1000 * 10
-#define HIST_WIDTH 1000
-
 #define NUM_VBUCKETS 1024
 
 extern int64_t timer_context_size;
@@ -167,11 +161,12 @@ extern std::atomic<int64_t> enqueued_timer_msg_counter;
 
 class V8Worker {
 public:
-  V8Worker(v8::Platform *platform, handler_config_t *config,
-           server_settings_t *settings, const std::string &handler_name,
+  V8Worker(v8::Platform *platform, handler_config_t *h_config,
+           server_settings_t *server_settings, const std::string &function_name,
            const std::string &function_id,
            const std::string &function_instance_id,
-           const std::string &user_prefix);
+           const std::string &user_prefix, Histogram *latency_stats,
+           Histogram *curl_latency_stats);
   ~V8Worker();
 
   void operator()() {
@@ -278,9 +273,6 @@ public:
 
   std::mutex lcb_exception_mtx_;
   std::map<int, int64_t> lcb_exceptions_;
-
-  Histogram *histogram_;
-  Histogram *curl_latency_;
   IsolateData data_;
 
 private:
@@ -295,6 +287,9 @@ private:
   std::vector<uv_buf_t> BuildResponse(const std::string &payload,
                                       int8_t msg_type, int8_t response_opcode);
   bool ExecuteScript(const v8::Local<v8::String> &script);
+
+  Histogram *latency_stats_;
+  Histogram *curl_latency_stats_;
 
   std::string connstr_;
   std::string meta_connstr_;

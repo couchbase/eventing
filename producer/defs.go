@@ -8,6 +8,7 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 )
 
@@ -75,6 +76,9 @@ type Producer struct {
 	debuggerToken          string
 	uuid                   string
 	workerSpawnCounter     uint64
+
+	latencyStats     *util.Stats
+	curlLatencyStats *util.Stats
 
 	handlerConfig   *common.HandlerConfig
 	processConfig   *common.ProcessConfig

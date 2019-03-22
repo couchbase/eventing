@@ -374,33 +374,6 @@ func (c *Consumer) UpdateEventingNodesUUIDs(keepNodes, ejectNodes []string) {
 	c.timerQueuesAreDrained = false
 }
 
-// GetLatencyStats returns latency stats for event handlers from from cpp world
-func (c *Consumer) GetLatencyStats() map[string]uint64 {
-	c.statsRWMutex.RLock()
-	defer c.statsRWMutex.RUnlock()
-
-	latencyStats := make(map[string]uint64)
-
-	for k, v := range c.latencyStats {
-		latencyStats[k] = v
-	}
-
-	return latencyStats
-}
-
-func (c *Consumer) GetCurlLatencyStats() map[string]uint64 {
-	c.statsRWMutex.RLock()
-	defer c.statsRWMutex.RUnlock()
-
-	latencyStats := make(map[string]uint64)
-
-	for k, v := range c.curlLatencyStats {
-		latencyStats[k] = v
-	}
-
-	return latencyStats
-}
-
 // GetExecutionStats returns OnUpdate/OnDelete success/failure stats for event handlers from cpp world
 func (c *Consumer) GetExecutionStats() map[string]interface{} {
 	c.statsRWMutex.RLock()

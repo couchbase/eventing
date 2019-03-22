@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/gen/flatbuf/header"
 	"github.com/couchbase/eventing/gen/flatbuf/payload"
 	"github.com/couchbase/eventing/gen/flatbuf/response"
@@ -383,23 +384,25 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 		case latencyStats:
 			c.workerRespMainLoopTs.Store(time.Now())
 
-			c.statsRWMutex.Lock()
-			defer c.statsRWMutex.Unlock()
-			err := json.Unmarshal([]byte(msg), &c.latencyStats)
+			deltas := make(common.StatsData)
+			err := json.Unmarshal([]byte(msg), &deltas)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal latency stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
+			c.producer.AppendLatencyStats(deltas)
+
 		case curlLatencyStats:
 			c.workerRespMainLoopTs.Store(time.Now())
 
-			c.statsRWMutex.Lock()
-			defer c.statsRWMutex.Unlock()
-			err := json.Unmarshal([]byte(msg), &c.curlLatencyStats)
+			deltas := make(common.StatsData)
+			err := json.Unmarshal([]byte(msg), &deltas)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal curl latency stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
+			c.producer.AppendCurlLatencyStats(deltas)
+
 		case failureStats:
 			c.workerRespMainLoopTs.Store(time.Now())
 

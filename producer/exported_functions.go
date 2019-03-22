@@ -38,34 +38,12 @@ func (p *Producer) ClearEventStats() {
 }
 
 // GetLatencyStats returns latency stats for event handlers from from cpp world
-func (p *Producer) GetLatencyStats() map[string]uint64 {
-	latencyStats := make(map[string]uint64)
-
-	for _, c := range p.getConsumers() {
-		clStats := c.GetLatencyStats()
-		for k, v := range clStats {
-			if _, ok := latencyStats[k]; !ok {
-				latencyStats[k] = 0
-			}
-			latencyStats[k] += v
-		}
-	}
-	return latencyStats
+func (p *Producer) GetLatencyStats() common.StatsData {
+	return p.latencyStats.Get()
 }
 
-func (p *Producer) GetCurlLatencyStats() map[string]uint64 {
-	latencyStats := make(map[string]uint64)
-
-	for _, c := range p.getConsumers() {
-		clStats := c.GetCurlLatencyStats()
-		for k, v := range clStats {
-			if _, ok := latencyStats[k]; !ok {
-				latencyStats[k] = 0
-			}
-			latencyStats[k] += v
-		}
-	}
-	return latencyStats
+func (p *Producer) GetCurlLatencyStats() common.StatsData {
+	return p.curlLatencyStats.Get()
 }
 
 // GetExecutionStats returns execution stats aggregated from Eventing.Consumer instances
@@ -1098,4 +1076,12 @@ func (p *Producer) SpanBlobDump() map[string]interface{} {
 // DcpFeedBoundary returns feed boundary used for vb dcp streams
 func (p *Producer) DcpFeedBoundary() string {
 	return string(p.handlerConfig.StreamBoundary)
+}
+
+func (p *Producer) AppendCurlLatencyStats(deltas common.StatsData) {
+	p.curlLatencyStats.Append(deltas)
+}
+
+func (p *Producer) AppendLatencyStats(deltas common.StatsData) {
+	p.latencyStats.Append(deltas)
 }

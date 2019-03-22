@@ -124,8 +124,10 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    const std::string &function_name,
                    const std::string &function_id,
                    const std::string &function_instance_id,
-                   const std::string &user_prefix)
+                   const std::string &user_prefix, Histogram *latency_stats,
+                   Histogram *curl_latency_stats)
     : app_name_(h_config->app_name), settings_(server_settings),
+      latency_stats_(latency_stats), curl_latency_stats_(curl_latency_stats),
       platform_(platform), function_name_(function_name),
       function_id_(function_id), user_prefix_(user_prefix),
       exception_type_names_(
@@ -134,8 +136,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   std::ostringstream oss;
   oss << "\"" << function_id << "-" << function_instance_id << "\"";
   function_instance_id_.assign(oss.str());
-  histogram_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
-  curl_latency_ = new Histogram(HIST_FROM, HIST_TILL, HIST_WIDTH);
   thread_exit_cond_.store(false);
   for (int i = 0; i < NUM_VBUCKETS; i++) {
     vb_seq_[i] = atomic_ptr_t(new std::atomic<int64_t>(0));
@@ -254,8 +254,6 @@ V8Worker::~V8Worker() {
   delete conn_pool_;
   delete n1ql_handle_;
   delete settings_;
-  delete histogram_;
-  delete curl_latency_;
   delete timer_queue_;
   delete worker_queue_;
 }
@@ -545,13 +543,13 @@ void V8Worker::ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions) {
 void V8Worker::UpdateHistogram(Time::time_point start_time) {
   Time::time_point t = Time::now();
   nsecs ns = std::chrono::duration_cast<nsecs>(t - start_time);
-  histogram_->Add(ns.count() / 1000);
+  latency_stats_->Add(ns.count() / 1000);
 }
 
 void V8Worker::UpdateCurlLatencyHistogram(const Time::time_point &start) {
   Time::time_point t = Time::now();
   nsecs ns = std::chrono::duration_cast<nsecs>(t - start);
-  curl_latency_->Add(ns.count() / 1000);
+  curl_latency_stats_->Add(ns.count() / 1000);
 }
 
 int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,

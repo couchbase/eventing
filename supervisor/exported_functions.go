@@ -83,14 +83,14 @@ func (s *SuperSupervisor) GetHandlerCode(appName string) string {
 }
 
 // GetLatencyStats dumps stats from cpp world
-func (s *SuperSupervisor) GetLatencyStats(appName string) map[string]uint64 {
+func (s *SuperSupervisor) GetLatencyStats(appName string) common.StatsData {
 	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetLatencyStats()
 	}
 	return nil
 }
 
-func (s *SuperSupervisor) GetCurlLatencyStats(appName string) map[string]uint64 {
+func (s *SuperSupervisor) GetCurlLatencyStats(appName string) common.StatsData {
 	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetCurlLatencyStats()
 	}
