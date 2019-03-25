@@ -1,6 +1,8 @@
 #include "inspector_socket.h"
 
 #include "base64.h"
+#include "validate.h"
+
 
 #ifdef __APPLE__
 #include <CommonCrypto/CommonDigest.h>
@@ -10,8 +12,6 @@
 
 #include <string.h>
 #include <vector>
-#include <cassert>
-
 
 #define ACCEPT_KEY_LENGTH base64_encoded_size(20)
 #define BUFFER_GROWTH_CHUNK_SIZE 1024
@@ -155,7 +155,7 @@ static std::vector<char> encode_frame_hybi17(const char *message,
     }
     frame.insert(frame.end(), extended_payload_length,
                  extended_payload_length + 8);
-    assert(0 == remaining);
+    validate(0 == remaining);
   }
   frame.insert(frame.end(), message, message + data_length);
   return frame;
@@ -302,7 +302,7 @@ static int parse_ws_frames(InspectorSocket *inspector) {
     size_t len = output.size();
     inspector->ws_state->alloc_cb(
         reinterpret_cast<uv_handle_t *>(&inspector->tcp), len, &buffer);
-    assert(buffer.len >= len);
+    validate(buffer.len >= len);
     memcpy(buffer.base, &output[0], len);
     invoke_read_callback(inspector, len, &buffer);
   }
@@ -357,8 +357,8 @@ static void websockets_data_cb(uv_stream_t *stream, ssize_t nread,
 
 int inspector_read_start(InspectorSocket *inspector, uv_alloc_cb alloc_cb,
                          uv_read_cb read_cb) {
-  assert(inspector->ws_mode);
-  assert(!inspector->shutting_down || read_cb == nullptr);
+  validate(inspector->ws_mode);
+  validate(!inspector->shutting_down || read_cb == nullptr);
   inspector->ws_state->close_sent = false;
   inspector->ws_state->alloc_cb = alloc_cb;
   inspector->ws_state->read_cb = read_cb;
@@ -544,7 +544,7 @@ static void data_received_cb(uv_stream_s *tcp, ssize_t nread,
 
 static void init_handshake(InspectorSocket *socket) {
   http_parsing_state_s *state = socket->http_parsing_state;
-  assert(state != nullptr);
+  validate(state != nullptr);
   state->current_header.clear();
   state->ws_key.clear();
   state->path.clear();
@@ -561,8 +561,8 @@ static void init_handshake(InspectorSocket *socket) {
 
 int inspector_accept(uv_stream_t *server, InspectorSocket *socket,
                      handshake_cb callback) {
-  assert(callback != nullptr);
-  assert(socket->http_parsing_state == nullptr);
+  validate(callback != nullptr);
+  validate(socket->http_parsing_state == nullptr);
 
   socket->http_parsing_state = new http_parsing_state_s();
   uv_stream_t *tcp = reinterpret_cast<uv_stream_t *>(&socket->tcp);
@@ -594,8 +594,9 @@ void inspector_write(InspectorSocket *inspector, const char *data, size_t len) {
 void inspector_close(InspectorSocket *inspector, inspector_cb callback) {
   // libuv throws assertions when closing stream that's already closed - we
   // need to do the same.
-  assert(!uv_is_closing(reinterpret_cast<uv_handle_t *>(&inspector->tcp)));
-  assert(!inspector->shutting_down);
+  auto result = uv_is_closing(reinterpret_cast<uv_handle_t *>(&inspector->tcp));
+  validate(!result);
+  validate(!inspector->shutting_down);
   inspector->shutting_down = true;
   inspector->ws_state->close_cb = callback;
   if (inspector->connection_eof) {

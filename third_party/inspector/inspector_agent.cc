@@ -4,6 +4,7 @@
 #include "v8-inspector.h"
 #include "v8-platform.h"
 #include "zlib.h"
+#include "validate.h"
 
 #include <cassert>
 #include <string.h>
@@ -23,7 +24,7 @@ class StartIoTask : public Task {
 public:
   explicit StartIoTask(Agent *agent) : agent(agent) {}
 
-  void Run() override { agent->StartIoThread(false); }
+  void Run() override { agent->StartIoThread(); }
 
 private:
   Agent *agent;
@@ -45,11 +46,11 @@ ToProtocolString(Local<Value> value) {
 
 // Called on the main thread.
 void StartIoThreadAsyncCallback(uv_async_t *handle) {
-  static_cast<Agent *>(handle->data)->StartIoThread(false);
+  static_cast<Agent *>(handle->data)->StartIoThread();
 }
 
 void StartIoInterrupt(Isolate *isolate, void *agent) {
-  static_cast<Agent *>(agent)->StartIoThread(false);
+  static_cast<Agent *>(agent)->StartIoThread();
 }
 
 // Used in CBInspectorClient::currentTimeMS() below.
@@ -115,7 +116,7 @@ public:
   }
 
   void runMessageLoopOnPause(int context_group_id) override {
-    assert(channel_ != nullptr);
+    validate(channel_ != nullptr);
     if (running_nested_loop_)
       return;
     terminated_ = false;
@@ -145,7 +146,7 @@ public:
   void quitMessageLoopOnPause() override { terminated_ = true; }
 
   void connectFrontend(InspectorSessionDelegate *delegate) {
-    assert(channel_ == nullptr);
+    validate(channel_ == nullptr);
     channel_ =
         std::unique_ptr<ChannelImpl>(new ChannelImpl(client_.get(), delegate));
   }
@@ -156,7 +157,7 @@ public:
   }
 
   void dispatchMessageFromFrontend(const v8_inspector::StringView &message) {
-    assert(channel_ != nullptr);
+    validate(channel_ != nullptr);
     channel_->dispatchProtocolMessage(message);
   }
 
@@ -216,20 +217,22 @@ bool Agent::Start(Isolate *isolate, Platform *platform, const char *path) {
       new CBInspectorClient(isolate_, platform));
   client_->contextCreated(isolate_->GetCurrentContext(), "CB debugger context");
   platform_ = platform;
-  assert(0 == uv_async_init(uv_default_loop(), &start_io_thread_async,
-                            StartIoThreadAsyncCallback));
+  auto result = uv_async_init(uv_default_loop(), &start_io_thread_async,
+                              StartIoThreadAsyncCallback);
+  validate(0 == result);
   start_io_thread_async.data = this;
   uv_unref(reinterpret_cast<uv_handle_t *>(&start_io_thread_async));
 
   // This will return false if listen failed on the inspector port.
-  return StartIoThread(true);
+  return StartIoThread();
 }
 
-bool Agent::StartIoThread(bool wait_for_connect) {
+bool Agent::StartIoThread() {
+  std::lock_guard<std::mutex> l(io_thread_mu_);
   if (io_ != nullptr)
     return true;
 
-  assert(client_ != nullptr);
+  validate(client_ != nullptr);
 
   enabled_ = true;
   io_ = std::unique_ptr<InspectorIo>(new InspectorIo(
@@ -258,7 +261,7 @@ void Agent::Connect(InspectorSessionDelegate *delegate) {
 bool Agent::IsConnected() { return io_ && io_->IsConnected(); }
 
 void Agent::WaitForDisconnect() {
-  assert(client_ != nullptr);
+  validate(client_ != nullptr);
   client_->contextDestroyed(isolate_->GetCurrentContext());
   if (io_ != nullptr) {
     io_->WaitForDisconnect();
@@ -273,22 +276,22 @@ void Agent::FatalException(Local<Value> error, Local<Message> message) {
 }
 
 void Agent::Dispatch(const v8_inspector::StringView &message) {
-  assert(client_ != nullptr);
+  validate(client_ != nullptr);
   client_->dispatchMessageFromFrontend(message);
 }
 
 void Agent::Disconnect() {
-  assert(client_ != nullptr);
+  validate(client_ != nullptr);
   client_->disconnectFrontend();
 }
 
 void Agent::RunMessageLoop() {
-  assert(client_ != nullptr);
+  validate(client_ != nullptr);
   client_->runMessageLoopOnPause(CONTEXT_GROUP_ID);
 }
 
 InspectorSessionDelegate *Agent::delegate() {
-  assert(client_ != nullptr);
+  validate(client_ != nullptr);
   ChannelImpl *channel = client_->channel();
   if (channel == nullptr)
     return nullptr;

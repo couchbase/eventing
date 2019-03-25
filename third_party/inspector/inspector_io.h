@@ -100,9 +100,6 @@ private:
   void NotifyMessageReceived();
 
   PostURLCallback on_connect_;
-  // The IO thread runs its own uv_loop to implement the TCP server off
-  // the main thread.
-  uv_thread_t thread_;
   // Used by Start() to wait for thread to initialize, or for it to initialize
   // and receive a connection if wait_for_connect was requested.
   uv_sem_t thread_start_sem_;
@@ -138,6 +135,10 @@ private:
   std::string file_path_;
   const bool wait_for_connect_;
   int port_;
+
+  // The IO thread runs its own uv_loop to implement the TCP server off
+  // the main thread.
+  uv_thread_t thread_;
 
   friend class DispatchMessagesTask;
   friend class IoSessionDelegate;

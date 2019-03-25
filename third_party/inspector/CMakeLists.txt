@@ -26,7 +26,7 @@ INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
                            ${CMAKE_INSTALL_PREFIX}/include
                            ${ZLIB_INCLUDE_DIR})
 
-SET(V8INSPECTOR_SOURCES http_parser.cc inspector_agent.cc
+SET(V8INSPECTOR_SOURCES validate.cc http_parser.cc inspector_agent.cc
     inspector_io.cc inspector_socket.cc inspector_socket_server.cc)
 
 SET(V8INSPECTOR_LIBRARIES

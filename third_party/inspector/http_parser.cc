@@ -22,13 +22,13 @@
  * IN THE SOFTWARE.
  */
 #include "http_parser.h"
+#include "validate.h"
+
 #include <ctype.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-#include <cassert>
-
 
 #ifndef ULLONG_MAX
 #define ULLONG_MAX ((uint64_t)-1) /* 2^64-1 */
@@ -76,7 +76,7 @@
 /* Run the notify callback FOR, returning ER if it fails */
 #define CALLBACK_NOTIFY_(FOR, ER)                                              \
   do {                                                                         \
-    assert(HTTP_PARSER_ERRNO(parser) == HPE_OK);                               \
+    validate(HTTP_PARSER_ERRNO(parser) == HPE_OK);                             \
                                                                                \
     if (LIKELY(settings->on_##FOR)) {                                          \
       parser->state = CURRENT_STATE();                                         \
@@ -101,7 +101,7 @@
 /* Run data callback FOR with LEN bytes, returning ER if it fails */
 #define CALLBACK_DATA_(FOR, LEN, ER)                                           \
   do {                                                                         \
-    assert(HTTP_PARSER_ERRNO(parser) == HPE_OK);                               \
+    validate(HTTP_PARSER_ERRNO(parser) == HPE_OK);                             \
                                                                                \
     if (FOR##_mark) {                                                          \
       if (LIKELY(settings->on_##FOR)) {                                        \
@@ -1335,7 +1335,7 @@ size_t http_parser_execute(http_parser *parser,
           }
           break;
 
-        /* connection */
+          /* connection */
 
         case h_matching_connection:
           parser->index++;
@@ -1347,7 +1347,7 @@ size_t http_parser_execute(http_parser *parser,
           }
           break;
 
-        /* proxy-connection */
+          /* proxy-connection */
 
         case h_matching_proxy_connection:
           parser->index++;
@@ -1359,7 +1359,7 @@ size_t http_parser_execute(http_parser *parser,
           }
           break;
 
-        /* content-length */
+          /* content-length */
 
         case h_matching_content_length:
           parser->index++;
@@ -1376,7 +1376,7 @@ size_t http_parser_execute(http_parser *parser,
           }
           break;
 
-        /* transfer-encoding */
+          /* transfer-encoding */
 
         case h_matching_transfer_encoding:
           parser->index++;
@@ -1388,7 +1388,7 @@ size_t http_parser_execute(http_parser *parser,
           }
           break;
 
-        /* upgrade */
+          /* upgrade */
 
         case h_matching_upgrade:
           parser->index++;
@@ -1409,7 +1409,7 @@ size_t http_parser_execute(http_parser *parser,
           break;
 
         default:
-          assert(0 && "Unknown header_state");
+          validate(0 && "Unknown header_state");
           break;
         }
       }
@@ -1445,7 +1445,7 @@ size_t http_parser_execute(http_parser *parser,
         break;
       }
 
-    /* FALLTHROUGH */
+      /* FALLTHROUGH */
 
     case s_header_value_start: {
       MARK(header_value);
@@ -1558,7 +1558,7 @@ size_t http_parser_execute(http_parser *parser,
 
         case h_connection:
         case h_transfer_encoding:
-          assert(0 && "Shouldn't get here.");
+          validate(0 && "Shouldn't get here.");
           break;
 
         case h_content_length: {
@@ -1876,8 +1876,8 @@ size_t http_parser_execute(http_parser *parser,
       uint64_t to_read =
           MIN(parser->content_length, (uint64_t)((data + len) - p));
 
-      assert(parser->content_length != 0 &&
-             parser->content_length != ULLONG_MAX);
+      validate(parser->content_length != 0 &&
+               parser->content_length != ULLONG_MAX);
 
       /* The difference between advancing content_length and p is because
        * the latter will automaticaly advance on the next loop iteration.
@@ -1924,8 +1924,8 @@ size_t http_parser_execute(http_parser *parser,
       break;
 
     case s_chunk_size_start: {
-      assert(parser->nread == 1);
-      assert(parser->flags & F_CHUNKED);
+      validate(parser->nread == 1);
+      validate(parser->flags & F_CHUNKED);
 
       unhex_val = unhex[(unsigned char)ch];
       if (UNLIKELY(unhex_val == -1)) {
@@ -1941,7 +1941,7 @@ size_t http_parser_execute(http_parser *parser,
     case s_chunk_size: {
       uint64_t t;
 
-      assert(parser->flags & F_CHUNKED);
+      validate(parser->flags & F_CHUNKED);
 
       if (ch == CR) {
         UPDATE_STATE(s_chunk_size_almost_done);
@@ -1975,7 +1975,7 @@ size_t http_parser_execute(http_parser *parser,
     }
 
     case s_chunk_parameters: {
-      assert(parser->flags & F_CHUNKED);
+      validate(parser->flags & F_CHUNKED);
       /* just ignore this shit. TODO check for overflow */
       if (ch == CR) {
         UPDATE_STATE(s_chunk_size_almost_done);
@@ -1985,7 +1985,7 @@ size_t http_parser_execute(http_parser *parser,
     }
 
     case s_chunk_size_almost_done: {
-      assert(parser->flags & F_CHUNKED);
+      validate(parser->flags & F_CHUNKED);
       STRICT_CHECK(ch != LF);
 
       parser->nread = 0;
@@ -2004,9 +2004,9 @@ size_t http_parser_execute(http_parser *parser,
       uint64_t to_read =
           MIN(parser->content_length, (uint64_t)((data + len) - p));
 
-      assert(parser->flags & F_CHUNKED);
-      assert(parser->content_length != 0 &&
-             parser->content_length != ULLONG_MAX);
+      validate(parser->flags & F_CHUNKED);
+      validate(parser->content_length != 0 &&
+               parser->content_length != ULLONG_MAX);
 
       /* See the explanation in s_body_identity for why the content
        * length and data pointers are managed this way.
@@ -2023,15 +2023,15 @@ size_t http_parser_execute(http_parser *parser,
     }
 
     case s_chunk_data_almost_done:
-      assert(parser->flags & F_CHUNKED);
-      assert(parser->content_length == 0);
+      validate(parser->flags & F_CHUNKED);
+      validate(parser->content_length == 0);
       STRICT_CHECK(ch != CR);
       UPDATE_STATE(s_chunk_data_done);
       CALLBACK_DATA(body);
       break;
 
     case s_chunk_data_done:
-      assert(parser->flags & F_CHUNKED);
+      validate(parser->flags & F_CHUNKED);
       STRICT_CHECK(ch != LF);
       parser->nread = 0;
       UPDATE_STATE(s_chunk_size_start);
@@ -2039,7 +2039,7 @@ size_t http_parser_execute(http_parser *parser,
       break;
 
     default:
-      assert(0 && "unhandled state");
+      validate(0 && "unhandled state");
       SET_ERRNO(HPE_INVALID_INTERNAL_STATE);
       goto error;
     }
@@ -2055,9 +2055,9 @@ size_t http_parser_execute(http_parser *parser,
    * value that's in-bounds).
    */
 
-  assert(((header_field_mark ? 1 : 0) + (header_value_mark ? 1 : 0) +
-          (url_mark ? 1 : 0) + (body_mark ? 1 : 0) + (status_mark ? 1 : 0)) <=
-         1);
+  validate(((header_field_mark ? 1 : 0) + (header_value_mark ? 1 : 0) +
+            (url_mark ? 1 : 0) + (body_mark ? 1 : 0) + (status_mark ? 1 : 0)) <=
+           1);
 
   CALLBACK_DATA_NOADVANCE(header_field);
   CALLBACK_DATA_NOADVANCE(header_value);
@@ -2133,12 +2133,12 @@ void http_parser_settings_init(http_parser_settings *settings) {
 }
 
 const char *http_errno_name(enum http_errno err) {
-  assert(((size_t)err) < ARRAY_SIZE(http_strerror_tab));
+  validate(((size_t)err) < ARRAY_SIZE(http_strerror_tab));
   return http_strerror_tab[err].name;
 }
 
 const char *http_errno_description(enum http_errno err) {
-  assert(((size_t)err) < ARRAY_SIZE(http_strerror_tab));
+  validate(((size_t)err) < ARRAY_SIZE(http_strerror_tab));
   return http_strerror_tab[err].description;
 }
 
@@ -2226,7 +2226,7 @@ static enum http_host_state http_parse_host_char(enum http_host_state s,
 
 static int http_parse_host(const char *buf, struct http_parser_url *u,
                            int found_at) {
-  assert(u->field_set & (1 << UF_HOST));
+  validate(u->field_set & (1 << UF_HOST));
   enum http_host_state s;
 
   const char *p;
@@ -2361,7 +2361,7 @@ int http_parser_parse_url(const char *buf, size_t buflen, int is_connect,
       break;
 
     default:
-      assert(!"Unexpected state");
+      validate(!"Unexpected state");
       return 1;
     }
 
@@ -2420,7 +2420,7 @@ void http_parser_pause(http_parser *parser, int paused) {
       HTTP_PARSER_ERRNO(parser) == HPE_PAUSED) {
     SET_ERRNO((paused) ? HPE_PAUSED : HPE_OK);
   } else {
-    assert(0 && "Attempting to pause parser in error state");
+    validate(0 && "Attempting to pause parser in error state");
   }
 }
 
