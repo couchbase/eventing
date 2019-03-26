@@ -554,7 +554,13 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       estats << R"(, "uv_try_write_failure_counter":)";
       estats << uv_try_write_failure_counter;
       estats << R"(, "lcb_retry_failure":)" << lcb_retry_failure;
-
+      estats << R"(, "dcp_delete_parse_failure":)" << dcp_delete_parse_failure;
+      estats << R"(, "dcp_mutation_parse_failure":)"
+             << dcp_mutation_parse_failure;
+      estats << R"(, "filtered_dcp_delete_counter":)"
+             << filtered_dcp_delete_counter;
+      estats << R"(, "filtered_dcp_mutation_counter":)"
+             << filtered_dcp_mutation_counter;
       if (!workers_.empty()) {
         agg_queue_memory = agg_queue_size = feedback_queue_size = 0;
         for (const auto &w : workers_) {
