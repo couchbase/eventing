@@ -14,7 +14,7 @@ var (
 	localusr           string
 	localkey           string
 	maxFunctionSize    int = 128 * 1024
-	metakvMaxDocSize   int = 4096
+	metakvMaxDocSize   int = 128 * 1024
 	CrcTable           *crc32.Table
 	HTTPRequestTimeout = 5 * time.Second
 )
