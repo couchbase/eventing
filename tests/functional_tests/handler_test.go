@@ -4,16 +4,17 @@ package eventing
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 	"testing"
 	"time"
 )
 
-func testEnoent(itemCount int, handler string, t *testing.T) {
+func testEnoent(itemCount int, functionName, handler string, t *testing.T) {
 	expectedCount := itemCount
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter)
@@ -25,29 +26,35 @@ func testEnoent(itemCount int, handler string, t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEnoentGet(t *testing.T) {
+	functionName := t.Name()
+
 	itemCount := 100
 	handler := "bucket_op_enoent_get"
-	testEnoent(itemCount, handler, t)
+	testEnoent(itemCount, functionName, handler, t)
 }
 
 func TestEnoentDelete(t *testing.T) {
+	functionName := t.Name()
+
 	itemCount := 100
 	handler := "bucket_op_enoent_delete"
-	testEnoent(itemCount, handler, t)
+	testEnoent(itemCount, functionName, handler, t)
 }
 
 func TestError(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	itemCount := 100
 	expectedCount := itemCount * 3
 	handler := "error"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter)
@@ -59,16 +66,18 @@ func TestError(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestCRLF(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	itemCount := 100
 	handler := "n1ql_newlines"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -80,26 +89,28 @@ func TestCRLF(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestImportExport(t *testing.T) {
 	time.Sleep(5 * time.Second)
+	functionName1 := t.Name() + "_n1ql_insert_on_update"
+	functionName2 := t.Name() + "_bucket_op_on_update"
 	n1qlHandler := "n1ql_insert_on_update"
 	bucketHandler := "bucket_op_on_update"
 
-	flushFunctionAndBucket(n1qlHandler)
-	flushFunctionAndBucket(bucketHandler)
+	flushFunctionAndBucket(functionName1)
+	flushFunctionAndBucket(functionName2)
 
-	createAndDeployFunction(n1qlHandler, n1qlHandler, &commonSettings{})
-	createAndDeployFunction(bucketHandler, bucketHandler, &commonSettings{})
+	createAndDeployFunction(functionName1, n1qlHandler, &commonSettings{})
+	createAndDeployFunction(functionName2, bucketHandler, &commonSettings{})
 
-	waitForDeployToFinish(n1qlHandler)
-	waitForDeployToFinish(bucketHandler)
+	waitForDeployToFinish(functionName1)
+	waitForDeployToFinish(functionName2)
 
 	defer func() {
-		flushFunctionAndBucket(bucketHandler)
-		flushFunctionAndBucket(n1qlHandler)
+		flushFunctionAndBucket(functionName2)
+		flushFunctionAndBucket(functionName1)
 	}()
 
 	exportResponse, err := makeRequest("GET", strings.NewReader(""), exportFunctionsURL)
@@ -108,8 +119,8 @@ func TestImportExport(t *testing.T) {
 		return
 	}
 
-	flushFunction(n1qlHandler)
-	flushFunction(bucketHandler)
+	flushFunction(functionName1)
+	flushFunction(functionName2)
 
 	_, err = makeRequest("POST", strings.NewReader(string(exportResponse)), importFunctionsURL)
 	if err != nil {
@@ -133,13 +144,13 @@ func TestImportExport(t *testing.T) {
 		return
 	}
 
-	if !functionExists(n1qlHandler, functionsList) {
-		t.Errorf("Import/Export failed for %v", n1qlHandler)
+	if !functionExists(functionName1, functionsList) {
+		t.Errorf("Import/Export failed for %v", functionName1)
 		return
 	}
 
-	if !functionExists(bucketHandler, functionsList) {
-		t.Errorf("Import/Export failed for %v", bucketHandler)
+	if !functionExists(functionName2, functionsList) {
+		t.Errorf("Import/Export failed for %v", functionName2)
 		return
 	}
 
@@ -156,12 +167,14 @@ func functionExists(name string, functionsList []map[string]interface{}) bool {
 }
 
 func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 
 	for i := 0; i < 5; i++ {
-		createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77})
+		createAndDeployFunction(functionName, handler, &commonSettings{thrCount: 4, batchSize: 77})
 
 		pumpBucketOps(opsType{}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -171,11 +184,11 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 				"got", eventCount,
 			)
 		}
-		waitForDeployToFinish(handler)
+		waitForDeployToFinish(functionName)
 
 		dumpStats()
 		log.Println("Undeploying app:", handler)
-		setSettings(handler, false, false, &commonSettings{})
+		setSettings(functionName, false, false, &commonSettings{})
 		waitForUndeployToFinish(handler)
 		checkIfProcessRunning("eventing-con")
 		bucketFlush("default")
@@ -183,14 +196,16 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 		time.Sleep(30 * time.Second) // To allow bucket flush to purge all items
 	}
 
-	deleteFunction(handler)
+	deleteFunction(functionName)
 }
 
 func TestOnUpdateN1QLOp(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "n1ql_insert_on_update"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -202,14 +217,16 @@ func TestOnUpdateN1QLOp(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -221,14 +238,16 @@ func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{thrCount: 4, batchSize: 77})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -240,14 +259,16 @@ func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestOnUpdateBucketOpDefaultSettings10K(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
-	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 10*1024)
+	flushFunctionAndBucket(functionName)
+	createAndDeployLargeFunction(functionName, handler, &commonSettings{}, 10*1024)
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -259,14 +280,16 @@ func TestOnUpdateBucketOpDefaultSettings10K(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestOnUpdateBucketOpDefaultSettings100K(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
-	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 100*1024)
+	flushFunctionAndBucket(functionName)
+	createAndDeployLargeFunction(functionName, handler, &commonSettings{}, 100*1024)
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -278,14 +301,16 @@ func TestOnUpdateBucketOpDefaultSettings100K(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestOnDeleteBucketOp(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_delete"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -297,14 +322,16 @@ func TestOnDeleteBucketOp(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestOnDeleteBucketOp5K(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_delete"
-	flushFunctionAndBucket(handler)
-	createAndDeployLargeFunction(handler, handler, &commonSettings{}, 5*1024)
+	flushFunctionAndBucket(functionName)
+	createAndDeployLargeFunction(functionName, handler, &commonSettings{}, 5*1024)
 
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -316,14 +343,16 @@ func TestOnDeleteBucketOp5K(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestTimerBucketOp(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -335,14 +364,16 @@ func TestTimerBucketOp(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestTimerInPastBucketOp(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer_in_past"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -354,16 +385,18 @@ func TestTimerInPastBucketOp(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestDeployUndeployLoopTimer(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer"
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 
 	for i := 0; i < 5; i++ {
-		createAndDeployFunction(handler, handler, &commonSettings{})
+		createAndDeployFunction(functionName, handler, &commonSettings{})
 
 		pumpBucketOps(opsType{}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -373,11 +406,11 @@ func TestDeployUndeployLoopTimer(t *testing.T) {
 				"got", eventCount,
 			)
 		}
-		waitForDeployToFinish(handler)
+		waitForDeployToFinish(functionName)
 
 		dumpStats()
 		log.Println("Undeploying app:", handler)
-		setSettings(handler, false, false, &commonSettings{})
+		setSettings(functionName, false, false, &commonSettings{})
 		waitForUndeployToFinish(handler)
 		checkIfProcessRunning("eventing-con")
 		bucketFlush("default")
@@ -385,7 +418,7 @@ func TestDeployUndeployLoopTimer(t *testing.T) {
 		time.Sleep(30 * time.Second)
 	}
 
-	deleteFunction(handler)
+	deleteFunction(functionName)
 }
 
 func TestMultipleHandlers(t *testing.T) {
@@ -393,11 +426,14 @@ func TestMultipleHandlers(t *testing.T) {
 	handler1 := "bucket_op_on_update"
 	handler2 := "bucket_op_on_delete"
 
-	flushFunctionAndBucket(handler1)
-	flushFunctionAndBucket(handler2)
+	functionName1 := fmt.Sprintf("%s_%s", t.Name(), handler1)
+	functionName2 := fmt.Sprintf("%s_%s", t.Name(), handler2)
 
-	createAndDeployFunction(handler1, handler1, &commonSettings{})
-	createAndDeployFunction(handler2, handler2, &commonSettings{})
+	flushFunctionAndBucket(functionName1)
+	flushFunctionAndBucket(functionName2)
+
+	createAndDeployFunction(functionName1, handler1, &commonSettings{})
+	createAndDeployFunction(functionName2, handler2, &commonSettings{})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -420,24 +456,26 @@ func TestMultipleHandlers(t *testing.T) {
 	dumpStats()
 
 	// Pause the apps
-	setSettings(handler1, true, false, &commonSettings{})
-	setSettings(handler2, true, false, &commonSettings{})
+	setSettings(functionName1, true, false, &commonSettings{})
+	setSettings(functionName2, true, false, &commonSettings{})
 
-	flushFunctionAndBucket(handler1)
-	flushFunctionAndBucket(handler2)
+	flushFunctionAndBucket(functionName1)
+	flushFunctionAndBucket(functionName2)
 }
 
 func TestPauseResumeLoopDefaultSettings(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	for i := 0; i < 5; i++ {
 		if i > 0 {
 			log.Println("Resuming app:", handler)
-			setSettings(handler, true, true, &commonSettings{streamBoundary: "from_prior"})
+			setSettings(functionName, true, true, &commonSettings{streamBoundary: "from_prior"})
 		}
 
 		pumpBucketOps(opsType{startIndex: itemCount * i}, &rateLimit{})
@@ -451,24 +489,26 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 
 		dumpStats()
 		log.Println("Pausing app:", handler)
-		setSettings(handler, true, false, &commonSettings{})
-		waitForStatusChange(handler, "paused", statsLookupRetryCounter)
+		setSettings(functionName, true, false, &commonSettings{})
+		waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
 	}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer"
 
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4})
 
 	for i := 0; i < 5; i++ {
 		if i > 0 {
 			log.Println("Resuming app:", handler)
-			setSettings(handler, true, true, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4, streamBoundary: "from_prior"})
+			setSettings(functionName, true, true, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4, streamBoundary: "from_prior"})
 		}
 
 		pumpBucketOps(opsType{startIndex: itemCount * i}, &rateLimit{})
@@ -482,20 +522,22 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 
 		dumpStats()
 		log.Println("Pausing app:", handler)
-		setSettings(handler, true, false, &commonSettings{})
-		waitForStatusChange(handler, "paused", statsLookupRetryCounter)
+		setSettings(functionName, true, false, &commonSettings{})
+		waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
 	}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestPauseAndResumeWithWorkerCountChange(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer"
 
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -508,11 +550,11 @@ func TestPauseAndResumeWithWorkerCountChange(t *testing.T) {
 
 	dumpStats()
 	log.Println("Pausing app:", handler)
-	setSettings(handler, true, false, &commonSettings{})
-	waitForStatusChange(handler, "paused", statsLookupRetryCounter)
+	setSettings(functionName, true, false, &commonSettings{})
+	waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
 
 	log.Println("Resuming app:", handler)
-	setSettings(handler, true, true, &commonSettings{workerCount: 6, streamBoundary: "from_prior"})
+	setSettings(functionName, true, true, &commonSettings{workerCount: 6, streamBoundary: "from_prior"})
 
 	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
 	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
@@ -523,16 +565,18 @@ func TestPauseAndResumeWithWorkerCountChange(t *testing.T) {
 		)
 	}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestPauseResumeWithEventingReb(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer"
 
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -545,15 +589,15 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 
 	dumpStats()
 	log.Println("Pausing app:", handler)
-	setSettings(handler, true, false, &commonSettings{})
-	waitForStatusChange(handler, "paused", statsLookupRetryCounter)
+	setSettings(functionName, true, false, &commonSettings{})
+	waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
 
 	addNodeFromRest("127.0.0.1:9003", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
 	log.Println("Resuming app:", handler)
-	setSettings(handler, true, true, &commonSettings{workerCount: 6, streamBoundary: "from_prior"})
+	setSettings(functionName, true, true, &commonSettings{workerCount: 6, streamBoundary: "from_prior"})
 
 	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
 	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
@@ -568,51 +612,53 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestChangeFnCodeBetweenPauseResume(t *testing.T) {
 	// Additionally function code deployed post resume is missing timer callback
 	// for which timers were defined earlier.
 	time.Sleep(5 * time.Second)
-	fnName := "bucket_op_with_timer"
+	functionName := "TestChangeFnCodeBetweenPauseResume"
 	fnFile1 := "bucket_op_with_timer_100s"
 
-	flushFunctionAndBucket(fnName)
-	createAndDeployFunction(fnName, fnFile1, &commonSettings{})
-	waitForDeployToFinish(fnName)
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, fnFile1, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	time.Sleep(30 * time.Second) // Allow some timers to get created
 
-	log.Println("Pausing function:", fnName)
-	setSettings(fnName, true, false, &commonSettings{})
-	waitForStatusChange(fnName, "paused", statsLookupRetryCounter)
+	log.Println("Pausing function:", functionName)
+	setSettings(functionName, true, false, &commonSettings{})
+	waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
 
 	// TODO: Reduce this sleep window
 	time.Sleep(3 * time.Minute)
 
 	fnFile2 := "bucket_op_with_timer_100s_missing_cb"
 
-	log.Printf("Resuming function: %s with from_prior feed boundary\n", fnName)
-	createAndDeployFunction(fnName, fnFile2, &commonSettings{streamBoundary: "from_prior"})
+	log.Printf("Resuming function: %s with from_prior feed boundary\n", functionName)
+	createAndDeployFunction(functionName, fnFile2, &commonSettings{streamBoundary: "from_prior"})
 
-	waitForFailureStatCounterSync(fnName, "timer_callback_missing_counter", itemCount)
+	waitForFailureStatCounterSync(functionName, "timer_callback_missing_counter", itemCount)
 
-	log.Println("Undeploying function:", fnName)
-	setSettings(fnName, false, false, &commonSettings{})
+	log.Println("Undeploying function:", functionName)
+	setSettings(functionName, false, false, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
-	flushFunctionAndBucket(fnName)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestDiffFeedBoundariesWithResume(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	eventCount := verifyBucketCount(itemCount, statsLookupRetryCounter, dstBucket)
@@ -623,8 +669,8 @@ func TestDiffFeedBoundariesWithResume(t *testing.T) {
 	}
 
 	log.Println("Pausing app:", handler)
-	setSettings(handler, true, false, &commonSettings{})
-	waitForStatusChange(handler, "paused", statsLookupRetryCounter)
+	setSettings(functionName, true, false, &commonSettings{})
+	waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
 
 	bucketFlush(dstBucket)
 	count := verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
@@ -635,7 +681,7 @@ func TestDiffFeedBoundariesWithResume(t *testing.T) {
 	go pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
 
 	log.Printf("Resuming app: %s from feed boundary everything\n", handler)
-	res, _ := setSettings(handler, true, true, &commonSettings{streamBoundary: "everything"})
+	res, _ := setSettings(functionName, true, true, &commonSettings{streamBoundary: "everything"})
 	if res.httpResponseCode == 200 {
 		t.Error("Expected non 200 response code")
 	}
@@ -645,7 +691,7 @@ func TestDiffFeedBoundariesWithResume(t *testing.T) {
 	}
 
 	log.Printf("Resuming app: %s from feed boundary from_now\n", handler)
-	res, _ = setSettings(handler, true, true, &commonSettings{streamBoundary: "from_now"})
+	res, _ = setSettings(functionName, true, true, &commonSettings{streamBoundary: "from_now"})
 	if res.httpResponseCode == 200 {
 		t.Error("Expected non 200 response code")
 	}
@@ -655,8 +701,8 @@ func TestDiffFeedBoundariesWithResume(t *testing.T) {
 	}
 
 	log.Printf("Resuming app: %s from feed boundary from_prior\n", handler)
-	setSettings(handler, true, true, &commonSettings{streamBoundary: "from_prior"})
-	waitForStatusChange(handler, "deployed", statsLookupRetryCounter)
+	setSettings(functionName, true, true, &commonSettings{streamBoundary: "from_prior"})
+	waitForStatusChange(functionName, "deployed", statsLookupRetryCounter)
 
 	eventCount = verifyBucketCount(rlItemCount, statsLookupRetryCounter, dstBucket)
 	if eventCount != rlItemCount {
@@ -667,19 +713,21 @@ func TestDiffFeedBoundariesWithResume(t *testing.T) {
 	}
 
 	log.Println("Undeploying app:", handler)
-	setSettings(handler, false, false, &commonSettings{})
-	waitForStatusChange(handler, "undeployed", statsLookupRetryCounter)
+	setSettings(functionName, false, false, &commonSettings{})
+	waitForStatusChange(functionName, "undeployed", statsLookupRetryCounter)
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestCommentUnCommentOnDelete(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "on_delete_bucket_op_comment"
 	appName := "comment_uncomment_test"
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 
-	createAndDeployFunction(appName, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -692,12 +740,12 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 
 	dumpStats()
 	log.Println("Undeploying app:", appName)
-	setSettings(appName, false, false, &commonSettings{})
+	setSettings(functionName, false, false, &commonSettings{})
 
 	time.Sleep(30 * time.Second)
 
 	handler = "on_delete_bucket_op_uncomment"
-	createAndDeployFunction(appName, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
@@ -710,17 +758,19 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 
 	dumpStats()
 	log.Println("Undeploying app:", appName)
-	setSettings(appName, false, false, &commonSettings{})
+	setSettings(functionName, false, false, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 	flushFunctionAndBucket(appName)
 }
 
 func TestCPPWorkerCleanup(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{batchSize: 100, workerCount: 16})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{batchSize: 100, workerCount: 16})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -732,18 +782,20 @@ func TestCPPWorkerCleanup(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(30 * time.Second)
 }
 
 func TestWithUserXattrs(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "on_delete_bucket_op_comment"
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	pumpBucketOps(opsType{}, &rateLimit{})
 	pumpBucketOps(opsType{writeXattrs: true, xattrPrefix: "_1"}, &rateLimit{})
-	createAndDeployFunction(handler, handler, &commonSettings{streamBoundary: "from_now"})
-	waitForDeployToFinish(handler)
+	createAndDeployFunction(functionName, handler, &commonSettings{streamBoundary: "from_now"})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{writeXattrs: true, xattrPrefix: "_2"}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -755,15 +807,17 @@ func TestWithUserXattrs(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventProcessingPostBucketFlush(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -790,19 +844,21 @@ func TestEventProcessingPostBucketFlush(t *testing.T) {
 	}
 
 	dumpStats()
-	setSettings(handler, false, false, &commonSettings{})
+	setSettings(functionName, false, false, &commonSettings{})
 	waitForUndeployToFinish(handler)
 	checkIfProcessRunning("eventing-con")
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestMetaBucketDelete(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	log.Println("Deleting metadata bucket:", metaBucket)
 	deleteBucket(metaBucket)
@@ -812,15 +868,17 @@ func TestMetaBucketDelete(t *testing.T) {
 
 	time.Sleep(10 * time.Second)
 	createBucket(metaBucket, bucketmemQuota)
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestMetaBucketDeleteWithBootstrap(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 
-	go createAndDeployFunction(handler, handler, &commonSettings{})
+	go createAndDeployFunction(functionName, handler, &commonSettings{})
 	time.Sleep(20 * time.Second) // let the boostrap process to make some progress
 
 	log.Println("Deleting metadata bucket:", metaBucket)
@@ -832,16 +890,18 @@ func TestMetaBucketDeleteWithBootstrap(t *testing.T) {
 
 	time.Sleep(10 * time.Second)
 	createBucket(metaBucket, bucketmemQuota)
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestSourceBucketDelete(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	log.Println("Deleting source bucket:", srcBucket)
 	deleteBucket(srcBucket)
@@ -851,15 +911,17 @@ func TestSourceBucketDelete(t *testing.T) {
 
 	time.Sleep(10 * time.Second)
 	createBucket(srcBucket, bucketmemQuota)
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestSourceBucketDeleteWithBootstrap(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 
-	go createAndDeployFunction(handler, handler, &commonSettings{})
+	go createAndDeployFunction(functionName, handler, &commonSettings{})
 	time.Sleep(20 * time.Second) // let the boostrap process to make some progress
 
 	log.Println("Deleting source bucket:", srcBucket)
@@ -871,15 +933,17 @@ func TestSourceBucketDeleteWithBootstrap(t *testing.T) {
 
 	time.Sleep(10 * time.Second)
 	createBucket(srcBucket, bucketmemQuota)
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestSourceAndMetaBucketDeleteWithBootstrap(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 
-	go createAndDeployFunction(handler, handler, &commonSettings{})
+	go createAndDeployFunction(functionName, handler, &commonSettings{})
 	time.Sleep(20 * time.Second) // let the boostrap process to make some progress
 
 	log.Println("Deleting source bucket:", srcBucket)
@@ -896,21 +960,23 @@ func TestSourceAndMetaBucketDeleteWithBootstrap(t *testing.T) {
 	time.Sleep(10 * time.Second)
 	createBucket(srcBucket, bucketmemQuota)
 	createBucket(metaBucket, bucketmemQuota)
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestUndeployDuringBootstrap(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{workerCount: 1})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{workerCount: 1})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 
 	time.Sleep(15 * time.Second)
 
 	dumpStats()
-	setSettings(handler, false, false, &commonSettings{})
+	setSettings(functionName, false, false, &commonSettings{})
 
 	bootstrapCheck(handler, true)  // Check for start of boostrapping phase
 	bootstrapCheck(handler, false) // Check for end of bootstrapping phase
@@ -919,20 +985,22 @@ func TestUndeployDuringBootstrap(t *testing.T) {
 	checkIfProcessRunning("eventing-con")
 	time.Sleep(20 * time.Second)
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestDeleteBeforeUndeploy(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 
-	setSettings(handler, false, false, &commonSettings{})
-	resp, _ := deleteFunction(handler)
+	setSettings(functionName, false, false, &commonSettings{})
+	resp, _ := deleteFunction(functionName)
 	if resp.httpResponseCode == 200 {
 		t.Error("Expected non 200 response code")
 	}
@@ -942,20 +1010,22 @@ func TestDeleteBeforeUndeploy(t *testing.T) {
 	}
 
 	waitForUndeployToFinish(handler)
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestUndeployWhenTimersAreFired(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer_with_large_context"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	go pumpBucketOps(opsType{count: itemCount * 8}, &rateLimit{})
 
 	time.Sleep(30 * time.Second)
-	setSettings(handler, false, false, &commonSettings{})
+	setSettings(functionName, false, false, &commonSettings{})
 	waitForUndeployToFinish(handler)
 	checkIfProcessRunning("eventing-con")
 
@@ -965,14 +1035,16 @@ func TestUndeployWhenTimersAreFired(t *testing.T) {
 		t.Error("Item count in metadata bucket after undeploy", itemCount)
 	}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestUndeployWithKVFailover(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -990,7 +1062,7 @@ func TestUndeployWithKVFailover(t *testing.T) {
 	failoverFromRest([]string{"127.0.0.1:9003"})
 	time.Sleep(10 * time.Second)
 
-	setSettings(handler, false, false, &commonSettings{})
+	setSettings(functionName, false, false, &commonSettings{})
 
 	time.Sleep(60 * time.Second)
 	rebalanceFromRest([]string{""})
@@ -998,14 +1070,16 @@ func TestUndeployWithKVFailover(t *testing.T) {
 	waitForUndeployToFinish(handler)
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestBucketFlushWhileFnDeployed(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	pumpBucketOps(opsType{count: itemCount * 4}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount*4, statsLookupRetryCounter)
@@ -1034,15 +1108,17 @@ func TestBucketFlushWhileFnDeployed(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestTimerOverwrite(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer_overwritten"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	time.Sleep(10 * time.Second)
 	itemCountB, err := getBucketItemCount(metaBucket)
@@ -1072,10 +1148,12 @@ func TestTimerOverwrite(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestUndeployBackdoorDuringBootstrap(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(5 * time.Second)
 
 	addNodeFromRest("127.0.0.1:9003", "kv")
@@ -1085,35 +1163,37 @@ func TestUndeployBackdoorDuringBootstrap(t *testing.T) {
 	failoverFromRest([]string{"127.0.0.1:9003"})
 
 	handler := "bucket_op_on_update"
-	flushFunctionAndBucket(handler)
-	createAndDeployLargeFunction(handler, handler, &commonSettings{workerCount: 1}, 10*1024)
+	flushFunctionAndBucket(functionName)
+	createAndDeployLargeFunction(functionName, handler, &commonSettings{workerCount: 1}, 10*1024)
 
 	go pumpBucketOps(opsType{}, &rateLimit{})
 
 	time.Sleep(10 * time.Second)
 	dumpStats()
 
-	setSettings(handler, false, false, &commonSettings{})
-	setRetryCounter(handler)
+	setSettings(functionName, false, false, &commonSettings{})
+	setRetryCounter(functionName)
 
 	time.Sleep(60 * time.Second)
 	waitForUndeployToFinish(handler)
 	dumpStats()
-	resp, _ := deleteFunction(handler)
+	resp, _ := deleteFunction(functionName)
 	if resp.httpResponseCode != 200 {
 		t.Error("Expected 200 response code, got code", resp.httpResponseCode, resp.Name)
 	}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 }
 
 func TestOnUpdateSrcMutation(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(time.Second * 5)
 	handler := "source_bucket_update_op"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{srcMutationEnabled: true})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{srcMutationEnabled: true})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifySourceBucketOps(itemCount*2, statsLookupRetryCounter)
@@ -1125,14 +1205,16 @@ func TestOnUpdateSrcMutation(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestOnDeleteSrcMutation(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(time.Second * 5)
 	handler := "src_bucket_op_on_delete"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{srcMutationEnabled: true})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{srcMutationEnabled: true})
 
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	time.Sleep(time.Second * 10)
@@ -1145,14 +1227,16 @@ func TestOnDeleteSrcMutation(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestOnUpdateSrcMutationWithTimer(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(time.Second * 5)
 	handler := "src_bucket_op_on_update_with_timer"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{srcMutationEnabled: true})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{srcMutationEnabled: true})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifySourceBucketOps(itemCount*2, statsLookupRetryCounter)
@@ -1164,14 +1248,16 @@ func TestOnUpdateSrcMutationWithTimer(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestOnDeleteSrcMutationsWithTimer(t *testing.T) {
+	functionName := t.Name()
+
 	time.Sleep(time.Second * 5)
 	handler := "src_bucket_op_on_delete_with_timer"
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{srcMutationEnabled: true})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{srcMutationEnabled: true})
 
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount := verifySourceBucketOps(itemCount, statsLookupRetryCounter)
@@ -1183,26 +1269,29 @@ func TestOnDeleteSrcMutationsWithTimer(t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestInterHandlerRecursion(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	handler1 := "source_bucket_update_op"
 	handler2 := "src_bucket_op_on_delete"
-	flushFunctionAndBucket(handler1)
-	flushFunctionAndBucket(handler2)
+	functionName1 := fmt.Sprintf("%s_%s", t.Name(), handler1)
+	functionName2 := fmt.Sprintf("%s_%s", t.Name(), handler2)
+
+	flushFunctionAndBucket(functionName1)
+	flushFunctionAndBucket(functionName2)
 
 	defer func() {
 		// Required, otherwise function delete request in subsequent call would fail
-		waitForDeployToFinish(handler1)
-		flushFunctionAndBucket(handler1)
-		flushFunctionAndBucket(handler2)
+		waitForDeployToFinish(functionName1)
+		flushFunctionAndBucket(functionName1)
+		flushFunctionAndBucket(functionName2)
 	}()
 
-	resp := createAndDeployFunction(handler1, handler1, &commonSettings{srcMutationEnabled: true})
+	resp := createAndDeployFunction(functionName1, handler1, &commonSettings{srcMutationEnabled: true})
 	log.Printf("response body %s err %v", string(resp.body), resp.err)
-	resp = createAndDeployFunction(handler2, handler2, &commonSettings{srcMutationEnabled: true})
+	resp = createAndDeployFunction(functionName2, handler2, &commonSettings{srcMutationEnabled: true})
 	log.Printf("response body %s err %v", string(resp.body), resp.err)
 
 	var response map[string]interface{}
@@ -1219,6 +1308,9 @@ func TestInterHandlerRecursion(t *testing.T) {
 }
 
 func TestInterBucketRecursion(t *testing.T) {
+	functionName1 := fmt.Sprintf("%s_function1", t.Name())
+	functionName2 := fmt.Sprintf("%s_function2", t.Name())
+
 	time.Sleep(time.Second * 5)
 	jsFileName := "noop"
 	setting1 := &commonSettings{
@@ -1227,7 +1319,7 @@ func TestInterBucketRecursion(t *testing.T) {
 		metaBucket:   metaBucket,
 		sourceBucket: srcBucket,
 	}
-	resp := createAndDeployFunction("function1", jsFileName, setting1)
+	resp := createAndDeployFunction(functionName1, jsFileName, setting1)
 	log.Printf("response body %s err %v", string(resp.body), resp.err)
 
 	setting2 := &commonSettings{
@@ -1236,13 +1328,13 @@ func TestInterBucketRecursion(t *testing.T) {
 		metaBucket:   metaBucket,
 		sourceBucket: dstBucket,
 	}
-	resp = createAndDeployFunction("function2", jsFileName, setting2)
+	resp = createAndDeployFunction(functionName2, jsFileName, setting2)
 
 	defer func() {
 		// Required, otherwise function delete request in subsequent call would fail
-		waitForDeployToFinish("function1")
-		flushFunctionAndBucket("function1")
-		flushFunctionAndBucket("function2")
+		waitForDeployToFinish(functionName1)
+		flushFunctionAndBucket(functionName1)
+		flushFunctionAndBucket(functionName2)
 	}()
 
 	var response map[string]interface{}
@@ -1253,7 +1345,7 @@ func TestInterBucketRecursion(t *testing.T) {
 	}
 
 	if response["name"].(string) != "ERR_INTER_BUCKET_RECURSION" {
-		t.Errorf("Deployment must fail")
+		t.Error("Deployment must fail")
 		return
 	}
 }

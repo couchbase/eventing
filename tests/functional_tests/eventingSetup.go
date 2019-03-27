@@ -9,8 +9,6 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/mitchellh/go-ps"
@@ -466,40 +464,6 @@ retrySrcItemCount:
 	}
 }
 
-func compareSrcAndDstItemCount(retryCount int) bool {
-	rCount := 1
-
-	log.SetFlags(log.LstdFlags)
-
-retrySrcItemCount:
-	if rCount >= retryCount {
-		return false
-	}
-
-	srcCount, err := getBucketItemCount(srcBucket)
-	if err != nil {
-		time.Sleep(3 * time.Second)
-		goto retrySrcItemCount
-	}
-
-retryDstItemCount:
-	dstCount, err := getBucketItemCount(dstBucket)
-	if err != nil {
-		time.Sleep(3 * time.Second)
-		goto retryDstItemCount
-	}
-
-	if dstCount != srcCount {
-		log.Printf("src bucket count: %d dst bucket count: %d\n", srcCount, dstCount)
-		rCount++
-		time.Sleep(5 * time.Second)
-	}
-
-	log.Printf("src & dst bucket item count matched up. src bucket count: %d dst bucket count: %d\n", srcCount, dstCount)
-
-	return true
-}
-
 func getBucketItemCount(bucketName string) (int, error) {
 	bStatsURL := bucketStatsURL + bucketName + "/"
 	req, err := http.NewRequest("GET", bStatsURL, nil)
@@ -609,20 +573,6 @@ func makeStatsRequest(context, url string, printStats bool) (interface{}, error)
 	}
 
 	return response, nil
-}
-
-func eventingConsumerPidsAlive() (bool, int) {
-	ps := exec.Command("pgrep", "eventing-consumer")
-
-	output, _ := ps.Output()
-	ps.Output()
-	res := strings.Split(string(output), "\n")
-
-	if len(res) > 1 {
-		return true, len(res) - 1
-	}
-
-	return false, 0
 }
 
 func eventingConsumerPids(port int, fnName string) ([]int, error) {

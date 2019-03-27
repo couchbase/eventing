@@ -7,12 +7,13 @@ import (
 )
 
 func eventingRebIn(t *testing.T, handler, testName string, itemCount, opsPSec, retryCount int, deleteOp, validate bool) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	rl := &rateLimit{
 		limit:   true,
@@ -63,20 +64,21 @@ func eventingRebIn(t *testing.T, handler, testName string, itemCount, opsPSec, r
 		}
 	}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func eventingRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, retryCount int, deleteOp, validate bool) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 
 	addNodeFromRest("127.0.0.1:9001", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	rl := &rateLimit{
 		limit:   true,
@@ -122,16 +124,17 @@ func eventingRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, 
 		}
 	}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func eventingSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec, retryCount int, deleteOp, validate bool) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	rl := &rateLimit{
 		limit:   true,
@@ -187,16 +190,17 @@ func eventingSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec,
 		}
 	}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func kvRebIn(t *testing.T, handler, testName string, itemCount, opsPSec, retryCount int, deleteOp, validate bool) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	rl := &rateLimit{
 		limit:   true,
@@ -246,20 +250,21 @@ func kvRebIn(t *testing.T, handler, testName string, itemCount, opsPSec, retryCo
 		}
 	}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func kvRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, retryCount int, deleteOp, validate bool) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 
 	addNodeFromRest("127.0.0.1:9001", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	rl := &rateLimit{
 		limit:   true,
@@ -305,16 +310,17 @@ func kvRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, retryC
 		}
 	}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func kvSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec, retryCount int, deleteOp, validate bool) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	rl := &rateLimit{
 		limit:   true,
@@ -370,5 +376,5 @@ func kvSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec, retry
 		}
 	}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
