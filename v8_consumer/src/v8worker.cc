@@ -35,6 +35,10 @@ std::atomic<int64_t> messages_processed_counter = {0};
 
 std::atomic<int64_t> dcp_delete_msg_counter = {0};
 std::atomic<int64_t> dcp_mutation_msg_counter = {0};
+std::atomic<int64_t> dcp_delete_parse_failure = {0};
+std::atomic<int64_t> dcp_mutation_parse_failure = {0};
+std::atomic<int64_t> filtered_dcp_delete_counter = {0};
+std::atomic<int64_t> filtered_dcp_mutation_counter = {0};
 std::atomic<int64_t> timer_msg_counter = {0};
 
 std::atomic<int64_t> enqueued_dcp_delete_msg_counter = {0};
@@ -430,35 +434,43 @@ void V8Worker::RouteMessage() {
     case eDCP:
       switch (getDCPOpcode(msg.header->opcode)) {
       case oDelete:
-        dcp_delete_msg_counter++;
+        ++dcp_delete_msg_counter;
         if (kSuccess == ParseMetadata(msg.header->metadata, vb_no, seq_no)) {
+
           auto filter_seq_no = GetVbFilter(vb_no);
           if (filter_seq_no != -1 && seq_no <= filter_seq_no) {
+            ++filtered_dcp_delete_counter;
             if (seq_no == filter_seq_no) {
               EraseVbFilter(vb_no);
             }
           } else {
             this->SendDelete(msg.header->metadata, vb_no, seq_no);
           }
+        } else {
+          ++dcp_delete_parse_failure;
         }
         break;
       case oMutation:
         payload = flatbuf::payload::GetPayload(
             (const void *)msg.payload->payload.c_str());
         val.assign(payload->value()->str());
-        dcp_mutation_msg_counter++;
+        ++dcp_mutation_msg_counter;
         if (kSuccess == ParseMetadata(msg.header->metadata, vb_no, seq_no)) {
           auto filter_seq_no = GetVbFilter(vb_no);
           if (filter_seq_no != -1 && seq_no <= filter_seq_no) {
+            ++filtered_dcp_mutation_counter;
             if (seq_no == filter_seq_no) {
               EraseVbFilter(vb_no);
             }
           } else {
             this->SendUpdate(val, msg.header->metadata, vb_no, seq_no, "json");
           }
+        } else {
+          ++dcp_mutation_parse_failure;
         }
         break;
       default:
+        LOG(logError) << "Received invalid DCP opcode" << std::endl;
         break;
       }
       break;
@@ -473,6 +485,7 @@ void V8Worker::RouteMessage() {
         this->SendTimer(callback, context);
         break;
       default:
+        LOG(logError) << "Received invalid timer opcode" << std::endl;
         break;
       }
       break;
@@ -485,9 +498,11 @@ void V8Worker::RouteMessage() {
         this->StopDebugger();
         break;
       default:
+        LOG(logError) << "Received invalid debugger opcode" << std::endl;
         break;
       }
     default:
+      LOG(logError) << "Received unsupported event" << std::endl;
       break;
     }
 

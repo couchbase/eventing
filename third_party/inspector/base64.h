@@ -2,8 +2,8 @@
 #define SRC_BASE64_H_
 
 #include <stddef.h>
-#include <cassert>
 
+#include "validate.h"
 
 //// Base 64 ////
 #define base64_encoded_size(size) ((size + 2 - ((size + 2) % 3)) / 3 * 4)
@@ -115,8 +115,8 @@ size_t base64_decode(char *const dst, const size_t dstlen,
 static size_t base64_encode(const char *src, size_t slen, char *dst,
                             size_t dlen) {
   // We know how much we'll write, just make sure that there's space.
-  assert(dlen >= base64_encoded_size(slen) &&
-         "not enough space provided for base64 encode");
+  auto result = base64_encoded_size(slen);
+  validate(dlen >= result && "not enough space provided for base64 encode");
 
   dlen = base64_encoded_size(slen);
 

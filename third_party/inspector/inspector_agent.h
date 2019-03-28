@@ -3,10 +3,12 @@
 
 #include "v8-inspector.h"
 #include "v8.h"
+
 #include <functional>
 #include <memory>
 #include <stddef.h>
 #include <string>
+#include <mutex>
 
 using PostURLCallback = std::function<void(const std::string &url)>;
 
@@ -56,19 +58,16 @@ public:
   bool enabled() { return enabled_; }
   void PauseOnNextJavascriptStatement(const std::string &reason);
 
-  // Initialize 'inspector' module bindings
-  static void InitInspector(Local<Object> target, Local<Value> unused,
-                            Local<Context> context, void *priv);
-
   InspectorIo *io() { return io_.get(); }
 
   // Can only be called from the the main thread.
-  bool StartIoThread(bool wait_for_connect);
+  bool StartIoThread();
 
   // Calls StartIoThread() from off the main thread.
   void RequestIoThreadStart();
 
 private:
+  std::mutex io_thread_mu_;
   std::unique_ptr<CBInspectorClient> client_;
   std::unique_ptr<InspectorIo> io_;
   PostURLCallback on_connect_;

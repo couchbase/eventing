@@ -57,13 +57,10 @@ func (c *Consumer) controlRoutine() error {
 			c.vbsStreamClosed = make(map[uint16]bool)
 			c.vbsStreamClosedRWMutex.Unlock()
 
-			c.isRebalanceOngoing = true
-			logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t, vbsStateUpdateRunning: %t",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing, c.vbsStateUpdateRunning)
-
 			if !c.vbsStateUpdateRunning {
-				logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine",
-					logPrefix, c.workerName, c.tcpPort, c.Pid())
+				c.isRebalanceOngoing = true
+				logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine,updated isRebalanceOngoing to %t, vbsStateUpdateRunning: %t",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing, c.vbsStateUpdateRunning)
 				go c.vbsStateUpdate()
 			}
 

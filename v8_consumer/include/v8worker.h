@@ -157,6 +157,10 @@ extern std::atomic<int64_t> timer_msg_counter;
 
 extern std::atomic<int64_t> enqueued_dcp_delete_msg_counter;
 extern std::atomic<int64_t> enqueued_dcp_mutation_msg_counter;
+extern std::atomic<int64_t> dcp_delete_parse_failure;
+extern std::atomic<int64_t> dcp_mutation_parse_failure;
+extern std::atomic<int64_t> filtered_dcp_delete_counter;
+extern std::atomic<int64_t> filtered_dcp_mutation_counter;
 extern std::atomic<int64_t> enqueued_timer_msg_counter;
 
 class V8Worker {

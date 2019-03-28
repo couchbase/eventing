@@ -5,6 +5,7 @@
 #include "v8-inspector.h"
 #include "v8-platform.h"
 #include "zlib.h"
+#include "validate.h"
 
 #include <sstream>
 #include <unicode/unistr.h>
@@ -12,8 +13,6 @@
 #include <openssl/rand.h>
 #include <stdlib.h>
 #include <string.h>
-#include <vector>
-#include <cassert>
 
 
 namespace inspector {
@@ -44,7 +43,7 @@ std::string ScriptPath(uv_loop_t *loop, const std::string &script_name) {
     uv_fs_t req;
     req.ptr = nullptr;
     if (0 == uv_fs_realpath(loop, &req, script_name.c_str(), nullptr)) {
-      assert(req.ptr != nullptr);
+      validate(req.ptr != nullptr);
       script_path = std::string(static_cast<char *>(req.ptr));
     }
     uv_fs_req_cleanup(&req);
@@ -198,10 +197,12 @@ InspectorIo::InspectorIo(Isolate *isolate, Platform *platform,
       wait_for_connect_(wait_for_connect), port_(port) {
   main_thread_req_ = new AsyncAndAgent(
       {uv_async_t(), reinterpret_cast<Agent *>(isolate->GetData(1))});
-  assert(0 == uv_async_init(uv_default_loop(), &main_thread_req_->first,
-                            InspectorIo::MainThreadReqAsyncCb));
+  auto result = uv_async_init(uv_default_loop(), &main_thread_req_->first,
+                              InspectorIo::MainThreadReqAsyncCb);
+  validate(0 == result);
   uv_unref(reinterpret_cast<uv_handle_t *>(&main_thread_req_->first));
-  assert(0 == uv_sem_init(&thread_start_sem_, 0));
+  result = uv_sem_init(&thread_start_sem_, 0);
+  validate(0 == result);
   // uv_cond_init(&incoming_message_cond_);
   // uv_mutex_init(&state_lock_);
 }
@@ -213,8 +214,9 @@ InspectorIo::~InspectorIo() {
 }
 
 bool InspectorIo::Start() {
-  assert(state_ == State::kNew);
-  assert(uv_thread_create(&thread_, InspectorIo::ThreadMain, this) == 0);
+  validate(state_ == State::kNew);
+  auto result = uv_thread_create(&thread_, InspectorIo::ThreadMain, this);
+  validate(result == 0);
   uv_sem_wait(&thread_start_sem_);
 
   if (state_ == State::kError) {
@@ -228,10 +230,10 @@ bool InspectorIo::Start() {
 }
 
 void InspectorIo::Stop() {
-  assert(state_ == State::kAccepting || state_ == State::kConnected);
+  validate(state_ == State::kAccepting || state_ == State::kConnected);
   Write(TransportAction::kKill, 0, StringView());
   int err = uv_thread_join(&thread_);
-  assert(err == 0);
+  validate(err == 0);
   state_ = State::kShutDown;
   DispatchMessages();
 }
@@ -294,10 +296,10 @@ template <typename Transport> void InspectorIo::ThreadMain() {
   uv_loop_t loop;
   loop.data = nullptr;
   int err = uv_loop_init(&loop);
-  assert(err == 0);
+  validate(err == 0);
   thread_req_.data = nullptr;
   err = uv_async_init(&loop, &thread_req_, IoThreadAsyncCb<Transport>);
-  assert(err == 0);
+  validate(err == 0);
   std::string script_path = ScriptPath(&loop, script_name_);
   InspectorIoDelegate delegate(this, script_path, script_name_,
                                wait_for_connect_);
@@ -308,7 +310,8 @@ template <typename Transport> void InspectorIo::ThreadMain() {
   thread_req_.data = &queue_transport;
   if (!server.Start()) {
     state_ = State::kError; // Safe, main thread is waiting on semaphore
-    assert(0 == CloseAsyncAndLoop(&thread_req_));
+    auto result = CloseAsyncAndLoop(&thread_req_);
+    validate(0 == result);
     uv_sem_post(&thread_start_sem_);
     return;
   }
@@ -318,7 +321,8 @@ template <typename Transport> void InspectorIo::ThreadMain() {
   }
   uv_run(&loop, UV_RUN_DEFAULT);
   thread_req_.data = nullptr;
-  assert(uv_loop_close(&loop) == 0);
+  auto result = uv_loop_close(&loop);
+  validate(result == 0);
   delegate_ = nullptr;
 }
 
@@ -355,7 +359,8 @@ void InspectorIo::PostIncomingMessage(InspectorAction action, int session_id,
     platform_->CallOnForegroundThread(isolate_,
                                       new DispatchMessagesTask(agent));
     isolate_->RequestInterrupt(InterruptCallback, agent);
-    assert(0 == uv_async_send(&main_thread_req_->first));
+    auto result = uv_async_send(&main_thread_req_->first);
+    validate(0 == result);
   }
   NotifyMessageReceived();
 }
@@ -399,7 +404,7 @@ void InspectorIo::DispatchMessages() {
       Agent *agent = reinterpret_cast<Agent *>(isolate_->GetData(1));
       switch (std::get<0>(task)) {
       case InspectorAction::kStartSession:
-        assert(session_delegate_ == nullptr);
+        validate(session_delegate_ == nullptr);
         session_id_ = std::get<1>(task);
         state_ = State::kConnected;
         fprintf(stderr, "Debugger attached.\n");
@@ -408,7 +413,7 @@ void InspectorIo::DispatchMessages() {
         agent->Connect(session_delegate_.get());
         break;
       case InspectorAction::kEndSession:
-        assert(session_delegate_ != nullptr);
+        validate(session_delegate_ != nullptr);
         if (state_ == State::kShutDown) {
           state_ = State::kDone;
         } else {
@@ -443,7 +448,7 @@ void InspectorIo::Write(TransportAction action, int session_id,
   AppendMessage(&outgoing_message_queue_, action, session_id,
                 StringBuffer::create(inspector_message));
   int err = uv_async_send(&thread_req_);
-  assert(0 == err);
+  validate(0 == err);
 }
 
 InspectorIoDelegate::InspectorIoDelegate(InspectorIo *io,

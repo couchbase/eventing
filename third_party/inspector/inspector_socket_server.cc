@@ -1,5 +1,6 @@
 #include "inspector_socket_server.h"
 #include "inspector_socket.h"
+#include "validate.h"
 
 #include "uv.h"
 #include "zlib.h"
@@ -9,8 +10,6 @@
 #include <map>
 #include <set>
 #include <sstream>
-#include <cassert>
-
 
 namespace inspector {
 
@@ -137,7 +136,8 @@ void SendProtocolJson(InspectorSocket *socket) {
   strm.zalloc = Z_NULL;
   strm.zfree = Z_NULL;
   strm.opaque = Z_NULL;
-  assert(Z_OK == inflateInit(&strm));
+  auto inflate_init_result = inflateInit(&strm);
+  validate(Z_OK == inflate_init_result);
   static const size_t kDecompressedSize = PROTOCOL_JSON[0] * 0x10000u +
                                           PROTOCOL_JSON[1] * 0x100u +
                                           PROTOCOL_JSON[2];
@@ -146,9 +146,11 @@ void SendProtocolJson(InspectorSocket *socket) {
   std::string data(kDecompressedSize, '\0');
   strm.next_out = reinterpret_cast<Byte *>(&data[0]);
   strm.avail_out = data.size();
-  assert(Z_STREAM_END == inflate(&strm, Z_FINISH));
-  assert(0 == strm.avail_out);
-  assert(Z_OK == inflateEnd(&strm));
+  auto inflate_result = inflate(&strm, Z_FINISH);
+  validate(Z_STREAM_END == inflate_result);
+  validate(0 == strm.avail_out);
+  auto inflate_end_result = inflateEnd(&strm);
+  validate(Z_OK == inflate_end_result);
   SendHttpResponse(socket, data);
 }
 
@@ -241,7 +243,8 @@ private:
   void FrontendConnected();
   void SetDeclined() { state_ = State::kDeclined; }
   void SetTargetId(const std::string &target_id) {
-    assert(target_id_.empty());
+    auto result = target_id_.empty();
+    validate(result);
     target_id_ = target_id;
   }
 
@@ -386,7 +389,7 @@ void InspectorSocketServer::SendListResponse(InspectorSocket *socket) {
 }
 
 bool InspectorSocketServer::Start() {
-  assert(state_ == ServerState::kNew);
+  validate(state_ == ServerState::kNew);
   struct addrinfo hints;
   memset(&hints, 0, sizeof(hints));
   hints.ai_flags = AI_NUMERICSERV;
@@ -431,7 +434,7 @@ bool InspectorSocketServer::Start() {
 }
 
 void InspectorSocketServer::Stop(ServerCallback cb) {
-  assert(state_ == ServerState::kRunning);
+  validate(state_ == ServerState::kRunning);
   if (closer_ == nullptr) {
     closer_ = new Closer(this);
   }
@@ -467,7 +470,7 @@ void InspectorSocketServer::ServerSocketListening(ServerSocket *server_socket) {
 }
 
 void InspectorSocketServer::ServerSocketClosed(ServerSocket *server_socket) {
-  assert(state_ == ServerState::kStopping);
+  validate(state_ == ServerState::kStopping);
 
   server_sockets_.erase(std::remove(server_sockets_.begin(),
                                     server_sockets_.end(), server_socket),
@@ -497,7 +500,7 @@ SocketSession::SocketSession(InspectorSocketServer *server, int server_port)
       server_port_(server_port) {}
 
 void SocketSession::Close() {
-  assert(state_ != State::kClosing);
+  validate(state_ != State::kClosing);
   state_ = State::kClosing;
   inspector_close(&socket_, CloseCallback);
 }
@@ -548,12 +551,12 @@ bool SocketSession::HandshakeCallback(InspectorSocket *socket,
 // static
 void SocketSession::CloseCallback(InspectorSocket *socket, int code) {
   SocketSession *session = SocketSession::From(socket);
-  assert(State::kClosing == session->state_);
+  validate(State::kClosing == session->state_);
   session->server_->SessionTerminated(session);
 }
 
 void SocketSession::FrontendConnected() {
-  assert(State::kHttp == state_);
+  validate(State::kHttp == state_);
   state_ = State::kWebSocket;
   inspector_read_start(&socket_, OnBufferAlloc, ReadCallback);
 }
@@ -599,7 +602,8 @@ int ServerSocket::Listen(InspectorSocketServer *inspector_server,
                          sockaddr *addr, uv_loop_t *loop) {
   ServerSocket *server_socket = new ServerSocket(inspector_server);
   uv_tcp_t *server = &server_socket->tcp_socket_;
-  assert(0 == uv_tcp_init(loop, server));
+  auto result = uv_tcp_init(loop, server);
+  validate(0 == result);
   int err = uv_tcp_bind(server, addr, 0);
   if (err == 0) {
     err = uv_listen(reinterpret_cast<uv_stream_t *>(server), 1,
