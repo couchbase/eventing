@@ -41,7 +41,7 @@ const (
 	rbacSetupURL        = "http://127.0.0.1:9000/settings/rbac/users/local"
 	bucketStatsURL      = "http://127.0.0.1:9000/pools/default/buckets/"
 	indexerURL          = "http://127.0.0.1:9000/settings/indexes"
-	queryURL            = "http://127.0.0.1:9499/query/service"
+	queryURL            = "http://127.0.0.1:9001/_p/query/query/service"
 )
 
 const (
@@ -84,7 +84,7 @@ const (
 
 const (
 	dataDir  = "%2Ftmp%2Fdata"
-	services = "kv%2Cn1ql%2Cindex%2Ceventing"
+	services = "kv%2Ceventing"
 )
 
 const (
