@@ -220,7 +220,7 @@ func (b Bucket) getMasterNode(i int) (host string) {
 	defer func() {
 		if r := recover(); r != nil {
 			logging.Errorf("bucket(%v) getMasterNode crashed: %v\n", b.Name, r)
-			logging.Tracef("%s", logging.StackTrace())
+			logging.Errorf("%s", logging.StackTrace())
 			host = ""
 		}
 	}()
