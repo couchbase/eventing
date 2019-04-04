@@ -620,6 +620,13 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 				}
 
 				c.stoppingConsumer = true
+
+				if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+					logging.Infof("%s [%s:%s:%d] consumer is terminateRunning, bailing out",
+							logPrefix, c.workerName, c.tcpPort, c.Pid())
+				        return err
+				}
+
 				c.producer.KillAndRespawnEventingConsumer(c)
 				return err
 			}
