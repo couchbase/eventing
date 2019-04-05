@@ -8,7 +8,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/gocb"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (

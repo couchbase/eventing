@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth/metakv"
-	"github.com/couchbase/gocb"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 type user struct {

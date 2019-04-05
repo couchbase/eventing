@@ -12,7 +12,7 @@ import (
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/gocb"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (

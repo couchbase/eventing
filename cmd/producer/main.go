@@ -9,7 +9,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/supervisor"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/gocb"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 func main() {

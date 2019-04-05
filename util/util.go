@@ -30,9 +30,9 @@ import (
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
 	flatbuffers "github.com/google/flatbuffers/go"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (

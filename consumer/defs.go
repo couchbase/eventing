@@ -15,8 +15,8 @@ import (
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/gocb"
 	"github.com/google/flatbuffers/go"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (
