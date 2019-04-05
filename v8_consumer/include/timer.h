@@ -12,8 +12,11 @@
 #ifndef TIMER_H
 #define TIMER_H
 
+#include <random>
 #include <string>
 #include <v8.h>
+
+extern thread_local std::mt19937_64 rng;
 
 struct EpochInfo {
   EpochInfo(bool is_valid) : is_valid(is_valid), epoch(0) {}

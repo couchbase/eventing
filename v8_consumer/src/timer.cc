@@ -16,6 +16,9 @@
 #include "v8worker.h"
 
 std::atomic<int64_t> timer_context_size_exceeded_counter = {0};
+thread_local std::mt19937_64
+    rng(std::random_device{}() +
+        std::hash<std::thread::id>()(std::this_thread::get_id()));
 
 Timer::Timer(v8::Isolate *isolate, const v8::Local<v8::Context> &context)
     : isolate_(isolate) {
@@ -73,8 +76,15 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_info.vb = v8worker->currently_processed_vb_;
   timer_info.seq_num = v8worker->currently_processed_seqno_;
   timer_info.callback = utils->GetFunctionName(args[0]);
-  timer_info.reference = utils->ToCPPString(args[2]);
   timer_info.context = JSONStringify(isolate_, args[3]);
+  //
+  // if reference is null or undefined, generate one
+  if (args[2]->IsString()) {
+    timer_info.reference = utils->ToCPPString(args[2]);
+  } else {
+    timer_info.reference =
+        std::to_string(rng()) + std::to_string(timer_info.seq_num);
+  }
 
   if (timer_info.context.size() > timer_context_size) {
     js_exception->ThrowEventingError(
@@ -87,6 +97,8 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_msg_t msg;
   msg.timer_entry = timer_info.ToJSON(isolate_, context);
   v8worker->timer_queue_->Push(msg);
+  args.GetReturnValue().Set(v8Str(isolate_, timer_info.reference));
+
   return true;
 }
 
@@ -109,9 +121,9 @@ bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return false;
   }
 
-  if (!args[2]->IsString()) {
+  if (!args[2]->IsString() && !args[2]->IsNull() && !args[2]->IsUndefined()) {
     js_exception->ThrowEventingError(
-        "Third argument must be a JavaScript string");
+        "Third argument must be a JavaScript string or null/undefined");
     return false;
   }
 
