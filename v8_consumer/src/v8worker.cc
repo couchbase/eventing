@@ -112,6 +112,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.curl_factory = new CurlFactory(isolate_, context);
   data_.req_builder = new CurlRequestBuilder(isolate_, context);
   data_.resp_builder = new CurlResponseBuilder(isolate_, context);
+  data_.n1ql_codex = new N1QLCodex;
   data_.custom_error = new CustomError(isolate_, context);
   data_.curl_codex = new CurlCodex;
 }
@@ -242,6 +243,7 @@ V8Worker::~V8Worker() {
 
   auto data = UnwrapData(isolate_);
   delete data->custom_error;
+  delete data->n1ql_codex;
   delete data->comm;
   delete data->transpiler;
   delete data->utils;
@@ -1078,10 +1080,9 @@ void V8Worker::FreeCurlBindings() {
 }
 
 // TODO : Remove this when stats variables are handled properly
-void AddLcbException(const IsolateData *isolate_data,
-                     const lcb_RESPN1QL *resp) {
+void AddLcbException(const IsolateData *isolate_data, const int code) {
   auto w = isolate_data->v8worker;
-  w->AddLcbException(static_cast<int>(resp->rc));
+  w->AddLcbException(code);
 }
 
 void AddLcbException(const IsolateData *isolate_data, lcb_error_t error) {

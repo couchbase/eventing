@@ -14,6 +14,7 @@
 
 #include <v8.h>
 
+struct N1QLCodex;
 class Curl;
 class N1QL;
 class V8Worker;
@@ -38,6 +39,7 @@ struct IsolateData {
 
   static const uint32_t index = 0;
 
+  N1QLCodex *n1ql_codex;
   N1QL *n1ql_handle;
   V8Worker *v8worker;
   JsException *js_exception;

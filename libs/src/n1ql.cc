@@ -222,7 +222,7 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS || !IsStatusSuccess(resp->row)) {
-      HandleRowCallbackFailure(resp, isolate_data);
+      HandleRowCallbackFailure(resp, isolate, cookie);
     }
 
     q_handler.iter_handler->metadata = resp->row;
@@ -254,7 +254,7 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS || !IsStatusSuccess(resp->row)) {
-      HandleRowCallbackFailure(resp, isolate_data);
+      HandleRowCallbackFailure(resp, isolate, cookie);
     }
 
     q_handler.block_handler->metadata = resp->row;
@@ -262,13 +262,33 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
 }
 
 void N1QL::HandleRowCallbackFailure(const lcb_RESPN1QL *resp,
-                                    const IsolateData *isolate_data) {
-  AddLcbException(isolate_data, resp);
+                                    v8::Isolate *isolate,
+                                    HandlerCookie *cookie) {
   n1ql_op_exception_count++;
+  const auto isolate_data = UnwrapData(isolate);
   auto js_exception = isolate_data->js_exception;
-  js_exception->ThrowN1QLError(resp->row);
+  auto codex = isolate_data->n1ql_codex;
 
-  if (resp->rc == LCB_AUTH_ERROR) {
+  cookie->error = resp->row;
+  N1QLErrorExtractor extractor(isolate);
+  const auto info = extractor.GetErrorCodes(resp->row);
+  if (info.is_fatal) {
+    js_exception->ThrowN1QLError(info.msg);
+    return;
+  }
+
+  for (const auto code : info.errors) {
+    if (codex->IsRetriable(code)) {
+      cookie->must_retry = true;
+    }
+    AddLcbException(isolate_data, static_cast<int>(code));
+  }
+
+  if (!cookie->must_retry) {
+    js_exception->ThrowN1QLError(resp->row);
+  }
+
+  if (resp->rc == LCB_AUTH_ERROR || cookie->must_retry) {
     auto comm = isolate_data->comm;
     comm->Refresh();
   }
@@ -282,10 +302,6 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
 
   lcb_t &instance = q_handler.instance;
   lcb_error_t err;
-  lcb_CMDN1QL cmd = {0};
-  lcb_N1QLHANDLE handle = nullptr;
-  cmd.handle = &handle;
-  cmd.callback = RowCallback<HandlerType>;
 
   lcb_N1QLPARAMS *n1ql_params = lcb_n1p_new();
   err = lcb_n1p_setstmtz(n1ql_params, q_handler.query.c_str());
@@ -302,34 +318,55 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
     }
   }
 
-  lcb_n1p_mkcmd(n1ql_params, &cmd);
-
-  err = lcb_n1ql_query(instance, nullptr, &cmd);
-  if (err != LCB_SUCCESS) {
-    // for example: when there is no query node
-    ConnectionPool::Error(instance, "N1QL: Unable to schedule N1QL query", err);
+  std::string err_msg;
+  auto must_retry = RetryWithFixedBackoff(
+      5, 0, [](bool retry) -> bool { return retry; },
+      ExecQueryImpl<HandlerType>, isolate_, instance, n1ql_params, err_msg);
+  if (must_retry) {
     auto js_exception = UnwrapData(isolate_)->js_exception;
-    js_exception->ThrowN1QLError("N1QL: Unable to schedule N1QL query");
-  }
-
-  lcb_n1p_free(n1ql_params);
-
-  // Add the N1QL handle as cookie - allow for query cancellation.
-  HandlerCookie cookie;
-  cookie.isolate = isolate_;
-  cookie.handle = handle;
-  lcb_set_cookie(instance, &cookie);
-
-  // Run the query
-  err = lcb_wait(instance);
-  if (err != LCB_SUCCESS) {
-    ConnectionPool::Error(instance, "N1QL: Query execution failed", err);
+    js_exception->ThrowN1QLError(
+        "Query did not succeed even after 5 attempts, error : " + err_msg);
   }
 
   // Resource clean-up.
   lcb_set_cookie(instance, nullptr);
   qhandler_stack.Pop();
   inst_pool_->Restore(instance);
+}
+
+template <typename HandlerType>
+bool N1QL::ExecQueryImpl(v8::Isolate *isolate, lcb_t &instance,
+                         lcb_N1QLPARAMS *n1ql_params, std::string &err_out) {
+  lcb_CMDN1QL cmd = {0};
+  lcb_N1QLHANDLE handle = nullptr;
+  cmd.handle = &handle;
+  cmd.callback = RowCallback<HandlerType>;
+
+  lcb_n1p_mkcmd(n1ql_params, &cmd);
+
+  auto err = lcb_n1ql_query(instance, nullptr, &cmd);
+  if (err != LCB_SUCCESS) {
+    // for example: when there is no query node
+    ConnectionPool::Error(instance, "N1QL: Unable to schedule N1QL query", err);
+    auto js_exception = UnwrapData(isolate)->js_exception;
+    js_exception->ThrowN1QLError("N1QL: Unable to schedule N1QL query");
+  }
+
+  lcb_n1p_free(n1ql_params);
+
+  HandlerCookie cookie;
+  cookie.isolate = isolate;
+  // Add the N1QL handle as cookie - allow for query cancellation.
+  cookie.handle = handle;
+  lcb_set_cookie(instance, &cookie);
+
+  cookie.must_retry = false;
+  err = lcb_wait(instance);
+  if (err != LCB_SUCCESS) {
+    ConnectionPool::Error(instance, "N1QL: Query execution failed", err);
+  }
+  err_out = cookie.error;
+  return cookie.must_retry;
 }
 
 bool N1QL::IsStatusSuccess(const char *row) {
@@ -790,4 +827,76 @@ template <typename T> v8::Local<T> ToLocal(const v8::MaybeLocal<T> &handle) {
   }
 
   return handle_scope.Escape(value);
+}
+
+N1QLErrorExtractor::N1QLErrorExtractor(v8::Isolate *isolate)
+    : isolate_(isolate) {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = isolate_->GetCurrentContext();
+  context_.Reset(isolate_, context);
+}
+
+N1QLErrorExtractor::~N1QLErrorExtractor() { context_.Reset(); }
+
+ErrorCodesInfo N1QLErrorExtractor::GetErrorCodes(const char *err_str) {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  std::vector<int64_t> errors;
+
+  v8::Local<v8::Value> error_val;
+  if (!TO_LOCAL(v8::JSON::Parse(isolate_, v8Str(isolate_, err_str)),
+                &error_val)) {
+    return {true, "Unable to parse error JSON"};
+  }
+
+  v8::Local<v8::Object> error_obj;
+  if (!TO_LOCAL(error_val->ToObject(context), &error_obj)) {
+    return {true, "Unable to cast error to Object"};
+  }
+
+  v8::Local<v8::Value> errors_val;
+  if (!TO_LOCAL(error_obj->Get(context, v8Str(isolate_, "errors")),
+                &errors_val)) {
+    return {true, "Unable to read errors property from message Object"};
+  }
+  return GetErrorCodes(errors_val);
+}
+
+ErrorCodesInfo
+N1QLErrorExtractor::GetErrorCodes(const v8::Local<v8::Value> &errors_val) {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  std::vector<int64_t> errors;
+
+  auto errors_v8arr = errors_val.As<v8::Array>();
+  const auto len = errors_v8arr->Length();
+  errors.resize(static_cast<std::size_t>(len));
+  for (uint32_t i = 0; i < len; ++i) {
+    v8::Local<v8::Value> error_val;
+    if (!TO_LOCAL(errors_v8arr->Get(context, i), &error_val)) {
+      return {true,
+              "Unable to read error Object at index " + std::to_string(i)};
+    }
+
+    v8::Local<v8::Object> error_obj;
+    if (!TO_LOCAL(error_val->ToObject(context), &error_obj)) {
+      return {true, "Unable to cast error at index " + std::to_string(i) +
+                        " to Object"};
+    }
+
+    v8::Local<v8::Value> code_val;
+    if (!TO_LOCAL(error_obj->Get(context, v8Str(isolate_, "code")),
+                  &code_val)) {
+      return {true, "Unable to get code from error Object at index " +
+                        std::to_string(i)};
+    }
+
+    v8::Local<v8::Integer> code_v8int;
+    if (!TO_LOCAL(code_val->ToInteger(context), &code_v8int)) {
+      return {true, "Unable to cast code to integer in error Object at index " +
+                        std::to_string(i)};
+    }
+    errors[static_cast<std::size_t>(i)] = code_v8int->Value();
+  }
+  return errors;
 }
