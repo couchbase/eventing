@@ -5,11 +5,13 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -349,8 +351,6 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
-	// TODO : Validate the curl binding - check if the auth types are within the supported ones
-
 	if info = m.validateNonEmpty(deploymentConfig.SourceBucket, "Source bucket name"); info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -372,28 +372,98 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 	}
 
 	aliasSet := make(map[string]struct{})
-	for _, bucket := range deploymentConfig.Buckets {
-		if info = m.validateNonEmpty(bucket.BucketName, "Alias bucket name"); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBucketBindings(deploymentConfig.Buckets, aliasSet); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateCurlBindings(deploymentConfig.Curl, aliasSet); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) validateBucketBindings(bindings []bucket, existingAliases map[string]struct{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	for _, binding := range bindings {
+		if info = m.validateNonEmpty(binding.BucketName, "Bucket alias name"); info.Code != m.statusCodes.ok.Code {
 			return
 		}
-
-		if info = m.validateAliasName(bucket.Alias); info.Code != m.statusCodes.ok.Code {
+		if info = m.validateAliasName(binding.Alias); info.Code != m.statusCodes.ok.Code {
 			return
 		}
 
 		//Check for the uniqueness of alias name
-		if _, ok := aliasSet[bucket.Alias]; ok {
-			info.Info = fmt.Sprintf("Alias name must be unique")
+		if _, exists := existingAliases[binding.Alias]; exists {
+			info.Info = fmt.Sprintf("Bucket alias %s is not unique", binding.Alias)
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			return
 		}
 
 		//Update AliasSet
-		aliasSet[bucket.Alias] = struct{}{}
+		existingAliases[binding.Alias] = struct{}{}
 
-		if info = m.validateBucketAccess(bucket.Access); info.Code != m.statusCodes.ok.Code {
+		if info = m.validateBucketAccess(binding.Access); info.Code != m.statusCodes.ok.Code {
 			return
 		}
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) validateCurlBindings(bindings []common.Curl, existingAliases map[string]struct{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	for _, binding := range bindings {
+		if info = m.validateNonEmpty(binding.Value, "URL alias name"); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+		if info = m.validateNonEmpty(binding.Hostname, fmt.Sprintf("URL alias %s hostname", binding.Value)); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+		if info = m.validateNonEmpty(binding.Cookies,
+			fmt.Sprintf(`URL alias %s "allow cookies"`, binding.Value)); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+		if info = m.validateNonEmpty(binding.AuthType, fmt.Sprintf(`URL alias %s "auth type"`, binding.Value)); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+		if info = m.validateUrl(binding.Hostname); info.Code != m.statusCodes.ok.Code {
+			info.Info = fmt.Sprintf("Invalid URL for URL alias %s : %s", binding.Value, info.Info)
+			return
+		}
+		if !util.Contains(binding.AuthType, []string{"no-auth", "basic", "bearer", "digest"}) {
+			info.Info = fmt.Sprintf(`URL alias %s has invalid value for "auth type"`, binding.Value)
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			return
+		}
+		if info = m.validateAliasName(binding.Value); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+
+		if _, exists := existingAliases[binding.Value]; exists {
+			info.Info = fmt.Sprintf("URL alias %s is not unique", binding.Value)
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			return
+		}
+		existingAliases[binding.Value] = struct{}{}
+	}
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) validateUrl(u string) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	_, err := url.ParseRequestURI(u)
+	if err != nil {
+		info.Info = fmt.Sprintf("%v", err)
+		return
 	}
 
 	info.Code = m.statusCodes.ok.Code
