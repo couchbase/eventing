@@ -9,63 +9,67 @@ import (
 
 /** NOOP cases start **/
 func TestEventingRebNoKVOpsNoopOneByOne(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "noop"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addAllNodesOneByOne("eventing")
 	removeAllNodesOneByOne()
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingRebNoKVOpsNoopNonDefaultOneByOne(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "noop"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addAllNodesOneByOne("eventing")
 	removeAllNodesOneByOne()
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingRebNoKVOpsNoopAllAtOnce(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "noop"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addAllNodesAtOnce("eventing")
 	removeAllNodesAtOnce()
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingRebKVOpsNoopOneByOne(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "noop"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -79,7 +83,7 @@ func TestEventingRebKVOpsNoopOneByOne(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addAllNodesOneByOne("eventing")
@@ -87,16 +91,17 @@ func TestEventingRebKVOpsNoopOneByOne(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingRebKVOpsNoopAllAtOnce(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "noop"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -110,7 +115,7 @@ func TestEventingRebKVOpsNoopAllAtOnce(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addAllNodesAtOnce("eventing")
@@ -118,7 +123,7 @@ func TestEventingRebKVOpsNoopAllAtOnce(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 /** NOOP cases end **/

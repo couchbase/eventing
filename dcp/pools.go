@@ -227,7 +227,7 @@ func (b Bucket) getMasterNode(i int) (host string) {
 
 	host = ""
 	p := b.getConnPools()
-	if len(p) > i {
+	if len(p) > i && p[i] != nil {
 		host = p[i].host
 	}
 	return host

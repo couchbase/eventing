@@ -320,7 +320,7 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
 
   std::string err_msg;
   auto must_retry = RetryWithFixedBackoff(
-      5, 0, [](bool retry) -> bool { return retry; },
+      5, 100, [](bool retry) -> bool { return retry; },
       ExecQueryImpl<HandlerType>, isolate_, instance, n1ql_params, err_msg);
   if (must_retry) {
     auto js_exception = UnwrapData(isolate_)->js_exception;
