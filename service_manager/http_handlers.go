@@ -1661,7 +1661,7 @@ func (m *ServiceMgr) determineWarnings(app *application, compilationInfo *common
 	curlWarning, err := m.determineCurlWarning(app)
 	if err != nil {
 		logging.Errorf("Function: %s unable to determine curl warnings, err : %v", app.Name, err)
-	} else {
+	} else if curlWarning != "" {
 		wInfo.Warnings = append(wInfo.Warnings, curlWarning)
 	}
 
@@ -1686,7 +1686,7 @@ func (m *ServiceMgr) determineCurlWarning(app *application) (string, error) {
 			return fmt.Sprintf("Unable to parse URL of %s, err : %v", curl.Value, err), nil
 		}
 
-		node, err := util.NewNode(parsedUrl.Host)
+		node, err := util.NewNodeWithScheme(parsedUrl.Host, parsedUrl.Scheme)
 		if err != nil {
 			return fmt.Sprintf("Unable to resolve %s, err : %v", curl.Value, err), nil
 		}
@@ -2797,8 +2797,9 @@ type version struct {
 }
 
 var verMap = map[string]version{
-	"vulcan": {5, 5},
-	"alice":  {6, 0},
+	"vulcan":     {5, 5},
+	"alice":      {6, 0},
+	"mad-hatter": {6, 5},
 }
 
 func (r version) satisfies(need version) bool {
