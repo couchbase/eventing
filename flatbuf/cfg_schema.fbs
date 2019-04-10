@@ -31,7 +31,7 @@ table Curl {
   username:string;
   password:string;
   bearerKey:string;
-  cookies:string;
+  allowCookies:bool;
 }
 
 root_type Config;

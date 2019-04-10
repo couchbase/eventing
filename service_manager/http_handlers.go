@@ -1401,7 +1401,10 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 		passwordEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Password)
 		usernameEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Username)
 		bearerKeyEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].BearerKey)
-		cookiesEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Cookies)
+		cookiesEncoded := byte(0x0)
+		if app.DeploymentConfig.Curl[i].AllowCookies {
+			cookiesEncoded = byte(0x1)
+		}
 
 		cfg.CurlStart(builder)
 		cfg.CurlAddAuthType(builder, authTypeEncoded)
@@ -1410,7 +1413,7 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 		cfg.CurlAddPassword(builder, passwordEncoded)
 		cfg.CurlAddUsername(builder, usernameEncoded)
 		cfg.CurlAddBearerKey(builder, bearerKeyEncoded)
-		cfg.CurlAddCookies(builder, cookiesEncoded)
+		cfg.CurlAddAllowCookies(builder, cookiesEncoded)
 		curlBindingsEnd := cfg.CurlEnd(builder)
 
 		curlBindings = append(curlBindings, curlBindingsEnd)

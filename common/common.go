@@ -50,13 +50,13 @@ type DebuggerInstance struct {
 }
 
 type Curl struct {
-	Hostname  string `json:"hostname"`
-	Value     string `json:"value"`
-	AuthType  string `json:"auth_type"`
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	BearerKey string `json:"bearer_key"`
-	Cookies   string `json:"cookies"`
+	Hostname     string `json:"hostname"`
+	Value        string `json:"value"`
+	AuthType     string `json:"auth_type"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	BearerKey    string `json:"bearer_key"`
+	AllowCookies bool   `json:"allow_cookies"`
 }
 
 var ErrRetryTimeout = errors.New("retry timeout")
