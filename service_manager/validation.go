@@ -425,10 +425,6 @@ func (m *ServiceMgr) validateCurlBindings(bindings []common.Curl, existingAliase
 		if info = m.validateNonEmpty(binding.Hostname, fmt.Sprintf("URL alias %s hostname", binding.Value)); info.Code != m.statusCodes.ok.Code {
 			return
 		}
-		if info = m.validateNonEmpty(binding.Cookies,
-			fmt.Sprintf(`URL alias %s "allow cookies"`, binding.Value)); info.Code != m.statusCodes.ok.Code {
-			return
-		}
 		if info = m.validateNonEmpty(binding.AuthType, fmt.Sprintf(`URL alias %s "auth type"`, binding.Value)); info.Code != m.statusCodes.ok.Code {
 			return
 		}

@@ -35,10 +35,10 @@ func (c *curlTester) test() {
 // HEAD
 func (c *curlTester) testHead() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/head",
-		Value:    "localhost",
-		AuthType: "no-auth",
-		Cookies:  "disallow",
+		Hostname:     "http://localhost:9090/head",
+		Value:        "localhost",
+		AuthType:     "no-auth",
+		AllowCookies: false,
 	}
 
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
@@ -48,12 +48,12 @@ func (c *curlTester) testHead() {
 // HEAD + auth
 func (c *curlTester) testHeadBasicAuth() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/head/auth",
-		Value:    "localhost",
-		AuthType: "basic",
-		Cookies:  "disallow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/head/auth",
+		Value:        "localhost",
+		AuthType:     "basic",
+		AllowCookies: false,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -61,12 +61,12 @@ func (c *curlTester) testHeadBasicAuth() {
 
 func (c *curlTester) testHeadDigestAuth() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/head/auth/digest",
-		Value:    "localhost",
-		AuthType: "digest",
-		Cookies:  "disallow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/head/auth/digest",
+		Value:        "localhost",
+		AuthType:     "digest",
+		AllowCookies: false,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -75,10 +75,10 @@ func (c *curlTester) testHeadDigestAuth() {
 // GET
 func (c *curlTester) testGet() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/get",
-		Value:    "localhost",
-		AuthType: "no-auth",
-		Cookies:  "disallow",
+		Hostname:     "http://localhost:9090/get",
+		Value:        "localhost",
+		AuthType:     "no-auth",
+		AllowCookies: false,
 	}
 
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
@@ -87,10 +87,10 @@ func (c *curlTester) testGet() {
 
 func (c *curlTester) testEmpty() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/empty",
-		Value:    "localhost",
-		AuthType: "no-auth",
-		Cookies:  "disallow",
+		Hostname:     "http://localhost:9090/empty",
+		Value:        "localhost",
+		AuthType:     "no-auth",
+		AllowCookies: false,
 	}
 
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
@@ -100,12 +100,12 @@ func (c *curlTester) testEmpty() {
 // GET + auth
 func (c *curlTester) testGetBasicAuth() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/get/auth",
-		Value:    "localhost",
-		AuthType: "basic",
-		Cookies:  "disallow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/get/auth",
+		Value:        "localhost",
+		AuthType:     "basic",
+		AllowCookies: false,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -113,12 +113,12 @@ func (c *curlTester) testGetBasicAuth() {
 
 func (c *curlTester) testGetDigestAuth() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/get/auth/digest",
-		Value:    "localhost",
-		AuthType: "digest",
-		Cookies:  "disallow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/get/auth/digest",
+		Value:        "localhost",
+		AuthType:     "digest",
+		AllowCookies: false,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -127,10 +127,10 @@ func (c *curlTester) testGetDigestAuth() {
 // GET + cookie
 func (c *curlTester) testGetCookie() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/get",
-		Value:    "localhost",
-		AuthType: "no-auth",
-		Cookies:  "allow",
+		Hostname:     "http://localhost:9090/get",
+		Value:        "localhost",
+		AuthType:     "no-auth",
+		AllowCookies: true,
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -139,12 +139,12 @@ func (c *curlTester) testGetCookie() {
 // GET + auth + cookie
 func (c *curlTester) testGetBasicAuthCookie() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/get/auth",
-		Value:    "localhost",
-		AuthType: "basic",
-		Cookies:  "allow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/get/auth",
+		Value:        "localhost",
+		AuthType:     "basic",
+		AllowCookies: true,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -152,12 +152,12 @@ func (c *curlTester) testGetBasicAuthCookie() {
 
 func (c *curlTester) testGetDigestAuthCookie() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/get/auth/digest",
-		Value:    "localhost",
-		AuthType: "digest",
-		Cookies:  "allow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/get/auth/digest",
+		Value:        "localhost",
+		AuthType:     "digest",
+		AllowCookies: true,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -166,10 +166,10 @@ func (c *curlTester) testGetDigestAuthCookie() {
 // POST
 func (c *curlTester) testPost() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/post",
-		Value:    "localhost",
-		AuthType: "no-auth",
-		Cookies:  "disallow",
+		Hostname:     "http://localhost:9090/post",
+		Value:        "localhost",
+		AuthType:     "no-auth",
+		AllowCookies: false,
 	}
 
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
@@ -179,12 +179,12 @@ func (c *curlTester) testPost() {
 // POST + auth
 func (c *curlTester) testPostDigestAuth() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/post/auth/digest",
-		Value:    "localhost",
-		AuthType: "digest",
-		Cookies:  "disallow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/post/auth/digest",
+		Value:        "localhost",
+		AuthType:     "digest",
+		AllowCookies: false,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -192,12 +192,12 @@ func (c *curlTester) testPostDigestAuth() {
 
 func (c *curlTester) testPostBasicAuth() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/post/auth",
-		Value:    "localhost",
-		AuthType: "basic",
-		Cookies:  "disallow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/post/auth",
+		Value:        "localhost",
+		AuthType:     "basic",
+		AllowCookies: false,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -206,10 +206,10 @@ func (c *curlTester) testPostBasicAuth() {
 // POST + cookie
 func (c *curlTester) testPostCookie() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/post",
-		Value:    "localhost",
-		AuthType: "no-auth",
-		Cookies:  "allow",
+		Hostname:     "http://localhost:9090/post",
+		Value:        "localhost",
+		AuthType:     "no-auth",
+		AllowCookies: true,
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -218,12 +218,12 @@ func (c *curlTester) testPostCookie() {
 // POST + auth + cookie
 func (c *curlTester) testPostBasicAuthCookie() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/post/auth",
-		Value:    "localhost",
-		AuthType: "basic",
-		Cookies:  "allow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/post/auth",
+		Value:        "localhost",
+		AuthType:     "basic",
+		AllowCookies: true,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -231,12 +231,12 @@ func (c *curlTester) testPostBasicAuthCookie() {
 
 func (c *curlTester) testPostDigestAuthCookie() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/post/auth/digest",
-		Value:    "localhost",
-		AuthType: "digest",
-		Cookies:  "allow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/post/auth/digest",
+		Value:        "localhost",
+		AuthType:     "digest",
+		AllowCookies: true,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -245,10 +245,10 @@ func (c *curlTester) testPostDigestAuthCookie() {
 // PUT
 func (c *curlTester) testPut() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/put",
-		Value:    "localhost",
-		AuthType: "no-auth",
-		Cookies:  "disallow",
+		Hostname:     "http://localhost:9090/put",
+		Value:        "localhost",
+		AuthType:     "no-auth",
+		AllowCookies: false,
 	}
 
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
@@ -258,12 +258,12 @@ func (c *curlTester) testPut() {
 // PUT + auth
 func (c *curlTester) testPutBasicAuth() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/put/auth",
-		Value:    "localhost",
-		AuthType: "basic",
-		Cookies:  "disallow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/put/auth",
+		Value:        "localhost",
+		AuthType:     "basic",
+		AllowCookies: false,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -271,12 +271,12 @@ func (c *curlTester) testPutBasicAuth() {
 
 func (c *curlTester) testPutDigestAuth() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/put/auth/digest",
-		Value:    "localhost",
-		AuthType: "digest",
-		Cookies:  "disallow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/put/auth/digest",
+		Value:        "localhost",
+		AuthType:     "digest",
+		AllowCookies: false,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -285,10 +285,10 @@ func (c *curlTester) testPutDigestAuth() {
 // PUT + cookie
 func (c *curlTester) testPutCookie() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/put",
-		Value:    "localhost",
-		AuthType: "no-auth",
-		Cookies:  "allow",
+		Hostname:     "http://localhost:9090/put",
+		Value:        "localhost",
+		AuthType:     "no-auth",
+		AllowCookies: true,
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -297,12 +297,12 @@ func (c *curlTester) testPutCookie() {
 // PUT + auth + cookie
 func (c *curlTester) testPutDigestAuthCookie() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/put/auth/digest",
-		Value:    "localhost",
-		AuthType: "digest",
-		Cookies:  "allow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/put/auth/digest",
+		Value:        "localhost",
+		AuthType:     "digest",
+		AllowCookies: true,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -310,12 +310,12 @@ func (c *curlTester) testPutDigestAuthCookie() {
 
 func (c *curlTester) testPutBasicAuthCookie() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/put/auth",
-		Value:    "localhost",
-		AuthType: "basic",
-		Cookies:  "allow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/put/auth",
+		Value:        "localhost",
+		AuthType:     "basic",
+		AllowCookies: true,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -324,10 +324,10 @@ func (c *curlTester) testPutBasicAuthCookie() {
 // DELETE
 func (c *curlTester) testDelete() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/delete",
-		Value:    "localhost",
-		AuthType: "no-auth",
-		Cookies:  "disallow",
+		Hostname:     "http://localhost:9090/delete",
+		Value:        "localhost",
+		AuthType:     "no-auth",
+		AllowCookies: false,
 	}
 
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
@@ -337,12 +337,12 @@ func (c *curlTester) testDelete() {
 // DELETE + auth
 func (c *curlTester) testDeleteDigestAuth() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/delete/auth/digest",
-		Value:    "localhost",
-		AuthType: "digest",
-		Cookies:  "disallow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/delete/auth/digest",
+		Value:        "localhost",
+		AuthType:     "digest",
+		AllowCookies: false,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -350,12 +350,12 @@ func (c *curlTester) testDeleteDigestAuth() {
 
 func (c *curlTester) testDeleteBasicAuth() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/delete/auth",
-		Value:    "localhost",
-		AuthType: "basic",
-		Cookies:  "disallow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/delete/auth",
+		Value:        "localhost",
+		AuthType:     "basic",
+		AllowCookies: false,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -364,10 +364,10 @@ func (c *curlTester) testDeleteBasicAuth() {
 // DELETE + cookie
 func (c *curlTester) testDeleteCookie() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/delete",
-		Value:    "localhost",
-		AuthType: "no-auth",
-		Cookies:  "allow",
+		Hostname:     "http://localhost:9090/delete",
+		Value:        "localhost",
+		AuthType:     "no-auth",
+		AllowCookies: true,
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -376,12 +376,12 @@ func (c *curlTester) testDeleteCookie() {
 // DELETE + auth + cookie
 func (c *curlTester) testDeleteBasicAuthCookie() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/delete/auth",
-		Value:    "localhost",
-		AuthType: "basic",
-		Cookies:  "allow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/delete/auth",
+		Value:        "localhost",
+		AuthType:     "basic",
+		AllowCookies: true,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -389,12 +389,12 @@ func (c *curlTester) testDeleteBasicAuthCookie() {
 
 func (c *curlTester) testDeleteDigestAuthCookie() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/delete/auth/digest",
-		Value:    "localhost",
-		AuthType: "digest",
-		Cookies:  "allow",
-		Username: "Administrator",
-		Password: "asdasd",
+		Hostname:     "http://localhost:9090/delete/auth/digest",
+		Value:        "localhost",
+		AuthType:     "digest",
+		AllowCookies: true,
+		Username:     "Administrator",
+		Password:     "asdasd",
 	}
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
@@ -402,10 +402,10 @@ func (c *curlTester) testDeleteDigestAuthCookie() {
 
 func (c *curlTester) testLargeBody() {
 	loBinding := common.Curl{
-		Hostname: "http://localhost:9090/large",
-		Value:    "localhost",
-		AuthType: "no-auth",
-		Cookies:  "disallow",
+		Hostname:     "http://localhost:9090/large",
+		Value:        "localhost",
+		AuthType:     "no-auth",
+		AllowCookies: false,
 	}
 
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}

@@ -446,7 +446,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     value: '',
                     access: 'r',
                     auth_type: 'no-auth',
-                    cookies: true
+                    allow_cookies: true
                 });
                 createApp(scope);
             };
@@ -603,9 +603,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.metadataBucket = appModel.depcfg.metadata_bucket;
             self.savedApps = savedApps;
 
-            for (var curl of appModel.depcfg.curl) {
-                curl.cookies = curl.cookies === 'allow';
-            }
             // Need to pass a deep copy or the changes will be stored locally till refresh.
             $scope.appModel = JSON.parse(JSON.stringify(appModel));
 
@@ -904,6 +901,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
     .factory('ApplicationService', ['$q', '$http', '$state', 'mnPoolDefault', 'mnAlertsService',
         function($q, $http, $state, mnPoolDefault, mnAlertsService) {
             var appManager = new ApplicationManager();
+            var adapter = new Adapter();
             var errHandler;
 
             // Note : There's no trailing '/' after getErrorCodes in the URL,
@@ -1217,141 +1215,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     }
                 },
                 convertBindingToConfig: function(bindings) {
-                    // A binding is of the form -
-                    // [{type:'', name:'', value:'', auth_type:'no-auth', cookies:'allow', access:'r'}]
-                    var config = {
-                        buckets: [],
-                        curl: []
-                    };
-                    for (var binding of bindings) {
-                        if (binding.type === 'alias' && binding.name && binding.value) {
-                            var element = {};
-                            element[binding.type] = binding.value;
-                            element.bucket_name = binding.name;
-                            element.access = binding.access;
-                            config.buckets.push(element);
-                        }
-                        if (binding.type === 'url' && binding.hostname && binding.value) {
-                            config.curl.push({
-                                hostname: binding.hostname,
-                                value: binding.value
-                            });
-
-                            switch (binding.auth_type) {
-                                case 'digest':
-                                    Object.assign(config.curl[config.curl.length - 1], {
-                                        auth_type: 'digest',
-                                        username: binding.username,
-                                        password: binding.password
-                                    });
-                                    break;
-
-                                case 'basic':
-                                    Object.assign(config.curl[config.curl.length - 1], {
-                                        auth_type: 'basic',
-                                        username: binding.username,
-                                        password: binding.password
-                                    });
-                                    break;
-
-                                case 'bearer':
-                                    Object.assign(config.curl[config.curl.length - 1], {
-                                        auth_type: 'bearer',
-                                        bearer_key: binding.bearer_key
-                                    });
-                                    break;
-
-                                case 'no-auth':
-                                default:
-                                    Object.assign(config.curl[config.curl.length - 1], {
-                                        auth_type: 'no-auth',
-                                    });
-                            }
-
-                            Object.assign(config.curl[config.curl.length - 1], {
-                                cookies: binding.cookies ? 'allow' : 'disallow'
-                            });
-                        }
-                    }
-                    return config;
+                    return adapter.convertBindingsToConfig(bindings);
                 },
                 getBindingFromConfig: function(config) {
-                    var bindings = [];
-
-                    function addBucketBindings(bucketConfigs) {
-                        for (var config of bucketConfigs) {
-                            bindings.push({
-                                type: 'alias',
-                                name: config.bucket_name,
-                                value: config.alias,
-                                access: config.access ? config.access : (config.source_bucket === config.bucket_name ? 'r' : 'rw')
-                            });
-                        }
-                    }
-
-                    function addCurlBindings(curlConfigs) {
-                        for (var config of curlConfigs) {
-                            bindings.push({
-                                type: 'url',
-                                hostname: config.hostname,
-                                value: config.value
-                            });
-
-                            switch (config.auth_type) {
-                                case 'basic':
-                                    Object.assign(bindings[bindings.length - 1], {
-                                        auth_type: 'basic',
-                                        username: config.username,
-                                        password: config.password
-                                    });
-                                    break;
-
-                                case 'digest':
-                                    Object.assign(bindings[bindings.length - 1], {
-                                        auth_type: 'digest',
-                                        username: config.username,
-                                        password: config.password
-                                    });
-                                    break;
-
-                                case 'bearer':
-                                    Object.assign(bindings[bindings.length - 1], {
-                                        auth_type: 'bearer',
-                                        bearer_key: config.bearer_key
-                                    });
-                                    break;
-
-                                case 'no-auth':
-                                default:
-                                    Object.assign(bindings[bindings.length - 1], {
-                                        auth_type: 'no-auth',
-                                    });
-                            }
-
-                            switch (config.cookies) {
-                                case 'allow':
-                                    Object.assign(bindings[bindings.length - 1], {
-                                        cookies: true
-                                    });
-                                    break;
-
-                                case 'disallow':
-                                default:
-                                    Object.assign(bindings[bindings.length - 1], {
-                                        cookies: false
-                                    });
-                                    break;
-                            }
-                        }
-                    }
-
-                    if (config && config.buckets) {
-                        addBucketBindings(config.buckets);
-                    }
-                    if (config && config.curl) {
-                        addCurlBindings(config.curl);
-                    }
-                    return bindings;
+                    return adapter.convertConfigToBindings(config);
                 }
             };
         }

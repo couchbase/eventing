@@ -191,7 +191,7 @@
             class="outline btn-small"
             title="Add a binding"
             ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-            ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).push({type:'', name:formCtrl.sourceBuckets[0], value:'', auth_type:'no-auth', cookies: true, access:'r'})">
+            ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).push({type:'', name:formCtrl.sourceBuckets[0], value:'', auth_type:'no-auth', allow_cookies: true, access:'r'})">
           +
           </button>
           <button
@@ -234,7 +234,7 @@
             <select
               ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
               ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name"
-              ng-options="bucket for bucket in formCtrl.sourceBuckets"
+              ng-options="bucket for bucket in formCtrl.sourceBuckets">
               <option value=""></option> <!-- empty <option> fixes layout of subsequent elements -->
             </select>
           </span>
@@ -271,12 +271,12 @@
              ng-show="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
             <input
                type="checkbox"
-               id="allow-cookies"
+               id="{{'allow-cookies-' + $index }}"
                name="allow_cookies"
                value="allow"
-               ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].cookies"
+               ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].allow_cookies"
                ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
-              <label for="allow-cookies" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+              <label for="{{'allow-cookies-' + $index }}" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
                 allow cookies
               </label>
           </span>

@@ -12,6 +12,7 @@
 #ifndef CURL_H
 #define CURL_H
 
+#include <algorithm>
 #include <curl/curl.h>
 #include <list>
 #include <memory>
@@ -28,11 +29,12 @@ struct CurlParameters;
 struct CurlRequest;
 struct CurlResponse;
 struct CurlBinding;
+struct CurlBindingInfo;
 struct HTTPPostResponse;
 
 class CurlClient {
 public:
-  CurlClient(bool enable_cookies);
+  explicit CurlClient(bool enable_cookies);
   ~CurlClient();
 
   // Utility method used by Communicator
@@ -141,10 +143,11 @@ struct Curl;
 } // namespace flatbuf
 
 struct CurlBinding {
-  CurlBinding() : curl_instance(nullptr) {}
+  CurlBinding() = default;
   explicit CurlBinding(const flatbuf::cfg::Curl *curl) noexcept;
-  CurlBinding(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
-              const v8::Local<v8::Object> &obj);
+  static CurlBindingInfo FromObject(v8::Isolate *isolate,
+                                    const v8::Local<v8::Context> &context,
+                                    const v8::Local<v8::Object> &obj);
 
   void InstallBinding(v8::Isolate *isolate,
                       const v8::Local<v8::Context> &context) const;
@@ -160,8 +163,8 @@ struct CurlBinding {
   std::string username;
   std::string password;
   std::string bearer_key;
-  std::string cookies;
-  Curl *curl_instance;
+  bool allow_cookies{false};
+  Curl *curl_instance{nullptr};
 
 private:
   enum InternalFields {
@@ -171,11 +174,22 @@ private:
     kPassword,
     kBindingId,
     kBearerKey,
-    kCookies,
+    kAllowCookies,
     kCurlInstance,
     Count // This is not a field, its value represents the count of this enum
     // Ensure that "Count" is always the last value in this enum
   };
+};
+
+struct CurlBindingInfo : public Info {
+  CurlBindingInfo(bool is_fatal) : Info(is_fatal) {}
+  CurlBindingInfo(bool is_fatal, std::string msg)
+      : Info(is_fatal, std::move(msg)) {}
+  CurlBindingInfo(bool is_fatal, CurlBinding &binding) : Info(is_fatal) {
+    std::swap(this->binding, binding);
+  }
+
+  CurlBinding binding;
 };
 
 struct CurlRequest : public Info {
