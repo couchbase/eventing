@@ -509,7 +509,6 @@ func (c *Consumer) sendMessageLoop() {
 					return
 				}
 
-
 				func() {
 					c.sendMsgBufferRWMutex.Lock()
 					defer c.sendMsgBufferRWMutex.Unlock()
@@ -521,9 +520,9 @@ func (c *Consumer) sendMessageLoop() {
 						return
 					}
 
-                                        err := io.ErrShortWrite;
-                                        for  ; err == io.ErrShortWrite; _, err = c.sendMsgBuffer.WriteTo(c.conn) {
-                                        }
+					err := io.ErrShortWrite
+					for ; err == io.ErrShortWrite; _, err = c.sendMsgBuffer.WriteTo(c.conn) {
+					}
 
 					if err != nil {
 						logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
@@ -610,9 +609,9 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 
 		if !m.sendToDebugger && c.conn != nil {
 
-                        err := io.ErrShortWrite;
-                        for  ; err == io.ErrShortWrite; _, err = c.sendMsgBuffer.WriteTo(c.conn) {
-                        }
+			err := io.ErrShortWrite
+			for ; err == io.ErrShortWrite; _, err = c.sendMsgBuffer.WriteTo(c.conn) {
+			}
 
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
@@ -626,8 +625,8 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 
 				if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 					logging.Infof("%s [%s:%s:%d] consumer is terminateRunning, bailing out",
-							logPrefix, c.workerName, c.tcpPort, c.Pid())
-				        return err
+						logPrefix, c.workerName, c.tcpPort, c.Pid())
+					return err
 				}
 
 				c.producer.KillAndRespawnEventingConsumer(c)

@@ -56,7 +56,7 @@ const (
 
 	vbTakeoverRetryInterval = time.Duration(1000) * time.Millisecond
 
-	socketWriteTimerInterval = time.Duration(5000) * time.Millisecond
+	socketWriteTimerInterval = time.Duration(100) * time.Millisecond
 
 	updateCPPStatsTickInterval = time.Duration(1000) * time.Millisecond
 )
