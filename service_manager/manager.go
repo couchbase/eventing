@@ -165,7 +165,13 @@ func (m *ServiceMgr) initService() {
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)
 		logging.Infof("%s Admin HTTP server started: %s", logPrefix, addr)
-		err := http.ListenAndServe(addr, mux)
+		srv := &http.Server{
+			Addr:         addr,
+			ReadTimeout:  httpReadTimeOut,
+			WriteTimeout: httpWriteTimeOut,
+			Handler:      mux,
+		}
+		err := srv.ListenAndServe()
 		logging.Fatalf("%s Error in Admin HTTP Server: %v", logPrefix, err)
 	}()
 
@@ -199,6 +205,8 @@ func (m *ServiceMgr) initService() {
 				}
 				sslsrv = &http.Server{
 					Addr:         sslAddr,
+					ReadTimeout:  httpReadTimeOut,
+					WriteTimeout: httpWriteTimeOut,
 					TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
 					TLSConfig:    tlscfg,
 					Handler:      mux,
