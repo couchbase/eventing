@@ -329,6 +329,7 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
   }
 
   // Resource clean-up.
+  lcb_n1p_free(n1ql_params);
   lcb_set_cookie(instance, nullptr);
   qhandler_stack.Pop();
   inst_pool_->Restore(instance);
@@ -351,8 +352,6 @@ bool N1QL::ExecQueryImpl(v8::Isolate *isolate, lcb_t &instance,
     auto js_exception = UnwrapData(isolate)->js_exception;
     js_exception->ThrowN1QLError("N1QL: Unable to schedule N1QL query");
   }
-
-  lcb_n1p_free(n1ql_params);
 
   HandlerCookie cookie;
   cookie.isolate = isolate;
