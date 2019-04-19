@@ -446,7 +446,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     value: '',
                     access: 'r',
                     auth_type: 'no-auth',
-                    allow_cookies: true
+                    allow_cookies: true,
+                    validate_ssl_certificate : false
                 });
                 createApp(scope);
             };

@@ -164,6 +164,7 @@ struct CurlBinding {
   std::string password;
   std::string bearer_key;
   bool allow_cookies{false};
+  bool validate_ssl_certificate{false};
   Curl *curl_instance{nullptr};
 
 private:
@@ -175,6 +176,7 @@ private:
     kBindingId,
     kBearerKey,
     kAllowCookies,
+    kValidateSSLCertificate,
     kCurlInstance,
     Count // This is not a field, its value represents the count of this enum
     // Ensure that "Count" is always the last value in this enum

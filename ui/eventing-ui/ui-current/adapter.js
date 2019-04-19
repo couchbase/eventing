@@ -56,6 +56,7 @@ Adapter.prototype.createCurlConfig = function(binding) {
         hostname: binding.hostname,
         value: binding.value,
         allow_cookies: binding.allow_cookies,
+        validate_ssl_certificate: binding.validate_ssl_certificate,
         auth_type: binding.auth_type
     };
 
@@ -83,6 +84,7 @@ Adapter.prototype.createCurlBinding = function(config) {
         hostname: config.hostname,
         value: config.value,
         allow_cookies: config.allow_cookies,
+        validate_ssl_certificate: config.validate_ssl_certificate,
         auth_type: config.auth_type
     };
 
