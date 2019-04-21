@@ -9,7 +9,6 @@ import (
 	"runtime/debug"
 	"strconv"
 	"sync/atomic"
-	"time"
 
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/dcp/transport/client"
@@ -487,7 +486,6 @@ func (c *Consumer) sendMessageLoop() {
 					return
 				}
 
-				c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
 
 				func() {
 					c.sendMsgBufferRWMutex.Lock()
@@ -499,7 +497,10 @@ func (c *Consumer) sendMessageLoop() {
 						return
 					}
 
-					_, err := c.sendMsgBuffer.WriteTo(c.conn)
+                                        err := io.ErrShortWrite;
+                                        for  ; err == io.ErrShortWrite; _, err = c.sendMsgBuffer.WriteTo(c.conn) {
+                                        }
+
 					if err != nil {
 						logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, err)
@@ -583,9 +584,11 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 		defer c.connMutex.Unlock()
 
 		if !m.sendToDebugger && c.conn != nil {
-			c.conn.SetWriteDeadline(time.Now().Add(c.socketTimeout))
 
-			_, err := c.sendMsgBuffer.WriteTo(c.conn)
+                        err := io.ErrShortWrite;
+                        for  ; err == io.ErrShortWrite; _, err = c.sendMsgBuffer.WriteTo(c.conn) {
+                        }
+
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t write to downstream socket failed, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, err)
