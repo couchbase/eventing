@@ -32,6 +32,7 @@ table Curl {
   password:string;
   bearerKey:string;
   allowCookies:bool;
+  validateSSLCertificate:bool;
 }
 
 root_type Config;
