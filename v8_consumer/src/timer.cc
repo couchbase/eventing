@@ -94,11 +94,10 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return false;
   }
 
-  timer_msg_t msg;
-  msg.timer_entry = timer_info.ToJSON(isolate_, context);
-  v8worker->timer_queue_->Push(msg);
+  std::unique_ptr<timer_msg_t> msg(new timer_msg_t);
+  msg->timer_entry = timer_info.ToJSON(isolate_, context);
+  v8worker->timer_queue_->Push(std::move(msg));
   args.GetReturnValue().Set(v8Str(isolate_, timer_info.reference));
-
   return true;
 }
 
