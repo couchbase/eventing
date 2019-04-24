@@ -54,43 +54,34 @@ int combineAsciiToInt(std::vector<int> *input) {
   return result;
 }
 
-std::unique_ptr<header_t> ParseHeader(message_t *parsed_message) {
-  auto header = flatbuf::header::GetHeader(parsed_message->header.c_str());
+std::pair<bool, std::unique_ptr<WorkerMessage>>
+AppWorker::GetWorkerMessage(int encoded_header_size, int encoded_payload_size,
+                            const std::string &msg) {
+  messages_parsed++;
+  std::unique_ptr<WorkerMessage> worker_msg(new WorkerMessage);
 
-  auto verifier = flatbuffers::Verifier(
-      reinterpret_cast<const uint8_t *>(parsed_message->header.c_str()),
-      parsed_message->header.size());
-
-  bool ok = header->Verify(verifier);
-
-  if (ok) {
-    std::unique_ptr<header_t> parsed_header(new header_t);
-
-    parsed_header->event = header->event();
-    parsed_header->opcode = header->opcode();
-    parsed_header->partition = header->partition();
-
-    parsed_header->metadata = header->metadata()->str();
-
-    return parsed_header;
-  }
-
-  return nullptr;
-}
-
-std::unique_ptr<message_t> ParseServerMessage(int encoded_header_size,
-                                              int encoded_payload_size,
-                                              const std::string &message) {
-  std::unique_ptr<message_t> parsed_message(new message_t);
-  parsed_message->header = message.substr(
+  // Parsing payload
+  worker_msg->payload.header = msg.substr(
       HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE, encoded_header_size);
-  parsed_message->payload = message.substr(
+  worker_msg->payload.payload = msg.substr(
       HEADER_FRAGMENT_SIZE + PAYLOAD_FRAGMENT_SIZE + encoded_header_size,
       encoded_payload_size);
 
-  messages_parsed++;
+  // Parsing header
+  const MessagePayload &payload = worker_msg->payload;
+  auto header_flatbuf = flatbuf::header::GetHeader(payload.header.c_str());
+  auto verifier = flatbuffers::Verifier(
+      reinterpret_cast<const uint8_t *>(payload.header.c_str()),
+      payload.header.size());
 
-  return parsed_message;
+  if (!header_flatbuf->Verify(verifier)) {
+    return {false, std::move(worker_msg)};
+  }
+  worker_msg->header.event = header_flatbuf->event();
+  worker_msg->header.opcode = header_flatbuf->opcode();
+  worker_msg->header.partition = header_flatbuf->partition();
+  worker_msg->header.metadata = header_flatbuf->metadata()->str();
+  return {true, std::move(worker_msg)};
 }
 
 AppWorker *AppWorker::GetAppWorker() {
@@ -281,79 +272,72 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
     } else {
       std::string chunk_to_parse = buf_base.substr(0, message_size);
 
-      std::unique_ptr<message_t> parsed_message = ParseServerMessage(
-          encoded_header_size, encoded_payload_size, chunk_to_parse);
+      auto worker_msg = GetWorkerMessage(encoded_header_size,
+                                         encoded_payload_size, chunk_to_parse);
+      if (worker_msg.first) {
+        RouteMessageWithResponse(std::move(worker_msg.second));
 
-      if (parsed_message) {
-        message_t *pmessage = parsed_message.release();
-        std::unique_ptr<header_t> parsed_header = ParseHeader(pmessage);
+        if (messages_processed_counter >= batch_size_ || msg_priority_) {
 
-        if (parsed_header) {
-          header_t *pheader = parsed_header.release();
-          RouteMessageWithResponse(pheader, pmessage);
+          messages_processed_counter = 0;
 
-          if (messages_processed_counter >= batch_size_ || msg_priority_) {
+          // Reset the message priority flag
+          msg_priority_ = false;
+          if (!resp_msg_->msg.empty()) {
+            flatbuffers::FlatBufferBuilder builder;
 
-            messages_processed_counter = 0;
+            auto flatbuf_msg = builder.CreateString(resp_msg_->msg.c_str());
+            auto r = flatbuf::response::CreateResponse(
+                builder, resp_msg_->msg_type, resp_msg_->opcode, flatbuf_msg);
+            builder.Finish(r);
 
-            // Reset the message priority flag
-            msg_priority_ = false;
-            if (!resp_msg_->msg.empty()) {
-              flatbuffers::FlatBufferBuilder builder;
+            uint32_t s = builder.GetSize();
+            char *size = (char *)&s;
+            FlushToConn(stream, size, SIZEOF_UINT32);
 
-              auto flatbuf_msg = builder.CreateString(resp_msg_->msg.c_str());
-              auto r = flatbuf::response::CreateResponse(
-                  builder, resp_msg_->msg_type, resp_msg_->opcode, flatbuf_msg);
-              builder.Finish(r);
+            // Write payload to socket
+            std::string msg((const char *)builder.GetBufferPointer(),
+                            builder.GetSize());
+            FlushToConn(stream, (char *)msg.c_str(), msg.length());
 
-              uint32_t s = builder.GetSize();
-              char *size = (char *)&s;
-              FlushToConn(stream, size, SIZEOF_UINT32);
+            // Reset the values
+            resp_msg_->msg.clear();
+            resp_msg_->msg_type = 0;
+            resp_msg_->opcode = 0;
+          }
 
-              // Write payload to socket
-              std::string msg((const char *)builder.GetBufferPointer(),
-                              builder.GetSize());
-              FlushToConn(stream, (char *)msg.c_str(), msg.length());
-
-              // Reset the values
-              resp_msg_->msg.clear();
-              resp_msg_->msg_type = 0;
-              resp_msg_->opcode = 0;
+          // Flush the aggregate item count in queues for all running V8
+          // worker instances
+          if (!workers_.empty()) {
+            int64_t agg_queue_size = 0, feedback_queue_size = 0,
+                    agg_queue_memory = 0;
+            for (const auto &w : workers_) {
+              agg_queue_size += w.second->worker_queue_->Count();
+              feedback_queue_size += w.second->timer_queue_->Count();
+              agg_queue_memory += w.second->worker_queue_->Size() +
+                                  w.second->timer_queue_->Size();
             }
 
-            // Flush the aggregate item count in queues for all running V8
-            // worker instances
-            if (!workers_.empty()) {
-              int64_t agg_queue_size = 0, feedback_queue_size = 0,
-                      agg_queue_memory = 0;
-              for (const auto &w : workers_) {
-                agg_queue_size += w.second->worker_queue_->Count();
-                feedback_queue_size += w.second->timer_queue_->Count();
-                agg_queue_memory += w.second->worker_queue_->Size() +
-                                    w.second->timer_queue_->Size();
-              }
+            std::ostringstream queue_stats;
+            queue_stats << R"({"agg_queue_size":)";
+            queue_stats << agg_queue_size << R"(, "feedback_queue_size":)";
+            queue_stats << feedback_queue_size << R"(, "agg_queue_memory":)";
+            queue_stats << agg_queue_memory << "}";
 
-              std::ostringstream queue_stats;
-              queue_stats << R"({"agg_queue_size":)";
-              queue_stats << agg_queue_size << R"(, "feedback_queue_size":)";
-              queue_stats << feedback_queue_size << R"(, "agg_queue_memory":)";
-              queue_stats << agg_queue_memory << "}";
+            flatbuffers::FlatBufferBuilder builder;
+            auto flatbuf_msg = builder.CreateString(queue_stats.str());
+            auto r = flatbuf::response::CreateResponse(
+                builder, mV8_Worker_Config, oQueueSize, flatbuf_msg);
+            builder.Finish(r);
 
-              flatbuffers::FlatBufferBuilder builder;
-              auto flatbuf_msg = builder.CreateString(queue_stats.str());
-              auto r = flatbuf::response::CreateResponse(
-                  builder, mV8_Worker_Config, oQueueSize, flatbuf_msg);
-              builder.Finish(r);
+            uint32_t s = builder.GetSize();
+            char *size = (char *)&s;
+            FlushToConn(stream, size, SIZEOF_UINT32);
 
-              uint32_t s = builder.GetSize();
-              char *size = (char *)&s;
-              FlushToConn(stream, size, SIZEOF_UINT32);
-
-              // Write payload to socket
-              std::string msg((const char *)builder.GetBufferPointer(),
-                              builder.GetSize());
-              FlushToConn(stream, (char *)msg.c_str(), msg.length());
-            }
+            // Write payload to socket
+            std::string msg((const char *)builder.GetBufferPointer(),
+                            builder.GetSize());
+            FlushToConn(stream, (char *)msg.c_str(), msg.length());
           }
         }
       }
@@ -392,8 +376,8 @@ void AppWorker::FlushToConn(uv_stream_t *stream, char *msg, int length) {
   }
 }
 
-void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
-                                         message_t *parsed_message) {
+void AppWorker::RouteMessageWithResponse(
+    std::unique_ptr<WorkerMessage> worker_msg) {
   std::string key, val, doc_id, callback_fn, doc_ids_cb_fns, compile_resp;
   v8::Platform *platform;
   server_settings_t *server_settings;
@@ -411,17 +395,17 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
       *thr_map;
 
-  LOG(logTrace) << "Event: " << static_cast<int16_t>(parsed_header->event)
-                << " Opcode: " << static_cast<int16_t>(parsed_header->opcode)
-                << std::endl;
+  LOG(logTrace) << "Event: " << static_cast<int16_t>(worker_msg->header.event)
+                << " Opcode: "
+                << static_cast<int16_t>(worker_msg->header.opcode) << std::endl;
 
-  switch (getEvent(parsed_header->event)) {
+  switch (getEvent(worker_msg->header.event)) {
   case eV8_Worker:
-    switch (getV8WorkerOpcode(parsed_header->opcode)) {
+    switch (getV8WorkerOpcode(worker_msg->header.opcode)) {
     case oDispose:
     case oInit:
       payload = flatbuf::payload::GetPayload(
-          (const void *)parsed_message->payload.c_str());
+          (const void *)worker_msg->payload.payload.c_str());
 
       handler_config = new handler_config_t;
       server_settings = new server_settings_t;
@@ -471,10 +455,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority_ = true;
       break;
     case oLoad:
-      LOG(logDebug) << "Loading app code:" << RM(parsed_header->metadata)
+      LOG(logDebug) << "Loading app code:" << RM(worker_msg->header.metadata)
                     << std::endl;
       for (int16_t i = 0; i < thr_count_; i++) {
-        workers_[i]->V8WorkerLoad(parsed_header->metadata);
+        workers_[i]->V8WorkerLoad(worker_msg->header.metadata);
 
         LOG(logInfo) << "Load index: " << i << " V8Worker: " << workers_[i]
                      << std::endl;
@@ -595,9 +579,9 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority_ = true;
       break;
     case oGetCompileInfo:
-      LOG(logDebug) << "Compiling app code:" << RM(parsed_header->metadata)
+      LOG(logDebug) << "Compiling app code:" << RM(worker_msg->header.metadata)
                     << std::endl;
-      compile_resp = workers_[0]->CompileHandler(parsed_header->metadata);
+      compile_resp = workers_[0]->CompileHandler(worker_msg->header.metadata);
 
       resp_msg_->msg.assign(compile_resp);
       resp_msg_->msg_type = mV8_Worker_Config;
@@ -637,7 +621,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       break;
     case oVersion:
     default:
-      LOG(logError) << "Opcode " << getV8WorkerOpcode(parsed_header->opcode)
+      LOG(logError) << "Opcode " << getV8WorkerOpcode(worker_msg->header.opcode)
                     << "is not implemented for eV8Worker" << std::endl;
       ++e_v8_worker_lost;
       break;
@@ -645,15 +629,15 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     break;
   case eDCP:
     payload = flatbuf::payload::GetPayload(
-        (const void *)parsed_message->payload.c_str());
+        (const void *)worker_msg->payload.payload.c_str());
     val.assign(payload->value()->str());
 
-    switch (getDCPOpcode(parsed_header->opcode)) {
+    switch (getDCPOpcode(worker_msg->header.opcode)) {
     case oDelete:
-      worker_index = partition_thr_map_[parsed_header->partition];
+      worker_index = partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         enqueued_dcp_delete_msg_counter++;
-        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
+        workers_[worker_index]->Enqueue(std::move(worker_msg));
       } else {
         LOG(logError) << "Delete event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -661,10 +645,10 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       }
       break;
     case oMutation:
-      worker_index = partition_thr_map_[parsed_header->partition];
+      worker_index = partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         enqueued_dcp_mutation_msg_counter++;
-        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
+        workers_[worker_index]->Enqueue(std::move(worker_msg));
       } else {
         LOG(logError) << "Mutation event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -672,24 +656,24 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       }
       break;
     default:
-      LOG(logError) << "Opcode " << getDCPOpcode(parsed_header->opcode)
+      LOG(logError) << "Opcode " << getDCPOpcode(worker_msg->header.opcode)
                     << "is not implemented for eDCP" << std::endl;
       ++e_dcp_lost;
       break;
     }
     break;
   case eFilter:
-    switch (getFilterOpcode(parsed_header->opcode)) {
+    switch (getFilterOpcode(worker_msg->header.opcode)) {
     case oVbFilter: {
-      worker_index = partition_thr_map_[parsed_header->partition];
+      worker_index = partition_thr_map_[worker_msg->header.partition];
       auto worker = workers_[worker_index];
       if (worker != nullptr) {
         LOG(logInfo) << "Received filter event from Go "
-                     << parsed_header->metadata << std::endl;
+                     << worker_msg->header.metadata << std::endl;
         int vb_no = 0, skip_ack = 0;
         uint64_t filter_seq_no = 0;
         if (kSuccess == workers_[worker_index]->ParseMetadataWithAck(
-                            parsed_header->metadata, vb_no, filter_seq_no,
+                            worker_msg->header.metadata, vb_no, filter_seq_no,
                             skip_ack, true)) {
           worker->FilterLock();
           auto last_processed_seq_no = worker->GetBucketopsSeqno(vb_no);
@@ -706,14 +690,14 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       }
     } break;
     case oProcessedSeqNo:
-      worker_index = partition_thr_map_[parsed_header->partition];
+      worker_index = partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         LOG(logInfo) << "Received update processed seq_no event from Go "
-                     << parsed_header->metadata << std::endl;
+                     << worker_msg->header.metadata << std::endl;
         int vb_no = 0;
         uint64_t seq_no = 0;
         if (kSuccess == workers_[worker_index]->ParseMetadata(
-                            parsed_header->metadata, vb_no, seq_no)) {
+                            worker_msg->header.metadata, vb_no, seq_no)) {
           workers_[worker_index]->FilterLock();
           workers_[worker_index]->UpdateBucketopsSeqno(vb_no, seq_no);
           workers_[worker_index]->FilterUnlock();
@@ -721,18 +705,18 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       }
       break;
     default:
-      LOG(logError) << "Opcode " << getFilterOpcode(parsed_header->opcode)
+      LOG(logError) << "Opcode " << getFilterOpcode(worker_msg->header.opcode)
                     << "is not implemented for filtering" << std::endl;
       break;
     }
     break;
   case eTimer:
-    switch (getTimerOpcode(parsed_header->opcode)) {
+    switch (getTimerOpcode(worker_msg->header.opcode)) {
     case oTimer:
-      worker_index = partition_thr_map_[parsed_header->partition];
+      worker_index = partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         enqueued_timer_msg_counter++;
-        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
+        workers_[worker_index]->Enqueue(std::move(worker_msg));
       } else {
         LOG(logError) << "Timer event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -740,29 +724,29 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       }
       break;
     default:
-      LOG(logError) << "Opcode " << getTimerOpcode(parsed_header->opcode)
+      LOG(logError) << "Opcode " << getTimerOpcode(worker_msg->header.opcode)
                     << "is not implemented for eTimer" << std::endl;
       ++e_timer_lost;
       break;
     }
     break;
   case eApp_Worker_Setting:
-    switch (getAppWorkerSettingOpcode(parsed_header->opcode)) {
+    switch (getAppWorkerSettingOpcode(worker_msg->header.opcode)) {
     case oLogLevel:
-      SystemLog::setLogLevel(LevelFromString(parsed_header->metadata));
-      LOG(logInfo) << "Configured log level: " << parsed_header->metadata
+      SystemLog::setLogLevel(LevelFromString(worker_msg->header.metadata));
+      LOG(logInfo) << "Configured log level: " << worker_msg->header.metadata
                    << std::endl;
       msg_priority_ = true;
       break;
     case oWorkerThreadCount:
-      LOG(logInfo) << "Worker thread count: " << parsed_header->metadata
+      LOG(logInfo) << "Worker thread count: " << worker_msg->header.metadata
                    << std::endl;
-      thr_count_ = int16_t(std::stoi(parsed_header->metadata));
+      thr_count_ = int16_t(std::stoi(worker_msg->header.metadata));
       msg_priority_ = true;
       break;
     case oWorkerThreadMap:
       payload = flatbuf::payload::GetPayload(
-          (const void *)parsed_message->payload.c_str());
+          (const void *)worker_msg->payload.payload.c_str());
       thr_map = payload->thr_map();
       partition_count_ = payload->partitionCount();
       LOG(logInfo) << "Request for worker thread map, size: " << thr_map->size()
@@ -780,14 +764,14 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       msg_priority_ = true;
       break;
     case oTimerContextSize:
-      timer_context_size = std::stol(parsed_header->metadata);
+      timer_context_size = std::stol(worker_msg->header.metadata);
       LOG(logInfo) << "Setting timer_context_size to " << timer_context_size
                    << std::endl;
       msg_priority_ = true;
       break;
     default:
       LOG(logError) << "Opcode "
-                    << getAppWorkerSettingOpcode(parsed_header->opcode)
+                    << getAppWorkerSettingOpcode(worker_msg->header.opcode)
                     << "is not implemented for eApp_Worker_Setting"
                     << std::endl;
       ++e_app_worker_setting_lost;
@@ -795,11 +779,11 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     }
     break;
   case eDebugger:
-    switch (getDebuggerOpcode(parsed_header->opcode)) {
+    switch (getDebuggerOpcode(worker_msg->header.opcode)) {
     case oDebuggerStart:
-      worker_index = partition_thr_map_[parsed_header->partition];
+      worker_index = partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
-        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
+        workers_[worker_index]->Enqueue(std::move(worker_msg));
         msg_priority_ = true;
       } else {
         LOG(logError) << "Debugger start event lost: worker " << worker_index
@@ -807,9 +791,9 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       }
       break;
     case oDebuggerStop:
-      worker_index = partition_thr_map_[parsed_header->partition];
+      worker_index = partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
-        workers_[worker_index]->Enqueue(parsed_header, parsed_message);
+        workers_[worker_index]->Enqueue(std::move(worker_msg));
         msg_priority_ = true;
       } else {
         LOG(logError) << "Debugger stop event lost: worker " << worker_index
@@ -817,7 +801,7 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
       }
       break;
     default:
-      LOG(logError) << "Opcode " << getDebuggerOpcode(parsed_header->opcode)
+      LOG(logError) << "Opcode " << getDebuggerOpcode(worker_msg->header.opcode)
                     << "is not implemented for eDebugger" << std::endl;
       ++e_debugger_lost;
       break;

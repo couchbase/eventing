@@ -74,33 +74,75 @@ typedef struct timer_msg_s {
 } timer_msg_t;
 
 // Header frame structure for messages from Go world
-typedef struct header_s {
+struct MessageHeader {
+  MessageHeader() = default;
+  ~MessageHeader() = default;
+  MessageHeader(MessageHeader &&other) noexcept
+      : event(other.event), opcode(other.opcode), partition(other.partition),
+        metadata(std::move(other.metadata)) {}
+
+  MessageHeader &operator=(MessageHeader &&other) noexcept {
+    event = other.event;
+    opcode = other.opcode;
+    partition = other.partition;
+    metadata = std::move(other.metadata);
+    return *this;
+  }
+  MessageHeader(const MessageHeader &other) = delete;
+  MessageHeader &operator=(const MessageHeader &other) = delete;
+
   std::size_t GetSize() const {
     return metadata.length() + sizeof(event) + sizeof(opcode) +
            sizeof(partition) + metadata.length();
   }
 
-  uint8_t event;
-  uint8_t opcode;
-  int16_t partition;
+  uint8_t event{0};
+  uint8_t opcode{0};
+  int16_t partition{0};
   std::string metadata;
-} header_t;
+};
 
 // Flatbuffer encoded message from Go world
-typedef struct message_s {
+struct MessagePayload {
+  MessagePayload() = default;
+  ~MessagePayload() = default;
+  MessagePayload(MessagePayload &&other) noexcept
+      : header(std::move(other.header)), payload(std::move(other.payload)) {}
+
+  MessagePayload &operator=(MessagePayload &&other) noexcept {
+    header = std::move(other.header);
+    payload = std::move(other.payload);
+    return *this;
+  }
+  MessagePayload(const MessagePayload &other) = delete;
+  MessagePayload &operator=(const MessagePayload &other) = delete;
+
   std::size_t GetSize() const { return header.length() + payload.length(); }
 
   std::string header;
   std::string payload;
-} message_t;
+};
 
 // Struct to contain flatbuffer decoded message from Go world
-typedef struct worker_msg_s {
-  std::size_t GetSize() const { return header->GetSize() + payload->GetSize(); }
+struct WorkerMessage {
+  WorkerMessage() = default;
+  ~WorkerMessage() = default;
+  WorkerMessage(WorkerMessage &&other) noexcept
+      : header(std::move(other.header)), payload(std::move(other.payload)) {}
 
-  header_t *header;
-  message_t *payload;
-} worker_msg_t;
+  WorkerMessage &operator=(WorkerMessage &&other) noexcept {
+    header = std::move(other.header);
+    payload = std::move(other.payload);
+    return *this;
+  }
+  WorkerMessage(const WorkerMessage &other) = delete;
+  WorkerMessage &operator=(const WorkerMessage &other) = delete;
+
+  std::size_t GetSize() const { return header.GetSize() + payload.GetSize(); }
+
+  MessageHeader header;
+  MessagePayload payload;
+};
 
 typedef struct server_settings_s {
   int checkpoint_interval;
@@ -214,7 +256,7 @@ public:
   bool DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
                     int args_len);
 
-  void Enqueue(header_t *header, message_t *payload);
+  void Enqueue(std::unique_ptr<WorkerMessage> worker_msg);
 
   void AddLcbException(int err_code);
   void ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions);
@@ -267,8 +309,8 @@ public:
 
   std::thread processing_thr_;
   std::thread *terminator_thr_;
-  Queue<timer_msg_t> *timer_queue_;
-  Queue<worker_msg_t> *worker_queue_;
+  Queue<std::unique_ptr<timer_msg_t>> *timer_queue_;
+  Queue<std::unique_ptr<WorkerMessage>> *worker_queue_;
 
   ConnectionPool *conn_pool_;
   JsException *js_exception_;

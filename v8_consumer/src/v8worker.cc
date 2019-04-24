@@ -279,8 +279,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   delete config;
 
-  this->timer_queue_ = new Queue<timer_msg_t>();
-  this->worker_queue_ = new Queue<worker_msg_t>();
+  this->timer_queue_ = new Queue<std::unique_ptr<timer_msg_t>>();
+  this->worker_queue_ = new Queue<std::unique_ptr<WorkerMessage>>();
 
   std::thread r_thr(&V8Worker::RouteMessage, this);
   processing_thr_ = std::move(r_thr);
@@ -464,27 +464,27 @@ void V8Worker::RouteMessage() {
   std::string val, context, callback;
 
   while (!thread_exit_cond_.load()) {
-    worker_msg_t msg;
+    std::unique_ptr<WorkerMessage> msg;
     if (!worker_queue_->Pop(msg)) {
       continue;
     }
     payload = flatbuf::payload::GetPayload(
-        (const void *)msg.payload->payload.c_str());
+        (const void *)msg->payload.payload.c_str());
 
-    LOG(logTrace) << " event: " << static_cast<int16_t>(msg.header->event)
-                  << " opcode: " << static_cast<int16_t>(msg.header->opcode)
-                  << " metadata: " << RU(msg.header->metadata)
-                  << " partition: " << msg.header->partition << std::endl;
+    LOG(logTrace) << " event: " << static_cast<int16_t>(msg->header.event)
+                  << " opcode: " << static_cast<int16_t>(msg->header.opcode)
+                  << " metadata: " << RU(msg->header.metadata)
+                  << " partition: " << msg->header.partition << std::endl;
 
     int vb_no = 0;
     uint64_t seq_no = 0;
 
-    switch (getEvent(msg.header->event)) {
+    switch (getEvent(msg->header.event)) {
     case eDCP:
-      switch (getDCPOpcode(msg.header->opcode)) {
+      switch (getDCPOpcode(msg->header.opcode)) {
       case oDelete:
-        dcp_delete_msg_counter++;
-        if (kSuccess == ParseMetadata(msg.header->metadata, vb_no, seq_no)) {
+        ++dcp_delete_msg_counter;
+        if (kSuccess == ParseMetadata(msg->header.metadata, vb_no, seq_no)) {
           FilterLock();
           auto filter_seq_no = GetVbFilter(vb_no);
           if (filter_seq_no > 0 && seq_no <= filter_seq_no) {
@@ -492,17 +492,17 @@ void V8Worker::RouteMessage() {
               EraseVbFilter(vb_no);
             }
           } else {
-            this->SendDelete(msg.header->metadata, vb_no, seq_no);
+            this->SendDelete(msg->header.metadata, vb_no, seq_no);
           }
           FilterUnlock();
         }
         break;
       case oMutation:
         payload = flatbuf::payload::GetPayload(
-            (const void *)msg.payload->payload.c_str());
+            (const void *)msg->payload.payload.c_str());
         val.assign(payload->value()->str());
-        dcp_mutation_msg_counter++;
-        if (kSuccess == ParseMetadata(msg.header->metadata, vb_no, seq_no)) {
+        ++dcp_mutation_msg_counter;
+        if (kSuccess == ParseMetadata(msg->header.metadata, vb_no, seq_no)) {
           FilterLock();
           auto filter_seq_no = GetVbFilter(vb_no);
           if (filter_seq_no > 0 && seq_no <= filter_seq_no) {
@@ -510,7 +510,7 @@ void V8Worker::RouteMessage() {
               EraseVbFilter(vb_no);
             }
           } else {
-            this->SendUpdate(val, msg.header->metadata, vb_no, seq_no, "json");
+            this->SendUpdate(val, msg->header.metadata, vb_no, seq_no, "json");
           }
           FilterUnlock();
         }
@@ -520,10 +520,10 @@ void V8Worker::RouteMessage() {
       }
       break;
     case eTimer:
-      switch (getTimerOpcode(msg.header->opcode)) {
+      switch (getTimerOpcode(msg->header.opcode)) {
       case oTimer:
         payload = flatbuf::payload::GetPayload(
-            (const void *)msg.payload->payload.c_str());
+            (const void *)msg->payload.payload.c_str());
         callback.assign(payload->callback_fn()->str());
         context.assign(payload->context()->str());
         timer_msg_counter++;
@@ -534,7 +534,7 @@ void V8Worker::RouteMessage() {
       }
       break;
     case eDebugger:
-      switch (getDebuggerOpcode(msg.header->opcode)) {
+      switch (getDebuggerOpcode(msg->header.opcode)) {
       case oDebuggerStart:
         this->StartDebugger();
         break;
@@ -547,9 +547,6 @@ void V8Worker::RouteMessage() {
     default:
       break;
     }
-
-    delete msg.header;
-    delete msg.payload;
 
     messages_processed_counter++;
   }
@@ -823,17 +820,14 @@ void V8Worker::StopDebugger() {
   delete agent_;
 }
 
-void V8Worker::Enqueue(header_t *h, message_t *p) {
-  std::string key, val;
-
-  worker_msg_t msg;
-  msg.header = h;
-  msg.payload = p;
-  LOG(logTrace) << "Inserting event: " << static_cast<int16_t>(h->event)
-                << " opcode: " << static_cast<int16_t>(h->opcode)
-                << " partition: " << h->partition
-                << " metadata: " << RU(h->metadata) << std::endl;
-  worker_queue_->Push(msg);
+void V8Worker::Enqueue(std::unique_ptr<WorkerMessage> worker_msg) {
+  LOG(logTrace) << "Inserting event: "
+                << static_cast<int16_t>(worker_msg->header.event) << " opcode: "
+                << static_cast<int16_t>(worker_msg->header.opcode)
+                << " partition: " << worker_msg->header.partition
+                << " metadata: " << RU(worker_msg->header.metadata)
+                << std::endl;
+  worker_queue_->Push(std::move(worker_msg));
 }
 
 std::string V8Worker::CompileHandler(std::string handler) {
@@ -920,11 +914,11 @@ void V8Worker::GetTimerMessages(std::vector<uv_buf_t> &messages,
       std::min(timer_queue_->Count(), static_cast<int64_t>(window_size));
 
   for (int64_t idx = 0; idx < timer_count; ++idx) {
-    timer_msg_t timer_msg;
+    std::unique_ptr<timer_msg_t> timer_msg;
     if (!timer_queue_->Pop(timer_msg))
       break;
     auto curr_messages =
-        BuildResponse(timer_msg.timer_entry, mTimer_Response, timerResponse);
+        BuildResponse(timer_msg->timer_entry, mTimer_Response, timerResponse);
     for (auto &msg : curr_messages) {
       messages.push_back(msg);
     }

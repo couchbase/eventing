@@ -30,16 +30,17 @@ public:
     if (data_queue_.empty())
       return false;
     item = std::move(data_queue_.front());
-    queue_size_ -= item.GetSize();
+    queue_size_ -= item->GetSize();
     data_queue_.pop();
     entry_count_--;
     return true;
   }
 
-  void Push(const T &item) {
+  void Push(T item) {
     std::unique_lock<std::mutex> lk(mut_);
-    data_queue_.push(item);
-    queue_size_ += item.GetSize();
+    const auto size = item->GetSize();
+    data_queue_.push(std::move(item));
+    queue_size_ += size;
     entry_count_++;
     lk.unlock();
     data_cond_.notify_one();
