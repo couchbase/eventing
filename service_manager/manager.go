@@ -158,7 +158,13 @@ func (m *ServiceMgr) initService() {
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)
 		logging.Infof("Admin HTTP server started: %s", addr)
-		err := http.ListenAndServe(addr, mux)
+		srv := &http.Server{
+			Addr:         addr,
+			ReadTimeout:  httpReadTimeOut,
+			WriteTimeout: httpWriteTimeOut,
+			Handler:      mux,
+		}
+		err := srv.ListenAndServe()
 		logging.Fatalf("Error in Admin HTTP Server: %v", err)
 	}()
 
@@ -219,21 +225,15 @@ func (m *ServiceMgr) initService() {
 				// allow only strong ssl as this is an internal API and interop is not a concern
 				sslsrv := &http.Server{
 					Addr:         sslAddr,
+					ReadTimeout:  httpReadTimeOut,
+					WriteTimeout: httpWriteTimeOut,
 					TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
 					TLSConfig:    config,
 					Handler:      mux,
 				}
-				// replace below with ListenAndServeTLS on moving to go1.8
-				lsnr, err := net.Listen("tcp", sslAddr)
-				if err != nil {
-					logging.Errorf("Error in listenting to SSL port: %v", err)
-					return
-				}
-				val := tls.NewListener(lsnr, sslsrv.TLSConfig)
-				tlslsnr = &val
 				reload = false
 				logging.Infof("SSL server started: %v", sslAddr)
-				err = http.Serve(*tlslsnr, mux)
+				err = sslsrv.ListenAndServeTLS(m.certFile, m.keyFile)
 				if reload {
 					logging.Warnf("SSL certificate change: %v", err)
 				} else {

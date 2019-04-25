@@ -27,6 +27,8 @@ const (
 const (
 	rebalanceProgressUpdateTickInterval = time.Duration(3000) * time.Millisecond
 	metakvOpRetryInterval               = time.Duration(1000) * time.Millisecond
+	httpReadTimeOut                     = time.Duration(60) * time.Second
+	httpWriteTimeOut                    = time.Duration(60) * time.Second
 )
 
 const (
