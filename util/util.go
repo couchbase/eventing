@@ -42,7 +42,7 @@ const (
 )
 
 const (
-	metakvMaxDocSize = 4096 //Fragment size for Appcontent
+	metakvMaxDocSize = 128 * 1024 //Fragment size for Appcontent
 )
 
 var GocbCredsRequestCounter = 0
