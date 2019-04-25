@@ -109,7 +109,7 @@ func (m *ServiceMgr) getSourceMap(appName string) string {
 func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
 	errInfo := m.errorCodes[runtimeInfo.Code]
 	errInfo.RuntimeInfo = *runtimeInfo
-	response, err := json.Marshal(errInfo)
+	response, err := json.MarshalIndent(errInfo, "", " ")
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
@@ -131,7 +131,7 @@ func (m *ServiceMgr) sendRuntimeInfo(w http.ResponseWriter, runtimeInfo *runtime
 		return
 	}
 
-	response, err := json.Marshal(runtimeInfo)
+	response, err := json.MarshalIndent(runtimeInfo, "", " ")
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
@@ -143,7 +143,7 @@ func (m *ServiceMgr) sendRuntimeInfo(w http.ResponseWriter, runtimeInfo *runtime
 }
 
 func (m *ServiceMgr) sendRuntimeInfoList(w http.ResponseWriter, runtimeInfoList []*runtimeInfo) {
-	response, err := json.Marshal(runtimeInfoList)
+	response, err := json.MarshalIndent(runtimeInfoList, "", " ")
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))

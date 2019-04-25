@@ -440,7 +440,7 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 	if m.checkIfDeployed(appName) {
 		stats := m.superSup.GetEventProcessingStats(appName)
 
-		data, err := json.Marshal(&stats)
+		data, err := json.MarshalIndent(&stats, "", " ")
 		if err != nil {
 			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 			fmt.Fprintf(w, "Failed to marshal response event processing stats, err: %v", err)
@@ -531,7 +531,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data, err := json.Marshal(deployedApps)
+	data, err := json.MarshalIndent(deployedApps, "", " ")
 	if err != nil {
 		logging.Errorf("%s failed to marshal list of deployed apps, err: %v", logPrefix, err)
 
@@ -569,7 +569,7 @@ func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data, err := json.Marshal(runningApps)
+	data, err := json.MarshalIndent(runningApps, "", " ")
 	if err != nil {
 		logging.Errorf("%s failed to marshal list of running apps, err: %v", logPrefix, err)
 
@@ -592,7 +592,7 @@ func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Reque
 
 	deployedApps := m.superSup.GetDeployedApps()
 
-	buf, err := json.Marshal(deployedApps)
+	buf, err := json.MarshalIndent(deployedApps, "", " ")
 	if err != nil {
 		logging.Errorf("%s failed to marshal list of deployed apps, err: %v", logPrefix, err)
 		fmt.Fprintf(w, "")
@@ -664,7 +664,7 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 	if progress.VbsRemainingToShuffle == 0 && progress.VbsOwnedPerPlan == 0 && !m.statsWritten {
 		// Picking up subset of the stats
 		statsList := m.populateStats(false)
-		data, err := json.Marshal(statsList)
+		data, err := json.MarshalIndent(statsList, "", " ")
 		if err != nil {
 			logging.Errorf("%s failed to unmarshal stats, err: %v", logPrefix, err)
 		} else {
@@ -674,7 +674,7 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		m.statsWritten = true
 	}
 
-	buf, err := json.Marshal(progress)
+	buf, err := json.MarshalIndent(progress, "", " ")
 	if err != nil {
 		logging.Errorf("%s failed to unmarshal rebalance progress across all producers on current node, err: %v", logPrefix, err)
 		return
@@ -711,7 +711,7 @@ func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	buf, err := json.Marshal(pStats)
+	buf, err := json.MarshalIndent(pStats, "", " ")
 	if err != nil {
 		logging.Errorf("%s Failed to unmarshal event processing stats from all producers, err: %v", logPrefix, err)
 		return
@@ -742,7 +742,7 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 
 	aggProgress.NodeLevelStats = progressMap
 
-	buf, err := json.Marshal(aggProgress)
+	buf, err := json.MarshalIndent(aggProgress, "", " ")
 	if err != nil {
 		logging.Errorf("%s failed to unmarshal rebalance progress across all producers, err: %v", logPrefix, err)
 		return
@@ -781,7 +781,7 @@ func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
 	if m.checkIfDeployed(appName) {
 		lStats := m.superSup.GetLatencyStats(appName)
 
-		data, err := json.Marshal(lStats)
+		data, err := json.MarshalIndent(lStats, "", " ")
 		if err != nil {
 			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 			fmt.Fprintf(w, "Failed to unmarshal latency stats, err: %v\n", err)
@@ -810,7 +810,7 @@ func (m *ServiceMgr) getExecutionStats(w http.ResponseWriter, r *http.Request) {
 	if m.checkIfDeployed(appName) {
 		eStats := m.superSup.GetExecutionStats(appName)
 
-		data, err := json.Marshal(eStats)
+		data, err := json.MarshalIndent(eStats, "", " ")
 		if err != nil {
 			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 			fmt.Fprintf(w, "Failed to unmarshal execution stats, err: %v\n", err)
@@ -839,7 +839,7 @@ func (m *ServiceMgr) getFailureStats(w http.ResponseWriter, r *http.Request) {
 	if m.checkIfDeployed(appName) {
 		fStats := m.superSup.GetFailureStats(appName)
 
-		data, err := json.Marshal(fStats)
+		data, err := json.MarshalIndent(fStats, "", " ")
 		if err != nil {
 			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 			fmt.Fprintf(w, "Failed to unmarshal failure stats, err: %v\n", err)
@@ -868,7 +868,7 @@ func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
 	if m.checkIfDeployed(appName) {
 		seqNoProcessed := m.superSup.GetSeqsProcessed(appName)
 
-		data, err := json.Marshal(seqNoProcessed)
+		data, err := json.MarshalIndent(seqNoProcessed, "", " ")
 		if err != nil {
 			logging.Errorf("%s Function: %s failed to fetch vb sequences processed so far, err: %v", logPrefix, appName, err)
 			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errGetVbSeqs.Code))
@@ -1040,7 +1040,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		return
 	}
 
-	data, err = json.Marshal(app.Settings)
+	data, err = json.MarshalIndent(app.Settings, "", " ")
 	if err != nil {
 		info.Code = m.statusCodes.errMarshalResp.Code
 		info.Info = fmt.Sprintf("Function: %s failed to marshal settings, err: %v", appName, err)
@@ -1142,7 +1142,7 @@ func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	data, err := json.Marshal(respData)
+	data, err := json.MarshalIndent(respData, "", " ")
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		fmt.Fprintf(w, "Failed to marshal response for all functions, err: %v", err)
@@ -1169,7 +1169,7 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	audit.Log(auditevent.FetchDrafts, r, nil)
 	applications := m.getTempStoreAll()
 
-	data, err := json.Marshal(applications)
+	data, err := json.MarshalIndent(applications, "", " ")
 	if err != nil {
 		logging.Errorf("%s failed to marshal response, err: %v", logPrefix, err)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
@@ -1293,7 +1293,7 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	appName := app.Name
 
-	data, err := json.Marshal(app)
+	data, err := json.MarshalIndent(app, "", " ")
 	if err != nil {
 		info.Code = m.statusCodes.errMarshalResp.Code
 		info.Info = fmt.Sprintf("Function: %s failed to marshal data, err : %v", appName, err)
@@ -1608,7 +1608,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	settingsPath := metakvAppSettingsPath + app.Name
 	settings := app.Settings
 
-	mData, mErr := json.Marshal(&settings)
+	mData, mErr := json.MarshalIndent(&settings, "", " ")
 	if mErr != nil {
 		info.Code = m.statusCodes.errMarshalResp.Code
 		info.Info = fmt.Sprintf("Function: %s failed to marshal settings, err: %v", app.Name, mErr)
@@ -1733,7 +1733,7 @@ func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Reques
 	if m.checkIfDeployed(appName) {
 		eventsRemaining := m.superSup.GetDcpEventsRemainingToProcess(appName)
 		resp := backlogStat{DcpBacklog: eventsRemaining}
-		data, _ := json.Marshal(&resp)
+		data, _ := json.MarshalIndent(&resp, "", " ")
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 		fmt.Fprintf(w, "%v", string(data))
 		return
@@ -1769,7 +1769,7 @@ func (m *ServiceMgr) getBootstrappingApps(w http.ResponseWriter, r *http.Request
 	}
 
 	bootstrappingApps := m.superSup.BootstrapAppList()
-	data, err := json.Marshal(bootstrappingApps)
+	data, err := json.MarshalIndent(bootstrappingApps, "", " ")
 	if err != nil {
 		fmt.Fprintf(w, "Failed to marshal bootstrapping function list, err: %v", err)
 		return
@@ -1789,7 +1789,7 @@ func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Requ
 	if m.checkIfDeployed(appName) {
 		workerPidMapping := m.superSup.GetEventingConsumerPids(appName)
 
-		data, err := json.Marshal(&workerPidMapping)
+		data, err := json.MarshalIndent(&workerPidMapping, "", " ")
 		if err != nil {
 			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 			fmt.Fprintf(w, "Failed to marshal consumer pids, err: %v", err)
@@ -1905,7 +1905,7 @@ func (m *ServiceMgr) saveConfig(c common.Config) (info *runtimeInfo) {
 		return
 	}
 
-	data, err := json.Marshal(util.SuperImpose(c, storedConfig))
+	data, err := json.MarshalIndent(util.SuperImpose(c, storedConfig), "", " ")
 	if err != nil {
 		info.Code = m.statusCodes.errMarshalResp.Code
 		info.Info = fmt.Sprintf("failed to marshal config, err: %v", err)
@@ -1941,7 +1941,7 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		response, err := json.Marshal(c)
+		response, err := json.MarshalIndent(c, "", " ")
 		if err != nil {
 			info.Code = m.statusCodes.errMarshalResp.Code
 			info.Info = fmt.Sprintf("failed to marshal config, err : %v", err)
@@ -1985,7 +1985,7 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		response := configResponse{false}
-		data, err = json.Marshal(response)
+		data, err = json.MarshalIndent(response, "", " ")
 		if err != nil {
 			info.Code = m.statusCodes.errMarshalResp.Code
 			info.Info = fmt.Sprintf("failed to marshal response, err: %v", err)
@@ -2124,7 +2124,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			response, err := json.Marshal(settings)
+			response, err := json.MarshalIndent(settings, "", " ")
 			if err != nil {
 				info.Code = m.statusCodes.errMarshalResp.Code
 				info.Info = fmt.Sprintf("failed to marshal function, err : %v", err)
@@ -2183,7 +2183,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			response, err := json.Marshal(app)
+			response, err := json.MarshalIndent(app, "", " ")
 			if err != nil {
 				info.Code = m.statusCodes.errMarshalResp.Code
 				info.Info = fmt.Sprintf("failed to marshal function, err : %v", err)
@@ -2344,7 +2344,7 @@ func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := json.Marshal(response)
+	data, err := json.MarshalIndent(response, "", " ")
 	if err != nil {
 		info.Code = m.statusCodes.errMarshalResp.Code
 		info.Info = fmt.Sprintf("Unable to marshal response, err: %v", err)
@@ -2443,7 +2443,7 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 
 		statsList := m.populateStats(fullStats)
 
-		response, err := json.Marshal(statsList)
+		response, err := json.MarshalIndent(statsList, "", " ")
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, `{"error":"Failed to marshal response for stats, err: %v"}`, err)
@@ -2612,7 +2612,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 
 	logging.Infof("%s Exported function list: %+v", logPrefix, exportedFns)
 
-	data, err := json.Marshal(apps)
+	data, err := json.MarshalIndent(apps, "", " ")
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
