@@ -209,16 +209,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " timer_context_size: " << h_config->timer_context_size
                << " version: " << EventingVer() << std::endl;
 
-  connstr_ = "couchbase://" + settings_->kv_host_port + "/" +
-             cb_source_bucket_ + "?select_bucket=true";
-  meta_connstr_ = "couchbase://" + settings_->kv_host_port + "/" +
-                  config->metadata_bucket + "?select_bucket=true";
-
-  if (IsIPv6()) {
-    connstr_ += "&ipv6=allow";
-    meta_connstr_ += "&ipv6=allow";
-  }
-
+  connstr_ = GetConnectionStr(settings_->kv_host_port, cb_source_bucket_);
+  meta_connstr_ =
+      GetConnectionStr(settings_->kv_host_port, config->metadata_bucket);
   if (!h_config->skip_lcb_bootstrap) {
     conn_pool_ = new ConnectionPool(isolate_, h_config->lcb_inst_capacity,
                                     settings_->kv_host_port, cb_source_bucket_);
