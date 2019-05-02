@@ -2602,6 +2602,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 	apps := m.getTempStoreAll()
 	for _, app := range apps {
 		for i := range app.DeploymentConfig.Curl {
+			app.DeploymentConfig.Curl[i].Username = ""
 			app.DeploymentConfig.Curl[i].Password = ""
 		}
 		app.Settings["deployment_status"] = false
