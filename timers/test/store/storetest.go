@@ -169,7 +169,7 @@ func run(partn int, load int, pwg *sync.WaitGroup) {
 		logging.Errorf("mismatch: created=%v fired=%v cancelled=%v", created, fired, cancelled)
 	}
 
-	store.Free()
+	store.Free(true)
 	logging.Infof("Successful Match: created=%v fired=%v cancelled=%v", created, fired, cancelled)
 }
 
