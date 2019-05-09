@@ -212,12 +212,7 @@ Bucket::Bucket(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
   context_.Reset(isolate_, context);
 
   auto init_success = true;
-  auto connstr =
-      "couchbase://" + endpoint_ + "/" + bucket_name_ + "?select_bucket=true";
-  if (IsIPv6()) {
-    connstr += "&ipv6=allow";
-  }
-
+  auto connstr = GetConnectionStr(endpoint_, bucket_name_);
   LOG(logInfo) << "Bucket: connstr " << RS(connstr) << std::endl;
 
   // lcb related setup

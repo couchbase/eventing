@@ -698,3 +698,13 @@ void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
   std::sprintf(crc_str, "%016llx", crc);
   args.GetReturnValue().Set(v8Str(isolate, crc_str));
 }
+
+std::string GetConnectionStr(const std::string &end_point,
+                             const std::string &bucket_name) {
+  auto connstr =
+      "couchbase://" + end_point + "/" + bucket_name + "?select_bucket=true";
+  if (IsIPv6()) {
+    connstr += "&ipv6=allow";
+  }
+  return connstr;
+}

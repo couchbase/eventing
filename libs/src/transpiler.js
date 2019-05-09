@@ -128,7 +128,7 @@ function isFuncCalled(methodName, code) {
 
 // Gets compatability level of code. Returns [<release>, <ga/beta/dp>, <using_timer>]
 function getCodeVersion(code) {
-    var versions = ["vulcan", "alice"],
+    var versions = ["vulcan", "alice", "mad-hatter"],
         vp = 0;
     var levels = ["ga", "beta", "dp"],
         lp = 0;
@@ -148,7 +148,10 @@ function getCodeVersion(code) {
                     tp = 1;
                     if (vp < 1) vp = 1;
                 }
-                if (node.callee.name === 'curl' && lp < 2) lp = 2;
+                // TODO : Change this to mad-hatter when we move CI to mad-hatter
+                if (node.callee.name === 'crc64' || node.callee.name === 'curl') {
+                    if (vp < 1) vp = 1;
+                }
             } else if (/NewExpression/.test(node.type)) {
                 if (node.callee.name === 'N1qlQuery' && lp < 1) lp = 1;
             }
@@ -157,7 +160,6 @@ function getCodeVersion(code) {
 
     return [versions[vp], levels[lp], using_timer[tp]];
 }
-
 // Checks if the given statement is a valid JavaScript expression.
 function isJsExpression(stmt) {
     try {

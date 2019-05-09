@@ -239,16 +239,13 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         if (response.data && response.data.info) {
                             var info = response.data.info;
                             if (info.warnings && info.warnings.length > 0) {
-                                warnings = info.warnings.join(". <br>");
+                                warnings = info.warnings.join(". ");
                                 ApplicationService.server.showWarningAlert(warnings);
                             }
                         }
 
-                        if (warnings == null) {
-                            ApplicationService.server.showSuccessAlert(`${app.appname} will ${operation}`);
-                        } else {
-                            ApplicationService.server.showSuccessAlert(`${app.appname} will ${operation} with warnings`);
-                        }
+                        ApplicationService.server.showSuccessAlert(
+                            `${app.appname} will ${operation} ${warnings?'with warnings':''}`);
                     })
                     .catch(function(errResponse) {
                         if (errResponse.data && (errResponse.data.name === 'ERR_HANDLER_COMPILATION')) {

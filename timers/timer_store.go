@@ -180,11 +180,14 @@ func Fetch(uid string, partn int) (store *TimerStore, found bool) {
 	return
 }
 
-func (r *TimerStore) Free() {
+func (r *TimerStore) Free(syncSpan bool) {
 	stores.lock.Lock()
 	delete(stores.entries, mapLocator(r.uid, r.partn))
 	stores.lock.Unlock()
-	r.syncSpan()
+
+	if syncSpan {
+		r.syncSpan()
+	}
 }
 
 func (r *TimerStore) Set(due int64, ref string, context interface{}) error {

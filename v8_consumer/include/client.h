@@ -66,10 +66,12 @@ public:
 
   void OnRead(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf);
 
+  static std::pair<bool, std::unique_ptr<WorkerMessage>>
+  GetWorkerMessage(int encoded_header_size, int encoded_payload_size,
+                   const std::string &msg);
   void ParseValidChunk(uv_stream_t *stream, int nread, const char *buf);
 
-  void RouteMessageWithResponse(header_t *parsed_header,
-                                message_t *parsed_message);
+  void RouteMessageWithResponse(std::unique_ptr<WorkerMessage> worker_msg);
 
   void StartFeedbackUVLoop();
   void StartMainUVLoop();

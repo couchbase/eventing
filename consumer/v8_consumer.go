@@ -370,17 +370,24 @@ func (c *Consumer) Stop(context string) {
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	if c.usingTimer {
+		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+		metaBucketNodeCount := util.CountActiveKVNodes(c.producer.MetadataBucket(), hostAddress)
+		// syncSpan only if metadata bucket is still available
+		// we may still race with metadata bucket delete
+		syncSpan := (metaBucketNodeCount != 0)
+
 		vbsOwned := c.getCurrentlyOwnedVbs()
 		sort.Sort(util.Uint16Slice(vbsOwned))
 
-		logging.Infof("%s [%s:%s:%d] Currently owned vbs len: %d dump: %s",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsOwned), util.Condense(vbsOwned))
+		logging.Infof("%s [%s:%s:%d] Currently owned vbs len: %d dump: %s, metaBucketNodeCount:%d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsOwned), util.Condense(vbsOwned),
+			metaBucketNodeCount)
 
 		for _, vb := range vbsOwned {
 			store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(vb))
 
 			if found {
-				store.Free()
+				store.Free(syncSpan)
 			}
 		}
 	}

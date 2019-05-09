@@ -61,12 +61,7 @@ ConnectionPool::ConnectionPool(v8::Isolate *isolate, int capacity,
                                std::string cb_kv_endpoint,
                                std::string cb_source_bucket)
     : capacity_(capacity), inst_count_(0), isolate_(isolate) {
-
-  conn_str_ = "couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket +
-              "?select_bucket=true";
-  if (IsIPv6()) {
-    conn_str_ += "&ipv6=allow";
-  }
+  conn_str_ = GetConnectionStr(cb_kv_endpoint, cb_source_bucket);
 }
 
 // Creates and adds one lcb instance into the pool.
@@ -342,6 +337,7 @@ bool N1QL::ExecQueryImpl(v8::Isolate *isolate, lcb_t &instance,
   lcb_N1QLHANDLE handle = nullptr;
   cmd.handle = &handle;
   cmd.callback = RowCallback<HandlerType>;
+  cmd.cmdflags |= LCB_CMDN1QL_F_PREPCACHE;
 
   lcb_n1p_mkcmd(n1ql_params, &cmd);
 

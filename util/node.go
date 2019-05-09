@@ -2,7 +2,9 @@ package util
 
 import (
 	"errors"
+	"fmt"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -13,11 +15,31 @@ type Node struct {
 }
 
 func NewNode(hostname string) (*Node, error) {
-	host, port, err := splitHostname(hostname)
+	host, port, err := splitHostname(hostname, "80")
 	if err != nil {
 		return nil, err
 	}
+	return instantiateNode(host, port)
+}
 
+func NewNodeWithScheme(hostname, scheme string) (*Node, error) {
+	var err error
+	var host, port string
+
+	if strings.ToLower(scheme) == "http" {
+		host, port, err = splitHostname(hostname, "80")
+	} else if strings.ToLower(scheme) == "https" {
+		host, port, err = splitHostname(hostname, "443")
+	} else {
+		return nil, fmt.Errorf("Unknown scheme %s", scheme)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return instantiateNode(host, port)
+}
+
+func instantiateNode(host, port string) (*Node, error) {
 	node := &Node{
 		host: host,
 		port: port,
@@ -71,14 +93,15 @@ func lookupHost(host string, timeout time.Duration) (addrs []string, err error) 
 	return addrs, err
 }
 
-func splitHostname(hostname string) (string, string, error) {
+func splitHostname(hostname, defaultPort string) (string, string, error) {
 	host, port, err := net.SplitHostPort(hostname)
-	if err != nil {
-		if err.(*net.AddrError).Err == "missing port in address" {
-			host = hostname
-			port = "80"
-		}
-		return "", "", err
+	if err == nil {
+		return host, port, nil
 	}
-	return host, port, nil
+	// FIXME :	The following error comparison might fail with a different
+	//		version of Golang
+	if err.(*net.AddrError).Err == "missing port in address" {
+		return hostname, defaultPort, nil
+	}
+	return "", "", err
 }

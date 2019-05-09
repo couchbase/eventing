@@ -158,6 +158,6 @@ func printStats(stores []*timers.TimerStore) {
 
 func freeStores(stores []*timers.TimerStore) {
 	for _, store := range stores {
-		store.Free()
+		store.Free(true)
 	}
 }
