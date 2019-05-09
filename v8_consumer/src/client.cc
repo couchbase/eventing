@@ -864,7 +864,7 @@ void AppWorker::WriteResponses() {
       WriteResponseWithRetry(feedback_conn_handle_, messages, batch_size);
       timer_responses_sent += messages.size() / 2;
       for (auto &buf : messages) {
-        delete buf.base;
+        delete[] buf.base;
       }
     }
 
@@ -890,7 +890,7 @@ void AppWorker::WriteResponses() {
 
       WriteResponseWithRetry(feedback_conn_handle_, messages, batch_size);
       for (auto &buf : messages) {
-        delete buf.base;
+        delete[] buf.base;
       }
     }
 
