@@ -205,7 +205,7 @@
       <hr>
       <!-- binding TYPE -->
       <div ng-repeat="binding in (formCtrl.isDialog ? bindings : formCtrl.bindings) track by $index">
-        <div class="row flex-left flex-wrap margin-bottom-half margin-right-1">
+        <div class="row flex-left flex-wrap margin-bottom-1 margin-right-1">
           <span class="fix-width-2 padding-right-half margin-bottom-half">
             <select
                     ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type"
@@ -219,11 +219,11 @@
           <span
                   class="padding-right-half flex-grow-1 margin-bottom-half"
                   ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'alias'">
-          <input
-                  type="text"
-                  ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  placeholder="alias name...">
+            <input
+                    type="text"
+                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value"
+                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                    placeholder="alias name...">
           </span>
           <span
                   class="fix-width-2 padding-right-half margin-bottom-half"
@@ -248,43 +248,43 @@
           <span
                   class="padding-right-half flex-grow-1 margin-bottom-half"
                   ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
-          <input
-                  type="text"
-                  ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  placeholder="alias name...">
+            <input
+                    type="text"
+                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value"
+                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                    placeholder="alias name...">
           </span>
           <span
                   class="padding-right-half flex-grow-1 margin-bottom-half"
                   ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
-          <input
-                  type="text"
-                  ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].hostname"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  placeholder="URL...">
+            <input
+                    type="text"
+                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].hostname"
+                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                    placeholder="URL...">
           </span>
           <span
-                  class="fix-width-2 padding-right-half margin-bottom-half"
+                  class="padding-right-half margin-bottom-half width-12"
                   ng-show="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
-          <input
-                  type="checkbox"
-                  id="{{'allow-cookies-' + $index }}"
-                  name="allow_cookies"
-                  value="allow"
-                  ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].allow_cookies"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
-          <label for="{{'allow-cookies-' + $index }}" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
-          allow cookies
-          </label>
-          <input
-                  type="checkbox"
-                  id="{{'validate-ssl-certificate-' + $index}}"
-                  name="validate_ssl_certificate"
-                  ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].validate_ssl_certificate"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
-          <label for="{{'validate-ssl-certificate-' + $index}}" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
-          validate SSL certificate
-          </label>
+            <input
+                    type="checkbox"
+                    id="{{'allow-cookies-' + $index }}"
+                    name="allow_cookies"
+                    value="allow"
+                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].allow_cookies"
+                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+            <label for="{{'allow-cookies-' + $index }}" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+              allow cookies
+            </label>
+            <input
+                    type="checkbox"
+                    id="{{'validate-ssl-certificate-' + $index}}"
+                    name="validate_ssl_certificate"
+                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].validate_ssl_certificate"
+                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+            <label for="{{'validate-ssl-certificate-' + $index}}" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+              validate SSL certificate
+            </label>
           </span>
           <span
                   class="fix-width-1-5 padding-right-half margin-bottom-half"
@@ -300,54 +300,54 @@
           </span>
           <!-- AUTH extra fields -->
           <span
-                  ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'basic'"
+                  ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'basic') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
                   class="padding-right-half flex-grow-1 margin-bottom-half">
-          <input
-                  type="text"
-                  ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].username"
-                  id="auth-basic-username"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  placeholder="username...">
+            <input
+                    type="text"
+                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].username"
+                    id="auth-basic-username"
+                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                    placeholder="username...">
           </span>
           <span
-                  ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'basic'"
+                  ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'basic') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
                   class="padding-right-half flex-grow-1 margin-bottom-half">
-          <input
-                  type="password"
-                  ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].password"
-                  id="auth-basic-password"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  placeholder="password...">
+            <input
+                    type="password"
+                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].password"
+                    id="auth-basic-password"
+                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                    placeholder="password...">
           </span>
           <span
-                  ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'digest'"
+                  ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'digest') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
                   class="padding-right-half flex-grow-1 margin-bottom-half">
-          <input
-                  type="text"
-                  ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].username"
-                  id="auth-digest-username"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  placeholder="username...">
+            <input
+                    type="text"
+                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].username"
+                    id="auth-digest-username"
+                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                    placeholder="username...">
           </span>
           <span
-                  ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'digest'"
+                  ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'digest') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
                   class="padding-right-half flex-grow-1 margin-bottom-half">
-          <input
-                  type="password"
-                  ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].password"
-                  id="auth-digest-password"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  placeholder="password...">
+            <input
+                    type="password"
+                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].password"
+                    id="auth-digest-password"
+                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                    placeholder="password...">
           </span>
           <span
-                  ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'bearer'"
+                  ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'bearer') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
                   class="padding-right-half flex-grow-1 margin-bottom-half">
-          <input
-                  type="password"
-                  ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].bearer_key"
-                  id="auth-bearer"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  placeholder="bearer key...">
+            <input
+                    type="password"
+                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].bearer_key"
+                    id="auth-bearer"
+                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                    placeholder="bearer key...">
           </span>
           <div
                   class="red-2 cursor-pointer"

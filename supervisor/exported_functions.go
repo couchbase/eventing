@@ -293,7 +293,12 @@ func (s *SuperSupervisor) RebalanceTaskProgress(appName string) (*common.Rebalan
 	}
 
 	progress := &common.RebalanceProgress{}
-	progress.VbsRemainingToShuffle = 1
+
+	// report rebalance progress for yet-to-bootstrap-apps only if node is still part of cluster
+	if s.checkIfNodeInCluster() {
+		progress.VbsRemainingToShuffle = 1
+	}
+
 	return progress, nil
 }
 
