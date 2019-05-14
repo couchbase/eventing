@@ -68,7 +68,7 @@ type Evaluator interface {
 	// The members of array and map must be one of above types themselves.
 	Evaluate(library, function string,
 		options map[Option]interface{},
-		params interface{}) (result interface{}, err Error)
+		params []interface{}) (result interface{}, err Error)
 }
 
 // n1ql-client and gsi-client implement this
