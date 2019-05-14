@@ -201,6 +201,8 @@ type EventingConsumer interface {
 	VbProcessingStats() map[uint16]map[string]interface{}
 	VbSeqnoStats() map[int]map[string]interface{}
 	WorkerVbMapUpdate(map[string][]uint16)
+
+	SendAssignedVbs()
 }
 
 type EventingSuperSup interface {

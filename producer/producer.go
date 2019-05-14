@@ -17,7 +17,6 @@ import (
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -26,36 +25,36 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string, cleanupTimers bool,
 	memoryQuota int64, numVbuckets int, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
-		appName:                      appName,
-		bootstrapFinishCh:            make(chan struct{}, 1),
-		cleanupTimers:                cleanupTimers,
-		consumerListeners:            make(map[common.EventingConsumer]net.Listener),
-		dcpConfig:                    make(map[string]interface{}),
-		ejectNodeUUIDs:               make([]string, 0),
-		eventingNodeUUIDs:            make([]string, 0),
-		feedbackListeners:            make(map[common.EventingConsumer]net.Listener),
-		handleV8ConsumerMutex:        &sync.Mutex{},
-		kvPort:                       kvPort,
-		listenerRWMutex:              &sync.RWMutex{},
-		metakvAppHostPortsPath:       metakvAppHostPortsPath,
-		notifyInitCh:                 make(chan struct{}, 2),
-		notifySettingsChangeCh:       make(chan struct{}, 1),
-		notifySupervisorCh:           make(chan struct{}),
-		nsServerPort:                 nsServerPort,
-		numVbuckets:                  numVbuckets,
-		pauseProducerCh:              make(chan struct{}, 1),
-		plannerNodeMappingsRWMutex:   &sync.RWMutex{},
-		pollBucketStopCh:             make(chan struct{}, 1),
-		MemoryQuota:                  memoryQuota,
-		retryCount:                   -1,
-		runningConsumersRWMutex:      &sync.RWMutex{},
-		seqsNoProcessed:              make(map[int]int64),
-		seqsNoProcessedRWMutex:       &sync.RWMutex{},
-		statsRWMutex:                 &sync.RWMutex{},
-		stopCh:                       make(chan struct{}, 1),
-		superSup:                     superSup,
-		topologyChangeCh:             make(chan *common.TopologyChangeMsg, 10),
-		uuid:                         uuid,
+		appName:                    appName,
+		bootstrapFinishCh:          make(chan struct{}, 1),
+		cleanupTimers:              cleanupTimers,
+		consumerListeners:          make(map[common.EventingConsumer]net.Listener),
+		dcpConfig:                  make(map[string]interface{}),
+		ejectNodeUUIDs:             make([]string, 0),
+		eventingNodeUUIDs:          make([]string, 0),
+		feedbackListeners:          make(map[common.EventingConsumer]net.Listener),
+		handleV8ConsumerMutex:      &sync.Mutex{},
+		kvPort:                     kvPort,
+		listenerRWMutex:            &sync.RWMutex{},
+		metakvAppHostPortsPath:     metakvAppHostPortsPath,
+		notifyInitCh:               make(chan struct{}, 2),
+		notifySettingsChangeCh:     make(chan struct{}, 1),
+		notifySupervisorCh:         make(chan struct{}),
+		nsServerPort:               nsServerPort,
+		numVbuckets:                numVbuckets,
+		pauseProducerCh:            make(chan struct{}, 1),
+		plannerNodeMappingsRWMutex: &sync.RWMutex{},
+		pollBucketStopCh:           make(chan struct{}, 1),
+		MemoryQuota:                memoryQuota,
+		retryCount:                 -1,
+		runningConsumersRWMutex:    &sync.RWMutex{},
+		seqsNoProcessed:            make(map[int]int64),
+		seqsNoProcessedRWMutex:     &sync.RWMutex{},
+		statsRWMutex:               &sync.RWMutex{},
+		stopCh:                     make(chan struct{}, 1),
+		superSup:                   superSup,
+		topologyChangeCh:           make(chan *common.TopologyChangeMsg, 10),
+		uuid:                       uuid,
 		vbEventingNodeAssignRWMutex:  &sync.RWMutex{},
 		vbEventingNodeRWMutex:        &sync.RWMutex{},
 		vbMapping:                    make(map[uint16]*vbNodeWorkerMapping),
@@ -278,15 +277,6 @@ func (p *Producer) Serve() {
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 				return
-			}
-
-			for vb := 0; vb < p.numVbuckets; vb++ {
-				if p.app.UsingTimer {
-					store, found := timers.Fetch(p.GetMetadataPrefix(), vb)
-					if found {
-						store.Free(true)
-					}
-				}
 			}
 
 			for _, c := range p.getConsumers() {

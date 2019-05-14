@@ -24,6 +24,10 @@ event_type getEvent(int8_t event) {
     return eDebugger;
   if (event == 6)
     return eFilter;
+  if (event == 7)
+    return eScanTimer;
+  if (event == 8)
+    return eUpdateVbMap;
   return Event_Unknown;
 }
 
@@ -74,6 +78,8 @@ app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
     return oWorkerThreadMap;
   if (opcode == 4)
     return oTimerContextSize;
+  if (opcode == 5)
+    return oVbMap;
   return App_Worker_Setting_Opcode_Unknown;
 }
 

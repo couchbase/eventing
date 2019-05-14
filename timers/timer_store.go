@@ -141,7 +141,6 @@ type rebalancer interface {
 
 func init() {
 	stores = newStores()
-	go stores.syncRoutine()
 }
 
 func SetRebalancer(r rebalancer) {

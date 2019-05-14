@@ -17,7 +17,6 @@ import (
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 )
@@ -30,7 +29,6 @@ func (c *Consumer) processDCPEvents() {
 	for {
 		if c.cppQueueSizes != nil {
 			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize ||
-				c.feedbackQueueCap < c.cppQueueSizes.DocTimerQueueSize ||
 				c.workerQueueMemCap < c.cppQueueSizes.AggQueueMemory {
 				logging.Debugf("%s [%s:%s:%d] Throttling, cpp queue sizes: %+v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes)
@@ -164,32 +162,6 @@ func (c *Consumer) processDCPEvents() {
 				}
 
 				if e.Status == mcd.SUCCESS {
-
-					kvNodes := c.getKvNodes()
-
-					connStr := "couchbase://"
-					for index, kvNode := range kvNodes {
-						if index != 0 {
-							connStr = connStr + ","
-						}
-						connStr = connStr + kvNode
-					}
-
-					if util.IsIPv6() {
-						connStr += "?ipv6=allow"
-					}
-
-					if c.usingTimer {
-						err := timers.Create(c.producer.GetMetadataPrefix(), int(e.VBucket), connStr, c.producer.MetadataBucket())
-						if err == common.ErrRetryTimeout {
-							logging.Infof("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-							return
-						}
-						if err != nil {
-							logging.Errorf("%s [%s:%s:%d] vb: %d unable to create metastore, err: %v",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, err)
-						}
-					}
 
 					vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
 
@@ -432,27 +404,6 @@ func (c *Consumer) processFilterEvents() {
 			logging.Infof("%s [%s:%s:%d] Exiting processFilterEvents routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
-		}
-	}
-}
-
-func (c *Consumer) processTimerEvents() {
-	logPrefix := "Consumer::processTimerEvents"
-	for {
-		select {
-		case <-c.stopConsumerCh:
-			logging.Infof("%s [%s:%s:%d] Exiting processTimerEvents routine",
-				logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return
-		default:
-			ev, err := c.fireTimerQueue.Pop()
-			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] Failed to pop from fireTimerQueue, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-				return
-			}
-			timer := ev.(*timerContext)
-			c.timerMessagesProcessed++
-			c.sendTimerEvent(timer, false)
 		}
 	}
 }

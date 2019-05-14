@@ -15,7 +15,6 @@ import (
 	"github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
 )
@@ -58,7 +57,6 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	}
 
 	if c.cppQueueSizes != nil {
-		stats["agg_timer_feedback_queue_size"] = uint64(c.cppQueueSizes.DocTimerQueueSize)
 		stats["agg_queue_memory"] = uint64(c.cppQueueSizes.AggQueueMemory)
 		stats["agg_queue_size"] = uint64(c.cppQueueSizes.AggQueueSize)
 	}
@@ -249,22 +247,6 @@ func (c *Consumer) GetMetaStoreStats() map[string]uint64 {
 	stats["metastore_set"] = atomic.LoadUint64(&c.metastoreSetCounter)
 	stats["metastore_set_err"] = atomic.LoadUint64(&c.metastoreSetErrCounter)
 
-	for _, vb := range c.getCurrentlyOwnedVbs() {
-		store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(vb))
-		if !found {
-			atomic.AddUint64(&c.metastoreNotFoundErrCounter, 1)
-			continue
-		}
-
-		storeStats := store.Stats()
-		for stat, counter := range storeStats {
-			if _, ok := stats[stat]; !ok {
-				stats[stat] = 0
-			}
-			stats[stat] += counter
-		}
-	}
-
 	return stats
 }
 
@@ -346,9 +328,6 @@ func (c *Consumer) SignalFeedbackConnected() {
 func (c *Consumer) UpdateEventingNodesUUIDs(keepNodes, ejectNodes []string) {
 	c.ejectNodesUUIDs = ejectNodes
 	c.eventingNodeUUIDs = keepNodes
-
-	// Reset the flag before a rebalance is about to start off
-	c.timerQueuesAreDrained = false
 }
 
 // GetExecutionStats returns OnUpdate/OnDelete success/failure stats for event handlers from cpp world
@@ -720,15 +699,7 @@ func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 	prevWorkerMemCap := c.workerQueueMemCap
 	prevDCPFeedMemCap := c.aggDCPFeedMemCap
 
-	var divisor int64
-
-	if c.app.UsingTimer {
-		divisor = 5
-		c.timerQueueMemCap = uint64((quota / divisor) * 1024 * 1024)
-	} else {
-		divisor = 2
-	}
-
+	divisor := int64(2)
 	c.workerQueueMemCap = (quota / divisor) * 1024 * 1024
 	c.aggDCPFeedMemCap = (quota / divisor) * 1024 * 1024
 

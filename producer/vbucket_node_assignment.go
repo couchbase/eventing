@@ -297,6 +297,7 @@ func (p *Producer) initWorkerVbMap() {
 
 	for _, consumer := range p.getConsumers() {
 		consumer.WorkerVbMapUpdate(workerVbucketMap)
+		consumer.SendAssignedVbs()
 	}
 }
 

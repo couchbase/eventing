@@ -33,6 +33,7 @@
 #include <uv.h>
 #include <v8.h>
 
+#include "blocking_deque.h"
 #include "commands.h"
 #include "histogram.h"
 #include "insight.h"
@@ -41,7 +42,7 @@
 #include "js_exception.h"
 #include "log.h"
 #include "parse_deployment.h"
-#include "queue.h"
+#include "timer_store.h"
 #include "transpiler.h"
 #include "utils.h"
 #include "v8log.h"
@@ -156,6 +157,7 @@ typedef struct handler_config_s {
   int execution_timeout;
   int lcb_inst_capacity;
   bool skip_lcb_bootstrap;
+  bool using_timer;
   int64_t timer_context_size;
   std::vector<std::string> handler_headers;
   std::vector<std::string> handler_footers;
@@ -197,6 +199,7 @@ extern std::atomic<int64_t> messages_processed_counter;
 extern std::atomic<int64_t> dcp_delete_msg_counter;
 extern std::atomic<int64_t> dcp_mutation_msg_counter;
 extern std::atomic<int64_t> timer_msg_counter;
+extern std::atomic<int64_t> timer_create_counter;
 
 extern std::atomic<int64_t> enqueued_dcp_delete_msg_counter;
 extern std::atomic<int64_t> enqueued_dcp_mutation_msg_counter;
@@ -233,15 +236,15 @@ public:
   bool DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
                     int args_len);
 
-  void Enqueue(std::unique_ptr<WorkerMessage> worker_msg);
+  void PushFront(std::unique_ptr<WorkerMessage> worker_msg);
+
+  void PushBack(std::unique_ptr<WorkerMessage> worker_msg);
 
   void AddLcbException(int err_code);
   void ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions);
 
   void UpdateHistogram(Time::time_point t);
   void UpdateCurlLatencyHistogram(const Time::time_point &start);
-
-  void GetTimerMessages(std::vector<uv_buf_t> &messages, size_t window_size);
 
   void GetBucketOpsMessages(std::vector<uv_buf_t> &messages);
 
@@ -269,6 +272,10 @@ public:
 
   void SetThreadExitFlag();
 
+  void UpdatePartitions(const std::unordered_set<int64_t> &vbuckets);
+
+  void SetTimer(timer::TimerInfo &tinfo);
+
   inline std::string GetFunctionID() { return function_id_; }
 
   inline std::string GetFunctionInstanceID() { return function_instance_id_; }
@@ -295,8 +302,7 @@ public:
 
   std::thread processing_thr_;
   std::thread *terminator_thr_;
-  Queue<std::unique_ptr<timer_msg_t>> *timer_queue_;
-  Queue<std::unique_ptr<WorkerMessage>> *worker_queue_;
+  BlockingDeque<std::unique_ptr<WorkerMessage>> *worker_queue_;
 
   std::mutex lcb_exception_mtx_;
   std::map<int, int64_t> lcb_exceptions_;
@@ -336,6 +342,7 @@ private:
   std::string function_id_;
   std::string function_instance_id_;
   std::string user_prefix_;
+  timer::TimerStore *timer_store_{nullptr};
   std::atomic<bool> thread_exit_cond_;
   const std::vector<std::string> exception_type_names_;
   std::vector<std::string> curl_binding_values_;

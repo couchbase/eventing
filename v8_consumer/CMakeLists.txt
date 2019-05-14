@@ -19,6 +19,7 @@ INCLUDE (FindCouchbaseV8)
 INCLUDE (FindCouchbaseBreakpad)
 INCLUDE (../libs/query/FindEventingQuery.cmake)
 INCLUDE (FindCouchbaseNlohmannJson)
+INCLUDE (FindCouchbaseOpenSSL)
 
 SET(LIBS_HEADERS
         ../libs/include
@@ -26,6 +27,10 @@ SET(LIBS_HEADERS
 
 SET(LIBS_SRC
         ../../eventing-ee/curl.cc
+        ../../eventing-ee/timer_defs.cc
+        ../../eventing-ee/timer_store.cc
+        ../../eventing-ee/timer_iterator.cc
+        ../libs/src/lcb_util.cc
         ../libs/src/bucket.cc
         ../libs/src/comm.cc
         ../libs/src/log.cc
@@ -47,6 +52,7 @@ INCLUDE_DIRECTORIES(AFTER
                      ${EVENTING_QUERY_INCLUDE_DIR}
                      ${V8_INCLUDE_DIR}
                      ${CURL_INCLUDE_DIR}
+                     ${OPENSSL_INCLUDE_DIR}
                      ${CMAKE_CURRENT_BINARY_DIR}
                      ${CMAKE_CURRENT_SOURCE_DIR}
                      ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -85,6 +91,7 @@ SET(EVENTING_LIBRARIES
     ${V8_LIBRARIES}
     ${ICU_LIBRARIES}
     ${CURL_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
     ${LIBUV_LIBRARIES}
     ${ZLIB_LIBRARIES}
     ${EVENTING_QUERY_LIBRARIES}

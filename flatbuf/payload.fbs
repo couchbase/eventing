@@ -41,6 +41,9 @@ table Payload {
   thr_map: [VbsThreadMap]; // Mapping of vbuckets to std::thread associated with V8Worker instance;
 
   function_instance_id:string;
+  using_timer:bool;
+
+  vb_map:[short];
 }
 
 root_type Payload;

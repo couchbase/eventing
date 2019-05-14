@@ -20,15 +20,7 @@
 #include <vector>
 
 #include "isolate_data.h"
-
-struct Result {
-  lcb_CAS cas;
-  lcb_error_t rc;
-  std::string value;
-  uint32_t exptime;
-
-  Result() : cas(0), rc(LCB_SUCCESS) {}
-};
+#include "lcb_utils.h"
 
 class Bucket {
 public:

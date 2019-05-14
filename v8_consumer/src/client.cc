@@ -313,19 +313,16 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
           // Flush the aggregate item count in queues for all running V8
           // worker instances
           if (!workers_.empty()) {
-            int64_t agg_queue_size = 0, feedback_queue_size = 0,
-                    agg_queue_memory = 0;
+            int64_t agg_queue_size = 0, agg_queue_memory = 0;
             for (const auto &w : workers_) {
-              agg_queue_size += w.second->worker_queue_->Count();
-              feedback_queue_size += w.second->timer_queue_->Count();
-              agg_queue_memory += w.second->worker_queue_->Size() +
-                                  w.second->timer_queue_->Size();
+              agg_queue_size += w.second->worker_queue_->GetSize();
+              agg_queue_memory += w.second->worker_queue_->GetMemory();
             }
 
             std::ostringstream queue_stats;
             queue_stats << R"({"agg_queue_size":)";
             queue_stats << agg_queue_size << R"(, "feedback_queue_size":)";
-            queue_stats << feedback_queue_size << R"(, "agg_queue_memory":)";
+            queue_stats << 0 << R"(, "agg_queue_memory":)";
             queue_stats << agg_queue_memory << "}";
 
             flatbuffers::FlatBufferBuilder builder;
@@ -419,6 +416,8 @@ void AppWorker::RouteMessageWithResponse(
       handler_config->execution_timeout = payload->execution_timeout();
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
       handler_config->skip_lcb_bootstrap = payload->skip_lcb_bootstrap();
+      using_timer_ = payload->using_timer();
+      handler_config->using_timer = using_timer_;
       handler_config->timer_context_size = payload->timer_context_size();
       handler_config->handler_headers =
           ToStringArray(payload->handler_headers());
@@ -538,7 +537,9 @@ void AppWorker::RouteMessageWithResponse(
       estats << messages_parsed << R"(, "dcp_delete_msg_counter":)";
       estats << dcp_delete_msg_counter << R"(, "dcp_mutation_msg_counter":)";
       estats << dcp_mutation_msg_counter << R"(, "timer_msg_counter":)";
-      estats << timer_msg_counter << R"(, "enqueued_dcp_delete_msg_counter":)";
+      estats << timer_msg_counter << R"(, "timer_create_counter":)";
+      estats << timer_create_counter
+             << R"(, "enqueued_dcp_delete_msg_counter":)";
       estats << enqueued_dcp_delete_msg_counter
              << R"(, "enqueued_dcp_mutation_msg_counter":)";
       estats << enqueued_dcp_mutation_msg_counter
@@ -559,14 +560,12 @@ void AppWorker::RouteMessageWithResponse(
       if (!workers_.empty()) {
         agg_queue_memory = agg_queue_size = feedback_queue_size = 0;
         for (const auto &w : workers_) {
-          agg_queue_size += w.second->worker_queue_->Count();
-          feedback_queue_size += w.second->timer_queue_->Count();
-          agg_queue_memory +=
-              w.second->worker_queue_->Size() + w.second->timer_queue_->Size();
+          agg_queue_size += w.second->worker_queue_->GetSize();
+          agg_queue_memory += w.second->worker_queue_->GetMemory();
         }
 
         estats << R"(, "agg_queue_size":)" << agg_queue_size;
-        estats << R"(, "feedback_queue_size":)" << feedback_queue_size;
+        estats << R"(, "feedback_queue_size":)" << 0;
         estats << R"(, "agg_queue_memory":)" << agg_queue_memory;
       }
 
@@ -637,7 +636,7 @@ void AppWorker::RouteMessageWithResponse(
       worker_index = partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         enqueued_dcp_delete_msg_counter++;
-        workers_[worker_index]->Enqueue(std::move(worker_msg));
+        workers_[worker_index]->PushBack(std::move(worker_msg));
       } else {
         LOG(logError) << "Delete event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -648,7 +647,7 @@ void AppWorker::RouteMessageWithResponse(
       worker_index = partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         enqueued_dcp_mutation_msg_counter++;
-        workers_[worker_index]->Enqueue(std::move(worker_msg));
+        workers_[worker_index]->PushBack(std::move(worker_msg));
       } else {
         LOG(logError) << "Mutation event lost: worker " << worker_index
                       << " is null" << std::endl;
@@ -665,6 +664,7 @@ void AppWorker::RouteMessageWithResponse(
   case eFilter:
     switch (getFilterOpcode(worker_msg->header.opcode)) {
     case oVbFilter: {
+
       worker_index = partition_thr_map_[worker_msg->header.partition];
       auto worker = workers_[worker_index];
       if (worker != nullptr) {
@@ -710,26 +710,6 @@ void AppWorker::RouteMessageWithResponse(
       break;
     }
     break;
-  case eTimer:
-    switch (getTimerOpcode(worker_msg->header.opcode)) {
-    case oTimer:
-      if (workers_[curr_worker_idx_] != nullptr) {
-        enqueued_timer_msg_counter++;
-        workers_[curr_worker_idx_]->Enqueue(std::move(worker_msg));
-        curr_worker_idx_ = (curr_worker_idx_ + 1) % thr_count_;
-      } else {
-        LOG(logError) << "Timer event lost: worker " << curr_worker_idx_
-                      << " is null" << std::endl;
-        ++timer_events_lost;
-      }
-      break;
-    default:
-      LOG(logError) << "Opcode " << getTimerOpcode(worker_msg->header.opcode)
-                    << "is not implemented for eTimer" << std::endl;
-      ++e_timer_lost;
-      break;
-    }
-    break;
   case eApp_Worker_Setting:
     switch (getAppWorkerSettingOpcode(worker_msg->header.opcode)) {
     case oLogLevel:
@@ -769,6 +749,34 @@ void AppWorker::RouteMessageWithResponse(
                    << std::endl;
       msg_priority_ = true;
       break;
+
+    case oVbMap:
+      if (using_timer_) {
+        payload = flatbuf::payload::GetPayload(
+            (const void *)worker_msg->payload.payload.c_str());
+        auto vb_map = payload->vb_map();
+        std::vector<int64_t> vbuckets;
+        for (size_t idx = 0; idx < vb_map->size(); ++idx) {
+          vbuckets.push_back(vb_map->Get(idx));
+        }
+
+        auto partitions = PartitionVbuckets(vbuckets);
+
+        for (size_t idx = 0; idx < thr_count_; ++idx) {
+          auto worker = workers_[idx];
+          worker->UpdatePartitions(partitions[idx]);
+          std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
+          msg->header.event = eUpdateVbMap + 1;
+          worker->PushFront(std::move(msg));
+        }
+        std::ostringstream oss;
+        std::copy(vbuckets.begin(), vbuckets.end(),
+                  std::ostream_iterator<int64_t>(oss, " "));
+
+        LOG(logInfo) << "Updating vbucket map, vbmap :" << oss.str()
+                     << std::endl;
+        break;
+      }
     default:
       LOG(logError) << "Opcode "
                     << getAppWorkerSettingOpcode(worker_msg->header.opcode)
@@ -783,7 +791,7 @@ void AppWorker::RouteMessageWithResponse(
     case oDebuggerStart:
       worker_index = partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
-        workers_[worker_index]->Enqueue(std::move(worker_msg));
+        workers_[worker_index]->PushBack(std::move(worker_msg));
         msg_priority_ = true;
       } else {
         LOG(logError) << "Debugger start event lost: worker " << worker_index
@@ -793,7 +801,7 @@ void AppWorker::RouteMessageWithResponse(
     case oDebuggerStop:
       worker_index = partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
-        workers_[worker_index]->Enqueue(std::move(worker_msg));
+        workers_[worker_index]->PushBack(std::move(worker_msg));
         msg_priority_ = true;
       } else {
         LOG(logError) << "Debugger stop event lost: worker " << worker_index
@@ -831,38 +839,9 @@ void AppWorker::WriteResponses() {
   // TODO : Remove this sleep if its use can't be justified
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-  auto start = std::chrono::system_clock::now();
   size_t batch_size = (feedback_batch_size_ & 1) ? (feedback_batch_size_ + 1)
                                                  : feedback_batch_size_;
   while (!thread_exit_cond_.load()) {
-    auto sleep = true;
-    // Update DocTimers Checkpoint
-    for (const auto &w : workers_) {
-      std::vector<uv_buf_t> messages;
-      w.second->GetTimerMessages(messages, batch_size);
-      if (messages.empty()) {
-        continue;
-      }
-
-      sleep = false;
-      WriteResponseWithRetry(feedback_conn_handle_, messages, batch_size);
-      timer_responses_sent += messages.size() / 2;
-      for (auto &buf : messages) {
-        delete[] buf.base;
-      }
-    }
-
-    if (sleep) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-
-    auto curr = std::chrono::system_clock::now();
-    auto elapsed =
-        std::chrono::duration_cast<std::chrono::milliseconds>(curr - start);
-    if (elapsed < checkpoint_interval_) {
-      continue;
-    }
-
     // Update BucketOps Checkpoint
     for (const auto &w : workers_) {
       std::vector<uv_buf_t> messages;
@@ -877,8 +856,7 @@ void AppWorker::WriteResponses() {
         delete[] buf.base;
       }
     }
-
-    start = curr;
+    std::this_thread::sleep_for(checkpoint_interval_);
   }
 }
 
@@ -915,9 +893,7 @@ void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
   }
 }
 
-AppWorker::AppWorker()
-    : feedback_conn_handle_(nullptr), conn_handle_(nullptr),
-      curr_worker_idx_(0) {
+AppWorker::AppWorker() : feedback_conn_handle_(nullptr), conn_handle_(nullptr) {
   thread_exit_cond_.store(false);
   uv_loop_init(&feedback_loop_);
   uv_loop_init(&main_loop_);
@@ -980,6 +956,24 @@ void AppWorker::ReadStdinLoop() {
   stdin_read_thr_ = std::move(thr);
 }
 
+void AppWorker::ScanTimerLoop() {
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  auto evt_generator = [](AppWorker *worker) {
+    while (!worker->thread_exit_cond_.load()) {
+      if (worker->using_timer_) {
+        for (auto &v8_worker : worker->workers_) {
+          std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
+          msg->header.event = eScanTimer + 1;
+          v8_worker.second->PushFront(std::move(msg));
+        }
+      }
+      std::this_thread::sleep_for(std::chrono::seconds(7));
+    }
+  };
+  std::thread thr(evt_generator, this);
+  scan_timer_thr_ = std::move(thr);
+}
+
 void AppWorker::StopUvLoop(uv_async_t *async) {
   uv_loop_t *handle = (uv_loop_t *)async->data;
   uv_stop(handle);
@@ -1000,6 +994,18 @@ void AppWorker::SendFilterAck(int opcode, int msgtype, int vb_no,
   LOG(logInfo) << "vb: " << vb_no << " seqNo: " << seq_no
                << " skip_ack: " << skip_ack << " sending filter ack to Go"
                << std::endl;
+}
+
+std::vector<std::unordered_set<int64_t>>
+AppWorker::PartitionVbuckets(const std::vector<int64_t> &vbuckets) const {
+  std::vector<std::unordered_set<int64_t>> partitions(thr_count_);
+  for (auto vb : vbuckets) {
+    auto it = partition_thr_map_.find(vb);
+    if (it != end(partition_thr_map_)) {
+      partitions[it->second].insert(vb);
+    }
+  }
+  return partitions;
 }
 
 int main(int argc, char **argv) {
@@ -1061,7 +1067,9 @@ int main(int argc, char **argv) {
                         feedback_batch_size, feedback_port, port);
   }
   worker->ReadStdinLoop();
+  worker->ScanTimerLoop();
   worker->stdin_read_thr_.join();
+  worker->scan_timer_thr_.join();
   worker->main_uv_loop_thr_.join();
   worker->feedback_uv_loop_thr_.join();
 
