@@ -13,7 +13,7 @@ import (
 )
 
 func newRebalancer(eventingAdminPort string, change service.TopologyChange,
-	done doneCallback, progress progressCallback, keepNodes []string) *rebalancer {
+	done doneCallback, progress progressCallback, keepNodes []string, NumberOfProducers int) *rebalancer {
 
 	r := &rebalancer{
 		adminPort:        eventingAdminPort,
@@ -23,6 +23,7 @@ func newRebalancer(eventingAdminPort string, change service.TopologyChange,
 		done:             make(chan struct{}),
 		keepNodes:        keepNodes,
 		RebalanceStartTs: time.Now().String(),
+		numApps:          NumberOfProducers,
 	}
 
 	go r.doRebalance()
@@ -73,8 +74,9 @@ func (r *rebalancer) gatherProgress() {
 	// Wait for some additional time to allow all eventing nodes to come up with their vbucket distribution plan.
 	// Additional sleep was added in planner because metakv's reported stale values when read op was triggered
 	// right after write op.
-	time.Sleep(10 * time.Second)
-
+	if r.numApps != 0 {
+		time.Sleep(10 * time.Second)
+	}
 	retryCounter := 0
 
 retryRebProgress:
