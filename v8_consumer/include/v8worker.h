@@ -63,9 +63,9 @@ typedef std::chrono::nanoseconds nsecs;
 
 extern int64_t timer_context_size;
 
-using atomic_ptr_t = std::shared_ptr<std::atomic<int64_t>>;
+using atomic_ptr_t = std::shared_ptr<std::atomic<uint64_t>>;
 // Used for checkpointing of vbucket seq nos
-typedef std::map<int64_t, atomic_ptr_t> vb_seq_map_t;
+typedef std::map<int, atomic_ptr_t> vb_seq_map_t;
 
 typedef struct timer_msg_s {
   std::size_t GetSize() const { return timer_entry.length(); }
@@ -202,9 +202,9 @@ public:
   int V8WorkerLoad(std::string source_s);
   void RouteMessage();
 
-  int SendUpdate(std::string value, std::string meta, int vb_no, int64_t seq_no,
-                 std::string doc_type);
-  int SendDelete(std::string meta, int vb_no, int64_t seq_no);
+  int SendUpdate(std::string value, std::string meta, int vb_no,
+                 uint64_t seq_no, std::string doc_type);
+  int SendDelete(std::string meta, int vb_no, uint64_t seq_no);
   void SendTimer(std::string callback, std::string timer_ctx);
   std::string CompileHandler(std::string handler);
   CodeVersion IdentifyVersion(std::string handler);
@@ -237,19 +237,23 @@ public:
    */
   void GetBucketOpsMessages(std::vector<uv_buf_t> &messages);
 
-  int UpdateVbFilter(const std::string &metadata);
+  void UpdateVbFilter(int vb_no, uint64_t seq_no);
 
-  int64_t GetVbFilter(int vb_no);
+  uint64_t GetVbFilter(int vb_no);
 
   void EraseVbFilter(int vb_no);
 
-  void UpdateBucketopsSeqno(int vb_no, int64_t seq_no);
+  void UpdateBucketopsSeqno(int vb_no, uint64_t seq_no);
 
-  int64_t GetBucketopsSeqno(int vb_no);
+  uint64_t GetBucketopsSeqno(int vb_no);
 
-  int ParseMetadata(const std::string &metadata, int &vb_no, int64_t &seq_no);
+  void FilterLock();
+
+  void FilterUnlock();
+
+  int ParseMetadata(const std::string &metadata, int &vb_no, uint64_t &seq_no);
   int ParseMetadataWithAck(const std::string &metadata, int &vb_no,
-                           int64_t &seq_no, int &skip_ack, bool ack_check);
+                           uint64_t &seq_no, int &skip_ack, bool ack_check);
 
   void SetThreadExitFlag();
 
@@ -269,8 +273,8 @@ public:
   volatile bool shutdown_terminator_;
   static bool debugger_started_;
 
-  int64_t currently_processed_vb_;
-  int64_t currently_processed_seqno_;
+  uint64_t currently_processed_vb_;
+  uint64_t currently_processed_seqno_;
   Time::time_point execute_start_time_;
 
   std::thread processing_thr_;
@@ -298,9 +302,9 @@ private:
 
   vb_seq_map_t vb_seq_;
 
-  std::vector<int64_t> vbfilter_map_;
+  std::vector<std::vector<uint64_t>> vbfilter_map_;
   std::mutex vbfilter_lock_;
-  std::vector<int64_t> processed_bucketops_;
+  std::vector<uint64_t> processed_bucketops_;
   std::mutex bucketops_lock_;
   std::list<Bucket *> bucket_handles_;
   N1QL *n1ql_handle_;
