@@ -114,6 +114,7 @@ type rebalancer struct {
 	RebProgressCounter    int
 	TotalVbsToShuffle     int
 	VbsRemainingToShuffle int
+	numApps               int
 }
 
 type rebalanceContext struct {

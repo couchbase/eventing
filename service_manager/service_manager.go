@@ -206,7 +206,7 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 		logging.Infof("%s Starting up rebalancer", logPrefix)
 
 		rebalancer := newRebalancer(m.adminHTTPPort, change, m.rebalanceDoneCallback, m.rebalanceProgressCallback,
-			m.keepNodeUUIDs)
+			m.keepNodeUUIDs, len(m.fnsInPrimaryStore))
 		m.rebalancer = rebalancer
 
 	default:
