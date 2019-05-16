@@ -131,7 +131,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbsRemainingToRestream:          make([]uint16, 0),
 		vbsStreamClosed:                 make(map[uint16]bool),
 		vbsStreamClosedRWMutex:          &sync.RWMutex{},
-		vbStreamRequested:               make(map[uint16]struct{}),
+		vbStreamRequested:               make(map[uint16]uint64),
 		vbsStreamRRWMutex:               &sync.RWMutex{},
 		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
 		vbProcessingStats:               newVbProcessingStats(app.AppName, uint16(numVbuckets), uuid, fmt.Sprintf("worker_%s_%d", app.AppName, index)),

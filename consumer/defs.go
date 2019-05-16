@@ -212,7 +212,7 @@ type Consumer struct {
 	vbsStateUpdateRunning         bool
 	vbsStreamClosed               map[uint16]bool // Access controlled by vbsStreamClosedRWMutex
 	vbsStreamClosedRWMutex        *sync.RWMutex
-	vbStreamRequested             map[uint16]struct{} // Access controlled by vbsStreamRRWMutex
+	vbStreamRequested             map[uint16]uint64 // map of vbs to start_seq_nos. Access controlled by vbsStreamRRWMutex
 	vbsStreamRRWMutex             *sync.RWMutex
 	workerExited                  bool
 	workerVbucketMap              map[string][]uint16 // Access controlled by workerVbucketMapRWMutex
