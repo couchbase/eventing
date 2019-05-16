@@ -81,6 +81,7 @@ status must always be equal in 5.5 release as we do not yet support pause/resume
 
 >
 > `POST /api/v1/functions/<name>/settings`
+>
 > {"deployment_status": true, "processing_status": true}
 >
 
@@ -91,6 +92,7 @@ status must always be equal in 5.5 release as we do not yet support pause/resume
 
 >
 > `POST /api/v1/functions/<name>/settings`
+>
 > {"deployment_status": false, "processing_status": false}
 >
 
