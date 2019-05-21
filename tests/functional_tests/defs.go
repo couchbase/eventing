@@ -27,7 +27,8 @@ const (
 	goroutineURL2 = "http://localhost:9302/debug/pprof/goroutine?debug=1"
 	goroutineURL3 = "http://localhost:9303/debug/pprof/goroutine?debug=1"
 
-	statusURL = "http://127.0.0.1:9300/api/v1/status"
+	statusURL  = "http://127.0.0.1:9300/api/v1/status"
+	insightURL = "http://127.0.0.1:9300/getInsight?redact=false&aggregate=true"
 )
 
 const (

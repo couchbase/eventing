@@ -112,9 +112,17 @@ void Transpiler::RectifyCompilationInfo(
   }
 }
 
-std::string Transpiler::Transpile(const std::string &jsified_code,
-                                  const std::string &src_filename,
-                                  const std::string &handler_code) {
+void TranspiledInfo::AppendSourceMap() {
+  auto source_map_encoded = base64Encode(source_map);
+  std::string prefix = "\n//# sourceMappingURL=data:application/json;base64,";
+  final_code = transpiled_code + prefix + source_map_encoded + "\n";
+}
+
+
+TranspiledCode Transpiler::Transpile(
+    const std::string &jsified_code,
+    const std::string &src_filename,
+    const std::string &handler_code) {
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
 
@@ -131,7 +139,8 @@ std::string Transpiler::Transpile(const std::string &jsified_code,
                   << std::endl;
   }
 
-  return AppendSourceMap(info);
+  info.AppendSourceMap();
+  return info;
 }
 
 UniLineN1QLInfo Transpiler::UniLineN1QL(const std::string &handler_code) {
@@ -439,16 +448,6 @@ std::string Transpiler::ComposeDescription(int code) {
 
   std::string description = keyword + " is a reserved name in N1QLJs";
   return description;
-}
-
-std::string Transpiler::AppendSourceMap(const TranspiledInfo &info) {
-  v8::HandleScope handle_scope(isolate_);
-  auto context = context_.Get(isolate_);
-  Utils utils(isolate_, context);
-
-  auto source_map_encoded = base64Encode(info.source_map);
-  std::string prefix = "\n//# sourceMappingURL=data:application/json;base64,";
-  return info.transpiled_code + prefix + source_map_encoded + "\n";
 }
 
 TranspiledInfo::TranspiledInfo(v8::Isolate *isolate,

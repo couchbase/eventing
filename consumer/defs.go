@@ -139,8 +139,6 @@ type Consumer struct {
 	debugFeedbackListener net.Listener
 	debugListener         net.Listener
 	diagDir               string // Location that will house minidumps from from crashed cpp workers
-	handlerCode           string // Handler code for V8 Debugger
-	sourceMap             string // source map to assist with V8 Debugger
 
 	aggDCPFeed                    chan *cb.DcpEvent
 	aggDCPFeedMem                 int64
@@ -363,8 +361,9 @@ type Consumer struct {
 	checkpointTicker         *time.Ticker
 	restartVbDcpStreamTicker *time.Ticker
 	statsTicker              *time.Ticker
+	updateStatsTicker        *time.Ticker
 
-	updateStatsTicker *time.Ticker
+	insight chan *common.Insight
 }
 
 // For V8 worker spawned for debugging purpose

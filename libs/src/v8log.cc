@@ -10,6 +10,7 @@
 // permissions and limitations under the License.
 
 #include "utils.h"
+#include "insight.h"
 
 const auto ConsoleLogMaxArity = 20;
 
@@ -49,6 +50,7 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   APPLOG << log_msg << std::endl;
+  CodeInsight::Get(isolate).AccumulateLog(log_msg);
 }
 
 // console.log for debugger - also logs to eventing.log

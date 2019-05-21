@@ -107,14 +107,19 @@ struct CompilationInfo {
   std::string area;
 };
 
-struct TranspiledInfo {
+struct TranspiledCode {
+  std::string transpiled_code;
+  std::string source_map;
+  std::string final_code;
+};
+
+struct TranspiledInfo : public TranspiledCode {
   TranspiledInfo(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
                  const v8::Local<v8::Value> &transpiler_result);
   ~TranspiledInfo();
-  bool ReplaceSource(const std::string &handler_code);
 
-  std::string transpiled_code;
-  std::string source_map;
+  bool ReplaceSource(const std::string &handler_code);
+  void AppendSourceMap();
 
 private:
   v8::Isolate *isolate_;
@@ -133,9 +138,9 @@ public:
                                       v8::Local<v8::Value> args[],
                                       const int &args_len);
   CompilationInfo Compile(const std::string &plain_js);
-  std::string Transpile(const std::string &jsified_code,
-                        const std::string &src_filename,
-                        const std::string &handler_code);
+  TranspiledCode Transpile(const std::string &jsified_code,
+                           const std::string &src_filename,
+                           const std::string &handler_code);
   std::string TranspileQuery(const std::string &query,
                              const NamedParamsInfo &info);
   UniLineN1QLInfo UniLineN1QL(const std::string &handler_code);
@@ -144,7 +149,6 @@ public:
   static void LogCompilationInfo(const CompilationInfo &info);
 
 private:
-  std::string AppendSourceMap(const TranspiledInfo &info);
   static void Log(const v8::FunctionCallbackInfo<v8::Value> &args);
   void RectifyCompilationInfo(CompilationInfo &info,
                               const std::list<InsertedCharsInfo> &n1ql_pos);

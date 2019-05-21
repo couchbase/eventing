@@ -30,8 +30,8 @@ enum v8_worker_opcode {
   oInit,
   oLoad,
   oTerminate,
-  oGetSourceMap,
-  oGetHandlerCode,
+  oUnused1,
+  oUnused2,
   oGetLatencyStats,
   oGetFailureStats,
   oGetExecutionStats,
@@ -39,6 +39,7 @@ enum v8_worker_opcode {
   oGetLcbExceptions,
   oGetCurlLatencyStats,
   oVersion,
+  oInsight,
   V8_Worker_Opcode_Unknown
 };
 
@@ -78,8 +79,8 @@ enum msg_type {
 
 enum v8_worker_config_opcode {
   oConfigOpcode,
-  oSourceMap,
-  oHandlerCode,
+  oUnused3,
+  oUnused4,
   oAppLogMessage,
   oSysLogMessage,
   oLatencyStats,
@@ -89,6 +90,7 @@ enum v8_worker_config_opcode {
   oQueueSize,
   oLcbExceptions,
   oCurlLatencyStats,
+  oCodeInsights,
   V8_Worker_Config_Opcode_Unknown
 };
 

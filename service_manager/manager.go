@@ -136,6 +136,7 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/getSeqsProcessed", m.getSeqsProcessed)
 	mux.HandleFunc("/getLocalDebugUrl/", m.getLocalDebugURL)
 	mux.HandleFunc("/getWorkerCount", m.getWorkerCount)
+	mux.HandleFunc("/getInsight", m.getInsight)
 	mux.HandleFunc("/logFileLocation", m.logFileLocation)
 	mux.HandleFunc("/parseQuery", m.parseQueryHandler)
 	mux.HandleFunc("/saveAppTempStore/", m.saveTempStoreHandler)

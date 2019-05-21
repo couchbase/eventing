@@ -286,6 +286,28 @@ func (c *Consumer) refreshCurlLatencyStats() {
 	c.sendMessage(m)
 }
 
+func (c *Consumer) refreshInsight() {
+	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerInsight, 0, "")
+
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.v8WorkerMessagesProcessed["insight_stats"]; !ok {
+		c.v8WorkerMessagesProcessed["insight_stats"] = 0
+	}
+	c.v8WorkerMessagesProcessed["insight_stats"]++
+	c.msgProcessedRWMutex.Unlock()
+
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		sendToDebugger: false,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(m)
+}
+
 func (c *Consumer) sendGetFailureStats(sendToDebugger bool) {
 	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerFailureStats, 0, "")
 

@@ -78,6 +78,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		lcbInstCapacity:                 hConfig.LcbInstCapacity,
 		logLevel:                        hConfig.LogLevel,
 		msgProcessedRWMutex:             &sync.RWMutex{},
+		nsServerPort:                    nsServerPort,
 		numVbuckets:                     numVbuckets,
 		opsTimestamp:                    time.Now(),
 		createTimerQueue:                util.NewBoundedQueue(hConfig.TimerQueueSize, hConfig.TimerQueueMemCap),
@@ -140,7 +141,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		workerRespMainLoopThreshold:     hConfig.WorkerResponseTimeout,
 		workerVbucketMap:                workerVbucketMap,
 		workerVbucketMapRWMutex:         &sync.RWMutex{},
-		nsServerPort:                    nsServerPort,
 	}
 
 	consumer.builderPool = &sync.Pool{

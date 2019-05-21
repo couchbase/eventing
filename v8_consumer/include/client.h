@@ -94,6 +94,8 @@ protected:
                               std::vector<uv_buf_t> messages,
                               size_t batch_size);
 
+  std::string GetInsight();
+
 private:
   AppWorker();
   ~AppWorker();

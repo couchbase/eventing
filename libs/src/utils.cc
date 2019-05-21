@@ -705,7 +705,7 @@ void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   char crc_str[32] = {0};
-  std::sprintf(crc_str, "%016llx", crc);
+  std::sprintf(crc_str, "%016lx", crc);
   args.GetReturnValue().Set(v8Str(isolate, crc_str));
 }
 

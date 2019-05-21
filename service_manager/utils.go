@@ -100,22 +100,6 @@ func fillMissingDefault(settings map[string]interface{}, field string, defaultVa
 	}
 }
 
-func (m *ServiceMgr) getHandler(appName string) string {
-	if m.checkIfDeployed(appName) {
-		return m.superSup.GetHandlerCode(appName)
-	}
-
-	return ""
-}
-
-func (m *ServiceMgr) getSourceMap(appName string) string {
-	if m.checkIfDeployed(appName) {
-		return m.superSup.GetSourceMap(appName)
-	}
-
-	return ""
-}
-
 func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
 	errInfo := m.errorCodes[runtimeInfo.Code]
 	errInfo.RuntimeInfo = *runtimeInfo

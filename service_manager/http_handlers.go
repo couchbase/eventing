@@ -226,6 +226,86 @@ func (m *ServiceMgr) die(w http.ResponseWriter, r *http.Request) {
 	os.Exit(-1)
 }
 
+func (m *ServiceMgr) getInsight(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	apps := make([]string, 0)
+	apps = append(apps, r.URL.Query()["name"]...)
+	if len(apps) < 1 {
+		for app, _ := range m.superSup.GetDeployedApps() {
+			apps = append(apps, app)
+		}
+	}
+
+	var insights *common.Insights
+	if rv := r.URL.Query()["aggregate"]; len(rv) > 0 && rv[0] == "true" {
+		creds := r.Header.Get("Authorization")
+		insights = getGlobalInsights(m, apps, creds)
+	} else {
+		insights = getLocalInsights(m, apps)
+	}
+
+	msg, _ := json.MarshalIndent(&insights, "", " ")
+	if rv := r.URL.Query()["redact"]; len(rv) > 0 && rv[0] == "false" {
+		// do redaction
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, "%s\n", string(msg))
+}
+
+func getLocalInsights(m *ServiceMgr, apps []string) *common.Insights {
+	insights := common.NewInsights()
+	for _, app := range apps {
+		(*insights)[app] = m.superSup.GetInsight(app)
+	}
+	return insights
+}
+
+func getGlobalInsights(m *ServiceMgr, apps []string, creds string) *common.Insights {
+	insights := common.NewInsights()
+	nodes, err := m.getActiveNodeAddrs()
+	if err != nil {
+		logging.Errorf("Got failure getting nodes", err)
+		return insights
+	}
+	for _, node := range nodes {
+		url := "http://" + node + "/getInsight?aggregate=false"
+		client := http.Client{Timeout: time.Second * 15}
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			logging.Errorf("Got failure creating http request to %v: %v", node, err)
+			continue
+		}
+		req.Header.Set("Authorization", creds)
+		resp, err := client.Do(req)
+		if err != nil {
+			logging.Errorf("Got failure doing http request to %v: %v", node, err)
+			continue
+		}
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			logging.Errorf("Got failure reading http request to %v: %v", node, err)
+			continue
+		}
+		ans := common.NewInsights()
+		err = json.Unmarshal(body, &ans)
+		if err != nil {
+			logging.Errorf("Got failure unmarshaling http request to %v: %v body: %v", node, err, body)
+			continue
+		}
+		insights.Accumulate(ans)
+	}
+	return insights
+}
+
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getDebuggerURL"
 
@@ -2551,6 +2631,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 				stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
 				stats.CurlLatencyStats = m.superSup.GetCurlLatencyStats(app.Name)
 				stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
+
 				spanBlobDump, err := m.superSup.SpanBlobDump(app.Name)
 				if err == nil {
 					stats.SpanBlobDump = spanBlobDump

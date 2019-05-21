@@ -37,9 +37,9 @@ v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
   if (opcode == 4)
     return oTerminate;
   if (opcode == 5)
-    return oGetSourceMap;
+    return oUnused1;
   if (opcode == 6)
-    return oGetHandlerCode;
+    return oUnused2;
   if (opcode == 7)
     return oGetLatencyStats;
   if (opcode == 8)
@@ -52,6 +52,8 @@ v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
     return oGetLcbExceptions;
   if (opcode == 12)
     return oGetCurlLatencyStats;
+  if (opcode == 13)
+    return oInsight;
   return V8_Worker_Opcode_Unknown;
 }
 

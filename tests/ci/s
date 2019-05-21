@@ -1,7 +1,0 @@
-
-
-github.com/couchbase/eventing/tests/functional_tests
-TestN1QLLabelledBreak
-TestN1QLNestedForLoop
-TestN1QLThrowStatement
-TestN1QLUnlabelledBreak

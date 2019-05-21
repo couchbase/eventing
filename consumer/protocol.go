@@ -47,14 +47,15 @@ const (
 	v8WorkerInit
 	v8WorkerLoad
 	v8WorkerTerminate
-	v8WorkerSourceMap
-	v8WorkerHandlerCode
+	v8WorkerUnused1
+	v8WorkerUnused2
 	v8WorkerLatencyStats
 	v8WorkerFailureStats
 	v8WorkerExecutionStats
 	v8WorkerCompile
 	v8WorkerLcbExceptions
 	v8WorkerCurlLatencyStats
+	v8WorkerInsight
 )
 
 const (
@@ -82,8 +83,8 @@ const (
 
 const (
 	respV8WorkerConfigOpcode int8 = iota
-	sourceMap
-	handlerCode
+	Unused3
+	Unused4
 	appLogMessage
 	sysLogMessage
 	latencyStats
@@ -93,6 +94,7 @@ const (
 	queueSize
 	lcbExceptions
 	curlLatencyStats
+	insight
 )
 
 const (
@@ -377,10 +379,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 	switch msgType {
 	case respV8WorkerConfig:
 		switch opcode {
-		case sourceMap:
-			c.sourceMap = msg
-		case handlerCode:
-			c.handlerCode = msg
+
 		case latencyStats:
 			c.workerRespMainLoopTs.Store(time.Now())
 
@@ -402,6 +401,17 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 			c.producer.AppendCurlLatencyStats(deltas)
+
+		case insight:
+			c.workerRespMainLoopTs.Store(time.Now())
+			logging.Debugf("%s [%s:%s:%d] Received insight: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
+			insight := common.NewInsight()
+			err := json.Unmarshal([]byte(msg), insight)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal insight data, msg: %v err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+			c.insight <- insight
 
 		case failureStats:
 			c.workerRespMainLoopTs.Store(time.Now())

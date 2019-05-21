@@ -117,6 +117,4 @@ func init() {
 		5, 1, 30, 1000, false)
 	c.sendInitV8Worker(payload, false, pBuilder)
 	c.sendLoadV8Worker(appCode, false)
-	c.sendGetSourceMap(false)
-	c.sendGetHandlerCode(false)
 }

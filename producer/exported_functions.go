@@ -46,6 +46,18 @@ func (p *Producer) GetCurlLatencyStats() common.StatsData {
 	return p.curlLatencyStats.Get()
 }
 
+func (p *Producer) GetInsight() *common.Insight {
+	logPrefix := "Producer::GetInsight"
+	wrapper := common.NewInsight()
+	for _, c := range p.getConsumers() {
+		if insight := c.GetInsight(); c != nil {
+			wrapper.Accumulate(insight)
+		}
+	}
+	logging.Debugf("%s [%s:%d] Producer insight is %V", logPrefix, p.appName, p.LenRunningConsumers(), wrapper)
+	return wrapper
+}
+
 // GetExecutionStats returns execution stats aggregated from Eventing.Consumer instances
 func (p *Producer) GetExecutionStats() map[string]interface{} {
 	executionStats := make(map[string]interface{})
@@ -134,37 +146,9 @@ func (p *Producer) GetEventProcessingStats() map[string]uint64 {
 	return aggStats
 }
 
-// GetHandlerCode returns handler code to assist V8 Debugger
-func (p *Producer) GetHandlerCode() string {
-	logPrefix := "Producer::GetHandlerCode"
-
-	p.runningConsumersRWMutex.RLock()
-	defer p.runningConsumersRWMutex.RUnlock()
-
-	if len(p.runningConsumers) > 0 {
-		return p.runningConsumers[0].GetHandlerCode()
-	}
-	logging.Errorf("%s [%s:%d] No active Eventing.Consumer instances running", logPrefix, p.appName, p.LenRunningConsumers())
-	return ""
-}
-
 // GetNsServerPort return rest port for ns_server
 func (p *Producer) GetNsServerPort() string {
 	return p.nsServerPort
-}
-
-// GetSourceMap return source map to assist V8 Debugger
-func (p *Producer) GetSourceMap() string {
-	logPrefix := "Producer::GetSourceMap"
-
-	p.runningConsumersRWMutex.RLock()
-	defer p.runningConsumersRWMutex.RUnlock()
-
-	if len(p.runningConsumers) > 0 {
-		return p.runningConsumers[0].GetSourceMap()
-	}
-	logging.Errorf("%s [%s:%d] No active Eventing.Consumer instances running", logPrefix, p.appName, p.LenRunningConsumers())
-	return ""
 }
 
 // IsEventingNodeAlive verifies if a hostPortAddr combination is an active eventing node
