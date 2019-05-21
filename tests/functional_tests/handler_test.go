@@ -189,7 +189,7 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 		dumpStats()
 		log.Println("Undeploying app:", handler)
 		setSettings(functionName, false, false, &commonSettings{})
-		waitForUndeployToFinish(handler)
+		waitForUndeployToFinish(functionName)
 		checkIfProcessRunning("eventing-con")
 		bucketFlush("default")
 		bucketFlush("hello-world")
@@ -411,7 +411,7 @@ func TestDeployUndeployLoopTimer(t *testing.T) {
 		dumpStats()
 		log.Println("Undeploying app:", handler)
 		setSettings(functionName, false, false, &commonSettings{})
-		waitForUndeployToFinish(handler)
+		waitForUndeployToFinish(functionName)
 		checkIfProcessRunning("eventing-con")
 		bucketFlush("default")
 		bucketFlush("hello-world")
@@ -845,7 +845,7 @@ func TestEventProcessingPostBucketFlush(t *testing.T) {
 
 	dumpStats()
 	setSettings(functionName, false, false, &commonSettings{})
-	waitForUndeployToFinish(handler)
+	waitForUndeployToFinish(functionName)
 	checkIfProcessRunning("eventing-con")
 	flushFunctionAndBucket(functionName)
 }
@@ -864,7 +864,7 @@ func TestMetaBucketDelete(t *testing.T) {
 	deleteBucket(metaBucket)
 	log.Println("Deleted metadata bucket:", metaBucket)
 
-	waitForUndeployToFinish(handler)
+	waitForUndeployToFinish(functionName)
 
 	time.Sleep(10 * time.Second)
 	createBucket(metaBucket, bucketmemQuota)
@@ -886,7 +886,7 @@ func TestMetaBucketDeleteWithBootstrap(t *testing.T) {
 	log.Println("Deleted metadata bucket:", metaBucket)
 
 	time.Sleep(10 * time.Second)
-	waitForUndeployToFinish(handler)
+	waitForUndeployToFinish(functionName)
 
 	time.Sleep(10 * time.Second)
 	createBucket(metaBucket, bucketmemQuota)
@@ -907,7 +907,7 @@ func TestSourceBucketDelete(t *testing.T) {
 	deleteBucket(srcBucket)
 	log.Println("Deleted source bucket:", srcBucket)
 
-	waitForUndeployToFinish(handler)
+	waitForUndeployToFinish(functionName)
 
 	time.Sleep(10 * time.Second)
 	createBucket(srcBucket, bucketmemQuota)
@@ -929,7 +929,7 @@ func TestSourceBucketDeleteWithBootstrap(t *testing.T) {
 	log.Println("Deleted source bucket:", srcBucket)
 
 	time.Sleep(10 * time.Second)
-	waitForUndeployToFinish(handler)
+	waitForUndeployToFinish(functionName)
 
 	time.Sleep(10 * time.Second)
 	createBucket(srcBucket, bucketmemQuota)
@@ -955,7 +955,7 @@ func TestSourceAndMetaBucketDeleteWithBootstrap(t *testing.T) {
 	log.Println("Deleted metadata bucket:", metaBucket)
 
 	time.Sleep(10 * time.Second)
-	waitForUndeployToFinish(handler)
+	waitForUndeployToFinish(functionName)
 
 	time.Sleep(10 * time.Second)
 	createBucket(srcBucket, bucketmemQuota)
@@ -978,10 +978,10 @@ func TestUndeployDuringBootstrap(t *testing.T) {
 	dumpStats()
 	setSettings(functionName, false, false, &commonSettings{})
 
-	bootstrapCheck(handler, true)  // Check for start of boostrapping phase
-	bootstrapCheck(handler, false) // Check for end of bootstrapping phase
+	bootstrapCheck(functionName, true)  // Check for start of boostrapping phase
+	bootstrapCheck(functionName, false) // Check for end of bootstrapping phase
 
-	waitForUndeployToFinish(handler)
+	waitForUndeployToFinish(functionName)
 	checkIfProcessRunning("eventing-con")
 	time.Sleep(20 * time.Second)
 
@@ -1009,7 +1009,7 @@ func TestDeleteBeforeUndeploy(t *testing.T) {
 		t.Error("Expected ERR_APP_DELETE_NOT_ALLOWED got", resp.Name)
 	}
 
-	waitForUndeployToFinish(handler)
+	waitForUndeployToFinish(functionName)
 	flushFunctionAndBucket(functionName)
 }
 
@@ -1026,7 +1026,7 @@ func TestUndeployWhenTimersAreFired(t *testing.T) {
 
 	time.Sleep(30 * time.Second)
 	setSettings(functionName, false, false, &commonSettings{})
-	waitForUndeployToFinish(handler)
+	waitForUndeployToFinish(functionName)
 	checkIfProcessRunning("eventing-con")
 
 	time.Sleep(100 * time.Second)
@@ -1067,7 +1067,7 @@ func TestUndeployWithKVFailover(t *testing.T) {
 	time.Sleep(60 * time.Second)
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
-	waitForUndeployToFinish(handler)
+	waitForUndeployToFinish(functionName)
 
 	dumpStats()
 	flushFunctionAndBucket(functionName)
@@ -1175,7 +1175,7 @@ func TestUndeployBackdoorDuringBootstrap(t *testing.T) {
 	setRetryCounter(functionName)
 
 	time.Sleep(60 * time.Second)
-	waitForUndeployToFinish(handler)
+	waitForUndeployToFinish(functionName)
 	dumpStats()
 	resp, _ := deleteFunction(functionName)
 	if resp.httpResponseCode != 200 {

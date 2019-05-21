@@ -324,11 +324,24 @@ func (c *Consumer) processEvents() {
 				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
 				c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
-				lastSeqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_read_seq_no").(uint64)
-				c.vbProcessingStats.updateVbStat(e.VBucket, "seq_no_at_stream_end", lastSeqNo)
+				lastReadSeqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_read_seq_no").(uint64)
+				c.vbProcessingStats.updateVbStat(e.VBucket, "seq_no_at_stream_end", lastReadSeqNo)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
 
-				c.sendVbFilterData(e.VBucket, lastSeqNo, false)
+				last_start_seqno, ok := c.vbStreamRequested[e.VBucket] // we expect an entry in vbStreamRequested for the vb
+				if !ok {
+					// This is unexpected. There must be an entry in vbStreamRequested for e.VBucket
+					logging.Infof("Unexpected Entry missing in vbStreamRequested for vb: %d, lastReadSeqNo: %d ", e.VBucket, lastReadSeqNo)
+					c.sendVbFilterData(e.VBucket, lastReadSeqNo, false)
+				} else if last_start_seqno < lastReadSeqNo { // send filter msg only if we streamed some mutations
+					c.sendVbFilterData(e.VBucket, lastReadSeqNo, false)
+				} else if last_start_seqno == lastReadSeqNo { // got STREAMEND without even streaming a single mutation
+					logging.Infof("STREAMEND without streaming any mutation last_start_seqno: %d", last_start_seqno)
+					c.handleStreamEnd(e.VBucket, lastReadSeqNo)
+				} else {
+					logging.Infof("Unexpected last_start_seqno: %d > lastReadSeqNo: %d ", last_start_seqno, lastReadSeqNo)
+					c.handleStreamEnd(e.VBucket, lastReadSeqNo) // using lastReadSeqNo to restart stream as it's lesser
+				}
 
 			default:
 			}
@@ -341,96 +354,7 @@ func (c *Consumer) processEvents() {
 			logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d received on filterDataCh",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket, e.SeqNo)
 
-			c.vbsStreamRRWMutex.Lock()
-			if _, ok := c.vbStreamRequested[e.Vbucket]; ok {
-				logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket)
-				delete(c.vbStreamRequested, e.Vbucket)
-			}
-			c.vbsStreamRRWMutex.Unlock()
-
-			c.inflightDcpStreamsRWMutex.Lock()
-			if _, exists := c.inflightDcpStreams[e.Vbucket]; exists {
-				logging.Infof("%s [%s:%s:%d] vb: %d purging entry from inflightDcpStreams",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket)
-				delete(c.inflightDcpStreams, e.Vbucket)
-			}
-			c.inflightDcpStreamsRWMutex.Unlock()
-
-			vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.Vbucket)
-
-			seqNo := c.vbProcessingStats.getVbStat(e.Vbucket, "last_read_seq_no").(uint64)
-
-			entry := OwnershipEntry{
-				AssignedWorker: c.ConsumerName(),
-				CurrentVBOwner: c.HostPortAddr(),
-				Operation:      dcpStreamStopped,
-				SeqNo:          seqNo,
-				Timestamp:      time.Now().String(),
-			}
-
-			err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySECallback,
-				c, c.producer.AddMetadataPrefix(vbKey), &entry)
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-				return
-			}
-
-			c.filterVbEventsRWMutex.Lock()
-			delete(c.filterVbEvents, e.Vbucket)
-			c.filterVbEventsRWMutex.Unlock()
-
-			var vbBlob vbucketKVBlob
-			var cas gocb.Cas
-			c.vbProcessingStats.updateVbStat(e.Vbucket, "last_processed_seq_no", e.SeqNo)
-
-			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-				c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-				return
-			}
-
-			vbBlob.LastSeqNoProcessed = e.SeqNo
-			err = c.updateCheckpoint(vbKey, e.Vbucket, &vbBlob)
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-				return
-			}
-
-			c.vbProcessingStats.updateVbStat(e.Vbucket, "assigned_worker", "")
-			c.vbProcessingStats.updateVbStat(e.Vbucket, "current_vb_owner", "")
-			c.vbProcessingStats.updateVbStat(e.Vbucket, "dcp_stream_status", dcpStreamStopped)
-			c.vbProcessingStats.updateVbStat(e.Vbucket, "node_uuid", "")
-			c.vbProcessingStats.updateVbStat(e.Vbucket, "dcp_stream_requested_worker", "")
-			c.vbProcessingStats.updateVbStat(e.Vbucket, "vb_filter_ack_received", true)
-
-			if c.checkIfCurrentConsumerShouldOwnVb(e.Vbucket) {
-				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND, needs to be reclaimed",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket)
-
-				vbFlog := &vbFlogEntry{seqNo: e.SeqNo, signalStreamEnd: true, vb: e.Vbucket}
-				logging.Infof("%s [%s:%s:%d] vb: %d STREAMEND Inserting entry: %#v to vbFlogChan",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket, vbFlog)
-				c.vbFlogChan <- vbFlog
-
-				err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-					c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
-				if err == common.ErrRetryTimeout {
-					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return
-				}
-
-				err = c.updateCheckpoint(vbKey, e.Vbucket, &vbBlob)
-				if err == common.ErrRetryTimeout {
-					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return
-				}
-
-				c.Lock()
-				c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, e.Vbucket)
-				c.Unlock()
-			}
+			c.handleStreamEnd(e.Vbucket, e.SeqNo)
 
 		case <-c.statsTicker.C:
 
@@ -958,7 +882,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 
 	c.vbsStreamRRWMutex.Lock()
 	if _, ok := c.vbStreamRequested[vb]; !ok {
-		c.vbStreamRequested[vb] = struct{}{}
+		c.vbStreamRequested[vb] = start
 		logging.Infof("%s [%s:%s:%d] vb: %v Going to make DcpRequestStream call",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	} else {
@@ -1350,5 +1274,100 @@ func (c *Consumer) processReqStreamMessages() {
 			logging.Infof("%s [%s:%s:%d] Exiting streamReq processing routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
+	}
+}
+
+func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) {
+	logPrefix := "Consumer::handleStreamEnd"
+
+	c.vbsStreamRRWMutex.Lock()
+	if _, ok := c.vbStreamRequested[vBucket]; ok {
+		logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vBucket)
+		delete(c.vbStreamRequested, vBucket)
+	}
+	c.vbsStreamRRWMutex.Unlock()
+
+	c.inflightDcpStreamsRWMutex.Lock()
+	if _, exists := c.inflightDcpStreams[vBucket]; exists {
+		logging.Infof("%s [%s:%s:%d] vb: %d purging entry from inflightDcpStreams",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vBucket)
+		delete(c.inflightDcpStreams, vBucket)
+	}
+	c.inflightDcpStreamsRWMutex.Unlock()
+
+	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vBucket)
+
+	seqNo := c.vbProcessingStats.getVbStat(vBucket, "last_read_seq_no").(uint64)
+
+	entry := OwnershipEntry{
+		AssignedWorker: c.ConsumerName(),
+		CurrentVBOwner: c.HostPortAddr(),
+		Operation:      dcpStreamStopped,
+		SeqNo:          seqNo,
+		Timestamp:      time.Now().String(),
+	}
+
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySECallback,
+		c, c.producer.AddMetadataPrefix(vbKey), &entry)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
+
+	c.filterVbEventsRWMutex.Lock()
+	delete(c.filterVbEvents, vBucket)
+	c.filterVbEventsRWMutex.Unlock()
+
+	var vbBlob vbucketKVBlob
+	var cas gocb.Cas
+	c.vbProcessingStats.updateVbStat(vBucket, "last_processed_seq_no", last_processed_seqno)
+
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+		c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
+
+	vbBlob.LastSeqNoProcessed = last_processed_seqno
+	err = c.updateCheckpoint(vbKey, vBucket, &vbBlob)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return
+	}
+
+	c.vbProcessingStats.updateVbStat(vBucket, "assigned_worker", "")
+	c.vbProcessingStats.updateVbStat(vBucket, "current_vb_owner", "")
+	c.vbProcessingStats.updateVbStat(vBucket, "dcp_stream_status", dcpStreamStopped)
+	c.vbProcessingStats.updateVbStat(vBucket, "node_uuid", "")
+	c.vbProcessingStats.updateVbStat(vBucket, "dcp_stream_requested_worker", "")
+	c.vbProcessingStats.updateVbStat(vBucket, "vb_filter_ack_received", true)
+
+	if c.checkIfCurrentConsumerShouldOwnVb(vBucket) {
+		logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND, needs to be reclaimed",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vBucket)
+
+		vbFlog := &vbFlogEntry{seqNo: last_processed_seqno, signalStreamEnd: true, vb: vBucket}
+		logging.Infof("%s [%s:%s:%d] vb: %d STREAMEND Inserting entry: %#v to vbFlogChan",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vBucket, vbFlog)
+		c.vbFlogChan <- vbFlog
+
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+			c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
+
+		err = c.updateCheckpoint(vbKey, vBucket, &vbBlob)
+		if err == common.ErrRetryTimeout {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
+
+		c.Lock()
+		c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vBucket)
+		c.Unlock()
 	}
 }
