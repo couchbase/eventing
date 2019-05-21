@@ -345,8 +345,9 @@ func (c *Consumer) processEvents() {
 				c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
 
 				last_start_seqno, ok := c.vbStreamRequested[e.VBucket] // we expect an entry in vbStreamRequested for the vb
-				if !ok {                                               // This is unexpected. There must be an entry in vbStreamRequested for e.VBucket
-					logging.Infof("Unexpected Entry missing in vbStreamRequested for vb: %d > lastReadSeqNo: %d ", e.VBucket, lastReadSeqNo)
+				if !ok {
+					// This is unexpected. There must be an entry in vbStreamRequested for e.VBucket
+					logging.Infof("Unexpected Entry missing in vbStreamRequested for vb: %d, lastReadSeqNo: %d ", e.VBucket, lastReadSeqNo)
 					c.sendVbFilterData(e.VBucket, lastReadSeqNo, false)
 				} else if last_start_seqno < lastReadSeqNo { // send filter msg only if we streamed some mutations
 					c.sendVbFilterData(e.VBucket, lastReadSeqNo, false)
