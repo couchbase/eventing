@@ -98,7 +98,7 @@
   </div>
 </div>
 <div ng-if="!summaryCtrl.isEventingRunning">
-  <p>The eventing interface is only available on Couchbase nodes running the eventing service.</p>
+  <p>The eventing interface is only available on Couchbase clusters running the eventing service.</p>
   <p ng-if="summaryCtrl.serverNodes.length === 0" class="error">No Eventing nodes were found on this cluster.</p>
   <div ng-if="summaryCtrl.serverNodes.length">
     <p>The eventing service was found on the following nodes:</p>
