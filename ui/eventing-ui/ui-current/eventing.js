@@ -546,6 +546,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 return appModel.depcfg.source_bucket === binding.name;
             };
 
+            self.executionTimeoutCheck = function(appModel) {
+                return appModel.settings.execution_timeout > 60;
+            };
+
             self.isFormInvalid = function() {
                 return FormValidationService.isFormInvalid(self, $scope.bindings, $scope.formCtrl.createAppForm.source_bucket.$viewValue);
             };
@@ -1370,7 +1374,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         form.worker_count.$error.max ||
                         form.execution_timeout.$error.required ||
                         form.execution_timeout.$error.min ||
-                        form.execution_timeout.$error.max ||
                         formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
                         formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
                         form.appname.$error.appnameInvalid ||
