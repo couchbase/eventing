@@ -357,12 +357,21 @@ bool N1QL::ExecQueryImpl(v8::Isolate *isolate, lcb_t &instance,
 
   lcb_n1p_mkcmd(n1ql_params, &cmd);
 
-  auto err = lcb_n1ql_query(instance, nullptr, &cmd);
+  auto timeout = UnwrapData(isolate)->n1ql_timeout;
+  auto err = lcb_cntl(instance, LCB_CNTL_SET, LCB_CNTL_N1QL_TIMEOUT, &timeout);
+  if (err != LCB_SUCCESS) {
+    auto js_exception = UnwrapData(isolate)->js_exception;
+    js_exception->ThrowN1QLError("Unable to set timeout for query");
+    return false;
+  }
+
+  err = lcb_n1ql_query(instance, nullptr, &cmd);
   if (err != LCB_SUCCESS) {
     // for example: when there is no query node
     ConnectionPool::Error(instance, "N1QL: Unable to schedule N1QL query", err);
     auto js_exception = UnwrapData(isolate)->js_exception;
     js_exception->ThrowN1QLError("N1QL: Unable to schedule N1QL query");
+    return false;
   }
 
   lcb_n1p_free(n1ql_params);

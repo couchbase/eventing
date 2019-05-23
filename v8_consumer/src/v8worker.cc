@@ -208,6 +208,14 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   data_.utils = new Utils(isolate_, context);
   data_.timer = new Timer(isolate_, context);
   data_.n1ql_codex = new N1QLCodex;
+  // execution_timeout is in seconds
+  // n1ql_timeout is expected in micro seconds
+  // Setting a lower timeout to allow adequate time for the exception
+  // to get thrown
+  data_.n1ql_timeout =
+      static_cast<lcb_U32>(h_config->execution_timeout < 3
+                               ? 500000
+                               : (h_config->execution_timeout - 2) * 1000000);
   execute_start_time_ = Time::now();
 
   deployment_config *config = ParseDeployment(h_config->dep_cfg.c_str());

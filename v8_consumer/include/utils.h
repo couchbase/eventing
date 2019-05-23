@@ -16,6 +16,7 @@
 #include <curl/curl.h>
 #include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
+#include <libcouchbase/sysdefs.h>
 #include <libplatform/libplatform.h>
 #include <limits>
 #include <sstream>
@@ -49,6 +50,8 @@ class CustomError;
 
 // Struct for storing isolate data
 struct Data {
+  lcb_U32 n1ql_timeout{0};
+
   N1QLCodex *n1ql_codex;
   CURL *curl_handle;
   N1QL *n1ql_handle;
