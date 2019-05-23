@@ -14,9 +14,11 @@ export PATH=$PATH:$GOROOT/bin
 echo "Building Eventing..."
 rm -rf "$top/build/gotmp"
 mkdir -p "$top/build/gotmp"
-cd $top/goproj/src/github.com/couchbase/eventing/cmd/producer
 set -e
+cd $top/goproj/src/github.com/couchbase/eventing/cmd/producer
 go build -ldflags '-s -extldflags "-Wl,-rpath,@executable_path/../lib"' -tags 'enterprise' -o $top/install/bin/eventing-producer
-killall eventing-producer
+killall eventing-producer || true
+cd $top/goproj/src/github.com/couchbase/eventing/cmd/cbevent
+go build -ldflags '-s -extldflags "-Wl,-rpath,@executable_path/../lib"' -tags 'enterprise' -o $top/install/bin/cbevent
 echo "Done"
 popd

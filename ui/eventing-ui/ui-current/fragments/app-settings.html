@@ -163,8 +163,7 @@
                   name="execution_timeout"
                   ng-model="appModel.settings.execution_timeout"
                   ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  min="1"
-                  max="60">
+                  min="1">
           <div
                   class="error field-error"
                   ng-show="formCtrl.createAppForm.execution_timeout.$error.min && formCtrl.createAppForm.execution_timeout.$dirty">
@@ -177,8 +176,8 @@
           </div>
           <div
                   class="error field-error"
-                  ng-show="formCtrl.createAppForm.execution_timeout.$error.max && formCtrl.createAppForm.execution_timeout.$dirty">
-            Script timeout must be less than 60 seconds.
+                  ng-show="formCtrl.createAppForm.execution_timeout.$dirty && formCtrl.executionTimeoutCheck(appModel)">
+            Warning: Configured script timeout seems large. It may slowdown mutation processing.
           </div>
         </div>
       </div>
