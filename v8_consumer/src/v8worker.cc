@@ -115,6 +115,15 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.n1ql_codex = new N1QLCodex;
   data_.custom_error = new CustomError(isolate_, context);
   data_.curl_codex = new CurlCodex;
+
+  // execution_timeout is in seconds
+  // n1ql_timeout is expected in micro seconds
+  // Setting a lower timeout to allow adequate time for the exception
+  // to get thrown
+  data_.n1ql_timeout =
+      static_cast<lcb_U32>(h_config->execution_timeout < 3
+                               ? 500000
+                               : (h_config->execution_timeout - 2) * 1000000);
 }
 
 void V8Worker::InitializeCurlBindingValues(
