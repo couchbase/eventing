@@ -12,6 +12,7 @@
 #ifndef ISOLATE_DATA_H
 #define ISOLATE_DATA_H
 
+#include <libcouchbase/sysdefs.h>
 #include <v8.h>
 
 struct N1QLCodex;
@@ -32,12 +33,14 @@ struct CurlCodex;
 // Struct for storing isolate data
 struct IsolateData {
   IsolateData()
-      : n1ql_handle(nullptr), v8worker(nullptr), js_exception(nullptr),
-        comm(nullptr), transpiler(nullptr), utils(nullptr), timer(nullptr),
-        custom_error(nullptr), curl_factory(nullptr), req_builder(nullptr),
+      : n1ql_codex(nullptr), n1ql_handle(nullptr), v8worker(nullptr),
+        js_exception(nullptr), comm(nullptr), transpiler(nullptr),
+        utils(nullptr), timer(nullptr), custom_error(nullptr),
+        curl_codex(nullptr), curl_factory(nullptr), req_builder(nullptr),
         resp_builder(nullptr) {}
 
-  static const uint32_t index = 0;
+  static const uint32_t index{0};
+  lcb_U32 n1ql_timeout{0};
 
   N1QLCodex *n1ql_codex;
   N1QL *n1ql_handle;
