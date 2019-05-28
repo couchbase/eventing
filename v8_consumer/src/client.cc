@@ -679,44 +679,39 @@ void AppWorker::RouteMessageWithResponse(header_t *parsed_header,
     }
     break;
   case eFilter:
-    switch (getFilterOpcode(worker_msg->header.opcode)) {
-    case oVbFilter: {
-      worker_index = partition_thr_map_[worker_msg->header.partition];
-      auto worker = workers_[worker_index];
-      if (worker != nullptr) {
+    switch (getFilterOpcode(parsed_header->opcode)) {
+    case oVbFilter:
+      worker_index = partition_thr_map_[parsed_header->partition];
+      if (workers_[worker_index] != nullptr) {
+        workers_[worker_index]->UpdateVbFilter(parsed_header->metadata);
         LOG(logInfo) << "Received filter event from Go "
-                     << worker_msg->header.metadata << std::endl;
-        int vb_no = 0, skip_ack = 0;
-        uint64_t filter_seq_no = 0;
+                     << parsed_header->metadata << std::endl;
+        int vb_no = 0;
+        int64_t seq_no = 0;
+        int skip_ack = 0;
         if (kSuccess ==
-            worker->ParseMetadataWithAck(worker_msg->header.metadata, vb_no,
-                                         filter_seq_no, skip_ack, true)) {
-          worker->FilterLock();
-          auto last_processed_seq_no = worker->GetBucketopsSeqno(vb_no);
-          if (last_processed_seq_no < filter_seq_no) {
-            worker->UpdateVbFilter(vb_no, filter_seq_no);
-          }
-          worker->FilterUnlock();
-          SendFilterAck(oVbFilter, mFilterAck, vb_no, last_processed_seq_no,
+            workers_[worker_index]->ParseMetadataWithAck(
+                parsed_header->metadata, vb_no, seq_no, skip_ack, true)) {
+          auto bucketops_seqno =
+              workers_[worker_index]->GetBucketopsSeqno(vb_no);
+          SendFilterAck(oVbFilter, mFilterAck, vb_no, bucketops_seqno,
                         skip_ack);
         }
       } else {
         LOG(logError) << "Filter event lost: worker " << worker_index
                       << " is null" << std::endl;
       }
-    } break;
+      break;
     case oProcessedSeqNo:
       worker_index = partition_thr_map_[parsed_header->partition];
       if (workers_[worker_index] != nullptr) {
         LOG(logInfo) << "Received update processed seq_no event from Go "
                      << parsed_header->metadata << std::endl;
         int vb_no = 0;
-        uint64_t seq_no = 0;
+        int64_t seq_no = 0;
         if (kSuccess == workers_[worker_index]->ParseMetadata(
-                            worker_msg->header.metadata, vb_no, seq_no)) {
-          workers_[worker_index]->FilterLock();
+                            parsed_header->metadata, vb_no, seq_no)) {
           workers_[worker_index]->UpdateBucketopsSeqno(vb_no, seq_no);
-          workers_[worker_index]->FilterUnlock();
         }
       }
       break;
