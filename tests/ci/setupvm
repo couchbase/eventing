@@ -1,9 +1,11 @@
 #!/bin/bash -xv
 set -e
+rm -f ~/*.good
+rm -f ~/gerrit.list
 sudo rm -rf /var/www/lost+found
 sudo rm -rf /opt/build/lost+found
-sudo cp -r ~admin/xvdb/.htaccess /var/www/
-sudo cp -r ~admin/xvdb/var/www/* /var/www/
+sudo cp -r ~/xvdb/.htaccess /var/www/
+sudo cp -r ~/xvdb/var/www/* /var/www/
 sudo chown -r buildbot.buildbot /var/www
 sudo chown -r buildbot.buildbot /opt/build
 if grep -qs CCACHE_DIR ~/.profile; then
