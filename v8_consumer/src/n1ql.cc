@@ -277,8 +277,6 @@ void N1QL::HandleRowCallbackFailure(const lcb_RESPN1QL *resp,
   n1ql_op_exception_count++;
   const auto isolate_data = UnwrapData(isolate);
   auto w = isolate_data->v8worker;
-  w->AddLcbException(static_cast<int>(resp->rc));
-  n1ql_op_exception_count++;
   auto js_exception = isolate_data->js_exception;
   auto codex = isolate_data->n1ql_codex;
 
