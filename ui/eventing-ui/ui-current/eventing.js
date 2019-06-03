@@ -507,9 +507,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             };
         }
     ])
-    .controller('EventingSettingsCtrl', ['$scope', 'ApplicationService', 'config',
-        function($scope, ApplicationService, config) {
-            var self = this;
+    .controller('EventingSettingsCtrl', ['$scope', '$rootScope', '$stateParams', 'ApplicationService', 'config',
+        function($scope, $rootScope, $stateParams, ApplicationService, config) {
+            var self = this,
+                app = ApplicationService.local.getAppByName($stateParams.appName);
             config = config.data;
             self.enableDebugger = config.enable_debugger;
 
@@ -517,6 +518,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 ApplicationService.public.updateConfig({
                     enable_debugger: self.enableDebugger
                 });
+                $rootScope.debugDisable = !(app.settings.deployment_status && app.settings.processing_status) || !self.enableDebugger;
                 closeDialog('ok');
             };
         }
@@ -682,8 +684,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for editing handler code.
-    .controller('HandlerCtrl', ['$q', '$uibModal', '$timeout', '$state', '$scope', '$stateParams', 'ApplicationService',
-        function($q, $uibModal, $timeout, $state, $scope, $stateParams, ApplicationService) {
+    .controller('HandlerCtrl', ['$q', '$uibModal', '$timeout', '$state', '$scope', '$rootScope', '$stateParams', 'ApplicationService',
+        function($q, $uibModal, $timeout, $state, $scope, $rootScope, $stateParams, ApplicationService) {
             var self = this,
                 isDebugOn = false,
                 debugScope = $scope.$new(true),
@@ -691,13 +693,24 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             debugScope.appName = app.appname;
 
+            ApplicationService.public.getConfig()
+            .then(function(result) {
+                if(!result.data.enable_debugger) {
+                    $rootScope.debugDisable = true;
+                } else {
+                    $rootScope.debugDisable = !(app.settings.deployment_status && app.settings.processing_status);
+                }
+            })
+            .catch(function(err) {
+                console.log(err);
+            });
+
             self.handler = app.appcode;
             self.pristineHandler = app.appcode;
             self.debugToolTip = 'Displays a URL that connects the Chrome Dev-Tools with the application handler. Code must be deployed in order to debug.';
             self.disableCancelButton = true;
             self.disableSaveButton = true;
             self.editorDisabled = app.settings.deployment_status && app.settings.processing_status;
-            self.debugDisabled = !(app.settings.deployment_status && app.settings.processing_status);
 
             $state.current.data.title = app.appname;
 
