@@ -4,3 +4,5 @@ TestFlexReset2
 TestN1QLLabelledBreak
 TestN1QLNestedForLoop
 TestUndeployWhenTimersAreFired
+TestCRLF
+TestOnUpdateN1QLOp
