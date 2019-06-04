@@ -164,7 +164,7 @@ cmake -D CMAKE_INSTALL_PREFIX=$WORKSPACE/install \
 test $? -eq 0 || error_exit "CMake build"
 
 cd $WORKSPACE/build/tlm/deps/breakpad.exploded
-if grep -qsv "0.1.0" VERSION.txt; then
+if grep -qsvF "0.1.0" VERSION.txt; then
   echo "Patching breakpad"
   for pf in ~/bin/breakpad.debian9.*.patch; do patch -p1 < $pf; done
 fi
