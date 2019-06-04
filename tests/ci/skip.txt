@@ -1,8 +1,0 @@
-github.com/couchbase/eventing/tests/functional_tests
-TestFlexReset1
-TestFlexReset2
-TestN1QLLabelledBreak
-TestN1QLNestedForLoop
-TestUndeployWhenTimersAreFired
-TestCRLF
-TestOnUpdateN1QLOp
