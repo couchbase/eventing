@@ -469,7 +469,12 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             // Callback for importing application.
             self.importConfig = function() {
-                function handleFileSelect() {
+                function handleFileSelect(evt) {
+                    var file = evt.target.files;
+                    if (file[0].type != 'application/json') {
+                        ApplicationService.server.showErrorAlert('Imported file format is not JSON, please verify the file being imported');
+                        return;
+                    }
                     var reader = new FileReader();
                     reader.onloadend = function() {
                         try {
@@ -707,7 +712,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             self.handler = app.appcode;
             self.pristineHandler = app.appcode;
-            self.debugToolTip = 'Displays a URL that connects the Chrome Dev-Tools with the application handler. Code must be deployed in order to debug.';
+            self.debugToolTip = "Displays a URL that connects the Chrome Dev-Tools with the application handler. Code must be deployed and debugger must be enabled in the settings in order to debug";
             self.disableCancelButton = true;
             self.disableSaveButton = true;
             self.editorDisabled = app.settings.deployment_status && app.settings.processing_status;
