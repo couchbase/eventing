@@ -1381,6 +1381,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     if (form.appname.$viewValue && form.appname.$viewValue !== '') {
                         form.appname.$error.appExists = form.appname.$viewValue in formCtrl.savedApps;
                         form.appname.$error.appnameInvalid = !isValidApplicationName(form.appname.$viewValue);
+                        form.appname.$error.bindingsValid = !bindingsValid;
                     }
 
                     form.appname.$error.required = form.appname.$viewValue === '';
