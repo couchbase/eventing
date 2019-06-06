@@ -197,8 +197,11 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
     asprintf(&row_str, "%.*s\n", static_cast<int>(resp->nrow), resp->row);
 #endif
 
+    auto row_val = v8::JSON::Parse(isolate, v8Str(isolate, row_str));
     v8::Local<v8::Value> args[1];
-    args[0] = v8::JSON::Parse(v8Str(isolate, row_str));
+    if (!row_val.ToLocal(&(args[0]))) {
+      args[0] = v8::Object::New(isolate);
+    }
 
     // Execute the function callback passed in JavaScript.
     auto callback = q_handler.iter_handler->callback;
@@ -424,8 +427,8 @@ ExtractNamedParams(const v8::FunctionCallbackInfo<v8::Value> &args) {
       return named_params;
     }
 
-    v8::String::Utf8Value key_utf8(key);
-    v8::String::Utf8Value val_utf8(value);
+    v8::String::Utf8Value key_utf8(isolate, key);
+    v8::String::Utf8Value val_utf8(isolate, value);
     named_params[*key_utf8] = *val_utf8;
   }
 
@@ -449,7 +452,7 @@ void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
       return;
     }
 
-    v8::String::Utf8Value query_string(query);
+    v8::String::Utf8Value query_string(isolate, query);
     auto named_params = ExtractNamedParams(args);
 
     // Callback function to execute.
@@ -530,7 +533,7 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
       return;
     }
 
-    v8::String::Utf8Value query_string(query);
+    v8::String::Utf8Value query_string(isolate, query);
     auto named_params = ExtractNamedParams(args);
 
     // Prepare data for query execution.
@@ -620,7 +623,8 @@ void GetReturnValueFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     auto args_value =
         ToLocal(args.This()->GetPrivate(context, args_private_key));
 
-    auto return_value = v8::String::Concat(code_value.As<v8::String>(),
+    auto return_value = v8::String::Concat(isolate,
+                                           code_value.As<v8::String>(),
                                            args_value.As<v8::String>());
     args.GetReturnValue().Set(return_value);
   } else {
@@ -739,7 +743,7 @@ std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
       auto scope_stack = stack.As<v8::Map>();
       auto top_value = ToLocal(scope_stack->Get(
           context, v8::Number::New(isolate, scope_stack->Size() - 1)));
-      v8::String::Utf8Value hash(top_value);
+      v8::String::Utf8Value hash(isolate, top_value);
       return *hash;
     } else {
       throw "N1QL: Scope stack not set";
@@ -789,7 +793,7 @@ std::string GetBaseHash(const v8::FunctionCallbackInfo<v8::Value> &args,
   if (exists) {
     auto key = v8::Private::ForApi(isolate, v8Str(isolate, "hash"));
     auto value = ToLocal(args.This()->GetPrivate(context, key));
-    v8::String::Utf8Value value_str(value);
+    v8::String::Utf8Value value_str(isolate, value);
     return *value_str;
   }
 

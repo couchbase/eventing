@@ -146,7 +146,9 @@ const char *ToCString(const v8::String::Utf8Value &value);
 
 std::string ConvertToISO8601(std::string timestamp);
 std::string GetTranspilerSrc();
-std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch);
+std::string ExceptionString(v8::Isolate *isolate,
+                            v8::Local<v8::Context> &context,
+                            v8::TryCatch *try_catch);
 
 std::vector<std::string> split(const std::string &s, char delimiter);
 

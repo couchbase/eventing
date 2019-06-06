@@ -30,6 +30,8 @@ extern std::atomic<int64_t> timer_callback_missing_counter;
 
 std::atomic<int64_t> uv_try_write_failure_counter = {0};
 
+std::string executable_img;
+
 static void alloc_buffer_main(uv_handle_t *handle, size_t suggested_size,
                               uv_buf_t *buf) {
   std::vector<char> *read_buffer =
@@ -439,7 +441,7 @@ void AppWorker::RouteMessageWithResponse(
 
       LOG(logDebug) << "Loading app:" << app_name_ << std::endl;
 
-      v8::V8::InitializeICUDefaultLocation("");
+      v8::V8::InitializeICUDefaultLocation(executable_img.c_str(), nullptr);
       platform = v8::platform::CreateDefaultPlatform();
       v8::V8::InitializePlatform(platform);
       v8::V8::Initialize();
@@ -1001,6 +1003,8 @@ int main(int argc, char **argv) {
         << std::endl;
     return 2;
   }
+
+  executable_img = argv[0];
 
   SetIPv6(std::string(argv[9]) == "ipv6");
 

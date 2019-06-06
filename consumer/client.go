@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 
 	"github.com/couchbase/eventing/logging"
@@ -32,8 +33,10 @@ func (c *client) Serve() {
 		return
 	}
 
+	executable_img := filepath.Join(filepath.Dir(os.Args[0]), "eventing-consumer")
+
 	c.cmd = exec.Command(
-		"eventing-consumer",
+		executable_img,
 		c.appName,
 		c.consumerHandle.ipcType,
 		c.tcpPort,

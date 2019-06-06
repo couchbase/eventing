@@ -368,7 +368,7 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
 
-  v8::String::Utf8Value utf8_key(name.As<v8::String>());
+  v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
 
   auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
@@ -559,7 +559,7 @@ void Bucket::BucketSetWithXattr(
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
   v8::HandleScope handle_scope(isolate);
-  v8::String::Utf8Value utf8_key(name.As<v8::String>());
+  v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
   auto value = JSONStringify(isolate, value_obj);
 
@@ -653,7 +653,7 @@ void Bucket::BucketSetWithoutXattr(
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
   v8::HandleScope handle_scope(isolate);
-  v8::String::Utf8Value utf8_key(name.As<v8::String>());
+  v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
   auto value = JSONStringify(isolate, value_obj);
 
@@ -707,7 +707,7 @@ void Bucket::BucketDeleteWithXattr(
     const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   auto isolate = info.GetIsolate();
   v8::HandleScope handle_scope(isolate);
-  v8::String::Utf8Value utf8_key(name.As<v8::String>());
+  v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
 
   auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
@@ -802,7 +802,7 @@ void Bucket::BucketDeleteWithoutXattr(
     const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   auto isolate = info.GetIsolate();
   v8::HandleScope handle_scope(isolate);
-  v8::String::Utf8Value utf8_key(name.As<v8::String>());
+  v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
 
   auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(

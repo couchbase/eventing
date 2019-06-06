@@ -146,7 +146,7 @@ std::string JSONStringify(v8::Isolate *isolate,
     return "";
   }
 
-  v8::String::Utf8Value utf8_result(v8obj_result);
+  v8::String::Utf8Value utf8_result(isolate, v8obj_result);
   return *utf8_result;
 }
 
@@ -181,7 +181,9 @@ std::string ConvertToISO8601(std::string timestamp) {
 }
 
 // Exception details will be appended to the first argument.
-std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch) {
+std::string ExceptionString(v8::Isolate *isolate,
+                            v8::Local<v8::Context> &context,
+                            v8::TryCatch *try_catch) {
   std::string out;
   char scratch[EXCEPTION_STR_SIZE]; // just some scratch space for sprintf
 
@@ -197,9 +199,10 @@ std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch) {
     out.append("\n");
   } else {
     // Print (filename):(line number)
-    v8::String::Utf8Value filename(message->GetScriptOrigin().ResourceName());
+    v8::String::Utf8Value filename(isolate,
+         message->GetScriptOrigin().ResourceName());
     const char *filename_string = ToCString(filename);
-    int linenum = message->GetLineNumber();
+    int linenum = message->GetLineNumber(context).FromMaybe(0);
 
     snprintf(scratch, EXCEPTION_STR_SIZE, "%i", linenum);
     out.append(filename_string);
@@ -208,9 +211,13 @@ std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch) {
     out.append("\n");
 
     // Print line of source code.
-    v8::String::Utf8Value sourceline(message->GetSourceLine());
-    const char *sourceline_string = ToCString(sourceline);
-
+    const char *sourceline_string = "(unknown)";
+    auto maybe_srcline = message->GetSourceLine(context);
+    v8::Local<v8::String> local_srcline;
+    if (TO_LOCAL(maybe_srcline, &local_srcline)) {
+      v8::String::Utf8Value sourceline_utf8(isolate, local_srcline);
+      sourceline_string = ToCString(sourceline_utf8);
+    }
     out.append(sourceline_string);
     out.append("\n");
 
@@ -224,10 +231,13 @@ std::string ExceptionString(v8::Isolate *isolate, v8::TryCatch *try_catch) {
       out.append("^");
     }
     out.append("\n");
-    v8::String::Utf8Value stack_trace(try_catch->StackTrace());
-    if (stack_trace.length() > 0) {
-      const char *stack_trace_string = ToCString(stack_trace);
-      out.append(stack_trace_string);
+
+    auto maybe_stack = try_catch->StackTrace(context);
+    v8::Local<v8::Value> local_stack;
+    if (TO_LOCAL(maybe_stack, &local_stack)) {
+      v8::String::Utf8Value stack_utf8(isolate, local_stack);
+      auto stack_string = ToCString(stack_utf8);
+      out.append(stack_string);
       out.append("\n");
     } else {
       out.append(exception_string);
@@ -383,7 +393,7 @@ std::string Utils::GetFunctionName(const v8::Local<v8::Value> &func_val) {
 std::string Utils::ToCPPString(const v8::Local<v8::Value> &str_val) {
   v8::HandleScope handle_scope(isolate_);
 
-  v8::String::Utf8Value utf8(str_val);
+  v8::String::Utf8Value utf8(isolate_, str_val);
   std::string str = *utf8;
   return str;
 }
@@ -481,7 +491,7 @@ UrlEncode Utils::UrlEncodeAsKeyValue(const v8::Local<v8::Value> &obj_val) {
     if (!TO_LOCAL(keys_arr->Get(context, i), &key_v8val)) {
       return {true, "Unable to read keys"};
     }
-    v8::String::Utf8Value key_utf8(key_v8val);
+    v8::String::Utf8Value key_utf8(isolate_, key_v8val);
 
     v8::Local<v8::Value> value_v8val;
     if (!TO_LOCAL(obj->Get(context, key_v8val), &value_v8val)) {
@@ -489,7 +499,7 @@ UrlEncode Utils::UrlEncodeAsKeyValue(const v8::Local<v8::Value> &obj_val) {
     }
     std::string value;
     if (value_v8val->IsString()) {
-      v8::String::Utf8Value value_utf8(value_v8val);
+      v8::String::Utf8Value value_utf8(isolate_, value_v8val);
       value = *value_utf8;
     } else {
       value = JSONStringify(isolate_, value_v8val);
@@ -569,7 +579,7 @@ UrlEncode Utils::UrlEncodeAny(const v8::Local<v8::Value> &val) {
     return utils->UrlEncodeAsKeyValue(val);
   }
 
-  v8::String::Utf8Value val_utf8(val);
+  v8::String::Utf8Value val_utf8(isolate_, val);
   return utils->UrlEncodeAsString(*val_utf8);
 }
 
@@ -621,7 +631,7 @@ void UrlEncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
       return;
     }
   } else {
-    v8::String::Utf8Value arg_utf8(args[0]);
+    v8::String::Utf8Value arg_utf8(isolate, args[0]);
     info = utils->UrlEncodeAsString(*arg_utf8);
     if (info.is_fatal) {
       js_exception->ThrowEventingError(info.msg);
@@ -648,7 +658,7 @@ void UrlDecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  v8::String::Utf8Value arg_utf8(args[0]);
+  v8::String::Utf8Value arg_utf8(isolate, args[0]);
   if (strchr(*arg_utf8, '=') == nullptr) {
     auto info = utils->UrlDecodeString(*arg_utf8);
     if (info.is_fatal) {
