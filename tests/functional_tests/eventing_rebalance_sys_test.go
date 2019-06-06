@@ -60,8 +60,8 @@ func TestRebalanceSystem(t *testing.T) {
 	time.Sleep(20 * time.Second)
 
 	// 4. Rebalance in Eventing node
-	addNodeFromRest("127.0.0.1:9001", "eventing")
-	addNodeFromRest("127.0.0.1:9003", "eventing")
+	addNodeFromRest("http://127.0.0.1:9001", "eventing")
+	addNodeFromRest("http://127.0.0.1:9003", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -80,7 +80,7 @@ func TestRebalanceSystem(t *testing.T) {
 	time.Sleep(60 * time.Second)
 
 	// 10. Rebalance out Eventing node
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -98,8 +98,8 @@ func TestRebalanceSystem(t *testing.T) {
 	time.Sleep(60 * time.Second)
 
 	// 16. Swap rebalance Eventing node
-	addNodeFromRest("127.0.0.1:9001", "eventing")
-	rebalanceFromRest([]string{"127.0.0.1:9003"})
+	addNodeFromRest("http://127.0.0.1:9001", "eventing")
+	rebalanceFromRest([]string{"http://127.0.0.1:9003"})
 	waitForRebalanceFinish()
 	metaStateDump()
 

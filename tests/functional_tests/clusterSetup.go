@@ -77,7 +77,7 @@ func addNode(hostname, role string) {
 
 	log.Printf("Adding node: %s role: %s to the cluster\n", hostname, role)
 
-	cmd := exec.Command(cbCliPath, "server-add", "-c", "127.0.0.1:9000", "-u", username,
+	cmd := exec.Command(cbCliPath, "server-add", "-c", "http://127.0.0.1:9000", "-u", username,
 		"-p", password, "--server-add-username", username, "--server-add-password", password,
 		"--services", role, "--server-add", hostname)
 
@@ -104,7 +104,7 @@ func rebalance() {
 
 	log.Println("Starting up rebalance")
 
-	cmd := exec.Command(cbCliPath, "rebalance", "-c", "127.0.0.1:9000", "-u", username, "-p", password)
+	cmd := exec.Command(cbCliPath, "rebalance", "-c", "http://127.0.0.1:9000", "-u", username, "-p", password)
 
 	err := cmd.Start()
 	if err != nil {
@@ -123,7 +123,7 @@ func rebalanceStop() {
 
 	log.Println("Stopping rebalance")
 
-	cmd := exec.Command(cbCliPath, "rebalance-stop", "-c", "127.0.0.1:9000", "-u", username,
+	cmd := exec.Command(cbCliPath, "rebalance-stop", "-c", "http://127.0.0.1:9000", "-u", username,
 		"-p", password)
 
 	err := cmd.Start()
@@ -149,7 +149,7 @@ func removeNode(hostname string) {
 
 	log.Printf("Removing node: %s from the cluster\n", hostname)
 
-	cmd := exec.Command(cbCliPath, "rebalance", "-c", "127.0.0.1:9000", "-u", username,
+	cmd := exec.Command(cbCliPath, "rebalance", "-c", "http://127.0.0.1:9000", "-u", username,
 		"-p", password, "--server-remove", hostname)
 
 	err := cmd.Start()
@@ -175,7 +175,7 @@ func failover(hostname string) {
 
 	log.Println("Starting up failover")
 
-	cmd := exec.Command(cbCliPath, "failover", "-c", "127.0.0.1:9000", "-u", username, "-p", password, "--force", "--server-failover=", hostname)
+	cmd := exec.Command(cbCliPath, "failover", "-c", "http://127.0.0.1:9000", "-u", username, "-p", password, "--force", "--server-failover=", hostname)
 
 	err := cmd.Start()
 	if err != nil {
@@ -628,9 +628,9 @@ func condense(vbs []int) string {
 }
 
 func addAllNodesAtOnce(role string) {
-	addNodeFromRest("127.0.0.1:9001", role)
-	addNodeFromRest("127.0.0.1:9002", role)
-	addNodeFromRest("127.0.0.1:9003", role)
+	addNodeFromRest("http://127.0.0.1:9001", role)
+	addNodeFromRest("http://127.0.0.1:9002", role)
+	addNodeFromRest("http://127.0.0.1:9003", role)
 
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
@@ -638,38 +638,38 @@ func addAllNodesAtOnce(role string) {
 }
 
 func addAllNodesOneByOne(role string) {
-	addNodeFromRest("127.0.0.1:9001", role)
+	addNodeFromRest("http://127.0.0.1:9001", role)
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", role)
+	addNodeFromRest("http://127.0.0.1:9002", role)
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9003", role)
+	addNodeFromRest("http://127.0.0.1:9003", role)
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 }
 
 func removeAllNodesAtOnce() {
-	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002", "127.0.0.1:9003"})
+	rebalanceFromRest([]string{"http://127.0.0.1:9001", "http://127.0.0.1:9002", "http://127.0.0.1:9003"})
 	waitForRebalanceFinish()
 	metaStateDump()
 }
 
 func removeAllNodesOneByOne() {
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	rebalanceFromRest([]string{"http://127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"127.0.0.1:9003"})
+	rebalanceFromRest([]string{"http://127.0.0.1:9003"})
 	waitForRebalanceFinish()
 	metaStateDump()
 }

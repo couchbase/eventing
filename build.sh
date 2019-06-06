@@ -9,7 +9,7 @@ export GOPATH="$top/build/gotmp:$top/goproj:$top/godeps"
 export LD_LIBRARY_PATH="$top/install/lib"
 export C_INCLUDE_PATH="$top/install/platform/include:$top/install/include:$top/forestdb/include:$top/build/tlm/deps/curl.exploded/include:$top/sigar/include"
 export CGO_LDFLAGS="-L $top/install/lib"
-export PATH=$PATH:$GOROOT/bin
+export PATH=$GOROOT/bin:$PATH
 
 echo "Building Eventing..."
 rm -rf "$top/build/gotmp"

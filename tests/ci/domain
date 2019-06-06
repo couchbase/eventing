@@ -2,17 +2,16 @@
 
 if [ ! -f ~/.cienv ]; then
 cat > ~/.cienv <<EOF
-    export CINAME=ci-eventing-unstable
+    export CINAME=ci-eventing
     export CIBOT=true
     export WORKSPACE=/opt/build
     export RELEASE=6.5.0
     export MANIFEST="couchbase-server/mad-hatter/6.5.0.xml"
-    export MODE="sanity,unit,functional,integration"
     export BRANCH="unstable"
-    export MODE="test"
+    export MODE="rebalance,functional,integration,n1ql"
     export WATCHERS="siri@couchbase.com"
     export PEGGED=0
-    # use below if gerrit patchsets need to be ordered (so adding CI bot is not enough)
+    # use below if gerrit patchsets need to be ordered
     # export GERRIT="10051 20012 31241"
 EOF
 fi

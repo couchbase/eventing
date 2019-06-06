@@ -592,7 +592,7 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 	setSettings(functionName, true, false, &commonSettings{})
 	waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
 
-	addNodeFromRest("127.0.0.1:9003", "eventing")
+	addNodeFromRest("http://127.0.0.1:9003", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
@@ -608,7 +608,7 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 		)
 	}
 
-	rebalanceFromRest([]string{"127.0.0.1:9003"})
+	rebalanceFromRest([]string{"http://127.0.0.1:9003"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -1055,11 +1055,11 @@ func TestUndeployWithKVFailover(t *testing.T) {
 		)
 	}
 
-	addNodeFromRest("127.0.0.1:9003", "kv")
+	addNodeFromRest("http://127.0.0.1:9003", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
-	failoverFromRest([]string{"127.0.0.1:9003"})
+	failoverFromRest([]string{"http://127.0.0.1:9003"})
 	time.Sleep(10 * time.Second)
 
 	setSettings(functionName, false, false, &commonSettings{})
@@ -1156,11 +1156,11 @@ func TestUndeployBackdoorDuringBootstrap(t *testing.T) {
 
 	time.Sleep(5 * time.Second)
 
-	addNodeFromRest("127.0.0.1:9003", "kv")
+	addNodeFromRest("http://127.0.0.1:9003", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
-	failoverFromRest([]string{"127.0.0.1:9003"})
+	failoverFromRest([]string{"http://127.0.0.1:9003"})
 
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(functionName)
