@@ -444,6 +444,7 @@ function NodeUtils() {
 
     // Checks if the global scope contains only function declarations.
     this.checkGlobals = function(ast) {
+        var check = false;
         for (var node of ast.body) {
             if (!/FunctionDeclaration/.test(node.type)) {
                 if (typeof node.loc === 'undefined' || typeof node.range === 'undefined') {
@@ -457,6 +458,18 @@ function NodeUtils() {
                     description: 'Only function declaration are allowed in global scope'
                 };
             }
+
+            if (node.id.name == "OnUpdate" || node.id.name == "OnDelete") {
+                check = true;
+            }
+        }
+        if (check == false) {
+            throw {
+                index: 1,
+                lineNumber: 1,
+                column: 1,
+                description: 'Handler code is missing OnUpdate() and OnDelete() functions. At least one of them is needed to deploy the handler'
+            };
         }
     };
 
