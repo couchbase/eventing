@@ -327,20 +327,13 @@ func (c *Consumer) processEvents() {
 				lastReadSeqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_read_seq_no").(uint64)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "seq_no_at_stream_end", lastReadSeqNo)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
+				lastSentSeqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_sent_seq_no").(uint64)
 
-				last_start_seqno, ok := c.vbStreamRequested[e.VBucket] // we expect an entry in vbStreamRequested for the vb
-				if !ok {
-					// This is unexpected. There must be an entry in vbStreamRequested for e.VBucket
-					logging.Infof("Unexpected Entry missing in vbStreamRequested for vb: %d, lastReadSeqNo: %d ", e.VBucket, lastReadSeqNo)
-					c.sendVbFilterData(e.VBucket, lastReadSeqNo, false)
-				} else if last_start_seqno < lastReadSeqNo { // send filter msg only if we streamed some mutations
-					c.sendVbFilterData(e.VBucket, lastReadSeqNo, false)
-				} else if last_start_seqno == lastReadSeqNo { // got STREAMEND without even streaming a single mutation
-					logging.Infof("STREAMEND without streaming any mutation last_start_seqno: %d", last_start_seqno)
+				if lastSentSeqNo == 0 {
+					logging.Infof("STREAMEND without streaming any mutation last_read_seqno: %d last_sent_seqno: %d", lastReadSeqNo, lastSentSeqNo)
 					c.handleStreamEnd(e.VBucket, lastReadSeqNo)
 				} else {
-					logging.Infof("Unexpected last_start_seqno: %d > lastReadSeqNo: %d ", last_start_seqno, lastReadSeqNo)
-					c.handleStreamEnd(e.VBucket, lastReadSeqNo) // using lastReadSeqNo to restart stream as it's lesser
+					c.sendVbFilterData(e.VBucket, lastSentSeqNo, false)
 				}
 
 			default:
@@ -940,6 +933,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 
 		c.vbProcessingStats.updateVbStat(vb, "last_read_seq_no", start)
 		c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", start)
+		c.vbProcessingStats.updateVbStat(vb, "last_sent_seq_no", uint64(0))
 
 		logging.Infof("%s [%s:%s:%d] vb: %d Adding entry into inflightDcpStreams",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
