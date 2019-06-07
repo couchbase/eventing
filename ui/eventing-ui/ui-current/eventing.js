@@ -747,7 +747,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                 editor.on('focus', function(event) {
                     if (self.editorDisabled) {
-                        ApplicationService.server.showWarningAlert('Undeploy/Pause the function to edit!');
+                        ApplicationService.server.showWarningAlert('The function is deployed. Please undeploy or pause the function in order to edit');
                     }
                 });
 
