@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -36,6 +37,11 @@ func (c *Consumer) processEvents() {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes)
 				time.Sleep(10 * time.Millisecond)
 			}
+		}
+		if len(c.reqStreamCh) > 0 {
+			logging.Debugf("%s [%s:%s:%d] Throttling, len of c.reqStreamCh: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.reqStreamCh))
+			runtime.Gosched()
 		}
 
 		select {
