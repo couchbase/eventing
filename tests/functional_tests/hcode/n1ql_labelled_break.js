@@ -1,5 +1,5 @@
 function OnUpdate(doc, meta) {
-	let lim = 1,
+	let lim = 2,
 	count = 0;
 
 	// Labeled break
@@ -13,7 +13,9 @@ function OnUpdate(doc, meta) {
 				INSERT INTO `hello-world` (KEY, VALUE) VALUES ($docId, 'Hello world');
 				break x;
 			}
+			res3.close();
 		}
+		res2.close();
 	}
 }
 

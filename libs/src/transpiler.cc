@@ -118,11 +118,9 @@ void TranspiledInfo::AppendSourceMap() {
   final_code = transpiled_code + prefix + source_map_encoded + "\n";
 }
 
-
-TranspiledCode Transpiler::Transpile(
-    const std::string &jsified_code,
-    const std::string &src_filename,
-    const std::string &handler_code) {
+TranspiledCode Transpiler::Transpile(const std::string &jsified_code,
+                                     const std::string &src_filename,
+                                     const std::string &handler_code) {
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
 

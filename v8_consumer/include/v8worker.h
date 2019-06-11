@@ -38,7 +38,6 @@
 #include "isolate_data.h"
 #include "js_exception.h"
 #include "log.h"
-#include "n1ql.h"
 #include "parse_deployment.h"
 #include "queue.h"
 #include "transpiler.h"
@@ -322,8 +321,6 @@ public:
   Queue<std::unique_ptr<timer_msg_t>> *timer_queue_;
   Queue<std::unique_ptr<WorkerMessage>> *worker_queue_;
 
-  ConnectionPool *conn_pool_;
-
   std::mutex lcb_exception_mtx_;
   std::map<int, int64_t> lcb_exceptions_;
   IsolateData data_;
@@ -355,7 +352,6 @@ private:
   std::vector<uint64_t> processed_bucketops_;
   std::mutex bucketops_lock_;
   std::list<Bucket *> bucket_handles_;
-  N1QL *n1ql_handle_;
   v8::Isolate *isolate_;
   v8::Platform *platform_;
   inspector::Agent *agent_;

@@ -1,6 +1,6 @@
 function OnUpdate(doc, meta) {
 	let lim = 1,
-	count = 0;
+	    count = 0;
 
 	let res1 = SELECT * FROM default LIMIT $lim;
 	for(let row1 of res1) {

@@ -6,6 +6,7 @@
 #include <mutex>
 #include <string>
 #include <v8.h>
+
 #include "transpiler.h"
 
 class RateLimiter {
@@ -53,8 +54,8 @@ public:
   static CodeInsight &Get(v8::Isolate *isolate);
 
 private:
-  CodeInsight(const CodeInsight&) = delete;
-  CodeInsight& operator= (const CodeInsight&) = delete;
+  CodeInsight(const CodeInsight &) = delete;
+  CodeInsight &operator=(const CodeInsight &) = delete;
 
   int RectifyLine(int line) const;
   void Log(LineEntry &line, const std::string &msg);

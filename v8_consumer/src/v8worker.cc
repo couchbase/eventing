@@ -9,16 +9,18 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "v8worker.h"
+#include "query-iterable.h"
+
 #include "bucket.h"
 #include "curl.h"
 #include "insight.h"
+#include "query-helper.h"
+#include "query-mgr.h"
 #include "retry_util.h"
 #include "timer.h"
 #include "transpiler.h"
 #include "utils.h"
-
-#include "../../gen/js/builtin.h"
+#include "v8worker.h"
 
 bool V8Worker::debugger_started_ = false;
 
@@ -56,14 +58,6 @@ v8::Local<v8::ObjectTemplate> V8Worker::NewGlobalObj() const {
               v8::FunctionTemplate::New(isolate_, CurlFunction));
   global->Set(v8::String::NewFromUtf8(isolate_, "log"),
               v8::FunctionTemplate::New(isolate_, Log));
-  global->Set(v8::String::NewFromUtf8(isolate_, "iter"),
-              v8::FunctionTemplate::New(isolate_, IterFunction));
-  global->Set(v8::String::NewFromUtf8(isolate_, "stopIter"),
-              v8::FunctionTemplate::New(isolate_, StopIterFunction));
-  global->Set(v8::String::NewFromUtf8(isolate_, "execQuery"),
-              v8::FunctionTemplate::New(isolate_, ExecQueryFunction));
-  global->Set(v8::String::NewFromUtf8(isolate_, "getReturnValue"),
-              v8::FunctionTemplate::New(isolate_, GetReturnValueFunction));
   global->Set(v8::String::NewFromUtf8(isolate_, "createTimer"),
               v8::FunctionTemplate::New(isolate_, CreateTimer));
   global->Set(v8::String::NewFromUtf8(isolate_, "urlEncode"),
@@ -72,6 +66,8 @@ v8::Local<v8::ObjectTemplate> V8Worker::NewGlobalObj() const {
               v8::FunctionTemplate::New(isolate_, UrlDecodeFunction));
   global->Set(v8::String::NewFromUtf8(isolate_, "crc64"),
               v8::FunctionTemplate::New(isolate_, Crc64Function));
+  global->Set(v8::String::NewFromUtf8(isolate_, "N1QL"),
+              v8::FunctionTemplate::New(isolate_, QueryFunction));
 
   for (const auto &type_name : exception_type_names_) {
     global->Set(v8::String::NewFromUtf8(isolate_, type_name.c_str()),
@@ -113,10 +109,15 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.curl_factory = new CurlFactory(isolate_, context);
   data_.req_builder = new CurlRequestBuilder(isolate_, context);
   data_.resp_builder = new CurlResponseBuilder(isolate_, context);
-  data_.n1ql_codex = new N1QLCodex;
   data_.custom_error = new CustomError(isolate_, context);
   data_.curl_codex = new CurlCodex;
   data_.code_insight = new CodeInsight(isolate_);
+  data_.query_mgr = new Query::Manager(
+      isolate_, GetConnectionStr(settings_->kv_host_port, source_bucket));
+  data_.query_iterable = new Query::Iterable(isolate_, context);
+  data_.query_iterable_impl = new Query::IterableImpl(isolate_, context);
+  data_.query_iterable_result = new Query::IterableResult(isolate_, context);
+  data_.query_helper = new Query::Helper(isolate_, context);
 
   // execution_timeout is in seconds
   // n1ql_timeout is expected in micro seconds
@@ -226,10 +227,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   connstr_ = GetConnectionStr(settings_->kv_host_port, cb_source_bucket_);
   meta_connstr_ =
       GetConnectionStr(settings_->kv_host_port, config->metadata_bucket);
-  if (!h_config->skip_lcb_bootstrap) {
-    conn_pool_ = new ConnectionPool(isolate_, h_config->lcb_inst_capacity,
-                                    settings_->kv_host_port, cb_source_bucket_);
-  }
   src_path_ = settings_->eventing_dir + "/" + app_name_ + ".t.js";
 
   delete config;
@@ -250,7 +247,6 @@ V8Worker::~V8Worker() {
 
   auto data = UnwrapData(isolate_);
   delete data->custom_error;
-  delete data->n1ql_codex;
   delete data->comm;
   delete data->transpiler;
   delete data->utils;
@@ -260,12 +256,15 @@ V8Worker::~V8Worker() {
   delete data->req_builder;
   delete data->resp_builder;
   delete data->curl_codex;
+  delete data->query_mgr;
+  delete data->query_iterable;
+  delete data->query_iterable_impl;
+  delete data->query_iterable_result;
+  delete data->query_helper;
 
   context_.Reset();
   on_update_.Reset();
   on_delete_.Reset();
-  delete conn_pool_;
-  delete n1ql_handle_;
   delete settings_;
   delete timer_queue_;
   delete worker_queue_;
@@ -352,20 +351,14 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     return jsify_info.code;
   }
 
-  // TODO : Move n1ql_handle_ initialization to InitializeIsolateData()
-  n1ql_handle_ = new N1QL(conn_pool_, isolate_);
-  UnwrapData(isolate_)->n1ql_handle = n1ql_handle_;
-
   auto transpiled_info = transpiler->Transpile(
       jsify_info.handler_code, app_name_ + ".js", uniline_info.handler_code);
   script_to_execute = transpiled_info.final_code + '\n';
-  script_to_execute += std::string((const char *)js_builtin) + '\n';
   LOG(logTrace) << "script to execute: " << RM(script_to_execute) << std::endl;
   script_to_execute_ = script_to_execute;
 
-  CodeInsight::Get(isolate_).Setup(script_to_execute,
-                                   transpiled_info.source_map,
-                                   cmt_info.insertions);
+  CodeInsight::Get(isolate_).Setup(
+      script_to_execute, transpiled_info.source_map, cmt_info.insertions);
 
   auto source = v8Str(isolate_, script_to_execute);
   if (!ExecuteScript(source)) {
@@ -641,6 +634,9 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
                         isolate_);
 
   on_doc_update->Call(context->Global(), 2, args);
+  auto query_mgr = UnwrapData(isolate_)->query_mgr;
+  query_mgr->ClearQueries();
+
   execute_flag_ = false;
   if (try_catch.HasCaught()) {
     UpdateHistogram(start_time);
@@ -703,6 +699,9 @@ int V8Worker::SendDelete(std::string meta, int vb_no, uint64_t seq_no) {
                         isolate_);
 
   on_doc_delete->Call(context->Global(), 1, args);
+  auto query_mgr = UnwrapData(isolate_)->query_mgr;
+  query_mgr->ClearQueries();
+
   execute_flag_ = false;
   if (try_catch.HasCaught()) {
     LOG(logDebug) << "OnDelete Exception: "
@@ -889,7 +888,6 @@ CodeVersion V8Worker::IdentifyVersion(std::string handler) {
   auto transpiled_info = transpiler->Transpile(
       jsify_info.handler_code, app_name_ + ".js", uniline_info.handler_code);
   auto script_to_execute = transpiled_info.final_code + '\n';
-  script_to_execute += std::string((const char *)js_builtin) + '\n';
 
   auto ver = transpiler->GetCodeVersion(script_to_execute);
   return ver;
