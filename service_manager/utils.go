@@ -12,6 +12,7 @@ import (
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/eventing/common"
 )
 
 func (m *ServiceMgr) checkIfDeployed(appName string) bool {
@@ -24,6 +25,15 @@ func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 	return false
 }
 
+func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
+	deployedApps := m.superSup.DeployedAppList()
+	for _, app := range deployedApps {
+		if app == appName && m.superSup.GetAppState(app) != common.AppStatePaused {
+			return true
+		}
+	}
+	return false
+}
 func decodeRev(b service.Revision) uint64 {
 	return binary.BigEndian.Uint64(b)
 }

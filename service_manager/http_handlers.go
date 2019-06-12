@@ -337,9 +337,9 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !m.checkIfDeployed(appName) {
+	if !m.checkIfDeployedAndRunning(appName) {
 		info.Code = m.statusCodes.errAppNotDeployed.Code
-		info.Info = fmt.Sprintf("Function: %s not deployed", appName)
+		info.Info = fmt.Sprintf("Function: %s is not in deployed state, debugger cannot start", appName)
 		m.sendErrorInfo(w, info)
 		return
 	}

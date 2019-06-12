@@ -13,7 +13,7 @@ func TestTopologyEventingRebInWhenExistingEventingNodeProcessingMutations(t *tes
 	time.Sleep(5 * time.Second)
 	handler := "on_delete_bucket_op_uncomment"
 
-	addNodeFromRest("127.0.0.1:9001", "eventing,kv")
+	addNodeFromRest("http://127.0.0.1:9001", "eventing,kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
@@ -32,12 +32,12 @@ func TestTopologyEventingRebInWhenExistingEventingNodeProcessingMutations(t *tes
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	addNodeFromRest("127.0.0.1:9002", "eventing,kv")
+	addNodeFromRest("http://127.0.0.1:9002", "eventing,kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002"})
+	rebalanceFromRest([]string{"http://127.0.0.1:9001", "http://127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
