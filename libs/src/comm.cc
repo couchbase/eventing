@@ -118,7 +118,7 @@ CredsInfo Communicator::GetCredsCached(const std::string &endpoint) {
     return find->second;
   }
 
-  LOG(logInfo) << "Getting credentials afresh for " << RS(endpoint)
+  LOG(logDebug) << "Getting credentials afresh for " << RS(endpoint)
                << std::endl;
 
   auto credentials = GetCreds(endpoint);

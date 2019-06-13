@@ -223,6 +223,11 @@
                     ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value"
                     ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                     placeholder="alias name...">
+            <div
+                    class="error field-error"
+                    ng-show="formCtrl.createAppForm.appname.$error.bindingsValid">
+              Alias Name can only contain characters in range A-Z, a-z, 0-9, _ and $ and it should not be a JavaScript keyword.
+            </div>
           </span>
           <span
                   class="fix-width-2 padding-right-half margin-bottom-half"
@@ -252,6 +257,11 @@
                     ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value"
                     ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                     placeholder="alias name...">
+            <div
+                    class="error field-error"
+                    ng-show="formCtrl.createAppForm.appname.$error.bindingsValid">
+              Alias Name can only contain characters in range A-Z, a-z, 0-9, _ and $ and it should not be a JavaScript keyword.
+            </div>
           </span>
           <span
                   class="padding-right-half flex-grow-1 margin-bottom-half"
