@@ -96,13 +96,14 @@ CredsInfo Communicator::GetCreds(const std::string &endpoint) {
     return info;
   }
 
-  if (response.headers.find("Status") == response.headers.end()) {
+  if (response.headers.data.find("Status") ==
+      response.headers.data.end()) {
     LOG(logError) << "Unable to get creds: status code is missing in header: "
                   << response.msg << std::endl;
     return info;
   }
 
-  if (std::stoi(response.headers["Status"]) != 0) {
+  if (std::stoi(response.headers.data["Status"]) != 0) {
     LOG(logError) << "Unable to get creds: non-zero status in header: "
                   << response.msg << std::endl;
     return info;
@@ -143,14 +144,15 @@ NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
     return info;
   }
 
-  if (response.headers.find("Status") == response.headers.end()) {
+  if (response.headers.data.find("Status") ==
+      response.headers.data.end()) {
     LOG(logError)
         << "Unable to get named params: status code is missing in header: "
         << RM(response.msg) << std::endl;
     return info;
   }
 
-  if (std::stoi(response.headers["Status"]) != 0) {
+  if (std::stoi(response.headers.data["Status"]) != 0) {
     LOG(logError) << "Unable to get named params: non-zero status in header: "
                   << RM(response.msg) << std::endl;
     return info;
@@ -174,14 +176,15 @@ ParseInfo Communicator::ParseQuery(const std::string &query) {
     return info;
   }
 
-  if (response.headers.find("Status") == response.headers.end()) {
+  if (response.headers.data.find("Status") ==
+      response.headers.data.end()) {
     LOG(logError)
         << "Unable to parse N1QL query: status code is missing in header:"
         << RU(response.msg) << std::endl;
     return info;
   }
 
-  int status = std::stoi(response.headers["Status"]);
+  int status = std::stoi(response.headers.data["Status"]);
   if (status != 0) {
     LOG(logError) << "Unable to parse N1QL query: non-zero status in header"
                   << status << std::endl;
@@ -197,7 +200,7 @@ void Communicator::WriteDebuggerURL(const std::string &url) {
   auto response = curl_.HTTPPost({"Content-Type: text/plain"},
                                  write_debugger_url_ + "/" + app_name_, url,
                                  lo_usr_, lo_key_);
-  int status = std::stoi(response.headers["Status"]);
+  int status = std::stoi(response.headers.data["Status"]);
   if (status != 0) {
     LOG(logError) << "Unable to write debugger URL: non-zero status in header"
                   << status << std::endl;
