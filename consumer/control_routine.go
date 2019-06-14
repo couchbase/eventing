@@ -21,26 +21,7 @@ func (c *Consumer) controlRoutine() error {
 		select {
 		case <-c.clusterStateChangeNotifCh:
 
-			// To avoid eventing rebalance during any other MDS service rebalance
-			assignedVbs, err := c.getAssignedVbs(c.ConsumerName())
-			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-			}
-			sort.Sort(util.Uint16Slice(assignedVbs))
-
-			if err == nil {
-				currentlyOwnedVbs := c.getCurrentlyOwnedVbs()
-
-				logging.Infof("%s [%s:%s:%d] assignedVbs len: %d dump: %s currentlyOwnedVbs len: %d dump: %s",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), len(assignedVbs), util.Condense(assignedVbs),
-					len(currentlyOwnedVbs), util.Condense(currentlyOwnedVbs))
-
-				if util.CompareSlices(assignedVbs, currentlyOwnedVbs) {
-					continue
-				}
-			}
-
-			err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
+			err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return err
@@ -58,9 +39,8 @@ func (c *Consumer) controlRoutine() error {
 			c.vbsStreamClosedRWMutex.Unlock()
 
 			if !c.vbsStateUpdateRunning {
-				c.isRebalanceOngoing = true
-				logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine,updated isRebalanceOngoing to %t, vbsStateUpdateRunning: %t",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing, c.vbsStateUpdateRunning)
+				logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine, isRebalanceOngoing %t",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
 				go c.vbsStateUpdate()
 			}
 

@@ -38,9 +38,10 @@ func (c *Consumer) processEvents() {
 				time.Sleep(10 * time.Millisecond)
 			}
 		}
-		if len(c.reqStreamCh) > 0 {
-			logging.Debugf("%s [%s:%s:%d] Throttling, len of c.reqStreamCh: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.reqStreamCh))
+
+		if len(c.reqStreamCh) > 0 || len(c.clusterStateChangeNotifCh) > 0 {
+			logging.Debugf("%s [%s:%s:%d] Throttling, len(c.reqStreamCh): %v, len(c.clusterStateChangeNotifCh): %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.reqStreamCh), len(c.clusterStateChangeNotifCh))
 			runtime.Gosched()
 		}
 
