@@ -18,11 +18,6 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 
 	progress := &cm.RebalanceProgress{}
 
-	if !c.isRebalanceOngoing && !c.isBootstrapping {
-		// no rebalance or bootstrap in-progress for this consumer
-		return progress
-	}
-
 	vbsRemainingToCloseStream := c.getVbRemainingToCloseStream()
 	vbsRemainingToStreamReq := c.getVbRemainingToStreamReq()
 

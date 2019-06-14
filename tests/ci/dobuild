@@ -123,7 +123,8 @@ note_version testrunner $WORKSPACE/testrunner
 
 if [ "$CIBOT" = "true" ]; then
   > ~/gerrit.list
-  autolist="`curl -s -o- "http://review.couchbase.org/changes/?q=project:eventing+status:open+branch:$BRANCH+reviewer:1004336" | grep _number | sed 's/[ ,]*//g' | awk -F: '{print $2}' | sort -n`"
+  autolist="`ssh review.couchbase.org gerrit query \"project:eventing status:open branch:$BRANCH reviewer:self\" | grep number: | awk '{print $2}' | sort -n` \
+            `ssh review.couchbase.org gerrit query \"project:eventing-ee status:open branch:$BRANCH reviewer:self\" | grep number: | awk '{print $2}' | sort -n`"
   for patch_id in $GERRIT $autolist
   do
     curl -s -o- "http://review.couchbase.org/changes/$patch_id/" | grep -qs '"status": "NEW"'

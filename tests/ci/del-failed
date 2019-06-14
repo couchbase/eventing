@@ -1,3 +1,3 @@
 #!/bin/bash
 cd /var/www
-rm `ls *fail* | awk -F- '{print "*"$2"-"$3"*"}' | sed 's/.fail.html//'`
+rm `find . -name '*fail*' -mtime +2 | awk -F- '{print "*"$2"-"$3"*"}' | sed 's/.fail.html//'`
