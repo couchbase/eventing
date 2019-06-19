@@ -18,6 +18,11 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 
 	progress := &cm.RebalanceProgress{}
 
+	if !c.isRebalanceOngoing && !c.isBootstrapping {
+		// no rebalance or bootstrap in-progress for this consumer
+		return progress
+	}
+
 	vbsRemainingToCloseStream := c.getVbRemainingToCloseStream()
 	vbsRemainingToStreamReq := c.getVbRemainingToStreamReq()
 
@@ -56,15 +61,7 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 		}
 	}
 
-	if len(vbsRemainingToCloseStream) == 0 && len(vbsRemainingToStreamReq) == 0 {
-		if c.isRebalanceOngoing {
-			c.isRebalanceOngoing = false
-			logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
-		}
-	}
-
-	if c.isBootstrapping {
+	if c.isBootstrapping || c.isRebalanceOngoing {
 		progress.VbsRemainingToShuffle++
 	}
 
