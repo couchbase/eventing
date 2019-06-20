@@ -107,7 +107,10 @@ func printf(at LogLevel, format string, v ...interface{}) {
 	if baselevel >= at {
 		format := RedactFormat(format)
 		ts := time.Now().Format("2006-01-02T15:04:05.000-07:00")
-		target.Printf(ts+" ["+at.String()+"] "+format, v...)
+		msg := fmt.Sprintf(ts+" ["+at.String()+"] "+format, v...)
+		if !strings.Contains(msg, "[gocb] Threshold Log:") { // sigh
+			target.Print(msg)
+		}
 	}
 }
 
