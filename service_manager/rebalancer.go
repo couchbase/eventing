@@ -67,6 +67,23 @@ func (r *rebalancer) storeRebalanceProgress(progress *common.RebalanceProgress) 
 func (r *rebalancer) gatherProgress() {
 	logPrefix := "rebalancer::gatherProgress"
 
+	// vbucket distribution happens in producer.
+	// If no handler is running or getting deployed on any node then we can store progress to 100% and return.
+	// If any error while aggregating progress fall through.
+	if r.numApps == 0 {
+		p, _, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
+		if len(errMap) > 0 && len(r.keepNodes) > 1 {
+			logging.Warnf("%s Failed to capture cluster wide rebalance progress from all nodes. initProgress: %v errMap dump: %rm",
+				logPrefix, p, errMap)
+		} else if len(errMap) == 1 && len(r.keepNodes) == 1 {
+			logging.Warnf("%s Failed to capture rebalance progress, initProgress: %v errMap dump: %rm",
+				logPrefix, p, errMap)
+		} else if p.VbsOwnedPerPlan == 0 && p.VbsRemainingToShuffle == 0 {
+			logging.Infof("%s Rebalance completed", logPrefix)
+			r.cb.progress(1.0, r.c)
+			return
+		}
+	}
 	progressTicker := time.NewTicker(rebalanceProgressUpdateTickInterval)
 
 	<-progressTicker.C
@@ -74,9 +91,8 @@ func (r *rebalancer) gatherProgress() {
 	// Wait for some additional time to allow all eventing nodes to come up with their vbucket distribution plan.
 	// Additional sleep was added in planner because metakv's reported stale values when read op was triggered
 	// right after write op.
-	if r.numApps != 0 {
-		time.Sleep(10 * time.Second)
-	}
+	time.Sleep(10 * time.Second)
+
 	retryCounter := 0
 
 retryRebProgress:
