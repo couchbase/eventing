@@ -1,4 +1,4 @@
-package auth
+package eventing
 
 import (
 	"encoding/base64"

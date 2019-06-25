@@ -1,4 +1,4 @@
-package auth
+package eventing
 
 import (
 	"crypto/md5"

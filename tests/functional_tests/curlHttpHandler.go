@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-
-	"github.com/couchbase/eventing/tests/auth"
 )
 
 func setCookiesIfAllowed(w http.ResponseWriter, r *http.Request) {
@@ -163,12 +161,12 @@ func largeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAuthorization(w http.ResponseWriter, r *http.Request) bool {
-	basicAuth := &auth.BasicAuth{
+	basicAuth := &BasicAuth{
 		Username: "Administrator",
 		Password: "asdasd",
 	}
 
-	digestAuth := &auth.DigestAuth{
+	digestAuth := &DigestAuth{
 		Password: "asdasd",
 		Method:   r.Method,
 		Realm:    "eventing",
@@ -189,7 +187,7 @@ func handleAuthorization(w http.ResponseWriter, r *http.Request) bool {
 	case "/delete/auth":
 		fallthrough
 	case "/get/auth":
-		authRequest, err := auth.NewBasicAuth(authorization)
+		authRequest, err := NewBasicAuth(authorization)
 		if err != nil || !basicAuth.Validate(authRequest) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return false
@@ -205,7 +203,7 @@ func handleAuthorization(w http.ResponseWriter, r *http.Request) bool {
 		fallthrough
 	case "/get/auth/digest":
 		if len(authorization) == 0 ||
-			!digestAuth.Validate(auth.NewDigestRequest(authorization)) {
+			!digestAuth.Validate(NewDigestRequest(authorization)) {
 			w.Header().Set("WWW-Authenticate", digestAuth.GetHeader())
 			w.WriteHeader(http.StatusUnauthorized)
 			return false
