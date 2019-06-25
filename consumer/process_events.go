@@ -22,12 +22,11 @@ import (
 	"github.com/couchbase/gocb"
 )
 
-func (c *Consumer) processEvents() {
-	logPrefix := "Consumer::processEvents"
+func (c *Consumer) processDCPEvents() {
+	logPrefix := "Consumer::processDCPEvents"
 
 	functionInstanceID := strconv.Itoa(int(c.app.FunctionID)) + "-" + c.app.FunctionInstanceID
 
-	var timerMsgCounter uint64
 	for {
 		if c.cppQueueSizes != nil {
 			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize ||
@@ -36,6 +35,7 @@ func (c *Consumer) processEvents() {
 				logging.Debugf("%s [%s:%s:%d] Throttling, cpp queue sizes: %+v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes)
 				time.Sleep(10 * time.Millisecond)
+				continue
 			}
 		}
 
@@ -346,16 +346,20 @@ func (c *Consumer) processEvents() {
 			default:
 			}
 
-		case e, ok := <-c.filterDataCh:
-			if ok == false {
-				logging.Infof("%s [%s:%s:%d] Closing filterDataCh", logPrefix, c.workerName, c.tcpPort, c.Pid())
-				return
-			}
-			logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d received on filterDataCh",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket, e.SeqNo)
+		case <-c.stopConsumerCh:
+			logging.Infof("%s [%s:%s:%d] Exiting processDCPEvents routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
+	}
+}
 
-			c.handleStreamEnd(e.Vbucket, e.SeqNo)
+func (c *Consumer) processStatsEvents() {
+	logPrefix := "Consumer::processStatsEvents"
 
+	var timerMsgCounter uint64
+	for {
+		select {
 		case <-c.statsTicker.C:
 
 			vbsOwned := c.getCurrentlyOwnedVbs()
@@ -396,7 +400,30 @@ func (c *Consumer) processEvents() {
 			}
 
 		case <-c.stopConsumerCh:
-			logging.Infof("%s [%s:%s:%d] Exiting processEvents routine",
+			logging.Infof("%s [%s:%s:%d] Exiting processStatsEvents routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
+	}
+}
+
+func (c *Consumer) processFilterEvents() {
+	logPrefix := "Consumer::processFilterEvents"
+
+	for {
+		select {
+		case e, ok := <-c.filterDataCh:
+			if ok == false {
+				logging.Infof("%s [%s:%s:%d] Closing filterDataCh", logPrefix, c.workerName, c.tcpPort, c.Pid())
+				return
+			}
+			logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d received on filterDataCh",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), e.Vbucket, e.SeqNo)
+
+			c.handleStreamEnd(e.Vbucket, e.SeqNo)
+
+		case <-c.stopConsumerCh:
+			logging.Infof("%s [%s:%s:%d] Exiting processFilterEvents routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
 		}
