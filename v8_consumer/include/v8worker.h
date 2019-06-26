@@ -30,7 +30,6 @@
 #include <string>
 #include <thread>
 #include <uv.h>
-#include <v8-debug.h>
 #include <v8.h>
 
 #include "commands.h"
@@ -235,7 +234,7 @@ public:
                          << "ns, terminating its execution" << std::endl;
 
             timeout_count++;
-            v8::V8::TerminateExecution(isolate_);
+            isolate_->TerminateExecution();
             execute_flag_ = false;
           }
         }

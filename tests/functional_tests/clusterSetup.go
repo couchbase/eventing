@@ -257,8 +257,6 @@ func otpNodes(removeNodes []string) (string, string) {
 func waitForRebalanceFinish() error {
 	t := time.NewTicker(5 * time.Second)
 
-	var rebalanceRunning bool
-
 	log.SetFlags(log.LstdFlags)
 
 	for {
@@ -273,6 +271,7 @@ func waitForRebalanceFinish() error {
 				fmt.Println("tasks fetch, err:", err)
 				return err
 			}
+
 			for _, v := range tasks {
 				task := v.(map[string]interface{})
 				if task["errorMessage"] != nil {
@@ -280,11 +279,10 @@ func waitForRebalanceFinish() error {
 					return fmt.Errorf("rebalance failed")
 				}
 				if task["type"].(string) == "rebalance" && task["status"].(string) == "running" {
-					rebalanceRunning = true
 					log.Println("Rebalance progress:", task["progress"])
 				}
 
-				if rebalanceRunning && task["type"].(string) == "rebalance" && task["status"].(string) == "notRunning" {
+				if task["type"].(string) == "rebalance" && task["status"].(string) == "notRunning" {
 					t.Stop()
 					log.Println("Rebalance progress: 100")
 					return nil

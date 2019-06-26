@@ -568,10 +568,15 @@ func makeStatsRequest(context, url string, printStats bool) (interface{}, error)
 			log.Println("Pretty print json:", err)
 			return nil, err
 		}
-
-		log.Printf("%v::%s\n", context, string(body))
+		if statsFile.file != nil {
+			ts := time.Now().Format("2006-01-02T15:04:05.000-07:00")
+			statsFile.lock.Lock()
+			fmt.Fprintf(statsFile.file, "%v %v::%s\n", ts, context, string(body))
+			statsFile.lock.Unlock()
+		} else {
+			log.Printf("%v::%s\n", context, string(body))
+		}
 	}
-
 	return response, nil
 }
 

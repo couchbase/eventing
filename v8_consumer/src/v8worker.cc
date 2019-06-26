@@ -530,7 +530,8 @@ bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
            .ToLocal(&compiled_script)) {
     assert(try_catch.HasCaught());
     LOG(logError) << "Exception logged:"
-                  << ExceptionString(isolate_, &try_catch) << std::endl;
+                  << ExceptionString(isolate_, context, &try_catch)
+                  << std::endl;
     // The script failed to compile; bail out.
     return false;
   }
@@ -539,7 +540,8 @@ bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
   if (!compiled_script->Run(context).ToLocal(&result)) {
     assert(try_catch.HasCaught());
     LOG(logError) << "Exception logged:"
-                  << ExceptionString(isolate_, &try_catch) << std::endl;
+                  << ExceptionString(isolate_, context, &try_catch)
+                  << std::endl;
     // Running the script failed; bail out.
     return false;
   }
@@ -610,7 +612,8 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
 
   if (try_catch.HasCaught()) {
     LOG(logDebug) << "OnUpdate Exception: "
-                  << ExceptionString(isolate_, &try_catch) << std::endl;
+                  << ExceptionString(isolate_, context, &try_catch)
+                  << std::endl;
   }
 
   if (debugger_started_) {
@@ -633,7 +636,8 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
   execute_flag_ = false;
   if (try_catch.HasCaught()) {
     LOG(logDebug) << "OnUpdate Exception: "
-                  << ExceptionString(isolate_, &try_catch) << std::endl;
+                  << ExceptionString(isolate_, context, &try_catch)
+                  << std::endl;
     UpdateHistogram(start_time);
     on_update_failure++;
     return kOnUpdateCallFail;
@@ -694,7 +698,8 @@ int V8Worker::SendDelete(std::string meta, int vb_no, uint64_t seq_no) {
   execute_flag_ = false;
   if (try_catch.HasCaught()) {
     LOG(logDebug) << "OnDelete Exception: "
-                  << ExceptionString(isolate_, &try_catch) << std::endl;
+                  << ExceptionString(isolate_, context, &try_catch)
+                  << std::endl;
     UpdateHistogram(start_time);
     on_delete_failure++;
     return kOnDeleteCallFail;

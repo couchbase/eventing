@@ -147,7 +147,7 @@ UniLineN1QLInfo Transpiler::UniLineN1QL(const std::string &handler_code) {
   args[2] = v8Array(isolate_, handler_footers_);
   auto result = ExecTranspiler("AddHeadersAndFooters", args, 3);
 
-  v8::String::Utf8Value utf8result(result);
+  v8::String::Utf8Value utf8result(isolate_, result);
   info.handler_code = *utf8result;
   return info;
 }
@@ -171,7 +171,7 @@ std::string Transpiler::TranspileQuery(const std::string &query,
   args[2] = is_select_query_bool;
 
   auto result = ExecTranspiler("transpileQuery", args, 3);
-  v8::String::Utf8Value utf8result(result);
+  v8::String::Utf8Value utf8result(isolate_, result);
 
   return *utf8result;
 }
@@ -200,9 +200,9 @@ CodeVersion Transpiler::GetCodeVersion(const std::string &handler_code) {
     return CodeVersion{};
   }
 
-  v8::String::Utf8Value version(version_val);
-  v8::String::Utf8Value level(level_val);
-  v8::String::Utf8Value using_timer(using_timer_val);
+  v8::String::Utf8Value version(isolate_, version_val);
+  v8::String::Utf8Value level(isolate_, level_val);
+  v8::String::Utf8Value using_timer(isolate_, using_timer_val);
 
   return CodeVersion{*version, *level, *using_timer};
 }
@@ -330,7 +330,7 @@ CompilationInfo Transpiler::ComposeCompilationInfo(
     return info;
   }
 
-  v8::String::Utf8Value lang_str(language);
+  v8::String::Utf8Value lang_str(isolate_, language);
   info.language = *lang_str;
   info.compile_success = compilation_status->Value();
 
@@ -340,10 +340,10 @@ CompilationInfo Transpiler::ComposeCompilationInfo(
   }
 
   // Compilation failed, attach more info
-  v8::String::Utf8Value desc_str(description);
+  v8::String::Utf8Value desc_str(isolate_, description);
   info.description = *desc_str;
 
-  v8::String::Utf8Value area_str(area);
+  v8::String::Utf8Value area_str(isolate_, area);
   info.area = *area_str;
 
   info.index = static_cast<int32_t>(index->Value());
@@ -456,11 +456,11 @@ TranspiledInfo::TranspiledInfo(v8::Isolate *isolate,
   Utils utils(isolate, context);
 
   auto code_val = utils.GetPropertyFromObject(transpiler_result, "code");
-  v8::String::Utf8Value code_utf8(code_val);
+  v8::String::Utf8Value code_utf8(isolate, code_val);
   transpiled_code = *code_utf8;
 
   auto map_val = utils.GetPropertyFromObject(transpiler_result, "map");
-  v8::String::Utf8Value map_utf8(map_val);
+  v8::String::Utf8Value map_utf8(isolate, map_val);
   source_map = *map_utf8;
 
   context_.Reset(isolate, context);

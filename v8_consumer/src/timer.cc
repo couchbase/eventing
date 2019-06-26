@@ -48,7 +48,7 @@ EpochInfo Timer::Epoch(const v8::Local<v8::Value> &date_val) {
 
   // v8 returns epoch time in milliseconds
   // Hence, dividing it by 1000 to convert to seconds
-  auto epoch = number_v8val->IntegerValue() / 1000;
+  auto epoch = number_v8val->IntegerValue(context).FromMaybe(0) / 1000;
   return {true, epoch};
 }
 

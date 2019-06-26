@@ -14,7 +14,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 namespace inspector {
 namespace {
 using AsyncAndAgent = std::pair<uv_async_t, Agent *>;
@@ -80,11 +79,11 @@ std::string StringViewToUtf8(const StringView &view) {
 
   size_t result_length = view.length() * sizeof(*source);
   std::string result(result_length, '\0');
-  UnicodeString utf16(unicodeSource, view.length());
+  icu_62::UnicodeString utf16(unicodeSource, view.length());
   // ICU components for std::string compatibility are not enabled in build...
   bool done = false;
   while (!done) {
-    CheckedArrayByteSink sink(&result[0], result_length);
+    icu_62::CheckedArrayByteSink sink(&result[0], result_length);
     utf16.toUTF8(sink);
     result_length = sink.NumberOfBytesAppended();
     result.resize(result_length);
@@ -117,8 +116,8 @@ void ReleasePairOnAsyncClose(uv_handle_t *async) {
 } // namespace
 
 std::unique_ptr<StringBuffer> Utf8ToStringView(const std::string &message) {
-  UnicodeString utf16 =
-      UnicodeString::fromUTF8(StringPiece(message.data(), message.length()));
+  icu_62::UnicodeString utf16 =
+      icu_62::UnicodeString::fromUTF8(icu_62::StringPiece(message.data(), message.length()));
   StringView view(reinterpret_cast<const uint16_t *>(utf16.getBuffer()),
                   utf16.length());
   return StringBuffer::create(view);
@@ -189,7 +188,7 @@ InspectorIo::InspectorIo(Isolate *isolate, Platform *platform,
                          const std::string &host_name_display,
                          bool wait_for_connect, std::string file_path, int port,
                          PostURLCallback on_connect)
-    : on_connect_(on_connect), thread_(), delegate_(nullptr),
+    : on_connect_(on_connect), delegate_(nullptr), thread_(),
       state_(State::kNew), thread_req_(), platform_(platform),
       isolate_(isolate), dispatching_messages_(false), session_id_(0),
       script_name_(path), host_name_(host_name),
