@@ -16,7 +16,7 @@ var (
 	maxFunctionSize    int = 128 * 1024
 	metakvMaxDocSize   int = 128 * 1024
 	CrcTable           *crc32.Table
-	HTTPRequestTimeout = 5 * time.Second
+	HTTPRequestTimeout = 10 * time.Second
 )
 
 func init() {

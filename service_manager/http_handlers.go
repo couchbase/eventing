@@ -735,7 +735,7 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 
 	aggProgress, progressMap, errMap := util.GetProgress("/getRebalanceProgress", m.eventingNodeAddrs)
 	if len(errMap) > 0 {
-		logging.Errorf("%s failed to get progress from some/all eventing nodes: %rs err: %rs",
+		logging.Warnf("%s failed to get progress from some/all eventing nodes: %rs err: %rs",
 			logPrefix, m.eventingNodeAddrs, errMap)
 		return
 	}

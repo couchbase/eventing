@@ -348,7 +348,9 @@ func (c *Consumer) HandleV8Worker() error {
 		go c.processTimerEvents()
 	}
 
-	go c.processEvents()
+	go c.processDCPEvents()
+	go c.processFilterEvents()
+	go c.processStatsEvents()
 	return nil
 }
 
@@ -530,7 +532,7 @@ func (c *Consumer) NotifyClusterChange() {
 		logPrefix, c.ConsumerName(), c.tcpPort, c.Pid())
 
 	// To avoid eventing rebalance during any other MDS service rebalance
-        // By now the worker map init/update is already completed, even during eventing rebalance
+	// By now the worker map init/update is already completed, even during eventing rebalance
 	assignedVbs, err := c.getAssignedVbs(c.ConsumerName())
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] err: %v", logPrefix, c.ConsumerName(), c.tcpPort, c.Pid(), err)
@@ -549,7 +551,7 @@ func (c *Consumer) NotifyClusterChange() {
 		}
 	}
 
-        // there is something for us to do for this rebalance as our assigned and owned Vbs dont match
+	// there is something for us to do for this rebalance as our assigned and owned Vbs dont match
 	c.isRebalanceOngoing = true
 	logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %v",
 		logPrefix, c.ConsumerName(), c.tcpPort, c.Pid(), c.isRebalanceOngoing)
