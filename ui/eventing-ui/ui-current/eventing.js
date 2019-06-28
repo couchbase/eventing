@@ -498,6 +498,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                             createApp(scope);
                         } catch (error) {
+                            ApplicationService.server.showErrorAlert('The imported JSON file is not supported. Please check the format.');
                             console.error('Failed to load config:', error);
                         }
                     };
