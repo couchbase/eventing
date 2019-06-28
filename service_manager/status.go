@@ -89,6 +89,7 @@ type statusCodes struct {
 	errInterFunctionRecursion statusBase
 	errInterBucketRecursion   statusBase
 	errSyncGatewayEnabled     statusBase
+	errAppNotFound            statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -185,6 +186,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusBadRequest
 	case m.statusCodes.errSyncGatewayEnabled.Code:
 		return http.StatusNotAcceptable
+	case m.statusCodes.errAppNotFound.Code:
+		return http.StatusNotFound
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -240,6 +243,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errInterFunctionRecursion: statusBase{"ERR_INTER_FUNCTION_RECURSION", 50},
 		errInterBucketRecursion:   statusBase{"ERR_INTER_BUCKET_RECURSION", 51},
 		errSyncGatewayEnabled:     statusBase{"ERR_SYNC_GATEWAY_ENABLED", 52},
+		errAppNotFound:            statusBase{"ERR_APP_NOT_FOUND", 53},
 	}
 
 	errors := []errorPayload{
@@ -495,6 +499,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errSyncGatewayEnabled.Name,
 			Code:        m.statusCodes.errSyncGatewayEnabled.Code,
 			Description: "Deployment of Source Bucket Mutation handler is not allowed on SyncGateway enabled bucket",
+		},
+		{
+			Name:        m.statusCodes.errAppNotFound.Name,
+			Code:        m.statusCodes.errAppNotFound.Code,
+			Description: "Function not found",
 		},
 	}
 

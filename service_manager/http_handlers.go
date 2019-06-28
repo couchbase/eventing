@@ -417,6 +417,13 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !m.checkAppExists(appName) {
+		info.Code = m.statusCodes.errAppNotFound.Code
+		info.Info = fmt.Sprintf("Function %s not found, debugger cannot start", appName)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
 	if !m.checkIfDeployedAndRunning(appName) {
 		info.Code = m.statusCodes.errAppNotDeployed.Code
 		info.Info = fmt.Sprintf("Function: %s is not in deployed state, debugger cannot start", appName)
