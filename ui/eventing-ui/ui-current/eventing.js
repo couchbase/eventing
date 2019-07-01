@@ -1335,7 +1335,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             ];
 
             function isValidVariableRegex(value) {
-                var re = /^[a-zA-Z_$][a-zA-Z_$0-9]*$/g;
+                var re = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/g;
                 return value && value.match(re);
             }
 

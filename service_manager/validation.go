@@ -110,7 +110,8 @@ func (m *ServiceMgr) validateAliasName(aliasName string) (info *runtimeInfo) {
 		return
 	}
 
-	identifier := regexp.MustCompile("^[a-zA-Z_$][a-zA-Z0-9_]*$")
+	// Obtained from Section 2.6 - https://hepwww.pp.rl.ac.uk/users/adye/jsspec11/lexical.htm
+	identifier := regexp.MustCompile("^[a-zA-Z_$][a-zA-Z0-9_$]*$")
 	if !identifier.MatchString(aliasName) {
 		info.Code = m.statusCodes.errInvalidConfig.Code
 		info.Info = "Alias must be a valid JavaScript variable"
