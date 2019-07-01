@@ -2252,6 +2252,18 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
+			var isMixedMode bool
+			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			if isMixedMode {
+				info.Code = m.statusCodes.errMixedMode.Code
+				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
+				m.sendErrorInfo(w, info)
+				return
+			}
 
 			if info = m.validateSettings(settings); info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
@@ -2295,6 +2307,19 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 			app, info := m.unmarshalApp(r)
 			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			var isMixedMode bool
+			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			if isMixedMode {
+				info.Code = m.statusCodes.errMixedMode.Code
+				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
 				m.sendErrorInfo(w, info)
 				return
 			}
@@ -2343,7 +2368,21 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 		case "DELETE":
 			audit.Log(auditevent.DeleteFunction, r, appName)
 
-			info := m.deletePrimaryStore(appName)
+			var isMixedMode bool
+			info := &runtimeInfo{}
+			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			if isMixedMode {
+				info.Code = m.statusCodes.errMixedMode.Code
+				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			info = m.deletePrimaryStore(appName)
 			// Delete the application from temp store only if app does not exist in primary store
 			// or if the deletion succeeds on primary store
 			if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
@@ -2373,11 +2412,35 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
+			var isMixedMode bool
+			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
 
+			if isMixedMode {
+				info.Code = m.statusCodes.errMixedMode.Code
+				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
+				m.sendErrorInfo(w, info)
+				return
+			}
 			infoList := m.createApplications(r, appList, false)
 			m.sendRuntimeInfoList(w, infoList)
 
 		case "DELETE":
+			var isMixedMode bool
+			info := &runtimeInfo{}
+			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			if isMixedMode {
+				info.Code = m.statusCodes.errMixedMode.Code
+				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
+				m.sendErrorInfo(w, info)
+				return
+			}
 			infoList := []*runtimeInfo{}
 			for _, app := range m.getTempStoreAll() {
 				audit.Log(auditevent.DeleteFunction, r, app.Name)
@@ -2738,6 +2801,18 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 
 	appList, info := m.unmarshalAppList(w, r)
 	if info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+	var isMixedMode bool
+	if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if isMixedMode {
+		info.Code = m.statusCodes.errMixedMode.Code
+		info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
 		m.sendErrorInfo(w, info)
 		return
 	}
