@@ -188,15 +188,15 @@ retryStreamUpdate:
 
 	if c.isRebalanceOngoing {
 		c.vbsRemainingToOwn = c.getVbRemainingToOwn()
-		vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
+		c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
 
-		logging.Tracef("%s [%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
+		logging.Infof("%s [%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(),
-			util.Condense(c.vbsRemainingToOwn), util.Condense(vbsRemainingToGiveUp))
+			util.Condense(c.vbsRemainingToOwn), util.Condense(c.vbsRemainingToGiveUp))
 
 		// Retry logic in-case previous attempt to own/start dcp stream didn't succeed
 		// because some other node has already opened(or hasn't closed) the vb dcp stream
-		if len(c.vbsRemainingToOwn) > 0 && !c.dcpFeedsClosed {
+		if (len(c.vbsRemainingToOwn) > 0 || len(c.vbsRemainingToGiveUp) > 0) && !c.dcpFeedsClosed {
 			time.Sleep(dcpStreamRequestRetryInterval)
 			goto retryStreamUpdate
 		}
