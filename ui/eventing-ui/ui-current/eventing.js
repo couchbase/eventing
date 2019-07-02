@@ -515,8 +515,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
     ])
     .controller('EventingSettingsCtrl', ['$scope', '$rootScope', '$stateParams', 'ApplicationService', 'config',
         function($scope, $rootScope, $stateParams, ApplicationService, config) {
-            var self = this,
-                app = ApplicationService.local.getAppByName($stateParams.appName);
+            var self = this;
             config = config.data;
             self.enableDebugger = config.enable_debugger;
 
@@ -524,8 +523,13 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 ApplicationService.public.updateConfig({
                     enable_debugger: self.enableDebugger
                 });
-                $rootScope.debugDisable = !(app.settings.deployment_status && app.settings.processing_status) || !self.enableDebugger;
-                closeDialog('ok');
+                if($stateParams.appName) {
+                    app = ApplicationService.local.getAppByName($stateParams.appName);
+                    $rootScope.debugDisable = !(app.settings.deployment_status && app.settings.processing_status) || !self.enableDebugger;
+                    closeDialog('ok');
+                } else {
+                    closeDialog('ok');
+                }
             };
         }
     ])
