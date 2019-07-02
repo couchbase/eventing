@@ -120,7 +120,7 @@ CredsInfo Communicator::GetCredsCached(const std::string &endpoint) {
   }
 
   LOG(logDebug) << "Getting credentials afresh for " << RS(endpoint)
-               << std::endl;
+                << std::endl;
 
   auto credentials = GetCreds(endpoint);
   credentials.time_fetched = now;

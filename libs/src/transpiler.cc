@@ -389,6 +389,10 @@ std::string Transpiler::ComposeDescription(int code) {
     keyword = "explain";
     break;
 
+  case Jsify::kKeywordFrom:
+    keyword = "from";
+    break;
+
   case Jsify::kKeywordGrant:
     keyword = "grant";
     break;
@@ -431,7 +435,6 @@ std::string Transpiler::ComposeDescription(int code) {
 
   default:
     std::string msg = "No keyword exists for code " + std::to_string(code);
-    throw msg;
   }
 
   std::string description = keyword + " is a reserved name in N1QLJs";
