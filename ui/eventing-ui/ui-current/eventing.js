@@ -498,6 +498,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                             createApp(scope);
                         } catch (error) {
+                            ApplicationService.server.showErrorAlert('The imported JSON file is not supported. Please check the format.');
                             console.error('Failed to load config:', error);
                         }
                     };
@@ -514,8 +515,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
     ])
     .controller('EventingSettingsCtrl', ['$scope', '$rootScope', '$stateParams', 'ApplicationService', 'config',
         function($scope, $rootScope, $stateParams, ApplicationService, config) {
-            var self = this,
-                app = ApplicationService.local.getAppByName($stateParams.appName);
+            var self = this;
             config = config.data;
             self.enableDebugger = config.enable_debugger;
 
@@ -523,8 +523,13 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 ApplicationService.public.updateConfig({
                     enable_debugger: self.enableDebugger
                 });
-                $rootScope.debugDisable = !(app.settings.deployment_status && app.settings.processing_status) || !self.enableDebugger;
-                closeDialog('ok');
+                if($stateParams.appName) {
+                    app = ApplicationService.local.getAppByName($stateParams.appName);
+                    $rootScope.debugDisable = !(app.settings.deployment_status && app.settings.processing_status) || !self.enableDebugger;
+                    closeDialog('ok');
+                } else {
+                    closeDialog('ok');
+                }
             };
         }
     ])
@@ -1330,7 +1335,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             ];
 
             function isValidVariableRegex(value) {
-                var re = /^[a-zA-Z_$][a-zA-Z_$0-9]*$/g;
+                var re = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/g;
                 return value && value.match(re);
             }
 

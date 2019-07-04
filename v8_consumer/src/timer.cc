@@ -111,18 +111,20 @@ bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto utils = UnwrapData(isolate_)->utils;
   if (!utils->IsFuncGlobal(args[0])) {
+    js_exception->ThrowEventingError(
+        "First argument to createTimer must be a valid global function");
     return false;
   }
 
   if (!args[1]->IsDate()) {
     js_exception->ThrowEventingError(
-        "First argument must be a JavaScript Date instance");
+        "Second argument to createTimer must be a Date object instance");
     return false;
   }
 
   if (!args[2]->IsString() && !args[2]->IsNull() && !args[2]->IsUndefined()) {
     js_exception->ThrowEventingError(
-        "Third argument must be a JavaScript string or null/undefined");
+        "Third argument to createTimer must be a string (or null to generate an ID)");
     return false;
   }
 

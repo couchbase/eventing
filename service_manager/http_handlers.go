@@ -1568,6 +1568,14 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
+	if app.SrcMutationEnabled {
+		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, app.DeploymentConfig.SourceBucket, m.restPort); err == nil && enabled {
+			info.Code = m.statusCodes.errSyncGatewayEnabled.Code
+			info.Info = fmt.Sprintf("SyncGateway is enabled on: %s, deployement of source bucket mutating handler will cause Intra Bucket Recursion", app.DeploymentConfig.SourceBucket)
+			return
+		}
+	}
+
 	appContent := m.encodeAppPayload(app)
 
 	if len(appContent) > util.MaxFunctionSize() {

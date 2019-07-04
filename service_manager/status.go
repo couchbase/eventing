@@ -88,6 +88,7 @@ type statusCodes struct {
 	errBucketAccess           statusBase
 	errInterFunctionRecursion statusBase
 	errInterBucketRecursion   statusBase
+	errSyncGatewayEnabled     statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -182,6 +183,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusBadRequest
 	case m.statusCodes.errInterBucketRecursion.Code:
 		return http.StatusBadRequest
+	case m.statusCodes.errSyncGatewayEnabled.Code:
+		return http.StatusNotAcceptable
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -236,6 +239,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errBucketAccess:           statusBase{"ERR_BUCKET_ACCESS", 49},
 		errInterFunctionRecursion: statusBase{"ERR_INTER_FUNCTION_RECURSION", 50},
 		errInterBucketRecursion:   statusBase{"ERR_INTER_BUCKET_RECURSION", 51},
+		errSyncGatewayEnabled:     statusBase{"ERR_SYNC_GATEWAY_ENABLED", 52},
 	}
 
 	errors := []errorPayload{
@@ -486,6 +490,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errInterBucketRecursion.Name,
 			Code:        m.statusCodes.errInterBucketRecursion.Code,
 			Description: "Inter bucket recursion error, deployment of current handler will cause inter bucket recursion",
+		},
+		{
+			Name:        m.statusCodes.errSyncGatewayEnabled.Name,
+			Code:        m.statusCodes.errSyncGatewayEnabled.Code,
+			Description: "Deployment of Source Bucket Mutation handler is not allowed on SyncGateway enabled bucket",
 		},
 	}
 

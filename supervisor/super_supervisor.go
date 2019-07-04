@@ -306,8 +306,15 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					if eventingProducer, ok := s.runningFns()[appName]; ok {
 						eventingProducer.SignalBootstrapFinish()
 
-						s.addToDeployedApps(appName)
-						s.addToLocallyDeployedApps(appName)
+						logging.Infof("%s [%d] Function: %s bootstrap finished", logPrefix, s.runningFnsCount(), appName)
+						// double check that handler is still present in s.runningFns() after eventingProducer.SignalBootstrapFinish() above
+						// as handler may have been undeployed due to src and/or meta bucket delete
+						if _, ok := s.runningFns()[appName]; ok {
+							s.addToDeployedApps(appName)
+							s.addToLocallyDeployedApps(appName)
+							logging.Infof("%s [%d] Function: %s added to deployed apps map", logPrefix, s.runningFnsCount(), appName)
+						}
+
 						s.deleteFromCleanupApps(appName)
 
 						s.appListRWMutex.Lock()
@@ -460,8 +467,14 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 						logging.Infof("%s [%d] Function: %s bootstrap finished", logPrefix, s.runningFnsCount(), appName)
 
-						s.addToDeployedApps(appName)
-						s.addToLocallyDeployedApps(appName)
+						// double check that handler is still present in s.runningFns() after eventingProducer.SignalBootstrapFinish() above
+						// as handler may have been undeployed due to src and/or meta bucket delete
+						if _, ok := s.runningFns()[appName]; ok {
+							s.addToDeployedApps(appName)
+							s.addToLocallyDeployedApps(appName)
+							logging.Infof("%s [%d] Function: %s added to deployed apps map", logPrefix, s.runningFnsCount(), appName)
+						}
+
 						s.deleteFromCleanupApps(appName)
 
 						s.appListRWMutex.Lock()
@@ -696,13 +709,17 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 				if eventingProducer, ok := s.runningFns()[appName]; ok {
 					eventingProducer.SignalBootstrapFinish()
-					logging.Infof("%s [%d] Function: %s loading", logPrefix, s.runningFnsCount(), appName)
 
-					s.addToDeployedApps(appName)
-					s.addToLocallyDeployedApps(appName)
+					logging.Infof("%s [%d] Function: %s bootstrap finished", logPrefix, s.runningFnsCount(), appName)
+					// double check that handler is still present in s.runningFns() after eventingProducer.SignalBootstrapFinish() above
+					// as handler may have been undeployed due to src and/or meta bucket delete
+					if _, ok := s.runningFns()[appName]; ok {
+						s.addToDeployedApps(appName)
+						s.addToLocallyDeployedApps(appName)
+						logging.Infof("%s [%d] Function: %s added to deployed apps map", logPrefix, s.runningFnsCount(), appName)
+					}
+
 					s.deleteFromCleanupApps(appName)
-
-					logging.Infof("%s [%d] Function: %s added to deployed apps map", logPrefix, s.runningFnsCount(), appName)
 
 					s.appListRWMutex.Lock()
 					logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)

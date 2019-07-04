@@ -13,6 +13,7 @@
 #define CURL_H
 
 #include <algorithm>
+#include <cctype>
 #include <curl/curl.h>
 #include <list>
 #include <memory>
@@ -63,9 +64,14 @@ private:
 class Curl {
 public:
   using ParamsList = std::vector<CurlParameters>;
-  using Headers = std::unordered_map<std::string, std::string>;
   using Buffer = std::unique_ptr<std::vector<uint8_t>>;
   using ReadBuffer = std::pair<const Buffer *, std::size_t>;
+  struct Headers {
+    std::unordered_map<std::string, std::string> data;
+    std::string content_type;
+
+    void AddHeader(std::string key, std::string value);
+  };
 
   Curl(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
        bool enable_cookies);
@@ -214,7 +220,7 @@ struct CurlResponse {
       : code(code), msg(std::move(msg)) {}
   CurlResponse(CURLcode code, Curl::Buffer body, Curl::Headers &headers)
       : code(code), body(std::move(body)) {
-    this->headers.swap(headers);
+    (this->headers).data.swap(headers.data);
   }
 
   CURLcode code;
@@ -229,7 +235,7 @@ struct HTTPPostResponse {
       : code(code), msg(std::move(msg)) {}
   HTTPPostResponse(CURLcode code, std::string body, Curl::Headers &headers)
       : code(code), body(std::move(body)) {
-    this->headers.swap(headers);
+    (this->headers).data.swap(headers.data);
   }
 
   CURLcode code;

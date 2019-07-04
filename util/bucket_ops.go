@@ -1,6 +1,9 @@
 package util
 
 import (
+	"bytes"
+	"fmt"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -9,6 +12,7 @@ import (
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/gocb"
 )
 
 const (
@@ -125,4 +129,83 @@ func ConnectBucket(cluster, pooln, bucketn string) (*couchbase.Bucket, error) {
 		return nil, err
 	}
 	return bucket, err
+}
+
+func GetConnectionStr(kvVBMap map[uint16]string) string {
+	var connBuffer bytes.Buffer
+	connBuffer.WriteString("couchbase://")
+	visited := make(map[string]struct{})
+	for _, addr := range kvVBMap {
+		if _, found := visited[addr]; !found {
+			connBuffer.WriteString(addr)
+			connBuffer.WriteString(",")
+			visited[addr] = struct{}{}
+		}
+	}
+	if len(kvVBMap) > 0 {
+		connBuffer.Truncate(connBuffer.Len() - 1)
+	}
+	if IsIPv6() {
+		connBuffer.WriteString("?ipv6=allow")
+	}
+	return connBuffer.String()
+}
+
+func GetCluster(caller, connstr string) (*gocb.Cluster, error) {
+	logging.Infof("Connecting to cluster %rs", connstr)
+	conn, err := gocb.Connect(connstr)
+	if err != nil {
+		logging.Errorf("%v Error connecting to cluster %rs: %v", connstr, err)
+		return nil, err
+	}
+	authenticator := &DynamicAuthenticator{Caller: caller}
+	err = conn.Authenticate(authenticator)
+	if err != nil {
+		logging.Errorf("Error setting dynamic auth on connection %rs: %v", connstr, err)
+		return nil, err
+	}
+	logging.Infof("Connected to cluster %rs", connstr)
+	return conn, nil
+}
+
+func IsSyncGatewayEnabled(caller, bucketName, restPort string) (enabled bool, err error) {
+	logPrefix := "util::IsSyncGatewayEnabled"
+
+	addr := net.JoinHostPort(Localhost(), restPort)
+
+	user, password, err := cbauth.GetHTTPServiceAuth(addr)
+	if err != nil {
+		logging.Errorf("%s Failed to get auth creds, err: %v", logPrefix, err)
+		return
+	}
+	auth := fmt.Sprintf("%s:%s", user, password)
+
+	kvVbMap, err := KVVbMap(auth, bucketName, addr)
+	if err != nil {
+		logging.Errorf("%s Failed to get KVVbMap, err: %v", logPrefix, err)
+		return
+	}
+
+	connStr := GetConnectionStr(kvVbMap)
+
+	cluster, err := GetCluster(caller, connStr)
+	if err != nil {
+		logging.Errorf("%s gocb connect failed for bucket: %s, err: %v", logPrefix, bucketName, err)
+		return
+	}
+
+	defer cluster.Close()
+
+	bucket, err := cluster.OpenBucket(bucketName, "")
+	if err != nil {
+		logging.Errorf("%s OpenBucket failed for bucket: %s, err: %v", logPrefix, bucketName, err)
+		return
+	}
+
+	var valuePtr interface{}
+	_, err = bucket.Get("_sync:seq", valuePtr)
+	if err != nil {
+		return false, nil
+	}
+	return true, nil
 }
