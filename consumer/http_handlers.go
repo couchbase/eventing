@@ -18,11 +18,6 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 
 	progress := &cm.RebalanceProgress{}
 
-	if !c.isRebalanceOngoing && !c.isBootstrapping {
-		// no rebalance or bootstrap in-progress for this consumer
-		return progress
-	}
-
 	vbsRemainingToCloseStream := c.getVbRemainingToCloseStream()
 	vbsRemainingToStreamReq := c.getVbRemainingToStreamReq()
 
@@ -61,8 +56,11 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 		}
 	}
 
-	if c.isBootstrapping || c.isRebalanceOngoing {
-		progress.VbsRemainingToShuffle++
+	if (c.isBootstrapping || c.isRebalanceOngoing) && progress.VbsRemainingToShuffle == 0 {
+		// Faking rebalance progress while vbStateUpdate routine exits/returns. This should remain the last 'if' block
+		vbsToMove := rand.Intn(5) + 1
+		progress.VbsRemainingToShuffle = vbsToMove
+		progress.CloseStreamVbsLen = vbsToMove
 	}
 
 	return progress

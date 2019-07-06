@@ -200,7 +200,7 @@ std::string ExceptionString(v8::Isolate *isolate,
   } else {
     // Print (filename):(line number)
     v8::String::Utf8Value filename(isolate,
-         message->GetScriptOrigin().ResourceName());
+                                   message->GetScriptOrigin().ResourceName());
     const char *filename_string = ToCString(filename);
     int linenum = message->GetLineNumber(context).FromMaybe(0);
 

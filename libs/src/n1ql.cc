@@ -623,8 +623,7 @@ void GetReturnValueFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     auto args_value =
         ToLocal(args.This()->GetPrivate(context, args_private_key));
 
-    auto return_value = v8::String::Concat(isolate,
-                                           code_value.As<v8::String>(),
+    auto return_value = v8::String::Concat(isolate, code_value.As<v8::String>(),
                                            args_value.As<v8::String>());
     args.GetReturnValue().Set(return_value);
   } else {
