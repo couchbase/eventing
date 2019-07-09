@@ -107,6 +107,24 @@ func TestCurlGetText(t *testing.T) {
 	curl.testGet()
 }
 
+func TestCurlGetGzip(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_get_gzip",
+		testName:   "TestCurlGetGzip",
+		testHandle: t,
+	}
+	curl.testGet()
+}
+
+func TestCurlGetDeflate(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_get_deflate",
+		testName:   "TestCurlGetDeflate",
+		testHandle: t,
+	}
+	curl.testGet()
+}
+
 // GET + types + auth
 func TestCurlGetJSONDigestAuth(t *testing.T) {
 	curl := curlTester{

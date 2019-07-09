@@ -1,6 +1,8 @@
 package eventing
 
 import (
+	"compress/flate"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -256,6 +258,26 @@ func getOrDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		data := []uint8{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 42, 0, 0, 0}
 		w.Write(data)
+
+	case "gzip":
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Encoding", "gzip")
+		data := `{"key": "here comes some value as application/json"}`
+		w.Header().Set("X-Original-Length", strconv.Itoa(len(data)))
+		gz, _ := gzip.NewWriterLevel(w, gzip.BestSpeed)
+		jsonData, _ := json.Marshal(data)
+		gz.Write([]byte(jsonData))
+		gz.Close()
+
+	case "deflate":
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Encoding", "deflate")
+		data := `{"key": "here comes some value as application/json"}`
+		w.Header().Set("X-Original-Length", strconv.Itoa(len(data)))
+		fl, _ := flate.NewWriter(w, flate.DefaultCompression)
+		jsonData, _ := json.Marshal(data)
+		fl.Write([]byte(jsonData))
+		fl.Close()
 
 	case "text/plain":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
