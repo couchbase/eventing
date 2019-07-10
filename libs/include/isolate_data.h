@@ -42,6 +42,7 @@ struct IsolateData {
 
   static const uint32_t index{0};
   lcb_U32 n1ql_timeout{0};
+  long curl_timeout{0};
 
   N1QLCodex *n1ql_codex;
   N1QL *n1ql_handle;

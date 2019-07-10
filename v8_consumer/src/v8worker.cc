@@ -126,6 +126,9 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
       static_cast<lcb_U32>(h_config->execution_timeout < 3
                                ? 500000
                                : (h_config->execution_timeout - 2) * 1000000);
+  data_.curl_timeout = h_config->execution_timeout < 5
+                           ? h_config->execution_timeout
+                           : h_config->execution_timeout - 2;
 }
 
 void V8Worker::InitializeCurlBindingValues(
