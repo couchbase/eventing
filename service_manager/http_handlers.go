@@ -2763,6 +2763,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 		for i := range app.DeploymentConfig.Curl {
 			app.DeploymentConfig.Curl[i].Username = ""
 			app.DeploymentConfig.Curl[i].Password = ""
+			app.DeploymentConfig.Curl[i].BearerKey = ""
 		}
 		app.Settings["deployment_status"] = false
 		app.Settings["processing_status"] = false
