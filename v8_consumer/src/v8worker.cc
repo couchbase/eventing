@@ -12,6 +12,7 @@
 #include "v8worker.h"
 #include "bucket.h"
 #include "curl.h"
+#include "insight.h"
 #include "retry_util.h"
 #include "timer.h"
 #include "transpiler.h"
@@ -115,6 +116,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.n1ql_codex = new N1QLCodex;
   data_.custom_error = new CustomError(isolate_, context);
   data_.curl_codex = new CurlCodex;
+  data_.code_insight = new CodeInsight(isolate_);
 
   // execution_timeout is in seconds
   // n1ql_timeout is expected in micro seconds
@@ -124,6 +126,9 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
       static_cast<lcb_U32>(h_config->execution_timeout < 3
                                ? 500000
                                : (h_config->execution_timeout - 2) * 1000000);
+  data_.curl_timeout = h_config->execution_timeout < 5
+                           ? h_config->execution_timeout
+                           : h_config->execution_timeout - 2;
 }
 
 void V8Worker::InitializeCurlBindingValues(
@@ -331,6 +336,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     DeriveFromError(isolate_, context, type_name);
   }
 
+  auto cmt_info = CommentN1QL(script_to_execute, false, "");
   auto uniline_info = transpiler->UniLineN1QL(script_to_execute);
   LOG(logTrace) << "code after Unilining N1QL: "
                 << RM(uniline_info.handler_code) << std::endl;
@@ -350,16 +356,18 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   n1ql_handle_ = new N1QL(conn_pool_, isolate_);
   UnwrapData(isolate_)->n1ql_handle = n1ql_handle_;
 
-  script_to_execute =
-      transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
-                            uniline_info.handler_code) +
-      '\n';
+  auto transpiled_info = transpiler->Transpile(
+      jsify_info.handler_code, app_name_ + ".js", uniline_info.handler_code);
+  script_to_execute = transpiled_info.final_code + '\n';
   script_to_execute += std::string((const char *)js_builtin) + '\n';
+  LOG(logTrace) << "script to execute: " << RM(script_to_execute) << std::endl;
+  script_to_execute_ = script_to_execute;
+
+  CodeInsight::Get(isolate_).Setup(script_to_execute,
+                                   transpiled_info.source_map,
+                                   cmt_info.insertions);
 
   auto source = v8Str(isolate_, script_to_execute);
-  script_to_execute_ = script_to_execute;
-  LOG(logTrace) << "script to execute: " << RM(script_to_execute) << std::endl;
-
   if (!ExecuteScript(source)) {
     return kFailedToCompileJs;
   }
@@ -611,9 +619,9 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
   }
 
   if (try_catch.HasCaught()) {
-    LOG(logDebug) << "OnUpdate Exception: "
-                  << ExceptionString(isolate_, context, &try_catch)
-                  << std::endl;
+    auto emsg = ExceptionString(isolate_, context, &try_catch);
+    LOG(logDebug) << "OnUpdate Exception: " << emsg << std::endl;
+    CodeInsight::Get(isolate_).AccumulateException(try_catch);
   }
 
   if (debugger_started_) {
@@ -635,11 +643,11 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
   on_doc_update->Call(context->Global(), 2, args);
   execute_flag_ = false;
   if (try_catch.HasCaught()) {
-    LOG(logDebug) << "OnUpdate Exception: "
-                  << ExceptionString(isolate_, context, &try_catch)
-                  << std::endl;
     UpdateHistogram(start_time);
     on_update_failure++;
+    auto emsg = ExceptionString(isolate_, context, &try_catch);
+    LOG(logDebug) << "OnUpdate Exception: " << emsg << std::endl;
+    CodeInsight::Get(isolate_).AccumulateException(try_catch);
     return kOnUpdateCallFail;
   }
 
@@ -878,10 +886,9 @@ CodeVersion V8Worker::IdentifyVersion(std::string handler) {
     throw "Jsify failed when trying to identify version";
   }
 
-  auto script_to_execute =
-      transpiler->Transpile(jsify_info.handler_code, app_name_ + ".js",
-                            uniline_info.handler_code) +
-      '\n';
+  auto transpiled_info = transpiler->Transpile(
+      jsify_info.handler_code, app_name_ + ".js", uniline_info.handler_code);
+  auto script_to_execute = transpiled_info.final_code + '\n';
   script_to_execute += std::string((const char *)js_builtin) + '\n';
 
   auto ver = transpiler->GetCodeVersion(script_to_execute);
@@ -893,7 +900,7 @@ void V8Worker::GetTimerMessages(std::vector<uv_buf_t> &messages,
   size_t timer_count = timer_queue_->Count();
   timer_count = std::min(timer_count, window_size);
 
-  for (int64_t idx = 0; idx < timer_count; ++idx) {
+  for (uint64_t idx = 0; idx < timer_count; ++idx) {
     std::unique_ptr<timer_msg_t> timer_msg;
     if (!timer_queue_->Pop(timer_msg))
       break;
@@ -1079,6 +1086,11 @@ void V8Worker::FreeCurlBindings() {
 
     delete info.curl;
   }
+}
+
+CodeInsight &V8Worker::GetInsight() {
+  auto &insight = CodeInsight::Get(isolate_);
+  return insight;
 }
 
 // TODO : Remove this when stats variables are handled properly

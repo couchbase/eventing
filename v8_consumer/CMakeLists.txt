@@ -30,6 +30,7 @@ SET(LIBS_SRC
         ../libs/src/v8log.cc
         ../libs/src/utils.cc
         ../libs/src/base64.cc
+        ../libs/src/insight.cc
         ../third_party/crc64/crc64.cc)
 
 INCLUDE_DIRECTORIES(BEFORE

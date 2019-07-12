@@ -10,8 +10,3 @@
   line-height: 1.4rem !important;
   font-size: 14px !important;
 }
-.functions-editor-info {
-  position:absolute;
-  background:rgba(255,0,0,0.5);
-  z-index:20
-}

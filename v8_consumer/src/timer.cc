@@ -86,7 +86,7 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
         std::to_string(rng()) + std::to_string(timer_info.seq_num);
   }
 
-  if (timer_info.context.size() > timer_context_size) {
+  if (timer_info.context.size() > static_cast<unsigned>(timer_context_size)) {
     js_exception->ThrowEventingError(
         "The context payload size is more than the configured size:" +
         std::to_string(timer_context_size) + " bytes");

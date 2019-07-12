@@ -9,11 +9,19 @@ import (
 	"strconv"
 
 	"github.com/couchbase/cbauth/service"
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/eventing/common"
 )
+
+func (m *ServiceMgr) checkAppExists(appName string) bool {
+	_, info := m.getTempStore(appName)
+	if info.Code == m.statusCodes.errAppNotFoundTs.Code {
+		return false
+	}
+	return true
+}
 
 func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 	deployedApps := m.superSup.DeployedAppList()
@@ -26,14 +34,12 @@ func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 }
 
 func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
-	deployedApps := m.superSup.DeployedAppList()
-	for _, app := range deployedApps {
-		if app == appName && m.superSup.GetAppState(app) != common.AppStatePaused {
-			return true
-		}
-	}
-	return false
+	bootstrappingApps := m.superSup.BootstrapAppList()
+	_, isBootstrapping := bootstrappingApps[appName]
+
+	return !isBootstrapping && m.superSup.GetAppState(appName) == common.AppStateEnabled
 }
+
 func decodeRev(b service.Revision) uint64 {
 	return binary.BigEndian.Uint64(b)
 }
@@ -98,22 +104,6 @@ func fillMissingDefault(settings map[string]interface{}, field string, defaultVa
 	if _, ok := settings[field]; !ok {
 		settings[field] = defaultValue
 	}
-}
-
-func (m *ServiceMgr) getHandler(appName string) string {
-	if m.checkIfDeployed(appName) {
-		return m.superSup.GetHandlerCode(appName)
-	}
-
-	return ""
-}
-
-func (m *ServiceMgr) getSourceMap(appName string) string {
-	if m.checkIfDeployed(appName) {
-		return m.superSup.GetSourceMap(appName)
-	}
-
-	return ""
 }
 
 func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeInfo) {

@@ -357,7 +357,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 void AppWorker::FlushToConn(uv_stream_t *stream, char *msg, int length) {
   auto buffer = uv_buf_init(msg, length);
 
-  int bytes_written = 0;
+  unsigned bytes_written = 0;
   auto wrapper = buffer;
 
   while (bytes_written < buffer.len) {
@@ -374,7 +374,7 @@ void AppWorker::FlushToConn(uv_stream_t *stream, char *msg, int length) {
       break;
     }
 
-    bytes_written += rc;
+    bytes_written += static_cast<unsigned>(rc);
     wrapper.base += rc;
     wrapper.len -= rc;
   }
@@ -486,6 +486,14 @@ void AppWorker::RouteMessageWithResponse(
       resp_msg_->msg_type = mV8_Worker_Config;
       resp_msg_->opcode = oCurlLatencyStats;
       msg_priority_ = true;
+      break;
+
+    case oInsight:
+      resp_msg_->msg = GetInsight();
+      resp_msg_->msg_type = mV8_Worker_Config;
+      resp_msg_->opcode = oCodeInsights;
+      msg_priority_ = true;
+      LOG(logDebug) << "Responding with insight " << resp_msg_->msg << std::endl;
       break;
 
     case oGetFailureStats:
@@ -709,7 +717,7 @@ void AppWorker::RouteMessageWithResponse(
         workers_[curr_worker_idx_]->Enqueue(std::move(worker_msg));
         curr_worker_idx_ = (curr_worker_idx_ + 1) % thr_count_;
       } else {
-        LOG(logError) << "Timer event lost: worker " << worker_index
+        LOG(logError) << "Timer event lost: worker " << curr_worker_idx_
                       << " is null" << std::endl;
         ++timer_events_lost;
       }
@@ -893,7 +901,7 @@ void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
     } else {
       int written = bytes_written;
       for (size_t idx = curr_idx; idx < messages.size(); idx++, curr_idx++) {
-        if (messages[idx].len > written) {
+        if (messages[idx].len > static_cast<unsigned>(written)) {
           messages[idx].len -= written;
           messages[idx].base += written;
           break;
@@ -1014,7 +1022,7 @@ int main(int argc, char **argv) {
   std::string ipc_type(argv[2]); // can be af_unix or af_inet
 
   std::string feedback_sock_path, uds_sock_path;
-  int feedback_port, port;
+  int feedback_port = -1, port = -1;
 
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
     uds_sock_path.assign(argv[3]);
@@ -1057,4 +1065,13 @@ int main(int argc, char **argv) {
   worker->feedback_uv_loop_thr_.join();
 
   curl_global_cleanup();
+}
+
+std::string AppWorker::GetInsight() {
+  CodeInsight sum(nullptr);
+  for (int16_t i = 0; i < thr_count_; i++) {
+    auto &entry = workers_[i]->GetInsight();
+    sum.Accumulate(entry);
+  }
+  return sum.ToJSON();
 }

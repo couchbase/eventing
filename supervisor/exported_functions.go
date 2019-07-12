@@ -71,17 +71,6 @@ func (s *SuperSupervisor) GetDeployedApps() map[string]string {
 	return deployedApps
 }
 
-// GetHandlerCode returns handler code for requested appname
-func (s *SuperSupervisor) GetHandlerCode(appName string) string {
-	logPrefix := "SuperSupervisor::GetHandlerCode"
-
-	logging.Infof("%s [%d] Function: %s request for handler code", logPrefix, s.runningFnsCount(), appName)
-	if p, ok := s.runningFns()[appName]; ok {
-		return p.GetHandlerCode()
-	}
-	return ""
-}
-
 // GetLatencyStats dumps stats from cpp world
 func (s *SuperSupervisor) GetLatencyStats(appName string) common.StatsData {
 	if p, ok := s.runningFns()[appName]; ok {
@@ -95,6 +84,17 @@ func (s *SuperSupervisor) GetCurlLatencyStats(appName string) common.StatsData {
 		return p.GetCurlLatencyStats()
 	}
 	return nil
+}
+
+func (s *SuperSupervisor) GetInsight(appName string) *common.Insight {
+	logPrefix := "SuperSupervisor::GetInsight"
+	if p, ok := s.runningFns()[appName]; ok {
+		if insight := p.GetInsight(); insight != nil {
+			logging.Debugf("%s [%d] Function: %s insight is %ru", logPrefix, s.runningFnsCount(), appName, insight)
+			return insight
+		}
+	}
+	return common.NewInsight() // empty if error
 }
 
 // GetLocallyDeployedApps returns list of deployed apps and their last deployment time
@@ -141,17 +141,6 @@ func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
 		return p.GetSeqsProcessed()
 	}
 	return nil
-}
-
-// GetSourceMap returns source map for requested appname
-func (s *SuperSupervisor) GetSourceMap(appName string) string {
-	logPrefix := "SuperSupervisor::GetSourceMap"
-
-	logging.Infof("%s [%d] Function: %s request for source map", logPrefix, s.runningFnsCount(), appName)
-	if p, ok := s.runningFns()[appName]; ok {
-		return p.GetSourceMap()
-	}
-	return ""
 }
 
 // RestPort returns ns_server port(typically 8091/9000)
@@ -282,17 +271,20 @@ func (s *SuperSupervisor) PlannerStats(appName string) []*common.PlannerNodeVbMa
 // RebalanceTaskProgress reports vbuckets remaining to be transferred as per planner
 // during the course of rebalance
 func (s *SuperSupervisor) RebalanceTaskProgress(appName string) (*common.RebalanceProgress, error) {
+	progress := &common.RebalanceProgress{}
+
 	p, ok := s.runningFns()[appName]
 	if ok {
-		return p.RebalanceTaskProgress(), nil
+		if s.GetAppState(appName) == common.AppStateEnabled {
+			progress = p.RebalanceTaskProgress()
+		}
+		return progress, nil
 	}
 
 	_, err := s.isFnRunningFromPrimary(appName)
 	if err != nil {
 		return nil, err
 	}
-
-	progress := &common.RebalanceProgress{}
 
 	// report rebalance progress for yet-to-bootstrap-apps only if node is still part of cluster
 	if s.checkIfNodeInCluster() {

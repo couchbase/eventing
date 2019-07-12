@@ -44,6 +44,7 @@
 #include "transpiler.h"
 #include "utils.h"
 #include "v8log.h"
+#include "insight.h"
 
 #include "../../gen/flatbuf/header_generated.h"
 #include "../../gen/flatbuf/payload_generated.h"
@@ -273,6 +274,8 @@ public:
 
   uint64_t GetVbFilter(int vb_no);
 
+  CodeInsight& GetInsight();
+
   void EraseVbFilter(int vb_no);
 
   void UpdateBucketopsSeqno(int vb_no, uint64_t seq_no);
@@ -300,6 +303,7 @@ public:
 
   std::string app_name_;
   std::string script_to_execute_;
+
   std::string cb_source_bucket_;
   int64_t max_task_duration_;
 

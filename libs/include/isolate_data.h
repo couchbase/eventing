@@ -28,6 +28,7 @@ class CurlFactory;
 class CurlRequestBuilder;
 class CurlResponseBuilder;
 class Communicator;
+struct CodeInsight;
 struct CurlCodex;
 
 // Struct for storing isolate data
@@ -37,10 +38,11 @@ struct IsolateData {
         js_exception(nullptr), comm(nullptr), transpiler(nullptr),
         utils(nullptr), timer(nullptr), custom_error(nullptr),
         curl_codex(nullptr), curl_factory(nullptr), req_builder(nullptr),
-        resp_builder(nullptr) {}
+        resp_builder(nullptr), code_insight(nullptr) {}
 
   static const uint32_t index{0};
   lcb_U32 n1ql_timeout{0};
+  long curl_timeout{0};
 
   N1QLCodex *n1ql_codex;
   N1QL *n1ql_handle;
@@ -55,6 +57,7 @@ struct IsolateData {
   CurlFactory *curl_factory;
   CurlRequestBuilder *req_builder;
   CurlResponseBuilder *resp_builder;
+  CodeInsight *code_insight;
 };
 
 inline IsolateData *UnwrapData(v8::Isolate *isolate) {

@@ -188,12 +188,12 @@ InspectorIo::InspectorIo(Isolate *isolate, Platform *platform,
                          const std::string &host_name_display,
                          bool wait_for_connect, std::string file_path, int port,
                          PostURLCallback on_connect)
-    : on_connect_(on_connect), delegate_(nullptr), thread_(),
+    : on_connect_(on_connect), delegate_(nullptr),
       state_(State::kNew), thread_req_(), platform_(platform),
       isolate_(isolate), dispatching_messages_(false), session_id_(0),
       script_name_(path), host_name_(host_name),
       host_name_display_(host_name_display), file_path_(file_path),
-      wait_for_connect_(wait_for_connect), port_(port) {
+      wait_for_connect_(wait_for_connect), port_(port), thread_() {
   main_thread_req_ = new AsyncAndAgent(
       {uv_async_t(), reinterpret_cast<Agent *>(isolate->GetData(1))});
   auto result = uv_async_init(uv_default_loop(), &main_thread_req_->first,

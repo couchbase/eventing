@@ -175,13 +175,6 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["handler_code"]; ok {
-		if c.v8WorkerMessagesProcessed["handler_code"] > 0 {
-			stats["handler_code"] = c.v8WorkerMessagesProcessed["handler_code"]
-
-		}
-	}
-
 	if _, ok := c.v8WorkerMessagesProcessed["latency_stats"]; ok {
 		if c.v8WorkerMessagesProcessed["latency_stats"] > 0 {
 			stats["latency_stats"] = c.v8WorkerMessagesProcessed["latency_stats"]
@@ -197,12 +190,6 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	if _, ok := c.v8WorkerMessagesProcessed["log_level"]; ok {
 		if c.v8WorkerMessagesProcessed["log_level"] > 0 {
 			stats["log_level"] = c.v8WorkerMessagesProcessed["log_level"]
-		}
-	}
-
-	if _, ok := c.v8WorkerMessagesProcessed["source_map"]; ok {
-		if c.v8WorkerMessagesProcessed["source_map"] > 0 {
-			stats["source_map"] = c.v8WorkerMessagesProcessed["source_map"]
 		}
 	}
 
@@ -279,16 +266,6 @@ func (c *Consumer) GetMetaStoreStats() map[string]uint64 {
 	}
 
 	return stats
-}
-
-// GetHandlerCode returns handler code to assist V8 debugger
-func (c *Consumer) GetHandlerCode() string {
-	return c.handlerCode
-}
-
-// GetSourceMap returns source map to assist V8 debugger
-func (c *Consumer) GetSourceMap() string {
-	return c.sourceMap
 }
 
 // HostPortAddr returns the HostPortAddr combination of current eventing node
@@ -773,4 +750,14 @@ func (c *Consumer) RemoveSupervisorToken() error {
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 	}
 	return c.consumerSup.Remove(c.clientSupToken)
+}
+
+func (c *Consumer) GetInsight() *common.Insight {
+	c.refreshInsight()
+	select {
+	case insight := <-c.insight:
+		return insight
+	case <-time.After(15 * time.Second):
+		return nil
+	}
 }

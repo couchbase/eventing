@@ -226,6 +226,86 @@ func (m *ServiceMgr) die(w http.ResponseWriter, r *http.Request) {
 	os.Exit(-1)
 }
 
+func (m *ServiceMgr) getInsight(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	apps := make([]string, 0)
+	apps = append(apps, r.URL.Query()["name"]...)
+	if len(apps) < 1 {
+		for app, _ := range m.superSup.GetDeployedApps() {
+			apps = append(apps, app)
+		}
+	}
+
+	var insights *common.Insights
+	if rv := r.URL.Query()["aggregate"]; len(rv) > 0 && rv[0] == "true" {
+		creds := r.Header.Get("Authorization")
+		insights = getGlobalInsights(m, apps, creds)
+	} else {
+		insights = getLocalInsights(m, apps)
+	}
+
+	msg, _ := json.MarshalIndent(&insights, "", " ")
+	if rv := r.URL.Query()["redact"]; len(rv) > 0 && rv[0] == "false" {
+		// do redaction
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, "%s\n", string(msg))
+}
+
+func getLocalInsights(m *ServiceMgr, apps []string) *common.Insights {
+	insights := common.NewInsights()
+	for _, app := range apps {
+		(*insights)[app] = m.superSup.GetInsight(app)
+	}
+	return insights
+}
+
+func getGlobalInsights(m *ServiceMgr, apps []string, creds string) *common.Insights {
+	insights := common.NewInsights()
+	nodes, err := m.getActiveNodeAddrs()
+	if err != nil {
+		logging.Errorf("Got failure getting nodes", err)
+		return insights
+	}
+	for _, node := range nodes {
+		url := "http://" + node + "/getInsight?aggregate=false"
+		client := http.Client{Timeout: time.Second * 15}
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			logging.Errorf("Got failure creating http request to %v: %v", node, err)
+			continue
+		}
+		req.Header.Set("Authorization", creds)
+		resp, err := client.Do(req)
+		if err != nil {
+			logging.Errorf("Got failure doing http request to %v: %v", node, err)
+			continue
+		}
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			logging.Errorf("Got failure reading http request to %v: %v", node, err)
+			continue
+		}
+		ans := common.NewInsights()
+		err = json.Unmarshal(body, &ans)
+		if err != nil {
+			logging.Errorf("Got failure unmarshaling http request to %v: %v body: %v", node, err, body)
+			continue
+		}
+		insights.Accumulate(ans)
+	}
+	return insights
+}
+
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getDebuggerURL"
 
@@ -333,6 +413,13 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 	if !exists || !enabled.(bool) {
 		info.Code = m.statusCodes.errDebuggerDisabled.Code
 		info.Info = "Debugger is not enabled"
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if !m.checkAppExists(appName) {
+		info.Code = m.statusCodes.errAppNotFound.Code
+		info.Info = fmt.Sprintf("Function %s not found, debugger cannot start", appName)
 		m.sendErrorInfo(w, info)
 		return
 	}
@@ -2165,6 +2252,18 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
+			var isMixedMode bool
+			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			if isMixedMode {
+				info.Code = m.statusCodes.errMixedMode.Code
+				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
+				m.sendErrorInfo(w, info)
+				return
+			}
 
 			if info = m.validateSettings(settings); info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
@@ -2208,6 +2307,19 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 			app, info := m.unmarshalApp(r)
 			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			var isMixedMode bool
+			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			if isMixedMode {
+				info.Code = m.statusCodes.errMixedMode.Code
+				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
 				m.sendErrorInfo(w, info)
 				return
 			}
@@ -2256,7 +2368,21 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 		case "DELETE":
 			audit.Log(auditevent.DeleteFunction, r, appName)
 
-			info := m.deletePrimaryStore(appName)
+			var isMixedMode bool
+			info := &runtimeInfo{}
+			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			if isMixedMode {
+				info.Code = m.statusCodes.errMixedMode.Code
+				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			info = m.deletePrimaryStore(appName)
 			// Delete the application from temp store only if app does not exist in primary store
 			// or if the deletion succeeds on primary store
 			if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
@@ -2286,11 +2412,35 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
+			var isMixedMode bool
+			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
 
+			if isMixedMode {
+				info.Code = m.statusCodes.errMixedMode.Code
+				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
+				m.sendErrorInfo(w, info)
+				return
+			}
 			infoList := m.createApplications(r, appList, false)
 			m.sendRuntimeInfoList(w, infoList)
 
 		case "DELETE":
+			var isMixedMode bool
+			info := &runtimeInfo{}
+			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			if isMixedMode {
+				info.Code = m.statusCodes.errMixedMode.Code
+				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
+				m.sendErrorInfo(w, info)
+				return
+			}
 			infoList := []*runtimeInfo{}
 			for _, app := range m.getTempStoreAll() {
 				audit.Log(auditevent.DeleteFunction, r, app.Name)
@@ -2551,6 +2701,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 				stats.LatencyStats = m.superSup.GetLatencyStats(app.Name)
 				stats.CurlLatencyStats = m.superSup.GetCurlLatencyStats(app.Name)
 				stats.SeqsProcessed = m.superSup.GetSeqsProcessed(app.Name)
+
 				spanBlobDump, err := m.superSup.SpanBlobDump(app.Name)
 				if err == nil {
 					stats.SpanBlobDump = spanBlobDump
@@ -2650,6 +2801,18 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 
 	appList, info := m.unmarshalAppList(w, r)
 	if info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+	var isMixedMode bool
+	if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if isMixedMode {
+		info.Code = m.statusCodes.errMixedMode.Code
+		info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
 		m.sendErrorInfo(w, info)
 		return
 	}

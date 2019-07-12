@@ -91,10 +91,10 @@
     </div>
   </div>
   <div ng-if="summaryCtrl.errorState">
-    <p>Cannot connect. Eventing may be starting (or not enabled on any node). Please retry after some time.</p>
+    <p class="zero-content">Cannot connect. Eventing may be starting up. Please retry after some time.</p>
   </div>
   <div ng-if="summaryCtrl.errorCode && summaryCtrl.errorCode == 403">
-    <p>User does not have sufficient privileges to access eventing UI.</p>
+    <p class="error">User does not have sufficient privileges to access eventing UI.</p>
   </div>
 </div>
 <div ng-if="!summaryCtrl.isEventingRunning">

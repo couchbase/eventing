@@ -735,26 +735,69 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 // TODO : Figure out how to add N1QL grammar to ace editor.
                 editor.getSession().setUseWorker(false);
 
-                // If the compilation wasn't successful, show error info in UI.
-                if (app.compilationInfo && !app.compilationInfo.compile_success) {
-                    var line = app.compilationInfo.line_number - 1,
-                        col = app.compilationInfo.column_number - 1;
-
-                    var markerId = editor.session.addMarker(new Range(line, col, line, col + 1), "functions-editor-info", "text");
-                    markers.push(markerId);
-                    editor.getSession().setAnnotations([{
-                        row: line,
-                        column: col,
+                // Allow editor to load fully and add annotations
+                var showAnnotations = function() {
+                  // compilation errors
+                  if (app.compilationInfo && !app.compilationInfo.compile_success) {
+                     var line = app.compilationInfo.line_number - 1,
+                         col = app.compilationInfo.column_number - 1;
+                     var markerId = editor.session.addMarker(new Range(line, 0, line, Infinity), "", "text");
+                     markers.push(markerId);
+                     editor.getSession().setAnnotations([{
+                         row: line,
+                         column: 0,
                         text: app.compilationInfo.description,
-                        type: "error"
-                    }]);
-                }
+                         type: "error"
+                     }]);
+                     return;
+                  }
 
-                editor.on('focus', function(event) {
-                    if (self.editorDisabled) {
-                        ApplicationService.server.showWarningAlert('The function is deployed. Please undeploy or pause the function in order to edit');
+                  // insights
+                  if (self.editorDisabled) {
+                     ApplicationService.server.getInsight(app.appname).then(function(insight) {
+                         console.log(insight);
+                         var annotations = [];
+                         self.codeInsight = {};
+                         Object.keys(insight.lines).forEach(function(pos) {
+                            var info = insight.lines[pos];
+                            var srcline = parseInt(pos) - 1; // ace is 0 indexed, v8 is 1 indexed
+                            var msg, type;
+                            if (info.error_count > 0) {
+                                msg = info.error_msg;
+                                msg += "\n(errors: " + info.error_count + ")";
+                                type = "error";
+                            } else if (info.last_log.length > 0) {
+                                msg = info.last_log;
+                                type = "info";
+                            } else {
+                                return;
+                            }
+                            self.codeInsight[srcline] = info;
+                            var id = editor.session.addMarker(new Range(srcline-1, 0, srcline-1, Infinity), "", "text");
+                            markers.push(id);
+                            annotations.push({
+                               row: srcline-1,
+                               column: 0,
+                               text: msg,
+                               type: type
+                            });
+                         });
+                         editor.getSession().setAnnotations(annotations);
+                      }).catch(function(err){
+                         console.error("Error iterating insight", err);
+                      });
+                      return;
                     }
-                });
+                };
+
+                setTimeout(showAnnotations, 500);
+
+                if (self.editorDisabled) {
+                    var keyboardDisable = function(data, hash, keyString, keyCode, event) {
+                       ApplicationService.server.showWarningAlert('The function is deployed. Please undeploy or pause the function in order to edit');
+                    };
+                   editor.keyBinding.addKeyboardHandler(keyboardDisable);
+                }
 
                 // Make the ace editor responsive to changes in browser dimensions.
                 function resizeEditor() {
@@ -810,6 +853,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                 $state.go('app.admin.eventing.summary');
             };
+
 
             self.debugApp = function() {
                 ApplicationService.primaryStore.getDeployedApps()
@@ -1231,12 +1275,20 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     showSuccessAlert: function(message) {
                         mnAlertsService.formatAndSetAlerts(message, 'success', 4000);
                     },
-
                     showWarningAlert: function(message) {
                         mnAlertsService.formatAndSetAlerts(message, 'warning', 4000);
                     },
                     showErrorAlert: function(message) {
                         mnAlertsService.formatAndSetAlerts(message, 'error', 4000);
+                    },
+                    getInsight: function(appname) {
+                       return $http.get('/_p/event/getInsight?name=' + appname).then(
+                         function(response) {
+                            return response.data[appname];
+                         }).catch(function(response) {
+                            console.log("error getting insight", response);
+                            return {};
+                         });
                     }
                 },
                 convertBindingToConfig: function(bindings) {

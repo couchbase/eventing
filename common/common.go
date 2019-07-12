@@ -16,6 +16,22 @@ const (
 type ChangeType string
 type StatsData map[string]uint64
 
+type InsightLine struct {
+	CallCount      int64   `json:"call_count"`
+	CallTime       float64 `json:"call_time"`
+	ExceptionCount int64   `json:"error_count"`
+	LastException  string  `json:"error_msg"`
+	LastLog        string  `json:"last_log"`
+}
+
+type Insight struct {
+	Script string              `json:"script"`
+	SrcMap string              `json:"srcmap"`
+	Lines  map[int]InsightLine `json:"lines"`
+}
+
+type Insights map[string]*Insight
+
 const (
 	StartRebalanceCType = ChangeType("start-rebalance")
 	StopRebalanceCType  = ChangeType("stop-rebalance")
@@ -66,6 +82,8 @@ var ErrRetryTimeout = errors.New("retry timeout")
 type EventingProducer interface {
 	AddMetadataPrefix(key string) Key
 	Auth() string
+	AppendCurlLatencyStats(deltas StatsData)
+	AppendLatencyStats(deltas StatsData)
 	CfgData() string
 	CheckpointBlobDump() map[string]interface{}
 	CleanupMetadataBucket(skipCheckpointBlobs bool) error
@@ -79,16 +97,15 @@ type EventingProducer interface {
 	GetEventProcessingStats() map[string]uint64
 	GetExecutionStats() map[string]interface{}
 	GetFailureStats() map[string]interface{}
-	GetHandlerCode() string
 	GetLatencyStats() StatsData
 	GetCurlLatencyStats() StatsData
+	GetInsight() *Insight
 	GetLcbExceptionsStats() map[string]uint64
 	GetMetaStoreStats() map[string]uint64
 	GetMetadataPrefix() string
 	GetNsServerPort() string
 	GetVbOwner(vb uint16) (string, string, error)
 	GetSeqsProcessed() map[int]int64
-	GetSourceMap() string
 	GetDebuggerToken() string
 	InternalVbDistributionStats() map[string]string
 	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
@@ -130,8 +147,6 @@ type EventingProducer interface {
 	WriteAppLog(log string)
 	WriteDebuggerURL(url string)
 	WriteDebuggerToken(token string, hostnames []string) error
-	AppendCurlLatencyStats(deltas StatsData)
-	AppendLatencyStats(deltas StatsData)
 }
 
 // EventingConsumer interface to export functions from eventing_consumer
@@ -146,10 +161,9 @@ type EventingConsumer interface {
 	GetEventProcessingStats() map[string]uint64
 	GetExecutionStats() map[string]interface{}
 	GetFailureStats() map[string]interface{}
-	GetHandlerCode() string
+	GetInsight() *Insight
 	GetLcbExceptionsStats() map[string]uint64
 	GetMetaStoreStats() map[string]uint64
-	GetSourceMap() string
 	HandleV8Worker() error
 	HostPortAddr() string
 	Index() int
@@ -161,6 +175,7 @@ type EventingConsumer interface {
 	Pid() int
 	RebalanceStatus() bool
 	RebalanceTaskProgress() *RebalanceProgress
+	RemoveSupervisorToken() error
 	ResetBootstrapDone()
 	Serve()
 	SetConnHandle(net.Conn)
@@ -181,7 +196,6 @@ type EventingConsumer interface {
 	VbProcessingStats() map[uint16]map[string]interface{}
 	VbSeqnoStats() map[int]map[string]interface{}
 	WorkerVbMapUpdate(map[string][]uint16)
-	RemoveSupervisorToken() error
 }
 
 type EventingSuperSup interface {
@@ -200,14 +214,13 @@ type EventingSuperSup interface {
 	GetEventingConsumerPids(appName string) map[string]int
 	GetExecutionStats(appName string) map[string]interface{}
 	GetFailureStats(appName string) map[string]interface{}
-	GetHandlerCode(appName string) string
 	GetLatencyStats(appName string) StatsData
 	GetCurlLatencyStats(appName string) StatsData
+	GetInsight(appName string) *Insight
 	GetLcbExceptionsStats(appName string) map[string]uint64
 	GetLocallyDeployedApps() map[string]string
 	GetMetaStoreStats(appName string) map[string]uint64
 	GetSeqsProcessed(appName string) map[int]int64
-	GetSourceMap(appName string) string
 	InternalVbDistributionStats(appName string) map[string]string
 	KillAllConsumers()
 	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string)
@@ -363,5 +376,47 @@ func StreamBoundary(boundary string) DcpStreamBoundary {
 		return DcpFromPrior
 	default:
 		return DcpStreamBoundary("")
+	}
+}
+
+func NewInsight() *Insight {
+	return &Insight{Lines: make(map[int]InsightLine)}
+}
+
+func NewInsights() *Insights {
+	o := make(Insights)
+	return &o
+}
+
+func (dst *Insights) Accumulate(src *Insights) {
+	for app, insight := range *src {
+		val := (*dst)[app]
+		if val == nil {
+			val = NewInsight()
+		}
+		val.Accumulate(insight)
+		(*dst)[app] = val
+	}
+}
+
+func (dst *Insight) Accumulate(src *Insight) {
+	for line, right := range src.Lines {
+		left := dst.Lines[line]
+		left.CallCount += right.CallCount
+		left.CallTime += right.CallTime
+		left.ExceptionCount += right.ExceptionCount
+		if len(right.LastException) > 0 {
+			left.LastException = right.LastException
+		}
+		if len(right.LastLog) > 0 {
+			left.LastLog = right.LastLog
+		}
+		dst.Lines[line] = left
+	}
+	if len(src.Script) > 0 {
+		dst.Script = src.Script
+	}
+	if len(src.SrcMap) > 0 {
+		dst.SrcMap = src.SrcMap
 	}
 }

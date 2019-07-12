@@ -1,4 +1,5 @@
 github.com/couchbase/eventing/tests/functional_tests
+TestCodeInsight
 TestN1QLLabelledBreak
 TestN1QLNestedForLoop
 TestN1QLThrowStatement
