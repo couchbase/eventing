@@ -271,20 +271,17 @@ func (s *SuperSupervisor) PlannerStats(appName string) []*common.PlannerNodeVbMa
 // RebalanceTaskProgress reports vbuckets remaining to be transferred as per planner
 // during the course of rebalance
 func (s *SuperSupervisor) RebalanceTaskProgress(appName string) (*common.RebalanceProgress, error) {
-	progress := &common.RebalanceProgress{}
-
 	p, ok := s.runningFns()[appName]
 	if ok {
-		if s.GetAppState(appName) == common.AppStateEnabled {
-			progress = p.RebalanceTaskProgress()
-		}
-		return progress, nil
+		return p.RebalanceTaskProgress(), nil
 	}
 
 	_, err := s.isFnRunningFromPrimary(appName)
 	if err != nil {
 		return nil, err
 	}
+
+	progress := &common.RebalanceProgress{}
 
 	// report rebalance progress for yet-to-bootstrap-apps only if node is still part of cluster
 	if s.checkIfNodeInCluster() {
