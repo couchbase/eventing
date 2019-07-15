@@ -230,7 +230,7 @@ func (m *ServiceMgr) validateApplicationName(applicationName string) (info *runt
 	appNameRegex := regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 	if !appNameRegex.MatchString(applicationName) {
 		info.Code = m.statusCodes.errInvalidConfig.Code
-		info.Info = "Function name can only contain characters in range A-Z, a-z, 0-9 and underscore, hyphen"
+		info.Info = "Function name can only start with characters in range A-Z, a-z, 0-9 and can only contain characters in range A-Z, a-z, 0-9, underscore and hyphen"
 		return
 	}
 
