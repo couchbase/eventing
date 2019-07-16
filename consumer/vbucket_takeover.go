@@ -107,11 +107,6 @@ func (c *Consumer) vbsStateUpdate() {
 	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
 
 	if len(c.vbsRemainingToGiveUp) == 0 && len(c.vbsRemainingToOwn) == 0 {
-		// reset the flag
-		c.isRebalanceOngoing = false
-
-		logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
 		return
 	}
 
