@@ -221,6 +221,7 @@ struct CurlResponse {
   CurlResponse(CURLcode code, Curl::Buffer body, Curl::Headers &headers)
       : code(code), body(std::move(body)) {
     (this->headers).data.swap(headers.data);
+    (this->headers).content_type.swap(headers.content_type);
   }
 
   CURLcode code;
@@ -236,6 +237,7 @@ struct HTTPPostResponse {
   HTTPPostResponse(CURLcode code, std::string body, Curl::Headers &headers)
       : code(code), body(std::move(body)) {
     (this->headers).data.swap(headers.data);
+    (this->headers).content_type.swap(headers.content_type);
   }
 
   CURLcode code;
