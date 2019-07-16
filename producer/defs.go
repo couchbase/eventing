@@ -66,6 +66,7 @@ type Producer struct {
 	numVbuckets            int
 	pauseProducerCh        chan struct{}
 	pollBucketInterval     time.Duration
+	pollBucketStopCh       chan struct{}
 	pollBucketTicker       *time.Ticker
 	retryCount             int64
 	stopCh                 chan struct{}

@@ -615,6 +615,38 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 	flushFunctionAndBucket(functionName)
 }
 
+func TestBucketDeleteAfterPause(t *testing.T) {
+	functionName := t.Name()
+
+	time.Sleep(5 * time.Second)
+	flushFunctionAndBucket(functionName)
+
+	handler := "bucket_op_on_update"
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
+
+	pumpBucketOps(opsType{}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", "TestPauseWithBucketDelete",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+	dumpStats()
+	log.Println("Pausing app:", handler)
+	setSettings(functionName, true, false, &commonSettings{})
+	waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
+
+	log.Println("Deleting source bucket:", srcBucket)
+	deleteBucket(srcBucket)
+
+	waitForStatusChange(functionName, "undeployed", statsLookupRetryCounter)
+
+	createBucket(srcBucket, bucketmemQuota)
+	flushFunctionAndBucket(functionName)
+}
+
 func TestChangeFnCodeBetweenPauseResume(t *testing.T) {
 	// Additionally function code deployed post resume is missing timer callback
 	// for which timers were defined earlier.
