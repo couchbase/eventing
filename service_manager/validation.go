@@ -110,7 +110,7 @@ func (m *ServiceMgr) validateAliasName(aliasName string) (info *runtimeInfo) {
 		return
 	}
 
-	// Obtained from Section 2.6 - https://hepwww.pp.rl.ac.uk/users/adye/jsspec11/lexical.htm
+	// Obtained from Variables - https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Grammar_and_types
 	identifier := regexp.MustCompile("^[a-zA-Z_$][a-zA-Z0-9_$]*$")
 	if !identifier.MatchString(aliasName) {
 		info.Code = m.statusCodes.errInvalidConfig.Code
@@ -230,7 +230,7 @@ func (m *ServiceMgr) validateApplicationName(applicationName string) (info *runt
 	appNameRegex := regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 	if !appNameRegex.MatchString(applicationName) {
 		info.Code = m.statusCodes.errInvalidConfig.Code
-		info.Info = "Function name can only contain characters in range A-Z, a-z, 0-9 and underscore, hyphen"
+		info.Info = "Function name can only start with characters in range A-Z, a-z, 0-9 and can only contain characters in range A-Z, a-z, 0-9, underscore and hyphen"
 		return
 	}
 

@@ -1103,6 +1103,14 @@ func (c *Consumer) handleFailoverLog() {
 						vbBlob:     &vbBlob,
 						startSeqNo: vbFlog.seqNo,
 					}
+
+					// update check point blob to let a racing doVbTakeover during rebalance try with correct <vbuuid, seqno>
+					vbBlob.LastSeqNoProcessed = vbFlog.seqNo
+					err = c.updateCheckpoint(vbKey, vbFlog.vb, &vbBlob)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+					}
+
 					select {
 					case c.reqStreamCh <- streamInfo:
 					case <-c.stopConsumerCh:
