@@ -91,6 +91,8 @@ private:
                          ParamsList &params_list) const;
   Info SetRequestBody(const CurlRequest &request, ParamsList &params_list,
                       Curl::ReadBuffer &buffer) const;
+  std::string HeadersList(
+      const std::unordered_map<std::string, std::string> &headers) const;
 
   CurlClient curl_client_;
   v8::Isolate *isolate_;
