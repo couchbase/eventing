@@ -12,6 +12,7 @@
 #ifndef QUERY_MGR_H
 #define QUERY_MGR_H
 
+#include "conn-pool.h"
 #include "query-iterable.h"
 
 #include <libcouchbase/couchbase.h>
@@ -19,7 +20,6 @@
 #include <unordered_map>
 #include <v8.h>
 
-#include "conn-pool.h"
 #include "info.h"
 #include "query-helper.h"
 
@@ -27,7 +27,7 @@ namespace Query {
 class Manager {
 public:
   explicit Manager(v8::Isolate *isolate, const std::string &conn_str)
-      : isolate_(isolate), conn_pool_(2, conn_str, isolate) {}
+      : isolate_(isolate), conn_pool_(10, conn_str, isolate) {}
   ~Manager() { ClearQueries(); }
 
   Manager() = delete;
@@ -38,15 +38,13 @@ public:
 
   Iterable::Info NewIterable(const Query::Info &query_info);
   void ClearQueries();
-  void RestoreConnection(lcb_t connection);
+  void RestoreConnection(lcb_t connection) {
+    conn_pool_.RestoreConnection(connection);
+  }
 
 private:
-  ::Info Initialize() { return conn_pool_.Initialize(); }
-
-  bool is_initialized{false};
   v8::Isolate *isolate_;
   Connection::Pool conn_pool_;
-  folly::fibers::TimedMutex conn_mutex_;
   std::unordered_map<lcb_t, std::unique_ptr<Iterator>> iterators_;
 };
 } // namespace Query

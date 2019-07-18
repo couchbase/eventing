@@ -163,3 +163,23 @@ func TestN1QLPosParams(t *testing.T) {
 	dumpStats()
 	flushFunctionAndBucket(functionName)
 }
+
+func TestN1QLExhaustConnPool(t *testing.T) {
+	functionName := t.Name()
+	handler := "n1ql_exhaust_conn_pool"
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+  	waitForDeployToFinish(functionName)
+	pumpBucketOps(opsType{count:100}, &rateLimit{})
+	expectedCount := 100
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
+	if expectedCount != eventCount {
+		t.Error("For", t.Name(),
+			"expected", expectedCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(functionName)
+}

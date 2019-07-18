@@ -12,6 +12,8 @@
 #ifndef CONN_POOL_H
 #define CONN_POOL_H
 
+#include "query-iterator.h"
+
 #include <libcouchbase/couchbase.h>
 #include <queue>
 #include <string>
@@ -44,9 +46,8 @@ public:
   Pool &operator=(Pool &&) = delete;
   Pool &operator=(const Pool &) = delete;
 
-  ::Info Initialize();
   Connection::Info GetConnection();
-  void RestoreConnection(lcb_t connection) { pool_.push(connection); }
+  void RestoreConnection(lcb_t connection);
 
 private:
   Connection::Info CreateConnection();
@@ -54,7 +55,9 @@ private:
   v8::Isolate *isolate_;
   std::string conn_str_;
   const std::size_t capacity_;
+  std::size_t current_size_{0};
   std::queue<lcb_t> pool_;
+  folly::fibers::TimedMutex pool_mutex_;
 };
 } // namespace Connection
 
