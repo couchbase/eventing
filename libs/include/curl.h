@@ -59,6 +59,7 @@ public:
 private:
   CURL *curl_handle_;
   std::mutex curl_handle_lck_;
+  std::string user_agent_;
 };
 
 class Curl {
@@ -94,6 +95,7 @@ private:
   CurlClient curl_client_;
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
+  std::string user_agent_;
 };
 
 struct CurlCodex {
