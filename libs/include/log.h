@@ -82,4 +82,4 @@ private:
 #define RS(msg) msg
 #define RU(msg) SystemLog::redact(msg)
 
-#endif // LOG_H
+#endif

@@ -18,7 +18,7 @@ func testFlexReset(handler string, t *testing.T) {
 		executionTimeout: 10,
 	})
 
-	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter * 2)
 	if itemCount != eventCount {
 		t.Error("For", functionName,
 			"expected", itemCount,
@@ -69,10 +69,11 @@ func TestN1QLLabelledBreak(t *testing.T) {
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
 	pumpBucketOps(opsType{}, &rateLimit{})
-	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
-	if itemCount != eventCount {
+	expectedCount := itemCount * 2
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
+	if expectedCount != eventCount {
 		t.Error("For", "N1QLLabelledBreak",
-			"expected", itemCount,
+			"expected", expectedCount,
 			"got", eventCount,
 		)
 	}
@@ -87,10 +88,11 @@ func TestN1QLUnlabelledBreak(t *testing.T) {
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
 	pumpBucketOps(opsType{}, &rateLimit{})
-	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
-	if itemCount != eventCount {
+	expectedCount := itemCount * 2
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
+	if expectedCount != eventCount {
 		t.Error("For", "N1QLUnlabelledBreak",
-			"expected", itemCount,
+			"expected", expectedCount,
 			"got", eventCount,
 		)
 	}
@@ -105,10 +107,11 @@ func TestN1QLThrowStatement(t *testing.T) {
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
 	pumpBucketOps(opsType{}, &rateLimit{})
-	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
-	if itemCount != eventCount {
+	expectedCount := itemCount * 2
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
+	if expectedCount != eventCount {
 		t.Error("For", "N1QLThrowStatement",
-			"expected", itemCount,
+			"expected", expectedCount,
 			"got", eventCount,
 		)
 	}
@@ -123,10 +126,30 @@ func TestN1QLNestedForLoop(t *testing.T) {
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{lcbInstCap: 6})
 	pumpBucketOps(opsType{}, &rateLimit{})
-	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
-	if itemCount != eventCount {
+	expectedCount := itemCount
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
+	if expectedCount != eventCount {
 		t.Error("For", "N1QLNestedForLoop",
-			"expected", itemCount,
+			"expected", expectedCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(functionName)
+}
+
+func TestN1QLPosParams(t *testing.T) {
+	functionName := t.Name()
+	handler := "n1ql_pos_params"
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	pumpBucketOps(opsType{}, &rateLimit{})
+	expectedCount := itemCount
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
+	if expectedCount != eventCount {
+		t.Error("For", t.Name(),
+			"expected", expectedCount,
 			"got", eventCount,
 		)
 	}

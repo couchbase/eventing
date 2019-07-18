@@ -15,7 +15,6 @@
 #include <libcouchbase/sysdefs.h>
 #include <v8.h>
 
-struct N1QLCodex;
 class Curl;
 class N1QL;
 class V8Worker;
@@ -28,36 +27,41 @@ class CurlFactory;
 class CurlRequestBuilder;
 class CurlResponseBuilder;
 class Communicator;
-struct CodeInsight;
+class CodeInsight;
 struct CurlCodex;
+
+namespace Query {
+class Manager;
+class Iterable;
+class IterableImpl;
+class IterableResult;
+class Helper;
+} // namespace Query
 
 // Struct for storing isolate data
 struct IsolateData {
-  IsolateData()
-      : n1ql_codex(nullptr), n1ql_handle(nullptr), v8worker(nullptr),
-        js_exception(nullptr), comm(nullptr), transpiler(nullptr),
-        utils(nullptr), timer(nullptr), custom_error(nullptr),
-        curl_codex(nullptr), curl_factory(nullptr), req_builder(nullptr),
-        resp_builder(nullptr), code_insight(nullptr) {}
-
   static const uint32_t index{0};
   lcb_U32 n1ql_timeout{0};
   long curl_timeout{0};
 
-  N1QLCodex *n1ql_codex;
-  N1QL *n1ql_handle;
-  V8Worker *v8worker;
-  JsException *js_exception;
-  Communicator *comm;
-  Transpiler *transpiler;
-  Utils *utils;
-  Timer *timer;
-  CustomError *custom_error;
-  CurlCodex *curl_codex;
-  CurlFactory *curl_factory;
-  CurlRequestBuilder *req_builder;
-  CurlResponseBuilder *resp_builder;
-  CodeInsight *code_insight;
+  Query::Manager *query_mgr{nullptr};
+  Query::Iterable *query_iterable{nullptr};
+  Query::IterableImpl *query_iterable_impl{nullptr};
+  Query::IterableResult *query_iterable_result{nullptr};
+  Query::Helper *query_helper{nullptr};
+  N1QL *n1ql_handle{nullptr};
+  V8Worker *v8worker{nullptr};
+  JsException *js_exception{nullptr};
+  Communicator *comm{nullptr};
+  Transpiler *transpiler{nullptr};
+  Utils *utils{nullptr};
+  Timer *timer{nullptr};
+  CustomError *custom_error{nullptr};
+  CurlCodex *curl_codex{nullptr};
+  CurlFactory *curl_factory{nullptr};
+  CurlRequestBuilder *req_builder{nullptr};
+  CurlResponseBuilder *resp_builder{nullptr};
+  CodeInsight *code_insight{nullptr};
 };
 
 inline IsolateData *UnwrapData(v8::Isolate *isolate) {

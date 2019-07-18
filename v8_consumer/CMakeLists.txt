@@ -11,9 +11,13 @@
 
 PROJECT(eventing-consumer)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_C_STANDARD 99)
+
 INCLUDE (FindCouchbaseLibuv)
 INCLUDE (FindCouchbaseV8)
 INCLUDE (FindCouchbaseBreakpad)
+INCLUDE (../libs/query/FindEventingQuery.cmake)
 
 SET(LIBS_HEADERS
         ../libs/include
@@ -23,7 +27,6 @@ SET(LIBS_SRC
         ../../eventing-ee/curl.cc
         ../libs/src/bucket.cc
         ../libs/src/comm.cc
-        ../libs/src/n1ql.cc
         ../libs/src/log.cc
         ../libs/src/transpiler.cc
         ../libs/src/js_exception.cc
@@ -40,6 +43,7 @@ INCLUDE_DIRECTORIES(BEFORE
 
 INCLUDE_DIRECTORIES(AFTER
                      ${ICU_INCLUDE_DIR}
+                     ${EVENTING_QUERY_INCLUDE_DIR}
                      ${V8_INCLUDE_DIR}
                      ${CURL_INCLUDE_DIR}
                      ${CMAKE_CURRENT_BINARY_DIR}
@@ -71,6 +75,7 @@ SET(EVENTING_SOURCES
     src/timer.cc
     src/histogram.cc
     ${LIBS_SRC}
+    ${EVENTING_QUERY_SRC}
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/version/version.cc)
 
@@ -80,6 +85,7 @@ SET(EVENTING_LIBRARIES
     ${CURL_LIBRARIES}
     ${LIBUV_LIBRARIES}
     ${ZLIB_LIBRARIES}
+    ${EVENTING_QUERY_LIBRARIES}
     eventing-inspector)
 
 IF(APPLE)

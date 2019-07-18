@@ -45,6 +45,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		numVbuckets:                  numVbuckets,
 		pauseProducerCh:              make(chan struct{}, 1),
 		plannerNodeMappingsRWMutex:   &sync.RWMutex{},
+		pollBucketStopCh:             make(chan struct{}, 1),
 		MemoryQuota:                  memoryQuota,
 		retryCount:                   -1,
 		runningConsumersRWMutex:      &sync.RWMutex{},
@@ -424,6 +425,8 @@ func (p *Producer) Stop(context string) {
 		close(p.stopCh)
 		p.stopChClosed = true
 	}
+
+	close(p.pollBucketStopCh)
 
 	if p.workerSupervisor != nil {
 		p.workerSupervisor.Stop(p.appName)
@@ -888,7 +891,7 @@ func (p *Producer) pollForDeletedVbs() {
 				p.superSup.StopProducer(p.appName, skipMetaCleanup)
 			}
 
-		case <-p.stopCh:
+		case <-p.pollBucketStopCh:
 			p.pollBucketTicker.Stop()
 			return
 		}

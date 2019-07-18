@@ -70,14 +70,6 @@ ADD_CUSTOM_COMMAND(
         COMMENT "Coverting ../audit/audit_descriptor.json to auditevent/events.go"
 )
 ADD_CUSTOM_COMMAND(
-        OUTPUT js/builtin.h
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../libs/src/builtin.js js_builtin js/builtin.h
-        DEPENDS ../libs/src/builtin.js
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../libs/src/builtin.js to js/builtin.h with variable js_builtin"
-)
-ADD_CUSTOM_COMMAND(
         OUTPUT js/transpiler.h
         COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
         ARGS ../libs/src/transpiler.js js_transpiler js/transpiler.h
@@ -193,7 +185,7 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_TARGET(generated DEPENDS
-        js/builtin.h js/transpiler.h js/esprima.h js/escodegen.h js/estraverse.h js/source-map.h
+        js/transpiler.h js/esprima.h js/escodegen.h js/estraverse.h js/source-map.h
         inspector/v8_inspector_protocol_json.h
         flatbuf/header_generated.h flatbuf/header/Header.go
         flatbuf/payload_generated.h flatbuf/payload/Payload.go

@@ -24,4 +24,4 @@ struct Info {
   std::string msg;
 };
 
-#endif // COUCHBASE_INFO_H
+#endif

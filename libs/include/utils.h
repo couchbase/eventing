@@ -173,4 +173,5 @@ void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 std::string GetConnectionStr(const std::string &end_point,
                              const std::string &bucket_name);
+
 #endif

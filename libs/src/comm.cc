@@ -96,8 +96,7 @@ CredsInfo Communicator::GetCreds(const std::string &endpoint) {
     return info;
   }
 
-  if (response.headers.data.find("Status") ==
-      response.headers.data.end()) {
+  if (response.headers.data.find("Status") == response.headers.data.end()) {
     LOG(logError) << "Unable to get creds: status code is missing in header: "
                   << response.msg << std::endl;
     return info;
@@ -144,8 +143,7 @@ NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
     return info;
   }
 
-  if (response.headers.data.find("Status") ==
-      response.headers.data.end()) {
+  if (response.headers.data.find("Status") == response.headers.data.end()) {
     LOG(logError)
         << "Unable to get named params: status code is missing in header: "
         << RM(response.msg) << std::endl;
@@ -176,8 +174,7 @@ ParseInfo Communicator::ParseQuery(const std::string &query) {
     return info;
   }
 
-  if (response.headers.data.find("Status") ==
-      response.headers.data.end()) {
+  if (response.headers.data.find("Status") == response.headers.data.end()) {
     LOG(logError)
         << "Unable to parse N1QL query: status code is missing in header:"
         << RU(response.msg) << std::endl;
