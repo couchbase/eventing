@@ -117,6 +117,7 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/getApplication/", m.getPrimaryStoreHandler)
 	mux.HandleFunc("/getAppTempStore/", m.getTempStoreHandler)
 	mux.HandleFunc("/getBootstrappingApps", m.getBootstrappingApps)
+	mux.HandleFunc("/getPausingApps", m.getPausingApps)
 	mux.HandleFunc("/getConsumerPids", m.getEventingConsumerPids)
 	mux.HandleFunc("/getCpuCount", m.getCPUCount)
 	mux.HandleFunc("/getCreds", m.getCreds)

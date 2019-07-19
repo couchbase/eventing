@@ -85,6 +85,7 @@ type SuperSupervisor struct {
 
 	appListRWMutex    *sync.RWMutex
 	bootstrappingApps map[string]string // Captures list of apps undergoing bootstrap, access controlled by appListRWMutex
+	pausingApps       map[string]string // Captures list of apps being paused, access controlled by appListRWMutex
 
 	// Captures list of deployed apps and their last deployment time. Leveraged to report deployed app status
 	// via rest endpoints. Access controlled by appListRWMutex

@@ -153,6 +153,21 @@ var getDeployedAppsCallback = func(args ...interface{}) error {
 	return err
 }
 
+var getPausingAppsCallback = func(args ...interface{}) error {
+	logPrefix := "ServiceMgr::getPausingAppsCallback"
+
+	aggPausingApps := args[0].(*map[string]map[string]string)
+	nodeAddrs := args[1].([]string)
+
+	var err error
+	*aggPausingApps, err = util.GetAppStatus("/getPausingApps", nodeAddrs)
+	if err != nil {
+		logging.Errorf("%s Failed to get apps which are being paused, err: %v", logPrefix, err)
+	}
+
+	return err
+}
+
 var getBootstrappingAppsCallback = func(args ...interface{}) error {
 	logPrefix := "ServiceMgr::getBootstrappingAppsCallback"
 

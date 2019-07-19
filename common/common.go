@@ -199,6 +199,7 @@ type EventingConsumer interface {
 }
 
 type EventingSuperSup interface {
+	PausingAppList() map[string]string
 	BootstrapAppList() map[string]string
 	CheckpointBlobDump(appName string) (interface{}, error)
 	ClearEventStats()
