@@ -322,6 +322,24 @@ func (s *SuperSupervisor) RebalanceStatus() bool {
 	return false
 }
 
+// PausingAppList returns list of apps which are being Paused
+func (s *SuperSupervisor) PausingAppList() map[string]string {
+	logPrefix := "SuperSupervisor::PausingAppList"
+
+	pausingApps := make(map[string]string)
+
+	s.appListRWMutex.RLock()
+	defer s.appListRWMutex.RUnlock()
+
+	for appName, ts := range s.pausingApps {
+		pausingApps[appName] = ts
+	}
+
+	logging.Infof("%s [%d] pausingApps: %+v", logPrefix, s.runningFnsCount(), pausingApps)
+
+	return pausingApps
+}
+
 // BootstrapAppList returns list of apps undergoing bootstrap
 func (s *SuperSupervisor) BootstrapAppList() map[string]string {
 	logPrefix := "SuperSupervisor::BootstrapAppList"

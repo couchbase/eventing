@@ -59,6 +59,7 @@ public:
 private:
   CURL *curl_handle_;
   std::mutex curl_handle_lck_;
+  std::string user_agent_;
 };
 
 class Curl {
@@ -90,10 +91,13 @@ private:
                          ParamsList &params_list) const;
   Info SetRequestBody(const CurlRequest &request, ParamsList &params_list,
                       Curl::ReadBuffer &buffer) const;
+  std::string HeadersList(
+      const std::unordered_map<std::string, std::string> &headers) const;
 
   CurlClient curl_client_;
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
+  std::string user_agent_;
 };
 
 struct CurlCodex {

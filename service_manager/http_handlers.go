@@ -545,7 +545,7 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, int, *runtimeInfo) {
+func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]int, int, *runtimeInfo) {
 	logPrefix := "ServiceMgr::getAppList"
 	info := &runtimeInfo{}
 
@@ -555,13 +555,13 @@ func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, int, *runtime
 
 		info.Code = m.statusCodes.errActiveEventingNodes.Code
 		info.Info = fmt.Sprintf("Unable to fetch active Eventing nodes, err: %v", err)
-		return nil, nil, 0, info
+		return nil, nil, nil, 0, info
 	}
 
 	numEventingNodes := len(nodeAddrs)
 	if numEventingNodes == 0 {
 		info.Code = m.statusCodes.errNoEventingNodes.Code
-		return nil, nil, 0, info
+		return nil, nil, nil, 0, info
 	}
 
 	aggDeployedApps := make(map[string]map[string]string)
@@ -591,8 +591,21 @@ func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, int, *runtime
 		}
 	}
 
+	aggPausingApps := make(map[string]map[string]string)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getPausingAppsCallback, &aggPausingApps, nodeAddrs)
+
+	appPausingNodesCounter := make(map[string]int)
+	for _, apps := range aggPausingApps {
+		for app := range apps {
+			if _, ok := appPausingNodesCounter[app]; !ok {
+				appPausingNodesCounter[app] = 0
+			}
+			appPausingNodesCounter[app]++
+		}
+	}
+
 	info.Code = m.statusCodes.ok.Code
-	return appDeployedNodesCounter, appBootstrappingNodesCounter, numEventingNodes, info
+	return appDeployedNodesCounter, appBootstrappingNodesCounter, appPausingNodesCounter, numEventingNodes, info
 }
 
 // Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
@@ -605,7 +618,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListDeployed, r, nil)
 
-	appDeployedNodesCounter, _, numEventingNodes, info := m.getAppList()
+	appDeployedNodesCounter, _, appPausingNodesCounter, numEventingNodes, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -613,7 +626,8 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 
 	deployedApps := make(map[string]string)
 	for app, numNodesDeployed := range appDeployedNodesCounter {
-		if numNodesDeployed == numEventingNodes {
+		_, ok := appPausingNodesCounter[app]
+		if numNodesDeployed == numEventingNodes && !ok {
 			deployedApps[app] = ""
 		}
 	}
@@ -643,7 +657,7 @@ func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListRunning, r, nil)
 
-	appDeployedNodesCounter, _, numEventingNodes, info := m.getAppList()
+	appDeployedNodesCounter, _, _, numEventingNodes, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -1838,6 +1852,26 @@ func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Reques
 	fmt.Fprintf(w, "Function: %s not deployed", appName)
 }
 
+func (m *ServiceMgr) getAggPausingApps(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::getAggBootstrappingApps"
+
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
+
+	appsPausing, err := util.GetAggPausingApps("/getPausingApps", m.eventingNodeAddrs)
+	if appsPausing {
+		w.Write([]byte(strconv.FormatBool(appsPausing)))
+		return
+	} else if !appsPausing && err != nil {
+		logging.Errorf("%s Failed to grab pausing function list from all eventing nodes or some functions being paused."+
+			"Node list: %v", logPrefix, m.eventingNodeAddrs)
+		return
+	}
+}
+
 func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggBootstrappingApps"
 
@@ -1856,6 +1890,21 @@ func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Requ
 			"Node list: %v", logPrefix, m.eventingNodeAddrs)
 		return
 	}
+}
+
+func (m *ServiceMgr) getPausingApps(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	pausingApps := m.superSup.PausingAppList()
+	data, err := json.MarshalIndent(pausingApps, "", " ")
+	if err != nil {
+		fmt.Fprintf(w, "Failed to marshal function list which are being paused, err: %v", err)
+		return
+	}
+
+	w.Write(data)
 }
 
 func (m *ServiceMgr) getBootstrappingApps(w http.ResponseWriter, r *http.Request) {
@@ -2515,7 +2564,7 @@ func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runtimeInfo) {
-	appDeployedNodesCounter, appBootstrappingNodesCounter, numEventingNodes, info := m.getAppList()
+	appDeployedNodesCounter, appBootstrappingNodesCounter, appPausingNodesCounter, numEventingNodes, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -2540,13 +2589,13 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 		if num, exists := appBootstrappingNodesCounter[app.Name]; exists {
 			status.NumBootstrappingNodes = num
 		}
-		status.CompositeStatus = determineStatus(status, numEventingNodes)
+		status.CompositeStatus = determineStatus(status, appPausingNodesCounter, numEventingNodes)
 		response.Apps = append(response.Apps, status)
 	}
 	return
 }
 
-func determineStatus(status appStatus, numEventingNodes int) string {
+func determineStatus(status appStatus, pausingAppsList map[string]int, numEventingNodes int) string {
 	logPrefix := "ServiceMgr::determineStatus"
 
 	if status.DeploymentStatus && status.ProcessingStatus {
@@ -2575,7 +2624,8 @@ func determineStatus(status appStatus, numEventingNodes int) string {
 	}
 
 	if status.DeploymentStatus && !status.ProcessingStatus {
-		if status.NumDeployedNodes == numEventingNodes {
+		_, ok := pausingAppsList[status.Name]
+		if status.NumDeployedNodes == numEventingNodes && !ok {
 			return "paused"
 		}
 		return "pausing"

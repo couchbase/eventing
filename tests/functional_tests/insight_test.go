@@ -63,6 +63,9 @@ func TestCodeInsight(t *testing.T) {
 			continue
 		}
 	}
+
+	flushFunctionAndBucket(functionName)
+
 	if !end_ok {
 		t.Error("For", functionName, "got insight", string(response),
 			"end log not captured")

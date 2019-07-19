@@ -26,6 +26,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		appDeploymentStatus:        make(map[string]bool),
 		appProcessingStatus:        make(map[string]bool),
 		bootstrappingApps:          make(map[string]string),
+		pausingApps:                make(map[string]string),
 		CancelCh:                   make(chan struct{}, 1),
 		cleanedUpAppMap:            make(map[string]struct{}),
 		deployedApps:               make(map[string]string),
@@ -336,6 +337,11 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 				if state == common.AppStateEnabled {
 
+					s.appListRWMutex.Lock()
+					logging.Infof("%s [%d] Function: %s adding to pausing apps list", logPrefix, s.runningFnsCount(), appName)
+					s.pausingApps[appName] = time.Now().String()
+					s.appListRWMutex.Unlock()
+
 					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
 					s.appProcessingStatus[appName] = processingStatus
@@ -348,7 +354,11 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						p.PauseProducer()
 						p.NotifySupervisor()
 						logging.Infof("%s [%d] Function: %s Cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
+
 					}
+					s.appListRWMutex.Lock()
+					delete(s.pausingApps, appName)
+					s.appListRWMutex.Unlock()
 				}
 			}
 

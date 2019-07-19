@@ -192,6 +192,13 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 				logging.Warnf("%s Some apps are deploying or resuming on some or all Eventing nodes, err: %v", logPrefix, err)
 				return err
 			}
+
+			appsPausing, err := util.GetAggPausingApps("/getPausingApps", nodeAddrs)
+			logging.Infof("%s Status of pausing apps across all Eventing nodes: %v %v", logPrefix, appsPausing, err)
+			if err != nil {
+				logging.Warnf("%s Some apps are being paused on some or all Eventing nodes, err: %v", logPrefix, err)
+				return err
+			}
 		}
 
 		if err != nil {

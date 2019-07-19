@@ -1017,6 +1017,42 @@ func CheckIfRebalanceOngoing(urlSuffix string, nodeAddrs []string) (bool, error)
 	return false, nil
 }
 
+func GetAggPausingApps(urlSuffix string, nodeAddrs []string) (bool, error) {
+	logPrefix := "util::GetAggPausingApps"
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	for _, nodeAddr := range nodeAddrs {
+		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(endpointURL)
+		if err != nil {
+			logging.Errorf("%s Failed to gather pausing app list from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return false, err
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return false, err
+		}
+
+		pausingApps := make(map[string]string)
+		err = json.Unmarshal(buf, &pausingApps)
+		if err != nil {
+			logging.Errorf("%s Failed to marshal pausing app list from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return false, err
+		}
+
+		if len(pausingApps) > 0 {
+			return true, fmt.Errorf("Some apps are being paused, node: %s", nodeAddr)
+		}
+	}
+
+	return false, nil
+}
+
 func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error) {
 	logPrefix := "util::GetAggBootstrappingApps"
 
