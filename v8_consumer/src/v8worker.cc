@@ -113,7 +113,8 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.curl_codex = new CurlCodex;
   data_.code_insight = new CodeInsight(isolate_);
   data_.query_mgr = new Query::Manager(
-      isolate_, GetConnectionStr(settings_->kv_host_port, source_bucket));
+      isolate_, GetConnectionStr(settings_->kv_host_port, source_bucket),
+      static_cast<std::size_t>(h_config->lcb_inst_capacity));
   data_.query_iterable = new Query::Iterable(isolate_, context);
   data_.query_iterable_impl = new Query::IterableImpl(isolate_, context);
   data_.query_iterable_result = new Query::IterableResult(isolate_, context);

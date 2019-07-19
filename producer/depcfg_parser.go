@@ -151,7 +151,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["lcb_inst_capacity"]; ok {
 		p.handlerConfig.LcbInstCapacity = int(val.(float64))
 	} else {
-		p.handlerConfig.LcbInstCapacity = 5
+		p.handlerConfig.LcbInstCapacity = 10
 	}
 
 	if val, ok := settings["log_level"]; ok {
