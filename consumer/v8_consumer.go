@@ -73,6 +73,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		inflightDcpStreams:              make(map[uint16]struct{}),
 		inflightDcpStreamsRWMutex:       &sync.RWMutex{},
 		hostDcpFeedRWMutex:              &sync.RWMutex{},
+		insight:                         make(chan *common.Insight),
 		kvHostDcpFeedMap:                make(map[string]*couchbase.DcpFeed),
 		kvNodesRWMutex:                  &sync.RWMutex{},
 		lcbInstCapacity:                 hConfig.LcbInstCapacity,
