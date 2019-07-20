@@ -50,7 +50,7 @@ func (p *Producer) GetInsight() *common.Insight {
 	logPrefix := "Producer::GetInsight"
 	wrapper := common.NewInsight()
 	for _, c := range p.getConsumers() {
-		if insight := c.GetInsight(); c != nil {
+		if insight := c.GetInsight(); insight != nil {
 			wrapper.Accumulate(insight)
 		}
 	}
