@@ -66,13 +66,13 @@
             </button>
             <button
               class="outline"
-              ng-disabled="app.status === 'deploying' || app.status === 'undeploying'"
+              ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'pausing'"
               ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
               {{app.getDeploymentStatus(true)}}
             </button>
             <button
               class="outline"
-              ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'undeployed'"
+              ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'undeployed' || app.status === 'pausing'"
               ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)">
                 {{app.getProcessingStatus(true)}}
             </button>
