@@ -497,6 +497,11 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					s.appDeploymentStatus[appName] = deploymentStatus
 					s.appProcessingStatus[appName] = processingStatus
 					s.appRWMutex.Unlock()
+
+					if deploymentStatus && !processingStatus {
+						s.addToDeployedApps(appName)
+						s.addToLocallyDeployedApps(appName)
+					}
 				}
 			}
 		}
