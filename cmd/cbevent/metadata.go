@@ -23,14 +23,20 @@ func shouldNotDelete(path string) bool {
 		path == settingsConfigPath
 }
 
-func list() {
+func list(full bool) {
 	children, err := metakv.ListAllChildren(eventingPath)
 	if err != nil {
 		log.Fatalf("Unable to list children, err: %v", err)
 	}
 
 	for _, child := range children {
-		log.Println(child.Path)
+		if full {
+			log.Printf("Path: %s", child.Path)
+			log.Printf(" Value: %s", child.Value)
+			log.Printf(" Rev: %v", child.Rev)
+		} else {
+			log.Println(child.Path)
+		}
 	}
 }
 
