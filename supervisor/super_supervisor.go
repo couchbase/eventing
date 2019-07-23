@@ -322,8 +322,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
 						delete(s.bootstrappingApps, appName)
 						s.appListRWMutex.Unlock()
-
-						s.resetCleanupTimersFlag(appName)
 					}
 				} else {
 					s.supCmdCh <- msg
@@ -735,8 +733,6 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
 					delete(s.bootstrappingApps, appName)
 					s.appListRWMutex.Unlock()
-
-					s.resetCleanupTimersFlag(appName)
 				}
 
 			case cmdSettingsUpdate:
@@ -849,38 +845,4 @@ func (s *SuperSupervisor) isFnRunningFromPrimary(appName string) (bool, error) {
 	}
 
 	return false, fmt.Errorf("function not running")
-}
-
-func (s *SuperSupervisor) resetCleanupTimersFlag(appName string) {
-	logPrefix := "SuperSupervisor::resetCleanupTimersFlag"
-
-	s.RLock()
-	if _, ok := s.cleanedUpAppMap[appName]; ok {
-		logging.Infof("%s [%d] Function: %s exists in cleanup list", logPrefix, s.runningFnsCount(), appName)
-		s.RUnlock()
-		return
-	}
-	s.RUnlock()
-
-	var sData []byte
-	path := MetakvAppSettingsPath + appName
-
-	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
-
-	_, _, _, settings, err := s.getStatuses(sData)
-	if err != nil {
-		return
-	}
-
-	settings["cleanup_timers"] = false
-
-	data, err := json.Marshal(&settings)
-	if err != nil {
-		logging.Errorf("%s [%d] Function: %s failed to marshal updated settings, err: %v", logPrefix, s.runningFnsCount(), appName, err)
-		return
-	}
-
-	util.Retry(util.NewFixedBackoff(time.Second), &s.retryCount, metakvSetCallback, s, MetakvAppSettingsPath+appName, data)
-
-	logging.Infof("%s [%d] Function: %s reset cleanup timer settings", logPrefix, s.runningFnsCount(), appName)
 }
