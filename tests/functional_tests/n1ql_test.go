@@ -17,6 +17,7 @@ func testFlexReset(handler string, t *testing.T) {
 		deadlineTimeout:  15,
 		executionTimeout: 10,
 	})
+        waitForDeployToFinish(functionName)
 
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter * 2)
 	if itemCount != eventCount {
@@ -39,6 +40,7 @@ func TestRecursiveMutationN1QL(t *testing.T) {
 		t.Errorf("Unable to POST to main store, err : %v\n", mainStoreResponse.err)
 		return
 	}
+        waitForDeployToFinish(functionName)
 
 	var response map[string]interface{}
 	err := json.Unmarshal(mainStoreResponse.body, &response)
@@ -68,6 +70,7 @@ func TestN1QLLabelledBreak(t *testing.T) {
 	handler := "n1ql_labelled_break"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
+        waitForDeployToFinish(functionName)
 	pumpBucketOps(opsType{}, &rateLimit{})
 	expectedCount := itemCount * 2
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
@@ -87,6 +90,7 @@ func TestN1QLUnlabelledBreak(t *testing.T) {
 	handler := "n1ql_unlabelled_break"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
+        waitForDeployToFinish(functionName)
 	pumpBucketOps(opsType{}, &rateLimit{})
 	expectedCount := itemCount * 2
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
@@ -106,6 +110,7 @@ func TestN1QLThrowStatement(t *testing.T) {
 	handler := "n1ql_throw_statement"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
+        waitForDeployToFinish(functionName)
 	pumpBucketOps(opsType{}, &rateLimit{})
 	expectedCount := itemCount * 2
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
@@ -125,6 +130,7 @@ func TestN1QLNestedForLoop(t *testing.T) {
 	handler := "n1ql_nested_for_loops"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{lcbInstCap: 6})
+        waitForDeployToFinish(functionName)
 	pumpBucketOps(opsType{}, &rateLimit{})
 	expectedCount := itemCount
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
@@ -144,6 +150,7 @@ func TestN1QLPosParams(t *testing.T) {
 	handler := "n1ql_pos_params"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
+        waitForDeployToFinish(functionName)
 	pumpBucketOps(opsType{}, &rateLimit{})
 	expectedCount := itemCount
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
