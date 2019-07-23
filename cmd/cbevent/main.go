@@ -10,6 +10,7 @@ import (
 
 type Command struct {
 	List     bool
+	Dump     bool
 	Flush    bool
 	User     string
 	Password string
@@ -44,7 +45,7 @@ func validate(fset *flag.FlagSet, cmd *Command) error {
 	switch {
 	// dont = []string{"user", "password", "host", "list", "flush", "unpack", "pack", "codein", "codeout", "handler"}
 
-	case cmd.List:
+	case cmd.List, cmd.Dump:
 		have = []string{"list", "user", "password", "host"}
 		dont = []string{"flush", "unpack", "pack", "codein", "codeout", "handler"}
 
@@ -117,6 +118,7 @@ func main() {
 	fset := flag.NewFlagSet("cmd", flag.ExitOnError)
 
 	fset.BoolVar(&cmd.List, "list", false, "list all metadata entries")
+	fset.BoolVar(&cmd.Dump, "dump", false, "dump all metadata entries")
 	fset.BoolVar(&cmd.Flush, "flush", false, "deletes all metadata that can be deleted")
 	fset.StringVar(&cmd.User, "user", "", "cluster admin username")
 	fset.StringVar(&cmd.Password, "password", "", "cluster admin password")
@@ -163,7 +165,9 @@ func main() {
 
 	switch {
 	case cmd.List:
-		list()
+		list(false)
+	case cmd.Dump:
+		list(true)
 	case cmd.Flush:
 		flush(cmd.Host, cmd.User, cmd.Password)
 	case cmd.Pack:
