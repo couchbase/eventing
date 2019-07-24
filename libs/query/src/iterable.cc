@@ -16,6 +16,7 @@
 #include "comm.h"
 #include "isolate_data.h"
 #include "js_exception.h"
+#include "query-row.h"
 #include "utils.h"
 
 std::atomic<int64_t> n1ql_op_exception_count = {0};
@@ -120,7 +121,6 @@ void Query::IterableImpl::Next(
   v8::HandleScope handle_scope(isolate);
   auto js_exception = UnwrapData(isolate)->js_exception;
   auto helper = UnwrapData(isolate)->query_helper;
-  auto comm = UnwrapData(isolate)->comm;
   auto iterable_result = UnwrapData(isolate)->query_iterable_result;
 
   auto iter_val = args.This()->GetInternalField(InternalField::kIterator);
@@ -132,29 +132,13 @@ void Query::IterableImpl::Next(
     // Error reported by lcb_wait (coming from LCB client)
     if (auto it_result = iterator->Wait(); it_result.is_fatal) {
       ++n1ql_op_exception_count;
-      helper->AccountLCBError(static_cast<int>(iterator->GetResultCode()));
       js_exception->ThrowN1QLError(it_result.msg);
       return;
     }
   }
 
   if (next.is_error) {
-    ++n1ql_op_exception_count;
-    if (next.is_auth_error) {
-      comm->Refresh();
-    }
-    // Error reported by RowCallback (coming from LCB client)
-    if (next.err_code != LCB_SUCCESS) {
-      helper->AccountLCBError(next.err_code);
-      js_exception->ThrowN1QLError(next.data);
-      return;
-    }
-    // Error reported by RowCallback (coming from query server)
-    if (auto acc_info = helper->AccountLCBError(next.data); acc_info.is_fatal) {
-      js_exception->ThrowN1QLError(acc_info.msg);
-      return;
-    }
-    js_exception->ThrowN1QLError(next.data);
+    helper->HandleRowError(next);
     return;
   }
 
@@ -204,6 +188,7 @@ Query::IterableResult::NewObject(const Query::Row &row) {
   }
 
   v8::Local<v8::Value> value_val;
+  // TODO : If JSON parse fails, try to provide (row, col) information
   if (!TO_LOCAL(v8::JSON::Parse(isolate_, v8Str(isolate_, row.data)),
                 &value_val)) {
     return {true, "Unable to parse query row as JSON"};

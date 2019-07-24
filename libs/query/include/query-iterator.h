@@ -21,29 +21,16 @@
 #include <folly/io/async/EventBase.h>
 
 #include <libcouchbase/couchbase.h>
-#include <libcouchbase/error.h>
-#include <libcouchbase/n1ql.h>
 #include <memory>
 #include <string>
 #include <v8.h>
 
 #include "info.h"
+#include "query-builder.h"
 #include "query-helper.h"
+#include "query-row.h"
 
 namespace Query {
-struct Row {
-  Row(bool is_done, bool is_error, bool is_auth_error, lcb_error_t err_code,
-      const std::string &data)
-      : is_done(is_done), is_error(is_error), is_auth_error(is_auth_error),
-        err_code(err_code), data(data) {}
-
-  bool is_done{false};
-  bool is_error{false};
-  bool is_auth_error{false};
-  lcb_error_t err_code{LCB_SUCCESS};
-  const std::string &data;
-};
-
 class Iterator;
 class Manager;
 
@@ -57,31 +44,49 @@ public:
     Iterator *iterator{nullptr};
   };
 
-  Iterator(const Query::Info &query_info, lcb_t instance, v8::Isolate *isolate);
+  Iterator(const Query::Info &query_info, lcb_t instance, v8::Isolate *isolate,
+           lcb_U32 timeout);
 
   Row Next();
   Row Peek();
-  Iterator::Info Start();
+  ::Info Start();
   void Stop();
   ::Info Wait();
-  lcb_error_t GetResultCode() const { return result_code_; }
 
 private:
   static void RowCallback(lcb_t connection, int type, const lcb_RESPN1QL *resp);
   static bool IsStatusSuccess(const std::string &row);
 
+  class BatonGuard {
+  public:
+    explicit BatonGuard(folly::fibers::Baton &baton) : baton_(baton) {}
+    ~BatonGuard() { baton_.post(); }
+
+    BatonGuard() = delete;
+    BatonGuard(const BatonGuard &) = delete;
+    BatonGuard(BatonGuard &&) = delete;
+    BatonGuard &operator=(const BatonGuard &) = delete;
+    BatonGuard &operator=(BatonGuard &&) = delete;
+
+  private:
+    folly::fibers::Baton &baton_;
+  };
+
   struct Cursor {
     Query::Row GetRow() const;
     Query::Row GetRowAsFinal() const;
 
-    lcb_error_t err_code{LCB_SUCCESS};
+    lcb_error_t client_err_code{LCB_SUCCESS};
     bool is_error{false};
-    bool is_auth_error{false};
+    bool is_client_auth_error{false};
+    bool is_client_error{false}; // Error reported by SDK client
+    bool is_query_error{false};  // Error reported by Query server
     bool is_last{false};
     bool is_streaming_started{false};
     std::string data;
     folly::fibers::Baton reader;
     folly::fibers::Baton writer;
+    folly::fibers::Baton started_or_done;
   };
 
   enum class State { kIdle, kStarted, kStopped };
@@ -92,12 +97,12 @@ private:
   bool has_peeked_{false};
 
   lcb_t connection_;
-  lcb_N1QLHANDLE query_handle_{nullptr};
-  lcb_error_t result_code_{LCB_SUCCESS};
+  ::Info result_info_{false};
   folly::EventBase event_base_;
   folly::fibers::FiberManager fiber_mgr_;
   v8::Isolate *isolate_;
   State state_{State::kIdle};
+  Query::Builder builder_;
 };
 } // namespace Query
 

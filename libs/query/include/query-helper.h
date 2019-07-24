@@ -20,6 +20,7 @@
 
 #include "info.h"
 #include "isolate_data.h"
+#include "query-row.h"
 
 namespace Query {
 struct Info : public ::Info {
@@ -54,6 +55,7 @@ public:
   Query::Info CreateQuery(const v8::FunctionCallbackInfo<v8::Value> &args);
   ::Info AccountLCBError(const std::string &err_str);
   void AccountLCBError(int err_code);
+  void HandleRowError(const Query::Row &row);
 
 private:
   struct ErrorCodesInfo : public ::Info {

@@ -39,14 +39,15 @@ Query::Manager::NewIterable(const Query::Info &query_info) {
     return {true, conn_info.msg};
   }
 
+  auto timeout = UnwrapData(isolate_)->n1ql_timeout;
   auto iterator = std::make_unique<Query::Iterator>(
-      query_info, conn_info.connection, isolate_);
+      query_info, conn_info.connection, isolate_, timeout);
   auto iterator_ptr = iterator.get();
 
   auto iterable = UnwrapData(isolate_)->query_iterable;
   auto info = iterable->NewObject(iterator_ptr);
   if (info.is_fatal) {
-    RestoreConnection(conn_info.connection);
+    conn_pool_.RestoreConnection(conn_info.connection);
     return {true, info.msg};
   }
 
@@ -65,7 +66,6 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto query_mgr = UnwrapData(isolate)->query_mgr;
   auto helper = UnwrapData(isolate)->query_helper;
   auto js_exception = UnwrapData(isolate)->js_exception;
-  auto comm = UnwrapData(isolate)->comm;
 
   auto validation_info = Query::Helper::ValidateQuery(args);
   if (validation_info.is_fatal) {
@@ -99,30 +99,13 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     // Error reported by lcb_wait (coming from LCB client)
     if (auto it_result = iterator->Wait(); it_result.is_fatal) {
       ++n1ql_op_exception_count;
-      helper->AccountLCBError(static_cast<int>(iterator->GetResultCode()));
       js_exception->ThrowN1QLError(it_result.msg);
       return;
     }
   }
 
   if (first_row.is_error) {
-    ++n1ql_op_exception_count;
-    if (first_row.is_auth_error) {
-      comm->Refresh();
-    }
-    // Error reported by RowCallback (coming from LCB client)
-    if (first_row.err_code != LCB_SUCCESS) {
-      helper->AccountLCBError(first_row.err_code);
-      js_exception->ThrowN1QLError(first_row.data);
-      return;
-    }
-    // Error reported by RowCallback (coming from query server)
-    if (auto acc_info = helper->AccountLCBError(first_row.data);
-        acc_info.is_fatal) {
-      js_exception->ThrowN1QLError(acc_info.msg);
-      return;
-    }
-    js_exception->ThrowN1QLError(first_row.data);
+    helper->HandleRowError(first_row);
     return;
   }
   args.GetReturnValue().Set(it_info.iterable);

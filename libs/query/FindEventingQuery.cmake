@@ -38,7 +38,8 @@ if (NOT EVENTING_QUERY_FOUND)
             ${QUERY_DIR}/src/iterable.cc
             ${QUERY_DIR}/src/conn-pool.cc
             ${QUERY_DIR}/src/manager.cc
-            ${QUERY_DIR}/src/helper.cc)
+            ${QUERY_DIR}/src/helper.cc
+            ${QUERY_DIR}/src/builder.cc)
 
     set(EVENTING_QUERY_LIBRARIES
             ${FOLLY_LIBRARIES}

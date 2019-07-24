@@ -34,7 +34,6 @@ const char *GetUsernameCached(void *cookie, const char *host, const char *port,
   if (info.username != username) {
     username = strdup(info.username.c_str());
   }
-
   return username;
 }
 
@@ -53,7 +52,6 @@ const char *GetPasswordCached(void *cookie, const char *host, const char *port,
   if (info.password != password) {
     password = strdup(info.password.c_str());
   }
-
   return password;
 }
 
