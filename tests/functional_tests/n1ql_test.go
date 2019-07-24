@@ -40,7 +40,6 @@ func TestRecursiveMutationN1QL(t *testing.T) {
 		t.Errorf("Unable to POST to main store, err : %v\n", mainStoreResponse.err)
 		return
 	}
-        waitForDeployToFinish(functionName)
 
 	var response map[string]interface{}
 	err := json.Unmarshal(mainStoreResponse.body, &response)
