@@ -2219,6 +2219,31 @@ func (m *ServiceMgr) assignFunctionInstanceID(functionName string, app *applicat
 	return nil
 }
 
+func (m *ServiceMgr) isUndeployOperation(settings map[string]interface{}) bool {
+	if len(settings) != 2 {
+		return false
+	}
+
+	pstatus := true
+	if val, ok := settings["processing_status"]; ok {
+		if pstatus, ok = val.(bool); !ok {
+			return false
+		}
+	} else {
+		return false
+	}
+
+	dstatus := true
+	if val, ok := settings["deployment_status"]; ok {
+		if dstatus, ok = val.(bool); !ok {
+			return false
+		}
+	} else {
+		return false
+	}
+	return (pstatus == false) && (dstatus == false)
+}
+
 func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::functionsHandler"
 
@@ -2318,9 +2343,9 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			if isMixedMode {
+			if isMixedMode && !m.isUndeployOperation(settings) {
 				info.Code = m.statusCodes.errMixedMode.Code
-				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
+				info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
 				m.sendErrorInfo(w, info)
 				return
 			}
@@ -2379,7 +2404,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 			if isMixedMode {
 				info.Code = m.statusCodes.errMixedMode.Code
-				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
+				info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
 				m.sendErrorInfo(w, info)
 				return
 			}
@@ -2428,21 +2453,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 		case "DELETE":
 			audit.Log(auditevent.DeleteFunction, r, appName)
 
-			var isMixedMode bool
-			info := &runtimeInfo{}
-			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			if isMixedMode {
-				info.Code = m.statusCodes.errMixedMode.Code
-				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			info = m.deletePrimaryStore(appName)
+			info := m.deletePrimaryStore(appName)
 			// Delete the application from temp store only if app does not exist in primary store
 			// or if the deletion succeeds on primary store
 			if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
@@ -2480,7 +2491,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 			if isMixedMode {
 				info.Code = m.statusCodes.errMixedMode.Code
-				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
+				info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
 				m.sendErrorInfo(w, info)
 				return
 			}
@@ -2488,19 +2499,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			m.sendRuntimeInfoList(w, infoList)
 
 		case "DELETE":
-			var isMixedMode bool
-			info := &runtimeInfo{}
-			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			if isMixedMode {
-				info.Code = m.statusCodes.errMixedMode.Code
-				info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
-				m.sendErrorInfo(w, info)
-				return
-			}
 			infoList := []*runtimeInfo{}
 			for _, app := range m.getTempStoreAll() {
 				audit.Log(auditevent.DeleteFunction, r, app.Name)
@@ -2874,7 +2872,7 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 
 	if isMixedMode {
 		info.Code = m.statusCodes.errMixedMode.Code
-		info.Info = "CFREATE-UPDATE-DELETE of handler function is not allowed in a mixed mode cluster"
+		info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
 		m.sendErrorInfo(w, info)
 		return
 	}
