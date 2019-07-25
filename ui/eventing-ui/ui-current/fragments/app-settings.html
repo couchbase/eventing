@@ -225,7 +225,7 @@
                     placeholder="alias name...">
             <div
                     class="error field-error"
-                    ng-show="formCtrl.createAppForm.appname.$error.bindingsValid">
+                    ng-show="formCtrl.createAppForm.appname.$error.bindingsValidList[$index]">
               Alias Name can only contain characters in range A-Z, a-z, 0-9, _ and $ and it should not be a JavaScript keyword.
             </div>
           </span>
@@ -259,7 +259,7 @@
                     placeholder="alias name...">
             <div
                     class="error field-error"
-                    ng-show="formCtrl.createAppForm.appname.$error.bindingsValid">
+                    ng-show="formCtrl.createAppForm.appname.$error.bindingsValidList[$index]">
               Alias Name can only contain characters in range A-Z, a-z, 0-9, _ and $ and it should not be a JavaScript keyword.
             </div>
           </span>

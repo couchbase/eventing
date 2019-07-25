@@ -1421,16 +1421,18 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     return isValidVariableRegex(value);
                 },
                 isFormInvalid: function(formCtrl, bindings, sourceBucket) {
-                    var bindingsValid = true,
+                    var bindingsValid,
+                        bindingError,
+                        bindingsValidList = []
                         form = formCtrl.createAppForm;
 
                     for (var binding of bindings) {
-                        if (!bindingsValid) {
-                            break;
-                        }
-
                         if (binding.value.length) {
                             bindingsValid = isValidVariable(binding.value);
+                            bindingsValidList.push(!bindingsValid);
+                        }
+                        if (bindingsValid === false) {
+                            bindingError = true;
                         }
                     }
 
@@ -1438,7 +1440,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     if (form.appname.$viewValue && form.appname.$viewValue !== '') {
                         form.appname.$error.appExists = form.appname.$viewValue in formCtrl.savedApps;
                         form.appname.$error.appnameInvalid = !isValidApplicationName(form.appname.$viewValue);
-                        form.appname.$error.bindingsValid = !bindingsValid;
+                        form.appname.$error.bindingsValidList = bindingsValidList;
+                        form.appname.$error.bindingsValid = bindingError;
                     }
 
                     form.appname.$error.required = form.appname.$viewValue === '';
@@ -1453,7 +1456,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
                         formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
                         form.appname.$error.appnameInvalid ||
-                        !bindingsValid;
+                        bindingError;
                 }
             }
         }
