@@ -1,11 +1,13 @@
 # JS Evaluator REST API
-This API is currently in developer preview and may change before GA. Only functions marked
-as BETA are available for us in Couchbase 6.5.0 Beta.
+This is JS evaluator API. Currently, this does not yet cover function lifecycle
+operations (deploy/undeploy) and those will be added prior to GA.
 
 Note that for all calls:
   1. If "name" attribute appears in the body, it must match the name specified in the URL
   2. of "name" is not specified in the body, it defaults to the name specified on the URL
   3. The HTTP Content-Type must be `application/json` for all below REST API calls
+
+*Not all APIs are available in 6.5.0 beta. The APIs available in beta are explicitly marked*
 
 ## Creating/Updating a function (available in beta)
 > POST /functions/v1/libraries/`<library_name>`/functions/`<function_name>`
@@ -26,7 +28,7 @@ publicly exported, while the function "helper" is not.
 }
 ```
 
-## Creating/Updating a library (available in beta)
+## Creating/Updating a library
 > POST /functions/v1/libraries/`<function_name>`
 
 Note that if the library exists, the function specified will be added to the existing library.
@@ -161,7 +163,7 @@ Deletes the specified function in a library.
 Below example deletes function "adder" in the "math" library.
 > DELETE /functions/v1/libraries/math/functions/adder
 
-## Delete an entire library (available in beta)
+## Delete an entire library
 > DELETE /functions/v1/libraries/`<library_name>`
 Delete the specified library entirely.
 
