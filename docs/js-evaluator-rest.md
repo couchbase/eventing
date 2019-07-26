@@ -178,23 +178,23 @@ Below example deletes all libraries defined in the system.
 ## Replacing a function
 > PUT /functions/v1/libraries/`<library_name>`/functions/`<function_name>`
 
-This has exactly the same effect as DELETE of URI followed by a POST of the specified body.
+This has exactly the same effect as DELETE of the above URI followed by a POST of the specified body.
 That is, the function is deleted if it exists and recreated with the one specified in the body
 of this request. It is a functional alias of POST to the same URI.
 
-## Creating/Updating a library
+## Replacing a library
 > PUT /functions/v1/libraries/`<function_name>`
 
-This has exactly the same effect as DELETE of URI followed by a POST of the specified body.
+This has exactly the same effect as DELETE of the above URI followed by a POST of the specified body.
 
 That is, if the library exists, it is deleted entirely and replaced with the contents of
 the library specified in the body of this call, resulting in the library having only functions
 specified by this call exclusively.
 
-## Creating/Updating a collection of libraries
+## Replacing all libraries
 > PUT /functions/v1/libraries
 
-This has exactly the same effect as DELETE of URI followed by a POST of the specified body.
+This has exactly the same effect as DELETE of the above URI followed by a POST of the specified body.
 
 That is, all existing libraries in the system are deleted, and the libraries specified in the
 body of this call are created, resulting in the system having exclusively the libraries
