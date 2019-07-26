@@ -1,13 +1,16 @@
 # JS Evaluator REST API
-This is JS evaluator API. Currently, this does not yet cover function lifecycle
-operations (deploy/undeploy) and those will be added prior to GA.
+This is JS evaluator API. These REST APIs are available at the Admin Port of the MDS
+service that embeds the function capabilities.
+
+*For N1QL Functions, these REST APIs would be available on port 8093 of any N1QL node*.
 
 Note that for all calls:
   1. If "name" attribute appears in the body, it must match the name specified in the URL
   2. of "name" is not specified in the body, it defaults to the name specified on the URL
   3. The HTTP Content-Type must be `application/json` for all below REST API calls
 
-*Not all APIs are available in 6.5.0 beta. The APIs available in beta are explicitly marked*
+*Not all APIs are available in 6.5.0 beta. The APIs available in beta are explicitly marked.
+Additionally, 6.5.0 beta does not have lifecycle operations of Functions (publish/unpublish)*
 
 ## Creating/Updating a function (available in beta)
 > POST /functions/v1/libraries/`<library_name>`/functions/`<function_name>`
