@@ -119,7 +119,7 @@
           <label class="inline">Workers</label>
           <span
                   class="fa-stack icon-info"
-                  uib-tooltip="Number of workers per node to process the events"
+                  uib-tooltip="Number of workers per node to process the events. If no value is specified, a default value of 3 workers is used."
                   tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
@@ -225,7 +225,7 @@
                     placeholder="alias name...">
             <div
                     class="error field-error"
-                    ng-show="formCtrl.createAppForm.appname.$error.bindingsValid">
+                    ng-show="formCtrl.createAppForm.appname.$error.bindingsValidList[$index]">
               Alias Name can only contain characters in range A-Z, a-z, 0-9, _ and $ and it should not be a JavaScript keyword.
             </div>
           </span>
@@ -259,7 +259,7 @@
                     placeholder="alias name...">
             <div
                     class="error field-error"
-                    ng-show="formCtrl.createAppForm.appname.$error.bindingsValid">
+                    ng-show="formCtrl.createAppForm.appname.$error.bindingsValidList[$index]">
               Alias Name can only contain characters in range A-Z, a-z, 0-9, _ and $ and it should not be a JavaScript keyword.
             </div>
           </span>

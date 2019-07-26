@@ -9,10 +9,12 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include "conn-pool.h"
+
+#include <mutex>
 #include <sstream>
 
 #include "comm.h"
-#include "conn-pool.h"
 #include "isolate_data.h"
 #include "log.h"
 #include "utils.h"
@@ -53,17 +55,6 @@ const char *GetPasswordCached(void *cookie, const char *host, const char *port,
   }
 
   return password;
-}
-
-Info Connection::Pool::Initialize() {
-  for (std::size_t i = 0; i < capacity_; ++i) {
-    auto info = CreateConnection();
-    if (info.is_fatal) {
-      return {true, info.msg};
-    }
-    pool_.push(info.connection);
-  }
-  return {false};
 }
 
 Connection::Info Connection::Pool::CreateConnection() {
@@ -123,9 +114,21 @@ Connection::Info Connection::Pool::CreateConnection() {
 }
 
 Connection::Info Connection::Pool::GetConnection() {
+  std::lock_guard<folly::fibers::TimedMutex> conn_guard(pool_mutex_);
+
   if (pool_.empty()) {
-    return {true, "Connection pool is empty"};
+    if (current_size_ < capacity_) {
+      if (auto info = CreateConnection(); info.is_fatal) {
+        return info;
+      } else {
+        pool_.push(info.connection);
+        ++current_size_;
+      }
+    } else {
+      return {true, "Connection pool maximum capacity reached"};
+    }
   }
+
   auto connection = pool_.front();
   pool_.pop();
   return {connection};
@@ -136,4 +139,9 @@ Connection::Pool::~Pool() {
     lcb_destroy(pool_.front());
     pool_.pop();
   }
+}
+
+void Connection::Pool::RestoreConnection(lcb_t connection) {
+  std::lock_guard<folly::fibers::TimedMutex> conn_guard(pool_mutex_);
+  pool_.push(connection);
 }

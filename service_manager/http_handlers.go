@@ -29,7 +29,7 @@ import (
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	"github.com/google/flatbuffers/go"
+	flatbuffers "github.com/google/flatbuffers/go"
 )
 
 func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
@@ -252,13 +252,24 @@ func (m *ServiceMgr) getInsight(w http.ResponseWriter, r *http.Request) {
 		insights = getLocalInsights(m, apps)
 	}
 
-	msg, _ := json.MarshalIndent(&insights, "", " ")
-	if rv := r.URL.Query()["redact"]; len(rv) > 0 && rv[0] == "false" {
-		// do redaction
+	if rv := r.URL.Query()["udmark"]; len(rv) > 0 && rv[0] == "true" {
+		pspec := logging.RedactFormat("%ru")
+		for name, insight := range *insights {
+			insight.Script = fmt.Sprintf(pspec, insight.Script)
+			insight.SrcMap = fmt.Sprintf(pspec, insight.SrcMap)
+			for num, line := range insight.Lines {
+				line.LastLog = fmt.Sprintf(pspec, line.LastLog)
+				insight.Lines[num] = line
+			}
+			(*insights)[name] = insight
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, "%s\n", string(msg))
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false) // otherwise <ud> gets mangled
+	enc.SetIndent("", " ")
+	enc.Encode(insights)
 }
 
 func getLocalInsights(m *ServiceMgr, apps []string) *common.Insights {

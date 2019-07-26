@@ -9,13 +9,12 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include "conn-pool.h"
 #include "query-iterable.h"
 
 #include <memory>
-#include <mutex>
 
 #include "comm.h"
-#include "conn-pool.h"
 #include "info.h"
 #include "isolate_data.h"
 #include "js_exception.h"
@@ -34,13 +33,6 @@ void Query::Manager::ClearQueries() {
 
 Query::Iterable::Info
 Query::Manager::NewIterable(const Query::Info &query_info) {
-  if (!is_initialized) {
-    if (auto info = Initialize(); info.is_fatal) {
-      return {true, info.msg};
-    }
-    is_initialized = true;
-  }
-
   auto conn_info = conn_pool_.GetConnection();
   if (conn_info.is_fatal) {
     return {true, conn_info.msg};
@@ -59,11 +51,6 @@ Query::Manager::NewIterable(const Query::Info &query_info) {
 
   iterators_[conn_info.connection] = std::move(iterator);
   return {iterator_ptr, info.object};
-}
-
-void Query::Manager::RestoreConnection(lcb_t connection) {
-  std::lock_guard<folly::fibers::TimedMutex> conn_guard(conn_mutex_);
-  conn_pool_.RestoreConnection(connection);
 }
 
 void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
