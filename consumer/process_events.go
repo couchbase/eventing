@@ -1104,11 +1104,15 @@ func (c *Consumer) handleFailoverLog() {
 						startSeqNo: vbFlog.seqNo,
 					}
 
+					// update in-memory stats to reflect rollback seqno so that periodicCheckPoint picks up the latest data
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "last_processed_seq_no", vbFlog.seqNo)
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "vb_uuid", vbuuid)
+
 					// update check point blob to let a racing doVbTakeover during rebalance try with correct <vbuuid, seqno>
 					vbBlob.LastSeqNoProcessed = vbFlog.seqNo
 					err = c.updateCheckpoint(vbKey, vbFlog.vb, &vbBlob)
-					if err == common.ErrRetryTimeout {
-						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+					if err != nil {
+						logging.Errorf("%s [%s:%s:%d] updateCheckpoint failed, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 					}
 
 					select {
