@@ -46,6 +46,15 @@ note_version() {
   fi
 }
 
+switch_version() {
+  repo=$1; pos=$2; tgt=$3
+  cd $pos
+  echo "Switching $repo to $tgt"
+  git checkout $tgt 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout $tgt"
+  git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
+  note_version $repo $pos
+}
+
 echo "</pre><h3>Building</h3><pre>"
 > $WORKSPACE/versions.cfg
 > $WORKSPACE/make.log
@@ -92,34 +101,16 @@ perl -pi -e 's/ADD_SUBDIRECTORY \(cbas-ui\)/# No cbas-ui/' CMakeLists.txt
 
 note_version gocb         $WORKSPACE/godeps/src/github.com/couchbase/gocb
 note_version libcouchbase $WORKSPACE/libcouchbase
-note_version query        $WORKSPACE/goproj/src/github.com/couchbase/query
 note_version indexing     $WORKSPACE/goproj/src/github.com/couchbase/indexing
 note_version kv_engine    $WORKSPACE/kv_engine
 note_version ns_server    $WORKSPACE/ns_server
 note_version couchstore   $WORKSPACE/couchstore
 note_version couchdb      $WORKSPACE/couchdb
 
-cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
-echo "Switching eventing to $BRANCH"
-git checkout $BRANCH 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout $BRANCH"
-git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
-note_version eventing $WORKSPACE/goproj/src/github.com/couchbase/eventing
-
-cd $WORKSPACE/goproj/src/github.com/couchbase
-if [ ! -d eventing-ee ]; then
-	git clone git@github.com:couchbase/eventing-ee.git
-fi
-cd $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee
-echo "Switching eventing-ee to $BRANCH"
-git checkout $BRANCH 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout $BRANCH"
-git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
-note_version eventing-ee $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee
-
-cd $WORKSPACE/testrunner
-echo "Switching testrunner to master"
-git checkout master 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout master"
-git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
-note_version testrunner $WORKSPACE/testrunner
+switch_version eventing    $WORKSPACE/goproj/src/github.com/couchbase/eventing     unstable
+switch_version eventing-ee $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee  unstable
+switch_version query       $WORKSPACE/goproj/src/github.com/couchbase/query        master
+switch_version testrunner  $WORKSPACE/testrunner                                   master
 
 > ~/gerrit.list
 if [ "$CIBOT" = "true" ]; then

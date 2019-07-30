@@ -1,11 +1,16 @@
 # JS Evaluator REST API
-This API is currently in developer preview and may change before GA. Only functions marked
-as BETA are available for us in Couchbase 6.5.0 Beta.
+This is JS evaluator API. These REST APIs are available at the Admin Port of the MDS
+service that embeds the function capabilities.
+
+*For N1QL Functions, these REST APIs would be available on port 8093 of any N1QL node*.
 
 Note that for all calls:
   1. If "name" attribute appears in the body, it must match the name specified in the URL
   2. of "name" is not specified in the body, it defaults to the name specified on the URL
   3. The HTTP Content-Type must be `application/json` for all below REST API calls
+
+*Not all APIs are available in 6.5.0 beta. The APIs available in beta are explicitly marked.
+Additionally, 6.5.0 beta does not have lifecycle operations of Functions (publish/unpublish)*
 
 ## Creating/Updating a function (available in beta)
 > POST /functions/v1/libraries/`<library_name>`/functions/`<function_name>`
@@ -26,7 +31,7 @@ publicly exported, while the function "helper" is not.
 }
 ```
 
-## Creating/Updating a library (available in beta)
+## Creating/Updating a library
 > POST /functions/v1/libraries/`<function_name>`
 
 Note that if the library exists, the function specified will be added to the existing library.
@@ -161,7 +166,7 @@ Deletes the specified function in a library.
 Below example deletes function "adder" in the "math" library.
 > DELETE /functions/v1/libraries/math/functions/adder
 
-## Delete an entire library (available in beta)
+## Delete an entire library
 > DELETE /functions/v1/libraries/`<library_name>`
 Delete the specified library entirely.
 
@@ -178,23 +183,23 @@ Below example deletes all libraries defined in the system.
 ## Replacing a function
 > PUT /functions/v1/libraries/`<library_name>`/functions/`<function_name>`
 
-This has exactly the same effect as DELETE of URI followed by a POST of the specified body.
+This has exactly the same effect as DELETE of the above URI followed by a POST of the specified body.
 That is, the function is deleted if it exists and recreated with the one specified in the body
 of this request. It is a functional alias of POST to the same URI.
 
-## Creating/Updating a library
+## Replacing a library
 > PUT /functions/v1/libraries/`<function_name>`
 
-This has exactly the same effect as DELETE of URI followed by a POST of the specified body.
+This has exactly the same effect as DELETE of the above URI followed by a POST of the specified body.
 
 That is, if the library exists, it is deleted entirely and replaced with the contents of
 the library specified in the body of this call, resulting in the library having only functions
 specified by this call exclusively.
 
-## Creating/Updating a collection of libraries
+## Replacing all libraries
 > PUT /functions/v1/libraries
 
-This has exactly the same effect as DELETE of URI followed by a POST of the specified body.
+This has exactly the same effect as DELETE of the above URI followed by a POST of the specified body.
 
 That is, all existing libraries in the system are deleted, and the libraries specified in the
 body of this call are created, resulting in the system having exclusively the libraries

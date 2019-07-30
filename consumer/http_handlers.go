@@ -57,10 +57,10 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 	}
 
 	if (c.isBootstrapping || c.isRebalanceOngoing) && progress.VbsRemainingToShuffle == 0 {
-		// Faking rebalance progress while vbStateUpdate routine exits/returns. This should remain the last 'if' block
-		vbsToMove := rand.Intn(5) + 1
-		progress.VbsRemainingToShuffle = vbsToMove
-		progress.CloseStreamVbsLen = vbsToMove
+		// Wait till vbStateUpdate routine exits/returns. This should remain the last 'if' block
+		// Not faking any progress here because, vbStateUpdate routine may be stuck due to kv issues.
+		// A fixed increment will ensure rebalance is failed after a fixed time if there is no progress
+		progress.VbsRemainingToShuffle++
 	}
 
 	return progress
