@@ -336,7 +336,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 				if state == common.AppStateEnabled {
 
 					s.appListRWMutex.Lock()
-					logging.Infof("%s [%d] Function: %s adding to pausing apps list", logPrefix, s.runningFnsCount(), appName)
+					logging.Infof("%s [%d] Function: %s begin pausing process", logPrefix, s.runningFnsCount(), appName)
 					s.pausingApps[appName] = time.Now().String()
 					s.appListRWMutex.Unlock()
 
@@ -357,6 +357,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					s.appListRWMutex.Lock()
 					delete(s.pausingApps, appName)
 					s.appListRWMutex.Unlock()
+					logging.Infof("%s [%d] Function: %s pausing done", logPrefix, s.runningFnsCount(), appName)
 				}
 			}
 
@@ -448,7 +449,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			if _, ok := s.runningFns()[appName]; !ok {
 
 				if deploymentStatus && processingStatus {
-					logging.Infof("%s [%d] Function: %s bootstrapping", logPrefix, s.runningFnsCount(), appName)
+					logging.Infof("%s [%d] Function: %s begin deployment process", logPrefix, s.runningFnsCount(), appName)
 
 					s.appListRWMutex.Lock()
 					if _, ok := s.bootstrappingApps[appName]; ok {
@@ -492,6 +493,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 						eventingProducer.NotifyTopologyChange(topologyChangeMsg)
 					}
+					logging.Infof("%s [%d] Function: %s deployment done", logPrefix, s.runningFnsCount(), appName)
 				} else {
 					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
@@ -678,7 +680,7 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 				d.Close()
 
 			case cmdAppLoad:
-				logging.Infof("%s [%d] Function: %s bootstrapping", logPrefix, s.runningFnsCount(), appName)
+				logging.Infof("%s [%d] Function: %s begin deployment process", logPrefix, s.runningFnsCount(), appName)
 
 				s.appListRWMutex.Lock()
 				if _, ok := s.bootstrappingApps[appName]; ok {
@@ -739,6 +741,7 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					delete(s.bootstrappingApps, appName)
 					s.appListRWMutex.Unlock()
 				}
+				logging.Infof("%s [%d] Function: %s deployment done", logPrefix, s.runningFnsCount(), appName)
 
 			case cmdSettingsUpdate:
 				if p, ok := s.runningFns()[appName]; ok {
