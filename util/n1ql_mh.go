@@ -30,4 +30,3 @@ func (qs *queryStmt) VisitUpdateStatistics(stmt *algebra.UpdateStatistics) (inte
 	err := handleStmt(qs, stmt.Expressions())
 	return stmt, err
 }
-

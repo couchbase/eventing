@@ -86,6 +86,7 @@ type EventingProducer interface {
 	Auth() string
 	AppendCurlLatencyStats(deltas StatsData)
 	AppendLatencyStats(deltas StatsData)
+	BootstrapStatus() bool
 	CfgData() string
 	CheckpointBlobDump() map[string]interface{}
 	CleanupMetadataBucket(skipCheckpointBlobs bool) error
@@ -153,6 +154,7 @@ type EventingProducer interface {
 
 // EventingConsumer interface to export functions from eventing_consumer
 type EventingConsumer interface {
+	BootstrapStatus() bool
 	CheckIfQueuesAreDrained() error
 	ClearEventStats()
 	CloseAllRunningDcpFeeds()
@@ -203,6 +205,8 @@ type EventingConsumer interface {
 type EventingSuperSup interface {
 	PausingAppList() map[string]string
 	BootstrapAppList() map[string]string
+	BootstrapAppStatus(appName string) bool
+	BootstrapStatus() bool
 	CheckpointBlobDump(appName string) (interface{}, error)
 	ClearEventStats()
 	CleanupProducer(appName string, skipMetaCleanup bool) error

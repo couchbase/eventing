@@ -827,6 +827,27 @@ func (p *Producer) StopRunningConsumers() {
 	p.runningConsumersRWMutex.Unlock()
 }
 
+// BootstrapStatus returns state of bootstrap for all running consumer instances
+func (p *Producer) BootstrapStatus() bool {
+	logPrefix := "Producer::BootstrapStatus"
+
+	consumerBootstrapStatuses := make(map[string]bool)
+	for _, c := range p.getConsumers() {
+		consumerBootstrapStatuses[c.ConsumerName()] = c.BootstrapStatus()
+	}
+
+	logging.Infof("%s [%s:%d] Bootstrap status from all running consumer instances: %#v",
+		logPrefix, p.appName, p.LenRunningConsumers(), consumerBootstrapStatuses)
+
+	for _, bootstrapStatus := range consumerBootstrapStatuses {
+		if bootstrapStatus {
+			return bootstrapStatus
+		}
+	}
+
+	return false
+}
+
 // RebalanceStatus returns state of rebalance for all running consumer instances
 func (p *Producer) RebalanceStatus() bool {
 	logPrefix := "Producer::RebalanceStatus"

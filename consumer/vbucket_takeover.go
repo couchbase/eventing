@@ -97,8 +97,8 @@ func (c *Consumer) vbsStateUpdate() {
 
 	defer func() {
 		c.vbsStateUpdateRunning = false
-	        // confirm rebalance is done
-	        c.isRebalanceOngoing = false
+		// confirm rebalance is done
+		c.isRebalanceOngoing = false
 		logging.Infof("%s [%s:%s:%d] Updated vbsStateUpdateRunning to %t, isRebalanceOngoing to %t",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning, c.isRebalanceOngoing)
 	}()

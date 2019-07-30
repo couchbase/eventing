@@ -810,6 +810,40 @@ func (m *ServiceMgr) getRebalanceStatus(w http.ResponseWriter, r *http.Request) 
 	w.Write([]byte(strconv.FormatBool(m.superSup.RebalanceStatus())))
 }
 
+// Report back state of bootstrap on current node
+func (m *ServiceMgr) getBootstrapStatus(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	bootstrapAppList := m.superSup.BootstrapAppList()
+	if len(bootstrapAppList) > 0 {
+		w.Write([]byte(strconv.FormatBool(true)))
+	} else {
+		w.Write([]byte(strconv.FormatBool(m.superSup.BootstrapStatus())))
+	}
+}
+
+// Report back state of an app bootstrap on current node
+func (m *ServiceMgr) getBootstrapAppStatus(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	appName := r.URL.Query()["appName"]
+	if len(appName) == 0 {
+		return
+	}
+
+	bootstrapAppList := m.superSup.BootstrapAppList()
+	_, isBootstrapping := bootstrapAppList[appName[0]]
+	if isBootstrapping {
+		w.Write([]byte(strconv.FormatBool(true)))
+	} else {
+		w.Write([]byte(strconv.FormatBool(m.superSup.BootstrapAppStatus(appName[0]))))
+	}
+}
+
 // Reports aggregated event processing stats from all producers
 func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggEventProcessingStats"
@@ -881,6 +915,47 @@ func (m *ServiceMgr) getAggRebalanceStatus(w http.ResponseWriter, r *http.Reques
 	status, err := util.CheckIfRebalanceOngoing("/getRebalanceStatus", m.eventingNodeAddrs)
 	if err != nil {
 		logging.Errorf("%s failed to grab correct rebalance status from some/all nodes, err: %v", logPrefix, err)
+		return
+	}
+
+	w.Write([]byte(strconv.FormatBool(status)))
+}
+
+// Report aggregated bootstrap status from all Eventing nodes in the cluster
+func (m *ServiceMgr) getAggBootstrapStatus(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::getAggBootstrapStatus"
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
+
+	status, err := util.CheckIfBootstrapOngoing("/getBootstrapStatus", m.eventingNodeAddrs)
+	if err != nil {
+		logging.Errorf("%s failed to grab correct bootstrap status from some/all nodes, err: %v", logPrefix, err)
+		return
+	}
+
+	w.Write([]byte(strconv.FormatBool(status)))
+}
+
+// Report aggregated bootstrap status of an app from all Eventing nodes in the cluster
+func (m *ServiceMgr) getAggBootstrapAppStatus(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "SeriveMgr::getAggBootstrapAppStatus"
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
+
+	appName := r.URL.Query()["appName"]
+	if len(appName) == 0 {
+		return
+	}
+
+	status, err := util.CheckIfAppBootstrapOngoing("/getBootstrapAppStatus", m.eventingNodeAddrs, appName[0])
+	if err != nil {
+		logging.Errorf("%s failed to grab correct bootstrap status of app from some/all nodes, err: %v", logPrefix, err)
 		return
 	}
 
@@ -1078,6 +1153,22 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 	_, depStatExists := settings["deployment_status"]
 
 	if procStatExists || depStatExists {
+		if settings["deployment_status"].(bool) {
+			status, err := util.GetAggBootstrapAppStatus(util.Localhost(), m.adminHTTPPort, appName)
+			if err != nil {
+				logging.Errorf("%s %s", logPrefix, err)
+				info.Code = m.statusCodes.errStatusesNotFound.Code
+				info.Info = "Failed to find app status"
+				return
+			}
+
+			if status {
+				info.Code = m.statusCodes.errAppNotInit.Code
+				info.Info = "Function is undergoing bootstrap"
+				return
+			}
+		}
+
 		if lifeCycleOpsInfo := m.checkLifeCycleOpsDuringRebalance(); lifeCycleOpsInfo.Code != m.statusCodes.ok.Code {
 			info.Code = lifeCycleOpsInfo.Code
 			info.Info = lifeCycleOpsInfo.Info
@@ -2614,17 +2705,23 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 		if num, exists := appBootstrappingNodesCounter[app.Name]; exists {
 			status.NumBootstrappingNodes = num
 		}
-		status.CompositeStatus = determineStatus(status, appPausingNodesCounter, numEventingNodes)
+
+		bootstrapStatus, err := util.GetAggBootstrapAppStatus(util.Localhost(), m.adminHTTPPort, status.Name)
+		if err != nil {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			return
+		}
+		status.CompositeStatus = m.determineStatus(status, appPausingNodesCounter, numEventingNodes, bootstrapStatus)
 		response.Apps = append(response.Apps, status)
 	}
 	return
 }
 
-func determineStatus(status appStatus, pausingAppsList map[string]int, numEventingNodes int) string {
+func (m *ServiceMgr) determineStatus(status appStatus, pausingAppsList map[string]int, numEventingNodes int, bootstrapStatus bool) string {
 	logPrefix := "ServiceMgr::determineStatus"
 
 	if status.DeploymentStatus && status.ProcessingStatus {
-		if status.NumBootstrappingNodes == 0 && status.NumDeployedNodes == numEventingNodes {
+		if !bootstrapStatus && status.NumBootstrappingNodes == 0 && status.NumDeployedNodes == numEventingNodes {
 			return "deployed"
 		}
 		return "deploying"
@@ -2633,7 +2730,7 @@ func determineStatus(status appStatus, pausingAppsList map[string]int, numEventi
 	// For case:
 	// T1 - bootstrap was requested
 	// T2 - undeploy was requested
-	// T3 - boostrap finished
+	// T3 - bootstrap finished
 	// During the period T2 - T3, Eventing is spending cycles to bring up
 	// the function is ready state i.e. state should be "deploying". Reporting
 	// undeployed by looking up in temp store would be unreasonable

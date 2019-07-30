@@ -17,9 +17,9 @@ func testFlexReset(handler string, t *testing.T) {
 		deadlineTimeout:  15,
 		executionTimeout: 10,
 	})
-        waitForDeployToFinish(functionName)
+	waitForDeployToFinish(functionName)
 
-	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter * 2)
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter*2)
 	if itemCount != eventCount {
 		t.Error("For", functionName,
 			"expected", itemCount,
@@ -69,10 +69,10 @@ func TestN1QLLabelledBreak(t *testing.T) {
 	handler := "n1ql_labelled_break"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
-        waitForDeployToFinish(functionName)
+	waitForDeployToFinish(functionName)
 	pumpBucketOps(opsType{}, &rateLimit{})
 	expectedCount := itemCount * 2
-	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
 		t.Error("For", "N1QLLabelledBreak",
 			"expected", expectedCount,
@@ -89,10 +89,10 @@ func TestN1QLUnlabelledBreak(t *testing.T) {
 	handler := "n1ql_unlabelled_break"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
-        waitForDeployToFinish(functionName)
+	waitForDeployToFinish(functionName)
 	pumpBucketOps(opsType{}, &rateLimit{})
 	expectedCount := itemCount * 2
-	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
 		t.Error("For", "N1QLUnlabelledBreak",
 			"expected", expectedCount,
@@ -109,10 +109,10 @@ func TestN1QLThrowStatement(t *testing.T) {
 	handler := "n1ql_throw_statement"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
-        waitForDeployToFinish(functionName)
+	waitForDeployToFinish(functionName)
 	pumpBucketOps(opsType{}, &rateLimit{})
 	expectedCount := itemCount * 2
-	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
 		t.Error("For", "N1QLThrowStatement",
 			"expected", expectedCount,
@@ -129,10 +129,10 @@ func TestN1QLNestedForLoop(t *testing.T) {
 	handler := "n1ql_nested_for_loops"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{lcbInstCap: 6})
-        waitForDeployToFinish(functionName)
+	waitForDeployToFinish(functionName)
 	pumpBucketOps(opsType{}, &rateLimit{})
 	expectedCount := itemCount
-	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
 		t.Error("For", "N1QLNestedForLoop",
 			"expected", expectedCount,
@@ -149,10 +149,10 @@ func TestN1QLPosParams(t *testing.T) {
 	handler := "n1ql_pos_params"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
-        waitForDeployToFinish(functionName)
+	waitForDeployToFinish(functionName)
 	pumpBucketOps(opsType{}, &rateLimit{})
 	expectedCount := itemCount
-	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
 		t.Error("For", t.Name(),
 			"expected", expectedCount,
@@ -169,10 +169,10 @@ func TestN1QLExhaustConnPool(t *testing.T) {
 	handler := "n1ql_exhaust_conn_pool"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
-  	waitForDeployToFinish(functionName)
-	pumpBucketOps(opsType{count:100}, &rateLimit{})
+	waitForDeployToFinish(functionName)
+	pumpBucketOps(opsType{count: 100}, &rateLimit{})
 	expectedCount := 100
-	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter * 2)
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
 		t.Error("For", t.Name(),
 			"expected", expectedCount,
