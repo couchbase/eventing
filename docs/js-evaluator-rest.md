@@ -40,18 +40,16 @@ Below example creates a library by name `math`.
 
 > POST /functions/v1/libraries/math
 ```json
-[
-  {
-    "name": "math",
-    "functions":
-    [
-      {
-        "name": "adder",
-        "code": "function adder(a, b) { return a + b; }\n function helper() { return; }"
-      }
-    ]
-  }
-]
+{
+  "name": "math",
+  "functions":
+  [
+    {
+      "name": "adder",
+      "code": "function adder(a, b) { return a + b; }\n function helper() { return; }"
+    }
+  ]
+}
 ```
 
 ## Creating/Updating a collection of libraries
