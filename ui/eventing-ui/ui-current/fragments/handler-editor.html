@@ -30,8 +30,11 @@
         ng-disabled="$root.debugDisable">
         Debug
       </button>
-      <span class="fa-stack icon-info"
-            uib-tooltip="{{handlerCtrl.debugToolTip}}" tooltip-placement="top">
+      <span
+         class="fa-stack icon-info"
+         uib-tooltip="{{handlerCtrl.debugToolTip}}"
+         tooltip-placement="auto top"
+         tooltip-append-to-body="true">
       <span class="icon fa-circle-thin fa-stack-2x"></span>
       <span class="icon fa-info fa-stack-1x"></span>
       </span>
