@@ -29,7 +29,7 @@ curl -X POST \
   -H 'content-type: application/json' \
   -d '{
     "name": "sub",
-    "code": "function sub(a,b) { helper(a,b); }\n function helper(a, b) { return a - b; }"
+    "code": "function sub(a,b) { return helper(a,b); }\n function helper(a,b) { return a - b; }"
 }'
 ```
 
