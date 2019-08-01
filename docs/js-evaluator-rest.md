@@ -23,10 +23,10 @@ Below example creates a function by name `sub` in library `math`. The function `
 publicly exported, while the function `helper` is not.
 
 ```
-curl -X POST \\
-  http://localhost:8093/functions/v1/libraries/math/functions/sub \\
-  -u Administrator:password \\
-  -H 'content-type: application/json' \\
+curl -X POST \
+  http://localhost:8093/functions/v1/libraries/math/functions/sub \
+  -u Administrator:password \
+  -H 'content-type: application/json' \
   -d '{
     "name": "sub",
     "code": "function sub(a,b) { helper(a,b); }\n function helper(a, b) { return a - b; }"
@@ -42,10 +42,10 @@ If a specified function already exists in the old library, it will be overwritte
 Below example creates a library by name `math`.
 
 ```
-curl -X POST \\
-  http://localhost:8093/functions/v1/libraries/math \\
-  -u Administrator:password \\
-  -H 'content-type: application/json' \\
+curl -X POST \
+  http://localhost:8093/functions/v1/libraries/math \
+  -u Administrator:password \
+  -H 'content-type: application/json' \
   -d '{
     "name": "math",
     "functions": [
@@ -66,10 +66,10 @@ on the server, the function will be overwritten.
 Below example adds/updates two libraries, `math` and `science`.
 
 ```
-curl -X POST \\
-  http://localhost:8093/functions/v1/libraries \\
-  -u Administrator:password \\
-  -H 'content-type: application/json' \\
+curl -X POST \
+  http://localhost:8093/functions/v1/libraries \
+  -u Administrator:password \
+  -H 'content-type: application/json' \
   -d '[
   {
     "name": "math",
@@ -106,9 +106,9 @@ Returns specified function the specified library.
 Below example gets function `sub` from library `math`.
 
 ```
-curl -X GET \\
-  http://localhost:8093/functions/v1/libraries/math/functions/sub \\
-  -u Administrator:password \\
+curl -X GET \
+  http://localhost:8093/functions/v1/libraries/math/functions/sub \
+  -u Administrator:password \
 ```
 
 ## Reading a library
@@ -119,9 +119,9 @@ Returns a library with all its functions.
 Below example gets all functions in library `math`.
 
 ```
-curl -X GET \\
-  http://localhost:8093/functions/v1/libraries/math \\
-  -u Administrator:password \\
+curl -X GET \
+  http://localhost:8093/functions/v1/libraries/math \
+  -u Administrator:password \
 ```
 
 ## Reading all libraries
@@ -132,9 +132,9 @@ Returns all libraries and functions.
 Below example fetches all defined libraries.
 
 ```
-curl -X GET \\
-  http://localhost:8093/functions/v1/libraries \\
-  -u Administrator:password \\
+curl -X GET \
+  http://localhost:8093/functions/v1/libraries \
+  -u Administrator:password \
 ```
 
 ## Delete a function in a library
@@ -144,10 +144,10 @@ Deletes the specified function in a library.
 Below example deletes function `sub` in the `math` library.
 
 ```
-curl -X DELETE \\
-  http://localhost:8093/functions/v1/libraries/math/functions/sub \\
-  -u Administrator:password \\
-  -H 'content-type: application/json' \\
+curl -X DELETE \
+  http://localhost:8093/functions/v1/libraries/math/functions/sub \
+  -u Administrator:password \
+  -H 'content-type: application/json' \
 ```
 
 ## Delete an entire library
@@ -157,9 +157,9 @@ Delete the specified library entirely.
 Below example deletes `math` library entirely.
 
 ```
-curl -X DELETE \\
-  http://localhost:8093/functions/v1/libraries/math \\
-  -u Administrator:password \\
+curl -X DELETE \
+  http://localhost:8093/functions/v1/libraries/math \
+  -u Administrator:password \
 ```
 
 ## Delete all libraries
@@ -169,9 +169,9 @@ Deletes all libraries entirely.
 Below example deletes all libraries defined in the system.
 
 ```
-curl -X DELETE \\
-  http://localhost:8093/functions/v1/libraries \\
-  -u Administrator:password \\
+curl -X DELETE \
+  http://localhost:8093/functions/v1/libraries \
+  -u Administrator:password \
 ```
 
 ## Replacing a function
@@ -191,10 +191,10 @@ specified by this call exclusively.
 Below replaces `math` library with new copy, dropping any old `math` library.
 
 ```
-curl -X PUT \\
-  http://localhost:8093/functions/v1/libraries/math \\
-  -u Administrator:password \\
-  -H 'content-type: application/json' \\
+curl -X PUT \
+  http://localhost:8093/functions/v1/libraries/math \
+  -u Administrator:password \
+  -H 'content-type: application/json' \
   -d '{
     "name": "math",
     "functions": [
@@ -217,10 +217,10 @@ specified by this call.
 Below removes all libraries in the system and creates a new `math` library.
 
 ```
-curl -X PUT \\
-  http://localhost:8093/functions/v1/libraries \\
-  -u Administrator:password \\
-  -H 'content-type: application/json' \\
+curl -X PUT \
+  http://localhost:8093/functions/v1/libraries \
+  -u Administrator:password \
+  -H 'content-type: application/json' \
   -d '[
     {
         "name": "math",
