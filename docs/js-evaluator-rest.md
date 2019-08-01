@@ -139,6 +139,7 @@ curl -X GET \
 
 ## Delete a function in a library
 > DELETE /functions/v1/libraries/`<library_name>`/functions/`<function_name>`
+
 Deletes the specified function in a library.
 
 Below example deletes function `sub` in the `math` library.
@@ -152,6 +153,7 @@ curl -X DELETE \
 
 ## Delete an entire library
 > DELETE /functions/v1/libraries/`<library_name>`
+
 Delete the specified library entirely.
 
 Below example deletes `math` library entirely.
@@ -164,6 +166,7 @@ curl -X DELETE \
 
 ## Delete all libraries
 > DELETE /functions/v1/libraries
+
 Deletes all libraries entirely.
 
 Below example deletes all libraries defined in the system.
