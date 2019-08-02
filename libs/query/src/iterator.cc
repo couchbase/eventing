@@ -59,11 +59,13 @@ Query::Iterator::Info Query::Iterator::Start() {
   lcb_CMDN1QL cmd = {0};
   lcb_N1QLPARAMS *builder = lcb_n1p_new();
   std::stringstream error;
+  auto query_mgr = UnwrapData(isolate_)->query_mgr;
 
   auto result = lcb_n1p_setstmtz(builder, query_info_.query.c_str());
   if (result != LCB_SUCCESS) {
     error << "Unable to set query : " << lcb_strerror(connection_, result)
           << std::endl;
+    query_mgr->RestoreConnection(connection_);
     return {true, error.str()};
   }
 
@@ -72,6 +74,7 @@ Query::Iterator::Info Query::Iterator::Start() {
     if (result != LCB_SUCCESS) {
       error << "Unable to set named parameter : " << key << " : "
             << lcb_strerror(connection_, result) << std::endl;
+      query_mgr->RestoreConnection(connection_);
       return {true, error.str()};
     }
   }
@@ -81,6 +84,7 @@ Query::Iterator::Info Query::Iterator::Start() {
     if (result != LCB_SUCCESS) {
       error << "Unable to set parameter " << param << " : "
             << lcb_strerror(connection_, result) << std::endl;
+      query_mgr->RestoreConnection(connection_);
       return {true, error.str()};
     }
   }
@@ -89,6 +93,7 @@ Query::Iterator::Info Query::Iterator::Start() {
   if (result != LCB_SUCCESS) {
     error << "Unable to make query cmd : " << lcb_strerror(connection_, result)
           << std::endl;
+    query_mgr->RestoreConnection(connection_);
     return {true, error.str()};
   }
 
@@ -103,6 +108,7 @@ Query::Iterator::Info Query::Iterator::Start() {
   if (result != LCB_SUCCESS) {
     error << "Unable to set timeout for query : "
           << lcb_strerror(connection_, result) << std::endl;
+    query_mgr->RestoreConnection(connection_);
     return {true, error.str()};
   }
 
@@ -110,6 +116,7 @@ Query::Iterator::Info Query::Iterator::Start() {
   if (result != LCB_SUCCESS) {
     error << "Unable to schedule query : " << lcb_strerror(connection_, result)
           << std::endl;
+    query_mgr->RestoreConnection(connection_);
     return {true, error.str()};
   }
 
