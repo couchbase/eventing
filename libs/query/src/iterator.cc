@@ -99,8 +99,7 @@ Query::Iterator::Info Query::Iterator::Start() {
 
   cmd.handle = &query_handle_;
   cmd.callback = RowCallback;
-  // Commenting this out until MB-34822 is resolved
-  //  cmd.cmdflags |= LCB_CMDN1QL_F_PREPCACHE;
+  cmd.cmdflags |= LCB_CMDN1QL_F_PREPCACHE;
   lcb_set_cookie(connection_, &cursor_);
 
   auto timeout = UnwrapData(isolate_)->n1ql_timeout;
