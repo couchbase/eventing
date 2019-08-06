@@ -1,5 +1,5 @@
 function OnUpdate(doc, meta) {
-    const lcbConnPoolSize = 10;
+    const lcbConnPoolSize = 5;
     let count = 0;
 
     try {
@@ -14,7 +14,7 @@ function OnUpdate(doc, meta) {
         if (e.message === 'Connection pool maximum capacity reached' && count === lcbConnPoolSize) {
             dst_bucket[meta.id] = 'yes';
         } else {
-            log (e);
+            log (e, count);
         }
     }
 }
