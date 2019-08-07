@@ -83,6 +83,7 @@ type statusCodes struct {
 	errAppDelete           statusBase
 	errDebuggerDisabled    statusBase
 	errMixedMode           statusBase
+	errMetakvWriteFailed   statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -167,6 +168,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusInternalServerError
 	case m.statusCodes.errMixedMode.Code:
 		return http.StatusInternalServerError
+	case m.statusCodes.errMetakvWriteFailed.Code:
+		return http.StatusInternalServerError
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -216,6 +219,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errAppDelete:           statusBase{"ERR_APP_DELETE_NOT_ALLOWED", 44},
 		errDebuggerDisabled:    statusBase{"ERR_DEBUGGER_DISABLED", 45},
 		errMixedMode:           statusBase{"ERR_MIXED_MODE", 46},
+		errMetakvWriteFailed:      statusBase{"ERR_METAKV_WRITE_FAILED", 47},
 	}
 
 	errors := []errorPayload{
@@ -441,6 +445,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errMixedMode.Name,
 			Code:        m.statusCodes.errMixedMode.Code,
 			Description: "Unable to start debugger in mixed mode cluster",
+		},
+		{
+			Name:        m.statusCodes.errMetakvWriteFailed.Name,
+			Code:        m.statusCodes.errMetakvWriteFailed.Code,
+			Description: "Metakv write failed",
 		},
 	}
 

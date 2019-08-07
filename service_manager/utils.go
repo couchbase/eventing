@@ -10,7 +10,6 @@ import (
 
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/util"
 )
 
 func (m *ServiceMgr) checkIfDeployed(appName string) bool {
@@ -251,19 +250,6 @@ func (m *ServiceMgr) checkLifeCycleOpsDuringRebalance() (info *runtimeInfo) {
 
 	info.Code = m.statusCodes.ok.Code
 	return
-}
-
-var metakvSetCallback = func(args ...interface{}) error {
-	logPrefix := "ServiceMgr::metakvSetCallback"
-
-	metakvPath := args[0].(string)
-	data := args[1].([]byte)
-
-	err := util.MetakvSet(metakvPath, data, nil)
-	if err != nil {
-		logging.Errorf("%s metakv set failed, err: %v", logPrefix, err)
-	}
-	return err
 }
 
 func GetNodesHostname(data map[string]interface{}) []string {

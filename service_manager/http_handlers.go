@@ -303,8 +303,14 @@ func (m *ServiceMgr) notifyDebuggerStart(appName string, hostnames []string) (in
 	m.superSup.WriteDebuggerToken(appName, token, hostnames)
 	logging.Infof("%s Function: %s notifying on debugger path %s",
 		logPrefix, appName, common.MetakvDebuggerPath+appName)
-	util.Retry(util.NewFixedBackoff(time.Second), nil,
-		metakvSetCallback, common.MetakvDebuggerPath+appName, []byte(token))
+
+	err = util.MetakvSet(common.MetakvDebuggerPath+appName, []byte(token), nil)
+
+	if err != nil {
+		logging.Errorf("%s Function: %s Failed to write to metakv err: %v", logPrefix, appName, err)
+		info.Code = m.statusCodes.errMetakvWriteFailed.Code
+		info.Info = fmt.Sprintf("Failed to write to metakv debugger path for Function: %s, err: %v", appName, err)
+	}
 
 	info.Code = m.statusCodes.ok.Code
 	return
@@ -1191,6 +1197,10 @@ func (m *ServiceMgr) getTempStoreAll() []application {
 			}
 
 			applications[i] = app
+		} else if err != nil {
+			logging.Errorf("%s Function: %s failed to read data from metakv, err: %v", logPrefix, appName, err)
+		} else {
+			logging.Errorf("%s Function: %s data read is nil", logPrefix, appName)
 		}
 	}
 
@@ -1713,8 +1723,14 @@ func (m *ServiceMgr) saveConfig(c common.Config) (info *runtimeInfo) {
 	}
 
 	logging.Infof("%s Saving config into metakv: %v", logPrefix, c)
-	util.Retry(util.NewFixedBackoff(metakvOpRetryInterval),
-		nil, metakvSetCallback, metakvConfigPath, data)
+
+	err = util.MetakvSet(metakvConfigPath, data, nil)
+	if err != nil {
+		logging.Errorf("%s Failed to write to metakv err: %v", logPrefix, err)
+		info.Code = m.statusCodes.errMetakvWriteFailed.Code
+		info.Info = fmt.Sprintf("Failed to write to metakv, err: %v", err)
+	}
+
 	info.Code = m.statusCodes.ok.Code
 	return
 }

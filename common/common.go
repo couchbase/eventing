@@ -12,6 +12,8 @@ const (
 	DcpFromNow    = DcpStreamBoundary("from_now")
 )
 
+var MetakvMaxRetries int64 = 60
+
 type ChangeType string
 
 const (

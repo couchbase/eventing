@@ -100,7 +100,7 @@ var cleanupEventingMetaKvPath = func(args ...interface{}) error {
 
 	path := args[0].(string)
 
-	err := util.RecursiveDelete(path)
+	err := util.MetakvRecursiveDelete(path)
 	if err != nil {
 		logging.Errorf("%s Failed to purge eventing artifacts from path: %v, err: %v", logPrefix, path, err)
 	}
