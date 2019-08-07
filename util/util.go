@@ -521,20 +521,55 @@ func MetakvGet(path string) ([]byte, error) {
 	return data, err
 }
 
+var metakvSetCallback = func(args ...interface{}) error {
+        logPrefix := "Util::metakvSetCallback"
+
+        metakvPath := args[0].(string)
+        data := args[1].([]byte)
+        rev := args[2]
+
+        err := metakv.Set(metakvPath, data, rev)
+        if err != nil {
+                logging.Errorf("%s metakv set failed for path: %s, err: %v", logPrefix, metakvPath, err)
+        }
+        return err
+}
+
 func MetakvSet(path string, value []byte, rev interface{}) error {
-	return metakv.Set(path, value, rev)
+	return Retry(NewFixedBackoff(time.Second), &cm.MetakvMaxRetries, metakvSetCallback, path, value, rev)
+}
+
+var metakvDelCallback = func(args ...interface{}) error {
+        logPrefix := "Util::metakvDelCallback"
+
+        metakvPath := args[0].(string)
+        rev := args[1]
+
+        err := metakv.Delete(metakvPath, rev)
+        if err != nil {
+                logging.Errorf("%s metakv delete failed for path: %s, err: %v", logPrefix, metakvPath, err)
+        }
+        return err
 }
 
 func MetaKvDelete(path string, rev interface{}) error {
-	return metakv.Delete(path, rev)
+	return Retry(NewFixedBackoff(time.Second), &cm.MetakvMaxRetries, metakvDelCallback, path, rev)
+}
+
+var metakvRecDelCallback = func(args ...interface{}) error {
+        logPrefix := "Util::metakvRecDelCallback"
+
+        metakvPath := args[0].(string)
+
+        err := metakv.RecursiveDelete(metakvPath)
+        if err != nil {
+                logging.Errorf("%s metakv recursive delete failed for path: %s, err: %v", logPrefix, metakvPath, err)
+        }
+        return err
 }
 
 func MetakvRecursiveDelete(dirpath string) error {
-	return metakv.RecursiveDelete(dirpath)
-}
-
-func RecursiveDelete(dirpath string) error {
-	return metakv.RecursiveDelete(dirpath)
+	return Retry(NewFixedBackoff(time.Second), &cm.MetakvMaxRetries, metakvRecDelCallback, dirpath)
 }
 
 //WriteAppContent fragments the payload and store it to metakv

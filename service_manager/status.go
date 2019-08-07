@@ -90,6 +90,7 @@ type statusCodes struct {
 	errInterBucketRecursion   statusBase
 	errSyncGatewayEnabled     statusBase
 	errAppNotFound            statusBase
+	errMetakvWriteFailed      statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -188,6 +189,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusNotAcceptable
 	case m.statusCodes.errAppNotFound.Code:
 		return http.StatusNotFound
+	case m.statusCodes.errMetakvWriteFailed.Code:
+		return http.StatusInternalServerError
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -244,6 +247,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errInterBucketRecursion:   statusBase{"ERR_INTER_BUCKET_RECURSION", 51},
 		errSyncGatewayEnabled:     statusBase{"ERR_SYNC_GATEWAY_ENABLED", 52},
 		errAppNotFound:            statusBase{"ERR_APP_NOT_FOUND", 53},
+		errMetakvWriteFailed:      statusBase{"ERR_METAKV_WRITE_FAILED", 54},
 	}
 
 	errors := []errorPayload{
@@ -504,6 +508,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errAppNotFound.Name,
 			Code:        m.statusCodes.errAppNotFound.Code,
 			Description: "Function not found",
+		},
+		{
+			Name:        m.statusCodes.errMetakvWriteFailed.Name,
+			Code:        m.statusCodes.errMetakvWriteFailed.Code,
+			Description: "Metakv write failed",
 		},
 	}
 

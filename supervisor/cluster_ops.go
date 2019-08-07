@@ -45,21 +45,6 @@ var metakvGetCallback = func(args ...interface{}) error {
 	return err
 }
 
-var metakvSetCallback = func(args ...interface{}) error {
-	logPrefix := "SuperSupervisor::metakvSetCallback"
-
-	s := args[0].(*SuperSupervisor)
-	path := args[1].(string)
-	data := args[2].([]byte)
-
-	err := util.MetakvSet(path, data, nil)
-	if err != nil {
-		logging.Errorf("%s [%d] Failed to store in metakv path: %s, err: %v", logPrefix, s.runningFnsCount(), path, err)
-	}
-
-	return err
-}
-
 var metakvDeleteCallback = func(args ...interface{}) error {
 	logPrefix := "SuperSupervisor::metakvDeleteCallback"
 
