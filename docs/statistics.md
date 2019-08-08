@@ -46,6 +46,14 @@ This will return the stats regardings events processing, events remaining, execu
      "100": 12,
      "1000": 3
    },
+   "curl_latency_stats": {
+    "414200": 1,
+    "442400": 1,
+    "484400": 1,
+    "493800": 1,
+    "576500": 1,
+    "587500": 1,
+   },
    "worker_pids": {
      "worker_h1_0": 28558,
      "worker_h1_1": 28559,
@@ -130,7 +138,7 @@ Name|Datatype|Field|Descripton
 | OnUpdate handler successful invocations | int64 | `on_update_success` | Counter for number of times OnUpdate handler was executed successfully. |
 
 ## Latency Stats
-These give latency of handler executions in wall clock time, in aggregate, across all handlers and timers. The returned object has a key which is the latency range in **microseconds** and value which is the count of executions in this range.
+These give latency of handler executions in wall clock time, in aggregate, across all handlers and timers. The returned object has a key which is the latency range in **microseconds** and value which is the count of executions in this range. `curl_latency_stats` represents the latency (i.e. the time that was spent in transfer of data) of `curl()` calls made in the handler.
 
 ```json
 curl http://user:pass@localhost:8096/getLatencyStats?name=function_name
