@@ -3,9 +3,11 @@ package eventing
 import (
 	"compress/flate"
 	"compress/gzip"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -214,6 +216,18 @@ func handleAuthorization(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+func getRedirectHandler(w http.ResponseWriter, r *http.Request) {
+	if !(r.Method == "GET" || r.Method == "HEAD") {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	if r.Header.Get("Accept") == "application/json" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		fmt.Fprintf(w, "%v", `{"key":"here comes some value as application/json"}`)
+	}
+}
+
 func getOrDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	if !(r.Method == "GET" || r.Method == "DELETE") {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -231,6 +245,21 @@ func getOrDeleteHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
+	}
+
+	httpStatusCode := [3]int{301, 302, 303}
+	nBig, err := rand.Int(rand.Reader, big.NewInt(3))
+	if err != nil {
+		return
+	}
+	n := nBig.Int64()
+
+	if r.Header.Get("Redirect-Max") == "true" {
+		http.Redirect(w, r, "http://localhost:9090/get", httpStatusCode[n])
+	}
+
+	if r.Header.Get("Redirect") == "true" {
+		http.Redirect(w, r, "http://localhost:9090/getRedirect", httpStatusCode[n])
 	}
 
 	switch r.Header.Get("Accept") {

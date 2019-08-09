@@ -9,20 +9,22 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	server := startHttpServer()
+	server := startHttpServer(":9090")
 	m.Run()
 	if err := server.Shutdown(nil); err != nil {
 		log.Printf("Unable to shutdown server, err : %v\n", err)
 	}
 }
 
-func startHttpServer() *http.Server {
-	server := &http.Server{Addr: ":9090"}
+func startHttpServer(port string) *http.Server {
+	server := &http.Server{Addr: port}
 
 	http.HandleFunc("/empty", emptyHandler)
 	http.HandleFunc("/large", largeHandler)
 	http.HandleFunc("/get", getOrDeleteHandler)
 	http.HandleFunc("/get/", getOrDeleteHandler)
+	http.HandleFunc("/getRedirect", getRedirectHandler)
+	http.HandleFunc("/getRedirect/", getRedirectHandler)
 	http.HandleFunc("/delete", getOrDeleteHandler)
 	http.HandleFunc("/delete/", getOrDeleteHandler)
 	http.HandleFunc("/post", postOrPutHandler)
@@ -120,6 +122,24 @@ func TestCurlGetDeflate(t *testing.T) {
 	curl := curlTester{
 		handler:    "curl_get_deflate",
 		testName:   "TestCurlGetDeflate",
+		testHandle: t,
+	}
+	curl.testGet()
+}
+
+func TestCurlGetRedirect(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_get_redirect",
+		testName:   "TestCurlGetRedirect",
+		testHandle: t,
+	}
+	curl.testGet()
+}
+
+func TestCurlGetRedirectMax(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_get_max_redirect",
+		testName:   "TestCurlGetRedirectMax",
 		testHandle: t,
 	}
 	curl.testGet()
