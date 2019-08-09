@@ -72,7 +72,7 @@ func fillMissingWithDefaults(settings map[string]interface{}) {
 	fillMissingDefault(settings, "worker_feedback_queue_cap", float64(500))
 	fillMissingDefault(settings, "worker_queue_cap", float64(100*1000))
 	fillMissingDefault(settings, "worker_queue_mem_cap", float64(1024))
-	fillMissingDefault(settings, "worker_response_timeout", float64(300))
+	fillMissingDefault(settings, "worker_response_timeout", float64(3600))
 
 	// metastore related configuration
 	fillMissingDefault(settings, "execute_timer_routine_count", float64(3))
