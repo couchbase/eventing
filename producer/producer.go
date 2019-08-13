@@ -860,8 +860,7 @@ func (p *Producer) updateAppLogSetting(settings map[string]interface{}) {
 		p.appLogMaxFiles = int64(val.(float64))
 	}
 
-	logger := p.appLogWriter.(*appLogCloser)
-	updateApplogSetting(logger, p.appLogMaxFiles, p.appLogMaxSize)
+	updateApplogSetting(p.appLogWriter, p.appLogMaxFiles, p.appLogMaxSize)
 }
 
 func (p *Producer) pollForDeletedVbs() {

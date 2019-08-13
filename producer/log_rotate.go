@@ -35,7 +35,8 @@ type appLogCloser struct {
 	exitCh    chan struct{}
 }
 
-func (wc *appLogCloser) Write(p []byte) (_ int, err error) {
+// Returns locked, Caller must unlock
+func (wc *appLogCloser) lockAndGet() *filePtr {
 	fptr := (*filePtr)(atomic.LoadPointer(&wc.filePtr))
 	fptr.lock.Lock()
 	for fptr.ptr == nil {
@@ -43,10 +44,38 @@ func (wc *appLogCloser) Write(p []byte) (_ int, err error) {
 		fptr = (*filePtr)(atomic.LoadPointer(&wc.filePtr))
 		fptr.lock.Lock()
 	}
+	return fptr
+}
+
+func (wc *appLogCloser) Write(p []byte) (_ int, err error) {
+	fptr := wc.lockAndGet()
+	defer fptr.lock.Unlock()
+
 	bytesWritten, err := fptr.wptr.Write(p)
-	fptr.lock.Unlock()
 	atomic.AddInt64(&wc.size, int64(bytesWritten))
 	return bytesWritten, err
+}
+
+func (wc *appLogCloser) Tail(sz int64) ([]byte, error) {
+	fptr := wc.lockAndGet()
+	defer fptr.lock.Unlock()
+
+	buf := make([]byte, sz)
+	stat, err := os.Stat(wc.path)
+	if err != nil {
+		logging.Errorf("Unable to stat %v: %v", wc.path, err)
+		return nil, err
+	}
+	from := stat.Size() - sz
+	if from < 0 {
+		from = 0
+	}
+	read, err := fptr.ptr.ReadAt(buf, from)
+	if err != nil && err != io.EOF || read < 0 {
+		logging.Errorf("Unable to read %v: %v", wc.path, err)
+		return nil, err
+	}
+	return buf[:read], nil
 }
 
 func (wc *appLogCloser) Close() error {
@@ -141,7 +170,7 @@ func getFileIndexRange(path string) (int64, int64) {
 	return lowIndex, highIndex
 }
 
-func openAppLog(path string, perm os.FileMode, maxSize, maxFiles int64) (io.WriteCloser, error) {
+func openAppLog(path string, perm os.FileMode, maxSize, maxFiles int64) (*appLogCloser, error) {
 	if maxSize < 1 {
 		return nil, fmt.Errorf("maxSize should be > 1")
 	}

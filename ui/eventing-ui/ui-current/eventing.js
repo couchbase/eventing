@@ -82,6 +82,21 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 return Object.keys(self.appList).length === 0;
             };
 
+            self.openAppLog = function(appName) {
+                ApplicationService.server.getAppLog(appName).then(function(log) {
+                  logScope = $scope.$new(true);
+                  logScope.appName = appName;
+                  logScope.logMessages = [];
+                  if (log && log.length > 0) {
+                    logScope.logMessages = log.split(/\r?\n/);
+                  }
+                  $uibModal.open({
+                    templateUrl: '../_p/ui/event/ui-current/dialogs/app-log.html',
+                    scope: logScope
+                  });
+                });
+            };
+
             self.openSettings = function(appName) {
                 $uibModal.open({
                         templateUrl: '../_p/ui/event/ui-current/fragments/app-settings.html',
@@ -1281,8 +1296,17 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     showErrorAlert: function(message) {
                         mnAlertsService.formatAndSetAlerts(message, 'error', 4000);
                     },
+                    getAppLog: function(appname) {
+                       return $http.get('/_p/event/getAppLog?aggregate=true&name=' + appname).then(
+                         function(response) {
+                            return response.data;
+                         }).catch(function(response) {
+                            console.error("error getting app logs", response);
+                            return {};
+                         });
+                    },
                     getInsight: function(appname) {
-                       return $http.get('/_p/event/getInsight?name=' + appname).then(
+                       return $http.get('/_p/event/getInsight?aggregate=true&name=' + appname).then(
                          function(response) {
                             return response.data[appname];
                          }).catch(function(response) {

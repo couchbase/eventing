@@ -134,6 +134,7 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/getFailureStats", m.getFailureStats)
 	mux.HandleFunc("/getLatencyStats", m.getLatencyStats)
 	mux.HandleFunc("/getLocallyDeployedApps", m.getLocallyDeployedApps)
+	mux.HandleFunc("/getAppLog", m.getAppLog)
 	mux.HandleFunc("/getNamedParams", m.getNamedParamsHandler)
 	mux.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
 	mux.HandleFunc("/getRebalanceStatus", m.getRebalanceStatus)

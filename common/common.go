@@ -94,6 +94,7 @@ type EventingProducer interface {
 	ClearEventStats()
 	DcpFeedBoundary() string
 	GetAppCode() string
+	GetAppLog(sz int64) []string
 	GetDcpEventsRemainingToProcess() uint64
 	GetDebuggerURL() (string, error)
 	GetEventingConsumerPids() map[string]int
@@ -214,6 +215,7 @@ type EventingSuperSup interface {
 	DeployedAppList() []string
 	GetEventProcessingStats(appName string) map[string]uint64
 	GetAppCode(appName string) string
+	GetAppLog(appName string, sz int64) []string
 	GetAppState(appName string) int8
 	GetDcpEventsRemainingToProcess(appName string) uint64
 	GetDebuggerURL(appName string) (string, error)
