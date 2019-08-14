@@ -370,7 +370,7 @@ func (feed *DcpFeed) handlePacket(
 				fmsg, prefix, stream.AppOpaque, event.Opaque, stream.CloseOpaque,
 			)
 		}
-		event, sendAck = nil, true // IMPORTANT: make sure to nil event.
+		event = nil // IMPORTANT: make sure to nil event.
 		fmsg := "%v ##%x DCP_CLOSESTREAM for vb %d\n"
 		logging.Infof(fmsg, prefix, stream.AppOpaque, vb)
 		feed.stats.TotalCloseStream++
