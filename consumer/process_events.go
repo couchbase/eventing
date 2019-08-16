@@ -1032,6 +1032,18 @@ func (c *Consumer) handleFailoverLog() {
 					logging.Infof("%s [%s:%s:%d] vb: %v Rollback requested by DCP. Retrying DCP stream start vbuuid: %d startSeq: %d flog startSeqNo: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo, startSeqNo)
 
+					// update in-memory stats to reflect rollback seqno so that periodicCheckPoint picks up the latest data
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "last_processed_seq_no", vbFlog.seqNo)
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "vb_uuid", vbuuid)
+
+					// update check point blob to let a racing doVbTakeover during rebalance try with correct <vbuuid, seqno> on next attempt
+					vbBlob.VBuuid = vbuuid
+					vbBlob.LastSeqNoProcessed = vbFlog.seqNo
+					err = c.updateCheckpoint(vbKey, vbFlog.vb, &vbBlob)
+					if err != nil {
+						logging.Errorf("%s [%s:%s:%d] updateCheckpoint failed, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+					}
+
 					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
 						continue
 					} else {
@@ -1053,6 +1065,7 @@ func (c *Consumer) handleFailoverLog() {
 						vbBlob:     &vbBlob,
 						startSeqNo: vbFlog.seqNo,
 					}
+
 					select {
 					case c.reqStreamCh <- streamInfo:
 					case <-c.stopConsumerCh:
