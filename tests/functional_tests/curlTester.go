@@ -89,6 +89,19 @@ func (c *curlTester) testGet() {
 	c.test()
 }
 
+func (c *curlTester) testGetRedirect() {
+	loBinding := common.Curl{
+		Hostname:               "http://localhost:9090/getRedirect",
+		Value:                  "localhost",
+		ValidateSSLCertificate: false,
+		AuthType:               "no-auth",
+		AllowCookies:           false,
+	}
+
+	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
+	c.test()
+}
+
 func (c *curlTester) testEmpty() {
 	loBinding := common.Curl{
 		Hostname:               "http://localhost:9090/empty",

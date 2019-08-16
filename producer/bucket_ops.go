@@ -56,8 +56,8 @@ var cleanupMetadataCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 	b := args[1].(**couchbase.Bucket)
 	dcpFeed := args[2].(**couchbase.DcpFeed)
-	kvNodeAddrs := args[3].([]string)
-	workerID := args[4].(int)
+	kvNodeAddrs := p.getKvNodeAddrs()
+	workerID := args[3].(int)
 
 	feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%s_%s_%d_undeploy", p.uuid, p.appName, workerID))
 

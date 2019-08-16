@@ -6,3 +6,5 @@ TestN1QLThrowStatement
 TestN1QLUnlabelledBreak
 TestN1QLPosParams
 TestN1QLExhaustConnPool
+TestCurlPostLargeJSON
+TestCurlPutLargeJSON

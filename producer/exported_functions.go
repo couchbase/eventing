@@ -563,8 +563,6 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 		return err
 	}
 
-	kvNodeAddrs := p.getKvNodeAddrs()
-
 	var b *couchbase.Bucket
 	var dcpFeed *couchbase.DcpFeed
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, commonConnectBucketOpCallback, p, &b)
@@ -573,7 +571,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 		return err
 	}
 
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, cleanupMetadataCallback, p, &b, &dcpFeed, kvNodeAddrs, id)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, cleanupMetadataCallback, p, &b, &dcpFeed, id)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
 		return err
