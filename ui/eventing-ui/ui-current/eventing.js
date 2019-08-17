@@ -709,8 +709,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for editing handler code.
-    .controller('HandlerCtrl', ['$q', '$uibModal', '$timeout', '$state', '$scope', '$rootScope', '$stateParams', 'ApplicationService',
-        function($q, $uibModal, $timeout, $state, $scope, $rootScope, $stateParams, ApplicationService) {
+    .controller('HandlerCtrl', ['$q', '$uibModal', '$timeout', '$state', '$scope', '$rootScope', '$stateParams', '$transitions', 'ApplicationService',
+        function($q, $uibModal, $timeout, $state, $scope, $rootScope, $stateParams, $transitions, ApplicationService) {
             var self = this,
                 isDebugOn = false,
                 debugScope = $scope.$new(true),
@@ -839,6 +839,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             $scope.aceChanged = function(e) {
                 self.disableCancelButton = self.disableSaveButton = false;
                 self.disableDeployButton = true;
+                if (self.handler !== app.appcode) {
+                    self.warning = true;
+                } else {
+                    self.warning = false;
+                }
             };
 
             self.saveEdit = function() {
@@ -850,6 +855,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                         self.disableCancelButton = self.disableSaveButton = true;
                         self.disableDeployButton = false;
+                        self.warning = false;
 
                         // Optimistic that the user has fixed the errors
                         // If not the errors will anyway show up when he deploys again
@@ -865,6 +871,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.cancelEdit = function() {
                 self.handler = app.appcode = self.pristineHandler;
                 self.disableDeployButton = self.disableCancelButton = self.disableSaveButton = true;
+                self.warning = false;
 
                 $state.go('app.admin.eventing.summary');
             };
@@ -965,6 +972,24 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         ApplicationService.server.showErrorAlert('Unexpected error occurred. Please try again.');
                         console.error('Unable to start debugger', errResponse);
                     });
+            };
+
+            $transitions.onBefore({}, function(transition) {
+                if (self.warning) {
+                    if(confirm("Unsaved changes exist, and will be discarded if you leave this page. Are you sure?")) {
+                        self.warning = false;
+                        return true;
+                    } else {
+                        self.warning = true;
+                        return false;
+                    }
+                }
+            });
+
+            window.onbeforeunload= function() {
+                if (self.warning) {
+                    return "Unsaved changes exist, and will be discarded if you leave this page. Are you sure?";
+                }
             };
         }
     ])
