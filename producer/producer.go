@@ -556,7 +556,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	if notifyRebalance {
 		logging.Infof("%s [%s:%d] Consumer: %s notifying about cluster state change",
 			logPrefix, p.appName, p.LenRunningConsumers(), workerName)
-		c.SetRebalanceStatus(true)
+		c.SetBootstrapStatus(true)
 	}
 
 	p.listenerRWMutex.Lock()

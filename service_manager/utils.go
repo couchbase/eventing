@@ -34,10 +34,18 @@ func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 }
 
 func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
-	bootstrappingApps := m.superSup.BootstrapAppList()
-	_, isBootstrapping := bootstrappingApps[appName]
+	logPrefix := "ServiceMgr::CheckIfDeployedAndRunning"
+	bootstrapStatus, err := util.GetAggBootstrapAppStatus(util.Localhost(), m.adminHTTPPort, appName)
+	if err != nil {
+		logging.Errorf("%s %s", logPrefix, err)
+		return false
+	}
 
-	return !isBootstrapping && m.superSup.GetAppState(appName) == common.AppStateEnabled
+	if bootstrapStatus {
+		return false
+	}
+
+	return m.superSup.GetAppState(appName) == common.AppStateEnabled
 }
 
 func decodeRev(b service.Revision) uint64 {

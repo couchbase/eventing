@@ -1052,6 +1052,80 @@ func CheckIfRebalanceOngoing(urlSuffix string, nodeAddrs []string) (bool, error)
 	return false, nil
 }
 
+func CheckIfBootstrapOngoing(urlSuffix string, nodeAddrs []string) (bool, error) {
+	logPrefix := "util::CheckIfBootstrapOngoing"
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	for _, nodeAddr := range nodeAddrs {
+		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(endpointURL)
+		if err != nil {
+			logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+
+		status, err := strconv.ParseBool(string(buf))
+		if err != nil {
+			logging.Errorf("%s Failed to interpret bootstrap status from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+
+		logging.Infof("%s Bootstrap status from url: %rs status: %v", logPrefix, endpointURL, status)
+
+		if status {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func CheckIfAppBootstrapOngoing(urlSuffix string, nodeAddrs []string, appName string) (bool, error) {
+	logPrefix := "util::CheckIfAppBootstrapOngoing"
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	for _, nodeAddr := range nodeAddrs {
+		endpointURL := fmt.Sprintf("http://%s%s?appName=%s", nodeAddr, urlSuffix, appName)
+
+		res, err := netClient.Get(endpointURL)
+		if err != nil {
+			logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+
+		status, err := strconv.ParseBool(string(buf))
+		if err != nil {
+			logging.Errorf("%s Failed to interpret bootstrap status from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+
+		logging.Infof("%s Bootstrap status form url: %rs status: %v", logPrefix, endpointURL, status)
+
+		if status {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func GetAggPausingApps(urlSuffix string, nodeAddrs []string) (bool, error) {
 	logPrefix := "util::GetAggPausingApps"
 
@@ -1122,6 +1196,60 @@ func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error)
 	}
 
 	return false, nil
+}
+
+func GetAggBootstrapStatus(urlHost string, urlPort string) (bool, error) {
+	logPrefix := "util::GetAggBootstrapStatus"
+
+	netClient := NewClient(HTTPRequestTimeout)
+	url := fmt.Sprintf("http://%s:%s/getAggBootstrapStatus", urlHost, urlPort)
+	res, err := netClient.Get(url)
+	if err != nil {
+		logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, url, err)
+		return false, err
+	}
+	defer res.Body.Close()
+
+	buf, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, url, err)
+		return false, err
+	}
+
+	status, err := strconv.ParseBool(string(buf))
+	if err != nil {
+		logging.Errorf("%s Failed to interpret bootstrap status from url: %rs, err: %v", logPrefix, url, err)
+		return false, err
+	}
+
+	return status, nil
+}
+
+func GetAggBootstrapAppStatus(urlHost string, urlPort string, appName string) (bool, error) {
+	logPrefix := "util::GetAggBootstrapAppStatus"
+
+	netClient := NewClient(HTTPRequestTimeout)
+	url := fmt.Sprintf("http://%s:%s/getAggBootstrapAppStatus?appName=%s", urlHost, urlPort, appName)
+	res, err := netClient.Get(url)
+	if err != nil {
+		logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, url, err)
+		return false, err
+	}
+	defer res.Body.Close()
+
+	buf, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, url, err)
+		return false, err
+	}
+
+	status, err := strconv.ParseBool(string(buf))
+	if err != nil {
+		logging.Errorf("%s Failed to interpret bootstrap status from url: %rs, err: %v", logPrefix, url, err)
+		return false, err
+	}
+
+	return status, nil
 }
 
 func GetEventingVersion(urlSuffix string, nodeAddrs []string) ([]string, error) {

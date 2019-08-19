@@ -631,6 +631,11 @@ func (c *Consumer) RebalanceStatus() bool {
 	return c.isRebalanceOngoing
 }
 
+// BootstrapStatus returns state of bootstrap for consumer instance
+func (c *Consumer) BootstrapStatus() bool {
+	return c.isBootstrapping
+}
+
 // SetRebalanceStatus update rebalance status for consumer instance
 func (c *Consumer) SetRebalanceStatus(status bool) {
 	logPrefix := "Consumer::SetRebalanceStatus"
@@ -730,6 +735,15 @@ func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 	logging.Infof("%s [%s:%s:%d] Updated memory quota: %d MB previous worker quota: %d MB dcp feed quota: %d MB",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.workerQueueMemCap/(1024*1024),
 		prevWorkerMemCap/(1024*1024), prevDCPFeedMemCap/(1024*1024))
+}
+
+// SetBootstrapStatus updates bootstrapping status for consumer instance
+func (c *Consumer) SetBootstrapStatus(status bool) {
+	logPrefix := "Consumer::SetBootstrapStatus"
+
+	c.isBootstrapping = status
+	logging.Infof("%s [%s:%s:%d] Updated isBootstrapping to %t",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), status)
 }
 
 // ResetBootstrapDone to unset bootstrap flag

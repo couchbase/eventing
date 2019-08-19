@@ -760,6 +760,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	flushFunctionAndBucket(functionName)
 
 	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -778,6 +779,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 
 	handler = "on_delete_bucket_op_uncomment"
 	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
@@ -1112,6 +1114,7 @@ func TestBucketFlushWhileFnDeployed(t *testing.T) {
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
 
 	pumpBucketOps(opsType{count: itemCount * 4}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount*4, statsLookupRetryCounter)

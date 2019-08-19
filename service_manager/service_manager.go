@@ -186,11 +186,15 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 			logging.Infof("%s Querying nodes: %rs for bootstrap status", logPrefix, nodeAddrs)
 
 			// Fail rebalance if some apps are undergoing bootstrap
-			appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", nodeAddrs)
-			logging.Infof("%s Status of app bootstrap across all Eventing nodes: %v", logPrefix, appsBootstrapping)
+			appsBootstrapStatus, err := util.CheckIfBootstrapOngoing("/getBootstrapStatus", nodeAddrs)
+			logging.Infof("%s Bootstrap status across all Eventing nodes: %v", logPrefix, appsBootstrapStatus)
 			if err != nil {
-				logging.Warnf("%s Some apps are deploying or resuming on some or all Eventing nodes, err: %v", logPrefix, err)
 				return err
+			}
+
+			if appsBootstrapStatus {
+				logging.Warnf("%s Some apps are undergoing bootstrap", logPrefix)
+				return fmt.Errorf("Some apps are deploying or resuming on some or all Eventing nodes")
 			}
 
 			appsPausing, err := util.GetAggPausingApps("/getPausingApps", nodeAddrs)

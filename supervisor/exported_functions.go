@@ -301,6 +301,40 @@ func (s *SuperSupervisor) TimerDebugStats(appName string) (map[int]map[string]in
 	return nil, fmt.Errorf("Eventing.Producer isn't alive")
 }
 
+// BootstrapAppStatus reports back status of bootstrap for a particular app on current node
+func (s *SuperSupervisor) BootstrapAppStatus(appName string) bool {
+	logPrefix := "SuperSupervisor::BootstrapAppStatus"
+
+	producer, ok := s.runningFns()[appName]
+
+	if ok {
+		logging.Infof("%s [%d] Bootstrap status from %s: %#v", logPrefix, s.runningFnsCount(), appName, producer.BootstrapStatus())
+		return producer.BootstrapStatus()
+	}
+
+	return false
+}
+
+// BootstrapStatus reports back status of bootstrap for all running apps on current node
+func (s *SuperSupervisor) BootstrapStatus() bool {
+	logPrefix := "SuperSupervisor::BootstrapStatus"
+
+	bootstrapStatuses := make(map[string]bool)
+	for appName, p := range s.runningFns() {
+		bootstrapStatuses[appName] = p.BootstrapStatus()
+	}
+
+	logging.Infof("%s [%d] Bootstrap status from all running applications: %#v", logPrefix, s.runningFnsCount(), bootstrapStatuses)
+
+	for _, bootstrapStatus := range bootstrapStatuses {
+		if bootstrapStatus {
+			return bootstrapStatus
+		}
+	}
+
+	return false
+}
+
 // RebalanceStatus reports back status of rebalance for all running apps on current node
 func (s *SuperSupervisor) RebalanceStatus() bool {
 	logPrefix := "SuperSupervisor::RebalanceStatus"
