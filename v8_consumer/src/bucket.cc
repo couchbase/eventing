@@ -363,6 +363,11 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
     return;
   }
 
+  if (result.rc == LCB_KEY_ENOENT) {
+    info.GetReturnValue().Set(v8::Undefined(isolate));
+    return;
+  }
+
   // Throw an exception in JavaScript if the bucket get call failed.
   if (result.rc != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: LCB_GET call failed: " << result.rc << std::endl;
@@ -502,6 +507,10 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
                   << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
     lcb_retry_failure++;
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+    return;
+  }
+
+  if (result.rc == LCB_KEY_ENOENT) {
     return;
   }
 
