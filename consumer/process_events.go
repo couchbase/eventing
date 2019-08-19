@@ -36,6 +36,13 @@ func (c *Consumer) processEvents() {
 				logging.Debugf("%s [%s:%s:%d] Throttling, cpp queue sizes: %+v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes)
 				time.Sleep(10 * time.Millisecond)
+
+				// If rebalance in ongoing, it's important to read dcp mutations as STREAMBEGIN/END messages could be behind them.
+				// And it is also important to not queue up mutations in consumer to contain rss growth when cpp queues are full.
+				// So *continue* only when there is no rebalance on going
+				if !c.isRebalanceOngoing {
+					continue
+				}
 			}
 		}
 
