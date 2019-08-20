@@ -41,6 +41,12 @@ private:
                                     lcb_error_t error);
   v8::Local<v8::ObjectTemplate> MakeBucketMapTemplate();
 
+  static Info ValidateKey(const v8::Local<v8::Name> &arg);
+  static Info ValidateValue(const v8::Local<v8::Value> &arg);
+  static Info ValidateKeyValue(const v8::Local<v8::Name> &key,
+                               const v8::Local<v8::Value> &value);
+  template <typename T> static Info Validate(const v8::Local<T> &arg);
+
   // Delegate is used to multiplex alphanumeric and numeric accesses on bucket
   // object in JavaScript
   template <typename T>

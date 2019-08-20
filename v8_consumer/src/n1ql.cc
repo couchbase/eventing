@@ -442,8 +442,7 @@ ExtractNamedParams(const v8::FunctionCallbackInfo<v8::Value> &args) {
     }
 
     v8::String::Utf8Value key_utf8(key);
-    v8::String::Utf8Value val_utf8(value);
-    named_params[*key_utf8] = *val_utf8;
+    named_params[*key_utf8] = JSONStringify(isolate, value);
   }
 
   return named_params;

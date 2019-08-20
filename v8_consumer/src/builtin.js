@@ -25,39 +25,12 @@ function N1qlQuery(query, options) {
         switch (typeof param) {
             case 'boolean':
             case 'number':
-                continue;
-
-            case 'undefined':
-                // Mapping 'undefined' type of JavaScript to 'null' type.
-                this.options.namedParams[i] = null;
-                break;
-
-            case 'object':
-                // In JavaScript, the expression 'typeof null' yields 'object' as the type.
-                // Since 'null' type is supported by N1QL, no need to do anything.
-                if (!param) {
-                    continue;
-                }
-
-                // JSON must be stringified and quotes must be escaped subsequently.
-                param = JSON.stringify(param);
+            case 'object': // typeof null and array yield "object" as the type
             case 'string':
-                // Enclose the positional parameter within double-quotes (required by libcouchbase C SDK)
-                // if it's a string.
-                var quotesEscaped = '';
-                for (var c of param) {
-                    if (c === '"') {
-                        quotesEscaped += '\\';
-                    }
-
-                    quotesEscaped += c;
-                }
-
-                this.options.namedParams[i] = '"' + quotesEscaped + '"';
                 break;
 
             default:
-                throw `Data type "${typeof param}" is not yet supported by N1LQJs`;
+                throw `Invalid data type "${typeof param}" for named parameters`;
         }
     }
 }

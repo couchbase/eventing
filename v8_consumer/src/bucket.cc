@@ -321,9 +321,11 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
     const v8::Local<v8::Name> &name,
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
-  if (name->IsSymbol()) {
-    auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->ThrowEventingError("Symbol data type is not supported");
+  auto js_exception = UnwrapData(isolate)->js_exception;
+
+  auto validate_info = ValidateKey(name);
+  if (validate_info.is_fatal) {
+    js_exception->ThrowEventingError(validate_info.msg);
     ++bucket_op_exception_count;
     return;
   }
@@ -389,9 +391,11 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
-  if (name->IsSymbol()) {
-    auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->ThrowEventingError("Symbol data type is not supported");
+  auto js_exception = UnwrapData(isolate)->js_exception;
+
+  auto validate_info = ValidateKeyValue(name, value_obj);
+  if (validate_info.is_fatal) {
+    js_exception->ThrowEventingError(validate_info.msg);
     ++bucket_op_exception_count;
     return;
   }
@@ -399,7 +403,6 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
   auto block_mutation =
       UnwrapInternalField<bool>(info.Holder(), BLOCK_MUTATION_FIELD_NO);
   if (*block_mutation) {
-    auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
     js_exception->ThrowKVError("Writing to source bucket is forbidden");
     ++bucket_op_exception_count;
     return;
@@ -461,9 +464,11 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
     v8::Local<v8::Name> name,
     const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   auto isolate = info.GetIsolate();
-  if (name->IsSymbol()) {
-    auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->ThrowEventingError("Symbol data type is not supported");
+  auto js_exception = UnwrapData(isolate)->js_exception;
+
+  auto validate_info = ValidateKey(name);
+  if (validate_info.is_fatal) {
+    js_exception->ThrowEventingError(validate_info.msg);
     ++bucket_op_exception_count;
     return;
   }
@@ -471,7 +476,6 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   auto block_mutation =
       UnwrapInternalField<bool>(info.Holder(), BLOCK_MUTATION_FIELD_NO);
   if (*block_mutation) {
-    auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
     js_exception->ThrowKVError("Delete from source bucket is forbidden");
     ++bucket_op_exception_count;
     return;
@@ -597,4 +601,46 @@ template <>
 void Bucket::BucketDelete<uint32_t>(
     uint32_t key, const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   BucketDelete<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), info);
+}
+
+Info Bucket::ValidateKey(const v8::Local<v8::Name> &arg) {
+  auto info = Validate(arg);
+  if (info.is_fatal) {
+    return {true, "Invalid data type for key - " + info.msg};
+  }
+  return {false};
+}
+
+Info Bucket::ValidateValue(const v8::Local<v8::Value> &arg) {
+  auto info = Validate(arg);
+  if (info.is_fatal) {
+    return {true, "Invalid data type for value - " + info.msg};
+  }
+  return {false};
+}
+
+template <typename T> Info Bucket::Validate(const v8::Local<T> &arg) {
+  if (arg->IsUndefined()) {
+    return {true, R"("undefined" is not a valid type)"};
+  }
+  if (arg->IsFunction()) {
+    return {true, R"("function" is not a valid type)"};
+  }
+  if (arg->IsSymbol()) {
+    return {true, R"("symbol" is not a valid type)"};
+  }
+  return {false};
+}
+
+Info Bucket::ValidateKeyValue(const v8::Local<v8::Name> &key,
+                              const v8::Local<v8::Value> &value) {
+  auto info = ValidateKey(key);
+  if (info.is_fatal) {
+    return info;
+  }
+  info = ValidateValue(value);
+  if (info.is_fatal) {
+    return info;
+  }
+  return {false};
 }
