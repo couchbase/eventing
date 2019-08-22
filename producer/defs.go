@@ -1,7 +1,6 @@
 package producer
 
 import (
-	"io"
 	"net"
 	"sync"
 	"time"
@@ -93,7 +92,7 @@ type Producer struct {
 	appLogMaxSize  int64
 	appLogMaxFiles int64
 	appLogRotation bool
-	appLogWriter   io.WriteCloser
+	appLogWriter   *appLogCloser
 
 	// Chan used to signal if Eventing.Producer has finished bootstrap
 	// i.e. started up all it's child routines

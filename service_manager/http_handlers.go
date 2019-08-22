@@ -226,6 +226,49 @@ func (m *ServiceMgr) die(w http.ResponseWriter, r *http.Request) {
 	os.Exit(-1)
 }
 
+func (m *ServiceMgr) getAppLog(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	nv := r.URL.Query()["name"]
+	if len(nv) != 1 {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(w, "Parameter 'name' must appear exactly once")
+		return
+	}
+
+	appName := nv[0]
+	sz := int64(40960)
+
+	sv := r.URL.Query()["size"]
+	if len(sv) == 1 {
+		psz, err := strconv.Atoi(sv[0])
+		if err == nil {
+			sz = int64(psz)
+		}
+	}
+
+	var lines []string
+	if rv := r.URL.Query()["aggregate"]; len(rv) > 0 && rv[0] == "true" {
+		creds := r.Header
+		lines = getGlobalAppLog(m, appName, sz, creds)
+	} else {
+		lines = getLocalAppLog(m, appName, sz)
+	}
+
+	sort.Sort(sort.Reverse(sort.StringSlice(lines)))
+
+	w.Header().Set("Content-Type", "text/plain")
+	for _, line := range lines {
+		fmt.Fprintln(w, line)
+	}
+}
+
 func (m *ServiceMgr) getInsight(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
@@ -246,7 +289,7 @@ func (m *ServiceMgr) getInsight(w http.ResponseWriter, r *http.Request) {
 
 	var insights *common.Insights
 	if rv := r.URL.Query()["aggregate"]; len(rv) > 0 && rv[0] == "true" {
-		creds := r.Header.Get("Authorization")
+		creds := r.Header
 		insights = getGlobalInsights(m, apps, creds)
 	} else {
 		insights = getLocalInsights(m, apps)
@@ -272,6 +315,53 @@ func (m *ServiceMgr) getInsight(w http.ResponseWriter, r *http.Request) {
 	enc.Encode(insights)
 }
 
+func getLocalAppLog(m *ServiceMgr, appName string, sz int64) []string {
+	return m.superSup.GetAppLog(appName, sz)
+}
+
+func getGlobalAppLog(m *ServiceMgr, appName string, sz int64, creds http.Header) []string {
+	nodes, err := m.getActiveNodeAddrs()
+	if err != nil {
+		logging.Errorf("Got failure getting nodes", err)
+		return nil
+	}
+
+	psz := sz
+	if len(nodes) > 1 {
+		psz = sz / int64(len(nodes))
+	}
+
+	var lines []string
+	for _, node := range nodes {
+		url := "http://" + node + "/getAppLog?name=" + appName + "&aggregate=false" + "&size=" + strconv.Itoa(int(psz))
+		client := http.Client{Timeout: time.Second * 15}
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			logging.Errorf("Got failure creating http request to %v: %v", node, err)
+			continue
+		}
+		for hk, hvs := range creds {
+			for _, hv := range hvs {
+				req.Header.Add(hk, hv)
+			}
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			logging.Errorf("Got failure doing http request to %v: %v", node, err)
+			continue
+		}
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			logging.Errorf("Got failure reading http request to %v: %v", node, err)
+			continue
+		}
+		if len(body) > 0 {
+			lines = append(lines, string(body))
+		}
+	}
+	return lines
+}
+
 func getLocalInsights(m *ServiceMgr, apps []string) *common.Insights {
 	insights := common.NewInsights()
 	for _, app := range apps {
@@ -280,7 +370,7 @@ func getLocalInsights(m *ServiceMgr, apps []string) *common.Insights {
 	return insights
 }
 
-func getGlobalInsights(m *ServiceMgr, apps []string, creds string) *common.Insights {
+func getGlobalInsights(m *ServiceMgr, apps []string, creds http.Header) *common.Insights {
 	insights := common.NewInsights()
 	nodes, err := m.getActiveNodeAddrs()
 	if err != nil {
@@ -295,7 +385,11 @@ func getGlobalInsights(m *ServiceMgr, apps []string, creds string) *common.Insig
 			logging.Errorf("Got failure creating http request to %v: %v", node, err)
 			continue
 		}
-		req.Header.Set("Authorization", creds)
+		for hk, hvs := range creds {
+			for _, hv := range hvs {
+				req.Header.Add(hk, hv)
+			}
+		}
 		resp, err := client.Do(req)
 		if err != nil {
 			logging.Errorf("Got failure doing http request to %v: %v", node, err)

@@ -585,3 +585,14 @@ func (s *SuperSupervisor) DcpFeedBoundary(fnName string) (string, error) {
 
 	return "", fmt.Errorf("Eventing.Producer isn't alive")
 }
+
+// GetAppLog returns tail of app log
+func (s *SuperSupervisor) GetAppLog(fnName string, sz int64) []string {
+	p, ok := s.runningFns()[fnName]
+	if !ok {
+		logging.Infof("Could not find app %v to tail", fnName)
+		return nil
+	}
+	return p.GetAppLog(sz)
+
+}

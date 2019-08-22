@@ -1,6 +1,8 @@
 package producer
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -13,7 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
@@ -330,6 +332,28 @@ func (p *Producer) KillAllConsumers() {
 func (p *Producer) WriteAppLog(log string) {
 	ts := time.Now().Format("2006-01-02T15:04:05.000-07:00")
 	fmt.Fprintf(p.appLogWriter, "%s [INFO] %s\n", ts, log)
+}
+
+// GetAppLog returns tail of app log, trying to fetch up to 'sz' bytes
+func (p *Producer) GetAppLog(sz int64) []string {
+	if p.appLogWriter == nil {
+		return nil
+	}
+	buf, err := p.appLogWriter.Tail(sz)
+	if err != nil {
+		logging.Errorf("Unable to tail applog for %s: %v", p.appName, err)
+		return nil
+	}
+	var lines []string
+	scanner := bufio.NewScanner(bytes.NewReader(buf))
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if len(lines) > 1 {
+		// drop first line as it may be truncated
+		lines = lines[1:]
+	}
+	return lines
 }
 
 // InternalVbDistributionStats returns internal state of vbucket ownership distribution on local eventing node
