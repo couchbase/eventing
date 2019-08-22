@@ -35,6 +35,7 @@ struct HTTPPostResponse;
 
 class CurlClient {
 public:
+  static std::stringstream curl_debug_log_;
   explicit CurlClient(bool enable_cookies);
   ~CurlClient();
 
@@ -55,6 +56,9 @@ public:
                                       std::size_t nmemb, void *cookie);
   static std::size_t HeaderCallback(void *buffer, std::size_t size,
                                     std::size_t nitems, void *cookie);
+  static int DebuggerCallback(CURL *curl_handle, curl_infotype type, char *data,
+                              std::size_t size, void *user_ptr);
+  static void DumpLog(std::string type, unsigned char *ptr, std::size_t size);
 
 private:
   CURL *curl_handle_;
@@ -91,8 +95,6 @@ private:
                          ParamsList &params_list) const;
   Info SetRequestBody(const CurlRequest &request, ParamsList &params_list,
                       Curl::ReadBuffer &buffer) const;
-  std::string HeadersList(
-      const std::unordered_map<std::string, std::string> &headers) const;
 
   CurlClient curl_client_;
   v8::Isolate *isolate_;
