@@ -451,6 +451,12 @@ ExtractNamedParams(const v8::FunctionCallbackInfo<v8::Value> &args) {
 // iter() function that is exposed to JavaScript.
 void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
+  std::lock_guard<std::recursive_mutex> guard(
+      UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -532,6 +538,12 @@ void StopIterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 // execQuery() function that is exposed to JavaScript.
 void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
+  std::lock_guard<std::recursive_mutex> guard(
+      UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   v8::Locker locker(isolate);
   v8::HandleScope handleScope(isolate);
   auto context = isolate->GetCurrentContext();

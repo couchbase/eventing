@@ -9,12 +9,20 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <mutex>
+
 #include "function_templates.h"
 
 long curl_timeout = 10000L; // Default curl timeout in ms
 
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
+  std::lock_guard<std::recursive_mutex> guard(
+      UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -102,6 +110,12 @@ size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb,
 
 void Curl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
+  std::lock_guard<std::recursive_mutex> guard(
+      UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
 

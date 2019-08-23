@@ -9,12 +9,14 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "v8worker.h"
+#include <mutex>
+
 #include "bucket.h"
 #include "parse_deployment.h"
 #include "retry_util.h"
 #include "timer.h"
 #include "utils.h"
+#include "v8worker.h"
 
 #include "../../gen/js/builtin.h"
 
@@ -223,7 +225,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   cb_source_bucket_.assign(config->source_bucket);
 
   Bucket *bucket_handle = nullptr;
-  execute_flag_ = false;
   shutdown_terminator_ = false;
   max_task_duration_ = SECS_TO_NS * h_config->execution_timeout;
   timer_context_size = h_config->timer_context_size;
@@ -312,6 +313,22 @@ V8Worker::~V8Worker() {
   delete worker_queue_;
 }
 
+struct DebugExecuteGuard {
+  DebugExecuteGuard(v8::Isolate *isolate) : isolate_(isolate) {
+    UnwrapData(isolate_)->is_executing_ = true;
+  }
+
+  ~DebugExecuteGuard() { UnwrapData(isolate_)->is_executing_ = false; }
+
+  DebugExecuteGuard(const DebugExecuteGuard &) = delete;
+  DebugExecuteGuard(DebugExecuteGuard &&) = delete;
+  DebugExecuteGuard &operator=(const DebugExecuteGuard &) = delete;
+  DebugExecuteGuard &operator=(DebugExecuteGuard &&) = delete;
+
+private:
+  v8::Isolate *isolate_;
+};
+
 // Re-compile and execute handler code for debugger
 bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
                             int args_len) {
@@ -350,7 +367,7 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
                         IsTerminatingRetriable, IsExecutionTerminating,
                         isolate_);
-
+  DebugExecuteGuard guard(isolate_);
   if (!TO_LOCAL(func->Call(context, v8::Null(isolate_), args_len, args),
                 &result)) {
     return false;
@@ -450,12 +467,8 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   }
 
   // Spawning terminator thread to monitor the wall clock time for execution
-  // of javascript code isn't going beyond max_task_duration. Passing
-  // reference to current object instead of having terminator thread make a
-  // copy of the object. Spawned thread will execute the terminator loop logic
-  // in function call operator() for V8Worker class
-  terminator_thr_ = new std::thread(std::ref(*this));
-
+  // of javascript code isn't going beyond max_task_duration
+  terminator_thr_ = new std::thread(&V8Worker::TaskDurationWatcher, this);
   return kSuccess;
 }
 
@@ -651,15 +664,16 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
     return DebugExecute("OnUpdate", args, 2) ? kSuccess : kOnUpdateCallFail;
   }
 
-  auto on_doc_update = on_update_.Get(isolate_);
-  execute_flag_ = true;
-  execute_start_time_ = Time::now();
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
                         IsTerminatingRetriable, IsExecutionTerminating,
                         isolate_);
 
+  auto on_doc_update = on_update_.Get(isolate_);
+  execute_start_time_ = Time::now();
+  UnwrapData(isolate_)->is_executing_ = true;
   on_doc_update->Call(context->Global(), 2, args);
-  execute_flag_ = false;
+  UnwrapData(isolate_)->is_executing_ = false;
+
   if (try_catch.HasCaught()) {
     LOG(logDebug) << "OnUpdate Exception: "
                   << ExceptionString(isolate_, &try_catch) << std::endl;
@@ -711,16 +725,16 @@ int V8Worker::SendDelete(std::string meta, int vb_no, uint64_t seq_no) {
     return DebugExecute("OnDelete", args, 1) ? kSuccess : kOnDeleteCallFail;
   }
 
-  auto on_doc_delete = on_delete_.Get(isolate_);
-
-  execute_flag_ = true;
-  execute_start_time_ = Time::now();
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
                         IsTerminatingRetriable, IsExecutionTerminating,
                         isolate_);
 
+  auto on_doc_delete = on_delete_.Get(isolate_);
+  execute_start_time_ = Time::now();
+  UnwrapData(isolate_)->is_executing_ = true;
   on_doc_delete->Call(context->Global(), 1, args);
-  execute_flag_ = false;
+  UnwrapData(isolate_)->is_executing_ = false;
+
   if (try_catch.HasCaught()) {
     LOG(logDebug) << "OnDelete Exception: "
                   << ExceptionString(isolate_, &try_catch) << std::endl;
@@ -771,14 +785,13 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
     DebugExecute(callback.c_str(), arg, 1);
   }
 
-  execute_flag_ = true;
-  execute_start_time_ = Time::now();
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
                         IsTerminatingRetriable, IsExecutionTerminating,
                         isolate_);
-
+  execute_start_time_ = Time::now();
+  UnwrapData(isolate_)->is_executing_ = true;
   callback_func->Call(callback_func_val, 1, arg);
-  execute_flag_ = false;
+  UnwrapData(isolate_)->is_executing_ = false;
 }
 
 void V8Worker::StartDebugger() {
@@ -1082,4 +1095,51 @@ void V8Worker::SetThreadExitFlag() {
   thread_exit_cond_.store(true);
   timer_queue_->Close();
   worker_queue_->Close();
+}
+
+// Watches the duration of the event and terminates its execution if it goes
+// beyond max_task_duration_
+void V8Worker::TaskDurationWatcher() {
+  if (debugger_started_) {
+    return;
+  }
+
+  while (!shutdown_terminator_) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    if (!UnwrapData(isolate_)->is_executing_) {
+      continue;
+    }
+
+    Time::time_point t = Time::now();
+    auto duration =
+        std::chrono::duration_cast<nsecs>(t - execute_start_time_).count();
+
+    LOG(logTrace) << "ns.count(): " << duration
+                  << "ns, max_task_duration: " << max_task_duration_ << "ns"
+                  << std::endl;
+
+    if (duration <= max_task_duration_) {
+      continue;
+    }
+
+    LOG(logInfo) << "Task took: " << duration
+                 << "ns, trying to obtain lock to terminate its execution"
+                 << std::endl;
+
+    {
+      // By holding this lock here, we ensure that the execution control is in
+      // the realm of JavaScript and therefore, the call to
+      // V8::TerminateExecution done below succeeds
+      std::lock_guard<std::recursive_mutex> guard(
+          UnwrapData(isolate_)->termination_lock_);
+
+      timeout_count++;
+      isolate_->TerminateExecution();
+      UnwrapData(isolate_)->is_executing_ = false;
+    }
+
+    LOG(logInfo) << "Task took: " << duration << "ns, terminated its execution"
+                 << std::endl;
+  }
 }

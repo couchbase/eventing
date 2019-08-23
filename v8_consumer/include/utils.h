@@ -19,6 +19,7 @@
 #include <libcouchbase/sysdefs.h>
 #include <libplatform/libplatform.h>
 #include <limits>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <unistd.h>
@@ -62,6 +63,9 @@ struct Data {
   Utils *utils;
   Timer *timer;
   CustomError *custom_error;
+
+  std::recursive_mutex termination_lock_;
+  bool is_executing_{false};
 };
 
 // Code version of handler

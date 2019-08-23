@@ -45,9 +45,4 @@ void Curl(const v8::FunctionCallbackInfo<v8::Value> &args);
 void Log(const v8::FunctionCallbackInfo<v8::Value> &args);
 void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args);
 
-void CreateCronTimer(const v8::FunctionCallbackInfo<v8::Value> &args);
-void CreateDocTimer(const v8::FunctionCallbackInfo<v8::Value> &args);
-void HandleDocTimerFailure(v8::Isolate *isolate, lcb_t instance,
-                           lcb_error_t error);
-
 #endif

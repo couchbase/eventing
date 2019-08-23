@@ -9,8 +9,10 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "timer.h"
+#include <mutex>
+
 #include "js_exception.h"
+#include "timer.h"
 #include "utils.h"
 #include "v8worker.h"
 
@@ -109,9 +111,9 @@ bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return false;
   }
 
-  if (!args[2]->IsString()) {
-    js_exception->ThrowEventingError(
-        "Third argument must be a JavaScript string");
+  if (!args[2]->IsString() && !args[2]->IsNull() && !args[2]->IsUndefined()) {
+    js_exception->ThrowEventingError("Third argument to createTimer must be a "
+                                     "string (or null to generate an ID)");
     return false;
   }
 
@@ -120,6 +122,12 @@ bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
 void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
+  std::lock_guard<std::recursive_mutex> guard(
+      UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   auto timer = UnwrapData(isolate)->timer;
   timer->CreateTimerImpl(args);
 }

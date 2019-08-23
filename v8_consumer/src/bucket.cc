@@ -9,6 +9,8 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <mutex>
+
 #include "bucket.h"
 #include "retry_util.h"
 
@@ -322,6 +324,11 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
   auto js_exception = UnwrapData(isolate)->js_exception;
+  std::lock_guard<std::recursive_mutex> guard(
+      UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
 
   auto validate_info = ValidateKey(name);
   if (validate_info.is_fatal) {
@@ -392,6 +399,11 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
   auto js_exception = UnwrapData(isolate)->js_exception;
+  std::lock_guard<std::recursive_mutex> guard(
+      UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
 
   auto validate_info = ValidateKeyValue(name, value_obj);
   if (validate_info.is_fatal) {
@@ -465,6 +477,11 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
     const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   auto isolate = info.GetIsolate();
   auto js_exception = UnwrapData(isolate)->js_exception;
+  std::lock_guard<std::recursive_mutex> guard(
+      UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
 
   auto validate_info = ValidateKey(name);
   if (validate_info.is_fatal) {
