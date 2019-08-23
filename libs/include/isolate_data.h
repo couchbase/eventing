@@ -13,10 +13,10 @@
 #define ISOLATE_DATA_H
 
 #include <libcouchbase/sysdefs.h>
+#include <mutex>
 #include <v8.h>
 
 class Curl;
-class N1QL;
 class V8Worker;
 class JsException;
 class Transpiler;
@@ -49,7 +49,6 @@ struct IsolateData {
   Query::IterableImpl *query_iterable_impl{nullptr};
   Query::IterableResult *query_iterable_result{nullptr};
   Query::Helper *query_helper{nullptr};
-  N1QL *n1ql_handle{nullptr};
   V8Worker *v8worker{nullptr};
   JsException *js_exception{nullptr};
   Communicator *comm{nullptr};
@@ -62,6 +61,9 @@ struct IsolateData {
   CurlRequestBuilder *req_builder{nullptr};
   CurlResponseBuilder *resp_builder{nullptr};
   CodeInsight *code_insight{nullptr};
+
+  std::mutex termination_lock_;
+  bool is_executing_{false};
 };
 
 inline IsolateData *UnwrapData(v8::Isolate *isolate) {

@@ -493,7 +493,8 @@ void AppWorker::RouteMessageWithResponse(
       resp_msg_->msg_type = mV8_Worker_Config;
       resp_msg_->opcode = oCodeInsights;
       msg_priority_ = true;
-      LOG(logDebug) << "Responding with insight " << resp_msg_->msg << std::endl;
+      LOG(logDebug) << "Responding with insight " << resp_msg_->msg
+                    << std::endl;
       break;
 
     case oGetFailureStats:
