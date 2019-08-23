@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"strconv"
 
@@ -35,7 +36,7 @@ func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 
 func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
 	logPrefix := "ServiceMgr::CheckIfDeployedAndRunning"
-	bootstrapStatus, err := util.GetAggBootstrapAppStatus(util.Localhost(), m.adminHTTPPort, appName)
+	bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
 	if err != nil {
 		logging.Errorf("%s %s", logPrefix, err)
 		return false

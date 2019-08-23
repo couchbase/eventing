@@ -1209,11 +1209,11 @@ func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error)
 	return false, nil
 }
 
-func GetAggBootstrapStatus(urlHost string, urlPort string) (bool, error) {
+func GetAggBootstrapStatus(nodeAddr string) (bool, error) {
 	logPrefix := "util::GetAggBootstrapStatus"
 
 	netClient := NewClient(HTTPRequestTimeout)
-	url := fmt.Sprintf("http://%s:%s/getAggBootstrapStatus", urlHost, urlPort)
+	url := fmt.Sprintf("http://%s/getAggBootstrapStatus", nodeAddr)
 	res, err := netClient.Get(url)
 	if err != nil {
 		logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, url, err)
@@ -1236,11 +1236,11 @@ func GetAggBootstrapStatus(urlHost string, urlPort string) (bool, error) {
 	return status, nil
 }
 
-func GetAggBootstrapAppStatus(urlHost string, urlPort string, appName string) (bool, error) {
+func GetAggBootstrapAppStatus(nodeAddr string, appName string) (bool, error) {
 	logPrefix := "util::GetAggBootstrapAppStatus"
 
 	netClient := NewClient(HTTPRequestTimeout)
-	url := fmt.Sprintf("http://%s:%s/getAggBootstrapAppStatus?appName=%s", urlHost, urlPort, appName)
+	url := fmt.Sprintf("http://%s/getAggBootstrapAppStatus?appName=%s", nodeAddr, appName)
 	res, err := netClient.Get(url)
 	if err != nil {
 		logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, url, err)

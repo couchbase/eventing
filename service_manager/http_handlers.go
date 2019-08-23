@@ -1248,7 +1248,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 	if procStatExists || depStatExists {
 		if settings["deployment_status"].(bool) {
-			status, err := util.GetAggBootstrapAppStatus(util.Localhost(), m.adminHTTPPort, appName)
+			status, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
 			if err != nil {
 				logging.Errorf("%s %s", logPrefix, err)
 				info.Code = m.statusCodes.errStatusesNotFound.Code
@@ -2802,7 +2802,7 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 			status.NumBootstrappingNodes = num
 		}
 
-		bootstrapStatus, err := util.GetAggBootstrapAppStatus(util.Localhost(), m.adminHTTPPort, status.Name)
+		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), status.Name)
 		if err != nil {
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			return
