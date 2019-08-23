@@ -11,6 +11,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"io"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -43,11 +44,12 @@ type DcpFeed struct {
 	finch     chan bool
 	logPrefix string
 	// stats
-	toAckBytes  uint32    // bytes client has read
-	maxAckBytes uint32    // Max buffer control ack bytes
-	lastAckTime time.Time // last time when BufferAck was sent
-	stats       DcpStats  // Stats for dcp client
-	dcplatency  *Average
+	toAckBytes         uint32    // bytes client has read
+	maxAckBytes        uint32    // Max buffer control ack bytes
+	lastAckTime        time.Time // last time when BufferAck was sent
+	stats              DcpStats  // Stats for dcp client
+	dcplatency         *Average
+	enableReadDeadline int32 // 0 => Read deadline is disabled in doReceive, 1 => enabled
 }
 
 // NewDcpFeed creates a new DCP Feed.
@@ -303,23 +305,11 @@ func (feed *DcpFeed) handlePacket(
 	sendAck := false
 	prefix := feed.logPrefix
 
-	if pkt.Opcode == transport.DCP_NOOP {
-		noop := &transport.MCResponse{
-			Opcode: transport.DCP_NOOP, Opaque: pkt.Opaque,
-		}
-		if err := feed.conn.TransmitResponse(noop); err != nil {
-			logging.Errorf("%v NOOP.Transmit(): %v", prefix, err)
-		} else {
-			fmsg := "%v responded to NOOP ok ...\n"
-			logging.Tracef(fmsg, prefix)
-		}
-		return "ok" // for NOOP, bytes are not counted for for buffer-ack
-	}
-
 	stream := feed.vbstreams[vb]
 	if stream == nil {
 		fmsg := "%v spurious %v for %d: %ru\n"
-		logging.Fatalf(fmsg, prefix, pkt.Opcode, vb, fmt.Sprintf("%#v", pkt))
+		arg1 := logging.TagUD(pkt)
+		logging.Fatalf(fmsg, prefix, pkt.Opcode, vb, fmt.Sprintf("%#v", arg1))
 		return "ok" // yeah it not _my_ mistake...
 	}
 
@@ -426,6 +416,14 @@ func (feed *DcpFeed) doDcpGetFailoverLog(
 	vblist []uint16,
 	rcvch chan []interface{}) (map[uint16]*FailoverLog, error) {
 
+	// Enable read deadline at function exit
+	// As this method is called only once (i.e. at the start of DCP feed),
+	// it is ok to set the value of readDeadline to "1" and not reset it later
+	defer func() {
+		atomic.StoreInt32(&feed.enableReadDeadline, 1)
+		feed.conn.SetMcdMutationReadDeadline()
+	}()
+
 	rq := &transport.MCRequest{
 		Opcode: transport.DCP_FAILOVERLOG,
 		Opaque: opaqueFailover,
@@ -433,17 +431,33 @@ func (feed *DcpFeed) doDcpGetFailoverLog(
 	failoverLogs := make(map[uint16]*FailoverLog)
 	for _, vBucket := range vblist {
 		rq.VBucket = vBucket
-		if err := feed.conn.Transmit(rq); err != nil {
-			fmsg := "%v ##%x doDcpGetFailoverLog.Transmit(): %v"
-			logging.Errorf(fmsg, feed.logPrefix, opaque, err)
-			return nil, err
+
+		var msg []interface{}
+		err1 := func() error {
+			feed.conn.SetMcdConnectionDeadline()
+			defer feed.conn.ResetMcdConnectionDeadline()
+
+			if err := feed.conn.Transmit(rq); err != nil {
+				fmsg := "%v ##%x doDcpGetFailoverLog.Transmit(): %v"
+				logging.Errorf(fmsg, feed.logPrefix, opaque, err)
+				return err
+			}
+
+			var ok bool
+			msg, ok = <-rcvch
+			if !ok {
+				fmsg := "%v ##%x doDcpGetFailoverLog.rcvch closed"
+				logging.Errorf(fmsg, feed.logPrefix, opaque)
+				return ErrorConnection
+			}
+
+			return nil
+		}()
+
+		if err1 != nil {
+			return nil, err1
 		}
-		msg, ok := <-rcvch
-		if !ok {
-			fmsg := "%v ##%x doDcpGetFailoverLog.rcvch closed"
-			logging.Errorf(fmsg, feed.logPrefix, opaque)
-			return nil, ErrorConnection
-		}
+
 		pkt := msg[0].(*transport.MCRequest)
 		req := &transport.MCResponse{
 			Opcode: pkt.Opcode,
@@ -478,6 +492,14 @@ func (feed *DcpFeed) doDcpGetFailoverLog(
 func (feed *DcpFeed) doDcpGetSeqnos(
 	rcvch chan []interface{}) (map[uint16]uint64, error) {
 
+	// Enable read deadline at function exit
+	// As this method is called only once (i.e. at the start of DCP feed),
+	// it is ok to set the value of readDeadline to "1" and not reset it later
+	defer func() {
+		atomic.StoreInt32(&feed.enableReadDeadline, 1)
+		feed.conn.SetMcdMutationReadDeadline()
+	}()
+
 	rq := &transport.MCRequest{
 		Opcode: transport.DCP_GET_SEQNO,
 		Opaque: opaqueGetseqno,
@@ -485,6 +507,9 @@ func (feed *DcpFeed) doDcpGetSeqnos(
 
 	rq.Extras = make([]byte, 4)
 	binary.BigEndian.PutUint32(rq.Extras, 1) // Only active vbuckets
+
+	feed.conn.SetMcdConnectionDeadline()
+	defer feed.conn.ResetMcdConnectionDeadline()
 
 	if err := feed.conn.Transmit(rq); err != nil {
 		fmsg := "%v ##%x doDcpGetSeqnos.Transmit(): %v"
@@ -542,6 +567,18 @@ func (feed *DcpFeed) doDcpOpen(
 	binary.BigEndian.PutUint32(rq.Extras[4:], flags) // we are consumer
 
 	prefix := feed.logPrefix
+
+	// Enable read deadline at function exit
+	// As this method is called only once (i.e. at the start of DCP feed),
+	// it is ok to set the value of readDeadline to "1" and not reset it later
+	defer func() {
+		atomic.StoreInt32(&feed.enableReadDeadline, 1)
+		feed.conn.SetMcdMutationReadDeadline()
+	}()
+
+	feed.conn.SetMcdConnectionDeadline()
+	defer feed.conn.ResetMcdConnectionDeadline()
+
 	if err := feed.conn.Transmit(rq); err != nil {
 		return err
 	}
@@ -736,6 +773,10 @@ func (feed *DcpFeed) doDcpRequestStream(
 	binary.BigEndian.PutUint64(rq.Extras[40:48], snapEnd)
 
 	prefix := feed.logPrefix
+
+	feed.conn.SetMcdConnectionWriteDeadline()
+	defer feed.conn.ResetMcdConnectionWriteDeadline()
+
 	if err := feed.conn.Transmit(rq); err != nil {
 		fmsg := "%v ##%x doDcpRequestStream.Transmit(): %v"
 		logging.Errorf(fmsg, prefix, opaqueMSB, err)
@@ -799,7 +840,8 @@ func (feed *DcpFeed) handleStreamRequest(
 	case res.Status == transport.ROLLBACK && len(res.Body) != 8:
 		event.Status, event.Seqno = res.Status, 0
 		fmsg := "%v ##%x STREAMREQ(%v) invalid rollback: %v\n"
-		logging.Errorf(fmsg, prefix, stream.AppOpaque, vb, res.Body)
+		arg1 := logging.TagUD(res.Body)
+		logging.Errorf(fmsg, prefix, stream.AppOpaque, vb, arg1)
 		delete(feed.vbstreams, vb)
 
 	case res.Status == transport.ROLLBACK:
@@ -843,16 +885,21 @@ func (feed *DcpFeed) sendBufferAck(sendAck bool, bytes uint32) {
 			bufferAck.Extras = make([]byte, 4)
 			binary.BigEndian.PutUint32(bufferAck.Extras[:4], uint32(totalBytes))
 			feed.stats.TotalBufferAckSent++
-			if err := feed.conn.Transmit(bufferAck); err != nil {
-				logging.Errorf("%v buffer-ack: %v lastAckTime: %v", prefix, err, feed.lastAckTime.UnixNano())
+			func() {
+				// Timeout here will unblock genServer() thread after some time.
+				feed.conn.SetMcdConnectionWriteDeadline()
+				defer feed.conn.ResetMcdConnectionWriteDeadline()
 
-			} else {
-				// Reset the counters only on a successful BufferAck
-				feed.toAckBytes = 0
-				feed.lastAckTime = time.Now()
-				feed.stats.LastAckTime = feed.lastAckTime.UnixNano()
-				logging.Tracef("%v buffer-ack %v, lastAckTime: %v\n", prefix, totalBytes, feed.lastAckTime.UnixNano())
-			}
+				if err := feed.conn.Transmit(bufferAck); err != nil {
+					logging.Errorf("%v buffer-ack Transmit(): %v, lastAckTime: %v", prefix, err, feed.lastAckTime.UnixNano())
+				} else {
+					// Reset the counters only on a successful BufferAck
+					feed.toAckBytes = 0
+					feed.lastAckTime = time.Now()
+					feed.stats.LastAckTime = feed.lastAckTime.UnixNano()
+					logging.Tracef("%v buffer-ack %v, lastAckTime: %v\n", prefix, totalBytes, feed.lastAckTime.UnixNano())
+				}
+			}()
 		} else {
 			feed.toAckBytes += bytes
 		}
@@ -1111,11 +1158,37 @@ func (feed *DcpFeed) doReceive(
 		tick.Stop()
 	}()
 
+	var bytes int
+	var err error
+	// Cached version of feed.readDeadline
+	// Used inorder to prevent atomic access to feed.readDeadline in every iteration of "loop"
+	var enableReadDeadline bool
+
 	prefix := feed.logPrefix
 loop:
 	for {
 		pkt := transport.MCRequest{} // always a new instance.
-		bytes, err := pkt.Receive(conn.conn, headerBuf[:])
+
+		// Enable read deadline only when doDcpOpen or doDcpGetFailoverLog or doDcpGetDeqnos
+		// finish execution as these methods require a different read deadline
+		if !enableReadDeadline {
+			enableReadDeadline = (atomic.LoadInt32(&feed.enableReadDeadline) == 1)
+			bytes, err = pkt.Receive(conn.conn, headerBuf[:])
+		} else {
+			// In cases where client misses TCP notificatons like connection closure,
+			// the dcp_feed would continuously wait for data
+			// In such scenarios, the read deadline would terminate the blocking read
+			// calls thereby unblocking the dcp_feed. This is only a safe-guard measure
+			// to handle highly unlikely scenarios like missing TCP notifications. In
+			// those cases, an "i/o timeout" error will be returned to the reader.
+			conn.SetMcdMutationReadDeadline()
+			bytes, err = pkt.Receive(conn.conn, headerBuf[:])
+			// Resetting the read deadline here is unnecessary because doReceive() is the
+			// only thread reading data from conn after read deadline is enabled.
+			// If reset does not happen here, then the next SetMcdMutationReadDeadline
+			// would update the deadline
+			// conn.ResetMcdMutationReadDeadline()
+		}
 
 		// Immediately respond to NOOP and listen for next message.
 		// NOOPs are not accounted for buffer-ack.
@@ -1126,12 +1199,18 @@ loop:
 			noop := &transport.MCResponse{
 				Opcode: transport.DCP_NOOP, Opaque: pkt.Opaque,
 			}
-			if err := feed.conn.TransmitResponse(noop); err != nil {
-				logging.Errorf("%v Opaque: %d NOOP.Transmit(): %v", prefix, pkt.Opaque, err)
-			} else {
-				fmsg = "%v Opaque: %d responded to NOOP ok ...\n"
-				logging.Infof(fmsg, prefix, pkt.Opaque)
-			}
+			func() {
+				// Timeout here will unblock doReceive() thread after some time.
+				conn.SetMcdConnectionDeadline()
+				defer conn.ResetMcdConnectionDeadline()
+
+				if err := conn.TransmitResponse(noop); err != nil {
+					logging.Errorf("%v NOOP.Transmit(): %v", feed.logPrefix, err)
+				} else {
+					fmsg := "%v responded to NOOP ok ...\n"
+					logging.Tracef(fmsg, feed.logPrefix)
+				}
+			}()
 			continue loop
 		}
 

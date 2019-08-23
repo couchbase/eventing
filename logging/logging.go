@@ -169,3 +169,10 @@ func StackTrace() string {
 	}
 	return buf.String()
 }
+
+// log redaction related
+func TagUD(arg interface{}) interface{} {
+	var udtag_begin = "<ud>"
+	var udtag_end = "</ud>"
+	return fmt.Sprintf("%s(%v)%s", udtag_begin, arg, udtag_end)
+}

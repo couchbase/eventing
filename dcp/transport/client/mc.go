@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/dcp/transport"
@@ -25,6 +26,21 @@ type Client struct {
 }
 
 var dialFun = net.Dial
+
+// Timeout for memcached communication where client
+// is actively waiting. In Seconds.
+var DcpMemcachedTimeout uint32 = 120
+
+// 30 minutes
+const DcpMutationReadTimeout uint32 = 1800
+
+func GetDcpMemcachedTimeout() uint32 {
+	return atomic.LoadUint32(&DcpMemcachedTimeout)
+}
+
+func SetDcpMemcachedTimeout(val uint32) {
+	atomic.StoreUint32(&DcpMemcachedTimeout, val)
+}
 
 // Connect to a memcached server.
 func Connect(prot, dest string) (rv *Client, err error) {
@@ -49,6 +65,75 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
+func (c *Client) SetDeadline(t time.Time) error {
+	return c.conn.(net.Conn).SetDeadline(t)
+}
+
+func (c *Client) SetReadDeadline(t time.Time) error {
+	return c.conn.(net.Conn).SetReadDeadline(t)
+}
+
+func (c *Client) SetWriteDeadline(t time.Time) error {
+	return c.conn.(net.Conn).SetWriteDeadline(t)
+}
+
+// Set Memcached Connection Deadline.
+// Ignore the error in SetDeadline, if any.
+// There are no side effects in SetDeadline error codepaths.
+func (c *Client) SetMcdConnectionDeadline() {
+	timeout := time.Duration(GetDcpMemcachedTimeout()) * time.Second
+	err := c.SetDeadline(time.Now().Add(timeout))
+	if err != nil {
+		logging.Debugf("Error in SetMcdConnectionDeadline: %v", err)
+	}
+}
+
+// Reset Memcached Connection Deadline.
+// Log the error in SetDeadline, if any. If SetMcdConnectionDeadline
+// was successful, and ResetMcdConnectionDeadline fails, the connection may
+// get closed during some other IO operation. So, report the error if any.
+// No need to explicitly fail the product workflow.
+func (c *Client) ResetMcdConnectionDeadline() {
+	err := c.SetDeadline(time.Time{})
+	if err != nil {
+		logging.Errorf("Error in ResetMcdConnectionDeadline: %v", err)
+	}
+}
+
+// Set Memcached Connection WriteDeadline.
+func (c *Client) SetMcdConnectionWriteDeadline() {
+	timeout := time.Duration(GetDcpMemcachedTimeout()) * time.Second
+	err := c.SetWriteDeadline(time.Now().Add(timeout))
+	if err != nil {
+		logging.Debugf("Error in SetMcdConnectionWriteDeadline: %v", err)
+	}
+}
+
+// Reset Memcached Connection WriteDeadline.
+func (c *Client) ResetMcdConnectionWriteDeadline() {
+	err := c.SetWriteDeadline(time.Time{})
+	if err != nil {
+		logging.Errorf("Error in ResetMcdConnectionWriteDeadline: %v", err)
+	}
+}
+
+// Set Memcached Connection ReadDeadline.
+func (c *Client) SetMcdMutationReadDeadline() {
+	timeout := time.Duration(DcpMutationReadTimeout) * time.Second
+	err := c.SetReadDeadline(time.Now().Add(timeout))
+	if err != nil {
+		logging.Debugf("Error in SetMcdConnectionReadDeadline: %v", err)
+	}
+}
+
+// Reset Memcached Connection ReadDeadline.
+func (c *Client) ResetMcdMutationReadDeadline() {
+	err := c.SetReadDeadline(time.Time{})
+	if err != nil {
+		logging.Errorf("Error in ResetMcdConnectionReadDeadline: %v", err)
+	}
+}
+
 // IsHealthy returns true unless the client is belived to have
 // difficulty communicating to its server.
 //
@@ -60,6 +145,9 @@ func (c Client) IsHealthy() bool {
 
 // Send a custom request and get the response.
 func (c *Client) Send(req *transport.MCRequest) (rv *transport.MCResponse, err error) {
+	c.SetMcdConnectionDeadline()
+	defer c.ResetMcdConnectionDeadline()
+
 	_, err = transmitRequest(c.conn, req)
 	if err != nil {
 		c.healthy = false
@@ -269,7 +357,8 @@ func (c *Client) GetBulk(vb uint16, keys []string) (map[string]*transport.MCResp
 				going = false
 			case transport.GETQ:
 			default:
-				logging.Fatalf("Unexpected opcode in GETQ response: %+v", res)
+				arg1 := logging.TagUD(res)
+				logging.Fatalf("Unexpected opcode in GETQ response: %+v", arg1)
 			}
 			rv[keys[res.Opaque]] = res
 		}
