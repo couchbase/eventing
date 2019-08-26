@@ -305,6 +305,10 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 		return
 	}
 
+	if info = m.validateBoolean("force_compress", true, c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	info.Code = m.statusCodes.ok.Code
 	return
 }

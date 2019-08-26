@@ -48,6 +48,21 @@ func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
 	return m.superSup.GetAppState(appName) == common.AppStateEnabled
 }
 
+func (m *ServiceMgr) checkCompressHandler() bool {
+	config, info := m.getConfig()
+	if info.Code != m.statusCodes.ok.Code {
+		return true
+	}
+
+	// In Mad-Hatter,eventing handler will be compressed by default
+	// It can be turned off by setting force_compress to false
+	if val, exists := config["force_compress"]; exists {
+		return val.(bool)
+	}
+
+	return true
+}
+
 func decodeRev(b service.Revision) uint64 {
 	return binary.BigEndian.Uint64(b)
 }

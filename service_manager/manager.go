@@ -765,8 +765,8 @@ func (m *ServiceMgr) compareEventingVersion(need eventingVer) bool {
 
 func (e eventingVer) compare(need eventingVer) bool {
 	return (e.major > need.major ||
-		e.major == need.major && e.minor >= need.minor ||
-		e.major == need.major && e.major == need.minor && e.mpVersion >= need.mpVersion) &&
+		e.major == need.major && e.minor > need.minor ||
+		e.major == need.major && e.minor == need.minor && e.mpVersion >= need.mpVersion) &&
 		(e.isEnterprise == need.isEnterprise)
 }
 
