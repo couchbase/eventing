@@ -361,3 +361,7 @@ func pollForDeletedBuckets() {
 		}
 	}
 }
+
+func SetDcpMemcachedTimeout(val uint32) {
+	memcached.SetDcpMemcachedTimeout(val)
+}
