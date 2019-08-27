@@ -112,8 +112,8 @@ git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
 note_version eventing $WORKSPACE/goproj/src/github.com/couchbase/eventing
 
 cd $WORKSPACE/testrunner
-echo "Switching testrunner to master"
-git checkout master 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout master"
+echo "Switching testrunner to alice"
+git checkout alice 1>>$WORKSPACE/make.log 2>&1 || error_exit "git checkout alice"
 git pull 1>>$WORKSPACE/make.log 2>&1 || error_exit "git pull"
 note_version testrunner $WORKSPACE/testrunner
 
