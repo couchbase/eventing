@@ -238,7 +238,7 @@ var eventingVerMap = map[string]eventingVer{
 		build:        0,
 		isEnterprise: true},
 	"mad-hatter": eventingVer{major: 6,
-		minor:        0,
+		minor:        5,
 		mpVersion:    0,
 		build:        0,
 		isEnterprise: true},

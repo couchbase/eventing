@@ -489,7 +489,7 @@ func (m *ServiceMgr) notifyDebuggerStart(appName string, hostnames []string) (in
 	logging.Infof("%s Function: %s notifying on debugger path %s",
 		logPrefix, appName, common.MetakvDebuggerPath+appName)
 
-        err = util.MetakvSet(common.MetakvDebuggerPath+appName, []byte(token), nil)
+	err = util.MetakvSet(common.MetakvDebuggerPath+appName, []byte(token), nil)
 
 	if err != nil {
 		logging.Errorf("%s Function: %s Failed to write to metakv err: %v", logPrefix, appName, err)
@@ -1248,7 +1248,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 	if procStatExists || depStatExists {
 		if settings["deployment_status"].(bool) {
-			status, err := util.GetAggBootstrapAppStatus(util.Localhost(), m.adminHTTPPort, appName)
+			status, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
 			if err != nil {
 				logging.Errorf("%s %s", logPrefix, err)
 				info.Code = m.statusCodes.errStatusesNotFound.Code
@@ -1617,7 +1617,8 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	err = util.WriteAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName, data)
+	compressPayload := m.checkCompressHandler()
+	err = util.WriteAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName, data, compressPayload)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppTs.Code
 		info.Info = fmt.Sprintf("Function: %s failed to store in temp store, err: %v", appName, err)
@@ -1948,7 +1949,8 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	err = util.WriteAppContent(metakvAppsPath, metakvChecksumPath, app.Name, appContent)
+	compressPayload := m.checkCompressHandler()
+	err = util.WriteAppContent(metakvAppsPath, metakvChecksumPath, app.Name, appContent, compressPayload)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppPs.Code
 		logging.Errorf("%s Function: %s unable to save to primary store, err: %v", logPrefix, app.Name, err)
@@ -2265,7 +2267,7 @@ func (m *ServiceMgr) saveConfig(c common.Config) (info *runtimeInfo) {
 
 	logging.Infof("%s Saving config into metakv: %v", logPrefix, c)
 
-        err = util.MetakvSet(metakvConfigPath, data, nil)
+	err = util.MetakvSet(metakvConfigPath, data, nil)
 	if err != nil {
 		logging.Errorf("%s Failed to write to metakv err: %v", logPrefix, err)
 		info.Code = m.statusCodes.errMetakvWriteFailed.Code
@@ -2800,7 +2802,7 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 			status.NumBootstrappingNodes = num
 		}
 
-		bootstrapStatus, err := util.GetAggBootstrapAppStatus(util.Localhost(), m.adminHTTPPort, status.Name)
+		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), status.Name)
 		if err != nil {
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			return

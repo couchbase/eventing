@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"compress/flate"
 	"crypto/tls"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"strings"
@@ -32,7 +35,20 @@ func list(full bool) {
 	for _, child := range children {
 		if full {
 			log.Printf("Path: %s", child.Path)
-			log.Printf(" Value: %s", child.Value)
+			var value []byte
+			if child.Value[0] == byte(0) {
+				r := flate.NewReader(bytes.NewReader(child.Value[2:]))
+				if payload, err := ioutil.ReadAll(r); err != nil {
+					value = child.Value
+				} else {
+					value = payload
+				}
+				r.Close()
+			} else {
+				value = child.Value
+			}
+
+			log.Printf(" Value: %s", value)
 			log.Printf(" Rev: %v", child.Rev)
 		} else {
 			log.Println(child.Path)

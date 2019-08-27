@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"strconv"
 
@@ -35,7 +36,7 @@ func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 
 func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
 	logPrefix := "ServiceMgr::CheckIfDeployedAndRunning"
-	bootstrapStatus, err := util.GetAggBootstrapAppStatus(util.Localhost(), m.adminHTTPPort, appName)
+	bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
 	if err != nil {
 		logging.Errorf("%s %s", logPrefix, err)
 		return false
@@ -46,6 +47,21 @@ func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
 	}
 
 	return m.superSup.GetAppState(appName) == common.AppStateEnabled
+}
+
+func (m *ServiceMgr) checkCompressHandler() bool {
+	config, info := m.getConfig()
+	if info.Code != m.statusCodes.ok.Code {
+		return true
+	}
+
+	// In Mad-Hatter,eventing handler will be compressed by default
+	// It can be turned off by setting force_compress to false
+	if val, exists := config["force_compress"]; exists {
+		return val.(bool)
+	}
+
+	return true
 }
 
 func decodeRev(b service.Revision) uint64 {

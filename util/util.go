@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"compress/flate"
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/binary"
@@ -522,17 +523,17 @@ func MetakvGet(path string) ([]byte, error) {
 }
 
 var metakvSetCallback = func(args ...interface{}) error {
-        logPrefix := "Util::metakvSetCallback"
+	logPrefix := "Util::metakvSetCallback"
 
-        metakvPath := args[0].(string)
-        data := args[1].([]byte)
-        rev := args[2]
+	metakvPath := args[0].(string)
+	data := args[1].([]byte)
+	rev := args[2]
 
-        err := metakv.Set(metakvPath, data, rev)
-        if err != nil {
-                logging.Errorf("%s metakv set failed for path: %s, err: %v", logPrefix, metakvPath, err)
-        }
-        return err
+	err := metakv.Set(metakvPath, data, rev)
+	if err != nil {
+		logging.Errorf("%s metakv set failed for path: %s, err: %v", logPrefix, metakvPath, err)
+	}
+	return err
 }
 
 func MetakvSet(path string, value []byte, rev interface{}) error {
@@ -540,16 +541,16 @@ func MetakvSet(path string, value []byte, rev interface{}) error {
 }
 
 var metakvDelCallback = func(args ...interface{}) error {
-        logPrefix := "Util::metakvDelCallback"
+	logPrefix := "Util::metakvDelCallback"
 
-        metakvPath := args[0].(string)
-        rev := args[1]
+	metakvPath := args[0].(string)
+	rev := args[1]
 
-        err := metakv.Delete(metakvPath, rev)
-        if err != nil {
-                logging.Errorf("%s metakv delete failed for path: %s, err: %v", logPrefix, metakvPath, err)
-        }
-        return err
+	err := metakv.Delete(metakvPath, rev)
+	if err != nil {
+		logging.Errorf("%s metakv delete failed for path: %s, err: %v", logPrefix, metakvPath, err)
+	}
+	return err
 }
 
 func MetaKvDelete(path string, rev interface{}) error {
@@ -557,15 +558,15 @@ func MetaKvDelete(path string, rev interface{}) error {
 }
 
 var metakvRecDelCallback = func(args ...interface{}) error {
-        logPrefix := "Util::metakvRecDelCallback"
+	logPrefix := "Util::metakvRecDelCallback"
 
-        metakvPath := args[0].(string)
+	metakvPath := args[0].(string)
 
-        err := metakv.RecursiveDelete(metakvPath)
-        if err != nil {
-                logging.Errorf("%s metakv recursive delete failed for path: %s, err: %v", logPrefix, metakvPath, err)
-        }
-        return err
+	err := metakv.RecursiveDelete(metakvPath)
+	if err != nil {
+		logging.Errorf("%s metakv recursive delete failed for path: %s, err: %v", logPrefix, metakvPath, err)
+	}
+	return err
 }
 
 func MetakvRecursiveDelete(dirpath string) error {
@@ -573,12 +574,17 @@ func MetakvRecursiveDelete(dirpath string) error {
 }
 
 //WriteAppContent fragments the payload and store it to metakv
-func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) error {
+func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, compressPayload bool) error {
 	logPrefix := "util::WriteAppContent"
+
+	payload2, err := MaybeCompress(payload, compressPayload)
+	if err != nil {
+		return err
+	}
 
 	appsPath += appName
 	appsPath += "/"
-	length := len(payload)
+	length := len(payload2)
 
 	checksumPath += appName
 	fragmentCount := length / MetaKvMaxDocSize()
@@ -597,7 +603,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 			lastidx = length
 		}
 
-		fragment := payload[curridx:lastidx]
+		fragment := payload2[curridx:lastidx]
 
 		err := MetakvSet(currpath, fragment, nil)
 		if err != nil {
@@ -613,7 +619,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 
 	//Compute MD5 hash and update it in metakv
 	payloadhash := PayloadHash{}
-	if err := payloadhash.Update(payload, MetaKvMaxDocSize()); err != nil {
+	if err := payloadhash.Update(payload2, MetaKvMaxDocSize()); err != nil {
 		logging.Errorf("%s Function: %s updating payload hash failed err: %v", logPrefix, appName, err)
 		//Delete existing entry from appspath
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
@@ -700,7 +706,12 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 			payload = append(payload, data...)
 		}
 	}
-	return payload, nil
+
+	payload2, err := MaybeDecompress(payload)
+	if err != nil {
+		return nil, err
+	}
+	return payload2, nil
 }
 
 //DeleteAppContent delete handler code
@@ -1198,11 +1209,11 @@ func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error)
 	return false, nil
 }
 
-func GetAggBootstrapStatus(urlHost string, urlPort string) (bool, error) {
+func GetAggBootstrapStatus(nodeAddr string) (bool, error) {
 	logPrefix := "util::GetAggBootstrapStatus"
 
 	netClient := NewClient(HTTPRequestTimeout)
-	url := fmt.Sprintf("http://%s:%s/getAggBootstrapStatus", urlHost, urlPort)
+	url := fmt.Sprintf("http://%s/getAggBootstrapStatus", nodeAddr)
 	res, err := netClient.Get(url)
 	if err != nil {
 		logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, url, err)
@@ -1225,11 +1236,11 @@ func GetAggBootstrapStatus(urlHost string, urlPort string) (bool, error) {
 	return status, nil
 }
 
-func GetAggBootstrapAppStatus(urlHost string, urlPort string, appName string) (bool, error) {
+func GetAggBootstrapAppStatus(nodeAddr string, appName string) (bool, error) {
 	logPrefix := "util::GetAggBootstrapAppStatus"
 
 	netClient := NewClient(HTTPRequestTimeout)
-	url := fmt.Sprintf("http://%s:%s/getAggBootstrapAppStatus?appName=%s", urlHost, urlPort, appName)
+	url := fmt.Sprintf("http://%s/getAggBootstrapAppStatus?appName=%s", nodeAddr, appName)
 	res, err := netClient.Get(url)
 	if err != nil {
 		logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, url, err)
@@ -1472,4 +1483,45 @@ func ParseXattrData(xattrPrefix string, data []byte) (body, xattr []byte, err er
 		index += keyValPairLen
 	}
 	return body, nil, nil
+}
+
+func MaybeCompress(payload []byte, compressPayload bool) ([]byte, error) {
+	if compressPayload {
+		var buf bytes.Buffer
+		compressor, err := flate.NewWriter(&buf, flate.BestCompression)
+		if err != nil {
+			logging.Errorf("%s error in selecting level for flate: err %v", err)
+			return nil, err
+		}
+		if _, err = compressor.Write(payload); err != nil {
+			logging.Errorf("%s error in compressing: err %v", err)
+			compressor.Close()
+			return nil, err
+		}
+		if err = compressor.Close(); err != nil {
+			logging.Errorf("%s error in Flushing to Writer err: %v", err)
+			return nil, err
+		}
+
+		payload2 := buf.Bytes()
+		if len(payload2) < len(payload) {
+			return append([]byte{0, 0}, payload2...), nil
+		}
+		return payload, nil
+	} else {
+		return payload, nil
+	}
+}
+
+func MaybeDecompress(payload []byte) ([]byte, error) {
+	if payload[0] == byte(0) {
+		r := flate.NewReader(bytes.NewReader(payload[2:]))
+		defer r.Close()
+		payload2, err := ioutil.ReadAll(r)
+		if err != nil {
+			return nil, err
+		}
+		return payload2, nil
+	}
+	return payload, nil
 }
