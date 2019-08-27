@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"compress/flate"
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/json"
@@ -577,12 +578,17 @@ func MetakvRecursiveDelete(dirpath string) error {
 }
 
 //WriteAppContent fragments the payload and store it to metakv
-func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) error {
+func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, compressPayload bool) error {
 	logPrefix := "util::WriteAppContent"
+
+	payload2, err := MaybeCompress(payload, compressPayload)
+	if err != nil {
+		return err
+	}
 
 	appsPath += appName
 	appsPath += "/"
-	length := len(payload)
+	length := len(payload2)
 
 	checksumPath += appName
 	fragmentCount := length / metakvMaxDocSize
@@ -597,7 +603,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 		if lastidx > length {
 			lastidx = length
 		}
-		fragment := payload[curridx:lastidx]
+		fragment := payload2[curridx:lastidx]
 		err := MetakvSet(currpath, fragment, nil)
 		if err != nil {
 			//Delete existing entry from appspath
@@ -612,7 +618,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 
 	//Compute MD5 hash and Update it to metakv
 	payloadhash := PayloadHash{}
-	if err := payloadhash.Update(payload, metakvMaxDocSize); err != nil {
+	if err := payloadhash.Update(payload2, metakvMaxDocSize); err != nil {
 		logging.Errorf("%s Function: %s updating payload hash failed err: %v", logPrefix, appName, err)
 		//Delete existing entry from appspath
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
@@ -694,7 +700,12 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 			payload = append(payload, data...)
 		}
 	}
-	return payload, nil
+
+	payload2, err := MaybeDecompress(payload)
+	if err != nil {
+		return nil, err
+	}
+	return payload2, nil
 }
 
 //DeleteAppContent delete handler code
@@ -1082,6 +1093,35 @@ func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error)
 	return false, nil
 }
 
+func GetEventingVersion(urlSuffix string, nodeAddrs []string) ([]string, error) {
+	logPrefix := "util::GetEventingVersion"
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	versions := make([]string, 0)
+
+	for _, nodeAddr := range nodeAddrs {
+		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(endpointURL)
+		if err != nil {
+			logging.Errorf("%s Failed to gather eventing version from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return versions, err
+		}
+		defer res.Body.Close()
+
+		version, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return versions, err
+		}
+
+		versions = append(versions, string(version))
+	}
+
+	return versions, nil
+}
+
 func Contains(needle interface{}, haystack interface{}) bool {
 	s := reflect.ValueOf(haystack)
 
@@ -1222,4 +1262,45 @@ func CPUCount(log bool) int {
 	}
 
 	return cpuCount
+}
+
+func MaybeCompress(payload []byte, compressPayload bool) ([]byte, error) {
+	if compressPayload {
+		var buf bytes.Buffer
+		compressor, err := flate.NewWriter(&buf, flate.BestCompression)
+		if err != nil {
+			logging.Errorf("%s error in selecting level for flate: err %v", err)
+			return nil, err
+		}
+		if _, err = compressor.Write(payload); err != nil {
+			logging.Errorf("%s error in compressing: err %v", err)
+			compressor.Close()
+			return nil, err
+		}
+		if err = compressor.Close(); err != nil {
+			logging.Errorf("%s error in Flushing to Writer err: %v", err)
+			return nil, err
+		}
+
+		payload2 := buf.Bytes()
+		if len(payload2) < len(payload) {
+			return append([]byte{0, 0}, payload2...), nil
+		}
+		return payload, nil
+	} else {
+		return payload, nil
+	}
+}
+
+func MaybeDecompress(payload []byte) ([]byte, error) {
+	if payload[0] == byte(0) {
+		r := flate.NewReader(bytes.NewReader(payload[2:]))
+		defer r.Close()
+		payload2, err := ioutil.ReadAll(r)
+		if err != nil {
+			return nil, err
+		}
+		return payload2, nil
+	}
+	return payload, nil
 }

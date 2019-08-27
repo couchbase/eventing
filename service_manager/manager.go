@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" // For debugging
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -598,4 +600,86 @@ func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
 		logPrefix, keepNodes, addrUUIDMap, nodeAddrs)
 
 	return nodeAddrs, nil
+}
+
+func (m *ServiceMgr) compareEventingVersion(need eventingVer) bool {
+	logPrefix := "ServiceMgr::compareEventingVersion"
+
+	nodes, err := m.getActiveNodeAddrs()
+	if err != nil {
+		logging.Errorf("%s failed to get active eventing nodes, err: %v", logPrefix, err)
+		return false
+	}
+
+	versions, err := util.GetEventingVersion("/version", nodes)
+	if err != nil {
+		logging.Errorf("%s failed to gather eventing version, err: %v", logPrefix, err)
+		return false
+	}
+
+	logging.Infof("%s eventing version for all nodes: %+v need version: %+v", logPrefix, versions, need)
+
+	for _, ver := range versions {
+		eVer, err := frameEventingVersion(ver)
+		if err != nil {
+			return false
+		}
+
+		if !eVer.compare(need) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (e eventingVer) compare(need eventingVer) bool {
+	return (e.major > need.major ||
+		e.major == need.major && e.minor > need.minor ||
+		e.major == need.major && e.minor == need.minor && e.mpVersion >= need.mpVersion) &&
+		(e.isEnterprise == need.isEnterprise)
+}
+
+func frameEventingVersion(ver string) (eventingVer, error) {
+	var eVer eventingVer
+
+	segs := strings.Split(ver, "-")
+	if len(segs) < 4 {
+		return eVer, errInvalidVersion
+	}
+
+	verSegs := strings.Split(segs[1], ".")
+	if len(verSegs) != 3 {
+		return eVer, errInvalidVersion
+	}
+
+	val, err := strconv.Atoi(verSegs[0])
+	if err != nil {
+		return eVer, errInvalidVersion
+	}
+	eVer.major = val
+
+	val, err = strconv.Atoi(verSegs[1])
+	if err != nil {
+		return eVer, errInvalidVersion
+	}
+	eVer.minor = val
+
+	val, err = strconv.Atoi(verSegs[2])
+	if err != nil {
+		return eVer, errInvalidVersion
+	}
+	eVer.mpVersion = val
+
+	val, err = strconv.Atoi(segs[2])
+	if err != nil {
+		return eVer, errInvalidVersion
+	}
+	eVer.build = val
+
+	if segs[len(segs)-1] == "ee" {
+		eVer.isEnterprise = true
+	}
+
+	return eVer, nil
 }

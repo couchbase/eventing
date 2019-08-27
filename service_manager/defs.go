@@ -1,12 +1,12 @@
 package servicemanager
 
 import (
-	"sync"
-	"time"
-
+	"errors"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
+	"sync"
+	"time"
 )
 
 const (
@@ -43,6 +43,10 @@ const (
 	maxPrefixLength          = 16
 
 	rebalanceStalenessCounter = 200
+)
+
+var (
+	errInvalidVersion = errors.New("invalid eventing version")
 )
 
 const (
@@ -211,4 +215,12 @@ type appStatus struct {
 type appStatusResponse struct {
 	Apps             []appStatus `json:"apps"`
 	NumEventingNodes int         `json:"num_eventing_nodes"`
+}
+
+type eventingVer struct {
+	major        int
+	minor        int
+	mpVersion    int
+	build        int
+	isEnterprise bool
 }

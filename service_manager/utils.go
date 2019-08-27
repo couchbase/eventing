@@ -267,3 +267,20 @@ func GetNodesHostname(data map[string]interface{}) []string {
 	}
 	return hostnames
 }
+
+func (m *ServiceMgr) checkCompressHandler() bool {
+	aliceRelease3 := eventingVer{
+		major:        6,
+		minor:        0,
+		mpVersion:    3,
+		isEnterprise: true}
+
+	config, info := m.getConfig()
+	if info.Code != m.statusCodes.ok.Code {
+		return false
+	}
+	if val, exists := config["force_compress"]; exists && val.(bool) {
+		return m.compareEventingVersion(aliceRelease3)
+	}
+	return false
+}

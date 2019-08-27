@@ -1274,7 +1274,8 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	err = util.WriteAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName, data)
+	compressPayload := m.checkCompressHandler()
+	err = util.WriteAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName, data, compressPayload)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppTs.Code
 		info.Info = fmt.Sprintf("Function: %s failed to store in temp store, err: %v", appName, err)
@@ -1501,7 +1502,8 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	err = util.WriteAppContent(metakvAppsPath, metakvChecksumPath, app.Name, appContent)
+	compressPayload := m.checkCompressHandler()
+	err = util.WriteAppContent(metakvAppsPath, metakvChecksumPath, app.Name, appContent, compressPayload)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppPs.Code
 		logging.Errorf("%s Function: %s unable to save to primary store, err: %v", logPrefix, app.Name, err)

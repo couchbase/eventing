@@ -228,6 +228,33 @@ func (m *ServiceMgr) validateBucketExists(bucketName string) (info *runtimeInfo)
 	return
 }
 
+func (m *ServiceMgr) validateForCompression(field string, settings map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if val, ok := settings[field]; ok {
+		if _, ok = val.(bool); !ok {
+			info.Info = fmt.Sprintf("%s must be a boolean", field)
+			return
+		}
+
+		if val.(bool) {
+			aliceRelease3 := eventingVer{
+				major:        6,
+				minor:        0,
+				mpVersion:    3,
+				isEnterprise: true}
+			if !m.compareEventingVersion(aliceRelease3) {
+				info.Info = fmt.Sprintf("All eventing node should be above or eqaul to 6.0.3 version")
+				return
+			}
+		}
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
@@ -241,6 +268,10 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 	}
 
 	if info = m.validateBoolean("enable_lifecycle_ops_during_rebalance", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateForCompression("force_compress", c); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
