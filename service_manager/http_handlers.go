@@ -2531,7 +2531,7 @@ func (m *ServiceMgr) checkVersionCompat(required string, info *runtimeInfo) {
 		return
 	}
 
-	logging.Infof("%s Function need %v satisfied by cluster %v", logPrefix, have, need)
+	logging.Infof("%s Function need %v satisfied by cluster %v", logPrefix, need, have)
 	info.Code = m.statusCodes.ok.Code
 }
 

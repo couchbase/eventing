@@ -321,8 +321,20 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 				state := s.GetAppState(appName)
 
 				if state == common.AppStateUndeployed || state == common.AppStateDisabled {
+
+					s.appListRWMutex.Lock()
+					if _, ok := s.bootstrappingApps[appName]; ok {
+						logging.Infof("%s [%d] Function: %s already bootstrapping", logPrefix, s.runningFnsCount(), appName)
+						s.appListRWMutex.Unlock()
+						return nil
+					}
+
+					logging.Infof("%s [%d] Function: %s adding to bootstrap list", logPrefix, s.runningFnsCount(), appName)
+					s.bootstrappingApps[appName] = time.Now().String()
+					s.appListRWMutex.Unlock()
+
 					if err := util.MetaKvDelete(MetakvAppsRetryPath+appName, nil); err != nil {
-						logging.Errorf("%s [%d] Function: %s failed to delete from metakv path, err : %v",
+						logging.Errorf("%s [%d] Function: %s failed to delete from metakv retry path, err : %v",
 							logPrefix, s.runningFnsCount(), appName, err)
 						return err
 					}
@@ -333,15 +345,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 							p.StopProducer()
 						}
 					}
-
-					s.appListRWMutex.Lock()
-					if _, ok := s.bootstrappingApps[appName]; ok {
-						logging.Infof("%s [%d] Function: %s already bootstrapping", logPrefix, s.runningFnsCount(), appName)
-						s.appListRWMutex.Unlock()
-						return nil
-					}
-					s.bootstrappingApps[appName] = time.Now().String()
-					s.appListRWMutex.Unlock()
 
 					s.spawnApp(appName)
 
