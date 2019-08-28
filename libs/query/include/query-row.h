@@ -12,9 +12,8 @@
 #ifndef QUERY_ROW_H
 #define QUERY_ROW_H
 
-#include <string>
-
 #include <libcouchbase/couchbase.h>
+#include <string>
 
 namespace Query {
 struct Row {

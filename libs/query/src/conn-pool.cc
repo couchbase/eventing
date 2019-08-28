@@ -9,12 +9,11 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "conn-pool.h"
-
 #include <mutex>
 #include <sstream>
 
 #include "comm.h"
+#include "conn-pool.h"
 #include "isolate_data.h"
 #include "log.h"
 #include "utils.h"
@@ -112,7 +111,7 @@ Connection::Info Connection::Pool::CreateConnection() {
 }
 
 Connection::Info Connection::Pool::GetConnection() {
-  std::lock_guard<folly::fibers::TimedMutex> conn_guard(pool_mutex_);
+  std::lock_guard<std::mutex> lock(pool_sync_);
 
   if (pool_.empty()) {
     if (current_size_ < capacity_) {
@@ -140,6 +139,6 @@ Connection::Pool::~Pool() {
 }
 
 void Connection::Pool::RestoreConnection(lcb_t connection) {
-  std::lock_guard<folly::fibers::TimedMutex> conn_guard(pool_mutex_);
+  std::lock_guard<std::mutex> lock(pool_sync_);
   pool_.push(connection);
 }

@@ -12,16 +12,14 @@
 #ifndef QUERY_MGR_H
 #define QUERY_MGR_H
 
-#include "conn-pool.h"
-#include "query-iterable.h"
-
 #include <libcouchbase/couchbase.h>
 #include <string>
 #include <unordered_map>
 #include <v8.h>
 
-#include "info.h"
+#include "conn-pool.h"
 #include "query-helper.h"
+#include "query-iterable.h"
 
 namespace Query {
 class Manager {

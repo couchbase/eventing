@@ -12,17 +12,10 @@
 #ifndef QUERY_ITERATOR_H
 #define QUERY_ITERATOR_H
 
-// Really MUST ensure that folly libs are #include-ed first
-// Otherwise, it'll cause compilation errors
-#include <folly/fibers/Baton.h>
-#include <folly/fibers/EventBaseLoopController.h>
-#include <folly/fibers/FiberManagerMap.h>
-#include <folly/fibers/TimedMutex.h>
-#include <folly/io/async/EventBase.h>
-
+#include <condition_variable>
 #include <libcouchbase/couchbase.h>
-#include <memory>
 #include <string>
+#include <thread>
 #include <v8.h>
 
 #include "info.h"
@@ -45,10 +38,19 @@ public:
   };
 
   Iterator(const Query::Info &query_info, lcb_t instance, v8::Isolate *isolate,
-           lcb_U32 timeout);
+           const lcb_U32 timeout)
+      : query_info_(query_info), connection_(instance), isolate_(isolate),
+        builder_(query_info, instance, timeout) {}
+  ~Iterator();
 
-  Row Next();
-  Row Peek();
+  Iterator() = delete;
+  Iterator(const Iterator &) = delete;
+  Iterator(Iterator &&) = delete;
+  Iterator &operator=(const Iterator &) = delete;
+  Iterator &operator=(Iterator &&) = delete;
+
+  Query::Row Next();
+  Query::Row Peek();
   ::Info Start();
   void Stop();
   ::Info Wait();
@@ -57,24 +59,14 @@ private:
   static void RowCallback(lcb_t connection, int type, const lcb_RESPN1QL *resp);
   static bool IsStatusSuccess(const std::string &row);
 
-  class BatonGuard {
-  public:
-    explicit BatonGuard(folly::fibers::Baton &baton) : baton_(baton) {}
-    ~BatonGuard() { baton_.post(); }
-
-    BatonGuard() = delete;
-    BatonGuard(const BatonGuard &) = delete;
-    BatonGuard(BatonGuard &&) = delete;
-    BatonGuard &operator=(const BatonGuard &) = delete;
-    BatonGuard &operator=(BatonGuard &&) = delete;
-
-  private:
-    folly::fibers::Baton &baton_;
-  };
-
   struct Cursor {
     Query::Row GetRow() const;
     Query::Row GetRowAsFinal() const;
+
+    enum class ExecutionControl { kV8, kSDK };
+
+    void WaitFor(ExecutionControl control);
+    void YieldTo(ExecutionControl control);
 
     lcb_error_t client_err_code{LCB_SUCCESS};
     bool is_error{false};
@@ -82,11 +74,26 @@ private:
     bool is_client_error{false}; // Error reported by SDK client
     bool is_query_error{false};  // Error reported by Query server
     bool is_last{false};
-    bool is_streaming_started{false};
     std::string data;
-    folly::fibers::Baton reader;
-    folly::fibers::Baton writer;
-    folly::fibers::Baton started_or_done;
+
+  private:
+    ExecutionControl control_{ExecutionControl::kV8};
+    std::mutex control_sync_;
+    std::condition_variable control_signal_;
+  };
+
+  class RunnerGuard {
+  public:
+    explicit RunnerGuard(Cursor &cursor) : cursor_(cursor) {}
+    RunnerGuard() = delete;
+    RunnerGuard(const RunnerGuard &) = delete;
+    RunnerGuard(RunnerGuard &&) = delete;
+    RunnerGuard &operator=(const RunnerGuard &) = delete;
+    RunnerGuard &operator=(RunnerGuard &&) = delete;
+    ~RunnerGuard() { cursor_.YieldTo(Cursor::ExecutionControl::kV8); };
+
+  private:
+    Cursor &cursor_;
   };
 
   enum class State { kIdle, kStarted, kStopped };
@@ -98,11 +105,10 @@ private:
 
   lcb_t connection_;
   ::Info result_info_{false};
-  folly::EventBase event_base_;
-  folly::fibers::FiberManager fiber_mgr_;
   v8::Isolate *isolate_;
   State state_{State::kIdle};
   Query::Builder builder_;
+  std::thread runner_;
 };
 } // namespace Query
 

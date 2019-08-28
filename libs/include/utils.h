@@ -20,7 +20,6 @@
 #include <limits>
 #include <sstream>
 #include <string>
-#include <unistd.h>
 #include <unordered_map>
 #include <v8.h>
 #include <vector>
