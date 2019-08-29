@@ -9,6 +9,8 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <mutex>
+
 #include "bucket.h"
 #include "js_exception.h"
 #include "retry_util.h"
@@ -358,6 +360,11 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
     const v8::Local<v8::Name> &name,
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   if (name->IsSymbol()) {
     auto js_exception = UnwrapData(isolate)->js_exception;
     js_exception->ThrowEventingError("Symbol data type is not supported");
@@ -425,6 +432,11 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   if (name->IsSymbol()) {
     auto js_exception = UnwrapData(isolate)->js_exception;
     js_exception->ThrowEventingError("Symbol data type is not supported");
@@ -456,6 +468,11 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
     const v8::Local<v8::Name> &name,
     const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   auto isolate = info.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   if (name->IsSymbol()) {
     auto js_exception = UnwrapData(isolate)->js_exception;
     js_exception->ThrowKVError("Symbol data type is not supported");

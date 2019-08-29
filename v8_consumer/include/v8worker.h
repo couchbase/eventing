@@ -34,6 +34,7 @@
 
 #include "commands.h"
 #include "histogram.h"
+#include "insight.h"
 #include "inspector_agent.h"
 #include "isolate_data.h"
 #include "js_exception.h"
@@ -43,7 +44,6 @@
 #include "transpiler.h"
 #include "utils.h"
 #include "v8log.h"
-#include "insight.h"
 
 #include "../../gen/flatbuf/header_generated.h"
 #include "../../gen/flatbuf/payload_generated.h"
@@ -214,36 +214,9 @@ public:
            Histogram *curl_latency_stats);
   ~V8Worker();
 
-  void operator()() {
-
-    if (debugger_started_)
-      return;
-    while (!shutdown_terminator_) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-      if (execute_flag_) {
-        Time::time_point t = Time::now();
-        nsecs ns = std::chrono::duration_cast<nsecs>(t - execute_start_time_);
-
-        LOG(logTrace) << "ns.count(): " << ns.count()
-                      << "ns, max_task_duration: " << max_task_duration_ << "ns"
-                      << std::endl;
-        if (ns.count() > max_task_duration_) {
-          if (isolate_) {
-            LOG(logInfo) << "Task took: " << ns.count()
-                         << "ns, terminating its execution" << std::endl;
-
-            timeout_count++;
-            isolate_->TerminateExecution();
-            execute_flag_ = false;
-          }
-        }
-      }
-    }
-  }
-
   int V8WorkerLoad(std::string source_s);
   void RouteMessage();
+  void TaskDurationWatcher();
 
   int SendUpdate(std::string value, std::string meta, int vb_no,
                  uint64_t seq_no, std::string doc_type);
@@ -273,7 +246,7 @@ public:
 
   uint64_t GetVbFilter(int vb_no);
 
-  CodeInsight& GetInsight();
+  CodeInsight &GetInsight();
 
   void EraseVbFilter(int vb_no);
 
@@ -308,7 +281,6 @@ public:
 
   server_settings_t *settings_;
 
-  volatile bool execute_flag_;
   volatile bool shutdown_terminator_;
   static bool debugger_started_;
 

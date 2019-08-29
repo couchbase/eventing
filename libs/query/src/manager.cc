@@ -13,6 +13,7 @@
 #include "query-iterable.h"
 
 #include <memory>
+#include <mutex>
 
 #include "comm.h"
 #include "info.h"
@@ -55,6 +56,11 @@ Query::Manager::NewIterable(const Query::Info &query_info) {
 
 void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   v8::HandleScope handle_scope(isolate);
   auto query_mgr = UnwrapData(isolate)->query_mgr;
   auto helper = UnwrapData(isolate)->query_helper;

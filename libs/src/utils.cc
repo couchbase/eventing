@@ -9,6 +9,7 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <mutex>
 #include <regex>
 
 #include "crc64.h"
@@ -611,75 +612,13 @@ Utils::UrlDecodeAsKeyValue(const std::string &data,
   return UrlDecode();
 }
 
-void UrlEncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  auto isolate = args.GetIsolate();
-  v8::HandleScope handle_scope(isolate);
-
-  auto js_exception = UnwrapData(isolate)->js_exception;
-  auto utils = UnwrapData(isolate)->utils;
-
-  if (args.Length() == 0) {
-    js_exception->ThrowEventingError("Need at least one parameter");
-    return;
-  }
-
-  UrlEncode info;
-  if (args[0]->IsObject()) {
-    info = utils->UrlEncodeAsKeyValue(args[0]);
-    if (info.is_fatal) {
-      js_exception->ThrowEventingError(info.msg);
-      return;
-    }
-  } else {
-    v8::String::Utf8Value arg_utf8(isolate, args[0]);
-    info = utils->UrlEncodeAsString(*arg_utf8);
-    if (info.is_fatal) {
-      js_exception->ThrowEventingError(info.msg);
-      return;
-    }
-  }
-
-  args.GetReturnValue().Set(v8Str(isolate, info.encoded));
-}
-
-void UrlDecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  auto isolate = args.GetIsolate();
-  v8::HandleScope handle_scope(isolate);
-
-  auto js_exception = UnwrapData(isolate)->js_exception;
-  auto utils = UnwrapData(isolate)->utils;
-
-  if (args.Length() == 0) {
-    js_exception->ThrowEventingError("Need at least one parameter");
-    return;
-  }
-  if (!args[0]->IsString()) {
-    js_exception->ThrowEventingError("Expected an argument of type string");
-    return;
-  }
-
-  v8::String::Utf8Value arg_utf8(isolate, args[0]);
-  if (strchr(*arg_utf8, '=') == nullptr) {
-    auto info = utils->UrlDecodeString(*arg_utf8);
-    if (info.is_fatal) {
-      js_exception->ThrowEventingError(info.msg);
-      return;
-    }
-    args.GetReturnValue().Set(v8Str(isolate, info.decoded));
-    return;
-  }
-
-  auto decoded_obj = v8::Object::New(isolate);
-  auto info = utils->UrlDecodeAsKeyValue(*arg_utf8, decoded_obj);
-  if (info.is_fatal) {
-    js_exception->ThrowEventingError(info.msg);
-    return;
-  }
-  args.GetReturnValue().Set(decoded_obj);
-}
-
 void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   v8::HandleScope handle_scope(isolate);
 
   auto js_exception = UnwrapData(isolate)->js_exception;
