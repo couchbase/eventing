@@ -90,7 +90,7 @@ struct MessageHeader {
 
   std::size_t GetSize() const {
     return metadata.length() + sizeof(event) + sizeof(opcode) +
-           sizeof(partition) + metadata.length();
+           sizeof(partition);
   }
 
   uint8_t event{0};
@@ -194,6 +194,7 @@ extern std::atomic<int64_t> timer_create_failure;
 extern std::atomic<int64_t> lcb_retry_failure;
 
 extern std::atomic<int64_t> messages_processed_counter;
+extern std::atomic<int64_t> processed_events_size;
 
 // DCP or Timer event counter
 extern std::atomic<int64_t> dcp_delete_msg_counter;

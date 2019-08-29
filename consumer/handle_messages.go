@@ -450,6 +450,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	if !sendToDebugger {
 		c.vbProcessingStats.updateVbStat(e.VBucket, "last_sent_seq_no", e.Seqno)
 	}
+	c.sentEventsSize += int64(len(dcpHeader) + len(dcpPayload))
 	c.sendMessage(msg)
 }
 
