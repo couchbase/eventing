@@ -707,21 +707,27 @@ func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]in
 		}
 	}
 
-	aggPausingApps := make(map[string]map[string]string)
-	util.Retry(util.NewFixedBackoff(time.Second), nil, getPausingAppsCallback, &aggPausingApps, nodeAddrs)
+	mhVersion := eventingVerMap["mad-hatter"]
+	if m.compareEventingVersion(mhVersion) {
+		aggPausingApps := make(map[string]map[string]string)
+		util.Retry(util.NewFixedBackoff(time.Second), nil, getPausingAppsCallback, &aggPausingApps, nodeAddrs)
 
-	appPausingNodesCounter := make(map[string]int)
-	for _, apps := range aggPausingApps {
-		for app := range apps {
-			if _, ok := appPausingNodesCounter[app]; !ok {
-				appPausingNodesCounter[app] = 0
+		appPausingNodesCounter := make(map[string]int)
+		for _, apps := range aggPausingApps {
+			for app := range apps {
+				if _, ok := appPausingNodesCounter[app]; !ok {
+					appPausingNodesCounter[app] = 0
+				}
+				appPausingNodesCounter[app]++
 			}
-			appPausingNodesCounter[app]++
 		}
+
+		info.Code = m.statusCodes.ok.Code
+		return appDeployedNodesCounter, appBootstrappingNodesCounter, appPausingNodesCounter, numEventingNodes, info
 	}
 
 	info.Code = m.statusCodes.ok.Code
-	return appDeployedNodesCounter, appBootstrappingNodesCounter, appPausingNodesCounter, numEventingNodes, info
+	return appDeployedNodesCounter, appBootstrappingNodesCounter, nil, numEventingNodes, info
 }
 
 // Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
@@ -742,9 +748,15 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 
 	deployedApps := make(map[string]string)
 	for app, numNodesDeployed := range appDeployedNodesCounter {
-		_, ok := appPausingNodesCounter[app]
-		if numNodesDeployed == numEventingNodes && !ok {
-			deployedApps[app] = ""
+		if appPausingNodesCounter != nil {
+			_, ok := appPausingNodesCounter[app]
+			if numNodesDeployed == numEventingNodes && !ok {
+				deployedApps[app] = ""
+			}
+		} else {
+			if numNodesDeployed == numEventingNodes {
+				deployedApps[app] = ""
+			}
 		}
 	}
 
@@ -1251,20 +1263,24 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 	_, procStatExists := settings["processing_status"]
 	_, depStatExists := settings["deployment_status"]
 
-	if procStatExists || depStatExists {
-		if settings["deployment_status"].(bool) {
-			status, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
-			if err != nil {
-				logging.Errorf("%s %s", logPrefix, err)
-				info.Code = m.statusCodes.errStatusesNotFound.Code
-				info.Info = "Failed to find app status"
-				return
-			}
+	mhVersion := eventingVerMap["mad-hatter"]
 
-			if status {
-				info.Code = m.statusCodes.errAppNotInit.Code
-				info.Info = "Function is undergoing bootstrap"
-				return
+	if procStatExists || depStatExists {
+		if m.compareEventingVersion(mhVersion) {
+			if settings["deployment_status"].(bool) {
+				status, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
+				if err != nil {
+					logging.Errorf("%s %s", logPrefix, err)
+					info.Code = m.statusCodes.errStatusesNotFound.Code
+					info.Info = "Failed to find app status"
+					return
+				}
+
+				if status {
+					info.Code = m.statusCodes.errAppNotInit.Code
+					info.Info = "Function is undergoing bootstrap"
+					return
+				}
 			}
 		}
 
@@ -1293,8 +1309,6 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 	deployedApps := m.superSup.GetDeployedApps()
 	if pOk && dOk {
-		mhVersion := eventingVerMap["mad-hatter"]
-
 		// Check for pause processing
 		if deploymentStatus && !processingStatus {
 			if !m.compareEventingVersion(mhVersion) {
@@ -1386,7 +1400,7 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 	app.AppHandlers = string(config.AppCode())
 	app.Name = string(config.AppName())
 	app.ID = int(config.Id())
-	app.FunctionID = uint32(config.FunctionID())
+	app.FunctionID = uint32(config.HandlerUUID())
 	app.FunctionInstanceID = string(config.FunctionInstanceID())
 
 	d := new(cfg.DepCfg)
@@ -1404,7 +1418,7 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 			newBucket := bucket{
 				Alias:      string(b.Alias()),
 				BucketName: string(b.BucketName()),
-				Access:     string(b.Access()),
+				Access:     string(config.Access(i)),
 			}
 			buckets = append(buckets, newBucket)
 		}
@@ -1737,13 +1751,14 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 		curlBindings = append(curlBindings, curlBindingsEnd)
 	}
 
-	cfg.DepCfgStartCurlVector(builder, len(curlBindings))
+	cfg.ConfigStartCurlVector(builder, len(curlBindings))
 	for i := 0; i < len(curlBindings); i++ {
 		builder.PrependUOffsetT(curlBindings[i])
 	}
 	curlBindingsVector := builder.EndVector(len(curlBindings))
 
 	var bNames []flatbuffers.UOffsetT
+	var bucketAccess []flatbuffers.UOffsetT
 	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
 		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
 		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
@@ -1752,11 +1767,17 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 		cfg.BucketStart(builder)
 		cfg.BucketAddAlias(builder, alias)
 		cfg.BucketAddBucketName(builder, bName)
-		cfg.BucketAddAccess(builder, bAccess)
 		csBucket := cfg.BucketEnd(builder)
 
 		bNames = append(bNames, csBucket)
+		bucketAccess = append(bucketAccess, bAccess)
 	}
+
+	cfg.ConfigStartAccessVector(builder, len(bucketAccess))
+	for i := 0; i < len(bucketAccess); i++ {
+		builder.PrependUOffsetT(bucketAccess[i])
+	}
+	access := builder.EndVector(len(bucketAccess))
 
 	cfg.DepCfgStartBucketsVector(builder, len(bNames))
 	for i := 0; i < len(bNames); i++ {
@@ -1769,7 +1790,6 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 
 	cfg.DepCfgStart(builder)
 	cfg.DepCfgAddBuckets(builder, buckets)
-	cfg.DepCfgAddCurl(builder, curlBindingsVector)
 	cfg.DepCfgAddMetadataBucket(builder, metaBucket)
 	cfg.DepCfgAddSourceBucket(builder, sourceBucket)
 	depcfg := cfg.DepCfgEnd(builder)
@@ -1783,7 +1803,9 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	cfg.ConfigAddAppCode(builder, appCode)
 	cfg.ConfigAddAppName(builder, aName)
 	cfg.ConfigAddDepCfg(builder, depcfg)
-	cfg.ConfigAddFunctionID(builder, app.FunctionID)
+	cfg.ConfigAddHandlerUUID(builder, app.FunctionID)
+	cfg.ConfigAddCurl(builder, curlBindingsVector)
+	cfg.ConfigAddAccess(builder, access)
 	cfg.ConfigAddFunctionInstanceID(builder, fiid)
 
 	udtp := byte(0x0)
@@ -2807,12 +2829,17 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 			status.NumBootstrappingNodes = num
 		}
 
-		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), status.Name)
-		if err != nil {
-			info.Code = m.statusCodes.errInvalidConfig.Code
-			return
+		mhVersion := eventingVerMap["mad-hatter"]
+		if m.compareEventingVersion(mhVersion) {
+			bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), status.Name)
+			if err != nil {
+				info.Code = m.statusCodes.errInvalidConfig.Code
+				return
+			}
+			status.CompositeStatus = m.determineStatus(status, appPausingNodesCounter, numEventingNodes, bootstrapStatus)
+		} else {
+			status.CompositeStatus = m.determineStatus(status, appPausingNodesCounter, numEventingNodes, false)
 		}
-		status.CompositeStatus = m.determineStatus(status, appPausingNodesCounter, numEventingNodes, bootstrapStatus)
 		response.Apps = append(response.Apps, status)
 	}
 	return
@@ -2847,8 +2874,14 @@ func (m *ServiceMgr) determineStatus(status appStatus, pausingAppsList map[strin
 	}
 
 	if status.DeploymentStatus && !status.ProcessingStatus {
-		_, ok := pausingAppsList[status.Name]
-		if status.NumDeployedNodes == numEventingNodes && !ok {
+		if pausingAppsList != nil {
+			_, ok := pausingAppsList[status.Name]
+			if status.NumDeployedNodes == numEventingNodes && !ok {
+				return "paused"
+			}
+			return "pausing"
+		}
+		if status.NumDeployedNodes == numEventingNodes {
 			return "paused"
 		}
 		return "pausing"

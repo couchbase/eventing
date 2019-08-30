@@ -35,33 +35,41 @@ func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 }
 
 func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
-	logPrefix := "ServiceMgr::CheckIfDeployedAndRunning"
-	bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
-	if err != nil {
-		logging.Errorf("%s %s", logPrefix, err)
-		return false
-	}
+	mhVersion := eventingVerMap["mad-hatter"]
+	if m.compareEventingVersion(mhVersion) {
+		logPrefix := "ServiceMgr::CheckIfDeployedAndRunning"
+		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
+		if err != nil {
+			logging.Errorf("%s %s", logPrefix, err)
+			return false
+		}
 
-	if bootstrapStatus {
-		return false
-	}
+		if bootstrapStatus {
+			return false
+		}
 
-	return m.superSup.GetAppState(appName) == common.AppStateEnabled
+		return m.superSup.GetAppState(appName) == common.AppStateEnabled
+	}
+	bootstrappingApps := m.superSup.BootstrapAppList()
+	_, isBootstrapping := bootstrappingApps[appName]
+
+	return !isBootstrapping && m.superSup.GetAppState(appName) == common.AppStateEnabled
 }
 
 func (m *ServiceMgr) checkCompressHandler() bool {
+	mhVersion := eventingVerMap["mad-hatter"]
 	config, info := m.getConfig()
 	if info.Code != m.statusCodes.ok.Code {
-		return true
+		return m.compareEventingVersion(mhVersion)
 	}
 
 	// In Mad-Hatter,eventing handler will be compressed by default
 	// It can be turned off by setting force_compress to false
 	if val, exists := config["force_compress"]; exists {
-		return val.(bool)
+		return val.(bool) && m.compareEventingVersion(mhVersion)
 	}
 
-	return true
+	return m.compareEventingVersion(mhVersion)
 }
 
 func decodeRev(b service.Revision) uint64 {
@@ -286,11 +294,11 @@ func (m *ServiceMgr) getSourceBinding(cfg *depCfg) *bucket {
 	return nil
 }
 
-func (m *ServiceMgr) getSourceBindingFromFlatBuf(config *cfg.DepCfg) *cfg.Bucket {
+func (m *ServiceMgr) getSourceBindingFromFlatBuf(config *cfg.DepCfg, appdata *cfg.Config) *cfg.Bucket {
 	binding := new(cfg.Bucket)
 	for idx := 0; idx < config.BucketsLength(); idx++ {
 		if config.Buckets(binding, idx) {
-			if string(binding.BucketName()) == string(config.SourceBucket()) && string(binding.Access()) == "rw" {
+			if string(binding.BucketName()) == string(config.SourceBucket()) && string(appdata.Access(idx)) == "rw" {
 				return binding
 			}
 		}
@@ -324,7 +332,7 @@ func (m *ServiceMgr) isAppDeployable(app *application) bool {
 		config := new(cfg.DepCfg)
 		depcfg := appdata.DepCfg(config)
 		if app.DeploymentConfig.SourceBucket == string(depcfg.SourceBucket()) {
-			binding := m.getSourceBindingFromFlatBuf(depcfg)
+			binding := m.getSourceBindingFromFlatBuf(depcfg, appdata)
 			if binding != nil {
 				return false
 			}
