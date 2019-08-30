@@ -13,8 +13,11 @@
 #include <v8.h>
 #include <vector>
 
+#include "js_exception.h"
 #include "query-helper.h"
 #include "utils.h"
+
+extern std::atomic<int64_t> n1ql_op_exception_count;
 
 Query::Helper::Helper(v8::Isolate *isolate,
                       const v8::Local<v8::Context> &context)
@@ -204,4 +207,29 @@ Query::Helper::GetErrorCodes(const std::string &error) {
 void Query::Helper::AccountLCBError(int err_code) {
   auto isolate_data = UnwrapData(isolate_);
   AddLcbException(isolate_data, err_code);
+}
+
+void Query::Helper::HandleRowError(const Query::Row &row) {
+  auto comm = UnwrapData(isolate_)->comm;
+  auto js_exception = UnwrapData(isolate_)->js_exception;
+
+  ++n1ql_op_exception_count;
+  // TODO : Refresh for server auth error also
+  if (row.is_client_auth_error) {
+    comm->Refresh();
+  }
+  // Error reported by RowCallback (coming from query server)
+  if (row.is_query_error) {
+    if (auto acc_info = AccountLCBError(row.data); acc_info.is_fatal) {
+      js_exception->ThrowN1QLError(acc_info.msg);
+      return;
+    }
+    js_exception->ThrowN1QLError(row.data);
+    return;
+  }
+  // Error reported by RowCallback (coming from LCB client)
+  if (row.is_client_error) {
+    AccountLCBError(row.err_code);
+    js_exception->ThrowN1QLError(row.data);
+  }
 }
