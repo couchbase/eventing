@@ -20,6 +20,8 @@ LogLevel SystemLog::level_ = logInfo;
 
 void SystemLog::setLogLevel(LogLevel level) { level_ = level; }
 
+LogLevel SystemLog::getLogLevel() { return level_; }
+
 bool SystemLog::getRedactOverride() {
   const char *evar = std::getenv("CB_EVENTING_NOREDACT");
   if (!evar) {

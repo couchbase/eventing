@@ -9,30 +9,26 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "query-iterator.h"
-
-#include <algorithm>
 #include <libcouchbase/couchbase.h>
-#include <libcouchbase/error.h>
 #include <libcouchbase/n1ql.h>
 #include <memory>
+#include <mutex>
 #include <regex>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <utility>
 
 #include "info.h"
 #include "isolate_data.h"
 #include "log.h"
+#include "query-iterator.h"
 #include "query-mgr.h"
 
-Query::Iterator::Iterator(const Query::Info &query_info, lcb_t instance,
-                          v8::Isolate *isolate, const lcb_U32 timeout)
-    : query_info_(query_info), connection_(instance),
-      fiber_mgr_(std::make_unique<folly::fibers::EventBaseLoopController>()),
-      isolate_(isolate), builder_(query_info, instance, timeout) {
-  dynamic_cast<folly::fibers::EventBaseLoopController &>(
-      fiber_mgr_.loopController())
-      .attachEventBase(event_base_);
+Query::Iterator::~Iterator() {
+  if (runner_.joinable()) {
+    runner_.join();
+  }
 }
 
 Query::Row Query::Iterator::Next() {
@@ -44,10 +40,8 @@ Query::Row Query::Iterator::Next() {
     return cursor_.GetRow();
   }
 
-  cursor_.writer.post();
-  event_base_.loopOnce();
-  cursor_.reader.wait();
-  cursor_.reader.reset();
+  cursor_.YieldTo(Cursor::ExecutionControl::kSDK);
+  cursor_.WaitFor(Cursor::ExecutionControl::kV8);
   return cursor_.GetRow();
 }
 
@@ -62,15 +56,17 @@ Query::Row Query::Iterator::Next() {
     return info;
   }
 
-  fiber_mgr_.addTask([this]() {
-    BatonGuard guard(cursor_.started_or_done);
-    auto helper = UnwrapData(isolate_)->query_helper;
+  cursor_.YieldTo(Cursor::ExecutionControl::kSDK);
+  std::thread runner([this]() -> void {
+    RunnerGuard guard(cursor_);
 
     auto result = lcb_n1ql_query(connection_, nullptr, builder_.GetCmd());
     if (result == LCB_SUCCESS) {
       result = lcb_wait(connection_);
     }
     if (result != LCB_SUCCESS) {
+      cursor_.is_last = true;
+      auto helper = UnwrapData(isolate_)->query_helper;
       helper->AccountLCBError(static_cast<int>(result));
       result_info_ = {true, lcb_strerror(connection_, result)};
     }
@@ -78,9 +74,10 @@ Query::Row Query::Iterator::Next() {
     auto query_mgr = UnwrapData(isolate_)->query_mgr;
     query_mgr->RestoreConnection(connection_);
   });
+  runner_ = std::move(runner);
 
-  event_base_.loopOnce();
-  cursor_.started_or_done.wait();
+  cursor_.WaitFor(Cursor::ExecutionControl::kV8);
+  has_peeked_ = true;
   state_ = State::kStarted;
   return result_info_;
 }
@@ -89,13 +86,7 @@ void Query::Iterator::RowCallback(lcb_t connection, int,
                                   const lcb_RESPN1QL *resp) {
   auto cursor =
       static_cast<Cursor *>(const_cast<void *>(lcb_get_cookie(connection)));
-  if (!cursor->is_streaming_started) {
-    cursor->started_or_done.post();
-    cursor->is_streaming_started = true;
-  }
 
-  cursor->writer.wait();
-  cursor->writer.reset();
   cursor->data.assign(resp->row, resp->nrow);
   cursor->is_last = (resp->rflags & LCB_RESP_F_FINAL) != 0;
   cursor->client_err_code = resp->rc;
@@ -119,7 +110,10 @@ void Query::Iterator::RowCallback(lcb_t connection, int,
                 << " resp rflags : " << resp->rflags
                 << " resp rc : " << resp->rc << " is_last : " << std::endl;
 
-  cursor->reader.post();
+  cursor->YieldTo(Cursor::ExecutionControl::kV8);
+  if (!cursor->is_last) {
+    cursor->WaitFor(Cursor::ExecutionControl::kSDK);
+  }
 }
 
 void Query::Iterator::Stop() {
@@ -127,14 +121,15 @@ void Query::Iterator::Stop() {
     return;
   }
 
-  if (!cursor_.is_last && cursor_.is_streaming_started) {
+  if (!cursor_.is_last) {
     // Subsequent RowCallback won't be invoked
     lcb_n1ql_cancel(connection_, builder_.GetHandle());
+    cursor_.YieldTo(Cursor::ExecutionControl::kSDK);
   }
-  cursor_.writer.post();
 
-  // Consume all events
-  event_base_.loop();
+  if (runner_.joinable()) {
+    runner_.join();
+  }
   state_ = State::kStopped;
 }
 
@@ -144,7 +139,9 @@ bool Query::Iterator::IsStatusSuccess(const std::string &row) {
 }
 
 ::Info Query::Iterator::Wait() {
-  event_base_.loop();
+  if (runner_.joinable()) {
+    runner_.join();
+  }
   return result_info_;
 }
 
@@ -155,6 +152,18 @@ Query::Row Query::Iterator::Peek() {
   auto row = Next();
   has_peeked_ = true;
   return row;
+}
+
+void Query::Iterator::Cursor::WaitFor(ExecutionControl control) {
+  std::unique_lock<std::mutex> lock(control_sync_);
+  control_signal_.wait(
+      lock, [this, &control]() -> bool { return control_ == control; });
+}
+
+void Query::Iterator::Cursor::YieldTo(const ExecutionControl control) {
+  std::lock_guard<std::mutex> lock(control_sync_);
+  control_ = control;
+  control_signal_.notify_one();
 }
 
 Query::Row Query::Iterator::Cursor::GetRow() const {

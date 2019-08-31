@@ -12,9 +12,8 @@
 #ifndef CONN_POOL_H
 #define CONN_POOL_H
 
-#include "query-iterator.h"
-
 #include <libcouchbase/couchbase.h>
+#include <mutex>
 #include <queue>
 #include <string>
 #include <utility>
@@ -57,7 +56,7 @@ private:
   const std::size_t capacity_;
   std::size_t current_size_{0};
   std::queue<lcb_t> pool_;
-  folly::fibers::TimedMutex pool_mutex_;
+  std::mutex pool_sync_;
 };
 } // namespace Connection
 

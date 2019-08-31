@@ -18,20 +18,12 @@
 #  EVENTING_QUERY_FOUND - Boolean to suggest if the necessary sources were found
 #  EVENTING_QUERY_INCLUDE_DIR - Directory to be #includ-ed
 #  EVENTING_QUERY_SRC - Sources that need to be compiled
-#  EVENTING_QUERY_LIBRARIES - Libraries that Eventing Query depends on which need to be linked against
 
 if (NOT EVENTING_QUERY_FOUND)
-    include(FindCouchbaseFolly)
-    include(FindCouchbaseBoost)
-    include(FindCouchbaseLibevent)
-
     set(QUERY_DIR ${CMAKE_SOURCE_DIR}/goproj/src/github.com/couchbase/eventing/libs/query)
 
     set(EVENTING_QUERY_INCLUDE_DIR
-            ${QUERY_DIR}/include
-            ${FOLLY_INCLUDE_DIR}
-            ${BOOST_INCLUDE_DIR}
-            ${LIBEVENT_INCLUDE_DIR})
+            ${QUERY_DIR}/include)
 
     set(EVENTING_QUERY_SRC
             ${QUERY_DIR}/src/iterator.cc
@@ -41,17 +33,5 @@ if (NOT EVENTING_QUERY_FOUND)
             ${QUERY_DIR}/src/helper.cc
             ${QUERY_DIR}/src/builder.cc)
 
-    set(EVENTING_QUERY_LIBRARIES
-            ${FOLLY_LIBRARIES}
-            ${Boost_CONTEXT_LIBRARY})
-
-    if (WIN32)
-        set(NT_REQUIRED_VERSION 0x0601)
-        add_definitions(-D_WIN32_WINNT=${NT_REQUIRED_VERSION})
-        set(EVENTING_QUERY_LIBRARIES
-                ${EVENTING_QUERY_LIBRARIES}
-                ws2_32.lib
-                dnsapi.lib)
-    endif ()
-    mark_as_advanced(EVENTING_QUERY_FOUND EVENTING_QUERY_INCLUDE_DIR EVENTING_QUERY_SRC EVENTING_QUERY_LIBRARIES)
+    mark_as_advanced(EVENTING_QUERY_FOUND EVENTING_QUERY_INCLUDE_DIR EVENTING_QUERY_SRC)
 endif ()

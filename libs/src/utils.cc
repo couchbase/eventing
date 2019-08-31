@@ -657,3 +657,20 @@ std::string GetConnectionStr(const std::string &end_point,
   }
   return connstr;
 }
+
+std::string BuildUrl(const std::string host, const std::string path) {
+  std::size_t host_length = host.length();
+  std::size_t path_length = path.length();
+
+  if (host_length > 1 && path_length > 1) {
+    if ((host[host_length - 1] == '/' && host[host_length - 2] == '/') ||
+        (path[0] == '/' && path[1] == '/')) {
+      return host + path;
+    } else if (host[host_length - 1] == '/' && path[0] == '/') {
+      return host + path.substr(1, path_length - 1);
+    } else if (host[host_length - 1] != '/' && path[0] != '/') {
+      return host + '/' + path;
+    }
+  }
+  return host + path;
+}

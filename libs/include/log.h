@@ -44,6 +44,7 @@ class SystemLog : public std::ostringstream {
 public:
   static LogLevel level_;
   static void setLogLevel(LogLevel level);
+  static LogLevel getLogLevel();
   static bool getRedactOverride();
   static bool isDisabled(LogLevel check) { return check > level_; }
   static std::string redact(const std::string msg) {

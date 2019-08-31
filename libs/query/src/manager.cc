@@ -9,17 +9,15 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "conn-pool.h"
-#include "query-iterable.h"
-
 #include <memory>
 #include <mutex>
 
-#include "comm.h"
+#include "conn-pool.h"
 #include "info.h"
 #include "isolate_data.h"
 #include "js_exception.h"
 #include "query-helper.h"
+#include "query-iterable.h"
 #include "query-mgr.h"
 #include "utils.h"
 
