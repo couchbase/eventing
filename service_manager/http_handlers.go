@@ -355,8 +355,13 @@ func getGlobalAppLog(m *ServiceMgr, appName string, sz int64, creds http.Header)
 			logging.Errorf("Got failure reading http request to %v: %v", node, err)
 			continue
 		}
-		if len(body) > 0 {
-			lines = append(lines, string(body))
+
+		msgs := strings.Split(string(body), "\n")
+		for _, msg := range msgs {
+			msg = strings.Trim(msg, "\r")
+			if len(msg) > 0 {
+				lines = append(lines, msg)
+			}
 		}
 	}
 	return lines
