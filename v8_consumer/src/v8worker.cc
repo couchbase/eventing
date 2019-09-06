@@ -9,14 +9,14 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "query-iterable.h"
-
 #include <mutex>
+#include <nlohmann/json.hpp>
 
 #include "bucket.h"
 #include "curl.h"
 #include "insight.h"
 #include "query-helper.h"
+#include "query-iterable.h"
 #include "query-mgr.h"
 #include "retry_util.h"
 #include "timer.h"
@@ -411,106 +411,111 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 }
 
 void V8Worker::RouteMessage() {
-  const flatbuf::payload::Payload *payload;
-  std::string val, context, callback;
-
   while (!thread_exit_cond_.load()) {
     std::unique_ptr<WorkerMessage> msg;
     if (!worker_queue_->Pop(msg)) {
       continue;
     }
-    payload = flatbuf::payload::GetPayload(
-        (const void *)msg->payload.payload.c_str());
+    const auto payload = flatbuf::payload::GetPayload(
+        static_cast<const void *>(msg->payload.payload.c_str()));
 
     LOG(logTrace) << " event: " << static_cast<int16_t>(msg->header.event)
                   << " opcode: " << static_cast<int16_t>(msg->header.opcode)
                   << " metadata: " << RU(msg->header.metadata)
                   << " partition: " << msg->header.partition << std::endl;
 
-    int vb_no = 0;
-    uint64_t seq_no = 0;
-
     switch (getEvent(msg->header.event)) {
     case eDCP:
       switch (getDCPOpcode(msg->header.opcode)) {
       case oDelete:
         ++dcp_delete_msg_counter;
-        if (kSuccess == ParseMetadata(msg->header.metadata, vb_no, seq_no)) {
-          FilterLock();
-          auto filter_seq_no = GetVbFilter(vb_no);
-          if (filter_seq_no > 0 && seq_no <= filter_seq_no) {
-            ++filtered_dcp_delete_counter;
-            if (seq_no == filter_seq_no) {
-              EraseVbFilter(vb_no);
-            }
-          } else {
-            this->SendDelete(msg->header.metadata, vb_no, seq_no);
-          }
-          FilterUnlock();
-        } else {
-          ++dcp_delete_parse_failure;
+        if (IsValidDCPEvent(msg, oDelete)) {
+          this->SendDelete(msg->header.metadata);
         }
         break;
+
       case oMutation:
-        payload = flatbuf::payload::GetPayload(
-            (const void *)msg->payload.payload.c_str());
-        val.assign(payload->value()->str());
         ++dcp_mutation_msg_counter;
-        if (kSuccess == ParseMetadata(msg->header.metadata, vb_no, seq_no)) {
-          FilterLock();
-          auto filter_seq_no = GetVbFilter(vb_no);
-          if (filter_seq_no > 0 && seq_no <= filter_seq_no) {
-            ++filtered_dcp_mutation_counter;
-            if (seq_no == filter_seq_no) {
-              EraseVbFilter(vb_no);
-            }
-          } else {
-            this->SendUpdate(val, msg->header.metadata, vb_no, seq_no, "json");
-          }
-          FilterUnlock();
-        } else {
-          ++dcp_mutation_parse_failure;
+        if (IsValidDCPEvent(msg, oMutation)) {
+          this->SendUpdate(payload->value()->str(), msg->header.metadata);
         }
         break;
+
       default:
         LOG(logError) << "Received invalid DCP opcode" << std::endl;
-        break;
+		break;
       }
       break;
+
     case eTimer:
       switch (getTimerOpcode(msg->header.opcode)) {
       case oTimer:
-        payload = flatbuf::payload::GetPayload(
-            (const void *)msg->payload.payload.c_str());
-        callback.assign(payload->callback_fn()->str());
-        context.assign(payload->context()->str());
-        timer_msg_counter++;
-        this->SendTimer(callback, context);
+        ++timer_msg_counter;
+        this->SendTimer(payload->callback_fn()->str(),
+                        payload->context()->str());
         break;
+
       default:
         LOG(logError) << "Received invalid timer opcode" << std::endl;
         break;
       }
       break;
+
     case eDebugger:
       switch (getDebuggerOpcode(msg->header.opcode)) {
       case oDebuggerStart:
         this->StartDebugger();
         break;
+
       case oDebuggerStop:
         this->StopDebugger();
         break;
+
       default:
         LOG(logError) << "Received invalid debugger opcode" << std::endl;
         break;
       }
+
     default:
       LOG(logError) << "Received unsupported event" << std::endl;
       break;
     }
 
-    messages_processed_counter++;
+    ++messages_processed_counter;
   }
+}
+
+bool V8Worker::IsValidDCPEvent(const std::unique_ptr<WorkerMessage> &msg,
+                               dcp_opcode event_type) {
+  auto vb_no = 0;
+  uint64_t seq_no = 0;
+  auto payload = flatbuf::payload::GetPayload(
+      static_cast<const void *>(msg->payload.payload.c_str()));
+  if (kSuccess != ParseMetadata(msg->header.metadata, vb_no, seq_no)) {
+    if (event_type == oMutation) {
+      ++dcp_mutation_parse_failure;
+    } else if (event_type == oDelete) {
+      ++dcp_delete_parse_failure;
+    }
+    return false;
+  }
+
+  std::lock_guard<std::mutex> guard(bucketops_lock_);
+  const auto filter_seq_no = GetVbFilter(vb_no);
+  if (filter_seq_no > 0 && seq_no <= filter_seq_no) {
+    // Skip filtered event
+    ++filtered_dcp_mutation_counter;
+    if (seq_no == filter_seq_no) {
+      EraseVbFilter(vb_no);
+    }
+    return false;
+  }
+
+  currently_processed_vb_ = vb_no;
+  currently_processed_seqno_ = seq_no;
+  vb_seq_[vb_no]->store(seq_no, std::memory_order_seq_cst);
+  UpdateBucketopsSeqno(vb_no, seq_no);
+  return true;
 }
 
 bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
@@ -569,9 +574,8 @@ void V8Worker::UpdateCurlLatencyHistogram(const Time::time_point &start) {
   curl_latency_stats_->Add(ns.count() / 1000);
 }
 
-int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
-                         uint64_t seq_no, std::string doc_type) {
-  Time::time_point start_time = Time::now();
+int V8Worker::SendUpdate(const std::string &value, const std::string &meta) {
+  const auto start_time = Time::now();
 
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
@@ -580,27 +584,17 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  LOG(logTrace) << "value: " << RU(value) << " meta: " << RU(meta)
-                << " doc_type: " << doc_type << std::endl;
+  LOG(logTrace) << "value: " << RU(value) << " meta: " << RU(meta) << std::endl;
   v8::TryCatch try_catch(isolate_);
 
   v8::Local<v8::Value> args[2];
-  if (doc_type == "json") {
-    if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, value)), &args[0])) {
-      return kToLocalFailed;
-    }
-  } else {
-    args[0] = v8Str(isolate_, value);
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, value)), &args[0])) {
+    return kToLocalFailed;
   }
-
   if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[1])) {
     return kToLocalFailed;
   }
 
-  currently_processed_vb_ = vb_no;
-  currently_processed_seqno_ = seq_no;
-  vb_seq_[vb_no]->store(seq_no, std::memory_order_seq_cst);
-  UpdateBucketopsSeqno(vb_no, seq_no);
   if (on_update_.IsEmpty()) {
     UpdateHistogram(start_time);
     return kOnUpdateCallFail;
@@ -647,8 +641,8 @@ int V8Worker::SendUpdate(std::string value, std::string meta, int vb_no,
   return kSuccess;
 }
 
-int V8Worker::SendDelete(std::string meta, int vb_no, uint64_t seq_no) {
-  Time::time_point start_time = Time::now();
+int V8Worker::SendDelete(const std::string &meta) {
+  const auto start_time = Time::now();
 
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
@@ -665,10 +659,6 @@ int V8Worker::SendDelete(std::string meta, int vb_no, uint64_t seq_no) {
     return kToLocalFailed;
   }
 
-  currently_processed_vb_ = vb_no;
-  currently_processed_seqno_ = seq_no;
-  vb_seq_[vb_no]->store(seq_no, std::memory_order_seq_cst);
-  UpdateBucketopsSeqno(vb_no, seq_no);
   if (on_delete_.IsEmpty()) {
     UpdateHistogram(start_time);
     return kOnDeleteCallFail;
@@ -702,7 +692,7 @@ int V8Worker::SendDelete(std::string meta, int vb_no, uint64_t seq_no) {
                   << ExceptionString(isolate_, context, &try_catch)
                   << std::endl;
     UpdateHistogram(start_time);
-    on_delete_failure++;
+    ++on_delete_failure;
     return kOnDeleteCallFail;
   }
 
@@ -944,84 +934,25 @@ std::vector<uv_buf_t> V8Worker::BuildResponse(const std::string &payload,
 }
 
 int V8Worker::ParseMetadata(const std::string &metadata, int &vb_no,
-                            uint64_t &seq_no) {
+                            uint64_t &seq_no) const {
   int skip_ack;
   return ParseMetadataWithAck(metadata, vb_no, seq_no, skip_ack, false);
 }
 
-int V8Worker::ParseMetadataWithAck(const std::string &metadata, int &vb_no,
+int V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &vb_no,
                                    uint64_t &seq_no, int &skip_ack,
-                                   bool ack_check) {
-  v8::Locker locker(isolate_);
-  v8::Isolate::Scope isolate_scope(isolate_);
-  v8::HandleScope handle_scope(isolate_);
-
-  auto context = context_.Get(isolate_);
-  v8::Context::Scope context_scope(context);
-
-  v8::Local<v8::Value> metadata_val;
-  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, metadata)),
-                &metadata_val)) {
-    return kToLocalFailed;
+                                   const bool ack_check) const {
+  auto metadata = nlohmann::json::parse(metadata_str, nullptr, false);
+  if (metadata.is_discarded()) {
+    return kJSONParseFailed;
   }
 
-  v8::Local<v8::Object> metadata_obj;
-
-  if (!TO_LOCAL(metadata_val->ToObject(context), &metadata_obj)) {
-    return kToLocalFailed;
-  }
-
-  v8::Local<v8::Value> seq_val;
-  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "seq")), &seq_val)) {
-    return kToLocalFailed;
-  }
-
-  v8::Local<v8::Value> vb_val;
-  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "vb")), &vb_val)) {
-    return kToLocalFailed;
-  }
-
-  v8::Local<v8::Value> skip_ack_val;
+  seq_no = metadata["seq"].get<uint64_t>();
+  vb_no = metadata["vb"].get<int>();
   if (ack_check) {
-    if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "skip_ack")),
-                  &skip_ack_val)) {
-      return kToLocalFailed;
-    }
+    skip_ack = metadata["skip_ack"].get<int>();
   }
-
-  if (seq_val->IsNumber() && vb_val->IsNumber()) {
-    v8::Local<v8::Integer> vb_val_int;
-    if (!TO_LOCAL(vb_val->ToInteger(context), &vb_val_int)) {
-      return kToLocalFailed;
-    }
-
-    v8::Local<v8::Integer> seq_val_int;
-    if (!TO_LOCAL(seq_val->ToInteger(context), &seq_val_int)) {
-      return kToLocalFailed;
-    }
-
-    v8::Local<v8::Integer> skip_ack_int;
-    if (ack_check) {
-      if (!skip_ack_val->IsNumber()) {
-        return kToLocalFailed;
-      }
-
-      if (!TO_LOCAL(skip_ack_val->ToInteger(context), &skip_ack_int)) {
-        return kToLocalFailed;
-      }
-    }
-
-    vb_no = vb_val_int->Value();
-    seq_no = seq_val_int->Value();
-
-    if (ack_check) {
-      skip_ack = skip_ack_int->Value();
-    }
-
-    return kSuccess;
-  }
-
-  return kToLocalFailed;
+  return kSuccess;
 }
 
 void V8Worker::UpdateVbFilter(int vb_no, uint64_t seq_no) {

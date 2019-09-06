@@ -25,6 +25,7 @@
 #include <libplatform/libplatform.h>
 #include <list>
 #include <map>
+#include <memory>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -167,7 +168,8 @@ enum RETURN_CODE {
   kFailedInitBucketHandle,
   kOnUpdateCallFail,
   kOnDeleteCallFail,
-  kToLocalFailed
+  kToLocalFailed,
+  kJSONParseFailed
 };
 
 class Bucket;
@@ -216,11 +218,12 @@ public:
 
   int V8WorkerLoad(std::string source_s);
   void RouteMessage();
+  bool IsValidDCPEvent(const std::unique_ptr<WorkerMessage> &msg,
+                       dcp_opcode event_type);
   void TaskDurationWatcher();
 
-  int SendUpdate(std::string value, std::string meta, int vb_no,
-                 uint64_t seq_no, std::string doc_type);
-  int SendDelete(std::string meta, int vb_no, uint64_t seq_no);
+  int SendUpdate(const std::string &value, const std::string &meta);
+  int SendDelete(const std::string &meta);
   void SendTimer(std::string callback, std::string timer_ctx);
   std::string CompileHandler(std::string handler);
   CodeVersion IdentifyVersion(std::string handler);
@@ -258,9 +261,11 @@ public:
 
   void FilterUnlock();
 
-  int ParseMetadata(const std::string &metadata, int &vb_no, uint64_t &seq_no);
-  int ParseMetadataWithAck(const std::string &metadata, int &vb_no,
-                           uint64_t &seq_no, int &skip_ack, bool ack_check);
+  int ParseMetadata(const std::string &metadata, int &vb_no,
+                    uint64_t &seq_no) const;
+  int ParseMetadataWithAck(const std::string &metadata_str, int &vb_no,
+                           uint64_t &seq_no, int &skip_ack,
+                           bool ack_check) const;
 
   void SetThreadExitFlag();
 

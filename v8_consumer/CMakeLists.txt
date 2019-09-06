@@ -18,6 +18,7 @@ INCLUDE (FindCouchbaseLibuv)
 INCLUDE (FindCouchbaseV8)
 INCLUDE (FindCouchbaseBreakpad)
 INCLUDE (../libs/query/FindEventingQuery.cmake)
+INCLUDE (FindCouchbaseNlohmannJson)
 
 SET(LIBS_HEADERS
         ../libs/include
@@ -52,7 +53,8 @@ INCLUDE_DIRECTORIES(AFTER
                      ${FLATBUFFERS_INCLUDE_DIR}
                      ${CMAKE_INSTALL_PREFIX}/include
                      ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector
-                     ${LIBS_HEADERS})
+                     ${LIBS_HEADERS}
+                     ${NLOHMANN_JSON_INCLUDE_DIR})
 
 IF (NOT WIN32)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer -DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT")
