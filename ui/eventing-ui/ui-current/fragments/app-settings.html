@@ -243,7 +243,8 @@
           <span
                   class="fix-width-2 padding-right-half margin-bottom-half"
                   ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'alias'">
-            <select ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].access">
+            <select ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+	      ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].access">
               <option value="r">read only</option>
               <option value="rw">read and write</option>
             </select>
