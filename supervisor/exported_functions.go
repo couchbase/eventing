@@ -356,7 +356,7 @@ func (s *SuperSupervisor) CheckpointBlobDump(appName string) (interface{}, error
 }
 
 // StopProducer tries to gracefully stop running producer instance for a function
-func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool) {
+func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool, updateMetakv bool) {
 	logPrefix := "SuperSupervisor::StopProducer"
 
 	s.appRWMutex.Lock()
@@ -364,12 +364,12 @@ func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool) {
 	s.appProcessingStatus[appName] = false
 	s.appRWMutex.Unlock()
 
-	logging.Infof("%s [%d] Function: %s stopping running producer instance",
-		logPrefix, s.runningFnsCount(), appName)
+	logging.Infof("%s [%d] Function: %s stopping running producer instance, skipMetaCleanup: %t, updateMetakv: %t",
+		logPrefix, s.runningFnsCount(), appName, skipMetaCleanup, updateMetakv)
 
 	s.deleteFromLocallyDeployedApps(appName)
 
-	s.CleanupProducer(appName, skipMetaCleanup)
+	s.CleanupProducer(appName, skipMetaCleanup, updateMetakv)
 	s.deleteFromDeployedApps(appName)
 }
 
