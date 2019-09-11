@@ -18,7 +18,6 @@ table Payload {
                            // In some case we need to skip lcb connects i.e. while checking for
                            // compilation issues in supplied handler code.
   timer_context_size:long;
-  function_instance_id:string;
   handler_headers: [string]; // List of statements that will prefixed to handler code post code constraint checks
   handler_footers: [string]; // List of statements that will appended to handler code post code constraint checks
 
@@ -41,6 +40,7 @@ table Payload {
   partitionCount:short; // Virtual partitions for sharding workload among c++ workers
   thr_map: [VbsThreadMap]; // Mapping of vbuckets to std::thread associated with V8Worker instance;
 
+  function_instance_id:string;
 }
 
 root_type Payload;

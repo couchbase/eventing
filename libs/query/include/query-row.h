@@ -33,4 +33,4 @@ struct Row {
 };
 } // namespace Query
 
-#endif QUERY_ROW_H
+#endif // QUERY_ROW_H
