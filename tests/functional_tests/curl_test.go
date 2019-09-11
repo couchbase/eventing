@@ -145,6 +145,15 @@ func TestCurlGetRedirectMax(t *testing.T) {
 	curl.testGet()
 }
 
+func TestCurlGetBeyondBinding(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_get_beyond_binding",
+		testName:   "TestCurlGetBeyondBinding",
+		testHandle: t,
+	}
+	curl.testGet()
+}
+
 // GET + types + auth
 func TestCurlGetJSONDigestAuth(t *testing.T) {
 	curl := curlTester{
