@@ -269,6 +269,22 @@ V8Worker::~V8Worker() {
   delete worker_queue_;
 }
 
+struct DebugExecuteGuard {
+  DebugExecuteGuard(v8::Isolate *isolate) : isolate_(isolate) {
+    UnwrapData(isolate_)->is_executing_ = true;
+  }
+
+  ~DebugExecuteGuard() { UnwrapData(isolate_)->is_executing_ = false; }
+
+  DebugExecuteGuard(const DebugExecuteGuard &) = delete;
+  DebugExecuteGuard(DebugExecuteGuard &&) = delete;
+  DebugExecuteGuard &operator=(const DebugExecuteGuard &) = delete;
+  DebugExecuteGuard &operator=(DebugExecuteGuard &&) = delete;
+
+private:
+  v8::Isolate *isolate_;
+};
+
 // Re-compile and execute handler code for debugger
 bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
                             int args_len) {
@@ -307,7 +323,7 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
                         IsTerminatingRetriable, IsExecutionTerminating,
                         isolate_);
-
+  DebugExecuteGuard guard(isolate_);
   if (!TO_LOCAL(func->Call(context, v8::Null(isolate_), args_len, args),
                 &result)) {
     return false;
@@ -443,7 +459,7 @@ void V8Worker::RouteMessage() {
 
       default:
         LOG(logError) << "Received invalid DCP opcode" << std::endl;
-		break;
+        break;
       }
       break;
 
