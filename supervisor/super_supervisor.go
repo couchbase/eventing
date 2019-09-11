@@ -371,6 +371,9 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 			case false:
 				state := s.GetAppState(appName)
+				updateMetakv := false
+				skipMetaCleanup := false
+
 				logging.Infof("%s [%d] Function: %s Begin undeploy process. Current state: %d", logPrefix, s.runningFnsCount(), appName, state)
 
 				if state == common.AppStateEnabled || state == common.AppStatePaused || state == common.AppStateUndeployed {
@@ -385,7 +388,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 					s.deleteFromLocallyDeployedApps(appName)
 
-					s.CleanupProducer(appName, false)
+					s.CleanupProducer(appName, skipMetaCleanup, updateMetakv)
 					s.deleteFromDeployedApps(appName)
 				}
 
@@ -778,7 +781,7 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []st
 }
 
 // CleanupProducer purges all metadata  related to a function from couchbase bucket
-func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool) error {
+func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool, updateMetakv bool) error {
 	logPrefix := "SuperSupervisor::CleanupProducer"
 
 	if p, ok := s.runningFns()[appName]; ok {
@@ -791,8 +794,8 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool) 
 			logging.Infof("%s [%d] Function: %s cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
 		}()
 
-		logging.Infof("%s [%d] Function: %s stopping running instance of Eventing.Producer, skipMetaCleanup: %t",
-			logPrefix, s.runningFnsCount(), appName, skipMetaCleanup)
+		logging.Infof("%s [%d] Function: %s stopping running instance of Eventing.Producer, skipMetaCleanup: %t, updateMetakv: %t",
+			logPrefix, s.runningFnsCount(), appName, skipMetaCleanup, updateMetakv)
 
 		if !skipMetaCleanup {
 			p.NotifyInit()
@@ -808,7 +811,9 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool) 
 			p.CleanupMetadataBucket(false)
 		}
 
-		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+		if updateMetakv {
+			util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+		}
 	}
 
 	return nil

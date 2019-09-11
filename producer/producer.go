@@ -87,7 +87,7 @@ func (p *Producer) Serve() {
 			p.notifyInitCh <- struct{}{}
 			p.bootstrapFinishCh <- struct{}{}
 			p.superSup.RemoveProducerToken(p.appName)
-			p.superSup.CleanupProducer(p.appName, false)
+			p.superSup.CleanupProducer(p.appName, false, true)
 		}
 	}()
 
@@ -857,6 +857,7 @@ func (p *Producer) pollForDeletedVbs() {
 	logPrefix := "Producer::pollForDeletedVbs"
 
 	p.pollBucketTicker = time.NewTicker(p.pollBucketInterval)
+	updateMetakv := true
 
 	for {
 		select {
@@ -870,14 +871,14 @@ func (p *Producer) pollForDeletedVbs() {
 			if srcBucketNodeCount == 0 {
 				logging.Infof("%s [%s:%d] SrcBucketNodeCount: %d Stopping running producer",
 					logPrefix, p.appName, p.LenRunningConsumers(), srcBucketNodeCount)
-				p.superSup.StopProducer(p.appName, skipMetaCleanup)
+				p.superSup.StopProducer(p.appName, skipMetaCleanup, updateMetakv)
 				continue
 			}
 
 			if metaBucketNodeCount == 0 {
 				logging.Infof("%s [%s:%d] MetaBucketNodeCount: %d Stopping running producer",
 					logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)
-				p.superSup.StopProducer(p.appName, skipMetaCleanup)
+				p.superSup.StopProducer(p.appName, skipMetaCleanup, updateMetakv)
 			}
 
 		case <-p.pollBucketStopCh:
