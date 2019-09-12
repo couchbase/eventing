@@ -9,14 +9,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 	"github.com/google/flatbuffers/go"
 )
@@ -189,13 +187,6 @@ type Consumer struct {
 	stoppingConsumer              bool
 	superSup                      common.EventingSuperSup
 	timerContextSize              int64
-	timerStorageChanSize          int
-	timerQueuesAreDrained         bool
-	timerQueueSize                uint64
-	timerQueueMemCap              uint64
-	timerStorageMetaChsRWMutex    *sync.RWMutex
-	timerStorageRoutineCount      int
-	timerStorageQueues            []*util.BoundedQueue // Access controlled by timerStorageMetaChsRWMutex
 	usingTimer                    bool
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed
@@ -238,9 +229,6 @@ type Consumer struct {
 
 	// N1QL Transpiler related nested iterator config params
 	lcbInstCapacity int
-
-	fireTimerQueue   *util.BoundedQueue
-	createTimerQueue *util.BoundedQueue
 
 	socketTimeout time.Duration
 
@@ -452,42 +440,12 @@ type msgToTransmit struct {
 }
 
 type cppQueueSize struct {
-	AggQueueSize      int64 `json:"agg_queue_size"`
-	DocTimerQueueSize int64 `json:"feedback_queue_size"`
-	AggQueueMemory    int64 `json:"agg_queue_memory"`
+	AggQueueSize   int64 `json:"agg_queue_size"`
+	AggQueueMemory int64 `json:"agg_queue_memory"`
 }
 
 type streamRequestInfo struct {
 	startSeqNo uint64
 	vb         uint16
 	vbBlob     *vbucketKVBlob
-}
-
-// TimerInfo is the struct sent by C++ worker to create the timer
-type TimerInfo struct {
-	Epoch     int64  `json:"epoch"`
-	Vb        uint64 `json:"vb"`
-	SeqNum    uint64 `json:"seq_num"`
-	Callback  string `json:"callback"`
-	Reference string `json:"reference"`
-	Context   string `json:"context"`
-}
-
-// Size returns aggregate size of timer entry sent from CPP to Go
-func (info *TimerInfo) Size() uint64 {
-	return uint64(unsafe.Sizeof(*info)) + uint64(len(info.Callback)) +
-		uint64(len(info.Reference)) + uint64(len(info.Context))
-}
-
-// This is struct that will be stored in
-// the meta store as the timer's context
-type timerContext struct {
-	Callback  string `json:"callback"`
-	Vb        uint64 `json:"vb"`
-	Context   string `json:"context"` // This is the context provided by the user
-	reference string
-}
-
-func (ctx *timerContext) Size() uint64 {
-	return uint64(unsafe.Sizeof(*ctx)) + uint64(len(ctx.Callback)) + uint64(len(ctx.Context))
 }

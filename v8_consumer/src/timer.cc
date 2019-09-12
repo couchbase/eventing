@@ -29,7 +29,7 @@ Timer::Timer(v8::Isolate *isolate, const v8::Local<v8::Context> &context)
 
 Timer::~Timer() { context_.Reset(); }
 
-EpochInfo Timer::Epoch(const v8::Local<v8::Value> &date_val) {
+timer::EpochInfo Timer::Epoch(const v8::Local<v8::Value> &date_val) {
   auto utils = UnwrapData(isolate_)->utils;
   v8::HandleScope handle_scope(isolate_);
 
@@ -60,7 +60,6 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   v8::HandleScope handle_scope(isolate_);
-  auto context = context_.Get(isolate_);
 
   auto js_exception = UnwrapData(isolate_)->js_exception;
   auto epoch_info = Epoch(args[1]);
@@ -73,7 +72,7 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto utils = UnwrapData(isolate_)->utils;
   auto v8worker = UnwrapData(isolate_)->v8worker;
 
-  TimerInfo timer_info;
+  timer::TimerInfo timer_info;
   timer_info.epoch = epoch_info.epoch;
   timer_info.vb = v8worker->currently_processed_vb_;
   timer_info.seq_num = v8worker->currently_processed_seqno_;
@@ -96,9 +95,7 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return false;
   }
 
-  std::unique_ptr<timer_msg_t> msg(new timer_msg_t);
-  msg->timer_entry = timer_info.ToJSON(isolate_, context);
-  v8worker->timer_queue_->Push(std::move(msg));
+  v8worker->SetTimer(timer_info);
   args.GetReturnValue().Set(v8Str(isolate_, timer_info.reference));
   return true;
 }
@@ -141,65 +138,6 @@ void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   auto timer = UnwrapData(isolate)->timer;
+  ++timer_create_counter;
   timer->CreateTimerImpl(args);
-}
-
-std::string TimerInfo::ToJSON(v8::Isolate *isolate,
-                              const v8::Local<v8::Context> &context) {
-  bool success = false;
-  v8::HandleScope handle_scope(isolate);
-
-  std::string json;
-  auto entry = v8::Object::New(isolate);
-
-  {
-    auto key = v8Str(isolate, "epoch");
-    auto value = v8::Number::New(isolate, epoch);
-    if (!TO(entry->Set(context, key, value), &success) && !success) {
-      return json;
-    }
-  }
-
-  {
-    auto key = v8Str(isolate, "callback");
-    auto value = v8Str(isolate, callback);
-    if (!TO(entry->Set(context, key, value), &success) && !success) {
-      return json;
-    }
-  }
-
-  {
-    auto key = v8Str(isolate, "reference");
-    auto value = v8Str(isolate, reference);
-    if (!TO(entry->Set(context, key, value), &success) && !success) {
-      return json;
-    }
-  }
-
-  {
-    auto key = v8Str(isolate, "vb");
-    auto value = v8::Number::New(isolate, vb);
-    if (!TO(entry->Set(context, key, value), &success) && !success) {
-      return json;
-    }
-  }
-
-  {
-    auto key = v8Str(isolate, "seq_num");
-    auto value = v8::Number::New(isolate, seq_num);
-    if (!TO(entry->Set(context, key, value), &success) && !success) {
-      return json;
-    }
-  }
-
-  {
-    auto key = v8Str(isolate, "context");
-    auto value = v8Str(isolate, this->context);
-    if (!TO(entry->Set(context, key, value), &success) && !success) {
-      return json;
-    }
-  }
-
-  json = JSONStringify(isolate, entry);
-  return json;
 }

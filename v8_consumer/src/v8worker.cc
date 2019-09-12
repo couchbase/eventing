@@ -45,6 +45,7 @@ std::atomic<int64_t> dcp_mutation_parse_failure = {0};
 std::atomic<int64_t> filtered_dcp_delete_counter = {0};
 std::atomic<int64_t> filtered_dcp_mutation_counter = {0};
 std::atomic<int64_t> timer_msg_counter = {0};
+std::atomic<int64_t> timer_create_counter = {0};
 
 std::atomic<int64_t> enqueued_dcp_delete_msg_counter = {0};
 std::atomic<int64_t> enqueued_dcp_mutation_msg_counter = {0};
@@ -161,6 +162,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   }
   vbfilter_map_.resize(NUM_VBUCKETS);
   processed_bucketops_.resize(NUM_VBUCKETS, 0);
+
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
@@ -228,10 +230,15 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       GetConnectionStr(settings_->kv_host_port, config->metadata_bucket);
   src_path_ = settings_->eventing_dir + "/" + app_name_ + ".t.js";
 
+  if (h_config->using_timer) {
+    std::vector<int64_t> partitions;
+    auto prefix = user_prefix + "::" + function_id;
+    timer_store_ =
+        new timer::TimerStore(isolate_, config->metadata_bucket, prefix,
+                              settings_->kv_host_port, partitions);
+  }
   delete config;
-
-  this->timer_queue_ = new Queue<std::unique_ptr<timer_msg_t>>();
-  this->worker_queue_ = new Queue<std::unique_ptr<WorkerMessage>>();
+  this->worker_queue_ = new BlockingDeque<std::unique_ptr<WorkerMessage>>();
 
   std::thread r_thr(&V8Worker::RouteMessage, this);
   processing_thr_ = std::move(r_thr);
@@ -265,8 +272,8 @@ V8Worker::~V8Worker() {
   on_update_.Reset();
   on_delete_.Reset();
   delete settings_;
-  delete timer_queue_;
   delete worker_queue_;
+  delete timer_store_;
 }
 
 struct DebugExecuteGuard {
@@ -427,9 +434,11 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 }
 
 void V8Worker::RouteMessage() {
+  const flatbuf::payload::Payload *payload;
+  std::string val, context, callback;
   while (!thread_exit_cond_.load()) {
     std::unique_ptr<WorkerMessage> msg;
-    if (!worker_queue_->Pop(msg)) {
+    if (!worker_queue_->PopFront(msg)) {
       continue;
     }
     const auto payload = flatbuf::payload::GetPayload(
@@ -440,7 +449,8 @@ void V8Worker::RouteMessage() {
                   << " metadata: " << RU(msg->header.metadata)
                   << " partition: " << msg->header.partition << std::endl;
 
-    switch (getEvent(msg->header.event)) {
+    auto evt = getEvent(msg->header.event);
+    switch (evt) {
     case eDCP:
       switch (getDCPOpcode(msg->header.opcode)) {
       case oDelete:
@@ -463,20 +473,20 @@ void V8Worker::RouteMessage() {
       }
       break;
 
-    case eTimer:
-      switch (getTimerOpcode(msg->header.opcode)) {
-      case oTimer:
+    case eScanTimer: {
+      auto iter = timer_store_->GetIterator();
+      timer::TimerEvent evt;
+      while (iter.GetNext(evt)) {
         ++timer_msg_counter;
-        this->SendTimer(payload->callback_fn()->str(),
-                        payload->context()->str());
-        break;
-
-      default:
-        LOG(logError) << "Received invalid timer opcode" << std::endl;
-        break;
+        this->SendTimer(evt.callback, evt.context);
+        timer_store_->DeleteTimer(evt);
       }
       break;
-
+    }
+    case eUpdateVbMap: {
+      timer_store_->SyncSpan();
+      break;
+    }
     case eDebugger:
       switch (getDebuggerOpcode(msg->header.opcode)) {
       case oDebuggerStart:
@@ -491,9 +501,8 @@ void V8Worker::RouteMessage() {
         LOG(logError) << "Received invalid debugger opcode" << std::endl;
         break;
       }
-
     default:
-      LOG(logError) << "Received unsupported event" << std::endl;
+      LOG(logError) << "Received unsupported event " << evt << std::endl;
       break;
     }
 
@@ -806,14 +815,24 @@ void V8Worker::StopDebugger() {
   delete agent_;
 }
 
-void V8Worker::Enqueue(std::unique_ptr<WorkerMessage> worker_msg) {
-  LOG(logTrace) << "Inserting event: "
+void V8Worker::PushFront(std::unique_ptr<WorkerMessage> worker_msg) {
+  LOG(logTrace) << "Inserting event at front: "
                 << static_cast<int16_t>(worker_msg->header.event) << " opcode: "
                 << static_cast<int16_t>(worker_msg->header.opcode)
                 << " partition: " << worker_msg->header.partition
                 << " metadata: " << RU(worker_msg->header.metadata)
                 << std::endl;
-  worker_queue_->Push(std::move(worker_msg));
+  worker_queue_->PushFront(std::move(worker_msg));
+}
+
+void V8Worker::PushBack(std::unique_ptr<WorkerMessage> worker_msg) {
+  LOG(logTrace) << "Inserting event at back: "
+                << static_cast<int16_t>(worker_msg->header.event) << " opcode: "
+                << static_cast<int16_t>(worker_msg->header.opcode)
+                << " partition: " << worker_msg->header.partition
+                << " metadata: " << RU(worker_msg->header.metadata)
+                << std::endl;
+  worker_queue_->PushBack(std::move(worker_msg));
 }
 
 std::string V8Worker::CompileHandler(std::string handler) {
@@ -890,23 +909,6 @@ CodeVersion V8Worker::IdentifyVersion(std::string handler) {
 
   auto ver = transpiler->GetCodeVersion(script_to_execute);
   return ver;
-}
-
-void V8Worker::GetTimerMessages(std::vector<uv_buf_t> &messages,
-                                size_t window_size) {
-  size_t timer_count = timer_queue_->Count();
-  timer_count = std::min(timer_count, window_size);
-
-  for (uint64_t idx = 0; idx < timer_count; ++idx) {
-    std::unique_ptr<timer_msg_t> timer_msg;
-    if (!timer_queue_->Pop(timer_msg))
-      break;
-    auto curr_messages =
-        BuildResponse(timer_msg->timer_entry, mTimer_Response, timerResponse);
-    for (auto &msg : curr_messages) {
-      messages.push_back(msg);
-    }
-  }
 }
 
 void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages) {
@@ -1005,7 +1007,6 @@ void V8Worker::FilterUnlock() { bucketops_lock_.unlock(); }
 
 void V8Worker::SetThreadExitFlag() {
   thread_exit_cond_.store(true);
-  timer_queue_->Close();
   worker_queue_->Close();
 }
 
@@ -1076,6 +1077,16 @@ void V8Worker::TaskDurationWatcher() {
     LOG(logInfo) << "Task took: " << duration << "ns, terminated its execution"
                  << std::endl;
   }
+}
+
+void V8Worker::UpdatePartitions(const std::unordered_set<int64_t> &vbuckets) {
+  if (timer_store_)
+    timer_store_->UpdatePartition(vbuckets);
+}
+
+void V8Worker::SetTimer(timer::TimerInfo &tinfo) {
+  if (timer_store_)
+    timer_store_->SetTimer(tinfo);
 }
 
 // TODO : Remove this when stats variables are handled properly

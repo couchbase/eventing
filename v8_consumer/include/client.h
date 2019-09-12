@@ -80,6 +80,8 @@ public:
 
   void ReadStdinLoop();
 
+  void ScanTimerLoop();
+
   static void StopUvLoop(uv_async_t *);
 
   void SendFilterAck(int opcode, int msgtype, int vb_no, int64_t seq_no,
@@ -88,6 +90,7 @@ public:
   std::thread main_uv_loop_thr_;
   std::thread feedback_uv_loop_thr_;
   std::thread stdin_read_thr_;
+  std::thread scan_timer_thr_;
 
 protected:
   void WriteResponseWithRetry(uv_stream_t *handle,
@@ -99,6 +102,9 @@ protected:
 private:
   AppWorker();
   ~AppWorker();
+
+  std::vector<std::unordered_set<int64_t>>
+  PartitionVbuckets(const std::vector<int64_t> &vbuckets) const;
   std::thread write_responses_thr_;
   std::map<int16_t, V8Worker *> workers_;
   std::chrono::milliseconds checkpoint_interval_;
@@ -142,8 +148,6 @@ private:
 
   std::map<int16_t, int16_t> partition_thr_map_;
 
-  int16_t curr_worker_idx_;
-
   // Controls the number of virtual partitions, in order to shard work among
   // worker threads
   int16_t partition_count_;
@@ -157,6 +161,8 @@ private:
   resp_msg_t *resp_msg_;
 
   bool msg_priority_;
+
+  bool using_timer_{false};
 
   std::vector<char> read_buffer_main_;
 

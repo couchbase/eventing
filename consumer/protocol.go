@@ -70,6 +70,7 @@ const (
 	workerThreadCount
 	workerThreadPartitionMap
 	timerContextSize
+	vbMap
 )
 
 // message and opcode types for interpreting messages from C++ To Go
@@ -186,6 +187,10 @@ func (c *Consumer) makeThrMapHeader() ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(appWorkerSetting, workerThreadPartitionMap, 0, "")
 }
 
+func (c *Consumer) makeVbMapHeader() ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(appWorkerSetting, vbMap, 0, "")
+}
+
 func (c *Consumer) makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
@@ -260,20 +265,17 @@ func (c *Consumer) makeThrMapPayload(thrMap map[int][]uint16, partitionCount int
 	return
 }
 
-func (c *Consumer) makeTimerPayload(e *timerContext) (encodedPayload []byte, builder *flatbuffers.Builder) {
+func (c *Consumer) makeVbMapPayload(assgnedVbs []uint16) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
-
-	callbackFnPos := builder.CreateString(e.Callback)
-	contextPos := builder.CreateString(e.Context)
-
+	payload.PayloadStartVbMapVector(builder, len(assgnedVbs))
+	for i := len(assgnedVbs) - 1; i >= 0; i-- {
+		builder.PrependUint16(assgnedVbs[i])
+	}
+	pos := builder.EndVector(len(assgnedVbs))
 	payload.PayloadStart(builder)
-
-	payload.PayloadAddCallbackFn(builder, callbackFnPos)
-	payload.PayloadAddContext(builder, contextPos)
-
+	payload.PayloadAddVbMap(builder, pos)
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
-
 	encodedPayload = builder.FinishedBytes()
 	return
 }
@@ -316,6 +318,9 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	lcb := make([]byte, 1)
 	flatbuffers.WriteBool(lcb, skipLcbBootstrap)
 
+	usingTimer := make([]byte, 1)
+	flatbuffers.WriteBool(usingTimer, c.usingTimer)
+
 	payload.PayloadStart(builder)
 
 	payload.PayloadAddAppName(builder, app)
@@ -332,6 +337,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddTimerContextSize(builder, timerContextSize)
 	payload.PayloadAddFunctionInstanceId(builder, fiid)
 	payload.PayloadAddSkipLcbBootstrap(builder, lcb[0])
+	payload.PayloadAddUsingTimer(builder, usingTimer[0])
 	payload.PayloadAddHandlerHeaders(builder, handlerHeaders)
 	payload.PayloadAddHandlerFooters(builder, handlerFooters)
 
@@ -432,6 +438,13 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal execution stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			} else {
+				if val, ok := c.executionStats["timer_create_counter"]; ok {
+					c.timerResponsesRecieved = uint64(val.(float64))
+				}
+				if val, ok := c.executionStats["timer_msg_counter"]; ok {
+					c.timerMessagesProcessed = uint64(val.(float64))
+				}
 			}
 		case compileInfo:
 			err := json.Unmarshal([]byte(msg), &c.compileInfo)
@@ -457,29 +470,6 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal lcb exception stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
-		}
-	case docTimerResponse:
-		var info TimerInfo
-		err := json.Unmarshal([]byte(msg), &info)
-		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal timer info, err : %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-			c.errorParsingTimerResponses++
-			return
-		}
-
-		prevSeqNum := c.vbProcessingStats.getVbStat(uint16(info.Vb), "last_doc_timer_feedback_seqno").(uint64)
-		if info.SeqNum > prevSeqNum {
-			c.vbProcessingStats.updateVbStat(uint16(info.Vb), "last_doc_timer_feedback_seqno", info.SeqNum)
-			logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_doc_timer_feedback_seqno to seqNo: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), info.Vb, info.SeqNum)
-		}
-
-		c.timerResponsesRecieved++
-		if err = c.createTimerQueue.Push(&info); err != nil {
-			logging.Errorf("%s [%s:%s:%d] Failed to write to createTimerQueue, err : %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-			return
 		}
 
 	case bucketOpsResponse:

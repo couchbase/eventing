@@ -8,7 +8,6 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/supervisor"
-	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb"
 )
@@ -106,6 +105,5 @@ func main() {
 		}
 	}(s)
 
-	timers.SetRebalancer(s)
 	s.HandleSupCmdMsg()
 }

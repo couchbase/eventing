@@ -22,6 +22,8 @@ enum event_type {
   eTimer,
   eDebugger,
   eFilter,
+  eScanTimer,
+  eUpdateVbMap,
   Event_Unknown
 };
 
@@ -52,6 +54,7 @@ enum app_worker_setting_opcode {
   oWorkerThreadCount,
   oWorkerThreadMap,
   oTimerContextSize,
+  oVbMap,
   App_Worker_Setting_Opcode_Unknown
 };
 

@@ -16,29 +16,9 @@
 #include <string>
 #include <v8.h>
 
+#include "timer_defs.h"
+
 extern thread_local std::mt19937_64 rng;
-
-struct EpochInfo {
-  EpochInfo(bool is_valid) : is_valid(is_valid), epoch(0) {}
-  EpochInfo(bool is_valid, int64_t epoch) : is_valid(is_valid), epoch(epoch) {}
-
-  bool is_valid;
-  int64_t epoch;
-};
-
-struct TimerInfo {
-  TimerInfo() : epoch(0), vb(0), seq_num(0) {}
-
-  std::string ToJSON(v8::Isolate *isolate,
-                     const v8::Local<v8::Context> &context);
-
-  int64_t epoch;
-  int64_t vb;
-  int64_t seq_num;
-  std::string callback;
-  std::string reference;
-  std::string context;
-};
 
 class Timer {
 public:
@@ -48,7 +28,7 @@ public:
   bool CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 private:
-  EpochInfo Epoch(const v8::Local<v8::Value> &date_val);
+  timer::EpochInfo Epoch(const v8::Local<v8::Value> &date_val);
   bool ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args);
 
   v8::Isolate *isolate_;

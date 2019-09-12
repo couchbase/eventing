@@ -126,6 +126,38 @@ func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebu
 	c.sendMessage(m)
 }
 
+func (c *Consumer) SendAssignedVbs() {
+	logPrefix := "Consumer::SendAssignedVbs"
+	vbuckets, err := c.getAssignedVbs(c.ConsumerName())
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Sending assigned vbuckets map failed, vbmap: %v, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbuckets, err)
+		return
+	}
+	header, hBuilder := c.makeVbMapHeader()
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.v8WorkerMessagesProcessed["vb_map"]; !ok {
+		c.v8WorkerMessagesProcessed["vb_map"] = 0
+	}
+	c.v8WorkerMessagesProcessed["vb_map"]++
+	c.msgProcessedRWMutex.Unlock()
+	payload, pBuilder := c.makeVbMapPayload(vbuckets)
+
+	m := &msgToTransmit{
+		msg: &message{
+			Header:  header,
+			Payload: payload,
+		},
+		sendToDebugger: false,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+		payloadBuilder: pBuilder,
+	}
+	c.sendMessage(m)
+	logging.Infof("%s [%s:%s:%d] Sending assigned vbuckets map: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vbuckets)
+}
+
 func (c *Consumer) sendDebuggerStart() {
 
 	header, hBuilder := c.makeV8DebuggerStartHeader()
@@ -369,25 +401,6 @@ func (c *Consumer) sendGetLcbExceptionStats(sendToDebugger bool) {
 		sendToDebugger: sendToDebugger,
 		prioritize:     true,
 		headerBuilder:  hBuilder,
-	}
-
-	c.sendMessage(m)
-}
-
-func (c *Consumer) sendTimerEvent(e *timerContext, sendToDebugger bool) {
-	cppPartition := util.VbucketByKey([]byte(e.reference), cppWorkerPartitionCount)
-	timerHeader, hBuilder := c.makeTimerEventHeader(int16(cppPartition))
-	timerPayload, pBuilder := c.makeTimerPayload(e)
-
-	m := &msgToTransmit{
-		msg: &message{
-			Header:  timerHeader,
-			Payload: timerPayload,
-		},
-		sendToDebugger: sendToDebugger,
-		prioritize:     false,
-		headerBuilder:  hBuilder,
-		payloadBuilder: pBuilder,
 	}
 
 	c.sendMessage(m)

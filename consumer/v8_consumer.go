@@ -16,7 +16,6 @@ import (
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
 )
@@ -50,7 +49,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		dcpFeedVbMap:                    make(map[*couchbase.DcpFeed][]uint16),
 		dcpStreamBoundary:               hConfig.StreamBoundary,
 		diagDir:                         pConfig.DiagDir,
-		fireTimerQueue:                  util.NewBoundedQueue(hConfig.TimerQueueSize, hConfig.TimerQueueMemCap),
 		debuggerPort:                    pConfig.DebuggerPort,
 		eventingAdminPort:               pConfig.EventingPort,
 		eventingSSLPort:                 pConfig.EventingSSLPort,
@@ -82,7 +80,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		nsServerPort:                    nsServerPort,
 		numVbuckets:                     numVbuckets,
 		opsTimestamp:                    time.Now(),
-		createTimerQueue:                util.NewBoundedQueue(hConfig.TimerQueueSize, hConfig.TimerQueueMemCap),
 		producer:                        p,
 		reqStreamCh:                     make(chan *streamRequestInfo, numVbuckets*10),
 		restartVbDcpStreamTicker:        time.NewTicker(restartVbDcpStreamTickInterval),
@@ -106,12 +103,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
 		timerContextSize:                hConfig.TimerContextSize,
-		timerQueueSize:                  hConfig.TimerQueueSize,
-		timerQueueMemCap:                hConfig.TimerQueueMemCap,
-		timerStorageChanSize:            hConfig.TimerStorageChanSize,
-		timerStorageMetaChsRWMutex:      &sync.RWMutex{},
-		timerStorageRoutineCount:        hConfig.TimerStorageRoutineCount,
-		timerStorageQueues:              make([]*util.BoundedQueue, hConfig.TimerStorageRoutineCount),
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		usingTimer:                      hConfig.UsingTimer,
 		uuid:                            uuid,
@@ -272,10 +263,6 @@ checkIfPlannerRunning:
 	c.controlRoutineWg.Add(1)
 	go c.controlRoutine()
 
-	if c.usingTimer {
-		go c.scanTimers()
-	}
-
 	go c.updateWorkerStats()
 
 	err = c.startDcp(flogs)
@@ -316,7 +303,6 @@ func (c *Consumer) HandleV8Worker() error {
 	c.sendLogLevel(c.logLevel, false)
 	c.sendWorkerThrMap(nil, false)
 	c.sendWorkerThrCount(0, false)
-
 	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -345,8 +331,7 @@ func (c *Consumer) HandleV8Worker() error {
 	c.workerExited = false
 
 	if c.usingTimer {
-		go c.routeTimers()
-		go c.processTimerEvents()
+		c.SendAssignedVbs()
 	}
 
 	go c.processDCPEvents()
@@ -371,29 +356,6 @@ func (c *Consumer) Stop(context string) {
 
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
-
-	if c.usingTimer {
-		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
-		metaBucketNodeCount := util.CountActiveKVNodes(c.producer.MetadataBucket(), hostAddress)
-		// syncSpan only if metadata bucket is still available
-		// we may still race with metadata bucket delete
-		syncSpan := (metaBucketNodeCount != 0)
-
-		vbsOwned := c.getCurrentlyOwnedVbs()
-		sort.Sort(util.Uint16Slice(vbsOwned))
-
-		logging.Infof("%s [%s:%s:%d] Currently owned vbs len: %d dump: %s, metaBucketNodeCount:%d",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsOwned), util.Condense(vbsOwned),
-			metaBucketNodeCount)
-
-		for _, vb := range vbsOwned {
-			store, found := timers.Fetch(c.producer.GetMetadataPrefix(), int(vb))
-
-			if found {
-				store.Free(syncSpan)
-			}
-		}
-	}
 
 	if c.gocbBucket != nil {
 		c.gocbBucket.Close()
@@ -439,22 +401,6 @@ func (c *Consumer) Stop(context string) {
 
 	if c.socketWriteTicker != nil {
 		c.socketWriteTicker.Stop()
-	}
-
-	if c.createTimerQueue != nil {
-		c.createTimerQueue.Close()
-	}
-
-	c.timerStorageMetaChsRWMutex.Lock()
-	for _, q := range c.timerStorageQueues {
-		if q != nil {
-			q.Close()
-		}
-	}
-	c.timerStorageMetaChsRWMutex.Unlock()
-
-	if c.fireTimerQueue != nil {
-		c.fireTimerQueue.Close()
 	}
 
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop timer routines",
