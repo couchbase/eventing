@@ -148,6 +148,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   create_params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
 
+  InitializeUtility(create_params);
   isolate_ = v8::Isolate::New(create_params);
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
@@ -302,6 +303,7 @@ V8Worker::~V8Worker() {
 
   curl_global_cleanup();
   context_.Reset();
+  utility_context_.Reset();
   on_update_.Reset();
   on_delete_.Reset();
   delete conn_pool_;
@@ -987,15 +989,15 @@ int V8Worker::ParseMetadata(const std::string &metadata, int &vb_no,
 int V8Worker::ParseMetadataWithAck(const std::string &metadata, int &vb_no,
                                    uint64_t &seq_no, int &skip_ack,
                                    bool ack_check) {
-  v8::Locker locker(isolate_);
-  v8::Isolate::Scope isolate_scope(isolate_);
-  v8::HandleScope handle_scope(isolate_);
+  v8::Locker locker(utility_isolate_);
+  v8::Isolate::Scope isolate_scope(utility_isolate_);
+  v8::HandleScope handle_scope(utility_isolate_);
 
-  auto context = context_.Get(isolate_);
+  auto context = utility_context_.Get(utility_isolate_);
   v8::Context::Scope context_scope(context);
 
   v8::Local<v8::Value> metadata_val;
-  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, metadata)),
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(utility_isolate_, metadata)),
                 &metadata_val)) {
     return kToLocalFailed;
   }
@@ -1007,19 +1009,22 @@ int V8Worker::ParseMetadataWithAck(const std::string &metadata, int &vb_no,
   }
 
   v8::Local<v8::Value> seq_val;
-  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "seq")), &seq_val)) {
+  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(utility_isolate_, "seq")),
+                &seq_val)) {
     return kToLocalFailed;
   }
 
   v8::Local<v8::Value> vb_val;
-  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "vb")), &vb_val)) {
+  if (!TO_LOCAL(metadata_obj->Get(context, v8Str(utility_isolate_, "vb")),
+                &vb_val)) {
     return kToLocalFailed;
   }
 
   v8::Local<v8::Value> skip_ack_val;
   if (ack_check) {
-    if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "skip_ack")),
-                  &skip_ack_val)) {
+    if (!TO_LOCAL(
+            metadata_obj->Get(context, v8Str(utility_isolate_, "skip_ack")),
+            &skip_ack_val)) {
       return kToLocalFailed;
     }
   }
@@ -1142,4 +1147,12 @@ void V8Worker::TaskDurationWatcher() {
     LOG(logInfo) << "Task took: " << duration << "ns, terminated its execution"
                  << std::endl;
   }
+}
+
+void V8Worker::InitializeUtility(const v8::Isolate::CreateParams &params) {
+  utility_isolate_ = v8::Isolate::New(params);
+  v8::Locker locker(utility_isolate_);
+  v8::Isolate::Scope isolate_scope(utility_isolate_);
+  v8::HandleScope handle_scope(utility_isolate_);
+  utility_context_.Reset(utility_isolate_, v8::Context::New(utility_isolate_));
 }

@@ -262,6 +262,7 @@ public:
 
   v8::Isolate *GetIsolate() { return isolate_; }
   v8::Persistent<v8::Context> context_;
+  v8::Persistent<v8::Context> utility_context_;
   v8::Persistent<v8::Function> on_update_;
   v8::Persistent<v8::Function> on_delete_;
 
@@ -297,6 +298,7 @@ private:
   std::vector<uv_buf_t> BuildResponse(const std::string &payload,
                                       int8_t msg_type, int8_t response_opcode);
   bool ExecuteScript(const v8::Local<v8::String> &script);
+  void InitializeUtility(const v8::Isolate::CreateParams &params);
 
   std::string connstr_;
   std::string meta_connstr_;
@@ -311,6 +313,7 @@ private:
   std::list<Bucket *> bucket_handles_;
   N1QL *n1ql_handle_;
   v8::Isolate *isolate_;
+  v8::Isolate *utility_isolate_;
   v8::Platform *platform_;
   inspector::Agent *agent_;
   std::string handler_name_;
