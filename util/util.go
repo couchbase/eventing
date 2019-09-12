@@ -1127,9 +1127,8 @@ func CheckIfAppBootstrapOngoing(urlSuffix string, nodeAddrs []string, appName st
 			return true, err
 		}
 
-		logging.Infof("%s Bootstrap status form url: %rs status: %v", logPrefix, endpointURL, status)
-
 		if status {
+			logging.Infof("%s Bootstrap status form url: %rs status: %v", logPrefix, endpointURL, status)
 			return true, nil
 		}
 	}
