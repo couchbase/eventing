@@ -434,7 +434,6 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 }
 
 void V8Worker::RouteMessage() {
-  const flatbuf::payload::Payload *payload;
   std::string val, context, callback;
   while (!thread_exit_cond_.load()) {
     std::unique_ptr<WorkerMessage> msg;
@@ -511,11 +510,9 @@ void V8Worker::RouteMessage() {
 }
 
 bool V8Worker::IsValidDCPEvent(const std::unique_ptr<WorkerMessage> &msg,
-                               dcp_opcode event_type) {
+                               const dcp_opcode event_type) {
   auto vb_no = 0;
   uint64_t seq_no = 0;
-  auto payload = flatbuf::payload::GetPayload(
-      static_cast<const void *>(msg->payload.payload.c_str()));
   if (kSuccess != ParseMetadata(msg->header.metadata, vb_no, seq_no)) {
     if (event_type == oMutation) {
       ++dcp_mutation_parse_failure;
