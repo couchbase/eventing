@@ -14,6 +14,8 @@
 #include "utils.h"
 #include <v8.h>
 
+#define EVT_LOG_MSG_SIZE 1024
+
 const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket) {
   LOG(logDebug) << "Getting username for host " << RS(host) << " port " << port
@@ -133,8 +135,6 @@ void counter_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
                 << lcb_strerror(nullptr, result->rc) << std::endl;
 }
 
-#define EVT_LOG_MSG_SIZE 1024
-
 void evt_log_formatter(char *buf, int buf_size, const char *subsystem,
                        int srcline, unsigned int instance_id, const char *fmt,
                        va_list ap) {
@@ -157,14 +157,15 @@ void evt_log_formatter(char *buf, int buf_size, const char *subsystem,
  */
 LogLevel evt_log_map_level(int severity) {
   switch (severity) {
+    // TODO : We can anyway not log at these levels as eventing-producer only
+    // logs at INFO. So, we will log only WARN, ERROR and FATAL messages
   case LCB_LOG_TRACE:
-    return logTrace;
   case LCB_LOG_DEBUG:
-    return logDebug;
   case LCB_LOG_INFO:
-    return logInfo;
+    // TODO : Map LCB_LOG_INFO to logInfo when MB-36022 is resolved
+    return logTrace;
+
   case LCB_LOG_WARN:
-    return logWarning;
   case LCB_LOG_ERROR:
   case LCB_LOG_FATAL:
   default:

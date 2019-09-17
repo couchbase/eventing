@@ -41,19 +41,5 @@ void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
 
 void counter_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
 
-#define EVT_LOG_MSG_SIZE 1024
-
-void evt_log_formatter(char *buf, int buf_size, const char *subsystem,
-                       int srcline, unsigned int instance_id, const char *fmt,
-                       va_list ap);
-
-LogLevel evt_log_map_level(int severity);
-
-bool evt_should_log(int severity, const char *subsys);
-
-void evt_log_handler(struct lcb_logprocs_st *procs, unsigned int iid,
-                     const char *subsys, int severity, const char *srcfile,
-                     int srcline, const char *fmt, va_list ap);
-
 extern struct lcb_logprocs_st evt_logger;
 #endif // COUCHBASE_LCB_UTILS_H
