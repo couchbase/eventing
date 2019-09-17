@@ -699,14 +699,7 @@ void AppWorker::RouteMessageWithResponse(
       if (workers_[worker_index] != nullptr) {
         LOG(logInfo) << "Received update processed seq_no event from Go "
                      << worker_msg->header.metadata << std::endl;
-        int vb_no = 0;
-        uint64_t seq_no = 0;
-        if (kSuccess == workers_[worker_index]->ParseMetadata(
-                            worker_msg->header.metadata, vb_no, seq_no)) {
-          workers_[worker_index]->FilterLock();
-          workers_[worker_index]->UpdateBucketopsSeqno(vb_no, seq_no);
-          workers_[worker_index]->FilterUnlock();
-        }
+        workers_[worker_index]->PushBack(std::move(worker_msg));
       }
       break;
     default:
