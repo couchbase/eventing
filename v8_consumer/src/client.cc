@@ -780,8 +780,8 @@ void AppWorker::RouteMessageWithResponse(
 
         LOG(logInfo) << "Updating vbucket map, vbmap :" << oss.str()
                      << std::endl;
-        break;
       }
+      break;
     default:
       LOG(logError) << "Opcode "
                     << getAppWorkerSettingOpcode(worker_msg->header.opcode)
