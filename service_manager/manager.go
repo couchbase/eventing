@@ -747,8 +747,6 @@ func (m *ServiceMgr) compareEventingVersion(need eventingVer) bool {
 		return false
 	}
 
-	logging.Infof("%s eventing version for all nodes: %+v need version: %+v", logPrefix, versions, need)
-
 	for _, ver := range versions {
 		eVer, err := frameEventingVersion(ver)
 		if err != nil {
@@ -756,6 +754,7 @@ func (m *ServiceMgr) compareEventingVersion(need eventingVer) bool {
 		}
 
 		if !eVer.compare(need) {
+			logging.Infof("%s eventing version for all nodes: %+v need version: %+v", logPrefix, versions, need)
 			return false
 		}
 	}

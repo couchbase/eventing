@@ -630,14 +630,14 @@ func (c *Consumer) CloseAllRunningDcpFeeds() {
 
 	runningDcpFeeds := make([]*couchbase.DcpFeed, 0)
 
+	c.streamReqRWMutex.Lock()
+	defer c.streamReqRWMutex.Unlock()
+
 	c.hostDcpFeedRWMutex.RLock()
 	for _, dcpFeed := range c.kvHostDcpFeedMap {
 		runningDcpFeeds = append(runningDcpFeeds, dcpFeed)
 	}
 	c.hostDcpFeedRWMutex.RUnlock()
-
-	c.streamReqRWMutex.Lock()
-	defer c.streamReqRWMutex.Unlock()
 
 	logging.Infof("%s [%s:%s:%d] Going to close all active dcp feeds. Active feed count: %d",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(runningDcpFeeds))

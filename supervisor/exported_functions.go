@@ -369,7 +369,9 @@ func (s *SuperSupervisor) PausingAppList() map[string]string {
 		pausingApps[appName] = ts
 	}
 
-	logging.Infof("%s [%d] pausingApps: %+v", logPrefix, s.runningFnsCount(), pausingApps)
+	if len(pausingApps) != 0 {
+		logging.Infof("%s [%d] pausingApps: %+v", logPrefix, s.runningFnsCount(), pausingApps)
+	}
 
 	return pausingApps
 }
