@@ -1,11 +1,19 @@
 package eventing
 
 import (
-	"flag"
 	"os"
 	"sync"
 	"time"
 )
+
+func init() {
+	statsSetup()
+	initSetup()
+	setIndexStorageMode()
+	time.Sleep(5 * time.Second)
+	fireQuery("CREATE PRIMARY INDEX on eventing;")
+	curlSetup()
+}
 
 type DetailLog struct {
 	lock sync.Mutex
@@ -14,19 +22,12 @@ type DetailLog struct {
 
 var statsFile DetailLog
 
-func init() {
-	fname := flag.String("statsfile", "", "write stats to this file")
-	flag.Parse()
-
-	if len(*fname) > 0 {
-		file, err := os.OpenFile(*fname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0660)
+func statsSetup() {
+	fname, ok := os.LookupEnv("STATSFILE")
+	if ok && len(fname) > 0 {
+		file, err := os.OpenFile(fname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0660)
 		if err == nil {
 			statsFile.file = file
 		}
 	}
-
-	initSetup()
-	setIndexStorageMode()
-	time.Sleep(5 * time.Second)
-	fireQuery("CREATE PRIMARY INDEX on eventing;")
 }
