@@ -294,7 +294,7 @@ public:
 
   server_settings_t *settings_;
 
-  volatile bool shutdown_terminator_;
+  bool shutdown_terminator_{false};
   static bool debugger_started_;
 
   uint64_t currently_processed_vb_;
