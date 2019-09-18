@@ -364,7 +364,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         });
                     })
                     .then(function(response) {
-                        return ApplicationService.tempStore.saveApp(creationScope.appModel);
+                        return ApplicationService.public.import(creationScope.appModel);
                     })
                     .then(function(response) {
                         var responseCode = ApplicationService.status.getResponseCode(response);
@@ -884,6 +884,22 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 public: {
                     status: function() {
                         return $http.get('/_p/event/api/v1/status');
+                    },
+                    export: function() {
+                        return $http.get('/_p/event/api/v1/export');
+                    },
+                    import: function(app) {
+                        return $http({
+                            url: '/_p/event/api/v1/import',
+                            method: 'POST',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            data: [app]
+                        });
                     },
                     updateSettings: function(appModel) {
                         return $http({

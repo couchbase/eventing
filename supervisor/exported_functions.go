@@ -325,6 +325,10 @@ func (s *SuperSupervisor) BootstrapAppList() map[string]string {
 		bootstrappingApps[appName] = ts
 	}
 
+	if len(bootstrappingApps) != 0 {
+		logging.Infof("%s [%d] bootstrappingApps: %+v", logPrefix, s.runningFnsCount(), bootstrappingApps)
+	}
+
 	return bootstrappingApps
 }
 
