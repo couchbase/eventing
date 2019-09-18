@@ -28,12 +28,9 @@ const char *GetUsername(void *cookie, const char *host, const char *port,
                   << " err: " << info.msg << std::endl;
   }
 
-  static const char *username = "";
-  if (info.username != username) {
-    username = strdup(info.username.c_str());
-  }
-
-  return username;
+  static thread_local std::string username;
+  username = info.username;
+  return username.c_str();
 }
 
 const char *GetPassword(void *cookie, const char *host, const char *port,
@@ -50,12 +47,9 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
                   << " err: " << info.msg << std::endl;
   }
 
-  static const char *password = "";
-  if (info.password != password) {
-    password = strdup(info.password.c_str());
-  }
-
-  return password;
+  static thread_local std::string password;
+  password = info.password;
+  return password.c_str();
 }
 
 // lcb related callbacks

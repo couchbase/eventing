@@ -22,6 +22,7 @@ export includes="\
   -I $top/build/tlm/deps/openssl.exploded/include/ \
   -I $top/build/tlm/deps/zlib.exploded/include/ \
   -I $top/build/libcouchbase/generated/ \
+  -I $top/build/tlm/deps/json.exploded/include/ \
   -I $top/libcouchbase/include/ \
   -I third_party/inspector/ \
   -I third_party/crc64/ \
@@ -61,6 +62,7 @@ export srcs="`find \
 
 echo "Compiling eventing-consumer"
 find $srcs \
+  -exec mkdir -p $top/build/cctmp/eventing/{} \; \
   -exec $gcc $includes -c -o $top/build/cctmp/eventing/{}/obj.o {} \;
 
 echo "Linking eventing-consumer"
