@@ -1309,6 +1309,11 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 	deployedApps := m.superSup.GetDeployedApps()
 	if pOk && dOk {
+		// Resetting dcp_stream_boundary to everything during undeployment
+		if !processingStatus && !deploymentStatus {
+			app.Settings["dcp_stream_boundary"] = common.DcpEverything
+		}
+
 		// Check for pause processing
 		if deploymentStatus && !processingStatus {
 			if !m.compareEventingVersion(mhVersion) {
