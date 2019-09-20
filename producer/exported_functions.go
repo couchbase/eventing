@@ -854,14 +854,20 @@ func (p *Producer) StopRunningConsumers() {
 // BootstrapStatus returns state of bootstrap for all running consumer instances
 func (p *Producer) BootstrapStatus() bool {
 	logPrefix := "Producer::BootstrapStatus"
+	status := false
 
 	consumerBootstrapStatuses := make(map[string]bool)
 	for _, c := range p.getConsumers() {
 		consumerBootstrapStatuses[c.ConsumerName()] = c.BootstrapStatus()
+		if c.BootstrapStatus() {
+			status = true
+		}
 	}
 
-	logging.Infof("%s [%s:%d] Bootstrap status from all running consumer instances: %#v",
-		logPrefix, p.appName, p.LenRunningConsumers(), consumerBootstrapStatuses)
+	if status {
+		logging.Infof("%s [%s:%d] Bootstrap status from all running consumer instances: %#v",
+			logPrefix, p.appName, p.LenRunningConsumers(), consumerBootstrapStatuses)
+	}
 
 	for _, bootstrapStatus := range consumerBootstrapStatuses {
 		if bootstrapStatus {
