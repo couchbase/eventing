@@ -308,7 +308,9 @@ func (s *SuperSupervisor) BootstrapAppStatus(appName string) bool {
 	producer, ok := s.runningFns()[appName]
 
 	if ok {
-		logging.Infof("%s [%d] Bootstrap status from %s: %#v", logPrefix, s.runningFnsCount(), appName, producer.BootstrapStatus())
+		if producer.BootstrapStatus() {
+			logging.Infof("%s [%d] Bootstrap status from %s: %#v", logPrefix, s.runningFnsCount(), appName, producer.BootstrapStatus())
+		}
 		return producer.BootstrapStatus()
 	}
 
@@ -389,7 +391,7 @@ func (s *SuperSupervisor) BootstrapAppList() map[string]string {
 		bootstrappingApps[appName] = ts
 	}
 
-	if len(bootstrappingApps) != 0 {
+	if len(bootstrappingApps) > 0 {
 		logging.Infof("%s [%d] bootstrappingApps: %+v", logPrefix, s.runningFnsCount(), bootstrappingApps)
 	}
 
