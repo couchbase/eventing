@@ -54,10 +54,6 @@ const (
 	srcCodeExt = ".js"
 )
 
-const (
-	maxHandlerSize = 128 * 1024
-)
-
 // ServiceMgr implements cbauth_service interface
 type ServiceMgr struct {
 	adminHTTPPort     string
