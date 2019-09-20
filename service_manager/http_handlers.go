@@ -1258,6 +1258,11 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		return
 	}
 
+	if info = m.validateSettings(settings); info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
 	logging.Infof("%s Function: %s settings params: %+v", logPrefix, appName, settings)
 
 	_, procStatExists := settings["processing_status"]
@@ -1309,6 +1314,19 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 	deployedApps := m.superSup.GetDeployedApps()
 	if pOk && dOk {
+		var isMixedMode bool
+		if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return
+		}
+
+		if isMixedMode && !m.isUndeployOperation(app.Settings) {
+			info.Code = m.statusCodes.errMixedMode.Code
+			info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
+			logging.Errorf("%s %s", logPrefix)
+			return
+		}
+
 		// Resetting dcp_stream_boundary to everything during undeployment
 		if !processingStatus && !deploymentStatus {
 			app.Settings["dcp_stream_boundary"] = common.DcpEverything
@@ -2498,6 +2516,10 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	functionsName := regexp.MustCompile("^/api/v1/functions/(.*[^/])/?$") // Match is agnostic of trailing '/'
 	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.*[^/])/settings/?$")
 	functionsNameRetry := regexp.MustCompile("^/api/v1/functions/(.*[^/])/retry/?$")
+	functionsDeploy := regexp.MustCompile("^/api/v1/functions/(.*[^/])/deploy/?$")
+	functionsUndeploy := regexp.MustCompile("^/api/v1/functions/(.*[^/])/undeploy/?$")
+	functionsPause := regexp.MustCompile("^/api/v1/functions/(.*[^/])/pause/?$")
+	functionsResume := regexp.MustCompile("^/api/v1/functions/(.*[^/])/resume/?$")
 
 	if match := functionsNameRetry.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		appName := match[1]
@@ -2578,23 +2600,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
-			var isMixedMode bool
-			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			if isMixedMode && !m.isUndeployOperation(settings) {
-				info.Code = m.statusCodes.errMixedMode.Code
-				info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			if info = m.validateSettings(settings); info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
 
 			if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
@@ -2604,6 +2609,144 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+	} else if match := functionsPause.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		info := &runtimeInfo{}
+		if r.Method != "POST" {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
+			m.sendErrorInfo(w, info)
+		}
+		appName := match[1]
+
+		audit.Log(auditevent.SetSettings, r, appName)
+
+		var settings = make(map[string]interface{})
+		settings["deployment_status"] = true
+		settings["processing_status"] = false
+		settings["dcp_stream_boundary"] = "everything"
+
+		data, err := json.MarshalIndent(settings, "", " ")
+		if err != nil {
+			info.Code = m.statusCodes.errMarshalResp.Code
+			info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+	} else if match := functionsResume.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		info := &runtimeInfo{}
+		if r.Method != "POST" {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
+			m.sendErrorInfo(w, info)
+		}
+		appName := match[1]
+
+		audit.Log(auditevent.SetSettings, r, appName)
+
+		var settings = make(map[string]interface{})
+		settings["deployment_status"] = true
+		settings["processing_status"] = true
+		settings["dcp_stream_boundary"] = "from_prior"
+
+		data, err := json.MarshalIndent(settings, "", " ")
+		if err != nil {
+			info.Code = m.statusCodes.errMarshalResp.Code
+			info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+	} else if match := functionsDeploy.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		info := &runtimeInfo{}
+		if r.Method != "POST" {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
+			m.sendErrorInfo(w, info)
+		}
+		appName := match[1]
+
+		audit.Log(auditevent.SetSettings, r, appName)
+
+		data, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			info.Code = m.statusCodes.errReadReq.Code
+			info.Info = fmt.Sprintf("failed to read request body, err: %v", err)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		settings := make(map[string]interface{})
+		if len(data) != 0 {
+			err = json.Unmarshal(data, &settings)
+			if err != nil {
+				info.Code = m.statusCodes.errMarshalResp.Code
+				info.Info = fmt.Sprintf("%v failed to unmarshal setting supplied, err: %v", len(data), err)
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				m.sendErrorInfo(w, info)
+				return
+			}
+		}
+
+		settings["deployment_status"] = true
+		settings["processing_status"] = true
+
+		data, err = json.MarshalIndent(settings, "", " ")
+		if err != nil {
+			info.Code = m.statusCodes.errMarshalResp.Code
+			info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+	} else if match := functionsUndeploy.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		info := &runtimeInfo{}
+		if r.Method != "POST" {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
+			m.sendErrorInfo(w, info)
+		}
+		appName := match[1]
+
+		audit.Log(auditevent.SetSettings, r, appName)
+
+		var settings = make(map[string]interface{})
+		settings["deployment_status"] = false
+		settings["processing_status"] = false
+
+		data, err := json.MarshalIndent(settings, "", " ")
+		if err != nil {
+			info.Code = m.statusCodes.errMarshalResp.Code
+			info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
 	} else if match := functionsName.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		appName := match[1]
 		switch r.Method {
