@@ -49,7 +49,7 @@ public:
   void RestoreConnection(lcb_t connection);
 
 private:
-  Connection::Info CreateConnection();
+  Connection::Info CreateConnection() const;
 
   v8::Isolate *isolate_;
   std::string conn_str_;

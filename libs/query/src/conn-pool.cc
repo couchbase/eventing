@@ -18,6 +18,8 @@
 #include "log.h"
 #include "utils.h"
 
+extern struct lcb_logprocs_st evt_logger;
+
 const char *GetUsernameCached(void *cookie, const char *host, const char *port,
                               const char *bucket) {
   auto isolate = static_cast<v8::Isolate *>(cookie);
@@ -54,7 +56,7 @@ const char *GetPasswordCached(void *cookie, const char *host, const char *port,
   return password;
 }
 
-Connection::Info Connection::Pool::CreateConnection() {
+Connection::Info Connection::Pool::CreateConnection() const {
   std::stringstream error;
   lcb_create_st options = {nullptr};
   options.version = 3;
@@ -65,6 +67,13 @@ Connection::Info Connection::Pool::CreateConnection() {
   auto result = lcb_create(&connection, &options);
   if (result != LCB_SUCCESS) {
     error << "Unable to initialize Couchbase handle : "
+          << lcb_strerror(connection, result) << std::endl;
+    return {true, error.str()};
+  }
+
+  result = lcb_cntl(connection, LCB_CNTL_SET, LCB_CNTL_LOGGER, &evt_logger);
+  if (result != LCB_SUCCESS) {
+    error << "Unable to set libcouchbase logger hooks"
           << lcb_strerror(connection, result) << std::endl;
     return {true, error.str()};
   }
