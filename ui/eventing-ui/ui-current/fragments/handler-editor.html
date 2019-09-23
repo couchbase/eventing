@@ -24,7 +24,7 @@
     </div>
   </form>
   <div class="panel-footer spaced">
-    <div class="flex-left">
+    <div>
       <button
         ng-click="handlerCtrl.debugApp()"
         ng-disabled="$root.debugDisable">
@@ -39,7 +39,11 @@
       <span class="icon fa-info fa-stack-1x"></span>
       </span>
     </div>
-
+    <div>
+      <a href="#!/eventing/summary">
+        < back to Eventing
+      </a>
+    </div>
     <div>
       <a ng-click="handlerCtrl.cancelEdit()"
          ng-disabled="formHandler.handlerEditor.$pristine || handlerCtrl.disableCancelButton">
