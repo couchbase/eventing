@@ -502,6 +502,7 @@ void V8Worker::RouteMessage() {
         LOG(logError) << "Received invalid debugger opcode" << std::endl;
         break;
       }
+      break;
     case eFilter:
       switch (getFilterOpcode(msg->header.opcode)) {
       case oProcessedSeqNo: {
@@ -516,6 +517,7 @@ void V8Worker::RouteMessage() {
         LOG(logError) << "Received invalid filter opcode" << std::endl;
         break;
       }
+      break;
     default:
       LOG(logError) << "Received unsupported event " << evt << std::endl;
       break;
