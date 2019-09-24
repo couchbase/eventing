@@ -1361,14 +1361,17 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 			}
 		}
 
-		// Write to primary store in case of deployment.
+		// Write to primary store in case of deployment
 		if deploymentStatus && processingStatus {
-			info = m.savePrimaryStore(&app)
-			if info.Code != m.statusCodes.ok.Code {
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				return
+			if !m.checkIfDeployedAndRunning(appName) {
+				info = m.savePrimaryStore(&app)
+				if info.Code != m.statusCodes.ok.Code {
+					logging.Errorf("%s %s", logPrefix, info.Info)
+					return
+				}
 			}
 		}
+
 	} else {
 		info.Code = m.statusCodes.errStatusesNotFound.Code
 		info.Info = fmt.Sprintf("Function: %s missing processing or deployment statuses or both", appName)
