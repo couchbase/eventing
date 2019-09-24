@@ -1012,10 +1012,12 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 		// Writing to primary store in case of deployment
 		if deploymentStatus == true && processingStatus == true {
-			info = m.savePrimaryStore(app)
-			if info.Code != m.statusCodes.ok.Code {
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				return
+			if !m.checkIfDeployed(appName) {
+				info = m.savePrimaryStore(app)
+				if info.Code != m.statusCodes.ok.Code {
+					logging.Errorf("%s %s", logPrefix, info.Info)
+					return
+				}
 			}
 		}
 	} else {
