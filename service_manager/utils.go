@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/couchbase/cbauth/service"
@@ -371,7 +372,7 @@ func GetNodesHostname(data map[string]interface{}) []string {
 	return hostnames
 }
 
-func (m *ServiceMgr) UpdateBucketGraphFromMektakv(functionName string) error {
+func (m *ServiceMgr) UpdateBucketGraphFromMetakv(functionName string) error {
 	logPrefix := "ServiceMgr::UpdateBucketGraphFromMektakv"
 	appData, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, functionName)
 	if err != nil {
@@ -384,4 +385,168 @@ func (m *ServiceMgr) UpdateBucketGraphFromMektakv(functionName string) error {
 		m.graph.insertEdges(functionName, source, destinations)
 	}
 	return nil
+}
+
+func (m *ServiceMgr) validateQueryKey(query url.Values) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+
+	for key := range query {
+		if _, found := functionQueryKeys[key]; !found {
+			info.Info = "key mismatch error, supported keys in function list query are: source_bucket, function_type, deployed"
+			info.Code = m.statusCodes.errReadReq.Code
+			return
+		}
+	}
+	return
+}
+
+func (m *ServiceMgr) validateQueryBucket(query url.Values) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+	buckets, found := query["source_bucket"]
+	if !found {
+		return
+	}
+	bucketLen := len(buckets)
+	if bucketLen > 1 {
+		info.Info = "more than one bucket name present in function list query"
+		info.Code = m.statusCodes.errReadReq.Code
+		return
+	}
+	return
+}
+
+func (m *ServiceMgr) validateQueryFunctionType(query url.Values) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+
+	functionTypes, found := query["function_type"]
+	if !found {
+		return
+	}
+	typeLen := len(functionTypes)
+
+	if typeLen == 1 {
+		if _, ok := funtionTypes[functionTypes[0]]; !ok {
+			info.Info = "invalid function type, supported function types are: sbm, notsbm"
+			info.Code = m.statusCodes.errReadReq.Code
+			return
+		}
+
+	}
+
+	if typeLen > 1 {
+		info.Info = "more than one function type present in function list query"
+		info.Code = m.statusCodes.errReadReq.Code
+		return
+	}
+	return
+}
+
+func (m *ServiceMgr) validateQueryFunctionDeployment(query url.Values) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+
+	deploymentStatus, found := query["deployed"]
+	if !found {
+		return
+	}
+	deployedLen := len(deploymentStatus)
+
+	if deployedLen == 1 {
+		if deploymentStatus[0] != "true" && deploymentStatus[0] != "false" {
+			info.Info = "invalid deployment status, supported deployment status are: true, false"
+			info.Code = m.statusCodes.errReadReq.Code
+			return
+		}
+	}
+
+	if deployedLen > 1 {
+		info.Info = "more than one deployment status present in function list query"
+		info.Code = m.statusCodes.errReadReq.Code
+	}
+	return
+}
+
+func (m *ServiceMgr) validateFunctionListQuery(query url.Values) (info *runtimeInfo) {
+	logPrefix := "ServiceMgr::getFunctionList"
+
+	if info = m.validateQueryKey(query); info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	if info = m.validateQueryBucket(query); info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	if info = m.validateQueryFunctionType(query); info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	if info = m.validateQueryFunctionDeployment(query); info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+	return
+}
+
+func (m *ServiceMgr) getFunctionList(query url.Values) (fnlist functionList, info *runtimeInfo) {
+
+	info = m.validateFunctionListQuery(query)
+	if info.Code != m.statusCodes.ok.Code {
+		return
+	}
+	m.fnMu.RLock()
+	defer m.fnMu.RUnlock()
+	bucket := query.Get("source_bucket")
+	buckets := make(map[string]struct{})
+	if bucket == "" {
+		for currBucket := range m.bucketFunctionMap {
+			buckets[currBucket] = struct{}{}
+		}
+	} else {
+		buckets[bucket] = struct{}{}
+	}
+
+	functionType := query.Get("function_type")
+	fnTypes := make(map[string]struct{})
+	if functionType == "" {
+		fnTypes = funtionTypes
+	} else {
+		fnTypes[functionType] = struct{}{}
+	}
+
+	deployStatus := query.Get("deployed")
+	deployStatusList := make(map[bool]struct{})
+	if deployStatus == "" {
+		deployStatusList[true] = struct{}{}
+		deployStatusList[false] = struct{}{}
+	} else {
+		if deployStatus == "true" {
+			deployStatusList[true] = struct{}{}
+		} else {
+			deployStatusList[false] = struct{}{}
+		}
+	}
+
+	for currBucket := range buckets {
+		functions, ok := m.bucketFunctionMap[currBucket]
+		if !ok {
+			continue
+		}
+		for function, meta := range functions {
+			if _, ok = fnTypes[meta.fnType]; !ok {
+				continue
+			}
+			if _, ok = deployStatusList[meta.fnDeployed]; !ok {
+				continue
+			}
+			fnlist.Functions = append(fnlist.Functions, function)
+		}
+	}
+	return
 }

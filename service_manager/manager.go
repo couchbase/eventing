@@ -33,6 +33,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		graph:             newBucketMultiDiGraph(),
 		fnsInPrimaryStore: make(map[string]depCfg),
 		fnsInTempStore:    make(map[string]struct{}),
+		bucketFunctionMap: make(map[string]map[string]functionInfo),
 		fnMu:              &sync.RWMutex{},
 		mu:                mu,
 		servers:           make([]service.NodeID, 0),
@@ -169,6 +170,9 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/api/v1/import", m.importHandler)
 	mux.HandleFunc("/api/v1/import/", m.importHandler)
 
+	mux.HandleFunc("/api/v1/list/functions", m.listFunctions)
+	mux.HandleFunc("/api/v1/list/functions/", m.listFunctions)
+
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)
 		logging.Infof("%s Admin HTTP server started: %s", logPrefix, addr)
@@ -293,8 +297,27 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 		if len(destinations) != 0 {
 			m.graph.insertEdges(fnName, source, destinations)
 		}
+
+		//Update BucketFunctionMap
+		functions, ok := m.bucketFunctionMap[app.DeploymentConfig.SourceBucket]
+		if !ok {
+			functions = make(map[string]functionInfo)
+			m.bucketFunctionMap[app.DeploymentConfig.SourceBucket] = functions
+		}
+		funtionType := "notsbm"
+		if app.SrcMutationEnabled {
+			funtionType = "sbm"
+		}
+
+		deployed := app.Settings["deployment_status"].(bool)
+		functions[app.Name] = functionInfo{fnName: app.Name, fnType: funtionType, fnDeployed: deployed}
 	} else {
+		cfg := m.fnsInPrimaryStore[fnName]
 		delete(m.fnsInPrimaryStore, fnName)
+		delete(m.bucketFunctionMap[cfg.SourceBucket], fnName)
+		if len(m.bucketFunctionMap[cfg.SourceBucket]) == 0 {
+			delete(m.bucketFunctionMap, cfg.SourceBucket)
+		}
 		logging.Infof("%s Deleted function: %s from fnsInPrimaryStore", logPrefix, fnName)
 	}
 
@@ -365,16 +388,31 @@ func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interf
 		return nil
 	}
 
-	if deploymentStatus == false && processingStatus == false {
-		m.fnMu.Lock()
-		cfg := m.fnsInPrimaryStore[functionName]
-		m.fnMu.Unlock()
+	m.fnMu.Lock()
+	defer m.fnMu.Unlock()
 
-		source, destinations := m.getSourceAndDestinationsFromDepCfg(&cfg)
+	cfg := m.fnsInPrimaryStore[functionName]
+
+	source, destinations := m.getSourceAndDestinationsFromDepCfg(&cfg)
+	if deploymentStatus == false && processingStatus == false {
 		if len(destinations) != 0 {
 			m.graph.removeEdges(functionName, source, destinations)
 		}
 	}
+
+	//Update BucketFunctionMap
+	functions, ok := m.bucketFunctionMap[source]
+	if !ok {
+		functions = make(map[string]functionInfo)
+		m.bucketFunctionMap[source] = functions
+	}
+	funtionType := "notsbm"
+	if m.isSrcMutationEnabled(&cfg) {
+		funtionType = "sbm"
+	}
+
+	functions[functionName] = functionInfo{fnName: functionName, fnType: funtionType, fnDeployed: deploymentStatus}
+
 	return nil
 }
 

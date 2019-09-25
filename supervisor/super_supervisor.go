@@ -298,7 +298,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						}
 					}
 
-
 					s.spawnApp(appName, cTimers)
 
 					s.appRWMutex.Lock()
@@ -472,7 +471,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					s.appDeploymentStatus[appName] = deploymentStatus
 					s.appProcessingStatus[appName] = processingStatus
 					s.appRWMutex.Unlock()
-					err = s.serviceMgr.UpdateBucketGraphFromMektakv(appName)
+					err = s.serviceMgr.UpdateBucketGraphFromMetakv(appName)
 					if err != nil {
 						return nil
 					}
