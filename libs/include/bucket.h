@@ -12,15 +12,12 @@
 #ifndef BUCKET_H
 #define BUCKET_H
 
-#include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
-#include <libcouchbase/subdoc.h>
 #include <string>
 #include <v8.h>
-#include <vector>
 
+#include "info.h"
 #include "isolate_data.h"
-#include "lcb_utils.h"
 
 class Bucket {
 public:
@@ -39,6 +36,12 @@ private:
                                     lcb_t bucket_lcb_obj_ptr,
                                     lcb_error_t error);
   v8::Local<v8::ObjectTemplate> MakeBucketMapTemplate();
+
+  static Info ValidateKey(const v8::Local<v8::Name> &arg);
+  static Info ValidateValue(const v8::Local<v8::Value> &arg);
+  static Info ValidateKeyValue(const v8::Local<v8::Name> &key,
+                               const v8::Local<v8::Value> &value);
+  template <typename T> static Info Validate(const v8::Local<T> &arg);
 
   // Delegate is used to multiplex alphanumeric and numeric accesses on bucket
   // object in JavaScript

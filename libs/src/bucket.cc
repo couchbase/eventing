@@ -13,6 +13,7 @@
 
 #include "bucket.h"
 #include "js_exception.h"
+#include "lcb_utils.h"
 #include "retry_util.h"
 #include "utils.h"
 
@@ -177,14 +178,15 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
     const v8::Local<v8::Name> &name,
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
+  auto js_exception = UnwrapData(isolate)->js_exception;
   std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
   if (!UnwrapData(isolate)->is_executing_) {
     return;
   }
 
-  if (name->IsSymbol()) {
-    auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->ThrowEventingError("Symbol data type is not supported");
+  auto validate_info = ValidateKey(name);
+  if (validate_info.is_fatal) {
+    js_exception->ThrowEventingError(validate_info.msg);
     ++bucket_op_exception_count;
     return;
   }
@@ -249,14 +251,15 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
     const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
+  auto js_exception = UnwrapData(isolate)->js_exception;
   std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
   if (!UnwrapData(isolate)->is_executing_) {
     return;
   }
 
-  if (name->IsSymbol()) {
-    auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->ThrowEventingError("Symbol data type is not supported");
+  auto validate_info = ValidateKeyValue(name, value_obj);
+  if (validate_info.is_fatal) {
+    js_exception->ThrowEventingError(validate_info.msg);
     ++bucket_op_exception_count;
     return;
   }
@@ -264,7 +267,6 @@ void Bucket::BucketSet<v8::Local<v8::Name>>(
   auto block_mutation = UnwrapInternalField<bool>(
       info.Holder(), static_cast<int>(InternalFields::kBlockMutation));
   if (*block_mutation) {
-    auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
     js_exception->ThrowKVError("Writing to source bucket is forbidden");
     ++bucket_op_exception_count;
     return;
@@ -285,14 +287,15 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
     const v8::Local<v8::Name> &name,
     const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   auto isolate = info.GetIsolate();
+  auto js_exception = UnwrapData(isolate)->js_exception;
   std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
   if (!UnwrapData(isolate)->is_executing_) {
     return;
   }
 
-  if (name->IsSymbol()) {
-    auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->ThrowKVError("Symbol data type is not supported");
+  auto validate_info = ValidateKey(name);
+  if (validate_info.is_fatal) {
+    js_exception->ThrowKVError(validate_info.msg);
     ++bucket_op_exception_count;
     return;
   }
@@ -300,7 +303,6 @@ void Bucket::BucketDelete<v8::Local<v8::Name>>(
   auto block_mutation = UnwrapInternalField<bool>(
       info.Holder(), static_cast<int>(InternalFields::kBlockMutation));
   if (*block_mutation) {
-    auto js_exception = UnwrapData(info.GetIsolate())->js_exception;
     js_exception->ThrowKVError("Delete from source bucket is forbidden");
     ++bucket_op_exception_count;
     return;
@@ -682,4 +684,33 @@ void Bucket::BucketDeleteWithoutXattr(
   }
 
   info.GetReturnValue().Set(true);
+}
+
+Info Bucket::ValidateKey(const v8::Local<v8::Name> &arg) {
+  auto info = Utils::ValidateDataType(arg);
+  if (info.is_fatal) {
+    return {true, "Invalid data type for key - " + info.msg};
+  }
+  return {false};
+}
+
+Info Bucket::ValidateValue(const v8::Local<v8::Value> &arg) {
+  auto info = Utils::ValidateDataType(arg);
+  if (info.is_fatal) {
+    return {true, "Invalid data type for value - " + info.msg};
+  }
+  return {false};
+}
+
+Info Bucket::ValidateKeyValue(const v8::Local<v8::Name> &key,
+                              const v8::Local<v8::Value> &value) {
+  auto info = ValidateKey(key);
+  if (info.is_fatal) {
+    return info;
+  }
+  info = ValidateValue(value);
+  if (info.is_fatal) {
+    return info;
+  }
+  return {false};
 }

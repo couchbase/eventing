@@ -122,6 +122,7 @@ public:
   std::string TrimFront(const std::string &s,
                         const char *ws = " \t\n\r\f\v") const;
   std::string Trim(const std::string &s, const char *ws = " \t\n\r\f\v") const;
+  static Info ValidateDataType(const v8::Local<v8::Value> &arg);
 
 private:
   v8::Isolate *isolate_;

@@ -17,4 +17,9 @@ func init() {
 	if err != nil {
 		log.Printf("Error in creating index on default : %v\n", err)
 	}
+
+	_, err = fireQuery("CREATE PRIMARY INDEX on `hello-world`;")
+	if err != nil {
+		log.Printf("Error in creating index on hello-world : %v\n", err)
+	}
 }

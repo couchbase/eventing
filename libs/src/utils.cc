@@ -445,6 +445,19 @@ std::string Utils::Trim(const std::string &s, const char *ws) const {
   return TrimFront(TrimBack(s, ws), ws);
 }
 
+Info Utils::ValidateDataType(const v8::Local<v8::Value> &arg) {
+  if (arg->IsUndefined()) {
+    return {true, R"("undefined" is not a valid type)"};
+  }
+  if (arg->IsFunction()) {
+    return {true, R"("function" is not a valid type)"};
+  }
+  if (arg->IsSymbol()) {
+    return {true, R"("symbol" is not a valid type)"};
+  }
+  return {false};
+}
+
 v8::Local<v8::ArrayBuffer> Utils::ToArrayBuffer(void *buffer,
                                                 std::size_t size) {
   v8::EscapableHandleScope handle_scope(isolate_);
