@@ -658,7 +658,33 @@ std::string GetConnectionStr(const std::string &end_point,
   return connstr;
 }
 
-std::string BuildUrl(const std::string host, const std::string path) {
+bool CheckURLAccess(const std::string &path) {
+  size_t last = 0;
+  size_t next = 0;
+  char delimiter = '/';
+  int access = 0;
+  while ((next = path.find(delimiter, last)) != std::string::npos) {
+    if (path.compare(last, next - last, ".") == 0 || next - last == 0) {
+      last = next + 1;
+      continue;
+    }
+    path.compare(last, next - last, "..") == 0 ? access-- : access++;
+    if (access < 0)
+      return false;
+    last = next + 1;
+  }
+  if (path.compare(last, next - last, ".") == 0 || next - last == 0)
+    return access >= 0;
+  path.compare(last, next - last, "..") == 0 ? access-- : access++;
+  return access >= 0;
+}
+
+std::string BuildUrl(const std::string &host, const std::string &path) {
+  if (!CheckURLAccess(path)) {
+    LOG(logWarning) << path << " accesses beyond the binding. Redirecting to "
+                    << host << std::endl;
+    return host;
+  }
   std::size_t host_length = host.length();
   std::size_t path_length = path.length();
 
