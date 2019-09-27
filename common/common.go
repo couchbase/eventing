@@ -52,11 +52,13 @@ const (
 )
 
 const (
-	WaitingForMutation = "WaitingForMutation" // Debugger has been started and consumers are waiting to trap
-	MutationTrapped    = "MutationTrapped"    // One of the consumers have trapped the mutation
-	DebuggerTokenKey   = "debugger"
-	MetakvEventingPath = "/eventing/"
-	MetakvDebuggerPath = MetakvEventingPath + "debugger/"
+	WaitingForMutation    = "WaitingForMutation" // Debugger has been started and consumers are waiting to trap
+	MutationTrapped       = "MutationTrapped"    // One of the consumers have trapped the mutation
+	DebuggerTokenKey      = "debugger"
+	MetakvEventingPath    = "/eventing/"
+	MetakvDebuggerPath    = MetakvEventingPath + "debugger/"
+	MetakvTempAppsPath    = MetakvEventingPath + "tempApps/"
+	MetakvCredentialsPath = MetakvEventingPath + "credentials/"
 )
 
 type DebuggerInstance struct {
@@ -65,6 +67,32 @@ type DebuggerInstance struct {
 	Status          string   `json:"status"`            // Possible values are WaitingForMutation, MutationTrapped
 	URL             string   `json:"url"`               // Chrome-Devtools URL for debugging
 	NodesExternalIP []string `json:"nodes_external_ip"` // List of external IP address of the nodes in the cluster
+}
+
+type Application struct {
+	AppHandlers        string                 `json:"appcode"`
+	DeploymentConfig   DepCfg                 `json:"depcfg"`
+	EventingVersion    string                 `json:"version"`
+	FunctionID         uint32                 `json:"function_id"`
+	ID                 int                    `json:"id"`
+	FunctionInstanceID string                 `json:"function_instance_id"`
+	Name               string                 `json:"appname"`
+	Settings           map[string]interface{} `json:"settings"`
+	UsingTimer         bool                   `json:"using_timer"`
+	SrcMutationEnabled bool                   `json:"src_mutation"`
+}
+
+type DepCfg struct {
+	Buckets        []Bucket `json:"buckets"`
+	Curl           []Curl   `json:"curl"`
+	MetadataBucket string   `json:"metadata_bucket"`
+	SourceBucket   string   `json:"source_bucket"`
+}
+
+type Bucket struct {
+	Alias      string `json:"alias"`
+	BucketName string `json:"bucket_name"`
+	Access     string `json:"access"`
 }
 
 type Curl struct {
@@ -76,6 +104,12 @@ type Curl struct {
 	BearerKey              string `json:"bearer_key"`
 	AllowCookies           bool   `json:"allow_cookies"`
 	ValidateSSLCertificate bool   `json:"validate_ssl_certificate"`
+}
+
+type Credential struct {
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	BearerKey string `json:"bearer_key"`
 }
 
 var ErrRetryTimeout = errors.New("retry timeout")

@@ -28,9 +28,11 @@ import (
 	"github.com/couchbase/cbauth/metakv"
 	cm "github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
+	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
+	flatbuffers "github.com/google/flatbuffers/go"
 )
 
 const (
@@ -540,6 +542,24 @@ func MetakvSet(path string, value []byte, rev interface{}) error {
 	return Retry(NewFixedBackoff(time.Second), &cm.MetakvMaxRetries, metakvSetCallback, path, value, rev)
 }
 
+var metakvSetSensitiveCallback = func(args ...interface{}) error {
+	logPrefix := "Util::metakvSetSensitiveCallback"
+
+	metakvPath := args[0].(string)
+	data := args[1].([]byte)
+	rev := args[2]
+
+	err := metakv.SetSensitive(metakvPath, data, rev)
+	if err != nil {
+		logging.Errorf("%s metakv set sensitive failed for path: %s, err: %v", logPrefix, metakvPath, err)
+	}
+	return err
+}
+
+func MetakvSetSensitive(path string, value []byte, rev interface{}) error {
+	return Retry(NewFixedBackoff(time.Second), &cm.MetakvMaxRetries, metakvSetSensitiveCallback, path, value, rev)
+}
+
 var metakvDelCallback = func(args ...interface{}) error {
 	logPrefix := "Util::metakvDelCallback"
 
@@ -577,14 +597,19 @@ func MetakvRecursiveDelete(dirpath string) error {
 func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, compressPayload bool) error {
 	logPrefix := "util::WriteAppContent"
 
-	payload2, err := MaybeCompress(payload, compressPayload)
+	payload2, err := StripCurlCredentials(appsPath, appName, payload)
+	if err != nil {
+		return err
+	}
+
+	payload3, err := MaybeCompress(payload2, compressPayload)
 	if err != nil {
 		return err
 	}
 
 	appsPath += appName
 	appsPath += "/"
-	length := len(payload2)
+	length := len(payload3)
 
 	if length > MaxFunctionSize() {
 		return fmt.Errorf("Handler code size is more than %d, CodeSize: %d",
@@ -608,7 +633,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, com
 			lastidx = length
 		}
 
-		fragment := payload2[curridx:lastidx]
+		fragment := payload3[curridx:lastidx]
 
 		err := MetakvSet(currpath, fragment, nil)
 		if err != nil {
@@ -624,7 +649,7 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, com
 
 	//Compute MD5 hash and update it in metakv
 	payloadhash := PayloadHash{}
-	if err := payloadhash.Update(payload2, MetaKvMaxDocSize()); err != nil {
+	if err := payloadhash.Update(payload3, MetaKvMaxDocSize()); err != nil {
 		logging.Errorf("%s Function: %s updating payload hash failed err: %v", logPrefix, appName, err)
 		//Delete existing entry from appspath
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
@@ -716,7 +741,12 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return payload2, nil
+
+	payload3, mErr := AppendCredentials(appsPath, appName, payload2)
+	if mErr != nil {
+		return nil, err
+	}
+	return payload3, nil
 }
 
 //DeleteAppContent delete handler code
@@ -736,6 +766,13 @@ func DeleteAppContent(appPath, checksumPath, appName string) error {
 		logging.Errorf("%s Function: %s metakv recursive delete failed, err: %v", logPrefix, appName, err)
 		return err
 	}
+
+	//Delete Credentials path
+	if err := MetaKvDelete(cm.MetakvCredentialsPath+appName, nil); err != nil {
+		logging.Infof("%s Function: %s failed to delete credentials, err: %v", logPrefix, appName, err)
+		return err
+	}
+
 	return nil
 }
 
@@ -1528,4 +1565,302 @@ func MaybeDecompress(payload []byte) ([]byte, error) {
 		return payload2, nil
 	}
 	return payload, nil
+}
+
+func EncodeAppPayload(app *cm.Application) []byte {
+	builder := flatbuffers.NewBuilder(0)
+
+	var curlBindings []flatbuffers.UOffsetT
+	for i := 0; i < len(app.DeploymentConfig.Curl); i++ {
+		authTypeEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].AuthType)
+		hostnameEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Hostname)
+		valueEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Value)
+		passwordEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Password)
+		usernameEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Username)
+		bearerKeyEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].BearerKey)
+		cookiesEncoded := byte(0x0)
+		if app.DeploymentConfig.Curl[i].AllowCookies {
+			cookiesEncoded = byte(0x1)
+		}
+		validateSSLCertificateEncoded := byte(0x0)
+		if app.DeploymentConfig.Curl[i].ValidateSSLCertificate {
+			validateSSLCertificateEncoded = byte(0x1)
+		}
+
+		cfg.CurlStart(builder)
+		cfg.CurlAddAuthType(builder, authTypeEncoded)
+		cfg.CurlAddHostname(builder, hostnameEncoded)
+		cfg.CurlAddValue(builder, valueEncoded)
+		cfg.CurlAddPassword(builder, passwordEncoded)
+		cfg.CurlAddUsername(builder, usernameEncoded)
+		cfg.CurlAddBearerKey(builder, bearerKeyEncoded)
+		cfg.CurlAddAllowCookies(builder, cookiesEncoded)
+		cfg.CurlAddValidateSSLCertificate(builder, validateSSLCertificateEncoded)
+		curlBindingsEnd := cfg.CurlEnd(builder)
+
+		curlBindings = append(curlBindings, curlBindingsEnd)
+	}
+
+	cfg.ConfigStartCurlVector(builder, len(curlBindings))
+	for i := 0; i < len(curlBindings); i++ {
+		builder.PrependUOffsetT(curlBindings[i])
+	}
+	curlBindingsVector := builder.EndVector(len(curlBindings))
+
+	var bNames []flatbuffers.UOffsetT
+	var bucketAccess []flatbuffers.UOffsetT
+	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
+		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
+		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
+		bAccess := builder.CreateString(app.DeploymentConfig.Buckets[i].Access)
+
+		cfg.BucketStart(builder)
+		cfg.BucketAddAlias(builder, alias)
+		cfg.BucketAddBucketName(builder, bName)
+		csBucket := cfg.BucketEnd(builder)
+
+		bNames = append(bNames, csBucket)
+		bucketAccess = append(bucketAccess, bAccess)
+	}
+
+	cfg.ConfigStartAccessVector(builder, len(bucketAccess))
+	for i := 0; i < len(bucketAccess); i++ {
+		builder.PrependUOffsetT(bucketAccess[i])
+	}
+	access := builder.EndVector(len(bucketAccess))
+
+	cfg.DepCfgStartBucketsVector(builder, len(bNames))
+	for i := 0; i < len(bNames); i++ {
+		builder.PrependUOffsetT(bNames[i])
+	}
+	buckets := builder.EndVector(len(bNames))
+
+	metaBucket := builder.CreateString(app.DeploymentConfig.MetadataBucket)
+	sourceBucket := builder.CreateString(app.DeploymentConfig.SourceBucket)
+
+	cfg.DepCfgStart(builder)
+	cfg.DepCfgAddBuckets(builder, buckets)
+	cfg.DepCfgAddMetadataBucket(builder, metaBucket)
+	cfg.DepCfgAddSourceBucket(builder, sourceBucket)
+	depcfg := cfg.DepCfgEnd(builder)
+
+	appCode := builder.CreateString(app.AppHandlers)
+	aName := builder.CreateString(app.Name)
+	fiid := builder.CreateString(app.FunctionInstanceID)
+
+	cfg.ConfigStart(builder)
+	cfg.ConfigAddId(builder, uint32(app.ID))
+	cfg.ConfigAddAppCode(builder, appCode)
+	cfg.ConfigAddAppName(builder, aName)
+	cfg.ConfigAddDepCfg(builder, depcfg)
+	cfg.ConfigAddHandlerUUID(builder, app.FunctionID)
+	cfg.ConfigAddCurl(builder, curlBindingsVector)
+	cfg.ConfigAddAccess(builder, access)
+	cfg.ConfigAddFunctionInstanceID(builder, fiid)
+
+	udtp := byte(0x0)
+	if app.UsingTimer {
+		udtp = byte(0x1)
+	}
+	cfg.ConfigAddUsingTimer(builder, udtp)
+
+	srcMutation := byte(0x0)
+	if app.SrcMutationEnabled {
+		srcMutation = byte(0x1)
+	}
+	cfg.ConfigAddSrcMutationEnabled(builder, srcMutation)
+	config := cfg.ConfigEnd(builder)
+
+	builder.Finish(config)
+
+	return builder.FinishedBytes()
+}
+
+func ParseFunctionPayload(data []byte, fnName string) cm.Application {
+
+	config := cfg.GetRootAsConfig(data, 0)
+
+	var app cm.Application
+	app.AppHandlers = string(config.AppCode())
+	app.Name = string(config.AppName())
+	app.ID = int(config.Id())
+	app.FunctionID = uint32(config.HandlerUUID())
+	app.FunctionInstanceID = string(config.FunctionInstanceID())
+	app.UsingTimer = false
+	if config.UsingTimer() == (0x1) {
+		app.UsingTimer = true
+	}
+	app.SrcMutationEnabled = false
+	if config.SrcMutationEnabled() == (0x1) {
+		app.SrcMutationEnabled = true
+	}
+
+	d := new(cfg.DepCfg)
+	depcfg := new(cm.DepCfg)
+	dcfg := config.DepCfg(d)
+
+	depcfg.MetadataBucket = string(dcfg.MetadataBucket())
+	depcfg.SourceBucket = string(dcfg.SourceBucket())
+
+	var buckets []cm.Bucket
+	b := new(cfg.Bucket)
+	for i := 0; i < dcfg.BucketsLength(); i++ {
+
+		if dcfg.Buckets(b, i) {
+			newBucket := cm.Bucket{
+				Alias:      string(b.Alias()),
+				BucketName: string(b.BucketName()),
+				Access:     string(config.Access(i)),
+			}
+			buckets = append(buckets, newBucket)
+		}
+	}
+
+	var curl []cm.Curl
+	c := new(cfg.Curl)
+	for i := 0; i < config.CurlLength(); i++ {
+		if config.Curl(c, i) {
+			allowCookies := false
+			if c.AllowCookies() == (0x1) {
+				allowCookies = true
+			}
+			validateSSL := false
+			if c.ValidateSSLCertificate() == (0x1) {
+				validateSSL = true
+			}
+			newCurl := cm.Curl{
+				Hostname:               string(c.Hostname()),
+				Value:                  string(c.Value()),
+				AuthType:               string(c.AuthType()),
+				Username:               string(c.Username()),
+				Password:               string(c.Password()),
+				BearerKey:              string(c.BearerKey()),
+				AllowCookies:           allowCookies,
+				ValidateSSLCertificate: validateSSL,
+			}
+			curl = append(curl, newCurl)
+		}
+	}
+
+	depcfg.Buckets = buckets
+	depcfg.Curl = curl
+	app.DeploymentConfig = *depcfg
+
+	return app
+}
+
+func StripCurlCredentials(path, appName string, payload []byte) ([]byte, error) {
+	logPrefix := "Util::StripCurlCredentials"
+
+	if path == cm.MetakvTempAppsPath {
+		var app cm.Application
+		if err := json.Unmarshal(payload, &app); err != nil {
+			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appName)
+			return nil, err
+		}
+
+		var creds []cm.Credential
+		for i, binding := range app.DeploymentConfig.Curl {
+			creds = append(creds, cm.Credential{binding.Username,
+				binding.Password, binding.BearerKey})
+			app.DeploymentConfig.Curl[i].Username = ""
+			app.DeploymentConfig.Curl[i].Password = ""
+			app.DeploymentConfig.Curl[i].BearerKey = ""
+		}
+
+		data, err := json.MarshalIndent(creds, "", " ")
+		if err != nil {
+			logging.Errorf("%s Function %s marshal failed for credentials", logPrefix, appName)
+			return nil, err
+		}
+
+		err = MetakvSetSensitive(cm.MetakvCredentialsPath+app.Name, data, nil)
+		if err != nil {
+			logging.Errorf("%s Function: %s failed to store credentials in credentials path", logPrefix, app.Name)
+			return nil, err
+		}
+
+		data, err = json.MarshalIndent(app, "", " ")
+		if err != nil {
+			logging.Errorf("%s Function: %s failed to marshal data", logPrefix, app.Name)
+			return nil, err
+		}
+		return data, nil
+	}
+	app := ParseFunctionPayload(payload, appName)
+
+	var creds []cm.Credential
+	for i, binding := range app.DeploymentConfig.Curl {
+		creds = append(creds, cm.Credential{binding.Username,
+			binding.Password, binding.BearerKey})
+		app.DeploymentConfig.Curl[i].Username = ""
+		app.DeploymentConfig.Curl[i].Password = ""
+		app.DeploymentConfig.Curl[i].BearerKey = ""
+	}
+
+	data, err := json.MarshalIndent(creds, "", " ")
+	if err != nil {
+		logging.Errorf("%s Function %s marshal failed for credentials", logPrefix, appName)
+		return nil, err
+	}
+
+	err = MetakvSetSensitive(cm.MetakvCredentialsPath+app.Name, data, nil)
+	if err != nil {
+		logging.Errorf("%s Function: %s failed to store credentials in credentials path", logPrefix, app.Name)
+		return nil, err
+	}
+
+	appContent := EncodeAppPayload(&app)
+	return appContent, nil
+
+}
+
+func AppendCredentials(path, appName string, payload []byte) ([]byte, error) {
+	logPrefix := "Util::AppendCredentials"
+
+	data, err := MetakvGet(cm.MetakvCredentialsPath + appName)
+	if err != nil {
+		logging.Errorf("%s Function: %s metakv get failed for credentials, err: %v",
+			logPrefix, appName, err)
+		return nil, err
+	}
+
+	var creds []cm.Credential
+	if err = json.Unmarshal(data, &creds); err != nil {
+		logging.Errorf("%s Function: %s unmarshal failed for credentials", logPrefix, appName)
+		return nil, err
+	}
+
+	if path == cm.MetakvTempAppsPath+appName {
+		var app cm.Application
+		if err = json.Unmarshal(payload, &app); err != nil {
+			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appName)
+			return nil, err
+		}
+
+		for i, _ := range app.DeploymentConfig.Curl {
+			app.DeploymentConfig.Curl[i].Username = creds[i].Username
+			app.DeploymentConfig.Curl[i].Password = creds[i].Password
+			app.DeploymentConfig.Curl[i].BearerKey = creds[i].BearerKey
+		}
+
+		data, err = json.MarshalIndent(app, "", " ")
+		if err != nil {
+			logging.Errorf("%s Function: %s failed to marshal data", logPrefix, appName)
+			return nil, err
+		}
+
+		return data, nil
+	}
+
+	app := ParseFunctionPayload(payload, appName)
+
+	for i, _ := range app.DeploymentConfig.Curl {
+		app.DeploymentConfig.Curl[i].Username = creds[i].Username
+		app.DeploymentConfig.Curl[i].Password = creds[i].Password
+		app.DeploymentConfig.Curl[i].BearerKey = creds[i].BearerKey
+	}
+
+	appContent := EncodeAppPayload(&app)
+	return appContent, nil
 }
