@@ -1302,6 +1302,9 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		return
 	}
 
+	existingBoundary := app.Settings["dcp_stream_boundary"]
+	newBoundary, dsbOk := settings["dcp_stream_boundary"]
+
 	for setting := range settings {
 		app.Settings[setting] = settings[setting]
 	}
@@ -1323,7 +1326,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		if isMixedMode && !m.isUndeployOperation(app.Settings) {
 			info.Code = m.statusCodes.errMixedMode.Code
 			info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
-			logging.Errorf("%s %s", logPrefix)
+			logging.Errorf("%s %s", logPrefix, info.Info)
 			return
 		}
 
@@ -1366,21 +1369,28 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 			return
 		}
 
-		if deploymentStatus && processingStatus && m.superSup.GetAppState(appName) == common.AppStatePaused {
-			switch filterFeedBoundary(settings) {
-			case common.DcpFromNow, common.DcpEverything:
-				info.Code = m.statusCodes.errInvalidConfig.Code
-				info.Info = fmt.Sprintf("Function: %s only from_prior feed boundary is allowed during resume", appName)
+		if deploymentStatus && processingStatus {
+			if m.superSup.GetAppState(appName) == common.AppStatePaused {
+				switch filterFeedBoundary(settings) {
+				case common.DcpFromNow, common.DcpEverything:
+					info.Code = m.statusCodes.errInvalidConfig.Code
+					info.Info = fmt.Sprintf("Function: %s only from_prior feed boundary is allowed during resume", appName)
+					logging.Errorf("%s %s", logPrefix, info.Info)
+					return
+				case common.DcpStreamBoundary(""):
+					app.Settings["dcp_stream_boundary"] = "from_prior"
+				default:
+				}
+			}
+
+			if dsbOk && m.superSup.GetAppState(appName) == common.AppStateEnabled && newBoundary != existingBoundary {
+				info.Code = m.statusCodes.errAppDeployed.Code
+				info.Info = "DCP stream boundary cannot be changed while the app is deployed"
 				logging.Errorf("%s %s", logPrefix, info.Info)
 				return
-			case common.DcpStreamBoundary(""):
-				app.Settings["dcp_stream_boundary"] = "from_prior"
-			default:
 			}
-		}
 
-		// Write to primary store in case of deployment
-		if deploymentStatus && processingStatus {
+			// Write to primary store in case of deployment
 			if !m.checkIfDeployedAndRunning(appName) {
 				info = m.savePrimaryStore(&app)
 				if info.Code != m.statusCodes.ok.Code {
@@ -1389,7 +1399,6 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 				}
 			}
 		}
-
 	} else {
 		info.Code = m.statusCodes.errStatusesNotFound.Code
 		info.Info = fmt.Sprintf("Function: %s missing processing or deployment statuses or both", appName)
