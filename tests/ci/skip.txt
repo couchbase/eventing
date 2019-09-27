@@ -20,3 +20,4 @@ TestCurlPutFormBasicAuth
 TestCurlPutFormCookie
 TestCurlPutFormDigestAuthCookie
 TestCurlPutFormBasicAuthCookie
+TestUndeployWhenTimersAreFired
