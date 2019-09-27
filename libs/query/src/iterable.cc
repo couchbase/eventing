@@ -63,6 +63,11 @@ Query::IterableBase::Info Query::Iterable::NewObject(Iterator *iterator) const {
 
 void Query::Iterable::Impl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   v8::HandleScope handle_scope(isolate);
   auto iterable_impl = UnwrapData(isolate)->query_iterable_impl;
   auto js_exception = UnwrapData(isolate)->js_exception;
@@ -81,6 +86,12 @@ void Query::Iterable::Impl(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 void Query::Iterable::Close(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   auto iter_val = args.This()->GetInternalField(InternalField::kIterator);
   auto iterator =
       reinterpret_cast<Iterator *>(iter_val.As<v8::External>()->Value());
@@ -118,6 +129,11 @@ Query::IterableImpl::NewObject(Iterator *iterator) const {
 void Query::IterableImpl::Next(
     const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
   v8::HandleScope handle_scope(isolate);
   auto js_exception = UnwrapData(isolate)->js_exception;
   auto helper = UnwrapData(isolate)->query_helper;

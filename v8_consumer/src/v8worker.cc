@@ -787,6 +787,9 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
   UnwrapData(isolate_)->is_executing_ = true;
   callback_func->Call(callback_func_val, 1, arg);
   UnwrapData(isolate_)->is_executing_ = false;
+
+  auto query_mgr = UnwrapData(isolate_)->query_mgr;
+  query_mgr->ClearQueries();
 }
 
 void V8Worker::StartDebugger() {
