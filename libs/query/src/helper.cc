@@ -91,9 +91,16 @@ Query::Helper::GetNamedParams(const v8::Local<v8::Value> &arg) {
     if (!TO_LOCAL(named_params_keys->Get(context, i), &key)) {
       return {true, "Unable to get key from the second parameter"};
     }
+    if (auto info = Utils::ValidateDataType(key); info.is_fatal) {
+      return {true, "Invalid data type for named parameters: " + info.msg};
+    }
+
     v8::Local<v8::Value> value;
     if (!TO_LOCAL(named_params_obj->Get(context, key), &value)) {
       return {true, "Unable to get value from the second parameter"};
+    }
+    if (auto info = Utils::ValidateDataType(value); info.is_fatal) {
+      return {true, "Invalid data type for named parameters: " + info.msg};
     }
     v8::String::Utf8Value key_utf8(isolate_, key);
     named_params[*key_utf8] = JSONStringify(isolate_, value);
@@ -116,6 +123,11 @@ Query::Helper::GetPosParams(const v8::Local<v8::Value> &arg) {
     v8::Local<v8::Value> param_val;
     if (!TO_LOCAL(params_v8arr->Get(context, i), &param_val)) {
       error << "Unable to read parameter at index " << i << std::endl;
+      return {true, error.str()};
+    }
+    if (auto info = Utils::ValidateDataType(param_val); info.is_fatal) {
+      error << "Invalid data type at index " << i
+            << " for positional parameters: " << info.msg << std::endl;
       return {true, error.str()};
     }
     pos_params.emplace_back(JSONStringify(isolate_, param_val));

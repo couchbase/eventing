@@ -29,6 +29,25 @@ func testEnoent(itemCount int, functionName, handler string, t *testing.T) {
 	flushFunctionAndBucket(functionName)
 }
 
+func TestDataTypes(t *testing.T) {
+	handler := "datatypes"
+	expectedCount := 18
+
+	createAndDeployFunction(t.Name(), handler, &commonSettings{})
+	waitForDeployToFinish(t.Name())
+	pumpBucketOps(opsType{count: 1}, &rateLimit{})
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter)
+	if expectedCount != eventCount {
+		t.Error("For", t.Name(),
+			"expected", expectedCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(t.Name())
+}
+
 func TestEnoentGet(t *testing.T) {
 	functionName := t.Name()
 
