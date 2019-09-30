@@ -2,12 +2,11 @@ package servicemanager
 
 import (
 	"errors"
-	"sync"
-	"time"
-
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
+	"sync"
+	"time"
 )
 
 const (
@@ -48,6 +47,17 @@ const (
 
 var (
 	errInvalidVersion = errors.New("invalid eventing version")
+
+	funtionTypes = map[string]struct{}{
+		"sbm":    struct{}{},
+		"notsbm": struct{}{},
+	}
+
+	functionQueryKeys = map[string]struct{}{
+		"source_bucket": struct{}{},
+		"function_type": struct{}{},
+		"deployed":      struct{}{},
+	}
 )
 
 // ServiceMgr implements cbauth_service interface
@@ -61,8 +71,9 @@ type ServiceMgr struct {
 	ejectNodeUUIDs    []string
 	eventingNodeAddrs []string
 	failoverNotif     bool
-	fnsInPrimaryStore map[string]depCfg   // Access controlled by fnMu
-	fnsInTempStore    map[string]struct{} // Access controlled by fnMu
+	fnsInPrimaryStore map[string]depCfg                  // Access controlled by fnMu
+	fnsInTempStore    map[string]struct{}                // Access controlled by fnMu
+	bucketFunctionMap map[string]map[string]functionInfo // Access controlled by fnMu
 	fnMu              *sync.RWMutex
 	keepNodeUUIDs     []string
 	keyFile           string
@@ -88,6 +99,16 @@ type ServiceMgr struct {
 	statusCodes   statusCodes
 	statusPayload []byte
 	errorCodes    map[int]errorPayload
+}
+
+type functionInfo struct {
+	fnName     string
+	fnType     string
+	fnDeployed bool
+}
+
+type functionList struct {
+	Functions []string `json:"functions"`
 }
 
 type doneCallback func(err error, cancel <-chan struct{})

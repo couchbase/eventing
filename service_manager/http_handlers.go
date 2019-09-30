@@ -1446,7 +1446,10 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 	app.ID = int(config.Id())
 	app.FunctionID = uint32(config.HandlerUUID())
 	app.FunctionInstanceID = string(config.FunctionInstanceID())
-
+	app.SrcMutationEnabled = false
+	if config.SrcMutationEnabled() == 0x1 {
+		app.SrcMutationEnabled = true
+	}
 	d := new(cfg.DepCfg)
 	depcfg := new(depCfg)
 	dcfg := config.DepCfg(d)
@@ -3570,4 +3573,36 @@ func (m *ServiceMgr) traceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pprof.Trace(w, r)
+}
+
+func (m *ServiceMgr) listFunctions(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::listFunctions"
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	q := r.URL.Query()
+	fnlist, info := m.getFunctionList(q)
+	if info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	response, err := json.MarshalIndent(fnlist, "", " ")
+	if err != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("failed to marshal function list, err : %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", string(response))
 }

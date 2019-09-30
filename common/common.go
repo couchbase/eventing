@@ -286,7 +286,7 @@ type EventingSuperSup interface {
 }
 
 type EventingServiceMgr interface {
-	UpdateBucketGraphFromMektakv(functionName string) error
+	UpdateBucketGraphFromMetakv(functionName string) error
 }
 type Config map[string]interface{}
 
