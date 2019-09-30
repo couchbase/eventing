@@ -4,7 +4,7 @@ top:=$(realpath ../../../../..)
 workdir:=$(realpath .)/build
 binaries:=eventing-producer eventing-consumer cbevent
 
-goroot := $(HOME)/.cbdepscache/exploded/x86_64/go-1.12.4/go
+goroot := $(shell find ~/.cbdepscache/exploded/x86_64 -type d -name 'go-1.12.*' -print -quit)/go
 ccache := $(shell which ccache)
 cc_src := $(shell find libs/ v8_consumer/ third_party/ gen/ ../eventing-ee/*.cc -name '*.cc' -o -name '*.c')
 go_src := $(shell find . ../eventing-ee/ -name '*.go')
@@ -48,15 +48,14 @@ libs:=\
 	-lssl -lcrypto \
 	-lz
 
-tests:= $(shell shuf -e -- \
+tests:=\
 	handler \
 	n1ql \
 	curl \
 	eventing_reb \
 	testrunner_reb \
 	kv_reb \
-	duplicate_events \
-)
+	duplicate_events
 
 goenv:=\
 	GOROOT=$(goroot) \
