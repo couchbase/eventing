@@ -2068,12 +2068,12 @@ func (m *ServiceMgr) determineCurlWarning(app *application) (string, error) {
 	for _, curl := range app.DeploymentConfig.Curl {
 		parsedUrl, err := url.Parse(curl.Hostname)
 		if err != nil {
-			return fmt.Sprintf("Unable to parse URL of %s, err : %v", curl.Value, err), nil
+			return fmt.Sprintf("Unable to parse URL of cURL binding alias %s, err : %v", curl.Value, err), nil
 		}
 
 		node, err := util.NewNodeWithScheme(parsedUrl.Host, parsedUrl.Scheme)
 		if err != nil {
-			return fmt.Sprintf("Unable to resolve %s, err : %v", curl.Value, err), nil
+			return fmt.Sprintf("Unable to resolve hostname for cURL binding alias %s, err : %v", curl.Value, err), nil
 		}
 
 		for _, nodeInCluster := range allNodes {

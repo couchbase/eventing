@@ -272,6 +272,9 @@
                     ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].hostname"
                     ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                     placeholder="URL...">
+            <div class="error field-error" ng-show="formCtrl.createAppForm.appname.$error.hostnameValidList[$index]">
+              Hostname cannot be empty and must start with http:// or https://
+            </div>
           </span>
           <span
                   class="padding-right-half margin-bottom-half width-12"
