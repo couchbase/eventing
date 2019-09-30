@@ -72,10 +72,10 @@ ADD_CUSTOM_COMMAND(
 ADD_CUSTOM_COMMAND(
         OUTPUT js/transpiler.h
         COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../libs/src/transpiler.js js_transpiler js/transpiler.h
-        DEPENDS ../libs/src/transpiler.js
+        ARGS ../features/src/transpiler.js js_transpiler js/transpiler.h
+        DEPENDS ../features/src/transpiler.js
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../libs/src/transpiler.js to js/transpiler.h with variable js_transpiler"
+        COMMENT "Converting ../features/src/transpiler.js to js/transpiler.h with variable js_transpiler"
 )
 ADD_CUSTOM_COMMAND(
         OUTPUT js/esprima.h
@@ -178,10 +178,10 @@ ENDIF ()
 ADD_CUSTOM_COMMAND(
         OUTPUT parser/jsify.cc
         COMMAND ${_flex_command}
-        ARGS -B -oparser/jsify.cc ../libs/src/jsify.lex
-        DEPENDS ../libs/src/jsify.lex
+        ARGS -B -oparser/jsify.cc ../features/src/jsify.lex
+        DEPENDS ../features/src/jsify.lex
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../libs/src/jsify.lex to parser/jsify.cc"
+        COMMENT "Converting ../features/src/jsify.lex to parser/jsify.cc"
 )
 
 ADD_CUSTOM_TARGET(generated DEPENDS

@@ -20,7 +20,7 @@
 #  EVENTING_QUERY_SRC - Sources that need to be compiled
 
 if (NOT EVENTING_QUERY_FOUND)
-    set(QUERY_DIR ${CMAKE_SOURCE_DIR}/goproj/src/github.com/couchbase/eventing/libs/query)
+    set(QUERY_DIR ${CMAKE_SOURCE_DIR}/goproj/src/github.com/couchbase/eventing/features/query)
 
     set(EVENTING_QUERY_INCLUDE_DIR
             ${QUERY_DIR}/include)

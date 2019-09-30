@@ -17,29 +17,29 @@ set(CMAKE_C_STANDARD 99)
 INCLUDE (FindCouchbaseLibuv)
 INCLUDE (FindCouchbaseV8)
 INCLUDE (FindCouchbaseBreakpad)
-INCLUDE (../libs/query/FindEventingQuery.cmake)
+INCLUDE (../features/query/FindEventingQuery.cmake)
 INCLUDE (FindCouchbaseNlohmannJson)
 INCLUDE (FindCouchbaseOpenSSL)
 
-SET(LIBS_HEADERS
-        ../libs/include
+SET(FEATURES_HEADERS
+        ../features/include
         ../third_party/crc64)
 
-SET(LIBS_SRC
-        ../../eventing-ee/curl.cc
-        ../../eventing-ee/timer_defs.cc
-        ../../eventing-ee/timer_store.cc
-        ../../eventing-ee/timer_iterator.cc
-        ../libs/src/lcb_util.cc
-        ../libs/src/bucket.cc
-        ../libs/src/comm.cc
-        ../libs/src/log.cc
-        ../libs/src/transpiler.cc
-        ../libs/src/js_exception.cc
-        ../libs/src/v8log.cc
-        ../libs/src/utils.cc
-        ../libs/src/base64.cc
-        ../libs/src/insight.cc
+SET(FEATURES_SRC
+        ../../eventing-ee/features/src/curl.cc
+        ../../eventing-ee/features/src/timer_defs.cc
+        ../../eventing-ee/features/src/timer_store.cc
+        ../../eventing-ee/features/src/timer_iterator.cc
+        ../features/src/lcb_util.cc
+        ../features/src/bucket.cc
+        ../features/src/comm.cc
+        ../features/src/log.cc
+        ../features/src/transpiler.cc
+        ../features/src/js_exception.cc
+        ../features/src/v8log.cc
+        ../features/src/utils.cc
+        ../features/src/base64.cc
+        ../features/src/insight.cc
         ../third_party/crc64/crc64.cc)
 
 INCLUDE_DIRECTORIES(BEFORE
@@ -59,7 +59,7 @@ INCLUDE_DIRECTORIES(AFTER
                      ${FLATBUFFERS_INCLUDE_DIR}
                      ${CMAKE_INSTALL_PREFIX}/include
                      ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector
-                     ${LIBS_HEADERS}
+                     ${FEATURES_HEADERS}
                      ${NLOHMANN_JSON_INCLUDE_DIR})
 
 IF (NOT WIN32)
@@ -82,7 +82,7 @@ SET(EVENTING_SOURCES
     src/breakpad.cc
     src/timer.cc
     src/histogram.cc
-    ${LIBS_SRC}
+    ${FEATURES_SRC}
     ${EVENTING_QUERY_SRC}
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/version/version.cc)
