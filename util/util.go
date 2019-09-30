@@ -1825,6 +1825,10 @@ func AppendCredentials(path, appName string, payload []byte) ([]byte, error) {
 		return nil, err
 	}
 
+	if data == nil {
+		return payload, nil
+	}
+
 	var creds []cm.Credential
 	if err = json.Unmarshal(data, &creds); err != nil {
 		logging.Errorf("%s Function: %s unmarshal failed for credentials", logPrefix, appName)
@@ -1836,6 +1840,10 @@ func AppendCredentials(path, appName string, payload []byte) ([]byte, error) {
 		if err = json.Unmarshal(payload, &app); err != nil {
 			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appName)
 			return nil, err
+		}
+
+		if len(creds) < len(app.DeploymentConfig.Curl) {
+			app.DeploymentConfig.Curl = app.DeploymentConfig.Curl[:len(creds)]
 		}
 
 		for i, _ := range app.DeploymentConfig.Curl {
@@ -1855,6 +1863,10 @@ func AppendCredentials(path, appName string, payload []byte) ([]byte, error) {
 
 	app := ParseFunctionPayload(payload, appName)
 
+	if len(creds) < len(app.DeploymentConfig.Curl) {
+		app.DeploymentConfig.Curl = app.DeploymentConfig.Curl[:len(creds)]
+	}
+
 	for i, _ := range app.DeploymentConfig.Curl {
 		app.DeploymentConfig.Curl[i].Username = creds[i].Username
 		app.DeploymentConfig.Curl[i].Password = creds[i].Password
@@ -1863,4 +1875,5 @@ func AppendCredentials(path, appName string, payload []byte) ([]byte, error) {
 
 	appContent := EncodeAppPayload(&app)
 	return appContent, nil
+
 }
