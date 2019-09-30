@@ -26,7 +26,7 @@ function GetSomeFormData() {
         1 : {
             'nested-key' : 'nested-value'
         },
-        2 : urlEncode(GetSomeArray())
+        2 : encodeURIComponent(GetSomeArray().toString())
     };
 }
 

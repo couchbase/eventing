@@ -54,7 +54,7 @@ func (v *Verification) verifyForm(body []byte) bool {
 	if err != nil {
 		return false
 	}
-	expected := `1={"nested-key":"nested-value"}&2=0=this&1=is&2=an&3=array&key=value&another-key=another-value`
+	expected := `1={"nested-key":"nested-value"}&2=this%2Cis%2Can%2Carray&key=value&another-key=another-value`
 	return actual == expected
 }
 
