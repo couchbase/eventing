@@ -39,14 +39,20 @@ libs:=\
 	-L $(top)/build/tlm/deps/openssl.exploded/lib/ \
 	-L $(top)/build/tlm/deps/zlib.exploded/lib/ \
 	-L $(top)/build/libcouchbase/lib/ \
-	-lpthread \
-	-lv8 -licui18n -licuuc -lc++  -lv8_for_testing  -lv8_libbase  -lv8_libplatform \
+	-lpthread -lresolv \
+	-lv8 -licui18n -licuuc -lc++ -lv8_libbase -lv8_libplatform \
 	-lcouchbase \
 	-lcurl \
 	-luv \
 	-lflatbuffers \
 	-lssl -lcrypto \
-	-lz
+	-lz \
+	-lresolv
+
+cflags:=\
+	-DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT -DENTERPRISE \
+	-Wl,-rpath,'@executable_path/../lib' \
+	-Wl,-rpath,'$(top)/install/lib'
 
 tests:=\
 	handler \
@@ -65,12 +71,12 @@ goenv:=\
 	LD_LIBRARY_PATH=$(top)/install/lib \
 	PATH=$(goroot)/bin:$(PATH)
 
-goargs:=\
+goflags:=\
 	-v -ldflags '-s -extldflags "-Wl,-rpath,@executable_path/../lib"' -tags 'enterprise'
 
 $(workdir)/cc/eventing/%.o: %.cc
 	mkdir -p $(dir $(workdir)/cc/eventing/$<)
-	$(ccache) g++ -std=c++1z -c $(includes) -o $@ $<
+	$(ccache) g++ -std=c++1z -c $(includes) $(cflags) -o $@ $<
 
 gen/version/version.cc: util/version.in
 	cd $(top) && make -j8
@@ -79,13 +85,13 @@ $(workdir): gen/version/version.cc
 	mkdir -p $(workdir) $(workdir)/cc $(workdir)/go
 
 $(workdir)/eventing-consumer: $(addprefix $(workdir)/cc/eventing/,$(cc_src:%.cc=%.o))
-	$(ccache) g++ $(libs) -o $@ $^
+	$(ccache) g++ $(libs) $(cflags) -o $@ $^
 
 $(workdir)/eventing-producer: $(go_src)
-	$(goenv) go build $(goargs) -o $@ cmd/producer/*.go
+	$(goenv) go build $(goflags) -o $@ cmd/producer/*.go
 
 $(workdir)/cbevent: $(go_src)
-	$(goenv) go build $(goargs) -o $@ cmd/cbevent/*.go
+	$(goenv) go build $(goflags) -o $@ cmd/cbevent/*.go
 
 $(top)/install/bin/%: $(workdir)/%
 	mv -f $@ $@.prior || true
