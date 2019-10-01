@@ -461,6 +461,11 @@ func (m *ServiceMgr) validateUrl(u string) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
+	if !(strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://")) {
+		info.Info = fmt.Sprintf("URL starts with invalid scheme type. Please ensure URL starts with http:// or https://")
+		return
+	}
+
 	_, err := url.ParseRequestURI(u)
 	if err != nil {
 		info.Info = fmt.Sprintf("%v", err)

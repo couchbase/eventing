@@ -1475,6 +1475,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 return value && value.match(re);
             }
 
+            function isValidHostname(str) {
+                return str.indexOf("http://") == 0 || str.indexOf("https://") == 0
+            }
+
+
             return {
                 isValidVariable: function(value) {
                     return isValidVariable(value);
@@ -1482,10 +1487,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 isValidVariableRegex: function(value) {
                     return isValidVariableRegex(value);
                 },
+                isValidHostname: function (value) {
+                    return isValidHostname(value);
+                },
                 isFormInvalid: function(formCtrl, bindings, sourceBucket) {
                     var bindingsValid,
                         bindingError,
+                        hostnameValid,
+                        hostnameError,
                         bindingsValidList = []
+                        hostnameValidList = []
                         form = formCtrl.createAppForm;
 
                     for (var binding of bindings) {
@@ -1496,6 +1507,13 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         if (bindingsValid === false) {
                             bindingError = true;
                         }
+                        if (binding.hostname.length) {
+                            hostnameValid = isValidHostname(binding.hostname);
+                            hostnameValidList.push(!hostnameValid);
+                        }
+                        if (hostnameValid === false) {
+                            hostnameError = true;
+                        }
                     }
 
                     // Check whether the appname exists in the list of apps.
@@ -1503,7 +1521,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         form.appname.$error.appExists = form.appname.$viewValue in formCtrl.savedApps;
                         form.appname.$error.appnameInvalid = !isValidApplicationName(form.appname.$viewValue);
                         form.appname.$error.bindingsValidList = bindingsValidList;
+                        form.appname.$error.hostnameValidList = hostnameValidList;
                         form.appname.$error.bindingsValid = bindingError;
+                        form.appname.$error.hostnameValid = hostnameError;
                     }
 
                     form.appname.$error.required = form.appname.$viewValue === '';
@@ -1518,7 +1538,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
                         formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
                         form.appname.$error.appnameInvalid ||
-                        bindingError;
+                        bindingError || hostnameError;
                 }
             }
         }
