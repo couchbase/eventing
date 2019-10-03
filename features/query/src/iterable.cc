@@ -9,13 +9,12 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "query-iterable.h"
-
 #include <v8.h>
 
 #include "comm.h"
 #include "isolate_data.h"
 #include "js_exception.h"
+#include "query-iterable.h"
 #include "query-row.h"
 #include "utils.h"
 

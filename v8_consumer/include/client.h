@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
 #include <uv.h>
 #include <vector>
 
@@ -87,6 +88,8 @@ public:
   void SendFilterAck(int opcode, int msgtype, int vb_no, int64_t seq_no,
                      bool skip_ack);
 
+  void SetNsServerPort(const std::string &port) { ns_server_port_ = port; }
+
   std::thread main_uv_loop_thr_;
   std::thread feedback_uv_loop_thr_;
   std::thread stdin_read_thr_;
@@ -145,6 +148,8 @@ private:
   std::string user_prefix_;
 
   std::string next_message_;
+
+  std::string ns_server_port_;
 
   std::map<int16_t, int16_t> partition_thr_map_;
 

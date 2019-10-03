@@ -56,6 +56,8 @@ public:
   ::Info AccountLCBError(const std::string &err_str);
   void AccountLCBError(int err_code);
   void HandleRowError(const Query::Row &row);
+  std::string ErrorFormat(const std::string &message, lcb_t connection,
+                          lcb_error_t error);
 
 private:
   struct ErrorCodesInfo : public ::Info {

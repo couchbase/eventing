@@ -14,6 +14,7 @@
 
 #include <libcouchbase/api3.h>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <v8.h>
@@ -26,9 +27,9 @@ namespace timer {
 
 class TimerStore {
 public:
-  explicit TimerStore(v8::Isolate *isolate, const std::string &bucket_name,
-                      const std::string &prefix, const std::string &endpoint,
-                      const std::vector<int64_t> &partitions);
+  explicit TimerStore(v8::Isolate *isolate, const std::string &prefix,
+                      const std::vector<int64_t> &partitions,
+                      const std::string &conn_str);
   ~TimerStore();
 
   lcb_error_t SetTimer(TimerInfo &timer);
@@ -68,10 +69,9 @@ private:
   std::unordered_set<int64_t> partitons_;
   std::atomic_bool is_dirty_;
   std::unordered_map<int64_t, TimerSpan> span_map_;
-  std::string bucket_name_;
   std::string prefix_;
-  std::string endpoint_;
-  lcb_t crud_handle_;
+  std::string conn_str_;
+  lcb_t crud_handle_{nullptr};
   std::mutex sync_lock;
   friend class Iterator;
 };

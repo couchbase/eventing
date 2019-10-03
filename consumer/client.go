@@ -49,6 +49,7 @@ func (c *client) Serve() {
 		strconv.FormatBool(c.consumerHandle.breakpadOn),
 		strconv.Itoa(int(c.consumerHandle.app.FunctionID)),
 		c.consumerHandle.app.UserPrefix,
+		c.consumerHandle.nsServerPort,
 		c.eventingPort) // Not read, for tagging
 
 	user, key := util.LocalKey()

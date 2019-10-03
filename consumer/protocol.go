@@ -299,7 +299,7 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 }
 
 func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDir, eventingPort,
-	eventingSSLPort, kvHostPort, depCfg string, capacity, executionTimeout, checkpointInterval int,
+	eventingSSLPort, depCfg string, capacity, executionTimeout, checkpointInterval int,
 	skipLcbBootstrap bool, timerContextSize int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
@@ -310,7 +310,6 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	ep := builder.CreateString(eventingPort)
 	esp := builder.CreateString(eventingSSLPort)
 	dcfg := builder.CreateString(depCfg)
-	khp := builder.CreateString(kvHostPort)
 	fiid := builder.CreateString(c.app.FunctionInstanceID)
 	handlerHeaders := c.createHandlerHeaders(builder)
 	handlerFooters := c.createHandlerFooters(builder)
@@ -330,7 +329,6 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddCurrEventingPort(builder, ep)
 	payload.PayloadAddCurrEventingSslport(builder, esp)
 	payload.PayloadAddDepcfg(builder, dcfg)
-	payload.PayloadAddKvHostPort(builder, khp)
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))
 	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))

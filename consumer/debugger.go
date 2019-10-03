@@ -53,8 +53,9 @@ func (c *debugClient) Spawn(debuggerSpawned chan struct{}) {
 		"true",
 		strconv.Itoa(int(c.consumerHandle.app.FunctionID)),
 		c.consumerHandle.app.UserPrefix,
+		c.consumerHandle.nsServerPort,
 		c.eventingPort, // not read, for tagging
-		"debug")        // not read, for tagging
+		"debug") // not read, for tagging
 
 	user, key := util.LocalKey()
 	c.cmd.Env = append(os.Environ(),
@@ -300,7 +301,7 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstanc
 
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort,
 		ip, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
-		c.getKvNodes()[0], c.producer.CfgData(), c.lcbInstCapacity,
+		c.producer.CfgData(), c.lcbInstCapacity,
 		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		false, c.timerContextSize)
 

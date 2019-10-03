@@ -9,8 +9,10 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "client.h"
+#include <string>
+
 #include "breakpad.h"
+#include "client.h"
 
 uint64_t timer_responses_sent(0);
 uint64_t messages_parsed(0);
@@ -437,7 +439,6 @@ void AppWorker::RouteMessageWithResponse(
       server_settings->eventing_sslport.assign(
           payload->curr_eventing_sslport()->str());
       server_settings->host_addr.assign(payload->curr_host()->str());
-      server_settings->kv_host_port.assign(payload->kv_host_port()->str());
 
       handler_instance_id = payload->function_instance_id()->str();
 
@@ -449,10 +450,10 @@ void AppWorker::RouteMessageWithResponse(
       v8::V8::Initialize();
 
       for (int16_t i = 0; i < thr_count_; i++) {
-        V8Worker *w =
-            new V8Worker(platform, handler_config, server_settings,
-                         function_name_, function_id_, handler_instance_id,
-                         user_prefix_, &latency_stats_, &curl_latency_stats_);
+        V8Worker *w = new V8Worker(
+            platform, handler_config, server_settings, function_name_,
+            function_id_, handler_instance_id, user_prefix_, &latency_stats_,
+            &curl_latency_stats_, ns_server_port_);
 
         LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
         workers_[i] = w;
@@ -1006,63 +1007,52 @@ AppWorker::PartitionVbuckets(const std::vector<int64_t> &vbuckets) const {
 }
 
 int main(int argc, char **argv) {
-
-  if (argc < 11) {
+  if (argc < 14) {
     std::cerr
-        << "Need at least 11 arguments: appname, ipc_type, port, feedback_port"
+        << "Need at least 13 arguments: appname, ipc_type, port, feedback_port"
            "worker_id, batch_size, feedback_batch_size, diag_dir, ipv4/6, "
-           "breakpad_on, handler_uuid"
+           "breakpad_on, handler_uuid, user_prefix, ns_server_port"
         << std::endl;
     return 2;
   }
 
   executable_img = argv[0];
-
-  SetIPv6(std::string(argv[9]) == "ipv6");
-
-  srand(static_cast<unsigned>(time(nullptr)));
-
   std::string appname(argv[1]);
   std::string ipc_type(argv[2]); // can be af_unix or af_inet
-
-  std::string feedback_sock_path, uds_sock_path;
-  int feedback_port = -1, port = -1;
-
-  if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
-    uds_sock_path.assign(argv[3]);
-    feedback_sock_path.assign(argv[4]);
-  } else {
-    port = atoi(argv[3]);
-    feedback_port = atoi(argv[4]);
-  }
-
+  std::string port = argv[3];
+  std::string feedback_port(argv[4]);
   std::string worker_id(argv[5]);
-  int batch_size = atoi(argv[6]);
-  int feedback_batch_size = atoi(argv[7]);
+  auto batch_size = atoi(argv[6]);
+  auto feedback_batch_size = atoi(argv[7]);
   std::string diag_dir(argv[8]);
+  std::string ip_type(argv[9]);
+  std::string breakpad_on(argv[10]);
+  std::string function_id(argv[11]);
+  std::string user_prefix(argv[12]);
+  std::string ns_server_port(argv[13]);
 
-  if (strcmp(argv[10], "true") == 0) {
+  srand(static_cast<unsigned>(time(nullptr)));
+  curl_global_init(CURL_GLOBAL_ALL);
+
+  SetIPv6(ip_type == "ipv6");
+
+  if (breakpad_on == "true") {
     setupBreakpad(diag_dir);
   }
 
-  std::string user_prefix;
-  if (argc >= 13) {
-    user_prefix = std::string(argv[12]);
+  AppWorker *worker = AppWorker::GetAppWorker();
+  worker->SetNsServerPort(ns_server_port);
+  if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
+    worker->InitUDS(appname, function_id, user_prefix, appname,
+                    Localhost(false), worker_id, batch_size,
+                    feedback_batch_size, feedback_port, port);
+  } else {
+    worker->InitTcpSock(appname, function_id, user_prefix, appname,
+                        Localhost(false), worker_id, batch_size,
+                        feedback_batch_size, atoi(feedback_port.c_str()),
+                        atoi(port.c_str()));
   }
 
-  curl_global_init(CURL_GLOBAL_ALL);
-  std::string function_id(argv[11]);
-  std::string function_name(argv[1]);
-  AppWorker *worker = AppWorker::GetAppWorker();
-  if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
-    worker->InitUDS(function_name, function_id, user_prefix, appname,
-                    Localhost(false), worker_id, batch_size,
-                    feedback_batch_size, feedback_sock_path, uds_sock_path);
-  } else {
-    worker->InitTcpSock(function_name, function_id, user_prefix, appname,
-                        Localhost(false), worker_id, batch_size,
-                        feedback_batch_size, feedback_port, port);
-  }
   worker->ReadStdinLoop();
   worker->ScanTimerLoop();
   worker->stdin_read_thr_.join();
@@ -1071,6 +1061,7 @@ int main(int argc, char **argv) {
   worker->feedback_uv_loop_thr_.join();
 
   curl_global_cleanup();
+  return 0;
 }
 
 std::string AppWorker::GetInsight() {
