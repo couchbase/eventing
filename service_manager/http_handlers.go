@@ -925,6 +925,11 @@ func (m *ServiceMgr) setSettingsHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if info := m.validateSettings(settings); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+
 	if info := m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
