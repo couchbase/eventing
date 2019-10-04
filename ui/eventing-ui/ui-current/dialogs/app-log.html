@@ -1,15 +1,17 @@
 <!--Dialog for showing app logs-->
 <div class="dialog-sm">
   <div class="panel-header">
-    <h2>Logs for {{appName}}</h2>
+    <h2>Function Log - {{appName}}</h2>
   </div>
-  <div class="panel-content">
-    <div class="row" ng-hide="logMessages.length > 0">
-      <p>No messages logged. Function has not called log() recently.</p>
+  <div class="panel-content" style="padding-bottom: 0;">
+    <div class="max-height-500">
+      <div class="row" ng-hide="logMessages.length > 0">
+        <p>No activity logged. Function has not called log() recently.</p>
+      </div>
+      <p ng-repeat="message in logMessages track by $index" class="margin-bottom-half">{{message}}</p>
     </div>
-    <p ng-repeat="message in logMessages track by $index" class="monospaced">{{message}}</p>
   </div>
-  <div class="panel-footer">
+  <div class="panel-footer scroll-shadow">
     <button ng-click="$close('dismiss')">Close</button>
   </div>
 </div>
