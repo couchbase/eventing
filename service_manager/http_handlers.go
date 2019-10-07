@@ -1459,7 +1459,15 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 
 	appContent := m.encodeAppPayload(&app)
 
-	if len(appContent) > maxHandlerSize {
+	compressPayload := m.checkCompressHandler()
+	appPayload, err := util.MaybeCompress(appContent, compressPayload)
+	if err != nil {
+		info.Code = m.statusCodes.errSaveAppPs.Code
+		info.Info = fmt.Sprintf("Function: %s Error in compressing: %v", app.Name, err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+	if len(appPayload) > maxHandlerSize {
 		info.Code = m.statusCodes.errAppCodeSize.Code
 		info.Info = fmt.Sprintf("Function: %s handler Code size is more than 128K", app.Name)
 		logging.Errorf("%s %s", logPrefix, info.Info)
@@ -1523,7 +1531,6 @@ func (m *ServiceMgr) savePrimaryStore(app application) (info *runtimeInfo) {
 		return
 	}
 
-	compressPayload := m.checkCompressHandler()
 	err = util.WriteAppContent(metakvAppsPath, metakvChecksumPath, app.Name, appContent, compressPayload)
 	if err != nil {
 		info.Code = m.statusCodes.errSaveAppPs.Code

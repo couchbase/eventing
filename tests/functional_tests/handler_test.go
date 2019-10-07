@@ -4,6 +4,7 @@ package eventing
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 	"testing"
@@ -822,3 +823,54 @@ func TestUndeployBackdoorDuringBootstrap(t *testing.T) {
 	dumpStats()
 	flushFunctionAndBucket(handler)
 } */
+
+func TestLargeHandler(t *testing.T) {
+	functionName := fmt.Sprintf("%s_function", t.Name())
+	jsFileName := "bucket_op_on_update"
+
+	payload := fmt.Sprintf("{\"force_compress\":%v}", false)
+	_, err := configChange(payload)
+	if err != nil {
+		t.Errorf("Failed to change setting force_compress, err : %v\n", err)
+		return
+	}
+	log.Printf("Changed force_compress value to false")
+	resp := createAndDeployLargeFunction(functionName, jsFileName, &commonSettings{}, 128*1024)
+
+	var response map[string]interface{}
+	err2 := json.Unmarshal(resp.body, &response)
+	if err2 != nil {
+		t.Errorf("Failed to unmarshal response, err : %v\n", err)
+		return
+	}
+
+	// Eventing should throw error since length of code is greater than max function size
+	if resString, ok := response["name"].(string); !ok || resString != "ERR_APPCODE_SIZE" {
+		t.Error("Deployment must fail")
+		return
+	}
+
+	payload = fmt.Sprintf("{\"force_compress\":%v}", true)
+	_, err = configChange(payload)
+	if err != nil {
+		t.Errorf("Failed to change setting force_compress, err : %v\n", err)
+		return
+	}
+	log.Printf("Changed force_compress value to true")
+
+	resp = createAndDeployLargeFunction(functionName, jsFileName, &commonSettings{}, 128*1024)
+
+	err2 = json.Unmarshal(resp.body, &response)
+	if err2 != nil {
+		t.Errorf("Failed to unmarshal response, err : %v\n", err)
+		return
+	}
+
+	//change force_compress to true. Eventing should store the function and deployment should succeed.
+	if resCode, ok := response["code"].(float64); !ok || resCode != 0 {
+		t.Errorf("Deployment must pass")
+		return
+	}
+	waitForDeployToFinish(functionName)
+	flushFunctionAndBucket(functionName)
+}
