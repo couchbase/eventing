@@ -611,11 +611,6 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, com
 	appsPath += "/"
 	length := len(payload3)
 
-	if length > MaxFunctionSize() {
-		return fmt.Errorf("Handler code size is more than %d, CodeSize: %d",
-			MaxFunctionSize(), length)
-	}
-
 	checksumPath += appName
 	fragmentCount := length / MetaKvMaxDocSize()
 	if length%MetaKvMaxDocSize() != 0 {
