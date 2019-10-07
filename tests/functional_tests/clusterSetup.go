@@ -67,6 +67,11 @@ func fireQuery(query string) ([]byte, error) {
 	return makeRequest("POST", payload, queryURL)
 }
 
+func configChange(configuration string) ([]byte, error) {
+	payload := strings.NewReader(configuration)
+	return makeRequest("POST", payload, configURL)
+}
+
 func addNode(hostname, role string) {
 	buildDir := os.Getenv(cbBuildEnvString)
 	if buildDir == "" {
