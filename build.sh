@@ -27,8 +27,8 @@ export includes="\
   -I third_party/inspector/ \
   -I third_party/crc64/ \
   -I third_party/inspector/ \
-  -I libs/query/include \
-  -I libs/include/ \
+  -I features/query/include \
+  -I features/include/ \
   -I v8_consumer/include/"
 
 export libs="\
@@ -49,8 +49,8 @@ export libs="\
   -lz"
 
 export srcs="`find \
-    libs/query/src/ \
-    libs/src/ \
+    features/query/src/ \
+    features/src/ \
     third_party/inspector/ \
     third_party/crc64/ \
     ../eventing-ee/ \

@@ -1410,7 +1410,11 @@ func TestLargeHandler(t *testing.T) {
 
 	payload := fmt.Sprintf("{\"force_compress\":%v}", false)
 	_, err := configChange(payload)
-	log.Printf("Changed force_compress value to false error: %v ", err)
+	if err != nil {
+		t.Errorf("Failed to change setting force_compress, err : %v\n", err)
+		return
+	}
+	log.Printf("Changed force_compress value to false")
 	resp := createAndDeployLargeFunction(functionName, jsFileName, &commonSettings{}, 128*1024)
 
 	var response map[string]interface{}
@@ -1421,16 +1425,19 @@ func TestLargeHandler(t *testing.T) {
 	}
 
 	// Eventing should throw error since length of code is greater than max function size
-	if err != nil {
-		waitForDeployToFinish(functionName)
-	} else if response["name"].(string) != "ERR_SAVE_APP_PS" {
+	if resString, ok := response["name"].(string); !ok || resString != "ERR_APPCODE_SIZE" {
 		t.Error("Deployment must fail")
 		return
 	}
 
 	payload = fmt.Sprintf("{\"force_compress\":%v}", true)
-	configChange(payload)
-	log.Printf("Changed force_compress value to true error: %v ", err)
+	_, err = configChange(payload)
+	if err != nil {
+		t.Errorf("Failed to change setting force_compress, err : %v\n", err)
+		return
+	}
+	log.Printf("Changed force_compress value to true")
+
 	resp = createAndDeployLargeFunction(functionName, jsFileName, &commonSettings{}, 128*1024)
 
 	err2 = json.Unmarshal(resp.body, &response)
@@ -1440,7 +1447,7 @@ func TestLargeHandler(t *testing.T) {
 	}
 
 	//change force_compress to true. Eventing should store the function and deployment should succeed.
-	if response["code"].(float64) != 0 {
+	if resCode, ok := response["code"].(float64); !ok || resCode != 0 {
 		t.Errorf("Deployment must pass")
 		return
 	}

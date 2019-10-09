@@ -4,13 +4,13 @@ top:=$(realpath ../../../../..)
 workdir:=$(realpath .)/build
 binaries:=eventing-producer eventing-consumer cbevent
 
-goroot := $(HOME)/.cbdepscache/exploded/x86_64/go-1.12.4/go
+goroot := $(shell find ~/.cbdepscache/exploded/x86_64 -type d -name 'go-1.1?.*' -print -quit)/go
 ccache := $(shell which ccache)
-cc_src := $(shell find libs/ v8_consumer/ third_party/ gen/ ../eventing-ee/*.cc -name '*.cc' -o -name '*.c')
+cc_src := $(shell find features/ v8_consumer/ third_party/ gen/ ../eventing-ee/features/ -name '*.cc' -o -name '*.c')
 go_src := $(shell find . ../eventing-ee/ -name '*.go')
 ui_src := $(shell find ./ui/eventing-ui/ -type f)
 
-.PHONY: clean all install test cluster_stop cluster_run functional_test
+.PHONY: clean all install test cluster_stop cluster_run test_deps Test%
 
 all: $(workdir) $(addprefix $(workdir)/,$(binaries))
 
@@ -27,8 +27,8 @@ includes:=\
 	-I third_party/inspector/ \
 	-I third_party/crc64/ \
 	-I third_party/inspector/ \
-	-I libs/query/include \
-	-I libs/include/ \
+	-I features/query/include \
+	-I features/include/ \
 	-I v8_consumer/include/
 
 libs:=\
@@ -39,24 +39,29 @@ libs:=\
 	-L $(top)/build/tlm/deps/openssl.exploded/lib/ \
 	-L $(top)/build/tlm/deps/zlib.exploded/lib/ \
 	-L $(top)/build/libcouchbase/lib/ \
-	-lpthread \
-	-lv8 -licui18n -licuuc -lc++  -lv8_for_testing  -lv8_libbase  -lv8_libplatform \
+	-lpthread -lresolv \
+	-lv8 -licui18n -licuuc -lc++ -lv8_libbase -lv8_libplatform \
 	-lcouchbase \
 	-lcurl \
 	-luv \
 	-lflatbuffers \
 	-lssl -lcrypto \
-	-lz
+	-lz \
+	-lresolv
 
-tests:= $(shell shuf -e -- \
+cflags:=\
+	-DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT -DENTERPRISE \
+	-Wl,-rpath,'@executable_path/../lib' \
+	-Wl,-rpath,'$(top)/install/lib'
+
+tests:=\
 	handler \
 	n1ql \
 	curl \
 	eventing_reb \
 	testrunner_reb \
 	kv_reb \
-	duplicate_events \
-)
+	duplicate_events
 
 goenv:=\
 	GOROOT=$(goroot) \
@@ -66,12 +71,12 @@ goenv:=\
 	LD_LIBRARY_PATH=$(top)/install/lib \
 	PATH=$(goroot)/bin:$(PATH)
 
-goargs:=\
+goflags:=\
 	-v -ldflags '-s -extldflags "-Wl,-rpath,@executable_path/../lib"' -tags 'enterprise'
 
 $(workdir)/cc/eventing/%.o: %.cc
 	mkdir -p $(dir $(workdir)/cc/eventing/$<)
-	$(ccache) g++ -std=c++1z -c $(includes) -o $@ $<
+	$(ccache) g++ -std=c++1z -c $(includes) $(cflags) -o $@ $<
 
 gen/version/version.cc: util/version.in
 	cd $(top) && make -j8
@@ -80,13 +85,13 @@ $(workdir): gen/version/version.cc
 	mkdir -p $(workdir) $(workdir)/cc $(workdir)/go
 
 $(workdir)/eventing-consumer: $(addprefix $(workdir)/cc/eventing/,$(cc_src:%.cc=%.o))
-	$(ccache) g++ $(libs) -o $@ $^
+	$(ccache) g++ $(libs) $(cflags) -o $@ $^
 
 $(workdir)/eventing-producer: $(go_src)
-	$(goenv) go build $(goargs) -o $@ cmd/producer/*.go
+	$(goenv) go build $(goflags) -o $@ cmd/producer/*.go
 
 $(workdir)/cbevent: $(go_src)
-	$(goenv) go build $(goargs) -o $@ cmd/cbevent/*.go
+	$(goenv) go build $(goflags) -o $@ cmd/cbevent/*.go
 
 $(top)/install/bin/%: $(workdir)/%
 	mv -f $@ $@.prior || true
@@ -115,11 +120,15 @@ cluster_run: cluster_stop $(workdir)
 	cd $(top)/ns_server && LD_LIBRARY_PATH=$(top)/install/lib COUCHBASE_NUM_VBUCKETS=8 ./cluster_run -n4 1>$(workdir)/server.log 2>&1 &
 	while ! grep -qs 'Finished compaction for' $(top)/ns_server/logs/n_*/debug.log; do sleep 3; done
 
-functional_test:
+test_deps:
 	cd tests/functional_tests && $(goenv) $(goroot)/bin/go get -t ./... 1>/dev/null 2>&1
-	cd tests/functional_tests && GOMAXPROCS=16 $(goenv) $(goroot)/bin/go test -v -failfast -timeout 24h -tags "$(tests)" | tee $(workdir)/test.log
 
-test: install
+Test%: install test_deps
 	make cluster_run
-	make functional_test
+	cd tests/functional_tests && GOMAXPROCS=16 $(goenv) $(goroot)/bin/go test -v -failfast -timeout 1h -tags "$(tests)" -run $@ | tee $(workdir)/test.log
+	make cluster_stop
+
+test: install test_deps
+	make cluster_run
+	cd tests/functional_tests && GOMAXPROCS=16 $(goenv) $(goroot)/bin/go test -v -failfast -timeout 24h -tags "$(tests)" | tee $(workdir)/test.log
 	make cluster_stop

@@ -1960,6 +1960,21 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 
 	appContent := m.encodeAppPayload(app)
 
+	compressPayload := m.checkCompressHandler()
+	payload, err := util.MaybeCompress(appContent, compressPayload)
+	if err != nil {
+		info.Code = m.statusCodes.errSaveAppPs.Code
+		info.Info = fmt.Sprintf("Function: %s Error in compressing: %v", app.Name, err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+	if len(payload) > util.MaxFunctionSize() {
+		info.Code = m.statusCodes.errAppCodeSize.Code
+		info.Info = fmt.Sprintf("Function: %s handler Code size is more than %d. Code Size: %d", app.Name, util.MaxFunctionSize(), len(payload))
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
 	c := &consumer.Consumer{}
 	handlerHeaders := util.ToStringArray(app.Settings["handler_headers"])
 	handlerFooters := util.ToStringArray(app.Settings["handler_footers"])
@@ -1988,24 +2003,6 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	//Delete stale entry
-	err = util.DeleteStaleAppContent(metakvAppsPath, app.Name)
-	if err != nil {
-		info.Code = m.statusCodes.errSaveAppPs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to clean up stale entry, err: %v", app.Name, err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		return
-	}
-
-	compressPayload := m.checkCompressHandler()
-	err = util.WriteAppContent(metakvAppsPath, metakvChecksumPath, app.Name, appContent, compressPayload)
-	if err != nil {
-		info.Code = m.statusCodes.errSaveAppPs.Code
-		info.Info = fmt.Sprintf("Function: %s unable to save to primary store, err : %v", app.Name, err)
-		logging.Errorf("%s Function: %s unable to save to primary store, err: %v", logPrefix, app.Name, err)
-		return
-	}
-
 	settingsPath := metakvAppSettingsPath + app.Name
 	settings := app.Settings
 
@@ -2022,6 +2019,22 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		info.Code = m.statusCodes.errSetSettingsPs.Code
 		info.Info = fmt.Sprintf("Function: %s failed to store updated settings in metakv, err: %v", app.Name, mkvErr)
 		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	//Delete stale entry
+	err = util.DeleteStaleAppContent(metakvAppsPath, app.Name)
+	if err != nil {
+		info.Code = m.statusCodes.errSaveAppPs.Code
+		info.Info = fmt.Sprintf("Function: %s failed to clean up stale entry, err: %v", app.Name, err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	err = util.WriteAppContent(metakvAppsPath, metakvChecksumPath, app.Name, appContent, compressPayload)
+	if err != nil {
+		info.Code = m.statusCodes.errSaveAppPs.Code
+		logging.Errorf("%s Function: %s unable to save to primary store, err: %v", logPrefix, app.Name, err)
 		return
 	}
 

@@ -325,8 +325,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             queue_stats << R"({"agg_queue_size":)";
             queue_stats << agg_queue_size << R"(, "feedback_queue_size":)";
             queue_stats << 0 << R"(, "agg_queue_memory":)";
-            queue_stats << agg_queue_memory
-                        << R"(, "processed_events_size":)";
+            queue_stats << agg_queue_memory << R"(, "processed_events_size":)";
             queue_stats << processed_events_size << "}";
 
             flatbuffers::FlatBufferBuilder builder;
