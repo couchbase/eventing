@@ -10,7 +10,7 @@ cc_src := $(shell find features/ v8_consumer/ third_party/ gen/ ../eventing-ee/f
 go_src := $(shell find . ../eventing-ee/ -name '*.go')
 ui_src := $(shell find ./ui/eventing-ui/ -type f)
 
-.PHONY: clean all install test cluster_stop cluster_run test_deps Test%
+.PHONY: clean all install test cluster_stop cluster_start test_deps Test%
 
 all: $(workdir) $(addprefix $(workdir)/,$(binaries))
 
@@ -114,7 +114,7 @@ cluster_stop:
 	done
 	@pkill -9 epmd || true
 
-cluster_run: cluster_stop $(workdir)
+cluster_start: cluster_stop $(workdir)
 	make -C $(top)/ns_server dataclean
 	rm -rf $(top)/ns_server/logs/n_*/*
 	cd $(top)/ns_server && LD_LIBRARY_PATH=$(top)/install/lib COUCHBASE_NUM_VBUCKETS=8 ./cluster_run -n4 1>$(workdir)/server.log 2>&1 &
@@ -124,11 +124,11 @@ test_deps:
 	cd tests/functional_tests && $(goenv) $(goroot)/bin/go get -t ./... 1>/dev/null 2>&1
 
 Test%: install test_deps
-	make cluster_run
+	make cluster_start
 	cd tests/functional_tests && GOMAXPROCS=16 $(goenv) $(goroot)/bin/go test -v -failfast -timeout 1h -tags "$(tests)" -run $@ | tee $(workdir)/test.log
 	make cluster_stop
 
 test: install test_deps
-	make cluster_run
+	make cluster_start
 	cd tests/functional_tests && GOMAXPROCS=16 $(goenv) $(goroot)/bin/go test -v -failfast -timeout 24h -tags "$(tests)" | tee $(workdir)/test.log
 	make cluster_stop
