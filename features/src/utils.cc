@@ -235,7 +235,8 @@ std::string ExceptionString(v8::Isolate *isolate,
 
     auto maybe_stack = try_catch->StackTrace(context);
     v8::Local<v8::Value> local_stack;
-    if (TO_LOCAL(maybe_stack, &local_stack)) {
+    if (!maybe_stack.IsEmpty()) {
+      TO_LOCAL(maybe_stack, &local_stack);
       v8::String::Utf8Value stack_utf8(isolate, local_stack);
       auto stack_string = ToCString(stack_utf8);
       out.append(stack_string);
