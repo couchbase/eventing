@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -213,15 +214,28 @@ func (p *Producer) Serve() {
 					return
 				}
 				p.vbNodeWorkerMap()
-				p.initWorkerVbMap()
+				oldworkerVbucketMap := p.initWorkerVbMap()
 				p.isPlannerRunning = false
 				logging.Infof("%s [%s:%d] Planner status: %t, post vbucket to worker assignment during rebalance",
 					logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
 				for _, eventingConsumer := range p.getConsumers() {
-					logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer",
-						logPrefix, p.appName, p.LenRunningConsumers(), eventingConsumer.ConsumerName())
-					eventingConsumer.NotifyClusterChange()
+					consumerName := eventingConsumer.ConsumerName()
+					// Notify consumer of rebalance only if there is a change in assignedVbs
+					oldVbucketSlice, _ := oldworkerVbucketMap[consumerName]
+					newVbucketSlice, _ := eventingConsumer.GetAssignedVbs(consumerName)
+
+					sort.Sort(util.Uint16Slice(oldVbucketSlice))
+					sort.Sort(util.Uint16Slice(newVbucketSlice))
+
+					if !util.CompareSlices(oldVbucketSlice, newVbucketSlice) {
+						logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer",
+							logPrefix, p.appName, p.LenRunningConsumers(), consumerName)
+						eventingConsumer.NotifyClusterChange()
+					} else {
+						logging.Infof("%s [%s:%d] skipped cluster state change message for consumer: %s oldSlice: %v, newSlice: %v",
+							logPrefix, p.appName, p.LenRunningConsumers(), consumerName, oldVbucketSlice, newVbucketSlice)
+					}
 				}
 
 			case common.StopRebalanceCType:

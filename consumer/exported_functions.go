@@ -683,7 +683,7 @@ func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
 	}
 }
 
-func (c *Consumer) getAssignedVbs(workerName string) ([]uint16, error) {
+func (c *Consumer) GetAssignedVbs(workerName string) ([]uint16, error) {
 	c.workerVbucketMapRWMutex.RLock()
 	defer c.workerVbucketMapRWMutex.RUnlock()
 
@@ -751,7 +751,7 @@ func (c *Consumer) GetInsight() *common.Insight {
 
 func (c *Consumer) PauseConsumer() {
 	// send vb filter messages to all assigned VBs to stop processing mutations. Note the use math.MaxUint64 for seqno
-	assignedVbs, _ := c.getAssignedVbs(c.ConsumerName())
+	assignedVbs, _ := c.GetAssignedVbs(c.ConsumerName())
 	for _, vb := range assignedVbs {
 		c.sendVbFilterData(vb, math.MaxUint64, false)
 	}
