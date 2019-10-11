@@ -1,10 +1,11 @@
 function OnUpdate(doc, meta) {
     var size = 5 * 1024 * 1024;
+    var empty = GetSomeJSONData(0);
     var data = GetSomeJSONData(size);
     var request = {
         body: data,
         headers: {
-            'Body-Size': JSON.stringify(data).length
+            'Body-Size' : JSON.stringify(empty).length + size
         }
     };
 
@@ -22,13 +23,8 @@ function OnUpdate(doc, meta) {
 }
 
 function GetSomeJSONData(size) {
-    var s = '';
-    // 5 MB
-    for (var i = 0; i < size; ++i) {
-        s += '1';
-    }
     return {
-        'key': s
+        'key': '1'.repeat(size)
     };
 }
 
