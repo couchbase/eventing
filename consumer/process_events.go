@@ -1044,6 +1044,14 @@ func (c *Consumer) handleFailoverLog() {
 					if err != nil {
 						logging.Errorf("%s [%s:%s:%d] updateCheckpoint failed, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 					}
+					c.vbsStreamRRWMutex.Lock()
+					if _, ok := c.vbStreamRequested[vbFlog.vb]; ok {
+						logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
+
+						delete(c.vbStreamRequested, vbFlog.vb)
+					}
+					c.vbsStreamRRWMutex.Unlock()
 
 					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
 						continue
