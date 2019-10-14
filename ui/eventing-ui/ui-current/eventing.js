@@ -309,6 +309,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         ApplicationService.server.showSuccessAlert(`${app.appname} will be undeployed`);
                     })
                     .catch(function(errResponse) {
+                        ApplicationService.server.showErrorAlert(`Undeploy failed due to "${errResponse.data.description}"`);
                         console.error(errResponse);
                     });
             }
