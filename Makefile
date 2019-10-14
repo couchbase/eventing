@@ -10,7 +10,7 @@ cc_src := $(shell find features/ v8_consumer/ third_party/ gen/ ../eventing-ee/f
 go_src := $(shell find . ../eventing-ee/ -name '*.go')
 ui_src := $(shell find ./ui/eventing-ui/ -type f)
 
-.PHONY: clean all install test cluster_stop cluster_start test_deps Test%
+.PHONY: clean all install test cluster_stop cluster_start test_deps Test% Suite%
 
 all: $(workdir) $(addprefix $(workdir)/,$(binaries))
 
@@ -126,6 +126,11 @@ test_deps:
 Test%: install test_deps
 	make cluster_start
 	cd tests/functional_tests && GOMAXPROCS=16 $(goenv) $(goroot)/bin/go test -v -failfast -timeout 1h -tags "$(tests)" -run $@ | tee $(workdir)/test.log
+	make cluster_stop
+
+Suite%: install test_deps
+	make cluster_start
+	cd tests/functional_tests && GOMAXPROCS=16 $(goenv) $(goroot)/bin/go test -v -failfast -timeout 1h -tags "$(shell echo $* | tr A-Z a-z)" | tee $(workdir)/test.log
 	make cluster_stop
 
 test: install test_deps
