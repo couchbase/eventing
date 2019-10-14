@@ -139,7 +139,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["handler_headers"]; ok {
 		p.handlerConfig.HandlerHeaders = util.ToStringArray(val)
 	} else {
-		p.handlerConfig.HandlerHeaders = []string{"'use strict';"}
+		p.handlerConfig.HandlerHeaders = common.GetDefaultHandlerHeaders()
 	}
 
 	if val, ok := settings["idle_checkpoint_interval"]; ok {

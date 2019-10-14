@@ -29,6 +29,27 @@ func testEnoent(itemCount int, functionName, handler string, t *testing.T) {
 	flushFunctionAndBucket(functionName)
 }
 
+func TestStrictMode(t *testing.T) {
+	handler := "octal_literal"
+	response := createAndDeployFunction(t.Name(), handler, &commonSettings{})
+	if response.err != nil {
+		t.Errorf("Unable to POST, err : %v\n", response.err)
+		return
+	}
+
+	var responseBody map[string]interface{}
+	err := json.Unmarshal(response.body, &responseBody)
+	if err != nil {
+		t.Errorf("Failed to unmarshal responseBody, err : %v\n", err)
+		return
+	}
+
+	if responseBody["name"].(string) != "ERR_HANDLER_COMPILATION" {
+		t.Error("Compilation must fail")
+		return
+	}
+}
+
 func TestDataTypes(t *testing.T) {
 	handler := "datatypes"
 	expectedCount := 18

@@ -10,7 +10,7 @@
 // permissions and limitations under the License.
 
 function compile(code, headers, footers) {
-    var parsingProperties = {
+    let parsingProperties = {
         range: true,
         tokens: true,
         comment: true,
@@ -29,17 +29,7 @@ function compile(code, headers, footers) {
     }
 
     try {
-        var ast = esprima.parse(code, parsingProperties),
-            nodeUtils = new NodeUtils();
-
-        nodeUtils.checkGlobals(ast);
-    } catch (e) {
-        e.area = 'handlerCode';
-        return new ErrorInfo(e);
-    }
-
-    try {
-        var headerStatements = headers.join('\n');
+        let headerStatements = headers.join('\n');
         esprima.parse(headerStatements, parsingProperties);
     } catch (e) {
         e.area = 'handlerHeaders';
@@ -47,10 +37,34 @@ function compile(code, headers, footers) {
     }
 
     try {
-        var footerStatements = footers.join('\n');
+        let footerStatements = footers.join('\n');
         esprima.parse(footerStatements, parsingProperties);
     } catch (e) {
         e.area = 'handlerFooters';
+        return new ErrorInfo(e);
+    }
+
+    try {
+        esprima.parse(AddHeadersAndFooters(code, headers, footers), parsingProperties);
+    } catch (e) {
+        // Need to offset the errors in the handlerCode area
+        // in order to correspond to the user's code
+        let indexOffset = 0;
+        for (let header of headers) {
+            indexOffset += header.length;
+        }
+        e.index -= indexOffset;
+        e.area = 'handlerCode';
+        e.lineNumber -= headers.length;
+        return new ErrorInfo(e);
+    }
+
+    try {
+        let ast = esprima.parse(code, parsingProperties);
+        let nodeUtils = new NodeUtils();
+        nodeUtils.checkGlobals(ast);
+    } catch (e) {
+        e.area = 'handlerCode';
         return new ErrorInfo(e);
     }
 
