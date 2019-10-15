@@ -336,8 +336,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         // Save the file.
                         saveAs(fileToSave, fileName);
                     })
-                    .catch(function() {
-                        console.error('Failed to export the Function');
+                    .catch(function(errResponse) {
+                        ApplicationService.server.showErrorAlert(`Failed to export the function due to "${errResponse.data.description}"`);
+                        console.error(errResponse);
                     });
             };
 
@@ -369,6 +370,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         ApplicationService.server.showSuccessAlert(`${appName} deleted successfully!`);
                     })
                     .catch(function(errResponse) {
+                        ApplicationServie.server.showErrorAlert(`Delete failed due to "${errResponse.data.description}"`);
                         console.error(errResponse);
                     });
             };
