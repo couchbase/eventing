@@ -248,6 +248,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         ApplicationService.server.showSuccessAlert(`${app.appname} will be undeployed`);
                     })
                     .catch(function(errResponse) {
+                        ApplicationService.server.showErrorAlert(`Undeploy failed due to "${errResponse.data.description}"`);
                         console.error(errResponse);
                     });
             }
@@ -269,7 +270,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         saveAs(fileToSave, fileName);
                     })
                     .catch(function(errResponse) {
-                        console.error('Failed to get apps from server', errResponse);
+                        ApplicationService.server.showErrorAlert(`Failed to export the function due to "${errResponse.data.description}"`);
+                        console.error(errResponse);
                     });
             };
 
@@ -301,6 +303,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         ApplicationService.server.showSuccessAlert(`${appName} deleted successfully!`);
                     })
                     .catch(function(errResponse) {
+                        ApplicationService.server.showErrorAlert(`Delete failed due to "${errResponse.data.description}"`);
                         console.error(errResponse);
                     });
             };
