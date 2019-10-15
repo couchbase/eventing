@@ -309,6 +309,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         ApplicationService.server.showSuccessAlert(`${app.appname} will be undeployed`);
                     })
                     .catch(function(errResponse) {
+                        ApplicationService.server.showErrorAlert(`Undeploy failed due to "${errResponse.data.description}"`);
                         console.error(errResponse);
                     });
             }
@@ -335,8 +336,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         // Save the file.
                         saveAs(fileToSave, fileName);
                     })
-                    .catch(function() {
-                        console.error('Failed to export the Function');
+                    .catch(function(errResponse) {
+                        ApplicationService.server.showErrorAlert(`Failed to export the function due to "${errResponse.data.description}"`);
+                        console.error(errResponse);
                     });
             };
 
@@ -368,6 +370,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         ApplicationService.server.showSuccessAlert(`${appName} deleted successfully!`);
                     })
                     .catch(function(errResponse) {
+                        ApplicationServie.server.showErrorAlert(`Delete failed due to "${errResponse.data.description}"`);
                         console.error(errResponse);
                     });
             };
@@ -1507,8 +1510,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         if (bindingsValid === false) {
                             bindingError = true;
                         }
-                        if (binding.hostname.length) {
+                        if (binding.type === 'url' && binding.hostname !== undefined && binding.hostname.length) {
                             hostnameValid = isValidHostname(binding.hostname);
+                            hostnameValidList.push(!hostnameValid);
+                        } else {
+                            hostnameValid = true;
                             hostnameValidList.push(!hostnameValid);
                         }
                         if (hostnameValid === false) {
@@ -1526,7 +1532,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         form.appname.$error.hostnameValid = hostnameError;
                     }
 
-                    form.appname.$error.required = form.appname.$viewValue === '';
+                    form.appname.$error.required = form.appname.$viewValue === '' ||
+                                                   form.appname.$viewValue === undefined;
 
                     return form.appname.$error.required ||
                         form.appname.$error.appExists ||
@@ -1537,8 +1544,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         form.execution_timeout.$error.min ||
                         formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
                         formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
-                        form.appname.$error.appnameInvalid ||
-                        bindingError || hostnameError;
+                        form.appname.$error.appnameInvalid || bindingError || hostnameError;
                 }
             }
         }

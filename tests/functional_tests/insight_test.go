@@ -58,7 +58,7 @@ func TestCodeInsight(t *testing.T) {
 			err_ct1 += int(line.ExceptionCount)
 			continue
 		}
-		if strings.Contains(line.LastException, "throw 'party'") {
+		if strings.Contains(line.LastException, "party") {
 			err_ct2 += int(line.ExceptionCount)
 			continue
 		}
