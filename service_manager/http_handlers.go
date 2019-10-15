@@ -2088,6 +2088,10 @@ func (m *ServiceMgr) determineCurlWarning(app *application) (string, error) {
 		if err != nil {
 			return fmt.Sprintf("Unable to resolve hostname for cURL binding alias %s, err : %v", curl.Value, err), nil
 		}
+		if node.HasLoopbackAddress() {
+			msg := fmt.Sprintf(" Function '%s' has a curl binding to a Couchbase node in the same cluster.", app.Name)
+			return msg, nil
+		}
 
 		for _, nodeInCluster := range allNodes {
 			if node.IsEqual(nodeInCluster) {
