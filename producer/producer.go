@@ -268,7 +268,7 @@ func (p *Producer) Serve() {
 			logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
 
 			for _, c := range p.getConsumers() {
-				c.WorkerVbMapUpdate(nil)
+				c.PauseConsumer()
 				c.ResetBootstrapDone()
 				c.CloseAllRunningDcpFeeds()
 			}

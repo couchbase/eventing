@@ -29,7 +29,7 @@ func (c *Consumer) processDCPEvents() {
 	for {
 		if c.cppQueueSizes != nil {
 			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize ||
-				c.workerQueueMemCap < (c.sentEventsSize - c.cppQueueSizes.ProcessedEventsSize) {
+				c.workerQueueMemCap < (c.sentEventsSize-c.cppQueueSizes.ProcessedEventsSize) {
 				logging.Debugf("%s [%s:%s:%d] Throttling, cpp queue sizes: %+v, event size: %d",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes, c.sentEventsSize)
 				time.Sleep(10 * time.Millisecond)
@@ -1313,7 +1313,9 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 	}
 
 	c.filterVbEventsRWMutex.Lock()
-	delete(c.filterVbEvents, vBucket)
+	if _, ok := c.filterVbEvents[vBucket]; ok {
+		delete(c.filterVbEvents, vBucket)
+	}
 	c.filterVbEventsRWMutex.Unlock()
 
 	var vbBlob vbucketKVBlob

@@ -237,6 +237,7 @@ type EventingConsumer interface {
 	WorkerVbMapUpdate(map[string][]uint16)
 
 	SendAssignedVbs()
+	PauseConsumer()
 }
 
 type EventingSuperSup interface {
