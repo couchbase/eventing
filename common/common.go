@@ -238,6 +238,7 @@ type EventingConsumer interface {
 
 	SendAssignedVbs()
 	PauseConsumer()
+	GetAssignedVbs(workerName string) ([]uint16, error)
 }
 
 type EventingSuperSup interface {

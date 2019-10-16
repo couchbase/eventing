@@ -223,7 +223,7 @@ func (p *Producer) vbNodeWorkerMap() {
 	}
 }
 
-func (p *Producer) initWorkerVbMap() {
+func (p *Producer) initWorkerVbMap() map[string][]uint16 {
 	logPrefix := "Producer::initWorkerVbMap"
 
 	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
@@ -270,6 +270,8 @@ func (p *Producer) initWorkerVbMap() {
 
 	p.workerVbMapRWMutex.Lock()
 	defer p.workerVbMapRWMutex.Unlock()
+
+	oldworkerVbucketMap := p.workerVbucketMap // save old workerVbucketMap reference
 	p.workerVbucketMap = make(map[string][]uint16)
 
 	startVbIndex = 0
@@ -299,6 +301,8 @@ func (p *Producer) initWorkerVbMap() {
 		consumer.WorkerVbMapUpdate(workerVbucketMap)
 		consumer.SendAssignedVbs()
 	}
+
+	return oldworkerVbucketMap
 }
 
 func (p *Producer) getKvVbMap() error {

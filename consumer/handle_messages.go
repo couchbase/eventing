@@ -128,7 +128,7 @@ func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebu
 
 func (c *Consumer) SendAssignedVbs() {
 	logPrefix := "Consumer::SendAssignedVbs"
-	vbuckets, err := c.getAssignedVbs(c.ConsumerName())
+	vbuckets, err := c.GetAssignedVbs(c.ConsumerName())
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Sending assigned vbuckets map failed, vbmap: %v, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbuckets, err)

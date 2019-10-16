@@ -475,32 +475,8 @@ func (c *Consumer) String() string {
 func (c *Consumer) NotifyClusterChange() {
 	logPrefix := "Consumer::NotifyClusterChange"
 
-	logging.Infof("%s [%s:%s:%d] Got notification about cluster state change",
-		logPrefix, c.ConsumerName(), c.tcpPort, c.Pid())
-
-	// To avoid eventing rebalance during any other MDS service rebalance
-	// By now the worker map init/update is already completed, even during eventing rebalance
-	assignedVbs, err := c.getAssignedVbs(c.ConsumerName())
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] err: %v", logPrefix, c.ConsumerName(), c.tcpPort, c.Pid(), err)
-	}
-	sort.Sort(util.Uint16Slice(assignedVbs))
-
-	if err == nil {
-		currentlyOwnedVbs := c.getCurrentlyOwnedVbs()
-
-		logging.Infof("%s [%s:%s:%d] assignedVbs len: %d dump: %s currentlyOwnedVbs len: %d dump: %s",
-			logPrefix, c.ConsumerName(), c.tcpPort, c.Pid(), len(assignedVbs), util.Condense(assignedVbs),
-			len(currentlyOwnedVbs), util.Condense(currentlyOwnedVbs))
-
-		if util.CompareSlices(assignedVbs, currentlyOwnedVbs) {
-			return
-		}
-	}
-
-	// there is something for us to do for this rebalance as our assigned and owned Vbs dont match
 	c.isRebalanceOngoing = true
-	logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %v",
+	logging.Infof("%s [%s:%s:%d] Got notification about cluster state change, updated isRebalanceOngoing to %v",
 		logPrefix, c.ConsumerName(), c.tcpPort, c.Pid(), c.isRebalanceOngoing)
 
 	c.clusterStateChangeNotifCh <- struct{}{}
