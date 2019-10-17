@@ -15,10 +15,8 @@ type Node struct {
 }
 
 func (n Node) HasLoopbackAddress() bool {
-	localhostIPv4 := net.ParseIP("127.0.0.1")
-	localhostIPv6 := net.ParseIP("::1")
 	for _, addr := range n.addresses {
-		if localhostIPv4.Equal(addr) || localhostIPv6.Equal(addr) {
+		if addr.IsLoopback() {
 			return true
 		}
 	}
