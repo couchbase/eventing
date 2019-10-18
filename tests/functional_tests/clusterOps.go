@@ -30,7 +30,7 @@ func eventingRebIn(t *testing.T, handler, testName string, itemCount, opsPSec, r
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -90,7 +90,7 @@ func eventingRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, 
 
 	go pumpBucketOps(opsType{count: rl.count}, rl)
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -152,11 +152,11 @@ func eventingSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec,
 	metaStateDump()
 
 	addNodeFromRest("http://127.0.0.1:9002", "eventing")
-	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -217,7 +217,7 @@ func kvRebIn(t *testing.T, handler, testName string, itemCount, opsPSec, retryCo
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 	verifyBucketItemCount(rl, statsLookupRetryCounter)
@@ -276,7 +276,7 @@ func kvRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, retryC
 
 	go pumpBucketOps(opsType{count: rl.count}, rl)
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -338,11 +338,11 @@ func kvSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec, retry
 	metaStateDump()
 
 	addNodeFromRest("http://127.0.0.1:9002", "kv")
-	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 

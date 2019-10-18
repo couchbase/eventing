@@ -658,21 +658,21 @@ func addAllNodesOneByOne(role string) {
 }
 
 func removeAllNodesAtOnce() {
-	rebalanceFromRest([]string{"http://127.0.0.1:9001", "http://127.0.0.1:9002", "http://127.0.0.1:9003"})
+	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002", "127.0.0.1:9003"})
 	waitForRebalanceFinish()
 	metaStateDump()
 }
 
 func removeAllNodesOneByOne() {
-	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9003"})
+	rebalanceFromRest([]string{"127.0.0.1:9003"})
 	waitForRebalanceFinish()
 	metaStateDump()
 }

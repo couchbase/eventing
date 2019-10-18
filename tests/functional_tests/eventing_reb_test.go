@@ -132,11 +132,11 @@ func TestEventingSwapRebOnUpdateBucketOp(t *testing.T) {
 	metaStateDump()
 
 	addNodeFromRest("http://127.0.0.1:9002", "eventing")
-	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -177,7 +177,7 @@ func TestMetaRollbackWithEventingReb(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9001", "http://127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -218,7 +218,7 @@ func TestMetaPartialRollbackWithEventingReb(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9001", "http://127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002"})
 	go mangleCheckpointBlobs(functionName, "eventing", 0, 1023)
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -536,11 +536,11 @@ func TestEventingSwapRebMultipleHandlers(t *testing.T) {
 	metaStateDump()
 
 	addNodeFromRest("http://127.0.0.1:9002", "eventing")
-	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -591,11 +591,11 @@ func TestEventingRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 	metaStateDump()
 
 	addNodeFromRest("http://127.0.0.1:9002", "eventing")
-	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -645,11 +645,11 @@ func TestEventingRebMultiStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 	metaStateDump()
 
 	addNodeFromRest("http://127.0.0.1:9002", "eventing")
-	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -687,7 +687,7 @@ func TestEventingFailoverOnUpdateBucketOp(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	failoverFromRest([]string{"http://127.0.0.1:9001"})
+	failoverFromRest([]string{"127.0.0.1:9001"})
 	time.Sleep(10 * time.Second)
 	metaStateDump()
 
@@ -700,7 +700,7 @@ func TestEventingFailoverOnUpdateBucketOp(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -739,11 +739,11 @@ func TestEventingKVRebalanceOnUpdateBucketOp(t *testing.T) {
 	metaStateDump()
 
 	addNodeFromRest("http://127.0.0.1:9002", "eventing,kv")
-	rebalanceFromRest([]string{"http://127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
