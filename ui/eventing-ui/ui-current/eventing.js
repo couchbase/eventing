@@ -19,6 +19,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             for (var app of Object.keys(self.appList)) {
                 self.appList[app].uiState = 'warmup';
+                self.appList[app].warnings = getWarnings(self.appList[app]);
             }
 
             // Poll to get the App status and reflect the same in the UI
@@ -45,6 +46,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 self.appList[app].status = 'undeployed';
                             }
                             self.appList[app].uiState = determineUIStatus(self.appList[app].status);
+                            self.appList[app].warnings = getWarnings(self.appList[app]);
                         }
 
                     }).catch(function(errResponse) {
@@ -95,6 +97,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         templateUrl: '../_p/ui/event/ui-current/dialogs/app-log.html',
                         scope: logScope
                     });
+                });
+            };
+
+            self.openWarnings = function(appName) {
+                let scope = $scope.$new(true);
+                scope.appName = appName;
+                scope.warnings = self.appList[appName].warnings;
+                $uibModal.open({
+                    templateUrl: '../_p/ui/event/ui-current/dialogs/app-warnings.html',
+                    scope: scope
                 });
             };
 

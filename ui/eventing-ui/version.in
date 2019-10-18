@@ -1,0 +1,3 @@
+function getVersion() {
+    return '${EVENTING_VER}';
+}

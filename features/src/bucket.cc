@@ -14,6 +14,7 @@
 
 #include "bucket.h"
 #include "js_exception.h"
+#include "lang_compat.h"
 #include "lcb_utils.h"
 #include "retry_util.h"
 #include "utils.h"
@@ -228,9 +229,10 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   }
 
   if (result.rc == LCB_KEY_ENOENT) {
-    info.GetReturnValue().Set(v8::Undefined(isolate));
+    HandleEnoEnt(isolate, info, *bucket_lcb_obj_ptr);
     return;
   }
+
   // Throw an exception in JavaScript if the bucket get call failed.
   if (result.rc != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: LCB_GET call failed: " << result.rc << std::endl;
@@ -619,6 +621,7 @@ void Bucket::BucketDeleteWithXattr(
   }
 
   if (result.rc == LCB_KEY_ENOENT) {
+    HandleEnoEnt(isolate, *bucket_lcb_obj_ptr);
     return;
   }
 
@@ -672,6 +675,7 @@ void Bucket::BucketDeleteWithoutXattr(
   }
 
   if (result.rc == LCB_KEY_ENOENT) {
+    HandleEnoEnt(isolate, *bucket_lcb_obj_ptr);
     return;
   }
 
@@ -685,6 +689,24 @@ void Bucket::BucketDeleteWithoutXattr(
   }
 
   info.GetReturnValue().Set(true);
+}
+
+void Bucket::HandleEnoEnt(v8::Isolate *isolate,
+                          const v8::PropertyCallbackInfo<v8::Value> &info,
+                          lcb_t instance) {
+  const auto version = UnwrapData(isolate)->lang_compat->version;
+  if (version < LanguageCompatibility::Version::k6_5_0) {
+    HandleBucketOpFailure(isolate, instance, LCB_KEY_ENOENT);
+    return;
+  }
+  info.GetReturnValue().Set(v8::Undefined(isolate));
+}
+
+void Bucket::HandleEnoEnt(v8::Isolate *isolate, lcb_t instance) {
+  const auto version = UnwrapData(isolate)->lang_compat->version;
+  if (version < LanguageCompatibility::Version::k6_5_0) {
+    HandleBucketOpFailure(isolate, instance, LCB_KEY_ENOENT);
+  }
 }
 
 Info Bucket::ValidateKey(const v8::Local<v8::Name> &arg) {

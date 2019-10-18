@@ -6,7 +6,6 @@ table VbsThreadMap {
 }
 
 table Payload {
-
   // Handler config
   app_name:string;
   checkpoint_interval:int; // Controls how frequently checkpoint will be updated in metadata bucket
@@ -17,6 +16,7 @@ table Payload {
   skip_lcb_bootstrap:bool; // Control bootstrap of lcb handles.
                            // In some case we need to skip lcb connects i.e. while checking for
                            // compilation issues in supplied handler code.
+
   timer_context_size:long;
   handler_headers: [string]; // List of statements that will prefixed to handler code post code constraint checks
   handler_footers: [string]; // List of statements that will appended to handler code post code constraint checks
@@ -44,6 +44,7 @@ table Payload {
 
   vb_map:[short];
   n1ql_consistency:string; // N1QL consistency
+  language_compatibility:string;
 }
 
 root_type Payload;

@@ -44,6 +44,10 @@
             </div>
           </span>
           <span class="cbui-table-cell text-right">
+            <a ng-click="$event.stopPropagation();summaryCtrl.openWarnings(appname);"
+              ng-hide="app.warnings && app.warnings.length === 0">
+              {{app.warnings ? 'Warnings(' + app.warnings.length + ')' : ''}}
+            </a>
           <a ng-click="$event.stopPropagation();summaryCtrl.openAppLog(appname);"
              ng-hide="app.status !== 'deployed' && app.status !== 'deploying'"
              style="padding-right: 8px;">

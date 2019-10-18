@@ -11,10 +11,10 @@ import (
 	"time"
 )
 
-func testEnoent(itemCount int, functionName, handler string, t *testing.T) {
+func testEnoent(itemCount int, handler string, settings *commonSettings, t *testing.T) {
 	expectedCount := itemCount
-	createAndDeployFunction(functionName, handler, &commonSettings{})
-	waitForDeployToFinish(functionName)
+	createAndDeployFunction(t.Name(), handler, settings)
+	waitForDeployToFinish(t.Name())
 
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter)
@@ -26,7 +26,7 @@ func testEnoent(itemCount int, functionName, handler string, t *testing.T) {
 	}
 
 	dumpStats()
-	flushFunctionAndBucket(functionName)
+	flushFunctionAndBucket(t.Name())
 }
 
 func TestStrictMode(t *testing.T) {
@@ -70,19 +70,19 @@ func TestDataTypes(t *testing.T) {
 }
 
 func TestEnoentGet(t *testing.T) {
-	functionName := t.Name()
-
 	itemCount := 100
-	handler := "bucket_op_enoent_get"
-	testEnoent(itemCount, functionName, handler, t)
+	testEnoent(itemCount, "bucket_op_enoent_get_6.5.0",
+		&commonSettings{languageCompatibility: "6.5.0"}, t)
+	testEnoent(itemCount, "bucket_op_enoent_get_6.0.0",
+		&commonSettings{languageCompatibility: "6.0.0", version: "evt-6.0.0-0000-ee"}, t)
 }
 
 func TestEnoentDelete(t *testing.T) {
-	functionName := t.Name()
-
 	itemCount := 100
-	handler := "bucket_op_enoent_delete"
-	testEnoent(itemCount, functionName, handler, t)
+	testEnoent(itemCount, "bucket_op_enoent_delete_6.5.0",
+		&commonSettings{languageCompatibility: "6.5.0"}, t)
+	testEnoent(itemCount, "bucket_op_enoent_delete_6.0.0",
+		&commonSettings{languageCompatibility: "6.0.0", version: "evt-6.0.0-0000-ee"}, t)
 }
 
 func TestError(t *testing.T) {

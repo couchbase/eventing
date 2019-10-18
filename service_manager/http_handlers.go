@@ -1480,6 +1480,9 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 			logging.Errorf("%s failed to unmarshal settings data from metakv, err: %v", logPrefix, uErr)
 		} else {
 			app.Settings = settings
+			if _, ok := app.Settings["language_compatibility"]; !ok {
+				app.Settings["language_compatibility"] = common.LanguageCompatibility[0]
+			}
 		}
 	} else {
 		logging.Errorf("%s failed to fetch settings data from metakv, err: %v", logPrefix, sErr)
@@ -2818,6 +2821,8 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			m.addDefaultVersionIfMissing(&app)
+
 			var isMixedMode bool
 			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
@@ -2856,8 +2861,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
-
-			app.EventingVersion = util.EventingVer()
 
 			runtimeInfo := m.savePrimaryStore(&app)
 			if runtimeInfo.Code == m.statusCodes.ok.Code {
@@ -2940,6 +2943,12 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+	}
+}
+
+func (m *ServiceMgr) addDefaultVersionIfMissing(app *application) {
+	if app.EventingVersion == "" {
+		app.EventingVersion = util.EventingVer()
 	}
 }
 
@@ -3327,7 +3336,7 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	m.sendRuntimeInfoList(w, infoList)
 }
 
-func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application, undeploy bool) (infoList []*runtimeInfo) {
+func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application, isImport bool) (infoList []*runtimeInfo) {
 	logPrefix := "ServiceMgr::createApplications"
 
 	infoList = []*runtimeInfo{}
@@ -3341,9 +3350,11 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			continue
 		}
 
-		if undeploy {
+		if isImport {
 			app.Settings["deployment_status"] = false
 			app.Settings["processing_status"] = false
+		} else {
+			m.addDefaultVersionIfMissing(&app)
 		}
 
 		info := &runtimeInfo{}
@@ -3359,8 +3370,6 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			infoList = append(infoList, info)
 			continue
 		}
-
-		app.EventingVersion = util.EventingVer()
 
 		infoPri := m.savePrimaryStore(&app)
 		if infoPri.Code != m.statusCodes.ok.Code {

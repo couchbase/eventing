@@ -25,3 +25,4 @@ parser/jsify.cc
 auditevent/events.go
 version/version.go
 version/version.cc
+version/version.js

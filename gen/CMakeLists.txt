@@ -42,6 +42,10 @@ CONFIGURE_FILE(
   "${PROJECT_SOURCE_DIR}/v8_consumer/src/version.in"
   "${PROJECT_SOURCE_DIR}/gen/version/version.cc"
 )
+CONFIGURE_FILE(
+  "${PROJECT_SOURCE_DIR}/ui/eventing-ui/version.in"
+  "${PROJECT_SOURCE_DIR}/gen/version/version.js"
+)
 
 GoInstall(
   TARGET convertjs

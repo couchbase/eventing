@@ -22,6 +22,10 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/estools/escodegen.min.js
            ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/estools/esprima.min.js
         DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/eventing-ui/lib)
 
+# generated files
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/../gen/version/version.js
+        DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/eventing-ui/gen)
+
 # install all files including third party
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/eventing-ui
         DESTINATION lib)

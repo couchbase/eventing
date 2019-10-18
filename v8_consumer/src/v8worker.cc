@@ -16,6 +16,7 @@
 #include "bucket.h"
 #include "curl.h"
 #include "insight.h"
+#include "lang_compat.h"
 #include "query-helper.h"
 #include "query-iterable.h"
 #include "query-mgr.h"
@@ -135,6 +136,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
                            : h_config->execution_timeout - 2;
   data_.n1ql_consistency =
       Query::Helper::GetConsistency(h_config->n1ql_consistency);
+  data_.lang_compat = new LanguageCompatibility(h_config->lang_compat);
 }
 
 void V8Worker::InitializeCurlBindingValues(
@@ -237,6 +239,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " execution_timeout: " << h_config->execution_timeout
                << " timer_context_size: " << h_config->timer_context_size
                << " ns_server_port: " << ns_server_port_
+               << " language compatibility: " << h_config->lang_compat
                << " version: " << EventingVer() << std::endl;
 
   src_path_ = settings_->eventing_dir + "/" + app_name_ + ".t.js";
@@ -277,6 +280,7 @@ V8Worker::~V8Worker() {
   delete data->query_iterable_impl;
   delete data->query_iterable_result;
   delete data->query_helper;
+  delete data->lang_compat;
 
   context_.Reset();
   on_update_.Reset();

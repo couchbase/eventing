@@ -55,6 +55,10 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 		return
 	}
 
+	if info = m.validateLangCompat(app.Settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	var config common.Config
 	if config, info = m.getConfig(); info.Code != m.statusCodes.ok.Code {
 		return
@@ -88,6 +92,18 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 			wInfo.Warnings = append(wInfo.Warnings, fmt.Sprintf("Function %s will modify source buckets of following functions %v", app.Name, functions))
 			info.Info = wInfo
 		}
+	}
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) validateLangCompat(settings map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if _, exists := settings["language_compatibility"]; !exists {
+		info.Info = "Language compatibility missing in the configuration"
+		return
 	}
 	info.Code = m.statusCodes.ok.Code
 	return
@@ -710,6 +726,10 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 	m.fillMissingWithDefaults(appName, settings)
 
 	// Handler related configurations
+	if info = m.validatePossibleValues("language_compatibility", settings, common.LanguageCompatibility); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validateStringMustExist("user_prefix", maxPrefixLength, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}

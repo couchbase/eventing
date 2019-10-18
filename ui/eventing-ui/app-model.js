@@ -113,6 +113,7 @@ ApplicationModel.prototype.getDefaultModel = function() {
             metadata_bucket: 'eventing',
             source_bucket: 'default'
         },
+        version: getVersion(),
         settings: {
             log_level: 'INFO',
             dcp_stream_boundary: 'everything',
@@ -122,7 +123,8 @@ ApplicationModel.prototype.getDefaultModel = function() {
             worker_count: 3,
             execution_timeout: 60,
             user_prefix: 'eventing',
-            n1ql_consistency: 'none'
+            n1ql_consistency: 'none',
+            language_compatibility: '6.5.0'
         }
     };
 };
@@ -156,6 +158,7 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.settings.execution_timeout = 60;
     this.settings.user_prefix = 'eventing';
     this.settings.n1ql_consistency = 'none';
+    this.version = getVersion();
 };
 
 // Prettifies the JavaScript code.
@@ -182,4 +185,13 @@ function determineUIStatus(status) {
             console.error('Abnormal case - status can not be', status);
             return '';
     }
+}
+
+function getWarnings(app) {
+    if (app.settings.language_compatibility &&
+        app.version.startsWith('evt-6.0') &&
+        app.settings.language_compatibility === '6.0.0') {
+        return ['Running in compatibility mode. Please make the necessary changes and update the language compatibility to latest.']
+    }
+    return [];
 }

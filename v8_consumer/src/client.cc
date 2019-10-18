@@ -500,6 +500,8 @@ void AppWorker::RouteMessageWithResponse(
       server_settings = new server_settings_t;
 
       handler_config->app_name.assign(payload->app_name()->str());
+      handler_config->lang_compat.assign(
+          payload->language_compatibility()->str());
       handler_config->timer_context_size = payload->timer_context_size();
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();
