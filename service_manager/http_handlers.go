@@ -29,7 +29,7 @@ import (
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/google/flatbuffers/go"
 )
 
 func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
@@ -1976,7 +1976,13 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	}
 
 	c := &consumer.Consumer{}
-	handlerHeaders := util.ToStringArray(app.Settings["handler_headers"])
+	var handlerHeaders []string
+	if headers, exists := app.Settings["handler_headers"]; exists {
+		handlerHeaders = util.ToStringArray(headers)
+	} else {
+		handlerHeaders = common.GetDefaultHandlerHeaders()
+	}
+
 	handlerFooters := util.ToStringArray(app.Settings["handler_footers"])
 	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), app.Name, m.adminHTTPPort,
 		handlerHeaders, handlerFooters)

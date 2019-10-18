@@ -467,3 +467,7 @@ func (dst *Insight) Accumulate(src *Insight) {
 		dst.SrcMap = src.SrcMap
 	}
 }
+
+func GetDefaultHandlerHeaders() []string {
+	return []string{"'use strict';"}
+}
