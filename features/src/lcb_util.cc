@@ -161,9 +161,10 @@ LogLevel evt_log_map_level(int severity) {
     // logs at INFO. So, we will log only WARN, ERROR and FATAL messages
   case LCB_LOG_TRACE:
   case LCB_LOG_DEBUG:
-  case LCB_LOG_INFO:
-    // TODO : Map LCB_LOG_INFO to logInfo when MB-36022 is resolved
     return logTrace;
+
+  case LCB_LOG_INFO:
+    return logInfo;
 
   case LCB_LOG_WARN:
   case LCB_LOG_ERROR:
