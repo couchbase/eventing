@@ -37,7 +37,7 @@ func TestTopologyEventingRebInWhenExistingEventingNodeProcessingMutations(t *tes
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"http://127.0.0.1:9001", "http://127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
