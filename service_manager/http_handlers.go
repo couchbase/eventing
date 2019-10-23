@@ -1958,6 +1958,8 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		}
 	}
 
+	logging.Infof("%v Function UUID: %v for function name: %v stored in primary store", logPrefix, app.FunctionID, app.Name)
+
 	appContent := m.encodeAppPayload(app)
 
 	compressPayload := m.checkCompressHandler()
