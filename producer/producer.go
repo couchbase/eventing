@@ -228,7 +228,11 @@ func (p *Producer) Serve() {
 					sort.Sort(util.Uint16Slice(oldVbucketSlice))
 					sort.Sort(util.Uint16Slice(newVbucketSlice))
 
-					if !util.CompareSlices(oldVbucketSlice, newVbucketSlice) {
+					// when a fresh eventing node is rebalanced in, p.initWorkerVbMap() happens twice (once in producer::Serve() and
+					// once above). As a result oldVbucketSlice & newVbucketSlice will match and we skip rebalance below.
+					// firstRebalanceDone flag is used to identify this case and force rebalance on all consumers so that VBs can be
+					// properly owned
+					if !util.CompareSlices(oldVbucketSlice, newVbucketSlice) || !p.firstRebalanceDone {
 						logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer",
 							logPrefix, p.appName, p.LenRunningConsumers(), consumerName)
 						eventingConsumer.NotifyClusterChange()
@@ -236,6 +240,9 @@ func (p *Producer) Serve() {
 						logging.Infof("%s [%s:%d] skipped cluster state change message for consumer: %s oldSlice: %v, newSlice: %v",
 							logPrefix, p.appName, p.LenRunningConsumers(), consumerName, oldVbucketSlice, newVbucketSlice)
 					}
+				}
+				if !p.firstRebalanceDone {
+					p.firstRebalanceDone = true
 				}
 
 			case common.StopRebalanceCType:

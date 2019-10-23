@@ -459,7 +459,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					if _, ok := s.bootstrappingApps[appName]; ok {
 						logging.Infof("%s [%d] Function: %s already bootstrapping", logPrefix, s.runningFnsCount(), appName)
 						s.appListRWMutex.Unlock()
-						return nil
+						continue
 					}
 
 					logging.Infof("%s [%d] Function: %s adding to bootstrap list", logPrefix, s.runningFnsCount(), appName)
