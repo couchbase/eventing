@@ -11,6 +11,7 @@
 
 #include <mutex>
 #include <nlohmann/json.hpp>
+#include <string>
 
 #include "bucket.h"
 #include "curl.h"
@@ -112,9 +113,9 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.custom_error = new CustomError(isolate_, context);
   data_.curl_codex = new CurlCodex;
   data_.code_insight = new CodeInsight(isolate_);
-  data_.query_mgr = new Query::Manager(
-      isolate_, GetConnectionStr(settings_->kv_host_port, source_bucket),
-      static_cast<std::size_t>(h_config->lcb_inst_capacity));
+  data_.query_mgr =
+      new Query::Manager(isolate_, src_bucket_connstr_,
+                         static_cast<std::size_t>(h_config->lcb_inst_capacity));
   data_.query_iterable = new Query::Iterable(isolate_, context);
   data_.query_iterable_impl = new Query::IterableImpl(isolate_, context);
   data_.query_iterable_result = new Query::IterableResult(isolate_, context);
@@ -146,14 +147,21 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    const std::string &function_id,
                    const std::string &function_instance_id,
                    const std::string &user_prefix, Histogram *latency_stats,
-                   Histogram *curl_latency_stats)
+                   Histogram *curl_latency_stats,
+                   const std::string &ns_server_port)
     : app_name_(h_config->app_name), settings_(server_settings),
       latency_stats_(latency_stats), curl_latency_stats_(curl_latency_stats),
       platform_(platform), function_name_(function_name),
       function_id_(function_id), user_prefix_(user_prefix),
+      ns_server_port_(ns_server_port),
       exception_type_names_(
           {"KVError", "N1QLError", "EventingError", "CurlError"}) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
+  cb_source_bucket_.assign(config->source_bucket);
+  src_bucket_connstr_ = GetConnectionStr(
+      JoinHostPort(Localhost(false), ns_server_port_), cb_source_bucket_);
+  metadata_bucket_connstr_ = GetConnectionStr(
+      JoinHostPort(Localhost(false), ns_server_port_), config->metadata_bucket);
   std::ostringstream oss;
   oss << "\"" << function_id << "-" << function_instance_id << "\"";
   function_instance_id_.assign(oss.str());
@@ -186,7 +194,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   InitializeCurlBindingValues(config->curl_bindings);
 
   execute_start_time_ = Time::now();
-  cb_source_bucket_.assign(config->source_bucket);
 
   Bucket *bucket_handle = nullptr;
   max_task_duration_ = SECS_TO_NS * h_config->execution_timeout;
@@ -203,8 +210,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
               config->component_configs["buckets"][bucket_alias][0];
           std::string bucket_access =
               config->component_configs["buckets"][bucket_alias][2];
-          bucket_handle = new Bucket(isolate_, context, bucket_name,
-                                     settings_->kv_host_port, bucket_alias,
+          auto conn_str = GetConnectionStr(
+              Localhost(false) + ":" + ns_server_port_, bucket_name);
+          bucket_handle = new Bucket(isolate_, context, conn_str, bucket_alias,
                                      bucket_access == "r",
                                      bucket_name == config->source_bucket);
 
@@ -220,23 +228,19 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " curr_host: " << RS(settings_->host_addr)
                << " curr_eventing_port: " << RS(settings_->eventing_port)
                << " curr_eventing_sslport: " << RS(settings_->eventing_sslport)
-               << " kv_host_port: " << RS(settings_->kv_host_port)
                << " lcb_cap: " << h_config->lcb_inst_capacity
                << " execution_timeout: " << h_config->execution_timeout
                << " timer_context_size: " << h_config->timer_context_size
+               << " ns_server_port: " << ns_server_port_
                << " version: " << EventingVer() << std::endl;
 
-  connstr_ = GetConnectionStr(settings_->kv_host_port, cb_source_bucket_);
-  meta_connstr_ =
-      GetConnectionStr(settings_->kv_host_port, config->metadata_bucket);
   src_path_ = settings_->eventing_dir + "/" + app_name_ + ".t.js";
 
   if (h_config->using_timer) {
     std::vector<int64_t> partitions;
     auto prefix = user_prefix + "::" + function_id;
-    timer_store_ =
-        new timer::TimerStore(isolate_, config->metadata_bucket, prefix,
-                              settings_->kv_host_port, partitions);
+    timer_store_ = new timer::TimerStore(isolate_, prefix, partitions,
+                                         metadata_bucket_connstr_);
   }
   delete config;
   this->worker_queue_ = new BlockingDeque<std::unique_ptr<WorkerMessage>>();

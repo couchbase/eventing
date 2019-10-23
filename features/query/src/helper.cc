@@ -122,12 +122,12 @@ Query::Helper::GetPosParams(const v8::Local<v8::Value> &arg) {
   for (uint32_t i = 0; i < len; ++i) {
     v8::Local<v8::Value> param_val;
     if (!TO_LOCAL(params_v8arr->Get(context, i), &param_val)) {
-      error << "Unable to read parameter at index " << i << std::endl;
+      error << "Unable to read parameter at index " << i;
       return {true, error.str()};
     }
     if (auto info = Utils::ValidateDataType(param_val); info.is_fatal) {
       error << "Invalid data type at index " << i
-            << " for positional parameters: " << info.msg << std::endl;
+            << " for positional parameters: " << info.msg;
       return {true, error.str()};
     }
     pos_params.emplace_back(JSONStringify(isolate_, param_val));
@@ -161,29 +161,26 @@ Query::Helper::GetErrorCodes(const v8::Local<v8::Value> &errors_val) {
   for (uint32_t i = 0; i < len; ++i) {
     v8::Local<v8::Value> error_val;
     if (!TO_LOCAL(errors_v8arr->Get(context, i), &error_val)) {
-      error << "Unable to read error Object at index " << i << std::endl;
+      error << "Unable to read error Object at index " << i;
       return {true, error.str()};
     }
 
     v8::Local<v8::Object> error_obj;
     if (!TO_LOCAL(error_val->ToObject(context), &error_obj)) {
-      error << "Unable to cast error at index " << i << " to Object"
-            << std::endl;
+      error << "Unable to cast error at index " << i << " to Object";
       return {true, error.str()};
     }
 
     v8::Local<v8::Value> code_val;
     if (!TO_LOCAL(error_obj->Get(context, v8Str(isolate_, "code")),
                   &code_val)) {
-      error << "Unable to get code from error Object at index " << i
-            << std::endl;
+      error << "Unable to get code from error Object at index " << i;
       return {true, error.str()};
     }
 
     v8::Local<v8::Integer> code_v8int;
     if (!TO_LOCAL(code_val->ToInteger(context), &code_v8int)) {
-      error << "Unable to cast code to integer in error Object at index " << i
-            << std::endl;
+      error << "Unable to cast code to integer in error Object at index " << i;
       return {true, error.str()};
     }
     errors[static_cast<std::size_t>(i)] = code_v8int->Value();
@@ -244,4 +241,13 @@ void Query::Helper::HandleRowError(const Query::Row &row) {
     AccountLCBError(row.err_code);
     js_exception->ThrowN1QLError(row.data);
   }
+}
+
+std::string Query::Helper::ErrorFormat(const std::string &message,
+                                       lcb_t connection,
+                                       const lcb_error_t error) {
+  AccountLCBError(error);
+  std::stringstream formatter;
+  formatter << message << " : " << lcb_strerror(connection, error);
+  return formatter.str();
 }

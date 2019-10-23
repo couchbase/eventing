@@ -16,6 +16,7 @@
 #include "conn-pool.h"
 #include "isolate_data.h"
 #include "log.h"
+#include "query-helper.h"
 #include "utils.h"
 
 extern struct lcb_logprocs_st evt_logger;
@@ -66,57 +67,60 @@ Connection::Info Connection::Pool::CreateConnection() const {
   lcb_t connection = nullptr;
   auto result = lcb_create(&connection, &options);
   if (result != LCB_SUCCESS) {
-    error << "Unable to initialize Couchbase handle : "
-          << lcb_strerror(connection, result) << std::endl;
-    return {true, error.str()};
+    return FormatErrorAndDestroyConn("Unable to initialize Couchbase handle",
+                                     connection, result);
   }
 
   result = lcb_cntl(connection, LCB_CNTL_SET, LCB_CNTL_LOGGER, &evt_logger);
   if (result != LCB_SUCCESS) {
-    error << "Unable to set libcouchbase logger hooks"
-          << lcb_strerror(connection, result) << std::endl;
-    return {true, error.str()};
+    return FormatErrorAndDestroyConn("Unable to set libcouchbase logger hooks",
+                                     connection, result);
   }
 
   auto auth = lcbauth_new();
   result = lcbauth_set_callbacks(auth, isolate_, GetUsernameCached,
                                  GetPasswordCached);
   if (result != LCB_SUCCESS) {
-    error << "Unable to set auth callbacks" << lcb_strerror(connection, result)
-          << std::endl;
-    return {true, error.str()};
+    return FormatErrorAndDestroyConn("Unable to set auth callbacks", connection,
+                                     result);
   }
 
   result = lcbauth_set_mode(auth, LCBAUTH_MODE_DYNAMIC);
   if (result != LCB_SUCCESS) {
-    error << "Unable to set auth mode to dynamic"
-          << lcb_strerror(connection, result) << std::endl;
-    return {true, error.str()};
+    return FormatErrorAndDestroyConn("Unable to set auth mode to dynamic",
+                                     connection, result);
   }
 
   lcb_set_auth(connection, auth);
 
   result = lcb_connect(connection);
   if (result != LCB_SUCCESS) {
-    error << "Unable to schedule connection : "
-          << lcb_strerror(connection, result) << std::endl;
-    return {true, error.str()};
+    return FormatErrorAndDestroyConn("Unable to schedule connection",
+                                     connection, result);
   }
 
   result = lcb_wait(connection);
   if (result != LCB_SUCCESS) {
-    error << "Unable to connect : " << lcb_strerror(connection, result)
-          << std::endl;
-    return {true, error.str()};
+    return FormatErrorAndDestroyConn("Unable to connect", connection, result);
   }
 
   result = lcb_get_bootstrap_status(connection);
   if (result != LCB_SUCCESS) {
-    error << "Bootstrap status : " << lcb_strerror(connection, result)
-          << std::endl;
-    return {true, error.str()};
+    return FormatErrorAndDestroyConn("Unable to bootstrap connection",
+                                     connection, result);
   }
   return {connection};
+}
+
+Connection::Info
+Connection::Pool::FormatErrorAndDestroyConn(const std::string &message,
+                                            lcb_t connection,
+                                            const lcb_error_t error) const {
+  auto helper = UnwrapData(isolate_)->query_helper;
+  auto info =
+      Connection::Info{true, helper->ErrorFormat(message, connection, error)};
+  lcb_destroy(connection);
+  return info;
 }
 
 Connection::Info Connection::Pool::GetConnection() {

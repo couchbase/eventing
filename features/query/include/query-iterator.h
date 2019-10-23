@@ -14,6 +14,7 @@
 
 #include <condition_variable>
 #include <libcouchbase/couchbase.h>
+#include <libcouchbase/n1ql.h>
 #include <string>
 #include <thread>
 #include <v8.h>
@@ -40,7 +41,7 @@ public:
   Iterator(const Query::Info &query_info, lcb_t instance, v8::Isolate *isolate,
            const lcb_U32 timeout)
       : query_info_(query_info), connection_(instance), isolate_(isolate),
-        builder_(query_info, instance, timeout) {}
+        builder_(isolate_, query_info, instance) {}
   ~Iterator();
 
   Iterator() = delete;

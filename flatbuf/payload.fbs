@@ -26,7 +26,6 @@ table Payload {
   curr_eventing_port:string;
   curr_eventing_sslport:string;
   eventing_dir:string;
-  kv_host_port:string;
 
   // DCP event related fields
   key:string; // dcp mutation key

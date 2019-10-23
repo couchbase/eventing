@@ -14,25 +14,36 @@
 
 #include <libcouchbase/couchbase.h>
 #include <libcouchbase/n1ql.h>
+#include <string>
+#include <v8.h>
 
 #include "info.h"
+#include "isolate_data.h"
 #include "query-helper.h"
 
 namespace Query {
 class Builder {
 public:
-  Builder(const Query::Info &query_info, lcb_t connection,
-          const lcb_U32 timeout)
-      : params_(lcb_n1p_new()), query_info_(query_info),
-        connection_(connection), timeout_(timeout) {}
+  Builder(v8::Isolate *isolate, const Query::Info &query_info, lcb_t connection)
+      : isolate_(isolate), params_(lcb_n1p_new()), query_info_(query_info),
+        connection_(connection), timeout_(UnwrapData(isolate)->n1ql_timeout) {}
   ~Builder() { lcb_n1p_free(params_); }
+
+  Builder(const Builder &) = delete;
+  Builder(Builder &&) = delete;
+  Builder &operator=(const Builder &) = delete;
+  Builder &operator=(Builder &&) = delete;
 
   ::Info Build(void (*row_callback)(lcb_t, int, const lcb_RESPN1QL *),
                void *cookie);
   lcb_CMDN1QL *GetCmd() { return &cmd_; }
-  lcb_N1QLHANDLE GetHandle() { return handle_; }
+  lcb_N1QLHANDLE GetHandle() const { return handle_; }
 
 private:
+  ::Info ErrorFormat(const std::string &message, lcb_t connection,
+                     lcb_error_t error) const;
+
+  v8::Isolate *isolate_{nullptr};
   lcb_CMDN1QL cmd_{0};
   lcb_N1QLPARAMS *params_{nullptr};
   lcb_N1QLHANDLE handle_{nullptr};

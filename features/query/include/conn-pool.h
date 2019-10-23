@@ -50,6 +50,9 @@ public:
 
 private:
   Connection::Info CreateConnection() const;
+  Connection::Info FormatErrorAndDestroyConn(const std::string &message,
+                                             lcb_t connection,
+                                             lcb_error_t error) const;
 
   v8::Isolate *isolate_;
   std::string conn_str_;

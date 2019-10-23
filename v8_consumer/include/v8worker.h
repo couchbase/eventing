@@ -148,7 +148,6 @@ typedef struct server_settings_s {
   std::string eventing_port;
   std::string eventing_sslport;
   std::string host_addr;
-  std::string kv_host_port;
 } server_settings_t;
 
 typedef struct handler_config_s {
@@ -217,7 +216,7 @@ public:
            const std::string &function_id,
            const std::string &function_instance_id,
            const std::string &user_prefix, Histogram *latency_stats,
-           Histogram *curl_latency_stats);
+           Histogram *curl_latency_stats, const std::string &ns_server_port);
   ~V8Worker();
 
   int V8WorkerLoad(std::string source_s);
@@ -325,8 +324,8 @@ private:
   Histogram *latency_stats_;
   Histogram *curl_latency_stats_;
 
-  std::string connstr_;
-  std::string meta_connstr_;
+  std::string src_bucket_connstr_;
+  std::string metadata_bucket_connstr_;
   std::string src_path_;
 
   vb_seq_map_t vb_seq_;
@@ -343,6 +342,7 @@ private:
   std::string function_id_;
   std::string function_instance_id_;
   std::string user_prefix_;
+  std::string ns_server_port_;
   timer::TimerStore *timer_store_{nullptr};
   std::atomic<bool> thread_exit_cond_;
   const std::vector<std::string> exception_type_names_;
