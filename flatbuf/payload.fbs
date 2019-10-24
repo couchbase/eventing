@@ -43,6 +43,7 @@ table Payload {
   using_timer:bool;
 
   vb_map:[short];
+  n1ql_consistency:string; // N1QL consistency
 }
 
 root_type Payload;

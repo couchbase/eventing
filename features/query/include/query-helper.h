@@ -20,36 +20,19 @@
 
 #include "info.h"
 #include "isolate_data.h"
+#include "query-info.h"
 #include "query-row.h"
 
 namespace Query {
-struct Info : public ::Info {
-  Info() = delete;
-  Info(bool is_fatal) : ::Info(is_fatal) {}
-  Info(bool is_fatal, const std::string &msg) : ::Info(is_fatal, msg) {}
-
-  Info(std::string query) : ::Info(false), query(std::move(query)) {}
-  Info(std::string &query,
-       std::unordered_map<std::string, std::string> &named_params)
-      : ::Info(false) {
-    std::swap(this->query, query);
-    std::swap(this->named_params, named_params);
-  }
-  Info(std::string &query, std::vector<std::string> &pos_params)
-      : ::Info(false) {
-    std::swap(this->query, query);
-    std::swap(this->pos_params, pos_params);
-  }
-
-  std::string query;
-  std::unordered_map<std::string, std::string> named_params;
-  std::vector<std::string> pos_params;
-};
-
 class Helper {
 public:
   Helper(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
   ~Helper();
+
+  Helper(const Helper &) = delete;
+  Helper(Helper &&) = delete;
+  Helper &operator=(const Helper &) = delete;
+  Helper &operator=(Helper &&) = delete;
 
   static ::Info ValidateQuery(const v8::FunctionCallbackInfo<v8::Value> &args);
   Query::Info CreateQuery(const v8::FunctionCallbackInfo<v8::Value> &args);
@@ -58,6 +41,7 @@ public:
   void HandleRowError(const Query::Row &row);
   std::string ErrorFormat(const std::string &message, lcb_t connection,
                           lcb_error_t error);
+  static int GetConsistency(const std::string &consistency);
 
 private:
   struct ErrorCodesInfo : public ::Info {
@@ -72,7 +56,7 @@ private:
   };
 
   struct NamedParamsInfo : public ::Info {
-    NamedParamsInfo(bool is_fatal, const std::string &msg)
+    NamedParamsInfo(const bool is_fatal, const std::string &msg)
         : ::Info(is_fatal, msg) {}
     NamedParamsInfo(std::unordered_map<std::string, std::string> &named_params)
         : ::Info(false) {
@@ -83,7 +67,7 @@ private:
   };
 
   struct PosParamsInfo : public ::Info {
-    PosParamsInfo(bool is_fatal, const std::string &msg)
+    PosParamsInfo(const bool is_fatal, const std::string &msg)
         : ::Info(is_fatal, msg) {}
     PosParamsInfo(std::vector<std::string> &pos_params) : ::Info(false) {
       std::swap(this->pos_params, pos_params);
@@ -94,11 +78,12 @@ private:
 
   ErrorCodesInfo GetErrorCodes(const std::string &error);
   ErrorCodesInfo GetErrorCodes(const v8::Local<v8::Value> &errors_val);
-  NamedParamsInfo GetNamedParams(const v8::Local<v8::Value> &arg);
-  PosParamsInfo GetPosParams(const v8::Local<v8::Value> &arg);
+  NamedParamsInfo GetNamedParams(const v8::Local<v8::Value> &arg) const;
+  PosParamsInfo GetPosParams(const v8::Local<v8::Value> &arg) const;
 
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
+  Options::Extractor opt_extractor_;
 };
 } // namespace Query
 

@@ -132,6 +132,8 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.curl_timeout = h_config->execution_timeout < 5
                            ? h_config->execution_timeout
                            : h_config->execution_timeout - 2;
+  data_.n1ql_consistency =
+      Query::Helper::GetConsistency(h_config->n1ql_consistency);
 }
 
 void V8Worker::InitializeCurlBindingValues(
@@ -230,6 +232,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " curr_eventing_port: " << RS(settings_->eventing_port)
                << " curr_eventing_sslport: " << RS(settings_->eventing_sslport)
                << " lcb_cap: " << h_config->lcb_inst_capacity
+               << " n1ql_consistency: " << h_config->n1ql_consistency
                << " execution_timeout: " << h_config->execution_timeout
                << " timer_context_size: " << h_config->timer_context_size
                << " ns_server_port: " << ns_server_port_

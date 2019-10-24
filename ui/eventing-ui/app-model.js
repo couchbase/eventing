@@ -121,7 +121,8 @@ ApplicationModel.prototype.getDefaultModel = function() {
             description: '',
             worker_count: 3,
             execution_timeout: 60,
-            user_prefix: 'eventing'
+            user_prefix: 'eventing',
+            n1ql_consistency: 'none'
         }
     };
 };
@@ -154,6 +155,7 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.settings.worker_count = 3;
     this.settings.execution_timeout = 60;
     this.settings.user_prefix = 'eventing';
+    this.settings.n1ql_consistency = 'none';
 };
 
 // Prettifies the JavaScript code.

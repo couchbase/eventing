@@ -757,10 +757,6 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 		return
 	}
 
-	if info = m.validatePositiveInteger("lcb_inst_capacity", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
 	logLevelValues := []string{"INFO", "ERROR", "WARNING", "DEBUG", "TRACE"}
 	if info = m.validatePossibleValues("log_level", settings, logLevelValues); info.Code != m.statusCodes.ok.Code {
 		return
@@ -876,6 +872,15 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 	}
 
 	if info = m.validatePositiveInteger("dcp_num_connections", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	// N1QL related configuration
+	if info = m.validatePossibleValues("n1ql_consistency", settings, m.consistencyValues); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("lcb_inst_capacity", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

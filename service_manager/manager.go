@@ -30,6 +30,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 	mu := &sync.RWMutex{}
 
 	mgr := &ServiceMgr{
+		consistencyValues: []string{"none", "request"},
 		graph:             newBucketMultiDiGraph(),
 		fnsInPrimaryStore: make(map[string]depCfg),
 		fnsInTempStore:    make(map[string]struct{}),

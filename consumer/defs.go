@@ -227,8 +227,9 @@ type Consumer struct {
 	vbOwnershipGiveUpRoutineCount   int
 	vbOwnershipTakeoverRoutineCount int
 
-	// N1QL Transpiler related nested iterator config params
+	// N1QL related params
 	lcbInstCapacity int
+	n1qlConsistency string
 
 	socketTimeout time.Duration
 

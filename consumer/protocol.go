@@ -319,6 +319,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	fiid := builder.CreateString(c.app.FunctionInstanceID)
 	handlerHeaders := c.createHandlerHeaders(builder)
 	handlerFooters := c.createHandlerFooters(builder)
+	n1qlConsistency := builder.CreateString(c.n1qlConsistency)
 
 	lcb := make([]byte, 1)
 	flatbuffers.WriteBool(lcb, skipLcbBootstrap)
@@ -344,6 +345,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddUsingTimer(builder, usingTimer[0])
 	payload.PayloadAddHandlerHeaders(builder, handlerHeaders)
 	payload.PayloadAddHandlerFooters(builder, handlerFooters)
+	payload.PayloadAddN1qlConsistency(builder, n1qlConsistency)
 
 	msgPos := payload.PayloadEnd(builder)
 	builder.Finish(msgPos)

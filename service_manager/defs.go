@@ -99,6 +99,8 @@ type ServiceMgr struct {
 	statusCodes   statusCodes
 	statusPayload []byte
 	errorCodes    map[int]errorPayload
+
+	consistencyValues []string
 }
 
 type functionInfo struct {

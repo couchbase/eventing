@@ -17,6 +17,7 @@
 #include <libcouchbase/n1ql.h>
 #include <string>
 #include <thread>
+#include <utility>
 #include <v8.h>
 
 #include "info.h"
@@ -38,10 +39,9 @@ public:
     Iterator *iterator{nullptr};
   };
 
-  Iterator(const Query::Info &query_info, lcb_t instance, v8::Isolate *isolate,
-           const lcb_U32 timeout)
-      : query_info_(query_info), connection_(instance), isolate_(isolate),
-        builder_(isolate_, query_info, instance) {}
+  Iterator(Query::Info query_info, lcb_t instance, v8::Isolate *isolate)
+      : connection_(instance), isolate_(isolate),
+        builder_(isolate_, std::move(query_info), instance) {}
   ~Iterator();
 
   Iterator() = delete;
@@ -99,8 +99,6 @@ private:
 
   enum class State { kIdle, kStarted, kStopped };
 
-  // TODO : Use move
-  const Query::Info query_info_;
   Cursor cursor_;
   bool has_peeked_{false};
 

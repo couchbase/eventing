@@ -134,6 +134,9 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 	fillMissingDefault(app, settings, "data_chan_size", float64(50))
 	fillMissingDefault(app, settings, "dcp_gen_chan_size", float64(10000))
 	fillMissingDefault(app, settings, "dcp_num_connections", float64(1))
+
+	// N1QL related configuration
+	fillMissingDefault(app, settings, "n1ql_consistency", "none")
 }
 
 func fillMissingDefault(app application, settings map[string]interface{}, field string, defaultValue interface{}) {

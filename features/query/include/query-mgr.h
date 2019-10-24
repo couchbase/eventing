@@ -35,7 +35,7 @@ public:
   Manager &operator=(const Manager &) = delete;
   Manager &operator=(Manager &&) = delete;
 
-  Iterable::Info NewIterable(const Query::Info &query_info);
+  Iterable::Info NewIterable(Query::Info query_info);
   void ClearQueries();
   void RestoreConnection(lcb_t connection) {
     conn_pool_.RestoreConnection(connection);

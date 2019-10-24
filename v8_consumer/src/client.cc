@@ -420,6 +420,7 @@ void AppWorker::RouteMessageWithResponse(
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
+      handler_config->n1ql_consistency = payload->n1ql_consistency()->str();
       handler_config->skip_lcb_bootstrap = payload->skip_lcb_bootstrap();
       using_timer_ = payload->using_timer();
       handler_config->using_timer = using_timer_;

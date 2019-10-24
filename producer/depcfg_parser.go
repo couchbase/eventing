@@ -82,6 +82,20 @@ func (p *Producer) parseDepcfg() error {
 		return uErr
 	}
 
+	// N1QL related configuration
+
+	if val, ok := settings["n1ql_consistency"]; ok {
+		p.handlerConfig.N1qlConsistency = val.(string)
+	} else {
+		p.handlerConfig.N1qlConsistency = "none"
+	}
+
+	if val, ok := settings["lcb_inst_capacity"]; ok {
+		p.handlerConfig.LcbInstCapacity = int(val.(float64))
+	} else {
+		p.handlerConfig.LcbInstCapacity = 10
+	}
+
 	// Handler related configurations
 
 	if val, ok := settings["checkpoint_interval"]; ok {
@@ -146,12 +160,6 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.IdleCheckpointInterval = int(val.(float64))
 	} else {
 		p.handlerConfig.IdleCheckpointInterval = 30000
-	}
-
-	if val, ok := settings["lcb_inst_capacity"]; ok {
-		p.handlerConfig.LcbInstCapacity = int(val.(float64))
-	} else {
-		p.handlerConfig.LcbInstCapacity = 10
 	}
 
 	if val, ok := settings["log_level"]; ok {
@@ -221,6 +229,7 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	// Metastore related configuration
+
 	if val, ok := settings["execute_timer_routine_count"]; ok {
 		p.handlerConfig.ExecuteTimerRoutineCount = int(val.(float64))
 	} else {
@@ -314,6 +323,7 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	// DCP connection related configurations
+
 	if val, ok := settings["agg_dcp_feed_mem_cap"]; ok {
 		p.handlerConfig.AggDCPFeedMemCap = int64(val.(float64)) * 1024 * 1024
 	} else {
@@ -341,7 +351,6 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	p.dcpConfig["activeVbOnly"] = true
-
 	p.app.Settings = settings
 
 	var logLevel string

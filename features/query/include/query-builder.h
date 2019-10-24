@@ -24,9 +24,10 @@
 namespace Query {
 class Builder {
 public:
-  Builder(v8::Isolate *isolate, const Query::Info &query_info, lcb_t connection)
-      : isolate_(isolate), params_(lcb_n1p_new()), query_info_(query_info),
-        connection_(connection), timeout_(UnwrapData(isolate)->n1ql_timeout) {}
+  Builder(v8::Isolate *isolate, Query::Info query_info, lcb_t connection)
+      : isolate_(isolate), params_(lcb_n1p_new()),
+        query_info_(std::move(query_info)), connection_(connection),
+        timeout_(UnwrapData(isolate)->n1ql_timeout) {}
   ~Builder() { lcb_n1p_free(params_); }
 
   Builder(const Builder &) = delete;
@@ -47,7 +48,7 @@ private:
   lcb_CMDN1QL cmd_{0};
   lcb_N1QLPARAMS *params_{nullptr};
   lcb_N1QLHANDLE handle_{nullptr};
-  const Query::Info &query_info_;
+  Query::Info query_info_;
   lcb_t connection_{nullptr};
   lcb_U32 timeout_{0};
 };

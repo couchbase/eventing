@@ -259,6 +259,12 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 
 	settings["timer_context_size"] = 15 * 1024 * 1024
 
+	if s.n1qlConsistency == "" {
+		settings["n1ql_consistency"] = n1qlConsistency
+	} else {
+		settings["n1ql_consistency"] = s.n1qlConsistency
+	}
+
 	if s.logLevel == "" {
 		settings["log_level"] = "INFO"
 	} else {
@@ -322,6 +328,12 @@ func setSettings(fnName string, deploymentStatus, processingStatus bool, s *comm
 	}
 
 	settings["cleanup_timers"] = s.cleanupTimers
+
+	if s.n1qlConsistency == "" {
+		settings["n1ql_consistency"] = n1qlConsistency
+	} else {
+		settings["n1ql_consistency"] = s.n1qlConsistency
+	}
 
 	data, err := json.Marshal(&settings)
 	if err != nil {

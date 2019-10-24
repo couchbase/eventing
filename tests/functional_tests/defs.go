@@ -90,10 +90,11 @@ const (
 )
 
 const (
-	indexMemQuota  = 300
-	bucketmemQuota = 500
-	bucketType     = "ephemeral"
-	replicas       = 0
+	indexMemQuota   = 300
+	bucketmemQuota  = 500
+	bucketType      = "ephemeral"
+	replicas        = 0
+	n1qlConsistency = "request"
 )
 
 type application struct {
@@ -129,6 +130,7 @@ type commonSettings struct {
 	lcbInstCap               int
 	logLevel                 string
 	metaBucket               string
+	n1qlConsistency          string
 	sourceBucket             string
 	streamBoundary           string
 	thrCount                 int

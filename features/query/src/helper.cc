@@ -9,7 +9,11 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <algorithm>
+#include <libcouchbase/n1ql.h>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <v8.h>
 #include <vector>
 
@@ -21,7 +25,7 @@ extern std::atomic<int64_t> n1ql_op_exception_count;
 
 Query::Helper::Helper(v8::Isolate *isolate,
                       const v8::Local<v8::Context> &context)
-    : isolate_(isolate) {
+    : isolate_(isolate), opt_extractor_(isolate, context) {
   context_.Reset(isolate_, context);
 }
 Query::Helper::~Helper() { context_.Reset(); }
@@ -46,31 +50,39 @@ Query::Helper::ValidateQuery(const v8::FunctionCallbackInfo<v8::Value> &args) {
 Query::Info
 Query::Helper::CreateQuery(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::HandleScope handle_scope(isolate_);
+  Query::Info query_info;
 
   v8::String::Utf8Value query_utf8(isolate_, args[0]);
-  std::string query(*query_utf8);
+  query_info.query = *query_utf8;
   if (args.Length() < 2) {
-    return {query};
+    return query_info;
   }
 
   if (args[1]->IsArray()) {
     if (auto info = GetPosParams(args[1]); info.is_fatal) {
-      return {info.is_fatal, info.msg};
+      return {true, info.msg};
     } else {
-      return {query, info.pos_params};
+      std::swap(query_info.pos_params, info.pos_params);
     }
   } else if (args[1]->IsObject()) {
     if (auto info = GetNamedParams(args[1]); info.is_fatal) {
-      return {info.is_fatal, info.msg};
+      return {true, info.msg};
     } else {
-      return {query, info.named_params};
+      std::swap(query_info.named_params, info.named_params);
     }
   }
-  return {true, "Invalid second parameter"};
+
+  Query::Options options;
+  if (auto info = opt_extractor_.Extract(args, options); info.is_fatal) {
+    return {true, info.msg};
+  } else {
+    std::swap(query_info.options, options);
+  }
+  return query_info;
 }
 
 Query::Helper::NamedParamsInfo
-Query::Helper::GetNamedParams(const v8::Local<v8::Value> &arg) {
+Query::Helper::GetNamedParams(const v8::Local<v8::Value> &arg) const {
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
 
@@ -109,7 +121,7 @@ Query::Helper::GetNamedParams(const v8::Local<v8::Value> &arg) {
 }
 
 Query::Helper::PosParamsInfo
-Query::Helper::GetPosParams(const v8::Local<v8::Value> &arg) {
+Query::Helper::GetPosParams(const v8::Local<v8::Value> &arg) const {
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
   std::stringstream error;
@@ -250,4 +262,95 @@ std::string Query::Helper::ErrorFormat(const std::string &message,
   std::stringstream formatter;
   formatter << message << " : " << lcb_strerror(connection, error);
   return formatter.str();
+}
+
+int Query::Helper::GetConsistency(const std::string &consistency) {
+  if (consistency == "none") {
+    return LCB_N1P_CONSISTENCY_NONE;
+  }
+  if (consistency == "request") {
+    return LCB_N1P_CONSISTENCY_REQUEST;
+  }
+  return LCB_N1P_CONSISTENCY_REQUEST;
+}
+
+Query::Options::Extractor::Extractor(v8::Isolate *isolate,
+                                     const v8::Local<v8::Context> &context)
+    : isolate_(isolate) {
+  v8::HandleScope handle_scope(isolate_);
+  context_.Reset(isolate_, context);
+  consistency_property_.Reset(isolate_, v8Str(isolate_, "consistency"));
+  client_ctx_id_property_.Reset(isolate_, v8Str(isolate_, "clientContextId"));
+}
+
+Query::Options::Extractor::~Extractor() {
+  context_.Reset();
+  consistency_property_.Reset();
+  client_ctx_id_property_.Reset();
+}
+
+::Info Query::Options::Extractor::Extract(
+    const v8::FunctionCallbackInfo<v8::Value> &args, Options &opt_out) const {
+  if (args.Length() < 3) {
+    return {false};
+  }
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  v8::Local<v8::Object> options_obj;
+  if (!TO_LOCAL(args[2]->ToObject(context), &options_obj)) {
+    return {true, "Unable to read options"};
+  }
+
+  auto info = ExtractConsistency(options_obj, opt_out.consistency);
+  if (info.is_fatal) {
+    return info;
+  }
+  return ExtractClientCtxId(options_obj, opt_out.client_context_id);
+}
+
+::Info Query::Options::Extractor::ExtractConsistency(
+    const v8::Local<v8::Object> &options_obj, int &consistency_out) const {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  consistency_out = UnwrapData(isolate_)->n1ql_consistency;
+
+  auto consistency_property = consistency_property_.Get(isolate_);
+  v8::Local<v8::Value> consistency_val;
+  if (!TO_LOCAL(options_obj->Get(context, consistency_property),
+                &consistency_val)) {
+    return {true, "Unable to read consistency value"};
+  }
+  if (consistency_val->IsUndefined()) {
+    return {false};
+  }
+  if (!consistency_val->IsString()) {
+    return {true, "Expecting a string for consistency"};
+  }
+  v8::String::Utf8Value consistency_utf8(isolate_, consistency_val);
+  if (consistencies_.find(*consistency_utf8) == consistencies_.end()) {
+    return {true, "consistency must be one of 'none', 'request'"};
+  }
+  consistency_out = Query::Helper::GetConsistency(*consistency_utf8);
+  return {false};
+}
+
+::Info Query::Options::Extractor::ExtractClientCtxId(
+    const v8::Local<v8::Object> &options_obj,
+    std::unique_ptr<std::string> &client_ctx_id_out) const {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  auto client_ctx_id_property = client_ctx_id_property_.Get(isolate_);
+  v8::Local<v8::Value> client_ctx_id_val;
+  if (!TO_LOCAL(options_obj->Get(context, client_ctx_id_property),
+                &client_ctx_id_val)) {
+    return {true, "Unable to read clientContextId value"};
+  }
+  if (auto info = Utils::ValidateDataType(client_ctx_id_val); info.is_fatal) {
+    return {true, "Invalid data type for clientContextId: " + info.msg};
+  }
+  auto client_ctx_id = JSONStringify(isolate_, client_ctx_id_val);
+  client_ctx_id_out.reset(new std::string(std::move(client_ctx_id)));
+  return {false};
 }
