@@ -15,47 +15,8 @@
 #include "comm.h"
 #include "conn-pool.h"
 #include "isolate_data.h"
-#include "log.h"
+#include "lcb_utils.h"
 #include "query-helper.h"
-#include "utils.h"
-
-extern struct lcb_logprocs_st evt_logger;
-
-const char *GetUsernameCached(void *cookie, const char *host, const char *port,
-                              const char *bucket) {
-  auto isolate = static_cast<v8::Isolate *>(cookie);
-  auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(host, port);
-  auto info = comm->GetCredsCached(endpoint);
-  if (!info.is_valid) {
-    LOG(logError) << "Failed to get username for " << RS(host) << ":" << port
-                  << " err: " << info.msg << std::endl;
-  }
-
-  static const char *username = "";
-  if (info.username != username) {
-    username = strdup(info.username.c_str());
-  }
-  return username;
-}
-
-const char *GetPasswordCached(void *cookie, const char *host, const char *port,
-                              const char *bucket) {
-  auto isolate = static_cast<v8::Isolate *>(cookie);
-  auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(host, port);
-  auto info = comm->GetCredsCached(endpoint);
-  if (!info.is_valid) {
-    LOG(logError) << "Failed to get password for " << RS(host) << ":" << port
-                  << " err: " << info.msg << std::endl;
-  }
-
-  static const char *password = "";
-  if (info.password != password) {
-    password = strdup(info.password.c_str());
-  }
-  return password;
-}
 
 Connection::Info Connection::Pool::CreateConnection() const {
   std::stringstream error;
@@ -78,8 +39,7 @@ Connection::Info Connection::Pool::CreateConnection() const {
   }
 
   auto auth = lcbauth_new();
-  result = lcbauth_set_callbacks(auth, isolate_, GetUsernameCached,
-                                 GetPasswordCached);
+  result = lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
   if (result != LCB_SUCCESS) {
     return FormatErrorAndDestroyConn("Unable to set auth callbacks", connection,
                                      result);
