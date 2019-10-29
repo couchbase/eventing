@@ -162,7 +162,7 @@ type application struct {
 	AppHandlers        string                 `json:"appcode"`
 	DeploymentConfig   depCfg                 `json:"depcfg"`
 	EventingVersion    string                 `json:"version"`
-	FunctionID         uint32                 `json:"function_id"`
+	FunctionID         uint32                 `json:"handleruuid"`
 	ID                 int                    `json:"id"`
 	FunctionInstanceID string                 `json:"function_instance_id"`
 	Name               string                 `json:"appname"`

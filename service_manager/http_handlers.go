@@ -1551,15 +1551,16 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	fmt.Fprintf(w, "%s\n", data)
 }
 
-func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtimeInfo) {
+func (m *ServiceMgr) getTempStore(appName string) (application, *runtimeInfo) {
 	logPrefix := "ServiceMgr::getTempStore"
 
-	info = &runtimeInfo{}
+	info := &runtimeInfo{}
 	logging.Infof("%s Function: %s fetching function draft definitions", logPrefix, appName)
 
 	for _, name := range util.ListChildren(metakvTempAppsPath) {
 		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, name)
 		if err == nil && data != nil {
+			var app application
 			uErr := json.Unmarshal(data, &app)
 			if uErr != nil {
 				logging.Errorf("%s Function: %s failed to unmarshal data from metakv, err: %v", logPrefix, appName, uErr)
@@ -1573,7 +1574,7 @@ func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtim
 				app.UsingTimer = false
 				delete(app.Settings, "handler_uuid")
 				delete(app.Settings, "using_timers")
-				return
+				return app, info
 			}
 		}
 	}
@@ -1581,7 +1582,7 @@ func (m *ServiceMgr) getTempStore(appName string) (app application, info *runtim
 	info.Code = m.statusCodes.errAppNotFoundTs.Code
 	info.Info = fmt.Sprintf("Function: %s not found", appName)
 	logging.Infof("%s %s", logPrefix, info.Info)
-	return
+	return application{}, info
 }
 
 func (m *ServiceMgr) getTempStoreAll() []application {
