@@ -21,19 +21,19 @@ Application.prototype.enforceSchema = function() {
 Application.prototype.getProcessingStatus = function(inverted) {
     // Inverted case is used for the button.
     if (inverted) {
-        return this.settings.processing_status ? 'Pause' : 'Resume';
+        return this.status === 'paused' ? 'Resume' : 'Pause';
     }
 
-    return this.settings.processing_status ? 'running' : 'paused';
+    return this.status === 'paused' ? 'paused' : 'running';
 };
 
 Application.prototype.getDeploymentStatus = function(inverted) {
     // Inverted case is used for the button.
     if (inverted) {
-        return this.settings.deployment_status ? 'Undeploy' : 'Deploy';
+        return this.status === 'deployed' ? 'Undeploy' : 'Deploy';
     }
 
-    return this.settings.deployment_status ? 'deployed' : 'undeployed';
+    return this.status === 'deployed' ? 'deployed' : 'undeployed';
 };
 
 Application.prototype.clone = function() {

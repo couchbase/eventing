@@ -2517,7 +2517,7 @@ func (m *ServiceMgr) assignFunctionInstanceID(functionName string, app *applicat
 }
 
 func (m *ServiceMgr) isUndeployOperation(settings map[string]interface{}) bool {
-	if len(settings) != 2 {
+	if len(settings) < 2 {
 		return false
 	}
 
