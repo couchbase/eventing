@@ -154,11 +154,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.toggleDeployment = function(app) {
                 var deploymentScope = $scope.$new(true);
                 deploymentScope.appName = app.appname;
-                deploymentScope.actionTitle = app.settings.deployment_status ? 'Undeploy' : 'Deploy';
-                deploymentScope.action = app.settings.deployment_status ? 'undeploy' : 'deploy';
+                deploymentScope.actionTitle = app.status === 'deployed' ? 'Undeploy' : 'Deploy';
+                deploymentScope.action = app.status === 'deployed' ? 'undeploy' : 'deploy';
                 deploymentScope.cleanupTimers = false;
 
-                if (app.settings.deployment_status) {
+                if (app.status === 'deployed') {
                     undeployApp(app, deploymentScope);
                 } else {
                     changeState('deploy', app, deploymentScope);
@@ -168,14 +168,14 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.toggleProcessing = function(app) {
                 var processingScope = $scope.$new(true);
                 processingScope.appName = app.appname;
-                processingScope.actionTitle = app.settings.processing_status ? 'Pause' : 'Resume';
-                processingScope.action = app.settings.processing_status ? 'pause' : 'resume';
+                processingScope.actionTitle = app.status === 'paused' ? 'Resume' : 'Pause';
+                processingScope.action = app.status === 'paused' ? 'resume' : 'pause';
                 processingScope.cleanupTimers = false;
 
-                if (app.settings.processing_status) {
-                    changeState('pause', app, processingScope);
-                } else {
+                if (app.status === 'paused') {
                     changeState('resume', app, processingScope);
+                } else {
+                    changeState('pause', app, processingScope);
                 }
             };
 
