@@ -1258,7 +1258,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		return
 	}
 
-	if info = m.validateSettings(settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateSettings(appName, settings); info.Code != m.statusCodes.ok.Code {
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}
