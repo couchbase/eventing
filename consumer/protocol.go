@@ -22,6 +22,8 @@ const (
 	timerEvent
 	debuggerEvent
 	filterEvent
+	reservedEvent
+	pauseConsumer
 )
 
 const (
@@ -80,6 +82,7 @@ const (
 	docTimerResponse
 	bucketOpsResponse
 	bucketOpsFilterAck
+	pauseAck
 )
 
 const (
@@ -139,6 +142,9 @@ func (c *Consumer) makeVbFilterHeader(partition int16, meta string) ([]byte, *fl
 	return c.filterEventHeader(vbFilter, partition, meta)
 }
 
+func (c *Consumer) makePauseConsumerHeader() ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(pauseConsumer, 0, 0, "")
+}
 func (c *Consumer) makeProcessedSeqNoHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
 	return c.filterEventHeader(processedSeqNo, partition, meta)
 }
@@ -510,6 +516,18 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), ack.Vbucket, ack.SeqNo, ack.SkipAck)
 
 		if ack.SkipAck == 0 {
+			c.filterDataCh <- &ack
+		}
+
+	case pauseAck:
+		var acks []vbSeqNo
+		if err := json.Unmarshal([]byte(msg), &acks); err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal pause ack, msg: %v err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			return
+		}
+
+		for _, ack := range acks {
 			c.filterDataCh <- &ack
 		}
 	default:

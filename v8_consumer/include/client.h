@@ -108,6 +108,9 @@ private:
 
   std::vector<std::unordered_set<int64_t>>
   PartitionVbuckets(const std::vector<int64_t> &vbuckets) const;
+
+  void SendPauseAck(const std::unordered_map<int64_t, uint64_t> &lps_map);
+
   std::thread write_responses_thr_;
   std::map<int16_t, V8Worker *> workers_;
   std::chrono::milliseconds checkpoint_interval_;

@@ -166,6 +166,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   oss << "\"" << function_id << "-" << function_instance_id << "\"";
   function_instance_id_.assign(oss.str());
   thread_exit_cond_.store(false);
+  stop_timer_scan_.store(false);
   for (int i = 0; i < NUM_VBUCKETS; i++) {
     vb_seq_[i] = atomic_ptr_t(new std::atomic<uint64_t>(0));
   }
@@ -457,19 +458,22 @@ void V8Worker::RouteMessage() {
     switch (evt) {
     case eDCP:
       switch (getDCPOpcode(msg->header.opcode)) {
-      case oDelete:
+      case oDelete: {
+        std::unique_lock<std::mutex> lck(pause_lock_);
         ++dcp_delete_msg_counter;
         if (IsValidDCPEvent(msg, oDelete)) {
           this->SendDelete(msg->header.metadata);
         }
-        break;
+      } break;
 
-      case oMutation:
+      case oMutation: {
+        std::unique_lock<std::mutex> lck(pause_lock_);
+
         ++dcp_mutation_msg_counter;
         if (IsValidDCPEvent(msg, oMutation)) {
           this->SendUpdate(payload->value()->str(), msg->header.metadata);
         }
-        break;
+      } break;
 
       default:
         LOG(logError) << "Received invalid DCP opcode" << std::endl;
@@ -478,20 +482,33 @@ void V8Worker::RouteMessage() {
       processed_events_size += msg->payload.GetSize();
       break;
 
-    case eScanTimer: {
-      auto iter = timer_store_->GetIterator();
-      timer::TimerEvent evt;
-      while (iter.GetNext(evt)) {
-        ++timer_msg_counter;
-        this->SendTimer(evt.callback, evt.context);
-        timer_store_->DeleteTimer(evt);
+    case eInternal:
+      switch (msg->header.opcode) {
+      case oScanTimer: {
+        auto iter = timer_store_->GetIterator();
+        timer::TimerEvent evt;
+        while (iter.GetNext(evt) && !stop_timer_scan_.load()) {
+          std::unique_lock<std::mutex> lck(pause_lock_);
+          ++timer_msg_counter;
+          this->SendTimer(evt.callback, evt.context);
+          timer_store_->DeleteTimer(evt);
+        }
+        if (stop_timer_scan_.load()) {
+          timer_store_->SyncSpan();
+        }
+        break;
+      }
+      case oUpdateVbMap: {
+        if (timer_store_) {
+          timer_store_->SyncSpan();
+        }
+        break;
+      }
+      default:
+        LOG(logError) << "Received invalid internal opcode" << std::endl;
+        break;
       }
       break;
-    }
-    case eUpdateVbMap: {
-      timer_store_->SyncSpan();
-      break;
-    }
     case eDebugger:
       switch (getDebuggerOpcode(msg->header.opcode)) {
       case oDebuggerStart:
@@ -1023,10 +1040,6 @@ uint64_t V8Worker::GetBucketopsSeqno(int vb_no) {
   return processed_bucketops_[vb_no];
 }
 
-void V8Worker::FilterLock() { bucketops_lock_.lock(); }
-
-void V8Worker::FilterUnlock() { bucketops_lock_.unlock(); }
-
 void V8Worker::SetThreadExitFlag() {
   thread_exit_cond_.store(true);
   worker_queue_->Close();
@@ -1102,14 +1115,29 @@ void V8Worker::TaskDurationWatcher() {
 }
 
 void V8Worker::UpdatePartitions(const std::unordered_set<int64_t> &vbuckets) {
+  partitions_ = vbuckets;
   if (timer_store_)
     timer_store_->UpdatePartition(vbuckets);
+}
+
+std::unordered_set<int64_t> V8Worker::GetPartitions() const {
+  return partitions_;
 }
 
 void V8Worker::SetTimer(timer::TimerInfo &tinfo) {
   if (timer_store_)
     timer_store_->SetTimer(tinfo);
 }
+
+std::unique_lock<std::mutex> V8Worker::GetAndLockFilterLock() {
+  return std::unique_lock<std::mutex>(bucketops_lock_);
+}
+
+std::unique_lock<std::mutex> V8Worker::GetAndLockPauseLock() {
+  return std::unique_lock<std::mutex>(pause_lock_);
+}
+
+void V8Worker::StopTimerScan() { stop_timer_scan_.store(true); }
 
 // TODO : Remove this when stats variables are handled properly
 void AddLcbException(const IsolateData *isolate_data, const int code) {

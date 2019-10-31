@@ -22,8 +22,8 @@ enum event_type {
   eTimer,
   eDebugger,
   eFilter,
-  eScanTimer,
-  eUpdateVbMap,
+  eInternal,
+  ePauseConsumer,
   Event_Unknown
 };
 
@@ -48,6 +48,8 @@ enum v8_worker_opcode {
 enum dcp_opcode { oDelete, oMutation, DCP_Opcode_Unknown };
 
 enum filter_opcode { oVbFilter, oProcessedSeqNo, Filter_Opcode_Unknown };
+
+enum internal_opcode { oScanTimer, oUpdateVbMap, Internal_Opcode_Unknown };
 
 enum app_worker_setting_opcode {
   oLogLevel,
@@ -77,6 +79,7 @@ enum msg_type {
   mTimer_Response,
   mBucket_Ops_Response,
   mFilterAck,
+  mPauseAck,
   Msg_Unknown
 };
 

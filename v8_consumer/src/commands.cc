@@ -25,9 +25,9 @@ event_type getEvent(int8_t event) {
   if (event == 6)
     return eFilter;
   if (event == 7)
-    return eScanTimer;
+    return eInternal;
   if (event == 8)
-    return eUpdateVbMap;
+    return ePauseConsumer;
   return Event_Unknown;
 }
 
