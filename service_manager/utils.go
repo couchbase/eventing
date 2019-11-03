@@ -84,18 +84,7 @@ func encodeRev(rev uint64) service.Revision {
 	return ext
 }
 
-func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string]interface{}) {
-	// Fill from temp store if available
-	app, info := m.getTempStore(appName)
-	if info.Code == m.statusCodes.ok.Code {
-		for k, v := range app.Settings {
-			if _, ok := settings[k]; !ok {
-				settings[k] = v
-			}
-		}
-		return
-	}
-
+func fillMissingWithDefaults(settings map[string]interface{}) {
 	// Handler related configurations
 	fillMissingDefault(settings, "checkpoint_interval", float64(60000))
 	fillMissingDefault(settings, "cleanup_timers", false)

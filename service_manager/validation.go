@@ -51,7 +51,7 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	if info = m.validateSettings(app.Name, util.DeepCopy(app.Settings)); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateSettings(util.DeepCopy(app.Settings)); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -689,11 +689,11 @@ func (m *ServiceMgr) validatePossibleValues(field string, settings map[string]in
 	return
 }
 
-func (m *ServiceMgr) validateSettings(appName string, settings map[string]interface{}) (info *runtimeInfo) {
+func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
-	m.fillMissingWithDefaults(appName, settings)
+	fillMissingWithDefaults(settings)
 
 	// Handler related configurations
 	if info = m.validateStringMustExist("user_prefix", maxPrefixLength, settings); info.Code != m.statusCodes.ok.Code {
