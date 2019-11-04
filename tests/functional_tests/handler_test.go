@@ -528,6 +528,8 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 		}
 
 		dumpStats()
+		waitForStatusChange(functionName, "deployed", statsLookupRetryCounter)
+
 		log.Println("Pausing app:", handler)
 		setSettings(functionName, true, false, &commonSettings{})
 		waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
@@ -561,6 +563,8 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 		}
 
 		dumpStats()
+		waitForStatusChange(functionName, "deployed", statsLookupRetryCounter)
+
 		log.Println("Pausing app:", handler)
 		setSettings(functionName, true, false, &commonSettings{})
 		waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
