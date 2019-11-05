@@ -680,12 +680,12 @@ void AppWorker::RouteMessageWithResponse(
         if (kSuccess ==
             worker->ParseMetadataWithAck(worker_msg->header.metadata, vb_no,
                                          filter_seq_no, skip_ack, true)) {
-          worker->FilterLock();
+          auto lck = worker->GetAndLockFilterLock();
           auto last_processed_seq_no = worker->GetBucketopsSeqno(vb_no);
           if (last_processed_seq_no < filter_seq_no) {
             worker->UpdateVbFilter(vb_no, filter_seq_no);
           }
-          worker->FilterUnlock();
+          lck.unlock();
           SendFilterAck(oVbFilter, mFilterAck, vb_no, last_processed_seq_no,
                         skip_ack);
         }
@@ -708,6 +708,22 @@ void AppWorker::RouteMessageWithResponse(
       break;
     }
     break;
+  case ePauseConsumer: {
+    std::unordered_map<int64_t, uint64_t> lps_map;
+    for (size_t idx = 0; idx < thr_count_; ++idx) {
+      auto worker = workers_[idx];
+      worker->StopTimerScan();
+
+      auto lck = worker->GetAndLockPauseLock();
+      auto partitions = worker->GetPartitions();
+      for (auto vb : partitions) {
+        auto lps = worker->GetBucketopsSeqno(vb);
+        worker->UpdateVbFilter(vb, std::numeric_limits<uint64_t>::max());
+        lps_map[vb] = lps;
+      }
+    }
+    SendPauseAck(lps_map);
+  } break;
   case eApp_Worker_Setting:
     switch (getAppWorkerSettingOpcode(worker_msg->header.opcode)) {
     case oLogLevel:
@@ -748,33 +764,31 @@ void AppWorker::RouteMessageWithResponse(
       msg_priority_ = true;
       break;
 
-    case oVbMap:
-      if (using_timer_) {
-        payload = flatbuf::payload::GetPayload(
-            (const void *)worker_msg->payload.payload.c_str());
-        auto vb_map = payload->vb_map();
-        std::vector<int64_t> vbuckets;
-        for (size_t idx = 0; idx < vb_map->size(); ++idx) {
-          vbuckets.push_back(vb_map->Get(idx));
-        }
-
-        auto partitions = PartitionVbuckets(vbuckets);
-
-        for (size_t idx = 0; idx < thr_count_; ++idx) {
-          auto worker = workers_[idx];
-          worker->UpdatePartitions(partitions[idx]);
-          std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
-          msg->header.event = eUpdateVbMap + 1;
-          worker->PushFront(std::move(msg));
-        }
-        std::ostringstream oss;
-        std::copy(vbuckets.begin(), vbuckets.end(),
-                  std::ostream_iterator<int64_t>(oss, " "));
-
-        LOG(logInfo) << "Updating vbucket map, vbmap :" << oss.str()
-                     << std::endl;
+    case oVbMap: {
+      payload = flatbuf::payload::GetPayload(
+          (const void *)worker_msg->payload.payload.c_str());
+      auto vb_map = payload->vb_map();
+      std::vector<int64_t> vbuckets;
+      for (size_t idx = 0; idx < vb_map->size(); ++idx) {
+        vbuckets.push_back(vb_map->Get(idx));
       }
-      break;
+
+      auto partitions = PartitionVbuckets(vbuckets);
+
+      for (size_t idx = 0; idx < thr_count_; ++idx) {
+        auto worker = workers_[idx];
+        worker->UpdatePartitions(partitions[idx]);
+        std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
+        msg->header.event = eInternal + 1;
+        msg->header.opcode = oUpdateVbMap;
+        worker->PushFront(std::move(msg));
+      }
+      std::ostringstream oss;
+      std::copy(vbuckets.begin(), vbuckets.end(),
+                std::ostream_iterator<int64_t>(oss, " "));
+
+      LOG(logInfo) << "Updating vbucket map, vbmap :" << oss.str() << std::endl;
+    } break;
     default:
       LOG(logError) << "Opcode "
                     << getAppWorkerSettingOpcode(worker_msg->header.opcode)
@@ -961,7 +975,8 @@ void AppWorker::ScanTimerLoop() {
       if (worker->using_timer_) {
         for (auto &v8_worker : worker->workers_) {
           std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
-          msg->header.event = eScanTimer + 1;
+          msg->header.event = eInternal + 1;
+          msg->header.opcode = oScanTimer;
           v8_worker.second->PushFront(std::move(msg));
         }
       }
@@ -1004,6 +1019,20 @@ AppWorker::PartitionVbuckets(const std::vector<int64_t> &vbuckets) const {
     }
   }
   return partitions;
+}
+
+void AppWorker::SendPauseAck(
+    const std::unordered_map<int64_t, uint64_t> &lps_map) {
+  nlohmann::json lps_list;
+  for (const auto &[vb, lps] : lps_map) {
+    nlohmann::json lps_info;
+    lps_info["vb"] = vb;
+    lps_info["seq"] = lps;
+    lps_list.push_back(lps_info);
+  }
+  resp_msg_->msg.assign(lps_list.dump());
+  resp_msg_->msg_type = mPauseAck;
+  msg_priority_ = true;
 }
 
 int main(int argc, char **argv) {

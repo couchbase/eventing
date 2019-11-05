@@ -111,22 +111,6 @@ CredsInfo Communicator::GetCreds(const std::string &endpoint) {
   return ExtractCredentials(response.body);
 }
 
-CredsInfo Communicator::GetCredsCached(const std::string &endpoint) {
-  auto now = time(NULL);
-  auto find = creds_cache_.find(endpoint);
-  if ((find != creds_cache_.end()) && (find->second.time_fetched >= now - 2)) {
-    return find->second;
-  }
-
-  LOG(logDebug) << "Getting credentials afresh for " << RS(endpoint)
-                << std::endl;
-
-  auto credentials = GetCreds(endpoint);
-  credentials.time_fetched = now;
-  creds_cache_[endpoint] = credentials;
-  return credentials;
-}
-
 NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {
   auto response =
       curl_.HTTPPost({"Content-Type: text/plain"}, get_named_params_url_, query,

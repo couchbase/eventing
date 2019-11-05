@@ -49,7 +49,6 @@ public:
                const std::string &app_name, v8::Isolate *isolate);
 
   CredsInfo GetCreds(const std::string &endpoint);
-  CredsInfo GetCredsCached(const std::string &endpoint);
   NamedParamsInfo GetNamedParams(const std::string &query);
   ParseInfo ParseQuery(const std::string &query);
   void WriteDebuggerURL(const std::string &url);

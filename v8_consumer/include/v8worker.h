@@ -260,9 +260,9 @@ public:
 
   uint64_t GetBucketopsSeqno(int vb_no);
 
-  void FilterLock();
+  std::unique_lock<std::mutex> GetAndLockFilterLock();
 
-  void FilterUnlock();
+  std::unique_lock<std::mutex> GetAndLockPauseLock();
 
   int ParseMetadata(const std::string &metadata, int &vb_no,
                     uint64_t &seq_no) const;
@@ -272,7 +272,11 @@ public:
 
   void SetThreadExitFlag();
 
+  void StopTimerScan();
+
   void UpdatePartitions(const std::unordered_set<int64_t> &vbuckets);
+
+  std::unordered_set<int64_t> GetPartitions() const;
 
   void SetTimer(timer::TimerInfo &tinfo);
 
@@ -331,9 +335,9 @@ private:
   vb_seq_map_t vb_seq_;
 
   std::vector<std::vector<uint64_t>> vbfilter_map_;
-  std::mutex vbfilter_lock_;
   std::vector<uint64_t> processed_bucketops_;
   std::mutex bucketops_lock_;
+  std::mutex pause_lock_;
   std::list<Bucket *> bucket_handles_;
   v8::Isolate *isolate_;
   v8::Platform *platform_;
@@ -347,6 +351,8 @@ private:
   std::atomic<bool> thread_exit_cond_;
   const std::vector<std::string> exception_type_names_;
   std::vector<std::string> curl_binding_values_;
+  std::atomic<bool> stop_timer_scan_;
+  std::unordered_set<int64_t> partitions_;
 };
 
 #endif

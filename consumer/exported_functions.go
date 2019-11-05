@@ -3,7 +3,6 @@ package consumer
 import (
 	"bufio"
 	"fmt"
-	"math"
 	"net"
 	"os"
 	"os/exec"
@@ -753,11 +752,6 @@ func (c *Consumer) GetInsight() *common.Insight {
 }
 
 func (c *Consumer) PauseConsumer() {
-	// send vb filter messages to all assigned VBs to stop processing mutations. Note the use math.MaxUint64 for seqno
-	assignedVbs, _ := c.GetAssignedVbs(c.ConsumerName())
-	for _, vb := range assignedVbs {
-		c.sendVbFilterData(vb, math.MaxUint64, false)
-	}
-
+	c.sendPauseConsumer()
 	c.WorkerVbMapUpdate(nil)
 }

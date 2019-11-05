@@ -489,6 +489,24 @@ func (c *Consumer) sendVbFilterData(vb uint16, seqNo uint64, skipAck bool) {
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNo)
 }
 
+func (c *Consumer) sendPauseConsumer() {
+	logPrefix := "Consumer::sendPauseConsumer"
+
+	pauseHeader, hBuilder := c.makePauseConsumerHeader()
+	msg := &msgToTransmit{
+		msg: &message{
+			Header: pauseHeader,
+		},
+		sendToDebugger: false,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(msg)
+	logging.Infof("%s [%s:%s:%d] Sending pause consumer message",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
+}
+
 func (c *Consumer) sendUpdateProcessedSeqNo(vb uint16, seqNo uint64) {
 	logPrefix := "Consumer::sendUpdateProcessedSeqNo"
 
