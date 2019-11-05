@@ -30,10 +30,10 @@ Application.prototype.getProcessingStatus = function(inverted) {
 Application.prototype.getDeploymentStatus = function(inverted) {
     // Inverted case is used for the button.
     if (inverted) {
-        return this.status === 'deployed' ? 'Undeploy' : 'Deploy';
+        return this.status === 'deployed' || this.status === 'paused' ? 'Undeploy' : 'Deploy';
     }
 
-    return this.status === 'deployed' ? 'deployed' : 'undeployed';
+    return this.status === 'deployed' || this.status === 'paused' ? 'deployed' : 'undeployed';
 };
 
 Application.prototype.clone = function() {

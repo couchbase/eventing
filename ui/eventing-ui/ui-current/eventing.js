@@ -181,11 +181,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.toggleDeployment = function(app) {
                 var deploymentScope = $scope.$new(true);
                 deploymentScope.appName = app.appname;
-                deploymentScope.actionTitle = app.status === 'deployed' ? 'Undeploy' : 'Deploy';
-                deploymentScope.action = app.status === 'deployed' ? 'undeploy' : 'deploy';
+                deploymentScope.actionTitle = app.status === 'deployed' || app.status === 'paused' ? 'Undeploy' : 'Deploy';
+                deploymentScope.action = app.status === 'deployed' || app.status === 'paused' ? 'undeploy' : 'deploy';
                 deploymentScope.cleanupTimers = false;
 
-                if (app.status === 'deployed') {
+                if (app.status === 'deployed' || app.status === 'paused') {
                     undeployApp(app, deploymentScope);
                 } else {
                     changeState('deploy', app, deploymentScope);
