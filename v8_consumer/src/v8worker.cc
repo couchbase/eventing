@@ -487,7 +487,7 @@ void V8Worker::RouteMessage() {
       case oScanTimer: {
         auto iter = timer_store_->GetIterator();
         timer::TimerEvent evt;
-        while (iter.GetNext(evt) && !stop_timer_scan_.load()) {
+        while (!stop_timer_scan_.load() && iter.GetNext(evt)) {
           std::unique_lock<std::mutex> lck(pause_lock_);
           ++timer_msg_counter;
           this->SendTimer(evt.callback, evt.context);
