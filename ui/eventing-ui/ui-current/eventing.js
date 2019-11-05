@@ -21,37 +21,64 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 self.appList[app].uiState = 'warmup';
             }
 
+            function getAppStatus() {
+                ApplicationService.public.status()
+                    .then(function(response) {
+                        response = response.data;
+                        var appList = new Set();
+                        for (var app of response.apps ? response.apps : []) {
+
+                            if (!(app.name in self.appList)) {
+
+                                // Found in server resp, however not found in UI
+                                console.error('Remote change : UI app list is stale, sever responsed with function (missing from UI needs to be added):', app.name);
+
+                                ApplicationService.public.importFunctionFromServer(app.name)
+                                    .then(result => {
+                                        ApplicationService.local.createApp(result.data);
+                                    })
+                                    .then(result => {
+                                        // Inform user on why it appeard
+                                        ApplicationService.server.showSuccessAlert(`${app.name} was created remotely added!`);
+                                    })
+                                    .then(result => {
+                                        appList.add(app.name);
+                                        self.appList[app.name].status = app.composite_status;
+                                    });
+
+                            } else {
+                                appList.add(app.name);
+                                self.appList[app.name].status = app.composite_status;
+                            }
+                        }
+                        for (var appName of Object.keys(self.appList)) {
+                            if (!appList.has(appName)) {
+
+                                console.error('Remote change : UI app list is stale, sever did not have function (present in UI needs to be removed):', appName);
+
+                                ApplicationService.local.deleteApp(appName);
+
+                                ApplicationService.server.showSuccessAlert(`${appName} was deleted remotely removed!`);
+                                continue;
+                            }
+                            self.appList[appName].uiState = determineUIStatus(self.appList[appName].status);
+                        }
+
+                    }).catch(function(errResponse) {
+                        self.errorCode = errResponse && errResponse.status || 500;
+                        console.error('Unable to list apps');
+                    });
+            }
+
             // Poll to get the App status and reflect the same in the UI
             function deployedAppsTicker() {
                 if (!self.isEventingRunning) {
                     return;
                 }
 
-                ApplicationService.public.status()
-                    .then(function(response) {
-                        response = response.data;
-                        var appList = new Set();
-                        for (var app of response.apps ? response.apps : []) {
-                            if (!(app.name in self.appList)) {
-                                console.error('Abnormal case : UI app list is stale');
-                                continue;
-                            }
+                getAppStatus();
 
-                            appList.add(app.name);
-                            self.appList[app.name].status = app.composite_status;
-                        }
-                        for (var app of Object.keys(self.appList)) {
-                            if (!appList.has(app)) {
-                                self.appList[app].status = 'undeployed';
-                            }
-                            self.appList[app].uiState = determineUIStatus(self.appList[app].status);
-                        }
-
-                        setTimeout(deployedAppsTicker, 2000);
-                    }).catch(function(errResponse) {
-                        self.errorCode = errResponse && errResponse.status || 500;
-                        console.error('Unable to list apps');
-                    });
+                setTimeout(deployedAppsTicker, 2000);
 
                 ApplicationService.server.getWorkerCount()
                     .then(function(response) {
@@ -84,16 +111,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             self.openAppLog = function(appName) {
                 ApplicationService.server.getAppLog(appName).then(function(log) {
-                  logScope = $scope.$new(true);
-                  logScope.appName = appName;
-                  logScope.logMessages = [];
-                  if (log && log.length > 0) {
-                    logScope.logMessages = log.split(/\r?\n/);
-                  }
-                  $uibModal.open({
-                    templateUrl: '../_p/ui/event/ui-current/dialogs/app-log.html',
-                    scope: logScope
-                  });
+                    logScope = $scope.$new(true);
+                    logScope.appName = appName;
+                    logScope.logMessages = [];
+                    if (log && log.length > 0) {
+                        logScope.logMessages = log.split(/\r?\n/);
+                    }
+                    $uibModal.open({
+                        templateUrl: '../_p/ui/event/ui-current/dialogs/app-log.html',
+                        scope: logScope
+                    });
                 });
             };
 
@@ -370,7 +397,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         ApplicationService.server.showSuccessAlert(`${appName} deleted successfully!`);
                     })
                     .catch(function(errResponse) {
-                        ApplicationServie.server.showErrorAlert(`Delete failed due to "${errResponse.data.description}"`);
+                        ApplicationService.server.showErrorAlert(`Delete failed due to "${errResponse.data.description}"`);
                         console.error(errResponse);
                     });
             };
@@ -462,7 +489,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     access: 'r',
                     auth_type: 'no-auth',
                     allow_cookies: true,
-                    validate_ssl_certificate : false
+                    validate_ssl_certificate: false
                 });
                 createApp(scope);
             };
@@ -541,7 +568,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 ApplicationService.public.updateConfig({
                     enable_debugger: self.enableDebugger
                 });
-                if($stateParams.appName) {
+                if ($stateParams.appName) {
                     app = ApplicationService.local.getAppByName($stateParams.appName);
                     $rootScope.debugDisable = !(app.settings.deployment_status && app.settings.processing_status) || !self.enableDebugger;
                     closeDialog('ok');
@@ -722,16 +749,16 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             debugScope.appName = app.appname;
 
             ApplicationService.public.getConfig()
-            .then(function(result) {
-                if(!result.data.enable_debugger) {
-                    $rootScope.debugDisable = true;
-                } else {
-                    $rootScope.debugDisable = !(app.settings.deployment_status && app.settings.processing_status);
-                }
-            })
-            .catch(function(err) {
-                console.log(err);
-            });
+                .then(function(result) {
+                    if (!result.data.enable_debugger) {
+                        $rootScope.debugDisable = true;
+                    } else {
+                        $rootScope.debugDisable = !(app.settings.deployment_status && app.settings.processing_status);
+                    }
+                })
+                .catch(function(err) {
+                    console.log(err);
+                });
 
             self.handler = app.appcode;
             self.pristineHandler = app.appcode;
@@ -755,56 +782,56 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                 // Allow editor to load fully and add annotations
                 var showAnnotations = function() {
-                  // compilation errors
-                  if (app.compilationInfo && !app.compilationInfo.compile_success) {
-                     var line = app.compilationInfo.line_number - 1,
-                         col = app.compilationInfo.column_number - 1;
-                     var markerId = editor.session.addMarker(new Range(line, 0, line, Infinity), "", "text");
-                     markers.push(markerId);
-                     editor.getSession().setAnnotations([{
-                         row: line,
-                         column: 0,
-                        text: app.compilationInfo.description,
-                         type: "error"
-                     }]);
-                     return;
-                  }
+                    // compilation errors
+                    if (app.compilationInfo && !app.compilationInfo.compile_success) {
+                        var line = app.compilationInfo.line_number - 1,
+                            col = app.compilationInfo.column_number - 1;
+                        var markerId = editor.session.addMarker(new Range(line, 0, line, Infinity), "", "text");
+                        markers.push(markerId);
+                        editor.getSession().setAnnotations([{
+                            row: line,
+                            column: 0,
+                            text: app.compilationInfo.description,
+                            type: "error"
+                        }]);
+                        return;
+                    }
 
-                  // insights
-                  if (self.editorDisabled) {
-                     ApplicationService.server.getInsight(app.appname).then(function(insight) {
-                         console.log(insight);
-                         var annotations = [];
-                         self.codeInsight = {};
-                         Object.keys(insight.lines).forEach(function(pos) {
-                            var info = insight.lines[pos];
-                            var srcline = parseInt(pos) - 1; // ace is 0 indexed, v8 is 1 indexed
-                            var msg, type;
-                            if (info.error_count > 0) {
-                                msg = info.error_msg;
-                                msg += "\n(errors: " + info.error_count + ")";
-                                type = "error";
-                            } else if (info.last_log.length > 0) {
-                                msg = info.last_log;
-                                type = "info";
-                            } else {
-                                return;
-                            }
-                            self.codeInsight[srcline] = info;
-                            var id = editor.session.addMarker(new Range(srcline-1, 0, srcline-1, Infinity), "", "text");
-                            markers.push(id);
-                            annotations.push({
-                               row: srcline-1,
-                               column: 0,
-                               text: msg,
-                               type: type
+                    // insights
+                    if (self.editorDisabled) {
+                        ApplicationService.server.getInsight(app.appname).then(function(insight) {
+                            console.log(insight);
+                            var annotations = [];
+                            self.codeInsight = {};
+                            Object.keys(insight.lines).forEach(function(pos) {
+                                var info = insight.lines[pos];
+                                var srcline = parseInt(pos) - 1; // ace is 0 indexed, v8 is 1 indexed
+                                var msg, type;
+                                if (info.error_count > 0) {
+                                    msg = info.error_msg;
+                                    msg += "\n(errors: " + info.error_count + ")";
+                                    type = "error";
+                                } else if (info.last_log.length > 0) {
+                                    msg = info.last_log;
+                                    type = "info";
+                                } else {
+                                    return;
+                                }
+                                self.codeInsight[srcline] = info;
+                                var id = editor.session.addMarker(new Range(srcline - 1, 0, srcline - 1, Infinity), "", "text");
+                                markers.push(id);
+                                annotations.push({
+                                    row: srcline - 1,
+                                    column: 0,
+                                    text: msg,
+                                    type: type
+                                });
                             });
-                         });
-                         editor.getSession().setAnnotations(annotations);
-                      }).catch(function(err){
-                         console.error("Error iterating insight", err);
-                      });
-                      return;
+                            editor.getSession().setAnnotations(annotations);
+                        }).catch(function(err) {
+                            console.error("Error iterating insight", err);
+                        });
+                        return;
                     }
                 };
 
@@ -812,9 +839,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                 if (self.editorDisabled) {
                     var keyboardDisable = function(data, hash, keyString, keyCode, event) {
-                       ApplicationService.server.showWarningAlert('The function is deployed. Please undeploy or pause the function in order to edit');
+                        ApplicationService.server.showWarningAlert('The function is deployed. Please undeploy or pause the function in order to edit');
                     };
-                   editor.keyBinding.addKeyboardHandler(keyboardDisable);
+                    editor.keyBinding.addKeyboardHandler(keyboardDisable);
                 }
 
                 // Make the ace editor responsive to changes in browser dimensions.
@@ -979,7 +1006,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             $transitions.onBefore({}, function(transition) {
                 if (self.warning) {
-                    if(confirm("Unsaved changes exist, and will be discarded if you leave this page. Are you sure?")) {
+                    if (confirm("Unsaved changes exist, and will be discarded if you leave this page. Are you sure?")) {
                         self.warning = false;
                         return true;
                     } else {
@@ -989,7 +1016,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 }
             });
 
-            window.onbeforeunload= function() {
+            window.onbeforeunload = function() {
                 if (self.warning) {
                     return "Unsaved changes exist, and will be discarded if you leave this page. Are you sure?";
                 }
@@ -1082,6 +1109,18 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 'Content-Type': 'application/json'
                             },
                             data: [app]
+                        });
+                    },
+                    importFunctionFromServer: function(appname) {
+                        return $http({
+                            url: '/_p/event/api/v1/functions/' + appname,
+                            method: 'GET',
+                            mnHttp: {
+                                isNotForm: true
+                            },
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
                         });
                     },
                     updateSettings: function(appModel) {
@@ -1338,22 +1377,22 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         mnAlertsService.formatAndSetAlerts(message, 'error', 4000);
                     },
                     getAppLog: function(appname) {
-                       return $http.get('/_p/event/getAppLog?aggregate=true&name=' + appname).then(
-                         function(response) {
-                            return response.data;
-                         }).catch(function(response) {
+                        return $http.get('/_p/event/getAppLog?aggregate=true&name=' + appname).then(
+                            function(response) {
+                                return response.data;
+                            }).catch(function(response) {
                             console.error("error getting app logs", response);
                             return {};
-                         });
+                        });
                     },
                     getInsight: function(appname) {
-                       return $http.get('/_p/event/getInsight?aggregate=true&name=' + appname).then(
-                         function(response) {
-                            return response.data[appname];
-                         }).catch(function(response) {
+                        return $http.get('/_p/event/getInsight?aggregate=true&name=' + appname).then(
+                            function(response) {
+                                return response.data[appname];
+                            }).catch(function(response) {
                             console.log("error getting insight", response);
                             return {};
-                         });
+                        });
                     }
                 },
                 convertBindingToConfig: function(bindings) {
@@ -1490,7 +1529,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 isValidVariableRegex: function(value) {
                     return isValidVariableRegex(value);
                 },
-                isValidHostname: function (value) {
+                isValidHostname: function(value) {
                     return isValidHostname(value);
                 },
                 isFormInvalid: function(formCtrl, bindings, sourceBucket) {
@@ -1499,8 +1538,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         hostnameValid,
                         hostnameError,
                         bindingsValidList = []
-                        hostnameValidList = []
-                        form = formCtrl.createAppForm;
+                    hostnameValidList = []
+                    form = formCtrl.createAppForm;
 
                     for (var binding of bindings) {
                         if (binding.value.length) {
@@ -1533,7 +1572,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     }
 
                     form.appname.$error.required = form.appname.$viewValue === '' ||
-                                                   form.appname.$viewValue === undefined;
+                        form.appname.$viewValue === undefined;
 
                     return form.appname.$error.required ||
                         form.appname.$error.appExists ||
