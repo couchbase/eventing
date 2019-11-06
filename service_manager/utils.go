@@ -84,58 +84,65 @@ func encodeRev(rev uint64) service.Revision {
 	return ext
 }
 
-func fillMissingWithDefaults(settings map[string]interface{}) {
+func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string]interface{}) {
+	// Fill from temp store if available
+	app, _ := m.getTempStore(appName)
+
 	// Handler related configurations
-	fillMissingDefault(settings, "checkpoint_interval", float64(60000))
-	fillMissingDefault(settings, "cleanup_timers", false)
-	fillMissingDefault(settings, "cpp_worker_thread_count", float64(2))
-	fillMissingDefault(settings, "deadline_timeout", float64(62))
-	fillMissingDefault(settings, "execution_timeout", float64(60))
-	fillMissingDefault(settings, "feedback_batch_size", float64(100))
-	fillMissingDefault(settings, "feedback_read_buffer_size", float64(65536))
-	fillMissingDefault(settings, "idle_checkpoint_interval", float64(30000))
-	fillMissingDefault(settings, "lcb_inst_capacity", float64(5))
-	fillMissingDefault(settings, "log_level", "INFO")
-	fillMissingDefault(settings, "poll_bucket_interval", float64(10))
-	fillMissingDefault(settings, "sock_batch_size", float64(100))
-	fillMissingDefault(settings, "tick_duration", float64(60000))
-	fillMissingDefault(settings, "timer_context_size", float64(1024))
-	fillMissingDefault(settings, "undeploy_routine_count", float64(6))
-	fillMissingDefault(settings, "worker_count", float64(3))
-	fillMissingDefault(settings, "worker_feedback_queue_cap", float64(500))
-	fillMissingDefault(settings, "worker_queue_cap", float64(100*1000))
-	fillMissingDefault(settings, "worker_queue_mem_cap", float64(1024))
-	fillMissingDefault(settings, "worker_response_timeout", float64(3600))
+	fillMissingDefault(app, settings, "checkpoint_interval", float64(60000))
+	fillMissingDefault(app, settings, "cleanup_timers", false)
+	fillMissingDefault(app, settings, "cpp_worker_thread_count", float64(2))
+	fillMissingDefault(app, settings, "deadline_timeout", float64(62))
+	fillMissingDefault(app, settings, "execution_timeout", float64(60))
+	fillMissingDefault(app, settings, "feedback_batch_size", float64(100))
+	fillMissingDefault(app, settings, "feedback_read_buffer_size", float64(65536))
+	fillMissingDefault(app, settings, "idle_checkpoint_interval", float64(30000))
+	fillMissingDefault(app, settings, "lcb_inst_capacity", float64(5))
+	fillMissingDefault(app, settings, "log_level", "INFO")
+	fillMissingDefault(app, settings, "poll_bucket_interval", float64(10))
+	fillMissingDefault(app, settings, "sock_batch_size", float64(100))
+	fillMissingDefault(app, settings, "tick_duration", float64(60000))
+	fillMissingDefault(app, settings, "timer_context_size", float64(1024))
+	fillMissingDefault(app, settings, "undeploy_routine_count", float64(6))
+	fillMissingDefault(app, settings, "worker_count", float64(3))
+	fillMissingDefault(app, settings, "worker_feedback_queue_cap", float64(500))
+	fillMissingDefault(app, settings, "worker_queue_cap", float64(100*1000))
+	fillMissingDefault(app, settings, "worker_queue_mem_cap", float64(1024))
+	fillMissingDefault(app, settings, "worker_response_timeout", float64(3600))
 
 	// metastore related configuration
-	fillMissingDefault(settings, "execute_timer_routine_count", float64(3))
-	fillMissingDefault(settings, "timer_storage_routine_count", float64(3))
-	fillMissingDefault(settings, "timer_storage_chan_size", float64(10*1000))
-	fillMissingDefault(settings, "timer_queue_mem_cap", float64(50))
-	fillMissingDefault(settings, "timer_queue_size", float64(10000))
+	fillMissingDefault(app, settings, "execute_timer_routine_count", float64(3))
+	fillMissingDefault(app, settings, "timer_storage_routine_count", float64(3))
+	fillMissingDefault(app, settings, "timer_storage_chan_size", float64(10*1000))
+	fillMissingDefault(app, settings, "timer_queue_mem_cap", float64(50))
+	fillMissingDefault(app, settings, "timer_queue_size", float64(10000))
 
 	// Process related configuration
-	fillMissingDefault(settings, "breakpad_on", true)
+	fillMissingDefault(app, settings, "breakpad_on", true)
 
 	// Rebalance related configurations
-	fillMissingDefault(settings, "vb_ownership_giveup_routine_count", float64(3))
-	fillMissingDefault(settings, "vb_ownership_takeover_routine_count", float64(3))
+	fillMissingDefault(app, settings, "vb_ownership_giveup_routine_count", float64(3))
+	fillMissingDefault(app, settings, "vb_ownership_takeover_routine_count", float64(3))
 
 	// Application logging related configurations
-	fillMissingDefault(settings, "app_log_max_size", float64(1024*1024*40))
-	fillMissingDefault(settings, "app_log_max_files", float64(10))
-	fillMissingDefault(settings, "enable_applog_rotation", true)
+	fillMissingDefault(app, settings, "app_log_max_size", float64(1024*1024*40))
+	fillMissingDefault(app, settings, "app_log_max_files", float64(10))
+	fillMissingDefault(app, settings, "enable_applog_rotation", true)
 
 	// DCP connection related configurations
-	fillMissingDefault(settings, "agg_dcp_feed_mem_cap", float64(1024))
-	fillMissingDefault(settings, "data_chan_size", float64(50))
-	fillMissingDefault(settings, "dcp_gen_chan_size", float64(10000))
-	fillMissingDefault(settings, "dcp_num_connections", float64(1))
+	fillMissingDefault(app, settings, "agg_dcp_feed_mem_cap", float64(1024))
+	fillMissingDefault(app, settings, "data_chan_size", float64(50))
+	fillMissingDefault(app, settings, "dcp_gen_chan_size", float64(10000))
+	fillMissingDefault(app, settings, "dcp_num_connections", float64(1))
 }
 
-func fillMissingDefault(settings map[string]interface{}, field string, defaultValue interface{}) {
+func fillMissingDefault(app application, settings map[string]interface{}, field string, defaultValue interface{}) {
 	if _, ok := settings[field]; !ok {
-		settings[field] = defaultValue
+		if _, tOk := app.Settings[field]; !tOk {
+			settings[field] = defaultValue
+			return
+		}
+		settings[field] = app.Settings[field]
 	}
 }
 
