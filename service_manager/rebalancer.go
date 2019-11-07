@@ -69,7 +69,7 @@ func (r *rebalancer) gatherProgress() {
 
 	// vbucket distribution happens in producer.
 	// If no handler is running or getting deployed on any node then we can store progress to 100% and return.
-	// If any error while aggregating progress fall through.
+	// If there is any error while aggregating progress fall through only if there are more than 1 eventing node.
 	if r.numApps == 0 {
 		p, _, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 		if len(errMap) > 0 && len(r.keepNodes) > 1 {
@@ -78,6 +78,7 @@ func (r *rebalancer) gatherProgress() {
 		} else if len(errMap) == 1 && len(r.keepNodes) == 1 {
 			logging.Warnf("%s Failed to capture rebalance progress, initProgress: %v errMap dump: %rm",
 				logPrefix, p, errMap)
+			return
 		} else if p.VbsOwnedPerPlan == 0 && p.VbsRemainingToShuffle == 0 {
 			logging.Infof("%s Rebalance completed", logPrefix)
 			r.cb.progress(1.0, r.c)
