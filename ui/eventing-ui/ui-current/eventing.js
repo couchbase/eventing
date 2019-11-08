@@ -21,62 +21,36 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 self.appList[app].uiState = 'warmup';
             }
 
-            function getAppStatus() {
-                ApplicationService.public.status()
-                    .then(function(response) {
-                        response = response.data;
-                        var appList = new Set();
-                        for (var app of response.apps ? response.apps : []) {
-
-                            if (!(app.name in self.appList)) {
-
-                                // Found in server resp, however not found in UI
-                                console.error('Remote change : UI app list is stale, sever responsed with function (missing from UI needs to be added):', app.name);
-
-                                ApplicationService.public.importFunctionFromServer(app.name)
-                                    .then(result => {
-                                        ApplicationService.local.createApp(result.data);
-                                    })
-                                    .then(result => {
-                                        // Inform user on why it appeard
-                                        ApplicationService.server.showSuccessAlert(`${app.name} was created remotely added!`);
-                                    })
-                                    .then(result => {
-                                        appList.add(app.name);
-                                        self.appList[app.name].status = app.composite_status;
-                                    });
-
-                            } else {
-                                appList.add(app.name);
-                                self.appList[app.name].status = app.composite_status;
-                            }
-                        }
-                        for (var appName of Object.keys(self.appList)) {
-                            if (!appList.has(appName)) {
-
-                                console.error('Remote change : UI app list is stale, sever did not have function (present in UI needs to be removed):', appName);
-
-                                ApplicationService.local.deleteApp(appName);
-
-                                ApplicationService.server.showSuccessAlert(`${appName} was deleted remotely removed!`);
-                                continue;
-                            }
-                            self.appList[appName].uiState = determineUIStatus(self.appList[appName].status);
-                        }
-
-                    }).catch(function(errResponse) {
-                        self.errorCode = errResponse && errResponse.status || 500;
-                        console.error('Unable to list apps');
-                    });
-            }
-
             // Poll to get the App status and reflect the same in the UI
             function deployedAppsTicker() {
                 if (!self.isEventingRunning) {
                     return;
                 }
 
-                getAppStatus();
+                ApplicationService.public.status()
+                    .then(function(response) {
+                        response = response.data;
+                        var appList = new Set();
+                        for (var app of response.apps ? response.apps : []) {
+                            if (!(app.name in self.appList)) {
+                                console.error('Abnormal case : UI app list is stale');
+                                continue;
+                            }
+
+                            appList.add(app.name);
+                            self.appList[app.name].status = app.composite_status;
+                        }
+                        for (var app of Object.keys(self.appList)) {
+                            if (!appList.has(app)) {
+                                self.appList[app].status = 'undeployed';
+                            }
+                            self.appList[app].uiState = determineUIStatus(self.appList[app].status);
+                        }
+
+                    }).catch(function(errResponse) {
+                        self.errorCode = errResponse && errResponse.status || 500;
+                        console.error('Unable to list apps');
+                    });
 
                 setTimeout(deployedAppsTicker, 2000);
 
@@ -1109,18 +1083,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 'Content-Type': 'application/json'
                             },
                             data: [app]
-                        });
-                    },
-                    importFunctionFromServer: function(appname) {
-                        return $http({
-                            url: '/_p/event/api/v1/functions/' + appname,
-                            method: 'GET',
-                            mnHttp: {
-                                isNotForm: true
-                            },
-                            headers: {
-                                'Content-Type': 'application/json'
-                            }
                         });
                     },
                     updateSettings: function(appModel) {
