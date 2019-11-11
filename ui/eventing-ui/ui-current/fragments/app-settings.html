@@ -116,6 +116,23 @@
           <small>Application log file for this Function is at : <br><strong>{{formCtrl.logFileLocation}}</strong></small>
         </div>
         <div class="formrow indent-1">
+          <label class="inline">N1QL Consistency</label>
+          <span
+                  class="fa-stack icon-info"
+                  uib-tooltip="Consistency level of N1QL statements in the handler"
+                  tooltip-placement="right">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+          </span>
+          <select
+                  ng-model="appModel.settings.n1ql_consistency"
+                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                  ng-init="appModel.settings.n1ql_consistency = appModel.settings.n1ql_consistency ? appModel.settings.n1ql_consistency : 'none'">
+            <option value="none" selected>None</option>
+            <option value="request">Request</option>
+          </select>
+        </div>
+        <div class="formrow indent-1">
           <label class="inline">Workers</label>
           <span
                   class="fa-stack icon-info"

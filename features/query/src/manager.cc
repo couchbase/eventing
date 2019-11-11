@@ -11,6 +11,7 @@
 
 #include <memory>
 #include <mutex>
+#include <utility>
 
 #include "conn-pool.h"
 #include "info.h"
@@ -30,16 +31,14 @@ void Query::Manager::ClearQueries() {
   iterators_.clear();
 }
 
-Query::Iterable::Info
-Query::Manager::NewIterable(const Query::Info &query_info) {
+Query::Iterable::Info Query::Manager::NewIterable(Query::Info query_info) {
   auto conn_info = conn_pool_.GetConnection();
   if (conn_info.is_fatal) {
     return {true, conn_info.msg};
   }
 
-  auto timeout = UnwrapData(isolate_)->n1ql_timeout;
   auto iterator = std::make_unique<Query::Iterator>(
-      query_info, conn_info.connection, isolate_, timeout);
+      std::move(query_info), conn_info.connection, isolate_);
   auto iterator_ptr = iterator.get();
 
   auto iterable = UnwrapData(isolate_)->query_iterable;
@@ -79,7 +78,7 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  auto it_info = query_mgr->NewIterable(query_info);
+  auto it_info = query_mgr->NewIterable(std::move(query_info));
   if (it_info.is_fatal) {
     ++n1ql_op_exception_count;
     js_exception->ThrowN1QLError(it_info.msg);

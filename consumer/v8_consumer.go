@@ -75,6 +75,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		kvHostDcpFeedMap:                make(map[string]*couchbase.DcpFeed),
 		kvNodesRWMutex:                  &sync.RWMutex{},
 		lcbInstCapacity:                 hConfig.LcbInstCapacity,
+		n1qlConsistency:                 hConfig.N1qlConsistency,
 		logLevel:                        hConfig.LogLevel,
 		msgProcessedRWMutex:             &sync.RWMutex{},
 		nsServerPort:                    nsServerPort,

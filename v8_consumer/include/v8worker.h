@@ -158,6 +158,7 @@ typedef struct handler_config_s {
   bool skip_lcb_bootstrap;
   bool using_timer;
   int64_t timer_context_size;
+  std::string n1ql_consistency;
   std::vector<std::string> handler_headers;
   std::vector<std::string> handler_footers;
 } handler_config_t;

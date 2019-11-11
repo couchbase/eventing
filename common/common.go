@@ -358,6 +358,7 @@ type HandlerConfig struct {
 	HandlerHeaders           []string
 	HandlerFooters           []string
 	LcbInstCapacity          int
+	N1qlConsistency          string
 	LogLevel                 string
 	SocketWriteBatchSize     int
 	SocketTimeout            int

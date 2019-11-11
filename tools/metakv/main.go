@@ -46,6 +46,7 @@ func main() {
 	settings["timer_processing_tick_interval"] = 500
 	settings["skip_timer_threshold"] = 600
 	settings["lcb_inst_capacity"] = 5
+	settings["n1ql_consistency"] = "request"
 	settings["enable_recursive_mutation"] = false
 	settings["deadline_timeout"] = 2
 	settings["execution_timeout"] = 1

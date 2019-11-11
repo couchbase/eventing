@@ -64,7 +64,12 @@ collect_logs() {
   tar -C $WORKSPACE --transform "s/^/logs-$phase-/" -uf $WORKSPACE/logs.tar test.log 1>/dev/null 2>&1
   tar -C $WORKSPACE --transform "s/^/logs-$phase-/" -uf $WORKSPACE/logs.tar stats.log 1>/dev/null 2>&1
   tar -C $WORKSPACE --transform "s/^/logs-$phase-/" -uf $WORKSPACE/logs.tar run.log 1>/dev/null 2>&1
-  find ns_server/logs testrunner/logs test.log stats.log run.log -type f -exec sh -c '> {}' \;
+  find $WORKSPACE/ns_server/logs \
+       $WORKSPACE/testrunner/logs \
+       $WORKSPACE/test.log \
+       $WORKSPACE/stats.log \
+       $WORKSPACE/run.log \
+    -type f -exec sh -c '> {}' \;
 }
 
 error_email() {

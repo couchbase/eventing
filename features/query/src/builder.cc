@@ -35,6 +35,19 @@
     }
   }
 
+  result = lcb_n1p_setconsistency(params_, query_info_.options.consistency);
+  if (result != LCB_SUCCESS) {
+    return ErrorFormat("Unable to set consistency", connection_, result);
+  }
+
+  if (query_info_.options.client_context_id != nullptr) {
+    result = lcb_n1p_setoptz(params_, "client_context_id",
+                             query_info_.options.client_context_id->c_str());
+    if (result != LCB_SUCCESS) {
+      return ErrorFormat("Unable to set clientContextId", connection_, result);
+    }
+  }
+
   result = lcb_n1p_mkcmd(params_, &cmd_);
   if (result != LCB_SUCCESS) {
     return ErrorFormat("Unable to make query cmd", connection_, result);

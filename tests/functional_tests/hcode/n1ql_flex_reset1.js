@@ -12,7 +12,10 @@ function OnUpdate(doc, meta) {
         ++count;
       }
     }
-    let res1 = SELECT * FROM default LIMIT 10;
+    let res1 = N1QL('SELECT * FROM default LIMIT 10', {}, {
+        'consistency' : 'request',
+        'clientContextId' : meta.id
+    });
     let count1 = 0;
     for(let row of res1) {
       for(let row of res1) {

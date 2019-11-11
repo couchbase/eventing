@@ -28,6 +28,7 @@
 |feedback_read_buffer_size|65536|Buffer size for reading messages from eventing-consumer|
 |lcb_inst_capacity|5|Controls the level of nesting for n1ql iterators|
 |log_level|INFO|Log level for Function|
+|n1ql_consistency|request|Default consistency level for N1QL statements|
 |sock_batch_size|100|Batch size for messages written from eventing-producer to eventing-consumer|
 |timer_queue_size|10000|Queue item cap for firing timers|
 |timer_storage_routine_count|3|Size of thread pool for storing timers per eventing-consumer|
