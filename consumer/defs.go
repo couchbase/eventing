@@ -353,7 +353,8 @@ type Consumer struct {
 	statsTicker              *time.Ticker
 	updateStatsTicker        *time.Ticker
 
-	insight chan *common.Insight
+	insight      chan *common.Insight
+	notifyWorker uint32
 }
 
 // For V8 worker spawned for debugging purpose
