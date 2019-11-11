@@ -688,6 +688,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 if (isDeployed && isPaused) {
                                     return ApplicationService.tempStore.saveApp($scope.appModel);
                                 } else if (isDeployed) {
+                                    // deleting the dcp_stream_boundary as it is not allowed to change for a deployed app
+                                    delete $scope.appModel.settings.dcp_stream_boundary;
                                     return ApplicationService.public.updateSettings($scope.appModel);
                                 } else {
                                     return ApplicationService.tempStore.saveApp($scope.appModel);
