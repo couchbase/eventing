@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
+	"syscall"
 
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -157,10 +159,16 @@ func (c *client) Stop(context string) {
 	logging.Infof("%s [%s:%s:%d] Exiting c++ worker", logPrefix, c.workerName, c.tcpPort, c.osPid)
 
 	c.consumerHandle.workerExited = true
-	err := util.KillProcess(c.osPid)
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Unable to kill c++ worker, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.osPid, err)
+	if atomic.LoadUint32(&c.consumerHandle.notifyWorker) == 1 {
+		if err := c.cmd.Process.Signal(syscall.SIGABRT); err != nil {
+			logging.Errorf("%s [%s:%s:%d] Unable to notify  c++ worker, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.osPid, err)
+		}
+	} else {
+		if err := util.KillProcess(c.osPid); err != nil {
+			logging.Errorf("%s [%s:%s:%d] Unable to kill c++ worker, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.osPid, err)
+		}
 	}
 }
 
