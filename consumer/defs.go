@@ -328,6 +328,7 @@ type Consumer struct {
 	suppressedDCPDeletionCounter uint64
 	suppressedDCPMutationCounter uint64
 	sentEventsSize               int64
+	numSentEvents                int64
 
 	// metastore related timer stats
 	metastoreDeleteCounter      uint64
@@ -446,6 +447,7 @@ type cppQueueSize struct {
 	AggQueueSize        int64 `json:"agg_queue_size"`
 	AggQueueMemory      int64 `json:"agg_queue_memory"`
 	ProcessedEventsSize int64 `json:"processed_events_size"`
+	NumProcessedEvents  int64 `json:"num_processed_events"`
 }
 
 type streamRequestInfo struct {

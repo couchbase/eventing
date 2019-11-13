@@ -60,6 +60,7 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["agg_queue_memory"] = uint64(c.cppQueueSizes.AggQueueMemory)
 		stats["agg_queue_size"] = uint64(c.cppQueueSizes.AggQueueSize)
 		stats["processed_events_size"] = uint64(c.cppQueueSizes.ProcessedEventsSize)
+		stats["num_processed_events"] = uint64(c.cppQueueSizes.NumProcessedEvents)
 	}
 
 	stats["agg_timer_feedback_queue_cap"] = uint64(c.feedbackQueueCap)

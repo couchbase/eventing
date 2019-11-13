@@ -28,10 +28,10 @@ func (c *Consumer) processDCPEvents() {
 
 	for {
 		if c.cppQueueSizes != nil {
-			if c.workerQueueCap < c.cppQueueSizes.AggQueueSize ||
+			if c.workerQueueCap < (c.numSentEvents-c.cppQueueSizes.NumProcessedEvents)||
 				c.workerQueueMemCap < (c.sentEventsSize-c.cppQueueSizes.ProcessedEventsSize) {
-				logging.Debugf("%s [%s:%s:%d] Throttling, cpp queue sizes: %+v, event size: %d",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes, c.sentEventsSize)
+				logging.Debugf("%s [%s:%s:%d] Throttling, cpp queue sizes: %+v, num sent event: %d, events size: %d",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes, c.numSentEvents, c.sentEventsSize)
 				time.Sleep(10 * time.Millisecond)
 
 				// If rebalance in ongoing, it's important to read dcp mutations as STREAMBEGIN/END messages could be behind them.

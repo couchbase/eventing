@@ -125,6 +125,7 @@ void AppWorker::InitTcpSock(const std::string &function_name,
   feedback_batch_size_ = fbsize;
   messages_processed_counter = 0;
   processed_events_size = 0;
+  num_processed_events  = 0;
 
   LOG(logInfo) << "Starting worker with af_inet for appname:" << appname
                << " worker id:" << worker_id << " batch size:" << batch_size_
@@ -169,6 +170,7 @@ void AppWorker::InitUDS(const std::string &function_name,
   feedback_batch_size_ = fbsize;
   messages_processed_counter = 0;
   processed_events_size = 0;
+  num_processed_events  = 0;
 
   LOG(logInfo) << "Starting worker with af_unix for appname:" << appname
                << " worker id:" << worker_id << " batch size:" << batch_size_
@@ -328,7 +330,8 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             queue_stats << agg_queue_size << R"(, "feedback_queue_size":)";
             queue_stats << 0 << R"(, "agg_queue_memory":)";
             queue_stats << agg_queue_memory << R"(, "processed_events_size":)";
-            queue_stats << processed_events_size << "}";
+            queue_stats << processed_events_size << R"(, "num_processed_events":)";
+            queue_stats << num_processed_events << "}";
 
             flatbuffers::FlatBufferBuilder builder;
             auto flatbuf_msg = builder.CreateString(queue_stats.str());
@@ -573,6 +576,7 @@ void AppWorker::RouteMessageWithResponse(
         estats << R"(, "feedback_queue_size":)" << 0;
         estats << R"(, "agg_queue_memory":)" << agg_queue_memory;
         estats << R"(, "processed_events_size":)" << processed_events_size;
+        estats << R"(, "num_processed_events":)" << num_processed_events;
       }
 
       estats << R"(, "timestamp":")" << GetTimestampNow() << R"("})";

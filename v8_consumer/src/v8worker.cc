@@ -39,6 +39,7 @@ std::atomic<int64_t> timer_create_failure = {0};
 
 std::atomic<int64_t> messages_processed_counter = {0};
 std::atomic<int64_t> processed_events_size = {0};
+std::atomic<int64_t> num_processed_events = {0};
 
 std::atomic<int64_t> dcp_delete_msg_counter = {0};
 std::atomic<int64_t> dcp_mutation_msg_counter = {0};
@@ -483,6 +484,7 @@ void V8Worker::RouteMessage() {
         break;
       }
       processed_events_size += msg->payload.GetSize();
+      num_processed_events++;
       break;
 
     case eInternal:
