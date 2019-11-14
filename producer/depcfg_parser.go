@@ -225,7 +225,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["worker_response_timeout"]; ok {
 		p.handlerConfig.WorkerResponseTimeout = int(val.(float64))
 	} else {
-		p.handlerConfig.WorkerResponseTimeout = 3600 // in seconds
+		p.handlerConfig.WorkerResponseTimeout = 5 * 60 // in seconds
 	}
 
 	// Metastore related configuration
