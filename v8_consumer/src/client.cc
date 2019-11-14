@@ -26,6 +26,7 @@ std::atomic<int64_t> e_v8_worker_lost = {0};
 std::atomic<int64_t> delete_events_lost = {0};
 std::atomic<int64_t> timer_events_lost = {0};
 std::atomic<int64_t> mutation_events_lost = {0};
+std::atomic<int64_t> uv_msg_parse_failure = {0};
 
 extern std::atomic<int64_t> timer_context_size_exceeded_counter;
 extern std::atomic<int64_t> timer_callback_missing_counter;
@@ -349,6 +350,15 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             FlushToConn(stream, (char *)msg.c_str(), msg.length());
           }
         }
+      } else {
+        ++uv_msg_parse_failure;
+        // We only need to know the first message which failed to parse as the
+        // subsequent messages will fail to get parsed anyway
+        if (uv_msg_parse_failure == 1) {
+          LOG(logError)
+              << "Failed to parse message from uv buffer. Buffer contents : "
+              << RU(buf_base) << std::endl;
+        }
       }
     }
     buf_base.erase(0, message_size);
@@ -561,6 +571,7 @@ void AppWorker::RouteMessageWithResponse(
       estats << R"(, "dcp_delete_parse_failure":)" << dcp_delete_parse_failure;
       estats << R"(, "dcp_mutation_parse_failure":)"
              << dcp_mutation_parse_failure;
+      estats << R"(, "uv_msg_parse_failure":)" << uv_msg_parse_failure;
       estats << R"(, "filtered_dcp_delete_counter":)"
              << filtered_dcp_delete_counter;
       estats << R"(, "filtered_dcp_mutation_counter":)"
