@@ -195,6 +195,7 @@ extern std::atomic<int64_t> lcb_retry_failure;
 
 extern std::atomic<int64_t> messages_processed_counter;
 extern std::atomic<int64_t> processed_events_size;
+extern std::atomic<int64_t> num_processed_events;
 
 // DCP or Timer event counter
 extern std::atomic<int64_t> dcp_delete_msg_counter;
