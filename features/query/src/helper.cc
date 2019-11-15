@@ -271,7 +271,7 @@ int Query::Helper::GetConsistency(const std::string &consistency) {
   if (consistency == "request") {
     return LCB_N1P_CONSISTENCY_REQUEST;
   }
-  return LCB_N1P_CONSISTENCY_REQUEST;
+  return LCB_N1P_CONSISTENCY_NONE;
 }
 
 Query::Options::Extractor::Extractor(v8::Isolate *isolate,
